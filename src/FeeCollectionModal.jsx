@@ -358,6 +358,49 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const isStudentActive = studentStatus === 'Active'
   const inactiveStatusMsg = `This student's status is "${studentStatus}", not Active. Fee collection is disabled — reactivate the student in Students first if this is a mistake.`
 
+  // ── Advance payment authorization ───────────────────────────────────────
+  // Collecting for a month that hasn't started yet is normally the "staff
+  // picked the wrong month" bug the future_month_tag anomaly check in
+  // Fees.jsx exists to catch. A genuine advance payment is the same action
+  // taken deliberately — so it must be distinguishable at write-time, not
+  // discovered later as an anomaly. Non-admins can never do this at all;
+  // admins can, but only after entering a PIN at the moment of collection,
+  // and the resulting row is permanently tagged (is_advance / 
+  // advance_authorized_by) so it never gets confused with the mistake this
+  // was built to catch, in the ledger, receipts, or anywhere else it shows.
+  const ADVANCE_PIN = '2468' // TODO: move to an env var / admin-settings table once one exists
+  const [advancePinOpen,  setAdvancePinOpen]  = useState(false)
+  const [advancePinValue, setAdvancePinValue] = useState('')
+  const [advancePinError, setAdvancePinError] = useState('')
+  const [advancePinFor,   setAdvancePinFor]   = useState(null) // 'flat' | 'course' — which save to resume after auth
+  const [flatAdvanceAuthorized,   setFlatAdvanceAuthorized]   = useState(false)
+  const [courseAdvanceAuthorized, setCourseAdvanceAuthorized] = useState(false)
+
+  // A fee-period month/year counts as "future" if its 1st falls after today —
+  // matches the future_month_tag anomaly check in Fees.jsx exactly, so a
+  // payment either passes both checks or fails both, never one but not the
+  // other.
+  const isFutureFeeMonth = (monthName, yr) => {
+    const idx = MONTHS_LIST.findIndex(m => m === monthName)
+    if (idx === -1) return false
+    const monthDate = new Date(`${monthName} 1, ${yr}`)
+    const todayFirst = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+    return monthDate > todayFirst
+  }
+
+  const openAdvancePin = (forWhich) => {
+    setAdvancePinFor(forWhich)
+    setAdvancePinValue('')
+    setAdvancePinError('')
+    setAdvancePinOpen(true)
+  }
+  const confirmAdvancePin = () => {
+    if (advancePinValue !== ADVANCE_PIN) { setAdvancePinError('Incorrect PIN.'); return }
+    if (advancePinFor === 'flat') setFlatAdvanceAuthorized(true)
+    if (advancePinFor === 'course') setCourseAdvanceAuthorized(true)
+    setAdvancePinOpen(false)
+  }
+
   // ── UNIFIED save — all fee types go through collectFee (feeEngine) ────────────────
   const saveAdmission = async () => {
     if (saving) return
@@ -400,10 +443,16 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     if (payMode === 'UPI' && !txnRef.trim()) return alert('UPI Txn / UTR No. is required for UPI payments.')
     const unpaid = flatFees.filter(f => flatSel[f.id] && !isMonthPaid(f))
     if (!unpaid.length) return alert('Select at least one unpaid month.')
+    const hasFutureMonth = unpaid.some(f => isFutureFeeMonth(f.month, f.year))
+    if (hasFutureMonth && !isAdmin) return alert('One or more selected months haven\'t started yet. Only an admin can authorize collecting an advance payment.')
+    if (hasFutureMonth && !flatAdvanceAuthorized) return alert('One or more selected months haven\'t started yet. Click "Authorize advance payment (PIN)" above first.')
     setSaving(true); setError(null)
     try {
       const rNo = rcptNo()
-      const items = unpaid.map(f => ({ kind: 'flat', month: f.month, year: f.year, amount: f.amount }))
+      const items = unpaid.map(f => {
+        const isAdvance = isFutureFeeMonth(f.month, f.year)
+        return { kind: 'flat', month: f.month, year: f.year, amount: f.amount, isAdvance, advanceAuthorizedBy: isAdvance ? (currentUser?.userName || currentUser?.name || 'Admin') : null }
+      })
       const { sections, total, skipped } = await collectFee({
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
@@ -415,6 +464,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       setSaved({ rcpt: rNo, items: unpaid.map(i => `${i.month} ${i.year}`).join(', '), total })
       setPaidMonths(p => [...new Set([...p, ...unpaid.map(i => `${i.month}_${i.year}`)])])
       setFlatSel({})
+      setFlatAdvanceAuthorized(false)
       onSaved?.()
     } catch (err) { setError(err.message || 'Failed to save.') }
     finally { setSaving(false) }
@@ -429,6 +479,9 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     const amt = Number(courseAmt)
     if (!amt || amt <= 0) return alert('Enter a valid amount.')
     if (isCourseMonthPaid()) { setError(`Course fee for ${courseMonth} ${courseYear} is already recorded.`); return }
+    const isAdvance = isFutureFeeMonth(courseMonth, courseYear)
+    if (isAdvance && !isAdmin) return alert(`${courseMonth} ${courseYear} hasn't started yet. Only an admin can authorize collecting an advance payment.`)
+    if (isAdvance && !courseAdvanceAuthorized) return alert(`${courseMonth} ${courseYear} hasn't started yet. Click "Authorize advance payment (PIN)" above first.`)
     setSaving(true); setError(null)
     try {
       const rNo = rcptNo()
@@ -437,11 +490,12 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
         collectedBy: collectedBy || null, receiptNo: rNo,
-        items: [{ kind: 'course', course: course || '', subtype: batch || '', month: courseMonth, year: courseYear, amount: amt }],
+        items: [{ kind: 'course', course: course || '', subtype: batch || '', month: courseMonth, year: courseYear, amount: amt, isAdvance, advanceAuthorizedBy: isAdvance ? (currentUser?.userName || currentUser?.name || 'Admin') : null }],
       })
       printReceipt({ ...commonReceiptFields(rNo), sections, total })
       setPaidCourseMonths(p => [...new Set([...p, `${courseMonth}_${courseYear}`])])
       setSaved({ rcpt: rNo, items: `${course} · ${batch} · ${courseMonth} ${courseYear}`, total: amt })
+      setCourseAdvanceAuthorized(false)
       onSaved?.()
     } catch (err) { setError(err.message || 'Failed to save.') }
     finally { setSaving(false) }
@@ -748,12 +802,16 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
               <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:18 }}>
                 {flatFees.map(fee => {
                   const paid = isMonthPaid(fee)
+                  const future = !paid && isFutureFeeMonth(fee.month, fee.year)
                   return (
                     <div key={fee.id} onClick={() => !paid && setFlatSel(p => ({ ...p, [fee.id]: !p[fee.id] }))}
                       style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', borderRadius:10, cursor:paid?'default':'pointer', border:`1.5px solid ${paid?'#6ee7b7':flatSel[fee.id]?C.emerald:C.slate[200]}`, background:paid?'#f0fdf4':flatSel[fee.id]?'#ecfdf5':'white', opacity:paid?.75:1, transition:'all .15s' }}>
                       <div style={{ fontSize:20 }}>📅</div>
                       <div style={{ flex:1 }}>
-                        <div style={{ fontWeight:700, fontSize:13, color:C.slate[900] }}>{fee.month} {fee.year}</div>
+                        <div style={{ fontWeight:700, fontSize:13, color:C.slate[900], display:'flex', alignItems:'center', gap:6 }}>
+                          {fee.month} {fee.year}
+                          {future && <span style={{ fontSize:9, fontWeight:800, color:'#991B1B', background:'#fef2f2', padding:'1px 6px', borderRadius:4, border:'1px solid #fca5a5' }}>ADVANCE</span>}
+                        </div>
                         <div style={{ fontSize:11, color:paid?C.emerald:C.slate[400] }}>{paid ? 'Already paid' : `${hostelType} rate`}</div>
                       </div>
                       <span style={{ fontSize:15, fontWeight:800, color: hasOverride ? C.violet : C.emerald }}>{fmt(fee.amount)}</span>
@@ -766,6 +824,27 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                   )
                 })}
               </div>
+              {flatFees.some(f => flatSel[f.id] && !isMonthPaid(f) && isFutureFeeMonth(f.month, f.year)) && (
+                flatAdvanceAuthorized ? (
+                  <div style={{ background:'#f0f9ff', border:'1.5px solid #7dd3fc', borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:'#0369a1' }}>✅ Advance authorized — an admin has approved collecting the selected future month(s) now.</div>
+                  </div>
+                ) : (
+                  <div style={{ background:'#fef2f2', border:'1.5px solid #fca5a5', borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:'#991B1B', marginBottom:8 }}>
+                      ⛔ One or more selected months haven't started yet. This is an advance payment.
+                    </div>
+                    {isAdmin ? (
+                      <button type="button" onClick={() => openAdvancePin('flat')}
+                        style={{ fontSize:12, fontWeight:700, padding:'6px 14px', borderRadius:7, border:'none', background:'#991B1B', color:'white', cursor:'pointer' }}>
+                        🔒 Authorize advance payment (PIN)
+                      </button>
+                    ) : (
+                      <div style={{ fontSize:12, color:'#991B1B' }}>Only an admin can authorize an advance payment.</div>
+                    )}
+                  </div>
+                )
+              )}
               {flatTotal > 0 && (
                 <div style={{ background:C.slate[50], borderRadius:10, padding:'10px 14px', marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <span style={{ fontSize:13, fontWeight:600, color:C.slate[500] }}>Total</span>
@@ -799,13 +878,13 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                 </div>
                 <div>
                   <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>For month</label>
-                  <select value={courseMonth} onChange={e => setCourseMonth(e.target.value)} style={inp}>
+                  <select value={courseMonth} onChange={e => { setCourseMonth(e.target.value); setCourseAdvanceAuthorized(false) }} style={inp}>
                     {MONTHS_LIST.map(m => <option key={m}>{m}</option>)}
                   </select>
                 </div>
                 <div>
                   <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>Year</label>
-                  <select value={courseYear} onChange={e => setCourseYear(Number(e.target.value))} style={inp}>
+                  <select value={courseYear} onChange={e => { setCourseYear(Number(e.target.value)); setCourseAdvanceAuthorized(false) }} style={inp}>
                     {[CURRENT_YEAR-1, CURRENT_YEAR, CURRENT_YEAR+1].map(y => <option key={y}>{y}</option>)}
                   </select>
                 </div>
@@ -824,6 +903,27 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                 <div style={{ background:'#fffbeb', border:'1.5px solid #fde68a', borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
                   <div style={{ fontSize:13, fontWeight:700, color:C.amber }}>⚠️ Not yet paid — {courseMonth} {courseYear}</div>
                 </div>
+              )}
+              {!courseMonthPaid && isFutureFeeMonth(courseMonth, courseYear) && (
+                courseAdvanceAuthorized ? (
+                  <div style={{ background:'#f0f9ff', border:'1.5px solid #7dd3fc', borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:'#0369a1' }}>✅ Advance authorized — {courseMonth} {courseYear} hasn't started yet, but an admin has approved collecting it now.</div>
+                  </div>
+                ) : (
+                  <div style={{ background:'#fef2f2', border:'1.5px solid #fca5a5', borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:'#991B1B', marginBottom:8 }}>
+                      ⛔ {courseMonth} {courseYear} hasn't started yet. This is an advance payment.
+                    </div>
+                    {isAdmin ? (
+                      <button type="button" onClick={() => openAdvancePin('course')}
+                        style={{ fontSize:12, fontWeight:700, padding:'6px 14px', borderRadius:7, border:'none', background:'#991B1B', color:'white', cursor:'pointer' }}>
+                        🔒 Authorize advance payment (PIN)
+                      </button>
+                    ) : (
+                      <div style={{ fontSize:12, color:'#991B1B' }}>Only an admin can authorize an advance payment.</div>
+                    )}
+                  </div>
+                )
               )}
               {paidCourseMonths.length > 0 && (
                 <div style={{ marginBottom:16 }}>
@@ -901,12 +1001,17 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         {/* Footer */}
         {(() => {
           const upiMissingRef = payMode === 'UPI' && !txnRef.trim()
+          const courseFuture = !courseMonthPaid && isFutureFeeMonth(courseMonth, courseYear)
+          const courseFutureBlocked = courseFuture && (!isAdmin || !courseAdvanceAuthorized)
+          const flatFutureBlocked = flatFees.some(f => flatSel[f.id] && !isMonthPaid(f) && isFutureFeeMonth(f.month, f.year)) && (!isAdmin || !flatAdvanceAuthorized)
           const blocked = saving || !admissionDate || upiMissingRef
-            || (tab==='flat' && allFlatPaid) || (tab==='admission' && (allAdmPaid||isRepeater))
-            || (tab==='course' && courseMonthPaid) || ratesLoading
+            || (tab==='flat' && (allFlatPaid || flatFutureBlocked)) || (tab==='admission' && (allAdmPaid||isRepeater))
+            || (tab==='course' && (courseMonthPaid || courseFutureBlocked)) || ratesLoading
           const label = saving ? '⏳ Saving…'
             : !admissionDate ? '⚠️ Set Admission Date First'
             : upiMissingRef ? '⚠️ Enter UPI Txn / UTR No.'
+            : (tab==='course' && courseFutureBlocked) ? '⛔ Authorize Advance First'
+            : (tab==='flat' && flatFutureBlocked) ? '⛔ Authorize Advance First'
             : ratesLoading ? '⏳ Loading…'
             : '🖨️ Record & Print Receipt'
           return (
@@ -925,6 +1030,39 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           )
         })()}
       </div>
+
+      {/* Advance-payment PIN dialog — separate confirm step required at the
+          moment of collection, only reachable by admins (the button that
+          opens this is itself gated on isAdmin above). */}
+      {advancePinOpen && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(15,17,26,.55)', zIndex:1000000, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={() => setAdvancePinOpen(false)}>
+          <div style={{ width:'min(340px,90vw)', background:'white', borderRadius:16, boxShadow:'0 24px 60px rgba(0,0,0,.3)', padding:'22px 24px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize:15, fontWeight:800, color:C.slate[900], marginBottom:4 }}>🔒 Authorize Advance Payment</div>
+            <div style={{ fontSize:12, color:C.slate[500], marginBottom:16 }}>Enter the admin PIN to confirm this payment is intentionally for a future month.</div>
+            <input
+              type="password"
+              inputMode="numeric"
+              autoFocus
+              value={advancePinValue}
+              onChange={e => { setAdvancePinValue(e.target.value); setAdvancePinError('') }}
+              onKeyDown={e => e.key === 'Enter' && confirmAdvancePin()}
+              placeholder="Admin PIN"
+              style={{ ...inp, textAlign:'center', letterSpacing:'.3em', fontWeight:700, marginBottom:8 }}
+            />
+            {advancePinError && <div style={{ fontSize:12, color:C.red, fontWeight:600, marginBottom:8 }}>{advancePinError}</div>}
+            <div style={{ display:'flex', gap:8, marginTop:12 }}>
+              <button type="button" onClick={() => setAdvancePinOpen(false)}
+                style={{ flex:1, padding:'9px 0', borderRadius:9, border:`1px solid ${C.slate[200]}`, background:'white', fontSize:13, fontWeight:600, cursor:'pointer', color:C.slate[500] }}>
+                Cancel
+              </button>
+              <button type="button" onClick={confirmAdvancePin}
+                style={{ flex:1, padding:'9px 0', borderRadius:9, border:'none', background:'#991B1B', color:'white', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   )

@@ -532,9 +532,24 @@ export const revertFeeCollection = async ({
 // items[] shapes:
 //   { kind: 'admission', amount }
 //   { kind: 'item',      label, amount }          <- dress/prospectus
-//   { kind: 'flat',      month, year, amount }
-//   { kind: 'course',    course, subtype, month, year, amount }
+//   { kind: 'flat',      month, year, amount, isAdvance?, advanceAuthorizedBy? }
+//   { kind: 'course',    course, subtype, month, year, amount, isAdvance?, advanceAuthorizedBy? }
 //   { kind: 'advance',   label, amount }
+//
+// isAdvance / advanceAuthorizedBy (flat + course only): set when the caller
+// is collecting for a month that hasn't started yet — a genuine authorized
+// advance, not the "staff picked the wrong month by accident" bug this was
+// built to distinguish from (see the future_month_tag anomaly check in
+// Fees.jsx). advanceAuthorizedBy should be the admin's name/id who entered
+// their PIN to approve it; the caller (FeeCollectionModal) is responsible
+// for actually verifying the PIN before setting these fields — collectFee
+// just persists whatever it's given, so the same claim shows up consistently
+// on the row, the receipt, and every report/anomaly check downstream.
+//
+// Requires these ADDITIONAL columns (nullable) on adm_flat_fees and
+// adm_course_fees, alongside the existing revert columns:
+//   is_advance boolean DEFAULT false NOT NULL,
+//   advance_authorized_by text
 //
 // Returns { sections, total, skipped } ready for printReceipt(). `skipped`
 // lists any items that were not charged because they were already paid
@@ -661,6 +676,7 @@ export const collectFee = async ({
         amount: item.amount, hostel_type: hostelType, paid: true,
         pay_date: payDate, pay_mode: payMode, txn_ref: txnRef || null,
         receipt_no: receiptNo, student_name: studentName, adm_no: admNo,
+        is_advance: !!item.isAdvance, advance_authorized_by: item.isAdvance ? (item.advanceAuthorizedBy || null) : null,
         ...noRevert,
       }, { onConflict: 'id' })
       if (error) throw new Error(`Flat fee ${item.month} save failed: ` + error.message)
@@ -674,7 +690,7 @@ export const collectFee = async ({
         gcc, studentId, studentName, course, hostelType, className,
         feeType: 'Monthly Flat Fee', amount: item.amount, payDate, invoiceMonth,
       })
-      flatItems.push({ label: `${item.month} ${item.year} [${hostelType}]`, amount: item.amount })
+      flatItems.push({ label: `${item.month} ${item.year} [${hostelType}]${item.isAdvance ? ' · ADVANCE (authorized)' : ''}`, amount: item.amount })
     }
 
     // 4. COURSE FEE
@@ -694,6 +710,7 @@ export const collectFee = async ({
         amount_paid: item.amount, pay_date: payDate, pay_mode: payMode,
         txn_ref: txnRef || null, receipt_no: receiptNo,
         student_name: studentName, adm_no: admNo,
+        is_advance: !!item.isAdvance, advance_authorized_by: item.isAdvance ? (item.advanceAuthorizedBy || null) : null,
         ...noRevert,
       }, { onConflict: 'id' })
       if (error) throw new Error(`Course fee ${item.month} save failed: ` + error.message)
@@ -707,7 +724,7 @@ export const collectFee = async ({
         gcc, studentId, studentName, course: crs, hostelType, className,
         feeType: 'Course Fee', amount: item.amount, payDate, invoiceMonth,
       })
-      crsfItems.push({ label: `${crs}${sub ? ' · ' + sub : ''} — ${item.month}`, amount: item.amount })
+      crsfItems.push({ label: `${crs}${sub ? ' · ' + sub : ''} — ${item.month}${item.isAdvance ? ' · ADVANCE (authorized)' : ''}`, amount: item.amount })
     }
 
     // 5. ADVANCE

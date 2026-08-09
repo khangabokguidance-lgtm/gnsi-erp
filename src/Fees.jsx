@@ -270,6 +270,35 @@ function runAnomalyEngine({adm_fee_collections,adm_flat_fees,adm_course_fees,stu
   if(noDateAll.length>0)push('no_date','MEDIUM','Integrity',`${noDateAll.length} record${noDateAll.length!==1?'s':''} missing payment date`,`${noDateAll.length} fee record${noDateAll.length!==1?'s':''} have no pay_date. Breaks daily reports and audit trails.`,noDateAll.slice(0,8).map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));return{label:`${stu?.name||'GCC-'+r.adm_app_id} · ₹${_inr(r.amount||r.amount_paid||0)}`,raw:r,_table:r._table}}))
   const rateAnom=adm_course_fees.filter(r=>{if(r.reverted)return false;const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));if(!stu||!r.course||!r.amount_paid)return false;const std=COURSE_RATES[r.course]?.[stu.hostel_type]||0;return std>0&&Math.abs(Number(r.amount_paid)-std)/std>0.25})
   if(rateAnom.length>0)push('rate_dev','MEDIUM','Rate',`${rateAnom.length} course fee${rateAnom.length!==1?'s':''} with >25% rate deviation`,`These payments deviate more than 25% from the standard rate.`,rateAnom.slice(0,10).map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id)),std=COURSE_RATES[r.course]?.[stu?.hostel_type]||0;return{label:`${stu?.name||'GCC-'+r.adm_app_id} · paid ₹${_inr(r.amount_paid)} vs std ₹${_inr(std)} (${r.course}, ${r.for_month} ${r.year})`,raw:r,_table:'adm_course_fees'}}))
+  // Mis-tagged future month: pay_date falls before the calendar month that
+  // for_month/year names. A real payment can only ever be logged for the
+  // CURRENT or a PAST month at the moment it's collected — nobody legitimately
+  // pays 2+ months ahead in one receipt with no matching multi-month total, and
+  // certainly not 5 months ahead. In practice this has only ever meant one
+  // thing here: staff scrolled past the current month in the collection
+  // dropdown and picked the wrong one, silently attaching a real payment to a
+  // month that hasn't started yet. Left uncorrected this both inflates that
+  // future month's "collected" total (looks fully paid before it's even
+  // begun) and can leave the month the student actually intended to pay
+  // showing as still due.
+  const MONTH_IDX={January:0,February:1,March:2,April:3,May:4,June:5,July:6,August:7,September:8,October:9,November:10,December:11}
+  const futureMonthTag=(forMonthOrMonth,yr,payDate)=>{
+    if(!forMonthOrMonth||!yr||!payDate)return false
+    const targetIdx=MONTH_IDX[forMonthOrMonth];if(targetIdx===undefined)return false
+    const targetFirstOfMonth=new Date(Number(yr),targetIdx,1).toLocaleDateString('en-CA')
+    return payDate<targetFirstOfMonth
+  }
+  const crsfFutureTag=adm_course_fees.filter(r=>!r.reverted&&!r.is_advance&&futureMonthTag(r.for_month,r.year,r.pay_date))
+  const flatFutureTag=adm_flat_fees.filter(r=>r.paid&&!r.is_advance&&futureMonthTag(r.month,r.year,r.pay_date))
+  const futureTagAll=[...crsfFutureTag.map(r=>({...r,_table:'adm_course_fees',_month:r.for_month,_amt:r.amount_paid})),...flatFutureTag.map(r=>({...r,_table:'adm_flat_fees',_month:r.month,_amt:r.amount}))]
+  if(futureTagAll.length>0)push('future_month_tag','HIGH','Integrity',`${futureTagAll.length} payment${futureTagAll.length!==1?'s':''} tagged to a month that hadn't started yet`,`These were paid before the calendar month they're recorded against began — almost always the wrong month picked in the collection form (not authorized advances, which are excluded here). Inflates that month's "collected" total and may leave the real intended month still showing due.`,futureTagAll.slice(0,15).map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));return{label:`${stu?.name||'GCC-'+r.adm_app_id} · tagged ${r._month} ${r.year} · paid ₹${_inr(r._amt)} on ${r.pay_date} · ${r.receipt_no||'?'}`,raw:r,_table:r._table}}))
+  // Authorized advances get their own LOW-severity informational line — not
+  // a problem to fix, just a visible record of who approved what, so an
+  // admin reviewing collections later can see every advance in one place.
+  const crsfAdvance=adm_course_fees.filter(r=>!r.reverted&&r.is_advance)
+  const flatAdvance=adm_flat_fees.filter(r=>r.paid&&r.is_advance)
+  const advanceAll=[...crsfAdvance.map(r=>({...r,_table:'adm_course_fees',_month:r.for_month,_amt:r.amount_paid})),...flatAdvance.map(r=>({...r,_table:'adm_flat_fees',_month:r.month,_amt:r.amount}))]
+  if(advanceAll.length>0)push('authorized_advance','LOW','Integrity',`${advanceAll.length} authorized advance payment${advanceAll.length!==1?'s':''} on record`,`These were deliberately collected ahead of the fee-period month with admin authorization.`,advanceAll.slice(0,15).map(r=>{const stu=students.find(s=>String(s.gcc_no)===String(r.adm_app_id));return{label:`${stu?.name||'GCC-'+r.adm_app_id} · ${r._month} ${r.year} · ₹${_inr(r._amt)} · authorized by ${r.advance_authorized_by||'?'}`,raw:r,_table:r._table}}))
   const dayTotals={};allTagged.forEach(r=>{const d=r.pay_date;if(!d)return;dayTotals[d]=(dayTotals[d]||0)+(Number(r.amount||r.amount_paid)||0)})
   const last30=Object.entries(dayTotals).filter(([d])=>d>=new Date(now-30*86400000).toLocaleDateString('en-CA')&&d<=todayStr)
   if(last30.length>=5){const avg30=last30.reduce((s,[,v])=>s+v,0)/last30.length;last30.filter(([,v])=>v>avg30*3&&avg30>0).forEach(([d,v])=>push('spike_'+d,'MEDIUM','Spike',`Collection spike: ${_fdate(d)}`,`₹${_inr(v)} collected — ${Math.round(v/avg30)}x the 30-day average of ₹${_inr(Math.round(avg30))}.`,allTagged.filter(r=>r.pay_date===d).map(r=>({label:`₹${_inr(r.amount||r.amount_paid||0)} · ${r.pay_mode||'?'}`,raw:r,_table:r._table}))))}
@@ -480,8 +509,8 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
   const grandTotal=admTotal+flatTotal+crsfTotal
   const timeline=[
     ...myAdm.map(r=>({...r,_type:'Admission Fee',_amt:Number(r.amount_paid)||0,_desc:r.description||r.fee_type||'Admission',_date:r.pay_date,_table:'adm_fee_collections'})),
-    ...myFlat.map(r=>({...r,_type:'Flat Fee',_amt:r.amount||0,_desc:`${r.month} ${r.year}`,_date:r.pay_date,_table:'adm_flat_fees'})),
-    ...myCrsf.map(r=>({...r,_type:'Course Fee',_amt:Number(r.amount_paid)||0,_desc:`${r.course} — ${r.for_month} ${r.year}`,_date:r.pay_date,_table:'adm_course_fees'}))
+    ...myFlat.map(r=>({...r,_type:'Flat Fee',_amt:r.amount||0,_desc:`${r.month} ${r.year}${r.is_advance?' (ADVANCE)':''}`,_date:r.pay_date,_table:'adm_flat_fees'})),
+    ...myCrsf.map(r=>({...r,_type:'Course Fee',_amt:Number(r.amount_paid)||0,_desc:`${r.course} — ${r.for_month} ${r.year}${r.is_advance?' (ADVANCE)':''}`,_date:r.pay_date,_table:'adm_course_fees'}))
   ].sort((a,b)=>(b._date||'').localeCompare(a._date||''))
   const doRevert=async(row)=>{
     if(!isAdmin)return
@@ -953,8 +982,19 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
       return { student: s, expected, paid, due: Math.max(0, expected - paid) }
     }).filter(x => x.expected > 0)
     const flatExpectedTotal  = flatPerStudent.reduce((s, x) => s + x.expected, 0)
-    const flatCollectedTotal = flatPerStudent.reduce((s, x) => s + x.paid, 0)
-    const flatDueTotal       = Math.max(0, flatExpectedTotal - flatCollectedTotal)
+    // IMPORTANT: collectedTotal for the *headline* is capped per-student at
+    // their own `expected` (Math.min(x.paid, x.expected)), NOT the raw sum
+    // of x.paid. A student who overpaid or has an advance/duplicate payment
+    // for the month would otherwise inflate this total enough to mask real
+    // dues from OTHER students when dueTotal was computed as a single
+    // subtraction (expectedTotal - collectedTotal) — that let one
+    // overpayment cancel out many real defaulters in the aggregate, even
+    // though each defaulter still correctly showed up in the drill-down
+    // list below. dueTotal is now the sum of each student's own due, which
+    // can never be silently offset by someone else's overpayment.
+    const flatCollectedCapped = flatPerStudent.reduce((s, x) => s + Math.min(x.paid, x.expected), 0)
+    const flatCollectedTotal = flatPerStudent.reduce((s, x) => s + x.paid, 0) // raw total, kept for reference/exports
+    const flatDueTotal       = flatPerStudent.reduce((s, x) => s + x.due, 0)
     const flatDefaulters     = flatPerStudent.filter(x => x.due > 0).sort((a, b) => b.due - a.due)
 
     // Course fee — only started from April of the current session (see note
@@ -976,8 +1016,9 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
       return { student: s, expected, paid, due: Math.max(0, expected - paid) }
     }).filter(x => x.expected > 0)
     const crsfExpectedTotal  = crsfPerStudent.reduce((s, x) => s + x.expected, 0)
-    const crsfCollectedTotal = crsfPerStudent.reduce((s, x) => s + x.paid, 0)
-    const crsfDueTotal       = Math.max(0, crsfExpectedTotal - crsfCollectedTotal)
+    const crsfCollectedCapped = crsfPerStudent.reduce((s, x) => s + Math.min(x.paid, x.expected), 0)
+    const crsfCollectedTotal = crsfPerStudent.reduce((s, x) => s + x.paid, 0) // raw total, kept for reference/exports
+    const crsfDueTotal       = crsfPerStudent.reduce((s, x) => s + x.due, 0)
     const crsfDefaulters     = crsfPerStudent.filter(x => x.due > 0).sort((a, b) => b.due - a.due)
 
     // Card headline: use course fee where it's tracked (Apr onward), fall
@@ -985,7 +1026,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
     // of "no course-fee data".
     const useFlat = !isCourseFeeTracked
     const expectedTotal  = useFlat ? flatExpectedTotal  : crsfExpectedTotal
-    const collectedTotal = useFlat ? flatCollectedTotal : crsfCollectedTotal
+    // % shown on the card uses the CAPPED collected figure, so one
+    // overpaying student can't push the percentage past what was actually
+    // owed for everyone else that month.
+    const collectedTotal = useFlat ? flatCollectedCapped : crsfCollectedCapped
     const dueTotal        = useFlat ? flatDueTotal        : crsfDueTotal
     const defaulters      = useFlat ? flatDefaulters      : crsfDefaulters
 
@@ -996,8 +1040,8 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
       expectedTotal, collectedTotal, dueTotal,
       defaulterCount: defaulters.length, defaulters,
       // Both breakdowns always available for the expanded/drill-down view.
-      flat:   { expectedTotal: flatExpectedTotal,  collectedTotal: flatCollectedTotal,  dueTotal: flatDueTotal,  defaulters: flatDefaulters },
-      course: { expectedTotal: crsfExpectedTotal, collectedTotal: crsfCollectedTotal, dueTotal: crsfDueTotal, defaulters: crsfDefaulters, isTracked: isCourseFeeTracked },
+      flat:   { expectedTotal: flatExpectedTotal,  collectedTotal: flatCollectedCapped,  dueTotal: flatDueTotal,  defaulters: flatDefaulters },
+      course: { expectedTotal: crsfExpectedTotal, collectedTotal: crsfCollectedCapped, dueTotal: crsfDueTotal, defaulters: crsfDefaulters, isTracked: isCourseFeeTracked },
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [liveRows, crsfByMonthGcc, flatByMonthGcc, adm_course_fees])
@@ -2685,13 +2729,13 @@ export default function Fees() {
       .filter(r => r.pay_date === todayStr)
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Flat Fee', description: `${r.month} ${r.year}`, amount: r.amount || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Flat Fee', description: `${r.month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: r.amount || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     const crsfToday = adm_course_fees
       .filter(r => r.pay_date === todayStr)
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Course Fee', description: `${r.course} — ${r.for_month} ${r.year}`, amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Course Fee', description: `${r.course} — ${r.for_month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     const admToday = adm_fee_collections
       .filter(r => r.pay_date === todayStr)
@@ -2711,13 +2755,13 @@ export default function Fees() {
       .filter(r => inRange(r.pay_date || ''))
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Flat Fee', description: `${r.month} ${r.year}`, amount: r.amount || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Flat Fee', description: `${r.month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: r.amount || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     const crsf = adm_course_fees
       .filter(r => inRange(r.pay_date || ''))
       .map(r => {
         const stu = students.find(s => String(s.gcc_no) === String(r.adm_app_id))
-        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Course Fee', description: `${r.course} — ${r.for_month} ${r.year}`, amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
+        return { gcc_no: r.adm_app_id, name: stu?.name || '—', course: stu?.course || '—', hostel_type: stu?.hostel_type || '—', batch: stu?.class_name || stu?.batch || '—', type: 'Course Fee', description: `${r.course} — ${r.for_month} ${r.year}${r.is_advance?' (ADVANCE)':''}`, amount: Number(r.amount_paid) || 0, pay_date: r.pay_date, pay_mode: r.pay_mode || '—', collected_by: r.collected_by || '—', ref: r.txn_ref || '—' }
       })
     const adm = adm_fee_collections
       .filter(r => inRange(r.pay_date || ''))
