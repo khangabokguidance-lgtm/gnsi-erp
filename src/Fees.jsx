@@ -12,6 +12,41 @@ import {
   PAY_MODES, MONTHS_LIST, CURRENT_YEAR,
 } from './feeEngine'
 
+// ── Razorpay config ─────────────────────────────────────────────────────────
+// Public key only — safe to ship to the browser. The secret key lives ONLY
+// on your backend (order creation + webhook signature verification) and
+// must never appear in this file or any other client bundle.
+// Set VITE_RAZORPAY_KEY_ID in your .env (Vercel: Project Settings → Env Vars).
+const RAZORPAY_KEY_ID = import.meta.env?.VITE_RAZORPAY_KEY_ID || ''
+// Your backend/serverless endpoints (see razorpay-backend.md for the
+// reference implementation). RAZORPAY_CREATE_ORDER_URL creates a Razorpay
+// Order server-side; RAZORPAY_VERIFY_URL verifies the checkout signature
+// server-side before the browser is trusted to record a "paid" collection.
+const RAZORPAY_CREATE_ORDER_URL = import.meta.env?.VITE_RAZORPAY_CREATE_ORDER_URL || '/api/razorpay/create-order'
+const RAZORPAY_VERIFY_URL       = import.meta.env?.VITE_RAZORPAY_VERIFY_URL       || '/api/razorpay/verify'
+
+// Lazily injects the Razorpay Checkout script once per page load and
+// resolves when it's ready. Safe to call from multiple components/renders —
+// subsequent calls reuse the same in-flight/resolved promise.
+let _razorpayScriptPromise = null
+function loadRazorpayScript() {
+  if (typeof window === 'undefined') return Promise.resolve(false)
+  if (window.Razorpay) return Promise.resolve(true)
+  if (_razorpayScriptPromise) return _razorpayScriptPromise
+  _razorpayScriptPromise = new Promise(resolve => {
+    const existing = document.querySelector('script[data-razorpay-checkout]')
+    if (existing) { existing.addEventListener('load', () => resolve(true)); return }
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.async = true
+    script.dataset.razorpayCheckout = 'true'
+    script.onload = () => resolve(true)
+    script.onerror = () => resolve(false)
+    document.body.appendChild(script)
+  })
+  return _razorpayScriptPromise
+}
+
 // ── Pagination-safe fetch — Supabase/PostgREST caps a single .select() at
 //    1000 rows by default. Any table that can grow past that (fees,
 //    admissions, adm_fee_collections, adm_flat_fees, adm_course_fees) MUST be
@@ -755,6 +790,12 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   // fee payments) — sourced from the same `accounts` ledger Accounts.jsx reads,
   // so this always matches Accounts' "Today's Income" card exactly.
   const [todayAccountsIncome, setTodayAccountsIncome] = useState(null)
+  // Month-wise Dues card — which month is drilled into, and whether every
+  // month is expanded inline. Declared up-front with the other hooks (not
+  // inline further down next to the derived `monthwiseDues` value) so hook
+  // order stays stable regardless of future edits to the derivations below.
+  const [duesMonthIdx, setDuesMonthIdx] = useState(5)
+  const [duesExpanded, setDuesExpanded] = useState(false)
   useEffect(() => {
     let cancelled = false
     const todayLocal = new Date().toLocaleDateString('en-CA')
@@ -845,6 +886,46 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
     return { course: c, count: sts.length, total }
   }).filter(c => c.count > 0)
   const maxCourse = Math.max(...courseBreakdown.map(c => c.total), 1)
+
+  // ── Month-wise Dues (course fee) ────────────────────────────────────────────
+  // For each of the last 6 months: expected course-fee total (active students ×
+  // COURSE_RATES[course][hostel_type]) vs what was actually collected for that
+  // for_month/year — the gap is the outstanding due, drillable per student.
+  //
+  // PERF: naive version re-filtered adm_course_fees per student per month
+  // (students × 6 × course-fee rows comparisons on every render). Pre-index
+  // course-fee rows once per `adm_course_fees` change into a
+  // `"month|year|gcc" -> amount` map, then each month/student lookup is O(1).
+  const crsfByMonthGcc = useMemo(() => {
+    const map = new Map()
+    for (const r of adm_course_fees) {
+      if (!r.for_month || !r.year) continue
+      const key = `${r.for_month}|${r.year}|${gccStr(r.adm_app_id)}`
+      map.set(key, (map.get(key) || 0) + (Number(r.amount_paid) || 0))
+    }
+    return map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adm_course_fees])
+
+  const monthwiseDues = useMemo(() => Array.from({ length: 6 }, (_, idx) => {
+    const d       = new Date(now.getFullYear(), now.getMonth() - (5 - idx), 1)
+    const label   = d.toLocaleString('default', { month: 'short' })
+    const fullMon = d.toLocaleString('default', { month: 'long' })
+    const yrStr   = String(d.getFullYear())
+    const isCurrent = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+    const perStudent = liveRows.map(s => {
+      const expected = COURSE_RATES[s.course]?.[s.hostel_type] ?? 0
+      const paid     = crsfByMonthGcc.get(`${fullMon}|${yrStr}|${gccStr(s.gcc_no)}`) || 0
+      return { student: s, expected, paid, due: Math.max(0, expected - paid) }
+    }).filter(x => x.expected > 0)
+    const expectedTotal = perStudent.reduce((s, x) => s + x.expected, 0)
+    const collectedTotal= perStudent.reduce((s, x) => s + x.paid, 0)
+    const dueTotal       = Math.max(0, expectedTotal - collectedTotal)
+    const defaulters     = perStudent.filter(x => x.due > 0).sort((a, b) => b.due - a.due)
+    return { label, fullMon, year: yrStr, isCurrent, expectedTotal, collectedTotal, dueTotal, defaulterCount: defaulters.length, defaulters }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [liveRows, crsfByMonthGcc])
+  const selectedDues = monthwiseDues[duesMonthIdx] ?? monthwiseDues[monthwiseDues.length - 1] ?? null
 
   // ── Hostel breakdown ────────────────────────────────────────────────────────
   const hostelBreakdown = ['Boarder', 'Day Boarder', 'Day Scholar'].map(h => {
@@ -951,6 +1032,118 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             ))}
           </div>
         </div>
+      </div>
+
+      {/* ── Month-wise Dues grid ── */}
+      <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f' }}>🗓️ Month-wise Dues (Course Fee)</div>
+            <div style={{ fontSize: 11, color: '#94a3b8' }}>Expected vs collected — tap a month to see who still owes</div>
+          </div>
+          <button onClick={() => setDuesExpanded(e => !e)}
+            style={{ fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 7, border: '1px solid #e2e8f0', background: duesExpanded ? '#1e3a5f' : 'white', color: duesExpanded ? 'white' : '#1e3a5f', cursor: 'pointer' }}>
+            {duesExpanded ? '↕ Collapse' : '↕ Expand All'}
+          </button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(6, 1fr)', gap: 10, marginTop: 14 }}>
+          {monthwiseDues.map((m, idx) => {
+            const pct      = m.expectedTotal > 0 ? Math.round((m.collectedTotal / m.expectedTotal) * 100) : null
+            const isSel    = idx === duesMonthIdx
+            const hasDue   = m.dueTotal > 0
+            const cardColor= hasDue ? '#dc2626' : (m.expectedTotal > 0 ? '#059669' : '#94a3b8')
+            return (
+              <button key={m.label + m.year} onClick={() => setDuesMonthIdx(idx)}
+                style={{
+                  textAlign: 'left', cursor: 'pointer', border: isSel ? `2px solid ${cardColor}` : '1px solid #e2e8f0',
+                  borderRadius: 10, padding: '10px 12px', background: isSel ? (hasDue ? '#fef2f2' : '#f0fdf4') : 'white',
+                  boxShadow: isSel ? '0 2px 8px rgba(0,0,0,.08)' : 'none', transition: 'all .15s',
+                }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#1e3a5f' }}>{m.label}{m.isCurrent ? ' •' : ''}</span>
+                  {hasDue && <span style={{ fontSize: 9, fontWeight: 800, background: '#dc2626', color: 'white', padding: '1px 6px', borderRadius: 99 }}>{m.defaulterCount}</span>}
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 900, color: cardColor, marginTop: 4 }}>
+                  {m.expectedTotal > 0 ? `₹${n(m.dueTotal)}` : '—'}
+                </div>
+                <div style={{ fontSize: 9.5, color: '#94a3b8', marginTop: 2 }}>
+                  {m.expectedTotal > 0 ? `${pct}% collected of ₹${n(m.expectedTotal)}` : 'no course-fee data'}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Drill-down: expanded shows every month stacked; collapsed shows only the selected month */}
+        {duesExpanded ? (
+          <div style={{ marginTop: 16, borderTop: '1px solid #f1f5f9', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {monthwiseDues.map(md => (
+              <div key={md.label + md.year}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: '#1e3a5f' }}>
+                    {md.fullMon} {md.year} — {md.defaulterCount} student{md.defaulterCount !== 1 ? 's' : ''} due
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: md.dueTotal > 0 ? '#dc2626' : '#059669' }}>
+                    ₹{n(md.dueTotal)} outstanding
+                  </div>
+                </div>
+                <div style={{ borderRadius: 8, border: '1px solid #f1f5f9' }}>
+                  {md.defaulters.length === 0 ? (
+                    <div style={{ padding: '16px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>🎉 No dues for this month</div>
+                  ) : md.defaulters.map(x => (
+                    <div key={x.student.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', borderBottom: '1px solid #f8fafc' }}>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{x.student.name}</div>
+                        <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                          GCC-{x.student.gcc_no} · {x.student.course || '—'} · {x.student.hostel_type || '—'} · paid ₹{n(x.paid)} of ₹{n(x.expected)}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: '#dc2626' }}>₹{n(x.due)}</span>
+                        <button onClick={() => onCollect(x.student)}
+                          style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#dc2626', color: 'white', cursor: 'pointer' }}>
+                          Collect
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : selectedDues && (
+          <div style={{ marginTop: 16, borderTop: '1px solid #f1f5f9', paddingTop: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: '#1e3a5f' }}>
+                {selectedDues.fullMon} {selectedDues.year} — {selectedDues.defaulterCount} student{selectedDues.defaulterCount !== 1 ? 's' : ''} due
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: selectedDues.dueTotal > 0 ? '#dc2626' : '#059669' }}>
+                ₹{n(selectedDues.dueTotal)} outstanding
+              </div>
+            </div>
+            <div style={{ maxHeight: 220, overflowY: 'auto', borderRadius: 8, border: '1px solid #f1f5f9' }}>
+              {selectedDues.defaulters.length === 0 ? (
+                <div style={{ padding: '16px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>🎉 No dues for this month</div>
+              ) : selectedDues.defaulters.map(x => (
+                <div key={x.student.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', borderBottom: '1px solid #f8fafc' }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{x.student.name}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                      GCC-{x.student.gcc_no} · {x.student.course || '—'} · {x.student.hostel_type || '—'} · paid ₹{n(x.paid)} of ₹{n(x.expected)}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#dc2626' }}>₹{n(x.due)}</span>
+                    <button onClick={() => onCollect(x.student)}
+                      style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#dc2626', color: 'white', cursor: 'pointer' }}>
+                      Collect
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Course-wise breakdown ── */}
@@ -1104,9 +1297,62 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   )
 }
 
+// ── Parent WhatsApp helpers ─────────────────────────────────────────────────
+// Tries the common column names used for a guardian's contact number across
+// this schema's history (student records were entered by different staff
+// over the years, so the field name isn't fully standardized). Returns a
+// clean international-format number (91XXXXXXXXXX) for wa.me, or null if no
+// usable number is on file.
+function getParentPhone(student) {
+  if (!student) return null
+  const raw = student.guardian_phone || student.father_phone || student.mother_phone ||
+    student.parent_phone || student.guardian_mobile || student.mobile || student.phone ||
+    student.contact_no || student.contact_number || ''
+  const digits = String(raw).replace(/\D/g, '')
+  if (digits.length < 10) return null
+  // Already has country code (12 digits starting 91) -> use as-is.
+  // Bare 10-digit Indian mobile -> prefix 91. Anything else -> pass through
+  // digits as given (covers already-E.164 non-Indian numbers on file).
+  if (digits.length === 10) return `91${digits}`
+  return digits
+}
+
+function itemDisplayLabel(item) {
+  if (item.label) return item.label
+  switch (item.kind) {
+    case 'admission': return 'Admission Fee'
+    case 'flat':       return `Flat Fee — ${item.month || ''} ${item.year || ''}`.trim()
+    case 'course':     return `Course Fee (${item.course || ''}${item.subtype ? ' · ' + item.subtype : ''}) — ${item.month || ''} ${item.year || ''}`.trim()
+    case 'advance':    return 'Advance Payment'
+    default:           return 'Fee'
+  }
+}
+
+function buildFeeReceiptWaMessage({ studentName, gcc, receiptNo, total, payDate, items }) {
+  const lines = [
+    `Dear Parent,`,
+    ``,
+    `Fee payment received for *${studentName}* (GCC-${gcc}) at GNSI.`,
+    ``,
+    `Receipt No: ${receiptNo}`,
+    `Date: ${payDate}`,
+    `Amount Paid: ₹${Number(total || 0).toLocaleString('en-IN')}`,
+  ]
+  if (items && items.length) {
+    lines.push(``, `Details:`)
+    items.forEach(i => lines.push(`• ${itemDisplayLabel(i)} — ₹${Number(i.amount || 0).toLocaleString('en-IN')}`))
+  }
+  lines.push(``, `Thank you,`, `Guidance Navodaya & Sainik Institute (GNSI)`)
+  return lines.join('\n')
+}
+
+function buildWaLink(phone, message) {
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+}
+
 // ─── Tab: Fee Payment ─────────────────────────────────────────────────────────
 
-function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fees, adm_course_fees, onRefresh, isAdmin, currentUser }) {
+function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fees, adm_course_fees, onRefresh, isAdmin, currentUser, presetStudent, onPresetConsumed }) {
   const w        = useWindowWidth()
   const isMobile = w < 768
   const [step,    setStep]    = useState('select')
@@ -1119,6 +1365,10 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const [collectedBy, setCollectedBy] = useState('Admin')
   const [saving,      setSaving]      = useState(false)
   const [toast,       setToast]       = useState(null)
+  // Populated right after a successful collectFee() — drives the "Send
+  // receipt on WhatsApp" action. Cleared whenever a different student is
+  // selected so a stale receipt can't be sent for the wrong student.
+  const [lastPayment, setLastPayment] = useState(null)
 
   const [admFeeAmt,    setAdmFeeAmt]    = useState(ADM_FEE_BASE)
   const [dressChecked, setDressChecked] = useState(DRESS_ITEMS.map(() => true))
@@ -1346,6 +1596,62 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     handleFixDate({ table: 'adm_course_fees', id: r.id, accountSourceRef: sourceRef.courseFee(gcc, r.for_month, r.year), accountSourceType: 'course_fee', currentDate: r.pay_date, label: `${r.course} ${r.for_month} course fee` })
   }
 
+  // Builds the pending-charge line items from current form state — shared by
+  // the Cash/Bank/UPI-manual save path and the Razorpay checkout path, so the
+  // two never drift out of sync on what's actually being charged.
+  const buildFeeItems = () => {
+    const items = []
+    if (admPkgThis > 0 && !admPaid && !isRepeater) {
+      items.push({ kind: 'admission', amount: admFeeAmt })
+      DRESS_ITEMS.forEach((d, idx) => {
+        if (dressChecked[idx]) items.push({ kind: 'item', label: `Dress Kit — ${d.name}`, amount: d.price })
+      })
+      if (prospChecked) items.push({ kind: 'item', label: 'Prospectus', amount: PROSPECTUS_FEE })
+    }
+    selFlat.forEach(f => {
+      items.push({ kind: 'flat', month: f.month, year: f.year, amount: f.amount })
+    })
+    crsfRows.forEach(r => {
+      const amt = Number(r.amount) || 0
+      if (amt > 0 && r.for_month) {
+        items.push({ kind: 'course', month: r.for_month, year: CURRENT_YEAR, course: r.course, subtype: r.subtype, amount: amt })
+      }
+    })
+    if (advThis > 0) items.push({ kind: 'advance', label: advFor, amount: advThis })
+    return items
+  }
+
+  // Finalizes a payment already confirmed (cash in hand, or a verified
+  // Razorpay payment) — writes to the fee tables via the single collectFee()
+  // path, prints the receipt, and resets the form. `mode`/`ref` override the
+  // Cash/Bank dropdown selection for the Razorpay case.
+  const finalizeCollection = async (items, { mode, ref } = {}) => {
+    const receiptNo = rcptNo('FEE')
+    const { sections, total } = await collectFee({
+      gcc, studentName: student.name, admNo: admRec?.adm_no || '--',
+      className: student.batch || '', course: student.course || '',
+      hostelType, payDate, payMode: mode || payMode, txnRef: ref ?? txnRef, collectedBy,
+      studentId: student.id, receiptNo, items,
+    })
+
+    printReceipt({
+      receipt_no: receiptNo, pay_date: payDate, pay_mode: mode || payMode,
+      txn_ref: ref ?? txnRef, collected_by: collectedBy,
+      student_name: student.name, adm_no: admRec?.adm_no || '--',
+      gcc_no: gcc, class_name: student.batch || '', course: student.course || '',
+      hostel_type: hostelType, sections, total,
+    })
+
+    showToast(`✅ Collected ₹${total.toLocaleString('en-IN')}`, '#16a34a')
+    setLastPayment({ studentName: student.name, gcc, receiptNo, total, payDate, items })
+    setCrsfRows([{ course: '', subtype: '', hostelType: hostelType, for_month: '', amount: '' }])
+    setAdvAmt('')
+    setAdvFor('')
+    setFlatChecked(flatFees.map(() => false))
+    setTxnRef('')
+    onRefresh()
+  }
+
   const handleSave = async () => {
     if (!student || !admRec || grandThis === 0 || saving) return
     // ✦ Bug fix: Fees.jsx had no admission_date requirement at all, unlike
@@ -1359,65 +1665,106 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     }
     setSaving(true)
     try {
-      const items = []
-
-      // Defense-in-depth: even if admPkgThis somehow computes non-zero for
-      // a repeater (stale state, etc.), never actually charge these items —
-      // matches the UI gate above.
-      if (admPkgThis > 0 && !admPaid && !isRepeater) {
-        items.push({ kind: 'admission', amount: admFeeAmt })
-        DRESS_ITEMS.forEach((d, idx) => {
-          if (dressChecked[idx]) items.push({ kind: 'item', label: `Dress Kit — ${d.name}`, amount: d.price })
-        })
-        if (prospChecked) items.push({ kind: 'item', label: 'Prospectus', amount: PROSPECTUS_FEE })
-      }
-
-      selFlat.forEach(f => {
-        items.push({ kind: 'flat', month: f.month, year: f.year, amount: f.amount })
-      })
-
-      crsfRows.forEach(r => {
-        const amt = Number(r.amount) || 0
-        if (amt > 0 && r.for_month) {
-          items.push({
-            kind: 'course', month: r.for_month, year: CURRENT_YEAR,
-            course: r.course, subtype: r.subtype, amount: amt,
-          })
-        }
-      })
-
-      if (advThis > 0) {
-        items.push({ kind: 'advance', label: advFor, amount: advThis })
-      }
-
-      const receiptNo = rcptNo('FEE')
-
-      const { sections, total } = await collectFee({
-        gcc, studentName: student.name, admNo: admRec?.adm_no || '--',
-        className: student.batch || '', course: student.course || '',
-        hostelType, payDate, payMode, txnRef, collectedBy,
-        studentId: student.id, receiptNo, items,
-      })
-
-      printReceipt({
-        receipt_no: receiptNo, pay_date: payDate, pay_mode: payMode,
-        txn_ref: txnRef, collected_by: collectedBy,
-        student_name: student.name, adm_no: admRec?.adm_no || '--',
-        gcc_no: gcc, class_name: student.batch || '', course: student.course || '',
-        hostel_type: hostelType, sections, total,
-      })
-
-      showToast(`✅ Collected ₹${total.toLocaleString('en-IN')}`, '#16a34a')
-      setCrsfRows([{ course: '', subtype: '', hostelType: hostelType, for_month: '', amount: '' }])
-      setAdvAmt('')
-      setAdvFor('')
-      setFlatChecked(flatFees.map(() => false))
-      setTxnRef('')
-      onRefresh()
+      await finalizeCollection(buildFeeItems())
     } catch (err) {
       showToast('Save failed: ' + err.message, '#dc2626')
     }
     setSaving(false)
+  }
+
+  const [razorpayBusy, setRazorpayBusy] = useState(false)
+
+  // Full online-payment flow: create a server-side Order (amount is fixed
+  // server-side from what we send — never trust a client-supplied amount),
+  // open Razorpay Checkout, verify the signature server-side, and only then
+  // record the collection via the same finalizeCollection() path as cash.
+  // If the parent closes the checkout modal or payment fails, nothing is
+  // written — no partial/ghost records.
+  const handleRazorpayCollect = async () => {
+    if (!student || !admRec || grandThis === 0 || razorpayBusy) return
+    if (!admissionDate) {
+      showToast('Admission Date is required before collecting fees — set it below.', '#dc2626')
+      return
+    }
+    if (!RAZORPAY_KEY_ID) {
+      showToast('Razorpay is not configured — set VITE_RAZORPAY_KEY_ID.', '#dc2626')
+      return
+    }
+    setRazorpayBusy(true)
+    try {
+      const ok = await loadRazorpayScript()
+      if (!ok) throw new Error('Could not load Razorpay checkout — check your connection')
+
+      const items = buildFeeItems()
+
+      // Server creates the actual Razorpay Order and returns its id — the
+      // amount charged is whatever the backend computes from `items`, not
+      // whatever the browser sends, so a tampered client request can't
+      // under-charge or mismatch the ledger.
+      const orderRes = await fetch(RAZORPAY_CREATE_ORDER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gcc, studentId: student.id, studentName: student.name,
+          amount: grandThis, items,
+        }),
+      })
+      if (!orderRes.ok) throw new Error(`Order creation failed (${orderRes.status})`)
+      const order = await orderRes.json()
+      if (!order?.id) throw new Error('Order creation returned no order id')
+
+      await new Promise((resolve, reject) => {
+        const rzp = new window.Razorpay({
+          key: RAZORPAY_KEY_ID,
+          amount: order.amount,
+          currency: order.currency || 'INR',
+          order_id: order.id,
+          name: 'GNSI — Guidance Navodaya & Sainik Institute',
+          description: `Fee payment — ${student.name} (GCC-${gcc})`,
+          prefill: {
+            name: student.name,
+            contact: getParentPhone(student) ? getParentPhone(student).replace(/^91/, '') : '',
+          },
+          notes: { gcc, student_id: String(student.id) },
+          theme: { color: '#1e3a5f' },
+          handler: async (response) => {
+            try {
+              // Server-side signature verification — MUST happen before we
+              // trust this payment as real. Never call finalizeCollection
+              // directly off the client-side handler alone.
+              const verifyRes = await fetch(RAZORPAY_VERIFY_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  razorpay_order_id:   response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature:  response.razorpay_signature,
+                }),
+              })
+              const verify = await verifyRes.json()
+              if (!verifyRes.ok || !verify?.verified) throw new Error(verify?.error || 'Payment verification failed')
+
+              await finalizeCollection(items, { mode: 'Razorpay', ref: response.razorpay_payment_id })
+              resolve()
+            } catch (err) {
+              reject(err)
+            }
+          },
+          modal: {
+            // User closed the checkout without paying — not an error, just
+            // no-op back to the form.
+            ondismiss: () => resolve('dismissed'),
+          },
+        })
+        rzp.on('payment.failed', (resp) => {
+          reject(new Error(resp?.error?.description || 'Payment failed'))
+        })
+        rzp.open()
+      })
+    } catch (err) {
+      showToast('Razorpay payment failed: ' + err.message, '#dc2626')
+    }
+    setRazorpayBusy(false)
   }
 
   const gcc = student ? gccStr(student.gcc_no) : null
@@ -1444,6 +1791,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
   const handleSelect = async s => {
     setStudent(s)
+    setLastPayment(null)
     setIsRepeater(!!s.is_repeater)   // use value already loaded in students list
     const rec = admissions.find(a => gccStr(a.gcc_no) === gccStr(s.gcc_no)) || null
     setAdmRec(rec)
@@ -1486,8 +1834,23 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     setStep('pay')
   }
 
+  // ── Preset student (jump-to-collect from Dashboard) ──────────────────────
+  // When the dashboard's "Collect" action passes a student, land directly on
+  // their payment screen instead of dropping the admin on a blank search.
+  // Guard against re-selecting the same student on every render (handleSelect
+  // is not stable across renders, so it isn't a dependency) and notify the
+  // parent once consumed so a repeat click on the same student re-triggers.
+  const presetGcc = presetStudent ? gccStr(presetStudent.gcc_no) : null
+  useEffect(() => {
+    if (!presetStudent) return
+    handleSelect(presetStudent)
+    onPresetConsumed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetGcc])
+
   const handleBack = () => {
     setStep('select'); setStudent(null); setAdmRec(null)
+    setLastPayment(null)
     setIsRepeater(false)
     setHasOverride(false)
     setOverrideMode(false)
@@ -1556,6 +1919,35 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           {toast.msg}
         </div>
       )}
+
+      {/* ── WhatsApp receipt prompt — shown right after a successful collection ── */}
+      {lastPayment && lastPayment.gcc === gcc && (() => {
+        const parentPhone = getParentPhone(student)
+        const waMsg  = buildFeeReceiptWaMessage(lastPayment)
+        return (
+          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#166534' }}>
+                ✅ ₹{Number(lastPayment.total).toLocaleString('en-IN')} collected — Receipt {lastPayment.receiptNo}
+              </div>
+              <div style={{ fontSize: 11, color: '#166534', opacity: .8, marginTop: 2 }}>
+                {parentPhone ? 'Notify the parent on WhatsApp with the receipt details' : 'No parent contact number on file for this student'}
+              </div>
+            </div>
+            {parentPhone ? (
+              <a href={buildWaLink(parentPhone, waMsg)} target="_blank" rel="noopener noreferrer"
+                onClick={() => setLastPayment(null)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 800, padding: '9px 18px', borderRadius: 8, border: 'none', background: '#25D366', color: 'white', textDecoration: 'none', boxShadow: '0 2px 8px rgba(37,211,102,.35)' }}>
+                📱 Send Receipt on WhatsApp
+              </a>
+            ) : (
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '6px 12px', borderRadius: 7, border: '1px solid #fcd34d' }}>
+                Add a phone number to the student's record to enable this
+              </span>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Student bar */}
       <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 18px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
@@ -1986,9 +2378,13 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
             </div>
           )}
 
-          <button onClick={handleSave} disabled={saving || grandThis === 0 || !admRec || !admissionDate}
-            style={{ width: '100%', padding: 14, borderRadius: 12, background: (saving || grandThis === 0 || !admRec || !admissionDate) ? '#94a3b8' : 'linear-gradient(135deg,#1e3a5f,#3730a3)', color: 'white', border: 'none', fontSize: 15, fontWeight: 800, cursor: (saving || grandThis === 0 || !admRec || !admissionDate) ? 'not-allowed' : 'pointer', boxShadow: grandThis > 0 && admRec && admissionDate ? '0 4px 16px rgba(55,48,163,.3)' : 'none' }}>
+          <button onClick={handleSave} disabled={saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate}
+            style={{ width: '100%', padding: 14, borderRadius: 12, background: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#94a3b8' : 'linear-gradient(135deg,#1e3a5f,#3730a3)', color: 'white', border: 'none', fontSize: 15, fontWeight: 800, cursor: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? 'not-allowed' : 'pointer', boxShadow: grandThis > 0 && admRec && admissionDate ? '0 4px 16px rgba(55,48,163,.3)' : 'none' }}>
             {saving ? '⏳ Processing…' : !admissionDate ? '⚠️ Set Admission Date First' : `🖨️ Save & print invoice · ₹${grandThis.toLocaleString('en-IN')}`}
+          </button>
+          <button onClick={handleRazorpayCollect} disabled={saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate}
+            style={{ width: '100%', padding: 13, borderRadius: 12, background: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#e2e8f0' : 'white', color: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#94a3b8' : '#3730a3', border: '2px solid ' + ((saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#e2e8f0' : '#3730a3'), fontSize: 14, fontWeight: 800, cursor: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? 'not-allowed' : 'pointer', marginTop: -4 }}>
+            {razorpayBusy ? '⏳ Opening Razorpay…' : `💳 Pay via Razorpay · ₹${grandThis.toLocaleString('en-IN')}`}
           </button>
           {!admRec && <div style={{ fontSize: 11, color: '#dc2626', textAlign: 'center', marginTop: -6 }}>⚠ No admission record — create one in Admissions first</div>}
         </div>
@@ -2022,6 +2418,10 @@ export default function Fees() {
   const [showForm,            setShowForm]      = useState(false)
   const [search,              setSearch]        = useState('')
   const [tab, setTab] = useState('dashboard')
+  // Student handed off from the Dashboard's "Collect" buttons (Zero Payment
+  // alert, Month-wise Dues drill-down) so Fee Payment opens straight to their
+  // form instead of a blank search screen.
+  const [presetCollectStudent, setPresetCollectStudent] = useState(null)
   const [form,                setForm]          = useState({ gcc_no: '', name: '', class_name: '', course: '', amount: '', paid: '0' })
 
   const loadAll = async () => {
@@ -2244,7 +2644,7 @@ export default function Fees() {
           adm_flat_fees={adm_flat_fees}
           adm_course_fees={adm_course_fees}
           liveRows={liveRows}
-          onCollect={s => setTab('payment')}
+          onCollect={s => { setPresetCollectStudent(s); setTab('payment') }}
         />
       )}
 
@@ -2256,6 +2656,8 @@ export default function Fees() {
           adm_course_fees={adm_course_fees}
           onRefresh={loadAll}
           isAdmin={isAdmin} currentUser={currentUser}
+          presetStudent={presetCollectStudent}
+          onPresetConsumed={() => setPresetCollectStudent(null)}
         />
       )}
 
