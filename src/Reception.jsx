@@ -44,7 +44,7 @@ const fmt     = n => Number(n || 0).toLocaleString('en-IN')
 const fmtDate = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }
 const today   = () => new Date().toISOString().split('T')[0]
 const gccStr  = g => String(parseInt(g) || g || '')
-const TABS    = ['Student 360°', 'Enquiry', 'Visitor Book', 'Leave Application', 'Gate Pass', 'Parent Items', 'Monitors']
+const TABS    = ['Student 360°', 'Enquiry', 'Visitor Book', 'Leave Application', 'Gate Pass', 'Parent Items', 'Complaint', 'Monitors']
 
 const TAB_ICONS = {
   'Student 360°': '🔍',
@@ -81,7 +81,15 @@ const STAFF_DEPARTMENTS    = ['Academic','Hostel','Admin','Sports','Accounts','S
 
 // ── default form states ───────────────────────────────────────────────────────
 const ENQ_DEF  = { student_name:'', parent_name:'', phone:'', class_interest:'', source:'', enquiry_date:today(), follow_up_date:'', status:'New', remarks:'' }
-const VIS_DEF  = { visitor_name:'', phone:'', purpose:'', meeting_with:'', in_time:'', out_time:'', visit_date:today(), id_proof:'', remarks:'' }
+const VIS_DEF  = { visitor_name:'', phone:'', purpose:'', meeting_with:'', in_time:'', out_time:'', visit_date:today(), id_proof:'', remarks:'', visit_category:'', follow_up_required:false, follow_up_date:'', follow_up_status:'None' }
+const VISIT_CATEGORY_OPTIONS = ['Admission', 'Fee', 'Complaint', 'Academic', 'Hostel', 'General', 'Other']
+
+const CO_DEF = { parent_name:'', phone:'', student_name:'', gcc_no:'', class_name:'', house:'', category:'', priority:'Normal', subject:'', description:'', assigned_to:'', assigned_role:'' }
+const COMPLAINT_CATEGORY_OPTIONS = ['Academic', 'Hostel', 'Food', 'Discipline', 'Fee', 'Staff Conduct', 'Facilities', 'Other']
+const COMPLAINT_PRIORITY_OPTIONS = ['Low', 'Normal', 'High', 'Urgent']
+const COMPLAINT_ASSIGNED_ROLE_OPTIONS = ['House Master', 'Superintendent', 'Accountant', 'Teacher', 'Administrator', 'Receptionist', 'Other']
+const complaintPriorityColor = p => p === 'Urgent' ? C.red : p === 'High' ? '#c2410c' : p === 'Low' ? C.slate[400] : C.amber
+const complaintStatusColor = s => s === 'Resolved' ? C.emerald : s === 'Closed' ? C.slate[400] : s === 'Reopened' ? C.red : s === 'In Progress' ? C.amber : C.violet
 const GP_DEF   = { student_name:'', class_name:'', course:'', gcc_no:'', house:'', reason:'', exit_date:today(), exit_time:'', expected_return_time:'', return_date:'', responsible_contact:'', approved_by:'', parent_informed:'No', status:'Issued', remarks:'' }
 const LA_DEF   = { student_name:'', gcc_no:'', class_name:'', house:'', course:'', reason:'', from_date:today(), to_date:'', responsible_name:'', responsible_phone:'', relation_to_student:'', address:'', applicant_note:'' }
 const RELATION_OPTIONS = ['Father','Mother','Guardian','Elder Brother','Elder Sister','Uncle','Aunt','Grandfather','Grandmother','Other']
@@ -478,6 +486,18 @@ function printItemInvoice(item) {
   pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 450)
 }
 
+// Fixed WhatsApp number for record deliveries — not per-record, a single
+// front-desk/records number. Opens wa.me with a pre-filled message; wa.me
+// links cannot auto-attach files (WhatsApp gives no browser-side API for
+// that), so the message text carries the reference details and the staff
+// member manually attaches the printed PDF from their downloads/print dialog.
+const RECORDS_WHATSAPP_NUMBER = '916009195708'
+
+function sendToWhatsApp(message) {
+  const url = `https://wa.me/${RECORDS_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`
+  window.open(url, '_blank')
+}
+
 function printLeaveApplication(item, printedByName) {
   const d = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
   const t = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
@@ -595,6 +615,23 @@ ${item.status !== 'Pending' ? `<div class="official-note">This application was $
   pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 400)
 }
 
+function sendLeaveApplicationToWhatsApp(item) {
+  const refNo = `GNSI/LA/${(item.gcc_no || '0000')}/${String(item.id).padStart(4, '0')}`
+  const msg = `📝 LEAVE APPLICATION — GNSI\n\n` +
+    `Ref. No.: ${refNo}\n` +
+    `Status: ${item.status}\n\n` +
+    `Student: ${item.student_name}\n` +
+    `GCC No.: ${item.gcc_no || '—'}\n` +
+    `Class: ${item.class_name || '—'}${item.house ? ' · ' + item.house : ''}\n` +
+    `Reason: ${item.reason}\n` +
+    `Leave period: ${fmtDate(item.from_date)} to ${fmtDate(item.to_date)}\n\n` +
+    `Responsible person: ${item.responsible_name || '—'} (${item.relation_to_student || '—'})\n` +
+    `Contact: ${item.responsible_phone || '—'}\n\n` +
+    `(Printed copy to follow — attach PDF here)\n\n` +
+    `Guidance Navodaya & Sainik Institute\nKhangabok, Thoubal`
+  sendToWhatsApp(msg)
+}
+
 function printGatePass(item) {
   const d = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Gate Pass</title>
@@ -607,6 +644,20 @@ function printGatePass(item) {
   const pw = window.open('', '_blank', 'width=720,height=800')
   if (!pw) return
   pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 400)
+}
+
+function sendGatePassToWhatsApp(item) {
+  const msg = `🪪 GATE PASS — GNSI\n\n` +
+    `Student: ${item.student_name}\n` +
+    `GCC No.: ${item.gcc_no || '—'}\n` +
+    `Class: ${item.class_name || '—'}${item.house ? ' · ' + item.house : ''}\n` +
+    `Reason: ${item.reason}\n` +
+    `Exit: ${fmtDate(item.exit_date)}${item.exit_time ? ' · ' + item.exit_time : ''}\n` +
+    `Return: ${item.return_date ? fmtDate(item.return_date) : '—'}${item.expected_return_time ? ' · ' + item.expected_return_time : ''}\n` +
+    `Status: ${item.status}\n\n` +
+    `(Printed copy to follow — attach PDF here)\n\n` +
+    `Guidance Navodaya & Sainik Institute\nKhangabok, Thoubal`
+  sendToWhatsApp(msg)
 }
 
 function printVisitorBadge(item) {
@@ -1049,6 +1100,7 @@ function Student360({ students }) {
                       { key: '_a', label: 'Actions', render: r => (
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️</button>
+                          <button onClick={() => sendGatePassToWhatsApp(r)} style={{ ...delBtn, background: '#25d366', color: 'white' }}>💬</button>
                           {canTransition(r.status, 'Exited') && <button onClick={() => updateGPStatus(r.id, r.status, 'Exited')} style={{ ...delBtn, background: '#fee2e2', color: C.red }}>→ Out</button>}
                           {canTransition(r.status, 'Returned') && <button onClick={() => updateGPStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>↩ In</button>}
                         </div>
@@ -1063,6 +1115,7 @@ function Student360({ students }) {
                       actions: r => (
                         <div style={{ display: 'flex', gap: 5 }}>
                           <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️</button>
+                          <button onClick={() => sendGatePassToWhatsApp(r)} style={{ ...delBtn, background: '#25d366', color: 'white', fontSize: 11 }}>💬</button>
                           {canTransition(r.status, 'Exited') && <button onClick={() => updateGPStatus(r.id, r.status, 'Exited')} style={{ ...delBtn, background: '#fee2e2', color: C.red, fontSize: 11 }}>→ Out</button>}
                           {canTransition(r.status, 'Returned') && <button onClick={() => updateGPStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>↩ In</button>}
                         </div>
@@ -1562,6 +1615,7 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                       isGatePassIssuer && canTransition(g.status, 'Exited')   && actionBtn('→ Out',      () => updateGPStatusMon(g.id, g.status, 'Exited'),   { background: '#fee2e2', color: C.red     }),
                       canTransition(g.status, 'Returned') && actionBtn('↩ Returned', () => checkInGatePassMon(g), { background: '#dcfce7', color: '#166534' }),
                       actionBtn('🖨️', () => printGatePass(g), { background: '#fef3c7', color: '#92400e' }),
+                      actionBtn('💬', () => sendGatePassToWhatsApp(g), { background: '#25d366', color: 'white' }),
                     ].filter(Boolean)}
                   />
                 ))
@@ -1592,6 +1646,7 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                       {isGatePassIssuer && canTransition(r.status, 'Exited')   && <button onClick={() => updateGPStatusMon(r.id, r.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red     }}>→ Out</button>}
                       {canTransition(r.status, 'Returned') && <button onClick={() => checkInGatePassMon(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>↩ In</button>}
                       <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️</button>
+                      <button onClick={() => sendGatePassToWhatsApp(r)} style={{ ...delBtn, background: '#25d366', color: 'white' }}>💬</button>
                     </div>
                   )},
                 ]}
@@ -1610,6 +1665,7 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                       {isGatePassIssuer && canTransition(r.status, 'Exited')   && <button onClick={() => updateGPStatusMon(r.id, r.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red,     fontSize: 11 }}>→ Out</button>}
                       {canTransition(r.status, 'Returned') && <button onClick={() => checkInGatePassMon(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>↩ In</button>}
                       <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️</button>
+                      <button onClick={() => sendGatePassToWhatsApp(r)} style={{ ...delBtn, background: '#25d366', color: 'white', fontSize: 11 }}>💬</button>
                     </div>
                   ),
                 }}
@@ -1891,24 +1947,32 @@ export default function ReceptionPage({ currentUser }) {
   const [customItems, setCustomItems] = useState([])
   const [hlRecords,   setHLRecords]   = useState([])
   const [leaveApps,   setLeaveApps]   = useState([])
+  const [complaints,  setComplaints]  = useState([])
+  const [coDetailId,  setCoDetailId]  = useState(null)   // complaint currently open in detail view
+  const [coUpdates,   setCoUpdates]   = useState([])
+  const [coUpdateText, setCoUpdateText] = useState('')
+  const [coUpdateStatus, setCoUpdateStatus] = useState('')
 
   const [enquiryForm, setEnquiryForm] = useState(ENQ_DEF)
   const [visitorForm, setVisitorForm] = useState(VIS_DEF)
   const [gpForm,      setGpForm]      = useState(GP_DEF)
   const [piForm,      setPiForm]      = useState(PI_DEF)
   const [laForm,      setLaForm]      = useState(LA_DEF)
+  const [coForm,      setCoForm]      = useState(CO_DEF)
 
   const [enquiryResetKey, setEnquiryResetKey] = useState(0)
   const [visitorResetKey, setVisitorResetKey] = useState(0)
   const [gpResetKey,      setGpResetKey]      = useState(0)
   const [piResetKey,      setPiResetKey]      = useState(0)
   const [laResetKey,      setLaResetKey]      = useState(0)
+  const [coResetKey,      setCoResetKey]      = useState(0)
 
   const [enquiryStudent, setEnquiryStudent] = useState(null)
   const [visitorStudent, setVisitorStudent] = useState(null)
   const [gpStudent,      setGpStudent]      = useState(null)
   const [piStudent,      setPiStudent]      = useState(null)
   const [laStudent,      setLaStudent]      = useState(null)
+  const [coStudent,      setCoStudent]      = useState(null)
 
   // FEATURE 4: repeat visitor cache
   const visitorHistoryRef = useRef({})
@@ -1924,12 +1988,13 @@ export default function ReceptionPage({ currentUser }) {
 
   const fetchAll = async () => {
     setLoading(true)
-    const [e, v, g, p, la] = await Promise.all([
+    const [e, v, g, p, la, co] = await Promise.all([
       supabase.from('reception_enquiries').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
       supabase.from('reception_visitors').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
       supabase.from('reception_gatepasses').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
       supabase.from('reception_parent_items').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
       supabase.from('leave_applications').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+      supabase.from('reception_complaints').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
     ])
     if (!e.error) setEnquiries(e.data || [])
     if (!v.error) {
@@ -1948,6 +2013,7 @@ export default function ReceptionPage({ currentUser }) {
     if (!g.error) setGatePasses(g.data || [])
     if (!p.error) setParentItems(p.data || [])
     if (!la.error) setLeaveApps(la.data || [])
+    if (!co.error) setComplaints(co.data || [])
     setLoading(false)
   }
 
@@ -2079,6 +2145,49 @@ export default function ReceptionPage({ currentUser }) {
   }
   const updatePIStatus = async (id, from, to) => { if (!canTransition(from, to)) return; await supabase.from('reception_parent_items').update({ status: to }).eq('id', id); fetchAll() }
 
+  const markVisitorFollowUpDone = async (id) => {
+    await supabase.from('reception_visitors').update({ follow_up_status: 'Done' }).eq('id', id)
+    fetchAll()
+  }
+
+  // ── Complaint detail / update timeline ──────────────────────────────────
+  const openComplaintDetail = async (id) => {
+    setCoDetailId(id)
+    setCoUpdateText('')
+    setCoUpdateStatus('')
+    const { data } = await supabase.from('complaint_updates').select('*').eq('complaint_id', id).order('created_at', { ascending: true })
+    setCoUpdates(data || [])
+  }
+
+  const closeComplaintDetail = () => { setCoDetailId(null); setCoUpdates([]) }
+
+  const addComplaintUpdate = async (complaint) => {
+    if (!coUpdateText.trim() && !coUpdateStatus) { alert('Add a note or select a new status.'); return }
+    const updatedByName = currentUser?.userName || currentUser?.name || 'Staff'
+    const statusChange = coUpdateStatus && coUpdateStatus !== complaint.status ? `${complaint.status} → ${coUpdateStatus}` : null
+
+    await supabase.from('complaint_updates').insert({
+      complaint_id: complaint.id,
+      note: coUpdateText.trim() || `Status changed to ${coUpdateStatus}`,
+      status_change: statusChange,
+      updated_by: updatedByName,
+    })
+
+    if (statusChange) {
+      const patch = { status: coUpdateStatus }
+      if (coUpdateStatus === 'Resolved' || coUpdateStatus === 'Closed') {
+        patch.resolved_at = new Date().toISOString()
+        if (coUpdateText.trim()) patch.resolution_notes = coUpdateText.trim()
+      }
+      await supabase.from('reception_complaints').update(patch).eq('id', complaint.id)
+    }
+
+    setCoUpdateText('')
+    setCoUpdateStatus('')
+    await openComplaintDetail(complaint.id)
+    fetchAll()
+  }
+
   const addCustomItem = async item => {
     setCustomItems(prev => [...prev, item])
     await supabase.from('reception_custom_items').insert([{ name: item }])
@@ -2119,6 +2228,11 @@ export default function ReceptionPage({ currentUser }) {
     else   { setLaStudent(null); setLaForm(f => ({ ...f, student_name: '', class_name: '', course: '', gcc_no: '', house: '' })) }
   }, [])
 
+  const onSelectCO = useCallback(s => {
+    if (s) { setCoStudent(s); setCoForm(f => ({ ...f, student_name: s.name, class_name: s.batch || f.class_name, gcc_no: s.gcc_no ? gccStr(s.gcc_no) : f.gcc_no, house: s.house || f.house, parent_name: f.parent_name || s.father_name || '', phone: f.phone || s.phone || '' })) }
+    else   { setCoStudent(null); setCoForm(f => ({ ...f, student_name: '', class_name: '', gcc_no: '', house: '' })) }
+  }, [])
+
   const onSelectPI = useCallback(s => {
     if (s) { setPiStudent(s); setPiForm(f => ({ ...f, student_name: s.name, class_name: s.batch || f.class_name, house: s.house || f.house, course: s.course || f.course, hostel_type: s.hostel_type || f.hostel_type })) }
     else   { setPiStudent(null); setPiForm(f => ({ ...f, student_name: '', class_name: '', house: '', course: '', hostel_type: '' })) }
@@ -2128,33 +2242,37 @@ export default function ReceptionPage({ currentUser }) {
     const q = search.toLowerCase()
     const searchCols = {
       'Enquiry':           ['student_name', 'parent_name', 'phone', 'class_interest', 'source', 'status'],
-      'Visitor Book':      ['visitor_name', 'phone', 'purpose', 'meeting_with'],
+      'Visitor Book':      ['visitor_name', 'phone', 'purpose', 'meeting_with', 'visit_category'],
       'Leave Application': ['student_name', 'gcc_no', 'house', 'reason', 'status', 'submitted_by'],
       'Gate Pass':         ['student_name', 'class_name', 'course', 'reason', 'status'],
       'Parent Items':      ['student_name', 'parent_name', 'class_name', 'item_name', 'house', 'status'],
+      'Complaint':         ['parent_name', 'student_name', 'gcc_no', 'subject', 'category', 'status', 'priority', 'assigned_to'],
     }
     const cols = searchCols[activeTab] || []
-    const arr  = activeTab === 'Enquiry' ? enquiries : activeTab === 'Visitor Book' ? visitors : activeTab === 'Leave Application' ? leaveApps : activeTab === 'Gate Pass' ? gatePasses : parentItems
+    const arr  = activeTab === 'Enquiry' ? enquiries : activeTab === 'Visitor Book' ? visitors : activeTab === 'Leave Application' ? leaveApps : activeTab === 'Gate Pass' ? gatePasses : activeTab === 'Complaint' ? complaints : parentItems
     if (!q) return arr
     return arr.filter(r => cols.some(c => String(r[c] || '').toLowerCase().includes(q)))
-  }, [activeTab, search, enquiries, visitors, leaveApps, gatePasses, parentItems])
+  }, [activeTab, search, enquiries, visitors, leaveApps, gatePasses, parentItems, complaints])
 
   const followUpDue  = enquiries.filter(e => e.follow_up_date === today() && e.status !== 'Converted' && e.status !== 'Closed').length
   const stillOutside = gatePasses.filter(g => g.status === 'Exited').length
   const pendingItems = parentItems.filter(p => p.status === 'Pending').length
   const pendingLA     = leaveApps.filter(a => a.status === 'Pending').length
+  const openComplaints = complaints.filter(c => c.status === 'Open' || c.status === 'In Progress' || c.status === 'Reopened').length
 
   const set_enq = (f, v) => setEnquiryForm(p => ({ ...p, [f]: v }))
   const set_vis = (f, v) => setVisitorForm(p => ({ ...p, [f]: v }))
   const set_gp  = (f, v) => setGpForm(p => ({ ...p, [f]: v }))
   const set_pi  = (f, v) => setPiForm(p => ({ ...p, [f]: v }))
   const set_la  = (f, v) => setLaForm(p => ({ ...p, [f]: v }))
+  const set_co  = (f, v) => setCoForm(p => ({ ...p, [f]: v }))
 
   const tabBadges = {
     'Enquiry':           followUpDue,
     'Leave Application': pendingLA,
     'Gate Pass':         stillOutside,
     'Parent Items':      pendingItems,
+    'Complaint':         openComplaints,
     'Monitors':          stillOutside,
   }
 
@@ -2360,11 +2478,18 @@ export default function ReceptionPage({ currentUser }) {
                       )}
                     </FormField>
                     <FormField label="Purpose *"><FormSelect field="purpose" value={visitorForm.purpose} onChange={set_vis} options={PURPOSE_OPTIONS} placeholder="Select purpose…" /></FormField>
+                    <FormField label="Visit Category"><FormSelect field="visit_category" value={visitorForm.visit_category} onChange={set_vis} options={VISIT_CATEGORY_OPTIONS} placeholder="Select category…" /></FormField>
                     <FormField label="Meeting With"><FormSelect field="meeting_with" value={visitorForm.meeting_with} onChange={set_vis} options={MEETING_WITH_OPTIONS} placeholder="Select whom…" /></FormField>
                     <FormField label="In Time"><FormInput field="in_time" value={visitorForm.in_time} onChange={set_vis} type="time" /></FormField>
                     <FormField label="Out Time"><FormInput field="out_time" value={visitorForm.out_time} onChange={set_vis} type="time" /></FormField>
                     <FormField label="Visit Date"><FormInput field="visit_date" value={visitorForm.visit_date} onChange={set_vis} type="date" /></FormField>
                     <FormField label="ID Proof"><FormSelect field="id_proof" value={visitorForm.id_proof} onChange={set_vis} options={ID_PROOF_OPTIONS} placeholder="Select ID…" /></FormField>
+                    <FormField label="Follow-up Required">
+                      <FormSelect field="follow_up_required" value={visitorForm.follow_up_required ? 'Yes' : 'No'} onChange={(f, v) => set_vis(f, v === 'Yes')} options={['No', 'Yes']} />
+                    </FormField>
+                    {visitorForm.follow_up_required && (
+                      <FormField label="Follow-up Date"><FormInput field="follow_up_date" value={visitorForm.follow_up_date} onChange={set_vis} type="date" /></FormField>
+                    )}
                     <div style={span2}><FormField label="Remarks"><FormTextarea field="remarks" value={visitorForm.remarks} onChange={set_vis} /></FormField></div>
                   </div>
                   <SaveBtn label="Save Visitor" saving={saving} />
@@ -2386,9 +2511,22 @@ export default function ReceptionPage({ currentUser }) {
                   { key: 'visitor_name', label: 'Visitor', render: r => <b style={{ fontFamily: font }}>{r.visitor_name}</b> },
                   { key: 'phone',        label: 'Phone' },
                   { key: 'purpose',      label: 'Purpose' },
+                  { key: 'visit_category', label: 'Category', render: r => r.visit_category ? <Pill label={r.visit_category} /> : '—' },
                   { key: 'meeting_with', label: 'Meeting' },
                   { key: 'in_time',      label: 'In' },
                   { key: 'out_time',     label: 'Out',     render: r => r.out_time || <span style={{ color: '#ef4444', fontWeight: 700, fontFamily: font }}>Still Inside</span> },
+                  { key: 'follow_up_date', label: 'Follow Up', render: r => {
+                    if (!r.follow_up_required) return '—'
+                    const due = r.follow_up_date === today() && r.follow_up_status !== 'Done'
+                    return (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ color: due ? '#ef4444' : 'inherit', fontWeight: due ? 700 : 400, fontFamily: font }}>{fmtDate(r.follow_up_date)}{due ? ' ⚠' : ''}</span>
+                        {r.follow_up_status === 'Done'
+                          ? <span style={{ fontSize: 10, fontWeight: 700, color: '#166534', background: '#dcfce7', borderRadius: 6, padding: '2px 6px', fontFamily: font }}>Done</span>
+                          : <button onClick={() => markVisitorFollowUpDone(r.id)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 10, padding: '2px 7px' }}>Mark done</button>}
+                      </span>
+                    )
+                  }},
                   { key: 'id_proof',     label: 'ID' },
                   { key: '_badge',       label: '🖨️',      render: r => <button onClick={() => printVisitorBadge(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️</button> },
                 ]}
@@ -2403,9 +2541,16 @@ export default function ReceptionPage({ currentUser }) {
                     r.phone ? `📞 ${r.phone}` : null,
                     `In: ${r.in_time || fmtDate(r.visit_date)}`,
                     r.id_proof ? `ID: ${r.id_proof}` : null,
+                    r.visit_category ? `Category: ${r.visit_category}` : null,
+                    r.follow_up_required ? `Follow up: ${fmtDate(r.follow_up_date)}${r.follow_up_status === 'Done' ? ' ✓' : (r.follow_up_date === today() ? ' ⚠' : '')}` : null,
                   ],
                   actions: r => (
-                    <button onClick={() => printVisitorBadge(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️ Badge</button>
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      <button onClick={() => printVisitorBadge(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️ Badge</button>
+                      {r.follow_up_required && r.follow_up_status !== 'Done' && (
+                        <button onClick={() => markVisitorFollowUpDone(r.id)} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>✓ Follow-up done</button>
+                      )}
+                    </div>
                   ),
                 }}
               />
@@ -2475,6 +2620,7 @@ export default function ReceptionPage({ currentUser }) {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button onClick={() => handlePrintLA(r)} style={{ ...delBtn, background: r.printed_at ? '#f1f5f9' : '#fef3c7', color: r.printed_at ? C.slate[500] : '#92400e' }}>🖨️ {r.printed_at ? 'Reprint' : 'Print'}</button>
+                          <button onClick={() => sendLeaveApplicationToWhatsApp(r)} style={{ ...delBtn, background: '#25d366', color: 'white' }}>💬</button>
                           <button onClick={() => approveLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#dcfce7' : '#f1f5f9', color: r.printed_at ? '#166534' : C.slate[400], cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✓ Approve</button>
                           <button onClick={() => rejectLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#fee2e2' : '#f1f5f9', color: r.printed_at ? C.red : C.slate[400], cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✕ Reject</button>
                         </div>
@@ -2483,6 +2629,7 @@ export default function ReceptionPage({ currentUser }) {
                     ) : (
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button onClick={() => handlePrintLA(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️ Reprint</button>
+                        <button onClick={() => sendLeaveApplicationToWhatsApp(r)} style={{ ...delBtn, background: '#25d366', color: 'white' }}>💬</button>
                         <span style={{ fontSize: 11, color: C.slate[400], fontFamily: font, alignSelf: 'center' }}>{r.reviewed_by ? `By ${r.reviewed_by}` : '—'}</span>
                       </div>
                     )
@@ -2503,6 +2650,7 @@ export default function ReceptionPage({ currentUser }) {
                   actions: r => (
                     <div style={{ display: 'flex', gap: 5 }}>
                       <button onClick={() => handlePrintLA(r)} style={{ ...delBtn, background: r.printed_at ? '#f1f5f9' : '#fef3c7', color: r.printed_at ? C.slate[500] : '#92400e', fontSize: 11 }}>🖨️ {r.printed_at ? 'Reprint' : 'Print'}</button>
+                      <button onClick={() => sendLeaveApplicationToWhatsApp(r)} style={{ ...delBtn, background: '#25d366', color: 'white', fontSize: 11 }}>💬</button>
                       {r.status === 'Pending' && (
                         <>
                           <button onClick={() => approveLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#dcfce7' : '#f1f5f9', color: r.printed_at ? '#166534' : C.slate[400], fontSize: 11, cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✓ Approve</button>
@@ -2514,6 +2662,152 @@ export default function ReceptionPage({ currentUser }) {
                 }}
               />
             </Card>
+          </>
+        )}
+
+        {/* ── COMPLAINT ── */}
+        {activeTab === 'Complaint' && (
+          <>
+            {coDetailId ? (
+              (() => {
+                const complaint = complaints.find(c => c.id === coDetailId)
+                if (!complaint) return null
+                return (
+                  <Card>
+                    <div style={{ padding: pad }}>
+                      <button onClick={closeComplaintDetail} style={{ ...delBtn, marginBottom: 14, background: C.slate[100], color: C.slate[600] }}>← Back to complaints</button>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: complaintPriorityColor(complaint.priority), textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3, fontFamily: font }}>
+                            {complaint.priority} priority · {complaint.category}
+                          </div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: C.slate[900], fontFamily: font }}>{complaint.subject}</div>
+                        </div>
+                        <Pill label={complaint.status} />
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: mob ? '1fr' : '1fr 1fr', gap: 10, marginBottom: 14, fontSize: 13, fontFamily: font }}>
+                        <div><span style={{ color: C.slate[400] }}>Parent:</span> <b>{complaint.parent_name}</b>{complaint.phone ? ` · ${complaint.phone}` : ''}</div>
+                        <div><span style={{ color: C.slate[400] }}>Student:</span> <b>{complaint.student_name || '—'}</b>{complaint.gcc_no ? ` · GCC ${complaint.gcc_no}` : ''}{complaint.house ? ` · ${complaint.house}` : ''}</div>
+                        <div><span style={{ color: C.slate[400] }}>Raised:</span> {fmtDate(complaint.raised_date)}{complaint.raised_by ? ` by ${complaint.raised_by}` : ''}</div>
+                        <div><span style={{ color: C.slate[400] }}>Assigned to:</span> {complaint.assigned_to || '—'}{complaint.assigned_role ? ` (${complaint.assigned_role})` : ''}</div>
+                      </div>
+
+                      {complaint.description && (
+                        <div style={{ background: C.slate[50], borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: C.slate[700], fontFamily: font }}>
+                          {complaint.description}
+                        </div>
+                      )}
+
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.slate[500], textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8, fontFamily: font }}>Update timeline</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+                        {coUpdates.length === 0 && <EmptyState msg="No updates logged yet" />}
+                        {coUpdates.map(u => (
+                          <div key={u.id} style={{ borderLeft: `3px solid ${C.violet}`, paddingLeft: 12, paddingBottom: 2 }}>
+                            <div style={{ fontSize: 11, color: C.slate[400], fontFamily: font, marginBottom: 2 }}>
+                              {new Date(u.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })} · {u.updated_by || 'Staff'}
+                            </div>
+                            {u.status_change && (
+                              <div style={{ fontSize: 11, fontWeight: 700, color: C.violet, marginBottom: 3, fontFamily: font }}>{u.status_change}</div>
+                            )}
+                            <div style={{ fontSize: 13, color: C.slate[800], fontFamily: font }}>{u.note}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{ borderTop: `1px solid ${C.slate[200]}`, paddingTop: 14 }}>
+                        <FormField label="Add update">
+                          <FormTextarea field="coUpdateText" value={coUpdateText} onChange={(f, v) => setCoUpdateText(v)} />
+                        </FormField>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 10 }}>
+                          <div style={{ flex: 1, minWidth: 160 }}>
+                            <FormField label="Change status (optional)">
+                              <FormSelect field="coUpdateStatus" value={coUpdateStatus} onChange={(f, v) => setCoUpdateStatus(v)} options={['Open', 'In Progress', 'Resolved', 'Closed', 'Reopened']} placeholder="Keep current status…" />
+                            </FormField>
+                          </div>
+                          <Btn onClick={() => addComplaintUpdate(complaint)}>Add update</Btn>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                )
+              })()
+            ) : (
+              <>
+                <Card>
+                  <CardHead icon="📢" title="Log Complaint" sub="Record a parent complaint" accentColor={C.red} isMobile={mob} />
+                  <div style={{ padding: pad }}>
+                    <form onSubmit={e => {
+                      e.preventDefault()
+                      if (!coForm.parent_name?.trim()) { alert('Parent name is required.'); return }
+                      if (!coForm.category) { alert('Category is required.'); return }
+                      if (!coForm.subject?.trim()) { alert('Subject is required.'); return }
+                      const raisedByName = currentUser?.userName || currentUser?.name || 'Staff'
+                      handleInsert('reception_complaints', { ...coForm, student_name: coStudent?.name || coForm.student_name, raised_by: raisedByName, status: 'Open' }, () => { setCoForm(CO_DEF); setCoStudent(null); setCoResetKey(k => k + 1) })
+                    }}>
+                      <div style={grid2(mob)}>
+                        <FormField label="Parent Name *"><FormInput field="parent_name" value={coForm.parent_name} onChange={set_co} /></FormField>
+                        <FormField label="Phone"><FormInput field="phone" value={coForm.phone} onChange={set_co} /></FormField>
+                        <div style={span2}>
+                          <FormField label="Link to student (optional)">
+                            <StudentAutocomplete students={students} resetKey={coResetKey} onSelect={onSelectCO} />
+                            <StudentChip student={coStudent} onClear={() => { setCoStudent(null); setCoForm(f => ({ ...f, student_name: '', class_name: '', gcc_no: '', house: '' })); setCoResetKey(k => k + 1) }} />
+                          </FormField>
+                        </div>
+                        <FormField label="Category *"><FormSelect field="category" value={coForm.category} onChange={set_co} options={COMPLAINT_CATEGORY_OPTIONS} placeholder="Select category…" /></FormField>
+                        <FormField label="Priority"><FormSelect field="priority" value={coForm.priority} onChange={set_co} options={COMPLAINT_PRIORITY_OPTIONS} /></FormField>
+                        <div style={span2}><FormField label="Subject *"><FormInput field="subject" value={coForm.subject} onChange={set_co} placeholder="Short summary of the complaint" /></FormField></div>
+                        <div style={span2}><FormField label="Description"><FormTextarea field="description" value={coForm.description} onChange={set_co} /></FormField></div>
+                        <FormField label="Assign To"><FormInput field="assigned_to" value={coForm.assigned_to} onChange={set_co} placeholder="Staff name" /></FormField>
+                        <FormField label="Assigned Role"><FormSelect field="assigned_role" value={coForm.assigned_role} onChange={set_co} options={COMPLAINT_ASSIGNED_ROLE_OPTIONS} placeholder="Select role…" /></FormField>
+                      </div>
+                      <SaveBtn label="Log Complaint" saving={saving} />
+                    </form>
+                  </div>
+                </Card>
+                <Card>
+                  <CardHead icon="📢" title="Complaints" sub={`${filteredRows.length} total`} accentColor={C.red} isMobile={mob}
+                    right={<Btn small variant="ghost" onClick={() => exportToExcel(filteredRows, [
+                      { key: 'raised_date', label: 'Date' }, { key: 'parent_name', label: 'Parent' },
+                      { key: 'student_name', label: 'Student' }, { key: 'category', label: 'Category' },
+                      { key: 'priority', label: 'Priority' }, { key: 'subject', label: 'Subject' },
+                      { key: 'status', label: 'Status' }, { key: 'assigned_to', label: 'Assigned To' },
+                    ], 'Complaints')}>📥 Excel</Btn>}
+                  />
+                  <RecordsTable loading={loading} rows={filteredRows} onDelete={id => handleDelete('reception_complaints', id)}
+                    columns={[
+                      { key: 'raised_date', label: 'Date', render: r => fmtDate(r.raised_date) },
+                      { key: 'parent_name', label: 'Parent', render: r => <b style={{ fontFamily: font }}>{r.parent_name}</b> },
+                      { key: 'student_name', label: 'Student', render: r => r.student_name || '—' },
+                      { key: 'category', label: 'Category', render: r => <Pill label={r.category} /> },
+                      { key: 'priority', label: 'Priority', render: r => <span style={{ fontSize: 11, fontWeight: 700, color: complaintPriorityColor(r.priority), fontFamily: font }}>{r.priority}</span> },
+                      { key: 'subject', label: 'Subject' },
+                      { key: 'assigned_to', label: 'Assigned To', render: r => r.assigned_to ? `${r.assigned_to}${r.assigned_role ? ` (${r.assigned_role})` : ''}` : '—' },
+                      { key: 'status', label: 'Status', render: r => <Pill label={r.status} /> },
+                      { key: '_v', label: 'Actions', render: r => (
+                        <button onClick={() => openComplaintDetail(r.id)} style={{ ...delBtn, background: C.slate[100], color: C.navy }}>View →</button>
+                      )},
+                    ]}
+                    mobileConfig={{
+                      accent: r => complaintStatusColor(r.status),
+                      title:  r => `📢 ${r.subject}`,
+                      subtitle: r => `${r.parent_name} · ${r.student_name || '—'}`,
+                      badge:  r => <Pill label={r.status} />,
+                      meta: r => [
+                        `📅 ${fmtDate(r.raised_date)}`,
+                        r.category,
+                        `${r.priority} priority`,
+                        r.assigned_to ? `Assigned: ${r.assigned_to}` : null,
+                      ],
+                      actions: r => (
+                        <button onClick={() => openComplaintDetail(r.id)} style={{ ...delBtn, background: C.slate[100], color: C.navy, fontSize: 11 }}>View →</button>
+                      ),
+                    }}
+                  />
+                </Card>
+              </>
+            )}
           </>
         )}
 
@@ -2602,6 +2896,7 @@ export default function ReceptionPage({ currentUser }) {
                   { key: '_q',                   label: 'Actions',   render: r => (
                     <div style={{ display: 'flex', gap: 4 }}>
                       <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️</button>
+                      <button onClick={() => sendGatePassToWhatsApp(r)} style={{ ...delBtn, background: '#25d366', color: 'white' }}>💬</button>
                       {isGatePassIssuer && canTransition(r.status, 'Exited')   && <button onClick={() => updateGPStatus(r.id, r.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red     }}>→ Out</button>}
                       {canTransition(r.status, 'Returned') && <button onClick={() => checkInGatePass(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>↩ In</button>}
                     </div>
@@ -2625,6 +2920,7 @@ export default function ReceptionPage({ currentUser }) {
                   actions: r => (
                     <div style={{ display: 'flex', gap: 5 }}>
                       <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️</button>
+                      <button onClick={() => sendGatePassToWhatsApp(r)} style={{ ...delBtn, background: '#25d366', color: 'white', fontSize: 11 }}>💬</button>
                       {isGatePassIssuer && canTransition(r.status, 'Exited')   && <button onClick={() => updateGPStatus(r.id, r.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red,     fontSize: 11 }}>→ Out</button>}
                       {canTransition(r.status, 'Returned') && <button onClick={() => checkInGatePass(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>↩ In</button>}
                     </div>
