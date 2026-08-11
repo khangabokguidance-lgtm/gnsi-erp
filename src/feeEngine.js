@@ -317,6 +317,32 @@ export const getFlatFees = async (hostelType, course, batch, sessionYear = `${CU
   })
 }
 
+/**
+ * True if the given fee month (name + calendar year) ENDED before the
+ * student's admission date — i.e. the student hadn't joined yet during
+ * that month, so it shouldn't be billed.
+ *
+ * Shares the exact rule getFlatFees() already uses internally (line ~314
+ * above) so flat fee and course fee agree on what counts as "before
+ * admission." Course fee has no auto-generated month list the way flat
+ * fee does (staff pick the month manually via a dropdown), so this is
+ * exposed standalone for FeeCollectionModal to call per-selection rather
+ * than baked into a list-filter like getFlatFees.
+ *
+ * Returns false (never blocks) if admissionDate is missing/invalid —
+ * same fail-open behavior as getFlatFees when admission_date isn't set yet.
+ */
+export const isPreAdmissionMonth = (monthName, year, admissionDate) => {
+  if (!admissionDate) return false
+  const admDate = new Date(admissionDate)
+  if (isNaN(admDate.getTime())) return false
+  const monthIdx = MONTHS_LIST.indexOf(monthName)
+  if (monthIdx === -1) return false
+  const feeMonthIdx = new Date(`${monthName} 1, ${year}`).getMonth()
+  const feeMonthEnd = new Date(year, feeMonthIdx + 1, 0)
+  return feeMonthEnd < admDate
+}
+
 export const getSessionYear = () => `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
 
 // ═══════════════════════════════════════════════════════════════════════════

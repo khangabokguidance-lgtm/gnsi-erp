@@ -356,6 +356,140 @@ function AnomalyRecordRow({record,borderColor}){
   )
 }
 
+function activityActionMeta(action) {
+  if (action === 'fee_collection') return { label: 'Collection', color: '#059669', bg: '#f0fdf4', icon: '💰' }
+  if (action === 'fee_revert') return { label: 'Revert', color: '#dc2626', bg: '#fef2f2', icon: '↩️' }
+  if (action === 'fee_date_correction') return { label: 'Date Correction', color: '#b45309', bg: '#fffbeb', icon: '📅' }
+  if (action === 'legacy_fee_delete') return { label: 'Legacy Delete', color: '#7c3aed', bg: '#f5f3ff', icon: '🗑️' }
+  return { label: action || 'Unknown', color: '#64748b', bg: '#f8fafc', icon: '•' }
+}
+
+function activityLine(entry) {
+  let oldV = null, newV = null
+  try { oldV = entry.old_values ? JSON.parse(entry.old_values) : null } catch (e) {}
+  try { newV = entry.new_values ? JSON.parse(entry.new_values) : null } catch (e) {}
+
+  if (entry.action === 'fee_collection' && newV) {
+    const itemsDesc = (newV.items || []).map(i => `${i.label} ₹${Number(i.amount || 0).toLocaleString('en-IN')}`).join(', ')
+    return `${newV.student_name || 'GCC-' + newV.gcc} · ${itemsDesc || '—'} · Total ₹${Number(newV.total || 0).toLocaleString('en-IN')} · ${newV.pay_mode || '—'}${newV.txn_ref ? ' (' + newV.txn_ref + ')' : ''} · Receipt ${newV.receipt_no || '—'}`
+  }
+  if (entry.action === 'fee_revert' && newV) {
+    return `${newV.table || 'record'} #${entry.target_id} reverted${newV.revert_reason ? ' — ' + newV.revert_reason : ''}`
+  }
+  if (entry.action === 'fee_date_correction' && oldV && newV) {
+    return `${newV.table || 'record'} #${entry.target_id} · date changed ${oldV.pay_date || '—'} → ${newV.pay_date || '—'}`
+  }
+  if (entry.action === 'legacy_fee_delete') {
+    return `Legacy fee record #${entry.target_id} deleted`
+  }
+  return `#${entry.target_id}`
+}
+
+function ActivityLogTab({ students, isAdmin, currentUser }) {
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [actionFilter, setActionFilter] = useState('ALL')
+  const [staffFilter, setStaffFilter] = useState('ALL')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    if (!isAdmin) return
+    setLoading(true)
+    supabase.from('audit_log')
+      .select('*')
+      .in('action', ['fee_collection', 'fee_revert', 'fee_date_correction', 'legacy_fee_delete'])
+      .order('created_at', { ascending: false })
+      .limit(1000)
+      .then(({ data, error }) => {
+        if (!error) setEntries(data || [])
+        setLoading(false)
+      })
+  }, [isAdmin])
+
+  if (!isAdmin) {
+    return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>🔒 Admin only</div>
+  }
+
+  const staffNames = [...new Set(entries.map(e => e.changed_by).filter(Boolean))].sort()
+
+  const filtered = entries.filter(e => {
+    if (actionFilter !== 'ALL' && e.action !== actionFilter) return false
+    if (staffFilter !== 'ALL' && e.changed_by !== staffFilter) return false
+    const d = (e.created_at || '').slice(0, 10)
+    if (dateFrom && d < dateFrom) return false
+    if (dateTo && d > dateTo) return false
+    if (search) {
+      const q = search.toLowerCase()
+      const hay = `${e.target_id || ''} ${e.old_values || ''} ${e.new_values || ''} ${e.changed_by || ''}`.toLowerCase()
+      if (!hay.includes(q)) return false
+    }
+    return true
+  })
+
+  return (
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18, alignItems: 'flex-end' }}>
+        <div>
+          <label style={{ ...lbl, fontSize: 11 }}>Action</label>
+          <select value={actionFilter} onChange={e => setActionFilter(e.target.value)} style={{ ...inp, width: 180 }}>
+            <option value="ALL">All actions</option>
+            <option value="fee_collection">Collections</option>
+            <option value="fee_revert">Reverts</option>
+            <option value="fee_date_correction">Date corrections</option>
+            <option value="legacy_fee_delete">Legacy deletes</option>
+          </select>
+        </div>
+        <div>
+          <label style={{ ...lbl, fontSize: 11 }}>Staff</label>
+          <select value={staffFilter} onChange={e => setStaffFilter(e.target.value)} style={{ ...inp, width: 160 }}>
+            <option value="ALL">All staff</option>
+            {staffNames.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ ...lbl, fontSize: 11 }}>From</label>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ ...inp, width: 150 }} />
+        </div>
+        <div>
+          <label style={{ ...lbl, fontSize: 11 }}>To</label>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ ...inp, width: 150 }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <label style={{ ...lbl, fontSize: 11 }}>Search</label>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Student, GCC, receipt no…" style={inp} />
+        </div>
+      </div>
+
+      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>{filtered.length} of {entries.length} entries</div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 48, color: '#64748b' }}>⏳ Loading…</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}>No activity found for the current filters</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {filtered.map(entry => {
+            const meta = activityActionMeta(entry.action)
+            return (
+              <div key={entry.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderLeft: `4px solid ${meta.color}`, borderRadius: 8, padding: '10px 14px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, background: meta.bg, color: meta.color, whiteSpace: 'nowrap', flexShrink: 0 }}>{meta.icon} {meta.label}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: '#1e293b', fontWeight: 600, wordBreak: 'break-word' }}>{activityLine(entry)}</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
+                    {new Date(entry.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })} · by {entry.changed_by || 'Unknown'}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AnomalyMonitor({adm_fee_collections,adm_flat_fees,adm_course_fees,students,liveRows,isAdmin,currentUser}){
   const [open,setOpen]=useState(null),[sevFilter,setSevFilter]=useState('ALL'),[catFilter,setCatFilter]=useState('ALL')
   const flags=useMemo(()=>runAnomalyEngine({adm_fee_collections,adm_flat_fees,adm_course_fees,students,liveRows}),[adm_fee_collections,adm_flat_fees,adm_course_fees,students,liveRows])
@@ -496,6 +630,48 @@ function AnomalyMonitor({adm_fee_collections,adm_flat_fees,adm_course_fees,stude
 
 
 // ── Student Fee Card ──────────────────────────────────────────────────────────
+function StudentActivityLog({ gcc, timelineIds }) {
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    // target_id is the GCC for collection entries, and the specific fee
+    // record's own id for revert/date-correction entries — match on either
+    // so this student's full activity shows regardless of action type.
+    const ids = [...new Set([String(gcc), ...timelineIds])]
+    supabase.from('audit_log')
+      .select('*')
+      .in('action', ['fee_collection', 'fee_revert', 'fee_date_correction'])
+      .in('target_id', ids)
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (!error) setEntries(data || [])
+        setLoading(false)
+      })
+  }, [gcc, timelineIds.join(',')])
+
+  if (loading) return <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading…</div>
+  if (entries.length === 0) return <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>No activity recorded for this student yet.</div>
+
+  return (
+    <div style={{ padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {entries.map(entry => {
+        const meta = activityActionMeta(entry.action)
+        return (
+          <div key={entry.id} style={{ background: meta.bg, border: `1px solid ${meta.color}33`, borderRadius: 8, padding: '9px 12px' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 3 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: meta.color, color: 'white' }}>{meta.icon} {meta.label}</span>
+              <span style={{ fontSize: 10, color: '#94a3b8' }}>{new Date(entry.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })} · {entry.changed_by || 'Unknown'}</span>
+            </div>
+            <div style={{ fontSize: 12, color: '#1e293b' }}>{activityLine(entry)}</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fees,isAdmin,currentUser,onRefresh,onCollect}){
   const n=v=>Number(v||0).toLocaleString('en-IN'),gcc=gccStr(student.gcc_no)
   const [tab,setTab]=useState('history'),[toast,setToast]=useState(null),[saving,setSaving]=useState(false)
@@ -521,7 +697,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
       if(row._table==='adm_fee_collections'){aType=row.fee_type==='advance'?'advance_fee':'adm_fee';if(row.fee_type==='admission')aRef=sourceRef.admission(gcc);else if(row.fee_type==='advance')aRef=row.id;else if(row.fee_type==='item')aRef=sourceRef.admItem(gcc,row.description==='Prospectus'?'prospectus':(row.description||'').replace(/^Dress Kit — /,''))}
       else if(row._table==='adm_flat_fees'){aType='flat_fee';aRef=sourceRef.flatFee(gcc,row.month,row.year)}
       else if(row._table==='adm_course_fees'){aType='course_fee';aRef=sourceRef.courseFee(gcc,row.for_month,row.year)}
-      await revertFeeCollection({table:row._table,id:row.id,accountSourceRef:aRef,accountSourceType:aType,revertedBy:currentUser?.name||'Admin',reason})
+      await revertFeeCollection({table:row._table,id:row.id,accountSourceRef:aRef,accountSourceType:aType,revertedBy:currentUser?.userName||currentUser?.name||'Admin',reason})
       showToast(`↩️ Reverted: ${row._desc}`,'#dc2626');onRefresh()
     }catch(err){showToast('Revert failed: '+err.message,'#dc2626')}
     setSaving(false)
@@ -536,7 +712,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
       if(row._table==='adm_flat_fees'){aType='flat_fee';aRef=sourceRef.flatFee(gcc,row.month,row.year)}
       if(row._table==='adm_course_fees'){aType='course_fee';aRef=sourceRef.courseFee(gcc,row.for_month,row.year)}
       if(row._table==='adm_fee_collections'){aType=row.fee_type==='advance'?'advance_fee':'adm_fee';aRef=row.fee_type==='admission'?sourceRef.admission(gcc):row.fee_type==='advance'?row.id:null}
-      await correctFeeCollectionDate({table:row._table,id:row.id,newDate,accountSourceRef:aRef,accountSourceType:aType})
+      await correctFeeCollectionDate({table:row._table,id:row.id,newDate,accountSourceRef:aRef,accountSourceType:aType,correctedBy:currentUser?.userName||currentUser?.name||'Admin'})
       showToast(`📅 Date corrected to ${newDate}`,'#1e3a5f');onRefresh()
     }catch(err){showToast('Date fix failed: '+err.message,'#dc2626')}
     setSaving(false)
@@ -559,7 +735,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
         </div>
       </div>
       <div style={{display:'flex',borderBottom:'2px solid #f1f5f9',background:'#f8fafc'}}>
-        {[{id:'history',l:'📋 Fee History'},{id:'revert',l:isAdmin?'↩️ Revert / Fix (Admin)':'🔒 Admin Only'}].map(t=>(<button key={t.id} onClick={()=>isAdmin||t.id==='history'?setTab(t.id):null} style={{padding:'10px 18px',border:'none',borderBottom:tab===t.id?'2px solid #1e3a5f':'2px solid transparent',background:'none',cursor:isAdmin||t.id==='history'?'pointer':'not-allowed',fontSize:12,fontWeight:tab===t.id?800:500,color:tab===t.id?'#1e3a5f':isAdmin||t.id==='history'?'#64748b':'#cbd5e1',marginBottom:-2}}>{t.l}</button>))}
+        {[{id:'history',l:'📋 Fee History'},{id:'activity',l:isAdmin?'🕒 Activity Log':'🔒 Admin Only'},{id:'revert',l:isAdmin?'↩️ Revert / Fix (Admin)':'🔒 Admin Only'}].map(t=>(<button key={t.id} onClick={()=>isAdmin||t.id==='history'?setTab(t.id):null} style={{padding:'10px 18px',border:'none',borderBottom:tab===t.id?'2px solid #1e3a5f':'2px solid transparent',background:'none',cursor:isAdmin||t.id==='history'?'pointer':'not-allowed',fontSize:12,fontWeight:tab===t.id?800:500,color:tab===t.id?'#1e3a5f':isAdmin||t.id==='history'?'#64748b':'#cbd5e1',marginBottom:-2}}>{t.l}</button>))}
       </div>
       {tab==='history'&&(
         <div style={{padding:'0 0 4px'}}>
@@ -574,6 +750,9 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
           )}
           <div style={{padding:'12px 16px',borderTop:'1px solid #f1f5f9'}}><button onClick={()=>onCollect(student)} style={{width:'100%',padding:'10px',borderRadius:8,background:'linear-gradient(135deg,#1e3a5f,#3730a3)',color:'white',border:'none',fontSize:13,fontWeight:800,cursor:'pointer'}}>💳 Collect Fee for {student.name.split(' ')[0]}</button></div>
         </div>
+      )}
+      {tab==='activity'&&isAdmin&&(
+        <StudentActivityLog gcc={gcc} timelineIds={timeline.map(r=>String(r.id))} />
       )}
       {tab==='revert'&&isAdmin&&(
         <div style={{padding:'4px 0'}}>
@@ -1497,7 +1676,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const [payMode,     setPayMode]     = useState('Cash')
   const [payDate,     setPayDate]     = useState(today())
   const [txnRef,      setTxnRef]      = useState('')
-  const [collectedBy, setCollectedBy] = useState('Admin')
+  const [collectedBy, setCollectedBy] = useState(currentUser?.userName || currentUser?.name || '')
   const [saving,      setSaving]      = useState(false)
   const [toast,       setToast]       = useState(null)
   // Populated right after a successful collectFee() — drives the "Send
@@ -1526,6 +1705,14 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // ── Async flat fees + rates ───────────────────────────────────────────────
   const [flatFees,  setFlatFees]  = useState([])
   const [feeRates,  setFeeRates]  = useState({ flatFee: 0, courseFee: 0, admissionFee: ADM_FEE_BASE })
+
+  // currentUser can arrive asynchronously (auth resolving after mount) —
+  // backfill collectedBy once it's available if the field is still empty,
+  // without ever overwriting something staff already typed in.
+  useEffect(() => {
+    const authName = currentUser?.userName || currentUser?.name
+    if (authName && !collectedBy) setCollectedBy(authName)
+  }, [currentUser])
 
   useEffect(() => {
     if (!student) return
@@ -1707,7 +1894,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) { showToast('Invalid date — use YYYY-MM-DD', '#dc2626'); return }
     setSaving(true)
     try {
-      await correctFeeCollectionDate({ table, id, newDate, accountSourceRef, accountSourceType })
+      await correctFeeCollectionDate({ table, id, newDate, accountSourceRef, accountSourceType, correctedBy: currentUser?.userName || currentUser?.name || 'Admin' })
       showToast(`📅 Date corrected to ${newDate}`, '#1e3a5f')
       onRefresh()
     } catch (err) {
@@ -1798,6 +1985,19 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       showToast('Admission Date is required before collecting fees — set it below.', '#dc2626')
       return
     }
+    // ✦ Bug fix: "Collected By" defaulted to the literal text 'Admin' and
+    // could be cleared/left blank with nothing stopping submission — every
+    // payment needs a real name on file for accountability. Also require a
+    // transaction reference for non-cash modes, since a UPI/bank/cheque
+    // payment with no ref number can't be reconciled or looked up later.
+    if (!collectedBy.trim()) {
+      showToast('Collected By is required — enter the name of the staff collecting this payment.', '#dc2626')
+      return
+    }
+    if (payMode !== 'Cash' && !txnRef.trim()) {
+      showToast(`Transaction reference is required for ${payMode} payments.`, '#dc2626')
+      return
+    }
     setSaving(true)
     try {
       await finalizeCollection(buildFeeItems())
@@ -1819,6 +2019,10 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     if (!student || !admRec || grandThis === 0 || razorpayBusy) return
     if (!admissionDate) {
       showToast('Admission Date is required before collecting fees — set it below.', '#dc2626')
+      return
+    }
+    if (!collectedBy.trim()) {
+      showToast('Collected By is required — enter the name of the staff on record for this payment.', '#dc2626')
       return
     }
     if (!RAZORPAY_KEY_ID) {
@@ -2482,8 +2686,14 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                 </select>
               </div>
               <div><label style={lbl}>Payment date</label><input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} style={inp} /></div>
-              <div><label style={lbl}>Transaction ref</label><input value={txnRef} onChange={e => setTxnRef(e.target.value)} placeholder="UPI / Cheque ref (optional)" style={inp} /></div>
-              <div><label style={lbl}>Collected by</label><input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} style={inp} /></div>
+              <div>
+                <label style={lbl}>Transaction ref{payMode !== 'Cash' ? ' *' : ''}</label>
+                <input value={txnRef} onChange={e => setTxnRef(e.target.value)} placeholder={payMode !== 'Cash' ? 'UPI / Cheque ref — required' : 'UPI / Cheque ref (optional)'} style={payMode !== 'Cash' && !txnRef.trim() ? { ...inp, border: '1px solid #fca5a5' } : inp} />
+              </div>
+              <div>
+                <label style={lbl}>Collected by *</label>
+                <input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Staff name" style={!collectedBy.trim() ? { ...inp, border: '1px solid #fca5a5' } : inp} />
+              </div>
             </div>
           </div>
 
@@ -2691,6 +2901,7 @@ export default function Fees() {
     { id: 'admin',     label: '🛡️ Admin View' },
     { id: 'reports',   label: '📤 Reports & Export' },
     ...(isAdmin ? [{ id: 'anomaly', label: '🔍 Anomaly Monitor' }] : []),
+    ...(isAdmin ? [{ id: 'activity', label: '🕒 Activity Log' }] : []),
   ]
 
   // ── Advanced filter state (shared across live + admin tabs) ──────────────
@@ -3214,6 +3425,9 @@ export default function Fees() {
           isAdmin={isAdmin}
           currentUser={currentUser}
         />
+      )}
+      {tab === 'activity' && (
+        <ActivityLogTab students={students} isAdmin={isAdmin} currentUser={currentUser} />
       )}
     </div>
   )
