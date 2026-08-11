@@ -83,7 +83,8 @@ const STAFF_DEPARTMENTS    = ['Academic','Hostel','Admin','Sports','Accounts','S
 const ENQ_DEF  = { student_name:'', parent_name:'', phone:'', class_interest:'', source:'', enquiry_date:today(), follow_up_date:'', status:'New', remarks:'' }
 const VIS_DEF  = { visitor_name:'', phone:'', purpose:'', meeting_with:'', in_time:'', out_time:'', visit_date:today(), id_proof:'', remarks:'' }
 const GP_DEF   = { student_name:'', class_name:'', course:'', gcc_no:'', house:'', reason:'', exit_date:today(), exit_time:'', expected_return_time:'', return_date:'', responsible_contact:'', approved_by:'', parent_informed:'No', status:'Issued', remarks:'' }
-const LA_DEF   = { student_name:'', gcc_no:'', class_name:'', house:'', course:'', reason:'', from_date:today(), to_date:'', responsible_contact:'', address:'', submitted_by:'Staff', applicant_note:'' }
+const LA_DEF   = { student_name:'', gcc_no:'', class_name:'', house:'', course:'', reason:'', from_date:today(), to_date:'', responsible_name:'', responsible_phone:'', relation_to_student:'', address:'', applicant_note:'' }
+const RELATION_OPTIONS = ['Father','Mother','Guardian','Elder Brother','Elder Sister','Uncle','Aunt','Grandfather','Grandmother','Other']
 const PI_DEF   = { parent_name:'', student_name:'', class_name:'', course:'', hostel_type:'', house:'', item_names:[], quantity:'1', received_date:today(), received_by:'', status:'Pending', remarks:'' }
 const HOSTEL_LEAVE_DEF = { student_name:'', class_name:'', house:'', course:'', hostel_type:'', departure_date:today(), return_date:'', reason:'', status:'Out', remarks:'' }
 const STAFF_LEAVE_DEF  = { staff_name:'', role:'', department:'', leave_type:'', from_date:today(), to_date:'', days:'', approved_by:'', status:'Pending', remarks:'' }
@@ -475,6 +476,40 @@ function printItemInvoice(item) {
   const pw = window.open('', '_blank', 'width=760,height=860')
   if (!pw) return
   pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 450)
+}
+
+function printLeaveApplication(item) {
+  const d = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Leave Application</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#fff;padding:32px;color:#1e293b}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:14px;margin-bottom:18px}.inst{font-size:17px;font-weight:700;color:#1e3a5f}.sub{font-size:11px;color:#64748b;margin-top:3px}.title{font-size:20px;font-weight:800;color:#1e3a5f;margin-bottom:16px;text-transform:uppercase;letter-spacing:.08em}.status{display:inline-block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;padding:4px 12px;border-radius:99px;margin-bottom:16px}.grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:20px}.cell{padding:11px 14px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}.cell:nth-child(even){border-right:none}.cell:nth-last-child(-n+2){border-bottom:none}.cl{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px}.cv{font-size:13px;font-weight:700;color:#1e293b}.declaration{font-size:11px;color:#475569;line-height:1.6;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:24px;background:#f8fafc}.sig{display:flex;justify-content:space-between;margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0;gap:16px}.sb{text-align:center;flex:1}.sl{border-top:1.5px solid #1e3a5f;margin:0 auto 6px}.st{font-size:11px;color:#64748b;font-weight:700}.sd{font-size:10px;color:#94a3b8;margin-top:2px}.ftr{margin-top:24px;text-align:center;font-size:10px;color:#94a3b8}@media print{body{padding:16px}}</style></head><body>
+<div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div><div class="sub">Khangabok, Thoubal, Manipur — 795128</div></div><div style="text-align:right"><div style="font-size:10px;color:#94a3b8">Printed</div><div style="font-weight:700;font-size:13px">${d}</div></div></div>
+<div class="title">📝 Student Leave Application</div>
+<div class="status" style="background:${item.status === 'Approved' ? '#dcfce7' : item.status === 'Rejected' ? '#fee2e2' : '#fef3c7'};color:${item.status === 'Approved' ? '#166534' : item.status === 'Rejected' ? '#991b1b' : '#92400e'}">${item.status}</div>
+<div class="grid">
+<div class="cell"><div class="cl">Student Name</div><div class="cv">${item.student_name}</div></div>
+<div class="cell"><div class="cl">GCC No.</div><div class="cv">${item.gcc_no || '—'}</div></div>
+<div class="cell"><div class="cl">Class</div><div class="cv">${item.class_name || '—'}</div></div>
+<div class="cell"><div class="cl">House</div><div class="cv">${item.house || '—'}</div></div>
+<div class="cell"><div class="cl">Reason for Leave</div><div class="cv">${item.reason}</div></div>
+<div class="cell"><div class="cl">Leave Period</div><div class="cv">${fmtDate(item.from_date)} → ${fmtDate(item.to_date)}</div></div>
+<div class="cell"><div class="cl">Name of Responsible Person</div><div class="cv">${item.responsible_name || '—'}</div></div>
+<div class="cell"><div class="cl">Relation with Student</div><div class="cv">${item.relation_to_student || '—'}</div></div>
+<div class="cell"><div class="cl">Contact No.</div><div class="cv">${item.responsible_phone || '—'}</div></div>
+<div class="cell"><div class="cl">Submitted By</div><div class="cv">${item.submitted_by || '—'}</div></div>
+<div class="cell" style="grid-column:1/-1"><div class="cl">Address</div><div class="cv">${item.address || '—'}</div></div>
+${item.applicant_note ? `<div class="cell" style="grid-column:1/-1"><div class="cl">Note</div><div class="cv">${item.applicant_note}</div></div>` : ''}
+</div>
+<div class="declaration">I hereby declare that the above information is accurate and the leave is being taken with full awareness of rules and responsibilities. I agree to abide by the leave policy of the institution.</div>
+<div class="sig">
+<div class="sb"><div class="sl"></div><div class="st">Parent / Guardian Signature</div><div class="sd">${item.responsible_name || ''}</div></div>
+<div class="sb"><div class="sl"></div><div class="st">House Master / Mistress Signature</div><div class="sd">Date: ______________</div></div>
+<div class="sb"><div class="sl"></div><div class="st">Superintendent / Administrator Signature</div><div class="sd">Date: ______________</div></div>
+</div>
+${item.status !== 'Pending' ? `<div class="ftr" style="margin-top:16px;font-style:italic">Reviewed by ${item.reviewed_by || '—'}${item.reviewer_role ? ' (' + item.reviewer_role + ')' : ''} on ${fmtDate(item.reviewed_at)}${item.rejection_reason ? ' · Reason: ' + item.rejection_reason : ''}</div>` : ''}
+<div class="ftr">GNSI · Leave Application Record · Computer generated · ${d}</div></body></html>`
+  const pw = window.open('', '_blank', 'width=720,height=900')
+  if (!pw) return
+  pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 400)
 }
 
 function printGatePass(item) {
@@ -1727,7 +1762,7 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────────────
-export default function ReceptionPage() {
+export default function ReceptionPage({ currentUser }) {
   const mob = useIsMobile()
   const [activeTab,   setActiveTab]   = useState('Student 360°')
   const [search,      setSearch]      = useState('')
@@ -1840,8 +1875,9 @@ export default function ReceptionPage() {
   // the pass keeps a trail back to the original request.
   const approveLeaveApp = async (app) => {
     if (app.status !== 'Pending') return
-    const approverName = window.prompt('Approved by (name):', 'Receptionist')
-    if (approverName === null) return
+    const approverName = currentUser?.userName || currentUser?.name || 'Receptionist'
+    const approverRole = currentUser?.role || ''
+    if (!window.confirm(`Approve this leave application as ${approverName}?`)) return
     setSaving(true)
     const { data: existing } = await supabase.from('reception_gatepasses').select('id').eq('student_name', app.student_name).in('status', ['Issued', 'Exited']).is('deleted_at', null)
     if (existing && existing.length > 0) {
@@ -1853,13 +1889,13 @@ export default function ReceptionPage() {
       student_name: app.student_name, class_name: app.class_name, course: app.course,
       gcc_no: app.gcc_no, house: app.house, reason: app.reason,
       exit_date: app.from_date, return_date: app.to_date,
-      responsible_contact: app.responsible_contact,
-      approved_by: approverName || 'Receptionist', parent_informed: 'Yes', status: 'Issued',
+      responsible_contact: `${app.responsible_name || ''}${app.relation_to_student ? ' (' + app.relation_to_student + ')' : ''} · ${app.responsible_phone || ''}`,
+      approved_by: approverName, parent_informed: 'Yes', status: 'Issued',
       remarks: app.address ? `Address: ${app.address}` : null,
     }).select().single()
     if (gpErr) { alert(gpErr.message); setSaving(false); return }
     await supabase.from('leave_applications').update({
-      status: 'Approved', reviewed_by: approverName || 'Receptionist',
+      status: 'Approved', reviewed_by: approverName, reviewer_role: approverRole,
       reviewed_at: new Date().toISOString(), gate_pass_id: gp.id,
     }).eq('id', app.id)
     setSaving(false)
@@ -1870,8 +1906,9 @@ export default function ReceptionPage() {
     if (app.status !== 'Pending') return
     const reason = window.prompt('Reason for rejecting this leave application:')
     if (reason === null) return
+    const reviewerName = currentUser?.userName || currentUser?.name || 'Receptionist'
     await supabase.from('leave_applications').update({
-      status: 'Rejected', reviewed_by: 'Receptionist',
+      status: 'Rejected', reviewed_by: reviewerName, reviewer_role: currentUser?.role || '',
       reviewed_at: new Date().toISOString(), rejection_reason: reason || null,
     }).eq('id', app.id)
     fetchAll()
@@ -2223,7 +2260,12 @@ export default function ReceptionPage() {
                   if (!laForm.student_name?.trim()) { alert('Please select a student before submitting.'); return }
                   if (!laForm.reason?.trim()) { alert('Reason is required.'); return }
                   if (!laForm.to_date) { alert('Return date is required.'); return }
-                  handleInsert('leave_applications', { ...laForm, student_name: laStudent?.name || laForm.student_name, status: 'Pending' }, () => { setLaForm({ ...LA_DEF, from_date: today() }); setLaStudent(null); setLaResetKey(k => k + 1) })
+                  if (!laForm.responsible_name?.trim()) { alert('Name of responsible person is required.'); return }
+                  if (!laForm.responsible_phone?.trim()) { alert('Contact number of responsible person is required.'); return }
+                  if (!laForm.relation_to_student?.trim()) { alert('Relation with student is required.'); return }
+                  if (!laForm.address?.trim()) { alert('Address is required.'); return }
+                  const submittedByName = currentUser?.userName || currentUser?.name || 'Staff'
+                  handleInsert('leave_applications', { ...laForm, student_name: laStudent?.name || laForm.student_name, status: 'Pending', submitted_by: submittedByName }, () => { setLaForm({ ...LA_DEF, from_date: today() }); setLaStudent(null); setLaResetKey(k => k + 1) })
                 }}>
                   <div style={grid2(mob)}>
                     <div style={span2}>
@@ -2236,11 +2278,15 @@ export default function ReceptionPage() {
                     <FormField label="GCC No."><FormInput field="gcc_no" value={laForm.gcc_no} onChange={set_la} placeholder="Auto-filled on student select" /></FormField>
                     <FormField label="House"><FormInput field="house" value={laForm.house} onChange={set_la} placeholder="Auto-filled on student select" /></FormField>
                     <FormField label="Reason *"><FormSelect field="reason" value={laForm.reason} onChange={set_la} options={GP_REASON_OPTIONS} placeholder="Select reason…" /></FormField>
-                    <FormField label="Submitted By"><FormSelect field="submitted_by" value={laForm.submitted_by} onChange={set_la} options={['Staff', 'Parent']} /></FormField>
+                    <FormField label="Submitted By">
+                      <input readOnly value={currentUser?.userName || currentUser?.name || 'Staff'} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1.5px solid ${C.slate[200]}`, background: C.slate[50], color: C.slate[500], fontSize: 13, fontFamily: font, boxSizing: 'border-box' }} />
+                    </FormField>
                     <FormField label="Date of leave"><FormInput field="from_date" value={laForm.from_date} onChange={set_la} type="date" /></FormField>
                     <FormField label="Date of return *"><FormInput field="to_date" value={laForm.to_date} onChange={set_la} type="date" /></FormField>
-                    <FormField label="Responsible Person / Contact"><FormInput field="responsible_contact" value={laForm.responsible_contact} onChange={set_la} placeholder="Name and phone number" /></FormField>
-                    <FormField label="Address"><FormInput field="address" value={laForm.address} onChange={set_la} /></FormField>
+                    <FormField label="Name of Responsible Person *"><FormInput field="responsible_name" value={laForm.responsible_name} onChange={set_la} placeholder="Full name" /></FormField>
+                    <FormField label="Relation with Student *"><FormSelect field="relation_to_student" value={laForm.relation_to_student} onChange={set_la} options={RELATION_OPTIONS} placeholder="Select relation…" /></FormField>
+                    <FormField label="Contact No. *"><FormInput field="responsible_phone" value={laForm.responsible_phone} onChange={set_la} placeholder="10-digit phone number" /></FormField>
+                    <FormField label="Address *"><FormInput field="address" value={laForm.address} onChange={set_la} placeholder="Full address" /></FormField>
                     <div style={span2}><FormField label="Note (optional)"><FormTextarea field="applicant_note" value={laForm.applicant_note} onChange={set_la} /></FormField></div>
                   </div>
                   <SaveBtn label="Submit Leave Application" saving={saving} />
@@ -2257,16 +2303,21 @@ export default function ReceptionPage() {
                   { key: 'house',        label: 'House' },
                   { key: 'reason',       label: 'Reason' },
                   { key: 'to_date',      label: 'Return',  render: r => fmtDate(r.to_date) },
+                  { key: 'responsible_name', label: 'Responsible', render: r => <span style={{ fontFamily: font }}>{r.responsible_name}{r.relation_to_student ? ` (${r.relation_to_student})` : ''}</span> },
                   { key: 'submitted_by', label: 'By' },
                   { key: 'status',       label: 'Status',  render: r => <Pill label={r.status} /> },
                   { key: '_q',           label: 'Actions', render: r => (
                     r.status === 'Pending' ? (
                       <div style={{ display: 'flex', gap: 4 }}>
+                        <button onClick={() => printLeaveApplication(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️</button>
                         <button onClick={() => approveLeaveApp(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>✓ Approve</button>
                         <button onClick={() => rejectLeaveApp(r)} style={{ ...delBtn, background: '#fee2e2', color: C.red }}>✕ Reject</button>
                       </div>
                     ) : (
-                      <span style={{ fontSize: 11, color: C.slate[400], fontFamily: font }}>{r.reviewed_by ? `By ${r.reviewed_by}` : '—'}</span>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button onClick={() => printLeaveApplication(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️</button>
+                        <span style={{ fontSize: 11, color: C.slate[400], fontFamily: font, alignSelf: 'center' }}>{r.reviewed_by ? `By ${r.reviewed_by}` : '—'}</span>
+                      </div>
                     )
                   )},
                 ]}
@@ -2278,15 +2329,19 @@ export default function ReceptionPage() {
                   meta: r => [
                     `📅 ${fmtDate(r.from_date)} → ${fmtDate(r.to_date)}`,
                     r.gcc_no ? `GCC ${r.gcc_no}` : null,
+                    r.responsible_name ? `Responsible: ${r.responsible_name} (${r.relation_to_student || '—'})` : null,
                     `By: ${r.submitted_by}`,
                   ],
                   actions: r => (
-                    r.status === 'Pending' ? (
-                      <div style={{ display: 'flex', gap: 5 }}>
-                        <button onClick={() => approveLeaveApp(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>✓ Approve</button>
-                        <button onClick={() => rejectLeaveApp(r)} style={{ ...delBtn, background: '#fee2e2', color: C.red, fontSize: 11 }}>✕ Reject</button>
-                      </div>
-                    ) : null
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      <button onClick={() => printLeaveApplication(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️</button>
+                      {r.status === 'Pending' && (
+                        <>
+                          <button onClick={() => approveLeaveApp(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>✓ Approve</button>
+                          <button onClick={() => rejectLeaveApp(r)} style={{ ...delBtn, background: '#fee2e2', color: C.red, fontSize: 11 }}>✕ Reject</button>
+                        </>
+                      )}
+                    </div>
                   ),
                 }}
               />
