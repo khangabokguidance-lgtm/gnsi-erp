@@ -482,96 +482,115 @@ function printLeaveApplication(item, printedByName) {
   const d = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
   const t = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
   const refNo = `GNSI/LA/${(item.gcc_no || '0000')}/${String(item.id).padStart(4, '0')}`
-  const statusColor = item.status === 'Approved' ? '#166534' : item.status === 'Rejected' ? '#991b1b' : '#92400e'
-  const statusBg    = item.status === 'Approved' ? '#dcfce7' : item.status === 'Rejected' ? '#fee2e2' : '#fef3c7'
+  const statusColor = item.status === 'Approved' ? '#1b5e20' : item.status === 'Rejected' ? '#8b1a1a' : '#8a5a00'
+  const statusBg    = item.status === 'Approved' ? '#eaf6ea' : item.status === 'Rejected' ? '#fbe9e9' : '#fbf1de'
+  const field = (label, value, weight) => `<div class="fld"><span class="fl">${label}</span><span class="fv"${weight ? ` style="font-weight:${weight}"` : ''}>${value || '—'}</span></div>`
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Leave Application — ${refNo}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Times New Roman',Georgia,serif;background:#fff;color:#1a1a1a;padding:0}
-.page{max-width:780px;margin:0 auto;padding:28px 36px;border:2.5px solid #14274e;position:relative}
-.page::before{content:'';position:absolute;inset:6px;border:1px solid #14274e}
-.inner{position:relative;padding:14px 6px 0}
-.emblem{width:56px;height:56px;border-radius:50%;border:2px solid #b8860b;display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-size:22px;font-weight:900;color:#14274e;font-family:Georgia,serif}
-.hdr{text-align:center;border-bottom:2.5px double #14274e;padding-bottom:12px;margin-bottom:16px}
-.inst{font-size:19px;font-weight:700;color:#14274e;letter-spacing:.03em}
-.inst-hi{font-size:11px;color:#475569;margin-top:2px;font-style:italic}
-.sub{font-size:11px;color:#475569;margin-top:3px}
-.doctitle{font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#14274e;margin-top:10px;padding-top:8px;border-top:1px solid #cbd5e1}
-.metarow{display:flex;justify-content:space-between;font-size:11px;color:#475569;margin:10px 0 16px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0}
-.metarow b{color:#14274e}
-.status{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;padding:3px 12px;border-radius:2px;border:1px solid ${statusColor}}
-.sectitle{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#14274e;border-bottom:1px solid #14274e;padding-bottom:3px;margin:16px 0 8px}
-.grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid #cbd5e1}
-.cell{padding:9px 13px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}
-.cell:nth-child(even){border-right:none}
-.cell:nth-last-child(-n+2){border-bottom:none}
-.cl{font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
-.cv{font-size:13px;font-weight:600;color:#14274e}
-.declaration{font-size:10.5px;color:#334155;line-height:1.65;border:1px solid #cbd5e1;padding:11px 13px;margin:16px 0;background:#fdfdfb;font-style:italic}
-.sig{display:flex;justify-content:space-between;margin-top:36px;padding-top:10px;gap:14px}
+@page{margin:14mm}
+body{font-family:'Times New Roman',Georgia,serif;background:#fdfcf8;color:#1c1c1c}
+.sheet{max-width:760px;margin:0 auto;padding:20px;position:relative}
+.frame{border:3px double #0d2140;padding:3px;position:relative}
+.frame-inner{border:1px solid #0d2140;padding:26px 34px 30px;position:relative;background:#fffefb}
+.watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-28deg);font-size:78px;font-weight:700;color:rgba(13,33,64,0.045);letter-spacing:6px;pointer-events:none;white-space:nowrap;z-index:0;font-family:Georgia,serif}
+.content{position:relative;z-index:1}
+.crestrow{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:6px}
+.crest{width:64px;height:64px;border-radius:50%;border:2.5px solid #a9791a;background:radial-gradient(circle at 35% 30%,#f8eecb,#0d2140 130%);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.crest-inner{width:50px;height:50px;border-radius:50%;border:1px solid #a9791a;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#f8eecb;text-align:center;line-height:1.15;letter-spacing:.03em}
+.hdrtext{text-align:center}
+.inst{font-size:21px;font-weight:700;color:#0d2140;letter-spacing:.04em}
+.inst-hi{font-size:10.5px;color:#5a5a52;margin-top:2px;font-style:italic;letter-spacing:.02em}
+.sub{font-size:10.5px;color:#5a5a52;margin-top:2px}
+.rule{border:none;border-top:2px solid #0d2140;border-bottom:1px solid #0d2140;height:4px;margin:14px 0 12px}
+.doctitle{text-align:center;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.16em;color:#0d2140;margin-bottom:14px}
+.metabar{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;color:#3a3a34;margin-bottom:18px;padding:7px 0;border-top:1px solid #c9c2a8;border-bottom:1px solid #c9c2a8}
+.metabar b{color:#0d2140;font-family:'Courier New',monospace;letter-spacing:.02em}
+.status{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;padding:3px 14px;border:1px solid ${statusColor};color:${statusColor};background:${statusBg}}
+.sectitle{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#0d2140;margin:18px 0 6px;display:flex;align-items:center;gap:8px}
+.sectitle::after{content:'';flex:1;border-bottom:1px solid #a9791a}
+.fldwrap{border-left:2px solid #0d2140;padding-left:14px}
+.fld{display:flex;padding:5px 0;border-bottom:1px dotted #c9c2a8;font-size:12.5px}
+.fld:last-child{border-bottom:none}
+.fl{width:230px;flex-shrink:0;color:#5a5a52;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding-top:1px}
+.fv{color:#0d2140;font-weight:700}
+.declaration{font-size:10.5px;color:#3a3a34;line-height:1.7;padding:13px 16px;margin:20px 0 10px;font-style:italic;border-top:1px solid #a9791a;border-bottom:1px solid #a9791a;text-align:justify}
+.sig{display:flex;justify-content:space-between;margin-top:40px;gap:16px}
 .sb{text-align:center;flex:1}
-.sl{border-top:1px solid #1a1a1a;margin:34px auto 5px}
-.st{font-size:10px;color:#14274e;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
-.sd{font-size:9.5px;color:#94a3b8;margin-top:2px}
-.official-note{margin-top:20px;font-size:9.5px;color:#64748b;text-align:center;font-style:italic}
-.ftr{margin-top:18px;padding-top:10px;border-top:1px solid #cbd5e1;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8}
-@media print{body{padding:0}.page{border-width:2px;margin:0;max-width:none}}
+.sl{border-top:1px solid #1c1c1c;margin:40px 6px 6px}
+.st{font-size:9.5px;color:#0d2140;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.sd{font-size:9px;color:#8a8578;margin-top:2px}
+.official-note{margin-top:18px;font-size:9.5px;color:#5a5a52;text-align:center;font-style:italic}
+.seal{position:absolute;bottom:96px;right:60px;width:78px;height:78px;border:2px solid ${statusColor};border-radius:50%;display:${item.status === 'Approved' ? 'flex' : 'none'};align-items:center;justify-content:center;transform:rotate(-14deg);opacity:.85}
+.seal-inner{width:64px;height:64px;border:1px solid ${statusColor};border-radius:50%;display:flex;align-items:center;justify-content:center;text-align:center;font-size:8px;font-weight:700;color:${statusColor};letter-spacing:.06em;line-height:1.3}
+.ftr{margin-top:22px;padding-top:8px;border-top:1px solid #c9c2a8;display:flex;justify-content:space-between;font-size:8.5px;color:#8a8578;font-family:'Courier New',monospace;letter-spacing:.02em}
+@media print{body{background:#fff}.sheet{padding:0}}
 </style></head><body>
-<div class="page"><div class="inner">
-<div class="hdr">
-<div class="emblem">GN</div>
+<div class="sheet"><div class="frame"><div class="frame-inner">
+<div class="watermark">GNSI</div>
+<div class="content">
+
+<div class="crestrow">
+<div class="crest"><div class="crest-inner">GN<br/>S I</div></div>
+</div>
+<div class="hdrtext">
 <div class="inst">GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE</div>
 <div class="inst-hi">Residential Coaching Institute for JNVST · AISSEE · RMS</div>
 <div class="sub">Khangabok, Thoubal District, Manipur — 795128</div>
-<div class="doctitle">Student Leave Application — Official Record</div>
 </div>
-<div class="metarow">
-<span>Reference No. <b>${refNo}</b></span>
-<span class="status" style="color:${statusColor};background:${statusBg}">${item.status}</span>
+<hr class="rule" />
+<div class="doctitle">Student Leave Application — Official Record</div>
+
+<div class="metabar">
+<span>Ref. No. <b>${refNo}</b></span>
+<span class="status">${item.status}</span>
 <span>Date Issued <b>${d}</b></span>
 </div>
 
-<div class="sectitle">Student particulars</div>
-<div class="grid">
-<div class="cell"><div class="cl">Student Name</div><div class="cv">${item.student_name}</div></div>
-<div class="cell"><div class="cl">GCC No.</div><div class="cv">${item.gcc_no || '—'}</div></div>
-<div class="cell"><div class="cl">Class</div><div class="cv">${item.class_name || '—'}</div></div>
-<div class="cell"><div class="cl">House</div><div class="cv">${item.house || '—'}</div></div>
+<div class="sectitle">I. Student particulars</div>
+<div class="fldwrap">
+${field('Student name', item.student_name)}
+${field('GCC number', item.gcc_no)}
+${field('Class', item.class_name)}
+${field('House', item.house)}
 </div>
 
-<div class="sectitle">Leave particulars</div>
-<div class="grid">
-<div class="cell"><div class="cl">Reason for Leave</div><div class="cv">${item.reason}</div></div>
-<div class="cell"><div class="cl">Leave Period</div><div class="cv">${fmtDate(item.from_date)} — ${fmtDate(item.to_date)}</div></div>
-${item.applicant_note ? `<div class="cell" style="grid-column:1/-1"><div class="cl">Additional Note</div><div class="cv" style="font-weight:400">${item.applicant_note}</div></div>` : ''}
+<div class="sectitle">II. Leave particulars</div>
+<div class="fldwrap">
+${field('Reason for leave', item.reason)}
+${field('Leave period', `${fmtDate(item.from_date)}  to  ${fmtDate(item.to_date)}`)}
+${item.applicant_note ? field('Additional note', item.applicant_note, 400) : ''}
 </div>
 
-<div class="sectitle">Responsible person / guardian particulars</div>
-<div class="grid">
-<div class="cell"><div class="cl">Name of Responsible Person</div><div class="cv">${item.responsible_name || '—'}</div></div>
-<div class="cell"><div class="cl">Relation with Student</div><div class="cv">${item.relation_to_student || '—'}</div></div>
-<div class="cell"><div class="cl">Contact No.</div><div class="cv">${item.responsible_phone || '—'}</div></div>
-<div class="cell"><div class="cl">Submitted By (Staff)</div><div class="cv">${item.submitted_by || '—'}</div></div>
-<div class="cell" style="grid-column:1/-1"><div class="cl">Address</div><div class="cv" style="font-weight:400">${item.address || '—'}</div></div>
+<div class="sectitle">III. Responsible person / guardian particulars</div>
+<div class="fldwrap">
+${field('Name of responsible person', item.responsible_name)}
+${field('Relation with student', item.relation_to_student)}
+${field('Contact number', item.responsible_phone)}
+${field('Address', item.address, 400)}
+${field('Submitted by (staff)', item.submitted_by)}
 </div>
 
 <div class="declaration">I hereby declare that the above information is accurate to the best of my knowledge and that the leave is being taken with full awareness of the rules and responsibilities of the institution. I undertake to abide by the leave policy of Guidance Navodaya &amp; Sainik Institute at all times.</div>
 
 <div class="sig">
 <div class="sb"><div class="sl"></div><div class="st">Parent / Guardian</div><div class="sd">${item.responsible_name || 'Signature'}</div></div>
-<div class="sb"><div class="sl"></div><div class="st">House Master / Mistress</div><div class="sd">Signature &amp; Date</div></div>
-<div class="sb"><div class="sl"></div><div class="st">Superintendent / Administrator</div><div class="sd">Signature &amp; Date</div></div>
+<div class="sb"><div class="sl"></div><div class="st">House Master / Mistress</div><div class="sd">Signature &amp; date</div></div>
+<div class="sb"><div class="sl"></div><div class="st">Superintendent / Administrator</div><div class="sd">Signature &amp; date</div></div>
 </div>
 
 ${item.status !== 'Pending' ? `<div class="official-note">This application was ${item.status.toLowerCase()} by ${item.reviewed_by || '—'}${item.reviewer_role ? ', ' + item.reviewer_role : ''}, on ${fmtDate(item.reviewed_at)}.${item.rejection_reason ? ' Reason: ' + item.rejection_reason + '.' : ''}</div>` : ''}
 
+<div class="seal"><div class="seal-inner">GNSI<br/>VERIFIED<br/>${refNo.split('/').pop()}</div></div>
+
 <div class="ftr">
-<span>Printed by ${printedByName || 'Staff'} on ${d} at ${t}</span>
+<span>Printed by ${printedByName || 'Staff'} · ${d} ${t}</span>
 <span>${refNo}</span>
 </div>
-</div></div>
+</div>
+</div></div></div>
 </body></html>`
-  const pw = window.open('', '_blank', 'width=780,height=960')
+  const pw = window.open('', '_blank', 'width=800,height=1000')
   if (!pw) return
   pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 400)
 }
@@ -1319,7 +1338,9 @@ function useAutoRefresh(callback, intervalSec = 60) {
 }
 
 // ── MONITORS TAB ──────────────────────────────────────────────────────────────
-function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange, fetchAll }) {
+function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange, fetchAll, currentUser }) {
+  const monUserRole = (currentUser?.role || '').toLowerCase()
+  const isGatePassIssuer = monUserRole === 'admin' || monUserRole === 'administrator' || monUserRole === 'superintendent' || monUserRole === 'hostel superintendent'
   const mob = useIsMobile()
   const [subTab,        setSubTab]       = useState('gate')
   const [saving,        setSaving]       = useState(false)
@@ -1383,7 +1404,33 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
   const staffPending  = staffRecords.filter(r => r.status === 'Pending')
   const staffOnLeave  = staffRecords.filter(r => r.status === 'Approved')
 
-  const updateGPStatusMon = async (id, from, to) => { if (!canTransition(from, to)) return; await supabase.from('reception_gatepasses').update({ status: to }).eq('id', id); fetchAll() }
+  const updateGPStatusMon = async (id, from, to) => { if (!isGatePassIssuer) return; if (!canTransition(from, to)) return; await supabase.from('reception_gatepasses').update({ status: to }).eq('id', id); fetchAll() }
+
+  // Marking a student back "In" is open to any staff — no issuer restriction —
+  // but if the check-in happens after the pass's expected return, it's a
+  // mandatory-reason event: block silent late returns from just disappearing
+  // into "Returned" with no record of why.
+  const checkInGatePassMon = async (record) => {
+    if (!canTransition(record.status, 'Returned')) return
+    const now = new Date()
+    let isLate = false
+    if (record.return_date && now > new Date(`${record.return_date}T23:59:59`)) isLate = true
+    else if (record.expected_return_time && record.exit_date) {
+      const expected = new Date(`${record.exit_date}T${record.expected_return_time}`)
+      if (now > expected) isLate = true
+    }
+    let lateReason = null
+    if (isLate) {
+      lateReason = window.prompt(`${record.student_name} is returning late. Enter the reason for the late return:`)
+      if (lateReason === null) return
+      if (!lateReason.trim()) { alert('A reason is required for a late return.'); return }
+    }
+    await supabase.from('reception_gatepasses').update({
+      status: 'Returned', actual_return_at: now.toISOString(),
+      is_late: isLate, late_reason: isLate ? lateReason.trim() : null,
+    }).eq('id', record.id)
+    fetchAll()
+  }
   const updateHLStatus    = async (id, from, to) => { if (!canTransition(from, to)) return; await supabase.from('hostel_leave_records').update({ status: to }).eq('id', id); loadHL() }
   const updateStaffStatus = async (id, from, to) => { if (!canTransition(from, to)) return; await supabase.from('staff_leave_requests').update({ status: to }).eq('id', id); loadStaff() }
 
@@ -1512,8 +1559,8 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                     ].filter(Boolean)}
                     elapsedRecord={g} statusLabel={g.status}
                     actions={[
-                      canTransition(g.status, 'Exited')   && actionBtn('→ Out',      () => updateGPStatusMon(g.id, g.status, 'Exited'),   { background: '#fee2e2', color: C.red     }),
-                      canTransition(g.status, 'Returned') && actionBtn('↩ Returned', () => updateGPStatusMon(g.id, g.status, 'Returned'), { background: '#dcfce7', color: '#166534' }),
+                      isGatePassIssuer && canTransition(g.status, 'Exited')   && actionBtn('→ Out',      () => updateGPStatusMon(g.id, g.status, 'Exited'),   { background: '#fee2e2', color: C.red     }),
+                      canTransition(g.status, 'Returned') && actionBtn('↩ Returned', () => checkInGatePassMon(g), { background: '#dcfce7', color: '#166534' }),
                       actionBtn('🖨️', () => printGatePass(g), { background: '#fef3c7', color: '#92400e' }),
                     ].filter(Boolean)}
                   />
@@ -1539,11 +1586,11 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                   { key: 'reason',          label: 'Reason' },
                   { key: 'expected_return_time', label: 'Return By', render: r => r.expected_return_time ? <span style={{ color: C.amber, fontWeight: 700, fontFamily: font }}>{r.expected_return_time}</span> : '—' },
                   { key: 'parent_informed', label: 'Parent',  render: r => <span style={{ color: r.parent_informed === 'Yes' ? C.emerald : C.red, fontWeight: 700, fontFamily: font }}>{r.parent_informed}</span> },
-                  { key: 'status',          label: 'Status',  render: r => <Pill label={r.status} /> },
+                  { key: 'status',          label: 'Status',  render: r => <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Pill label={r.status} />{r.is_late && <span style={{ fontSize: 10, fontWeight: 700, color: C.red, background: '#fee2e2', borderRadius: 6, padding: '2px 6px', fontFamily: font }}>⚠ Late</span>}</span> },
                   { key: '_a',              label: 'Actions', render: r => (
                     <div style={{ display: 'flex', gap: 4 }}>
-                      {canTransition(r.status, 'Exited')   && <button onClick={() => updateGPStatusMon(r.id, r.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red     }}>→ Out</button>}
-                      {canTransition(r.status, 'Returned') && <button onClick={() => updateGPStatusMon(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>↩ In</button>}
+                      {isGatePassIssuer && canTransition(r.status, 'Exited')   && <button onClick={() => updateGPStatusMon(r.id, r.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red     }}>→ Out</button>}
+                      {canTransition(r.status, 'Returned') && <button onClick={() => checkInGatePassMon(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>↩ In</button>}
                       <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️</button>
                     </div>
                   )},
@@ -1560,8 +1607,8 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                   ],
                   actions: r => (
                     <div style={{ display: 'flex', gap: 5 }}>
-                      {canTransition(r.status, 'Exited')   && <button onClick={() => updateGPStatusMon(r.id, r.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red,     fontSize: 11 }}>→ Out</button>}
-                      {canTransition(r.status, 'Returned') && <button onClick={() => updateGPStatusMon(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>↩ In</button>}
+                      {isGatePassIssuer && canTransition(r.status, 'Exited')   && <button onClick={() => updateGPStatusMon(r.id, r.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red,     fontSize: 11 }}>→ Out</button>}
+                      {canTransition(r.status, 'Returned') && <button onClick={() => checkInGatePassMon(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>↩ In</button>}
                       <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️</button>
                     </div>
                   ),
@@ -1828,6 +1875,8 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ReceptionPage({ currentUser }) {
   const mob = useIsMobile()
+  const userRole = (currentUser?.role || '').toLowerCase()
+  const isGatePassIssuer = userRole === 'admin' || userRole === 'administrator' || userRole === 'superintendent' || userRole === 'hostel superintendent'
   const [activeTab,   setActiveTab]   = useState('Student 360°')
   const [search,      setSearch]      = useState('')
   const [loading,     setLoading]     = useState(false)
@@ -1904,6 +1953,15 @@ export default function ReceptionPage({ currentUser }) {
 
   const handleInsert = async (table, payload, reset) => {
     setSaving(true)
+    // Direct gate pass issuing is restricted to Admin / Superintendent — the
+    // Leave Application → approve flow bypasses this (it inserts directly
+    // via approveLeaveApp, not through handleInsert), so this only blocks
+    // the standalone "Issue Gate Pass" form for other roles.
+    if (table === 'reception_gatepasses' && !isGatePassIssuer) {
+      alert('Only Admin or Superintendent can issue a gate pass directly. Use Leave Application instead.')
+      setSaving(false)
+      return
+    }
     // FEATURE 6: duplicate gate pass detection
     if (table === 'reception_gatepasses' && payload.student_name) {
       const { data: existing } = await supabase.from('reception_gatepasses').select('id').eq('student_name', payload.student_name).in('status', ['Issued', 'Exited']).is('deleted_at', null)
@@ -1939,7 +1997,29 @@ export default function ReceptionPage({ currentUser }) {
     fetchAll()
   }
 
-  const updateGPStatus = async (id, from, to) => { if (!canTransition(from, to)) return; await supabase.from('reception_gatepasses').update({ status: to }).eq('id', id); fetchAll() }
+  const updateGPStatus = async (id, from, to) => { if (!isGatePassIssuer) return; if (!canTransition(from, to)) return; await supabase.from('reception_gatepasses').update({ status: to }).eq('id', id); fetchAll() }
+
+  const checkInGatePass = async (record) => {
+    if (!canTransition(record.status, 'Returned')) return
+    const now = new Date()
+    let isLate = false
+    if (record.return_date && now > new Date(`${record.return_date}T23:59:59`)) isLate = true
+    else if (record.expected_return_time && record.exit_date) {
+      const expected = new Date(`${record.exit_date}T${record.expected_return_time}`)
+      if (now > expected) isLate = true
+    }
+    let lateReason = null
+    if (isLate) {
+      lateReason = window.prompt(`${record.student_name} is returning late. Enter the reason for the late return:`)
+      if (lateReason === null) return
+      if (!lateReason.trim()) { alert('A reason is required for a late return.'); return }
+    }
+    await supabase.from('reception_gatepasses').update({
+      status: 'Returned', actual_return_at: now.toISOString(),
+      is_late: isLate, late_reason: isLate ? lateReason.trim() : null,
+    }).eq('id', record.id)
+    fetchAll()
+  }
 
   // Promote a Pending leave application into an Issued gate pass, and link
   // the two records both ways so the application shows what it became and
@@ -2158,7 +2238,7 @@ export default function ReceptionPage({ currentUser }) {
         )}
 
         {activeTab === 'Student 360°' && <Student360 students={students} />}
-        {activeTab === 'Monitors' && <MonitorsTab students={students} gatePasses={gatePasses} hlRecordsExternal={hlRecords} onGPStatusChange={(id, from, to) => updateGPStatus(id, from, to)} fetchAll={fetchAll} />}
+        {activeTab === 'Monitors' && <MonitorsTab students={students} gatePasses={gatePasses} hlRecordsExternal={hlRecords} onGPStatusChange={(id, from, to) => updateGPStatus(id, from, to)} fetchAll={fetchAll} currentUser={currentUser} />}
 
         {/* ── ENQUIRY ── */}
         {activeTab === 'Enquiry' && (
@@ -2440,50 +2520,63 @@ export default function ReceptionPage({ currentUser }) {
         {/* ── GATE PASS ── */}
         {activeTab === 'Gate Pass' && (
           <>
-            <Card>
-              <CardHead icon="🪪" title="Issue Gate Pass" sub="Student exit authorization" accentColor="#ca8a04" isMobile={mob} />
-              <div style={{ padding: pad }}>
-                <form onSubmit={e => {
-                  e.preventDefault()
-                  if (!gpForm.student_name?.trim()) { alert('Please select a student before issuing a gate pass.'); return }
-                  if (gpForm.parent_informed === 'No') {
-                    if (!window.confirm('⚠ Parent has NOT been informed. Issue gate pass anyway?')) return
-                  }
-                  handleInsert('reception_gatepasses', { ...gpForm, student_name: gpStudent?.name || gpForm.student_name }, () => { setGpForm({ ...GP_DEF, exit_date: today() }); setGpStudent(null); setGpResetKey(k => k + 1) })
-                }}>
-                  <div style={grid2(mob)}>
-                    <div style={span2}>
-                      <FormField label="Search & select student * (required)">
-                        <StudentAutocomplete students={students} resetKey={gpResetKey} onSelect={onSelectGP} />
-                        <StudentChip student={gpStudent} onClear={() => { setGpStudent(null); setGpForm(f => ({ ...f, student_name: '', class_name: '', course: '', gcc_no: '', house: '' })); setGpResetKey(k => k + 1) }} />
-                        {!gpStudent && <div style={{ marginTop: 6, fontSize: 12, color: '#ef4444', fontWeight: 600, fontFamily: font }}>⚠ Student must be selected</div>}
+            {isGatePassIssuer ? (
+              <Card>
+                <CardHead icon="🪪" title="Issue Gate Pass" sub="Student exit authorization — Admin / Superintendent only" accentColor="#ca8a04" isMobile={mob} />
+                <div style={{ padding: pad }}>
+                  <form onSubmit={e => {
+                    e.preventDefault()
+                    if (!isGatePassIssuer) { alert('Only Admin or Superintendent can issue a gate pass directly. Use Leave Application instead.'); return }
+                    if (!gpForm.student_name?.trim()) { alert('Please select a student before issuing a gate pass.'); return }
+                    if (gpForm.parent_informed === 'No') {
+                      if (!window.confirm('⚠ Parent has NOT been informed. Issue gate pass anyway?')) return
+                    }
+                    handleInsert('reception_gatepasses', { ...gpForm, student_name: gpStudent?.name || gpForm.student_name }, () => { setGpForm({ ...GP_DEF, exit_date: today() }); setGpStudent(null); setGpResetKey(k => k + 1) })
+                  }}>
+                    <div style={grid2(mob)}>
+                      <div style={span2}>
+                        <FormField label="Search & select student * (required)">
+                          <StudentAutocomplete students={students} resetKey={gpResetKey} onSelect={onSelectGP} />
+                          <StudentChip student={gpStudent} onClear={() => { setGpStudent(null); setGpForm(f => ({ ...f, student_name: '', class_name: '', course: '', gcc_no: '', house: '' })); setGpResetKey(k => k + 1) }} />
+                          {!gpStudent && <div style={{ marginTop: 6, fontSize: 12, color: '#ef4444', fontWeight: 600, fontFamily: font }}>⚠ Student must be selected</div>}
+                        </FormField>
+                      </div>
+                      <FormField label="Class"><FormSelect field="class_name" value={gpForm.class_name} onChange={set_gp} options={CLASS_OPTIONS} placeholder="Select class…" /></FormField>
+                      <FormField label="Course"><FormSelect field="course" value={gpForm.course} onChange={set_gp} options={COURSES} placeholder="Select course…" /></FormField>
+                      <FormField label="GCC No."><FormInput field="gcc_no" value={gpForm.gcc_no} onChange={set_gp} placeholder="Auto-filled on student select" /></FormField>
+                      <FormField label="House"><FormInput field="house" value={gpForm.house} onChange={set_gp} placeholder="Auto-filled on student select" /></FormField>
+                      <FormField label="Reason *"><FormSelect field="reason" value={gpForm.reason} onChange={set_gp} options={GP_REASON_OPTIONS} placeholder="Select reason…" /></FormField>
+                      <FormField label="Exit Date"><FormInput field="exit_date" value={gpForm.exit_date} onChange={set_gp} type="date" /></FormField>
+                      <FormField label="Exit Time"><FormInput field="exit_time" value={gpForm.exit_time} onChange={set_gp} type="time" /></FormField>
+                      {/* FEATURE 7: expected return time */}
+                      <FormField label="Expected Return Time">
+                        <FormInput field="expected_return_time" value={gpForm.expected_return_time} onChange={set_gp} type="time" placeholder="When should student return?" />
                       </FormField>
+                      <FormField label="Return Date"><FormInput field="return_date" value={gpForm.return_date} onChange={set_gp} type="date" placeholder="For multi-day leave" /></FormField>
+                      <FormField label="Responsible Person / Contact"><FormInput field="responsible_contact" value={gpForm.responsible_contact} onChange={set_gp} placeholder="Name and phone number" /></FormField>
+                      <FormField label="Approved By"><FormSelect field="approved_by" value={gpForm.approved_by} onChange={set_gp} options={APPROVED_BY_OPTIONS} placeholder="Select approver…" /></FormField>
+                      <FormField label="Parent Informed">
+                        <FormSelect field="parent_informed" value={gpForm.parent_informed} onChange={set_gp} options={['Yes', 'No']} />
+                        {gpForm.parent_informed === 'No' && <div style={{ marginTop: 5, fontSize: 12, color: '#ef4444', fontWeight: 600, fontFamily: font }}>⚠ Parent has not been informed</div>}
+                      </FormField>
+                      <FormField label="Status"><FormSelect field="status" value={gpForm.status} onChange={set_gp} options={['Issued', 'Exited', 'Returned']} /></FormField>
+                      <div style={span2}><FormField label="Remarks"><FormTextarea field="remarks" value={gpForm.remarks} onChange={set_gp} /></FormField></div>
                     </div>
-                    <FormField label="Class"><FormSelect field="class_name" value={gpForm.class_name} onChange={set_gp} options={CLASS_OPTIONS} placeholder="Select class…" /></FormField>
-                    <FormField label="Course"><FormSelect field="course" value={gpForm.course} onChange={set_gp} options={COURSES} placeholder="Select course…" /></FormField>
-                    <FormField label="GCC No."><FormInput field="gcc_no" value={gpForm.gcc_no} onChange={set_gp} placeholder="Auto-filled on student select" /></FormField>
-                    <FormField label="House"><FormInput field="house" value={gpForm.house} onChange={set_gp} placeholder="Auto-filled on student select" /></FormField>
-                    <FormField label="Reason *"><FormSelect field="reason" value={gpForm.reason} onChange={set_gp} options={GP_REASON_OPTIONS} placeholder="Select reason…" /></FormField>
-                    <FormField label="Exit Date"><FormInput field="exit_date" value={gpForm.exit_date} onChange={set_gp} type="date" /></FormField>
-                    <FormField label="Exit Time"><FormInput field="exit_time" value={gpForm.exit_time} onChange={set_gp} type="time" /></FormField>
-                    {/* FEATURE 7: expected return time */}
-                    <FormField label="Expected Return Time">
-                      <FormInput field="expected_return_time" value={gpForm.expected_return_time} onChange={set_gp} type="time" placeholder="When should student return?" />
-                    </FormField>
-                    <FormField label="Return Date"><FormInput field="return_date" value={gpForm.return_date} onChange={set_gp} type="date" placeholder="For multi-day leave" /></FormField>
-                    <FormField label="Responsible Person / Contact"><FormInput field="responsible_contact" value={gpForm.responsible_contact} onChange={set_gp} placeholder="Name and phone number" /></FormField>
-                    <FormField label="Approved By"><FormSelect field="approved_by" value={gpForm.approved_by} onChange={set_gp} options={APPROVED_BY_OPTIONS} placeholder="Select approver…" /></FormField>
-                    <FormField label="Parent Informed">
-                      <FormSelect field="parent_informed" value={gpForm.parent_informed} onChange={set_gp} options={['Yes', 'No']} />
-                      {gpForm.parent_informed === 'No' && <div style={{ marginTop: 5, fontSize: 12, color: '#ef4444', fontWeight: 600, fontFamily: font }}>⚠ Parent has not been informed</div>}
-                    </FormField>
-                    <FormField label="Status"><FormSelect field="status" value={gpForm.status} onChange={set_gp} options={['Issued', 'Exited', 'Returned']} /></FormField>
-                    <div style={span2}><FormField label="Remarks"><FormTextarea field="remarks" value={gpForm.remarks} onChange={set_gp} /></FormField></div>
+                    <SaveBtn label="Issue Gate Pass" saving={saving} />
+                  </form>
+                </div>
+              </Card>
+            ) : (
+              <Card>
+                <div style={{ padding: pad, textAlign: 'center' }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>🔒</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.slate[700], fontFamily: font, marginBottom: 6 }}>Direct gate pass issuing is restricted</div>
+                  <div style={{ fontSize: 13, color: C.slate[500], fontFamily: font, maxWidth: 440, margin: '0 auto' }}>
+                    Only Admin or Superintendent can issue a gate pass directly. To request leave for a student, submit it under the <b>Leave Application</b> tab — once approved by an authorized reviewer, the gate pass is generated automatically.
                   </div>
-                  <SaveBtn label="Issue Gate Pass" saving={saving} />
-                </form>
-              </div>
-            </Card>
+                </div>
+              </Card>
+            )}
             <Card>
               <CardHead icon="🪪" title="Gate Pass Records" sub={`${filteredRows.length} total`} accentColor="#ca8a04" isMobile={mob}
                 right={<Btn small variant="ghost" onClick={() => exportToExcel(filteredRows, [
@@ -2494,7 +2587,7 @@ export default function ReceptionPage({ currentUser }) {
                   { key: 'parent_informed', label: 'Parent' }, { key: 'status', label: 'Status' },
                 ], 'GatePasses')}>📥 Excel</Btn>}
               />
-              <RecordsTable loading={loading} rows={filteredRows} onDelete={id => handleDelete('reception_gatepasses', id)}
+              <RecordsTable loading={loading} rows={filteredRows} onDelete={isGatePassIssuer ? (id => handleDelete('reception_gatepasses', id)) : undefined}
                 columns={[
                   { key: 'exit_date',           label: 'Date',      render: r => fmtDate(r.exit_date) },
                   { key: 'student_name',         label: 'Student',   render: r => <b style={{ fontFamily: font }}>{r.student_name}</b> },
@@ -2505,12 +2598,12 @@ export default function ReceptionPage({ currentUser }) {
                   { key: 'return_date',           label: 'Return Date', render: r => r.return_date ? fmtDate(r.return_date) : '—' },
                   { key: 'expected_return_time', label: 'Return By', render: r => r.expected_return_time ? <span style={{ color: C.amber, fontWeight: 700, fontFamily: font }}>⏰ {r.expected_return_time}</span> : '—' },
                   { key: 'parent_informed',      label: 'Parent',    render: r => <span style={{ color: r.parent_informed === 'Yes' ? C.emerald : C.red, fontWeight: 700, fontFamily: font }}>{r.parent_informed}</span> },
-                  { key: 'status',               label: 'Status',    render: r => <Pill label={r.status} /> },
+                  { key: 'status',               label: 'Status',    render: r => <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Pill label={r.status} />{r.is_late && <span style={{ fontSize: 10, fontWeight: 700, color: C.red, background: '#fee2e2', borderRadius: 6, padding: '2px 6px', fontFamily: font }}>⚠ Late</span>}</span> },
                   { key: '_q',                   label: 'Actions',   render: r => (
                     <div style={{ display: 'flex', gap: 4 }}>
                       <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️</button>
-                      {canTransition(r.status, 'Exited')   && <button onClick={() => updateGPStatus(r.id, r.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red     }}>→ Out</button>}
-                      {canTransition(r.status, 'Returned') && <button onClick={() => updateGPStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>↩ In</button>}
+                      {isGatePassIssuer && canTransition(r.status, 'Exited')   && <button onClick={() => updateGPStatus(r.id, r.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red     }}>→ Out</button>}
+                      {canTransition(r.status, 'Returned') && <button onClick={() => checkInGatePass(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>↩ In</button>}
                     </div>
                   )},
                 ]}
@@ -2518,7 +2611,7 @@ export default function ReceptionPage({ currentUser }) {
                   accent: r => r.status === 'Exited' ? C.red : r.status === 'Returned' ? C.emerald : '#ca8a04',
                   title:  r => `🎓 ${r.student_name}`,
                   subtitle: r => `${r.reason} · ${r.class_name || '—'}`,
-                  badge:  r => <Pill label={r.status} />,
+                  badge:  r => <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Pill label={r.status} />{r.is_late && <span style={{ fontSize: 9, fontWeight: 700, color: C.red }}>⚠</span>}</span>,
                   meta: r => [
                     `📅 ${fmtDate(r.exit_date)}${r.exit_time ? ' ' + r.exit_time : ''}`,
                     r.gcc_no ? `GCC ${r.gcc_no}` : null,
@@ -2527,12 +2620,13 @@ export default function ReceptionPage({ currentUser }) {
                     r.expected_return_time ? `⏰ Return by: ${r.expected_return_time}` : null,
                     `Parent: ${r.parent_informed}`,
                     r.approved_by ? `By: ${r.approved_by}` : null,
+                    r.is_late && r.late_reason ? `⚠ Late: ${r.late_reason}` : null,
                   ],
                   actions: r => (
                     <div style={{ display: 'flex', gap: 5 }}>
                       <button onClick={() => printGatePass(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️</button>
-                      {canTransition(r.status, 'Exited')   && <button onClick={() => updateGPStatus(r.id, r.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red,     fontSize: 11 }}>→ Out</button>}
-                      {canTransition(r.status, 'Returned') && <button onClick={() => updateGPStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>↩ In</button>}
+                      {isGatePassIssuer && canTransition(r.status, 'Exited')   && <button onClick={() => updateGPStatus(r.id, r.status, 'Exited')}   style={{ ...delBtn, background: '#fee2e2', color: C.red,     fontSize: 11 }}>→ Out</button>}
+                      {canTransition(r.status, 'Returned') && <button onClick={() => checkInGatePass(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>↩ In</button>}
                     </div>
                   ),
                 }}
