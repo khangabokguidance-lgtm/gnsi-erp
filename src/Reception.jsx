@@ -478,36 +478,100 @@ function printItemInvoice(item) {
   pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 450)
 }
 
-function printLeaveApplication(item) {
+function printLeaveApplication(item, printedByName) {
   const d = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Leave Application</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#fff;padding:32px;color:#1e293b}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:14px;margin-bottom:18px}.inst{font-size:17px;font-weight:700;color:#1e3a5f}.sub{font-size:11px;color:#64748b;margin-top:3px}.title{font-size:20px;font-weight:800;color:#1e3a5f;margin-bottom:16px;text-transform:uppercase;letter-spacing:.08em}.status{display:inline-block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;padding:4px 12px;border-radius:99px;margin-bottom:16px}.grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:20px}.cell{padding:11px 14px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}.cell:nth-child(even){border-right:none}.cell:nth-last-child(-n+2){border-bottom:none}.cl{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px}.cv{font-size:13px;font-weight:700;color:#1e293b}.declaration{font-size:11px;color:#475569;line-height:1.6;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:24px;background:#f8fafc}.sig{display:flex;justify-content:space-between;margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0;gap:16px}.sb{text-align:center;flex:1}.sl{border-top:1.5px solid #1e3a5f;margin:0 auto 6px}.st{font-size:11px;color:#64748b;font-weight:700}.sd{font-size:10px;color:#94a3b8;margin-top:2px}.ftr{margin-top:24px;text-align:center;font-size:10px;color:#94a3b8}@media print{body{padding:16px}}</style></head><body>
-<div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div><div class="sub">Khangabok, Thoubal, Manipur — 795128</div></div><div style="text-align:right"><div style="font-size:10px;color:#94a3b8">Printed</div><div style="font-weight:700;font-size:13px">${d}</div></div></div>
-<div class="title">📝 Student Leave Application</div>
-<div class="status" style="background:${item.status === 'Approved' ? '#dcfce7' : item.status === 'Rejected' ? '#fee2e2' : '#fef3c7'};color:${item.status === 'Approved' ? '#166534' : item.status === 'Rejected' ? '#991b1b' : '#92400e'}">${item.status}</div>
+  const t = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+  const refNo = `GNSI/LA/${(item.gcc_no || '0000')}/${String(item.id).padStart(4, '0')}`
+  const statusColor = item.status === 'Approved' ? '#166534' : item.status === 'Rejected' ? '#991b1b' : '#92400e'
+  const statusBg    = item.status === 'Approved' ? '#dcfce7' : item.status === 'Rejected' ? '#fee2e2' : '#fef3c7'
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Leave Application — ${refNo}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Times New Roman',Georgia,serif;background:#fff;color:#1a1a1a;padding:0}
+.page{max-width:780px;margin:0 auto;padding:28px 36px;border:2.5px solid #14274e;position:relative}
+.page::before{content:'';position:absolute;inset:6px;border:1px solid #14274e}
+.inner{position:relative;padding:14px 6px 0}
+.emblem{width:56px;height:56px;border-radius:50%;border:2px solid #b8860b;display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-size:22px;font-weight:900;color:#14274e;font-family:Georgia,serif}
+.hdr{text-align:center;border-bottom:2.5px double #14274e;padding-bottom:12px;margin-bottom:16px}
+.inst{font-size:19px;font-weight:700;color:#14274e;letter-spacing:.03em}
+.inst-hi{font-size:11px;color:#475569;margin-top:2px;font-style:italic}
+.sub{font-size:11px;color:#475569;margin-top:3px}
+.doctitle{font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#14274e;margin-top:10px;padding-top:8px;border-top:1px solid #cbd5e1}
+.metarow{display:flex;justify-content:space-between;font-size:11px;color:#475569;margin:10px 0 16px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0}
+.metarow b{color:#14274e}
+.status{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;padding:3px 12px;border-radius:2px;border:1px solid ${statusColor}}
+.sectitle{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#14274e;border-bottom:1px solid #14274e;padding-bottom:3px;margin:16px 0 8px}
+.grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid #cbd5e1}
+.cell{padding:9px 13px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}
+.cell:nth-child(even){border-right:none}
+.cell:nth-last-child(-n+2){border-bottom:none}
+.cl{font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+.cv{font-size:13px;font-weight:600;color:#14274e}
+.declaration{font-size:10.5px;color:#334155;line-height:1.65;border:1px solid #cbd5e1;padding:11px 13px;margin:16px 0;background:#fdfdfb;font-style:italic}
+.sig{display:flex;justify-content:space-between;margin-top:36px;padding-top:10px;gap:14px}
+.sb{text-align:center;flex:1}
+.sl{border-top:1px solid #1a1a1a;margin:34px auto 5px}
+.st{font-size:10px;color:#14274e;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.sd{font-size:9.5px;color:#94a3b8;margin-top:2px}
+.official-note{margin-top:20px;font-size:9.5px;color:#64748b;text-align:center;font-style:italic}
+.ftr{margin-top:18px;padding-top:10px;border-top:1px solid #cbd5e1;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8}
+@media print{body{padding:0}.page{border-width:2px;margin:0;max-width:none}}
+</style></head><body>
+<div class="page"><div class="inner">
+<div class="hdr">
+<div class="emblem">GN</div>
+<div class="inst">GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE</div>
+<div class="inst-hi">Residential Coaching Institute for JNVST · AISSEE · RMS</div>
+<div class="sub">Khangabok, Thoubal District, Manipur — 795128</div>
+<div class="doctitle">Student Leave Application — Official Record</div>
+</div>
+<div class="metarow">
+<span>Reference No. <b>${refNo}</b></span>
+<span class="status" style="color:${statusColor};background:${statusBg}">${item.status}</span>
+<span>Date Issued <b>${d}</b></span>
+</div>
+
+<div class="sectitle">Student particulars</div>
 <div class="grid">
 <div class="cell"><div class="cl">Student Name</div><div class="cv">${item.student_name}</div></div>
 <div class="cell"><div class="cl">GCC No.</div><div class="cv">${item.gcc_no || '—'}</div></div>
 <div class="cell"><div class="cl">Class</div><div class="cv">${item.class_name || '—'}</div></div>
 <div class="cell"><div class="cl">House</div><div class="cv">${item.house || '—'}</div></div>
+</div>
+
+<div class="sectitle">Leave particulars</div>
+<div class="grid">
 <div class="cell"><div class="cl">Reason for Leave</div><div class="cv">${item.reason}</div></div>
-<div class="cell"><div class="cl">Leave Period</div><div class="cv">${fmtDate(item.from_date)} → ${fmtDate(item.to_date)}</div></div>
+<div class="cell"><div class="cl">Leave Period</div><div class="cv">${fmtDate(item.from_date)} — ${fmtDate(item.to_date)}</div></div>
+${item.applicant_note ? `<div class="cell" style="grid-column:1/-1"><div class="cl">Additional Note</div><div class="cv" style="font-weight:400">${item.applicant_note}</div></div>` : ''}
+</div>
+
+<div class="sectitle">Responsible person / guardian particulars</div>
+<div class="grid">
 <div class="cell"><div class="cl">Name of Responsible Person</div><div class="cv">${item.responsible_name || '—'}</div></div>
 <div class="cell"><div class="cl">Relation with Student</div><div class="cv">${item.relation_to_student || '—'}</div></div>
 <div class="cell"><div class="cl">Contact No.</div><div class="cv">${item.responsible_phone || '—'}</div></div>
-<div class="cell"><div class="cl">Submitted By</div><div class="cv">${item.submitted_by || '—'}</div></div>
-<div class="cell" style="grid-column:1/-1"><div class="cl">Address</div><div class="cv">${item.address || '—'}</div></div>
-${item.applicant_note ? `<div class="cell" style="grid-column:1/-1"><div class="cl">Note</div><div class="cv">${item.applicant_note}</div></div>` : ''}
+<div class="cell"><div class="cl">Submitted By (Staff)</div><div class="cv">${item.submitted_by || '—'}</div></div>
+<div class="cell" style="grid-column:1/-1"><div class="cl">Address</div><div class="cv" style="font-weight:400">${item.address || '—'}</div></div>
 </div>
-<div class="declaration">I hereby declare that the above information is accurate and the leave is being taken with full awareness of rules and responsibilities. I agree to abide by the leave policy of the institution.</div>
+
+<div class="declaration">I hereby declare that the above information is accurate to the best of my knowledge and that the leave is being taken with full awareness of the rules and responsibilities of the institution. I undertake to abide by the leave policy of Guidance Navodaya &amp; Sainik Institute at all times.</div>
+
 <div class="sig">
-<div class="sb"><div class="sl"></div><div class="st">Parent / Guardian Signature</div><div class="sd">${item.responsible_name || ''}</div></div>
-<div class="sb"><div class="sl"></div><div class="st">House Master / Mistress Signature</div><div class="sd">Date: ______________</div></div>
-<div class="sb"><div class="sl"></div><div class="st">Superintendent / Administrator Signature</div><div class="sd">Date: ______________</div></div>
+<div class="sb"><div class="sl"></div><div class="st">Parent / Guardian</div><div class="sd">${item.responsible_name || 'Signature'}</div></div>
+<div class="sb"><div class="sl"></div><div class="st">House Master / Mistress</div><div class="sd">Signature &amp; Date</div></div>
+<div class="sb"><div class="sl"></div><div class="st">Superintendent / Administrator</div><div class="sd">Signature &amp; Date</div></div>
 </div>
-${item.status !== 'Pending' ? `<div class="ftr" style="margin-top:16px;font-style:italic">Reviewed by ${item.reviewed_by || '—'}${item.reviewer_role ? ' (' + item.reviewer_role + ')' : ''} on ${fmtDate(item.reviewed_at)}${item.rejection_reason ? ' · Reason: ' + item.rejection_reason : ''}</div>` : ''}
-<div class="ftr">GNSI · Leave Application Record · Computer generated · ${d}</div></body></html>`
-  const pw = window.open('', '_blank', 'width=720,height=900')
+
+${item.status !== 'Pending' ? `<div class="official-note">This application was ${item.status.toLowerCase()} by ${item.reviewed_by || '—'}${item.reviewer_role ? ', ' + item.reviewer_role : ''}, on ${fmtDate(item.reviewed_at)}.${item.rejection_reason ? ' Reason: ' + item.rejection_reason + '.' : ''}</div>` : ''}
+
+<div class="ftr">
+<span>Printed by ${printedByName || 'Staff'} on ${d} at ${t}</span>
+<span>${refNo}</span>
+</div>
+</div></div>
+</body></html>`
+  const pw = window.open('', '_blank', 'width=780,height=960')
   if (!pw) return
   pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 400)
 }
@@ -1868,13 +1932,32 @@ export default function ReceptionPage({ currentUser }) {
     fetchAll()
   }
 
+  const deleteLeaveApp = async (app) => {
+    if (!app.printed_at) { alert('Print the leave application first — it must be printed before it can be deleted.'); return }
+    if (!window.confirm('Archive this leave application?')) return
+    await supabase.from('leave_applications').update({ deleted_at: new Date().toISOString() }).eq('id', app.id)
+    fetchAll()
+  }
+
   const updateGPStatus = async (id, from, to) => { if (!canTransition(from, to)) return; await supabase.from('reception_gatepasses').update({ status: to }).eq('id', id); fetchAll() }
 
   // Promote a Pending leave application into an Issued gate pass, and link
   // the two records both ways so the application shows what it became and
   // the pass keeps a trail back to the original request.
+  const handlePrintLA = async (app) => {
+    const printedByName = currentUser?.userName || currentUser?.name || 'Staff'
+    printLeaveApplication(app, printedByName)
+    if (!app.printed_at) {
+      const { data } = await supabase.from('leave_applications').update({
+        printed_at: new Date().toISOString(), printed_by: printedByName,
+      }).eq('id', app.id).select().single()
+      if (data) fetchAll()
+    }
+  }
+
   const approveLeaveApp = async (app) => {
     if (app.status !== 'Pending') return
+    if (!app.printed_at) { alert('Print the leave application first — it must be printed for signatures before it can be approved.'); return }
     const approverName = currentUser?.userName || currentUser?.name || 'Receptionist'
     const approverRole = currentUser?.role || ''
     if (!window.confirm(`Approve this leave application as ${approverName}?`)) return
@@ -1904,6 +1987,7 @@ export default function ReceptionPage({ currentUser }) {
 
   const rejectLeaveApp = async (app) => {
     if (app.status !== 'Pending') return
+    if (!app.printed_at) { alert('Print the leave application first — it must be printed before it can be rejected.'); return }
     const reason = window.prompt('Reason for rejecting this leave application:')
     if (reason === null) return
     const reviewerName = currentUser?.userName || currentUser?.name || 'Receptionist'
@@ -2295,7 +2379,7 @@ export default function ReceptionPage({ currentUser }) {
             </Card>
             <Card>
               <CardHead icon="📝" title="Leave Applications" sub={`${filteredRows.length} total`} accentColor={C.violet} isMobile={mob} />
-              <RecordsTable loading={loading} rows={filteredRows} onDelete={id => handleDelete('leave_applications', id)}
+              <RecordsTable loading={loading} rows={filteredRows} onDelete={id => { const app = leaveApps.find(a => a.id === id); if (app) deleteLeaveApp(app) }}
                 columns={[
                   { key: 'from_date',    label: 'Date',    render: r => fmtDate(r.from_date) },
                   { key: 'student_name', label: 'Student', render: r => <b style={{ fontFamily: font }}>{r.student_name}</b> },
@@ -2308,14 +2392,17 @@ export default function ReceptionPage({ currentUser }) {
                   { key: 'status',       label: 'Status',  render: r => <Pill label={r.status} /> },
                   { key: '_q',           label: 'Actions', render: r => (
                     r.status === 'Pending' ? (
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <button onClick={() => printLeaveApplication(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️</button>
-                        <button onClick={() => approveLeaveApp(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>✓ Approve</button>
-                        <button onClick={() => rejectLeaveApp(r)} style={{ ...delBtn, background: '#fee2e2', color: C.red }}>✕ Reject</button>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button onClick={() => handlePrintLA(r)} style={{ ...delBtn, background: r.printed_at ? '#f1f5f9' : '#fef3c7', color: r.printed_at ? C.slate[500] : '#92400e' }}>🖨️ {r.printed_at ? 'Reprint' : 'Print'}</button>
+                          <button onClick={() => approveLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#dcfce7' : '#f1f5f9', color: r.printed_at ? '#166534' : C.slate[400], cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✓ Approve</button>
+                          <button onClick={() => rejectLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#fee2e2' : '#f1f5f9', color: r.printed_at ? C.red : C.slate[400], cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✕ Reject</button>
+                        </div>
+                        {!r.printed_at && <span style={{ fontSize: 10, color: C.amber, fontFamily: font }}>⚠ Print required before approve/reject</span>}
                       </div>
                     ) : (
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <button onClick={() => printLeaveApplication(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️</button>
+                        <button onClick={() => handlePrintLA(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e' }}>🖨️ Reprint</button>
                         <span style={{ fontSize: 11, color: C.slate[400], fontFamily: font, alignSelf: 'center' }}>{r.reviewed_by ? `By ${r.reviewed_by}` : '—'}</span>
                       </div>
                     )
@@ -2331,14 +2418,15 @@ export default function ReceptionPage({ currentUser }) {
                     r.gcc_no ? `GCC ${r.gcc_no}` : null,
                     r.responsible_name ? `Responsible: ${r.responsible_name} (${r.relation_to_student || '—'})` : null,
                     `By: ${r.submitted_by}`,
+                    !r.printed_at && r.status === 'Pending' ? '⚠ Print required first' : null,
                   ],
                   actions: r => (
                     <div style={{ display: 'flex', gap: 5 }}>
-                      <button onClick={() => printLeaveApplication(r)} style={{ ...delBtn, background: '#fef3c7', color: '#92400e', fontSize: 11 }}>🖨️</button>
+                      <button onClick={() => handlePrintLA(r)} style={{ ...delBtn, background: r.printed_at ? '#f1f5f9' : '#fef3c7', color: r.printed_at ? C.slate[500] : '#92400e', fontSize: 11 }}>🖨️ {r.printed_at ? 'Reprint' : 'Print'}</button>
                       {r.status === 'Pending' && (
                         <>
-                          <button onClick={() => approveLeaveApp(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>✓ Approve</button>
-                          <button onClick={() => rejectLeaveApp(r)} style={{ ...delBtn, background: '#fee2e2', color: C.red, fontSize: 11 }}>✕ Reject</button>
+                          <button onClick={() => approveLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#dcfce7' : '#f1f5f9', color: r.printed_at ? '#166534' : C.slate[400], fontSize: 11, cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✓ Approve</button>
+                          <button onClick={() => rejectLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#fee2e2' : '#f1f5f9', color: r.printed_at ? C.red : C.slate[400], fontSize: 11, cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✕ Reject</button>
                         </>
                       )}
                     </div>
