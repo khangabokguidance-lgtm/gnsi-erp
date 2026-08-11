@@ -927,6 +927,18 @@ const lbl = {
   color: '#374151', marginBottom: '6px',
 }
 
+// ── Fee payment screen — shared neutral card/section tokens ──────────────
+// Replaces the old per-section colored gradients + colored borders (indigo
+// for admission, green for flat, purple for course, etc.) with one
+// consistent neutral surface, so the screen reads as a single coherent
+// document rather than a stack of differently-themed panels.
+const feeCard = { background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }
+const feeCardHead = { padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }
+const feeCardTitle = { flex: 1, fontWeight: 700, fontSize: 14, color: '#0f172a' }
+const feeCardSub = { fontSize: 11, color: '#64748b', marginTop: 2 }
+const feePillDone = { fontSize: 11, padding: '2px 9px', borderRadius: 99, background: '#f0fdf4', color: '#166534', fontWeight: 600, border: '1px solid #bbf7d0' }
+const feeTotalRow = { display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: '#0f172a', background: '#f8fafc', padding: '9px 12px', borderRadius: 8, border: '1px solid #e2e8f0' }
+
 const sStyle = status => ({
   padding: '4px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '600',
   backgroundColor: status === 'Paid' ? '#dcfce7' : status === 'Partial' ? '#fef9c3' : status === 'Underpaid' ? '#ffedd5' : '#fee2e2',
@@ -2242,11 +2254,10 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
   // ── Select screen ─────────────────────────────────────────────────────────
   if (step === 'select') return (
-    <div style={{ maxWidth: 540, margin: '48px auto', textAlign: 'center' }}>
-      <div style={{ fontSize: 52, marginBottom: 16 }}>💳</div>
-      <h2 style={{ fontSize: 22, fontWeight: 800, color: '#1e3a5f', marginBottom: 8 }}>Collect fee payment</h2>
-      <p style={{ color: '#64748b', fontSize: 14, marginBottom: 28 }}>Search a student to record fees and generate a combined invoice</p>
-      <StudentSearch students={students} onSelect={handleSelect} placeholder="Search student by name or GCC No…" />
+    <div style={{ maxWidth: 480, margin: '64px auto', textAlign: 'center' }}>
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Collect fee payment</h2>
+      <p style={{ color: '#64748b', fontSize: 13, marginBottom: 24 }}>Search a student to record fees and generate a receipt.</p>
+      <StudentSearch students={students} onSelect={handleSelect} placeholder="Search by name or GCC number" />
     </div>
   )
 
@@ -2264,23 +2275,23 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         const parentPhone = getParentPhone(student)
         const waMsg  = buildFeeReceiptWaMessage(lastPayment)
         return (
-          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderLeft: '3px solid #16a34a', borderRadius: 10, padding: '13px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: '#166534' }}>
-                ✅ ₹{Number(lastPayment.total).toLocaleString('en-IN')} collected — Receipt {lastPayment.receiptNo}
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
+                ₹{Number(lastPayment.total).toLocaleString('en-IN')} collected — Receipt {lastPayment.receiptNo}
               </div>
-              <div style={{ fontSize: 11, color: '#166534', opacity: .8, marginTop: 2 }}>
-                {parentPhone ? 'Notify the parent on WhatsApp with the receipt details' : 'No parent contact number on file for this student'}
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                {parentPhone ? 'Send the receipt to the parent on WhatsApp' : 'No parent contact number on file for this student'}
               </div>
             </div>
             {parentPhone ? (
               <a href={buildWaLink(parentPhone, waMsg)} target="_blank" rel="noopener noreferrer"
                 onClick={() => setLastPayment(null)}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 800, padding: '9px 18px', borderRadius: 8, border: 'none', background: '#25D366', color: 'white', textDecoration: 'none', boxShadow: '0 2px 8px rgba(37,211,102,.35)' }}>
-                📱 Send Receipt on WhatsApp
+                style={{ fontSize: 13, fontWeight: 700, padding: '8px 16px', borderRadius: 8, border: 'none', background: '#16a34a', color: 'white', textDecoration: 'none' }}>
+                Send receipt on WhatsApp
               </a>
             ) : (
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '6px 12px', borderRadius: 7, border: '1px solid #fcd34d' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#92400e', background: '#fef3c7', padding: '6px 12px', borderRadius: 7, border: '1px solid #fcd34d' }}>
                 Add a phone number to the student's record to enable this
               </span>
             )}
@@ -2290,50 +2301,50 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
       {/* Student bar */}
       <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 18px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-        <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#1e3a5f', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, flexShrink: 0 }}>
+        <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#eef2ff', color: '#3730a3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, flexShrink: 0 }}>
           {(student.name || '?').split(' ').map(w => w[0] || '').join('').slice(0, 2).toUpperCase()}
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {student.name}
             {/* ── REPEATER badge ── */}
             {isRepeater && (
-              <span style={{ fontSize: 10, fontWeight: 800, color: '#92400e', background: '#fef3c7', padding: '2px 9px', borderRadius: 4, border: '1px solid #fcd34d', letterSpacing: '.04em' }}>
-                🔁 REPEATER
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '2px 9px', borderRadius: 4, border: '1px solid #fcd34d', letterSpacing: '.02em' }}>
+                Repeater
               </span>
             )}
           </div>
           <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            {student.gcc_no && <span style={{ fontWeight: 700, color: '#1e3a5f' }}>GCC-{student.gcc_no}</span>}
+            {student.gcc_no && <span style={{ fontWeight: 600, color: '#334155' }}>GCC {student.gcc_no}</span>}
             {(student.class_name || student.batch) && <span>{student.class_name || student.batch}</span>}
             {student.course && <span>{student.course}</span>}
             {admRec?.adm_no && <span style={{ color: '#4f46e5', fontWeight: 600 }}>{admRec.adm_no}</span>}
             {hostelType && <HostelBadge type={hostelType} />}
             {/* ── Flat fee display with override badge + Change button ── */}
             <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ fontSize: 11, color: hasOverride ? '#7c3aed' : '#059669', fontWeight: 700 }}>
-                Flat fee: ₹{feeRates.flatFee.toLocaleString('en-IN')}/mo
+              <span style={{ fontSize: 11, color: hasOverride ? '#7c3aed' : '#334155', fontWeight: 600 }}>
+                Flat fee ₹{feeRates.flatFee.toLocaleString('en-IN')}/mo
               </span>
               {hasOverride && (
-                <span style={{ fontSize: 9, fontWeight: 800, background: '#ede9fe', color: '#7c3aed', padding: '1px 5px', borderRadius: 3, border: '1px solid #c4b5fd' }}>OVERRIDE</span>
+                <span style={{ fontSize: 9, fontWeight: 700, background: '#ede9fe', color: '#7c3aed', padding: '1px 5px', borderRadius: 3, border: '1px solid #c4b5fd' }}>OVERRIDE</span>
               )}
               <button type="button" onClick={() => { setOverrideMode(m => !m); setOverrideFeedback(null) }}
-                style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 4, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', color: '#64748b' }}>
-                ✏️ {overrideMode ? 'Cancel' : 'Change'}
+                style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 4, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', color: '#64748b' }}>
+                {overrideMode ? 'Cancel' : 'Change'}
               </button>
             </span>
-            {totalEverPaid > 0 && <span style={{ color: '#059669', fontWeight: 700 }}>₹{totalEverPaid.toLocaleString('en-IN')} prev. paid</span>}
+            {totalEverPaid > 0 && <span style={{ color: '#166534', fontWeight: 600 }}>₹{totalEverPaid.toLocaleString('en-IN')} previously paid</span>}
             {/* ── Admission Date — required before any fee can be collected ── */}
             <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: admissionDate ? '#64748b' : '#dc2626' }}>
-                Admission Date{!admissionDate && ' *required'}
+              <span style={{ fontSize: 10, fontWeight: 600, color: admissionDate ? '#64748b' : '#dc2626' }}>
+                Admission date{!admissionDate && ' (required)'}
               </span>
               <input
                 type="date"
                 value={admissionDate || ''}
                 onChange={e => saveAdmissionDate(e.target.value)}
                 disabled={admDateSaving}
-                style={{ fontSize: 11, padding: '2px 6px', borderRadius: 5, border: `1.5px solid ${admissionDate ? '#e2e8f0' : '#fca5a5'}`, background: admissionDate ? 'white' : '#fef2f2' }}
+                style={{ fontSize: 11, padding: '2px 6px', borderRadius: 5, border: `1px solid ${admissionDate ? '#e2e8f0' : '#fca5a5'}`, background: admissionDate ? 'white' : '#fef2f2' }}
               />
               {admDateSaving && <span style={{ fontSize: 10, color: '#94a3b8' }}>saving…</span>}
             </span>
@@ -2342,69 +2353,69 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               type="button"
               onClick={toggleRepeater}
               disabled={repeaterSaving}
-              title={isRepeater ? 'Remove Repeater tag' : 'Mark as Repeater (2+ years at GNSI)'}
-              style={{ fontSize: 10, fontWeight: 700, padding: '2px 9px', borderRadius: 4, border: `1px solid ${isRepeater ? '#fcd34d' : '#e2e8f0'}`, background: isRepeater ? '#fef3c7' : '#f8fafc', color: isRepeater ? '#92400e' : '#94a3b8', cursor: repeaterSaving ? 'not-allowed' : 'pointer' }}>
-              {repeaterSaving ? '…' : isRepeater ? '✕ Remove Repeater' : '🔁 Mark Repeater'}
+              title={isRepeater ? 'Remove repeater tag' : 'Mark as repeater (2+ years at GNSI)'}
+              style={{ fontSize: 10, fontWeight: 600, padding: '2px 9px', borderRadius: 4, border: `1px solid ${isRepeater ? '#fcd34d' : '#e2e8f0'}`, background: isRepeater ? '#fef3c7' : '#f8fafc', color: isRepeater ? '#92400e' : '#94a3b8', cursor: repeaterSaving ? 'not-allowed' : 'pointer' }}>
+              {repeaterSaving ? '…' : isRepeater ? 'Remove repeater' : 'Mark repeater'}
             </button>
           </div>
         </div>
-        <button onClick={handleBack} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#64748b' }}>← Change</button>
+        <button onClick={handleBack} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#64748b' }}>Change student</button>
       </div>
 
       {/* ── Inline flat fee override editor ── */}
       {overrideMode && (
-        <div style={{ background: '#faf5ff', border: '1.5px solid #c4b5fd', borderRadius: 10, padding: '14px 18px', marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>
-            ✏️ Custom flat fee for {student.name} — {sessionYear}
+        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderLeft: '3px solid #7c3aed', borderRadius: 10, padding: '14px 18px', marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 10 }}>
+            Custom flat fee for {student.name} — {sessionYear}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10, marginBottom: 10 }}>
             <div>
-              <label style={{ ...lbl, fontSize: 11, color: '#7c3aed' }}>New Amount (₹/month)</label>
+              <label style={{ ...lbl, fontSize: 11 }}>New amount (₹/month)</label>
               <div style={{ position: 'relative' }}>
                 <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#94a3b8' }}>₹</span>
                 <input type="number" min="0" value={overrideAmt}
                   onChange={e => setOverrideAmt(e.target.value)}
                   placeholder={String(feeRates.flatFee)}
-                  style={{ ...inp, paddingLeft: 26, fontWeight: 700, color: '#7c3aed', borderColor: '#c4b5fd', fontSize: 14 }} />
+                  style={{ ...inp, paddingLeft: 26, fontWeight: 600, fontSize: 14 }} />
               </div>
             </div>
             <div>
-              <label style={{ ...lbl, fontSize: 11, color: '#7c3aed' }}>Reason (optional)</label>
+              <label style={{ ...lbl, fontSize: 11 }}>Reason (optional)</label>
               <input type="text" value={overrideReason}
                 onChange={e => setOverrideReason(e.target.value)}
-                placeholder="e.g. Scholarship, concession…"
-                style={{ ...inp, borderColor: '#c4b5fd', fontSize: 13 }} />
+                placeholder="e.g. Scholarship, concession"
+                style={{ ...inp, fontSize: 13 }} />
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" onClick={saveOverrideInline} disabled={overrideSaving || overrideAmt === ''}
-              style={{ flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 700, cursor: overrideSaving || overrideAmt === '' ? 'not-allowed' : 'pointer', background: overrideSaving || overrideAmt === '' ? '#e2e8f0' : 'linear-gradient(135deg,#7c3aed,#4f46e5)', color: overrideSaving || overrideAmt === '' ? '#94a3b8' : 'white' }}>
-              {overrideSaving ? '⏳ Saving…' : '✅ Save Override'}
+              style={{ flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 700, cursor: overrideSaving || overrideAmt === '' ? 'not-allowed' : 'pointer', background: overrideSaving || overrideAmt === '' ? '#e2e8f0' : '#0f172a', color: overrideSaving || overrideAmt === '' ? '#94a3b8' : 'white' }}>
+              {overrideSaving ? 'Saving…' : 'Save override'}
             </button>
             {hasOverride && (
               <button type="button" onClick={removeOverrideInline} disabled={overrideSaving}
                 style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #fca5a5', background: '#fef2f2', fontSize: 13, fontWeight: 700, cursor: 'pointer', color: '#dc2626' }}>
-                🗑 Remove
+                Remove
               </button>
             )}
           </div>
           {overrideFeedback && (
-            <div style={{ marginTop: 10, padding: '9px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: overrideFeedback.type === 'ok' ? '#ecfdf5' : '#fef2f2', border: `1px solid ${overrideFeedback.type === 'ok' ? '#6ee7b7' : '#fca5a5'}`, color: overrideFeedback.type === 'ok' ? '#065f46' : '#b91c1c' }}>
-              {overrideFeedback.type === 'ok' ? '✅' : '❌'} {overrideFeedback.msg}
+            <div style={{ marginTop: 10, padding: '9px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: overrideFeedback.type === 'ok' ? '#f0fdf4' : '#fef2f2', border: `1px solid ${overrideFeedback.type === 'ok' ? '#bbf7d0' : '#fca5a5'}`, color: overrideFeedback.type === 'ok' ? '#166534' : '#b91c1c' }}>
+              {overrideFeedback.msg}
             </div>
           )}
         </div>
       )}
 
       {!overrideMode && overrideFeedback && (
-        <div style={{ background: overrideFeedback.type === 'ok' ? '#ecfdf5' : '#fef2f2', border: `1px solid ${overrideFeedback.type === 'ok' ? '#6ee7b7' : '#fca5a5'}`, borderRadius: 8, padding: '8px 14px', marginBottom: 12, fontSize: 12, fontWeight: 600, color: overrideFeedback.type === 'ok' ? '#065f46' : '#b91c1c' }}>
-          {overrideFeedback.type === 'ok' ? '✅' : '❌'} {overrideFeedback.msg}
+        <div style={{ background: overrideFeedback.type === 'ok' ? '#f0fdf4' : '#fef2f2', border: `1px solid ${overrideFeedback.type === 'ok' ? '#bbf7d0' : '#fca5a5'}`, borderRadius: 8, padding: '8px 14px', marginBottom: 12, fontSize: 12, fontWeight: 600, color: overrideFeedback.type === 'ok' ? '#166534' : '#b91c1c' }}>
+          {overrideFeedback.msg}
         </div>
       )}
 
       {!admRec && (
-        <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#92400e', fontWeight: 600 }}>
-          ⚠️ No admission record found for GCC-{student.gcc_no || '??'}. Create one in the Admissions module first.
+        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderLeft: '3px solid #d97706', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#92400e', fontWeight: 600 }}>
+          No admission record found for GCC {student.gcc_no || '—'}. Create one in the Admissions module first.
         </div>
       )}
 
@@ -2414,23 +2425,21 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
           {/* Admission package */}
-          <div style={{ background: 'white', border: '1px solid #c7d2fe', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ background: 'linear-gradient(90deg,#eef2ff,#f5f3ff)', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: 18 }}>🎓</span>
-              <div style={{ flex: 1, fontWeight: 800, fontSize: 14, color: '#3730a3' }}>Admission package</div>
-              {admPaid && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: '#dcfce7', color: '#16a34a', fontWeight: 700 }}>✓ Already paid</span>}
+          <div style={feeCard}>
+            <div style={feeCardHead}>
+              <div style={feeCardTitle}>Admission package</div>
+              {admPaid && <span style={feePillDone}>Paid</span>}
             </div>
             {/* ✦ Bug fix: this branch previously let staff charge Admission
                 Fee + Dress + Prospectus to a known repeater — the same gap
                 already found and fixed in FeeCollectionModal.jsx earlier.
                 Repeaters don't owe these one-time admission-side fees. */}
             {isRepeater && !admPaid ? (
-              <div style={{ padding: '16px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, margin: 12, textAlign: 'center' }}>
-                <div style={{ fontSize: 20, marginBottom: 4 }}>🔁</div>
-                <div style={{ fontWeight: 800, color: '#92400e', fontSize: 13 }}>Admission Fee Waived — Repeater</div>
+              <div style={{ padding: '14px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, margin: 12, textAlign: 'center' }}>
+                <div style={{ fontWeight: 700, color: '#92400e', fontSize: 13 }}>Admission fee waived — repeater</div>
                 <div style={{ fontSize: 11.5, color: '#92400e', opacity: .85, marginTop: 4 }}>
-                  This student is marked as a repeater, so Admission Fee, Dress Fee, and Prospectus Fee
-                  are not charged. Collect their dues from Flat or Course Fees instead.
+                  This student is marked as a repeater, so admission fee, dress fee, and prospectus fee
+                  are not charged. Collect their dues from flat or course fees instead.
                 </div>
               </div>
             ) : admPaid ? (
@@ -2443,19 +2452,19 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                       {isAdmin && (
                         <>
                           <button type="button" onClick={() => handleFixAdmDate(c)} title={`Fix date (currently ${c.pay_date || '—'})`}
-                            style={{ background: '#eff6ff', color: '#1e3a5f', border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
-                            📅
+                            style={{ background: '#f1f5f9', color: '#334155', border: 'none', borderRadius: 5, padding: '2px 8px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+                            Fix date
                           </button>
                           <button type="button" onClick={() => handleRevertAdmCollection(c)} title="Revert this item (admin)"
-                            style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
-                            ↩ Revert
+                            style={{ background: '#fef2f2', color: '#dc2626', border: 'none', borderRadius: 5, padding: '2px 8px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+                            Revert
                           </button>
                         </>
                       )}
                     </span>
                   </div>
                 ))}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 800, color: '#3730a3', borderTop: '1px solid #e2e8f0', marginTop: 8, paddingTop: 8 }}>
+                <div style={{ ...feeTotalRow, marginTop: 8, background: 'none', border: 'none', borderTop: '1px solid #e2e8f0', borderRadius: 0, padding: '8px 0 0' }}>
                   <span>Total paid</span><span>₹{admEverPaid.toLocaleString('en-IN')}</span>
                 </div>
               </div>
@@ -2467,21 +2476,21 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                 </div>
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', marginBottom: 10 }}>
                   {DRESS_ITEMS.map((item, i) => (
-                    <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderBottom: '1px solid #f1f5f9', background: dressChecked[i] ? '#eef2ff' : 'white', cursor: 'pointer' }}>
+                    <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderBottom: '1px solid #f1f5f9', background: dressChecked[i] ? '#f8fafc' : 'white', cursor: 'pointer' }}>
                       <input type="checkbox" checked={dressChecked[i]}
                         onChange={() => setDressChecked(d => { const n = [...d]; n[i] = !n[i]; return n })}
-                        style={{ accentColor: '#4f46e5', width: 14, height: 14 }} />
+                        style={{ accentColor: '#0f172a', width: 14, height: 14 }} />
                       <span style={{ flex: 1, fontSize: 13 }}>{item.name}</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#4f46e5' }}>₹{item.price.toLocaleString('en-IN')}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>₹{item.price.toLocaleString('en-IN')}</span>
                     </label>
                   ))}
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: prospChecked ? '#eef2ff' : 'white', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={prospChecked} onChange={e => setProspChecked(e.target.checked)} style={{ accentColor: '#4f46e5', width: 14, height: 14 }} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: prospChecked ? '#f8fafc' : 'white', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={prospChecked} onChange={e => setProspChecked(e.target.checked)} style={{ accentColor: '#0f172a', width: 14, height: 14 }} />
                     <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>Prospectus</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#4f46e5' }}>₹{PROSPECTUS_FEE.toLocaleString('en-IN')}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>₹{PROSPECTUS_FEE.toLocaleString('en-IN')}</span>
                   </label>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 800, color: '#3730a3', background: '#eef2ff', padding: '9px 12px', borderRadius: 8 }}>
+                <div style={feeTotalRow}>
                   <span>Package total</span><span>₹{admPkgThis.toLocaleString('en-IN')}</span>
                 </div>
               </div>
@@ -2489,20 +2498,17 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           </div>
 
           {/* Flat fees */}
-          <div style={{ background: 'white', border: '1px solid #6ee7b7', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ background: 'linear-gradient(90deg,#ecfdf5,#d1fae5)', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: 18 }}>📅</span>
+          <div style={feeCard}>
+            <div style={feeCardHead}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 800, fontSize: 14, color: '#047857' }}>Monthly flat fees</div>
-                <div style={{ fontSize: 11, color: '#047857', marginTop: 2 }}>
-                  {hostelType} rate · ₹{feeRates.flatFee.toLocaleString('en-IN')}/month
-                </div>
+                <div style={feeCardTitle}>Monthly flat fees</div>
+                <div style={feeCardSub}>{hostelType} rate · ₹{feeRates.flatFee.toLocaleString('en-IN')}/month</div>
               </div>
-              {flatEverPaid > 0 && <span style={{ fontSize: 11, color: '#047857', fontWeight: 700 }}>₹{flatEverPaid.toLocaleString('en-IN')} paid</span>}
+              {flatEverPaid > 0 && <span style={{ fontSize: 11, color: '#166534', fontWeight: 600 }}>₹{flatEverPaid.toLocaleString('en-IN')} paid</span>}
             </div>
             <div style={{ padding: '12px 16px' }}>
               {flatFees.length === 0
-                ? <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: 16 }}>⏳ Loading months…</div>
+                ? <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: 16 }}>Loading months…</div>
                 : flatFees.map((ff, i) => {
                     const paid = paidMonths.includes(ff.month)
                     return (
@@ -2511,25 +2517,25 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                           checked={paid || !!flatChecked[i]}
                           disabled={paid}
                           onChange={() => setFlatChecked(c => { const n = [...c]; n[i] = !n[i]; return n })}
-                          style={{ accentColor: '#059669', width: 14, height: 14 }} />
+                          style={{ accentColor: '#0f172a', width: 14, height: 14 }} />
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{ff.month} {ff.year}</div>
-                          <div style={{ fontSize: 11, color: paid ? '#16a34a' : '#94a3b8', marginTop: 1 }}>
-                            {paid ? '✅ Already collected' : `${hostelType} rate`}
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{ff.month} {ff.year}</div>
+                          <div style={{ fontSize: 11, color: paid ? '#166534' : '#94a3b8', marginTop: 1 }}>
+                            {paid ? 'Already collected' : `${hostelType} rate`}
                           </div>
                         </div>
-                        <span style={{ fontSize: 14, fontWeight: 800, color: paid ? '#16a34a' : '#059669' }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: paid ? '#166534' : '#0f172a' }}>
                           ₹{ff.amount.toLocaleString('en-IN')}
                         </span>
                         {paid && isAdmin && (
                           <span style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
                             <button type="button" onClick={(e) => { e.preventDefault(); handleFixFlatDate(ff.month) }} title={`Fix date (currently ${myFlatRecs.find(r => r.month === ff.month)?.pay_date || '—'})`}
-                              style={{ background: '#eff6ff', color: '#1e3a5f', border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
-                              📅
+                              style={{ background: '#f1f5f9', color: '#334155', border: 'none', borderRadius: 5, padding: '2px 8px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+                              Fix date
                             </button>
                             <button type="button" onClick={(e) => { e.preventDefault(); handleRevertFlat(ff.month) }} title="Revert this month (admin)"
-                              style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
-                              ↩ Revert
+                              style={{ background: '#fef2f2', color: '#dc2626', border: 'none', borderRadius: 5, padding: '2px 8px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+                              Revert
                             </button>
                           </span>
                         )}
@@ -2538,7 +2544,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                   })
               }
               {flatThis > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 800, color: '#047857', background: '#ecfdf5', padding: '9px 12px', borderRadius: 8, marginTop: 10 }}>
+                <div style={{ ...feeTotalRow, marginTop: 10 }}>
                   <span>Flat total</span><span>₹{flatThis.toLocaleString('en-IN')}</span>
                 </div>
               )}
@@ -2546,33 +2552,32 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           </div>
 
           {/* Course fees */}
-          <div style={{ background: 'white', border: '1px solid #c4b5fd', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ background: 'linear-gradient(90deg,#f5f3ff,#ede9fe)', padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: 18 }}>📚</span>
+          <div style={feeCard}>
+            <div style={feeCardHead}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 800, fontSize: 14, color: '#6d28d9' }}>Course fees</div>
-                <div style={{ fontSize: 11, color: '#7c3aed', marginTop: 2 }}>Select course + hostel type → amount auto-fills · editable</div>
+                <div style={feeCardTitle}>Course fees</div>
+                <div style={feeCardSub}>Select course and hostel type — amount auto-fills, editable</div>
               </div>
-              {crsfEverPaid > 0 && <span style={{ fontSize: 11, color: '#6d28d9', fontWeight: 700 }}>₹{crsfEverPaid.toLocaleString('en-IN')} prev.</span>}
+              {crsfEverPaid > 0 && <span style={{ fontSize: 11, color: '#334155', fontWeight: 600 }}>₹{crsfEverPaid.toLocaleString('en-IN')} previous</span>}
             </div>
             <div style={{ padding: '12px 16px' }}>
               {myCrsfRecs.length > 0 && (
-                <div style={{ marginBottom: 12, padding: '10px 12px', background: '#f5f3ff', borderRadius: 8 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#6d28d9', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>Previous</div>
+                <div style={{ marginBottom: 12, padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#334155', marginBottom: 6 }}>Previous</div>
                   {myCrsfRecs.map((r, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: '#475569', padding: '3px 0' }}>
                       <span>{r.course}{r.subtype ? ' · ' + r.subtype : ''} · {r.for_month}</span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontWeight: 700, color: '#6d28d9' }}>₹{Number(r.amount_paid || 0).toLocaleString('en-IN')}</span>
+                        <span style={{ fontWeight: 600, color: '#334155' }}>₹{Number(r.amount_paid || 0).toLocaleString('en-IN')}</span>
                         {isAdmin && (
                           <>
                             <button type="button" onClick={() => handleFixCourseDate(r)} title={`Fix date (currently ${r.pay_date || '—'})`}
-                              style={{ background: '#eff6ff', color: '#1e3a5f', border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
-                              📅
+                              style={{ background: '#f1f5f9', color: '#334155', border: 'none', borderRadius: 5, padding: '2px 8px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+                              Fix date
                             </button>
                             <button type="button" onClick={() => handleRevertCourseFee(r)} title="Revert this month (admin)"
-                              style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 5, padding: '2px 7px', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}>
-                              ↩ Revert
+                              style={{ background: '#fef2f2', color: '#dc2626', border: 'none', borderRadius: 5, padding: '2px 8px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
+                              Revert
                             </button>
                           </>
                         )}
@@ -2582,7 +2587,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                 </div>
               )}
               {crsfRows.map((row, i) => (
-                <div key={i} style={{ border: '1px solid #ede9fe', borderRadius: 8, padding: 12, marginBottom: 10 }}>
+                <div key={i} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 10 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8, marginBottom: 8 }}>
                     <div>
                       <label style={{ ...lbl, fontSize: 11 }}>Course</label>
@@ -2640,36 +2645,40 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                     {row.course && row.hostelType && row.amount !== '' &&
                       Number(row.amount) !== syncCourseFeeAmt(row.course, row.hostelType) && (
                       <div style={{ fontSize: 10, color: '#b45309', marginTop: 3 }}>
-                        ⚠ Overriding standard rate of ₹{syncCourseFeeAmt(row.course, row.hostelType).toLocaleString('en-IN')}
+                        Overriding standard rate of ₹{syncCourseFeeAmt(row.course, row.hostelType).toLocaleString('en-IN')}
                       </div>
                     )}
                   </div>
                   {crsfRows.length > 1 && (
                     <button onClick={() => setCrsfRows(r => r.filter((_, j) => j !== i))}
-                      style={{ fontSize: 11, color: '#dc2626', background: '#fee2e2', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontWeight: 700 }}>
-                      ✕ Remove
+                      style={{ fontSize: 11, color: '#dc2626', background: '#fef2f2', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}>
+                      Remove
                     </button>
                   )}
                 </div>
               ))}
               <button onClick={() => setCrsfRows(r => [...r, { course: '', subtype: '', hostelType: hostelType, for_month: '', amount: '' }])}
-                style={{ fontSize: 12, color: '#6d28d9', background: '#f5f3ff', border: '1px dashed #c4b5fd', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontWeight: 700, width: '100%' }}>
+                style={{ fontSize: 12, color: '#334155', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontWeight: 600, width: '100%' }}>
                 + Add month
               </button>
             </div>
           </div>
 
           {/* Advance */}
-          <div style={{ background: 'white', border: '1px solid #fcd34d', borderRadius: 12, padding: '12px 16px' }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: '#b45309', marginBottom: 10 }}>⮕ Advance fee (optional)</div>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
-              <div>
-                <label style={{ ...lbl, fontSize: 11 }}>Amount ₹</label>
-                <input type="number" min={0} value={advAmt} onChange={e => setAdvAmt(e.target.value)} placeholder="0" style={{ ...inp, fontSize: 12, padding: '7px 10px' }} />
-              </div>
-              <div>
-                <label style={{ ...lbl, fontSize: 11 }}>For</label>
-                <input value={advFor} onChange={e => setAdvFor(e.target.value)} placeholder="e.g. Phase I Month 1" style={{ ...inp, fontSize: 12, padding: '7px 10px' }} />
+          <div style={feeCard}>
+            <div style={feeCardHead}>
+              <div style={feeCardTitle}>Advance fee (optional)</div>
+            </div>
+            <div style={{ padding: '12px 16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={{ ...lbl, fontSize: 11 }}>Amount (₹)</label>
+                  <input type="number" min={0} value={advAmt} onChange={e => setAdvAmt(e.target.value)} placeholder="0" style={{ ...inp, fontSize: 12, padding: '7px 10px' }} />
+                </div>
+                <div>
+                  <label style={{ ...lbl, fontSize: 11 }}>For</label>
+                  <input value={advFor} onChange={e => setAdvFor(e.target.value)} placeholder="e.g. Phase I Month 1" style={{ ...inp, fontSize: 12, padding: '7px 10px' }} />
+                </div>
               </div>
             </div>
           </div>
@@ -2678,7 +2687,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         {/* Right: payment + summary */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: isMobile ? 'static' : 'sticky', top: 20 }}>
           <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
-            <div style={{ fontWeight: 800, fontSize: 14, color: '#1e3a5f', marginBottom: 14 }}>💳 Payment details</div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', marginBottom: 14 }}>Payment details</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
               <div><label style={lbl}>Payment mode</label>
                 <select value={payMode} onChange={e => setPayMode(e.target.value)} style={inp}>
@@ -2698,40 +2707,40 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           </div>
 
           <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ background: '#1e3a5f', padding: '12px 16px', color: 'white', fontWeight: 800, fontSize: 14 }}>📋 This invoice</div>
+            <div style={{ padding: '12px 16px', color: '#0f172a', fontWeight: 700, fontSize: 14, borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>This invoice</div>
             <div style={{ padding: '14px 16px' }}>
-              {admPkgThis > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: '1px solid #f1f5f9', color: '#3730a3' }}><span>🎓 Admission package</span><span style={{ fontWeight: 700 }}>₹{admPkgThis.toLocaleString('en-IN')}</span></div>}
-              {flatThis   > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: '1px solid #f1f5f9', color: '#047857' }}><span>📅 Flat fees ({hostelType})</span><span style={{ fontWeight: 700 }}>₹{flatThis.toLocaleString('en-IN')}</span></div>}
-              {crsfThis   > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: '1px solid #f1f5f9', color: '#6d28d9' }}><span>📚 Course fees</span><span style={{ fontWeight: 700 }}>₹{crsfThis.toLocaleString('en-IN')}</span></div>}
-              {advThis    > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: '1px solid #f1f5f9', color: '#b45309' }}><span>⮕ Advance</span><span style={{ fontWeight: 700 }}>₹{advThis.toLocaleString('en-IN')}</span></div>}
+              {admPkgThis > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: '1px solid #f1f5f9', color: '#334155' }}><span>Admission package</span><span style={{ fontWeight: 600 }}>₹{admPkgThis.toLocaleString('en-IN')}</span></div>}
+              {flatThis   > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: '1px solid #f1f5f9', color: '#334155' }}><span>Flat fees ({hostelType})</span><span style={{ fontWeight: 600 }}>₹{flatThis.toLocaleString('en-IN')}</span></div>}
+              {crsfThis   > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: '1px solid #f1f5f9', color: '#334155' }}><span>Course fees</span><span style={{ fontWeight: 600 }}>₹{crsfThis.toLocaleString('en-IN')}</span></div>}
+              {advThis    > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: '1px solid #f1f5f9', color: '#334155' }}><span>Advance</span><span style={{ fontWeight: 600 }}>₹{advThis.toLocaleString('en-IN')}</span></div>}
               {grandThis === 0 && <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: '16px 0' }}>Select fee items on the left</div>}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 900, color: 'white', background: 'linear-gradient(90deg,#1e3a5f,#3730a3)', padding: '12px 14px', borderRadius: 10, marginTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 700, color: 'white', background: '#0f172a', padding: '12px 14px', borderRadius: 10, marginTop: 12 }}>
                 <span>Grand total</span><span>₹{grandThis.toLocaleString('en-IN')}</span>
               </div>
             </div>
           </div>
 
           {totalEverPaid > 0 && (
-            <div style={{ background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 12, padding: '12px 16px' }}>
-              <div style={{ fontWeight: 800, fontSize: 12, color: '#047857', marginBottom: 8 }}>✅ Previously collected</div>
-              {admEverPaid  > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#475569', padding: '3px 0' }}><span>Admission + Kit</span><span>₹{admEverPaid.toLocaleString('en-IN')}</span></div>}
+            <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 16px' }}>
+              <div style={{ fontWeight: 700, fontSize: 12, color: '#0f172a', marginBottom: 8 }}>Previously collected</div>
+              {admEverPaid  > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#475569', padding: '3px 0' }}><span>Admission and kit</span><span>₹{admEverPaid.toLocaleString('en-IN')}</span></div>}
               {flatEverPaid > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#475569', padding: '3px 0' }}><span>Flat fees</span><span>₹{flatEverPaid.toLocaleString('en-IN')}</span></div>}
               {crsfEverPaid > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#475569', padding: '3px 0' }}><span>Course fees</span><span>₹{crsfEverPaid.toLocaleString('en-IN')}</span></div>}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 800, color: '#047857', borderTop: '1px solid #a7f3d0', marginTop: 8, paddingTop: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, color: '#0f172a', borderTop: '1px solid #e2e8f0', marginTop: 8, paddingTop: 8 }}>
                 <span>Total ever</span><span>₹{totalEverPaid.toLocaleString('en-IN')}</span>
               </div>
             </div>
           )}
 
           <button onClick={handleSave} disabled={saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate}
-            style={{ width: '100%', padding: 14, borderRadius: 12, background: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#94a3b8' : 'linear-gradient(135deg,#1e3a5f,#3730a3)', color: 'white', border: 'none', fontSize: 15, fontWeight: 800, cursor: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? 'not-allowed' : 'pointer', boxShadow: grandThis > 0 && admRec && admissionDate ? '0 4px 16px rgba(55,48,163,.3)' : 'none' }}>
-            {saving ? '⏳ Processing…' : !admissionDate ? '⚠️ Set Admission Date First' : `🖨️ Save & print invoice · ₹${grandThis.toLocaleString('en-IN')}`}
+            style={{ width: '100%', padding: 14, borderRadius: 10, background: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#e2e8f0' : '#0f172a', color: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#94a3b8' : 'white', border: 'none', fontSize: 15, fontWeight: 700, cursor: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? 'not-allowed' : 'pointer' }}>
+            {saving ? 'Processing…' : !admissionDate ? 'Set admission date first' : `Save and print invoice · ₹${grandThis.toLocaleString('en-IN')}`}
           </button>
           <button onClick={handleRazorpayCollect} disabled={saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate}
-            style={{ width: '100%', padding: 13, borderRadius: 12, background: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#e2e8f0' : 'white', color: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#94a3b8' : '#3730a3', border: '2px solid ' + ((saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#e2e8f0' : '#3730a3'), fontSize: 14, fontWeight: 800, cursor: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? 'not-allowed' : 'pointer', marginTop: -4 }}>
-            {razorpayBusy ? '⏳ Opening Razorpay…' : `💳 Pay via Razorpay · ₹${grandThis.toLocaleString('en-IN')}`}
+            style={{ width: '100%', padding: 13, borderRadius: 10, background: 'white', color: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#94a3b8' : '#0f172a', border: '1px solid ' + ((saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#e2e8f0' : '#0f172a'), fontSize: 14, fontWeight: 600, cursor: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? 'not-allowed' : 'pointer', marginTop: -4 }}>
+            {razorpayBusy ? 'Opening Razorpay…' : `Pay via Razorpay · ₹${grandThis.toLocaleString('en-IN')}`}
           </button>
-          {!admRec && <div style={{ fontSize: 11, color: '#dc2626', textAlign: 'center', marginTop: -6 }}>⚠ No admission record — create one in Admissions first</div>}
+          {!admRec && <div style={{ fontSize: 11, color: '#dc2626', textAlign: 'center', marginTop: -6 }}>No admission record — create one in Admissions first</div>}
         </div>
       </div>
     </div>
