@@ -44,7 +44,7 @@ const fmt     = n => Number(n || 0).toLocaleString('en-IN')
 const fmtDate = d => { if (!d) return '—'; return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }
 const today   = () => new Date().toISOString().split('T')[0]
 const gccStr  = g => String(parseInt(g) || g || '')
-const TABS    = ['Student 360°', 'Enquiry', 'Visitor Book', 'Gate Pass', 'Parent Items', 'Monitors']
+const TABS    = ['Student 360°', 'Enquiry', 'Visitor Book', 'Leave Application', 'Gate Pass', 'Parent Items', 'Monitors']
 
 const TAB_ICONS = {
   'Student 360°': '🔍',
@@ -82,7 +82,8 @@ const STAFF_DEPARTMENTS    = ['Academic','Hostel','Admin','Sports','Accounts','S
 // ── default form states ───────────────────────────────────────────────────────
 const ENQ_DEF  = { student_name:'', parent_name:'', phone:'', class_interest:'', source:'', enquiry_date:today(), follow_up_date:'', status:'New', remarks:'' }
 const VIS_DEF  = { visitor_name:'', phone:'', purpose:'', meeting_with:'', in_time:'', out_time:'', visit_date:today(), id_proof:'', remarks:'' }
-const GP_DEF   = { student_name:'', class_name:'', course:'', reason:'', exit_date:today(), exit_time:'', expected_return_time:'', approved_by:'', parent_informed:'No', status:'Issued', remarks:'' }
+const GP_DEF   = { student_name:'', class_name:'', course:'', gcc_no:'', house:'', reason:'', exit_date:today(), exit_time:'', expected_return_time:'', return_date:'', responsible_contact:'', approved_by:'', parent_informed:'No', status:'Issued', remarks:'' }
+const LA_DEF   = { student_name:'', gcc_no:'', class_name:'', house:'', course:'', reason:'', from_date:today(), to_date:'', responsible_contact:'', address:'', submitted_by:'Staff', applicant_note:'' }
 const PI_DEF   = { parent_name:'', student_name:'', class_name:'', course:'', hostel_type:'', house:'', item_names:[], quantity:'1', received_date:today(), received_by:'', status:'Pending', remarks:'' }
 const HOSTEL_LEAVE_DEF = { student_name:'', class_name:'', house:'', course:'', hostel_type:'', departure_date:today(), return_date:'', reason:'', status:'Out', remarks:'' }
 const STAFF_LEAVE_DEF  = { staff_name:'', role:'', department:'', leave_type:'', from_date:today(), to_date:'', days:'', approved_by:'', status:'Pending', remarks:'' }
@@ -482,7 +483,7 @@ function printGatePass(item) {
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#fff;padding:32px;color:#1e293b}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:14px;margin-bottom:18px}.inst{font-size:17px;font-weight:700;color:#1e3a5f}.sub{font-size:11px;color:#64748b;margin-top:3px}.title{font-size:20px;font-weight:800;color:#1e3a5f;margin-bottom:16px;text-transform:uppercase;letter-spacing:.08em}.grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:20px}.cell{padding:11px 14px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}.cell:nth-child(even){border-right:none}.cell:nth-last-child(-n+2){border-bottom:none}.cl{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px}.cv{font-size:13px;font-weight:700;color:#1e293b}.sig{display:flex;justify-content:space-between;margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0}.sb{text-align:center}.sl{width:140px;border-top:1.5px solid #1e3a5f;margin:0 auto 6px}.st{font-size:11px;color:#64748b}.ftr{margin-top:24px;text-align:center;font-size:10px;color:#94a3b8}@media print{body{padding:16px}}</style></head><body>
 <div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div><div class="sub">Khangabok, Thoubal, Manipur — 795128</div></div><div style="text-align:right"><div style="font-size:10px;color:#94a3b8">Printed</div><div style="font-weight:700;font-size:13px">${d}</div></div></div>
 <div class="title">🪪 Student Gate Pass</div>
-<div class="grid"><div class="cell"><div class="cl">Student Name</div><div class="cv">${item.student_name}</div></div><div class="cell"><div class="cl">Class</div><div class="cv">${item.class_name || '—'}</div></div><div class="cell"><div class="cl">Course</div><div class="cv">${item.course || '—'}</div></div><div class="cell"><div class="cl">Reason</div><div class="cv">${item.reason}</div></div><div class="cell"><div class="cl">Exit Date &amp; Time</div><div class="cv">${fmtDate(item.exit_date)} ${item.exit_time ? '· ' + item.exit_time : ''}</div></div><div class="cell"><div class="cl">Expected Return</div><div class="cv">${item.expected_return_time || '—'}</div></div><div class="cell"><div class="cl">Approved By</div><div class="cv">${item.approved_by || '—'}</div></div><div class="cell"><div class="cl">Parent Informed</div><div class="cv">${item.parent_informed}</div></div><div class="cell" style="grid-column:1/-1"><div class="cl">Remarks</div><div class="cv">${item.remarks || '—'}</div></div></div>
+<div class="grid"><div class="cell"><div class="cl">Student Name</div><div class="cv">${item.student_name}</div></div><div class="cell"><div class="cl">GCC No.</div><div class="cv">${item.gcc_no || '—'}</div></div><div class="cell"><div class="cl">Class</div><div class="cv">${item.class_name || '—'}</div></div><div class="cell"><div class="cl">House</div><div class="cv">${item.house || '—'}</div></div><div class="cell"><div class="cl">Course</div><div class="cv">${item.course || '—'}</div></div><div class="cell"><div class="cl">Reason</div><div class="cv">${item.reason}</div></div><div class="cell"><div class="cl">Exit Date &amp; Time</div><div class="cv">${fmtDate(item.exit_date)} ${item.exit_time ? '· ' + item.exit_time : ''}</div></div><div class="cell"><div class="cl">Return Date</div><div class="cv">${item.return_date ? fmtDate(item.return_date) : '—'}${item.expected_return_time ? ' · ' + item.expected_return_time : ''}</div></div><div class="cell"><div class="cl">Responsible Person</div><div class="cv">${item.responsible_contact || '—'}</div></div><div class="cell"><div class="cl">Approved By</div><div class="cv">${item.approved_by || '—'}</div></div><div class="cell"><div class="cl">Parent Informed</div><div class="cv">${item.parent_informed}</div></div><div class="cell" style="grid-column:1/-1"><div class="cl">Remarks</div><div class="cv">${item.remarks || '—'}</div></div></div>
 <div class="sig"><div class="sb"><div class="sl"></div><div class="st">Student Signature</div></div><div class="sb"><div class="sl"></div><div class="st">Class Teacher</div></div><div class="sb"><div class="sl"></div><div class="st">Principal / Warden</div></div></div>
 <div class="ftr">GNSI · Gate Pass · Computer generated · ${d}</div></body></html>`
   const pw = window.open('', '_blank', 'width=720,height=800')
@@ -1741,21 +1742,25 @@ export default function ReceptionPage() {
   const [parentItems, setParentItems] = useState([])
   const [customItems, setCustomItems] = useState([])
   const [hlRecords,   setHLRecords]   = useState([])
+  const [leaveApps,   setLeaveApps]   = useState([])
 
   const [enquiryForm, setEnquiryForm] = useState(ENQ_DEF)
   const [visitorForm, setVisitorForm] = useState(VIS_DEF)
   const [gpForm,      setGpForm]      = useState(GP_DEF)
   const [piForm,      setPiForm]      = useState(PI_DEF)
+  const [laForm,      setLaForm]      = useState(LA_DEF)
 
   const [enquiryResetKey, setEnquiryResetKey] = useState(0)
   const [visitorResetKey, setVisitorResetKey] = useState(0)
   const [gpResetKey,      setGpResetKey]      = useState(0)
   const [piResetKey,      setPiResetKey]      = useState(0)
+  const [laResetKey,      setLaResetKey]      = useState(0)
 
   const [enquiryStudent, setEnquiryStudent] = useState(null)
   const [visitorStudent, setVisitorStudent] = useState(null)
   const [gpStudent,      setGpStudent]      = useState(null)
   const [piStudent,      setPiStudent]      = useState(null)
+  const [laStudent,      setLaStudent]      = useState(null)
 
   // FEATURE 4: repeat visitor cache
   const visitorHistoryRef = useRef({})
@@ -1771,11 +1776,12 @@ export default function ReceptionPage() {
 
   const fetchAll = async () => {
     setLoading(true)
-    const [e, v, g, p] = await Promise.all([
+    const [e, v, g, p, la] = await Promise.all([
       supabase.from('reception_enquiries').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
       supabase.from('reception_visitors').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
       supabase.from('reception_gatepasses').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
       supabase.from('reception_parent_items').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+      supabase.from('leave_applications').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
     ])
     if (!e.error) setEnquiries(e.data || [])
     if (!v.error) {
@@ -1793,6 +1799,7 @@ export default function ReceptionPage() {
     }
     if (!g.error) setGatePasses(g.data || [])
     if (!p.error) setParentItems(p.data || [])
+    if (!la.error) setLeaveApps(la.data || [])
     setLoading(false)
   }
 
@@ -1827,6 +1834,48 @@ export default function ReceptionPage() {
   }
 
   const updateGPStatus = async (id, from, to) => { if (!canTransition(from, to)) return; await supabase.from('reception_gatepasses').update({ status: to }).eq('id', id); fetchAll() }
+
+  // Promote a Pending leave application into an Issued gate pass, and link
+  // the two records both ways so the application shows what it became and
+  // the pass keeps a trail back to the original request.
+  const approveLeaveApp = async (app) => {
+    if (app.status !== 'Pending') return
+    const approverName = window.prompt('Approved by (name):', 'Receptionist')
+    if (approverName === null) return
+    setSaving(true)
+    const { data: existing } = await supabase.from('reception_gatepasses').select('id').eq('student_name', app.student_name).in('status', ['Issued', 'Exited']).is('deleted_at', null)
+    if (existing && existing.length > 0) {
+      alert(`⚠ ${app.student_name} already has an active gate pass. Resolve that first.`)
+      setSaving(false)
+      return
+    }
+    const { data: gp, error: gpErr } = await supabase.from('reception_gatepasses').insert({
+      student_name: app.student_name, class_name: app.class_name, course: app.course,
+      gcc_no: app.gcc_no, house: app.house, reason: app.reason,
+      exit_date: app.from_date, return_date: app.to_date,
+      responsible_contact: app.responsible_contact,
+      approved_by: approverName || 'Receptionist', parent_informed: 'Yes', status: 'Issued',
+      remarks: app.address ? `Address: ${app.address}` : null,
+    }).select().single()
+    if (gpErr) { alert(gpErr.message); setSaving(false); return }
+    await supabase.from('leave_applications').update({
+      status: 'Approved', reviewed_by: approverName || 'Receptionist',
+      reviewed_at: new Date().toISOString(), gate_pass_id: gp.id,
+    }).eq('id', app.id)
+    setSaving(false)
+    fetchAll()
+  }
+
+  const rejectLeaveApp = async (app) => {
+    if (app.status !== 'Pending') return
+    const reason = window.prompt('Reason for rejecting this leave application:')
+    if (reason === null) return
+    await supabase.from('leave_applications').update({
+      status: 'Rejected', reviewed_by: 'Receptionist',
+      reviewed_at: new Date().toISOString(), rejection_reason: reason || null,
+    }).eq('id', app.id)
+    fetchAll()
+  }
   const updatePIStatus = async (id, from, to) => { if (!canTransition(from, to)) return; await supabase.from('reception_parent_items').update({ status: to }).eq('id', id); fetchAll() }
 
   const addCustomItem = async item => {
@@ -1860,8 +1909,13 @@ export default function ReceptionPage() {
   }, [])
 
   const onSelectGP = useCallback(s => {
-    if (s) { setGpStudent(s); setGpForm(f => ({ ...f, student_name: s.name, class_name: s.batch || f.class_name, course: s.course || f.course })) }
-    else   { setGpStudent(null); setGpForm(f => ({ ...f, student_name: '', class_name: '', course: '' })) }
+    if (s) { setGpStudent(s); setGpForm(f => ({ ...f, student_name: s.name, class_name: s.batch || f.class_name, course: s.course || f.course, gcc_no: s.gcc_no ? gccStr(s.gcc_no) : f.gcc_no, house: s.house || f.house })) }
+    else   { setGpStudent(null); setGpForm(f => ({ ...f, student_name: '', class_name: '', course: '', gcc_no: '', house: '' })) }
+  }, [])
+
+  const onSelectLA = useCallback(s => {
+    if (s) { setLaStudent(s); setLaForm(f => ({ ...f, student_name: s.name, class_name: s.batch || f.class_name, course: s.course || f.course, gcc_no: s.gcc_no ? gccStr(s.gcc_no) : f.gcc_no, house: s.house || f.house })) }
+    else   { setLaStudent(null); setLaForm(f => ({ ...f, student_name: '', class_name: '', course: '', gcc_no: '', house: '' })) }
   }, [])
 
   const onSelectPI = useCallback(s => {
@@ -1872,31 +1926,35 @@ export default function ReceptionPage() {
   const filteredRows = useMemo(() => {
     const q = search.toLowerCase()
     const searchCols = {
-      'Enquiry':      ['student_name', 'parent_name', 'phone', 'class_interest', 'source', 'status'],
-      'Visitor Book': ['visitor_name', 'phone', 'purpose', 'meeting_with'],
-      'Gate Pass':    ['student_name', 'class_name', 'course', 'reason', 'status'],
-      'Parent Items': ['student_name', 'parent_name', 'class_name', 'item_name', 'house', 'status'],
+      'Enquiry':           ['student_name', 'parent_name', 'phone', 'class_interest', 'source', 'status'],
+      'Visitor Book':      ['visitor_name', 'phone', 'purpose', 'meeting_with'],
+      'Leave Application': ['student_name', 'gcc_no', 'house', 'reason', 'status', 'submitted_by'],
+      'Gate Pass':         ['student_name', 'class_name', 'course', 'reason', 'status'],
+      'Parent Items':      ['student_name', 'parent_name', 'class_name', 'item_name', 'house', 'status'],
     }
     const cols = searchCols[activeTab] || []
-    const arr  = activeTab === 'Enquiry' ? enquiries : activeTab === 'Visitor Book' ? visitors : activeTab === 'Gate Pass' ? gatePasses : parentItems
+    const arr  = activeTab === 'Enquiry' ? enquiries : activeTab === 'Visitor Book' ? visitors : activeTab === 'Leave Application' ? leaveApps : activeTab === 'Gate Pass' ? gatePasses : parentItems
     if (!q) return arr
     return arr.filter(r => cols.some(c => String(r[c] || '').toLowerCase().includes(q)))
-  }, [activeTab, search, enquiries, visitors, gatePasses, parentItems])
+  }, [activeTab, search, enquiries, visitors, leaveApps, gatePasses, parentItems])
 
   const followUpDue  = enquiries.filter(e => e.follow_up_date === today() && e.status !== 'Converted' && e.status !== 'Closed').length
   const stillOutside = gatePasses.filter(g => g.status === 'Exited').length
   const pendingItems = parentItems.filter(p => p.status === 'Pending').length
+  const pendingLA     = leaveApps.filter(a => a.status === 'Pending').length
 
   const set_enq = (f, v) => setEnquiryForm(p => ({ ...p, [f]: v }))
   const set_vis = (f, v) => setVisitorForm(p => ({ ...p, [f]: v }))
   const set_gp  = (f, v) => setGpForm(p => ({ ...p, [f]: v }))
   const set_pi  = (f, v) => setPiForm(p => ({ ...p, [f]: v }))
+  const set_la  = (f, v) => setLaForm(p => ({ ...p, [f]: v }))
 
   const tabBadges = {
-    'Enquiry':      followUpDue,
-    'Gate Pass':    stillOutside,
-    'Parent Items': pendingItems,
-    'Monitors':     stillOutside,
+    'Enquiry':           followUpDue,
+    'Leave Application': pendingLA,
+    'Gate Pass':         stillOutside,
+    'Parent Items':      pendingItems,
+    'Monitors':          stillOutside,
   }
 
   const pad = mob ? '12px 14px' : '18px 20px'
@@ -2154,6 +2212,88 @@ export default function ReceptionPage() {
           </>
         )}
 
+        {/* ── LEAVE APPLICATION ── */}
+        {activeTab === 'Leave Application' && (
+          <>
+            <Card>
+              <CardHead icon="📝" title="New Leave Application" sub="Request submitted by staff or parent — needs approval before a gate pass is issued" accentColor={C.violet} isMobile={mob} />
+              <div style={{ padding: pad }}>
+                <form onSubmit={e => {
+                  e.preventDefault()
+                  if (!laForm.student_name?.trim()) { alert('Please select a student before submitting.'); return }
+                  if (!laForm.reason?.trim()) { alert('Reason is required.'); return }
+                  if (!laForm.to_date) { alert('Return date is required.'); return }
+                  handleInsert('leave_applications', { ...laForm, student_name: laStudent?.name || laForm.student_name, status: 'Pending' }, () => { setLaForm({ ...LA_DEF, from_date: today() }); setLaStudent(null); setLaResetKey(k => k + 1) })
+                }}>
+                  <div style={grid2(mob)}>
+                    <div style={span2}>
+                      <FormField label="Search & select student * (required)">
+                        <StudentAutocomplete students={students} resetKey={laResetKey} onSelect={onSelectLA} />
+                        <StudentChip student={laStudent} onClear={() => { setLaStudent(null); setLaForm(f => ({ ...f, student_name: '', class_name: '', course: '', gcc_no: '', house: '' })); setLaResetKey(k => k + 1) }} />
+                        {!laStudent && <div style={{ marginTop: 6, fontSize: 12, color: '#ef4444', fontWeight: 600, fontFamily: font }}>⚠ Student must be selected</div>}
+                      </FormField>
+                    </div>
+                    <FormField label="GCC No."><FormInput field="gcc_no" value={laForm.gcc_no} onChange={set_la} placeholder="Auto-filled on student select" /></FormField>
+                    <FormField label="House"><FormInput field="house" value={laForm.house} onChange={set_la} placeholder="Auto-filled on student select" /></FormField>
+                    <FormField label="Reason *"><FormSelect field="reason" value={laForm.reason} onChange={set_la} options={GP_REASON_OPTIONS} placeholder="Select reason…" /></FormField>
+                    <FormField label="Submitted By"><FormSelect field="submitted_by" value={laForm.submitted_by} onChange={set_la} options={['Staff', 'Parent']} /></FormField>
+                    <FormField label="Date of leave"><FormInput field="from_date" value={laForm.from_date} onChange={set_la} type="date" /></FormField>
+                    <FormField label="Date of return *"><FormInput field="to_date" value={laForm.to_date} onChange={set_la} type="date" /></FormField>
+                    <FormField label="Responsible Person / Contact"><FormInput field="responsible_contact" value={laForm.responsible_contact} onChange={set_la} placeholder="Name and phone number" /></FormField>
+                    <FormField label="Address"><FormInput field="address" value={laForm.address} onChange={set_la} /></FormField>
+                    <div style={span2}><FormField label="Note (optional)"><FormTextarea field="applicant_note" value={laForm.applicant_note} onChange={set_la} /></FormField></div>
+                  </div>
+                  <SaveBtn label="Submit Leave Application" saving={saving} />
+                </form>
+              </div>
+            </Card>
+            <Card>
+              <CardHead icon="📝" title="Leave Applications" sub={`${filteredRows.length} total`} accentColor={C.violet} isMobile={mob} />
+              <RecordsTable loading={loading} rows={filteredRows} onDelete={id => handleDelete('leave_applications', id)}
+                columns={[
+                  { key: 'from_date',    label: 'Date',    render: r => fmtDate(r.from_date) },
+                  { key: 'student_name', label: 'Student', render: r => <b style={{ fontFamily: font }}>{r.student_name}</b> },
+                  { key: 'gcc_no',       label: 'GCC No.' },
+                  { key: 'house',        label: 'House' },
+                  { key: 'reason',       label: 'Reason' },
+                  { key: 'to_date',      label: 'Return',  render: r => fmtDate(r.to_date) },
+                  { key: 'submitted_by', label: 'By' },
+                  { key: 'status',       label: 'Status',  render: r => <Pill label={r.status} /> },
+                  { key: '_q',           label: 'Actions', render: r => (
+                    r.status === 'Pending' ? (
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button onClick={() => approveLeaveApp(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>✓ Approve</button>
+                        <button onClick={() => rejectLeaveApp(r)} style={{ ...delBtn, background: '#fee2e2', color: C.red }}>✕ Reject</button>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 11, color: C.slate[400], fontFamily: font }}>{r.reviewed_by ? `By ${r.reviewed_by}` : '—'}</span>
+                    )
+                  )},
+                ]}
+                mobileConfig={{
+                  accent: r => r.status === 'Approved' ? C.emerald : r.status === 'Rejected' ? C.red : C.violet,
+                  title:  r => `📝 ${r.student_name}`,
+                  subtitle: r => `${r.reason} · ${r.house || '—'}`,
+                  badge:  r => <Pill label={r.status} />,
+                  meta: r => [
+                    `📅 ${fmtDate(r.from_date)} → ${fmtDate(r.to_date)}`,
+                    r.gcc_no ? `GCC ${r.gcc_no}` : null,
+                    `By: ${r.submitted_by}`,
+                  ],
+                  actions: r => (
+                    r.status === 'Pending' ? (
+                      <div style={{ display: 'flex', gap: 5 }}>
+                        <button onClick={() => approveLeaveApp(r)} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>✓ Approve</button>
+                        <button onClick={() => rejectLeaveApp(r)} style={{ ...delBtn, background: '#fee2e2', color: C.red, fontSize: 11 }}>✕ Reject</button>
+                      </div>
+                    ) : null
+                  ),
+                }}
+              />
+            </Card>
+          </>
+        )}
+
         {/* ── GATE PASS ── */}
         {activeTab === 'Gate Pass' && (
           <>
@@ -2172,12 +2312,14 @@ export default function ReceptionPage() {
                     <div style={span2}>
                       <FormField label="Search & select student * (required)">
                         <StudentAutocomplete students={students} resetKey={gpResetKey} onSelect={onSelectGP} />
-                        <StudentChip student={gpStudent} onClear={() => { setGpStudent(null); setGpForm(f => ({ ...f, student_name: '', class_name: '', course: '' })); setGpResetKey(k => k + 1) }} />
+                        <StudentChip student={gpStudent} onClear={() => { setGpStudent(null); setGpForm(f => ({ ...f, student_name: '', class_name: '', course: '', gcc_no: '', house: '' })); setGpResetKey(k => k + 1) }} />
                         {!gpStudent && <div style={{ marginTop: 6, fontSize: 12, color: '#ef4444', fontWeight: 600, fontFamily: font }}>⚠ Student must be selected</div>}
                       </FormField>
                     </div>
                     <FormField label="Class"><FormSelect field="class_name" value={gpForm.class_name} onChange={set_gp} options={CLASS_OPTIONS} placeholder="Select class…" /></FormField>
                     <FormField label="Course"><FormSelect field="course" value={gpForm.course} onChange={set_gp} options={COURSES} placeholder="Select course…" /></FormField>
+                    <FormField label="GCC No."><FormInput field="gcc_no" value={gpForm.gcc_no} onChange={set_gp} placeholder="Auto-filled on student select" /></FormField>
+                    <FormField label="House"><FormInput field="house" value={gpForm.house} onChange={set_gp} placeholder="Auto-filled on student select" /></FormField>
                     <FormField label="Reason *"><FormSelect field="reason" value={gpForm.reason} onChange={set_gp} options={GP_REASON_OPTIONS} placeholder="Select reason…" /></FormField>
                     <FormField label="Exit Date"><FormInput field="exit_date" value={gpForm.exit_date} onChange={set_gp} type="date" /></FormField>
                     <FormField label="Exit Time"><FormInput field="exit_time" value={gpForm.exit_time} onChange={set_gp} type="time" /></FormField>
@@ -2185,6 +2327,8 @@ export default function ReceptionPage() {
                     <FormField label="Expected Return Time">
                       <FormInput field="expected_return_time" value={gpForm.expected_return_time} onChange={set_gp} type="time" placeholder="When should student return?" />
                     </FormField>
+                    <FormField label="Return Date"><FormInput field="return_date" value={gpForm.return_date} onChange={set_gp} type="date" placeholder="For multi-day leave" /></FormField>
+                    <FormField label="Responsible Person / Contact"><FormInput field="responsible_contact" value={gpForm.responsible_contact} onChange={set_gp} placeholder="Name and phone number" /></FormField>
                     <FormField label="Approved By"><FormSelect field="approved_by" value={gpForm.approved_by} onChange={set_gp} options={APPROVED_BY_OPTIONS} placeholder="Select approver…" /></FormField>
                     <FormField label="Parent Informed">
                       <FormSelect field="parent_informed" value={gpForm.parent_informed} onChange={set_gp} options={['Yes', 'No']} />
@@ -2201,7 +2345,8 @@ export default function ReceptionPage() {
               <CardHead icon="🪪" title="Gate Pass Records" sub={`${filteredRows.length} total`} accentColor="#ca8a04" isMobile={mob}
                 right={<Btn small variant="ghost" onClick={() => exportToExcel(filteredRows, [
                   { key: 'exit_date', label: 'Date' }, { key: 'student_name', label: 'Student' },
-                  { key: 'class_name', label: 'Class' }, { key: 'reason', label: 'Reason' },
+                  { key: 'gcc_no', label: 'GCC No.' }, { key: 'class_name', label: 'Class' }, { key: 'house', label: 'House' },
+                  { key: 'reason', label: 'Reason' }, { key: 'return_date', label: 'Return Date' },
                   { key: 'exit_time', label: 'Exit Time' }, { key: 'expected_return_time', label: 'Return By' },
                   { key: 'parent_informed', label: 'Parent' }, { key: 'status', label: 'Status' },
                 ], 'GatePasses')}>📥 Excel</Btn>}
@@ -2210,8 +2355,11 @@ export default function ReceptionPage() {
                 columns={[
                   { key: 'exit_date',           label: 'Date',      render: r => fmtDate(r.exit_date) },
                   { key: 'student_name',         label: 'Student',   render: r => <b style={{ fontFamily: font }}>{r.student_name}</b> },
+                  { key: 'gcc_no',                label: 'GCC No.' },
                   { key: 'class_name',           label: 'Class' },
+                  { key: 'house',                 label: 'House' },
                   { key: 'reason',               label: 'Reason' },
+                  { key: 'return_date',           label: 'Return Date', render: r => r.return_date ? fmtDate(r.return_date) : '—' },
                   { key: 'expected_return_time', label: 'Return By', render: r => r.expected_return_time ? <span style={{ color: C.amber, fontWeight: 700, fontFamily: font }}>⏰ {r.expected_return_time}</span> : '—' },
                   { key: 'parent_informed',      label: 'Parent',    render: r => <span style={{ color: r.parent_informed === 'Yes' ? C.emerald : C.red, fontWeight: 700, fontFamily: font }}>{r.parent_informed}</span> },
                   { key: 'status',               label: 'Status',    render: r => <Pill label={r.status} /> },
@@ -2230,7 +2378,10 @@ export default function ReceptionPage() {
                   badge:  r => <Pill label={r.status} />,
                   meta: r => [
                     `📅 ${fmtDate(r.exit_date)}${r.exit_time ? ' ' + r.exit_time : ''}`,
-                    r.expected_return_time ? `⏰ Return: ${r.expected_return_time}` : null,
+                    r.gcc_no ? `GCC ${r.gcc_no}` : null,
+                    r.house ? `🏠 ${r.house}` : null,
+                    r.return_date ? `↩ Return: ${fmtDate(r.return_date)}` : null,
+                    r.expected_return_time ? `⏰ Return by: ${r.expected_return_time}` : null,
                     `Parent: ${r.parent_informed}`,
                     r.approved_by ? `By: ${r.approved_by}` : null,
                   ],
