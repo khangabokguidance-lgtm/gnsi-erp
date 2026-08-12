@@ -507,6 +507,20 @@ export const revertFeeCollection = async ({
 }) => {
   if (!table || !id) throw new Error('revertFeeCollection: table and id are required')
 
+  // Fetch the row BEFORE updating it, so the audit log can carry the real
+  // amount/mode/gcc/student_name of what's being reverted — without this,
+  // fee_revert audit entries only ever had source_ref/source_type/reason,
+  // leaving Amount and Mode permanently blank in the Activity Log no matter
+  // how the display layer parses source_ref (GCC and a description can be
+  // recovered from source_ref, but amount and pay_mode never appear in it).
+  // Column names differ per table (adm_fee_collections uses amount_paid,
+  // adm_flat_fees uses amount; adm_app_id is the GCC column on all three).
+  let originalRow = null
+  try {
+    const { data } = await supabase.from(table).select('*').eq('id', id).maybeSingle()
+    originalRow = data || null
+  } catch (e) { console.warn('revertFeeCollection: could not fetch original row for audit log', e) }
+
   const updates = {
     reverted: true,
     reverted_at: new Date().toISOString(),
@@ -535,7 +549,13 @@ export const revertFeeCollection = async ({
       try {
         await supabase.from('audit_log').insert({
           action: 'fee_revert', changed_by: revertedBy, target_id: row.id,
-          old_values: JSON.stringify({ source_ref: accountSourceRef, source_type: accountSourceType, revert_reason: reason }),
+          old_values: JSON.stringify({
+            source_ref: accountSourceRef, source_type: accountSourceType, revert_reason: reason,
+            gcc: originalRow?.adm_app_id ?? null,
+            amount: originalRow?.amount ?? originalRow?.amount_paid ?? null,
+            pay_mode: originalRow?.pay_mode ?? null,
+            receipt_no: originalRow?.receipt_no ?? null,
+          }),
           created_at: new Date().toISOString(),
         })
       } catch (e) { console.warn('Audit log failed during revert', e) }
