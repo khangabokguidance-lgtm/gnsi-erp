@@ -3024,6 +3024,39 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
   const col2 = isMobile ? '1fr' : '1fr 1fr'
   const n = v => Number(v || 0).toLocaleString('en-IN')
 
+  // ── Per-box sort + course-filter controls ────────────────────────────────
+  // Each box gets its own independent {course, sort} state so filtering one
+  // box (e.g. Fee Defaulters by Sainik) doesn't affect the others.
+  const COURSE_OPTS = ['All', ...Object.keys(COURSE_STRUCTURE)]
+  const [subjPerfCtl, setSubjPerfCtl]   = useState({ course: 'All', sort: 'weakest' })
+  const [scoreDistCtl, setScoreDistCtl] = useState({ course: 'All' })
+  const [attCtl, setAttCtl]   = useState({ course: 'All', sort: 'lowest' })
+  const [feeCtl, setFeeCtl]   = useState({ course: 'All', sort: 'highest' })
+  const [profCtl, setProfCtl] = useState({ course: 'All', sort: 'lowest' })
+  const [repCtl, setRepCtl]   = useState({ course: 'All', sort: 'name' })
+
+  const SortFilterBar = ({ ctl, setCtl, sortOptions, accent }) => (
+    <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+      <select
+        value={ctl.course}
+        onChange={e => setCtl(c => ({ ...c, course: e.target.value }))}
+        style={{ fontSize: 10, fontWeight: 600, padding: '3px 6px', borderRadius: T.r6, border: `1px solid ${T.border}`, background: T.surface, color: T.text2, cursor: 'pointer', fontFamily: 'inherit' }}
+      >
+        {COURSE_OPTS.map(c => <option key={c} value={c}>{c === 'All' ? 'All courses' : c}</option>)}
+      </select>
+      {sortOptions && (
+        <select
+          value={ctl.sort}
+          onChange={e => setCtl(c => ({ ...c, sort: e.target.value }))}
+          style={{ fontSize: 10, fontWeight: 600, padding: '3px 6px', borderRadius: T.r6, border: `1px solid ${T.border}`, background: T.surface, color: T.text2, cursor: 'pointer', fontFamily: 'inherit' }}
+        >
+          {sortOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      )}
+    </div>
+  )
+  const byCourse = (list, course) => course === 'All' ? list : list.filter(s => s.course === course)
+
   // ── Derived counts ──────────────────────────────────────────────────────────
   const active      = students.filter(s => s.status === 'Active')
   const boarders    = students.filter(s => s.hostel_type === 'Boarder')
@@ -3032,7 +3065,17 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
   const male        = students.filter(s => s.gender === 'Male')
   const female      = students.filter(s => s.gender === 'Female')
   const repeaters   = students.filter(s => s.is_repeater)
+  const repeatersFiltered = byCourse(repeaters, repCtl.course).sort((a, b) =>
+    repCtl.sort === 'name' ? a.name.localeCompare(b.name)
+    : repCtl.sort === 'gcc' ? Number(a.gcc_no || 0) - Number(b.gcc_no || 0)
+    : (a.batch || '').localeCompare(b.batch || '')
+  )
   const missingInfo = students.filter(s => getMissingFields(s).length > 0)
+  const missingInfoFiltered = byCourse(missingInfo, profCtl.course).sort((a, b) =>
+    profCtl.sort === 'lowest' ? getCompletenessScore(a) - getCompletenessScore(b)
+    : profCtl.sort === 'highest' ? getCompletenessScore(b) - getCompletenessScore(a)
+    : a.name.localeCompare(b.name)
+  )
   const avgCompleteness = students.length ? Math.round(students.reduce((a,s)=>a+getCompletenessScore(s),0)/students.length) : 100
 
   // ── Attendance buckets ──────────────────────────────────────────────────────
@@ -3045,17 +3088,29 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
     ? (withAtt.reduce((a, s) => a + attData[s.id], 0) / withAtt.length).toFixed(1)
     : null
   const criticalAtt = withAtt.filter(s => attData[s.id] < 60)
+  const criticalAttFiltered = byCourse(criticalAtt, attCtl.course).sort((a, b) =>
+    attCtl.sort === 'lowest' ? attData[a.id] - attData[b.id]
+    : attCtl.sort === 'highest' ? attData[b.id] - attData[a.id]
+    : a.name.localeCompare(b.name)
+  )
 
   // ── Fee summary ─────────────────────────────────────────────────────────────
   const withFee   = students.filter(s => feeData[s.id] != null)
   const feeDue    = withFee.filter(s => feeData[s.id].dues > 0)
+  const feeDueFiltered = byCourse(feeDue, feeCtl.course).sort((a, b) =>
+    feeCtl.sort === 'highest' ? (feeData[b.id]?.dues || 0) - (feeData[a.id]?.dues || 0)
+    : feeCtl.sort === 'lowest' ? (feeData[a.id]?.dues || 0) - (feeData[b.id]?.dues || 0)
+    : a.name.localeCompare(b.name)
+  )
   const feeClear  = withFee.filter(s => feeData[s.id].dues === 0)
   const totalDues = feeDue.reduce((a, s) => a + (feeData[s.id].dues || 0), 0)
   const highDue   = feeDue.filter(s => feeData[s.id].dues > 10000)
 
   // ── Exam summary ───────────────────────────────────────────────────────────
   const withExams = students.filter(s => (examData[s.id]?.length || 0) > 0)
-  const allScores = withExams.map(s => {
+  const withExamsForSubjPerf = byCourse(withExams, subjPerfCtl.course)
+  const withExamsForScoreDist = byCourse(withExams, scoreDistCtl.course)
+  const allScores = withExamsForScoreDist.map(s => {
     const exams = examData[s.id]
     return exams.reduce((a, e) => a + (e.total || 0), 0) / exams.length
   })
@@ -3063,10 +3118,10 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
     ? (allScores.reduce((a, v) => a + v, 0) / allScores.length).toFixed(0)
     : null
 
-  // Subject-wise average across all students
+  // Subject-wise average — computed on the course-filtered set for that box
   const subjectAvg = {}
   SUBJECTS.forEach(sub => {
-    const vals = withExams.flatMap(s =>
+    const vals = withExamsForSubjPerf.flatMap(s =>
       examData[s.id].map(e => e[sub]).filter(v => v != null)
     )
     if (vals.length)
@@ -3075,6 +3130,11 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
   const weakSubjects = Object.entries(subjectAvg)
     .filter(([, v]) => Number(v) < 50)
     .sort((a, b) => Number(a[1]) - Number(b[1]))
+  const subjectAvgSorted = Object.entries(subjectAvg).sort((a, b) =>
+    subjPerfCtl.sort === 'weakest' ? Number(a[1]) - Number(b[1])
+    : subjPerfCtl.sort === 'strongest' ? Number(b[1]) - Number(a[1])
+    : a[0].localeCompare(b[0])
+  )
 
   // ── Course distribution ────────────────────────────────────────────────────
   const courseData = Object.keys(COURSE_STRUCTURE).map(c => ({
@@ -3318,7 +3378,12 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
       {withExams.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: col2, gap: 16 }}>
           <DashCard title="📝 Subject-wise Performance" sub="Average marks across all exams" accent={T.violet}>
-            {Object.entries(subjectAvg).sort((a, b) => Number(a[1]) - Number(b[1])).map(([sub, avg]) => {
+            <SortFilterBar ctl={subjPerfCtl} setCtl={setSubjPerfCtl} sortOptions={[
+              { value: 'weakest', label: 'Weakest first' },
+              { value: 'strongest', label: 'Strongest first' },
+              { value: 'name', label: 'Subject A–Z' },
+            ]} />
+            {subjectAvgSorted.map(([sub, avg]) => {
               const v = Number(avg)
               const color = v >= 60 ? T.green : v >= 40 ? T.amber : T.red
               return (
@@ -3340,24 +3405,25 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
             )}
           </DashCard>
 
-          <DashCard title="🏆 Score Distribution" sub={`${withExams.length} students · avg ${avgScore ?? '—'}/700`} accent={T.amber}>
+          <DashCard title="🏆 Score Distribution" sub={`${withExamsForScoreDist.length} students · avg ${avgScore ?? '—'}/700`} accent={T.amber}>
+            <SortFilterBar ctl={scoreDistCtl} setCtl={setScoreDistCtl} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
               <div style={{ background: T.violetLight, border: `1px solid ${T.violetBorder}`, borderRadius: T.r8, padding: '12px', textAlign: 'center' }}>
                 <div style={{ fontSize: 22, fontWeight: 800, color: T.violet }}>{avgScore ?? '—'}</div>
                 <div style={{ fontSize: 9, color: T.violet, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>Avg / 700</div>
               </div>
               <div style={{ background: T.amberLight, border: `1px solid ${T.amberBorder}`, borderRadius: T.r8, padding: '12px', textAlign: 'center' }}>
-                <div style={{ fontSize: 22, fontWeight: 800, color: T.amber }}>{withExams.length}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: T.amber }}>{withExamsForScoreDist.length}</div>
                 <div style={{ fontSize: 9, color: T.amber, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>Appeared</div>
               </div>
             </div>
             {[
-              { label: 'Excellent ≥500',  count: withExams.filter(s => (examData[s.id]?.[0]?.total || 0) >= 500).length, color: T.green },
-              { label: 'Good 350–499',    count: withExams.filter(s => { const t = examData[s.id]?.[0]?.total || 0; return t >= 350 && t < 500 }).length, color: T.brand },
-              { label: 'Average 200–349', count: withExams.filter(s => { const t = examData[s.id]?.[0]?.total || 0; return t >= 200 && t < 350 }).length, color: T.amber },
-              { label: 'Needs work <200', count: withExams.filter(s => (examData[s.id]?.[0]?.total || 0) < 200).length, color: T.red },
+              { label: 'Excellent ≥500',  count: withExamsForScoreDist.filter(s => (examData[s.id]?.[0]?.total || 0) >= 500).length, color: T.green },
+              { label: 'Good 350–499',    count: withExamsForScoreDist.filter(s => { const t = examData[s.id]?.[0]?.total || 0; return t >= 350 && t < 500 }).length, color: T.brand },
+              { label: 'Average 200–349', count: withExamsForScoreDist.filter(s => { const t = examData[s.id]?.[0]?.total || 0; return t >= 200 && t < 350 }).length, color: T.amber },
+              { label: 'Needs work <200', count: withExamsForScoreDist.filter(s => (examData[s.id]?.[0]?.total || 0) < 200).length, color: T.red },
             ].map(row => (
-              <StatRow key={row.label} label={row.label} value={row.count} pct={(row.count / Math.max(withExams.length, 1)) * 100} color={row.color} />
+              <StatRow key={row.label} label={row.label} value={row.count} pct={(row.count / Math.max(withExamsForScoreDist.length, 1)) * 100} color={row.color} />
             ))}
           </DashCard>
         </div>
@@ -3369,10 +3435,17 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
         <div style={{ background: T.surface, borderRadius: T.r12, border: `1px solid ${T.redBorder}`, overflow: 'hidden', boxShadow: T.shadow }}>
           <div style={{ background: T.redLight, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${T.redBorder}` }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: T.red }}>📉 Critical Attendance</div>
-            <span style={{ fontSize: 10, fontWeight: 800, background: T.red, color: 'white', padding: '2px 8px', borderRadius: 99 }}>{criticalAtt.length}</span>
+            <span style={{ fontSize: 10, fontWeight: 800, background: T.red, color: 'white', padding: '2px 8px', borderRadius: 99 }}>{criticalAttFiltered.length}</span>
+          </div>
+          <div style={{ padding: '10px 14px 0' }}>
+            <SortFilterBar ctl={attCtl} setCtl={setAttCtl} sortOptions={[
+              { value: 'lowest', label: 'Lowest % first' },
+              { value: 'highest', label: 'Highest % first' },
+              { value: 'name', label: 'Name A–Z' },
+            ]} />
           </div>
           <AlertList
-            items={criticalAtt.slice(0, 8)}
+            items={criticalAttFiltered.slice(0, 8)}
             color={T.red} border={T.redBorder}
             emptyMsg="🎉 All students above 60% attendance"
             keyFn={s => s.id}
@@ -3386,10 +3459,17 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
         <div style={{ background: T.surface, borderRadius: T.r12, border: `1px solid ${T.amberBorder}`, overflow: 'hidden', boxShadow: T.shadow }}>
           <div style={{ background: T.amberLight, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${T.amberBorder}` }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: T.amber }}>💰 Fee Defaulters</div>
-            <span style={{ fontSize: 10, fontWeight: 800, background: T.amber, color: 'white', padding: '2px 8px', borderRadius: 99 }}>{feeDue.length}</span>
+            <span style={{ fontSize: 10, fontWeight: 800, background: T.amber, color: 'white', padding: '2px 8px', borderRadius: 99 }}>{feeDueFiltered.length}</span>
+          </div>
+          <div style={{ padding: '10px 14px 0' }}>
+            <SortFilterBar ctl={feeCtl} setCtl={setFeeCtl} sortOptions={[
+              { value: 'highest', label: 'Highest due first' },
+              { value: 'lowest', label: 'Lowest due first' },
+              { value: 'name', label: 'Name A–Z' },
+            ]} />
           </div>
           <AlertList
-            items={feeDue.sort((a, b) => (feeData[b.id]?.dues || 0) - (feeData[a.id]?.dues || 0)).slice(0, 8)}
+            items={feeDueFiltered.slice(0, 8)}
             color={T.amber} border={T.amberBorder}
             emptyMsg="✅ All students are fee-clear"
             keyFn={s => s.id}
@@ -3405,11 +3485,18 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
             <div style={{ fontSize: 13, fontWeight: 800, color: T.violet }}>⚠ Incomplete Profiles</div>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               <span style={{ fontSize: 11, fontWeight: 700, color: T.violet }}>Avg {avgCompleteness}%</span>
-              <span style={{ fontSize: 10, fontWeight: 800, background: T.violet, color: 'white', padding: '2px 8px', borderRadius: 99 }}>{missingInfo.length}</span>
+              <span style={{ fontSize: 10, fontWeight: 800, background: T.violet, color: 'white', padding: '2px 8px', borderRadius: 99 }}>{missingInfoFiltered.length}</span>
             </div>
           </div>
+          <div style={{ padding: '10px 14px 0' }}>
+            <SortFilterBar ctl={profCtl} setCtl={setProfCtl} sortOptions={[
+              { value: 'lowest', label: 'Least complete first' },
+              { value: 'highest', label: 'Most complete first' },
+              { value: 'name', label: 'Name A–Z' },
+            ]} />
+          </div>
           <AlertList
-            items={missingInfo.slice(0, 8)}
+            items={missingInfoFiltered.slice(0, 8)}
             color={T.violet} border={T.violetBorder}
             emptyMsg="✅ All profiles complete"
             keyFn={s => s.id}
@@ -3418,10 +3505,10 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
             btnLabel="Edit"
             onBtn={onOpenDetail}
           />
-          {onNavigate&&missingInfo.length>0&&(
+          {onNavigate&&missingInfoFiltered.length>0&&(
             <div style={{padding:'10px 16px',borderTop:`1px solid ${T.violetBorder}`}}>
               <Btn onClick={()=>onNavigate('dataQuality')} size='sm' style={{width:'100%',justifyContent:'center',color:T.violet,borderColor:T.violetBorder}}>
-                View all {missingInfo.length} in Data Quality →
+                View all {missingInfoFiltered.length} in Data Quality →
               </Btn>
             </div>
           )}
@@ -3430,10 +3517,17 @@ function StudentDashboard({ students, attData, examData, feeData, onOpenDetail, 
         <div style={{ background: T.surface, borderRadius: T.r12, border: '1px solid #fcd34d', overflow: 'hidden', boxShadow: T.shadow }}>
           <div style={{ background: '#fef3c7', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #fcd34d' }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#92400e' }}>🔁 Repeater Students</div>
-            <span style={{ fontSize: 10, fontWeight: 800, background: '#92400e', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{repeaters.length}</span>
+            <span style={{ fontSize: 10, fontWeight: 800, background: '#92400e', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{repeatersFiltered.length}</span>
+          </div>
+          <div style={{ padding: '10px 14px 0' }}>
+            <SortFilterBar ctl={repCtl} setCtl={setRepCtl} sortOptions={[
+              { value: 'name', label: 'Name A–Z' },
+              { value: 'gcc', label: 'GCC No.' },
+              { value: 'batch', label: 'Batch' },
+            ]} />
           </div>
           <AlertList
-            items={repeaters.slice(0, 8)}
+            items={repeatersFiltered.slice(0, 8)}
             color="#92400e" border="#fcd34d"
             emptyMsg="No repeater students tagged yet"
             keyFn={s => s.id}
