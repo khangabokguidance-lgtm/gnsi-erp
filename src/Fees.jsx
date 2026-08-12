@@ -391,19 +391,48 @@ function activityLine(entry) {
 // (GCC, Student, Amount, Mode, Receipt) have to be pulled out of whichever
 // one actually carries that data per action type. Falls back to '—' rather
 // than throwing when a field genuinely isn't present for that action.
-function activityColumns(entry) {
+//
+// fee_collection entries carry gcc/student_name/total/pay_mode/receipt_no
+// directly in new_values. fee_revert and fee_date_correction entries do
+// NOT — they only log source_ref/source_type/revert_reason (see
+// revertFeeCollection / correctFeeCollectionDate in feeEngine.js), so GCC
+// has to be parsed back out of source_ref, which sourceRef.* always builds
+// as `<type>_<gcc>_<...>` (e.g. `course_1126_sep_2026`, `flat_1090_may_2026`,
+// `adm_1135`). Student name is then resolved via the students list already
+// loaded by this tab, matched on that recovered GCC.
+function activityColumns(entry, students = []) {
   let oldV = null, newV = null
   try { oldV = entry.old_values ? JSON.parse(entry.old_values) : null } catch (e) {}
   try { newV = entry.new_values ? JSON.parse(entry.new_values) : null } catch (e) {}
   const v = newV || oldV || {}
+
+  let gcc = v.gcc ?? v.adm_app_id ?? null
+  let receiptOrDesc = v.receipt_no ?? null
+
+  // Revert / date-correction fallback: recover GCC + a human description
+  // from source_ref, since these actions never log gcc/receipt_no directly.
+  if (!gcc && v.source_ref) {
+    const parts = String(v.source_ref).split('_')
+    // adm_<gcc> | adm_item_<gcc>_<item> | flat_<gcc>_<mon>_<year> | course_<gcc>_<mon>_<year>
+    if (parts[0] === 'adm' && parts[1] === 'item') gcc = parts[2] ?? null
+    else gcc = parts[1] ?? null
+    if (v.source_type) {
+      const label = v.source_type.replace(/_/g, ' ')
+      receiptOrDesc = parts.length > 2 ? `${label} (${parts.slice(-2).join(' ')})` : label
+    }
+  }
+
+  const student = gcc ? students.find(s => gccStr(s.gcc_no) === gccStr(gcc)) : null
+
   return {
-    gcc:      v.gcc ?? v.adm_app_id ?? '—',
-    student:  v.student_name ?? '—',
+    gcc:      gcc ?? '—',
+    student:  v.student_name ?? student?.name ?? '—',
     amount:   v.total ?? v.amount ?? v.amount_paid ?? null,
     mode:     v.pay_mode ?? '—',
-    receipt:  v.receipt_no ?? '—',
+    receipt:  receiptOrDesc ?? '—',
   }
 }
+
 
 // Same "show every real field" pattern as AnomalyRecordRow, reused here so
 // admins can expand an Activity Log entry to its full raw old/new values
@@ -536,7 +565,7 @@ function ActivityLogTab({ students, isAdmin, currentUser }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {filtered.map(entry => {
               const meta = activityActionMeta(entry.action)
-              const cols = activityColumns(entry)
+              const cols = activityColumns(entry, students)
               const isOpen = expandedId === entry.id
               return (
                 <div key={entry.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderLeft: `4px solid ${meta.color}`, borderRadius: 8, overflow: 'hidden' }}>
