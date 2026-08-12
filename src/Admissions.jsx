@@ -20,7 +20,7 @@ import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
 import ReportGenerator from './ReportGenerator'
-import { promoteToStudent, getFlatFeeAmtSync, checkHouseCapacity } from './feeEngine'
+import { promoteToStudent, getFlatFeeAmtSync, getFeeRates, getSessionYear, checkHouseCapacity } from './feeEngine'
 import { useActiveSession } from './shared/useActiveSession'
 import { staffDB } from './staffDB'
 
@@ -2205,7 +2205,25 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
 
   const derivedHostelType = deriveHostelType(form.house, form.hostel_type)
   const hs       = HOSTEL_STYLES[derivedHostelType] || HOSTEL_STYLES['Day Scholar']
-  const baseRate = getFlatFeeAmtSync(derivedHostelType, form.course)
+
+  // 🔗 Live flat-fee rate — sourced from fee_structures (via getFeeRates),
+  // not the hardcoded legacy getFlatFeeAmtSync fallback. That sync helper
+  // is meant only for quick dashboard aggregates (see its doc comment in
+  // feeEngine.js); using it here meant this form could silently display a
+  // stale rate (e.g. ₹5,000 hardcoded) even when Fee Setup had a different,
+  // current rate configured (e.g. ₹5,500) — staff had no way to tell the
+  // number on screen wasn't the real one. Seeded with the sync estimate so
+  // the badge isn't blank while the DB call resolves, then corrected.
+  const [baseRate, setBaseRate] = useState(() => getFlatFeeAmtSync(derivedHostelType, form.course))
+  useEffect(() => {
+    let cancelled = false
+    const sessionYear = form.session || getSessionYear()
+    getFeeRates(sessionYear, form.course, form.subtype, derivedHostelType, form.gcc || null)
+      .then(r => { if (!cancelled) setBaseRate(r.flatFee) })
+      .catch(() => { /* keep sync estimate on error */ })
+    return () => { cancelled = true }
+  }, [form.session, form.course, form.subtype, derivedHostelType, form.gcc])
+
   const discRate = form.scholarshipPct > 0 ? Math.round(baseRate*(1-form.scholarshipPct/100)) : baseRate
   const warden   = getHousemaster(housemastersByHouse, form.house)
 

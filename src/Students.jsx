@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
-import { getFlatFeeAmtSync, collectFee, rcptNo, gccStr as gccStrFee } from './feeEngine'
+import { getFlatFeeAmtSync, getFeeRates, getSessionYear, collectFee, rcptNo, gccStr as gccStrFee } from './feeEngine'
 import { useAuth } from './AuthContext'
 import { staffDB } from './staffDB'
 
@@ -583,7 +583,25 @@ function getAge(dob) {
   if (today.getMonth()-birth.getMonth()<0||(today.getMonth()===birth.getMonth()&&today.getDate()<birth.getDate())) age--
   return age
 }
-function getEffectiveMonthlyDue(student) {
+// 🔗 Live rate — sourced from fee_structures via getFeeRates, not the
+// hardcoded legacy getFlatFeeAmtSync fallback. getFlatFeeAmtSync is meant
+// only for quick sync dashboard aggregates (see its doc comment in
+// feeEngine.js); using it for actual arrears/dues calculation meant every
+// student's "amount owed" could be silently wrong whenever fee_structures
+// diverged from the old hardcoded rates (e.g. Sainik/Boarder stale at
+// ₹5,000 while the configured rate had moved to ₹5,500). getFeeRates
+// caches per course/batch/hostel/session combo internally, so calling
+// this in a per-student loop is cheap after the first fetch per combo.
+async function getEffectiveMonthlyDue(student) {
+  const sessionYear = student.session || getSessionYear()
+  const r = await getFeeRates(sessionYear, student.course, student.batch, student.hostel_type, student.gcc_no || null)
+  const waiver=Number(student.fee_waiver||0)
+  const scholarship=Number(student.scholarship||0)
+  return Math.max(0, r.flatFee-waiver-scholarship)
+}
+// Sync fallback estimate — for callers that can't await (e.g. seeding
+// state before the async result resolves). NOT for real billing/arrears.
+function getEffectiveMonthlyDueSync(student) {
   const base=getFlatFeeAmtSync(student.hostel_type, student.course)
   const waiver=Number(student.fee_waiver||0)
   const scholarship=Number(student.scholarship||0)
@@ -2416,7 +2434,15 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
   const batchStudents=allStudents.filter(s=>s.batch===student.batch&&s.status==='Active')
   const batchRanks=batchStudents.map(s=>({id:s.id,avg:(examData[s.id]||[]).reduce((a,e)=>a+(e.total||0),0)/Math.max((examData[s.id]||[]).length,1)})).sort((a,b)=>b.avg-a.avg)
   const rank=batchRanks.findIndex(x=>x.id===student.id)+1
-  const effectiveDue=getEffectiveMonthlyDue(student)
+  // 🔗 Live rate from fee_structures — seeded with the sync estimate so the
+  // ledger isn't blank while the DB call resolves, then corrected. See
+  // getEffectiveMonthlyDue's comment above for why this can't stay sync.
+  const [effectiveDue,setEffectiveDue]=useState(()=>getEffectiveMonthlyDueSync(student))
+  useEffect(()=>{
+    let cancelled=false
+    getEffectiveMonthlyDue(student).then(v=>{if(!cancelled)setEffectiveDue(v)}).catch(()=>{})
+    return ()=>{cancelled=true}
+  },[student.id, student.hostel_type, student.course, student.batch, student.session, student.fee_waiver, student.scholarship])
 
   const monthlySummary=useMemo(()=>{
     const months={}
@@ -2648,7 +2674,7 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
             <div style={{display:'flex',flexDirection:'column',gap:14}}>
               {(Number(student.fee_waiver)||Number(student.scholarship))?(
                 <div style={{background:T.amberLight,border:`1px solid ${T.amberBorder}`,borderRadius:T.r8,padding:'10px 14px',fontSize:12,color:T.amber,fontWeight:600}}>
-                  Effective due: ₹{fmt(effectiveDue)}/mo (base ₹{fmt(getFlatFeeAmtSync(student.hostel_type, student.course))} − waiver ₹{fmt(student.fee_waiver||0)} − scholarship ₹{fmt(student.scholarship||0)})
+                  Effective due: ₹{fmt(effectiveDue)}/mo (base ₹{fmt(effectiveDue+Number(student.fee_waiver||0)+Number(student.scholarship||0))} − waiver ₹{fmt(student.fee_waiver||0)} − scholarship ₹{fmt(student.scholarship||0)})
                 </div>
               ):null}
               {totalArrears>0&&<div style={{background:T.redLight,border:`1px solid ${T.redBorder}`,borderRadius:T.r8,padding:'10px 14px',fontWeight:700,color:T.red,fontSize:12}}>⚠ Total Arrears: ₹{fmt(totalArrears)}</div>}
@@ -2744,7 +2770,17 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
   const subtypes=COURSE_STRUCTURE[form.course]?.subtypes??[]
   const gccDup=form.gcc_no?allStudents.find(s=>s.gcc_no?.toString()===form.gcc_no?.toString()&&s.id!==editing?.id):null
   const phoneDup=form.phone?.trim()?allStudents.find(s=>s.phone?.trim()===form.phone?.trim()&&s.id!==editing?.id):null
-  const effectiveDue=Math.max(0,getFlatFeeAmtSync(derived, form.course)-Number(form.fee_waiver||0)-Number(form.scholarship||0))
+  // 🔗 Live rate from fee_structures — same fix as Admissions.jsx's
+  // Course & Class badge; seeded with the sync estimate, then corrected.
+  const [baseRate,setBaseRate]=useState(()=>getFlatFeeAmtSync(derived, form.course))
+  useEffect(()=>{
+    let cancelled=false
+    const sessionYear=form.session||getSessionYear()
+    getFeeRates(sessionYear, form.course, form.batch, derived, form.gcc_no||null)
+      .then(r=>{if(!cancelled)setBaseRate(r.flatFee)}).catch(()=>{})
+    return ()=>{cancelled=true}
+  },[form.session, form.course, form.batch, derived, form.gcc_no])
+  const effectiveDue=Math.max(0,baseRate-Number(form.fee_waiver||0)-Number(form.scholarship||0))
   const hostelCfg=HOSTEL_CFG[derived]||HOSTEL_CFG['Day Scholar']
 
   const validate=()=>{const e={};if(!form.name?.trim())e.name='Name is required';if(!form.gcc_no?.toString().trim())e.gcc_no='GCC No. required';if(gccDup)e.gcc_no=`GCC ${form.gcc_no} used by ${gccDup.name}`;if(phoneDup)e.phone=`Phone used by ${phoneDup.name}`;setErrors(e);return!Object.keys(e).length}
@@ -2800,7 +2836,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
           <FieldRow label="Hostel Type"><select style={{...SEL,opacity:DAY_SCHOLAR_HOUSES.includes(form.house) ? .6 : 1}} value={form.hostel_type} onChange={e=>set('hostel_type',e.target.value)}>{['Boarder','Day Scholar','Day Boarder'].map(h=><option key={h}>{h}</option>)}</select></FieldRow>
         </div>
         <div style={{display:'inline-flex',alignItems:'center',gap:8,marginBottom:14,padding:'8px 14px',borderRadius:T.r8,background:hostelCfg.bg,border:`1px solid ${hostelCfg.border}`,fontSize:12,fontWeight:600,color:hostelCfg.color}}>
-          {derived} · ₹{fmt(getFlatFeeAmtSync(derived, form.course))}/month
+          {derived} · ₹{fmt(baseRate)}/month
         </div>
 
         <Divider label="Fee Adjustments"/>
@@ -3812,7 +3848,7 @@ const effectiveCols = visibleCols.filter(col => {
       for(const s of studentRows){
         const gcc=gccStrFee(s.gcc_no)
         const totalPaid=totals[gcc]||0
-        const effectiveDue=getEffectiveMonthlyDue(s)
+        const effectiveDue=await getEffectiveMonthlyDue(s)
         const admitDate=s.admission_date?new Date(s.admission_date):new Date()
         const now=new Date()
         const monthsEnrolled=Math.max(0,(now.getFullYear()-admitDate.getFullYear())*12+(now.getMonth()-admitDate.getMonth()))
