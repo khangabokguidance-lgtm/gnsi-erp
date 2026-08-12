@@ -315,13 +315,13 @@ function runAnomalyEngine({adm_fee_collections,adm_flat_fees,adm_course_fees,stu
 // field shown here is real data pulled straight from adm_flat_fees /
 // adm_course_fees / adm_fee_collections / students, whichever it came from.
 const FIELD_LABELS={
-  id:'Record ID', adm_app_id:'GCC No.', gcc_no:'GCC No.',
-  amount:'Amount', amount_paid:'Amount Paid',
+  id:'Record ID', adm_app_id:'GCC No.', gcc_no:'GCC No.', gcc:'GCC No.',
+  amount:'Amount', amount_paid:'Amount Paid', total:'Total',
   pay_date:'Payment Date', pay_mode:'Payment Mode', txn_ref:'Txn Reference',
   receipt_no:'Receipt No.', collected_by:'Collected By',
   month:'Month', for_month:'For Month', year:'Year',
-  course:'Course', subtype:'Subtype', hostel_type:'Hostel Type',
-  fee_type:'Fee Type', description:'Description',
+  course:'Course', subtype:'Subtype', hostel_type:'Hostel Type', class_name:'Class',
+  fee_type:'Fee Type', description:'Description', table:'Table', items:'Items',
   student_name:'Student Name', adm_no:'Admission No.',
   reverted:'Reverted', reverted_by:'Reverted By', reverted_at:'Reverted At', revert_reason:'Revert Reason',
   created_at:'Created At', updated_at:'Updated At',
@@ -386,6 +386,63 @@ function activityLine(entry) {
   return `#${entry.target_id}`
 }
 
+// ── Column extraction for the Activity Log table ─────────────────────────────
+// old_values/new_values are JSON strings, not real columns, so table columns
+// (GCC, Student, Amount, Mode, Receipt) have to be pulled out of whichever
+// one actually carries that data per action type. Falls back to '—' rather
+// than throwing when a field genuinely isn't present for that action.
+function activityColumns(entry) {
+  let oldV = null, newV = null
+  try { oldV = entry.old_values ? JSON.parse(entry.old_values) : null } catch (e) {}
+  try { newV = entry.new_values ? JSON.parse(entry.new_values) : null } catch (e) {}
+  const v = newV || oldV || {}
+  return {
+    gcc:      v.gcc ?? v.adm_app_id ?? '—',
+    student:  v.student_name ?? '—',
+    amount:   v.total ?? v.amount ?? v.amount_paid ?? null,
+    mode:     v.pay_mode ?? '—',
+    receipt:  v.receipt_no ?? '—',
+  }
+}
+
+// Same "show every real field" pattern as AnomalyRecordRow, reused here so
+// admins can expand an Activity Log entry to its full raw old/new values
+// instead of just the one-line summary.
+function ActivityRawDetail({ entry }) {
+  let oldV = null, newV = null
+  try { oldV = entry.old_values ? JSON.parse(entry.old_values) : null } catch (e) {}
+  try { newV = entry.new_values ? JSON.parse(entry.new_values) : null } catch (e) {}
+  const renderFields = (obj, heading) => {
+    if (!obj) return null
+    const entries = Object.entries(obj).filter(([k, v]) => v !== null && v !== undefined && v !== '')
+    if (!entries.length) return null
+    return (
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 9, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>{heading}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: '4px 12px' }}>
+          {entries.map(([k, val]) => (
+            <div key={k} style={{ fontSize: 10.5, gridColumn: k === 'items' && Array.isArray(val) ? '1/-1' : 'auto' }}>
+              <span style={{ color: '#94a3b8', fontWeight: 600 }}>{FIELD_LABELS[k] || k}: </span>
+              <span style={{ color: '#1e293b', fontWeight: 600 }}>
+                {k === 'items' && Array.isArray(val)
+                  ? val.map(i => `${i.label} ₹${Number(i.amount || 0).toLocaleString('en-IN')}`).join(', ')
+                  : typeof val === 'object' ? JSON.stringify(val) : (typeof val === 'boolean' ? (val ? 'Yes' : 'No') : String(val))}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+  if (!oldV && !newV) return <div style={{ fontSize: 10.5, color: '#94a3b8', fontStyle: 'italic' }}>No detail recorded for this entry.</div>
+  return (
+    <div>
+      {renderFields(newV, oldV ? 'New Values' : 'Details')}
+      {renderFields(oldV, 'Previous Values')}
+    </div>
+  )
+}
+
 function ActivityLogTab({ students, isAdmin, currentUser }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
@@ -394,6 +451,7 @@ function ActivityLogTab({ students, isAdmin, currentUser }) {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [search, setSearch] = useState('')
+  const [expandedId, setExpandedId] = useState(null)
 
   useEffect(() => {
     if (!isAdmin) return
@@ -470,21 +528,48 @@ function ActivityLogTab({ students, isAdmin, currentUser }) {
       ) : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}>No activity found for the current filters</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {filtered.map(entry => {
-            const meta = activityActionMeta(entry.action)
-            return (
-              <div key={entry.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderLeft: `4px solid ${meta.color}`, borderRadius: 8, padding: '10px 14px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, background: meta.bg, color: meta.color, whiteSpace: 'nowrap', flexShrink: 0 }}>{meta.icon} {meta.label}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: '#1e293b', fontWeight: 600, wordBreak: 'break-word' }}>{activityLine(entry)}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
-                    {new Date(entry.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })} · by {entry.changed_by || 'Unknown'}
+        <div>
+          {/* Column headers */}
+          <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr 90px 80px 110px 100px 130px', gap: 8, padding: '6px 14px', fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+            <span>GCC</span><span>Student</span><span>Amount</span><span>Mode</span><span>Receipt</span><span>By</span><span>Time</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {filtered.map(entry => {
+              const meta = activityActionMeta(entry.action)
+              const cols = activityColumns(entry)
+              const isOpen = expandedId === entry.id
+              return (
+                <div key={entry.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderLeft: `4px solid ${meta.color}`, borderRadius: 8, overflow: 'hidden' }}>
+                  <div
+                    onClick={() => setExpandedId(isOpen ? null : entry.id)}
+                    style={{ padding: '10px 14px', cursor: 'pointer' }}
+                  >
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, background: meta.bg, color: meta.color, whiteSpace: 'nowrap', flexShrink: 0 }}>{meta.icon} {meta.label}</span>
+                      <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 'auto' }}>{isOpen ? '▲ hide details' : '🔍 full details'}</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr 90px 80px 110px 100px 130px', gap: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: '#1e293b' }}>{cols.gcc !== '—' ? `GCC-${cols.gcc}` : '—'}</span>
+                      <span style={{ fontSize: 11.5, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cols.student}</span>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: '#1e293b' }}>{cols.amount != null ? `₹${Number(cols.amount).toLocaleString('en-IN')}` : '—'}</span>
+                      <span style={{ fontSize: 11, color: '#64748b' }}>{cols.mode}</span>
+                      <span style={{ fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cols.receipt}</span>
+                      <span style={{ fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.changed_by || 'Unknown'}</span>
+                      <span style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(entry.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                    </div>
                   </div>
+                  {isOpen && (
+                    <div style={{ borderTop: '1px dashed #e2e8f0', padding: '10px 14px', background: '#f8fafc' }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>
+                        Entry #{entry.id} · target #{entry.target_id ?? '—'}
+                      </div>
+                      <ActivityRawDetail entry={entry} />
+                    </div>
+                  )}
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
