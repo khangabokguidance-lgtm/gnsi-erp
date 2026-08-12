@@ -8,6 +8,7 @@ import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
 import { getFlatFeeAmtSync, getFeeRates, getSessionYear, collectFee, rcptNo, gccStr as gccStrFee } from './feeEngine'
 import { useAuth } from './AuthContext'
+import { PersonalAccountantButton } from './personalAccountant'
 import { staffDB } from './staffDB'
 
 // ── Live-refresh listener for the Attendance module's save event ──────────
@@ -4162,6 +4163,8 @@ const effectiveCols = visibleCols.filter(col => {
       {toast&&<Toast msg={toast.msg} color={toast.color}/>}
       {undoItem&&<UndoBanner student={undoItem} onUndo={handleUndo} onDismiss={()=>setUndoItem(null)}/>}
       {confirmModal&&<ConfirmModal title={confirmModal.title} message={confirmModal.message} confirmLabel={confirmModal.confirmLabel} danger={confirmModal.danger} onConfirm={confirmModal.onConfirm} onCancel={()=>setConfirmModal(null)}/>}
+
+      <PersonalAccountantButton supabase={supabase} moduleKey="students" isAdmin={['admin','Admin'].includes(role)} currentUser={user} isMobile={isMobile} />
 
       {/* Column picker */}
       {showColPicker&&(

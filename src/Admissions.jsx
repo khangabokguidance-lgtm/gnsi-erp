@@ -23,6 +23,7 @@ import ReportGenerator from './ReportGenerator'
 import { promoteToStudent, getFlatFeeAmtSync, getFeeRates, getSessionYear, checkHouseCapacity } from './feeEngine'
 import { useActiveSession } from './shared/useActiveSession'
 import { staffDB } from './staffDB'
+import { PersonalAccountantButton } from './personalAccountant'
 
 // Pagination-safe fetch — Supabase/PostgREST caps a single .select() at
 // 1000 rows. Both `admissions` and `adm_fee_collections` can cross that
@@ -4242,6 +4243,8 @@ export default function Admissions() {
       )}
       {waBlastApps && <WABlastModal apps={waBlastApps} onClose={()=>setWABlastApps(null)} />}
       {showCSVImport && <CSVImportModal onClose={()=>setShowCSVImport(false)} onImport={handleCSVImport} />}
+
+      <PersonalAccountantButton supabase={supabase} moduleKey="admissions" isAdmin={['admin','Admin'].includes(userRole)} currentUser={getSessionInfo()} isMobile={isMobile} />
 
       <div style={{ padding:'0 12px 40px', fontFamily:"'Inter',system-ui,sans-serif", background: darkMode ? T.slate[900] : PAGE_BG, minHeight:'100vh', color:N.text, transition:'background .2s', overflowX:'hidden', maxWidth:'100vw' }}>
         <style>{`

@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { useState, useEffect, useMemo } from 'react'
+import { PersonalAccountantButton } from './personalAccountant'
 import {
   fmt, today, gccStr, rcptNo,
   collectFee, deleteLegacyFeeRecord,
@@ -2994,6 +2995,7 @@ export default function Fees() {
 
   return (
     <div style={{ padding: isMobile ? '16px 12px' : 24, fontFamily: 'system-ui,sans-serif' }}>
+      <PersonalAccountantButton supabase={supabase} moduleKey="fees" isAdmin={isAdmin} currentUser={currentUser} isMobile={isMobile} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>💰 Fee Management</h1>
