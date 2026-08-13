@@ -1126,3 +1126,126 @@ export const printReceipt = ({
   win.focus()
   setTimeout(() => { win.print(); win.close() }, 400)
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SCHOLARSHIP / FEE WAIVER — printable request form & approval certificate
+// ═══════════════════════════════════════════════════════════════════════════
+// Two documents for the stepwise scholarship/waiver process: a signed
+// request form (printed at submission, before admin review) and a signed
+// approval certificate (printed after admin approves). Both reuse the same
+// letterhead style as printReceipt above for visual consistency across the
+// portal's printed documents.
+
+const _fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'
+
+function buildScholarshipRequestFormHTML({ ref_no, type, amount, reason, student_name, gcc_no, course, batch, hostel_type, requested_by, requested_at }) {
+  const typeLabel = type === 'scholarship' ? 'Scholarship' : 'Fee Waiver'
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:system-ui,sans-serif;padding:24px;max-width:560px;margin:auto;color:#0f172a;}@media print{body{padding:0}}</style></head><body>
+    <div style="text-align:center;margin-bottom:18px;border-bottom:2px solid #1e3a5f;padding-bottom:14px;">
+      <div style="font-size:18px;font-weight:800;color:#1e3a5f;">${INSTITUTE.name}</div>
+      <div style="font-size:12px;color:#64748b;margin-top:3px;">${INSTITUTE.address}</div>
+      <div style="font-size:20px;font-weight:900;color:#059669;margin-top:8px;letter-spacing:1px;">${typeLabel.toUpperCase()} REQUEST FORM</div>
+      <div style="font-size:12px;color:#64748b;margin-top:2px;">${ref_no}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px;background:#f8fafc;border-radius:8px;padding:10px 12px;font-size:12px;">
+      <div><span style="color:#94a3b8;">Student</span><br/><strong>${student_name}</strong></div>
+      <div><span style="color:#94a3b8;">GCC No.</span><br/><strong>${gcc_no || '—'}</strong></div>
+      <div><span style="color:#94a3b8;">Course</span><br/><strong>${course || '—'}</strong></div>
+      <div><span style="color:#94a3b8;">Batch</span><br/><strong>${batch || '—'}</strong></div>
+      <div><span style="color:#94a3b8;">Hostel Type</span><br/><strong>${hostel_type || '—'}</strong></div>
+      <div><span style="color:#94a3b8;">Request Date</span><br/><strong>${_fmtDate(requested_at)}</strong></div>
+    </div>
+    <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:12px 14px;margin-bottom:16px;">
+      <div style="font-size:11px;color:#065f46;text-transform:uppercase;font-weight:700;letter-spacing:.5px;">${typeLabel} Requested</div>
+      <div style="font-size:22px;font-weight:900;color:#059669;margin-top:4px;">₹${Number(amount || 0).toLocaleString('en-IN')} / month</div>
+    </div>
+    <div style="margin-bottom:20px;">
+      <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:.5px;margin-bottom:4px;">Reason</div>
+      <div style="font-size:13px;line-height:1.6;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;min-height:44px;">${reason || '—'}</div>
+    </div>
+    <div style="font-size:11px;color:#94a3b8;margin-bottom:24px;">Requested by: <strong style="color:#334155;">${requested_by || 'Staff'}</strong></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:40px;">
+      <div style="text-align:center;">
+        <div style="border-top:1px solid #334155;padding-top:6px;font-size:11px;color:#64748b;">Requesting Staff Signature</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="border-top:1px solid #334155;padding-top:6px;font-size:11px;color:#64748b;">Parent / Guardian Signature</div>
+      </div>
+    </div>
+    <div style="margin-top:24px;text-align:center;font-size:10px;color:#94a3b8;">This request is pending admin approval and does not take effect until approved.<br/>${INSTITUTE.short} · ${INSTITUTE.address}</div>
+    </body></html>`
+}
+
+export const printScholarshipRequestForm = (record, student) => {
+  const html = buildScholarshipRequestFormHTML({
+    ref_no: `GNSI/SW-REQ/${record.id || 'DRAFT'}`,
+    type: record.type, amount: record.amount, reason: record.reason,
+    student_name: student?.name, gcc_no: student?.gcc_no,
+    course: student?.course, batch: student?.batch, hostel_type: student?.hostel_type,
+    requested_by: record.requested_by, requested_at: record.requested_at || new Date().toISOString(),
+  })
+  const win = window.open('', '_blank', 'width=560,height=750')
+  if (!win) { alert('Allow pop-ups to print the request form'); return }
+  win.document.write(html)
+  win.document.close()
+  win.focus()
+  setTimeout(() => { win.print() }, 400)
+}
+
+function buildScholarshipCertificateHTML({ ref_no, type, amount, reason, student_name, gcc_no, course, batch, hostel_type, requested_by, requested_at, approved_by, approved_at }) {
+  const typeLabel = type === 'scholarship' ? 'Scholarship' : 'Fee Waiver'
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:system-ui,sans-serif;padding:24px;max-width:560px;margin:auto;color:#0f172a;}@media print{body{padding:0}}</style></head><body>
+    <div style="text-align:center;margin-bottom:18px;border-bottom:3px double #1e3a5f;padding-bottom:14px;">
+      <div style="font-size:18px;font-weight:800;color:#1e3a5f;">${INSTITUTE.name}</div>
+      <div style="font-size:12px;color:#64748b;margin-top:3px;">${INSTITUTE.address}</div>
+      <div style="font-size:20px;font-weight:900;color:#1e3a5f;margin-top:8px;letter-spacing:1px;">${typeLabel.toUpperCase()} APPROVAL CERTIFICATE</div>
+      <div style="font-size:12px;color:#64748b;margin-top:2px;">${ref_no}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px;background:#f8fafc;border-radius:8px;padding:10px 12px;font-size:12px;">
+      <div><span style="color:#94a3b8;">Student</span><br/><strong>${student_name}</strong></div>
+      <div><span style="color:#94a3b8;">GCC No.</span><br/><strong>${gcc_no || '—'}</strong></div>
+      <div><span style="color:#94a3b8;">Course</span><br/><strong>${course || '—'}</strong></div>
+      <div><span style="color:#94a3b8;">Batch</span><br/><strong>${batch || '—'}</strong></div>
+      <div><span style="color:#94a3b8;">Hostel Type</span><br/><strong>${hostel_type || '—'}</strong></div>
+      <div><span style="color:#94a3b8;">Requested</span><br/><strong>${_fmtDate(requested_at)}</strong></div>
+    </div>
+    <div style="background:linear-gradient(135deg,#1e3a5f,#3730a3);color:white;border-radius:8px;padding:14px 16px;margin-bottom:16px;">
+      <div style="font-size:11px;opacity:.8;text-transform:uppercase;font-weight:700;letter-spacing:.5px;">${typeLabel} Approved</div>
+      <div style="font-size:24px;font-weight:900;margin-top:4px;">₹${Number(amount || 0).toLocaleString('en-IN')} / month</div>
+    </div>
+    <div style="margin-bottom:20px;">
+      <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:.5px;margin-bottom:4px;">Reason</div>
+      <div style="font-size:13px;line-height:1.6;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;">${reason || '—'}</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;margin-bottom:24px;">
+      <span>Requested by: <strong style="color:#334155;">${requested_by || 'Staff'}</strong></span>
+      <span>Approved: <strong style="color:#334155;">${_fmtDate(approved_at)}</strong></span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:48px;">
+      <div style="text-align:center;">
+        <div style="border-top:1px solid #334155;padding-top:6px;font-size:11px;color:#64748b;">${approved_by || 'Administrator'}<br/>Approving Administrator</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="border-top:1px solid #334155;padding-top:6px;font-size:11px;color:#64748b;">Institutional Seal</div>
+      </div>
+    </div>
+    <div style="margin-top:24px;text-align:center;font-size:10px;color:#94a3b8;">This certificate confirms the ${typeLabel.toLowerCase()} is now in effect on the student's fee account.<br/>${INSTITUTE.short} · ${INSTITUTE.address}</div>
+    </body></html>`
+}
+
+export const printScholarshipApprovalCertificate = (record, student) => {
+  const html = buildScholarshipCertificateHTML({
+    ref_no: `GNSI/SW-APP/${record.id}`,
+    type: record.type, amount: record.amount, reason: record.reason,
+    student_name: student?.name, gcc_no: student?.gcc_no,
+    course: student?.course, batch: student?.batch, hostel_type: student?.hostel_type,
+    requested_by: record.requested_by, requested_at: record.requested_at,
+    approved_by: record.approved_by, approved_at: record.approved_at,
+  })
+  const win = window.open('', '_blank', 'width=560,height=750')
+  if (!win) { alert('Allow pop-ups to print the certificate'); return }
+  win.document.write(html)
+  win.document.close()
+  win.focus()
+  setTimeout(() => { win.print() }, 400)
+}

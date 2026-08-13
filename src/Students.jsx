@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
-import { getFlatFeeAmtSync, getFeeRates, getSessionYear, collectFee, rcptNo, gccStr as gccStrFee } from './feeEngine'
+import { getFlatFeeAmtSync, getFeeRates, getSessionYear, collectFee, rcptNo, gccStr as gccStrFee, printScholarshipRequestForm, printScholarshipApprovalCertificate } from './feeEngine'
 import { useAuth } from './AuthContext'
 import { PersonalAccountantButton } from './personalAccountant'
 import { staffDB } from './staffDB'
@@ -3797,6 +3797,53 @@ async function decideScholarshipWaiverRequest({ record, approve, decidedBy, reje
   await auditLog('scholarship_waiver_decision', { record_id: record.id, student_id: record.student_id, gcc_no: record.gcc_no, type: record.type, amount: record.amount, approved: approve })
 }
 
+// ── Bulk request: one type/amount/reason applied to many students as a
+// single batch, tied together by batch_id so an admin can approve or reject
+// the whole set in one PIN entry rather than clicking through each row.
+// Individual per-student rows are still created (one per student) so each
+// keeps its own audit trail and status — only the decision is batched.
+async function submitBulkScholarshipWaiverRequest({ students, type, amount, reason, requestedBy }) {
+  if (!students.length) throw new Error('No students selected')
+  const batchId = crypto.randomUUID()
+  const rows = students.map(s => ({
+    student_id: s.id, gcc_no: String(s.gcc_no || ''),
+    type, amount: Number(amount) || 0, reason: reason || null,
+    status: 'pending', requested_by: requestedBy || 'Unknown',
+    batch_id: batchId,
+  }))
+  const { error } = await supabase.from('scholarship_waiver_records').insert(rows)
+  if (error) throw error
+  await auditLog('scholarship_waiver_bulk_request', { batch_id: batchId, count: rows.length, type, amount: Number(amount) || 0, reason, gcc_list: rows.map(r => r.gcc_no) })
+  return batchId
+}
+
+async function decideBulkScholarshipWaiverRequest({ batchId, records, approve, decidedBy, rejectionReason }) {
+  const { error } = await supabase.from('scholarship_waiver_records').update({
+    status: approve ? 'approved' : 'rejected',
+    approved_by: decidedBy || 'Admin',
+    approved_at: new Date().toISOString(),
+    rejection_reason: approve ? null : (rejectionReason || null),
+    updated_at: new Date().toISOString(),
+  }).eq('batch_id', batchId)
+  if (error) throw error
+
+  if (approve) {
+    // Apply each student's own fee_waiver/scholarship update individually —
+    // can't do this as one bulk SQL update since each student's *current*
+    // value (being added to) can differ, same per-student read-then-add
+    // logic as the single-record path above.
+    for (const record of records) {
+      const col = record.type === 'scholarship' ? 'scholarship' : 'fee_waiver'
+      const { data: cur } = await supabase.from('students').select(col).eq('id', record.student_id).maybeSingle()
+      const newVal = Number(cur?.[col] || 0) + Number(record.amount || 0)
+      const updates = { [col]: newVal }
+      if (record.type === 'waiver' && record.reason) updates.fee_waiver_note = record.reason
+      await supabase.from('students').update(updates).eq('id', record.student_id)
+    }
+  }
+  await auditLog('scholarship_waiver_bulk_decision', { batch_id: batchId, count: records.length, approved: approve })
+}
+
 // Shared PIN confirm dialog — same visual language as FeeCollectionModal's.
 function SWPinDialog({ title, sub, onCancel, onConfirm }) {
   const [pin, setPin] = useState('')
@@ -3825,18 +3872,105 @@ function SWPinDialog({ title, sub, onCancel, onConfirm }) {
 
 const SW_STATUS_COLOR = { pending: T.amber, approved: T.green, rejected: T.red }
 
+// Visual stage tracker: Submitted → Under Review → Approved/Rejected →
+// Applied. Maps from the record's actual status column — there's no extra
+// "under review" state stored (a pending record IS under review by
+// definition once submitted), so stage 2 is just a visual waypoint, not a
+// separate status value. "Applied" only lights up for approved records,
+// since that's the point the amount actually changed on the student's fee
+// account (decideScholarshipWaiverRequest / decideBulkScholarshipWaiverRequest
+// only touch students.fee_waiver/scholarship on approval).
+function SWStatusTracker({ status }) {
+  const stages = status === 'rejected'
+    ? [{ key: 'submitted', label: 'Submitted' }, { key: 'review', label: 'Under Review' }, { key: 'rejected', label: 'Rejected' }]
+    : [{ key: 'submitted', label: 'Submitted' }, { key: 'review', label: 'Under Review' }, { key: 'approved', label: 'Approved' }, { key: 'applied', label: 'Applied to Fees' }]
+  const activeIdx = status === 'pending' ? 1 : stages.length - 1
+  const lineColor = status === 'rejected' ? T.red : status === 'approved' ? T.green : T.amber
+  return (
+    <div style={{display:'flex',alignItems:'center',marginTop:8,marginBottom:2}}>
+      {stages.map((s, i) => (
+        <div key={s.key} style={{display:'flex',alignItems:'center',flex:i<stages.length-1?1:'0 0 auto'}}>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+            <div style={{width:9,height:9,borderRadius:99,background:i<=activeIdx?lineColor:T.border2,flexShrink:0}}/>
+            <div style={{fontSize:8.5,fontWeight:i===activeIdx?700:500,color:i<=activeIdx?lineColor:T.text4,whiteSpace:'nowrap'}}>{s.label}</div>
+          </div>
+          {i<stages.length-1 && <div style={{flex:1,height:2,background:i<activeIdx?lineColor:T.border2,margin:'0 4px',marginBottom:14}}/>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Bulk request modal — mirrors BulkOperationsModal's shape. Any staff can
+// submit; the batch then shows up in the record book as N pending rows
+// sharing one batch_id, and an admin approves/rejects the whole batch in
+// one PIN entry via the "Bulk requests" section in ScholarshipWaiverBook.
+function BulkScholarshipWaiverModal({ students, selectedIds, currentUser, onClose, onSubmitted, showToast }) {
+  const [type, setType] = useState('scholarship')
+  const [amount, setAmount] = useState('')
+  const [reason, setReason] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const selected = students.filter(s => selectedIds.has(s.id))
+
+  const submit = async () => {
+    const amt = Number(amount)
+    if (!amt || amt <= 0) { showToast('Enter a valid amount', T.red); return }
+    if (!selected.length) { showToast('No students selected', T.red); return }
+    setSubmitting(true)
+    try {
+      await submitBulkScholarshipWaiverRequest({ students: selected, type, amount: amt, reason, requestedBy: currentUser?.name || currentUser?.userName || 'Staff' })
+      showToast(`Request submitted for ${selected.length} students — pending admin approval`, T.green)
+      onSubmitted?.(); onClose()
+    } catch (err) { showToast('Failed: ' + err.message, T.red) }
+    setSubmitting(false)
+  }
+
+  return (
+    <Modal onClose={onClose} width={440} title="Bulk Scholarship / Waiver Request" subtitle={`${selected.length} students selected · same type, amount and reason applied to all`}>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Type</div>
+          <Select value={type} onChange={e=>setType(e.target.value)}>
+            <option value="scholarship">Scholarship</option>
+            <option value="waiver">Fee Waiver</option>
+          </Select>
+        </div>
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Amount (₹/mo)</div>
+          <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" style={{width:'100%',padding:'8px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,height:36,fontFamily:'inherit',boxSizing:'border-box'}}/>
+        </div>
+      </div>
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Reason</div>
+        <input value={reason} onChange={e=>setReason(e.target.value)} placeholder="e.g. Merit batch, flood relief" style={{width:'100%',padding:'8px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,height:36,fontFamily:'inherit',boxSizing:'border-box'}}/>
+      </div>
+      <div style={{maxHeight:140,overflowY:'auto',border:`1px solid ${T.border}`,borderRadius:T.r8,padding:'8px 12px',marginBottom:16,background:T.surface2}}>
+        {selected.map(s=>(
+          <div key={s.id} style={{fontSize:12,color:T.text2,padding:'3px 0'}}>GCC-{s.gcc_no} · {s.name}</div>
+        ))}
+      </div>
+      <div style={{display:'flex',gap:10}}>
+        <Btn onClick={submit} disabled={submitting} variant='primary' style={{flex:1,justifyContent:'center'}}>{submitting?'Submitting…':`Submit for ${selected.length} students`}</Btn>
+        <Btn onClick={onClose}>Cancel</Btn>
+      </div>
+    </Modal>
+  )
+}
+
 // Per-student panel — shown inside StudentDetailDrawer. Lets any staff
 // submit a new request and shows this student's full history; approve/
 // reject buttons only render for admins.
 function ScholarshipWaiverPanel({ student, isAdmin, currentUser, showToast, onChanged }) {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
-  const [formOpen, setFormOpen] = useState(false)
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [step, setStep] = useState(1) // 1: Details, 2: Review & Print, 3: done
   const [type, setType] = useState('scholarship')
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [pinFor, setPinFor] = useState(null) // { record, approve }
+  const [submittedRecord, setSubmittedRecord] = useState(null)
 
   const load = () => {
     setLoading(true)
@@ -3846,14 +3980,22 @@ function ScholarshipWaiverPanel({ student, isAdmin, currentUser, showToast, onCh
   }
   useEffect(() => { load() }, [student.id])
 
+  const resetWizard = () => { setWizardOpen(false); setStep(1); setType('scholarship'); setAmount(''); setReason(''); setSubmittedRecord(null) }
+
   const submit = async () => {
     const amt = Number(amount)
     if (!amt || amt <= 0) { showToast('Enter a valid amount', T.red); return }
     setSubmitting(true)
     try {
-      await submitScholarshipWaiverRequest({ student, type, amount: amt, reason, requestedBy: currentUser?.name || currentUser?.userName || 'Staff' })
+      const requestedBy = currentUser?.name || currentUser?.userName || 'Staff'
+      await submitScholarshipWaiverRequest({ student, type, amount: amt, reason, requestedBy })
       showToast('Request submitted — pending admin approval', T.green)
-      setFormOpen(false); setAmount(''); setReason('')
+      // Build a record-shaped object for the print form immediately —
+      // avoids a round-trip fetch just to get the id/timestamp back before
+      // the person can print. The record book / this panel's own list will
+      // show the real DB row (with its real id) the next time it loads.
+      setSubmittedRecord({ type, amount: amt, reason, requested_by: requestedBy, requested_at: new Date().toISOString() })
+      setStep(3)
       load()
     } catch (err) { showToast('Failed: ' + err.message, T.red) }
     setSubmitting(false)
@@ -3871,31 +4013,82 @@ function ScholarshipWaiverPanel({ student, isAdmin, currentUser, showToast, onCh
     <div style={{padding:'12px 16px'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
         <div style={{fontSize:13,fontWeight:700,color:T.text1}}>Scholarship / Waiver Requests</div>
-        <Btn size='sm' onClick={()=>setFormOpen(f=>!f)}>{formOpen?'Cancel':'+ New Request'}</Btn>
+        {!wizardOpen && <Btn size='sm' onClick={()=>setWizardOpen(true)}>+ New Request</Btn>}
       </div>
 
-      {formOpen && (
-        <div style={{border:`1px solid ${T.border2}`,borderRadius:T.r8,padding:12,marginBottom:14,background:T.surface2}}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
-            <div>
-              <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Type</div>
-              <select value={type} onChange={e=>setType(e.target.value)} style={{width:'100%',padding:'8px 10px',borderRadius:7,border:`1px solid ${T.border2}`,fontSize:13}}>
-                <option value="scholarship">Scholarship</option>
-                <option value="waiver">Fee Waiver</option>
-              </select>
-            </div>
-            <div>
-              <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Amount (₹/mo)</div>
-              <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" style={{width:'100%',padding:'8px 10px',borderRadius:7,border:`1px solid ${T.border2}`,fontSize:13,boxSizing:'border-box'}}/>
-            </div>
+      {wizardOpen && (
+        <div style={{border:`1px solid ${T.border2}`,borderRadius:T.r8,padding:14,marginBottom:14,background:T.surface2}}>
+          {/* Step indicator */}
+          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:14}}>
+            {[{n:1,label:'Details'},{n:2,label:'Review & Print'},{n:3,label:'Submitted'}].map((s,i)=>(
+              <div key={s.n} style={{display:'flex',alignItems:'center',flex:i<2?1:'0 0 auto'}}>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
+                  <div style={{width:20,height:20,borderRadius:99,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,background:step>=s.n?T.brand:T.border2,color:step>=s.n?'white':T.text4,flexShrink:0}}>{step>s.n?'✓':s.n}</div>
+                  <div style={{fontSize:10.5,fontWeight:step===s.n?700:500,color:step>=s.n?T.text1:T.text4,whiteSpace:'nowrap'}}>{s.label}</div>
+                </div>
+                {i<2 && <div style={{flex:1,height:2,background:step>s.n?T.brand:T.border2,margin:'0 8px'}}/>}
+              </div>
+            ))}
           </div>
-          <div style={{marginBottom:10}}>
-            <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Reason</div>
-            <input value={reason} onChange={e=>setReason(e.target.value)} placeholder="e.g. Merit, financial hardship, staff ward" style={{width:'100%',padding:'8px 10px',borderRadius:7,border:`1px solid ${T.border2}`,fontSize:13,boxSizing:'border-box'}}/>
-          </div>
-          <Btn variant='primary' onClick={submit} disabled={submitting} style={{width:'100%',justifyContent:'center'}}>
-            {submitting?'Submitting…':'Submit Request'}
-          </Btn>
+
+          {/* Step 1: Details */}
+          {step === 1 && (
+            <div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+                <div>
+                  <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Type</div>
+                  <select value={type} onChange={e=>setType(e.target.value)} style={{width:'100%',padding:'8px 10px',borderRadius:7,border:`1px solid ${T.border2}`,fontSize:13}}>
+                    <option value="scholarship">Scholarship</option>
+                    <option value="waiver">Fee Waiver</option>
+                  </select>
+                </div>
+                <div>
+                  <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Amount (₹/mo)</div>
+                  <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" style={{width:'100%',padding:'8px 10px',borderRadius:7,border:`1px solid ${T.border2}`,fontSize:13,boxSizing:'border-box'}}/>
+                </div>
+              </div>
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Reason</div>
+                <input value={reason} onChange={e=>setReason(e.target.value)} placeholder="e.g. Merit, financial hardship, staff ward" style={{width:'100%',padding:'8px 10px',borderRadius:7,border:`1px solid ${T.border2}`,fontSize:13,boxSizing:'border-box'}}/>
+              </div>
+              <div style={{display:'flex',gap:8}}>
+                <Btn onClick={resetWizard}>Cancel</Btn>
+                <Btn variant='primary' onClick={()=>{ if(!Number(amount)||Number(amount)<=0){showToast('Enter a valid amount',T.red);return}; setStep(2) }} style={{flex:1,justifyContent:'center'}}>Next: Review →</Btn>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Review & Print */}
+          {step === 2 && (
+            <div>
+              <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'10px 14px',marginBottom:12}}>
+                <div style={{fontSize:13,fontWeight:700,color:T.text1}}>{type==='scholarship'?'Scholarship':'Fee Waiver'} · ₹{fmt(Number(amount)||0)}/mo</div>
+                <div style={{fontSize:12,color:T.text3,marginTop:3}}>{reason || 'No reason given'}</div>
+                <div style={{fontSize:11,color:T.text4,marginTop:6}}>For {student.name} · GCC-{student.gcc_no}</div>
+              </div>
+              <div style={{fontSize:11,color:T.text3,marginBottom:12,lineHeight:1.5}}>
+                Print the request form below to get it signed by the requesting staff and parent/guardian, then submit. The scholarship/waiver does not take effect until an admin approves it.
+              </div>
+              <Btn onClick={()=>printScholarshipRequestForm({ type, amount: Number(amount)||0, reason, requested_by: currentUser?.name||currentUser?.userName||'Staff', requested_at: new Date().toISOString() }, student)} style={{width:'100%',justifyContent:'center',marginBottom:10}}>🖨️ Print Request Form</Btn>
+              <div style={{display:'flex',gap:8}}>
+                <Btn onClick={()=>setStep(1)}>← Back</Btn>
+                <Btn variant='primary' onClick={submit} disabled={submitting} style={{flex:1,justifyContent:'center'}}>{submitting?'Submitting…':'Submit Request'}</Btn>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Submitted */}
+          {step === 3 && (
+            <div style={{textAlign:'center',padding:'8px 4px'}}>
+              <div style={{fontSize:28,marginBottom:6}}>✅</div>
+              <div style={{fontSize:13,fontWeight:700,color:T.text1,marginBottom:4}}>Request submitted</div>
+              <div style={{fontSize:12,color:T.text3,marginBottom:14}}>Pending admin approval — you can print the request form again anytime below, or from this student's history.</div>
+              {submittedRecord && (
+                <Btn onClick={()=>printScholarshipRequestForm(submittedRecord, student)} style={{width:'100%',justifyContent:'center',marginBottom:10}}>🖨️ Print Request Form</Btn>
+              )}
+              <Btn variant='primary' onClick={resetWizard} style={{width:'100%',justifyContent:'center'}}>Done</Btn>
+            </div>
+          )}
         </div>
       )}
 
@@ -3923,16 +4116,23 @@ function ScholarshipWaiverPanel({ student, isAdmin, currentUser, showToast, onCh
             </div>
             <span style={{fontSize:10,fontWeight:700,padding:'2px 9px',borderRadius:99,background:`${SW_STATUS_COLOR[r.status]}20`,color:SW_STATUS_COLOR[r.status],textTransform:'uppercase',flexShrink:0}}>{r.status}</span>
           </div>
-          {isAdmin && r.status === 'pending' && (
-            <div style={{display:'flex',gap:6,marginTop:8}}>
-              <button onClick={()=>setPinFor({record:r,approve:true})} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #86efac',background:'#f0fdf4',color:'#16a34a',cursor:'pointer'}}>✓ Approve</button>
-              <button onClick={()=>{
-                const reason = window.prompt('Reason for rejecting (optional):')
-                if (reason === null) return
-                setPinFor({record:r,approve:false,rejectionReason:reason})
-              }} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',cursor:'pointer'}}>✕ Reject</button>
-            </div>
-          )}
+          <SWStatusTracker status={r.status}/>
+          <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
+            <button onClick={()=>printScholarshipRequestForm(r, student)} style={{fontSize:11,fontWeight:600,padding:'5px 10px',borderRadius:6,border:`1px solid ${T.border2}`,background:T.surface,color:T.text2,cursor:'pointer'}}>🖨️ Request Form</button>
+            {r.status === 'approved' && (
+              <button onClick={()=>printScholarshipApprovalCertificate(r, student)} style={{fontSize:11,fontWeight:600,padding:'5px 10px',borderRadius:6,border:`1px solid ${T.greenBorder}`,background:T.greenLight,color:T.green,cursor:'pointer'}}>🖨️ Approval Certificate</button>
+            )}
+            {isAdmin && r.status === 'pending' && (
+              <>
+                <button onClick={()=>setPinFor({record:r,approve:true})} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #86efac',background:'#f0fdf4',color:'#16a34a',cursor:'pointer'}}>✓ Approve</button>
+                <button onClick={()=>{
+                  const reason = window.prompt('Reason for rejecting (optional):')
+                  if (reason === null) return
+                  setPinFor({record:r,approve:false,rejectionReason:reason})
+                }} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',cursor:'pointer'}}>✕ Reject</button>
+              </>
+            )}
+          </div>
         </div>
       ))}
 
@@ -3952,13 +4152,15 @@ function ScholarshipWaiverPanel({ student, isAdmin, currentUser, showToast, onCh
 
 // Module-wide record book — every scholarship/waiver request across every
 // student, filterable by status. This is the "book" half of the request.
-function ScholarshipWaiverBook({ isAdmin, currentUser, showToast }) {
+function ScholarshipWaiverBook({ isAdmin, currentUser, showToast, students }) {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('pending')
   const [typeFilter, setTypeFilter] = useState('All')
   const [search, setSearch] = useState('')
   const [pinFor, setPinFor] = useState(null)
+  const [batchOpenIds, setBatchOpenIds] = useState(new Set())
+  const toggleBatchOpen = (batchId) => setBatchOpenIds(prev => { const n = new Set(prev); n.has(batchId) ? n.delete(batchId) : n.add(batchId); return n })
 
   const load = () => {
     setLoading(true)
@@ -3975,6 +4177,14 @@ function ScholarshipWaiverBook({ isAdmin, currentUser, showToast }) {
     } catch (err) { showToast('Failed: ' + err.message, T.red) }
   }
 
+  const decideBatch = async (batchId, batchRecords, approve, rejectionReason) => {
+    try {
+      await decideBulkScholarshipWaiverRequest({ batchId, records: batchRecords, approve, decidedBy: currentUser?.name || currentUser?.userName || 'Admin', rejectionReason })
+      showToast(approve ? `Approved and applied to ${batchRecords.length} students` : `Rejected (${batchRecords.length} students)`, approve ? T.green : T.amber)
+      load()
+    } catch (err) { showToast('Failed: ' + err.message, T.red) }
+  }
+
   const filtered = records.filter(r => {
     if (statusFilter !== 'All' && r.status !== statusFilter) return false
     if (typeFilter !== 'All' && r.type !== typeFilter) return false
@@ -3984,6 +4194,17 @@ function ScholarshipWaiverBook({ isAdmin, currentUser, showToast }) {
     }
     return true
   })
+
+  // Group into standalone (single-request) rows and batches (batch_id set,
+  // 2+ students requested together) — batches render as one collapsible
+  // card with a single approve/reject that decides every row in it at once.
+  const batches = {}
+  const standalone = []
+  filtered.forEach(r => {
+    if (r.batch_id) { (batches[r.batch_id] = batches[r.batch_id] || []).push(r) }
+    else standalone.push(r)
+  })
+  const batchEntries = Object.entries(batches)
 
   const pendingCount = records.filter(r => r.status === 'pending').length
 
@@ -4021,7 +4242,53 @@ function ScholarshipWaiverBook({ isAdmin, currentUser, showToast }) {
         <div style={{textAlign:'center',padding:48,color:T.text4,fontSize:13}}>No requests match these filters.</div>
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {filtered.map(r => (
+          {batchEntries.map(([batchId, batchRecords]) => {
+            const first = batchRecords[0]
+            const status = first.status // all rows in a batch share status — decided together
+            const [batchOpen, setBatchOpen] = [batchOpenIds.has(batchId), null]
+            return (
+              <div key={batchId} style={{background:T.surface,border:`1px solid ${T.border}`,borderLeft:`4px solid ${SW_STATUS_COLOR[status]}`,borderRadius:10,padding:'12px 16px'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}}>
+                  <div style={{cursor:'pointer'}} onClick={()=>toggleBatchOpen(batchId)}>
+                    <div style={{fontSize:13,fontWeight:700,color:T.text1}}>
+                      📦 Batch of {batchRecords.length} · {first.type === 'scholarship' ? 'Scholarship' : 'Fee Waiver'} · ₹{fmt(first.amount)}/mo each
+                    </div>
+                    <div style={{fontSize:12,color:T.text3,marginTop:3}}>{first.reason || 'No reason given'}</div>
+                    <div style={{fontSize:11,color:T.text4,marginTop:4}}>
+                      Requested by {first.requested_by || 'Unknown'} · {new Date(first.requested_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}
+                      {status !== 'pending' && first.approved_by && (
+                        <> · {status} by {first.approved_by}{first.approved_at ? ' · ' + new Date(first.approved_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : ''}</>
+                      )}
+                      {' · '}<span style={{textDecoration:'underline'}}>{batchOpen?'hide':'show'} students</span>
+                    </div>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                    <span style={{fontSize:10,fontWeight:700,padding:'2px 9px',borderRadius:99,background:`${SW_STATUS_COLOR[status]}20`,color:SW_STATUS_COLOR[status],textTransform:'uppercase'}}>{status}</span>
+                    {isAdmin && status === 'pending' && (
+                      <>
+                        <button onClick={()=>setPinFor({batchId,batchRecords,approve:true})} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #86efac',background:'#f0fdf4',color:'#16a34a',cursor:'pointer'}}>✓ Approve all</button>
+                        <button onClick={()=>{
+                          const reason = window.prompt('Reason for rejecting the whole batch (optional):')
+                          if (reason === null) return
+                          setPinFor({batchId,batchRecords,approve:false,rejectionReason:reason})
+                        }} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',cursor:'pointer'}}>✕ Reject all</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {batchOpen && (
+                  <div style={{marginTop:10,paddingTop:10,borderTop:`1px dashed ${T.border}`,display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'4px 12px'}}>
+                    {batchRecords.map(r=>(
+                      <div key={r.id} style={{fontSize:11.5,color:T.text2}}>GCC-{r.gcc_no}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {standalone.map(r => {
+            const stu = students?.find(s => s.id === r.student_id)
+            return (
             <div key={r.id} style={{background:T.surface,border:`1px solid ${T.border}`,borderLeft:`4px solid ${SW_STATUS_COLOR[r.status]}`,borderRadius:10,padding:'12px 16px'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}}>
                 <div>
@@ -4053,19 +4320,36 @@ function ScholarshipWaiverBook({ isAdmin, currentUser, showToast }) {
                   )}
                 </div>
               </div>
+              <SWStatusTracker status={r.status}/>
+              {stu && (
+                <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
+                  <button onClick={()=>printScholarshipRequestForm(r, stu)} style={{fontSize:11,fontWeight:600,padding:'5px 10px',borderRadius:6,border:`1px solid ${T.border2}`,background:T.surface2,color:T.text2,cursor:'pointer'}}>🖨️ Request Form</button>
+                  {r.status === 'approved' && (
+                    <button onClick={()=>printScholarshipApprovalCertificate(r, stu)} style={{fontSize:11,fontWeight:600,padding:'5px 10px',borderRadius:6,border:`1px solid ${T.greenBorder}`,background:T.greenLight,color:T.green,cursor:'pointer'}}>🖨️ Approval Certificate</button>
+                  )}
+                </div>
+              )}
             </div>
-          ))}
+          )})}
         </div>
       )}
 
       {pinFor && (
         <SWPinDialog
           title={pinFor.approve ? '🔒 Authorize Scholarship / Waiver' : '🔒 Confirm Rejection'}
-          sub={pinFor.approve
-            ? `Enter the admin PIN to approve ₹${fmt(pinFor.record.amount)}/mo ${pinFor.record.type} for GCC-${pinFor.record.gcc_no}. This will apply immediately.`
-            : `Enter the admin PIN to confirm rejecting this request.`}
+          sub={pinFor.batchId
+            ? (pinFor.approve
+                ? `Enter the admin PIN to approve ₹${fmt(pinFor.batchRecords[0].amount)}/mo ${pinFor.batchRecords[0].type} for all ${pinFor.batchRecords.length} students in this batch. This will apply immediately.`
+                : `Enter the admin PIN to confirm rejecting this batch of ${pinFor.batchRecords.length} students.`)
+            : (pinFor.approve
+                ? `Enter the admin PIN to approve ₹${fmt(pinFor.record.amount)}/mo ${pinFor.record.type} for GCC-${pinFor.record.gcc_no}. This will apply immediately.`
+                : `Enter the admin PIN to confirm rejecting this request.`)}
           onCancel={()=>setPinFor(null)}
-          onConfirm={()=>{ decide(pinFor.record, pinFor.approve, pinFor.rejectionReason); setPinFor(null) }}
+          onConfirm={()=>{
+            if (pinFor.batchId) decideBatch(pinFor.batchId, pinFor.batchRecords, pinFor.approve, pinFor.rejectionReason)
+            else decide(pinFor.record, pinFor.approve, pinFor.rejectionReason)
+            setPinFor(null)
+          }}
         />
       )}
     </div>
@@ -4104,6 +4388,7 @@ export default function Students() {
   const [showBulkOps,setShowBulkOps]=useState(false)
   const [showRollover,setShowRollover]=useState(false)
   const [showBulkFee,setShowBulkFee]=useState(false)
+  const [showBulkScholarship,setShowBulkScholarship]=useState(false)
   const [showHouseReassign,setShowHouseReassign]=useState(false)
   const [showMergeDups,setShowMergeDups]=useState(false)
   const [showReportGen,setShowReportGen]=useState(false)
@@ -4508,7 +4793,7 @@ const effectiveCols = visibleCols.filter(col => {
       )}
 
       {/* Modals */}
-      {detailPanel&&<StudentDetailDrawer student={detailPanel} allStudents={students} attData={attData} examData={examData} feeData={feeData} feeHistory={feeHistory} can={can} isAdmin={['admin','Admin'].includes(role)} currentUser={user} onClose={()=>setDetailPanel(null)} onEdit={s=>{setEditing(s);setFormOpen(true);setDetailPanel(null)}} showToast={showToast}/>}
+      {detailPanel&&<StudentDetailDrawer student={detailPanel} allStudents={students} attData={attData} examData={examData} feeData={feeData} feeHistory={feeHistory} can={can} isAdmin={['admin','Admin'].includes(role)} currentUser={user} onClose={()=>setDetailPanel(null)} onEdit={s=>{setEditing(s);setFormOpen(true);setDetailPanel(null);setPageTab('students')}} showToast={showToast}/>}
       {feePanel&&<FeeCollectionModal app={feePanel} isAdmin={can.write} currentUser={user} onClose={()=>setFeePanel(null)} onSaved={()=>{setFeePanel(null);loadAll();showToast('Payment recorded!',T.green)}}/>}
       {examEntry&&<ExamScoreModal student={examEntry} can={can} onClose={()=>setExamEntry(null)} onSaved={()=>{setExamEntry(null);loadExamData(students.map(s=>s.id))}} showToast={showToast}/>}
       {attViewer&&<AttendanceViewerModal student={attViewer} onClose={()=>setAttViewer(null)}/>}
@@ -4517,6 +4802,7 @@ const effectiveCols = visibleCols.filter(col => {
       {showBulkOps&&<BulkOperationsModal students={students} selectedIds={selected} can={can} onClose={()=>setShowBulkOps(false)} onRefresh={loadAll} showToast={showToast}/>}
       {showRollover&&<SessionRolloverWizard students={students} can={can} onClose={()=>setShowRollover(false)} onRefresh={loadAll} showToast={showToast}/>}
       {showBulkFee&&<BulkFeeModal students={students} selectedIds={selected} can={can} onClose={()=>setShowBulkFee(false)} onSaved={loadAll} showToast={showToast}/>}
+      {showBulkScholarship&&<BulkScholarshipWaiverModal students={students} selectedIds={selected} currentUser={user} onClose={()=>setShowBulkScholarship(false)} onSubmitted={clearSel} showToast={showToast}/>}
       {showHouseReassign&&<HouseReassignmentModal students={students} selectedIds={selected} can={can} onClose={()=>setShowHouseReassign(false)} onRefresh={loadAll} showToast={showToast} houseOptions={houseOptions}/>}
       {showMergeDups&&<MergeDuplicatesModal students={students} can={can} onClose={()=>setShowMergeDups(false)} onRefresh={loadAll} showToast={showToast}/>}
       {showReportGen&&<ReportGeneratorModal students={students} feeData={feeData} attData={attData} examData={examData} houseOptions={houseOptions} can={can} role={role} onClose={()=>setShowReportGen(false)} showToast={showToast}/>}
@@ -4572,7 +4858,7 @@ const effectiveCols = visibleCols.filter(col => {
           <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
             <Btn onClick={loadAll} size='sm'><SIcon.refresh size={14}/> Refresh</Btn>
             <IfCan can={can.write}>
-              <Btn onClick={()=>{setEditing(null);setFormOpen(true)}} variant='primary'><SIcon.plus size={14}/> {isMobile?'Add':'New Student'}</Btn>
+              <Btn onClick={()=>{setEditing(null);setFormOpen(true);setPageTab('students')}} variant='primary'><SIcon.plus size={14}/> {isMobile?'Add':'New Student'}</Btn>
             </IfCan>
           </div>
         </div>
@@ -4640,7 +4926,7 @@ const effectiveCols = visibleCols.filter(col => {
         )}
 
         {pageTab==='scholarship'&&(
-          <ScholarshipWaiverBook isAdmin={['admin','Admin'].includes(role)} currentUser={user} showToast={showToast}/>
+          <ScholarshipWaiverBook isAdmin={['admin','Admin'].includes(role)} currentUser={user} showToast={showToast} students={students}/>
         )}
 
         {pageTab==='students'&&(<>
@@ -4690,6 +4976,7 @@ const effectiveCols = visibleCols.filter(col => {
             </IfCan>
             <IfCan can={can.fees}>
               <Btn onClick={()=>setShowBulkFee(true)} variant='success' size='sm'>Bulk Fee</Btn>
+              <Btn onClick={()=>setShowBulkScholarship(true)} size='sm' style={{color:T.green,borderColor:T.greenBorder}}>Scholarship/Waiver</Btn>
             </IfCan>
             <button onClick={clearSel} style={{width:28,height:28,borderRadius:T.r6,border:`1px solid ${T.border}`,background:T.surface,cursor:'pointer',fontSize:14,color:T.text3,display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
           </div>
