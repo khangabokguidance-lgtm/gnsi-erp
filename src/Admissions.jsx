@@ -3806,6 +3806,18 @@ export default function Admissions() {
   const [showCSVImport,  setShowCSVImport] = useState(false)
   const [tableMode,      setTableMode]     = useState(false)
   const [layoutMode,     setLayoutMode]    = useState('gallery') // 'card' | 'table' | 'kanban' | 'gallery'
+  // ✦ View toggle is now mandatory before opening any detail view — the
+  // person must actively click a layout button at least once (even if it's
+  // the same mode the page happened to load in) before "View" on any card/
+  // row/kanban item is allowed to open. viewChosen starts false regardless
+  // of layoutMode's default, and flips true only on an explicit click of
+  // one of the four view buttons below — never set true implicitly.
+  const [viewChosen,     setViewChosen]    = useState(false)
+  const chooseLayout = (mode) => { setLayoutMode(mode); setViewChosen(true) }
+  const openDetail = (a) => {
+    if (!viewChosen) { alert('Pick a view (Card / Table / Kanban / Gallery) above before opening a record.'); return }
+    setDetailApp(a)
+  }
   useEffect(() => { setTableMode(layoutMode === 'table') }, [layoutMode])
   const [darkMode,       setDarkMode]      = useState(false)
   const [showPresets,    setShowPresets]   = useState(false)
@@ -3832,7 +3844,9 @@ export default function Admissions() {
     onEscape:     () => { setFormOpen(false); setEditing(null); setDetailApp(null); setQuickEditApp(null); setShowAdvSearch(false) },
     onToggleView: () => setLayoutMode(m => {
       const order = ['card','table','kanban','gallery']
-      return order[(order.indexOf(m) + 1) % order.length]
+      const next = order[(order.indexOf(m) + 1) % order.length]
+      setViewChosen(true)
+      return next
     }),
     onToggleDark: () => setDarkMode(v => !v),
   })
@@ -4389,9 +4403,9 @@ export default function Admissions() {
   onMouseLeave={e=>e.currentTarget.style.boxShadow=N.shadow('sm')}
 >{darkMode?'☀️':'🌙'}</button>
 
-<div style={{ display:'flex', gap:2, background:N.bg2, borderRadius:12, padding:3 }} title="Toggle view (V)">
+<div style={{ display:'flex', gap:2, background:N.bg2, borderRadius:12, padding:3, boxShadow: viewChosen ? 'none' : `0 0 0 2px ${T.sky[400]}`, transition:'box-shadow .2s' }} title={viewChosen ? "Toggle view (V)" : "Pick a view before opening a record (V)"}>
   {[['card','🃏'],['table','📋'],['kanban','🗂️'],['gallery','🖼️']].map(([key,icon]) => (
-    <button key={key} onClick={()=>setLayoutMode(key)}
+    <button key={key} onClick={()=>chooseLayout(key)}
       style={{ padding:'7px 10px', borderRadius:9, border:'none', background: layoutMode===key?N.bg:'transparent',
         boxShadow: layoutMode===key?N.shadow('sm'):'none', fontSize:14, cursor:'pointer', color:N.text2, transition:'all .15s' }}>
       {icon}
@@ -4664,16 +4678,16 @@ export default function Admissions() {
                     <AppCard key={a.id} a={a} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
                       onEdit={app=>{setEditing(app);setFormOpen(true)}} onDelete={handleDelete} onAdmit={handleAdmit}
                       onEnroll={handleEnroll} onOpenFee={setFeePanel} onQuickEdit={setQuickEditApp}
-                      onDetail={setDetailApp} onWAMsg={a=>secureWABlast([a])} tableMode darkMode={darkMode} />
+                      onDetail={openDetail} onWAMsg={a=>secureWABlast([a])} tableMode darkMode={darkMode} />
                   ))}
                 </tbody>
               </table>
             </div>
           ) : layoutMode === 'kanban' ? (
             <KanbanBoard apps={filtered} cols={cols} onAdmit={handleAdmit} onEnroll={handleEnroll}
-              onOpenFee={setFeePanel} onDetail={setDetailApp} isMobile={isMobile} />
+              onOpenFee={setFeePanel} onDetail={openDetail} isMobile={isMobile} />
           ) : layoutMode === 'gallery' ? (
-            <GalleryGrid apps={filtered} onDetail={setDetailApp} onSelect={toggleSelect}
+            <GalleryGrid apps={filtered} onDetail={openDetail} onSelect={toggleSelect}
               selectedIds={selectedIds} isMobile={isMobile} isTablet={isTablet} />
           ) : (
             <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':isTablet?'repeat(2,1fr)':'repeat(auto-fill,minmax(340px,1fr))', gap:isMobile?12:14, alignItems:'start', minWidth:0, width:'100%' }}>
@@ -4690,7 +4704,7 @@ export default function Admissions() {
                   <AppCard a={a} cols={cols} selected={selectedIds.has(a.id)} onSelect={toggleSelect}
                     onEdit={app=>{setEditing(app);setFormOpen(true)}} onDelete={handleDelete} onAdmit={handleAdmit}
                     onEnroll={handleEnroll} onOpenFee={setFeePanel} onQuickEdit={setQuickEditApp}
-                    onDetail={setDetailApp} onWAMsg={a=>secureWABlast([a])} tableMode={false} darkMode={darkMode} canDelete={checkPermission(userRole,'delete')} />
+                    onDetail={openDetail} onWAMsg={a=>secureWABlast([a])} tableMode={false} darkMode={darkMode} canDelete={checkPermission(userRole,'delete')} />
                 </div>
               ))}
             </div>
