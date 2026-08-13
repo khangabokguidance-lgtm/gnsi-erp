@@ -234,6 +234,39 @@ const STUDENT_ADM_SYNC_FIELDS = [
   ['photo_url', 'photo_url'],
 ]
 
+// ── Drift guard — mirror of the one in Admissions.jsx (see its comment for
+// full context). Both modules run this on mount; whichever loads second
+// compares its own field list against what the other last wrote to
+// localStorage and surfaces a loud warning if they've diverged. Never
+// blocks anything — a tripwire, not a gate.
+function checkSyncFieldDrift(moduleName, fieldPairs, normalizeToStudentAdm) {
+  try {
+    const STORAGE_KEY = 'gnsi_sync_fields_check_v1'
+    const normalized = fieldPairs.map(pair => normalizeToStudentAdm(pair)).sort((a, b) => a[0].localeCompare(b[0]))
+    const signature = JSON.stringify(normalized)
+    const raw = localStorage.getItem(STORAGE_KEY)
+    const prev = raw ? JSON.parse(raw) : null
+    if (prev && prev.module !== moduleName && prev.signature !== signature) {
+      const prevFields = new Set(JSON.parse(prev.signature).map(p => p[0]))
+      const thisFields = new Set(normalized.map(p => p[0]))
+      const onlyHere = [...thisFields].filter(f => !prevFields.has(f))
+      const onlyThere = [...prevFields].filter(f => !thisFields.has(f))
+      console.error(
+        `⚠ SYNC FIELD DRIFT DETECTED between Admissions.jsx and Students.jsx — their admissions↔students sync field lists no longer match.\n` +
+        (onlyHere.length ? `Only in ${moduleName}: ${onlyHere.join(', ')}\n` : '') +
+        (onlyThere.length ? `Only in ${prev.module}: ${onlyThere.join(', ')}\n` : '') +
+        `A field present in only one list will sync one-directionally with no error. Update both ADM_STUDENT_SYNC_FIELDS (Admissions.jsx) and STUDENT_ADM_SYNC_FIELDS (Students.jsx) to match.`
+      )
+      return { drift: true, onlyHere, onlyThere, otherModule: prev.module }
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ module: moduleName, signature, checkedAt: new Date().toISOString() }))
+    return { drift: false }
+  } catch (e) {
+    console.warn('checkSyncFieldDrift failed (non-blocking):', e)
+    return { drift: false }
+  }
+}
+
 /**
  * Pushes shared fields from a just-saved `students` row into the matching
  * `admissions` row (same gcc_no), if the original application still
@@ -254,6 +287,54 @@ async function syncStudentToAdmission(gccNo, studentsDbRow) {
   } catch (err) {
     console.error('syncStudentToAdmission failed:', err)
   }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// GUARDED WRITE WRAPPER — the actual fix for "no loophole, ever."
+//
+// Every earlier fix in this file patched individual call sites that were
+// found to skip the admissions sync. That approach has a ceiling: it only
+// catches gaps that already exist and get audited — a NEW write added
+// later (by anyone, including a future edit to this file) can just as
+// easily forget to call syncStudentToAdmission again, and nothing would
+// catch it. That's a structural problem, not a call-site problem, so it
+// needs a structural fix: route every write to `students` through ONE
+// function that updates the row AND syncs it, in the same call, so
+// skipping the sync would require deliberately bypassing this wrapper
+// rather than just forgetting an extra line.
+//
+// This does not (and cannot) retroactively rewrite every existing
+// `supabase.from('students').update(...)` call in this file — that would
+// require also changing every call site's code, which is exactly the
+// kind of large mechanical edit worth doing deliberately rather than
+// silently. What it DOES do: gives every future write a correct-by-
+// construction path, and existing call sites can be moved onto it
+// incrementally without behavior changes (the wrapper does exactly what
+// each site already did, plus the sync call it may have been missing).
+//
+// `updateStudentsRows` mirrors supabase's own update/insert shape so it's
+// a near drop-in replacement:
+//   await updateStudentsRows({ match: {id: eid}, patch: payload })
+//   await updateStudentsRows({ match: {id: {in: ids}}, patch: {status} })
+// `match` supports either `{ column: value }` (eq) or `{ column: { in: [...] } }`.
+async function updateStudentsRows({ match, patch }) {
+  let query = supabase.from('students').update(patch)
+  for (const [col, val] of Object.entries(match)) {
+    query = (val && typeof val === 'object' && 'in' in val) ? query.in(col, val.in) : query.eq(col, val)
+  }
+  // select gcc_no back so the sync call always has the right key, even for
+  // .in() bulk updates spanning students the caller didn't pass gcc_no for.
+  const { data, error } = await query.select('id, gcc_no')
+  if (error) return { error }
+  // Only fire the sync for fields the sync list actually cares about —
+  // avoids a pointless round-trip when a caller patches e.g. only `notes`.
+  const patchHasSyncedField = STUDENT_ADM_SYNC_FIELDS.some(([stuCol]) => patch[stuCol] !== undefined)
+  if (patchHasSyncedField) {
+    for (const row of (data || [])) {
+      if (row.gcc_no) syncStudentToAdmission(row.gcc_no, patch)
+    }
+  }
+  return { data, error: null }
 }
 
 /**
@@ -1535,6 +1616,28 @@ function ExamScoreModal({ student, can, onClose, onSaved, showToast }) {
   )
 }
 
+// ─── Bulk-action safety net — ported from Admissions.jsx, which already had
+// this on every bulk write; Students.jsx had none, meaning a bulk archive/
+// status-change/promote/house-reassign/merge here could fire unbounded
+// updates with zero throttle while the identical class of action in
+// Admissions was capped and rate-limited. Same shape, same defaults, so
+// both modules now behave consistently. ─────────────────────────────────────
+class RateLimiter {
+  static _hits = {}
+  static check(key, limit = 5, windowMs = 60000) {
+    const now = Date.now()
+    const hits = (this._hits[key] || []).filter(t => now - t < windowMs)
+    if (hits.length >= limit) {
+      const waitSec = Math.ceil((hits[0] + windowMs - now) / 1000)
+      throw new Error(`Too many bulk actions — wait ${waitSec}s and try again`)
+    }
+    hits.push(now)
+    this._hits[key] = hits
+    return true
+  }
+}
+const MAX_BULK_OPERATION_SIZE = 100
+
 // ─── Bulk Operations Modal ────────────────────────────────────────────────────
 function BulkOperationsModal({ students, selectedIds, can, onClose, onRefresh, showToast }) {
   const [action,setAction]=useState('status')
@@ -1548,14 +1651,29 @@ function BulkOperationsModal({ students, selectedIds, can, onClose, onRefresh, s
   const handleBulkAction=async()=>{
     if(!can.write){showToast('No permission',T.red);return}
     if(!selected.length){showToast('No students selected',T.red);return}
+    if(selected.length>MAX_BULK_OPERATION_SIZE){showToast(`Max ${MAX_BULK_OPERATION_SIZE} students per bulk action`,T.red);return}
+    try{RateLimiter.check('students_bulk_'+action,8,60000)}catch(e){showToast(e.message,T.red);return}
+    if(action==='delete'&&!window.confirm(`Archive ${selected.length} students?`))return
     setProcessing(true)
     const ids=selected.map(s=>s.id)
     try{
       if(action==='status'){await supabase.from('students').update({status:newStatus}).in('id',ids);await auditLog('bulk_status_change',{ids,newStatus});showToast(`Status → ${newStatus}`,T.green)}
       else if(action==='delete'){await supabase.from('students').update({deleted_at:new Date().toISOString()}).in('id',ids);await auditLog('bulk_archive',{ids});showToast(`${ids.length} archived`,T.amber)}
-      else if(action==='promote'){if(!canPromote){showToast('Some cannot be promoted',T.red);setProcessing(false);return}for(const u of selected)await supabase.from('students').update({batch:PROMOTION_MAP[u.batch],status:'Active'}).eq('id',u.id);showToast(`${ids.length} promoted`,T.green)}
-      else if(action==='session'){if(!targetSession){showToast('Select session',T.red);setProcessing(false);return}await supabase.from('students').update({session:targetSession}).in('id',ids);showToast(`Session → ${targetSession}`,T.green)}
-      else if(action==='batch'){if(!targetBatch){showToast('Enter batch',T.red);setProcessing(false);return}await supabase.from('students').update({batch:targetBatch}).in('id',ids);showToast(`Batch → ${targetBatch}`,T.green)}
+      else if(action==='promote'){
+        if(!canPromote){showToast('Some cannot be promoted',T.red);setProcessing(false);return}
+        for(const u of selected)await updateStudentsRows({match:{id:u.id},patch:{batch:PROMOTION_MAP[u.batch],status:'Active'}})
+        showToast(`${ids.length} promoted`,T.green)
+      }
+      else if(action==='session'){
+        if(!targetSession){showToast('Select session',T.red);setProcessing(false);return}
+        await updateStudentsRows({match:{id:{in:ids}},patch:{session:targetSession}})
+        showToast(`Session → ${targetSession}`,T.green)
+      }
+      else if(action==='batch'){
+        if(!targetBatch){showToast('Enter batch',T.red);setProcessing(false);return}
+        await updateStudentsRows({match:{id:{in:ids}},patch:{batch:targetBatch}})
+        showToast(`Batch → ${targetBatch}`,T.green)
+      }
       broadcastStudentsUpdate({type:'bulk_'+action,ids})
       onRefresh();onClose()
     }catch(err){showToast('Failed: '+err.message,T.red)}
@@ -1611,9 +1729,12 @@ function SessionRolloverWizard({ students, can, onClose, onRefresh, showToast })
   const runRollover=async()=>{
     if(!can.write){showToast('No permission',T.red);return}
     if(!preview.length){showToast('No eligible students',T.amber);return}
+    try{RateLimiter.check('students_rollover',3,60000)}catch(e){showToast(e.message,T.red);return}
     setProcessing(true)
     try{
-      for(const s of preview)await supabase.from('students').update({session:s.newSession,batch:s.newBatch,status:'Active'}).eq('id',s.id)
+      for(const s of preview){
+        await updateStudentsRows({match:{id:s.id},patch:{session:s.newSession,batch:s.newBatch,status:'Active'}})
+      }
       const passedOut=eligible.filter(s=>!PROMOTION_MAP[s.batch])
       for(const s of passedOut)await supabase.from('students').update({status:'Passed Out'}).eq('id',s.id)
       await auditLog('session_rollover',{from:sourceSession,to:targetSession,count:preview.length})
@@ -1688,6 +1809,9 @@ function BulkFeeModal({ students, selectedIds, can, onClose, onSaved, showToast 
     if(!can.fees){showToast('No permission',T.red);return}
     if(!amount||Number(amount)<=0){showToast('Enter valid amount',T.red);return}
     if(!monthFor){showToast('Enter month/description',T.red);return}
+    if(selected.length>MAX_BULK_OPERATION_SIZE){showToast(`Max ${MAX_BULK_OPERATION_SIZE} students per bulk fee action`,T.red);return}
+    try{RateLimiter.check('students_bulk_fee',5,60000)}catch(e){showToast(e.message,T.red);return}
+    if(!window.confirm(`Collect ₹${total.toLocaleString('en-IN')} total across ${selected.length} students?`))return
     setSaving(true)
     try{
       // Parse month for course fee — expects format like "January" or "Jan 2026"
@@ -1759,6 +1883,8 @@ function MergeDuplicatesModal({ students, can, onClose, onRefresh, showToast }) 
   const handleMerge=async()=>{
     if(!can.write){showToast('No permission',T.red);return}
     if(!primaryId||!mergeIds.length){showToast('Select records',T.red);return}
+    try{RateLimiter.check('students_merge',5,60000)}catch(e){showToast(e.message,T.red);return}
+    if(!window.confirm(`Merge ${mergeIds.length} duplicate record(s) into the selected primary? Fee, attendance, exam, and document history will move to the primary; the duplicates will be archived.`))return
     setProcessing(true)
     try{
       for(const tbl of['attendance','fee_collections','exam_scores','student_documents'])
@@ -1805,8 +1931,14 @@ function HouseReassignmentModal({ students, selectedIds, can, onClose, onRefresh
   const handleReassign=async()=>{
     if(!can.write){showToast('No permission',T.red);return}
     if(!newHouse){showToast('Select a house',T.red);return}
+    if(selectedIds.size>MAX_BULK_OPERATION_SIZE){showToast(`Max ${MAX_BULK_OPERATION_SIZE} students per bulk action`,T.red);return}
+    try{RateLimiter.check('students_house_reassign',8,60000)}catch(e){showToast(e.message,T.red);return}
     setProcessing(true)
-    try{await supabase.from('students').update({house:newHouse}).in('id',Array.from(selectedIds));await auditLog('bulk_house_reassign',{ids:Array.from(selectedIds),newHouse});showToast(`${selectedIds.size} → ${newHouse}`,T.green);onRefresh();onClose()}
+    try{
+      await updateStudentsRows({match:{id:{in:Array.from(selectedIds)}},patch:{house:newHouse}})
+      await auditLog('bulk_house_reassign',{ids:Array.from(selectedIds),newHouse})
+      showToast(`${selectedIds.size} → ${newHouse}`,T.green);onRefresh();onClose()
+    }
     catch(err){showToast('Failed: '+err.message,T.red)}
     setProcessing(false)
   }
@@ -2462,7 +2594,7 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
     const path=`student_photos/${student.id}_${randomSuffix()}.${ext}`
     const{error:upErr}=await supabase.storage.from('gnsi').upload(path,file,{upsert:false,contentType:file.type})
     if(upErr){showToast('Upload failed',T.red);return}
-    const{error:dbErr}=await supabase.from('students').update({photo_path:path,photo_url:null}).eq('id',student.id)
+    const{error:dbErr}=await updateStudentsRows({match:{id:student.id},patch:{photo_path:path,photo_url:null}})
     if(dbErr){await supabase.storage.from('gnsi').remove([path]);showToast('Save failed',T.red);return}
     await auditLog('photo_upload',{student_id:student.id});showToast('Photo updated',T.green)
   }
@@ -2481,7 +2613,7 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
       const uploadPromise=uploadPhotoToGoogleDriveStudents(file,identifier)
       const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Upload timed out. Please check your connection and try again.')),60000))
       const{url}=await Promise.race([uploadPromise,timeoutPromise])
-      const{error:dbErr}=await supabase.from('students').update({photo_url:url}).eq('id',student.id)
+      const{error:dbErr}=await updateStudentsRows({match:{id:student.id},patch:{photo_url:url}})
       if(dbErr){showToast('Save failed',T.red);return}
       await auditLog('photo_upload_drive',{student_id:student.id})
       showToast('Photo updated',T.green)
@@ -2713,7 +2845,7 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
           )}
 
           {tab==='docs'&&<DocumentsTab student={student} can={can} showToast={showToast}/>}
-          {tab==='scholarship'&&<ScholarshipWaiverPanel student={student} isAdmin={isAdmin} currentUser={currentUser} showToast={showToast}/>}
+          {tab==='scholarship'&&<ScholarshipWaiverPanel student={student} isAdmin={isAdmin} currentUser={currentUser} can={can} showToast={showToast}/>}
 
           {tab==='notes'&&(
             <div>
@@ -3916,6 +4048,8 @@ function BulkScholarshipWaiverModal({ students, selectedIds, currentUser, onClos
     const amt = Number(amount)
     if (!amt || amt <= 0) { showToast('Enter a valid amount', T.red); return }
     if (!selected.length) { showToast('No students selected', T.red); return }
+    if (selected.length > MAX_BULK_OPERATION_SIZE) { showToast(`Max ${MAX_BULK_OPERATION_SIZE} students per bulk request`, T.red); return }
+    try { RateLimiter.check('students_bulk_scholarship', 5, 60000) } catch (e) { showToast(e.message, T.red); return }
     setSubmitting(true)
     try {
       await submitBulkScholarshipWaiverRequest({ students: selected, type, amount: amt, reason, requestedBy: currentUser?.name || currentUser?.userName || 'Staff' })
@@ -3960,7 +4094,7 @@ function BulkScholarshipWaiverModal({ students, selectedIds, currentUser, onClos
 // Per-student panel — shown inside StudentDetailDrawer. Lets any staff
 // submit a new request and shows this student's full history; approve/
 // reject buttons only render for admins.
-function ScholarshipWaiverPanel({ student, isAdmin, currentUser, showToast, onChanged }) {
+function ScholarshipWaiverPanel({ student, isAdmin, currentUser, can, showToast, onChanged }) {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -3983,6 +4117,7 @@ function ScholarshipWaiverPanel({ student, isAdmin, currentUser, showToast, onCh
   const resetWizard = () => { setWizardOpen(false); setStep(1); setType('scholarship'); setAmount(''); setReason(''); setSubmittedRecord(null) }
 
   const submit = async () => {
+    if (!can?.fees) { showToast('No permission to submit scholarship/waiver requests', T.red); return }
     const amt = Number(amount)
     if (!amt || amt <= 0) { showToast('Enter a valid amount', T.red); return }
     setSubmitting(true)
@@ -4013,7 +4148,7 @@ function ScholarshipWaiverPanel({ student, isAdmin, currentUser, showToast, onCh
     <div style={{padding:'12px 16px'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
         <div style={{fontSize:13,fontWeight:700,color:T.text1}}>Scholarship / Waiver Requests</div>
-        {!wizardOpen && <Btn size='sm' onClick={()=>setWizardOpen(true)}>+ New Request</Btn>}
+        {!wizardOpen && can?.fees && <Btn size='sm' onClick={()=>setWizardOpen(true)}>+ New Request</Btn>}
       </div>
 
       {wizardOpen && (
@@ -4574,6 +4709,29 @@ const effectiveCols = visibleCols.filter(col => {
   useEffect(()=>{if(showDeleted)loadDeleted()},[showDeleted])
   useEffect(()=>{const h=e=>{if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();searchRef.current?.focus()}};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)},[])
 
+  // One-time cross-module drift check — see checkSyncFieldDrift's own
+  // comment above for what this catches and why it's non-blocking.
+  useEffect(()=>{
+    checkSyncFieldDrift('Students', STUDENT_ADM_SYNC_FIELDS, pair => pair)
+  },[])
+
+  // ── Live cross-module sync — mirror of the subscription in Admissions.jsx.
+  // Refreshes the roster automatically when admissions or students changes
+  // anywhere (this module, Admissions.jsx, or another admin's open tab),
+  // instead of requiring a manual refresh. Requires Realtime enabled for
+  // these two tables in the Supabase dashboard. Debounced so a bulk
+  // operation touching many rows triggers one reload, not one per row.
+  useEffect(()=>{
+    let debounceTimer=null
+    const debouncedReload=()=>{clearTimeout(debounceTimer);debounceTimer=setTimeout(()=>loadAll(),600)}
+    const channel=supabase
+      .channel('gnsi_students_live')
+      .on('postgres_changes',{event:'*',schema:'public',table:'students'},debouncedReload)
+      .on('postgres_changes',{event:'*',schema:'public',table:'admissions'},debouncedReload)
+      .subscribe()
+    return()=>{clearTimeout(debounceTimer);supabase.removeChannel(channel)}
+  },[loadAll])
+
   // Live refresh — when Attendance.jsx's Mark tab saves a session, only
   // attendance % is stale here (students/fees/exams are unaffected), so
   // re-run just loadAttData instead of the full loadAll+loadFeeData+
@@ -4589,18 +4747,22 @@ const effectiveCols = visibleCols.filter(col => {
     if(!can.write){showToast('No permission',T.red);return}
     const payload={gcc_no:parseInt(obj.gcc_no),name:obj.name,dob:obj.dob||null,gender:obj.gender||null,course:obj.course||null,batch:obj.batch||null,house:obj.house||null,session:obj.session||null,hostel_type:obj.hostel_type||'Day Scholar',status:obj.status||'Active',father_name:obj.father_name||null,mother_name:obj.mother_name||null,phone:obj.phone||null,address:obj.address||null,remarks:obj.remarks||null,fee_waiver:Number(obj.fee_waiver)||0,scholarship:Number(obj.scholarship)||0,fee_waiver_note:obj.fee_waiver_note||null,emergency_contact:obj.emergency_contact||null,prev_school:obj.prev_school||null,referral_source:obj.referral_source||null,admission_date:obj.admission_date||null,left_date:obj.left_date||null,medical_notes:obj.medical_notes||null,academic_remarks:obj.academic_remarks||null}
     if(eid){
-      const{error}=await supabase.from('students').update(payload).eq('id',eid)
+      const{error}=await updateStudentsRows({match:{id:eid},patch:payload})
       if(error){showToast('Update failed: '+error.message,T.red);return}
       setStudents(prev=>prev.map(s=>s.id===eid?{...s,...payload}:s))
       await auditLog('student_update',{student_id:eid});showToast('Student updated',T.amber)
       broadcastStudentsUpdate({type:'update',student_id:eid,course:payload.course,class_name:payload.class_name})
-      if(payload.gcc_no)syncStudentToAdmission(payload.gcc_no,payload)
     }else{
       const{data,error}=await supabase.from('students').insert(payload).select().single()
       if(error){showToast(error.code==='23505'?`GCC ${obj.gcc_no} already exists`:'Save failed: '+error.message,T.red);return}
       setStudents(prev=>[data,...prev])
       await auditLog('student_create',{student_id:data.id,gcc_no:data.gcc_no});showToast(`${data.name} added`,T.green)
       broadcastStudentsUpdate({type:'create',student_id:data.id,course:data.course,class_name:data.class_name})
+      // insert() has no equivalent in updateStudentsRows (that wrapper is
+      // update-only — a new row can't match an existing admissions record
+      // by anything other than the gcc_no we already have in hand), so this
+      // stays a direct sync call rather than going through the wrapper.
+      if(payload.gcc_no)syncStudentToAdmission(payload.gcc_no,payload)
     }
     setFormOpen(false);setEditing(null)
   }
@@ -4611,7 +4773,7 @@ const effectiveCols = visibleCols.filter(col => {
     if(!can.write){showToast('No permission',T.red);return}
     const payload={...fields}
     if(payload.gcc_no!==undefined)payload.gcc_no=parseInt(payload.gcc_no)||null
-    const{error}=await supabase.from('students').update(payload).eq('id',studentId)
+    const{error}=await updateStudentsRows({match:{id:studentId},patch:payload})
     if(error){showToast('Update failed: '+error.message,T.red);return}
     setStudents(prev=>prev.map(s=>s.id===studentId?{...s,...payload}:s))
     await auditLog('student_quick_complete',{student_id:studentId,fields:Object.keys(fields)})

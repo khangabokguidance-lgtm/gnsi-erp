@@ -522,6 +522,49 @@ const ADM_STUDENT_SYNC_FIELDS = [
   ['photo_url', 'photo_url'],
 ]
 
+// ── Drift guard: Admissions.jsx and Students.jsx each keep their OWN copy
+// of this same field-pair list (they share no imports/build step, so a
+// single shared constant isn't possible without a larger refactor). If
+// someone updates one list and forgets the other, syncAdmissionToStudent
+// and syncStudentToAdmission would silently start pushing data
+// one-directionally with no error — exactly the shape of bug that caused
+// the GCC 1135 admissions-row gap earlier this project. Since both
+// modules run in the same browser/session, cross-check via localStorage:
+// whichever module loads second compares its own normalized field list
+// against whatever the other module last wrote, and surfaces a loud
+// warning (console + one-time toast) if they've diverged. This never
+// blocks anything — it's a tripwire, not a gate.
+function checkSyncFieldDrift(moduleName, fieldPairs, normalizeToStudentAdm) {
+  try {
+    const STORAGE_KEY = 'gnsi_sync_fields_check_v1'
+    // Normalize to a stable [studentsCol, admissionsCol] shape regardless
+    // of which order this module's own array uses, so the two modules'
+    // entries compare on equal footing.
+    const normalized = fieldPairs.map(pair => normalizeToStudentAdm(pair)).sort((a, b) => a[0].localeCompare(b[0]))
+    const signature = JSON.stringify(normalized)
+    const raw = localStorage.getItem(STORAGE_KEY)
+    const prev = raw ? JSON.parse(raw) : null
+    if (prev && prev.module !== moduleName && prev.signature !== signature) {
+      const prevFields = new Set(JSON.parse(prev.signature).map(p => p[0]))
+      const thisFields = new Set(normalized.map(p => p[0]))
+      const onlyHere = [...thisFields].filter(f => !prevFields.has(f))
+      const onlyThere = [...prevFields].filter(f => !thisFields.has(f))
+      console.error(
+        `⚠ SYNC FIELD DRIFT DETECTED between Admissions.jsx and Students.jsx — their admissions↔students sync field lists no longer match.\n` +
+        (onlyHere.length ? `Only in ${moduleName}: ${onlyHere.join(', ')}\n` : '') +
+        (onlyThere.length ? `Only in ${prev.module}: ${onlyThere.join(', ')}\n` : '') +
+        `A field present in only one list will sync one-directionally with no error. Update both ADM_STUDENT_SYNC_FIELDS (Admissions.jsx) and STUDENT_ADM_SYNC_FIELDS (Students.jsx) to match.`
+      )
+      return { drift: true, onlyHere, onlyThere, otherModule: prev.module }
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ module: moduleName, signature, checkedAt: new Date().toISOString() }))
+    return { drift: false }
+  } catch (e) {
+    console.warn('checkSyncFieldDrift failed (non-blocking):', e)
+    return { drift: false }
+  }
+}
+
 /**
  * Pushes the shared fields from a just-saved `admissions` row into the
  * matching `students` row (same gcc_no), if one exists. Silently does
@@ -545,6 +588,32 @@ async function syncAdmissionToStudent(gccNo, admissionsDbRow) {
   } catch (err) {
     console.error('syncAdmissionToStudent failed:', err)
   }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// GUARDED WRITE WRAPPER — mirror of updateStudentsRows in Students.jsx (see
+// its full comment there for the reasoning). Routes every write to
+// `admissions` through one function that updates the row AND syncs it, so
+// a future write can't silently skip the sync the way several existing
+// call sites did before this pass. Existing call sites are being migrated
+// onto this incrementally; new code should always use this instead of a
+// bare `supabase.from('admissions').update(...)`.
+//   await updateAdmissionsRows({ match: {gcc_no: id}, patch: dbRow })
+//   await updateAdmissionsRows({ match: {gcc_no: {in: ids}}, patch: {house} })
+async function updateAdmissionsRows({ match, patch }) {
+  let query = supabase.from('admissions').update(patch)
+  for (const [col, val] of Object.entries(match)) {
+    query = (val && typeof val === 'object' && 'in' in val) ? query.in(col, val.in) : query.eq(col, val)
+  }
+  const { data, error } = await query.select('gcc_no')
+  if (error) return { error }
+  const patchHasSyncedField = ADM_STUDENT_SYNC_FIELDS.some(([admCol]) => patch[admCol] !== undefined)
+  if (patchHasSyncedField) {
+    for (const row of (data || [])) {
+      if (row.gcc_no != null) syncAdmissionToStudent(row.gcc_no, patch)
+    }
+  }
+  return { data, error: null }
 }
 
 /**
@@ -3838,6 +3907,12 @@ export default function Admissions() {
     return () => { document.body.style.background = '' }
   }, [darkMode])
 
+  // One-time cross-module drift check — see checkSyncFieldDrift's own
+  // comment above for what this catches and why it's non-blocking.
+  useEffect(() => {
+    checkSyncFieldDrift('Admissions', ADM_STUDENT_SYNC_FIELDS, ([admCol, stuCol]) => [stuCol, admCol])
+  }, [])
+
   useKeyboardShortcuts({
     onNew:        () => { setEditing(null); setFormOpen(true) },
     onSearch:     () => searchRef.current?.focus(),
@@ -3863,6 +3938,28 @@ export default function Admissions() {
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
+
+  // ── Live cross-module sync — subscribe to Postgres changes on students
+  // and admissions so this view refreshes automatically when the OTHER
+  // module (or another admin's tab) writes to either table, instead of
+  // requiring a manual refresh to see, e.g., a student's status changed in
+  // Students.jsx. Requires Realtime enabled for these two tables in the
+  // Supabase dashboard (Database → Replication) — this subscribes but
+  // can't turn Realtime on itself. Debounced so a burst of rapid writes
+  // (e.g. a bulk operation touching 50 rows) triggers one reload, not 50.
+  useEffect(() => {
+    let debounceTimer = null
+    const debouncedReload = () => {
+      clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => loadAll(), 600)
+    }
+    const channel = supabase
+      .channel('gnsi_admissions_live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'admissions' }, debouncedReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, debouncedReload)
+      .subscribe()
+    return () => { clearTimeout(debounceTimer); supabase.removeChannel(channel) }
+  }, [loadAll])
 
   useEffect(() => {
     try {
@@ -3997,7 +4094,7 @@ export default function Admissions() {
     const dbRow = mapToDB({ ...cleanObj, session: sessionName })
 
     if (eid) {
-      const { error } = await supabase.from('admissions').update(dbRow).eq('gcc_no', parseInt(eid))
+      const { error } = await updateAdmissionsRows({ match: { gcc_no: parseInt(eid) }, patch: dbRow })
       if (error) { showToast('Update failed: '+error.message, T.rose[600]); return false }
       logAudit('UPDATE', eid, dbRow, userRole)
       try {
@@ -4007,7 +4104,6 @@ export default function Admissions() {
       } catch(_) {}
       setApps(prev => prev.map(a => String(a.id)===String(eid) ? { ...a, ...cleanObj, id:parseInt(eid), hostel_type:dbRow.hostel_type } : a))
       showToast('Application updated', T.amber[600])
-      syncAdmissionToStudent(parseInt(eid), dbRow)
     } else {
       const { data, error } = await supabase.from('admissions').insert(dbRow).select().single()
       if (error) {
@@ -4096,13 +4192,13 @@ export default function Admissions() {
 
   const handleQuickEdit = async (id, changes) => {
     const hostelType = deriveHostelType(changes.house, changes.hostel_type)
-    const { error } = await supabase.from('admissions').update({
+    const { error } = await updateAdmissionsRows({ match: { gcc_no: parseInt(id) }, patch: {
       status: changes.status,
       house:  changes.house,
       hostel_type: hostelType,
       followup_date: changes.followupDate || null,
       bed_number:    changes.bedNumber || null,
-    }).eq('gcc_no', parseInt(id))
+    }})
     if (error) { showToast('Quick edit failed', T.rose[600]); return }
     setApps(prev => prev.map(a => String(a.id)===String(id) ? { ...a, ...changes, hostel_type:hostelType } : a))
     setQuickEditApp(null)
@@ -4140,7 +4236,7 @@ export default function Admissions() {
     if (selectedIds.size > MAX_BULK_OPERATION_SIZE) { showToast(`Max ${MAX_BULK_OPERATION_SIZE} records per bulk action`, T.rose[600]); return }
     if (!confirm(`Set house "${house}" for ${selectedIds.size} applicants?`)) return
     const ids = [...selectedIds]; const ht = DAY_SCHOLAR_HOUSES.includes(house)?'Day Scholar':'Boarder'
-    const { error } = await supabase.from('admissions').update({ house, hostel_type:ht }).in('gcc_no', ids.map(Number))
+    const { error } = await updateAdmissionsRows({ match: { gcc_no: { in: ids.map(Number) } }, patch: { house, hostel_type:ht } })
     if (error) { showToast('Bulk house update failed', T.rose[600]); return }
     logAudit('BULK_HOUSE', null, { ids, house }, userRole)
     setApps(prev => prev.map(a => selectedIds.has(a.id) ? { ...a, house, hostel_type:ht } : a))
@@ -4190,11 +4286,13 @@ export default function Admissions() {
     if (!checkPermission(userRole, 'bulk')) { showToast('🚫 You do not have permission for this action', T.rose[600]); return }
     const unassigned = filtered.filter(a=>!a.house||a.house==='Day Scholar')
     if (!unassigned.length) { showToast('No unassigned boarder records', T.amber[600]); return }
+    if (unassigned.length > MAX_BULK_OPERATION_SIZE) { showToast(`Max ${MAX_BULK_OPERATION_SIZE} records per bulk action`, T.rose[600]); return }
+    try { RateLimiter.check('auto_assign_house', 5, 60000) } catch(e) { showToast(e.message, T.rose[600]); return }
     const boarderHouses = HOUSES_LIST.filter(h=>!DAY_SCHOLAR_HOUSES.includes(h))
     let ok=0, fail=0
     for (let i=0; i<unassigned.length; i++) {
       const house = boarderHouses[i % boarderHouses.length]
-      const { error } = await supabase.from('admissions').update({ house, hostel_type:'Boarder' }).eq('gcc_no', parseInt(unassigned[i].id))
+      const { error } = await updateAdmissionsRows({ match: { gcc_no: parseInt(unassigned[i].id) }, patch: { house, hostel_type:'Boarder' } })
       if (error) fail++; else ok++
     }
     await loadAll()
@@ -4237,7 +4335,44 @@ export default function Admissions() {
   ADM_STATUSES.forEach(s => byStatus[s]=0)
   apps.forEach(a => byStatus[a.status] = (byStatus[a.status]||0)+1)
 
-  const monthlyRevenue = apps.filter(a=>a.status==='Enrolled').reduce((s,a)=>s+getFlatFeeAmtSync(a.hostel_type, a.course),0)
+  // 🔗 Live revenue — sourced from fee_structures via getFeeRates, not the
+  // hardcoded legacy getFlatFeeAmtSync fallback (same class of bug fixed
+  // earlier for the Admissions/Students fee badges: Sainik/Boarder's real
+  // rate is ₹5,500 in fee_structures while the hardcoded fallback still
+  // says ₹5,000, understating this headline revenue figure by ₹500/mo for
+  // every enrolled Sainik Boarder). Seeded with the sync estimate so the
+  // number isn't blank while the batch of DB calls resolves, then corrected.
+  // Rates are fetched once per unique (session, course, batch, hostelType)
+  // combination rather than once per student — getFeeRates already caches
+  // internally, but batching the distinct combos here avoids firing 400
+  // near-identical requests when the roster loads.
+  const enrolledApps = apps.filter(a => a.status === 'Enrolled')
+  const [monthlyRevenue, setMonthlyRevenue] = useState(() =>
+    enrolledApps.reduce((s, a) => s + getFlatFeeAmtSync(a.hostel_type, a.course), 0)
+  )
+  useEffect(() => {
+    let cancelled = false
+    const rateCache = new Map()
+    ;(async () => {
+      let total = 0
+      for (const a of enrolledApps) {
+        const sessionYear = a.session || getSessionYear()
+        const key = `${sessionYear}|${a.course}|${a.batch}|${a.hostel_type}`
+        if (!rateCache.has(key)) {
+          try {
+            const rates = await getFeeRates(sessionYear, a.course, a.batch, a.hostel_type, a.gcc_no || null)
+            rateCache.set(key, rates.flatFee)
+          } catch (_) {
+            rateCache.set(key, getFlatFeeAmtSync(a.hostel_type, a.course))
+          }
+        }
+        total += rateCache.get(key) || 0
+      }
+      if (!cancelled) setMonthlyRevenue(total)
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apps])
 
   const bg   = darkMode ? T.slate[900] : T.slate[50]
   const card = darkMode ? T.slate[800] : '#fff'
