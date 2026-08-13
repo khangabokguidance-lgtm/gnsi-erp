@@ -2435,10 +2435,10 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
             {student.course && <span>{student.course}</span>}
             {admRec?.adm_no && <span style={{ color: '#4f46e5', fontWeight: 600 }}>{admRec.adm_no}</span>}
             {hostelType && <HostelBadge type={hostelType} />}
-            {/* ── Flat fee display with override badge + Change button ── */}
+            {/* ── Flat fee + course fee display with override badge + Change button ── */}
             <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <span style={{ fontSize: 11, color: hasOverride ? '#7c3aed' : '#334155', fontWeight: 600 }}>
-                Flat fee ₹{feeRates.flatFee.toLocaleString('en-IN')}/mo
+                Flat fee ₹{feeRates.flatFee.toLocaleString('en-IN')}/mo · Course fee ₹{feeRates.courseFee.toLocaleString('en-IN')}/mo
               </span>
               {hasOverride && (
                 <span style={{ fontSize: 9, fontWeight: 700, background: '#ede9fe', color: '#7c3aed', padding: '1px 5px', borderRadius: 3, border: '1px solid #c4b5fd' }}>OVERRIDE</span>

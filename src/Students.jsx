@@ -2774,12 +2774,15 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
   const phoneDup=form.phone?.trim()?allStudents.find(s=>s.phone?.trim()===form.phone?.trim()&&s.id!==editing?.id):null
   // 🔗 Live rate from fee_structures — same fix as Admissions.jsx's
   // Course & Class badge; seeded with the sync estimate, then corrected.
+  // Tracks courseFee alongside flatFee now too, so the badge below can show
+  // both (previously flat-fee-only, same gap fixed in Admissions.jsx/Fees.jsx).
   const [baseRate,setBaseRate]=useState(()=>getFlatFeeAmtSync(derived, form.course))
+  const [courseFeeRate,setCourseFeeRate]=useState(0)
   useEffect(()=>{
     let cancelled=false
     const sessionYear=form.session||getSessionYear()
     getFeeRates(sessionYear, form.course, form.batch, derived, form.gcc_no||null)
-      .then(r=>{if(!cancelled)setBaseRate(r.flatFee)}).catch(()=>{})
+      .then(r=>{if(!cancelled){setBaseRate(r.flatFee);setCourseFeeRate(r.courseFee||0)}}).catch(()=>{})
     return ()=>{cancelled=true}
   },[form.session, form.course, form.batch, derived, form.gcc_no])
   const effectiveDue=Math.max(0,baseRate-Number(form.fee_waiver||0)-Number(form.scholarship||0))
@@ -2838,7 +2841,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
           <FieldRow label="Hostel Type"><select style={{...SEL,opacity:DAY_SCHOLAR_HOUSES.includes(form.house) ? .6 : 1}} value={form.hostel_type} onChange={e=>set('hostel_type',e.target.value)}>{['Boarder','Day Scholar','Day Boarder'].map(h=><option key={h}>{h}</option>)}</select></FieldRow>
         </div>
         <div style={{display:'inline-flex',alignItems:'center',gap:8,marginBottom:14,padding:'8px 14px',borderRadius:T.r8,background:hostelCfg.bg,border:`1px solid ${hostelCfg.border}`,fontSize:12,fontWeight:600,color:hostelCfg.color}}>
-          {derived} · ₹{fmt(baseRate)}/month
+          {derived} · Flat fee ₹{fmt(baseRate)}/mo · Course fee ₹{fmt(courseFeeRate)}/mo
         </div>
 
         <Divider label="Fee Adjustments"/>
