@@ -2417,7 +2417,7 @@ function ReportGeneratorModal({ students, feeData, attData, examData, houseOptio
 }
 
 // ─── Student Detail Drawer ────────────────────────────────────────────────────
-function StudentDetailDrawer({ student, allStudents, attData, examData, feeData, feeHistory, can, onClose, onEdit, showToast }) {
+function StudentDetailDrawer({ student, allStudents, attData, examData, feeData, feeHistory, can, isAdmin, currentUser, onClose, onEdit, showToast }) {
   const [tab,setTab]=useState('profile')
   const [notes,setNotes]=useState(student.notes||'')
   const [saving,setSaving]=useState(false)
@@ -2503,7 +2503,7 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
     return()=>{cancelled=true}
   },[student.gcc_no])
 
-  const TABS=[{key:'profile',label:'Profile'},{key:'academic',label:'Academic'},{key:'attend',label:'Attendance'},{key:'fee',label:'Fees'},{key:'docs',label:'Documents'},{key:'notes',label:'Notes'}]
+  const TABS=[{key:'profile',label:'Profile'},{key:'academic',label:'Academic'},{key:'attend',label:'Attendance'},{key:'fee',label:'Fees'},{key:'scholarship',label:'Scholarship/Waiver'},{key:'docs',label:'Documents'},{key:'notes',label:'Notes'}]
 
   const STAT_ITEMS=[
     {label:'Status',value:<StatusPill status={student.status}/>},
@@ -2713,6 +2713,7 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
           )}
 
           {tab==='docs'&&<DocumentsTab student={student} can={can} showToast={showToast}/>}
+          {tab==='scholarship'&&<ScholarshipWaiverPanel student={student} isAdmin={isAdmin} currentUser={currentUser} showToast={showToast}/>}
 
           {tab==='notes'&&(
             <div>
@@ -2842,12 +2843,16 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
 
         <Divider label="Fee Adjustments"/>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12,marginBottom:14}}>
-          <FieldRow label="Monthly Waiver (₹)"><input type="number" style={INP} value={form.fee_waiver} onChange={e=>set('fee_waiver',e.target.value)} placeholder="0"/></FieldRow>
-          <FieldRow label="Scholarship (₹/mo)"><input type="number" style={INP} value={form.scholarship} onChange={e=>set('scholarship',e.target.value)} placeholder="0"/></FieldRow>
-          <div style={{gridColumn:'1/-1'}}><FieldRow label="Waiver Reason"><input style={INP} value={form.fee_waiver_note} onChange={e=>set('fee_waiver_note',e.target.value)} placeholder="e.g. Merit, Staff ward"/></FieldRow></div>
+          <div style={{gridColumn:'1/-1',background:T.surface2,border:`1px solid ${T.border}`,borderRadius:T.r8,padding:'10px 14px',fontSize:12,color:T.text3}}>
+            Scholarship and fee waiver are no longer set directly here — submit a request below (Scholarship / Waiver Requests), which an admin must approve before it applies.
+          </div>
           <div style={{gridColumn:'1/-1',background:T.greenLight,border:`1px solid ${T.greenBorder}`,borderRadius:T.r8,padding:'10px 14px',fontSize:13,color:T.text2,fontWeight:500}}>
             Effective monthly due: <strong style={{color:T.green}}>₹{fmt(effectiveDue)}</strong>
+            {(Number(form.fee_waiver)>0||Number(form.scholarship)>0) && (
+              <span style={{color:T.text4,fontWeight:400}}> (waiver ₹{fmt(form.fee_waiver||0)} + scholarship ₹{fmt(form.scholarship||0)} currently approved)</span>
+            )}
           </div>
+
         </div>
 
         <Divider label="Family & Contact"/>
@@ -3744,6 +3749,326 @@ function DataQualityTab({ students, can, onQuickSave }) {
   )
 }
 
+// ─── Scholarship / Fee Waiver — request & admin-authorized approval ───────────
+// Replaces the old free-edit fee_waiver/scholarship number inputs on the
+// student form (anyone with edit access could type any amount, no sign-off,
+// no history — same shape of gap already fixed for the Repeater waiver in
+// FeeCollectionModal.jsx). Now: staff submit a request (status 'pending'),
+// an admin reviews and approves/rejects with a PIN, and only on approval do
+// students.fee_waiver / students.scholarship actually change. Every request
+// is kept permanently in scholarship_waiver_records — the "record book."
+const SW_PIN = '2468' // same PIN convention as FeeCollectionModal's advance-payment gate
+
+async function submitScholarshipWaiverRequest({ student, type, amount, reason, requestedBy }) {
+  const { error } = await supabase.from('scholarship_waiver_records').insert({
+    student_id: student.id, gcc_no: String(student.gcc_no || ''),
+    type, amount: Number(amount) || 0, reason: reason || null,
+    status: 'pending', requested_by: requestedBy || 'Unknown',
+  })
+  if (error) throw error
+  await auditLog('scholarship_waiver_request', { student_id: student.id, gcc_no: student.gcc_no, type, amount: Number(amount) || 0, reason })
+}
+
+async function decideScholarshipWaiverRequest({ record, approve, decidedBy, rejectionReason }) {
+  const { error } = await supabase.from('scholarship_waiver_records').update({
+    status: approve ? 'approved' : 'rejected',
+    approved_by: decidedBy || 'Admin',
+    approved_at: new Date().toISOString(),
+    rejection_reason: approve ? null : (rejectionReason || null),
+    updated_at: new Date().toISOString(),
+  }).eq('id', record.id)
+  if (error) throw error
+
+  // Only on approval does this actually change what the student owes —
+  // written to the same students.fee_waiver / students.scholarship columns
+  // the fee-due calculation already reads (getEffectiveMonthlyDue etc.),
+  // so approval takes effect immediately with zero other changes needed.
+  if (approve) {
+    const col = record.type === 'scholarship' ? 'scholarship' : 'fee_waiver'
+    const { data: cur } = await supabase.from('students').select(col).eq('id', record.student_id).maybeSingle()
+    const newVal = Number(cur?.[col] || 0) + Number(record.amount || 0)
+    const updates = { [col]: newVal }
+    if (record.type === 'waiver' && record.reason) updates.fee_waiver_note = record.reason
+    await supabase.from('students').update(updates).eq('id', record.student_id)
+  }
+  await auditLog('scholarship_waiver_decision', { record_id: record.id, student_id: record.student_id, gcc_no: record.gcc_no, type: record.type, amount: record.amount, approved: approve })
+}
+
+// Shared PIN confirm dialog — same visual language as FeeCollectionModal's.
+function SWPinDialog({ title, sub, onCancel, onConfirm }) {
+  const [pin, setPin] = useState('')
+  const [err, setErr] = useState('')
+  const confirm = () => {
+    if (pin !== SW_PIN) { setErr('Incorrect PIN.'); return }
+    onConfirm()
+  }
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(15,17,26,.55)',zIndex:1000000,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={onCancel}>
+      <div style={{width:'min(340px,90vw)',background:'white',borderRadius:16,boxShadow:'0 24px 60px rgba(0,0,0,.3)',padding:'22px 24px'}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:15,fontWeight:800,color:T.text1,marginBottom:4}}>{title}</div>
+        <div style={{fontSize:12,color:T.text3,marginBottom:16}}>{sub}</div>
+        <input type="password" inputMode="numeric" autoFocus value={pin}
+          onChange={e=>{setPin(e.target.value);setErr('')}} onKeyDown={e=>e.key==='Enter'&&confirm()}
+          placeholder="Admin PIN" style={{width:'100%',padding:'10px 14px',borderRadius:8,border:`1px solid ${T.border2}`,fontSize:14,textAlign:'center',letterSpacing:'.3em',fontWeight:700,marginBottom:8,outline:'none',boxSizing:'border-box'}}/>
+        {err && <div style={{fontSize:12,color:T.red,fontWeight:600,marginBottom:8}}>{err}</div>}
+        <div style={{display:'flex',gap:8,marginTop:12}}>
+          <button onClick={onCancel} style={{flex:1,padding:'9px 0',borderRadius:9,border:`1px solid ${T.border2}`,background:'white',fontSize:13,fontWeight:600,cursor:'pointer',color:T.text3}}>Cancel</button>
+          <button onClick={confirm} style={{flex:1,padding:'9px 0',borderRadius:9,border:'none',background:'#991B1B',color:'white',fontSize:13,fontWeight:700,cursor:'pointer'}}>Confirm</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const SW_STATUS_COLOR = { pending: T.amber, approved: T.green, rejected: T.red }
+
+// Per-student panel — shown inside StudentDetailDrawer. Lets any staff
+// submit a new request and shows this student's full history; approve/
+// reject buttons only render for admins.
+function ScholarshipWaiverPanel({ student, isAdmin, currentUser, showToast, onChanged }) {
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [formOpen, setFormOpen] = useState(false)
+  const [type, setType] = useState('scholarship')
+  const [amount, setAmount] = useState('')
+  const [reason, setReason] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [pinFor, setPinFor] = useState(null) // { record, approve }
+
+  const load = () => {
+    setLoading(true)
+    supabase.from('scholarship_waiver_records').select('*').eq('student_id', student.id)
+      .order('requested_at', { ascending: false })
+      .then(({ data, error }) => { if (!error) setRecords(data || []); setLoading(false) })
+  }
+  useEffect(() => { load() }, [student.id])
+
+  const submit = async () => {
+    const amt = Number(amount)
+    if (!amt || amt <= 0) { showToast('Enter a valid amount', T.red); return }
+    setSubmitting(true)
+    try {
+      await submitScholarshipWaiverRequest({ student, type, amount: amt, reason, requestedBy: currentUser?.name || currentUser?.userName || 'Staff' })
+      showToast('Request submitted — pending admin approval', T.green)
+      setFormOpen(false); setAmount(''); setReason('')
+      load()
+    } catch (err) { showToast('Failed: ' + err.message, T.red) }
+    setSubmitting(false)
+  }
+
+  const decide = async (record, approve, rejectionReason) => {
+    try {
+      await decideScholarshipWaiverRequest({ record, approve, decidedBy: currentUser?.name || currentUser?.userName || 'Admin', rejectionReason })
+      showToast(approve ? 'Approved and applied' : 'Rejected', approve ? T.green : T.amber)
+      load(); onChanged?.()
+    } catch (err) { showToast('Failed: ' + err.message, T.red) }
+  }
+
+  return (
+    <div style={{padding:'12px 16px'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+        <div style={{fontSize:13,fontWeight:700,color:T.text1}}>Scholarship / Waiver Requests</div>
+        <Btn size='sm' onClick={()=>setFormOpen(f=>!f)}>{formOpen?'Cancel':'+ New Request'}</Btn>
+      </div>
+
+      {formOpen && (
+        <div style={{border:`1px solid ${T.border2}`,borderRadius:T.r8,padding:12,marginBottom:14,background:T.surface2}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Type</div>
+              <select value={type} onChange={e=>setType(e.target.value)} style={{width:'100%',padding:'8px 10px',borderRadius:7,border:`1px solid ${T.border2}`,fontSize:13}}>
+                <option value="scholarship">Scholarship</option>
+                <option value="waiver">Fee Waiver</option>
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Amount (₹/mo)</div>
+              <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" style={{width:'100%',padding:'8px 10px',borderRadius:7,border:`1px solid ${T.border2}`,fontSize:13,boxSizing:'border-box'}}/>
+            </div>
+          </div>
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Reason</div>
+            <input value={reason} onChange={e=>setReason(e.target.value)} placeholder="e.g. Merit, financial hardship, staff ward" style={{width:'100%',padding:'8px 10px',borderRadius:7,border:`1px solid ${T.border2}`,fontSize:13,boxSizing:'border-box'}}/>
+          </div>
+          <Btn variant='primary' onClick={submit} disabled={submitting} style={{width:'100%',justifyContent:'center'}}>
+            {submitting?'Submitting…':'Submit Request'}
+          </Btn>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{textAlign:'center',padding:24,color:T.text4,fontSize:12}}>Loading…</div>
+      ) : records.length === 0 ? (
+        <div style={{textAlign:'center',padding:24,color:T.text4,fontSize:12}}>No requests yet for this student.</div>
+      ) : records.map(r => (
+        <div key={r.id} style={{border:`1px solid ${T.border}`,borderLeft:`3px solid ${SW_STATUS_COLOR[r.status]}`,borderRadius:8,padding:'10px 12px',marginBottom:8}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:T.text1}}>
+                {r.type === 'scholarship' ? 'Scholarship' : 'Fee Waiver'} · ₹{fmt(r.amount)}/mo
+              </div>
+              <div style={{fontSize:11,color:T.text3,marginTop:2}}>{r.reason || 'No reason given'}</div>
+              <div style={{fontSize:10,color:T.text4,marginTop:3}}>
+                Requested by {r.requested_by || 'Unknown'} · {new Date(r.requested_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}
+                {r.status !== 'pending' && r.approved_by && (
+                  <> · {r.status} by {r.approved_by}{r.approved_at ? ' · ' + new Date(r.approved_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : ''}</>
+                )}
+              </div>
+              {r.status === 'rejected' && r.rejection_reason && (
+                <div style={{fontSize:10,color:T.red,marginTop:3}}>Reason: {r.rejection_reason}</div>
+              )}
+            </div>
+            <span style={{fontSize:10,fontWeight:700,padding:'2px 9px',borderRadius:99,background:`${SW_STATUS_COLOR[r.status]}20`,color:SW_STATUS_COLOR[r.status],textTransform:'uppercase',flexShrink:0}}>{r.status}</span>
+          </div>
+          {isAdmin && r.status === 'pending' && (
+            <div style={{display:'flex',gap:6,marginTop:8}}>
+              <button onClick={()=>setPinFor({record:r,approve:true})} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #86efac',background:'#f0fdf4',color:'#16a34a',cursor:'pointer'}}>✓ Approve</button>
+              <button onClick={()=>{
+                const reason = window.prompt('Reason for rejecting (optional):')
+                if (reason === null) return
+                setPinFor({record:r,approve:false,rejectionReason:reason})
+              }} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',cursor:'pointer'}}>✕ Reject</button>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {pinFor && (
+        <SWPinDialog
+          title={pinFor.approve ? '🔒 Authorize Scholarship / Waiver' : '🔒 Confirm Rejection'}
+          sub={pinFor.approve
+            ? `Enter the admin PIN to approve ₹${fmt(pinFor.record.amount)}/mo ${pinFor.record.type} for ${student.name}. This will apply immediately.`
+            : `Enter the admin PIN to confirm rejecting this request.`}
+          onCancel={()=>setPinFor(null)}
+          onConfirm={()=>{ decide(pinFor.record, pinFor.approve, pinFor.rejectionReason); setPinFor(null) }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Module-wide record book — every scholarship/waiver request across every
+// student, filterable by status. This is the "book" half of the request.
+function ScholarshipWaiverBook({ isAdmin, currentUser, showToast }) {
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState('pending')
+  const [typeFilter, setTypeFilter] = useState('All')
+  const [search, setSearch] = useState('')
+  const [pinFor, setPinFor] = useState(null)
+
+  const load = () => {
+    setLoading(true)
+    supabase.from('scholarship_waiver_records').select('*').order('requested_at', { ascending: false }).limit(1000)
+      .then(({ data, error }) => { if (!error) setRecords(data || []); setLoading(false) })
+  }
+  useEffect(() => { load() }, [])
+
+  const decide = async (record, approve, rejectionReason) => {
+    try {
+      await decideScholarshipWaiverRequest({ record, approve, decidedBy: currentUser?.name || currentUser?.userName || 'Admin', rejectionReason })
+      showToast(approve ? 'Approved and applied' : 'Rejected', approve ? T.green : T.amber)
+      load()
+    } catch (err) { showToast('Failed: ' + err.message, T.red) }
+  }
+
+  const filtered = records.filter(r => {
+    if (statusFilter !== 'All' && r.status !== statusFilter) return false
+    if (typeFilter !== 'All' && r.type !== typeFilter) return false
+    if (search) {
+      const q = search.toLowerCase()
+      if (!`${r.gcc_no} ${r.requested_by || ''} ${r.reason || ''}`.toLowerCase().includes(q)) return false
+    }
+    return true
+  })
+
+  const pendingCount = records.filter(r => r.status === 'pending').length
+
+  return (
+    <div style={{padding:'0 4px'}}>
+      <div style={{display:'flex',flexWrap:'wrap',gap:10,marginBottom:16,alignItems:'flex-end'}}>
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Status</div>
+          <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{padding:'8px 12px',borderRadius:8,border:`1px solid ${T.border2}`,fontSize:13}}>
+            <option value="pending">Pending{pendingCount?` (${pendingCount})`:''}</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="All">All</option>
+          </select>
+        </div>
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Type</div>
+          <select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)} style={{padding:'8px 12px',borderRadius:8,border:`1px solid ${T.border2}`,fontSize:13}}>
+            <option value="All">All types</option>
+            <option value="scholarship">Scholarship</option>
+            <option value="waiver">Fee Waiver</option>
+          </select>
+        </div>
+        <div style={{flex:1,minWidth:180}}>
+          <div style={{fontSize:11,fontWeight:600,color:T.text3,marginBottom:4}}>Search</div>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="GCC, staff, reason…" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:`1px solid ${T.border2}`,fontSize:13,boxSizing:'border-box'}}/>
+        </div>
+      </div>
+
+      <div style={{fontSize:12,color:T.text4,marginBottom:10}}>{filtered.length} of {records.length} requests</div>
+
+      {loading ? (
+        <div style={{textAlign:'center',padding:48,color:T.text4}}>Loading…</div>
+      ) : filtered.length === 0 ? (
+        <div style={{textAlign:'center',padding:48,color:T.text4,fontSize:13}}>No requests match these filters.</div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {filtered.map(r => (
+            <div key={r.id} style={{background:T.surface,border:`1px solid ${T.border}`,borderLeft:`4px solid ${SW_STATUS_COLOR[r.status]}`,borderRadius:10,padding:'12px 16px'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:700,color:T.text1}}>
+                    GCC-{r.gcc_no} · {r.type === 'scholarship' ? 'Scholarship' : 'Fee Waiver'} · ₹{fmt(r.amount)}/mo
+                  </div>
+                  <div style={{fontSize:12,color:T.text3,marginTop:3}}>{r.reason || 'No reason given'}</div>
+                  <div style={{fontSize:11,color:T.text4,marginTop:4}}>
+                    Requested by {r.requested_by || 'Unknown'} · {new Date(r.requested_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}
+                    {r.status !== 'pending' && r.approved_by && (
+                      <> · {r.status} by {r.approved_by}{r.approved_at ? ' · ' + new Date(r.approved_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : ''}</>
+                    )}
+                  </div>
+                  {r.status === 'rejected' && r.rejection_reason && (
+                    <div style={{fontSize:11,color:T.red,marginTop:3}}>Reason: {r.rejection_reason}</div>
+                  )}
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                  <span style={{fontSize:10,fontWeight:700,padding:'2px 9px',borderRadius:99,background:`${SW_STATUS_COLOR[r.status]}20`,color:SW_STATUS_COLOR[r.status],textTransform:'uppercase'}}>{r.status}</span>
+                  {isAdmin && r.status === 'pending' && (
+                    <>
+                      <button onClick={()=>setPinFor({record:r,approve:true})} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #86efac',background:'#f0fdf4',color:'#16a34a',cursor:'pointer'}}>✓ Approve</button>
+                      <button onClick={()=>{
+                        const reason = window.prompt('Reason for rejecting (optional):')
+                        if (reason === null) return
+                        setPinFor({record:r,approve:false,rejectionReason:reason})
+                      }} style={{fontSize:11,fontWeight:700,padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',cursor:'pointer'}}>✕ Reject</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {pinFor && (
+        <SWPinDialog
+          title={pinFor.approve ? '🔒 Authorize Scholarship / Waiver' : '🔒 Confirm Rejection'}
+          sub={pinFor.approve
+            ? `Enter the admin PIN to approve ₹${fmt(pinFor.record.amount)}/mo ${pinFor.record.type} for GCC-${pinFor.record.gcc_no}. This will apply immediately.`
+            : `Enter the admin PIN to confirm rejecting this request.`}
+          onCancel={()=>setPinFor(null)}
+          onConfirm={()=>{ decide(pinFor.record, pinFor.approve, pinFor.rejectionReason); setPinFor(null) }}
+        />
+      )}
+    </div>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Students() {
   const { role, can, user }=usePermissions()
@@ -4180,7 +4505,7 @@ const effectiveCols = visibleCols.filter(col => {
       )}
 
       {/* Modals */}
-      {detailPanel&&<StudentDetailDrawer student={detailPanel} allStudents={students} attData={attData} examData={examData} feeData={feeData} feeHistory={feeHistory} can={can} onClose={()=>setDetailPanel(null)} onEdit={s=>{setEditing(s);setFormOpen(true);setDetailPanel(null)}} showToast={showToast}/>}
+      {detailPanel&&<StudentDetailDrawer student={detailPanel} allStudents={students} attData={attData} examData={examData} feeData={feeData} feeHistory={feeHistory} can={can} isAdmin={['admin','Admin'].includes(role)} currentUser={user} onClose={()=>setDetailPanel(null)} onEdit={s=>{setEditing(s);setFormOpen(true);setDetailPanel(null)}} showToast={showToast}/>}
       {feePanel&&<FeeCollectionModal app={feePanel} isAdmin={can.write} currentUser={user} onClose={()=>setFeePanel(null)} onSaved={()=>{setFeePanel(null);loadAll();showToast('Payment recorded!',T.green)}}/>}
       {examEntry&&<ExamScoreModal student={examEntry} can={can} onClose={()=>setExamEntry(null)} onSaved={()=>{setExamEntry(null);loadExamData(students.map(s=>s.id))}} showToast={showToast}/>}
       {attViewer&&<AttendanceViewerModal student={attViewer} onClose={()=>setAttViewer(null)}/>}
@@ -4251,7 +4576,7 @@ const effectiveCols = visibleCols.filter(col => {
 
         {/* Page-level tabs — Dashboard / Students / Data Quality */}
         <div style={{display:'flex',gap:2,marginBottom:22,borderBottom:`1px solid ${T.border}`}}>
-          {[{key:'dashboard',label:'Dashboard',icon:SIcon.home},{key:'students',label:'Students',icon:SIcon.users},{key:'dataQuality',label:'Data Quality',icon:SIcon.check}].map(t=>{
+          {[{key:'dashboard',label:'Dashboard',icon:SIcon.home},{key:'students',label:'Students',icon:SIcon.users},{key:'scholarship',label:'Scholarship/Waiver',icon:SIcon.check},{key:'dataQuality',label:'Data Quality',icon:SIcon.check}].map(t=>{
             const active=pageTab===t.key
             return (
               <button key={t.key} onClick={()=>setPageTab(t.key)} style={{
@@ -4309,6 +4634,10 @@ const effectiveCols = visibleCols.filter(col => {
 
         {pageTab==='dataQuality'&&(
           <DataQualityTab students={students} can={can} onQuickSave={handleQuickSave}/>
+        )}
+
+        {pageTab==='scholarship'&&(
+          <ScholarshipWaiverBook isAdmin={['admin','Admin'].includes(role)} currentUser={user} showToast={showToast}/>
         )}
 
         {pageTab==='students'&&(<>
