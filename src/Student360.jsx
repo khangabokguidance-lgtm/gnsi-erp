@@ -30,6 +30,7 @@ import { getStudentDues, getDuesForStudents } from './feeDues'
 import { globalSearch } from './globalSearch'
 import { downloadCSV, downloadSingleRecordCSV } from './exportUtils'
 import TableBrowser from './TableBrowser'
+import { editField, getEditableFields } from './editEngine'
 
 // ── Access control ──────────────────────────────────────────────────────────
 // Admin-only, per Himan's decision. Access is gated by App.jsx BEFORE this
@@ -111,35 +112,44 @@ function StatusPill({ status }) {
 // those rows as CSV. exportName sets the filename prefix.
 function Section({ icon, title, count, children, full, accent = NAVY, empty, defaultOpen = false, exportRows = null, exportName = null, moduleLink = null }) {
   const [open, setOpen] = useState(defaultOpen)
+  const [hover, setHover] = useState(false)
   const hasMore = !!full
   const canExport = exportRows && exportRows.length > 0
   return (
-    <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${SLATE[200]}`, overflow: 'hidden' }}>
+    <div
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        background: '#fff', borderRadius: 14, border: `1px solid ${SLATE[200]}`, overflow: 'hidden',
+        boxShadow: hover ? '0 4px 16px rgba(11,30,61,.08)' : '0 1px 3px rgba(11,30,61,.04)',
+        transition: 'box-shadow .18s ease',
+      }}>
       <div
         onClick={() => hasMore && setOpen(o => !o)}
-        style={{ padding: '12px 18px', borderBottom: `1px solid ${SLATE[100]}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: SLATE[50], cursor: hasMore ? 'pointer' : 'default' }}
+        style={{ padding: '13px 18px', borderBottom: `1px solid ${SLATE[100]}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: `linear-gradient(180deg, ${SLATE[50]}, #fbfcfd)`, cursor: hasMore ? 'pointer' : 'default' }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 16 }}>{icon}</span>
-          <span style={{ fontWeight: 800, fontSize: 13.5, color: NAVY, letterSpacing: '.01em' }}>{title}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <span style={{ fontSize: 15.5, opacity: 0.9 }}>{icon}</span>
+          <span style={{ fontWeight: 750, fontSize: 13, color: NAVY, letterSpacing: '.015em' }}>{title}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {count != null && <span style={{ fontSize: 11.5, fontWeight: 700, color: accent, background: `${accent}18`, padding: '2px 10px', borderRadius: 99 }}>{count}</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          {count != null && <span style={{ fontSize: 11, fontWeight: 700, color: accent, background: `${accent}15`, padding: '2.5px 10px', borderRadius: 99, letterSpacing: '.01em' }}>{count}</span>}
           {moduleLink && (
             <button
               onClick={e => { e.stopPropagation(); moduleLink.onClick() }}
               title={`Open ${moduleLink.label} module`}
-              style={{ fontSize: 10.5, fontWeight: 700, color: NAVY, background: '#fff', border: `1px solid ${SLATE[200]}`, borderRadius: 7, padding: '3px 8px', cursor: 'pointer' }}
+              style={{ fontSize: 10.5, fontWeight: 700, color: NAVY, background: '#fff', border: `1px solid ${SLATE[200]}`, borderRadius: 7, padding: '3.5px 9px', cursor: 'pointer', transition: 'background .12s' }}
+              onMouseEnter={e => e.currentTarget.style.background = SLATE[50]} onMouseLeave={e => e.currentTarget.style.background = '#fff'}
             >{moduleLink.label} →</button>
           )}
           {canExport && (
             <button
               onClick={e => { e.stopPropagation(); downloadCSV(exportRows, exportName || title.toLowerCase().replace(/\s+/g, '_')) }}
               title="Export this data as CSV"
-              style={{ fontSize: 10.5, fontWeight: 700, color: SLATE[500], background: '#fff', border: `1px solid ${SLATE[200]}`, borderRadius: 7, padding: '3px 8px', cursor: 'pointer' }}
+              style={{ fontSize: 10.5, fontWeight: 700, color: SLATE[500], background: '#fff', border: `1px solid ${SLATE[200]}`, borderRadius: 7, padding: '3.5px 9px', cursor: 'pointer', transition: 'background .12s' }}
+              onMouseEnter={e => e.currentTarget.style.background = SLATE[50]} onMouseLeave={e => e.currentTarget.style.background = '#fff'}
             >⬇ CSV</button>
           )}
-          {hasMore && <span style={{ fontSize: 11, color: SLATE[400], transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}>▾</span>}
+          {hasMore && <span style={{ fontSize: 10, color: SLATE[400], transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .18s ease' }}>▾</span>}
         </div>
       </div>
       <div style={{ padding: '14px 18px' }}>
@@ -162,11 +172,84 @@ function FullList({ rows, renderRow, emptyText = 'No records.' }) {
 }
 
 const Row = ({ label, value, mono }) => (
-  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${SLATE[100]}`, fontSize: 13 }}>
-    <span style={{ color: SLATE[500] }}>{label}</span>
-    <span style={{ fontWeight: 600, color: SLATE[700], fontFamily: mono ? 'monospace' : 'inherit' }}>{value ?? '—'}</span>
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: `1px solid ${SLATE[100]}`, fontSize: 13 }}>
+    <span style={{ color: SLATE[500], fontWeight: 500 }}>{label}</span>
+    <span style={{ fontWeight: 650, color: SLATE[700], fontFamily: mono ? 'monospace' : 'inherit', textAlign: 'right' }}>{value ?? '—'}</span>
   </div>
 )
+
+// A Row with an inline pencil icon that opens a small popover to change
+// the value in place — used everywhere a field is in editEngine.js's
+// whitelist for that table. Writes go straight through editField(), which
+// enforces the whitelist and writes the audit_logs row; onSaved lets the
+// caller refresh whatever local state depends on this value.
+function EditableRow({ label, value, mono, tableKey, rowId, field, studentContext, onSaved }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value ?? '')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const fieldDef = getEditableFields(tableKey)?.[field]
+  if (!fieldDef) return <Row label={label} value={value} mono={mono} />
+
+  const startEdit = () => { setDraft(value ?? ''); setErr(null); setEditing(true) }
+
+  const save = async () => {
+    setSaving(true); setErr(null)
+    try {
+      await editField({ tableKey, rowId, field, oldValue: value, newValue: draft, studentContext })
+      setEditing(false)
+      onSaved?.(draft)
+    } catch (e) {
+      setErr(e.message || 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ padding: '7px 0', borderBottom: `1px solid ${SLATE[100]}` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ color: SLATE[500], fontWeight: 500, fontSize: 13 }}>{label}</span>
+        {!editing && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 650, color: SLATE[700], fontSize: 13, fontFamily: mono ? 'monospace' : 'inherit' }}>{value ?? '—'}</span>
+            <button onClick={startEdit} title={`Edit ${label}`}
+              style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, color: SLATE[300], padding: 2, lineHeight: 1 }}
+              onMouseEnter={e => e.currentTarget.style.color = NAVY} onMouseLeave={e => e.currentTarget.style.color = SLATE[300]}>✎</button>
+          </div>
+        )}
+      </div>
+      {editing && (
+        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {fieldDef.type === 'select' ? (
+            <select value={draft} onChange={e => setDraft(e.target.value)}
+              style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, fontSize: 12.5 }}>
+              {fieldDef.options.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          ) : fieldDef.type === 'textarea' ? (
+            <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={3}
+              style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, fontSize: 12.5, fontFamily: 'inherit', resize: 'vertical' }} />
+          ) : (
+            <input value={draft} onChange={e => setDraft(e.target.value)}
+              style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, fontSize: 12.5 }} />
+          )}
+          {err && <div style={{ fontSize: 11, color: RED }}>{err}</div>}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={save} disabled={saving}
+              style={{ padding: '5px 12px', borderRadius: 7, border: 'none', background: NAVY, color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button onClick={() => setEditing(false)} disabled={saving}
+              style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${SLATE[200]}`, background: '#fff', color: SLATE[600], fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Main component ──────────────────────────────────────────────────────────
 // App.jsx passes isAdmin (from its own ADMIN_ROLES check) — see the wiring
@@ -242,13 +325,13 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
   }
 
   return (
-    <div style={{ maxWidth: 1040, margin: '0 auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ maxWidth: 1040, margin: '0 auto', padding: '22px 16px 40px', display: 'flex', flexDirection: 'column', gap: 18, background: '#f7f8fa', minHeight: '100%' }}>
       <div>
-        <div style={{ fontWeight: 900, fontSize: 20, color: NAVY, fontFamily: 'Georgia, serif' }}>Student 360°</div>
-        <div style={{ fontSize: 12.5, color: SLATE[500], marginTop: 2 }}>Cross-module record — everything every module has recorded for one student, in one place.</div>
+        <div style={{ fontWeight: 800, fontSize: 22, color: NAVY, fontFamily: 'Georgia, serif', letterSpacing: '-.01em' }}>Student 360°</div>
+        <div style={{ fontSize: 12.5, color: SLATE[500], marginTop: 3, fontWeight: 500 }}>Cross-module record — everything every module has recorded for one student, in one place.</div>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${SLATE[200]}`, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 2, borderBottom: `1px solid ${SLATE[200]}`, flexWrap: 'wrap' }}>
         {[
           { id: 'search', label: '🔍 Search Student' },
           { id: 'globalsearch', label: '🌐 Global Search' },
@@ -257,11 +340,14 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
           { id: 'browser', label: '🗄️ Table Browser' },
         ].map(t => (
           <button key={t.id} onClick={() => setView(t.id)} style={{
-            padding: '9px 16px', border: 'none', background: 'none', cursor: 'pointer',
-            fontSize: 13, fontWeight: 700, color: view === t.id ? NAVY : SLATE[400],
-            borderBottom: view === t.id ? `2px solid ${GOLD}` : '2px solid transparent',
-            marginBottom: -1,
-          }}>{t.label}</button>
+            padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: '8px 8px 0 0',
+            fontSize: 12.5, fontWeight: view === t.id ? 750 : 600, color: view === t.id ? NAVY : SLATE[400],
+            borderBottom: view === t.id ? `2.5px solid ${GOLD}` : '2.5px solid transparent',
+            marginBottom: -1, transition: 'color .15s, background .15s',
+          }}
+            onMouseEnter={e => { if (view !== t.id) e.currentTarget.style.color = SLATE[600] }}
+            onMouseLeave={e => { if (view !== t.id) e.currentTarget.style.color = SLATE[400] }}
+          >{t.label}</button>
         ))}
       </div>
 
@@ -279,7 +365,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
           {/* Header card */}
-          <div style={{ background: `linear-gradient(135deg, ${NAVY}, ${NAVY_LIGHT})`, borderRadius: 18, padding: '18px 22px', color: '#fff', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ background: `linear-gradient(135deg, ${NAVY} 0%, ${NAVY_LIGHT} 100%)`, borderRadius: 16, padding: '20px 24px', color: '#fff', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, boxShadow: '0 6px 20px rgba(11,30,61,.18)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{ width: 52, height: 52, borderRadius: '50%', background: GOLD, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 900, color: NAVY }}>
                 {(selected.name || '?')[0].toUpperCase()}
@@ -309,7 +395,9 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               moduleLink={onNavigate ? { label: "Admissions", onClick: () => onNavigate("admissions") } : null}
               full={profile.admission && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {Object.entries(profile.admission).filter(([k]) => !['id'].includes(k)).map(([k, v]) => (
+                  <EditableRow label="status" value={profile.admission.status} tableKey="admissions" rowId={profile.admission.id} field="status"
+                    studentContext={selected} onSaved={v => setProfile(prev => ({ ...prev, admission: { ...prev.admission, status: v } }))} />
+                  {Object.entries(profile.admission).filter(([k]) => !['id', 'status'].includes(k)).map(([k, v]) => (
                     <Row key={k} label={k.replace(/_/g, ' ')} value={v == null || v === '' ? '—' : String(v)} />
                   ))}
                 </div>
@@ -406,18 +494,34 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               {profile.exams.length > 5 && <div style={{ fontSize: 11.5, color: SLATE[400], marginTop: 6 }}>+{profile.exams.length - 5} more</div>}
             </Section>
 
-            <Section icon="🏠" title="Hostel" accent={profile.hostel ? GREEN : SLATE[500]} empty={!profile.hostel && 'Day scholar — no hostel allocation.'}
+            <Section icon="🏠" title="Hostel" accent={profile.hostel ? GREEN : SLATE[500]}
               moduleLink={onNavigate ? { label: "Hostel", onClick: () => onNavigate("hostel") } : null}
-              full={profile.hostel && (
+              full={
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {Object.entries(profile.hostel).filter(([k]) => !['id', 'hostel_rooms'].includes(k)).map(([k, v]) => (
-                    <Row key={k} label={k.replace(/_/g, ' ')} value={v == null || v === '' ? '—' : String(v)} />
-                  ))}
-                  {profile.hostel.hostel_rooms && Object.entries(profile.hostel.hostel_rooms).map(([k, v]) => (
-                    <Row key={'room_' + k} label={`Room ${k.replace(/_/g, ' ')}`} value={v == null || v === '' ? '—' : String(v)} />
-                  ))}
+                  <EditableRow label="House" value={selected.house} tableKey="students" rowId={selected.id} field="house"
+                    studentContext={selected} onSaved={v => setSelected(prev => ({ ...prev, house: v }))} />
+                  <EditableRow label="Hostel Type" value={selected.hostel_type} tableKey="students" rowId={selected.id} field="hostel_type"
+                    studentContext={selected} onSaved={v => setSelected(prev => ({ ...prev, hostel_type: v }))} />
+                  {profile.housemaster && <>
+                    <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em', margin: '10px 0 4px' }}>Housemaster</div>
+                    <Row label="Name" value={profile.housemaster.name} />
+                    <Row label="Phone" value={profile.housemaster.phone} mono />
+                  </>}
+                  {profile.houseOccupancy != null && <Row label="Students in this house" value={profile.houseOccupancy} />}
+                  {profile.hostel && <>
+                    <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em', margin: '10px 0 4px' }}>Allocation Record</div>
+                    {Object.entries(profile.hostel).filter(([k]) => !['id', 'hostel_rooms', 'student_id'].includes(k)).map(([k, v]) => (
+                      <Row key={k} label={k.replace(/_/g, ' ')} value={v == null || v === '' ? '—' : String(v)} />
+                    ))}
+                    {profile.hostel.hostel_rooms && Object.entries(profile.hostel.hostel_rooms).map(([k, v]) => (
+                      <Row key={'room_' + k} label={`Room ${k.replace(/_/g, ' ')}`} value={v == null || v === '' ? '—' : String(v)} />
+                    ))}
+                  </>}
                 </div>
-              )}>
+              }>
+              <Row label="House" value={selected.house || 'Day scholar'} />
+              <Row label="Hostel Type" value={selected.hostel_type || '—'} />
+              {profile.housemaster && <Row label="Housemaster" value={`${profile.housemaster.name} · ${profile.housemaster.phone || '—'}`} />}
               {profile.hostel && <>
                 <Row label="Room" value={profile.hostel.hostel_rooms?.room_no} />
                 <Row label="Floor" value={profile.hostel.hostel_rooms?.floor} />
@@ -429,7 +533,9 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               exportRows={profile.discipline} exportName={`${selected.name}_discipline`}
               moduleLink={onNavigate ? { label: "Hostel", onClick: () => onNavigate("hostel") } : null}
               full={<FullList rows={profile.discipline} emptyText="No discipline records." renderRow={(d, i) => (
-                <Row key={i} label={`${fmtDate(d.date)} · ${d.category || 'General'}`} value={d.status} />
+                <EditableRow key={i} label={`${fmtDate(d.date)} · ${d.category || 'General'}`} value={d.status}
+                  tableKey="discipline_records" rowId={d.id} field="status" studentContext={selected}
+                  onSaved={v => setProfile(prev => ({ ...prev, discipline: prev.discipline.map(r => r.id === d.id ? { ...r, status: v } : r) }))} />
               )} />}>
               {profile.discipline.slice(0, 5).map((d, i) => <Row key={i} label={fmtDate(d.date)} value={d.status} />)}
             </Section>
@@ -438,7 +544,9 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               exportRows={profile.sickbay} exportName={`${selected.name}_sickbay`}
               moduleLink={onNavigate ? { label: "Hostel", onClick: () => onNavigate("hostel") } : null}
               full={<FullList rows={profile.sickbay} emptyText="No sickbay records." renderRow={(s, i) => (
-                <Row key={i} label={`${fmtDate(s.date)} · ${s.condition || s.reason || '—'}`} value={s.status} />
+                <EditableRow key={i} label={`${fmtDate(s.date)} · ${s.condition || s.reason || '—'}`} value={s.status}
+                  tableKey="sickbay_records" rowId={s.id} field="status" studentContext={selected}
+                  onSaved={v => setProfile(prev => ({ ...prev, sickbay: prev.sickbay.map(r => r.id === s.id ? { ...r, status: v } : r) }))} />
               )} />}>
               {profile.sickbay.slice(0, 5).map((s, i) => <Row key={i} label={fmtDate(s.date)} value={s.status} />)}
             </Section>
@@ -447,7 +555,9 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               exportRows={profile.leave} exportName={`${selected.name}_leave`}
               moduleLink={onNavigate ? { label: "Hostel", onClick: () => onNavigate("hostel") } : null}
               full={<FullList rows={profile.leave} emptyText="No leave records." renderRow={(l, i) => (
-                <Row key={i} label={`${l.leave_type || 'Leave'} · ${fmtDate(l.from_date)} → ${fmtDate(l.to_date)}`} value={l.status} />
+                <EditableRow key={i} label={`${l.leave_type || 'Leave'} · ${fmtDate(l.from_date)} → ${fmtDate(l.to_date)}`} value={l.status}
+                  tableKey="leave_records" rowId={l.id} field="status" studentContext={selected}
+                  onSaved={v => setProfile(prev => ({ ...prev, leave: prev.leave.map(r => r.id === l.id ? { ...r, status: v } : r) }))} />
               )} />}>
               {profile.leave.slice(0, 5).map((l, i) => <Row key={i} label={fmtDate(l.from_date)} value={l.status} />)}
             </Section>
@@ -456,7 +566,9 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               exportRows={profile.gatePasses} exportName={`${selected.name}_gate_passes`}
               moduleLink={onNavigate ? { label: "Reception", onClick: () => onNavigate("reception") } : null}
               full={<FullList rows={profile.gatePasses} emptyText="No gate passes." renderRow={(g, i) => (
-                <Row key={i} label={`${fmtDate(g.created_at)} · ${g.reason || '—'}`} value={g.status} />
+                <EditableRow key={i} label={`${fmtDate(g.created_at)} · ${g.reason || '—'}`} value={g.status}
+                  tableKey="reception_gatepasses" rowId={g.id} field="status" studentContext={selected}
+                  onSaved={v => setProfile(prev => ({ ...prev, gatePasses: prev.gatePasses.map(r => r.id === g.id ? { ...r, status: v } : r) }))} />
               )} />}>
               {profile.gatePasses.slice(0, 5).map((g, i) => <Row key={i} label={fmtDate(g.created_at)} value={g.status} />)}
             </Section>
@@ -468,11 +580,15 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em' }}>Enquiries</div>
                   <FullList rows={profile.enquiries} emptyText="No enquiries." renderRow={(e, i) => (
-                    <Row key={i} label={`${fmtDate(e.created_at)} · ${e.subject || e.category || '—'}`} value={e.status} />
+                    <EditableRow key={i} label={`${fmtDate(e.created_at)} · ${e.subject || e.category || '—'}`} value={e.status}
+                      tableKey="reception_enquiries" rowId={e.id} field="status" studentContext={selected}
+                      onSaved={v => setProfile(prev => ({ ...prev, enquiries: prev.enquiries.map(r => r.id === e.id ? { ...r, status: v } : r) }))} />
                   )} />
                   <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 4 }}>Parent Items</div>
                   <FullList rows={profile.parentItems} emptyText="No parent items." renderRow={(p, i) => (
-                    <Row key={i} label={`${fmtDate(p.created_at)} · ${p.item_type || p.description || '—'}`} value={p.status} />
+                    <EditableRow key={i} label={`${fmtDate(p.created_at)} · ${p.item_type || p.description || '—'}`} value={p.status}
+                      tableKey="reception_parent_items" rowId={p.id} field="status" studentContext={selected}
+                      onSaved={v => setProfile(prev => ({ ...prev, parentItems: prev.parentItems.map(r => r.id === p.id ? { ...r, status: v } : r) }))} />
                   )} />
                 </div>
               }>
@@ -484,7 +600,9 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               exportRows={profile.complaints} exportName={`${selected.name}_complaints`}
               moduleLink={onNavigate ? { label: "Reception", onClick: () => onNavigate("reception") } : null}
               full={<FullList rows={profile.complaints} emptyText="No complaints." renderRow={(c, i) => (
-                <Row key={i} label={`${fmtDate(c.created_at)} · ${c.category || '—'}`} value={c.status} />
+                <EditableRow key={i} label={`${fmtDate(c.created_at)} · ${c.category || '—'}`} value={c.status}
+                  tableKey="reception_complaints" rowId={c.id} field="status" studentContext={selected}
+                  onSaved={v => setProfile(prev => ({ ...prev, complaints: prev.complaints.map(r => r.id === c.id ? { ...r, status: v } : r) }))} />
               )} />}>
               {profile.complaints.slice(0, 5).map((c, i) => <Row key={i} label={fmtDate(c.created_at)} value={c.status} />)}
             </Section>

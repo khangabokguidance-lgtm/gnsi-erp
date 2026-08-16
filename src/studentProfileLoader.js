@@ -59,6 +59,20 @@ export async function loadFullProfile(student) {
     supabase.from('reception_complaints').select('*').eq('student_name', student.name).is('deleted_at', null).order('created_at', { ascending: false }),
   ])
 
+  // Housemaster for this student's house — real data from the housemasters
+  // table (same one Hostel.jsx queries), not previously wired into this
+  // profile at all. Only meaningful if the student has a house assigned.
+  const housemaster = student.house
+    ? await supabase.from('housemasters').select('name,house,phone,status').eq('house', student.house).eq('status', 'Active').maybeSingle()
+    : { data: null }
+
+  // House occupancy — how many OTHER active students share this house, so
+  // the Hostel card can show real capacity context instead of just this
+  // one student's own allocation row.
+  const houseOccupancy = student.house
+    ? await supabase.from('students').select('id', { count: 'exact', head: true }).eq('house', student.house).is('deleted_at', null).neq('status', 'Inactive').neq('status', 'Dropout')
+    : { count: null }
+
   // Dedupe attendance across the three lookup keys by session_id+status,
   // same as Students.jsx.
   const seen = new Set()
@@ -88,6 +102,8 @@ export async function loadFullProfile(student) {
     attendance: { records: attRows, presentCount, totalMarked: attRows.length, pct: attendancePct },
     exams: examMarks.data || [],
     hostel: hostelAlloc.data?.[0] || null,
+    housemaster: housemaster.data || null,
+    houseOccupancy: houseOccupancy.count,
     discipline: disciplineRecs.data || [],
     sickbay: sickbayRecs.data || [],
     leave: leaveRecs.data || [],
