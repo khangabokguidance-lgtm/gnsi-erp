@@ -19,6 +19,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from './supabase'
+import { getActiveStudents } from './studentQueries'
 import { staffDB, useStaffDB } from './staffDB'
 import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from './admitCardTemplate'
 import ToppersCertificate from './ToppersCertificate'
@@ -9538,9 +9539,14 @@ export default function Exams({ currentUser, perms }) {
     ensureLibs();
 
     const loadData = async () => {
-      const [{ data: sts }, { data: types }, { data: csSetting }, { data: sched }, { data: instSetting }, { data: secBatches }] =
+      // ✦ Routed through studentQueries.js — was a plain, fully unfiltered
+      // .select() (included dropout/soft-deleted students, and capped at
+      // 1000 rows). Now active-only, matching Students.jsx's roster, so
+      // exam rolls/mark entry/admit cards don't include students who've
+      // left, and pagination-safe past 1000 students.
+      const [sts, { data: types }, { data: csSetting }, { data: sched }, { data: instSetting }, { data: secBatches }] =
         await Promise.all([
-          supabase.from("students").select("id,name,class_name,course,batch,admission_no,gcc_no,status").order("name"),
+          getActiveStudents("id,name,class_name,course,batch,admission_no,gcc_no,status"),
           supabase.from("exam_types").select("*").order("created_at"),
           supabase.from("system_settings").select("value").eq("key", "course_subjects").single(),
           supabase.from("exam_schedule").select("*").order("exam_date"),

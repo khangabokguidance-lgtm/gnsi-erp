@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
+import { getActiveStudents, getAllStudents } from './studentQueries'
 import jsPDF from 'jspdf'
 import { generateAwardCertificate, CERT_SCHOOL_NAME } from './AwardCertificate'
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
@@ -3819,14 +3820,17 @@ export async function fetchAllRows(buildQuery) {
 }
 
 export async function computeHMPerformance(startDateStr, endDateStr) {
-  const [attendance, neglect, { data: housemasters }, { data: studentsForCount }] = await Promise.all([
+  const [attendance, neglect, { data: housemasters }, studentsForCount] = await Promise.all([
     fetchAllRows(() => supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startDateStr).lte('date', endDateStr)),
     fetchAllRows(() => supabase.from('hm_neglect_log').select('*').gte('date', startDateStr).lte('date', endDateStr)),
     supabase.from('housemasters').select('name, house, phone').eq('status', 'Active'),
     // Fetched so a "No data" house can be distinguished as either
     // "no students assigned here" or "students exist but nothing was
     // logged" — otherwise both look identical in the ranking card.
-    supabase.from('students').select('house, status').neq('status', 'Inactive').neq('status', 'Dropout'),
+    // Routed through studentQueries.js — same "active student" definition
+    // used by Students.jsx and every other module, so a soft-deleted or
+    // dropout student can't be counted here while already gone elsewhere.
+    getActiveStudents('house, status'),
   ])
 
   // Dedupe by NORMALIZED house name — using the raw string here let
@@ -4107,9 +4111,9 @@ function HMRollCallReportTab() {
   useEffect(() => {
     const load = async () => {
       setLoading(true)
-      const [{ data: houseRows }, { data: studentRows }, attRows] = await Promise.all([
+      const [{ data: houseRows }, studentRows, attRows] = await Promise.all([
         supabase.from('houses').select('name'),
-        supabase.from('students').select('house').neq('status', 'Inactive').neq('status', 'Dropout'),
+        getActiveStudents('house'),
         fetchAllRows(() => supabase.from('attendance_records').select('house, session, date, status, marked_at').gte('date', startStr).lte('date', endStr)),
       ])
       setHouses((houseRows || []).map(h => h.name).filter(Boolean).sort())
@@ -8605,7 +8609,7 @@ function Hostel() {
 
   const fetchShared = useCallback(async () => {
     setDataLoading(true)
-    const [{ data: s, error: e1 }, { data: st, error: e2 }, { data: hm, error: e3 }, { data: houses, error: e4 }] = await Promise.all([
+    const [s, { data: st, error: e2 }, { data: hm, error: e3 }, { data: houses, error: e4 }] = await Promise.all([
       // NOTE: intentionally unfiltered — several screens in this file (house
       // allotment's dropout-tracking view, admin monitor) need to see
       // Dropout/Inactive students too. Each screen that needs an
@@ -8613,7 +8617,10 @@ function Hostel() {
       // && s.status !== 'Dropout') itself — see line ~1238 for the existing
       // pattern. HMDashboard's roll-call ratio below was missing that filter;
       // fixed there instead of narrowing this shared fetch.
-      supabase.from('students').select('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob,gender,session').order('name'),
+      // Routed through studentQueries.js's getAllStudents() — same "everyone,
+      // unfiltered" behavior as before, but now pagination-safe (was a plain
+      // .select(), capped at 1000 rows).
+      getAllStudents('id,name,gcc_no,class_name,batch,course,house,hostel_type,status,admission_no,dob,gender,session'),
       supabase.from('staff_profiles').select('id,name,designation,department,status').order('name'),
       supabase.from('housemasters').select('*')
         .eq('status', 'Active')
@@ -8621,7 +8628,6 @@ function Hostel() {
         .maybeSingle(),
       supabase.from('houses').select('name, color_index'),
     ])
-    if (e1) console.error('Students fetch error:', e1)
     if (e2) console.error('Staff fetch error:', e2)
     if (e3) console.error('Housemaster fetch error:', e3)
     if (e4) console.error('Houses fetch error:', e4)

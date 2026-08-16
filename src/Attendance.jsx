@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
+import { getActiveStudents, getAllStudents, getActiveStudentCount } from './studentQueries'
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend, RadarChart, Radar, PolarGrid,
@@ -1446,9 +1447,17 @@ function TabMark({ staff, prefill }) {
     // under a course (e.g. both Lakshya and Umeed under Navodaya) was
     // fetched together whenever the section field was left blank — that's
     // why the "students enrolled" count included both batches combined.
+    // ✦ Filter aligned with studentQueries.js's shared active-student
+    // definition (deleted_at IS NULL AND status NOT IN Inactive/Dropout).
+    // Previously this required status === 'Active' exactly, which is
+    // STRICTER than the shared rule — any other non-dropout status (e.g.
+    // "Passed Out") was silently excluded from roll call here while still
+    // counting as "active" in Students.jsx/Hostel.jsx. If roll call should
+    // stay Active-only, tell me and I'll special-case it instead of using
+    // getActiveStudents' broader rule.
     let q = supabase.from('students')
       .select('id,name,gcc_no,course,batch,class_name,hostel_type,status,deleted_at,phone')
-      .is('deleted_at', null).eq('status', 'Active').eq('course', form.course)
+      .is('deleted_at', null).neq('status', 'Inactive').neq('status', 'Dropout').eq('course', form.course)
     if (form.subtype)   q = q.eq('batch', form.subtype)
     if (form.class_name) q = q.eq('class_name', form.class_name)
     const { data } = await q.order('name')
@@ -4440,9 +4449,13 @@ function useBatchHealth() {
   const [state, setState] = useState({ groups: [], nullBatchCount: 0, totalBad: 0, loading: true })
   useEffect(() => {
     let cancelled = false
-    supabase.from('students').select('course,batch,status,deleted_at').then(({ data }) => {
+    // ✦ Routed through studentQueries.js's getActiveStudents — was a plain
+    // .select() (capped at 1000 rows) filtered client-side as "not deleted,
+    // not Dropout" (which allowed Inactive students through). Now matches
+    // the shared "not Inactive, not Dropout" rule used everywhere else.
+    getActiveStudents('course,batch,status,deleted_at').then(data => {
       if (cancelled) return
-      const rows = (data || []).filter(s => !s.deleted_at && s.status !== 'Dropout')
+      const rows = data || []
       const byKey = {}
       let nullBatchCount = 0
       rows.forEach(s => {
@@ -4492,9 +4505,11 @@ function HomeV2({ onNavigate, isAdmin }) {
   const [enrolledCount, setEnrolledCount] = useState(null)
   useEffect(() => {
     let cancelled = false
-    supabase.from('students').select('id', { count: 'exact', head: true })
-      .is('deleted_at', null).eq('status', 'Active')
-      .then(({ count }) => { if (!cancelled) setEnrolledCount(count) })
+    // ✦ Routed through studentQueries.js — was status === 'Active' exactly,
+    // now matches the shared "not Inactive, not Dropout" rule used
+    // everywhere else, so this dashboard number can't disagree with the
+    // Students.jsx headcount again.
+    getActiveStudentCount().then(count => { if (!cancelled) setEnrolledCount(count) })
     return () => { cancelled = true }
   }, [])
   const { missing: period1Missing } = usePeriod1Check()
@@ -5088,10 +5103,13 @@ function TabStudentDB({ isAdmin }) {
   const [viewMode, setViewMode] = useState('active') // 'active' | 'dropout' | 'trash' — trash is admin-only
 
   // REQUIRED SQL (run once): alter table students add column if not exists deleted_at timestamptz;
+  // ✦ Routed through studentQueries.js's getAllStudents — intentionally
+  // unfiltered (this screen's own viewMode toggle handles active/dropout/
+  // trash views), but now pagination-safe (was a plain .select(), capped
+  // at 1000 rows).
   const load = async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('students').select('*').order('name')
-    if (error) { setToast({ type: 'error', msg: error.message }); setLoading(false); return }
+    const data = await getAllStudents('*')
     setStudents(data || [])
     setLoading(false)
   }

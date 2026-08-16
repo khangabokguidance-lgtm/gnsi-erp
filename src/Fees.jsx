@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getActiveStudents } from './studentQueries'
 import { useState, useEffect, useMemo } from 'react'
 import { PersonalAccountantButton } from './personalAccountant'
 import {
@@ -2895,9 +2896,15 @@ export default function Fees() {
 
   const loadAll = async () => {
     setLoading(true)
+    // ✦ Routed through studentQueries.js — was fully unfiltered (included
+    // dropout/soft-deleted students). Switched to active-only so the Fees
+    // dashboard's student count matches Students.jsx's roster; per Himan,
+    // this trades away visibility into dues owed by students who already
+    // left — if that's needed later, add a separate getAllStudents() pull
+    // for a dedicated "past students" ledger view instead of reverting this.
     const [fees_, students_, admissions_, admFeeCols_, admFlatFees_, admCourseFees_] = await Promise.all([
       fetchAllRows('fees', { orderCol: 'created_at', ascending: false }),
-      fetchAllRows('students', { orderCol: 'name' }),
+      getActiveStudents('*'),
       fetchAllRows('admissions'),
       fetchAllRows('adm_fee_collections', { filters: [['reverted', 'eq', false]] }),
       fetchAllRows('adm_flat_fees', { filters: [['paid', 'eq', true], ['reverted', 'eq', false]] }),

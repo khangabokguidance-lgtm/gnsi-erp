@@ -10,6 +10,7 @@ import { getFlatFeeAmtSync, getFeeRates, getSessionYear, collectFee, rcptNo, gcc
 import { useAuth } from './AuthContext'
 import { PersonalAccountantButton } from './personalAccountant'
 import { staffDB } from './staffDB'
+import { getActiveStudents, getAllStudents } from './studentQueries'
 
 // ── Live-refresh listener for the Attendance module's save event ──────────
 // Attendance.jsx dispatches window CustomEvent 'gnsi:attendance-updated'
@@ -4586,19 +4587,26 @@ const effectiveCols = visibleCols.filter(col => {
     return()=>{document.removeEventListener('mousedown',close);document.removeEventListener('touchend',close)}
   },[showExportMenu])
 
-  // ── Data loaders (logic unchanged) ───────────────────────────────────────────
+  // ── Data loaders — now routed through studentQueries.js, the single
+  // source of truth shared with Hostel/Attendance/Fees/Exams/Reception, so
+  // this module's "active student" definition and pagination can't drift
+  // from any other module's again.
   const loadAll=useCallback(async()=>{
     setLoading(true)
     try{
-      const[{data:rows,error},{data:houseRows}]=await Promise.all([supabase.from('students').select('*').is('deleted_at',null).order('name'),supabase.from('houses').select('name').order('name')])
-      if(error)throw error
+      const[rows,{data:houseRows}]=await Promise.all([getActiveStudents('*'),supabase.from('houses').select('name').order('name')])
       setStudents(rows||[])
       if(houseRows?.length)setHouseOptions(houseRows.map(h=>h.name))
     }catch(err){showToast('Failed to load: '+err.message,T.red)}
     finally{setLoading(false)}
   },[])
 
-  const loadDeleted=useCallback(async()=>{const{data}=await supabase.from('students').select('*').not('deleted_at','is',null).order('deleted_at',{ascending:false});setDeleted(data||[])},[])
+  // Archive/trash tab — deliberately shows everyone (including dropout/
+  // inactive), then filters to just the soft-deleted ones for display.
+  const loadDeleted=useCallback(async()=>{
+    const all=await getAllStudents('*')
+    setDeleted((all||[]).filter(s=>s.deleted_at).sort((a,b)=>new Date(b.deleted_at)-new Date(a.deleted_at)))
+  },[])
 
   const loadAttData=useCallback(async(ids,studentRows=[])=>{
     if(!ids?.length)return

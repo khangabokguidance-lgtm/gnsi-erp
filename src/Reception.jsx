@@ -15,6 +15,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { supabase } from './supabase'
+import { getActiveStudents } from './studentQueries'
 import * as XLSX from 'xlsx'
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
@@ -1979,7 +1980,12 @@ export default function ReceptionPage({ currentUser }) {
 
   useEffect(() => {
     fetchAll()
-    supabase.from('students').select('*').order('name').then(({ data }) => setStudents(data || []))
+    // ✦ Routed through studentQueries.js — was a plain, fully unfiltered
+    // .select() (included dropout/soft-deleted students, and capped at
+    // 1000 rows). Now active-only, matching Students.jsx, so the gate-pass/
+    // visitor/Student 360° picker here can't show a student who's already
+    // left, and won't silently truncate past 1000 students.
+    getActiveStudents('*').then(data => setStudents(data || []))
     supabase.from('reception_custom_items').select('name').order('created_at').then(({ data }) => {
       if (data) setCustomItems(data.map(r => r.name))
     })
