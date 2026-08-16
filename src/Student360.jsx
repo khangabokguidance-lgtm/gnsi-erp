@@ -103,19 +103,39 @@ function StatusPill({ status }) {
 }
 
 // ── Section shell ───────────────────────────────────────────────────────────
-function Section({ icon, title, count, children, accent = NAVY, empty }) {
+function Section({ icon, title, count, children, full, accent = NAVY, empty, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const hasMore = !!full
   return (
     <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${SLATE[200]}`, overflow: 'hidden' }}>
-      <div style={{ padding: '12px 18px', borderBottom: `1px solid ${SLATE[100]}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: SLATE[50] }}>
+      <div
+        onClick={() => hasMore && setOpen(o => !o)}
+        style={{ padding: '12px 18px', borderBottom: `1px solid ${SLATE[100]}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: SLATE[50], cursor: hasMore ? 'pointer' : 'default' }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 16 }}>{icon}</span>
           <span style={{ fontWeight: 800, fontSize: 13.5, color: NAVY, letterSpacing: '.01em' }}>{title}</span>
         </div>
-        {count != null && <span style={{ fontSize: 11.5, fontWeight: 700, color: accent, background: `${accent}18`, padding: '2px 10px', borderRadius: 99 }}>{count}</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {count != null && <span style={{ fontSize: 11.5, fontWeight: 700, color: accent, background: `${accent}18`, padding: '2px 10px', borderRadius: 99 }}>{count}</span>}
+          {hasMore && <span style={{ fontSize: 11, color: SLATE[400], transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}>▾</span>}
+        </div>
       </div>
       <div style={{ padding: '14px 18px' }}>
-        {empty ? <div style={{ fontSize: 12.5, color: SLATE[400], textAlign: 'center', padding: '18px 0' }}>{empty}</div> : children}
+        {empty ? <div style={{ fontSize: 12.5, color: SLATE[400], textAlign: 'center', padding: '18px 0' }}>{empty}</div> : (open && hasMore ? full : children)}
       </div>
+    </div>
+  )
+}
+
+// Renders a full list of raw rows inside an expanded Section — used by the
+// `full` prop so every card can drill from "top 5" down to "every record
+// this module has," instead of losing data to a hardcoded slice().
+function FullList({ rows, renderRow, emptyText = 'No records.' }) {
+  if (!rows || rows.length === 0) return <div style={{ fontSize: 12.5, color: SLATE[400], textAlign: 'center', padding: '10px 0' }}>{emptyText}</div>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 360, overflowY: 'auto' }}>
+      {rows.map(renderRow)}
     </div>
   )
 }
@@ -256,7 +276,14 @@ export default function Student360({ currentUser, isAdmin = false }) {
           {/* Grid of module sections */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
 
-            <Section icon="📝" title="Admission Record" accent={SKY} empty={!profile.admission && 'No admissions record found for this GCC number.'}>
+            <Section icon="📝" title="Admission Record" accent={SKY} empty={!profile.admission && 'No admissions record found for this GCC number.'}
+              full={profile.admission && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {Object.entries(profile.admission).filter(([k]) => !['id'].includes(k)).map(([k, v]) => (
+                    <Row key={k} label={k.replace(/_/g, ' ')} value={v == null || v === '' ? '—' : String(v)} />
+                  ))}
+                </div>
+              )}>
               {profile.admission && <>
                 <Row label="Status" value={profile.admission.status} />
                 <Row label="Applied" value={fmtDate(profile.admission.created_at)} />
@@ -264,7 +291,33 @@ export default function Student360({ currentUser, isAdmin = false }) {
               </>}
             </Section>
 
-            <Section icon="💰" title="Fees" accent={dues?.totalDue > 0 ? RED : GREEN} count={profile.fees.admFeeCols.length + profile.fees.admFlatFees.length + profile.fees.admCourseFees.length}>
+            <Section icon="💰" title="Fees" accent={dues?.totalDue > 0 ? RED : GREEN} count={profile.fees.admFeeCols.length + profile.fees.admFlatFees.length + profile.fees.admCourseFees.length}
+              full={
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {dues && <>
+                    <Row label="Total Due" value={`₹${fmt(dues.totalDue)}`} />
+                    <Row label="Admission fee" value={dues.admission.due > 0 ? `₹${fmt(dues.admission.due)} due` : 'Paid'} />
+                    <Row label="Flat fee (Feb/Mar)" value={dues.flatFee.due > 0
+                      ? `₹${fmt(dues.flatFee.due)} — ${dues.flatFee.items.filter(i => !i.paid).map(i => `${i.month.slice(0, 3)} ${i.year}`).join(', ')}`
+                      : 'Up to date'} />
+                    <Row label="Course fee" value={dues.courseFee.due > 0
+                      ? `₹${fmt(dues.courseFee.due)} — ${dues.courseFee.items.filter(i => !i.paid).length} month(s)`
+                      : 'Up to date'} />
+                  </>}
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 4 }}>Admission Fee Payments</div>
+                  <FullList rows={profile.fees.admFeeCols} emptyText="No admission fee payments." renderRow={(r, i) => (
+                    <Row key={i} label={`${fmtDate(r.pay_date)} · ${r.pay_mode || '—'}`} value={`₹${fmt(r.amount_paid)}`} />
+                  )} />
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 4 }}>Flat Fee Payments</div>
+                  <FullList rows={profile.fees.admFlatFees} emptyText="No flat fee payments." renderRow={(r, i) => (
+                    <Row key={i} label={`${r.month} ${r.year} · ${fmtDate(r.pay_date)}`} value={`₹${fmt(r.amount)}`} />
+                  )} />
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 4 }}>Course Fee Payments</div>
+                  <FullList rows={profile.fees.admCourseFees} emptyText="No course fee payments." renderRow={(r, i) => (
+                    <Row key={i} label={`${r.for_month} ${r.year} · ${fmtDate(r.pay_date)}`} value={`₹${fmt(r.amount_paid)}`} />
+                  )} />
+                </div>
+              }>
               <Row label="Total Paid" value={`₹${fmt(profile.fees.total)}`} />
               {dues && <>
                 <Row label="Total Due" value={`₹${fmt(dues.totalDue)}`} />
@@ -284,7 +337,19 @@ export default function Student360({ currentUser, isAdmin = false }) {
             </Section>
 
             <Section icon="📋" title="Attendance" accent={profile.attendance.pct == null ? SLATE[500] : profile.attendance.pct < 75 ? RED : GREEN}
-              empty={profile.attendance.totalMarked === 0 && 'No attendance records found for this student.'}>
+              empty={profile.attendance.totalMarked === 0 && 'No attendance records found for this student.'}
+              full={
+                <div>
+                  <Row label="Sessions marked" value={profile.attendance.totalMarked} />
+                  <Row label="Present" value={profile.attendance.presentCount} />
+                  <Row label="Absent/Other" value={profile.attendance.totalMarked - profile.attendance.presentCount} />
+                  <Row label="Attendance %" value={`${profile.attendance.pct}%`} />
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em', margin: '10px 0 4px' }}>All Marked Sessions</div>
+                  <FullList rows={profile.attendance.records} emptyText="No sessions." renderRow={(r, i) => (
+                    <Row key={i} label={`Session #${r.session_id}`} value={r.status} />
+                  )} />
+                </div>
+              }>
               {profile.attendance.totalMarked > 0 && <>
                 <Row label="Sessions marked" value={profile.attendance.totalMarked} />
                 <Row label="Present" value={profile.attendance.presentCount} />
@@ -292,14 +357,27 @@ export default function Student360({ currentUser, isAdmin = false }) {
               </>}
             </Section>
 
-            <Section icon="✏️" title="Exam Marks" accent={SKY} count={profile.exams.length} empty={profile.exams.length === 0 && 'No exam marks recorded for this student.'}>
+            <Section icon="✏️" title="Exam Marks" accent={SKY} count={profile.exams.length} empty={profile.exams.length === 0 && 'No exam marks recorded for this student.'}
+              full={<FullList rows={profile.exams} emptyText="No exam marks." renderRow={(m, i) => (
+                <Row key={i} label={`${m.subject} · ${fmtDate(m.exam_date)}`} value={m.marks_obtained} />
+              )} />}>
               {profile.exams.slice(0, 5).map((m, i) => (
                 <Row key={i} label={`${m.subject} · ${fmtDate(m.exam_date)}`} value={m.marks_obtained} />
               ))}
               {profile.exams.length > 5 && <div style={{ fontSize: 11.5, color: SLATE[400], marginTop: 6 }}>+{profile.exams.length - 5} more</div>}
             </Section>
 
-            <Section icon="🏠" title="Hostel" accent={profile.hostel ? GREEN : SLATE[500]} empty={!profile.hostel && 'Day scholar — no hostel allocation.'}>
+            <Section icon="🏠" title="Hostel" accent={profile.hostel ? GREEN : SLATE[500]} empty={!profile.hostel && 'Day scholar — no hostel allocation.'}
+              full={profile.hostel && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {Object.entries(profile.hostel).filter(([k]) => !['id', 'hostel_rooms'].includes(k)).map(([k, v]) => (
+                    <Row key={k} label={k.replace(/_/g, ' ')} value={v == null || v === '' ? '—' : String(v)} />
+                  ))}
+                  {profile.hostel.hostel_rooms && Object.entries(profile.hostel.hostel_rooms).map(([k, v]) => (
+                    <Row key={'room_' + k} label={`Room ${k.replace(/_/g, ' ')}`} value={v == null || v === '' ? '—' : String(v)} />
+                  ))}
+                </div>
+              )}>
               {profile.hostel && <>
                 <Row label="Room" value={profile.hostel.hostel_rooms?.room_no} />
                 <Row label="Floor" value={profile.hostel.hostel_rooms?.floor} />
@@ -307,29 +385,56 @@ export default function Student360({ currentUser, isAdmin = false }) {
               </>}
             </Section>
 
-            <Section icon="🚩" title="Discipline" accent={profile.discipline.length ? AMBER : GREEN} count={profile.discipline.length} empty={profile.discipline.length === 0 && 'No discipline records.'}>
+            <Section icon="🚩" title="Discipline" accent={profile.discipline.length ? AMBER : GREEN} count={profile.discipline.length} empty={profile.discipline.length === 0 && 'No discipline records.'}
+              full={<FullList rows={profile.discipline} emptyText="No discipline records." renderRow={(d, i) => (
+                <Row key={i} label={`${fmtDate(d.date)} · ${d.category || 'General'}`} value={d.status} />
+              )} />}>
               {profile.discipline.slice(0, 5).map((d, i) => <Row key={i} label={fmtDate(d.date)} value={d.status} />)}
             </Section>
 
-            <Section icon="🏥" title="Sickbay" accent={profile.sickbay.some(s => s.status === 'Admitted') ? RED : SLATE[500]} count={profile.sickbay.length} empty={profile.sickbay.length === 0 && 'No sickbay records.'}>
+            <Section icon="🏥" title="Sickbay" accent={profile.sickbay.some(s => s.status === 'Admitted') ? RED : SLATE[500]} count={profile.sickbay.length} empty={profile.sickbay.length === 0 && 'No sickbay records.'}
+              full={<FullList rows={profile.sickbay} emptyText="No sickbay records." renderRow={(s, i) => (
+                <Row key={i} label={`${fmtDate(s.date)} · ${s.condition || s.reason || '—'}`} value={s.status} />
+              )} />}>
               {profile.sickbay.slice(0, 5).map((s, i) => <Row key={i} label={fmtDate(s.date)} value={s.status} />)}
             </Section>
 
-            <Section icon="🎫" title="Leave Records" accent={SKY} count={profile.leave.length} empty={profile.leave.length === 0 && 'No leave records.'}>
+            <Section icon="🎫" title="Leave Records" accent={SKY} count={profile.leave.length} empty={profile.leave.length === 0 && 'No leave records.'}
+              full={<FullList rows={profile.leave} emptyText="No leave records." renderRow={(l, i) => (
+                <Row key={i} label={`${l.leave_type || 'Leave'} · ${fmtDate(l.from_date)} → ${fmtDate(l.to_date)}`} value={l.status} />
+              )} />}>
               {profile.leave.slice(0, 5).map((l, i) => <Row key={i} label={fmtDate(l.from_date)} value={l.status} />)}
             </Section>
 
-            <Section icon="🪪" title="Gate Passes" accent={profile.gatePasses.some(g => g.status === 'Issued') ? AMBER : SLATE[500]} count={profile.gatePasses.length} empty={profile.gatePasses.length === 0 && 'No gate passes.'}>
+            <Section icon="🪪" title="Gate Passes" accent={profile.gatePasses.some(g => g.status === 'Issued') ? AMBER : SLATE[500]} count={profile.gatePasses.length} empty={profile.gatePasses.length === 0 && 'No gate passes.'}
+              full={<FullList rows={profile.gatePasses} emptyText="No gate passes." renderRow={(g, i) => (
+                <Row key={i} label={`${fmtDate(g.created_at)} · ${g.reason || '—'}`} value={g.status} />
+              )} />}>
               {profile.gatePasses.slice(0, 5).map((g, i) => <Row key={i} label={fmtDate(g.created_at)} value={g.status} />)}
             </Section>
 
             <Section icon="📞" title="Enquiries & Parent Items" accent={SKY} count={profile.enquiries.length + profile.parentItems.length}
-              empty={profile.enquiries.length === 0 && profile.parentItems.length === 0 && 'No enquiries or parent items.'}>
+              empty={profile.enquiries.length === 0 && profile.parentItems.length === 0 && 'No enquiries or parent items.'}
+              full={
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em' }}>Enquiries</div>
+                  <FullList rows={profile.enquiries} emptyText="No enquiries." renderRow={(e, i) => (
+                    <Row key={i} label={`${fmtDate(e.created_at)} · ${e.subject || e.category || '—'}`} value={e.status} />
+                  )} />
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em', marginTop: 4 }}>Parent Items</div>
+                  <FullList rows={profile.parentItems} emptyText="No parent items." renderRow={(p, i) => (
+                    <Row key={i} label={`${fmtDate(p.created_at)} · ${p.item_type || p.description || '—'}`} value={p.status} />
+                  )} />
+                </div>
+              }>
               {profile.enquiries.slice(0, 3).map((e, i) => <Row key={'e'+i} label={`Enquiry · ${fmtDate(e.created_at)}`} value={e.status} />)}
               {profile.parentItems.slice(0, 3).map((p, i) => <Row key={'p'+i} label={`Item · ${fmtDate(p.created_at)}`} value={p.status} />)}
             </Section>
 
-            <Section icon="⚠️" title="Complaints" accent={profile.complaints.length ? RED : GREEN} count={profile.complaints.length} empty={profile.complaints.length === 0 && 'No complaints on record.'}>
+            <Section icon="⚠️" title="Complaints" accent={profile.complaints.length ? RED : GREEN} count={profile.complaints.length} empty={profile.complaints.length === 0 && 'No complaints on record.'}
+              full={<FullList rows={profile.complaints} emptyText="No complaints." renderRow={(c, i) => (
+                <Row key={i} label={`${fmtDate(c.created_at)} · ${c.category || '—'}`} value={c.status} />
+              )} />}>
               {profile.complaints.slice(0, 5).map((c, i) => <Row key={i} label={fmtDate(c.created_at)} value={c.status} />)}
             </Section>
 
@@ -636,12 +741,29 @@ function SchoolOverview({ onOpenStudent }) {
 
       // ── Hostel occupancy ──
       const allocByHouse = {}
+      const allocatedStudentIds = new Set()
       ;(hostelAllocs.data || []).forEach(a => {
         const h = a.house || 'Unassigned'
         allocByHouse[h] = (allocByHouse[h] || 0) + 1
+        allocatedStudentIds.add(a.student_id)
       })
       const boarders = (hostelAllocs.data || []).length
       const dayScholars = students.length - boarders
+      // house -> array of student objects, built from the ACTUAL allocation
+      // rows (hostel_allocations.house), not student.house — those two can
+      // disagree (that disagreement is literally one of the mismatch flags
+      // in mismatchDetector.js), so the drill-down here must match what
+      // allocByHouse counted, not a different field.
+      const studentsById = {}
+      students.forEach(s => { studentsById[s.id] = s })
+      const allocStudentsByHouse = {}
+      ;(hostelAllocs.data || []).forEach(a => {
+        const h = a.house || 'Unassigned'
+        const s = studentsById[a.student_id]
+        if (!s) return
+        if (!allocStudentsByHouse[h]) allocStudentsByHouse[h] = []
+        allocStudentsByHouse[h].push(s)
+      })
 
       setData({
         totalStudents: students.length,
@@ -651,7 +773,7 @@ function SchoolOverview({ onOpenStudent }) {
         noPaymentStudents,
         attendanceRate, attendanceSessions: sessionIds.length,
         houses: (houses.data || []).map(h => h.name),
-        allocByHouse, boarders, dayScholars,
+        allocByHouse, allocStudentsByHouse, boarders, dayScholars,
       })
       setLoading(false)
     }
@@ -707,7 +829,19 @@ function SchoolOverview({ onOpenStudent }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 14 }}>
 
         {/* Enrollment by course */}
-        <Section icon="🎓" title="Enrollment by Course" accent={NAVY}>
+        <Section icon="🎓" title="Enrollment by Course" accent={NAVY}
+          full={
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {Object.entries(data.byCourse).sort((a, b) => b[1] - a[1]).map(([course, count]) => (
+                <div key={course}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: NAVY, marginBottom: 4 }}>{course} ({count})</div>
+                  <FullList rows={data.students.filter(s => (s.course || 'Unassigned') === course)} renderRow={s => (
+                    <Row key={s.id} label={s.name} value={s.batch || '—'} />
+                  )} />
+                </div>
+              ))}
+            </div>
+          }>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {Object.entries(data.byCourse).sort((a, b) => b[1] - a[1]).map(([course, count]) => (
               <div key={course}>
@@ -724,7 +858,19 @@ function SchoolOverview({ onOpenStudent }) {
         </Section>
 
         {/* Enrollment by house */}
-        <Section icon="🏠" title="Students by House" accent={AMBER}>
+        <Section icon="🏠" title="Students by House" accent={AMBER}
+          full={
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {Object.entries(data.byHouse).sort((a, b) => b[1] - a[1]).map(([house, count]) => (
+                <div key={house}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: AMBER, marginBottom: 4 }}>{house} ({count})</div>
+                  <FullList rows={data.students.filter(s => (s.house || 'No House') === house)} renderRow={s => (
+                    <Row key={s.id} label={s.name} value={s.course || '—'} />
+                  )} />
+                </div>
+              ))}
+            </div>
+          }>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {Object.entries(data.byHouse).sort((a, b) => b[1] - a[1]).map(([house, count]) => (
               <div key={house}>
@@ -748,7 +894,19 @@ function SchoolOverview({ onOpenStudent }) {
         </Section>
 
         {/* Hostel occupancy */}
-        <Section icon="🏨" title="Hostel Occupancy by House" accent={SKY}>
+        <Section icon="🏨" title="Hostel Occupancy by House" accent={SKY}
+          full={
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {data.houses.map(h => (
+                <div key={h}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: SKY, marginBottom: 4 }}>{h} ({data.allocByHouse[h] || 0})</div>
+                  <FullList rows={data.allocStudentsByHouse[h] || []} emptyText="No students allocated to this house." renderRow={s => (
+                    <Row key={s.id} label={s.name} value={s.course || '—'} />
+                  )} />
+                </div>
+              ))}
+            </div>
+          }>
           {data.houses.length === 0 ? (
             <div style={{ fontSize: 12.5, color: SLATE[400], textAlign: 'center', padding: '10px 0' }}>No houses configured.</div>
           ) : (
