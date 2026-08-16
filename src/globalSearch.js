@@ -34,7 +34,7 @@ async function searchTable(entry, term, limit = 8) {
 // Resolves a raw hit's owning student. Different tables key by different
 // columns (gcc_no, internal id, or student_name — see tableRegistry.js),
 // so this tries each in the order that table declares.
-function resolveStudentKey(entry, row) {
+export function resolveStudentKey(entry, row) {
   if (entry.studentKeyIsId) return { type: 'id', value: row[entry.studentKeyCol] }
   if (entry.studentKeyIsName) return { type: 'name', value: row[entry.studentKeyCol] }
   return { type: 'gcc', value: row[entry.studentKeyCol] }
