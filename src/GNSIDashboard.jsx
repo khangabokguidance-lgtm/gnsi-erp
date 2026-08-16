@@ -260,9 +260,9 @@ async function loadAllData() {
     accountsResult, recentFeeRes, staffRes, staffTasksRes, staffScoresRes,
     attendanceTodayRes, attendanceAllRes, housesRawRes, defaultersRes,
     hostelRoomsData, hostelIncidentsData, messData, housePointsData,
-    clubsData, leavesData, recruitmentData, examMarksData, sportsData,
-    serviceHoursData, achievementsData, waiverData, scholarshipData,
-    batchesData, timetableData, enquiriesData, doubtSessionsData,
+    clubsData, examMarksData, sportsData,
+    serviceHoursData, achievementsData, waiverData,
+    batchesData, timetableData, doubtSessionsData,
     smsLogsData, studyMaterialData, selectionsData, syllabusCoverageData,
     teachingLogsRaw,
     feeStructuresData, feeOverridesData, admFlatFeesResult, admCourseFeesResult,
@@ -273,7 +273,9 @@ async function loadAllData() {
   ] = await Promise.all([
     supabase.from("students").select("*", {count:"exact", head:true}),
 supabase.from("students").select("gender, state, date_of_birth, created_at, hostel_type, course, batch"),
-supabase.from("adm_applications").select("gcc_no,applicant_name,status,course,hostel_type,batch,created_at,referral_source,category,gender"),
+// FIX: added .order() — this query fed recentEnquiries via allAdm.slice(-6), which
+    // relied on Postgres returning rows in insertion order with no ORDER BY (not guaranteed).
+    supabase.from("adm_applications").select("gcc_no,applicant_name,status,course,hostel_type,batch,created_at,referral_source,category,gender").order("created_at",{ascending:true}),
 supabase.from("adm_applications").select("gcc_no,applicant_name,batch,status,created_at").order("created_at",{ascending:false}).limit(6),
     // FIX: this was a plain .select() with no .range() pagination — Supabase/PostgREST
     // silently caps that at 1000 rows. With 1534+ transactions (per Accounts.jsx's own
@@ -296,17 +298,21 @@ safeFetch(()=>supabase.from("attendance_logs").select("status,date").order("date
     safeFetch(()=>supabase.from("mess_consumption").select("meal_date,breakfast,lunch,dinner")),
     safeFetch(()=>supabase.from("house_points").select("house_name,academic,sports,cultural,discipline")),
     safeFetch(()=>supabase.from("clubs").select("name,member_count")),
-    safeFetch(()=>supabase.from("leave_requests").select("leave_type,staff_id,start_date")),
-    safeFetch(()=>supabase.from("staff_recruitment").select("stage,candidate_name,applied_date")),
+    // FIX: removed dead fetches for leave_requests and staff_recruitment — their
+    // results (leavesData, recruitmentData) were never used anywhere; leaveBreakdown
+    // and recruitmentFunnel are hardcoded to [] below regardless.
     safeFetch(()=>supabase.from("student_scores").select("student_id,student_name,subject_name,score,max_score,test_date").order("test_date",{ascending:false}).limit(500)),
     safeFetch(()=>supabase.from("sports_participation").select("sport,student_count")),
     safeFetch(()=>supabase.from("house_service_hours").select("house_name,hours")),
     safeFetch(()=>supabase.from("achievements").select("title,house_name,achieved_date")),
     safeFetch(()=>supabase.from("fee_waivers").select("category,total_amount,student_count")),
-    safeFetch(()=>supabase.from("scholarships").select("name,awarded_count,total_amount")),
+    // FIX: removed dead fetch for scholarships — result was never used (no
+    // scholarshipData reference anywhere downstream).
     safeFetch(()=>supabase.from("course_batches").select("id,batch_name,course,subtype,class_name,hostel_type,session_year")),
 safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_name,teacher_name,day_name,period_name")),
-    safeFetch(()=>supabase.from("enquiries").select("id,name,phone,course_interest,source,status,follow_up_date,created_at,converted")),
+    // FIX: removed dead fetch for the "enquiries" table — the Enquiry & Lead
+    // Management section actually derives everything (totalEnquiries, openEnquiries,
+    // enqBySource, etc.) from admissionsRes/allAdm, so enquiriesData was never read.
     safeFetch(()=>supabase.from("doubt_sessions").select("id,student_name,batch_name,subject,topic,raised_date,resolved_date,staff_name,status")),
     safeFetch(()=>supabase.from("sms_logs").select("id,recipient_type,message_type,sent_at,status,count")),
     safeFetch(()=>supabase.from("study_material").select("id,title,subject,batch_name,material_type,distributed_date,total_copies,distributed_copies")),
@@ -470,17 +476,17 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
   const totalTests=[...new Set(examMarksData.map(t=>t.test_date))].length
   const totalTestEntries=examMarksData.length
   const avgTestScore=avgScore_all
-  const testTypeMap={}
-  examMarksData.forEach(t=>{const tp=t.gcc_no||"Unknown";testTypeMap[tp]=(testTypeMap[tp]||0)+1})
-  const testByType=Object.entries(testTypeMap).map(([name,count],i)=>({name,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  // FIX: removed testTypeMap/testByType and batchScoreMap/batchScores — both grouped
+  // by t.gcc_no, but the student_scores query doesn't select gcc_no (this table has no
+  // batch/class column at all), so every row silently fell into a single "Unknown"
+  // bucket. testByType was dead code anyway (never rendered). The "By Class" panel now
+  // shows testSubjectScores (by Subject) instead — real data that was already being
+  // computed but never displayed.
   const studentScoreMap={}
   examMarksData.forEach(t=>{const id=t.student_id;if(!studentScoreMap[id])studentScoreMap[id]={name:t.student_name||String(id),batch:"Unknown",total:0,max:0,count:0};studentScoreMap[id].total+=Number(t.score)||0;studentScoreMap[id].max+=Number(t.max_score)||0;studentScoreMap[id].count++})
   const topPerformers=Object.values(studentScoreMap).map(s=>({...s,avg:s.max>0?pct(s.total,s.max):0})).sort((a,b)=>b.avg-a.avg).slice(0,8)
   const atRiskStudents=Object.values(studentScoreMap).filter(s=>s.max>0&&pct(s.total,s.max)<40)
   const testSubjectScores=subjectScores.map((s,i)=>({...s,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
-  const batchScoreMap={}
-  examMarksData.forEach(t=>{const b=t.gcc_no||"Unknown";if(!batchScoreMap[b])batchScoreMap[b]={total:0,max:0};batchScoreMap[b].total+=Number(t.score)||0;batchScoreMap[b].max+=Number(t.max_score)||0})
-  const batchScores=Object.entries(batchScoreMap).map(([batch,v],i)=>({batch:batch.slice(0,10),avg:v.max>0?pct(v.total,v.max):0,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
   const testMonthMap={}
   examMarksData.forEach(t=>{const mo=t.test_date?.slice(0,7);if(!mo)return;if(!testMonthMap[mo])testMonthMap[mo]={total:0,max:0};testMonthMap[mo].total+=Number(t.score)||0;testMonthMap[mo].max+=Number(t.max_score)||0})
   const testTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,avg:testMonthMap[m.key]?.max>0?pct(testMonthMap[m.key].total,testMonthMap[m.key].max):0}))
@@ -492,10 +498,12 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
   const hostelVacant=hostelTotalRooms-hostelOccupied
   const messMonthMap={}
   messData.forEach(m=>{const mo=m.meal_date?.slice(0,7);if(!mo)return;if(!messMonthMap[mo])messMonthMap[mo]={breakfast:0,lunch:0,dinner:0};messMonthMap[mo].breakfast+=Number(m.breakfast)||0;messMonthMap[mo].lunch+=Number(m.lunch)||0;messMonthMap[mo].dinner+=Number(m.dinner)||0})
-  const messChartData=ACADEMIC_MONTHS.slice(0,8).map(m=>({month:m.label,...(messMonthMap[m.key]||{breakfast:0,lunch:0,dinner:0})}))
+  // FIX: was ACADEMIC_MONTHS.slice(0,8), which only covers Apr-Nov and silently
+  // drops any Dec/Jan/Feb/Mar data that messMonthMap/incidentMonthMap actually has.
+  const messChartData=ACADEMIC_MONTHS.map(m=>({month:m.label,...(messMonthMap[m.key]||{breakfast:0,lunch:0,dinner:0})}))
   const incidentMonthMap={}
   hostelIncidentsData.forEach(inc=>{const mo=inc.incident_date?.slice(0,7);if(!mo)return;incidentMonthMap[mo]=(incidentMonthMap[mo]||0)+1})
-  const hostelIncidentChart=ACADEMIC_MONTHS.slice(0,8).map(m=>({month:m.label,count:incidentMonthMap[m.key]||0}))
+  const hostelIncidentChart=ACADEMIC_MONTHS.map(m=>({month:m.label,count:incidentMonthMap[m.key]||0}))
 
   // ── Houses ──
   const rawHouses=housesRawRes.data||[]
@@ -511,6 +519,8 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
   // ── Batches ──
   const totalBatches=batchesData.length
 const activeBatches=batchesData.length
+// NOTE: course_batches isn't queried for a capacity column, so this is genuinely
+// untracked (not zero) — see the "Cap: —" / "N/A" fallback in the Batches section JSX.
 const totalCapacity=0
 const totalStrength=admEnrolled
 const batchFillRate=0
@@ -540,9 +550,49 @@ batchesData.forEach(b=>{const t=b.course||"Regular";batchTypeMap[t]=(batchTypeMa
   const recentEnquiries=allAdm.slice(-6).reverse().map(a=>({name:a.applicant_name,course_interest:a.course,source:a.referral_source||"—",status:a.status,follow_up_date:a.created_at?.slice(0,10)}))
 
   // ── Doubts / SMS / Material ──
-  const totalDoubts=doubtSessionsData.length,resolvedDoubts=0,unresolvedDoubts=0,avgResolutionHrs=0,doubtsBySubject=[],doubtsByBatch=[],doubtStaffLeaderboard=[],doubtTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,raised:0,resolved:0}))
-  const totalSMSSent=smsLogsData.reduce((s,l)=>s+(Number(l.count)||1),0),smsSent=0,smsFailed=0,smsDeliveryRate=0,smsByType=[],smsTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,count:0}))
-  const totalMaterials=studyMaterialData.length,distributedMat=0,pendingDistribution=0,totalCopies=0,distributedCopies=0,materialByType=[],materialBySubject=[]
+  // FIX: these were all hardcoded to 0/[] even though doubtSessionsData, smsLogsData,
+  // and studyMaterialData were being fetched in full — the JSX unconditionally showed
+  // "no data yet" regardless of what was actually in the tables. Now computed for real.
+  const totalDoubts=doubtSessionsData.length
+  const resolvedDoubts=doubtSessionsData.filter(d=>d.status==="Resolved"||!!d.resolved_date).length
+  const unresolvedDoubts=totalDoubts-resolvedDoubts
+  const resolutionHrsList=doubtSessionsData.filter(d=>d.raised_date&&d.resolved_date).map(d=>(new Date(d.resolved_date)-new Date(d.raised_date))/3600000).filter(h=>h>=0)
+  const avgResolutionHrs=resolutionHrsList.length>0?Math.round(resolutionHrsList.reduce((s,h)=>s+h,0)/resolutionHrsList.length):0
+  const doubtSubjectMap={}
+  doubtSessionsData.forEach(d=>{const s=d.subject||"Other";doubtSubjectMap[s]=(doubtSubjectMap[s]||0)+1})
+  const doubtsBySubject=Object.entries(doubtSubjectMap).sort((a,b)=>b[1]-a[1]).map(([subject,count],i)=>({subject,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const doubtBatchMap={}
+  doubtSessionsData.forEach(d=>{const b=d.batch_name||"Unknown";doubtBatchMap[b]=(doubtBatchMap[b]||0)+1})
+  const doubtsByBatch=Object.entries(doubtBatchMap).sort((a,b)=>b[1]-a[1]).map(([batch,count],i)=>({batch,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const doubtStaffMap={}
+  doubtSessionsData.forEach(d=>{const t=d.staff_name||"Unassigned";if(!doubtStaffMap[t])doubtStaffMap[t]={name:t,total:0,resolved:0};doubtStaffMap[t].total++;if(d.status==="Resolved"||d.resolved_date)doubtStaffMap[t].resolved++})
+  const doubtStaffLeaderboard=Object.values(doubtStaffMap).sort((a,b)=>b.resolved-a.resolved).slice(0,8)
+  const doubtRaisedMonthMap={},doubtResolvedMonthMap={}
+  doubtSessionsData.forEach(d=>{const mo=d.raised_date?.slice(0,7);if(mo)doubtRaisedMonthMap[mo]=(doubtRaisedMonthMap[mo]||0)+1;const rmo=d.resolved_date?.slice(0,7);if(rmo)doubtResolvedMonthMap[rmo]=(doubtResolvedMonthMap[rmo]||0)+1})
+  const doubtTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,raised:doubtRaisedMonthMap[m.key]||0,resolved:doubtResolvedMonthMap[m.key]||0}))
+
+  const totalSMSSent=smsLogsData.reduce((s,l)=>s+(Number(l.count)||1),0)
+  const smsSent=smsLogsData.filter(l=>l.status==="Sent"||l.status==="Delivered").reduce((s,l)=>s+(Number(l.count)||1),0)
+  const smsFailed=smsLogsData.filter(l=>l.status==="Failed").reduce((s,l)=>s+(Number(l.count)||1),0)
+  const smsDeliveryRate=totalSMSSent>0?pct(smsSent,totalSMSSent):0
+  const smsTypeMap={}
+  smsLogsData.forEach(l=>{const t=l.message_type||"Other";smsTypeMap[t]=(smsTypeMap[t]||0)+(Number(l.count)||1)})
+  const smsByType=Object.entries(smsTypeMap).sort((a,b)=>b[1]-a[1]).map(([type,count],i)=>({type,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const smsMonthMap={}
+  smsLogsData.forEach(l=>{const mo=l.sent_at?.slice(0,7);if(!mo)return;smsMonthMap[mo]=(smsMonthMap[mo]||0)+(Number(l.count)||1)})
+  const smsTrend=ACADEMIC_MONTHS.map(m=>({month:m.label,count:smsMonthMap[m.key]||0}))
+
+  const totalMaterials=studyMaterialData.length
+  const distributedMat=studyMaterialData.filter(m=>m.distributed_date||(Number(m.distributed_copies)||0)>0).length
+  const pendingDistribution=totalMaterials-distributedMat
+  const totalCopies=studyMaterialData.reduce((s,m)=>s+(Number(m.total_copies)||0),0)
+  const distributedCopies=studyMaterialData.reduce((s,m)=>s+(Number(m.distributed_copies)||0),0)
+  const materialTypeMap={}
+  studyMaterialData.forEach(m=>{const t=m.material_type||"Other";materialTypeMap[t]=(materialTypeMap[t]||0)+1})
+  const materialByType=Object.entries(materialTypeMap).sort((a,b)=>b[1]-a[1]).map(([type,count],i)=>({type,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
+  const materialSubjectMap={}
+  studyMaterialData.forEach(m=>{const s=m.subject||"Other";materialSubjectMap[s]=(materialSubjectMap[s]||0)+1})
+  const materialBySubject=Object.entries(materialSubjectMap).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([subject,count],i)=>({subject,count,color:COURSE_COLORS[i%COURSE_COLORS.length]}))
 
   // ── Selections ──
   const totalSelections=selectionsData.length
@@ -744,8 +794,14 @@ batchesData.forEach(b=>{const t=b.course||"Regular";batchTypeMap[t]=(batchTypeMa
   // ── Syllabus Topics ──
   const totalSyllabusTopics=syllabusTopicsData.length
   const completedTopics_st=syllabusTopicsData.filter(t=>t.completed===true).length
-  const pendingTopics_st=syllabusTopicsData.filter(t=>!t.completed&&!t.completed_at).length
-  const inProgressTopics=syllabusTopicsData.filter(t=>!t.completed&&t.expected_date&&new Date(t.expected_date)<=new Date()).length
+  // FIX: previously pendingTopics_st (!completed && !completed_at) and inProgressTopics
+  // (!completed && expected_date in the past) overlapped — a not-yet-completed topic
+  // whose expected date had passed counted in BOTH buckets, so Completed+InProgress+Pending
+  // never summed to Total. Also "In Progress" was really measuring overdue topics, not
+  // topics actively being worked on (there's no "started" signal in this table). Made the
+  // three buckets mutually exclusive and renamed to what they actually measure.
+  const overdueTopics_st=syllabusTopicsData.filter(t=>!t.completed&&t.expected_date&&new Date(t.expected_date)<new Date()).length
+  const pendingTopics_st=syllabusTopicsData.filter(t=>!t.completed&&!(t.expected_date&&new Date(t.expected_date)<new Date())).length
   const syllabusOverallPct=totalSyllabusTopics>0?pct(completedTopics_st,totalSyllabusTopics):0
   const syllabusCourseMap={}
   syllabusTopicsData.forEach(t=>{const c=t.course||"Other";if(!syllabusCourseMap[c])syllabusCourseMap[c]={total:0,completed:0};syllabusCourseMap[c].total++;if(t.completed)syllabusCourseMap[c].completed++})
@@ -779,7 +835,7 @@ batchesData.forEach(b=>{const t=b.course||"Regular";batchTypeMap[t]=(batchTypeMa
     hostelRooms, hostelTotalRooms, hostelOccupied, hostelVacant, messChartData, hostelIncidentChart,
     housePoints, serviceHours, clubsFormatted, sportsFormatted, achievementsFormatted, notifications,
     totalBatches, activeBatches, totalCapacity, totalStrength, batchFillRate, batchesData, batchByType, timetableChart,
-    totalTests, totalTestEntries, avgTestScore, testByType, topPerformers, testSubjectScores, batchScores, testTrend, atRiskStudents,
+    totalTests, totalTestEntries, avgTestScore, topPerformers, testSubjectScores, testTrend, atRiskStudents,
     totalEnquiries, openEnquiries, convertedEnq, conversionRate, followUpDue, enqBySource, enqByCourse, enqTrend, enquiryFunnel, recentEnquiries,
     totalDoubts, resolvedDoubts, unresolvedDoubts, avgResolutionHrs, doubtsBySubject, doubtsByBatch, doubtStaffLeaderboard, doubtTrend,
     totalSMSSent, smsSent, smsFailed, smsDeliveryRate, smsByType, smsTrend,
@@ -793,7 +849,7 @@ batchesData.forEach(b=>{const t=b.course||"Regular";batchTypeMap[t]=(batchTypeMa
     totalCampaigns, activeCampaigns, totalSocialLeads, convertedLeads, newLeads, overdueFollowUps, socialConvRate, campaignsByPlatform, totalBudget, totalPosts, postedCount, plannedPosts_count, leadsBySource, socialTrend,
     totalBroadcasts, sentBroadcasts, totalRecipients, totalGrievances, openGrievances, resolvedGrievances, unreadReplies, broadcastsByChannel, recentBroadcasts,
     totalQBankQuestions, qbankByCourse, qbankBySubject, qbankByDifficulty, qbankByType, qbankTrend,
-    totalSyllabusTopics, completedTopics_st, pendingTopics_st, inProgressTopics, syllabusOverallPct, syllabusByCourse,
+    totalSyllabusTopics, completedTopics_st, pendingTopics_st, overdueTopics_st, syllabusOverallPct, syllabusByCourse,
     // FIX #7: renamed export
     syllabusTopicsBySubject, syllabusBySubject,
   }
@@ -975,11 +1031,20 @@ export default function GNSIDashboard({ scrollToSection }) {
               </div>
             </div>
             <div style={{flex:1,minWidth:200,maxWidth:300}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,fontSize:11,color:T.inkSub}}>
-                <span>Progress</span>
-                <span style={{color:T.gold,fontWeight:700}}>{feeProgress}% · {fmt(data.feePending)} pending</span>
-              </div>
-              <ProgressBar value={liveTotal} max={liveTotal+Math.max(0,data.feePending)} color={T.gold} height={9}/>
+              {data.feePending>0 ? (
+                <>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,fontSize:11,color:T.inkSub}}>
+                    <span>Progress</span>
+                    <span style={{color:T.gold,fontWeight:700}}>{feeProgress}% · {fmt(data.feePending)} pending</span>
+                  </div>
+                  <ProgressBar value={liveTotal} max={liveTotal+data.feePending} color={T.gold} height={9}/>
+                </>
+              ) : (
+                // FIX: feePending is hardcoded to 0 (fee_invoices pending-calc isn't wired
+                // up yet — see feePending definition). A 0-max progress bar always rendered
+                // as a misleading "100% collected" bar. Show an honest note instead.
+                <div style={{fontSize:11,color:T.inkSub}}>Pending amount not tracked yet</div>
+              )}
             </div>
             <div className="fee-banner-meta">
               {[{label:"Admission",val:data.admFeeTotal,color:T.violet},{label:"Flat Fee",val:data.flatFeeTotal,color:T.sky},{label:"Course",val:data.courseFeeTotal,color:T.emerald}].map(x=>(
@@ -1102,7 +1167,7 @@ export default function GNSIDashboard({ scrollToSection }) {
           <SectionHeader icon="💰" title="Finance & Fee Analytics"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI icon="💰" label="Total Collected" value={liveTotal} isMoney color={T.gold}/>
-            <KPI icon="📌" label="Fee Pending" value={data.feePending} isMoney color={data.feePending>0?T.rose:T.emerald} sub="All fees cleared"/>
+            <KPI icon="📌" label="Fee Pending" value={data.feePending} isMoney color={data.feePending>0?T.rose:T.slateL} sub={data.feePending>0?"Outstanding":"Not tracked yet"}/>
             <KPI icon="🎓" label="Admission Fee" value={data.admFeeTotal} isMoney color={T.violet}/>
             <KPI icon="📄" label="Flat Fee" value={data.flatFeeTotal} isMoney color={T.sky}/>
             <KPI icon="📚" label="Course Fee" value={data.courseFeeTotal} isMoney color={T.emerald}/>
@@ -1394,7 +1459,7 @@ export default function GNSIDashboard({ scrollToSection }) {
           </div>
           <div className="grid-cols2">
             <Panel title="Grade Distribution">
-              {data.gradeDistribution.every(g=>g.count===0)?<EmptyState msg="No exam_marks data"/>:(
+              {data.gradeDistribution.every(g=>g.count===0)?<EmptyState msg="No student_scores data"/>:(
                 <ResponsiveContainer width="100%" height={190}>
                   <BarChart data={data.gradeDistribution}>
                     <XAxis dataKey="grade" tick={{fill:T.inkSub,fontSize:12}} axisLine={false} tickLine={false}/>
@@ -1440,15 +1505,17 @@ export default function GNSIDashboard({ scrollToSection }) {
                 </AreaChart>
               </ResponsiveContainer>
             </Panel>
-            <Panel title="By Class">
-              <div style={{display:"flex",flexDirection:"column",gap:7}}>
-                {data.batchScores.map(b=>(
-                  <div key={b.batch}>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,color:T.inkSub}}>{b.batch}</span><span style={{fontSize:11,fontWeight:700,color:b.color}}>{b.avg}%</span></div>
-                    <ProgressBar value={b.avg} max={100} color={b.color} height={5}/>
-                  </div>
-                ))}
-              </div>
+            <Panel title="By Subject">
+              {data.testSubjectScores.length===0?<EmptyState msg="No subject data"/>:(
+                <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                  {data.testSubjectScores.map(s=>(
+                    <div key={s.subject}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,color:T.inkSub}}>{s.subject}</span><span style={{fontSize:11,fontWeight:700,color:s.color}}>{s.avg}%</span></div>
+                      <ProgressBar value={s.avg} max={100} color={s.color} height={5}/>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Panel>
           </div>
           <div className="grid-cols2">
@@ -1637,8 +1704,8 @@ export default function GNSIDashboard({ scrollToSection }) {
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI icon="🗂️" label="Total Batches" value={data.totalBatches} color={T.indigo}/>
             <KPI icon="✅" label="Active" value={data.activeBatches} color={T.emerald}/>
-            <KPI icon="👥" label="Total Strength" value={data.totalStrength} color={T.sky} sub={`Cap: ${data.totalCapacity}`}/>
-            <KPI icon="📊" label="Fill Rate" value={data.batchFillRate} color={data.batchFillRate>=80?T.emerald:T.amber} sub={`${data.batchFillRate}%`}/>
+            <KPI icon="👥" label="Total Strength" value={data.totalStrength} color={T.sky} sub={data.totalCapacity>0?`Cap: ${data.totalCapacity}`:"Capacity not tracked"}/>
+            <KPI icon="📊" label="Fill Rate" value={data.totalCapacity>0?data.batchFillRate:0} color={T.slateL} sub={data.totalCapacity>0?`${data.batchFillRate}%`:"N/A"}/>
           </div>
           {data.batchesData.length===0?(
             <Panel><EmptyState msg="No data in batches table yet."/></Panel>
@@ -1662,17 +1729,121 @@ export default function GNSIDashboard({ scrollToSection }) {
           )}
         </div>
 
-        {/* ═══ SIMPLE EMPTY SECTIONS ════════════════════════ */}
-        {[
-          {id:"doubts",   icon:"💬", title:"Doubt & Query Management",      msg:"No data in doubt_sessions table yet."},
-          {id:"parents",  icon:"👨‍👩‍👧", title:"Parent Communication",           msg:"No data in sms_logs table yet."},
-          {id:"material", icon:"📦", title:"Study Material Management",     msg:"No data in study_material table yet."},
-        ].map(s=>(
-          <div key={s.id} ref={setSectionRef(s.id)} className="dash-section">
-            <SectionHeader icon={s.icon} title={s.title}/>
-            <Panel><EmptyState msg={s.msg}/></Panel>
+        {/* ═══ DOUBTS ════════════════════════════════════════ */}
+        <div ref={setSectionRef('doubts')} className="dash-section">
+          <SectionHeader icon="💬" title="Doubt & Query Management"/>
+          <div className="grid-kpi" style={{marginBottom:16}}>
+            <KPI icon="💬" label="Total Doubts" value={data.totalDoubts} color={T.sky}/>
+            <KPI icon="✅" label="Resolved" value={data.resolvedDoubts} color={T.emerald} progress={data.resolvedDoubts} progressMax={data.totalDoubts}/>
+            <KPI icon="⏳" label="Unresolved" value={data.unresolvedDoubts} color={T.rose}/>
+            <KPI icon="⏱️" label="Avg Resolution" value={data.avgResolutionHrs} color={T.amber} sub={`${data.avgResolutionHrs}h avg`}/>
           </div>
-        ))}
+          {data.totalDoubts===0?<Panel><EmptyState msg="No data in doubt_sessions table yet."/></Panel>:(
+            <>
+              <div className="grid-split" style={{marginBottom:14}}>
+                <Panel title="Monthly Raised vs Resolved">
+                  <ResponsiveContainer width="100%" height={200}>
+                    <ComposedChart data={data.doubtTrend}>
+                      <XAxis dataKey="month" tick={{fill:T.inkSub,fontSize:11}} axisLine={false} tickLine={false}/>
+                      <YAxis hide/><Tooltip content={<Tip/>}/>
+                      <Bar dataKey="raised" name="Raised" fill={T.sky} radius={[4,4,0,0]} barSize={16}/>
+                      <Bar dataKey="resolved" name="Resolved" fill={T.emerald} radius={[4,4,0,0]} barSize={16}/>
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </Panel>
+                <Panel title="By Subject">
+                  {data.doubtsBySubject.length===0?<EmptyState msg="No subject data"/>:(
+                    <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                      {data.doubtsBySubject.slice(0,8).map(s=>(<div key={s.subject}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.inkSub}}>{s.subject}</span><span style={{fontSize:12,fontWeight:700,color:s.color}}>{s.count}</span></div><ProgressBar value={s.count} max={data.doubtsBySubject[0]?.count||1} color={s.color} height={5}/></div>))}
+                    </div>
+                  )}
+                </Panel>
+              </div>
+              <div className="grid-cols2">
+                <Panel title="By Batch">
+                  {data.doubtsByBatch.length===0?<EmptyState msg="No batch data"/>:(
+                    <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                      {data.doubtsByBatch.slice(0,8).map(b=>(<div key={b.batch}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.inkSub}}>{b.batch}</span><span style={{fontSize:12,fontWeight:700,color:b.color}}>{b.count}</span></div><ProgressBar value={b.count} max={data.doubtsByBatch[0]?.count||1} color={b.color} height={5}/></div>))}
+                    </div>
+                  )}
+                </Panel>
+                <Panel title="Staff Leaderboard" sub="By doubts resolved">
+                  {data.doubtStaffLeaderboard.length===0?<EmptyState msg="No staff data"/>:(
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {data.doubtStaffLeaderboard.map((t,i)=>(
+                        <div key={t.name} style={{display:"flex",alignItems:"center",gap:9,padding:"6px 0",borderBottom:`1px solid ${T.border}`}}>
+                          <span style={{fontSize:12,fontWeight:900,color:i===0?T.gold:T.inkSub}}>#{i+1}</span>
+                          <span style={{flex:1,fontSize:12,fontWeight:700,color:T.ink}}>{t.name}</span>
+                          <span style={{fontSize:12,fontWeight:800,color:T.emerald}}>{t.resolved}/{t.total}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Panel>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ═══ PARENT COMMUNICATION ═══════════════════════════ */}
+        <div ref={setSectionRef('parents')} className="dash-section">
+          <SectionHeader icon="👨‍👩‍👧" title="Parent Communication"/>
+          <div className="grid-kpi" style={{marginBottom:16}}>
+            <KPI icon="📨" label="Total Sent" value={data.totalSMSSent} color={T.sky}/>
+            <KPI icon="✅" label="Delivered" value={data.smsSent} color={T.emerald}/>
+            <KPI icon="⚠️" label="Failed" value={data.smsFailed} color={T.rose}/>
+            <KPI icon="📊" label="Delivery Rate" value={data.smsDeliveryRate} color={data.smsDeliveryRate>=90?T.emerald:T.amber} sub={`${data.smsDeliveryRate}%`}/>
+          </div>
+          {data.totalSMSSent===0?<Panel><EmptyState msg="No data in sms_logs table yet."/></Panel>:(
+            <div className="grid-split">
+              <Panel title="Monthly SMS Volume">
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={data.smsTrend}>
+                    <XAxis dataKey="month" tick={{fill:T.inkSub,fontSize:11}} axisLine={false} tickLine={false}/>
+                    <YAxis hide/><Tooltip content={<Tip/>}/>
+                    <Bar dataKey="count" name="Sent" fill={T.sky} radius={[4,4,0,0]} barSize={18}/>
+                  </BarChart>
+                </ResponsiveContainer>
+              </Panel>
+              <Panel title="By Message Type">
+                {data.smsByType.length===0?<EmptyState msg="No type data"/>:(
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {data.smsByType.map(t=>(<div key={t.type}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.inkSub}}>{t.type}</span><span style={{fontSize:12,fontWeight:700,color:t.color}}>{t.count}</span></div><ProgressBar value={t.count} max={data.smsByType[0]?.count||1} color={t.color} height={5}/></div>))}
+                  </div>
+                )}
+              </Panel>
+            </div>
+          )}
+        </div>
+
+        {/* ═══ STUDY MATERIAL ══════════════════════════════════ */}
+        <div ref={setSectionRef('material')} className="dash-section">
+          <SectionHeader icon="📦" title="Study Material Management"/>
+          <div className="grid-kpi" style={{marginBottom:16}}>
+            <KPI icon="📦" label="Total Materials" value={data.totalMaterials} color={T.sky}/>
+            <KPI icon="✅" label="Distributed" value={data.distributedMat} color={T.emerald} progress={data.distributedMat} progressMax={data.totalMaterials}/>
+            <KPI icon="⏳" label="Pending" value={data.pendingDistribution} color={T.amber}/>
+            <KPI icon="📄" label="Copies" value={data.distributedCopies} color={T.violet} sub={`of ${data.totalCopies} total`}/>
+          </div>
+          {data.totalMaterials===0?<Panel><EmptyState msg="No data in study_material table yet."/></Panel>:(
+            <div className="grid-split">
+              <Panel title="By Material Type">
+                {data.materialByType.length===0?<EmptyState msg="No type data"/>:(
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {data.materialByType.map(t=>(<div key={t.type}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.inkSub}}>{t.type}</span><span style={{fontSize:12,fontWeight:700,color:t.color}}>{t.count}</span></div><ProgressBar value={t.count} max={data.materialByType[0]?.count||1} color={t.color} height={5}/></div>))}
+                  </div>
+                )}
+              </Panel>
+              <Panel title="By Subject">
+                {data.materialBySubject.length===0?<EmptyState msg="No subject data"/>:(
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {data.materialBySubject.map(s=>(<div key={s.subject}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.inkSub}}>{s.subject}</span><span style={{fontSize:12,fontWeight:700,color:s.color}}>{s.count}</span></div><ProgressBar value={s.count} max={data.materialBySubject[0]?.count||1} color={s.color} height={5}/></div>))}
+                  </div>
+                )}
+              </Panel>
+            </div>
+          )}
+        </div>
 
         {/* ═══ RESULTS ════════════════════════════════════════ */}
         <div ref={setSectionRef('results')} className="dash-section">
@@ -1840,7 +2011,7 @@ export default function GNSIDashboard({ scrollToSection }) {
               {data.totalOverrides===0?<div style={{color:T.emerald,fontSize:13,fontWeight:600,marginTop:8}}>✅ No student overrides set</div>:(
                 <div style={{textAlign:"center",padding:"20px 0"}}>
                   <div style={{fontSize:32,fontWeight:900,color:T.amber}}>{data.totalOverrides}</div>
-                  <div style={{fontSize:11,color:T.inkSub,marginTop:4}}>overrides active in fee_structures</div>
+                  <div style={{fontSize:11,color:T.inkSub,marginTop:4}}>overrides active in student_fee_overrides</div>
                 </div>
               )}
             </Panel>
@@ -1946,8 +2117,8 @@ export default function GNSIDashboard({ scrollToSection }) {
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI icon="📐" label="Total Topics" value={data.totalSyllabusTopics} color={T.sky}/>
             <KPI icon="✅" label="Completed" value={data.completedTopics_st} color={T.emerald} progress={data.completedTopics_st} progressMax={data.totalSyllabusTopics}/>
-            <KPI icon="🔄" label="In Progress" value={data.inProgressTopics} color={T.amber}/>
-            <KPI icon="⏳" label="Pending" value={data.pendingTopics_st} color={T.rose}/>
+            <KPI icon="⚠️" label="Overdue" value={data.overdueTopics_st} color={T.rose}/>
+            <KPI icon="⏳" label="Pending" value={data.pendingTopics_st} color={T.amber}/>
             <KPI icon="📊" label="Overall" value={data.syllabusOverallPct} color={data.syllabusOverallPct>=80?T.emerald:data.syllabusOverallPct>=60?T.amber:T.rose} sub={`${data.syllabusOverallPct}%`}/>
           </div>
           {data.totalSyllabusTopics===0?<Panel><EmptyState msg="No data in syllabus_topics table yet."/></Panel>:(
