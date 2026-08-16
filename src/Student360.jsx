@@ -27,6 +27,9 @@ import { loadFullProfile } from './studentProfileLoader'
 import { detectMismatches } from './mismatchDetector'
 import { logAndNotify, getOpenMismatches, acknowledgeMismatch, resolveMismatch } from './mismatchLog'
 import { getStudentDues, getDuesForStudents } from './feeDues'
+import { globalSearch } from './globalSearch'
+import { downloadCSV, downloadSingleRecordCSV } from './exportUtils'
+import TableBrowser from './TableBrowser'
 
 // ── Access control ──────────────────────────────────────────────────────────
 // Admin-only, per Himan's decision. Access is gated by App.jsx BEFORE this
@@ -103,9 +106,13 @@ function StatusPill({ status }) {
 }
 
 // ── Section shell ───────────────────────────────────────────────────────────
-function Section({ icon, title, count, children, full, accent = NAVY, empty, defaultOpen = false }) {
+// exportRows (optional): raw row array for this card's data — when
+// present, an export button appears in the header that downloads exactly
+// those rows as CSV. exportName sets the filename prefix.
+function Section({ icon, title, count, children, full, accent = NAVY, empty, defaultOpen = false, exportRows = null, exportName = null, moduleLink = null }) {
   const [open, setOpen] = useState(defaultOpen)
   const hasMore = !!full
+  const canExport = exportRows && exportRows.length > 0
   return (
     <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${SLATE[200]}`, overflow: 'hidden' }}>
       <div
@@ -118,6 +125,20 @@ function Section({ icon, title, count, children, full, accent = NAVY, empty, def
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {count != null && <span style={{ fontSize: 11.5, fontWeight: 700, color: accent, background: `${accent}18`, padding: '2px 10px', borderRadius: 99 }}>{count}</span>}
+          {moduleLink && (
+            <button
+              onClick={e => { e.stopPropagation(); moduleLink.onClick() }}
+              title={`Open ${moduleLink.label} module`}
+              style={{ fontSize: 10.5, fontWeight: 700, color: NAVY, background: '#fff', border: `1px solid ${SLATE[200]}`, borderRadius: 7, padding: '3px 8px', cursor: 'pointer' }}
+            >{moduleLink.label} →</button>
+          )}
+          {canExport && (
+            <button
+              onClick={e => { e.stopPropagation(); downloadCSV(exportRows, exportName || title.toLowerCase().replace(/\s+/g, '_')) }}
+              title="Export this data as CSV"
+              style={{ fontSize: 10.5, fontWeight: 700, color: SLATE[500], background: '#fff', border: `1px solid ${SLATE[200]}`, borderRadius: 7, padding: '3px 8px', cursor: 'pointer' }}
+            >⬇ CSV</button>
+          )}
           {hasMore && <span style={{ fontSize: 11, color: SLATE[400], transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}>▾</span>}
         </div>
       </div>
@@ -151,7 +172,7 @@ const Row = ({ label, value, mono }) => (
 // App.jsx passes isAdmin (from its own ADMIN_ROLES check) — see the wiring
 // note above. Defaults to false so this component fails closed if it's
 // ever mounted without that prop.
-export default function Student360({ currentUser, isAdmin = false }) {
+export default function Student360({ currentUser, isAdmin = false, onNavigate }) {
   const [view, setView] = useState('search') // 'search' | 'dashboard'
   const [students, setStudents] = useState([])
   const [selected, setSelected] = useState(null)
@@ -228,7 +249,13 @@ export default function Student360({ currentUser, isAdmin = false }) {
       </div>
 
       <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${SLATE[200]}`, flexWrap: 'wrap' }}>
-        {[{ id: 'search', label: '🔍 Search Student' }, { id: 'dashboard', label: '📊 Mismatch Dashboard' }, { id: 'overview', label: '🏫 School Overview' }].map(t => (
+        {[
+          { id: 'search', label: '🔍 Search Student' },
+          { id: 'globalsearch', label: '🌐 Global Search' },
+          { id: 'dashboard', label: '📊 Mismatch Dashboard' },
+          { id: 'overview', label: '🏫 School Overview' },
+          { id: 'browser', label: '🗄️ Table Browser' },
+        ].map(t => (
           <button key={t.id} onClick={() => setView(t.id)} style={{
             padding: '9px 16px', border: 'none', background: 'none', cursor: 'pointer',
             fontSize: 13, fontWeight: 700, color: view === t.id ? NAVY : SLATE[400],
@@ -240,6 +267,8 @@ export default function Student360({ currentUser, isAdmin = false }) {
 
       {view === 'overview' && <SchoolOverview onOpenStudent={s => { setView('search'); select(s) }} />}
       {view === 'dashboard' && <MismatchDashboard currentUser={currentUser} onOpenStudent={s => { setView('search'); select(s) }} />}
+      {view === 'globalsearch' && <GlobalSearchPanel onOpenStudent={s => { setView('search'); select(s) }} onOpenModule={onNavigate} />}
+      {view === 'browser' && <TableBrowser onOpenStudent={s => { setView('search'); select(s) }} onOpenModule={onNavigate} />}
 
       {view === 'search' && <>
       <StudentSearch students={students} onSelect={select} />
@@ -277,6 +306,7 @@ export default function Student360({ currentUser, isAdmin = false }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
 
             <Section icon="📝" title="Admission Record" accent={SKY} empty={!profile.admission && 'No admissions record found for this GCC number.'}
+              moduleLink={onNavigate ? { label: "Admissions", onClick: () => onNavigate("admissions") } : null}
               full={profile.admission && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {Object.entries(profile.admission).filter(([k]) => !['id'].includes(k)).map(([k, v]) => (
@@ -292,6 +322,12 @@ export default function Student360({ currentUser, isAdmin = false }) {
             </Section>
 
             <Section icon="💰" title="Fees" accent={dues?.totalDue > 0 ? RED : GREEN} count={profile.fees.admFeeCols.length + profile.fees.admFlatFees.length + profile.fees.admCourseFees.length}
+              exportRows={[
+                ...profile.fees.admFeeCols.map(r => ({ type: 'Admission', ...r })),
+                ...profile.fees.admFlatFees.map(r => ({ type: 'Flat', ...r })),
+                ...profile.fees.admCourseFees.map(r => ({ type: 'Course', ...r })),
+              ]} exportName={`${selected.name}_fee_payments`}
+              moduleLink={onNavigate ? { label: "Fees", onClick: () => onNavigate("fees") } : null}
               full={
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {dues && <>
@@ -338,6 +374,7 @@ export default function Student360({ currentUser, isAdmin = false }) {
 
             <Section icon="📋" title="Attendance" accent={profile.attendance.pct == null ? SLATE[500] : profile.attendance.pct < 75 ? RED : GREEN}
               empty={profile.attendance.totalMarked === 0 && 'No attendance records found for this student.'}
+              moduleLink={onNavigate ? { label: "Attendance", onClick: () => onNavigate("attendance") } : null}
               full={
                 <div>
                   <Row label="Sessions marked" value={profile.attendance.totalMarked} />
@@ -358,6 +395,8 @@ export default function Student360({ currentUser, isAdmin = false }) {
             </Section>
 
             <Section icon="✏️" title="Exam Marks" accent={SKY} count={profile.exams.length} empty={profile.exams.length === 0 && 'No exam marks recorded for this student.'}
+              exportRows={profile.exams} exportName={`${selected.name}_exam_marks`}
+              moduleLink={onNavigate ? { label: "Exams", onClick: () => onNavigate("exams") } : null}
               full={<FullList rows={profile.exams} emptyText="No exam marks." renderRow={(m, i) => (
                 <Row key={i} label={`${m.subject} · ${fmtDate(m.exam_date)}`} value={m.marks_obtained} />
               )} />}>
@@ -368,6 +407,7 @@ export default function Student360({ currentUser, isAdmin = false }) {
             </Section>
 
             <Section icon="🏠" title="Hostel" accent={profile.hostel ? GREEN : SLATE[500]} empty={!profile.hostel && 'Day scholar — no hostel allocation.'}
+              moduleLink={onNavigate ? { label: "Hostel", onClick: () => onNavigate("hostel") } : null}
               full={profile.hostel && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {Object.entries(profile.hostel).filter(([k]) => !['id', 'hostel_rooms'].includes(k)).map(([k, v]) => (
@@ -386,6 +426,8 @@ export default function Student360({ currentUser, isAdmin = false }) {
             </Section>
 
             <Section icon="🚩" title="Discipline" accent={profile.discipline.length ? AMBER : GREEN} count={profile.discipline.length} empty={profile.discipline.length === 0 && 'No discipline records.'}
+              exportRows={profile.discipline} exportName={`${selected.name}_discipline`}
+              moduleLink={onNavigate ? { label: "Hostel", onClick: () => onNavigate("hostel") } : null}
               full={<FullList rows={profile.discipline} emptyText="No discipline records." renderRow={(d, i) => (
                 <Row key={i} label={`${fmtDate(d.date)} · ${d.category || 'General'}`} value={d.status} />
               )} />}>
@@ -393,6 +435,8 @@ export default function Student360({ currentUser, isAdmin = false }) {
             </Section>
 
             <Section icon="🏥" title="Sickbay" accent={profile.sickbay.some(s => s.status === 'Admitted') ? RED : SLATE[500]} count={profile.sickbay.length} empty={profile.sickbay.length === 0 && 'No sickbay records.'}
+              exportRows={profile.sickbay} exportName={`${selected.name}_sickbay`}
+              moduleLink={onNavigate ? { label: "Hostel", onClick: () => onNavigate("hostel") } : null}
               full={<FullList rows={profile.sickbay} emptyText="No sickbay records." renderRow={(s, i) => (
                 <Row key={i} label={`${fmtDate(s.date)} · ${s.condition || s.reason || '—'}`} value={s.status} />
               )} />}>
@@ -400,6 +444,8 @@ export default function Student360({ currentUser, isAdmin = false }) {
             </Section>
 
             <Section icon="🎫" title="Leave Records" accent={SKY} count={profile.leave.length} empty={profile.leave.length === 0 && 'No leave records.'}
+              exportRows={profile.leave} exportName={`${selected.name}_leave`}
+              moduleLink={onNavigate ? { label: "Hostel", onClick: () => onNavigate("hostel") } : null}
               full={<FullList rows={profile.leave} emptyText="No leave records." renderRow={(l, i) => (
                 <Row key={i} label={`${l.leave_type || 'Leave'} · ${fmtDate(l.from_date)} → ${fmtDate(l.to_date)}`} value={l.status} />
               )} />}>
@@ -407,6 +453,8 @@ export default function Student360({ currentUser, isAdmin = false }) {
             </Section>
 
             <Section icon="🪪" title="Gate Passes" accent={profile.gatePasses.some(g => g.status === 'Issued') ? AMBER : SLATE[500]} count={profile.gatePasses.length} empty={profile.gatePasses.length === 0 && 'No gate passes.'}
+              exportRows={profile.gatePasses} exportName={`${selected.name}_gate_passes`}
+              moduleLink={onNavigate ? { label: "Reception", onClick: () => onNavigate("reception") } : null}
               full={<FullList rows={profile.gatePasses} emptyText="No gate passes." renderRow={(g, i) => (
                 <Row key={i} label={`${fmtDate(g.created_at)} · ${g.reason || '—'}`} value={g.status} />
               )} />}>
@@ -415,6 +463,7 @@ export default function Student360({ currentUser, isAdmin = false }) {
 
             <Section icon="📞" title="Enquiries & Parent Items" accent={SKY} count={profile.enquiries.length + profile.parentItems.length}
               empty={profile.enquiries.length === 0 && profile.parentItems.length === 0 && 'No enquiries or parent items.'}
+              moduleLink={onNavigate ? { label: "Reception", onClick: () => onNavigate("reception") } : null}
               full={
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em' }}>Enquiries</div>
@@ -432,6 +481,8 @@ export default function Student360({ currentUser, isAdmin = false }) {
             </Section>
 
             <Section icon="⚠️" title="Complaints" accent={profile.complaints.length ? RED : GREEN} count={profile.complaints.length} empty={profile.complaints.length === 0 && 'No complaints on record.'}
+              exportRows={profile.complaints} exportName={`${selected.name}_complaints`}
+              moduleLink={onNavigate ? { label: "Reception", onClick: () => onNavigate("reception") } : null}
               full={<FullList rows={profile.complaints} emptyText="No complaints." renderRow={(c, i) => (
                 <Row key={i} label={`${fmtDate(c.created_at)} · ${c.category || '—'}`} value={c.status} />
               )} />}>
@@ -499,6 +550,117 @@ function MismatchFlags({ student, profile, onNotify, notifyState }) {
 // the manual "Notify Admin" button have logged. This is the answer to
 // "what's currently wrong across the whole roster," as opposed to the
 // Search tab which answers "what's wrong with THIS student."
+// ── Global Search ────────────────────────────────────────────────────────
+// Searches every table in tableRegistry.js — not just student names — so
+// a receipt number, gate pass reason, or discipline note surfaces the
+// student it belongs to. This is the "find anything" half of the data
+// centre; TableBrowser is the "browse everything" half.
+function GlobalSearchPanel({ onOpenStudent, onOpenModule }) {
+  const [term, setTerm] = useState('')
+  const [results, setResults] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [tableFilter, setTableFilter] = useState('all')
+
+  const runSearch = useCallback(async () => {
+    if (term.trim().length < 2) return
+    setLoading(true)
+    const hits = await globalSearch(term)
+    setResults(hits)
+    setLoading(false)
+  }, [term])
+
+  const filtered = useMemo(() => {
+    if (!results) return []
+    if (tableFilter === 'all') return results
+    return results.filter(h => h.table.key === tableFilter)
+  }, [results, tableFilter])
+
+  const tablesInResults = useMemo(() => {
+    if (!results) return []
+    return [...new Set(results.map(h => h.table.key))]
+  }, [results])
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input
+          value={term} onChange={e => setTerm(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && runSearch()}
+          placeholder="Search a receipt number, gate pass reason, discipline note, phone number, anything…"
+          style={{ flex: '1 1 320px', minWidth: 220, padding: '10px 14px', borderRadius: 12, border: `1px solid ${SLATE[200]}`, fontSize: 13.5 }}
+        />
+        <button onClick={runSearch} disabled={term.trim().length < 2}
+          style={{ padding: '10px 20px', borderRadius: 12, border: 'none', background: term.trim().length < 2 ? SLATE[300] : NAVY, color: '#fff', fontSize: 13, fontWeight: 700, cursor: term.trim().length < 2 ? 'default' : 'pointer' }}>
+          Search
+        </button>
+      </div>
+
+      {loading && <div style={{ textAlign: 'center', padding: 40, color: SLATE[400] }}>⏳ Searching every module…</div>}
+
+      {results !== null && !loading && (
+        <>
+          {tablesInResults.length > 1 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button onClick={() => setTableFilter('all')} style={{
+                padding: '5px 12px', borderRadius: 99, border: `1px solid ${tableFilter === 'all' ? NAVY : SLATE[200]}`,
+                background: tableFilter === 'all' ? NAVY : '#fff', color: tableFilter === 'all' ? '#fff' : SLATE[600],
+                fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+              }}>All ({results.length})</button>
+              {tablesInResults.map(key => {
+                const t = results.find(h => h.table.key === key).table
+                const count = results.filter(h => h.table.key === key).length
+                return (
+                  <button key={key} onClick={() => setTableFilter(key)} style={{
+                    padding: '5px 12px', borderRadius: 99, border: `1px solid ${tableFilter === key ? NAVY : SLATE[200]}`,
+                    background: tableFilter === key ? NAVY : '#fff', color: tableFilter === key ? '#fff' : SLATE[600],
+                    fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                  }}>{t.icon} {t.label} ({count})</button>
+                )
+              })}
+            </div>
+          )}
+
+          {filtered.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 50, color: SLATE[400], background: '#fff', borderRadius: 16, border: `1px solid ${SLATE[200]}` }}>
+              No matches for "{term}".
+            </div>
+          ) : (
+            <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${SLATE[200]}`, overflow: 'hidden' }}>
+              {filtered.map((hit, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 16px', borderBottom: i < filtered.length - 1 ? `1px solid ${SLATE[100]}` : 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                    <span style={{ fontSize: 15 }}>{hit.table.icon}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, color: SLATE[700] }}>{hit.summary}</div>
+                      <div style={{ fontSize: 10.5, color: SLATE[400], marginTop: 1 }}>
+                        {hit.table.label}{hit.student ? ` · ${hit.student.name}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    {hit.student && (
+                      <button onClick={() => onOpenStudent(hit.student)}
+                        style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 11, fontWeight: 700, color: NAVY, cursor: 'pointer' }}>
+                        View Student
+                      </button>
+                    )}
+                    {onOpenModule && (
+                      <button onClick={() => onOpenModule(hit.table.module)}
+                        style={{ padding: '5px 10px', borderRadius: 7, border: 'none', background: SLATE[100], fontSize: 11, fontWeight: 700, color: SLATE[600], cursor: 'pointer' }}>
+                        Open in {hit.table.label} →
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 function MismatchDashboard({ currentUser, onOpenStudent }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)

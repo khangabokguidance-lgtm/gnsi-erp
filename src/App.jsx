@@ -723,7 +723,7 @@ export default function App() {
     // FIX: invitation now uses permission system, not hardcoded Manager bypass
     invitation:        canAccess('invitation') ? <InvitationGenerator currentUser={currentUser} /> : <AccessDenied />,
     admin:             isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} allStaff={sharedStaff} /> : <AccessDenied />,
-    student360:        isAdmin ? <Student360        currentUser={currentUser} isAdmin={isAdmin} /> : <AccessDenied />,
+    student360:        isAdmin ? <Student360        currentUser={currentUser} isAdmin={isAdmin} onNavigate={setActive} /> : <AccessDenied />,
     adminlink:         isAdmin ? <AdminLinkStaff /> : <AccessDenied />,
     certificate:       <CertificateGenerator currentUser={currentUser} perms={perms('certificate')} />,
   }
