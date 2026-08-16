@@ -47,6 +47,7 @@ import TeachingAids       from './TeachingAids'
 import CastReceiver       from './CastReceiver'
 import Awards             from './Awards'
 import Student360         from './Student360'
+import { useMismatchAutoScan } from './mismatchScanner'
 
 // ─────────────────────────────────────────────────────────────
 //  FIX 1: Unified admin role check — consistent everywhere
@@ -590,6 +591,14 @@ export default function App() {
   const [sharedStaff, setSharedStaff] = useState([])
   // FIX 1: unified admin check
   const isAdmin = isAdminRole(currentUser?.role)
+
+  // Background cross-module mismatch scan — runs hourly while any admin
+  // has the portal open, independent of which tab they're viewing. Only
+  // pushes a notification for NEWLY detected issues (mismatchLog.js
+  // dedupes against student_mismatch_log), so this can't spam admins by
+  // re-flagging something already open from a previous scan. See
+  // mismatchScanner.js / mismatchDetector.js / mismatchLog.js.
+  useMismatchAutoScan({ enabled: !!currentUser && isAdmin, intervalMinutes: 60 })
 
   useEffect(() => { LS.set('gnsi_sidebar_collapsed', sidebarCollapsed) }, [sidebarCollapsed])
 

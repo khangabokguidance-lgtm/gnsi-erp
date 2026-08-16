@@ -23,6 +23,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from './supabase'
 import { getActiveStudents, getStudentById } from './studentQueries'
+import { loadFullProfile } from './studentProfileLoader'
+import { detectMismatches } from './mismatchDetector'
+import { logAndNotify, getOpenMismatches, acknowledgeMismatch, resolveMismatch } from './mismatchLog'
 
 // ── Access control ──────────────────────────────────────────────────────────
 // Admin-only, per Himan's decision. Access is gated by App.jsx BEFORE this
@@ -123,108 +126,17 @@ const Row = ({ label, value, mono }) => (
   </div>
 )
 
-// ── Data loader ──────────────────────────────────────────────────────────────
-// Every query here is scoped to ONE student (by id or gcc_no), pulling
-// directly from each module's own tables — the same tables Admissions,
-// Attendance, Exams, Fees, Hostel, and Reception each already use. Nothing
-// here re-derives or guesses at data; it reads exactly what those modules
-// wrote, so a mismatch between what a module SHOWS and what's actually IN
-// the table becomes visible here.
-async function loadFullProfile(student) {
-  const gcc = String(student.gcc_no || '')
-  const id = student.id
-
-  // Attendance — attendance_records is NOT consistently keyed by
-  // student_id alone (confirmed in Students.jsx's own profile loader);
-  // some rows only have gcc_no or student_name populated. Query all three
-  // and dedupe by session_id+status, same fallback Students.jsx uses, or
-  // this view would UNDERCOUNT attendance for exactly the students this
-  // tool exists to catch mismatches for.
-  const attQueries = [supabase.from('attendance_records').select('status,session_id').eq('student_id', id).not('session_id', 'is', null).limit(300)]
-  if (gcc) attQueries.push(supabase.from('attendance_records').select('status,session_id').eq('gcc_no', gcc).not('session_id', 'is', null).limit(300))
-  attQueries.push(supabase.from('attendance_records').select('status,session_id').eq('student_name', student.name).not('session_id', 'is', null).limit(300))
-
-  const [
-    admission,
-    admFeeCols, admFlatFees, admCourseFees,
-    ...attResults
-  ] = await Promise.all([
-    // Admissions — original application record, by GCC no
-    gcc ? supabase.from('admissions').select('*').eq('gcc_no', gcc).maybeSingle() : Promise.resolve({ data: null }),
-
-    // Fees — three payment tables Fees.jsx/Admissions.jsx write to
-    gcc ? supabase.from('adm_fee_collections').select('*').eq('adm_app_id', gcc).eq('reverted', false).order('pay_date', { ascending: false }) : Promise.resolve({ data: [] }),
-    gcc ? supabase.from('adm_flat_fees').select('*').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false).order('pay_date', { ascending: false }) : Promise.resolve({ data: [] }),
-    gcc ? supabase.from('adm_course_fees').select('*').eq('adm_app_id', gcc).eq('reverted', false).order('pay_date', { ascending: false }) : Promise.resolve({ data: [] }),
-
-    ...attQueries,
-  ])
-
-  const [
-    hostelAlloc, disciplineRecs, sickbayRecs, leaveRecs,
-    gatePasses, enquiries, parentItems, complaints,
-  ] = await Promise.all([
-    // Hostel — current allocation, discipline, sickbay, leave history
-    supabase.from('hostel_allocations').select('*,hostel_rooms(room_no,floor,capacity,room_type)').eq('student_id', id).order('created_at', { ascending: false }).limit(1),
-    supabase.from('discipline_records').select('*').eq('student_id', id).order('date', { ascending: false }),
-    supabase.from('sickbay_records').select('*').eq('student_id', id).order('date', { ascending: false }),
-    supabase.from('leave_records').select('*').eq('student_id', id).order('from_date', { ascending: false }).limit(20),
-
-    // Reception — gate passes, enquiries, parent items, complaints
-    supabase.from('reception_gatepasses').select('*').eq('student_name', student.name).is('deleted_at', null).order('created_at', { ascending: false }),
-    supabase.from('reception_enquiries').select('*').or(`student_name.eq.${student.name},phone.eq.${student.phone || '__'}`).is('deleted_at', null).order('created_at', { ascending: false }),
-    supabase.from('reception_parent_items').select('*').eq('student_name', student.name).is('deleted_at', null).order('created_at', { ascending: false }),
-    supabase.from('reception_complaints').select('*').eq('student_name', student.name).is('deleted_at', null).order('created_at', { ascending: false }),
-  ])
-
-  // Dedupe attendance across the three lookup keys by session_id+status,
-  // same as Students.jsx.
-  const seen = new Set()
-  const attRows = []
-  attResults.forEach(({ data }) => {
-    (data || []).forEach(r => {
-      const key = `${r.session_id}|${r.status}`
-      if (seen.has(key)) return
-      seen.add(key); attRows.push(r)
-    })
-  })
-
-  // Exam marks — queried separately since it wasn't part of either
-  // Promise.all batch above.
-  const examMarks = await supabase.from('exam_marks').select('exam_type_id,exam_date,subject,marks_obtained').eq('student_id', id).order('exam_date', { ascending: false })
-
-  const presentCount = attRows.filter(r => r.status === 'Present').length
-  const attendancePct = attRows.length ? Math.round((presentCount / attRows.length) * 100) : null
-
-  const admFeeTotal = (admFeeCols.data || []).reduce((s, r) => s + Number(r.amount_paid || 0), 0)
-  const flatFeeTotal = (admFlatFees.data || []).reduce((s, r) => s + Number(r.amount || 0), 0)
-  const courseFeeTotal = (admCourseFees.data || []).reduce((s, r) => s + Number(r.amount_paid || 0), 0)
-
-  return {
-    admission: admission.data || null,
-    fees: { admFeeCols: admFeeCols.data || [], admFlatFees: admFlatFees.data || [], admCourseFees: admCourseFees.data || [], total: admFeeTotal + flatFeeTotal + courseFeeTotal },
-    attendance: { records: attRows, presentCount, totalMarked: attRows.length, pct: attendancePct },
-    exams: examMarks.data || [],
-    hostel: hostelAlloc.data?.[0] || null,
-    discipline: disciplineRecs.data || [],
-    sickbay: sickbayRecs.data || [],
-    leave: leaveRecs.data || [],
-    gatePasses: gatePasses.data || [],
-    enquiries: enquiries.data || [],
-    parentItems: parentItems.data || [],
-    complaints: complaints.data || [],
-  }
-}
-
 // ── Main component ──────────────────────────────────────────────────────────
 // App.jsx passes isAdmin (from its own ADMIN_ROLES check) — see the wiring
 // note above. Defaults to false so this component fails closed if it's
 // ever mounted without that prop.
 export default function Student360({ currentUser, isAdmin = false }) {
+  const [view, setView] = useState('search') // 'search' | 'dashboard'
   const [students, setStudents] = useState([])
   const [selected, setSelected] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [notifyState, setNotifyState] = useState('idle') // 'idle' | 'sending' | 'sent' | 'none' | 'error'
 
   useEffect(() => {
     if (!isAdmin) return
@@ -237,6 +149,7 @@ export default function Student360({ currentUser, isAdmin = false }) {
   const select = useCallback(async s => {
     setSelected(s)
     setProfile(null)
+    setNotifyState('idle')
     setLoading(true)
     // Re-fetch the FULL row (getActiveStudents above only pulled a lean
     // column set for the search dropdown) so every field this view shows
@@ -246,6 +159,24 @@ export default function Student360({ currentUser, isAdmin = false }) {
     setProfile(data)
     setLoading(false)
   }, [])
+
+  // Manual "Notify Admin" — computes the same flags shown on screen via
+  // mismatchDetector.js, then routes through mismatchLog.js's dedupe: if
+  // every flag here is already open from a previous scan/notify, this
+  // reports "nothing new" instead of re-pushing a duplicate alert.
+  const notifyAdmin = useCallback(async () => {
+    if (!selected || !profile) return
+    setNotifyState('sending')
+    try {
+      const flags = detectMismatches(selected, profile)
+      if (flags.length === 0) { setNotifyState('none'); return }
+      const { newCount } = await logAndNotify(selected, flags)
+      setNotifyState(newCount > 0 ? 'sent' : 'none')
+    } catch (e) {
+      console.error('notifyAdmin failed:', e.message)
+      setNotifyState('error')
+    }
+  }, [selected, profile])
 
   if (!isAdmin) {
     return (
@@ -260,12 +191,27 @@ export default function Student360({ currentUser, isAdmin = false }) {
   }
 
   return (
-    <div style={{ maxWidth: 980, margin: '0 auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ maxWidth: 1040, margin: '0 auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
         <div style={{ fontWeight: 900, fontSize: 20, color: NAVY, fontFamily: 'Georgia, serif' }}>Student 360°</div>
         <div style={{ fontSize: 12.5, color: SLATE[500], marginTop: 2 }}>Cross-module record — everything every module has recorded for one student, in one place.</div>
       </div>
 
+      <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${SLATE[200]}`, flexWrap: 'wrap' }}>
+        {[{ id: 'search', label: '🔍 Search Student' }, { id: 'dashboard', label: '📊 Mismatch Dashboard' }, { id: 'overview', label: '🏫 School Overview' }].map(t => (
+          <button key={t.id} onClick={() => setView(t.id)} style={{
+            padding: '9px 16px', border: 'none', background: 'none', cursor: 'pointer',
+            fontSize: 13, fontWeight: 700, color: view === t.id ? NAVY : SLATE[400],
+            borderBottom: view === t.id ? `2px solid ${GOLD}` : '2px solid transparent',
+            marginBottom: -1,
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {view === 'overview' && <SchoolOverview onOpenStudent={s => { setView('search'); select(s) }} />}
+      {view === 'dashboard' && <MismatchDashboard currentUser={currentUser} onOpenStudent={s => { setView('search'); select(s) }} />}
+
+      {view === 'search' && <>
       <StudentSearch students={students} onSelect={select} />
 
       {loading && <div style={{ textAlign: 'center', padding: 60, color: SLATE[400] }}>⏳ Pulling records from every module…</div>}
@@ -295,7 +241,7 @@ export default function Student360({ currentUser, isAdmin = false }) {
           </div>
 
           {/* Quick mismatch flags — the whole point of this view */}
-          <MismatchFlags student={selected} profile={profile} />
+          <MismatchFlags student={selected} profile={profile} onNotify={notifyAdmin} notifyState={notifyState} />
 
           {/* Grid of module sections */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
@@ -368,42 +314,34 @@ export default function Student360({ currentUser, isAdmin = false }) {
           </div>
         </div>
       )}
+      </>}
     </div>
   )
 }
 
-// ── Cross-module mismatch detector ──────────────────────────────────────────
+// ── Cross-module mismatch panel ─────────────────────────────────────────────
 // This is the actual point of the module: surface disagreements between
 // what different tables say about the same student, instead of making
-// Himan notice them by cross-referencing tabs manually.
-function MismatchFlags({ student, profile }) {
-  const flags = []
-
-  if (student.status !== 'Dropout' && student.status !== 'Inactive' && profile.attendance.totalMarked === 0) {
-    flags.push({ level: 'amber', text: 'Marked active but has zero attendance records — new admission not yet rostered, or a data entry gap.' })
-  }
-  if ((student.status === 'Dropout' || student.status === 'Inactive') && profile.attendance.records.some(r => r.status === 'Present')) {
-    flags.push({ level: 'amber', text: 'Marked dropout/inactive but has present attendance records — check if status change date is correct.' })
-  }
-  if (!profile.admission) {
-    flags.push({ level: 'red', text: 'No matching admissions record for this GCC number — this student may have been added directly to the roster.' })
-  }
-  if (profile.fees.total === 0 && student.status !== 'Dropout') {
-    flags.push({ level: 'amber', text: 'No fee payments on record for an active/inactive student.' })
-  }
-  if (student.house && !profile.hostel) {
-    flags.push({ level: 'red', text: `Student record shows house "${student.house}" but no matching hostel allocation record exists.` })
-  }
-  if (!student.house && profile.hostel) {
-    flags.push({ level: 'red', text: 'Has a hostel allocation record but no house assigned on the student profile.' })
-  }
+// Himan notice them by cross-referencing tabs manually. Detection logic
+// itself lives in mismatchDetector.js so the background auto-scanner
+// (mismatchScanner.js) can never disagree with what's shown here.
+function MismatchFlags({ student, profile, onNotify, notifyState }) {
+  const flags = useMemo(() => detectMismatches(student, profile), [student, profile])
 
   if (flags.length === 0) return null
+
+  const btnLabel = {
+    idle: '🔔 Notify Admin',
+    sending: 'Sending…',
+    sent: '✓ Admin notified',
+    none: 'Already flagged — no new alert sent',
+    error: 'Failed — try again',
+  }[notifyState] || '🔔 Notify Admin'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {flags.map((f, i) => (
-        <div key={i} style={{
+        <div key={f.key || i} style={{
           display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 14px', borderRadius: 12,
           background: f.level === 'red' ? '#fef2f2' : '#fffbeb',
           border: `1px solid ${f.level === 'red' ? '#fecaca' : '#fde68a'}`,
@@ -412,6 +350,398 @@ function MismatchFlags({ student, profile }) {
           <span style={{ fontSize: 12.5, color: f.level === 'red' ? '#991b1b' : '#92400e', lineHeight: 1.5 }}>{f.text}</span>
         </div>
       ))}
+      <button
+        onClick={onNotify}
+        disabled={notifyState === 'sending' || notifyState === 'sent'}
+        style={{
+          alignSelf: 'flex-start', marginTop: 2, padding: '8px 16px', borderRadius: 10, border: 'none',
+          background: notifyState === 'sent' ? '#16a34a' : notifyState === 'error' ? '#dc2626' : NAVY,
+          color: '#fff', fontSize: 12.5, fontWeight: 700,
+          cursor: (notifyState === 'sending' || notifyState === 'sent') ? 'default' : 'pointer',
+          opacity: notifyState === 'sending' ? 0.7 : 1,
+        }}
+      >
+        {btnLabel}
+      </button>
+    </div>
+  )
+}
+
+// ── Mismatch Dashboard ──────────────────────────────────────────────────────
+// School-wide view of everything mismatchScanner.js (hourly auto-scan) and
+// the manual "Notify Admin" button have logged. This is the answer to
+// "what's currently wrong across the whole roster," as opposed to the
+// Search tab which answers "what's wrong with THIS student."
+function MismatchDashboard({ currentUser, onOpenStudent }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [levelFilter, setLevelFilter] = useState('all')   // 'all' | 'red' | 'amber'
+  const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'open' | 'acknowledged'
+  const [flagFilter, setFlagFilter] = useState('all')
+  const [search, setSearch] = useState('')
+  const [busyId, setBusyId] = useState(null)
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    const data = await getOpenMismatches(500)
+    setRows(data)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { refresh() }, [refresh])
+
+  const flagKeys = useMemo(() => [...new Set(rows.map(r => r.flag_key))].sort(), [rows])
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return rows.filter(r => {
+      if (levelFilter !== 'all' && r.level !== levelFilter) return false
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false
+      if (flagFilter !== 'all' && r.flag_key !== flagFilter) return false
+      if (term && !(r.student_name || '').toLowerCase().includes(term) && !String(r.gcc_no || '').includes(term)) return false
+      return true
+    })
+  }, [rows, levelFilter, statusFilter, flagFilter, search])
+
+  const stats = useMemo(() => ({
+    total: rows.length,
+    red: rows.filter(r => r.level === 'red').length,
+    amber: rows.filter(r => r.level === 'amber').length,
+    students: new Set(rows.map(r => r.student_id)).size,
+    unacknowledged: rows.filter(r => r.status === 'open').length,
+  }), [rows])
+
+  const doAck = async id => {
+    setBusyId(id)
+    await acknowledgeMismatch(id, currentUser?.name || currentUser?.username || null)
+    await refresh()
+    setBusyId(null)
+  }
+  const doResolve = async id => {
+    setBusyId(id)
+    await resolveMismatch(id, currentUser?.name || currentUser?.username || null)
+    await refresh()
+    setBusyId(null)
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+      {/* Stat cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10 }}>
+        {[
+          { label: 'Total open', value: stats.total, color: NAVY },
+          { label: 'Critical', value: stats.red, color: RED },
+          { label: 'Warning', value: stats.amber, color: AMBER },
+          { label: 'Students affected', value: stats.students, color: SKY },
+          { label: 'Unacknowledged', value: stats.unacknowledged, color: stats.unacknowledged > 0 ? RED : GREEN },
+        ].map(c => (
+          <div key={c.label} style={{ background: '#fff', borderRadius: 14, border: `1px solid ${SLATE[200]}`, padding: '12px 14px' }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: c.color }}>{c.value}</div>
+            <div style={{ fontSize: 11.5, color: SLATE[500], marginTop: 2 }}>{c.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Filter by student name or GCC…"
+          style={{ padding: '8px 12px', borderRadius: 9, border: `1px solid ${SLATE[200]}`, fontSize: 12.5, flex: '1 1 220px', minWidth: 180 }}
+        />
+        <select value={levelFilter} onChange={e => setLevelFilter(e.target.value)} style={{ padding: '8px 10px', borderRadius: 9, border: `1px solid ${SLATE[200]}`, fontSize: 12.5 }}>
+          <option value="all">All severities</option>
+          <option value="red">🔴 Critical only</option>
+          <option value="amber">🟡 Warning only</option>
+        </select>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ padding: '8px 10px', borderRadius: 9, border: `1px solid ${SLATE[200]}`, fontSize: 12.5 }}>
+          <option value="all">All statuses</option>
+          <option value="open">Open (unacknowledged)</option>
+          <option value="acknowledged">Acknowledged</option>
+        </select>
+        <select value={flagFilter} onChange={e => setFlagFilter(e.target.value)} style={{ padding: '8px 10px', borderRadius: 9, border: `1px solid ${SLATE[200]}`, fontSize: 12.5 }}>
+          <option value="all">All issue types</option>
+          {flagKeys.map(k => <option key={k} value={k}>{k.replace(/_/g, ' ')}</option>)}
+        </select>
+        <button onClick={refresh} style={{ padding: '8px 14px', borderRadius: 9, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 12.5, fontWeight: 700, color: NAVY, cursor: 'pointer' }}>
+          ↻ Refresh
+        </button>
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 60, color: SLATE[400] }}>⏳ Loading mismatch log…</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 60, color: SLATE[400], background: '#fff', borderRadius: 16, border: `1px solid ${SLATE[200]}` }}>
+          {rows.length === 0 ? '✅ No open mismatches — everything checks out.' : 'No rows match the current filters.'}
+        </div>
+      ) : (
+        <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${SLATE[200]}`, overflow: 'hidden' }}>
+          <div style={{ maxHeight: 560, overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead>
+                <tr style={{ background: SLATE[50], position: 'sticky', top: 0 }}>
+                  {['', 'Student', 'Issue', 'Detected', 'Status', ''].map(h => (
+                    <th key={h} style={{ padding: '9px 12px', textAlign: 'left', color: SLATE[500], fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.03em', borderBottom: `1px solid ${SLATE[200]}` }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(r => (
+                  <tr key={r.id} style={{ borderBottom: `1px solid ${SLATE[100]}` }}>
+                    <td style={{ padding: '9px 12px' }}>{r.level === 'red' ? '🔴' : '🟡'}</td>
+                    <td style={{ padding: '9px 12px' }}>
+                      <button onClick={() => onOpenStudent({ id: r.student_id, name: r.student_name, gcc_no: r.gcc_no })}
+                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', color: NAVY, fontWeight: 700 }}>
+                        {r.student_name || '—'}
+                      </button>
+                      {r.gcc_no && <div style={{ fontFamily: 'monospace', fontSize: 10.5, color: SLATE[400] }}>GCC-{r.gcc_no}</div>}
+                    </td>
+                    <td style={{ padding: '9px 12px', color: SLATE[600], maxWidth: 380 }}>{r.message}</td>
+                    <td style={{ padding: '9px 12px', color: SLATE[500], whiteSpace: 'nowrap' }}>{fmtDate(r.detected_at)}</td>
+                    <td style={{ padding: '9px 12px' }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 99, textTransform: 'uppercase', color: '#fff', background: r.status === 'open' ? AMBER : SKY }}>
+                        {r.status}
+                      </span>
+                    </td>
+                    <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                      {r.status === 'open' && (
+                        <button disabled={busyId === r.id} onClick={() => doAck(r.id)}
+                          style={{ marginRight: 6, padding: '5px 10px', borderRadius: 7, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 11, fontWeight: 700, color: SLATE[600], cursor: 'pointer' }}>
+                          Acknowledge
+                        </button>
+                      )}
+                      <button disabled={busyId === r.id} onClick={() => doResolve(r.id)}
+                        style={{ padding: '5px 10px', borderRadius: 7, border: 'none', background: GREEN, fontSize: 11, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>
+                        Resolve
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── School Overview ─────────────────────────────────────────────────────────
+// The all-school view: enrollment, fees, attendance, hostel — one screen.
+// Every number here is pulled live from the same tables/columns each
+// module already writes to (adm_fee_collections.amount_paid,
+// adm_flat_fees.amount, adm_course_fees.amount_paid, attendance_records,
+// hostel_allocations) — nothing is estimated or derived from a cache, so
+// this can't silently disagree with what Fees.jsx/Attendance.jsx/
+// Hostel.jsx show on their own tabs.
+function SchoolOverview({ onOpenStudent }) {
+  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      setLoading(true)
+
+      // Active roster — source of truth via studentQueries.js, same list
+      // every other module now uses.
+      const students = await getActiveStudents('id,name,gcc_no,course,batch,class_name,house,hostel_type,status')
+
+      const idList = students.map(s => s.id)
+
+      // Fee collections THIS MONTH across all three payment tables, plus
+      // running totals — same three tables/columns Student360's own
+      // profile loader and Fees.jsx use.
+      const now = new Date()
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+
+      const [admFees, flatFees, courseFees, attSessions, houses, hostelAllocs] = await Promise.all([
+        supabase.from('adm_fee_collections').select('amount_paid,pay_date,adm_app_id').eq('reverted', false),
+        supabase.from('adm_flat_fees').select('amount,pay_date,adm_app_id').eq('paid', true).eq('reverted', false),
+        supabase.from('adm_course_fees').select('amount_paid,pay_date,adm_app_id').eq('reverted', false),
+        // Last 30 days of attendance sessions, for a school-wide rate —
+        // capped range so this stays a quick dashboard query, not a
+        // full-year scan.
+        supabase.from('attendance_sessions').select('id,session_date').gte('session_date', new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10)),
+        supabase.from('houses').select('name').order('name'),
+        idList.length ? supabase.from('hostel_allocations').select('student_id,house').in('student_id', idList) : Promise.resolve({ data: [] }),
+      ])
+
+      let attRecords = { data: [] }
+      const sessionIds = (attSessions.data || []).map(s => s.id)
+      if (sessionIds.length) {
+        attRecords = await supabase.from('attendance_records').select('status,session_id').in('session_id', sessionIds).not('session_id', 'is', null)
+      }
+
+      if (cancelled) return
+
+      // ── Enrollment breakdown ──
+      const byCourse = {}
+      const byHouse = {}
+      students.forEach(s => {
+        const c = s.course || 'Unassigned'
+        byCourse[c] = (byCourse[c] || 0) + 1
+        const h = s.house || 'No House'
+        byHouse[h] = (byHouse[h] || 0) + 1
+      })
+
+      // ── Fees ──
+      const sumBy = (rows, field, dateFromMonth) => (rows || [])
+        .filter(r => !dateFromMonth || (r.pay_date && r.pay_date >= monthStart))
+        .reduce((s, r) => s + Number(r[field] || 0), 0)
+
+      const totalCollected = sumBy(admFees.data, 'amount_paid') + sumBy(flatFees.data, 'amount') + sumBy(courseFees.data, 'amount_paid')
+      const thisMonthCollected = sumBy(admFees.data, 'amount_paid', true) + sumBy(flatFees.data, 'amount', true) + sumBy(courseFees.data, 'amount_paid', true)
+
+      // Students with zero payments recorded at all — quick defaulter signal.
+      const paidGccSet = new Set([
+        ...(admFees.data || []).map(r => String(r.adm_app_id)),
+        ...(flatFees.data || []).map(r => String(r.adm_app_id)),
+        ...(courseFees.data || []).map(r => String(r.adm_app_id)),
+      ])
+      const noPaymentStudents = students.filter(s => s.gcc_no && !paidGccSet.has(String(s.gcc_no)))
+
+      // ── Attendance ──
+      const attRows = attRecords.data || []
+      const presentCount = attRows.filter(r => r.status === 'Present').length
+      const attendanceRate = attRows.length ? Math.round((presentCount / attRows.length) * 100) : null
+
+      // ── Hostel occupancy ──
+      const allocByHouse = {}
+      ;(hostelAllocs.data || []).forEach(a => {
+        const h = a.house || 'Unassigned'
+        allocByHouse[h] = (allocByHouse[h] || 0) + 1
+      })
+      const boarders = (hostelAllocs.data || []).length
+      const dayScholars = students.length - boarders
+
+      setData({
+        totalStudents: students.length,
+        byCourse, byHouse,
+        totalCollected, thisMonthCollected,
+        noPaymentStudents,
+        attendanceRate, attendanceSessions: sessionIds.length,
+        houses: (houses.data || []).map(h => h.name),
+        allocByHouse, boarders, dayScholars,
+      })
+      setLoading(false)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  if (loading || !data) {
+    return <div style={{ textAlign: 'center', padding: 60, color: SLATE[400] }}>⏳ Compiling school-wide figures…</div>
+  }
+
+  const maxCourseCount = Math.max(1, ...Object.values(data.byCourse))
+  const maxHouseCount = Math.max(1, ...Object.values(data.byHouse))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+      {/* Top KPI row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
+        <KpiCard icon="🎓" label="Active students" value={data.totalStudents} color={NAVY} />
+        <KpiCard icon="💰" label="Collected this month" value={`₹${fmt(data.thisMonthCollected)}`} color={GREEN} />
+        <KpiCard icon="📈" label="Total collected (all-time)" value={`₹${fmt(data.totalCollected)}`} color={SKY} />
+        <KpiCard icon="📋" label="Attendance rate (30d)" value={data.attendanceRate == null ? '—' : `${data.attendanceRate}%`}
+          color={data.attendanceRate == null ? SLATE[500] : data.attendanceRate < 75 ? RED : GREEN} />
+        <KpiCard icon="🏠" label="Boarders / Day scholars" value={`${data.boarders} / ${data.dayScholars}`} color={AMBER} />
+        <KpiCard icon="⚠️" label="No fee payment on record" value={data.noPaymentStudents.length} color={data.noPaymentStudents.length > 0 ? RED : GREEN} />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 14 }}>
+
+        {/* Enrollment by course */}
+        <Section icon="🎓" title="Enrollment by Course" accent={NAVY}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {Object.entries(data.byCourse).sort((a, b) => b[1] - a[1]).map(([course, count]) => (
+              <div key={course}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                  <span style={{ color: SLATE[600], fontWeight: 600 }}>{course}</span>
+                  <span style={{ color: SLATE[500] }}>{count}</span>
+                </div>
+                <div style={{ height: 6, background: SLATE[100], borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${(count / maxCourseCount) * 100}%`, background: NAVY, borderRadius: 99 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        {/* Enrollment by house */}
+        <Section icon="🏠" title="Students by House" accent={AMBER}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {Object.entries(data.byHouse).sort((a, b) => b[1] - a[1]).map(([house, count]) => (
+              <div key={house}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                  <span style={{ color: SLATE[600], fontWeight: 600 }}>{house}</span>
+                  <span style={{ color: SLATE[500] }}>{count}</span>
+                </div>
+                <div style={{ height: 6, background: SLATE[100], borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${(count / maxHouseCount) * 100}%`, background: AMBER, borderRadius: 99 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        {/* Fee summary */}
+        <Section icon="💰" title="Fee Collection Summary" accent={GREEN}>
+          <Row label="Collected this month" value={`₹${fmt(data.thisMonthCollected)}`} />
+          <Row label="Collected all-time" value={`₹${fmt(data.totalCollected)}`} />
+          <Row label="Students with zero payments" value={data.noPaymentStudents.length} />
+        </Section>
+
+        {/* Hostel occupancy */}
+        <Section icon="🏨" title="Hostel Occupancy by House" accent={SKY}>
+          {data.houses.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: SLATE[400], textAlign: 'center', padding: '10px 0' }}>No houses configured.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {data.houses.map(h => (
+                <Row key={h} label={h} value={data.allocByHouse[h] || 0} />
+              ))}
+              <Row label="Day scholars (no allocation)" value={data.dayScholars} />
+            </div>
+          )}
+        </Section>
+
+      </div>
+
+      {/* Students with zero fee payments — actionable list */}
+      {data.noPaymentStudents.length > 0 && (
+        <Section icon="🚩" title="Students With No Fee Payment On Record" accent={RED} count={data.noPaymentStudents.length}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 260, overflowY: 'auto' }}>
+            {data.noPaymentStudents.slice(0, 50).map(s => (
+              <button key={s.id} onClick={() => onOpenStudent(s)}
+                style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 8px', borderRadius: 8, border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 12.5 }}
+                onMouseEnter={e => e.currentTarget.style.background = SLATE[50]}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <span style={{ fontWeight: 700, color: NAVY }}>{s.name}</span>
+                <span style={{ color: SLATE[500] }}>{s.course || '—'} · {s.batch || '—'}</span>
+              </button>
+            ))}
+            {data.noPaymentStudents.length > 50 && (
+              <div style={{ fontSize: 11.5, color: SLATE[400], padding: '4px 8px' }}>+{data.noPaymentStudents.length - 50} more</div>
+            )}
+          </div>
+        </Section>
+      )}
+    </div>
+  )
+}
+
+function KpiCard({ icon, label, value, color }) {
+  return (
+    <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${SLATE[200]}`, padding: '12px 14px' }}>
+      <div style={{ fontSize: 18 }}>{icon}</div>
+      <div style={{ fontSize: 19, fontWeight: 900, color, marginTop: 4 }}>{value}</div>
+      <div style={{ fontSize: 11, color: SLATE[500], marginTop: 2 }}>{label}</div>
     </div>
   )
 }
