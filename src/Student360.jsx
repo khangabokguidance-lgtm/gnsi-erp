@@ -26,6 +26,7 @@ import { getActiveStudents, getStudentById } from './studentQueries'
 import { loadFullProfile } from './studentProfileLoader'
 import { detectMismatches } from './mismatchDetector'
 import { logAndNotify, getOpenMismatches, acknowledgeMismatch, resolveMismatch } from './mismatchLog'
+import { getStudentDues, getDuesForStudents } from './feeDues'
 
 // ── Access control ──────────────────────────────────────────────────────────
 // Admin-only, per Himan's decision. Access is gated by App.jsx BEFORE this
@@ -135,6 +136,7 @@ export default function Student360({ currentUser, isAdmin = false }) {
   const [students, setStudents] = useState([])
   const [selected, setSelected] = useState(null)
   const [profile, setProfile] = useState(null)
+  const [dues, setDues] = useState(null)
   const [loading, setLoading] = useState(false)
   const [notifyState, setNotifyState] = useState('idle') // 'idle' | 'sending' | 'sent' | 'none' | 'error'
 
@@ -149,14 +151,22 @@ export default function Student360({ currentUser, isAdmin = false }) {
   const select = useCallback(async s => {
     setSelected(s)
     setProfile(null)
+    setDues(null)
     setNotifyState('idle')
     setLoading(true)
     // Re-fetch the FULL row (getActiveStudents above only pulled a lean
     // column set for the search dropdown) so every field this view shows
     // — notes, dob, parent info, admission_date, etc. — is current.
     const full = await getStudentById(s.id, '*')
-    const data = await loadFullProfile(full || s)
+    const [data, duesData] = await Promise.all([
+      loadFullProfile(full || s),
+      // Dues needs course/batch/hostel_type/admission_date, all only on
+      // the full row — feeDues.js fails safe (no exclusions) if
+      // admission_date is missing rather than throwing.
+      getStudentDues(full || s).catch(e => { console.error('getStudentDues failed:', e.message); return null }),
+    ])
     setProfile(data)
+    setDues(duesData)
     setLoading(false)
   }, [])
 
@@ -254,8 +264,20 @@ export default function Student360({ currentUser, isAdmin = false }) {
               </>}
             </Section>
 
-            <Section icon="💰" title="Fees" accent={GREEN} count={profile.fees.admFeeCols.length + profile.fees.admFlatFees.length + profile.fees.admCourseFees.length}>
+            <Section icon="💰" title="Fees" accent={dues?.totalDue > 0 ? RED : GREEN} count={profile.fees.admFeeCols.length + profile.fees.admFlatFees.length + profile.fees.admCourseFees.length}>
               <Row label="Total Paid" value={`₹${fmt(profile.fees.total)}`} />
+              {dues && <>
+                <Row label="Total Due" value={`₹${fmt(dues.totalDue)}`} />
+                {dues.totalDue > 0 && <>
+                  <Row label="Admission fee" value={dues.admission.due > 0 ? `₹${fmt(dues.admission.due)} due` : 'Paid'} />
+                  <Row label="Flat fee (Feb/Mar)" value={dues.flatFee.due > 0
+                    ? `₹${fmt(dues.flatFee.due)} — ${dues.flatFee.items.filter(i => !i.paid).map(i => `${i.month.slice(0, 3)} ${i.year}`).join(', ')}`
+                    : 'Up to date'} />
+                  <Row label="Course fee" value={dues.courseFee.due > 0
+                    ? `₹${fmt(dues.courseFee.due)} — ${dues.courseFee.items.filter(i => !i.paid).length} month(s)`
+                    : 'Up to date'} />
+                </>}
+              </>}
               <Row label="Admission fee payments" value={profile.fees.admFeeCols.length} />
               <Row label="Flat fee payments" value={profile.fees.admFlatFees.length} />
               <Row label="Course fee payments" value={profile.fees.admCourseFees.length} />
@@ -539,6 +561,9 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
 function SchoolOverview({ onOpenStudent }) {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState(null)
+  const [defaulters, setDefaulters] = useState(null) // null = not yet computed
+  const [computingDefaulters, setComputingDefaulters] = useState(false)
+  const [defaultersProgress, setDefaultersProgress] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -546,8 +571,9 @@ function SchoolOverview({ onOpenStudent }) {
       setLoading(true)
 
       // Active roster — source of truth via studentQueries.js, same list
-      // every other module now uses.
-      const students = await getActiveStudents('id,name,gcc_no,course,batch,class_name,house,hostel_type,status')
+      // every other module now uses. admission_date included because
+      // feeDues.js needs it to exclude pre-admission months.
+      const students = await getActiveStudents('id,name,gcc_no,course,batch,class_name,house,hostel_type,status,admission_date')
 
       const idList = students.map(s => s.id)
 
@@ -619,6 +645,7 @@ function SchoolOverview({ onOpenStudent }) {
 
       setData({
         totalStudents: students.length,
+        students,
         byCourse, byHouse,
         totalCollected, thisMonthCollected,
         noPaymentStudents,
@@ -631,6 +658,30 @@ function SchoolOverview({ onOpenStudent }) {
     load()
     return () => { cancelled = true }
   }, [])
+
+  // Real dues (expected vs paid, via feeEngine.js's rate logic) across the
+  // WHOLE active roster is expensive — several queries per student, times
+  // hundreds of students. Rather than run it automatically every time this
+  // tab opens, it's opt-in: the KPI cards above show a cheap heuristic
+  // (zero payments at all), and this button computes the real figure on
+  // demand, in small batches, with a progress readout.
+  const computeDefaulters = useCallback(async () => {
+    if (!data?.students) return
+    setComputingDefaulters(true)
+    setDefaultersProgress({ done: 0, total: data.students.length })
+    try {
+      const results = await getDuesForStudents(data.students, undefined, {
+        batchSize: 8,
+        onProgress: p => setDefaultersProgress(p),
+      })
+      const withDues = results.filter(r => r.dues.totalDue > 0).sort((a, b) => b.dues.totalDue - a.dues.totalDue)
+      setDefaulters(withDues)
+    } catch (e) {
+      console.error('computeDefaulters failed:', e.message)
+    } finally {
+      setComputingDefaulters(false)
+    }
+  }, [data])
 
   if (loading || !data) {
     return <div style={{ textAlign: 'center', padding: 60, color: SLATE[400] }}>⏳ Compiling school-wide figures…</div>
@@ -732,6 +783,44 @@ function SchoolOverview({ onOpenStudent }) {
           </div>
         </Section>
       )}
+
+      {/* Real fee dues — opt-in, computed on demand via feeEngine.js's
+          actual rate/override/admission-date logic, not a heuristic. */}
+      <Section icon="📐" title="Fee Defaulters (Exact Amounts Owed)" accent={RED}
+        empty={defaulters === null && !computingDefaulters && 'Not computed yet — this checks real rates, overrides, and month-by-month payment history for every active student, so it runs on demand rather than automatically.'}>
+        {defaulters === null && !computingDefaulters && (
+          <button onClick={computeDefaulters} style={{ padding: '9px 18px', borderRadius: 10, border: 'none', background: NAVY, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+            Compute Exact Dues
+          </button>
+        )}
+        {computingDefaulters && (
+          <div style={{ textAlign: 'center', padding: '20px 0', color: SLATE[500], fontSize: 12.5 }}>
+            ⏳ Checking {defaultersProgress?.done ?? 0} / {defaultersProgress?.total ?? '…'} students…
+          </div>
+        )}
+        {defaulters !== null && !computingDefaulters && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 12, color: SLATE[500] }}>{defaulters.length} student(s) with dues, totalling ₹{fmt(defaulters.reduce((s, r) => s + r.dues.totalDue, 0))}</span>
+              <button onClick={computeDefaulters} style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 11, fontWeight: 700, color: NAVY, cursor: 'pointer' }}>↻ Recompute</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' }}>
+              {defaulters.slice(0, 100).map(({ student, dues: d }) => (
+                <button key={student.id} onClick={() => onOpenStudent(student)}
+                  style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 8px', borderRadius: 8, border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 12.5 }}
+                  onMouseEnter={e => e.currentTarget.style.background = SLATE[50]}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span style={{ fontWeight: 700, color: NAVY }}>{student.name} <span style={{ fontWeight: 500, color: SLATE[400] }}>· {student.course || '—'}</span></span>
+                  <span style={{ fontWeight: 800, color: RED }}>₹{fmt(d.totalDue)}</span>
+                </button>
+              ))}
+              {defaulters.length === 0 && <div style={{ fontSize: 12.5, color: GREEN, textAlign: 'center', padding: '14px 0' }}>✅ No students have outstanding dues.</div>}
+              {defaulters.length > 100 && <div style={{ fontSize: 11.5, color: SLATE[400], padding: '4px 8px' }}>+{defaulters.length - 100} more</div>}
+            </div>
+          </>
+        )}
+      </Section>
     </div>
   )
 }
