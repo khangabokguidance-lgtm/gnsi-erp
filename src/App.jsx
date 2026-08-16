@@ -46,6 +46,7 @@ import CertificateGenerator from './CertificateGenerator'
 import TeachingAids       from './TeachingAids'
 import CastReceiver       from './CastReceiver'
 import Awards             from './Awards'
+import Student360         from './Student360'
 
 // ─────────────────────────────────────────────────────────────
 //  FIX 1: Unified admin role check — consistent everywhere
@@ -121,6 +122,7 @@ const ALL_GROUPS = [
       { id: 'invitation',  label: 'Invitation',   icon: '✉️' },
       { id: 'certificate', label: 'Certificates', icon: '📜' },
       { id: 'admin',       label: 'Admin',        icon: '🔐' },
+      { id: 'student360',  label: 'Student 360°', icon: '🔍' },
       { id: 'system',      label: 'System',       icon: '⚙️' },
       { id: 'adminlink',   label: 'Link Staff',   icon: '🔗' },
     ],
@@ -712,6 +714,7 @@ export default function App() {
     // FIX: invitation now uses permission system, not hardcoded Manager bypass
     invitation:        canAccess('invitation') ? <InvitationGenerator currentUser={currentUser} /> : <AccessDenied />,
     admin:             isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} allStaff={sharedStaff} /> : <AccessDenied />,
+    student360:        isAdmin ? <Student360        currentUser={currentUser} isAdmin={isAdmin} /> : <AccessDenied />,
     adminlink:         isAdmin ? <AdminLinkStaff /> : <AccessDenied />,
     certificate:       <CertificateGenerator currentUser={currentUser} perms={perms('certificate')} />,
   }
