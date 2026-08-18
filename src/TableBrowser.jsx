@@ -55,7 +55,7 @@ function buildOrFilter(cols, term) {
 // unusable squeezed into a phone width even with scroll.
 const MOBILE_BREAKPOINT = 680
 
-function useIsMobile() {
+export function useIsMobile() {
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < MOBILE_BREAKPOINT : false
   )

@@ -29,8 +29,9 @@ import { logAndNotify, getOpenMismatches, acknowledgeMismatch, resolveMismatch }
 import { getStudentDues, getDuesForStudents } from './feeDues'
 import { globalSearch } from './globalSearch'
 import { downloadCSV, downloadSingleRecordCSV } from './exportUtils'
-import TableBrowser from './TableBrowser'
+import TableBrowser, { useIsMobile } from './TableBrowser'
 import { editField, getEditableFields } from './editEngine'
+import RegistrationCard from './RegistrationCard'
 
 // ── Live-refresh listeners for cross-module writes ──────────────────────────
 // Same self-contained-copy pattern used in Students.jsx and Hostel.jsx (see
@@ -922,21 +923,38 @@ function GlobalSearchPanel({ onOpenStudent, onOpenModule }) {
 // "Fix" control directly in the dashboard row. Flags that require creating
 // a record in another module entirely (no_admission_record,
 // no_fees_recorded) aren't single-field fixes, so those rows keep only
-// the existing "open student profile" link via the name button.
+// the existing "open student profile" link via the name button — and now
+// also the "Open full record" button, which opens the same RegistrationCard
+// used in Table Browser, so any flag can be worked from there even without
+// a quick-fix mapping.
 const FLAG_FIX_MAP = {
   invalid_house: { tableKey: 'students', field: 'house', label: 'House' },
   active_no_attendance: { tableKey: 'students', field: 'status', label: 'Status' },
   dropout_has_attendance: { tableKey: 'students', field: 'status', label: 'Status' },
+  // These two aren't a single-field edit — they're a students.house value
+  // with no matching hostel_allocations row (or vice versa). mode:
+  // 'allocation' tells InlineMismatchFix to write both sides: set/clear
+  // students.house AND create/remove the hostel_allocations row so the two
+  // tables agree, instead of editing one field and leaving the mismatch
+  // half-fixed.
+  house_no_allocation: { tableKey: 'students', field: 'house', label: 'House', mode: 'allocation' },
+  allocation_no_house: { tableKey: 'students', field: 'house', label: 'House', mode: 'allocation' },
 }
 
 // Inline fix control for a mismatch row — lets staff correct the
-// underlying field without leaving the dashboard. The mismatch row itself
-// only carries the message text, not the live field value, so this fetches
-// the current value on demand when "Fix" is clicked. Writes go through the
-// same editField() path EditableRow uses (whitelist + audit log still
-// apply), and a successful save auto-resolves the flag, since the
-// underlying data is now actually corrected rather than just dismissed.
-function InlineMismatchFix({ row, currentUser, onDone }) {
+// underlying field without leaving the dashboard, plus an "Open full
+// record" button (works for every flag, not just ones in FLAG_FIX_MAP)
+// that opens the same RegistrationCard used in Table Browser for deeper
+// or multi-field fixes.
+//
+// mode: 'allocation' (house_no_allocation / allocation_no_house) isn't a
+// single-field edit — it's students.house vs hostel_allocations being out
+// of sync. Saving here writes both sides: sets/clears students.house via
+// editField (so the audit log + admissions cascade still apply) AND
+// creates or removes the matching hostel_allocations row directly, so the
+// two tables actually agree afterward instead of the mismatch just moving
+// from "no allocation" to "house says X, allocation still missing".
+function InlineMismatchFix({ row, currentUser, onDone, onOpenForm }) {
   const cfg = FLAG_FIX_MAP[row.flag_key]
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -944,13 +962,18 @@ function InlineMismatchFix({ row, currentUser, onDone }) {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState(null)
 
-  if (!cfg) return null
-  const fieldDef = getEditableFields(cfg.tableKey)?.[cfg.field]
-  if (!fieldDef) return null
+  const openFullRecordButton = onOpenForm && (
+    <button onClick={() => onOpenForm(row)}
+      style={{ marginRight: 6, padding: '5px 10px', borderRadius: 7, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 11, fontWeight: 700, color: NAVY, cursor: 'pointer' }}>
+      Open full record →
+    </button>
+  )
+
+  if (!cfg) return openFullRecordButton || null
 
   const startFix = async () => {
     setLoading(true); setErr(null)
-    const { data, error } = await supabase.from(cfg.tableKey).select(cfg.field).eq('id', row.student_id).maybeSingle()
+    const { data, error } = await supabase.from(cfg.tableKey).select(`${cfg.field}${cfg.mode === 'allocation' ? ',gcc_no' : ''}`).eq('id', row.student_id).maybeSingle()
     if (error) { setErr(error.message); setLoading(false); return }
     setDraft(data?.[cfg.field] ?? '')
     setLoading(false)
@@ -966,6 +989,28 @@ function InlineMismatchFix({ row, currentUser, onDone }) {
         studentContext: { id: row.student_id, name: row.student_name },
       })
       broadcastCrossModuleWrite(cfg.tableKey, { type: 'update', student_id: row.student_id, field: cfg.field })
+
+      if (cfg.mode === 'allocation') {
+        if (draft) {
+          // House is now set — make sure a hostel_allocations row exists
+          // and matches. upsert on student_id keeps this idempotent if a
+          // stale row is somehow already there.
+          const { error: allocErr } = await supabase
+            .from('hostel_allocations')
+            .upsert({ student_id: row.student_id, house: draft }, { onConflict: 'student_id' })
+          if (allocErr) throw allocErr
+        } else {
+          // House cleared — remove the now-orphaned allocation row so
+          // allocation_no_house doesn't just reopen next scan.
+          const { error: delErr } = await supabase
+            .from('hostel_allocations')
+            .delete()
+            .eq('student_id', row.student_id)
+          if (delErr) throw delErr
+        }
+        broadcastCrossModuleWrite('hostel_allocations', { type: 'update', student_id: row.student_id, field: 'house' })
+      }
+
       await resolveMismatch(row.id, currentUser?.name || currentUser?.username || null)
       setOpen(false)
       onDone?.()
@@ -978,25 +1023,19 @@ function InlineMismatchFix({ row, currentUser, onDone }) {
 
   if (!open) {
     return (
-      <button onClick={startFix} disabled={loading}
-        style={{ marginRight: 6, padding: '5px 10px', borderRadius: 7, border: `1px solid ${SKY}`, background: '#fff', fontSize: 11, fontWeight: 700, color: SKY, cursor: loading ? 'default' : 'pointer' }}>
-        {loading ? 'Loading…' : `✎ Fix ${cfg.label}`}
-      </button>
+      <>
+        <button onClick={startFix} disabled={loading}
+          style={{ marginRight: 6, padding: '5px 10px', borderRadius: 7, border: `1px solid ${SKY}`, background: '#fff', fontSize: 11, fontWeight: 700, color: SKY, cursor: loading ? 'default' : 'pointer' }}>
+          {loading ? 'Loading…' : `✎ Fix ${cfg.label}`}
+        </button>
+        {openFullRecordButton}
+      </>
     )
   }
 
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginRight: 6 }}>
-      {fieldDef.type === 'select' ? (
-        <select value={draft} onChange={e => setDraft(e.target.value)}
-          style={{ padding: '4px 6px', borderRadius: 6, border: `1px solid ${SLATE[200]}`, fontSize: 11 }}>
-          <option value="">—</option>
-          {fieldDef.options.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      ) : (
-        <input value={draft} onChange={e => setDraft(e.target.value)}
-          style={{ padding: '4px 6px', borderRadius: 6, border: `1px solid ${SLATE[200]}`, fontSize: 11, width: 100 }} />
-      )}
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginRight: 6, flexWrap: 'wrap' }}>
+      <FixFieldInput cfg={cfg} draft={draft} setDraft={setDraft} row={row} />
       <button onClick={save} disabled={saving}
         style={{ padding: '4px 8px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', fontSize: 11, fontWeight: 700, cursor: saving ? 'default' : 'pointer' }}>
         {saving ? '…' : 'Save'}
@@ -1005,8 +1044,40 @@ function InlineMismatchFix({ row, currentUser, onDone }) {
         style={{ padding: '4px 8px', borderRadius: 6, border: `1px solid ${SLATE[200]}`, background: '#fff', color: SLATE[600], fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
         ✕
       </button>
-      {err && <span style={{ fontSize: 10.5, color: RED }}>{err}</span>}
+      {err && <span style={{ fontSize: 10.5, color: RED, width: '100%' }}>{err}</span>}
+      {openFullRecordButton}
     </div>
+  )
+}
+
+// Separate so InlineMismatchFix doesn't call getEditableFields with a
+// fake/empty row — needs a real sample row's shape to know field type
+// (select vs text) under the new all-fields-editable policy. Falls back
+// to a plain text input if no field definition can be resolved at all.
+function FixFieldInput({ cfg, draft, setDraft, row }) {
+  const [fieldDef, setFieldDef] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    supabase.from(cfg.tableKey).select('*').eq('id', row.student_id).maybeSingle().then(({ data }) => {
+      if (!cancelled) setFieldDef(getEditableFields(cfg.tableKey, data)?.[cfg.field] || { type: 'text' })
+    })
+    return () => { cancelled = true }
+  }, [cfg.tableKey, cfg.field, row.student_id])
+
+  if (!fieldDef) return <span style={{ fontSize: 11, color: SLATE[400] }}>Loading&hellip;</span>
+
+  if (fieldDef.type === 'select') {
+    return (
+      <select value={draft} onChange={e => setDraft(e.target.value)}
+        style={{ padding: '4px 6px', borderRadius: 6, border: `1px solid ${SLATE[200]}`, fontSize: 11 }}>
+        <option value="">—</option>
+        {fieldDef.options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    )
+  }
+  return (
+    <input value={draft} onChange={e => setDraft(e.target.value)}
+      style={{ padding: '4px 6px', borderRadius: 6, border: `1px solid ${SLATE[200]}`, fontSize: 11, width: 100 }} />
   )
 }
 
@@ -1018,6 +1089,16 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
   const [flagFilter, setFlagFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [busyId, setBusyId] = useState(null)
+
+  // "Open full record" opens the same RegistrationCard Table Browser uses,
+  // scoped to this mismatch row's student in the `students` table — the
+  // one table every flag traces back to, regardless of flag type. Holds
+  // the mismatch row (not just an id) since it already carries
+  // student_id/student_name/gcc_no, and RegistrationCard itself fetches
+  // the actual students row content.
+  const [openRecordRow, setOpenRecordRow] = useState(null)   // full students row, once loaded
+  const [openRecordLoading, setOpenRecordLoading] = useState(false)
+  const isMobileForm = useIsMobile()
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -1061,6 +1142,21 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
     await resolveMismatch(id, currentUser?.name || currentUser?.username || null)
     await refresh()
     setBusyId(null)
+  }
+
+  // Fetches the full students row for a mismatch row's student_id and
+  // opens RegistrationCard for it — same component Table Browser uses, so
+  // any flag (even ones with no quick-fix mapping) can be worked from a
+  // full editable form instead of just the message text.
+  const openFullRecord = async (mismatchRow) => {
+    setOpenRecordLoading(true)
+    const { data, error } = await supabase.from('students').select('*').eq('id', mismatchRow.student_id).maybeSingle()
+    setOpenRecordLoading(false)
+    if (error || !data) {
+      console.error('MismatchDashboard: failed to load student for full record:', error?.message)
+      return
+    }
+    setOpenRecordRow(data)
   }
 
   return (
@@ -1145,7 +1241,7 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
                       </span>
                     </td>
                     <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
-                      <InlineMismatchFix row={r} currentUser={currentUser} onDone={refresh} />
+                      <InlineMismatchFix row={r} currentUser={currentUser} onDone={refresh} onOpenForm={openFullRecord} />
                       {r.status === 'open' && (
                         <button disabled={busyId === r.id} onClick={() => doAck(r.id)}
                           style={{ marginRight: 6, padding: '5px 10px', borderRadius: 7, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 11, fontWeight: 700, color: SLATE[600], cursor: 'pointer' }}>
@@ -1163,6 +1259,28 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
             </table>
           </div>
         </div>
+      )}
+
+      {openRecordLoading && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.15)', zIndex: 99, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 700 }}>
+          Loading record&hellip;
+        </div>
+      )}
+
+      {openRecordRow && (
+        <RegistrationCard
+          row={openRecordRow}
+          tableKey="students"
+          tableLabel="Students"
+          isMobile={isMobileForm}
+          studentContext={{ id: openRecordRow.id, name: openRecordRow.name, gcc_no: openRecordRow.gcc_no }}
+          onClose={() => setOpenRecordRow(null)}
+          onSaved={(field, value) => {
+            setOpenRecordRow(prev => prev ? { ...prev, [field]: value } : prev)
+            broadcastCrossModuleWrite('students', { type: 'update', student_id: openRecordRow.id, field })
+            refresh()
+          }}
+        />
       )}
     </div>
   )
