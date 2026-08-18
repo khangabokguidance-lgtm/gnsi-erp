@@ -32,6 +32,51 @@ import { downloadCSV, downloadSingleRecordCSV } from './exportUtils'
 import TableBrowser from './TableBrowser'
 import { editField, getEditableFields } from './editEngine'
 
+// ── Live-refresh listeners for cross-module writes ──────────────────────────
+// Same self-contained-copy pattern used in Students.jsx and Hostel.jsx (see
+// their own comments on this): no import relationship to the other modules,
+// the event name string is the actual contract. Without these, this module
+// — whose entire purpose is showing an accurate cross-module picture — would
+// itself go stale the moment someone edited a student in Students.jsx,
+// reassigned a house in Hostel.jsx, or updated an application in
+// Admissions.jsx, until the admin manually reselected the student or hit
+// Refresh on the dashboard.
+//
+// 'gnsi:students-updated' — dispatched by Students.jsx and (as of this
+// change) Hostel.jsx whenever the `students` table changes.
+// 'gnsi:admissions-updated' — dispatched by Admissions.jsx (as of this
+// change) whenever the `admissions` table changes; relevant here because
+// loadFullProfile() reads admissions directly for the "no admission
+// record" mismatch check.
+function useCrossModuleUpdatedListener(callback) {
+  useEffect(() => {
+    const h1 = e => callback(e.detail, 'students')
+    const h2 = e => callback(e.detail, 'admissions')
+    window.addEventListener('gnsi:students-updated', h1)
+    window.addEventListener('gnsi:admissions-updated', h2)
+    return () => {
+      window.removeEventListener('gnsi:students-updated', h1)
+      window.removeEventListener('gnsi:admissions-updated', h2)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callback])
+}
+
+// The other half of the loop: edits made HERE (via EditableRow / the
+// dashboard's InlineMismatchFix) need to notify Students.jsx/Hostel.jsx
+// the same way their own edits notify each other, or a fix made in
+// Student 360° would only be visible in Student 360° until someone else
+// happened to refresh those modules.
+function broadcastCrossModuleWrite(tableKey, detail) {
+  const eventName = tableKey === 'students' ? 'gnsi:students-updated'
+    : tableKey === 'admissions' ? 'gnsi:admissions-updated'
+    : null
+  if (!eventName) return
+  try { window.dispatchEvent(new CustomEvent(eventName, { detail })) } catch (e) {
+    console.error('broadcastCrossModuleWrite failed:', e)
+  }
+}
+
 // ── Access control ──────────────────────────────────────────────────────────
 // Admin-only, per Himan's decision. Access is gated by App.jsx BEFORE this
 // component ever renders (moduleMap['student360'] only mounts this when
@@ -198,6 +243,7 @@ function EditableRow({ label, value, mono, tableKey, rowId, field, studentContex
     setSaving(true); setErr(null)
     try {
       await editField({ tableKey, rowId, field, oldValue: value, newValue: draft, studentContext })
+      broadcastCrossModuleWrite(tableKey, { type: 'update', student_id: studentContext?.id, field })
       setEditing(false)
       onSaved?.(draft)
     } catch (e) {
@@ -293,6 +339,16 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
     setDues(duesData)
     setLoading(false)
   }, [])
+
+  // Live refresh — if Students.jsx, Hostel.jsx, or Admissions.jsx changes
+  // data for the student currently open in this view, re-run select() so
+  // the profile (and its mismatch flags) don't go stale until the admin
+  // manually reselects. Cheap to over-trigger: a cross-module write is
+  // infrequent, and re-running select() just re-fetches this one student.
+  const handleCrossModuleUpdate = useCallback(() => {
+    if (selected) select(selected)
+  }, [selected, select])
+  useCrossModuleUpdatedListener(handleCrossModuleUpdate)
 
   // Manual "Notify Admin" — computes the same flags shown on screen via
   // mismatchDetector.js, then routes through mismatchLog.js's dedupe: if
@@ -494,7 +550,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               {profile.exams.length > 5 && <div style={{ fontSize: 11.5, color: SLATE[400], marginTop: 6 }}>+{profile.exams.length - 5} more</div>}
             </Section>
 
-            <Section icon="🏠" title="Hostel" accent={profile.hostel ? GREEN : SLATE[500]}
+            <Section icon="🏠" title="Hostel" accent={!selected.house ? SLATE[500] : (profile.validHouses?.includes(selected.house) ? GREEN : RED)}
               moduleLink={onNavigate ? { label: "Hostel", onClick: () => onNavigate("hostel") } : null}
               full={
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -502,31 +558,21 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
                     studentContext={selected} onSaved={v => setSelected(prev => ({ ...prev, house: v }))} />
                   <EditableRow label="Hostel Type" value={selected.hostel_type} tableKey="students" rowId={selected.id} field="hostel_type"
                     studentContext={selected} onSaved={v => setSelected(prev => ({ ...prev, hostel_type: v }))} />
+                  {selected.house && profile.validHouses?.length > 0 && !profile.validHouses.includes(selected.house) && (
+                    <div style={{ fontSize: 11.5, color: RED, fontWeight: 700, marginTop: 6 }}>⚠ "{selected.house}" is not a currently configured house in Hostel — it may have been renamed or removed.</div>
+                  )}
                   {profile.housemaster && <>
                     <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em', margin: '10px 0 4px' }}>Housemaster</div>
                     <Row label="Name" value={profile.housemaster.name} />
                     <Row label="Phone" value={profile.housemaster.phone} mono />
                   </>}
                   {profile.houseOccupancy != null && <Row label="Students in this house" value={profile.houseOccupancy} />}
-                  {profile.hostel && <>
-                    <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em', margin: '10px 0 4px' }}>Allocation Record</div>
-                    {Object.entries(profile.hostel).filter(([k]) => !['id', 'hostel_rooms', 'student_id'].includes(k)).map(([k, v]) => (
-                      <Row key={k} label={k.replace(/_/g, ' ')} value={v == null || v === '' ? '—' : String(v)} />
-                    ))}
-                    {profile.hostel.hostel_rooms && Object.entries(profile.hostel.hostel_rooms).map(([k, v]) => (
-                      <Row key={'room_' + k} label={`Room ${k.replace(/_/g, ' ')}`} value={v == null || v === '' ? '—' : String(v)} />
-                    ))}
-                  </>}
                 </div>
               }>
               <Row label="House" value={selected.house || 'Day scholar'} />
               <Row label="Hostel Type" value={selected.hostel_type || '—'} />
               {profile.housemaster && <Row label="Housemaster" value={`${profile.housemaster.name} · ${profile.housemaster.phone || '—'}`} />}
-              {profile.hostel && <>
-                <Row label="Room" value={profile.hostel.hostel_rooms?.room_no} />
-                <Row label="Floor" value={profile.hostel.hostel_rooms?.floor} />
-                <Row label="Allotted" value={fmtDate(profile.hostel.created_at)} />
-              </>}
+              {profile.houseOccupancy != null && <Row label="Students in this house" value={profile.houseOccupancy} />}
             </Section>
 
             <Section icon="🚩" title="Discipline" accent={profile.discipline.length ? AMBER : GREEN} count={profile.discipline.length} empty={profile.discipline.length === 0 && 'No discipline records.'}
@@ -779,6 +825,98 @@ function GlobalSearchPanel({ onOpenStudent, onOpenModule }) {
   )
 }
 
+// Flags that map to a single editable field on `students` get an inline
+// "Fix" control directly in the dashboard row. Flags that require creating
+// a record in another module entirely (no_admission_record,
+// no_fees_recorded) aren't single-field fixes, so those rows keep only
+// the existing "open student profile" link via the name button.
+const FLAG_FIX_MAP = {
+  invalid_house: { tableKey: 'students', field: 'house', label: 'House' },
+  active_no_attendance: { tableKey: 'students', field: 'status', label: 'Status' },
+  dropout_has_attendance: { tableKey: 'students', field: 'status', label: 'Status' },
+}
+
+// Inline fix control for a mismatch row — lets staff correct the
+// underlying field without leaving the dashboard. The mismatch row itself
+// only carries the message text, not the live field value, so this fetches
+// the current value on demand when "Fix" is clicked. Writes go through the
+// same editField() path EditableRow uses (whitelist + audit log still
+// apply), and a successful save auto-resolves the flag, since the
+// underlying data is now actually corrected rather than just dismissed.
+function InlineMismatchFix({ row, currentUser, onDone }) {
+  const cfg = FLAG_FIX_MAP[row.flag_key]
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  if (!cfg) return null
+  const fieldDef = getEditableFields(cfg.tableKey)?.[cfg.field]
+  if (!fieldDef) return null
+
+  const startFix = async () => {
+    setLoading(true); setErr(null)
+    const { data, error } = await supabase.from(cfg.tableKey).select(cfg.field).eq('id', row.student_id).maybeSingle()
+    if (error) { setErr(error.message); setLoading(false); return }
+    setDraft(data?.[cfg.field] ?? '')
+    setLoading(false)
+    setOpen(true)
+  }
+
+  const save = async () => {
+    setSaving(true); setErr(null)
+    try {
+      await editField({
+        tableKey: cfg.tableKey, rowId: row.student_id, field: cfg.field,
+        oldValue: null, newValue: draft,
+        studentContext: { id: row.student_id, name: row.student_name },
+      })
+      broadcastCrossModuleWrite(cfg.tableKey, { type: 'update', student_id: row.student_id, field: cfg.field })
+      await resolveMismatch(row.id, currentUser?.name || currentUser?.username || null)
+      setOpen(false)
+      onDone?.()
+    } catch (e) {
+      setErr(e.message || 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button onClick={startFix} disabled={loading}
+        style={{ marginRight: 6, padding: '5px 10px', borderRadius: 7, border: `1px solid ${SKY}`, background: '#fff', fontSize: 11, fontWeight: 700, color: SKY, cursor: loading ? 'default' : 'pointer' }}>
+        {loading ? 'Loading…' : `✎ Fix ${cfg.label}`}
+      </button>
+    )
+  }
+
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginRight: 6 }}>
+      {fieldDef.type === 'select' ? (
+        <select value={draft} onChange={e => setDraft(e.target.value)}
+          style={{ padding: '4px 6px', borderRadius: 6, border: `1px solid ${SLATE[200]}`, fontSize: 11 }}>
+          <option value="">—</option>
+          {fieldDef.options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) : (
+        <input value={draft} onChange={e => setDraft(e.target.value)}
+          style={{ padding: '4px 6px', borderRadius: 6, border: `1px solid ${SLATE[200]}`, fontSize: 11, width: 100 }} />
+      )}
+      <button onClick={save} disabled={saving}
+        style={{ padding: '4px 8px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', fontSize: 11, fontWeight: 700, cursor: saving ? 'default' : 'pointer' }}>
+        {saving ? '…' : 'Save'}
+      </button>
+      <button onClick={() => setOpen(false)} disabled={saving}
+        style={{ padding: '4px 8px', borderRadius: 6, border: `1px solid ${SLATE[200]}`, background: '#fff', color: SLATE[600], fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+        ✕
+      </button>
+      {err && <span style={{ fontSize: 10.5, color: RED }}>{err}</span>}
+    </div>
+  )
+}
+
 function MismatchDashboard({ currentUser, onOpenStudent }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -796,6 +934,7 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
   }, [])
 
   useEffect(() => { refresh() }, [refresh])
+  useCrossModuleUpdatedListener(useCallback(() => { refresh() }, [refresh]))
 
   const flagKeys = useMemo(() => [...new Set(rows.map(r => r.flag_key))].sort(), [rows])
 
@@ -913,6 +1052,7 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
                       </span>
                     </td>
                     <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                      <InlineMismatchFix row={r} currentUser={currentUser} onDone={refresh} />
                       {r.status === 'open' && (
                         <button disabled={busyId === r.id} onClick={() => doAck(r.id)}
                           style={{ marginRight: 6, padding: '5px 10px', borderRadius: 7, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 11, fontWeight: 700, color: SLATE[600], cursor: 'pointer' }}>

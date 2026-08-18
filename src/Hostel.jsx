@@ -31,6 +31,19 @@ function useStudentsUpdatedListener(callback) {
   }, [callback])
 }
 
+// The other half of that contract: Hostel.jsx writes directly to
+// `students.house` in a few places (house assignment / reassignment) but,
+// until this change, never told anyone. Students.jsx and Student360.jsx
+// both listen for this same event, so without this a house reassignment
+// made here would silently not show up anywhere else until a manual
+// refresh — exactly the kind of drift Student 360°'s mismatch dashboard
+// exists to catch, caused by the very module reporting the mismatch.
+function broadcastStudentsUpdate(detail) {
+  try { window.dispatchEvent(new CustomEvent('gnsi:students-updated', { detail })) } catch (e) {
+    console.error('broadcastStudentsUpdate failed:', e)
+  }
+}
+
 
 // ══════════════════════════════════════════════════════════════
 //  DESIGN TOKENS — Material Design, grounded in the GNSI navy/gold
@@ -1429,6 +1442,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
   const handleAssignHouse = async (studentId, houseName) => {
     if (!isAdmin) { alert('Only admins can assign students to a house.'); return }
     await supabase.from('students').update({ house: houseName || null }).eq('id', studentId)
+    broadcastStudentsUpdate({ type: 'house_reassign', student_id: studentId, house: houseName || null })
     // students prop is owned by the parent (Hostel root); it will refetch
     // on its own polling/refresh cycle, but reflect the change locally too
     // by forcing a reload of attendance records so counts stay accurate.
@@ -7459,6 +7473,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
       }
     }
     await supabase.from('students').update({ house: houseName || null }).eq('id', studentId)
+    broadcastStudentsUpdate({ type: 'house_reassign', student_id: studentId, house: houseName || null })
     setStudents(prev => prev.map(s => s.id === studentId ? { ...s, house: houseName || null } : s))
     showToast(houseName ? `✅ Assigned to ${houseName}` : '✅ Removed from house')
   }
@@ -7475,6 +7490,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
     }
     const ids = unassigned.map(s => s.id)
     await supabase.from('students').update({ house: houseName }).in('id', ids)
+    broadcastStudentsUpdate({ type: 'bulk_house_reassign', ids, house: houseName })
     setStudents(prev => prev.map(s => ids.includes(s.id) ? { ...s, house: houseName } : s))
     showToast(`✅ ${unassigned.length} students assigned to ${houseName}`)
   }

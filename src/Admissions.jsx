@@ -574,6 +574,27 @@ function checkSyncFieldDrift(moduleName, fieldPairs, normalizeToStudentAdm) {
  * should not block the admissions save that triggered it; errors are
  * logged to console for visibility instead.
  */
+/**
+ * Broadcast helpers — new event 'gnsi:admissions-updated' joins the
+ * existing 'gnsi:students-updated' contract Students.jsx/Hostel.jsx
+ * already use. Admissions.jsx previously dispatched nothing at all, so a
+ * sync in either direction here was invisible to every other module
+ * (including Student360.jsx, whose "no admission record" mismatch check
+ * reads the `admissions` table directly) until someone else's own
+ * refresh/poll cycle happened to catch it. Never throws — same
+ * never-block-the-save guarantee as the sync functions themselves.
+ */
+function broadcastStudentsUpdate(detail) {
+  try { window.dispatchEvent(new CustomEvent('gnsi:students-updated', { detail })) } catch (e) {
+    console.error('broadcastStudentsUpdate failed:', e)
+  }
+}
+function broadcastAdmissionsUpdate(detail) {
+  try { window.dispatchEvent(new CustomEvent('gnsi:admissions-updated', { detail })) } catch (e) {
+    console.error('broadcastAdmissionsUpdate failed:', e)
+  }
+}
+
 async function syncAdmissionToStudent(gccNo, admissionsDbRow) {
   try {
     const { data: existing } = await supabase.from('students').select('id').eq('gcc_no', gccNo).maybeSingle()
@@ -585,6 +606,7 @@ async function syncAdmissionToStudent(gccNo, admissionsDbRow) {
     if (Object.keys(studentUpdate).length === 0) return
     const { error } = await supabase.from('students').update(studentUpdate).eq('id', existing.id)
     if (error) console.error('syncAdmissionToStudent failed:', error.message)
+    else broadcastStudentsUpdate({ type: 'admission_sync', gcc_no: gccNo, student_id: existing.id })
   } catch (err) {
     console.error('syncAdmissionToStudent failed:', err)
   }
@@ -607,6 +629,7 @@ async function updateAdmissionsRows({ match, patch }) {
   }
   const { data, error } = await query.select('gcc_no')
   if (error) return { error }
+  broadcastAdmissionsUpdate({ type: 'update', gcc_nos: (data || []).map(r => r.gcc_no) })
   const patchHasSyncedField = ADM_STUDENT_SYNC_FIELDS.some(([admCol]) => patch[admCol] !== undefined)
   if (patchHasSyncedField) {
     for (const row of (data || [])) {
@@ -634,6 +657,7 @@ async function syncStudentToAdmission(gccNo, studentsDbRow) {
     if (Object.keys(admUpdate).length === 0) return
     const { error } = await supabase.from('admissions').update(admUpdate).eq('gcc_no', gccNo)
     if (error) console.error('syncStudentToAdmission failed:', error.message)
+    else broadcastAdmissionsUpdate({ type: 'student_sync', gcc_no: gccNo })
   } catch (err) {
     console.error('syncStudentToAdmission failed:', err)
   }
