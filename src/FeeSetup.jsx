@@ -10,18 +10,17 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import {
-  CURRENT_YEAR, clearFeeRateCache,
+  CURRENT_YEAR, clearFeeRateCache, COURSE_STRUCTURE,
   getFeeRates, saveStudentFlatFeeOverride, TABLES,
 } from './feeEngine'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const COURSE_STRUCTURE = {
-  Sainik:           ['Achiever', 'Leader', 'Champion'],
-  Navodaya:         ['Umeed', 'Lakshya'],
-  Foundation:       ['Prime', 'Elite'],
-  'Combined Course': ['—'],
-}
+// ✦ COURSE_STRUCTURE now imported from feeEngine.js (single source of truth) —
+//   this file used to keep its own separate copy, which could silently drift
+//   out of sync with the one feeEngine.js actually uses (e.g. Navodaya's
+//   Lakshya batch was split into "Lakshya A" / "Lakshya B" elsewhere in the
+//   app but this file's local copy still only had plain "Lakshya", so Fee
+//   Setup could never configure rates for the batches actually being billed).
 
 const COURSES      = Object.keys(COURSE_STRUCTURE)
 const HOSTEL_TYPES = ['Boarder', 'Day Boarder', 'Day Scholar']

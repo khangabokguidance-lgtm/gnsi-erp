@@ -71,9 +71,25 @@ export const CURRENT_YEAR = (() => {
 
 export const COURSE_STRUCTURE = {
   Sainik:            ['Achiever', 'Leader', 'Champion'],
-  Navodaya:          ['Umeed', 'Lakshya'],
+  Navodaya:          ['Umeed', 'Lakshya A', 'Lakshya B'],
   Foundation:        ['Prime', 'Elite'],
   'Combined Course': ['—'],
+}
+
+// ✦ Session-year format normalizer — canonicalizes to "YYYY-YYYY".
+//   Some older student/admission records store session as "2026-27"
+//   (2-digit end year) instead of "2026-2027" (4-digit), which caused
+//   getFeeRates' exact-string match against fee_structures.session_year
+//   to silently miss configured rows and fall back to legacy rates.
+//   All session_year lookups/writes should pass through this first.
+export const normalizeSessionYear = (sessionYear) => {
+  if (!sessionYear || typeof sessionYear !== 'string') return sessionYear
+  const m = sessionYear.match(/^(\d{4})-(\d{2}|\d{4})$/)
+  if (!m) return sessionYear
+  const startYear = parseInt(m[1], 10)
+  const endPart = m[2]
+  const endYear = endPart.length === 4 ? parseInt(endPart, 10) : startYear + 1
+  return `${startYear}-${endYear}`
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -139,6 +155,7 @@ export const clearFeeRateCache = () => {
  * Returns null if no override exists.
  */
 export const getStudentFlatFeeOverride = async (gccNo, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`) => {
+  sessionYear = normalizeSessionYear(sessionYear)
   const key = `${gccNo}__${sessionYear}`
   if (_overrideCache[key] !== undefined) return _overrideCache[key]
 
@@ -159,6 +176,7 @@ export const getStudentFlatFeeOverride = async (gccNo, sessionYear = `${CURRENT_
  * Pass null / undefined flatFeeOverride to REMOVE the override.
  */
 export const saveStudentFlatFeeOverride = async (gccNo, sessionYear, flatFeeOverride, reason = '', updatedBy = '') => {
+  sessionYear = normalizeSessionYear(sessionYear)
   // Remove override
   if (flatFeeOverride === null || flatFeeOverride === undefined) {
     await supabase
@@ -205,6 +223,7 @@ export const getFeeRates = async (
   hostelType  = 'Day Scholar',
   gccNo       = null,   // ← NEW optional param
 ) => {
+  sessionYear = normalizeSessionYear(sessionYear)
   const structKey = `${sessionYear}__${course}__${batch}__${hostelType}`
 
   // Fetch structural rates (cached)
