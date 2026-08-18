@@ -25,7 +25,7 @@ import { supabase } from './supabase'
 import { getActiveStudents, getStudentById } from './studentQueries'
 import { loadFullProfile } from './studentProfileLoader'
 import { detectMismatches } from './mismatchDetector'
-import { logAndNotify, getOpenMismatches, acknowledgeMismatch, resolveMismatch } from './mismatchLog'
+import { logAndNotify, getOpenMismatches, acknowledgeMismatch, resolveMismatch, resolveStaleFlags } from './mismatchLog'
 import { getStudentDues, getDuesForStudents } from './feeDues'
 import { globalSearch } from './globalSearch'
 import { downloadCSV, downloadSingleRecordCSV } from './exportUtils'
@@ -1100,6 +1100,55 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
   const [openRecordLoading, setOpenRecordLoading] = useState(false)
   const isMobileForm = useIsMobile()
 
+  // ── One-time backfill: hostel_allocations was never written by any
+  // module until the sync fix in Hostel.jsx/Students.jsx, so every
+  // student with students.house set already produced a house_no_allocation
+  // mismatch. students.house is the real, actively-maintained data (the
+  // Houses tab in Hostel.jsx has always read from it) — hostel_allocations
+  // was simply never populated, not a second independent data source that
+  // disagrees with it. This backfill makes hostel_allocations catch up to
+  // what students.house already says, once, so existing mismatches clear
+  // without touching the actual house assignments.
+  const [backfillRunning, setBackfillRunning] = useState(false)
+  const [backfillResult, setBackfillResult] = useState(null)   // { synced, total, errors }
+  const [backfillConfirming, setBackfillConfirming] = useState(false)
+
+  const houseNoAllocationCount = useMemo(
+    () => rows.filter(r => r.flag_key === 'house_no_allocation').length,
+    [rows]
+  )
+
+  const runBackfill = async () => {
+    setBackfillRunning(true)
+    setBackfillResult(null)
+    try {
+      const students = await getActiveStudents('id,name,gcc_no,house')
+      const withHouse = students.filter(s => s.house)
+      const BATCH = 200   // keep each upsert payload reasonable
+      let synced = 0
+      const errors = []
+      for (let i = 0; i < withHouse.length; i += BATCH) {
+        const chunk = withHouse.slice(i, i + BATCH)
+        const { error } = await supabase
+          .from('hostel_allocations')
+          .upsert(chunk.map(s => ({ student_id: s.id, house: s.house })), { onConflict: 'student_id' })
+        if (error) errors.push(error.message)
+        else synced += chunk.length
+      }
+      // Re-resolve any mismatches that are now fixed — same bookkeeping
+      // path the auto-scanner uses, just triggered immediately instead of
+      // waiting for the next hourly scan.
+      await Promise.all(withHouse.map(s => resolveStaleFlags(s.id, [])))
+      setBackfillResult({ synced, total: withHouse.length, errors })
+      await refresh()
+    } catch (e) {
+      setBackfillResult({ synced: 0, total: 0, errors: [e.message || 'Backfill failed'] })
+    } finally {
+      setBackfillRunning(false)
+      setBackfillConfirming(false)
+    }
+  }
+
   const refresh = useCallback(async () => {
     setLoading(true)
     const data = await getOpenMismatches(500)
@@ -1202,7 +1251,38 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
         <button onClick={refresh} style={{ padding: '8px 14px', borderRadius: 9, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 12.5, fontWeight: 700, color: NAVY, cursor: 'pointer' }}>
           ↻ Refresh
         </button>
+        {houseNoAllocationCount > 0 && (
+          <button onClick={() => setBackfillConfirming(true)} disabled={backfillRunning}
+            style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: backfillRunning ? SLATE[300] : SKY, fontSize: 12.5, fontWeight: 700, color: '#fff', cursor: backfillRunning ? 'default' : 'pointer' }}>
+            {backfillRunning ? 'Backfilling…' : `⚡ Backfill house allocations (${houseNoAllocationCount})`}
+          </button>
+        )}
       </div>
+
+      {backfillConfirming && (
+        <div style={{ padding: '12px 14px', background: '#eff6ff', border: `1px solid ${SKY}`, borderRadius: 12, fontSize: 12.5, color: '#1e3a5f' }}>
+          <div style={{ marginBottom: 8 }}>
+            This copies every active student's current <strong>house</strong> value into <strong>hostel_allocations</strong> (one row per student, matched by student_id). It does not change any student's house — it only makes hostel_allocations catch up to what students.house already says, which should clear most or all of the {houseNoAllocationCount} "no matching hostel allocation" mismatches. Safe to run more than once.
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={runBackfill} disabled={backfillRunning}
+              style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: SKY, color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: backfillRunning ? 'default' : 'pointer' }}>
+              {backfillRunning ? 'Running…' : 'Yes, backfill now'}
+            </button>
+            <button onClick={() => setBackfillConfirming(false)} disabled={backfillRunning}
+              style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, background: '#fff', color: SLATE[600], fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {backfillResult && (
+        <div style={{ padding: '10px 14px', borderRadius: 12, fontSize: 12.5, background: backfillResult.errors.length ? '#fef2f2' : '#f0fdf4', color: backfillResult.errors.length ? '#991b1b' : '#166534' }}>
+          Synced {backfillResult.synced} of {backfillResult.total} student{backfillResult.total === 1 ? '' : 's'} to hostel_allocations.
+          {backfillResult.errors.length > 0 && <span> {backfillResult.errors.length} error(s): {backfillResult.errors.join('; ')}</span>}
+        </div>
+      )}
 
       {/* Table */}
       {loading ? (
