@@ -46,8 +46,16 @@ export async function loadFullProfile(student) {
     hostelAlloc, disciplineRecs, sickbayRecs, leaveRecs,
     gatePasses, enquiries, parentItems, complaints,
   ] = await Promise.all([
-    // Hostel — current allocation, discipline, sickbay, leave history
-    supabase.from('hostel_allocations').select('*,hostel_rooms(room_no,floor,capacity,room_type)').eq('student_id', id).order('created_at', { ascending: false }).limit(1),
+    // Hostel — current allocation. Deliberately NOT using an embedded
+    // join (e.g. select('*,hostel_rooms(...)')) here: that syntax only
+    // resolves if PostgREST can find a single, unambiguous FK relationship
+    // between hostel_allocations and hostel_rooms in schema metadata. If
+    // that relationship is missing/ambiguous/renamed, PostgREST errors on
+    // EVERY row, and since Supabase errors aren't exceptions, that error
+    // was previously silently treated as "no hostel record" for every
+    // student — which is exactly the false-positive bug this replaces.
+    // Room details are joined manually below instead.
+    supabase.from('hostel_allocations').select('*').eq('student_id', id).order('created_at', { ascending: false }).limit(1),
     supabase.from('discipline_records').select('*').eq('student_id', id).order('date', { ascending: false }),
     supabase.from('sickbay_records').select('*').eq('student_id', id).order('date', { ascending: false }),
     supabase.from('leave_records').select('*').eq('student_id', id).order('from_date', { ascending: false }).limit(20),
@@ -89,6 +97,31 @@ export async function loadFullProfile(student) {
   // Promise.all batch above.
   const examMarks = await supabase.from('exam_marks').select('exam_type_id,exam_date,subject,marks_obtained').eq('student_id', id).order('exam_date', { ascending: false })
 
+  // Surface (don't swallow) query errors that would otherwise silently
+  // read as "no record" and feed false-positive mismatch flags. This
+  // logs to console rather than throwing, so one bad table/query doesn't
+  // take down the whole profile load for a student.
+  ;[
+    ['admission', admission], ['adm_fee_collections', admFeeCols], ['adm_flat_fees', admFlatFees],
+    ['adm_course_fees', admCourseFees], ['hostel_allocations', hostelAlloc], ['discipline_records', disciplineRecs],
+    ['sickbay_records', sickbayRecs], ['leave_records', leaveRecs], ['reception_gatepasses', gatePasses],
+    ['reception_enquiries', enquiries], ['reception_parent_items', parentItems], ['reception_complaints', complaints],
+    ['exam_marks', examMarks],
+  ].forEach(([label, result]) => {
+    if (result?.error) console.error(`loadFullProfile(${student.name || id}): ${label} query failed —`, result.error.message || result.error)
+  })
+
+  // Room details for the current allocation, fetched as a plain lookup
+  // rather than an embedded join (see note above the hostel_allocations
+  // query for why).
+  const hostelRow = hostelAlloc.data?.[0] || null
+  let hostelRoom = null
+  if (hostelRow?.room_id) {
+    const roomResult = await supabase.from('hostel_rooms').select('room_no,floor,capacity,room_type').eq('id', hostelRow.room_id).maybeSingle()
+    if (roomResult.error) console.error(`loadFullProfile(${student.name || id}): hostel_rooms lookup failed —`, roomResult.error.message)
+    hostelRoom = roomResult.data || null
+  }
+
   const presentCount = attRows.filter(r => r.status === 'Present').length
   const attendancePct = attRows.length ? Math.round((presentCount / attRows.length) * 100) : null
 
@@ -101,7 +134,7 @@ export async function loadFullProfile(student) {
     fees: { admFeeCols: admFeeCols.data || [], admFlatFees: admFlatFees.data || [], admCourseFees: admCourseFees.data || [], total: admFeeTotal + flatFeeTotal + courseFeeTotal },
     attendance: { records: attRows, presentCount, totalMarked: attRows.length, pct: attendancePct },
     exams: examMarks.data || [],
-    hostel: hostelAlloc.data?.[0] || null,
+    hostel: hostelRow ? { ...hostelRow, hostel_rooms: hostelRoom } : null,
     housemaster: housemaster.data || null,
     houseOccupancy: houseOccupancy.count,
     discipline: disciplineRecs.data || [],
