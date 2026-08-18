@@ -228,7 +228,7 @@ export const getFeeRates = async (
 
   // Fetch structural rates (cached)
   if (!_rateCache[structKey]) {
-    const { data } = await supabase
+    let { data } = await supabase
       .from(TABLES.feeStructures)
       .select('flat_fee, course_fee, admission_fee')
       .eq('session_year', sessionYear)
@@ -237,12 +237,42 @@ export const getFeeRates = async (
       .eq('hostel_type',  hostelType)
       .maybeSingle()
 
+    // ✦ Batch-less fallback: if batch wasn't supplied (student record has no
+    //   batch assigned yet), the exact match above can never succeed because
+    //   Fee Setup always writes real batch names. Rather than drop straight
+    //   to hardcoded legacy rates, try any configured row for this
+    //   session/course/hostel regardless of batch — closer to the real
+    //   configured rate than the static fallback constants. This does NOT
+    //   fix the underlying missing-batch data; it's a stopgap so billing
+    //   isn't silently stale while that gets cleaned up.
+    let usedBatchlessFallback = false
+    if (!data && !batch) {
+      const { data: anyBatchRow } = await supabase
+        .from(TABLES.feeStructures)
+        .select('flat_fee, course_fee, admission_fee')
+        .eq('session_year', sessionYear)
+        .eq('course',       course)
+        .eq('hostel_type',  hostelType)
+        .limit(1)
+        .maybeSingle()
+      if (anyBatchRow) {
+        data = anyBatchRow
+        usedBatchlessFallback = true
+      }
+    }
+
     const usingFallbackRates = !data
     if (usingFallbackRates) {
       console.warn(
         `getFeeRates: no fee_structures row for session=${sessionYear} course=${course} ` +
         `batch=${batch} hostelType=${hostelType} — falling back to legacy hardcoded rates. ` +
         `Configure this combination in Fee Setup to avoid billing stale amounts.`
+      )
+    } else if (usedBatchlessFallback) {
+      console.warn(
+        `getFeeRates: student has no batch set (session=${sessionYear} course=${course} ` +
+        `hostelType=${hostelType}) — used a configured rate from another batch in this ` +
+        `course/hostel as a stopgap. Assign this student a batch to bill the correct amount.`
       )
     }
 
@@ -251,6 +281,7 @@ export const getFeeRates = async (
       courseFee:    data?.course_fee    ?? COURSE_RATES[course]?.[hostelType] ?? 0,
       admissionFee: data?.admission_fee ?? ADM_FEE_BASE,
       usingFallbackRates,
+      usedBatchlessFallback,
     }
   }
 
