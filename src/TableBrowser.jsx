@@ -18,6 +18,8 @@ import { downloadCSV } from './exportUtils'
 import { resolveStudentKey } from './globalSearch'
 import { getActiveStudents } from './studentQueries'
 import { editField, getEditableFields } from './editEngine'
+import RegistrationCard from './RegistrationCard'
+import { getCompletion } from './requiredFields'
 
 // ─── EVENT BROADCASTER ───
 // Dispatches a global event so other open modules instantly refetch 
@@ -40,7 +42,7 @@ const STUDENT_ADM_SYNC_FIELDS_HINT = new Set([
   'address','prev_school','referral_source','remarks',
 ])
 
-const NAVY = '#0B1E3D', GOLD = '#C9A24B', RED = '#dc2626', GREEN = '#16a34a'
+const NAVY = '#0B1E3D', GOLD = '#C9A24B', RED = '#dc2626', GREEN = '#16a34a', AMBER = '#d97706'
 const SLATE = { 50:'#f8fafc',100:'#f1f5f9',200:'#e2e8f0',300:'#cbd5e1',400:'#94a3b8',500:'#64748b',600:'#475569',700:'#334155' }
 const PAGE_SIZE = 100
 
@@ -97,6 +99,13 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
   const [bulkConfirming, setBulkConfirming] = useState(false)
   const [bulkRunning, setBulkRunning] = useState(false)
   const [bulkResult, setBulkResult] = useState(null)   // { done, total, errors: [{id,message}] }
+
+  // ─── Registration-card state ───
+  // Clicking a row/card opens RegistrationCard for it instead of the old
+  // per-cell inline editing. Holds the row object itself (not just an id)
+  // so the card has data immediately; row updates from the card are
+  // reflected back into `rows` via onSaved below.
+  const [openRow, setOpenRow] = useState(null)
 
   const entry = TABLE_REGISTRY.find(t => t.key === tableKey)
   const effectiveSortCol = sortCol || entry?.orderCol
@@ -422,11 +431,11 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {rows.map((r, i) => (
             <RowCard key={r.id ?? i} row={r} columns={columns} tableKey={tableKey}
-              editableFields={editableFields} student={resolveRowStudent(r)} onOpenStudent={onOpenStudent}
+              student={resolveRowStudent(r)} onOpenStudent={onOpenStudent}
               selectable={!!editableFields} selected={selectedIds.has(r.id)}
               selectDisabled={!bulkField || !eligibleForBulk.includes(r)}
               onToggleSelected={() => toggleRowSelected(r.id)}
-              onRowUpdated={(field, val) => setRows(prev => prev.map(row => row === r ? { ...row, [field]: val } : row))} />
+              onOpenForm={() => setOpenRow(r)} />
           ))}
         </div>
       ) : (
@@ -451,22 +460,44 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
                     </th>
                   )
                 })}
-                {editableFields && <th style={{ padding: '8px 10px', borderBottom: `1px solid ${SLATE[200]}`, width: 1 }} />}
               </tr>
             </thead>
             <tbody>
               {rows.map((r, i) => (
                 <TableRow key={r.id ?? i} row={r} columns={columns} tableKey={tableKey}
-                  editableFields={editableFields} student={resolveRowStudent(r)} onOpenStudent={onOpenStudent}
+                  student={resolveRowStudent(r)} onOpenStudent={onOpenStudent}
                   selectable={!!editableFields} selected={selectedIds.has(r.id)}
                   selectDisabled={!bulkField || !eligibleForBulk.includes(r)}
                   onToggleSelected={() => toggleRowSelected(r.id)}
-                  onRowUpdated={(field, val) => setRows(prev => prev.map(row => row === r ? { ...row, [field]: val } : row))} />
+                  onOpenForm={() => setOpenRow(r)} />
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {/* Registration-form card — opens on row click, replaces per-cell inline editing */}
+      {openRow && (
+        <RegistrationCard
+          row={openRow}
+          tableKey={tableKey}
+          tableLabel={entry?.label || tableKey}
+          isMobile={isMobile}
+          studentContext={resolveRowStudent(openRow)}
+          onClose={() => setOpenRow(null)}
+          onSaved={(field, value) => {
+            setRows(prev => prev.map(row => row.id === openRow.id ? { ...row, [field]: value } : row))
+            setOpenRow(prev => prev ? { ...prev, [field]: value } : prev)
+            const student = resolveRowStudent(openRow)
+            broadcastCrossModuleWrite(tableKey, {
+              type: 'update',
+              student_id: student?.id || (tableKey === 'students' ? openRow.id : null),
+              field,
+            })
+          }}
+        />
+      )}
+
 
       {/* Pagination */}
       {totalPages > 1 && (
@@ -486,202 +517,82 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
   )
 }
 
-// Mobile stacked-card equivalent of TableRow — same edit/select behavior,
-// laid out as label/value pairs so nothing gets squeezed into unreadable
-// table cells on a phone width. Shares the save-via-editField path with
-// TableRow rather than reimplementing it, so audit logging and the
-// students->admissions cascade sync stay identical between layouts.
-function RowCard({ row, columns, tableKey, editableFields, student, onOpenStudent, onRowUpdated, selectable, selected, selectDisabled, onToggleSelected }) {
-  const [editingField, setEditingField] = useState(null)
-  const [draft, setDraft] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState(null)
-
-  const startEdit = (field) => {
-    setEditingField(field)
-    setDraft(row[field] ?? '')
-    setErr(null)
-  }
-
-  const save = async () => {
-    setSaving(true); setErr(null)
-    try {
-      await editField({ tableKey, rowId: row.id, field: editingField, oldValue: row[editingField], newValue: draft, studentContext: student })
-      broadcastCrossModuleWrite(tableKey, {
-        type: 'update',
-        student_id: student?.id || (tableKey === 'students' ? row.id : null),
-        field: editingField,
-      })
-      onRowUpdated(editingField, draft)
-      setEditingField(null)
-    } catch (e) {
-      setErr(e.message || 'Save failed')
-    } finally {
-      setSaving(false)
-    }
-  }
+// Mobile stacked-card equivalent of TableRow — read-only display; clicking
+// anywhere on the card (other than the checkbox or open-student button)
+// opens RegistrationCard for full editing instead of inline-editing here.
+function RowCard({ row, columns, tableKey, student, onOpenStudent, selectable, selected, selectDisabled, onToggleSelected, onOpenForm }) {
+  const completion = useMemo(() => getCompletion(tableKey, row), [tableKey, row])
 
   return (
-    <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${SLATE[200]}`, padding: '12px 14px' }}>
+    <div onClick={onOpenForm}
+      style={{ background: '#fff', borderRadius: 14, border: `1px solid ${SLATE[200]}`, padding: '12px 14px', cursor: 'pointer' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           {selectable && (
             <input type="checkbox" checked={selected} disabled={selectDisabled} onChange={onToggleSelected}
+              onClick={e => e.stopPropagation()}
               title={selectDisabled ? 'Pick a bulk-edit field above first' : undefined} />
           )}
           {student && onOpenStudent && (
-            <button onClick={() => onOpenStudent(student)} title={`Open ${student.name}'s profile`}
+            <button onClick={e => { e.stopPropagation(); onOpenStudent(student) }} title={`Open ${student.name}'s profile`}
               style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 15, padding: 2, flexShrink: 0 }}>
               &#128100;
             </button>
           )}
         </div>
-        {editableFields && !editingField && (
-          <select onChange={e => { if (e.target.value) startEdit(e.target.value); e.target.value = '' }} defaultValue=""
-            style={{ fontSize: 11, color: SLATE[400], border: `1px solid ${SLATE[200]}`, borderRadius: 6, padding: '3px 5px', cursor: 'pointer' }}>
-            <option value="" disabled>Edit&hellip;</option>
-            {Object.keys(editableFields).map(f => <option key={f} value={f}>{editableFields[f].label}</option>)}
-          </select>
+        {completion && (
+          <span style={{ fontSize: 10.5, fontWeight: 800, color: completion.percent === 100 ? GREEN : completion.percent < 50 ? RED : AMBER, flexShrink: 0 }}>
+            {completion.percent}% complete
+          </span>
         )}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {columns.map(c => {
-          const fieldDef = editableFields?.[c]
-          const isEditingThis = editingField === c
-          return (
-            <div key={c} style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 6, borderBottom: `1px solid ${SLATE[100]}` }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: SLATE[400], textTransform: 'uppercase', letterSpacing: '.03em' }}>{c.replace(/_/g, ' ')}</span>
-              {isEditingThis ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  {fieldDef.type === 'select' ? (
-                    <select value={draft} onChange={e => setDraft(e.target.value)} autoFocus
-                      style={{ padding: '5px 6px', borderRadius: 6, border: `1px solid ${SLATE[200]}`, fontSize: 13, flex: 1, minWidth: 100 }}>
-                      {fieldDef.options.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
-                  ) : (
-                    <input value={draft} onChange={e => setDraft(e.target.value)} autoFocus
-                      style={{ padding: '5px 6px', borderRadius: 6, border: `1px solid ${SLATE[200]}`, fontSize: 13, flex: 1, minWidth: 100 }} />
-                  )}
-                  <button onClick={save} disabled={saving} title="Save"
-                    style={{ border: 'none', background: GREEN, color: '#fff', borderRadius: 5, fontSize: 11, fontWeight: 700, padding: '5px 8px', cursor: 'pointer' }}>&#10003;</button>
-                  <button onClick={() => setEditingField(null)} disabled={saving} title="Cancel"
-                    style={{ border: 'none', background: SLATE[200], color: SLATE[600], borderRadius: 5, fontSize: 11, fontWeight: 700, padding: '5px 8px', cursor: 'pointer' }}>&#10005;</button>
-                  {err && <span style={{ fontSize: 10.5, color: RED, width: '100%' }}>{err}</span>}
-                </div>
-              ) : (
-                <span
-                  onClick={() => fieldDef && startEdit(c)}
-                  style={{ fontSize: 13.5, color: SLATE[700], wordBreak: 'break-word', cursor: fieldDef ? 'pointer' : 'default', borderBottom: fieldDef ? `1px dashed ${SLATE[300]}` : 'none', display: 'inline-block' }}
-                >
-                  {row[c] == null || row[c] === '' ? <span style={{ color: SLATE[300] }}>&mdash;</span> : String(row[c])}
-                </span>
-              )}
-            </div>
-          )
-        })}
+        {columns.slice(0, 6).map(c => (
+          <div key={c} style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 6, borderBottom: `1px solid ${SLATE[100]}` }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: SLATE[400], textTransform: 'uppercase', letterSpacing: '.03em' }}>{c.replace(/_/g, ' ')}</span>
+            <span style={{ fontSize: 13.5, color: SLATE[700], wordBreak: 'break-word' }}>
+              {row[c] == null || row[c] === '' ? <span style={{ color: SLATE[300] }}>&mdash;</span> : String(row[c])}
+            </span>
+          </div>
+        ))}
+        {columns.length > 6 && (
+          <div style={{ fontSize: 11, color: SLATE[400], textAlign: 'center', paddingTop: 2 }}>
+            +{columns.length - 6} more field{columns.length - 6 === 1 ? '' : 's'} &middot; tap to view all
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-// One table row — a separate component so its own inline-edit state
-// (which field is being edited) doesn't re-render the whole table.
-function TableRow({ row, columns, tableKey, editableFields, student, onOpenStudent, onRowUpdated, selectable, selected, selectDisabled, onToggleSelected }) {
-  const [editingField, setEditingField] = useState(null)
-  const [draft, setDraft] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState(null)
-
-  const startEdit = (field) => {
-    setEditingField(field)
-    setDraft(row[field] ?? '')
-    setErr(null)
-  }
-
-  const save = async () => {
-    setSaving(true); setErr(null)
-    try {
-      await editField({ tableKey, rowId: row.id, field: editingField, oldValue: row[editingField], newValue: draft, studentContext: student })
-      
-      // ─── BROADCAST THE UPDATE ───
-      // Ensures the change is instantly reflected across the rest of the application
-      broadcastCrossModuleWrite(tableKey, { 
-        type: 'update', 
-        student_id: student?.id || (tableKey === 'students' ? row.id : null), 
-        field: editingField 
-      })
-
-      onRowUpdated(editingField, draft)
-      setEditingField(null)
-    } catch (e) {
-      setErr(e.message || 'Save failed')
-    } finally {
-      setSaving(false)
-    }
-  }
-
+// One table row — read-only display; clicking anywhere on the row (other
+// than the checkbox or open-student button) opens RegistrationCard for
+// full editing instead of the old per-cell inline editing.
+function TableRow({ row, columns, tableKey, student, onOpenStudent, selectable, selected, selectDisabled, onToggleSelected, onOpenForm }) {
   return (
-    <tr style={{ borderBottom: `1px solid ${SLATE[100]}` }}>
+    <tr onClick={onOpenForm} style={{ borderBottom: `1px solid ${SLATE[100]}`, cursor: 'pointer' }}
+      onMouseEnter={e => e.currentTarget.style.background = SLATE[50]}
+      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
       <td style={{ padding: '7px 6px', textAlign: 'center' }}>
         {student && onOpenStudent && (
-          <button onClick={() => onOpenStudent(student)} title={`Open ${student.name}'s profile`}
+          <button onClick={e => { e.stopPropagation(); onOpenStudent(student) }} title={`Open ${student.name}'s profile`}
             style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, padding: 2 }}>
             &#128100;
           </button>
         )}
       </td>
       {selectable && (
-        <td style={{ padding: '7px 6px', textAlign: 'center' }}>
+        <td style={{ padding: '7px 6px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
           <input type="checkbox" checked={selected} disabled={selectDisabled} onChange={onToggleSelected}
             title={selectDisabled ? 'Pick a bulk-edit field above first' : undefined} />
         </td>
       )}
-      {columns.map(c => {
-        const fieldDef = editableFields?.[c]
-        const isEditingThis = editingField === c
-        return (
-          <td key={c} style={{ padding: '7px 10px', color: SLATE[700], whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: 260, position: 'relative' }}>
-            {isEditingThis ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                {fieldDef.type === 'select' ? (
-                  <select value={draft} onChange={e => setDraft(e.target.value)} autoFocus
-                    style={{ padding: '3px 6px', borderRadius: 6, border: `1px solid ${SLATE[200]}`, fontSize: 11.5 }}>
-                    {fieldDef.options.map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                ) : (
-                  <input value={draft} onChange={e => setDraft(e.target.value)} autoFocus
-                    style={{ padding: '3px 6px', borderRadius: 6, border: `1px solid ${SLATE[200]}`, fontSize: 11.5, width: 120 }} />
-                )}
-                <button onClick={save} disabled={saving} title="Save"
-                  style={{ border: 'none', background: GREEN, color: '#fff', borderRadius: 5, fontSize: 10.5, fontWeight: 700, padding: '3px 6px', cursor: 'pointer' }}>&#10003;</button>
-                <button onClick={() => setEditingField(null)} disabled={saving} title="Cancel"
-                  style={{ border: 'none', background: SLATE[200], color: SLATE[600], borderRadius: 5, fontSize: 10.5, fontWeight: 700, padding: '3px 6px', cursor: 'pointer' }}>&#10005;</button>
-                {err && <span style={{ fontSize: 10, color: RED, position: 'absolute', top: '100%', left: 0, whiteSpace: 'normal', background: '#fff', padding: 2 }}>{err}</span>}
-              </div>
-            ) : (
-              <span
-                onDoubleClick={() => fieldDef && startEdit(c)}
-                title={fieldDef ? 'Double-click to edit' : undefined}
-                style={{ cursor: fieldDef ? 'pointer' : 'default', borderBottom: fieldDef ? `1px dashed ${SLATE[300]}` : 'none' }}
-              >
-                {row[c] == null || row[c] === '' ? <span style={{ color: SLATE[300] }}>&mdash;</span> : String(row[c])}
-              </span>
-            )}
-          </td>
-        )
-      })}
-      {editableFields && (
-        <td style={{ padding: '7px 6px' }}>
-          {!editingField && (
-            <select onChange={e => { if (e.target.value) startEdit(e.target.value); e.target.value = '' }} defaultValue=""
-              style={{ fontSize: 10.5, color: SLATE[400], border: `1px solid ${SLATE[200]}`, borderRadius: 6, padding: '2px 4px', cursor: 'pointer' }}>
-              <option value="" disabled>Edit&hellip;</option>
-              {Object.keys(editableFields).map(f => <option key={f} value={f}>{editableFields[f].label}</option>)}
-            </select>
-          )}
+      {columns.map(c => (
+        <td key={c} style={{ padding: '7px 10px', color: SLATE[700], whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: 260 }}>
+          {row[c] == null || row[c] === '' ? <span style={{ color: SLATE[300] }}>&mdash;</span> : String(row[c])}
         </td>
-      )}
+      ))}
     </tr>
   )
 }
