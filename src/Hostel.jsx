@@ -11,6 +11,7 @@ import HouseReportModal from './HouseReportModal'
 import { sendPushToStaffId, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
 import { approveLeaveRecord, checkQuotaBeforeApproval } from './leaveApproval'
 import { useActiveSession } from './shared/useActiveSession'
+import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
 
 // ── Live-refresh listener for student record changes ──────────────────────
 // Students.jsx (and Attendance.jsx's Student DB tab) dispatch window
@@ -1189,6 +1190,55 @@ function AlertStudentPanel({ students, accentColor, actions, onMark, savingId })
   )
 }
 
+// Small inline control for the "unassigned students" alert panel: pick a
+// house, then a room-number field appears so the assignment captures a
+// real room immediately rather than deferring to 'TBD' — this is the
+// single-student quick-assign path, so there's no reason not to ask for
+// the room right here, unlike the bulk-assign action elsewhere in this
+// file (see bulkAllocateStudents in hostelAllocation.js) where per-student
+// room entry isn't practical.
+function UnassignedHouseRoomPicker({ student, houseNames, onAssign }) {
+  const [house, setHouse] = useState('')
+  const [room, setRoom] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  if (!house) {
+    return (
+      <select
+        defaultValue=""
+        onChange={e => { if (e.target.value) setHouse(e.target.value) }}
+        style={{ ...inp, width: 'auto', padding: '6px 10px', fontSize: '12px' }}
+      >
+        <option value="" disabled>Assign to house...</option>
+        {houseNames.map(h => <option key={h} value={h}>{h}</option>)}
+      </select>
+    )
+  }
+
+  const confirm = async () => {
+    setSaving(true)
+    await onAssign(house, room.trim())
+    setSaving(false)
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+      <span style={{ fontSize: 11.5, fontWeight: 700, color: '#334155' }}>{house}</span>
+      <input value={room} onChange={e => setRoom(e.target.value)} placeholder="Room no."
+        style={{ ...inp, width: 70, padding: '6px 8px', fontSize: '12px' }} />
+      <button onClick={confirm} disabled={saving}
+        style={{ padding: '6px 10px', borderRadius: 6, border: 'none', background: '#1a2f4d', color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: saving ? 'default' : 'pointer' }}>
+        {saving ? '…' : 'Assign'}
+      </button>
+      <button onClick={() => setHouse('')} disabled={saving}
+        style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', fontSize: 11.5, cursor: 'pointer' }}>
+        ✕
+      </button>
+    </div>
+  )
+}
+
+
 function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange, onCompleteTab }) {
   const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const userRole = (currentUser?.role || currentHousemaster?.role || 'hm').toLowerCase()
@@ -1439,10 +1489,19 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
     })
   }, [])
 
-  const handleAssignHouse = async (studentId, houseName) => {
+  const handleAssignHouse = async (student, houseName, roomNumber) => {
     if (!isAdmin) { alert('Only admins can assign students to a house.'); return }
-    await supabase.from('students').update({ house: houseName || null }).eq('id', studentId)
-    broadcastStudentsUpdate({ type: 'house_reassign', student_id: studentId, house: houseName || null })
+    if (!houseName) return
+    try {
+      await allocateStudent(
+        { id: student.id, name: student.name, gcc_no: student.gcc_no, class_name: getStudentClass(student) },
+        { hostelName: houseName, roomNumber: roomNumber || 'TBD' }
+      )
+    } catch (e) {
+      alert('Failed to assign house: ' + (e.message || 'unknown error'))
+      return
+    }
+    broadcastStudentsUpdate({ type: 'house_reassign', student_id: student.id, house: houseName })
     // students prop is owned by the parent (Hostel root); it will refetch
     // on its own polling/refresh cycle, but reflect the change locally too
     // by forcing a reload of attendance records so counts stay accurate.
@@ -2612,14 +2671,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                             <div style={{ fontSize: '11px', color: '#64748b' }}>GCC-{s.gcc_no || '--'} · {getStudentClass(s) || '--'}</div>
                           </div>
                           {isAdmin ? (
-                            <select
-                              defaultValue=""
-                              onChange={e => { if (e.target.value) handleAssignHouse(s.id, e.target.value) }}
-                              style={{ ...inp, width: 'auto', padding: '6px 10px', fontSize: '12px' }}
-                            >
-                              <option value="" disabled>Assign to house...</option>
-                              {allHouseNames.map(h => <option key={h} value={h}>{h}</option>)}
-                            </select>
+                            <UnassignedHouseRoomPicker
+                              student={s}
+                              houseNames={allHouseNames}
+                              onAssign={(houseName, roomNumber) => handleAssignHouse(s, houseName, roomNumber)}
+                            />
                           ) : (
                             <span style={{ fontSize: '11px', color: '#9a3412', fontStyle: 'italic' }}>Ask an admin to assign a house</span>
                           )}
@@ -7464,17 +7520,34 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
     return { capacity, occupied, available: capacity - occupied, isFull: occupied >= capacity }
   }
 
-  const handleAssign = async (studentId, houseName) => {
+  const handleAssign = async (student, houseName) => {
     if (!isAdmin) { alert('Only admins can change house assignments.'); return }
     if (houseName) {
-      const remaining = getHouseRemaining(houseName, studentId)
+      const remaining = getHouseRemaining(houseName, student.id)
       if (remaining?.isFull) {
         if (!window.confirm(`⚠ ${houseName} is full (${remaining.occupied}/${remaining.capacity}). Assign anyway?`)) return
       }
     }
-    await supabase.from('students').update({ house: houseName || null }).eq('id', studentId)
-    broadcastStudentsUpdate({ type: 'house_reassign', student_id: studentId, house: houseName || null })
-    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, house: houseName || null } : s))
+    try {
+      if (houseName) {
+        // This drawer's Assign/reassign controls have no room-number input
+        // (unlike the unassigned-students panel's UnassignedHouseRoomPicker),
+        // so this defaults to 'TBD' the same way bulk-assign does — gets the
+        // student into the right house immediately, room detail can be
+        // filled in later via that student's hostel_allocations record.
+        await allocateStudent(
+          { id: student.id, name: student.name, gcc_no: student.gcc_no, class_name: getStudentClass(student) },
+          { hostelName: houseName, roomNumber: 'TBD' }
+        )
+      } else {
+        await vacateStudent(student.id)
+      }
+    } catch (e) {
+      showToast('Failed: ' + (e.message || 'unknown error'), '#dc2626')
+      return
+    }
+    broadcastStudentsUpdate({ type: 'house_reassign', student_id: student.id, house: houseName || null })
+    setStudents(prev => prev.map(s => s.id === student.id ? { ...s, house: houseName || null } : s))
     showToast(houseName ? `✅ Assigned to ${houseName}` : '✅ Removed from house')
   }
 
@@ -7489,10 +7562,18 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
       if (!window.confirm(`Assign ${unassigned.length} unassigned students to ${houseName}?`)) return
     }
     const ids = unassigned.map(s => s.id)
-    await supabase.from('students').update({ house: houseName }).in('id', ids)
+    try {
+      await bulkAllocateStudents(
+        unassigned.map(s => ({ id: s.id, name: s.name, gcc_no: s.gcc_no, class_name: getStudentClass(s) })),
+        houseName
+      )
+    } catch (e) {
+      showToast('Bulk assign failed: ' + (e.message || 'unknown error'), '#dc2626')
+      return
+    }
     broadcastStudentsUpdate({ type: 'bulk_house_reassign', ids, house: houseName })
     setStudents(prev => prev.map(s => ids.includes(s.id) ? { ...s, house: houseName } : s))
-    showToast(`✅ ${unassigned.length} students assigned to ${houseName}`)
+    showToast(`✅ ${unassigned.length} students assigned to ${houseName} (room: TBD — fill in per student)`)
   }
 
 
@@ -7644,7 +7725,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                           <strong>{s.name}</strong>
                           <span style={{ color: '#64748b', marginLeft: 8 }}>GCC-{s.gcc_no || '--'} · {getStudentClass(s) || '--'}</span>
                         </div>
-                        {isAdmin && <button onClick={() => { handleAssign(s.id, activeHouseObj.name); setAssignSearch('') }} style={{ ...btn(hs.color), fontSize: 11, padding: '4px 12px' }}>Assign</button>}
+                        {isAdmin && <button onClick={() => { handleAssign(s, activeHouseObj.name); setAssignSearch('') }} style={{ ...btn(hs.color), fontSize: 11, padding: '4px 12px' }}>Assign</button>}
                       </div>
                     ))}
                   </div>
@@ -7681,7 +7762,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.course || '—'}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.hostel_type || '—'}</td>
                           <td style={{ padding: '10px 14px' }}>
-                            {isAdmin && <button onClick={() => handleAssign(s.id, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕ Remove</button>}
+                            {isAdmin && <button onClick={() => handleAssign(s, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕ Remove</button>}
                           </td>
                         </tr>
                       ))}
@@ -7704,7 +7785,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                         <td style={{ padding: '9px 14px', fontWeight: 600, color: '#7c2d12' }}>{s.name}</td>
                         <td style={{ padding: '9px 14px', color: '#b45309', fontSize: 12, fontWeight: 700 }}>🚪 Unassigned/Dropout</td>
                         <td style={{ padding: '9px 14px' }}>
-                          {isAdmin && <button onClick={() => handleAssign(s.id, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕ Clear House</button>}
+                          {isAdmin && <button onClick={() => handleAssign(s, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕ Clear House</button>}
                         </td>
                       </tr>
                     ))}
@@ -7964,12 +8045,12 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                         <td style={{ padding: '9px 14px' }}>
                           {s.status === 'Dropout' ? (
                             isAdmin && s.house ? (
-                              <button onClick={() => handleAssign(s.id, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕ Clear House</button>
+                              <button onClick={() => handleAssign(s, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕ Clear House</button>
                             ) : (
                               <span style={{ fontSize: 12, color: '#94a3b8' }}>— Dropout —</span>
                             )
                           ) : isAdmin ? (
-                            <select value={s.house || ''} onChange={e => handleAssign(s.id, e.target.value)} style={{ ...inp, minWidth: 120, width: 'auto', maxWidth: 200, padding: '6px 10px', fontSize: 12 }}>
+                            <select value={s.house || ''} onChange={e => handleAssign(s, e.target.value)} style={{ ...inp, minWidth: 120, width: 'auto', maxWidth: 200, padding: '6px 10px', fontSize: 12 }}>
                               <option value="">— Remove / None —</option>
                               {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
                             </select>

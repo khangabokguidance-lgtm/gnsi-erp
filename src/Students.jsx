@@ -11,6 +11,7 @@ import { useAuth } from './AuthContext'
 import { PersonalAccountantButton } from './personalAccountant'
 import { staffDB } from './staffDB'
 import { getActiveStudents, getAllStudents } from './studentQueries'
+import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
 
 // ── Live-refresh listener for the Attendance module's save event ──────────
 // Attendance.jsx dispatches window CustomEvent 'gnsi:attendance-updated'
@@ -1936,8 +1937,13 @@ function HouseReassignmentModal({ students, selectedIds, can, onClose, onRefresh
     try{RateLimiter.check('students_house_reassign',8,60000)}catch(e){showToast(e.message,T.red);return}
     setProcessing(true)
     try{
-      await updateStudentsRows({match:{id:{in:Array.from(selectedIds)}},patch:{house:newHouse}})
-      await auditLog('bulk_house_reassign',{ids:Array.from(selectedIds),newHouse})
+      const ids=Array.from(selectedIds)
+      const selectedStudents=students.filter(s=>selectedIds.has(s.id))
+      await bulkAllocateStudents(
+        selectedStudents.map(s=>({id:s.id,name:s.name,gcc_no:s.gcc_no,class_name:s.class_name})),
+        newHouse
+      )
+      await auditLog('bulk_house_reassign',{ids,newHouse})
       showToast(`${selectedIds.size} → ${newHouse}`,T.green);onRefresh();onClose()
     }
     catch(err){showToast('Failed: '+err.message,T.red)}
@@ -4753,17 +4759,30 @@ const effectiveCols = visibleCols.filter(col => {
   // ── Mutations (logic unchanged) ───────────────────────────────────────────────
   const handleSave=async(eid,obj)=>{
     if(!can.write){showToast('No permission',T.red);return}
-    const payload={gcc_no:parseInt(obj.gcc_no),name:obj.name,dob:obj.dob||null,gender:obj.gender||null,course:obj.course||null,batch:obj.batch||null,house:obj.house||null,session:obj.session||null,hostel_type:obj.hostel_type||'Day Scholar',status:obj.status||'Active',father_name:obj.father_name||null,mother_name:obj.mother_name||null,phone:obj.phone||null,address:obj.address||null,remarks:obj.remarks||null,fee_waiver:Number(obj.fee_waiver)||0,scholarship:Number(obj.scholarship)||0,fee_waiver_note:obj.fee_waiver_note||null,emergency_contact:obj.emergency_contact||null,prev_school:obj.prev_school||null,referral_source:obj.referral_source||null,admission_date:obj.admission_date||null,left_date:obj.left_date||null,medical_notes:obj.medical_notes||null,academic_remarks:obj.academic_remarks||null}
+    // house is deliberately NOT included in this payload — it's written
+    // exclusively by allocateStudent/vacateStudent below (which also
+    // mirrors it onto students.house), so it can't race against or
+    // overwrite what those helpers just wrote.
+    const payload={gcc_no:parseInt(obj.gcc_no),name:obj.name,dob:obj.dob||null,gender:obj.gender||null,course:obj.course||null,batch:obj.batch||null,session:obj.session||null,hostel_type:obj.hostel_type||'Day Scholar',status:obj.status||'Active',father_name:obj.father_name||null,mother_name:obj.mother_name||null,phone:obj.phone||null,address:obj.address||null,remarks:obj.remarks||null,fee_waiver:Number(obj.fee_waiver)||0,scholarship:Number(obj.scholarship)||0,fee_waiver_note:obj.fee_waiver_note||null,emergency_contact:obj.emergency_contact||null,prev_school:obj.prev_school||null,referral_source:obj.referral_source||null,admission_date:obj.admission_date||null,left_date:obj.left_date||null,medical_notes:obj.medical_notes||null,academic_remarks:obj.academic_remarks||null}
+    const houseChosen=obj.house||null
     if(eid){
       const{error}=await updateStudentsRows({match:{id:eid},patch:payload})
       if(error){showToast('Update failed: '+error.message,T.red);return}
-      setStudents(prev=>prev.map(s=>s.id===eid?{...s,...payload}:s))
+      try{
+        if(houseChosen)await allocateStudent({id:eid,name:payload.name,gcc_no:payload.gcc_no,class_name:payload.class_name},{hostelName:houseChosen,roomNumber:'TBD'})
+        else await vacateStudent(eid)
+      }catch(e){showToast('House update failed: '+(e.message||'unknown error'),T.red)}
+      setStudents(prev=>prev.map(s=>s.id===eid?{...s,...payload,house:houseChosen}:s))
       await auditLog('student_update',{student_id:eid});showToast('Student updated',T.amber)
       broadcastStudentsUpdate({type:'update',student_id:eid,course:payload.course,class_name:payload.class_name})
     }else{
       const{data,error}=await supabase.from('students').insert(payload).select().single()
       if(error){showToast(error.code==='23505'?`GCC ${obj.gcc_no} already exists`:'Save failed: '+error.message,T.red);return}
-      setStudents(prev=>[data,...prev])
+      if(houseChosen){
+        try{await allocateStudent({id:data.id,name:data.name,gcc_no:data.gcc_no,class_name:data.class_name},{hostelName:houseChosen,roomNumber:'TBD'})}
+        catch(e){showToast('House assignment failed: '+(e.message||'unknown error'),T.red)}
+      }
+      setStudents(prev=>[{...data,house:houseChosen},...prev])
       await auditLog('student_create',{student_id:data.id,gcc_no:data.gcc_no});showToast(`${data.name} added`,T.green)
       broadcastStudentsUpdate({type:'create',student_id:data.id,course:data.course,class_name:data.class_name})
       // insert() has no equivalent in updateStudentsRows (that wrapper is
@@ -4781,9 +4800,19 @@ const effectiveCols = visibleCols.filter(col => {
     if(!can.write){showToast('No permission',T.red);return}
     const payload={...fields}
     if(payload.gcc_no!==undefined)payload.gcc_no=parseInt(payload.gcc_no)||null
+    const houseIncluded='house' in payload
+    const houseChosen=payload.house||null
+    if(houseIncluded)delete payload.house   // written via allocateStudent/vacateStudent below instead
     const{error}=await updateStudentsRows({match:{id:studentId},patch:payload})
     if(error){showToast('Update failed: '+error.message,T.red);return}
-    setStudents(prev=>prev.map(s=>s.id===studentId?{...s,...payload}:s))
+    if(houseIncluded){
+      const current=students.find(s=>s.id===studentId)
+      try{
+        if(houseChosen)await allocateStudent({id:studentId,name:current?.name,gcc_no:current?.gcc_no,class_name:current?.class_name},{hostelName:houseChosen,roomNumber:'TBD'})
+        else await vacateStudent(studentId)
+      }catch(e){showToast('House update failed: '+(e.message||'unknown error'),T.red)}
+    }
+    setStudents(prev=>prev.map(s=>s.id===studentId?{...s,...payload,...(houseIncluded?{house:houseChosen}:{})}:s))
     await auditLog('student_quick_complete',{student_id:studentId,fields:Object.keys(fields)})
     showToast('Details saved',T.green)
     if('course' in payload || 'class_name' in payload || 'status' in payload) broadcastStudentsUpdate({type:'quick_update',student_id:studentId})

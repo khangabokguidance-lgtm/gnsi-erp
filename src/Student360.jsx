@@ -32,6 +32,7 @@ import { downloadCSV, downloadSingleRecordCSV } from './exportUtils'
 import TableBrowser, { useIsMobile } from './TableBrowser'
 import { editField, getEditableFields } from './editEngine'
 import RegistrationCard from './RegistrationCard'
+import { allocateStudent, vacateStudent, backfillMissingAllocations } from './hostelAllocation'
 
 // ── Live-refresh listeners for cross-module writes ──────────────────────────
 // Same self-contained-copy pattern used in Students.jsx and Hostel.jsx (see
@@ -983,32 +984,28 @@ function InlineMismatchFix({ row, currentUser, onDone, onOpenForm }) {
   const save = async () => {
     setSaving(true); setErr(null)
     try {
-      await editField({
-        tableKey: cfg.tableKey, rowId: row.student_id, field: cfg.field,
-        oldValue: null, newValue: draft,
-        studentContext: { id: row.student_id, name: row.student_name },
-      })
-      broadcastCrossModuleWrite(cfg.tableKey, { type: 'update', student_id: row.student_id, field: cfg.field })
-
       if (cfg.mode === 'allocation') {
+        // allocateStudent/vacateStudent own the students.house write (and
+        // mirror it correctly) — no separate editField call here, since
+        // that would be a second, potentially racing write to the same
+        // column with no room/allotment-date detail attached.
         if (draft) {
-          // House is now set — make sure a hostel_allocations row exists
-          // and matches. upsert on student_id keeps this idempotent if a
-          // stale row is somehow already there.
-          const { error: allocErr } = await supabase
-            .from('hostel_allocations')
-            .upsert({ student_id: row.student_id, house: draft }, { onConflict: 'student_id' })
-          if (allocErr) throw allocErr
+          await allocateStudent(
+            { id: row.student_id, name: row.student_name, gcc_no: row.gcc_no },
+            { hostelName: draft, roomNumber: 'TBD' }
+          )
         } else {
-          // House cleared — remove the now-orphaned allocation row so
-          // allocation_no_house doesn't just reopen next scan.
-          const { error: delErr } = await supabase
-            .from('hostel_allocations')
-            .delete()
-            .eq('student_id', row.student_id)
-          if (delErr) throw delErr
+          await vacateStudent(row.student_id)
         }
+        broadcastCrossModuleWrite('students', { type: 'update', student_id: row.student_id, field: 'house' })
         broadcastCrossModuleWrite('hostel_allocations', { type: 'update', student_id: row.student_id, field: 'house' })
+      } else {
+        await editField({
+          tableKey: cfg.tableKey, rowId: row.student_id, field: cfg.field,
+          oldValue: null, newValue: draft,
+          studentContext: { id: row.student_id, name: row.student_name },
+        })
+        broadcastCrossModuleWrite(cfg.tableKey, { type: 'update', student_id: row.student_id, field: cfg.field })
       }
 
       await resolveMismatch(row.id, currentUser?.name || currentUser?.username || null)
@@ -1122,24 +1119,14 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
     setBackfillRunning(true)
     setBackfillResult(null)
     try {
-      const students = await getActiveStudents('id,name,gcc_no,house')
-      const withHouse = students.filter(s => s.house)
-      const BATCH = 200   // keep each upsert payload reasonable
-      let synced = 0
-      const errors = []
-      for (let i = 0; i < withHouse.length; i += BATCH) {
-        const chunk = withHouse.slice(i, i + BATCH)
-        const { error } = await supabase
-          .from('hostel_allocations')
-          .upsert(chunk.map(s => ({ student_id: s.id, house: s.house })), { onConflict: 'student_id' })
-        if (error) errors.push(error.message)
-        else synced += chunk.length
-      }
+      const students = await getActiveStudents('id,name,gcc_no,class_name,house')
+      const result = await backfillMissingAllocations(students)
+      setBackfillResult({ synced: result.synced, total: result.total, errors: [] })
       // Re-resolve any mismatches that are now fixed — same bookkeeping
       // path the auto-scanner uses, just triggered immediately instead of
       // waiting for the next hourly scan.
+      const withHouse = students.filter(s => s.house)
       await Promise.all(withHouse.map(s => resolveStaleFlags(s.id, [])))
-      setBackfillResult({ synced, total: withHouse.length, errors })
       await refresh()
     } catch (e) {
       setBackfillResult({ synced: 0, total: 0, errors: [e.message || 'Backfill failed'] })
@@ -1408,7 +1395,7 @@ function SchoolOverview({ onOpenStudent }) {
         // full-year scan.
         supabase.from('attendance_sessions').select('id,session_date').gte('session_date', new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10)),
         supabase.from('houses').select('name').order('name'),
-        idList.length ? supabase.from('hostel_allocations').select('student_id,house').in('student_id', idList) : Promise.resolve({ data: [] }),
+        idList.length ? supabase.from('hostel_allocations').select('student_id,hostel_name').in('student_id', idList) : Promise.resolve({ data: [] }),
       ])
 
       let attRecords = { data: [] }
@@ -1454,22 +1441,22 @@ function SchoolOverview({ onOpenStudent }) {
       const allocByHouse = {}
       const allocatedStudentIds = new Set()
       ;(hostelAllocs.data || []).forEach(a => {
-        const h = a.house || 'Unassigned'
+        const h = a.hostel_name || 'Unassigned'
         allocByHouse[h] = (allocByHouse[h] || 0) + 1
         allocatedStudentIds.add(a.student_id)
       })
       const boarders = (hostelAllocs.data || []).length
       const dayScholars = students.length - boarders
       // house -> array of student objects, built from the ACTUAL allocation
-      // rows (hostel_allocations.house), not student.house — those two can
-      // disagree (that disagreement is literally one of the mismatch flags
-      // in mismatchDetector.js), so the drill-down here must match what
-      // allocByHouse counted, not a different field.
+      // rows (hostel_allocations.hostel_name), not student.house — those two
+      // can disagree (that disagreement is literally one of the mismatch
+      // flags in mismatchDetector.js), so the drill-down here must match
+      // what allocByHouse counted, not a different field.
       const studentsById = {}
       students.forEach(s => { studentsById[s.id] = s })
       const allocStudentsByHouse = {}
       ;(hostelAllocs.data || []).forEach(a => {
-        const h = a.house || 'Unassigned'
+        const h = a.hostel_name || 'Unassigned'
         const s = studentsById[a.student_id]
         if (!s) return
         if (!allocStudentsByHouse[h]) allocStudentsByHouse[h] = []
