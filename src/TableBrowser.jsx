@@ -19,6 +19,19 @@ import { resolveStudentKey } from './globalSearch'
 import { getActiveStudents } from './studentQueries'
 import { editField, getEditableFields } from './editEngine'
 
+// ─── EVENT BROADCASTER ───
+// Dispatches a global event so other open modules instantly refetch 
+// their data without requiring a manual page refresh.
+function broadcastCrossModuleWrite(tableKey, detail) {
+  const eventName = tableKey === 'students' ? 'gnsi:students-updated'
+    : tableKey === 'admissions' ? 'gnsi:admissions-updated'
+    : null
+  if (!eventName) return
+  try { window.dispatchEvent(new CustomEvent(eventName, { detail })) } catch (e) {
+    console.error('broadcastCrossModuleWrite failed:', e)
+  }
+}
+
 const NAVY = '#0B1E3D', GOLD = '#C9A24B', RED = '#dc2626', GREEN = '#16a34a'
 const SLATE = { 50:'#f8fafc',100:'#f1f5f9',200:'#e2e8f0',300:'#cbd5e1',400:'#94a3b8',500:'#64748b',600:'#475569',700:'#334155' }
 const PAGE_SIZE = 100
@@ -284,6 +297,15 @@ function TableRow({ row, columns, tableKey, editableFields, student, onOpenStude
     setSaving(true); setErr(null)
     try {
       await editField({ tableKey, rowId: row.id, field: editingField, oldValue: row[editingField], newValue: draft, studentContext: student })
+      
+      // ─── BROADCAST THE UPDATE ───
+      // Ensures the change is instantly reflected across the rest of the application
+      broadcastCrossModuleWrite(tableKey, { 
+        type: 'update', 
+        student_id: student?.id || (tableKey === 'students' ? row.id : null), 
+        field: editingField 
+      })
+
       onRowUpdated(editingField, draft)
       setEditingField(null)
     } catch (e) {
