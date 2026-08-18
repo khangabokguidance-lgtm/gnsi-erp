@@ -34,6 +34,33 @@ import { editField, getEditableFields } from './editEngine'
 import RegistrationCard from './RegistrationCard'
 import { allocateStudent, vacateStudent, backfillMissingAllocations, cleanupNonBoardingAllocations } from './hostelAllocation'
 
+// ── Pagination-safe fetch — same helper as Fees.jsx's fetchAllRows() ───────
+// Supabase/PostgREST caps any query with no .range() at 1000 rows, silently
+// — no error, just a truncated result. adm_course_fees alone has 1500+
+// rows, so a plain unbounded .select() on it (or adm_fee_collections /
+// adm_flat_fees, which will cross that line too as the school grows) was
+// missing whatever fell past row 1000, undercounting every fee total this
+// dashboard computes (both "this month" and the all-time total). Fees.jsx
+// hit and fixed this exact bug already — porting its proven fix here
+// rather than inventing a second implementation.
+async function fetchAllRows(table, { select = '*', filters = [], orderCol = null, ascending = true } = {}) {
+  const PAGE = 1000
+  let from = 0
+  let all = []
+  while (true) {
+    let q = supabase.from(table).select(select)
+    for (const [col, op, val] of filters) q = q[op](col, val)
+    if (orderCol) q = q.order(orderCol, { ascending })
+    q = q.range(from, from + PAGE - 1)
+    const { data, error } = await q
+    if (error) { console.error(`fetchAllRows(${table}) error:`, error.message); break }
+    all = all.concat(data || [])
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return all
+}
+
 // ── Live-refresh listeners for cross-module writes ──────────────────────────
 // Same self-contained-copy pattern used in Students.jsx and Hostel.jsx (see
 // their own comments on this): no import relationship to the other modules,
@@ -1432,17 +1459,22 @@ function SchoolOverview({ onOpenStudent }) {
       // here regardless.
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('en-CA')
 
-      const [admFees, flatFees, courseFees, attSessions, houses, hostelAllocs] = await Promise.all([
-        supabase.from('adm_fee_collections').select('amount_paid,pay_date,adm_app_id').eq('reverted', false),
-        supabase.from('adm_flat_fees').select('amount,pay_date,adm_app_id,month,year').eq('paid', true).eq('reverted', false),
-        supabase.from('adm_course_fees').select('amount_paid,pay_date,adm_app_id,for_month,year').eq('reverted', false),
+      const [attSessions, houses, hostelAllocs, admFeesData, flatFeesData, courseFeesData] = await Promise.all([
         // Last 30 days of attendance sessions, for a school-wide rate —
         // capped range so this stays a quick dashboard query, not a
         // full-year scan.
         supabase.from('attendance_sessions').select('id,session_date').gte('session_date', new Date(now.getTime() - 30 * 86400000).toLocaleDateString('en-CA')),
         supabase.from('houses').select('name').order('name'),
         idList.length ? supabase.from('hostel_allocations').select('student_id,hostel_name').in('student_id', idList) : Promise.resolve({ data: [] }),
+        // Paginated — see fetchAllRows comment above. adm_course_fees alone
+        // has 1500+ rows, well past the unbounded-query 1000-row cap.
+        fetchAllRows('adm_fee_collections', { select: 'amount_paid,pay_date,adm_app_id', filters: [['reverted', 'eq', false]] }),
+        fetchAllRows('adm_flat_fees', { select: 'amount,pay_date,adm_app_id,month,year', filters: [['paid', 'eq', true], ['reverted', 'eq', false]] }),
+        fetchAllRows('adm_course_fees', { select: 'amount_paid,pay_date,adm_app_id,for_month,year', filters: [['reverted', 'eq', false]] }),
       ])
+      const admFees = { data: admFeesData }
+      const flatFees = { data: flatFeesData }
+      const courseFees = { data: courseFeesData }
 
       let attRecords = { data: [] }
       const sessionIds = (attSessions.data || []).map(s => s.id)
