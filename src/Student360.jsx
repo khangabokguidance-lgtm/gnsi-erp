@@ -401,7 +401,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
   }
 
   return (
-    <div style={{ maxWidth: 1040, margin: '0 auto', padding: '22px 16px 40px', display: 'flex', flexDirection: 'column', gap: 18, background: '#f7f8fa', minHeight: '100%' }}>
+    <div style={{ maxWidth: 1040, width: '100%', margin: '0 auto', padding: '22px 16px 40px', display: 'flex', flexDirection: 'column', gap: 18, background: '#f7f8fa', minHeight: '100%', minWidth: 0, overflowX: 'hidden', boxSizing: 'border-box' }}>
       <div>
         <div style={{ fontWeight: 800, fontSize: 22, color: NAVY, fontFamily: 'Georgia, serif', letterSpacing: '-.01em' }}>Student 360°</div>
         <div style={{ fontSize: 12.5, color: SLATE[500], marginTop: 3, fontWeight: 500 }}>Cross-module record — everything every module has recorded for one student, in one place.</div>

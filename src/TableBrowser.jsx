@@ -48,7 +48,30 @@ function buildOrFilter(cols, term) {
   return cols.map(c => `${c}.ilike.%${term}%`).join(',')
 }
 
+// Mobile breakpoint — below this, rows render as stacked cards instead of
+// a horizontally-scrolling table, since a table with 10+ columns is
+// unusable squeezed into a phone width even with scroll.
+const MOBILE_BREAKPOINT = 680
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < MOBILE_BREAKPOINT : false
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
+    const handler = (e) => setIsMobile(e.matches)
+    setIsMobile(mq.matches)
+    mq.addEventListener ? mq.addEventListener('change', handler) : mq.addListener(handler)
+    return () => {
+      mq.removeEventListener ? mq.removeEventListener('change', handler) : mq.removeListener(handler)
+    }
+  }, [])
+  return isMobile
+}
+
 export default function TableBrowser({ onOpenStudent, onOpenModule }) {
+  const isMobile = useIsMobile()
   const [tableKey, setTableKey] = useState(TABLE_REGISTRY[0].key)
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -313,7 +336,7 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
         {totalCount.toLocaleString('en-IN')} total row(s) in {entry?.label} &middot; showing page {page + 1} of {totalPages}
         {search.trim().length >= 2 && ` \u00b7 filtered by "${search.trim()}" across the whole table`}
         {sortCol && ` \u00b7 sorted by ${sortCol.replace(/_/g, ' ')} (${sortDir})`}
-        {columns.length > 5 && ' \u00b7 scroll sideways to see more columns \u2192'}
+        {!isMobile && columns.length > 5 && ' \u00b7 scroll sideways to see more columns \u2192'}
       </div>
 
       {/* Bulk edit / find-replace */}
@@ -329,7 +352,7 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
             <>
               <input value={bulkMatchValue} onChange={e => setBulkMatchValue(e.target.value)}
                 placeholder="Find (optional, exact match)"
-                style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, fontSize: 12, width: 170 }} />
+                style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, fontSize: 12, flex: '1 1 150px', minWidth: 120, maxWidth: 220 }} />
               <span style={{ fontSize: 12, color: SLATE[400] }}>&rarr;</span>
               {bulkFieldDef?.type === 'select' ? (
                 <select value={bulkNewValue} onChange={e => setBulkNewValue(e.target.value)}
@@ -340,7 +363,7 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
               ) : (
                 <input value={bulkNewValue} onChange={e => setBulkNewValue(e.target.value)}
                   placeholder="Replace with"
-                  style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, fontSize: 12, width: 150 }} />
+                  style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, fontSize: 12, flex: '1 1 130px', minWidth: 110, maxWidth: 200 }} />
               )}
               <button onClick={toggleSelectAllEligible}
                 style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 11.5, fontWeight: 700, color: NAVY, cursor: 'pointer' }}>
@@ -383,7 +406,7 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
         </div>
       )}
 
-      {/* Table */}
+      {/* Rows: table on desktop, stacked cards on mobile */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60, color: SLATE[400] }}>Loading {entry?.label}&hellip;</div>
       ) : loadError ? (
@@ -394,6 +417,17 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
       ) : rows.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 60, color: SLATE[400], background: '#fff', borderRadius: 16, border: `1px solid ${SLATE[200]}` }}>
           No rows{search.trim() ? ' match this search' : ''}.
+        </div>
+      ) : isMobile ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {rows.map((r, i) => (
+            <RowCard key={r.id ?? i} row={r} columns={columns} tableKey={tableKey}
+              editableFields={editableFields} student={resolveRowStudent(r)} onOpenStudent={onOpenStudent}
+              selectable={!!editableFields} selected={selectedIds.has(r.id)}
+              selectDisabled={!bulkField || !eligibleForBulk.includes(r)}
+              onToggleSelected={() => toggleRowSelected(r.id)}
+              onRowUpdated={(field, val) => setRows(prev => prev.map(row => row === r ? { ...row, [field]: val } : row))} />
+          ))}
         </div>
       ) : (
         <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${SLATE[200]}`, overflowX: 'auto', overflowY: 'auto', maxHeight: 560, maxWidth: '100%', minWidth: 0, WebkitOverflowScrolling: 'touch' }}>
@@ -448,6 +482,105 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// Mobile stacked-card equivalent of TableRow — same edit/select behavior,
+// laid out as label/value pairs so nothing gets squeezed into unreadable
+// table cells on a phone width. Shares the save-via-editField path with
+// TableRow rather than reimplementing it, so audit logging and the
+// students->admissions cascade sync stay identical between layouts.
+function RowCard({ row, columns, tableKey, editableFields, student, onOpenStudent, onRowUpdated, selectable, selected, selectDisabled, onToggleSelected }) {
+  const [editingField, setEditingField] = useState(null)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const startEdit = (field) => {
+    setEditingField(field)
+    setDraft(row[field] ?? '')
+    setErr(null)
+  }
+
+  const save = async () => {
+    setSaving(true); setErr(null)
+    try {
+      await editField({ tableKey, rowId: row.id, field: editingField, oldValue: row[editingField], newValue: draft, studentContext: student })
+      broadcastCrossModuleWrite(tableKey, {
+        type: 'update',
+        student_id: student?.id || (tableKey === 'students' ? row.id : null),
+        field: editingField,
+      })
+      onRowUpdated(editingField, draft)
+      setEditingField(null)
+    } catch (e) {
+      setErr(e.message || 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${SLATE[200]}`, padding: '12px 14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          {selectable && (
+            <input type="checkbox" checked={selected} disabled={selectDisabled} onChange={onToggleSelected}
+              title={selectDisabled ? 'Pick a bulk-edit field above first' : undefined} />
+          )}
+          {student && onOpenStudent && (
+            <button onClick={() => onOpenStudent(student)} title={`Open ${student.name}'s profile`}
+              style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 15, padding: 2, flexShrink: 0 }}>
+              &#128100;
+            </button>
+          )}
+        </div>
+        {editableFields && !editingField && (
+          <select onChange={e => { if (e.target.value) startEdit(e.target.value); e.target.value = '' }} defaultValue=""
+            style={{ fontSize: 11, color: SLATE[400], border: `1px solid ${SLATE[200]}`, borderRadius: 6, padding: '3px 5px', cursor: 'pointer' }}>
+            <option value="" disabled>Edit&hellip;</option>
+            {Object.keys(editableFields).map(f => <option key={f} value={f}>{editableFields[f].label}</option>)}
+          </select>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {columns.map(c => {
+          const fieldDef = editableFields?.[c]
+          const isEditingThis = editingField === c
+          return (
+            <div key={c} style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 6, borderBottom: `1px solid ${SLATE[100]}` }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: SLATE[400], textTransform: 'uppercase', letterSpacing: '.03em' }}>{c.replace(/_/g, ' ')}</span>
+              {isEditingThis ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  {fieldDef.type === 'select' ? (
+                    <select value={draft} onChange={e => setDraft(e.target.value)} autoFocus
+                      style={{ padding: '5px 6px', borderRadius: 6, border: `1px solid ${SLATE[200]}`, fontSize: 13, flex: 1, minWidth: 100 }}>
+                      {fieldDef.options.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <input value={draft} onChange={e => setDraft(e.target.value)} autoFocus
+                      style={{ padding: '5px 6px', borderRadius: 6, border: `1px solid ${SLATE[200]}`, fontSize: 13, flex: 1, minWidth: 100 }} />
+                  )}
+                  <button onClick={save} disabled={saving} title="Save"
+                    style={{ border: 'none', background: GREEN, color: '#fff', borderRadius: 5, fontSize: 11, fontWeight: 700, padding: '5px 8px', cursor: 'pointer' }}>&#10003;</button>
+                  <button onClick={() => setEditingField(null)} disabled={saving} title="Cancel"
+                    style={{ border: 'none', background: SLATE[200], color: SLATE[600], borderRadius: 5, fontSize: 11, fontWeight: 700, padding: '5px 8px', cursor: 'pointer' }}>&#10005;</button>
+                  {err && <span style={{ fontSize: 10.5, color: RED, width: '100%' }}>{err}</span>}
+                </div>
+              ) : (
+                <span
+                  onClick={() => fieldDef && startEdit(c)}
+                  style={{ fontSize: 13.5, color: SLATE[700], wordBreak: 'break-word', cursor: fieldDef ? 'pointer' : 'default', borderBottom: fieldDef ? `1px dashed ${SLATE[300]}` : 'none', display: 'inline-block' }}
+                >
+                  {row[c] == null || row[c] === '' ? <span style={{ color: SLATE[300] }}>&mdash;</span> : String(row[c])}
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -508,7 +641,7 @@ function TableRow({ row, columns, tableKey, editableFields, student, onOpenStude
         const fieldDef = editableFields?.[c]
         const isEditingThis = editingField === c
         return (
-          <td key={c} style={{ padding: '7px 10px', color: SLATE[700], whiteSpace: 'nowrap', maxWidth: 240, overflow: isEditingThis ? 'visible' : 'hidden', textOverflow: 'ellipsis', position: 'relative' }}>
+          <td key={c} style={{ padding: '7px 10px', color: SLATE[700], whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: 260, position: 'relative' }}>
             {isEditingThis ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 {fieldDef.type === 'select' ? (
