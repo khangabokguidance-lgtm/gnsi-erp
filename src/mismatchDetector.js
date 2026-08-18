@@ -49,7 +49,13 @@ export function detectMismatches(student, profile) {
     })
   }
 
-  if (student.house && !profile.hostel) {
+  // "Dayscholar" is a house value that specifically means "not a boarder" —
+  // see HOUSES_LIST / DAY_SCHOLAR_HOUSES handling in Students.jsx. Day
+  // scholars are EXPECTED to have no hostel_allocations row, so they must
+  // be excluded here or every day scholar trips a false-positive flag.
+  const NON_BOARDING_HOUSES = ['Dayscholar']
+
+  if (student.house && !NON_BOARDING_HOUSES.includes(student.house) && !profile.hostel) {
     flags.push({
       key: 'house_no_allocation',
       level: 'red',
