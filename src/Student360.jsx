@@ -940,7 +940,7 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
 // Every number here is pulled live from the same tables/columns each
 // module already writes to (adm_fee_collections.amount_paid,
 // adm_flat_fees.amount, adm_course_fees.amount_paid, attendance_records,
-// hostel_allotments) — nothing is estimated or derived from a cache, so
+// hostel_allocations) — nothing is estimated or derived from a cache, so
 // this can't silently disagree with what Fees.jsx/Attendance.jsx/
 // Hostel.jsx show on their own tabs.
 function SchoolOverview({ onOpenStudent }) {
@@ -977,7 +977,7 @@ function SchoolOverview({ onOpenStudent }) {
         // full-year scan.
         supabase.from('attendance_sessions').select('id,session_date').gte('session_date', new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10)),
         supabase.from('houses').select('name').order('name'),
-        idList.length ? supabase.from('hostel_allotments').select('student_id,house').in('student_id', idList) : Promise.resolve({ data: [] }),
+        idList.length ? supabase.from('hostel_allocations').select('student_id,house').in('student_id', idList) : Promise.resolve({ data: [] }),
       ])
 
       let attRecords = { data: [] }
@@ -1030,7 +1030,7 @@ function SchoolOverview({ onOpenStudent }) {
       const boarders = (hostelAllocs.data || []).length
       const dayScholars = students.length - boarders
       // house -> array of student objects, built from the ACTUAL allocation
-      // rows (hostel_allotments.house), not student.house — those two can
+      // rows (hostel_allocations.house), not student.house — those two can
       // disagree (that disagreement is literally one of the mismatch flags
       // in mismatchDetector.js), so the drill-down here must match what
       // allocByHouse counted, not a different field.
