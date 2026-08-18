@@ -307,6 +307,14 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
   const [selected, setSelected] = useState(null)
   const [profile, setProfile] = useState(null)
   const [dues, setDues] = useState(null)
+  // Holds the FULL raw `students` row ('*') for the selected student — the
+  // fields Students.jsx's own StudentForm edits (name, dob, gender, course,
+  // batch, session, father_name, mother_name, phone, address, remarks,
+  // medical_notes, academic_remarks, prev_school, referral_source,
+  // admission_date, left_date, status) but that this view previously fetched
+  // and then never actually displayed. Feeds the "Student Profile" section
+  // below, which is the edit-from-Student-360 interconnection point.
+  const [rawStudent, setRawStudent] = useState(null)
   const [loading, setLoading] = useState(false)
   const [notifyState, setNotifyState] = useState('idle') // 'idle' | 'sending' | 'sent' | 'none' | 'error'
 
@@ -322,6 +330,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
     setSelected(s)
     setProfile(null)
     setDues(null)
+    setRawStudent(null)
     setNotifyState('idle')
     setLoading(true)
     // Re-fetch the FULL row (getActiveStudents above only pulled a lean
@@ -337,7 +346,18 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
     ])
     setProfile(data)
     setDues(duesData)
+    setRawStudent(full || s)
     setLoading(false)
+  }, [])
+
+  // Single callback every EditableRow in the Student Profile section uses:
+  // keeps rawStudent (the full row backing this section) AND selected (the
+  // lean object the header banner / StatusPill / detectMismatches() read)
+  // in sync after a save, so an edit made here is reflected everywhere else
+  // in this same screen immediately — not just after the next reselect.
+  const onProfileFieldSaved = useCallback((field, value) => {
+    setRawStudent(prev => prev ? { ...prev, [field]: value } : prev)
+    setSelected(prev => prev ? { ...prev, [field]: value } : prev)
   }, [])
 
   // Live refresh — if Students.jsx, Hostel.jsx, or Admissions.jsx changes
@@ -446,6 +466,79 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
 
           {/* Grid of module sections */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
+
+            {/* Student Profile — the raw Students.jsx row (name, status,
+                course/batch, DOB, parents, contact, medical/notes, etc.).
+                Edits go through the same EditableRow → editField() →
+                broadcastCrossModuleWrite('students', …) pipeline already
+                used below for House/Hostel Type, so a fix made here shows
+                up in Students.jsx (and anywhere else listening for
+                'gnsi:students-updated') without a manual refresh. Fields
+                that aren't yet in editEngine.js's whitelist for the
+                `students` table will render read-only via EditableRow's
+                own fallback (see its `if (!fieldDef) return <Row …/>`) —
+                nothing here breaks if the whitelist hasn't caught up yet. */}
+            <Section icon="🧑‍🎓" title="Student Profile" accent={NAVY}
+              moduleLink={onNavigate ? { label: "Students", onClick: () => onNavigate("students") } : null}
+              full={rawStudent && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <EditableRow label="Name" value={rawStudent.name} tableKey="students" rowId={selected.id} field="name"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('name', v)} />
+                  <EditableRow label="Status" value={rawStudent.status} tableKey="students" rowId={selected.id} field="status"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('status', v)} />
+                  <EditableRow label="Gender" value={rawStudent.gender} tableKey="students" rowId={selected.id} field="gender"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('gender', v)} />
+                  <EditableRow label="Date of Birth" value={rawStudent.dob} tableKey="students" rowId={selected.id} field="dob"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('dob', v)} />
+                  <EditableRow label="Admission Date" value={rawStudent.admission_date} tableKey="students" rowId={selected.id} field="admission_date"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('admission_date', v)} />
+                  {rawStudent.status === 'Withdrawn' && (
+                    <EditableRow label="Left Date" value={rawStudent.left_date} tableKey="students" rowId={selected.id} field="left_date"
+                      studentContext={selected} onSaved={v => onProfileFieldSaved('left_date', v)} />
+                  )}
+
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em', margin: '10px 0 4px' }}>Course & Class</div>
+                  <EditableRow label="Course" value={rawStudent.course} tableKey="students" rowId={selected.id} field="course"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('course', v)} />
+                  <EditableRow label="Batch / Class" value={rawStudent.batch} tableKey="students" rowId={selected.id} field="batch"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('batch', v)} />
+                  <EditableRow label="Session" value={rawStudent.session} tableKey="students" rowId={selected.id} field="session"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('session', v)} />
+                  <Row label="GCC No." value={rawStudent.gcc_no} mono />
+                  <Row label="Admission No." value={rawStudent.admission_no} mono />
+
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em', margin: '10px 0 4px' }}>Family & Contact</div>
+                  <EditableRow label="Father's Name" value={rawStudent.father_name} tableKey="students" rowId={selected.id} field="father_name"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('father_name', v)} />
+                  <EditableRow label="Mother's Name" value={rawStudent.mother_name} tableKey="students" rowId={selected.id} field="mother_name"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('mother_name', v)} />
+                  <EditableRow label="Phone" value={rawStudent.phone} mono tableKey="students" rowId={selected.id} field="phone"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('phone', v)} />
+                  <EditableRow label="Emergency Contact" value={rawStudent.emergency_contact} tableKey="students" rowId={selected.id} field="emergency_contact"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('emergency_contact', v)} />
+                  <EditableRow label="Address" value={rawStudent.address} tableKey="students" rowId={selected.id} field="address"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('address', v)} />
+
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: SLATE[500], textTransform: 'uppercase', letterSpacing: '.03em', margin: '10px 0 4px' }}>Medical & Notes</div>
+                  <EditableRow label="Medical / Allergy Notes" value={rawStudent.medical_notes} tableKey="students" rowId={selected.id} field="medical_notes"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('medical_notes', v)} />
+                  <EditableRow label="Remarks" value={rawStudent.remarks} tableKey="students" rowId={selected.id} field="remarks"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('remarks', v)} />
+                  <EditableRow label="Academic Remarks" value={rawStudent.academic_remarks} tableKey="students" rowId={selected.id} field="academic_remarks"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('academic_remarks', v)} />
+                  <EditableRow label="Previous School" value={rawStudent.prev_school} tableKey="students" rowId={selected.id} field="prev_school"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('prev_school', v)} />
+                  <EditableRow label="Referral Source" value={rawStudent.referral_source} tableKey="students" rowId={selected.id} field="referral_source"
+                    studentContext={selected} onSaved={v => onProfileFieldSaved('referral_source', v)} />
+                </div>
+              )}>
+              <Row label="Status" value={rawStudent?.status} />
+              <Row label="Course" value={rawStudent?.course} />
+              <Row label="Batch / Class" value={rawStudent?.batch} />
+              <Row label="Date of Birth" value={fmtDate(rawStudent?.dob)} />
+              <Row label="Phone" value={rawStudent?.phone} mono />
+              <Row label="Father's Name" value={rawStudent?.father_name} />
+            </Section>
 
             <Section icon="📝" title="Admission Record" accent={SKY} empty={!profile.admission && 'No admissions record found for this GCC number.'}
               moduleLink={onNavigate ? { label: "Admissions", onClick: () => onNavigate("admissions") } : null}
