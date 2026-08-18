@@ -4,33 +4,73 @@
 // field that some other module's business logic depends on without going
 // through that module's own validation (e.g. fee amounts must go through
 // feeEngine.js's collectFee, not a raw UPDATE here). So this engine only
-// allows editing fields explicitly whitelisted per table below — status
-// flags, notes, dates, simple categorical fields — never money amounts,
-// payment records, or anything with cross-table side effects.
+// allows editing fields explicitly whitelisted per table below.
 //
-// Every edit is written straight to the real table (the same one each
-// module's own screens read from — no shadow/staging table), and logged
-// to the EXISTING audit_logs table using the same shape Students.jsx's
-// own auditLog() already writes, so edits made here show up in the same
-// audit trail as edits made anywhere else in the portal.
+// Every edit is written straight to the real table and logged to the 
+// EXISTING audit_logs table. Edits to `students` automatically cascade 
+// to `admissions` to prevent drift.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from './supabase'
 
+// ── Admissions Sync Map ──
+// Mirrors the sync logic from Students.jsx. If a field edited here is in 
+// this list, it will automatically push to the corresponding admissions row.
+const STUDENT_ADM_SYNC_FIELDS = new Map([
+  ['name', 'applicant_name'],
+  ['dob', 'dob'],
+  ['gender', 'gender'],
+  ['blood_group', 'blood_group'],
+  ['course', 'course'],
+  ['batch', 'batch'],
+  ['class_name', 'class_name'],
+  ['house', 'house'],
+  ['hostel_type', 'hostel_type'],
+  ['session', 'session'],
+  ['father_name', 'father_name'],
+  ['mother_name', 'mother_name'],
+  ['phone', 'phone'],
+  ['parent_phone', 'parent_phone'],
+  ['address', 'address'],
+  ['prev_school', 'prev_school'],
+  ['referral_source', 'referral_source'],
+  ['remarks', 'remarks'],
+])
+
 // table key -> { column: { label, type, options? } }
 // type: 'text' | 'select' | 'date' | 'textarea'
-// Deliberately NOT whitelisted anywhere: amount/amount_paid, pay_date,
-// pay_mode, txn_ref, reverted (fee integrity fields — must go through
-// feeEngine.js), gcc_no, id (identity fields).
 export const EDITABLE_FIELDS = {
   students: {
-    status: { label: 'Status', type: 'select', options: ['Active', 'Inactive', 'Dropout', 'Passed Out'] },
+    // Core Identity
+    name: { label: 'Name', type: 'text' },
+    gender: { label: 'Gender', type: 'select', options: ['Male', 'Female', 'Other'] },
+    dob: { label: 'Date of Birth', type: 'date' },
+    
+    // Academic & Status
+    status: { label: 'Status', type: 'select', options: ['Active', 'Inactive', 'Dropout', 'Passed Out', 'Withdrawn'] },
+    course: { label: 'Course', type: 'text' },
+    batch: { label: 'Batch / Class', type: 'text' },
+    session: { label: 'Session', type: 'text' },
+    admission_date: { label: 'Admission Date', type: 'date' },
+    left_date: { label: 'Left Date', type: 'date' },
+    
+    // Residence
     house: { label: 'House', type: 'text' },
     hostel_type: { label: 'Hostel Type', type: 'select', options: ['Boarder', 'Day Boarder', 'Day Scholar'] },
-    course: { label: 'Course', type: 'text' },
-    batch: { label: 'Batch', type: 'text' },
-    class_name: { label: 'Class', type: 'text' },
+    
+    // Contact & Parents
+    father_name: { label: "Father's Name", type: 'text' },
+    mother_name: { label: "Mother's Name", type: 'text' },
     phone: { label: 'Phone', type: 'text' },
+    emergency_contact: { label: 'Emergency Contact', type: 'text' },
+    address: { label: 'Address', type: 'textarea' },
+    
+    // Notes & Background
+    medical_notes: { label: 'Medical Notes', type: 'textarea' },
+    remarks: { label: 'Remarks', type: 'textarea' },
+    academic_remarks: { label: 'Academic Remarks', type: 'textarea' },
+    prev_school: { label: 'Previous School', type: 'text' },
+    referral_source: { label: 'Referral Source', type: 'text' },
     notes: { label: 'Notes', type: 'textarea' },
   },
   admissions: {
@@ -67,9 +107,6 @@ export function getEditableFields(tableKey) {
   return EDITABLE_FIELDS[tableKey] || null
 }
 
-// Same session-reading pattern as Students.jsx's auditLog() — this portal
-// uses custom localStorage auth, not Supabase Auth, so user identity has
-// to be pulled from gnsi_session rather than supabase.auth.getSession().
 function getSessionUserName() {
   try {
     const raw = localStorage.getItem('gnsi_session')
@@ -99,24 +136,36 @@ async function auditEdit(tableKey, rowId, field, oldValue, newValue, studentCont
       created_at: new Date().toISOString(),
     })
   } catch (e) {
-    // Audit failure shouldn't block the edit itself, but must be visible
-    // somewhere — this is the one case in this file where a silent
-    // console.error is the right call rather than surfacing to the UI.
-    console.error('editEngine: audit log write failed (edit still applied):', e.message)
+    console.error('editEngine: audit log write failed:', e.message)
   }
 }
 
-// Applies one field edit. Rejects anything not in EDITABLE_FIELDS for
-// that table — this is the actual enforcement point, not just UI
-// convention, so a future card can't accidentally expose a write to a
-// field that was never vetted.
 export async function editField({ tableKey, rowId, field, oldValue, newValue, studentContext }) {
   const allowed = EDITABLE_FIELDS[tableKey]
   if (!allowed || !allowed[field]) {
     throw new Error(`editField: "${field}" on "${tableKey}" is not in the edit whitelist.`)
   }
+
+  // 1. Update the primary table
   const { error } = await supabase.from(tableKey).update({ [field]: newValue }).eq('id', rowId)
   if (error) throw error
+
+  // 2. Cascade sync to admissions (if applicable)
+  if (tableKey === 'students' && studentContext?.gcc_no) {
+    const admCol = STUDENT_ADM_SYNC_FIELDS.get(field)
+    if (admCol) {
+      // Fire-and-forget sync — if it fails, it logs but doesn't crash the UI edit
+      supabase.from('admissions')
+        .update({ [admCol]: newValue })
+        .eq('gcc_no', studentContext.gcc_no)
+        .then(({ error: syncErr }) => {
+          if (syncErr) console.error(`editEngine: sync ${field}->${admCol} failed:`, syncErr.message)
+        })
+    }
+  }
+
+  // 3. Log the audit trail
   await auditEdit(tableKey, rowId, field, oldValue, newValue, studentContext)
+  
   return true
 }
