@@ -32,7 +32,7 @@ import { downloadCSV, downloadSingleRecordCSV } from './exportUtils'
 import TableBrowser, { useIsMobile } from './TableBrowser'
 import { editField, getEditableFields } from './editEngine'
 import RegistrationCard from './RegistrationCard'
-import { allocateStudent, vacateStudent, backfillMissingAllocations } from './hostelAllocation'
+import { allocateStudent, vacateStudent, backfillMissingAllocations, cleanupNonBoardingAllocations } from './hostelAllocation'
 
 // ── Live-refresh listeners for cross-module writes ──────────────────────────
 // Same self-contained-copy pattern used in Students.jsx and Hostel.jsx (see
@@ -1110,6 +1110,14 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
   const [backfillResult, setBackfillResult] = useState(null)   // { synced, total, errors }
   const [backfillConfirming, setBackfillConfirming] = useState(false)
 
+  // One-time cleanup for the Dayscholar-phantom-row bug: an earlier
+  // version of the backfill (before hostelAllocation.js excluded
+  // non-boarding houses) created hostel_allocations rows for Dayscholar
+  // students too, which corrupted the boarders/day-scholars count on
+  // School Overview. Safe to run more than once (no-ops once clean).
+  const [cleanupRunning, setCleanupRunning] = useState(false)
+  const [cleanupResult, setCleanupResult] = useState(null)   // { removed }
+
   const houseNoAllocationCount = useMemo(
     () => rows.filter(r => r.flag_key === 'house_no_allocation').length,
     [rows]
@@ -1133,6 +1141,20 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
     } finally {
       setBackfillRunning(false)
       setBackfillConfirming(false)
+    }
+  }
+
+  const runCleanup = async () => {
+    setCleanupRunning(true)
+    setCleanupResult(null)
+    try {
+      const result = await cleanupNonBoardingAllocations()
+      setCleanupResult({ removed: result.removed })
+      await refresh()
+    } catch (e) {
+      setCleanupResult({ removed: 0, error: e.message || 'Cleanup failed' })
+    } finally {
+      setCleanupRunning(false)
     }
   }
 
@@ -1271,6 +1293,22 @@ function MismatchDashboard({ currentUser, onOpenStudent }) {
         </div>
       )}
 
+      {/* One-time cleanup: an earlier backfill run created hostel_allocations
+          rows for Dayscholar students too, which corrupted the School
+          Overview boarders/day-scholars count. This removes those phantom
+          rows without touching any actual boarding-house allocations. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button onClick={runCleanup} disabled={cleanupRunning}
+          style={{ padding: '7px 12px', borderRadius: 9, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 11.5, fontWeight: 700, color: cleanupRunning ? SLATE[400] : AMBER, cursor: cleanupRunning ? 'default' : 'pointer' }}>
+          {cleanupRunning ? 'Cleaning up…' : '🧹 Remove Dayscholar allocation rows'}
+        </button>
+        {cleanupResult && (
+          <span style={{ fontSize: 11.5, color: cleanupResult.error ? RED : SLATE[500] }}>
+            {cleanupResult.error ? `Failed: ${cleanupResult.error}` : `Removed ${cleanupResult.removed} phantom row${cleanupResult.removed === 1 ? '' : 's'}.`}
+          </span>
+        )}
+      </div>
+
       {/* Table */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60, color: SLATE[400] }}>⏳ Loading mismatch log…</div>
@@ -1384,16 +1422,24 @@ function SchoolOverview({ onOpenStudent }) {
       // running totals — same three tables/columns Student360's own
       // profile loader and Fees.jsx use.
       const now = new Date()
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+      // en-CA gives local-timezone YYYY-MM-DD, matching every other date
+      // computation in the codebase (feeEngine.js's payDate, Fees.jsx's
+      // todayStr). toISOString().slice(0,10) — the previous version here —
+      // converts to UTC first, which under IST (UTC+5:30) shifted this a
+      // day early for the first ~5.5 hours of every day. That made the
+      // cutoff MORE permissive, not less, so it wasn't the sole cause of
+      // an entire month reading ₹0, but it was still wrong and is fixed
+      // here regardless.
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('en-CA')
 
       const [admFees, flatFees, courseFees, attSessions, houses, hostelAllocs] = await Promise.all([
         supabase.from('adm_fee_collections').select('amount_paid,pay_date,adm_app_id').eq('reverted', false),
-        supabase.from('adm_flat_fees').select('amount,pay_date,adm_app_id').eq('paid', true).eq('reverted', false),
-        supabase.from('adm_course_fees').select('amount_paid,pay_date,adm_app_id').eq('reverted', false),
+        supabase.from('adm_flat_fees').select('amount,pay_date,adm_app_id,month,year').eq('paid', true).eq('reverted', false),
+        supabase.from('adm_course_fees').select('amount_paid,pay_date,adm_app_id,for_month,year').eq('reverted', false),
         // Last 30 days of attendance sessions, for a school-wide rate —
         // capped range so this stays a quick dashboard query, not a
         // full-year scan.
-        supabase.from('attendance_sessions').select('id,session_date').gte('session_date', new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10)),
+        supabase.from('attendance_sessions').select('id,session_date').gte('session_date', new Date(now.getTime() - 30 * 86400000).toLocaleDateString('en-CA')),
         supabase.from('houses').select('name').order('name'),
         idList.length ? supabase.from('hostel_allocations').select('student_id,hostel_name').in('student_id', idList) : Promise.resolve({ data: [] }),
       ])
@@ -1417,12 +1463,27 @@ function SchoolOverview({ onOpenStudent }) {
       })
 
       // ── Fees ──
-      const sumBy = (rows, field, dateFromMonth) => (rows || [])
-        .filter(r => !dateFromMonth || (r.pay_date && r.pay_date >= monthStart))
-        .reduce((s, r) => s + Number(r[field] || 0), 0)
+      // "This month" matches Fees.jsx's own FeeDashboardTab convention
+      // (thisMonthFlat/thisMonthCrsf/thisMonthAdm), not a simple pay_date
+      // filter: flat and course fees are counted by the fee PERIOD they're
+      // for (month/for_month + year), not the calendar date they were
+      // paid on. A parent can pay August's flat fee in May (an advance);
+      // Fees.jsx counts that toward August, so this must too, or the two
+      // dashboards disagree on the same number — which is exactly what
+      // produced the ₹0 here while Fees.jsx showed real August revenue.
+      // Admission fees have no period-month field at all (a one-time fee,
+      // not tied to a specific month), so those stay pay_date-based,
+      // matching Fees.jsx's own thisMonthAdm.
+      const thisMonthName = now.toLocaleString('default', { month: 'long' })
+      const thisYearStr = String(now.getFullYear())
+
+      const sumBy = (rows, field) => (rows || []).reduce((s, r) => s + Number(r[field] || 0), 0)
 
       const totalCollected = sumBy(admFees.data, 'amount_paid') + sumBy(flatFees.data, 'amount') + sumBy(courseFees.data, 'amount_paid')
-      const thisMonthCollected = sumBy(admFees.data, 'amount_paid', true) + sumBy(flatFees.data, 'amount', true) + sumBy(courseFees.data, 'amount_paid', true)
+      const thisMonthAdm = sumBy((admFees.data || []).filter(r => r.pay_date && r.pay_date >= monthStart), 'amount_paid')
+      const thisMonthFlat = sumBy((flatFees.data || []).filter(r => r.month === thisMonthName && String(r.year) === thisYearStr), 'amount')
+      const thisMonthCrsf = sumBy((courseFees.data || []).filter(r => r.for_month === thisMonthName && String(r.year) === thisYearStr), 'amount_paid')
+      const thisMonthCollected = thisMonthAdm + thisMonthFlat + thisMonthCrsf
 
       // Students with zero payments recorded at all — quick defaulter signal.
       const paidGccSet = new Set([
@@ -1438,14 +1499,21 @@ function SchoolOverview({ onOpenStudent }) {
       const attendanceRate = attRows.length ? Math.round((presentCount / attRows.length) * 100) : null
 
       // ── Hostel occupancy ──
+      // NON_BOARDING_HOUSES excluded defensively — hostel_allocations
+      // should never contain a row for a Dayscholar student (see
+      // hostelAllocation.js), but this stat shouldn't silently trust
+      // row count alone if that ever slips, since it's exactly what
+      // produced the "383 boarders / 0 day scholars" bug.
+      const NON_BOARDING_HOUSES = ['Dayscholar']
       const allocByHouse = {}
       const allocatedStudentIds = new Set()
       ;(hostelAllocs.data || []).forEach(a => {
+        if (NON_BOARDING_HOUSES.includes(a.hostel_name)) return
         const h = a.hostel_name || 'Unassigned'
         allocByHouse[h] = (allocByHouse[h] || 0) + 1
         allocatedStudentIds.add(a.student_id)
       })
-      const boarders = (hostelAllocs.data || []).length
+      const boarders = allocatedStudentIds.size
       const dayScholars = students.length - boarders
       // house -> array of student objects, built from the ACTUAL allocation
       // rows (hostel_allocations.hostel_name), not student.house — those two
@@ -1456,6 +1524,7 @@ function SchoolOverview({ onOpenStudent }) {
       students.forEach(s => { studentsById[s.id] = s })
       const allocStudentsByHouse = {}
       ;(hostelAllocs.data || []).forEach(a => {
+        if (NON_BOARDING_HOUSES.includes(a.hostel_name)) return
         const h = a.hostel_name || 'Unassigned'
         const s = studentsById[a.student_id]
         if (!s) return

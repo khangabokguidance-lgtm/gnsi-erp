@@ -24,6 +24,16 @@ function todayStr() {
   return new Date().toLocaleDateString('en-CA')   // YYYY-MM-DD, local timezone
 }
 
+// "Dayscholar" is a house value that specifically means "not a boarder" —
+// see HOUSES_LIST / DAY_SCHOLAR_HOUSES handling in Students.jsx, and the
+// identical exclusion in mismatchDetector.js's house_no_allocation check.
+// Day scholars are EXPECTED to have no hostel_allocations row (they don't
+// live in a hostel room), so nothing in this module should ever create
+// one for them — doing so would both be factually wrong (no such room
+// assignment exists) and corrupt every occupancy/boarder-count stat that
+// reads hostel_allocations as "who actually has a room."
+const NON_BOARDING_HOUSES = ['Dayscholar']
+
 /**
  * Assign (or reassign) one student to a hostel/room. Upserts the
  * hostel_allocations row (one per student — a reassignment updates the
@@ -36,6 +46,19 @@ function todayStr() {
 export async function allocateStudent(student, { hostelName, roomNumber, bedNumber = null, allotmentDate = null, status = 'Active', remarks = null }) {
   if (!student?.id) throw new Error('allocateStudent: student.id is required')
   if (!hostelName) throw new Error('allocateStudent: hostelName is required')
+
+  if (NON_BOARDING_HOUSES.includes(hostelName)) {
+    // Not a real room assignment — remove any existing allocation row
+    // (e.g. student moved from a boarding house to Dayscholar) and just
+    // mirror the house value. No room_number to validate, since there's
+    // no hostel_allocations write at all for this case.
+    const { error: delErr } = await supabase.from('hostel_allocations').delete().eq('student_id', student.id)
+    if (delErr) throw delErr
+    const { error: mirrorErr } = await supabase.from('students').update({ house: hostelName }).eq('id', student.id)
+    if (mirrorErr) throw mirrorErr
+    return { ok: true, allocated: false }
+  }
+
   if (!roomNumber) throw new Error('allocateStudent: roomNumber is required (hostel_allocations.room_number is NOT NULL)')
 
   // Is there already a row for this student? hostel_allocations has no
@@ -73,7 +96,7 @@ export async function allocateStudent(student, { hostelName, roomNumber, bedNumb
   const { error: mirrorErr } = await supabase.from('students').update({ house: hostelName }).eq('id', student.id)
   if (mirrorErr) throw mirrorErr
 
-  return { ok: true }
+  return { ok: true, allocated: true }
 }
 
 /**
@@ -108,6 +131,19 @@ export async function bulkAllocateStudents(students, hostelName) {
   if (!students?.length) return { ok: true, count: 0 }
 
   const ids = students.map(s => s.id)
+
+  if (NON_BOARDING_HOUSES.includes(hostelName)) {
+    // Bulk-assigning to a non-boarding house (shouldn't normally happen —
+    // this action is for filling actual hostel houses — but handled for
+    // consistency with allocateStudent): no allocation rows, just remove
+    // any existing ones and mirror the house value.
+    const { error: delErr } = await supabase.from('hostel_allocations').delete().in('student_id', ids)
+    if (delErr) throw delErr
+    const { error: mirrorErr } = await supabase.from('students').update({ house: hostelName }).in('id', ids)
+    if (mirrorErr) throw mirrorErr
+    return { ok: true, count: students.length, allocated: false }
+  }
+
   const { data: existingRows, error: selErr } = await supabase
     .from('hostel_allocations')
     .select('id, student_id')
@@ -168,7 +204,13 @@ export async function bulkAllocateStudents(students, hostelName) {
  * sitting in students.house.
  */
 export async function backfillMissingAllocations(students) {
-  const withHouse = (students || []).filter(s => s.house)
+  // Exclude non-boarding houses — a Dayscholar student having
+  // students.house = "Dayscholar" is correct and expected; giving them a
+  // hostel_allocations row would be fabricating a room assignment that
+  // doesn't exist, and would corrupt every stat that counts
+  // hostel_allocations rows as "boarders" (see School Overview's
+  // boarders/day-scholars KPI, which is exactly what surfaced this bug).
+  const withHouse = (students || []).filter(s => s.house && !NON_BOARDING_HOUSES.includes(s.house))
   if (!withHouse.length) return { ok: true, synced: 0, total: 0 }
 
   const ids = withHouse.map(s => s.id)
@@ -205,4 +247,30 @@ export async function backfillMissingAllocations(students) {
     synced += chunk.length
   }
   return { ok: true, synced, total: withHouse.length }
+}
+
+/**
+ * Cleanup for the specific bug this file's earlier version caused: before
+ * NON_BOARDING_HOUSES was respected here, backfillMissingAllocations
+ * created hostel_allocations rows for Dayscholar students too (a
+ * Dayscholar student has students.house set, so the old unfiltered
+ * backfill treated them the same as a real boarder). This removes any
+ * hostel_allocations row whose hostel_name is a non-boarding house —
+ * safe to run more than once, and does not touch students.house (which
+ * is already correct for these students).
+ */
+export async function cleanupNonBoardingAllocations() {
+  const { data, error: selErr } = await supabase
+    .from('hostel_allocations')
+    .select('id')
+    .in('hostel_name', NON_BOARDING_HOUSES)
+  if (selErr) throw selErr
+  if (!data?.length) return { ok: true, removed: 0 }
+
+  const { error: delErr } = await supabase
+    .from('hostel_allocations')
+    .delete()
+    .in('id', data.map(r => r.id))
+  if (delErr) throw delErr
+  return { ok: true, removed: data.length }
 }
