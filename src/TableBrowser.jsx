@@ -32,6 +32,14 @@ function broadcastCrossModuleWrite(tableKey, detail) {
   }
 }
 
+// Mirrors editEngine.js's STUDENT_ADM_SYNC_FIELDS keys, for confirm-dialog
+// copy only — the actual cascade-sync enforcement stays in editEngine.js.
+const STUDENT_ADM_SYNC_FIELDS_HINT = new Set([
+  'name','dob','gender','blood_group','course','batch','class_name','house',
+  'hostel_type','session','father_name','mother_name','phone','parent_phone',
+  'address','prev_school','referral_source','remarks',
+])
+
 const NAVY = '#0B1E3D', GOLD = '#C9A24B', RED = '#dc2626', GREEN = '#16a34a'
 const SLATE = { 50:'#f8fafc',100:'#f1f5f9',200:'#e2e8f0',300:'#cbd5e1',400:'#94a3b8',500:'#64748b',600:'#475569',700:'#334155' }
 const PAGE_SIZE = 100
@@ -53,6 +61,19 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
   const [hiddenCols, setHiddenCols] = useState(() => new Set())
   const [showColPicker, setShowColPicker] = useState(false)
   const [studentsByKey, setStudentsByKey] = useState({ byGcc: {}, byId: {}, byName: {} })
+
+  // ─── Bulk edit / find-replace state ───
+  // selectedIds keys off row.id — cleared whenever the table changes or a
+  // fresh page loads, since selections referring to rows no longer on
+  // screen would silently do nothing (or worse, feel like they applied to
+  // rows the person can't currently see).
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkField, setBulkField] = useState('')
+  const [bulkMatchValue, setBulkMatchValue] = useState('')   // find (optional filter)
+  const [bulkNewValue, setBulkNewValue] = useState('')       // replace
+  const [bulkConfirming, setBulkConfirming] = useState(false)
+  const [bulkRunning, setBulkRunning] = useState(false)
+  const [bulkResult, setBulkResult] = useState(null)   // { done, total, errors: [{id,message}] }
 
   const entry = TABLE_REGISTRY.find(t => t.key === tableKey)
   const effectiveSortCol = sortCol || entry?.orderCol
@@ -110,6 +131,8 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
     setTotalCount(count || 0)
     setPage(0)
     setLoading(false)
+    setSelectedIds(new Set())
+    setBulkResult(null)
   }, [tableKey, search, effectiveSortCol, sortDir])
 
   useEffect(() => { load() }, [load])
@@ -135,6 +158,8 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
     setRows(data || [])
     setPage(p)
     setLoading(false)
+    setSelectedIds(new Set())
+    setBulkResult(null)
   }, [tableKey, search, effectiveSortCol, sortDir])
 
   // Reset per-table UI state (sort/columns) when switching tables — a
@@ -146,6 +171,9 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
     setSortDir('desc')
     setHiddenCols(new Set())
     setShowColPicker(false)
+    setSelectedIds(new Set())
+    setBulkField(''); setBulkMatchValue(''); setBulkNewValue('')
+    setBulkConfirming(false); setBulkResult(null)
   }
 
   const toggleSort = (col) => {
@@ -171,8 +199,75 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
 
+  // ─── Bulk edit / find-replace helpers ───
+  // Rows eligible for the "find" filter: if bulkMatchValue is set, only rows
+  // whose current value in bulkField equals it (case-insensitive string
+  // compare) are eligible — lets "find X, replace with Y" work without a
+  // separate code path from plain bulk-set-selected-rows.
+  const bulkFieldDef = editableFields?.[bulkField]
+  const eligibleForBulk = useMemo(() => {
+    if (!bulkField) return rows
+    const term = bulkMatchValue.trim().toLowerCase()
+    if (!term) return rows
+    return rows.filter(r => String(r[bulkField] ?? '').toLowerCase() === term)
+  }, [rows, bulkField, bulkMatchValue])
+
+  const toggleRowSelected = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAllEligible = () => {
+    setSelectedIds(prev => {
+      const eligibleIds = eligibleForBulk.map(r => r.id)
+      const allSelected = eligibleIds.length > 0 && eligibleIds.every(id => prev.has(id))
+      if (allSelected) return new Set()
+      return new Set(eligibleIds)
+    })
+  }
+
+  // Selected rows, restricted to whichever are still actually eligible
+  // (e.g. person picked a match filter after already selecting some rows).
+  const selectedRows = rows.filter(r => selectedIds.has(r.id) && eligibleForBulk.includes(r))
+
+  const runBulkApply = async () => {
+    if (!bulkField || selectedRows.length === 0) return
+    setBulkRunning(true)
+    setBulkResult(null)
+    const errors = []
+    let done = 0
+    // Sequential, not Promise.all — each edit goes through editField's own
+    // whitelist check, admissions cascade sync, and audit log write. Doing
+    // these one at a time keeps failures isolated to a single row and
+    // keeps the audit trail's ordering meaningful.
+    for (const row of selectedRows) {
+      try {
+        await editField({
+          tableKey, rowId: row.id, field: bulkField,
+          oldValue: row[bulkField], newValue: bulkNewValue,
+          studentContext: resolveRowStudent(row),
+        })
+        setRows(prev => prev.map(r => r.id === row.id ? { ...r, [bulkField]: bulkNewValue } : r))
+        done++
+      } catch (e) {
+        errors.push({ id: row.id, message: e.message || 'Save failed' })
+      }
+    }
+    broadcastCrossModuleWrite(tableKey, { type: 'bulk_update', field: bulkField, count: done })
+    setBulkResult({ done, total: selectedRows.length, errors })
+    setBulkRunning(false)
+    setBulkConfirming(false)
+    if (errors.length === 0) {
+      setSelectedIds(new Set())
+      setBulkField(''); setBulkMatchValue(''); setBulkNewValue('')
+    }
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0, maxWidth: '100%', width: '100%', boxSizing: 'border-box' }}>
 
       {/* Table picker */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -214,11 +309,79 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
         )}
       </div>
 
-      <div style={{ fontSize: 11.5, color: SLATE[500] }}>
+      <div style={{ fontSize: 11, color: SLATE[400] }}>
         {totalCount.toLocaleString('en-IN')} total row(s) in {entry?.label} &middot; showing page {page + 1} of {totalPages}
         {search.trim().length >= 2 && ` \u00b7 filtered by "${search.trim()}" across the whole table`}
         {sortCol && ` \u00b7 sorted by ${sortCol.replace(/_/g, ' ')} (${sortDir})`}
+        {columns.length > 5 && ' \u00b7 scroll sideways to see more columns \u2192'}
       </div>
+
+      {/* Bulk edit / find-replace */}
+      {editableFields && !loading && !loadError && rows.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '10px 12px', background: SLATE[50], border: `1px solid ${SLATE[200]}`, borderRadius: 12 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: NAVY, textTransform: 'uppercase', letterSpacing: '.03em' }}>Bulk edit</span>
+          <select value={bulkField} onChange={e => { setBulkField(e.target.value); setBulkMatchValue(''); setBulkNewValue(''); setBulkResult(null) }}
+            style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, fontSize: 12 }}>
+            <option value="">Field&hellip;</option>
+            {Object.keys(editableFields).map(f => <option key={f} value={f}>{editableFields[f].label}</option>)}
+          </select>
+          {bulkField && (
+            <>
+              <input value={bulkMatchValue} onChange={e => setBulkMatchValue(e.target.value)}
+                placeholder="Find (optional, exact match)"
+                style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, fontSize: 12, width: 170 }} />
+              <span style={{ fontSize: 12, color: SLATE[400] }}>&rarr;</span>
+              {bulkFieldDef?.type === 'select' ? (
+                <select value={bulkNewValue} onChange={e => setBulkNewValue(e.target.value)}
+                  style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, fontSize: 12 }}>
+                  <option value="">Replace with&hellip;</option>
+                  {bulkFieldDef.options.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              ) : (
+                <input value={bulkNewValue} onChange={e => setBulkNewValue(e.target.value)}
+                  placeholder="Replace with"
+                  style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, fontSize: 12, width: 150 }} />
+              )}
+              <button onClick={toggleSelectAllEligible}
+                style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 11.5, fontWeight: 700, color: NAVY, cursor: 'pointer' }}>
+                {eligibleForBulk.length > 0 && eligibleForBulk.every(r => selectedIds.has(r.id)) ? 'Deselect all' : `Select all matching (${eligibleForBulk.length})`}
+              </button>
+              <span style={{ fontSize: 11.5, color: SLATE[500] }}>{selectedRows.length} selected on this page</span>
+              <button onClick={() => setBulkConfirming(true)} disabled={selectedRows.length === 0 || bulkNewValue === ''}
+                style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: selectedRows.length && bulkNewValue !== '' ? NAVY : SLATE[300], color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: selectedRows.length && bulkNewValue !== '' ? 'pointer' : 'default' }}>
+                Apply to {selectedRows.length} row{selectedRows.length === 1 ? '' : 's'}
+              </button>
+            </>
+          )}
+
+          {bulkConfirming && (
+            <div style={{ width: '100%', marginTop: 4, padding: '10px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, fontSize: 12.5, color: '#991b1b' }}>
+              <div style={{ marginBottom: 8 }}>
+                This will set <strong>{editableFields[bulkField]?.label}</strong> to <strong>{bulkNewValue || '(empty)'}</strong> on <strong>{selectedRows.length}</strong> row{selectedRows.length === 1 ? '' : 's'} in <strong>{entry?.label}</strong>{tableKey === 'students' && STUDENT_ADM_SYNC_FIELDS_HINT.has(bulkField) ? ' and will sync to the matching Admissions rows' : ''}. This writes directly to the database and cannot be undone from here.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={runBulkApply} disabled={bulkRunning}
+                  style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: RED, color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: bulkRunning ? 'default' : 'pointer' }}>
+                  {bulkRunning ? 'Applying…' : 'Yes, apply'}
+                </button>
+                <button onClick={() => setBulkConfirming(false)} disabled={bulkRunning}
+                  style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${SLATE[200]}`, background: '#fff', color: SLATE[600], fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {bulkResult && (
+            <div style={{ width: '100%', marginTop: 4, padding: '8px 12px', borderRadius: 10, fontSize: 12, background: bulkResult.errors.length ? '#fef2f2' : '#f0fdf4', color: bulkResult.errors.length ? '#991b1b' : '#166534' }}>
+              Updated {bulkResult.done} of {bulkResult.total} row(s).
+              {bulkResult.errors.length > 0 && (
+                <span> {bulkResult.errors.length} failed — {bulkResult.errors.map(e => e.message).join('; ')}</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       {loading ? (
@@ -233,11 +396,18 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
           No rows{search.trim() ? ' match this search' : ''}.
         </div>
       ) : (
-        <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${SLATE[200]}`, overflow: 'auto', maxHeight: 560 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${SLATE[200]}`, overflowX: 'auto', overflowY: 'auto', maxHeight: 560, maxWidth: '100%', minWidth: 0, WebkitOverflowScrolling: 'touch' }}>
+          <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ background: SLATE[50], position: 'sticky', top: 0 }}>
                 <th style={{ padding: '8px 10px', borderBottom: `1px solid ${SLATE[200]}`, width: 1 }} />
+                {editableFields && (
+                  <th style={{ padding: '8px 10px', borderBottom: `1px solid ${SLATE[200]}`, width: 1 }}>
+                    <input type="checkbox" title="Select all matching rows for bulk edit"
+                      checked={eligibleForBulk.length > 0 && eligibleForBulk.every(r => selectedIds.has(r.id))}
+                      onChange={toggleSelectAllEligible} disabled={!bulkField} />
+                  </th>
+                )}
                 {columns.map(c => {
                   const active = sortCol === c
                   return (
@@ -254,6 +424,9 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
               {rows.map((r, i) => (
                 <TableRow key={r.id ?? i} row={r} columns={columns} tableKey={tableKey}
                   editableFields={editableFields} student={resolveRowStudent(r)} onOpenStudent={onOpenStudent}
+                  selectable={!!editableFields} selected={selectedIds.has(r.id)}
+                  selectDisabled={!bulkField || !eligibleForBulk.includes(r)}
+                  onToggleSelected={() => toggleRowSelected(r.id)}
                   onRowUpdated={(field, val) => setRows(prev => prev.map(row => row === r ? { ...row, [field]: val } : row))} />
               ))}
             </tbody>
@@ -281,7 +454,7 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
 
 // One table row — a separate component so its own inline-edit state
 // (which field is being edited) doesn't re-render the whole table.
-function TableRow({ row, columns, tableKey, editableFields, student, onOpenStudent, onRowUpdated }) {
+function TableRow({ row, columns, tableKey, editableFields, student, onOpenStudent, onRowUpdated, selectable, selected, selectDisabled, onToggleSelected }) {
   const [editingField, setEditingField] = useState(null)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
@@ -325,6 +498,12 @@ function TableRow({ row, columns, tableKey, editableFields, student, onOpenStude
           </button>
         )}
       </td>
+      {selectable && (
+        <td style={{ padding: '7px 6px', textAlign: 'center' }}>
+          <input type="checkbox" checked={selected} disabled={selectDisabled} onChange={onToggleSelected}
+            title={selectDisabled ? 'Pick a bulk-edit field above first' : undefined} />
+        </td>
+      )}
       {columns.map(c => {
         const fieldDef = editableFields?.[c]
         const isEditingThis = editingField === c
