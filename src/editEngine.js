@@ -1,10 +1,23 @@
-// editEngine.js — safe, whitelisted inline editing for Student360 cards.
+// editEngine.js — inline editing for Student360 cards.
 // ─────────────────────────────────────────────────────────────────────────────
-// Student360 is a cross-module VIEW — it must never let someone edit a
-// field that some other module's business logic depends on without going
-// through that module's own validation (e.g. fee amounts must go through
-// feeEngine.js's collectFee, not a raw UPDATE here). So this engine only
-// allows editing fields explicitly whitelisted per table below.
+// ✦ Policy change: editing is no longer restricted to the field whitelist
+//   below. getEditableFields() now falls back to "every column on this row
+//   is editable as plain text" for any table/column not explicitly
+//   described in EDITABLE_FIELDS — the explicit entries just upgrade a
+//   field to a nicer input (select/date/textarea) with labels, they no
+//   longer gate whether editing is allowed at all.
+//
+//   This means Student360 can now write to fields another module's
+//   business logic depends on (e.g. fee amounts normally set via
+//   feeEngine.js's collectFee) without going through that module's own
+//   validation. That's an intentional, explicit trade-off — direct edits
+//   here can drift out of sync with whatever a module's own logic expects,
+//   so use with care on fields you know are managed elsewhere.
+//
+//   SYSTEM_LOCKED_FIELDS below stays hard-blocked regardless — editing id/
+//   created_at/updated_at directly doesn't bypass business logic, it
+//   corrupts row identity and audit history, so no policy choice should
+//   ever re-open those.
 //
 // Every edit is written straight to the real table and logged to the 
 // EXISTING audit_logs table. Edits to `students` automatically cascade 
@@ -12,6 +25,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from './supabase'
+
+// Never editable from Table Browser, no matter what — these are identity/
+// bookkeeping columns, not business data. Editing them doesn't skip some
+// other module's validation, it just corrupts the row or its history.
+const SYSTEM_LOCKED_FIELDS = new Set(['id', 'created_at', 'updated_at'])
 
 // ── Admissions Sync Map ──
 // Mirrors the sync logic from Students.jsx. If a field edited here is in 
@@ -103,8 +121,26 @@ export const EDITABLE_FIELDS = {
   },
 }
 
-export function getEditableFields(tableKey) {
-  return EDITABLE_FIELDS[tableKey] || null
+function defaultFieldDef(column) {
+  return { label: column.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), type: 'text' }
+}
+
+// Pass the row currently being rendered (any row from that table works —
+// only its column names matter) so every column can get a default
+// text-editable definition when it's not explicitly described above.
+// Without a sampleRow, falls back to just the explicit definitions (or
+// null), same as the old whitelist-only behavior — callers that already
+// have a row in hand should pass it to get full editability.
+export function getEditableFields(tableKey, sampleRow = null) {
+  const explicit = EDITABLE_FIELDS[tableKey] || {}
+  if (!sampleRow) return EDITABLE_FIELDS[tableKey] || null
+
+  const merged = { ...explicit }
+  Object.keys(sampleRow).forEach(col => {
+    if (SYSTEM_LOCKED_FIELDS.has(col)) return
+    if (!merged[col]) merged[col] = defaultFieldDef(col)
+  })
+  return merged
 }
 
 function getSessionUserName() {
@@ -141,9 +177,8 @@ async function auditEdit(tableKey, rowId, field, oldValue, newValue, studentCont
 }
 
 export async function editField({ tableKey, rowId, field, oldValue, newValue, studentContext }) {
-  const allowed = EDITABLE_FIELDS[tableKey]
-  if (!allowed || !allowed[field]) {
-    throw new Error(`editField: "${field}" on "${tableKey}" is not in the edit whitelist.`)
+  if (SYSTEM_LOCKED_FIELDS.has(field)) {
+    throw new Error(`editField: "${field}" is a system field and can't be edited here.`)
   }
 
   // 1. Update the primary table

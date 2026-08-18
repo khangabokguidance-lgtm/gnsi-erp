@@ -210,7 +210,7 @@ export default function TableBrowser({ onOpenStudent, onOpenModule }) {
 
   const allColumns = useMemo(() => rows[0] ? Object.keys(rows[0]).filter(c => c !== 'id') : [], [rows])
   const columns = useMemo(() => allColumns.filter(c => !hiddenCols.has(c)), [allColumns, hiddenCols])
-  const editableFields = getEditableFields(tableKey)
+  const editableFields = getEditableFields(tableKey, rows[0])
 
   const toggleCol = (c) => {
     setHiddenCols(prev => {
