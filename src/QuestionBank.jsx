@@ -55,46 +55,194 @@ function mayekFontFamily(fontTag) {
 }
 
 // ── SUBJECTS & CHAPTERS ──────────────────────────────────────────────────────
-const SUBJECTS = {
-  Mathematics: [
-    'Natural Numbers','LCM and HCF','Fractions','Decimal Numbers',
-    'Ratio and Proportion','Percentage','Profit and Loss','Simple Interest',
-    'Average','Unitary Method','Area and Perimeter','Volume of Cube and Cuboids',
-    'Speed and Time','Lines and Angles','Types of Angles','Circle',
-    'Prime and Composite Numbers','Roman Numerals','Simplification',
-    'Conversion of Units','Operation on Numbers','Temperature',
-    'Plane Figures','Arranging of Fractions','Complementary and Supplementary Angles',
-    'Rounding Off Numbers','Measurement','Squares, Cubes and Roots','Data Handling','Time and Work',
-  ],
-  Intelligence: [
-    'Analogies','Venn Diagram','Paper Folding','Embedded Figure',
-    'Geometrical Figure Completion','Space Visualisation','Order and Ranking',
-    'Coding Decoding','Mathematical Operations','Blood Relations',
-    'Sitting Arrangement','Mirror Image','Figure Matching','Figure Series',
-    'Odd Man Out','Pattern Completion','Classification','Word Formation',
-    'Dictionary Word Order','Series Completion','Direction Test','Clock and Calendar',
-  ],
-  Language: [
-    'Comprehension Passage','Preposition','Article','Vocabulary',
-    'Verbs and Type','Confusing Words','Question Tags','Types of Sentences',
-    'Tense Forms','Kinds of Nouns','Kinds of Pronouns','Correct Spelling',
-    'Ordering of Words in Sentence','Sentence Formation','Antonyms','Synonyms',
-    'Adjectives','Interjection','Idioms and Phrases','Collective Nouns',
-    'Number','Gender','Adverbs','Rhyming Words',
-  ],
-  'General Knowledge': [
-    'Scientific Devices','Icons and Symbols of India','Major Religions of India',
-    'Art and Culture','Defence Awareness','Sports and Games',
-    'Relationship Animals and Humans','Taste and Digestion',
-    'Cooking and Preserving','Germination and Seed Dispersal',
-    'Traditional Water Harvesting','Water Pollution','Mountain Terrain',
-    'Historical Monuments','Shape of Earth','Non-Renewable Energy',
-    'Food Culture and Habitat','Young Ones of Animals','Functions of Body Parts',
-    'International Organizations','Indian Literary Awards','Natural Calamities',
-    'Evaporation and Water Cycle','Life of Farmers','Tribal Communities',
-  ],
+// ── COURSES → SUBJECTS & CHAPTERS ────────────────────────────────────────────
+// Course-wise structure, same shape StudyMaterial.jsx already uses
+// (course -> subject -> chapters). Sainik's subject/chapter list is
+// unchanged from what QuestionBank.jsx has always used (Mathematics/
+// Intelligence/Language/General Knowledge, same chapter names, same
+// order) — existing questions with no course tag are effectively
+// Sainik-shaped data even though nothing retroactively assigns them a
+// course value here (see the migration note on COURSE_LIST below).
+// Navodaya and Foundation subject/chapter lists mirror StudyMaterial.jsx's
+// own definitions for consistency across modules. RMS is new — built from
+// the RMS CET Class 6 + Class 9 syllabus (Rashtriya Military Schools
+// Common Entrance Test): Mathematics, Intelligence (Reasoning), English
+// Language, General Knowledge & Current Affairs, and Social Science
+// (Class 9 Paper-I, based on NCERT Class 8 — RMS's own syllabus documents
+// don't prescribe a detailed topic breakdown for this section beyond
+// "NCERT Class 8", so this list is left as a single placeholder chapter
+// admins can expand later once specific chapters are decided).
+const COURSES = {
+  sainik: {
+    label: 'Sainik School', short: 'AISSEE',
+    subjects: {
+      Mathematics: [
+        'Natural Numbers','LCM and HCF','Fractions','Decimal Numbers',
+        'Ratio and Proportion','Percentage','Profit and Loss','Simple Interest',
+        'Average','Unitary Method','Area and Perimeter','Volume of Cube and Cuboids',
+        'Speed and Time','Lines and Angles','Types of Angles','Circle',
+        'Prime and Composite Numbers','Roman Numerals','Simplification',
+        'Conversion of Units','Operation on Numbers','Temperature',
+        'Plane Figures','Arranging of Fractions','Complementary and Supplementary Angles',
+        'Rounding Off Numbers','Measurement','Squares, Cubes and Roots','Data Handling','Time and Work',
+      ],
+      Intelligence: [
+        'Analogies','Venn Diagram','Paper Folding','Embedded Figure',
+        'Geometrical Figure Completion','Space Visualisation','Order and Ranking',
+        'Coding Decoding','Mathematical Operations','Blood Relations',
+        'Sitting Arrangement','Mirror Image','Figure Matching','Figure Series',
+        'Odd Man Out','Pattern Completion','Classification','Word Formation',
+        'Dictionary Word Order','Series Completion','Direction Test','Clock and Calendar',
+      ],
+      Language: [
+        'Comprehension Passage','Preposition','Article','Vocabulary',
+        'Verbs and Type','Confusing Words','Question Tags','Types of Sentences',
+        'Tense Forms','Kinds of Nouns','Kinds of Pronouns','Correct Spelling',
+        'Ordering of Words in Sentence','Sentence Formation','Antonyms','Synonyms',
+        'Adjectives','Interjection','Idioms and Phrases','Collective Nouns',
+        'Number','Gender','Adverbs','Rhyming Words',
+      ],
+      'General Knowledge': [
+        'Scientific Devices','Icons and Symbols of India','Major Religions of India',
+        'Art and Culture','Defence Awareness','Sports and Games',
+        'Relationship Animals and Humans','Taste and Digestion',
+        'Cooking and Preserving','Germination and Seed Dispersal',
+        'Traditional Water Harvesting','Water Pollution','Mountain Terrain',
+        'Historical Monuments','Shape of Earth','Non-Renewable Energy',
+        'Food Culture and Habitat','Young Ones of Animals','Functions of Body Parts',
+        'International Organizations','Indian Literary Awards','Natural Calamities',
+        'Evaporation and Water Cycle','Life of Farmers','Tribal Communities',
+      ],
+    },
+  },
+  navodaya: {
+    label: 'Navodaya Vidyalaya', short: 'JNVST',
+    subjects: {
+      'Mental Ability': [
+        'Odd One Out','Figure Series','Pattern Completion','Analogy','Geometrical Figure Completion',
+        'Mirror Image','Punched Hole Paper Folding','Space Visualisation','Embedded Figures',
+        'Coding-Decoding','Arithmetic Operations in Figures','Series','Direction Sense','Clock',
+      ],
+      Arithmetic: [
+        'Natural Numbers','LCM and HCF','Fractions','Decimals','Simplification','Percentage',
+        'Ratio and Proportion','Average','Profit and Loss','Simple Interest','Area and Perimeter',
+        'Volume','Speed and Distance','Unitary Method','Roman Numerals','Number System',
+        'Conversion of Units','Word Problems',
+      ],
+      'English Language': [
+        'Reading Comprehension','Fill in the Blanks','Sentence Arrangement','Synonyms','Antonyms',
+        'One-word Substitution','Correct Spelling','Phrase Meaning','Grammar Usage','Tenses','Articles',
+      ],
+      'Hindi Language': [
+        'Gadhyansh Bodh','Vakya Purti','Paryayvachi Shabd','Vilom Shabd','Shuddh Vartani',
+        'Muhavare aur Lokokti','Sandhi','Samas','Anekarthi Shabd','Vakya Nirman',
+      ],
+    },
+  },
+  foundation: {
+    label: 'Foundation Course', short: 'Class 5–8',
+    subjects: {
+      Mathematics: [
+        'Number Systems','Factors and Multiples','Fractions and Decimals','Integers',
+        'Algebra — Expressions and Equations','Ratio and Proportion','Percentage and Its Applications',
+        'Profit, Loss and Discount','Simple and Compound Interest','Lines, Angles and Triangles',
+        'Quadrilaterals and Polygons','Area and Perimeter','Surface Area and Volume',
+        'Statistics and Data Handling','Exponents and Powers','Symmetry and Transformations',
+        'Coordinate Geometry Basics','Mensuration','Speed, Time, Distance','Probability Basics',
+      ],
+      Science: [
+        'Food and Nutrition','Materials and Their Properties','The Living World — Plants',
+        'The Living World — Animals','Force, Motion and Energy','Light and Sound',
+        'Heat and Temperature','Electricity and Magnetism','Acids, Bases and Salts',
+        'Chemical Reactions Basics','Cell — The Unit of Life','Reproduction in Plants and Animals',
+        'Human Body Systems','Soil and Water','Air and Atmosphere','Environment and Ecology',
+        'Natural Resources','Disaster Management',
+      ],
+      English: [
+        'Parts of Speech','Tenses','Voice — Active and Passive','Narration — Direct and Indirect',
+        'Articles and Prepositions','Subject-Verb Agreement','Comprehension Passages','Letter Writing',
+        'Essay Writing','Vocabulary Development','Synonyms, Antonyms and Homophones','Idioms and Phrases',
+        'One-word Substitution','Punctuation','Sentence Transformation',
+      ],
+      'Social Science': [
+        'Ancient Civilisations','Medieval India','Mughal Empire','British Rule and Freedom Struggle',
+        'Post-Independence India','Physical Features of India','Climate of India',
+        'Natural Vegetation and Wildlife','Population and Urbanisation','Resources — Land, Water, Minerals',
+        'Agriculture and Industries','Indian Constitution','Panchayati Raj','Democracy and Elections',
+        'Economic Concepts','Globalisation',
+      ],
+      Hindi: [
+        'Gadhya Bodh','Padhya Bodh','Vyakaran — Sangya, Sarvanam','Visheshan and Kriya','Kal aur Vachya',
+        'Sandhi aur Samas','Muhavare aur Lokokti','Patra Lekhan','Nibandh Lekhan','Anuchhed Lekhan',
+      ],
+    },
+  },
+  rms: {
+    label: 'Rashtriya Military School', short: 'RMS CET',
+    // Sourced from RMS CET Class 6 + Class 9 (Paper-I) syllabus — see
+    // careerdefenceschool.com's official-style syllabus PDF, cross-checked
+    // against multiple RMS CET prep sites (shauryabharat.com,
+    // school.careers360.com, navodayasyllabus.com). Class 6 syllabus is
+    // based on CBSE Class 5; Class 9 Paper-I on CBSE Class 8. Combined
+    // into one course-wide chapter list per subject, same pattern the
+    // other three courses use rather than splitting by admission class.
+    subjects: {
+      Mathematics: [
+        'Whole Numbers','Natural Numbers','Playing with Numbers','Square Root and Cube Root',
+        'Unitary Method','Percentage','Time and Work','Profit and Loss','Simple Interest',
+        'Arithmetic Mean','Decimals and Fractions','Ratio and Proportion','Roman Numerals',
+        'Algebra','Place Value and Face Value','Temperature Measurement','Area and Volume',
+        'Volume of Cube and Cuboid','Area of Circle','Classification of Angles',
+        'Angles, Triangles and Circles','Triangles, Quadrilaterals and Polygons',
+        'Conversion of Units of Area and Volume','Angle Sum Property',
+        'Distance and Displacement', 'Geometry',
+      ],
+      Intelligence: [
+        'Blood Relation','Analogy','Classification (Odd Man Out)','Series','Coding-Decoding',
+        'Inserting Numbers','Puzzle','Decision Making','Non-Verbal Reasoning',
+      ],
+      'English Language': [
+        'Antonyms','Synonyms','Prepositions','Composition','Framing Questions','Articles',
+        'Comprehension Passages','Affirmative and Interrogative Sentences','Fill in the Blanks',
+        'Spelling Check','Para Jumbled','Construction of Sentences','Error Correction',
+        'Grammatical Structure','Vocabulary','Homonyms','One Word Substitution',
+        'Grammar — Verb, Adjective, Noun, Pronoun, Gender',
+      ],
+      'General Knowledge': [
+        'History','Geography','Indian Polity','Sports','Awards','Science and Health',
+        'Committee and Commission','States of India','Our Defence Forces',
+        'Atomic Power Stations in India','Classical Dances of India','Books and Authors',
+        'International Organizations','Environment and Pollution','General Science',
+        'Countries, Capitals and Currencies','National Parks and Wildlife Sanctuaries in India',
+        'Union Territories','Famous Rivers',
+      ],
+      'Social Science': [
+        // RMS's own syllabus documents point to "NCERT Class 8 Social
+        // Science" without a further topic breakdown — placeholder
+        // chapter so this subject exists in the picker; expand once
+        // specific chapters are decided.
+        'General (NCERT Class 8 basis)',
+      ],
+    },
+  },
 }
-const SUBJECT_LIST  = Object.keys(SUBJECTS)
+const COURSE_LIST = Object.keys(COURSES)
+
+// Backward-compat aliases: SUBJECTS/SUBJECT_LIST used to be the flat,
+// course-less structure every tab in this file read from directly. They
+// now point at Sainik's subject list specifically — Sainik is the course
+// whose data is identical to what SUBJECTS held before this course
+// dimension existed, so anything still reading these two names keeps
+// working exactly as before for Sainik data, while newly course-aware
+// code should read from COURSES[course].subjects instead. Existing
+// questions in the database have no `course` value set (this migration
+// intentionally does not backfill one — see the discussion this was
+// built from), so they won't be excluded from any course-scoped view
+// that also matches on course, but they ALSO won't automatically show up
+// as "Sainik" data just because these aliases point there; course
+// filtering in the UI checks the actual `course` column on each row.
+const SUBJECTS = COURSES.sainik.subjects
+const SUBJECT_LIST = Object.keys(SUBJECTS)
 const DIFFICULTIES  = ['Easy', 'Medium', 'Hard']
 const MARKS_OPTIONS = [1, 2, 3, 4, 5]
 const DIAGRAM_BUCKET = 'question-diagrams'
@@ -215,6 +363,19 @@ const SC = {
   Intelligence:        { color: '#7c3aed', bg: '#f3e8ff', border: '#ddd6fe' },
   Language:            { color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
   'General Knowledge': { color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+  // Course-specific subjects introduced by the Navodaya/Foundation/RMS
+  // course structure — Sainik's four canonical subjects above still take
+  // priority since they're the original QBank taxonomy; these extend
+  // coverage so subjects unique to the other three courses get their own
+  // distinct color instead of all falling back to Mathematics's navy.
+  'Mental Ability':     { color: '#7c3aed', bg: '#f3e8ff', border: '#ddd6fe' },
+  Arithmetic:           { color: '#1e3a5f', bg: '#eff6ff', border: '#bfdbfe' },
+  'English Language':   { color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
+  'Hindi Language':     { color: '#be185d', bg: '#fdf2f8', border: '#fbcfe8' },
+  Science:              { color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc' },
+  English:              { color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
+  'Social Science':     { color: '#c2410c', bg: '#fff7ed', border: '#fed7aa' },
+  Hindi:                { color: '#be185d', bg: '#fdf2f8', border: '#fbcfe8' },
 }
 const CHART_COLORS = ['#1e3a5f','#16a34a','#dc2626','#d97706','#7c3aed','#0891b2']
 
@@ -923,7 +1084,7 @@ function parseCSVLine(line) {
   return cells.map(c => c.trim())
 }
 
-function parseCSVQuestions(csvText, defaultSubject, defaultChapter) {
+function parseCSVQuestions(csvText, defaultCourse, defaultSubject, defaultChapter) {
   const lines = csvText.split(/\r?\n/).filter(l => l.trim())
   if (lines.length < 2) return []
   const header = parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/\s+/g,'_'))
@@ -944,6 +1105,7 @@ function parseCSVQuestions(csvText, defaultSubject, defaultChapter) {
       option_a: get('option_a'), option_b: get('option_b'),
       option_c: get('option_c'), option_d: get('option_d'),
       correct_option: ['A','B','C','D'].includes(correctRaw) ? correctRaw : '',
+      course: get('course') || defaultCourse || '',
       subject: get('subject') || defaultSubject || '',
       chapter: get('chapter') || defaultChapter || '',
       subsection: get('subsection') || '',
@@ -1079,6 +1241,7 @@ function StudyMaterialsRefPanel({ subject, chapter, onNavigate }) {
 // Patch: applies initialFilter on mount + listens for NAVIGATE_TO event
 // ══════════════════════════════════════════════════════════════════════════════
 function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmin }) {
+  const [filterCourse,     setFilterCourse]     = useState('All')
   const [filterSubject,    setFilterSubject]    = useState('All')
   const [filterChapter,    setFilterChapter]    = useState('All')
   const [filterSubsection, setFilterSubsection] = useState('All')
@@ -1089,6 +1252,19 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
   const [selected,         setSelected]         = useState(new Set())
   const [editQ,            setEditQ]            = useState(null)
   const PAGE = 20
+
+  // Subject list scoped to the selected course — 'All' course falls back
+  // to the union of every course's subjects (deduplicated) so switching
+  // "All Courses" still lets you filter by a subject name shared across
+  // courses (e.g. Mathematics appears in Sainik, Foundation, and RMS).
+  const courseSubjectList = useMemo(() => {
+    if (filterCourse === 'All') {
+      const all = new Set()
+      COURSE_LIST.forEach(c => Object.keys(COURSES[c].subjects).forEach(s => all.add(s)))
+      return [...all]
+    }
+    return Object.keys(COURSES[filterCourse]?.subjects || {})
+  }, [filterCourse])
 
   // ── PATCH: apply initialFilter from cross-module navigation ────────────────
   useEffect(() => {
@@ -1106,7 +1282,21 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     setPage(1)
   }, [initialFilter])
 
-  const chapters    = filterSubject !== 'All' ? (SUBJECTS[filterSubject] || []) : []
+  // Chapters come from the selected course+subject when both are picked;
+  // with course='All', fall back to whichever course actually defines
+  // that subject name (courses can share a subject name — e.g.
+  // Mathematics — with different chapter lists, so 'All' courses +
+  // one subject picks the first course that has it, same ambiguity
+  // StudyMaterial.jsx accepts in its own cross-course subject matching).
+  const chapters = useMemo(() => {
+    if (filterSubject === 'All') return []
+    if (filterCourse !== 'All') return COURSES[filterCourse]?.subjects[filterSubject] || []
+    for (const c of COURSE_LIST) {
+      if (COURSES[c].subjects[filterSubject]) return COURSES[c].subjects[filterSubject]
+    }
+    return []
+  }, [filterCourse, filterSubject])
+
   const subsections = useMemo(() => {
     if (filterSubject === 'All' || filterChapter === 'All') return []
     const ss = new Set(questions
@@ -1118,6 +1308,7 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return questions.filter(item => {
+      if (filterCourse      !== 'All' && (item.course || '') !== filterCourse) return false
       if (filterSubject    !== 'All' && item.subject    !== filterSubject)    return false
       if (filterChapter    !== 'All' && item.chapter    !== filterChapter)    return false
       if (filterSubsection !== 'All' && item.subsection !== filterSubsection) return false
@@ -1127,7 +1318,7 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
       if (q && !item.question?.toLowerCase().includes(q))                    return false
       return true
     })
-  }, [questions, filterSubject, filterChapter, filterSubsection, filterDiff, filterDiagram, search])
+  }, [questions, filterCourse, filterSubject, filterChapter, filterSubsection, filterDiff, filterDiagram, search])
 
   const totalPages   = Math.max(1, Math.ceil(filtered.length / PAGE))
   const paginated    = filtered.slice((page-1)*PAGE, page*PAGE)
@@ -1166,13 +1357,6 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     else { showToast('Updated ✓', C.green); setEditQ(null); refetch() }
   }
 
-  const stats = useMemo(() => {
-    const map = {}
-    SUBJECT_LIST.forEach(s => { map[s] = 0 })
-    questions.forEach(q => { map[q.subject] = (map[q.subject]||0)+1 })
-    return map
-  }, [questions])
-
   return (
     <>
       {/* initialFilter active banner */}
@@ -1188,14 +1372,15 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
 
       {/* Subject stat cards */}
       <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:20 }}>
-        {SUBJECT_LIST.map(s => {
-          const sc = SC[s]
+        {courseSubjectList.map(s => {
+          const sc = SC[s] || SC.Mathematics
+          const count = questions.filter(q => q.subject === s && (filterCourse === 'All' || (q.course || '') === filterCourse)).length
           return (
             <div key={s} onClick={() => { setFilterSubject(s); setFilterChapter('All'); setFilterSubsection('All'); setPage(1) }}
               style={{ flex:1, minWidth:130, padding:'13px 15px', borderRadius:10,
                 background:sc.bg, border:`1.5px solid ${filterSubject===s?sc.color:sc.border}`,
                 cursor:'pointer', transition:'all .12s' }}>
-              <div style={{ fontSize:24, fontWeight:800, color:sc.color }}>{stats[s]||0}</div>
+              <div style={{ fontSize:24, fontWeight:800, color:sc.color }}>{count}</div>
               <div style={{ fontSize:10, fontWeight:700, color:sc.color, textTransform:'uppercase', letterSpacing:'.05em', marginTop:2 }}>{s}</div>
             </div>
           )
@@ -1209,13 +1394,18 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
       </div>
 
       {/* Filters */}
-      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 1fr', gap:8, marginBottom:10 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 1fr 1fr', gap:8, marginBottom:10 }}>
         <input style={iS} placeholder="🔍 Search questions…" value={search}
           onChange={e => { setSearch(e.target.value); setPage(1) }} />
+        <select style={iS} value={filterCourse}
+          onChange={e => { setFilterCourse(e.target.value); setFilterSubject('All'); setFilterChapter('All'); setFilterSubsection('All'); setPage(1) }}>
+          <option value="All">All Courses</option>
+          {COURSE_LIST.map(c => <option key={c} value={c}>{COURSES[c].label}</option>)}
+        </select>
         <select style={iS} value={filterSubject}
           onChange={e => { setFilterSubject(e.target.value); setFilterChapter('All'); setFilterSubsection('All'); setPage(1) }}>
           <option value="All">All Subjects</option>
-          {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+          {courseSubjectList.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <select style={{ ...iS, opacity: filterSubject!=='All'?1:.5 }} value={filterChapter}
           onChange={e => { setFilterChapter(e.target.value); setFilterSubsection('All'); setPage(1) }}
@@ -1309,7 +1499,8 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
 
 // ── SINGLE QUESTION ROW FORM (used in Manual Add + Edit) ─────────────────────
 function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, showToast }) {
-  const chapters    = SUBJECTS[row.subject] || []
+  const courseSubjects = row.course ? Object.keys(COURSES[row.course]?.subjects || {}) : SUBJECT_LIST
+  const chapters    = row.course ? (COURSES[row.course]?.subjects[row.subject] || []) : (SUBJECTS[row.subject] || [])
   const subSecMap   = SUBSECTION_KEYWORDS[row.subject] || {}
   const subsections = Object.keys(subSecMap)
   const fileRef     = useRef()
@@ -1342,13 +1533,22 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
           <button onClick={() => onRemove(index)} style={btnSm('#fee2e2', C.rose)}>✖ Remove</button>
         )}
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:10 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:10, marginBottom:10 }}>
+        <div>
+          <label style={lS}>Course *</label>
+          <select style={iS} value={row.course || ''}
+            onChange={e => { onChange(index,'course',e.target.value); onChange(index,'subject',''); onChange(index,'chapter',''); onChange(index,'subsection','') }}>
+            <option value="">Select</option>
+            {COURSE_LIST.map(c => <option key={c} value={c}>{COURSES[c].label}</option>)}
+          </select>
+        </div>
         <div>
           <label style={lS}>Subject *</label>
-          <select style={iS} value={row.subject}
-            onChange={e => { onChange(index,'subject',e.target.value); onChange(index,'chapter',''); onChange(index,'subsection','') }}>
+          <select style={{ ...iS, opacity: row.course?1:.5 }} value={row.subject}
+            onChange={e => { onChange(index,'subject',e.target.value); onChange(index,'chapter',''); onChange(index,'subsection','') }}
+            disabled={!row.course}>
             <option value="">Select</option>
-            {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+            {courseSubjects.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div>
@@ -1443,7 +1643,7 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
 // Patch: StudyMaterialsRefPanel + emit QUESTION_SAVED after save
 // ══════════════════════════════════════════════════════════════════════════════
 const emptyRow = () => ({
-  subject:'', chapter:'', subsection:'', question:'', question_mayek:'',
+  course:'', subject:'', chapter:'', subsection:'', question:'', question_mayek:'',
   option_a:'', option_b:'', option_c:'', option_d:'',
   option_a_mayek:'', option_b_mayek:'', option_c_mayek:'', option_d_mayek:'',
   correct_option:'', difficulty:'Medium', marks:1, diagram_url:'',
@@ -1463,7 +1663,7 @@ function TabManualAdd({ questions, refetch, showToast, onNavigate }) {
   const refChapter = rows[0]?.chapter
 
   const handleSave = async () => {
-    const invalid = rows.filter(r => !r.subject || !r.chapter || !r.question || !r.option_a || !r.option_b || !r.correct_option)
+    const invalid = rows.filter(r => !r.course || !r.subject || !r.chapter || !r.question || !r.option_a || !r.option_b || !r.correct_option)
     if (invalid.length) { showToast(`${invalid.length} row(s) incomplete — fill all required fields`, C.amber); return }
 
     // ── Duplicate check — feature #6 ──
@@ -1525,13 +1725,15 @@ function TabManualAdd({ questions, refetch, showToast, onNavigate }) {
 function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
   const [rawText,       setRawText]       = useState('')
   const [answerKeyText, setAnswerKeyText] = useState('')
+  const [bulkCourse,    setBulkCourse]    = useState('')
   const [bulkSubject,   setBulkSubject]   = useState('')
   const [bulkChapter,   setBulkChapter]   = useState('')
   const [extracted,     setExtracted]     = useState([])
   const [showAnswerKey, setShowAnswerKey] = useState(false)
   const [saving,        setSaving]        = useState(false)
   const [step,          setStep]          = useState(1)
-  const chapters = SUBJECTS[bulkSubject] || []
+  const bulkSubjectList = bulkCourse ? Object.keys(COURSES[bulkCourse]?.subjects || {}) : []
+  const chapters = bulkCourse ? (COURSES[bulkCourse]?.subjects[bulkSubject] || []) : []
 
   // dupeByIndex: Map<row index, existingId> for every row findDuplicates
   // flagged — carries the matched existing row's id forward so a
@@ -1569,6 +1771,7 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
     if (!parsed.length) { showToast('No questions detected — check the format', C.rose); return }
     const tagged = parsed.map(q => ({
       ...q,
+      course: bulkCourse || '',
       subject: bulkSubject || '',
       chapter: bulkChapter || '',
       subsection: q._subsectionHint
@@ -1587,7 +1790,7 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
     if (!file) return
     const reader = new FileReader()
     reader.onload = (ev) => {
-      const parsed = parseCSVQuestions(ev.target.result, bulkSubject, bulkChapter)
+      const parsed = parseCSVQuestions(ev.target.result, bulkCourse, bulkSubject, bulkChapter)
       if (!parsed.length) { showToast('No valid rows found — check your CSV has a "question" column', C.rose); return }
       const tagged = parsed.map(q => ({
         ...q,
@@ -1626,8 +1829,8 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
   const setAnswer = (idx, ans) => updateQ(idx, 'correct_option', ans)
 
   const handleSave = async () => {
-    const invalid = extracted.filter(q => !q.subject || !q.chapter)
-    if (invalid.length) { showToast(`${invalid.length} questions missing subject/chapter`, C.amber); return }
+    const invalid = extracted.filter(q => !q.course || !q.subject || !q.chapter)
+    if (invalid.length) { showToast(`${invalid.length} questions missing course/subject/chapter`, C.amber); return }
     const noAnswer = extracted.filter(q => !q.correct_option)
     if (noAnswer.length > 0) {
       const go = confirm(`${noAnswer.length} questions have no answer marked. Save anyway?`)
@@ -1702,14 +1905,23 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
             Paste any question paper format — app detects questions, options and subsections automatically
           </div>
 
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14,
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:14,
             padding:'12px 14px', borderRadius:9, background:'#f8fafc', border:`1px solid ${C.border}` }}>
             <div>
+              <label style={lS}>Assign Course to all</label>
+              <select style={iS} value={bulkCourse}
+                onChange={e => { setBulkCourse(e.target.value); setBulkSubject(''); setBulkChapter('') }}>
+                <option value="">— Select Course —</option>
+                {COURSE_LIST.map(c => <option key={c} value={c}>{COURSES[c].label}</option>)}
+              </select>
+            </div>
+            <div>
               <label style={lS}>Assign Subject to all</label>
-              <select style={iS} value={bulkSubject}
-                onChange={e => { setBulkSubject(e.target.value); setBulkChapter('') }}>
+              <select style={{ ...iS, opacity: bulkCourse?1:.5 }} value={bulkSubject}
+                onChange={e => { setBulkSubject(e.target.value); setBulkChapter('') }}
+                disabled={!bulkCourse}>
                 <option value="">— Select Subject —</option>
-                {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                {bulkSubjectList.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>
@@ -1895,16 +2107,21 @@ Answer: B`} />
                   <button onClick={() => setAnswer(i,'')} style={btnSm('#f1f5f9', C.slate)}>✖ Clear</button>
                 )}
               </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:6 }}>
-                <select style={{ ...iS, fontSize:11, padding:'4px 8px' }} value={q.subject}
-                  onChange={e => updateQ(i,'subject',e.target.value)}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr', gap:6 }}>
+                <select style={{ ...iS, fontSize:11, padding:'4px 8px' }} value={q.course || ''}
+                  onChange={e => { updateQ(i,'course',e.target.value); updateQ(i,'subject',''); updateQ(i,'chapter','') }}>
+                  <option value="">Course?</option>
+                  {COURSE_LIST.map(c => <option key={c} value={c}>{COURSES[c].label}</option>)}
+                </select>
+                <select style={{ ...iS, fontSize:11, padding:'4px 8px', opacity:q.course?1:.5 }} value={q.subject}
+                  onChange={e => updateQ(i,'subject',e.target.value)} disabled={!q.course}>
                   <option value="">Subject?</option>
-                  {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                  {(q.course ? Object.keys(COURSES[q.course]?.subjects || {}) : []).map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
                 <select style={{ ...iS, fontSize:11, padding:'4px 8px', opacity:q.subject?1:.5 }}
                   value={q.chapter} onChange={e => updateQ(i,'chapter',e.target.value)} disabled={!q.subject}>
                   <option value="">Chapter?</option>
-                  {(SUBJECTS[q.subject]||[]).map(c => <option key={c} value={c}>{c}</option>)}
+                  {(q.course ? (COURSES[q.course]?.subjects[q.subject] || []) : []).map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
                 <select style={{ ...iS, fontSize:11, padding:'4px 8px', opacity:q.subject?1:.5 }}
                   value={q.subsection} onChange={e => updateQ(i,'subsection',e.target.value)} disabled={!q.subject}>
@@ -2207,6 +2424,7 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers, ti
 // TAB 4: CREATE PAPER (unchanged)
 // ══════════════════════════════════════════════════════════════════════════════
 function TabPaper({ questions, showToast }) {
+  const [course,       setCourse]       = useState('')
   const [subject,      setSubject]      = useState('')
   const [chapter,      setChapter]      = useState('')
   const [selSubs,      setSelSubs]      = useState({})
@@ -2217,16 +2435,17 @@ function TabPaper({ questions, showToast }) {
   const [instructions, setInstructions] = useState('Attempt all questions. Each question carries the marks shown against it. No negative marking unless stated.')
   const [preview,      setPreview]      = useState(null)
   const [downloading,  setDownloading]  = useState(false)
-  const chapters = subject ? SUBJECTS[subject] : []
+  const courseSubjectList = course ? Object.keys(COURSES[course]?.subjects || {}) : []
+  const chapters = (course && subject) ? (COURSES[course]?.subjects[subject] || []) : []
 
   const availableSubs = useMemo(() => {
-    if (!subject || !chapter) return {}
+    if (!course || !subject || !chapter) return {}
     const map = {}
-    questions.filter(q => q.subject===subject && q.chapter===chapter &&
+    questions.filter(q => (q.course||'')===course && q.subject===subject && q.chapter===chapter &&
       (difficulty==='All' || q.difficulty===difficulty))
       .forEach(q => { const s=q.subsection||'General'; map[s]=(map[s]||0)+1 })
     return map
-  }, [questions, subject, chapter, difficulty])
+  }, [questions, course, subject, chapter, difficulty])
 
   const toggleSub = (sub) => {
     setSelSubs(prev => {
@@ -2240,13 +2459,13 @@ function TabPaper({ questions, showToast }) {
   const totalSelected = Object.values(selSubs).reduce((a,b)=>a+b,0)
 
   const handlePreview = () => {
-    if (!subject || !chapter) { showToast('Select subject and chapter', C.amber); return }
+    if (!course || !subject || !chapter) { showToast('Select course, subject and chapter', C.amber); return }
     const selected = Object.keys(selSubs)
     if (!selected.length) { showToast('Select at least one subsection', C.amber); return }
     let pool = []
     selected.forEach(sub => {
       const subQs = questions.filter(q =>
-        q.subject===subject && q.chapter===chapter &&
+        (q.course||'')===course && q.subject===subject && q.chapter===chapter &&
         (q.subsection||'General')===sub &&
         (difficulty==='All' || q.difficulty===difficulty)
       ).sort(() => Math.random()-.5)
@@ -2275,13 +2494,21 @@ function TabPaper({ questions, showToast }) {
     <>
       <div style={cardS}>
         <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:16 }}>📄 Create Question Paper</div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:14 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:14 }}>
+          <div>
+            <label style={lS}>Course *</label>
+            <select style={iS} value={course}
+              onChange={e => { setCourse(e.target.value); setSubject(''); setChapter(''); setSelSubs({}) }}>
+              <option value="">Select</option>
+              {COURSE_LIST.map(c => <option key={c} value={c}>{COURSES[c].label}</option>)}
+            </select>
+          </div>
           <div>
             <label style={lS}>Subject *</label>
-            <select style={iS} value={subject}
-              onChange={e => { setSubject(e.target.value); setChapter(''); setSelSubs({}) }}>
+            <select style={{ ...iS, opacity:course?1:.5 }} value={subject}
+              onChange={e => { setSubject(e.target.value); setChapter(''); setSelSubs({}) }} disabled={!course}>
               <option value="">Select</option>
-              {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+              {courseSubjectList.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
@@ -2503,6 +2730,7 @@ function CastQuestionOverlay({ questions, index, onIndexChange, onClose }) {
 
 function TabTest({ questions, showToast }) {
   const [studentName, setStudentName] = useState('')
+  const [course,      setCourse]      = useState('')
   const [subject,     setSubject]     = useState('')
   const [chapter,     setChapter]     = useState('')
   const [selSubs,     setSelSubs]     = useState(new Set())
@@ -2517,7 +2745,8 @@ function TabTest({ questions, showToast }) {
   const [historyLoading, setHistoryLoading] = useState(true)
   const [castOpen,      setCastOpen]      = useState(false)
   const [castQIndex,    setCastQIndex]    = useState(0)
-  const chapters = subject ? SUBJECTS[subject] : []
+  const courseSubjectList = course ? Object.keys(COURSES[course]?.subjects || {}) : []
+  const chapters = (course && subject) ? (COURSES[course]?.subjects[subject] || []) : []
 
   useEffect(() => {
     let cancelled = false
@@ -2537,10 +2766,10 @@ function TabTest({ questions, showToast }) {
   }, [])
 
   const availableSubs = useMemo(() => {
-    if (!subject || !chapter) return []
-    const ss = new Set(questions.filter(q=>q.subject===subject&&q.chapter===chapter).map(q=>q.subsection||'General'))
+    if (!course || !subject || !chapter) return []
+    const ss = new Set(questions.filter(q=>(q.course||'')===course&&q.subject===subject&&q.chapter===chapter).map(q=>q.subsection||'General'))
     return [...ss].sort()
-  }, [questions, subject, chapter])
+  }, [questions, course, subject, chapter])
 
   const handleSubmit = useCallback(() => {
     setTestQs(prevQs => {
@@ -2584,10 +2813,10 @@ function TabTest({ questions, showToast }) {
 
   const handleStart = () => {
     if (!studentName.trim()) { showToast('Enter student name', C.amber); return }
-    if (!subject || !chapter) { showToast('Select subject and chapter', C.amber); return }
+    if (!course || !subject || !chapter) { showToast('Select course, subject and chapter', C.amber); return }
     const subFilter = selSubs.size > 0 ? [...selSubs] : availableSubs
     let pool = questions.filter(q =>
-      q.subject===subject && q.chapter===chapter &&
+      (q.course||'')===course && q.subject===subject && q.chapter===chapter &&
       subFilter.includes(q.subsection||'General')
     ).sort(() => Math.random()-.5).slice(0, count)
     if (!pool.length) { showToast('No questions available — add questions first', C.amber); return }
@@ -2732,18 +2961,26 @@ function TabTest({ questions, showToast }) {
   return (
     <div style={cardS}>
       <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:18 }}>📝 Online Test</div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:12 }}>
         <div>
           <label style={lS}>Student Name *</label>
           <input style={iS} value={studentName} onChange={e=>setStudentName(e.target.value)}
             placeholder="Enter student name" />
         </div>
         <div>
-          <label style={lS}>Subject *</label>
-          <select style={iS} value={subject}
-            onChange={e=>{setSubject(e.target.value);setChapter('');setSelSubs(new Set())}}>
+          <label style={lS}>Course *</label>
+          <select style={iS} value={course}
+            onChange={e=>{setCourse(e.target.value);setSubject('');setChapter('');setSelSubs(new Set())}}>
             <option value="">Select</option>
-            {SUBJECT_LIST.map(s=><option key={s} value={s}>{s}</option>)}
+            {COURSE_LIST.map(c=><option key={c} value={c}>{COURSES[c].label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={lS}>Subject *</label>
+          <select style={{...iS, opacity:course?1:.5}} value={subject}
+            onChange={e=>{setSubject(e.target.value);setChapter('');setSelSubs(new Set())}} disabled={!course}>
+            <option value="">Select</option>
+            {courseSubjectList.map(s=><option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div>
@@ -2832,6 +3069,7 @@ function TabTest({ questions, showToast }) {
 // or export a real .pptx.
 // ══════════════════════════════════════════════════════════════════════════════
 function TabSmartPPT({ questions, showToast }) {
+  const [course,      setCourse]      = useState('')
   const [subject,     setSubject]     = useState('')
   const [chapter,     setChapter]     = useState('')
   const [difficulty,  setDifficulty]  = useState('All')
@@ -2839,13 +3077,14 @@ function TabSmartPPT({ questions, showToast }) {
   const [withAnswers, setWithAnswers] = useState(true)
   const [viewing,     setViewing]     = useState(false)
   const [exporting,   setExporting]   = useState(false)
-  const chapters = subject ? SUBJECTS[subject] : []
+  const courseSubjectList = course ? Object.keys(COURSES[course]?.subjects || {}) : []
+  const chapters = (course && subject) ? (COURSES[course]?.subjects[subject] || []) : []
 
   const chapterQs = useMemo(() => {
-    if (!subject || !chapter) return []
-    return questions.filter(q => q.subject===subject && q.chapter===chapter &&
+    if (!course || !subject || !chapter) return []
+    return questions.filter(q => (q.course||'')===course && q.subject===subject && q.chapter===chapter &&
       (difficulty==='All' || q.difficulty===difficulty))
-  }, [questions, subject, chapter, difficulty])
+  }, [questions, course, subject, chapter, difficulty])
 
   const slides = useMemo(() => buildQuestionSlides(chapterQs), [chapterQs])
 
@@ -2866,12 +3105,19 @@ function TabSmartPPT({ questions, showToast }) {
         <div style={{ fontSize:12, color:C.slate, marginBottom:16 }}>
           Pick a chapter — every question becomes a slide automatically. Present live (with cast) or export a real .pptx.
         </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:14 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:14 }}>
+          <div>
+            <label style={lS}>Course *</label>
+            <select style={iS} value={course} onChange={e => { setCourse(e.target.value); setSubject(''); setChapter('') }}>
+              <option value="">Select</option>
+              {COURSE_LIST.map(c => <option key={c} value={c}>{COURSES[c].label}</option>)}
+            </select>
+          </div>
           <div>
             <label style={lS}>Subject *</label>
-            <select style={iS} value={subject} onChange={e => { setSubject(e.target.value); setChapter('') }}>
+            <select style={{ ...iS, opacity:course?1:.5 }} value={subject} onChange={e => { setSubject(e.target.value); setChapter('') }} disabled={!course}>
               <option value="">Select</option>
-              {SUBJECT_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+              {courseSubjectList.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
@@ -2933,17 +3179,21 @@ function TabSmartPPT({ questions, showToast }) {
 
 
 function TabStats({ questions, refetch, showToast, isAdmin }) {
+  const [filterCourse, setFilterCourse] = useState(COURSE_LIST[0] || '')
   const [filterSubject, setFilterSubject] = useState('All')
   const [deleteAllInput, setDeleteAllInput] = useState('')
   const [deletingAll, setDeletingAll] = useState(false)
 
+  const courseSubjects = COURSES[filterCourse]?.subjects || {}
+  const courseSubjectList = Object.keys(courseSubjects)
+
   const stats = useMemo(() => {
     const result = {}
-    SUBJECT_LIST.forEach(subj => {
+    courseSubjectList.forEach(subj => {
       result[subj] = {}
-      SUBJECTS[subj].forEach(ch => { result[subj][ch] = { total:0, subsections:{} } })
+      courseSubjects[subj].forEach(ch => { result[subj][ch] = { total:0, subsections:{} } })
     })
-    questions.forEach(q => {
+    questions.filter(q => (q.course||'')===filterCourse).forEach(q => {
       if (!result[q.subject]) return
       if (!result[q.subject][q.chapter]) result[q.subject][q.chapter] = { total:0, subsections:{} }
       result[q.subject][q.chapter].total++
@@ -2951,25 +3201,25 @@ function TabStats({ questions, refetch, showToast, isAdmin }) {
       result[q.subject][q.chapter].subsections[ss] = (result[q.subject][q.chapter].subsections[ss]||0) + 1
     })
     return result
-  }, [questions])
+  }, [questions, filterCourse, courseSubjectList, courseSubjects])
 
-  const subjects = filterSubject==='All' ? SUBJECT_LIST : [filterSubject]
+  const subjects = filterSubject==='All' ? courseSubjectList : [filterSubject]
   const countColor = (n) => n >= 20 ? C.green : n >= 10 ? C.amber : C.rose
   const countBg    = (n) => n >= 20 ? '#dcfce7' : n >= 10 ? '#fef9c3' : '#fee2e2'
   const countLabel = (n) => n >= 20 ? '✅' : n >= 10 ? '⚠️' : '❌'
 
   // ── CSV export — feature #9 ──
   const handleExportCSV = () => {
-    const rows = [['Subject', 'Chapter', 'Subsection', 'Question Count']]
+    const rows = [['Course', 'Subject', 'Chapter', 'Subsection', 'Question Count']]
     subjects.forEach(subj => {
       const chapData = stats[subj] || {}
-      SUBJECTS[subj].forEach(ch => {
+      ;(courseSubjects[subj] || []).forEach(ch => {
         const chData = chapData[ch] || { total:0, subsections:{} }
         if (Object.keys(chData.subsections).length === 0) {
-          rows.push([subj, ch, '', chData.total])
+          rows.push([COURSES[filterCourse]?.label || filterCourse, subj, ch, '', chData.total])
         } else {
           Object.entries(chData.subsections).forEach(([ss, cnt]) => {
-            rows.push([subj, ch, ss, cnt])
+            rows.push([COURSES[filterCourse]?.label || filterCourse, subj, ch, ss, cnt])
           })
         }
       })
@@ -3028,13 +3278,17 @@ function TabStats({ questions, refetch, showToast, isAdmin }) {
   return (
     <>
       <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center', flexWrap:'wrap' }}>
+        <select style={{ ...iS, width:'auto' }} value={filterCourse}
+          onChange={e=>{setFilterCourse(e.target.value);setFilterSubject('All')}}>
+          {COURSE_LIST.map(c=><option key={c} value={c}>{COURSES[c].label}</option>)}
+        </select>
         <select style={{ ...iS, width:'auto' }} value={filterSubject}
           onChange={e=>setFilterSubject(e.target.value)}>
           <option value="All">All Subjects</option>
-          {SUBJECT_LIST.map(s=><option key={s} value={s}>{s}</option>)}
+          {courseSubjectList.map(s=><option key={s} value={s}>{s}</option>)}
         </select>
         <span style={{ fontSize:12, color:C.slate }}>
-          Total: <strong>{questions.length}</strong> questions in bank
+          Total: <strong>{questions.filter(q=>(q.course||'')===filterCourse).length}</strong> questions in {COURSES[filterCourse]?.label || filterCourse}
         </span>
         <button onClick={handleExportCSV} style={btnSm('#eff6ff', C.navy)}>⬇ Export CSV</button>
         <div style={{ display:'flex', gap:12, marginLeft:'auto', fontSize:12 }}>
@@ -3042,7 +3296,7 @@ function TabStats({ questions, refetch, showToast, isAdmin }) {
         </div>
       </div>
       {subjects.map(subj => {
-        const sc = SC[subj]
+        const sc = SC[subj] || SC.Mathematics
         const chapData = stats[subj] || {}
         const totalSubj = Object.values(chapData).reduce((a,b)=>a+b.total,0)
         return (
@@ -3055,7 +3309,7 @@ function TabStats({ questions, refetch, showToast, isAdmin }) {
               <Badge text={`${totalSubj} Q`} color={sc.color} bg={sc.bg} border={sc.border} />
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
-              {SUBJECTS[subj].map(ch => {
+              {(courseSubjects[subj] || []).map(ch => {
                 const chData = chapData[ch] || { total:0, subsections:{} }
                 return (
                   <div key={ch} style={{ padding:'10px 14px', borderRadius:8,
