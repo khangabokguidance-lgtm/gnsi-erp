@@ -33,6 +33,8 @@ import TableBrowser, { useIsMobile } from './TableBrowser'
 import { editField, getEditableFields } from './editEngine'
 import RegistrationCard from './RegistrationCard'
 import { allocateStudent, vacateStudent, backfillMissingAllocations, cleanupNonBoardingAllocations } from './hostelAllocation'
+import { TABLE_REGISTRY } from './tableRegistry'
+import AdminIntelligence from './AdminIntelligence'
 
 // ── Pagination-safe fetch — same helper as Fees.jsx's fetchAllRows() ───────
 // Supabase/PostgREST caps any query with no .range() at 1000 rows, silently
@@ -440,6 +442,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
         {[
           { id: 'search', label: '🔍 Search Student' },
           { id: 'globalsearch', label: '🌐 Global Search' },
+          { id: 'intel', label: '🧠 Admin Intelligence' },
           { id: 'dashboard', label: '📊 Mismatch Dashboard' },
           { id: 'overview', label: '🏫 School Overview' },
           { id: 'browser', label: '🗄️ Table Browser' },
@@ -459,6 +462,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
       {view === 'overview' && <SchoolOverview onOpenStudent={s => { setView('search'); select(s) }} />}
       {view === 'dashboard' && <MismatchDashboard currentUser={currentUser} onOpenStudent={s => { setView('search'); select(s) }} />}
       {view === 'globalsearch' && <GlobalSearchPanel onOpenStudent={s => { setView('search'); select(s) }} onOpenModule={onNavigate} />}
+      {view === 'intel' && <AdminIntelligence onOpenStudent={s => { setView('search'); select(s) }} />}
       {view === 'browser' && <TableBrowser onOpenStudent={s => { setView('search'); select(s) }} onOpenModule={onNavigate} />}
 
       {view === 'search' && <>
@@ -489,6 +493,10 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               {selected.house && <div style={{ fontSize: 11, color: '#a5b4fc', marginTop: 3 }}>🏠 {selected.house}</div>}
             </div>
           </div>
+
+          {/* At-a-glance dashboard for THIS student — every module's numbers
+              in one strip, before drilling into the section cards below. */}
+          <StudentDashboardStrip profile={profile} dues={dues} selected={selected} />
 
           {/* Quick mismatch flags — the whole point of this view */}
           <MismatchFlags student={selected} profile={profile} onNotify={notifyAdmin} notifyState={notifyState} />
@@ -789,6 +797,82 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
 // Himan notice them by cross-referencing tabs manually. Detection logic
 // itself lives in mismatchDetector.js so the background auto-scanner
 // (mismatchScanner.js) can never disagree with what's shown here.
+// ── Per-student dashboard strip ─────────────────────────────────────────────
+// Reads only from `profile`/`dues`/`selected` — everything already fetched
+// by select() — so it costs zero extra queries. Answers "what's the current
+// situation with THIS student" in one glance: fees, attendance, exams,
+// hostel, discipline/sickbay, and open items across reception, without
+// opening a single Section card.
+function DashCard({ icon, label, value, sub, color = NAVY }) {
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${SLATE[200]}`, padding: '11px 13px', minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: SLATE[500], fontWeight: 700 }}>
+        <span style={{ fontSize: 13 }}>{icon}</span><span>{label}</span>
+      </div>
+      <div style={{ fontSize: 18, fontWeight: 900, color, marginTop: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
+      {sub != null && <div style={{ fontSize: 10.5, color: SLATE[400], marginTop: 2 }}>{sub}</div>}
+    </div>
+  )
+}
+
+function StudentDashboardStrip({ profile, dues, selected }) {
+  if (!profile) return null
+
+  const attPct = profile.attendance?.pct
+  const openDiscipline = (profile.discipline || []).filter(d => (d.status || '').toLowerCase() !== 'resolved' && (d.status || '').toLowerCase() !== 'closed').length
+  const inSickbay = (profile.sickbay || []).some(s => s.status === 'Admitted')
+  const pendingLeave = (profile.leave || []).filter(l => (l.status || '').toLowerCase() === 'pending').length
+  const openGatePass = (profile.gatePasses || []).filter(g => g.status === 'Issued').length
+  const openComplaints = (profile.complaints || []).filter(c => (c.status || '').toLowerCase() !== 'resolved' && (c.status || '').toLowerCase() !== 'closed').length
+  const totalPaid = profile.fees?.total ?? 0
+  const totalDue = dues?.totalDue ?? 0
+  const examCount = (profile.exams || []).length
+  const lastExam = examCount ? profile.exams[0] : null
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 8 }}>
+      <DashCard icon="🎓" label="Status" value={selected.status || 'Unknown'} sub={selected.course || '—'}
+        color={selected.status === 'Active' ? GREEN : selected.status === 'Dropout' ? RED : selected.status === 'Inactive' ? SLATE[600] : AMBER} />
+
+      <DashCard icon="📋" label="Attendance" value={attPct == null ? '—' : `${attPct}%`}
+        sub={profile.attendance?.totalMarked ? `${profile.attendance.presentCount}/${profile.attendance.totalMarked} present` : 'No sessions'}
+        color={attPct == null ? SLATE[500] : attPct < 75 ? RED : GREEN} />
+
+      <DashCard icon="💰" label="Fees Paid" value={`₹${fmt(totalPaid)}`}
+        sub={dues ? (totalDue > 0 ? `₹${fmt(totalDue)} due` : 'Up to date') : 'Dues not computed'}
+        color={dues ? (totalDue > 0 ? RED : GREEN) : SLATE[500]} />
+
+      <DashCard icon="✏️" label="Exams" value={examCount}
+        sub={lastExam ? `${lastExam.subject} · ${lastExam.marks_obtained ?? '—'}` : 'No marks yet'}
+        color={SKY} />
+
+      <DashCard icon="🏠" label="Hostel" value={selected.house || 'Day scholar'}
+        sub={selected.hostel_type || '—'}
+        color={!selected.house ? SLATE[500] : (profile.validHouses?.includes(selected.house) ? GREEN : RED)} />
+
+      <DashCard icon="🚩" label="Discipline" value={openDiscipline}
+        sub={`${(profile.discipline || []).length} total`}
+        color={openDiscipline > 0 ? AMBER : GREEN} />
+
+      <DashCard icon="🏥" label="Sickbay" value={inSickbay ? 'Admitted' : 'Clear'}
+        sub={`${(profile.sickbay || []).length} record(s)`}
+        color={inSickbay ? RED : GREEN} />
+
+      <DashCard icon="🎫" label="Leave" value={pendingLeave}
+        sub={`${(profile.leave || []).length} total · pending`}
+        color={pendingLeave > 0 ? AMBER : SLATE[500]} />
+
+      <DashCard icon="🪪" label="Gate Pass" value={openGatePass > 0 ? 'Out' : 'In'}
+        sub={`${(profile.gatePasses || []).length} record(s)`}
+        color={openGatePass > 0 ? AMBER : SLATE[500]} />
+
+      <DashCard icon="⚠️" label="Complaints" value={openComplaints}
+        sub={`${(profile.complaints || []).length} total`}
+        color={openComplaints > 0 ? RED : GREEN} />
+    </div>
+  )
+}
+
 function MismatchFlags({ student, profile, onNotify, notifyState }) {
   const flags = useMemo(() => detectMismatches(student, profile), [student, profile])
 
@@ -841,6 +925,59 @@ function MismatchFlags({ student, profile, onNotify, notifyState }) {
 // a receipt number, gate pass reason, or discipline note surfaces the
 // student it belongs to. This is the "find anything" half of the data
 // centre; TableBrowser is the "browse everything" half.
+// Row-count KPI strip for Global Search — a fast head:true/count:'exact'
+// query per registered table (cheap: no rows transferred, just a count),
+// plus open mismatches from mismatchLog.js, so admin sees the current
+// size/shape of every data source before searching it. Loads once on
+// mount; the ↻ button lets admin refresh after data changes elsewhere.
+function GlobalSearchDashboard() {
+  const [counts, setCounts] = useState(null)
+  const [openMismatches, setOpenMismatches] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const results = await Promise.all(
+        TABLE_REGISTRY.map(async t => {
+          const { count, error } = await supabase.from(t.key).select('*', { count: 'exact', head: true })
+          if (error) { console.error(`count(${t.key}) failed:`, error.message); return { ...t, count: null } }
+          return { ...t, count: count ?? 0 }
+        })
+      )
+      setCounts(results)
+      const mismatches = await getOpenMismatches(500).catch(e => { console.error('getOpenMismatches failed:', e.message); return [] })
+      setOpenMismatches(Array.isArray(mismatches) ? mismatches.length : (mismatches?.length ?? 0))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const totalRows = counts ? counts.reduce((s, t) => s + (t.count || 0), 0) : null
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: SLATE[600], textTransform: 'uppercase', letterSpacing: '.03em' }}>Data Centre Overview</div>
+        <button onClick={load} disabled={loading}
+          style={{ padding: '4px 10px', borderRadius: 7, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 11, fontWeight: 700, color: NAVY, cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.6 : 1 }}>
+          {loading ? '⏳ Loading…' : '↻ Refresh'}
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 8 }}>
+        <KpiCard icon="🗄️" label="Total Records" value={totalRows == null ? '…' : fmt(totalRows)} color={NAVY} />
+        <KpiCard icon="🔴" label="Open Mismatches" value={openMismatches == null ? '…' : fmt(openMismatches)} color={openMismatches > 0 ? RED : GREEN} />
+        {counts && counts.map(t => (
+          <KpiCard key={t.key} icon={t.icon} label={t.label} value={t.count == null ? '—' : fmt(t.count)} color={SLATE[700]} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function GlobalSearchPanel({ onOpenStudent, onOpenModule }) {
   const [term, setTerm] = useState('')
   const [results, setResults] = useState(null)
@@ -868,6 +1005,8 @@ function GlobalSearchPanel({ onOpenStudent, onOpenModule }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <GlobalSearchDashboard />
+
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input
           value={term} onChange={e => setTerm(e.target.value)}
