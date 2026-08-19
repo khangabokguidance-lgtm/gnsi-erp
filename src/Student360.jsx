@@ -186,11 +186,21 @@ function StatusPill({ status }) {
 // exportRows (optional): raw row array for this card's data — when
 // present, an export button appears in the header that downloads exactly
 // those rows as CSV. exportName sets the filename prefix.
-function Section({ icon, title, count, children, full, accent = NAVY, empty, defaultOpen = false, exportRows = null, exportName = null, moduleLink = null }) {
+function Section({ icon, title, count, children, full, accent = NAVY, empty, defaultOpen = false, exportRows = null, exportName = null, moduleLink = null, forceOpen = null }) {
   const [open, setOpen] = useState(defaultOpen)
   const [hover, setHover] = useState(false)
   const hasMore = !!full
   const canExport = exportRows && exportRows.length > 0
+  // forceOpen is a { value, token } pair from an "Expand All / Collapse
+  // All" control above this card. token changes every time the button is
+  // pressed (even if value repeats, e.g. two "Expand All" clicks in a
+  // row) so this effect fires on every press, not just on value change —
+  // otherwise a card manually collapsed by the user after "Expand All"
+  // wouldn't re-open on a second "Expand All" press.
+  useEffect(() => {
+    if (forceOpen && hasMore) setOpen(forceOpen.value)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceOpen?.token])
   return (
     <div
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
@@ -333,7 +343,7 @@ function EditableRow({ label, value, mono, tableKey, rowId, field, studentContex
 // note above. Defaults to false so this component fails closed if it's
 // ever mounted without that prop.
 export default function Student360({ currentUser, isAdmin = false, onNavigate }) {
-  const [view, setView] = useState('search') // 'search' | 'dashboard'
+  const [view, setView] = useState('globalsearch') // 'search' | 'globalsearch' | 'intel' | 'dashboard' | 'overview' | 'browser'
   const [students, setStudents] = useState([])
   const [selected, setSelected] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -348,6 +358,14 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
   const [rawStudent, setRawStudent] = useState(null)
   const [loading, setLoading] = useState(false)
   const [notifyState, setNotifyState] = useState('idle') // 'idle' | 'sending' | 'sent' | 'none' | 'error'
+  // Expand All / Collapse All for the section-card grid in the search
+  // view — { value: true|false, token } passed down to every Section as
+  // forceOpen; token bumps on each press so repeated same-value presses
+  // still re-sync any card a user manually toggled in between.
+  const [expandAll, setExpandAll] = useState(null)
+  const toggleExpandAll = useCallback(value => {
+    setExpandAll(prev => ({ value, token: (prev?.token || 0) + 1 }))
+  }, [])
 
   useEffect(() => {
     if (!isAdmin) return
@@ -498,8 +516,26 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               in one strip, before drilling into the section cards below. */}
           <StudentDashboardStrip profile={profile} dues={dues} selected={selected} />
 
+          {/* Visual charts — attendance trend, exam marks, fee breakdown */}
+          <StudentCharts profile={profile} />
+
           {/* Quick mismatch flags — the whole point of this view */}
           <MismatchFlags student={selected} profile={profile} onNotify={notifyAdmin} notifyState={notifyState} />
+
+          {/* Expand All / Collapse All — every section below is
+              collapsed by default so the page loads compact; this lets
+              admin see every field/record in every card at once without
+              clicking through all ten individually. */}
+          <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-start' }}>
+            <button onClick={() => toggleExpandAll(true)}
+              style={{ padding: '6px 14px', borderRadius: 9, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 11.5, fontWeight: 700, color: NAVY, cursor: 'pointer' }}>
+              ⬇ Expand All
+            </button>
+            <button onClick={() => toggleExpandAll(false)}
+              style={{ padding: '6px 14px', borderRadius: 9, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 11.5, fontWeight: 700, color: SLATE[600], cursor: 'pointer' }}>
+              ⬆ Collapse All
+            </button>
+          </div>
 
           {/* Grid of module sections */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
@@ -515,7 +551,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
                 `students` table will render read-only via EditableRow's
                 own fallback (see its `if (!fieldDef) return <Row …/>`) —
                 nothing here breaks if the whitelist hasn't caught up yet. */}
-            <Section icon="🧑‍🎓" title="Student Profile" accent={NAVY}
+            <Section forceOpen={expandAll} icon="🧑‍🎓" title="Student Profile" accent={NAVY}
               moduleLink={onNavigate ? { label: "Students", onClick: () => onNavigate("students") } : null}
               full={rawStudent && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -577,7 +613,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               <Row label="Father's Name" value={rawStudent?.father_name} />
             </Section>
 
-            <Section icon="📝" title="Admission Record" accent={SKY} empty={!profile.admission && 'No admissions record found for this GCC number.'}
+            <Section forceOpen={expandAll} icon="📝" title="Admission Record" accent={SKY} empty={!profile.admission && 'No admissions record found for this GCC number.'}
               moduleLink={onNavigate ? { label: "Admissions", onClick: () => onNavigate("admissions") } : null}
               full={profile.admission && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -595,7 +631,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               </>}
             </Section>
 
-            <Section icon="💰" title="Fees" accent={dues?.totalDue > 0 ? RED : GREEN} count={profile.fees.admFeeCols.length + profile.fees.admFlatFees.length + profile.fees.admCourseFees.length}
+            <Section forceOpen={expandAll} icon="💰" title="Fees" accent={dues?.totalDue > 0 ? RED : GREEN} count={profile.fees.admFeeCols.length + profile.fees.admFlatFees.length + profile.fees.admCourseFees.length}
               exportRows={[
                 ...profile.fees.admFeeCols.map(r => ({ type: 'Admission', ...r })),
                 ...profile.fees.admFlatFees.map(r => ({ type: 'Flat', ...r })),
@@ -646,7 +682,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               <Row label="Course fee payments" value={profile.fees.admCourseFees.length} />
             </Section>
 
-            <Section icon="📋" title="Attendance" accent={profile.attendance.pct == null ? SLATE[500] : profile.attendance.pct < 75 ? RED : GREEN}
+            <Section forceOpen={expandAll} icon="📋" title="Attendance" accent={profile.attendance.pct == null ? SLATE[500] : profile.attendance.pct < 75 ? RED : GREEN}
               empty={profile.attendance.totalMarked === 0 && 'No attendance records found for this student.'}
               moduleLink={onNavigate ? { label: "Attendance", onClick: () => onNavigate("attendance") } : null}
               full={
@@ -668,7 +704,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               </>}
             </Section>
 
-            <Section icon="✏️" title="Exam Marks" accent={SKY} count={profile.exams.length} empty={profile.exams.length === 0 && 'No exam marks recorded for this student.'}
+            <Section forceOpen={expandAll} icon="✏️" title="Exam Marks" accent={SKY} count={profile.exams.length} empty={profile.exams.length === 0 && 'No exam marks recorded for this student.'}
               exportRows={profile.exams} exportName={`${selected.name}_exam_marks`}
               moduleLink={onNavigate ? { label: "Exams", onClick: () => onNavigate("exams") } : null}
               full={<FullList rows={profile.exams} emptyText="No exam marks." renderRow={(m, i) => (
@@ -680,7 +716,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               {profile.exams.length > 5 && <div style={{ fontSize: 11.5, color: SLATE[400], marginTop: 6 }}>+{profile.exams.length - 5} more</div>}
             </Section>
 
-            <Section icon="🏠" title="Hostel" accent={!selected.house ? SLATE[500] : (profile.validHouses?.includes(selected.house) ? GREEN : RED)}
+            <Section forceOpen={expandAll} icon="🏠" title="Hostel" accent={!selected.house ? SLATE[500] : (profile.validHouses?.includes(selected.house) ? GREEN : RED)}
               moduleLink={onNavigate ? { label: "Hostel", onClick: () => onNavigate("hostel") } : null}
               full={
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -705,7 +741,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               {profile.houseOccupancy != null && <Row label="Students in this house" value={profile.houseOccupancy} />}
             </Section>
 
-            <Section icon="🚩" title="Discipline" accent={profile.discipline.length ? AMBER : GREEN} count={profile.discipline.length} empty={profile.discipline.length === 0 && 'No discipline records.'}
+            <Section forceOpen={expandAll} icon="🚩" title="Discipline" accent={profile.discipline.length ? AMBER : GREEN} count={profile.discipline.length} empty={profile.discipline.length === 0 && 'No discipline records.'}
               exportRows={profile.discipline} exportName={`${selected.name}_discipline`}
               moduleLink={onNavigate ? { label: "Hostel", onClick: () => onNavigate("hostel") } : null}
               full={<FullList rows={profile.discipline} emptyText="No discipline records." renderRow={(d, i) => (
@@ -716,7 +752,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               {profile.discipline.slice(0, 5).map((d, i) => <Row key={i} label={fmtDate(d.date)} value={d.status} />)}
             </Section>
 
-            <Section icon="🏥" title="Sickbay" accent={profile.sickbay.some(s => s.status === 'Admitted') ? RED : SLATE[500]} count={profile.sickbay.length} empty={profile.sickbay.length === 0 && 'No sickbay records.'}
+            <Section forceOpen={expandAll} icon="🏥" title="Sickbay" accent={profile.sickbay.some(s => s.status === 'Admitted') ? RED : SLATE[500]} count={profile.sickbay.length} empty={profile.sickbay.length === 0 && 'No sickbay records.'}
               exportRows={profile.sickbay} exportName={`${selected.name}_sickbay`}
               moduleLink={onNavigate ? { label: "Hostel", onClick: () => onNavigate("hostel") } : null}
               full={<FullList rows={profile.sickbay} emptyText="No sickbay records." renderRow={(s, i) => (
@@ -727,7 +763,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               {profile.sickbay.slice(0, 5).map((s, i) => <Row key={i} label={fmtDate(s.date)} value={s.status} />)}
             </Section>
 
-            <Section icon="🎫" title="Leave Records" accent={SKY} count={profile.leave.length} empty={profile.leave.length === 0 && 'No leave records.'}
+            <Section forceOpen={expandAll} icon="🎫" title="Leave Records" accent={SKY} count={profile.leave.length} empty={profile.leave.length === 0 && 'No leave records.'}
               exportRows={profile.leave} exportName={`${selected.name}_leave`}
               moduleLink={onNavigate ? { label: "Hostel", onClick: () => onNavigate("hostel") } : null}
               full={<FullList rows={profile.leave} emptyText="No leave records." renderRow={(l, i) => (
@@ -738,7 +774,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               {profile.leave.slice(0, 5).map((l, i) => <Row key={i} label={fmtDate(l.from_date)} value={l.status} />)}
             </Section>
 
-            <Section icon="🪪" title="Gate Passes" accent={profile.gatePasses.some(g => g.status === 'Issued') ? AMBER : SLATE[500]} count={profile.gatePasses.length} empty={profile.gatePasses.length === 0 && 'No gate passes.'}
+            <Section forceOpen={expandAll} icon="🪪" title="Gate Passes" accent={profile.gatePasses.some(g => g.status === 'Issued') ? AMBER : SLATE[500]} count={profile.gatePasses.length} empty={profile.gatePasses.length === 0 && 'No gate passes.'}
               exportRows={profile.gatePasses} exportName={`${selected.name}_gate_passes`}
               moduleLink={onNavigate ? { label: "Reception", onClick: () => onNavigate("reception") } : null}
               full={<FullList rows={profile.gatePasses} emptyText="No gate passes." renderRow={(g, i) => (
@@ -749,7 +785,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               {profile.gatePasses.slice(0, 5).map((g, i) => <Row key={i} label={fmtDate(g.created_at)} value={g.status} />)}
             </Section>
 
-            <Section icon="📞" title="Enquiries & Parent Items" accent={SKY} count={profile.enquiries.length + profile.parentItems.length}
+            <Section forceOpen={expandAll} icon="📞" title="Enquiries & Parent Items" accent={SKY} count={profile.enquiries.length + profile.parentItems.length}
               empty={profile.enquiries.length === 0 && profile.parentItems.length === 0 && 'No enquiries or parent items.'}
               moduleLink={onNavigate ? { label: "Reception", onClick: () => onNavigate("reception") } : null}
               full={
@@ -772,7 +808,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               {profile.parentItems.slice(0, 3).map((p, i) => <Row key={'p'+i} label={`Item · ${fmtDate(p.created_at)}`} value={p.status} />)}
             </Section>
 
-            <Section icon="⚠️" title="Complaints" accent={profile.complaints.length ? RED : GREEN} count={profile.complaints.length} empty={profile.complaints.length === 0 && 'No complaints on record.'}
+            <Section forceOpen={expandAll} icon="⚠️" title="Complaints" accent={profile.complaints.length ? RED : GREEN} count={profile.complaints.length} empty={profile.complaints.length === 0 && 'No complaints on record.'}
               exportRows={profile.complaints} exportName={`${selected.name}_complaints`}
               moduleLink={onNavigate ? { label: "Reception", onClick: () => onNavigate("reception") } : null}
               full={<FullList rows={profile.complaints} emptyText="No complaints." renderRow={(c, i) => (
@@ -803,6 +839,125 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
 // situation with THIS student" in one glance: fees, attendance, exams,
 // hostel, discipline/sickbay, and open items across reception, without
 // opening a single Section card.
+// ── Lightweight inline SVG charts ───────────────────────────────────────────
+// Deliberately hand-rolled SVG rather than a charting library — no new
+// dependency to vet/bundle, and it matches the same hand-styled bar
+// pattern already used for Enrollment/House distributions in
+// SchoolOverview below. Each chart degrades to a "not enough data" message
+// instead of rendering an empty/broken axis.
+
+// Simple bar chart: array of {label, value}, horizontal bars, value shown
+// inline. Used for Exam Marks and Fee Payments breakdown.
+function BarChart({ data, color = NAVY, maxValue = null, valueFmt = v => v, height = 22 }) {
+  if (!data || data.length === 0) return null
+  const max = maxValue ?? Math.max(...data.map(d => d.value), 1)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      {data.map((d, i) => (
+        <div key={i}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 2 }}>
+            <span style={{ color: SLATE[600], fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '70%' }}>{d.label}</span>
+            <span style={{ color: SLATE[500], fontWeight: 700 }}>{valueFmt(d.value)}</span>
+          </div>
+          <div style={{ height, background: SLATE[100], borderRadius: 6, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${max > 0 ? (d.value / max) * 100 : 0}%`, background: d.color || color, borderRadius: 6, transition: 'width .3s ease' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Attendance trend as an SVG line/area chart — sessions in chronological
+// order (by session_id) on X, running present-rate % on Y, so a dip or
+// recovery over time is visible at a glance instead of only the single
+// all-time % number shown elsewhere. Plots a rolling percentage rather
+// than raw present/absent dots so short runs of absence don't look like
+// noise.
+function AttendanceLineChart({ records }) {
+  if (!records || records.length < 2) return null
+  const sorted = [...records].sort((a, b) => (a.session_id ?? 0) - (b.session_id ?? 0))
+
+  // Running present-rate at each point (cumulative present / cumulative marked).
+  let present = 0
+  const points = sorted.map((r, i) => {
+    if (String(r.status).toLowerCase() === 'present') present++
+    return { x: i, pct: Math.round((present / (i + 1)) * 100) }
+  })
+
+  const W = 560, H = 130, PAD = 26
+  const xScale = i => PAD + (i / (points.length - 1)) * (W - PAD * 2)
+  const yScale = pct => H - PAD - (pct / 100) * (H - PAD * 2)
+
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(i).toFixed(1)} ${yScale(p.pct).toFixed(1)}`).join(' ')
+  const areaPath = `${linePath} L ${xScale(points.length - 1).toFixed(1)} ${H - PAD} L ${xScale(0).toFixed(1)} ${H - PAD} Z`
+
+  const finalPct = points[points.length - 1].pct
+  const lineColor = finalPct < 75 ? RED : GREEN
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+      {/* Gridlines at 0/25/50/75/100% */}
+      {[0, 25, 50, 75, 100].map(g => (
+        <g key={g}>
+          <line x1={PAD} x2={W - PAD} y1={yScale(g)} y2={yScale(g)} stroke={SLATE[100]} strokeWidth="1" />
+          <text x={2} y={yScale(g) + 3} fontSize="9" fill={SLATE[400]}>{g}%</text>
+        </g>
+      ))}
+      {/* 75% reference line — the usual attendance-health threshold used elsewhere in this file */}
+      <line x1={PAD} x2={W - PAD} y1={yScale(75)} y2={yScale(75)} stroke={AMBER} strokeWidth="1" strokeDasharray="3,3" opacity="0.6" />
+      <path d={areaPath} fill={lineColor} opacity="0.08" />
+      <path d={linePath} fill="none" stroke={lineColor} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={xScale(points.length - 1)} cy={yScale(finalPct)} r="3.5" fill={lineColor} />
+    </svg>
+  )
+}
+
+function StudentCharts({ profile }) {
+  if (!profile) return null
+
+  const examChartData = (profile.exams || [])
+    .slice(0, 8)
+    .map(m => ({ label: m.subject || '—', value: Number(m.marks_obtained) || 0 }))
+
+  const feeChartData = [
+    { label: 'Admission Fee', value: (profile.fees?.admFeeCols || []).reduce((s, r) => s + Number(r.amount_paid || 0), 0), color: NAVY },
+    { label: 'Flat Fee', value: (profile.fees?.admFlatFees || []).reduce((s, r) => s + Number(r.amount || 0), 0), color: SKY },
+    { label: 'Course Fee', value: (profile.fees?.admCourseFees || []).reduce((s, r) => s + Number(r.amount_paid || 0), 0), color: GOLD },
+  ].filter(d => d.value > 0)
+
+  const hasAttendance = (profile.attendance?.records || []).length >= 2
+  const hasExams = examChartData.length > 0
+  const hasFees = feeChartData.length > 0
+
+  if (!hasAttendance && !hasExams && !hasFees) return null
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 14 }}>
+      {hasAttendance && (
+        <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${SLATE[200]}`, padding: '14px 16px', gridColumn: hasExams || hasFees ? 'span 2' : 'span 1' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 750, color: NAVY, marginBottom: 10 }}>📋 Attendance Trend (running %)</div>
+          <AttendanceLineChart records={profile.attendance.records} />
+        </div>
+      )}
+
+      {hasExams && (
+        <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${SLATE[200]}`, padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 750, color: NAVY, marginBottom: 10 }}>✏️ Marks by Subject{profile.exams.length > 8 ? ' (latest 8)' : ''}</div>
+          <BarChart data={examChartData} color={SKY} />
+        </div>
+      )}
+
+      {hasFees && (
+        <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${SLATE[200]}`, padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 750, color: NAVY, marginBottom: 10 }}>💰 Fees Paid by Type</div>
+          <BarChart data={feeChartData} valueFmt={v => `₹${fmt(v)}`} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DashCard({ icon, label, value, sub, color = NAVY }) {
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${SLATE[200]}`, padding: '11px 13px', minWidth: 0 }}>
