@@ -709,16 +709,57 @@ function parseAnswerKey(keyText) {
 // ── DUPLICATE DETECTION ───────────────────────────────────────────────────────
 // Normalizes question text for comparison: lowercase, strip punctuation/whitespace
 // differences so near-identical pastes (extra spaces, different casing) still match.
+// Strips punctuation that's noise for comparing question WORDING, but
+// keeps '.', '/', and '-' inside number-like tokens (fractions,
+// decimals, ranges) since collapsing those erases real distinctions —
+// "1/2" and "1 2" or "3.5" and "35" should never normalize to the same
+// string. Everything else (commas, quotes, question marks, etc.) is
+// still stripped, since those genuinely don't change question meaning.
 function normalizeQuestionText(text) {
-  return (text || '').toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
+  return (text || '')
+    .toLowerCase()
+    // Protect '.', '/', '-' that sit between two digits by temporarily
+    // swapping them for placeholder tokens the punctuation-strip regex
+    // won't touch, then restore them after.
+    .replace(/(\d)\.(\d)/g, '$1§DOT§$2')
+    .replace(/(\d)\/(\d)/g, '$1§SLASH§$2')
+    .replace(/(\d)-(\d)/g, '$1§DASH§$2')
+    .replace(/[^\w\s§]/g, '')
+    .replace(/§DOT§/g, '.')
+    .replace(/§SLASH§/g, '/')
+    .replace(/§DASH§/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
+// Duplicate check scoped to the SAME subject + chapter as the candidate
+// row, not the whole bank — comparing across unrelated chapters was the
+// main source of false positives (shared instruction phrasing like
+// "choose the correct spelling" collides across chapters that have
+// nothing else in common). A row with no subject/chapter set yet (bulk
+// paste before tagging) falls back to matching within the bank at large,
+// same as before, since there's no narrower scope available for it.
 function findDuplicates(candidateRows, existingQuestions) {
-  const existingSet = new Set(existingQuestions.map(q => normalizeQuestionText(q.question)))
-  return candidateRows.map((r, i) => ({
-    index: i,
-    isDuplicate: existingSet.has(normalizeQuestionText(r.question)),
-  })).filter(r => r.isDuplicate)
+  const byScope = new Map() // "subject|chapter" -> Set of normalized question text
+  const untaggedSet = new Set()
+  for (const q of existingQuestions) {
+    const norm = normalizeQuestionText(q.question)
+    if (q.subject && q.chapter) {
+      const key = `${q.subject}|${q.chapter}`
+      if (!byScope.has(key)) byScope.set(key, new Set())
+      byScope.get(key).add(norm)
+    } else {
+      untaggedSet.add(norm)
+    }
+  }
+
+  return candidateRows.map((r, i) => {
+    const norm = normalizeQuestionText(r.question)
+    const scopeKey = r.subject && r.chapter ? `${r.subject}|${r.chapter}` : null
+    const scopeSet = scopeKey ? byScope.get(scopeKey) : null
+    const isDuplicate = scopeSet ? scopeSet.has(norm) : untaggedSet.has(norm)
+    return { index: i, isDuplicate }
+  }).filter(r => r.isDuplicate)
 }
 
 // ── CSV IMPORT ─────────────────────────────────────────────────────────────
