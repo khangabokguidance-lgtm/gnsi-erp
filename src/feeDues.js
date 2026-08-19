@@ -67,7 +67,15 @@ export async function getStudentDues(student, sessionYear = getSessionYear()) {
   // query now fails to an empty result on its own and the dues object
   // reports which source(s) failed, so a network blip under-reports one
   // fee type instead of silently reporting zero dues for the student.
-  const wrap = (p, label) => p.catch(e => {
+  //
+  // Promise.resolve(p) before .catch(): a Supabase query builder
+  // (supabase.from(...).select(...).eq(...)) is thenable but NOT
+  // guaranteed to expose .catch() as a real method on every client
+  // version — calling p.catch() directly on it threw "e.catch is not a
+  // function" for every single student (confirmed in the wild), which
+  // is worse than the bug this wrapping was meant to fix. Promise.resolve()
+  // coerces it into a real native Promise first, which always has .catch().
+  const wrap = (p, label) => Promise.resolve(p).catch(e => {
     console.error(`getStudentDues(${gcc}): ${label} query failed —`, e.message)
     return { data: null, error: e, _failed: true }
   })
