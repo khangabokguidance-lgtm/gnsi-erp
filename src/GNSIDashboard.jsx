@@ -69,6 +69,70 @@ const statusColor = s => ({
   Sent:T.emerald, Failed:T.rose, Delivered:T.sky, Unpaid:T.rose, Paid:T.emerald,
 }[s] || T.slateL)
 
+// Maps each KPI card to the GNSI Portal module its data actually lives in,
+// so clicking it can call onNavigate(module) — same module-key convention
+// used elsewhere in the portal (Student360.jsx's moduleLink buttons, e.g.
+// onNavigate("students"), onNavigate("fees"), onNavigate("hostel")).
+// Most KPIs in a section share that section's own module, so this is keyed
+// by section with a DEFAULT fallback — only cards whose data belongs to a
+// DIFFERENT module than their section (e.g. "Fee Pending" inside the
+// students-heavy Overview section) need an explicit override below;
+// everything else falls through to the section default.
+const SECTION_MODULE_DEFAULT = {
+  overview:    'students',
+  finance:     'fees',
+  students:    'students',
+  admissions:  'admissions',
+  staff:       'staff',
+  attendance:  'attendance',
+  academic:    'exams',
+  tests:       'exams',
+  enquiry:     'admissions',
+  hostel:      'hostel',
+  houses:      'hostel',
+  operations:  'staff',
+  batches:     'timetable',
+  doubts:      'doubts',
+  parents:     'reception',
+  material:    'studymaterial',
+  results:     'exams',
+  teaching:    'teachingaids',
+  feesetup:    'feesetup',
+  feeledger:   'fees',
+  entrance:    'admissions',
+  lockers:     'studylockers',
+  syllabus:    'syllabus',
+  qbank:       'questionbank',
+  social:      'social',
+  connect:     'connect',
+  expenses:    'accounts',
+}
+
+// Per-KPI overrides — only where the card's data doesn't belong to its
+// own section's default module. Keyed by "<section>:<label>" exactly as
+// each <KPI label="..."/> is written below.
+const KPI_MODULE_OVERRIDE = {
+  'overview:Exam Entries':  'exams',
+  'overview:Applications':  'admissions',
+  'overview:Present Today': 'attendance',
+  'overview:Selections':    'exams',
+  'overview:Fee Pending':   'fees',
+  'overview:Net P&L':       'accounts',
+  'finance:Admission Fee':  'fees',
+  'finance:Flat Fee':       'fees',
+  'finance:Course Fee':     'fees',
+  'finance:Waivers Given':  'fees',
+  'staff:Salary Bill':      'accounts',
+  'expenses:Total Income':  'fees',
+}
+
+// Resolves the target module for one KPI card: explicit override first,
+// else the section's own default. Returns null (no click behaviour) if
+// the section has no mapped module at all.
+function resolveKpiModule(section, label) {
+  return KPI_MODULE_OVERRIDE[`${section}:${label}`] || SECTION_MODULE_DEFAULT[section] || null
+}
+
 async function safeFetch(queryFn) {
   try {
     const res = await queryFn()
@@ -188,15 +252,22 @@ function Tip({ active, payload, label }) {
   )
 }
 
-function KPI({ icon, label, value, sub, color, progress, progressMax, isMoney, trend }) {
+function KPI({ icon, label, value, sub, color, progress, progressMax, isMoney, trend, onClick }) {
+  const [hover, setHover] = useState(false)
   return (
-    <div style={{
+    <div
+      onClick={onClick}
+      onMouseEnter={() => onClick && setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
       background:T.bgCard,
-      border:`1px solid ${color}20`,
+      border:`1px solid ${hover ? color+'60' : color+'20'}`,
       borderRadius:14,padding:"16px 18px",
       display:"flex",flexDirection:"column",gap:7,
       position:"relative",overflow:"hidden",
-      boxShadow:"0 1px 3px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.04)"
+      boxShadow: hover ? `0 2px 6px rgba(0,0,0,.06), 0 8px 22px ${color}1c` : "0 1px 3px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.04)",
+      cursor: onClick ? "pointer" : "default",
+      transition: "box-shadow .15s ease, border-color .15s ease",
     }}>
       <div style={{position:"absolute",top:-16,right:-16,width:70,height:70,borderRadius:"50%",background:`${color}10`,filter:"blur(16px)"}}/>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -209,6 +280,7 @@ function KPI({ icon, label, value, sub, color, progress, progressMax, isMoney, t
       {sub && <div style={{fontSize:11,color:T.inkSub}}>{sub}</div>}
       {trend!==undefined && <div style={{fontSize:11,fontWeight:700,color:trend>=0?T.emerald:T.rose}}>{trend>=0?"▲":"▼"} {Math.abs(trend)}% vs last month</div>}
       {progress!==undefined && <ProgressBar value={progress} max={progressMax} color={color}/>}
+      {onClick && <div style={{position:"absolute",bottom:8,right:10,fontSize:9.5,fontWeight:700,color,opacity:hover?1:0,transition:"opacity .15s ease"}}>Open →</div>}
     </div>
   )
 }
@@ -864,7 +936,7 @@ const G = {
 }
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
-export default function GNSIDashboard({ scrollToSection }) {
+export default function GNSIDashboard({ scrollToSection, onNavigate }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -873,6 +945,21 @@ export default function GNSIDashboard({ scrollToSection }) {
 
   const sectionRefs = useRef({})
   const setSectionRef = (id) => (el) => { if (el) sectionRefs.current[id] = el }
+
+  // Click handler for every KPI card in the dashboard: resolves the
+  // card's module via SECTION_MODULE_DEFAULT/KPI_MODULE_OVERRIDE and
+  // hands off to the portal's own navigation, same as Student360.jsx's
+  // moduleLink buttons (onNavigate("students"), onNavigate("fees"), etc).
+  // Returns undefined (no onClick prop, so KPI renders non-interactive)
+  // when either onNavigate isn't wired in by the parent, or the section
+  // has no mapped module — never silently no-ops on click.
+  const kpiClick = (section, label) => {
+    if (!onNavigate) return undefined
+    const module = resolveKpiModule(section, label)
+    if (!module) return undefined
+    return () => onNavigate(module)
+  }
+
 
   useEffect(() => {
     if (!loading && scrollToSection && sectionRefs.current[scrollToSection]) {
@@ -1058,14 +1145,14 @@ export default function GNSIDashboard({ scrollToSection }) {
 
           {/* FIX #1: Students KPI — show DB total; sub shows enrolled count separately */}
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="🎓" label="Students" value={data.totalStudents} color={T.sky} sub={`${data.enrolledStudents} enrolled`}/>
-            <KPI icon="🗂️" label="Batches" value={data.activeBatches} color={T.indigo} sub={`${data.totalBatches} total`}/>
-            <KPI icon="📝" label="Exam Entries" value={data.totalTestEntries} color={T.violet} sub={`Avg ${data.avgTestScore}%`}/>
-            <KPI icon="🔍" label="Applications" value={data.totalEnquiries} color={T.amber} sub={`${data.convertedEnq} enrolled · ${data.conversionRate}%`}/>
-            <KPI icon="✅" label="Present Today" value={data.presentToday} color={T.emerald} progress={data.presentToday} progressMax={data.totalToday}/>
-            <KPI icon="🏅" label="Selections" value={data.totalSelections} color={T.gold} sub={`JNV: ${data.jnvSelections} · Sainik: ${data.sainikSelections}`}/>
-            <KPI icon="💸" label="Fee Pending" value={data.feePending} color={T.rose} isMoney/>
-            <KPI icon="📉" label="Net P&L" value={data.netPL} color={data.netPL>=0?T.emerald:T.rose} isMoney sub={`Exp: ${fmt(data.totalExpenses)}`}/>
+            <KPI onClick={kpiClick('overview', "Students")} icon="🎓" label="Students" value={data.totalStudents} color={T.sky} sub={`${data.enrolledStudents} enrolled`}/>
+            <KPI onClick={kpiClick('overview', "Batches")} icon="🗂️" label="Batches" value={data.activeBatches} color={T.indigo} sub={`${data.totalBatches} total`}/>
+            <KPI onClick={kpiClick('overview', "Exam Entries")} icon="📝" label="Exam Entries" value={data.totalTestEntries} color={T.violet} sub={`Avg ${data.avgTestScore}%`}/>
+            <KPI onClick={kpiClick('overview', "Applications")} icon="🔍" label="Applications" value={data.totalEnquiries} color={T.amber} sub={`${data.convertedEnq} enrolled · ${data.conversionRate}%`}/>
+            <KPI onClick={kpiClick('overview', "Present Today")} icon="✅" label="Present Today" value={data.presentToday} color={T.emerald} progress={data.presentToday} progressMax={data.totalToday}/>
+            <KPI onClick={kpiClick('overview', "Selections")} icon="🏅" label="Selections" value={data.totalSelections} color={T.gold} sub={`JNV: ${data.jnvSelections} · Sainik: ${data.sainikSelections}`}/>
+            <KPI onClick={kpiClick('overview', "Fee Pending")} icon="💸" label="Fee Pending" value={data.feePending} color={T.rose} isMoney/>
+            <KPI onClick={kpiClick('overview', "Net P&L")} icon="📉" label="Net P&L" value={data.netPL} color={data.netPL>=0?T.emerald:T.rose} isMoney sub={`Exp: ${fmt(data.totalExpenses)}`}/>
           </div>
 
           <div className="grid-split" style={{marginBottom:14}}>
@@ -1166,12 +1253,12 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('finance')} className="dash-section">
           <SectionHeader icon="💰" title="Finance & Fee Analytics"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="💰" label="Total Collected" value={liveTotal} isMoney color={T.gold}/>
-            <KPI icon="📌" label="Fee Pending" value={data.feePending} isMoney color={data.feePending>0?T.rose:T.slateL} sub={data.feePending>0?"Outstanding":"Not tracked yet"}/>
-            <KPI icon="🎓" label="Admission Fee" value={data.admFeeTotal} isMoney color={T.violet}/>
-            <KPI icon="📄" label="Flat Fee" value={data.flatFeeTotal} isMoney color={T.sky}/>
-            <KPI icon="📚" label="Course Fee" value={data.courseFeeTotal} isMoney color={T.emerald}/>
-            <KPI icon="🎁" label="Waivers Given" value={data.totalWaivers} isMoney color={T.amber}/>
+            <KPI onClick={kpiClick('finance', "Total Collected")} icon="💰" label="Total Collected" value={liveTotal} isMoney color={T.gold}/>
+            <KPI onClick={kpiClick('finance', "Fee Pending")} icon="📌" label="Fee Pending" value={data.feePending} isMoney color={data.feePending>0?T.rose:T.slateL} sub={data.feePending>0?"Outstanding":"Not tracked yet"}/>
+            <KPI onClick={kpiClick('finance', "Admission Fee")} icon="🎓" label="Admission Fee" value={data.admFeeTotal} isMoney color={T.violet}/>
+            <KPI onClick={kpiClick('finance', "Flat Fee")} icon="📄" label="Flat Fee" value={data.flatFeeTotal} isMoney color={T.sky}/>
+            <KPI onClick={kpiClick('finance', "Course Fee")} icon="📚" label="Course Fee" value={data.courseFeeTotal} isMoney color={T.emerald}/>
+            <KPI onClick={kpiClick('finance', "Waivers Given")} icon="🎁" label="Waivers Given" value={data.totalWaivers} isMoney color={T.amber}/>
           </div>
           <div className="grid-split" style={{marginBottom:14}}>
             <Panel title="Monthly Collection vs Target">
@@ -1219,12 +1306,12 @@ export default function GNSIDashboard({ scrollToSection }) {
           <SectionHeader icon="🎓" title="Student Analytics"/>
           {/* FIX #1: main value = DB total; sub = enrolled count */}
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="👥" label="Total" value={data.totalStudents} color={T.sky} sub={`${data.enrolledStudents} enrolled`}/>
-            <KPI icon="👦" label="Male" value={data.maleStudents} color={T.sky} progress={data.maleStudents} progressMax={data.totalStudents}/>
-            <KPI icon="👧" label="Female" value={data.femaleStudents} color={T.pink} progress={data.femaleStudents} progressMax={data.totalStudents}/>
-            <KPI icon="🏠" label="Boarders" value={data.boarders} color={T.violet}/>
-            <KPI icon="🚌" label="Day Boarders" value={data.dayBoarders} color={T.amber}/>
-            <KPI icon="🏡" label="Day Scholars" value={data.dayScholars} color={T.emerald}/>
+            <KPI onClick={kpiClick('students', "Total")} icon="👥" label="Total" value={data.totalStudents} color={T.sky} sub={`${data.enrolledStudents} enrolled`}/>
+            <KPI onClick={kpiClick('students', "Male")} icon="👦" label="Male" value={data.maleStudents} color={T.sky} progress={data.maleStudents} progressMax={data.totalStudents}/>
+            <KPI onClick={kpiClick('students', "Female")} icon="👧" label="Female" value={data.femaleStudents} color={T.pink} progress={data.femaleStudents} progressMax={data.totalStudents}/>
+            <KPI onClick={kpiClick('students', "Boarders")} icon="🏠" label="Boarders" value={data.boarders} color={T.violet}/>
+            <KPI onClick={kpiClick('students', "Day Boarders")} icon="🚌" label="Day Boarders" value={data.dayBoarders} color={T.amber}/>
+            <KPI onClick={kpiClick('students', "Day Scholars")} icon="🏡" label="Day Scholars" value={data.dayScholars} color={T.emerald}/>
           </div>
           <div className="grid-cols3" style={{marginBottom:14}}>
             <Panel title="Gender Split">
@@ -1286,12 +1373,12 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('admissions')} className="dash-section">
           <SectionHeader icon="📋" title="Admissions Deep Dive"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="📩" label="Applied" value={data.admApplied} color={T.sky}/>
-            <KPI icon="🔍" label="Under Review" value={data.admUnderReview} color={T.violet}/>
-            <KPI icon="✅" label="Admitted" value={data.admAdmitted} color={T.amber}/>
-            <KPI icon="🎓" label="Enrolled" value={data.admEnrolled} color={T.emerald}/>
-            <KPI icon="❌" label="Rejected" value={data.admRejected} color={T.rose}/>
-            <KPI icon="⏳" label="Waitlisted" value={data.admWaitlisted} color={T.slateL}/>
+            <KPI onClick={kpiClick('admissions', "Applied")} icon="📩" label="Applied" value={data.admApplied} color={T.sky}/>
+            <KPI onClick={kpiClick('admissions', "Under Review")} icon="🔍" label="Under Review" value={data.admUnderReview} color={T.violet}/>
+            <KPI onClick={kpiClick('admissions', "Admitted")} icon="✅" label="Admitted" value={data.admAdmitted} color={T.amber}/>
+            <KPI onClick={kpiClick('admissions', "Enrolled")} icon="🎓" label="Enrolled" value={data.admEnrolled} color={T.emerald}/>
+            <KPI onClick={kpiClick('admissions', "Rejected")} icon="❌" label="Rejected" value={data.admRejected} color={T.rose}/>
+            <KPI onClick={kpiClick('admissions', "Waitlisted")} icon="⏳" label="Waitlisted" value={data.admWaitlisted} color={T.slateL}/>
           </div>
           <div className="grid-cols2" style={{marginBottom:14}}>
             {/* FIX #2: funnel now shows per-stage counts with accurate conversion rates */}
@@ -1354,12 +1441,12 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('staff')} className="dash-section">
           <SectionHeader icon="👨‍💼" title="Staff & HR"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="👥" label="Total Staff" value={data.totalStaff} color={T.sky} sub={`${data.activeStaffCnt} active`}/>
-            <KPI icon="✅" label="Active" value={data.activeStaffCnt} color={T.emerald}/>
-            <KPI icon="💵" label="Salary Bill" value={data.totalSalaryBill} color={T.gold} isMoney/>
-            <KPI icon="📋" label="Tasks Pending" value={data.taskPending} color={T.amber}/>
-            <KPI icon="✔️" label="Tasks Done" value={data.taskDone} color={T.emerald}/>
-            <KPI icon="⚠️" label="Overdue" value={data.taskOverdue} color={T.rose}/>
+            <KPI onClick={kpiClick('staff', "Total Staff")} icon="👥" label="Total Staff" value={data.totalStaff} color={T.sky} sub={`${data.activeStaffCnt} active`}/>
+            <KPI onClick={kpiClick('staff', "Active")} icon="✅" label="Active" value={data.activeStaffCnt} color={T.emerald}/>
+            <KPI onClick={kpiClick('staff', "Salary Bill")} icon="💵" label="Salary Bill" value={data.totalSalaryBill} color={T.gold} isMoney/>
+            <KPI onClick={kpiClick('staff', "Tasks Pending")} icon="📋" label="Tasks Pending" value={data.taskPending} color={T.amber}/>
+            <KPI onClick={kpiClick('staff', "Tasks Done")} icon="✔️" label="Tasks Done" value={data.taskDone} color={T.emerald}/>
+            <KPI onClick={kpiClick('staff', "Overdue")} icon="⚠️" label="Overdue" value={data.taskOverdue} color={T.rose}/>
           </div>
           <div className="grid-cols2" style={{marginBottom:14}}>
             <Panel title="Management Checklist" sub="From management_checklist table">
@@ -1398,10 +1485,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('attendance')} className="dash-section">
           <SectionHeader icon="✅" title="Attendance Analytics"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="✅" label="Present" value={data.presentToday} color={T.emerald} progress={data.presentToday} progressMax={data.totalToday}/>
-            <KPI icon="❌" label="Absent" value={data.absentToday} color={T.rose}/>
-            <KPI icon="⏰" label="Late" value={data.lateToday} color={T.amber}/>
-            <KPI icon="📊" label="Rate" value={attProgress} color={T.sky} sub={`${attProgress}% today`}/>
+            <KPI onClick={kpiClick('attendance', "Present")} icon="✅" label="Present" value={data.presentToday} color={T.emerald} progress={data.presentToday} progressMax={data.totalToday}/>
+            <KPI onClick={kpiClick('attendance', "Absent")} icon="❌" label="Absent" value={data.absentToday} color={T.rose}/>
+            <KPI onClick={kpiClick('attendance', "Late")} icon="⏰" label="Late" value={data.lateToday} color={T.amber}/>
+            <KPI onClick={kpiClick('attendance', "Rate")} icon="📊" label="Rate" value={attProgress} color={T.sky} sub={`${attProgress}% today`}/>
           </div>
           {data.attendanceWeek.length===0?(
             <Panel><EmptyState msg="No attendance records yet."/></Panel>
@@ -1452,10 +1539,10 @@ export default function GNSIDashboard({ scrollToSection }) {
           <SectionHeader icon="📚" title="Academic Performance"/>
           {/* FIX — avg score sub now shows % clearly */}
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="📊" label="Avg Score" value={data.avgScore} color={T.sky} sub={`Class average: ${data.avgScore}%`}/>
-            <KPI icon="✅" label="Pass Rate" value={data.passRate} color={T.emerald} sub={`${data.passRate}% passed`}/>
-            <KPI icon="🏆" label="A+ Students" value={data.aPlusCount} color={T.gold}/>
-            <KPI icon="📉" label="At Risk" value={data.atRisk} color={T.rose} sub="Below 35%"/>
+            <KPI onClick={kpiClick('academic', "Avg Score")} icon="📊" label="Avg Score" value={data.avgScore} color={T.sky} sub={`Class average: ${data.avgScore}%`}/>
+            <KPI onClick={kpiClick('academic', "Pass Rate")} icon="✅" label="Pass Rate" value={data.passRate} color={T.emerald} sub={`${data.passRate}% passed`}/>
+            <KPI onClick={kpiClick('academic', "A+ Students")} icon="🏆" label="A+ Students" value={data.aPlusCount} color={T.gold}/>
+            <KPI onClick={kpiClick('academic', "At Risk")} icon="📉" label="At Risk" value={data.atRisk} color={T.rose} sub="Below 35%"/>
           </div>
           <div className="grid-cols2">
             <Panel title="Grade Distribution">
@@ -1488,10 +1575,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('tests')} className="dash-section">
           <SectionHeader icon="📝" title="Test & Performance Analytics"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="📝" label="Exam Dates" value={data.totalTests} color={T.violet}/>
-            <KPI icon="👥" label="Total Entries" value={data.totalTestEntries} color={T.sky}/>
-            <KPI icon="📊" label="Avg Score" value={data.avgTestScore} color={T.emerald} sub={`${data.avgTestScore}%`}/>
-            <KPI icon="📉" label="At Risk" value={data.atRiskStudents.length} color={T.rose} sub="Below 40%"/>
+            <KPI onClick={kpiClick('tests', "Exam Dates")} icon="📝" label="Exam Dates" value={data.totalTests} color={T.violet}/>
+            <KPI onClick={kpiClick('tests', "Total Entries")} icon="👥" label="Total Entries" value={data.totalTestEntries} color={T.sky}/>
+            <KPI onClick={kpiClick('tests', "Avg Score")} icon="📊" label="Avg Score" value={data.avgTestScore} color={T.emerald} sub={`${data.avgTestScore}%`}/>
+            <KPI onClick={kpiClick('tests', "At Risk")} icon="📉" label="At Risk" value={data.atRiskStudents.length} color={T.rose} sub="Below 40%"/>
           </div>
           <div className="grid-split" style={{marginBottom:14}}>
             <Panel title="Monthly Avg Score Trend">
@@ -1554,10 +1641,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('enquiry')} className="dash-section">
           <SectionHeader icon="🔍" title="Enquiry & Lead Management"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="📞" label="Total" value={data.totalEnquiries} color={T.sky} sub="From admissions"/>
-            <KPI icon="🔓" label="Open" value={data.openEnquiries} color={T.amber}/>
-            <KPI icon="✅" label="Enrolled" value={data.convertedEnq} color={T.emerald}/>
-            <KPI icon="📊" label="Conv. Rate" value={data.conversionRate} color={T.violet} sub={`${data.conversionRate}%`}/>
+            <KPI onClick={kpiClick('enquiry', "Total")} icon="📞" label="Total" value={data.totalEnquiries} color={T.sky} sub="From admissions"/>
+            <KPI onClick={kpiClick('enquiry', "Open")} icon="🔓" label="Open" value={data.openEnquiries} color={T.amber}/>
+            <KPI onClick={kpiClick('enquiry', "Enrolled")} icon="✅" label="Enrolled" value={data.convertedEnq} color={T.emerald}/>
+            <KPI onClick={kpiClick('enquiry', "Conv. Rate")} icon="📊" label="Conv. Rate" value={data.conversionRate} color={T.violet} sub={`${data.conversionRate}%`}/>
           </div>
           <div className="grid-split" style={{marginBottom:14}}>
             <Panel title="Monthly Applications vs Enrollments">
@@ -1603,10 +1690,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('hostel')} className="dash-section">
           <SectionHeader icon="🛏️" title="Hostel & Boarding"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="🏠" label="Boarders" value={data.boarders} color={T.sky}/>
-            <KPI icon="🛏️" label="Rooms Total" value={data.hostelTotalRooms} color={T.amber}/>
-            <KPI icon="✅" label="Occupied" value={data.hostelOccupied} color={T.emerald} progress={data.hostelOccupied} progressMax={data.hostelTotalRooms}/>
-            <KPI icon="📋" label="Incidents" value={data.hostelIncidentChart.reduce((s,m)=>s+m.count,0)} color={T.rose}/>
+            <KPI onClick={kpiClick('hostel', "Boarders")} icon="🏠" label="Boarders" value={data.boarders} color={T.sky}/>
+            <KPI onClick={kpiClick('hostel', "Rooms Total")} icon="🛏️" label="Rooms Total" value={data.hostelTotalRooms} color={T.amber}/>
+            <KPI onClick={kpiClick('hostel', "Occupied")} icon="✅" label="Occupied" value={data.hostelOccupied} color={T.emerald} progress={data.hostelOccupied} progressMax={data.hostelTotalRooms}/>
+            <KPI onClick={kpiClick('hostel', "Incidents")} icon="📋" label="Incidents" value={data.hostelIncidentChart.reduce((s,m)=>s+m.count,0)} color={T.rose}/>
           </div>
           <div className="grid-cols2">
             <Panel title="Block Occupancy">
@@ -1657,10 +1744,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('operations')} className="dash-section">
           <SectionHeader icon="⚙️" title="Operations & Admin"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="📋" label="Total Tasks" value={data.taskPending+data.taskDone+data.taskOverdue} color={T.sky}/>
-            <KPI icon="✅" label="Completed" value={data.taskDone} color={T.emerald} progress={data.taskDone} progressMax={data.taskPending+data.taskDone+data.taskOverdue}/>
-            <KPI icon="⏳" label="Pending" value={data.taskPending} color={T.amber}/>
-            <KPI icon="🚨" label="Overdue" value={data.taskOverdue} color={T.rose}/>
+            <KPI onClick={kpiClick('operations', "Total Tasks")} icon="📋" label="Total Tasks" value={data.taskPending+data.taskDone+data.taskOverdue} color={T.sky}/>
+            <KPI onClick={kpiClick('operations', "Completed")} icon="✅" label="Completed" value={data.taskDone} color={T.emerald} progress={data.taskDone} progressMax={data.taskPending+data.taskDone+data.taskOverdue}/>
+            <KPI onClick={kpiClick('operations', "Pending")} icon="⏳" label="Pending" value={data.taskPending} color={T.amber}/>
+            <KPI onClick={kpiClick('operations', "Overdue")} icon="🚨" label="Overdue" value={data.taskOverdue} color={T.rose}/>
           </div>
           <div className="grid-cols3">
             <Panel title="Task Status">
@@ -1702,10 +1789,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('batches')} className="dash-section">
           <SectionHeader icon="🗂️" title="Batches & Timetable"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="🗂️" label="Total Batches" value={data.totalBatches} color={T.indigo}/>
-            <KPI icon="✅" label="Active" value={data.activeBatches} color={T.emerald}/>
-            <KPI icon="👥" label="Total Strength" value={data.totalStrength} color={T.sky} sub={data.totalCapacity>0?`Cap: ${data.totalCapacity}`:"Capacity not tracked"}/>
-            <KPI icon="📊" label="Fill Rate" value={data.totalCapacity>0?data.batchFillRate:0} color={T.slateL} sub={data.totalCapacity>0?`${data.batchFillRate}%`:"N/A"}/>
+            <KPI onClick={kpiClick('batches', "Total Batches")} icon="🗂️" label="Total Batches" value={data.totalBatches} color={T.indigo}/>
+            <KPI onClick={kpiClick('batches', "Active")} icon="✅" label="Active" value={data.activeBatches} color={T.emerald}/>
+            <KPI onClick={kpiClick('batches', "Total Strength")} icon="👥" label="Total Strength" value={data.totalStrength} color={T.sky} sub={data.totalCapacity>0?`Cap: ${data.totalCapacity}`:"Capacity not tracked"}/>
+            <KPI onClick={kpiClick('batches', "Fill Rate")} icon="📊" label="Fill Rate" value={data.totalCapacity>0?data.batchFillRate:0} color={T.slateL} sub={data.totalCapacity>0?`${data.batchFillRate}%`:"N/A"}/>
           </div>
           {data.batchesData.length===0?(
             <Panel><EmptyState msg="No data in batches table yet."/></Panel>
@@ -1733,10 +1820,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('doubts')} className="dash-section">
           <SectionHeader icon="💬" title="Doubt & Query Management"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="💬" label="Total Doubts" value={data.totalDoubts} color={T.sky}/>
-            <KPI icon="✅" label="Resolved" value={data.resolvedDoubts} color={T.emerald} progress={data.resolvedDoubts} progressMax={data.totalDoubts}/>
-            <KPI icon="⏳" label="Unresolved" value={data.unresolvedDoubts} color={T.rose}/>
-            <KPI icon="⏱️" label="Avg Resolution" value={data.avgResolutionHrs} color={T.amber} sub={`${data.avgResolutionHrs}h avg`}/>
+            <KPI onClick={kpiClick('doubts', "Total Doubts")} icon="💬" label="Total Doubts" value={data.totalDoubts} color={T.sky}/>
+            <KPI onClick={kpiClick('doubts', "Resolved")} icon="✅" label="Resolved" value={data.resolvedDoubts} color={T.emerald} progress={data.resolvedDoubts} progressMax={data.totalDoubts}/>
+            <KPI onClick={kpiClick('doubts', "Unresolved")} icon="⏳" label="Unresolved" value={data.unresolvedDoubts} color={T.rose}/>
+            <KPI onClick={kpiClick('doubts', "Avg Resolution")} icon="⏱️" label="Avg Resolution" value={data.avgResolutionHrs} color={T.amber} sub={`${data.avgResolutionHrs}h avg`}/>
           </div>
           {data.totalDoubts===0?<Panel><EmptyState msg="No data in doubt_sessions table yet."/></Panel>:(
             <>
@@ -1789,10 +1876,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('parents')} className="dash-section">
           <SectionHeader icon="👨‍👩‍👧" title="Parent Communication"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="📨" label="Total Sent" value={data.totalSMSSent} color={T.sky}/>
-            <KPI icon="✅" label="Delivered" value={data.smsSent} color={T.emerald}/>
-            <KPI icon="⚠️" label="Failed" value={data.smsFailed} color={T.rose}/>
-            <KPI icon="📊" label="Delivery Rate" value={data.smsDeliveryRate} color={data.smsDeliveryRate>=90?T.emerald:T.amber} sub={`${data.smsDeliveryRate}%`}/>
+            <KPI onClick={kpiClick('parents', "Total Sent")} icon="📨" label="Total Sent" value={data.totalSMSSent} color={T.sky}/>
+            <KPI onClick={kpiClick('parents', "Delivered")} icon="✅" label="Delivered" value={data.smsSent} color={T.emerald}/>
+            <KPI onClick={kpiClick('parents', "Failed")} icon="⚠️" label="Failed" value={data.smsFailed} color={T.rose}/>
+            <KPI onClick={kpiClick('parents', "Delivery Rate")} icon="📊" label="Delivery Rate" value={data.smsDeliveryRate} color={data.smsDeliveryRate>=90?T.emerald:T.amber} sub={`${data.smsDeliveryRate}%`}/>
           </div>
           {data.totalSMSSent===0?<Panel><EmptyState msg="No data in sms_logs table yet."/></Panel>:(
             <div className="grid-split">
@@ -1820,10 +1907,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('material')} className="dash-section">
           <SectionHeader icon="📦" title="Study Material Management"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="📦" label="Total Materials" value={data.totalMaterials} color={T.sky}/>
-            <KPI icon="✅" label="Distributed" value={data.distributedMat} color={T.emerald} progress={data.distributedMat} progressMax={data.totalMaterials}/>
-            <KPI icon="⏳" label="Pending" value={data.pendingDistribution} color={T.amber}/>
-            <KPI icon="📄" label="Copies" value={data.distributedCopies} color={T.violet} sub={`of ${data.totalCopies} total`}/>
+            <KPI onClick={kpiClick('material', "Total Materials")} icon="📦" label="Total Materials" value={data.totalMaterials} color={T.sky}/>
+            <KPI onClick={kpiClick('material', "Distributed")} icon="✅" label="Distributed" value={data.distributedMat} color={T.emerald} progress={data.distributedMat} progressMax={data.totalMaterials}/>
+            <KPI onClick={kpiClick('material', "Pending")} icon="⏳" label="Pending" value={data.pendingDistribution} color={T.amber}/>
+            <KPI onClick={kpiClick('material', "Copies")} icon="📄" label="Copies" value={data.distributedCopies} color={T.violet} sub={`of ${data.totalCopies} total`}/>
           </div>
           {data.totalMaterials===0?<Panel><EmptyState msg="No data in study_material table yet."/></Panel>:(
             <div className="grid-split">
@@ -1849,10 +1936,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('results')} className="dash-section">
           <SectionHeader icon="🏅" title="Results & Selections"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="🏅" label="Total" value={data.totalSelections} color={T.gold}/>
-            <KPI icon="🏫" label="JNV Navodaya" value={data.jnvSelections} color={T.emerald}/>
-            <KPI icon="⚔️" label="Sainik School" value={data.sainikSelections} color={T.sky}/>
-            <KPI icon="🎓" label="Other" value={data.otherSelections} color={T.violet}/>
+            <KPI onClick={kpiClick('results', "Total")} icon="🏅" label="Total" value={data.totalSelections} color={T.gold}/>
+            <KPI onClick={kpiClick('results', "JNV Navodaya")} icon="🏫" label="JNV Navodaya" value={data.jnvSelections} color={T.emerald}/>
+            <KPI onClick={kpiClick('results', "Sainik School")} icon="⚔️" label="Sainik School" value={data.sainikSelections} color={T.sky}/>
+            <KPI onClick={kpiClick('results', "Other")} icon="🎓" label="Other" value={data.otherSelections} color={T.violet}/>
           </div>
           {data.totalSelections===0?<Panel><EmptyState msg="No data in selections table yet."/></Panel>:(
             <Panel title="Recent Selections">
@@ -1878,9 +1965,9 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('teaching')} className="dash-section">
           <SectionHeader icon="🖊️" title="Staff Teaching Analytics"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="📚" label="Topics Total" value={data.totalTopics} color={T.sky}/>
-            <KPI icon="✅" label="Covered" value={data.coveredTopics} color={T.emerald} progress={data.coveredTopics} progressMax={data.totalTopics}/>
-            <KPI icon="📊" label="Coverage" value={data.overallCoverage} color={data.overallCoverage>=80?T.emerald:data.overallCoverage>=60?T.amber:T.rose} sub={`${data.overallCoverage}%`}/>
+            <KPI onClick={kpiClick('teaching', "Topics Total")} icon="📚" label="Topics Total" value={data.totalTopics} color={T.sky}/>
+            <KPI onClick={kpiClick('teaching', "Covered")} icon="✅" label="Covered" value={data.coveredTopics} color={T.emerald} progress={data.coveredTopics} progressMax={data.totalTopics}/>
+            <KPI onClick={kpiClick('teaching', "Coverage")} icon="📊" label="Coverage" value={data.overallCoverage} color={data.overallCoverage>=80?T.emerald:data.overallCoverage>=60?T.amber:T.rose} sub={`${data.overallCoverage}%`}/>
           </div>
           <Panel title="🔥 Teacher Accountability Tracker" sub="Streak · Missing days · Late submissions · Avg word count" style={{marginBottom:14}}>
             {(data.teacherStreaks||[]).length===0?<EmptyState msg="No teaching logs yet"/>:(
@@ -1935,11 +2022,11 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('feesetup')} className="dash-section">
           <SectionHeader icon="💳" title="Fee Setup & Structure"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="📋" label="Fee Structures" value={data.totalFeeStructures} color={T.sky} sub={`${data.activeSessionStructures.length} this session`}/>
-            <KPI icon="💰" label="Flat Fee Collected" value={data.flatFeePaid_fs} isMoney color={T.emerald}/>
-            <KPI icon="📄" label="Flat Fee Total" value={data.flatFeeTotal_fs} isMoney color={T.gold}/>
-            <KPI icon="📚" label="Course Fee Paid" value={data.courseFeeTotal_fs} isMoney color={T.violet}/>
-            <KPI icon="✏️" label="Overrides" value={data.totalOverrides} color={T.amber}/>
+            <KPI onClick={kpiClick('feesetup', "Fee Structures")} icon="📋" label="Fee Structures" value={data.totalFeeStructures} color={T.sky} sub={`${data.activeSessionStructures.length} this session`}/>
+            <KPI onClick={kpiClick('feesetup', "Flat Fee Collected")} icon="💰" label="Flat Fee Collected" value={data.flatFeePaid_fs} isMoney color={T.emerald}/>
+            <KPI onClick={kpiClick('feesetup', "Flat Fee Total")} icon="📄" label="Flat Fee Total" value={data.flatFeeTotal_fs} isMoney color={T.gold}/>
+            <KPI onClick={kpiClick('feesetup', "Course Fee Paid")} icon="📚" label="Course Fee Paid" value={data.courseFeeTotal_fs} isMoney color={T.violet}/>
+            <KPI onClick={kpiClick('feesetup', "Overrides")} icon="✏️" label="Overrides" value={data.totalOverrides} color={T.amber}/>
           </div>
           <div className="grid-cols2" style={{marginBottom:14}}>
             <Panel title={`Fee Structure by Course — AY ${CURRENT_YEAR}–${CURRENT_YEAR+1}`}>
@@ -1988,10 +2075,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('feeledger')} className="dash-section">
           <SectionHeader icon="📒" title="Student Fee Ledger"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="💰" label="Flat Fee Total" value={data.flatFeeTotal_fs} isMoney color={T.gold}/>
-            <KPI icon="✅" label="Flat Fee Paid" value={data.flatFeePaid_fs} isMoney color={T.emerald} progress={data.flatFeePaid_fs} progressMax={data.flatFeeTotal_fs}/>
-            <KPI icon="📚" label="Course Fee Paid" value={data.courseFeeTotal_fs} isMoney color={T.violet}/>
-            <KPI icon="✏️" label="Fee Overrides" value={data.totalOverrides} color={T.amber}/>
+            <KPI onClick={kpiClick('feeledger', "Flat Fee Total")} icon="💰" label="Flat Fee Total" value={data.flatFeeTotal_fs} isMoney color={T.gold}/>
+            <KPI onClick={kpiClick('feeledger', "Flat Fee Paid")} icon="✅" label="Flat Fee Paid" value={data.flatFeePaid_fs} isMoney color={T.emerald} progress={data.flatFeePaid_fs} progressMax={data.flatFeeTotal_fs}/>
+            <KPI onClick={kpiClick('feeledger', "Course Fee Paid")} icon="📚" label="Course Fee Paid" value={data.courseFeeTotal_fs} isMoney color={T.violet}/>
+            <KPI onClick={kpiClick('feeledger', "Fee Overrides")} icon="✏️" label="Fee Overrides" value={data.totalOverrides} color={T.amber}/>
           </div>
           <div className="grid-cols2">
             <Panel title="Flat Fee Collection Status">
@@ -2022,13 +2109,13 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('entrance')} className="dash-section">
           <SectionHeader icon="🏆" title="Entrance Exam Management"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="📝" label="Total Exams" value={data.totalEntranceExams} color={T.sky}/>
-            <KPI icon="✅" label="Completed" value={data.completedExams} color={T.emerald}/>
-            <KPI icon="📅" label="Scheduled" value={data.scheduledExams} color={T.amber}/>
-            <KPI icon="👥" label="Candidates" value={data.totalEntranceCandidates} color={T.violet}/>
-            <KPI icon="🎯" label="Appeared" value={data.appearedCandidates} color={T.sky} progress={data.appearedCandidates} progressMax={data.totalEntranceCandidates}/>
-            <KPI icon="✅" label="Pass Rate" value={data.entrancePassRate} color={data.entrancePassRate>=60?T.emerald:T.rose} sub={`${data.passedCandidates} passed`}/>
-            <KPI icon="🎓" label="Admitted" value={data.admittedFromEntrance} color={T.gold}/>
+            <KPI onClick={kpiClick('entrance', "Total Exams")} icon="📝" label="Total Exams" value={data.totalEntranceExams} color={T.sky}/>
+            <KPI onClick={kpiClick('entrance', "Completed")} icon="✅" label="Completed" value={data.completedExams} color={T.emerald}/>
+            <KPI onClick={kpiClick('entrance', "Scheduled")} icon="📅" label="Scheduled" value={data.scheduledExams} color={T.amber}/>
+            <KPI onClick={kpiClick('entrance', "Candidates")} icon="👥" label="Candidates" value={data.totalEntranceCandidates} color={T.violet}/>
+            <KPI onClick={kpiClick('entrance', "Appeared")} icon="🎯" label="Appeared" value={data.appearedCandidates} color={T.sky} progress={data.appearedCandidates} progressMax={data.totalEntranceCandidates}/>
+            <KPI onClick={kpiClick('entrance', "Pass Rate")} icon="✅" label="Pass Rate" value={data.entrancePassRate} color={data.entrancePassRate>=60?T.emerald:T.rose} sub={`${data.passedCandidates} passed`}/>
+            <KPI onClick={kpiClick('entrance', "Admitted")} icon="🎓" label="Admitted" value={data.admittedFromEntrance} color={T.gold}/>
           </div>
           {data.totalEntranceExams===0?<Panel><EmptyState msg="No data in entrance_exams table yet."/></Panel>:(
             <>
@@ -2076,9 +2163,9 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('lockers')} className="dash-section">
           <SectionHeader icon="🗃️" title="Study Lockers"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="🗃️" label="Total Lockers" value={data.totalLockers} color={T.sky}/>
-            <KPI icon="📦" label="Total Materials" value={data.totalLockerMaterials} color={T.violet}/>
-            <KPI icon="📚" label="Courses" value={data.lockersByCourse.length} color={T.amber}/>
+            <KPI onClick={kpiClick('lockers', "Total Lockers")} icon="🗃️" label="Total Lockers" value={data.totalLockers} color={T.sky}/>
+            <KPI onClick={kpiClick('lockers', "Total Materials")} icon="📦" label="Total Materials" value={data.totalLockerMaterials} color={T.violet}/>
+            <KPI onClick={kpiClick('lockers', "Courses")} icon="📚" label="Courses" value={data.lockersByCourse.length} color={T.amber}/>
           </div>
           {data.totalLockers===0?<Panel><EmptyState msg="No study_lockers data yet."/></Panel>:(
             <div className="grid-cols3">
@@ -2115,11 +2202,11 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('syllabus')} className="dash-section">
           <SectionHeader icon="📐" title="Syllabus Manager"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="📐" label="Total Topics" value={data.totalSyllabusTopics} color={T.sky}/>
-            <KPI icon="✅" label="Completed" value={data.completedTopics_st} color={T.emerald} progress={data.completedTopics_st} progressMax={data.totalSyllabusTopics}/>
-            <KPI icon="⚠️" label="Overdue" value={data.overdueTopics_st} color={T.rose}/>
-            <KPI icon="⏳" label="Pending" value={data.pendingTopics_st} color={T.amber}/>
-            <KPI icon="📊" label="Overall" value={data.syllabusOverallPct} color={data.syllabusOverallPct>=80?T.emerald:data.syllabusOverallPct>=60?T.amber:T.rose} sub={`${data.syllabusOverallPct}%`}/>
+            <KPI onClick={kpiClick('syllabus', "Total Topics")} icon="📐" label="Total Topics" value={data.totalSyllabusTopics} color={T.sky}/>
+            <KPI onClick={kpiClick('syllabus', "Completed")} icon="✅" label="Completed" value={data.completedTopics_st} color={T.emerald} progress={data.completedTopics_st} progressMax={data.totalSyllabusTopics}/>
+            <KPI onClick={kpiClick('syllabus', "Overdue")} icon="⚠️" label="Overdue" value={data.overdueTopics_st} color={T.rose}/>
+            <KPI onClick={kpiClick('syllabus', "Pending")} icon="⏳" label="Pending" value={data.pendingTopics_st} color={T.amber}/>
+            <KPI onClick={kpiClick('syllabus', "Overall")} icon="📊" label="Overall" value={data.syllabusOverallPct} color={data.syllabusOverallPct>=80?T.emerald:data.syllabusOverallPct>=60?T.amber:T.rose} sub={`${data.syllabusOverallPct}%`}/>
           </div>
           {data.totalSyllabusTopics===0?<Panel><EmptyState msg="No data in syllabus_topics table yet."/></Panel>:(
             <>
@@ -2165,10 +2252,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('qbank')} className="dash-section">
           <SectionHeader icon="❓" title="Question Bank"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="❓" label="Total Questions" value={data.totalQBankQuestions} color={T.sky}/>
-            <KPI icon="✅" label="Easy" value={data.qbankByDifficulty[0]?.count||0} color={T.emerald}/>
-            <KPI icon="⚡" label="Medium" value={data.qbankByDifficulty[1]?.count||0} color={T.amber}/>
-            <KPI icon="🔥" label="Hard" value={data.qbankByDifficulty[2]?.count||0} color={T.rose}/>
+            <KPI onClick={kpiClick('qbank', "Total Questions")} icon="❓" label="Total Questions" value={data.totalQBankQuestions} color={T.sky}/>
+            <KPI onClick={kpiClick('qbank', "Easy")} icon="✅" label="Easy" value={data.qbankByDifficulty[0]?.count||0} color={T.emerald}/>
+            <KPI onClick={kpiClick('qbank', "Medium")} icon="⚡" label="Medium" value={data.qbankByDifficulty[1]?.count||0} color={T.amber}/>
+            <KPI onClick={kpiClick('qbank', "Hard")} icon="🔥" label="Hard" value={data.qbankByDifficulty[2]?.count||0} color={T.rose}/>
           </div>
           {data.totalQBankQuestions===0?<Panel><EmptyState msg="No data in qbank_questions yet."/></Panel>:(
             <>
@@ -2206,14 +2293,14 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('social')} className="dash-section">
           <SectionHeader icon="📣" title="Social & Marketing"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="📣" label="Campaigns" value={data.totalCampaigns} color={T.sky} sub={`${data.activeCampaigns} active`}/>
-            <KPI icon="👥" label="Total Leads" value={data.totalSocialLeads} color={T.violet}/>
-            <KPI icon="🆕" label="New Leads" value={data.newLeads} color={T.amber}/>
-            <KPI icon="✅" label="Converted" value={data.convertedLeads} color={T.emerald} progress={data.convertedLeads} progressMax={data.totalSocialLeads}/>
-            <KPI icon="📊" label="Conv. Rate" value={data.socialConvRate} color={data.socialConvRate>=20?T.emerald:T.rose} sub={`${data.socialConvRate}%`}/>
-            <KPI icon="⚠️" label="Overdue Follow-ups" value={data.overdueFollowUps} color={T.rose}/>
-            <KPI icon="📝" label="Posts" value={data.totalPosts} color={T.sky} sub={`${data.postedCount} posted`}/>
-            <KPI icon="💰" label="Budget" value={data.totalBudget} isMoney color={T.gold}/>
+            <KPI onClick={kpiClick('social', "Campaigns")} icon="📣" label="Campaigns" value={data.totalCampaigns} color={T.sky} sub={`${data.activeCampaigns} active`}/>
+            <KPI onClick={kpiClick('social', "Total Leads")} icon="👥" label="Total Leads" value={data.totalSocialLeads} color={T.violet}/>
+            <KPI onClick={kpiClick('social', "New Leads")} icon="🆕" label="New Leads" value={data.newLeads} color={T.amber}/>
+            <KPI onClick={kpiClick('social', "Converted")} icon="✅" label="Converted" value={data.convertedLeads} color={T.emerald} progress={data.convertedLeads} progressMax={data.totalSocialLeads}/>
+            <KPI onClick={kpiClick('social', "Conv. Rate")} icon="📊" label="Conv. Rate" value={data.socialConvRate} color={data.socialConvRate>=20?T.emerald:T.rose} sub={`${data.socialConvRate}%`}/>
+            <KPI onClick={kpiClick('social', "Overdue Follow-ups")} icon="⚠️" label="Overdue Follow-ups" value={data.overdueFollowUps} color={T.rose}/>
+            <KPI onClick={kpiClick('social', "Posts")} icon="📝" label="Posts" value={data.totalPosts} color={T.sky} sub={`${data.postedCount} posted`}/>
+            <KPI onClick={kpiClick('social', "Budget")} icon="💰" label="Budget" value={data.totalBudget} isMoney color={T.gold}/>
           </div>
           {data.totalSocialLeads===0&&data.totalCampaigns===0?<Panel><EmptyState msg="No social data yet."/></Panel>:(
             <>
@@ -2251,10 +2338,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('connect')} className="dash-section">
           <SectionHeader icon="🔗" title="Connect — Broadcast & Communication"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="📡" label="Broadcasts" value={data.totalBroadcasts} color={T.sky} sub={`${data.sentBroadcasts} sent`}/>
-            <KPI icon="👥" label="Recipients" value={data.totalRecipients} color={T.violet}/>
-            <KPI icon="📩" label="Unread Replies" value={data.unreadReplies} color={data.unreadReplies>0?T.rose:T.emerald}/>
-            <KPI icon="📋" label="Grievances" value={data.totalGrievances} color={T.amber} sub={`${data.openGrievances} open`}/>
+            <KPI onClick={kpiClick('connect', "Broadcasts")} icon="📡" label="Broadcasts" value={data.totalBroadcasts} color={T.sky} sub={`${data.sentBroadcasts} sent`}/>
+            <KPI onClick={kpiClick('connect', "Recipients")} icon="👥" label="Recipients" value={data.totalRecipients} color={T.violet}/>
+            <KPI onClick={kpiClick('connect', "Unread Replies")} icon="📩" label="Unread Replies" value={data.unreadReplies} color={data.unreadReplies>0?T.rose:T.emerald}/>
+            <KPI onClick={kpiClick('connect', "Grievances")} icon="📋" label="Grievances" value={data.totalGrievances} color={T.amber} sub={`${data.openGrievances} open`}/>
           </div>
           {data.totalBroadcasts===0?<Panel><EmptyState msg="No data in connect_broadcasts yet."/></Panel>:(
             <div className="grid-cols2" style={{marginBottom:14}}>
@@ -2295,10 +2382,10 @@ export default function GNSIDashboard({ scrollToSection }) {
         <div ref={setSectionRef('expenses')} className="dash-section">
           <SectionHeader icon="📉" title="Expenses & P&L"/>
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI icon="💰" label="Total Income" value={data.totalFeeCollected} isMoney color={T.emerald}/>
-            <KPI icon="📉" label="Total Expenses" value={data.totalExpenses} isMoney color={T.rose}/>
-            <KPI icon="📊" label="Net P&L" value={data.netPL} isMoney color={data.netPL>=0?T.emerald:T.rose} sub={data.netPL>=0?"Profitable":"Loss"}/>
-            <KPI icon="💼" label="Salary Bill" value={data.totalSalaryBill} isMoney color={T.amber}/>
+            <KPI onClick={kpiClick('expenses', "Total Income")} icon="💰" label="Total Income" value={data.totalFeeCollected} isMoney color={T.emerald}/>
+            <KPI onClick={kpiClick('expenses', "Total Expenses")} icon="📉" label="Total Expenses" value={data.totalExpenses} isMoney color={T.rose}/>
+            <KPI onClick={kpiClick('expenses', "Net P&L")} icon="📊" label="Net P&L" value={data.netPL} isMoney color={data.netPL>=0?T.emerald:T.rose} sub={data.netPL>=0?"Profitable":"Loss"}/>
+            <KPI onClick={kpiClick('expenses', "Salary Bill")} icon="💼" label="Salary Bill" value={data.totalSalaryBill} isMoney color={T.amber}/>
           </div>
           <div className="grid-split" style={{marginBottom:14}}>
             <Panel title="Monthly Income vs Expense vs P&L">
