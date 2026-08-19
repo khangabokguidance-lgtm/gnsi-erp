@@ -675,3 +675,74 @@ export async function getAnomalyAlerts() {
 
   return alerts
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 21. CROSS-MODULE RECONCILIATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+// getFeeReconciliation — compares the fee totals every admin-facing
+// summary should agree on: the sum of actual fee-collection rows
+// (adm_fee_collections / adm_flat_fees / adm_course_fees — what
+// feeDues.js, Student360, and this file's own dues functions treat as
+// ground truth) against the general accounts/income ledger's fee-related
+// entries (what GNSIDashboard.jsx's Finance tab sums instead, filtered
+// by a free-text `category` column). These are two independent
+// bookkeeping paths for the same money — a payment recorded through the
+// Fees module without a mirrored accounts ledger entry, or vice versa,
+// makes the two totals silently diverge with nothing today to notice it.
+// This function is that notice: not a fix (the two ledgers stay
+// separate; reconciling them structurally is a schema decision, not
+// something to paper over here), but a standing check that surfaces the
+// gap in rupees so an admin can go find the missing entry.
+export async function getFeeReconciliation() {
+  const [admFeeRows, flatFeeRows, courseFeeRows, accountsRows] = await Promise.all([
+    fetchAll('adm_fee_collections', { select: 'amount_paid', filters: [['reverted', 'eq', false]] }),
+    fetchAll('adm_flat_fees', { select: 'amount', filters: [['paid', 'eq', true], ['reverted', 'eq', false]] }),
+    fetchAll('adm_course_fees', { select: 'amount_paid', filters: [['reverted', 'eq', false]] }),
+    // accounts is GNSIDashboard.jsx's income ledger — every row with a
+    // category, not just fee-related ones, so this pulls the same three
+    // categories that file's admFeeTotal/flatFeeTotal/courseFeeTotal
+    // filter on (see the "FIX: ... now derive from the SAME accounts
+    // rows" comment in that file for why those three categories are the
+    // fee-equivalent ones: Admission, Hostel, Fees). type==='Income'
+    // matches GNSIDashboard.jsx's own allIncome filter exactly.
+    fetchAll('accounts', { select: 'amount,category,type', filters: [['type', 'eq', 'Income']] }),
+  ])
+
+  const sourceTables = {
+    admission: (admFeeRows || []).reduce((s, r) => s + Number(r.amount_paid || 0), 0),
+    flatFee: (flatFeeRows || []).reduce((s, r) => s + Number(r.amount || 0), 0),
+    courseFee: (courseFeeRows || []).reduce((s, r) => s + Number(r.amount_paid || 0), 0),
+  }
+  sourceTables.total = sourceTables.admission + sourceTables.flatFee + sourceTables.courseFee
+
+  const ledger = { admission: 0, flatFee: 0, courseFee: 0 }
+  for (const r of accountsRows || []) {
+    const amt = Number(r.amount || 0)
+    if (r.category === 'Admission') ledger.admission += amt
+    else if (r.category === 'Hostel') ledger.flatFee += amt
+    else if (r.category === 'Fees') ledger.courseFee += amt
+  }
+  ledger.total = ledger.admission + ledger.flatFee + ledger.courseFee
+
+  const diff = {
+    admission: ledger.admission - sourceTables.admission,
+    flatFee: ledger.flatFee - sourceTables.flatFee,
+    courseFee: ledger.courseFee - sourceTables.courseFee,
+  }
+  diff.total = diff.admission + diff.flatFee + diff.courseFee
+
+  // A rounding-scale gap (a few rupees) is normal float noise, not a real
+  // discrepancy — only flag categories where the gap is large enough to
+  // represent at least one missing/extra transaction.
+  const THRESHOLD = 50
+  const mismatchedCategories = ['admission', 'flatFee', 'courseFee'].filter(k => Math.abs(diff[k]) >= THRESHOLD)
+
+  return {
+    sourceTables, // ground truth: actual fee-collection tables
+    ledger,       // GNSIDashboard.jsx's Finance tab source
+    diff,         // ledger − sourceTables, positive means ledger has MORE than the fee tables
+    mismatchedCategories,
+    isReconciled: mismatchedCategories.length === 0,
+  }
+}

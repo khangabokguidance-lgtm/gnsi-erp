@@ -17,6 +17,7 @@ import {
   getTopperTrends, getSubjectWeaknessReport, getExamParticipationGaps,
   getDisciplineRepeatOffenders, getHouseHealthScore, getSickbayPatternAlert,
   getAnomalyAlerts,
+  getFeeReconciliation,
 } from './adminIntelligence'
 
 const NAVY = '#0B1E3D', NAVY_LIGHT = '#16305c', GOLD = '#C9A24B'
@@ -456,6 +457,46 @@ export default function AdminIntelligence({ onOpenStudent }) {
             </div>
           )} />
       </div>
+
+      {/* ── 21 Cross-module fee reconciliation ──────────────────────────────
+          Compares GNSIDashboard.jsx's Finance-tab totals (the general
+          accounts/income ledger, filtered by category string) against
+          the actual fee-collection tables every other module treats as
+          ground truth (adm_fee_collections/adm_flat_fees/adm_course_fees).
+          These are two independent bookkeeping paths for the same money
+          — this panel is the standing check that notices when they
+          diverge, since nothing else in the portal currently does. */}
+      <LazySection icon="🔄" title="Fee Ledger Reconciliation" accent={AMBER}
+        fetcher={getFeeReconciliation}
+        renderList={r => (
+          <div>
+            {r.isReconciled ? (
+              <div style={{ fontSize: 12, color: GREEN, fontWeight: 700, marginBottom: 10 }}>✓ Accounts ledger matches fee-collection tables.</div>
+            ) : (
+              <div style={{ fontSize: 12, color: RED, fontWeight: 700, marginBottom: 10 }}>⚠ {r.mismatchedCategories.length} categor{r.mismatchedCategories.length === 1 ? 'y' : 'ies'} out of sync — ledger vs actual fee tables.</div>
+            )}
+            {[
+              ['Admission Fee', 'admission'],
+              ['Flat Fee', 'flatFee'],
+              ['Course Fee', 'courseFee'],
+            ].map(([label, key]) => {
+              const off = r.mismatchedCategories.includes(key)
+              return (
+                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${SLATE[100]}`, fontSize: 12 }}>
+                  <span style={{ color: SLATE[600] }}>{label}</span>
+                  <span>
+                    <span style={{ color: SLATE[400] }}>Ledger ₹{fmt(r.ledger[key])} vs Tables ₹{fmt(r.sourceTables[key])}</span>{' '}
+                    <span style={{ fontWeight: 800, color: off ? RED : GREEN }}>({r.diff[key] >= 0 ? '+' : ''}₹{fmt(r.diff[key])})</span>
+                  </span>
+                </div>
+              )
+            })}
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0 0', fontSize: 12.5, fontWeight: 700 }}>
+              <span>Total</span>
+              <span style={{ color: r.isReconciled ? GREEN : RED }}>{r.diff.total >= 0 ? '+' : ''}₹{fmt(r.diff.total)}</span>
+            </div>
+          </div>
+        )} />
 
       {/* ── 20 Anomaly alerts ─────────────────────────────────────────────── */}
       <LazySection icon="🧭" title="Anomaly Alerts" accent={RED}

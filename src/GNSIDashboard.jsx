@@ -594,6 +594,9 @@ function getModuleInsights(data) {
   if (data.totalStudents > 0 && data.maleStudents === 0 && data.femaleStudents === 0) {
     push('students', 'warning', `Gender is not being recorded or matched for any of the ${data.totalStudents} students on file.`)
   }
+  if (data.totalStudents > 0 && data.activeStudentCount !== data.totalStudents) {
+    push('students', 'info', `"${data.totalStudents}" is every student on file, including ${data.totalStudents - data.activeStudentCount} inactive/dropout. ${data.activeStudentCount} are currently active — other modules (Student360, Admin Intelligence) report the active count.`)
+  }
 
   // ── Attendance ──
   if (data.totalToday > 0) {
@@ -843,6 +846,20 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
   // dropoutStudentsData query above) since it needs status/left_date/name
   // columns the lean allStudents query above doesn't select. ──
   const dropoutData = getDropoutData(dropoutStudentsData)
+
+  // Active-student count, using the SAME definition studentQueries.js's
+  // activeStudentFilter() applies everywhere else in the portal (status
+  // not Dropout/Inactive) — computed here from dropoutStudentsData since
+  // that's the one query in this file that actually selects `status`.
+  // Exists specifically so the Students KPI can show BOTH numbers side by
+  // side instead of presenting the unfiltered table count as if it were
+  // the same "how many students do we have" answer Student360/Admin
+  // Intelligence give — those two counts are structurally different
+  // (this dashboard's raw table count includes dropouts; theirs doesn't)
+  // and showing only one without the other is what caused the mismatch.
+  const activeStudentCount = dropoutStudentsData.filter(
+    s => s.status !== 'Dropout' && s.status !== 'Inactive'
+  ).length
   const dayBoarders=allStudents.filter(s=>s.hostel_type==="Day Boarder").length
   const dayScholars=allStudents.filter(s=>s.hostel_type==="Day Scholar").length
   const courseCounts={}
@@ -1253,7 +1270,7 @@ batchesData.forEach(b=>{const t=b.course||"Regular";batchTypeMap[t]=(batchTypeMa
     enrolledStudents: admEnrolled,
     maleStudents, femaleStudents,
     boarders, dayBoarders, dayScholars, stateData, ageDistribution,
-    dropoutData,
+    dropoutData, activeStudentCount,
     totalAdmissions:allAdm.length, admApplied, admUnderReview, admAdmitted, admEnrolled, admRejected, admWaitlisted,
     courseBreakdown, applicationSource, yoyAdmissions, recentAdmissions:recentAdmRes.data||[], admissionFunnel,
     totalFeeCollected, feePending, admFeeTotal, flatFeeTotal, courseFeeTotal,
@@ -1593,7 +1610,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
 
           {/* FIX #1: Students KPI — show DB total; sub shows enrolled count separately */}
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI onClick={kpiClick('overview', "Students")} icon="🎓" label="Students" value={data.totalStudents} color={T.sky} sub={`${data.enrolledStudents} enrolled`}/>
+            <KPI onClick={kpiClick('overview', "Students")} icon="🎓" label="Students" value={data.totalStudents} color={T.sky} sub={`${data.activeStudentCount} active · ${data.totalStudents - data.activeStudentCount} inactive/dropout`}/>
             <KPI onClick={kpiClick('overview', "Batches")} icon="🗂️" label="Batches" value={data.activeBatches} color={T.indigo} sub={`${data.totalBatches} total`}/>
             <KPI onClick={kpiClick('overview', "Exam Entries")} icon="📝" label="Exam Entries" value={data.totalTestEntries} color={T.violet} sub={`Avg ${data.avgTestScore}%`}/>
             <KPI onClick={kpiClick('overview', "Applications")} icon="🔍" label="Applications" value={data.totalEnquiries} color={T.amber} sub={`${data.convertedEnq} enrolled · ${data.conversionRate}%`}/>
@@ -1762,7 +1779,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         <>
           {/* FIX #1: main value = DB total; sub = enrolled count */}
           <div className="grid-kpi" style={{marginBottom:16}}>
-            <KPI onClick={kpiClick('students', "Total")} icon="👥" label="Total" value={data.totalStudents} color={T.sky} sub={`${data.enrolledStudents} enrolled`}/>
+            <KPI onClick={kpiClick('students', "Total")} icon="👥" label="Total" value={data.totalStudents} color={T.sky} sub={`${data.activeStudentCount} active · ${data.totalStudents - data.activeStudentCount} inactive/dropout`}/>
             <KPI onClick={kpiClick('students', "Male")} icon="👦" label="Male" value={data.maleStudents} color={T.sky} progress={data.maleStudents} progressMax={data.totalStudents}/>
             <KPI onClick={kpiClick('students', "Female")} icon="👧" label="Female" value={data.femaleStudents} color={T.pink} progress={data.femaleStudents} progressMax={data.totalStudents}/>
             <KPI onClick={kpiClick('students', "Boarders")} icon="🏠" label="Boarders" value={data.boarders} color={T.violet}/>
