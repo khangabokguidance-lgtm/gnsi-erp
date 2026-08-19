@@ -739,26 +739,31 @@ function normalizeQuestionText(text) {
 // nothing else in common). A row with no subject/chapter set yet (bulk
 // paste before tagging) falls back to matching within the bank at large,
 // same as before, since there's no narrower scope available for it.
+//
+// Returns the matched existing row's id alongside isDuplicate (not just
+// a boolean) — the Replace-on-duplicate flow needs to know which
+// existing row to update, and normalized text alone doesn't carry that.
 function findDuplicates(candidateRows, existingQuestions) {
-  const byScope = new Map() // "subject|chapter" -> Set of normalized question text
-  const untaggedSet = new Set()
+  const byScope = new Map() // "subject|chapter" -> Map<normalizedText, existingId>
+  const untaggedMap = new Map()
   for (const q of existingQuestions) {
     const norm = normalizeQuestionText(q.question)
     if (q.subject && q.chapter) {
       const key = `${q.subject}|${q.chapter}`
-      if (!byScope.has(key)) byScope.set(key, new Set())
-      byScope.get(key).add(norm)
+      if (!byScope.has(key)) byScope.set(key, new Map())
+      byScope.get(key).set(norm, q.id)
     } else {
-      untaggedSet.add(norm)
+      untaggedMap.set(norm, q.id)
     }
   }
 
   return candidateRows.map((r, i) => {
     const norm = normalizeQuestionText(r.question)
     const scopeKey = r.subject && r.chapter ? `${r.subject}|${r.chapter}` : null
-    const scopeSet = scopeKey ? byScope.get(scopeKey) : null
-    const isDuplicate = scopeSet ? scopeSet.has(norm) : untaggedSet.has(norm)
-    return { index: i, isDuplicate }
+    const scopeMap = scopeKey ? byScope.get(scopeKey) : null
+    const matchMap = scopeMap || untaggedMap
+    const existingId = matchMap.get(norm)
+    return { index: i, isDuplicate: existingId !== undefined, existingId }
   }).filter(r => r.isDuplicate)
 }
 
@@ -1389,10 +1394,35 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
   const [step,          setStep]          = useState(1)
   const chapters = SUBJECTS[bulkSubject] || []
 
-  const dupeIndexSet = useMemo(() => {
-    if (!extracted.length) return new Set()
-    return new Set(findDuplicates(extracted, questions || []).map(d => d.index))
+  // dupeByIndex: Map<row index, existingId> for every row findDuplicates
+  // flagged — carries the matched existing row's id forward so a
+  // per-row "Replace" action knows exactly which bank row to update.
+  const dupeByIndex = useMemo(() => {
+    if (!extracted.length) return new Map()
+    const map = new Map()
+    findDuplicates(extracted, questions || []).forEach(d => map.set(d.index, d.existingId))
+    return map
   }, [extracted, questions])
+  const dupeIndexSet = useMemo(() => new Set(dupeByIndex.keys()), [dupeByIndex])
+
+  // Per-row action for flagged duplicates: 'ask' (default, unresolved),
+  // 'skip' (don't save this row), 'new' (save as an additional row
+  // despite the match), 'replace' (update the existing row in place
+  // instead of inserting). Keyed by row index; only meaningful for rows
+  // dupeIndexSet flags — non-duplicate rows are always saved as new
+  // regardless of what (if anything) is in this map.
+  const [dupeActions, setDupeActions] = useState({})
+  // Reset per-row choices whenever the flagged set changes (new extract,
+  // re-paste, CSV re-upload) so a stale choice from a previous batch
+  // never silently carries over onto a different set of rows.
+  useEffect(() => { setDupeActions({}) }, [extracted])
+
+  const setDupeAction = (idx, action) => setDupeActions(prev => ({ ...prev, [idx]: action }))
+  const setAllDupeActions = action => {
+    const next = {}
+    dupeIndexSet.forEach(idx => { next[idx] = action })
+    setDupeActions(next)
+  }
 
   const handleExtract = () => {
     if (!rawText.trim()) { showToast('Paste some text first', C.amber); return }
@@ -1464,22 +1494,62 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
       const go = confirm(`${noAnswer.length} questions have no answer marked. Save anyway?`)
       if (!go) return
     }
-    // ── Duplicate check — feature #6 ──
-    if (dupeIndexSet.size) {
-      const go = confirm(`${dupeIndexSet.size} question(s) look identical to ones already in the bank (highlighted below). Save anyway?`)
-      if (!go) return
+    // ── Duplicate check — every flagged row needs a resolved action
+    // (Skip / Save as New / Replace) before saving. Unlike the old
+    // single confirm(), this can't silently default an unresolved
+    // duplicate into "save as new" — the whole point of offering
+    // Replace is to make it easy to correct an existing row, and
+    // silently duplicating it instead defeats that.
+    const unresolved = [...dupeIndexSet].filter(idx => !dupeActions[idx] || dupeActions[idx] === 'ask')
+    if (unresolved.length) {
+      showToast(`${unresolved.length} duplicate question(s) still need Skip / New / Replace chosen`, C.amber)
+      return
     }
+
     setSaving(true)
-    const payload = extracted.map(({ _id, _qNum, _subsectionHint, _needsDiagram, ...rest }) => ({
+    const strip = ({ _id, _qNum, _subsectionHint, _needsDiagram, ...rest }) => ({
       ...rest,
       subsection: rest.subsection || detectSubsection(rest.question, rest.subject) || 'General',
-    }))
-    const { error } = await supabase.from('qbank_questions').insert(payload)
-    if (error) { showToast('Save failed: ' + error.message, C.rose); setSaving(false); return }
-    showToast(`✅ ${payload.length} questions saved to bank!`, C.green)
+    })
+
+    const toInsert = []
+    const toReplace = [] // { id, payload }
+    extracted.forEach((q, i) => {
+      const action = dupeIndexSet.has(i) ? dupeActions[i] : null
+      if (action === 'skip') return
+      const payload = strip(q)
+      if (action === 'replace') toReplace.push({ id: dupeByIndex.get(i), payload })
+      else toInsert.push(payload) // covers 'new' and every non-duplicate row
+    })
+
+    if (toInsert.length === 0 && toReplace.length === 0) {
+      showToast('Nothing to save — every row was skipped', C.amber)
+      setSaving(false)
+      return
+    }
+
+    if (toInsert.length) {
+      const { error } = await supabase.from('qbank_questions').insert(toInsert)
+      if (error) { showToast('Save failed: ' + error.message, C.rose); setSaving(false); return }
+    }
+    // Replacements go one at a time (not a single batch update) since
+    // each row targets a DIFFERENT existing id with different content —
+    // Supabase's .update() applies one payload to a filtered set, so N
+    // distinct replacements genuinely need N distinct calls.
+    for (const { id, payload } of toReplace) {
+      const { error } = await supabase.from('qbank_questions').update(payload).eq('id', id)
+      if (error) { showToast(`Replace failed for one question: ${error.message}`, C.rose); setSaving(false); return }
+    }
+
+    const savedCount = toInsert.length + toReplace.length
+    const skippedCount = extracted.length - savedCount
+    showToast(
+      `✅ ${toInsert.length} added${toReplace.length ? `, ${toReplace.length} replaced` : ''}${skippedCount ? `, ${skippedCount} skipped` : ''}`,
+      C.green
+    )
     // ── PATCH: notify StudyMaterial badge to refresh ──
-    EventBus.emit(GNSI_EVENTS.QUESTION_SAVED, { subject: bulkSubject, chapter: bulkChapter, count: payload.length })
-    setExtracted([]); setRawText(''); setAnswerKeyText(''); setStep(1); refetch()
+    EventBus.emit(GNSI_EVENTS.QUESTION_SAVED, { subject: bulkSubject, chapter: bulkChapter, count: savedCount })
+    setExtracted([]); setRawText(''); setAnswerKeyText(''); setStep(1); setDupeActions({}); refetch()
     setSaving(false)
   }
 
@@ -1581,11 +1651,27 @@ Answer: B`} />
               </div>
             )}
 
-            <div style={{ marginTop:12, display:'flex', gap:16, fontSize:12 }}>
+            <div style={{ marginTop:12, display:'flex', gap:16, fontSize:12, flexWrap:'wrap' }}>
               <span style={{ color:C.green }}>✅ {extracted.filter(q=>q.correct_option).length} answered</span>
               <span style={{ color:C.rose }}>❌ {extracted.filter(q=>!q.correct_option).length} unanswered</span>
               <span style={{ color:C.amber }}>⚠️ {extracted.filter(q=>q._needsDiagram).length} need diagram</span>
             </div>
+
+            {dupeIndexSet.size > 0 && (
+              <div style={{ marginTop:12, padding:'10px 14px', borderRadius:8, background:'#fffbeb', border:'1px solid #fde68a',
+                display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+                <span style={{ fontSize:12, fontWeight:700, color:'#92400e' }}>
+                  ⚠️ {dupeIndexSet.size} possible duplicate{dupeIndexSet.size!==1?'s':''} found
+                </span>
+                <span style={{ fontSize:11, color:'#92400e' }}>Apply to all:</span>
+                <button onClick={() => setAllDupeActions('skip')} style={btnSm('#fff', '#92400e')}>Skip All</button>
+                <button onClick={() => setAllDupeActions('new')} style={btnSm('#fff', '#92400e')}>Save All as New</button>
+                <button onClick={() => setAllDupeActions('replace')} style={btnSm(C.amber)}>Replace All</button>
+                {Object.keys(dupeActions).length > 0 && (
+                  <button onClick={() => setDupeActions({})} style={btnSm('#fff', C.slate)}>Reset choices</button>
+                )}
+              </div>
+            )}
           </div>
 
           {extracted.map((q, i) => (
@@ -1604,6 +1690,30 @@ Answer: B`} />
                   <Badge text={`Section: ${q._subsectionHint}`} color="#0369a1" bg="#e0f2fe" />
                 )}
               </div>
+              {dupeIndexSet.has(i) && (
+                <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap', marginBottom:10,
+                  padding:'7px 10px', borderRadius:7, background:'#fffbeb', border:'1px solid #fde68a' }}>
+                  <span style={{ fontSize:11, fontWeight:700, color:'#92400e' }}>This question:</span>
+                  {[
+                    { key:'skip',    label:'Skip' },
+                    { key:'new',     label:'Save as New' },
+                    { key:'replace', label:'Replace Existing' },
+                  ].map(({key, label}) => (
+                    <button key={key} onClick={() => setDupeAction(i, key)}
+                      style={{
+                        padding:'3px 10px', borderRadius:6, fontSize:11, fontWeight:700, cursor:'pointer',
+                        border:`1px solid ${dupeActions[i]===key ? '#92400e' : '#fde68a'}`,
+                        background: dupeActions[i]===key ? '#92400e' : '#fff',
+                        color: dupeActions[i]===key ? '#fff' : '#92400e',
+                      }}>
+                      {label}
+                    </button>
+                  ))}
+                  {!dupeActions[i] && (
+                    <span style={{ fontSize:10.5, color:'#b45309', fontStyle:'italic' }}>— choose one before saving</span>
+                  )}
+                </div>
+              )}
               <div style={{ fontSize:13, fontWeight:500, color:'#1e293b', marginBottom:q.question_mayek ? 4 : 10, lineHeight:1.6 }}>
                 {q.question}
               </div>
@@ -1668,15 +1778,23 @@ Answer: B`} />
             </div>
           ))}
 
-          <div style={{ display:'flex', gap:10, marginTop:8, alignItems:'center' }}>
+          <div style={{ display:'flex', gap:10, marginTop:8, alignItems:'center', flexWrap:'wrap' }}>
             <button onClick={handleSave} disabled={saving} style={btn(C.green, saving)}>
-              {saving ? '⏳ Saving…' : `✅ Save All ${extracted.length} Questions to Bank`}
+              {saving ? '⏳ Saving…' : `✅ Save ${extracted.length} Question${extracted.length!==1?'s':''} to Bank`}
             </button>
             <span style={{ fontSize:12, color:C.slate }}>
               {extracted.filter(q=>!q.correct_option).length > 0
                 ? `⚠️ ${extracted.filter(q=>!q.correct_option).length} without answer`
                 : '✅ All answered'}
             </span>
+            {(() => {
+              const unresolved = [...dupeIndexSet].filter(idx => !dupeActions[idx] || dupeActions[idx] === 'ask').length
+              return unresolved > 0 ? (
+                <span style={{ fontSize:12, color:'#92400e', fontWeight:700 }}>
+                  ⚠️ {unresolved} duplicate{unresolved!==1?'s':''} need Skip/New/Replace chosen
+                </span>
+              ) : null
+            })()}
           </div>
         </div>
       )}
