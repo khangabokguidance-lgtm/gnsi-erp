@@ -9,35 +9,39 @@ import {
 } from "recharts"
 import { supabase } from "./supabase"
 
-// ─── LIGHT THEME TOKENS ──────────────────────────────────────────────────────
+// ─── PROFESSIONAL INSTITUTE THEME TOKENS ────────────────────────────────────
 const T = {
-  bg:       "#f4f6fb",
+  bg:       "#f5f6f8",
   bgCard:   "#ffffff",
-  bgCardAlt:"#f8fafd",
-  bgInset:  "#f0f3f8",
-  border:   "rgba(0,0,0,.07)",
-  borderMd: "rgba(0,0,0,.11)",
-  ink:      "#0f172a",
-  inkMid:   "#334155",
-  inkSub:   "#64748b",
-  gold:     "#c89b3c",
-  goldLt:   "#f0c96a",
-  emerald:  "#059669",
-  rose:     "#e11d48",
-  sky:      "#0284c7",
-  violet:   "#7c3aed",
-  amber:    "#d97706",
-  teal:     "#0d9488",
-  pink:     "#db2777",
-  indigo:   "#4f46e5",
-  orange:   "#ea580c",
-  lime:     "#65a30d",
-  slate:    "#64748b",
-  slateL:   "#94a3b8",
-  navy:     "#f4f6fb",
-  navyLt:   "#eef1f8",
+  bgCardAlt:"#fafbfc",
+  bgInset:  "#f1f3f6",
+  border:   "#e3e6eb",
+  borderMd: "#d1d5db",
+  ink:      "#131a2b",
+  inkMid:   "#48536b",
+  inkSub:   "#7c8798",
+  gold:     "#a67c1e",
+  goldLt:   "#c99a3a",
+  emerald:  "#0f7a52",
+  rose:     "#b3273f",
+  sky:      "#1e5fa8",
+  violet:   "#5b4bb8",
+  amber:    "#9a6a08",
+  teal:     "#0e7c72",
+  pink:     "#a8336c",
+  indigo:   "#4747a8",
+  orange:   "#b0530f",
+  lime:     "#5a7d1e",
+  slate:    "#7c8798",
+  slateL:   "#aab2c0",
+  navy:     "#131a2b",
+  navyLt:   "#1d2740",
   navyCard: "#ffffff",
-  white:    "#0f172a",
+  white:    "#ffffff",
+  // Institute accent — used sparingly for the single "brand" line/mark
+  // (Daily Briefing header, top of page), not on every card.
+  accent:     "#1e5fa8",
+  accentSoft: "#e7eef7",
 }
 
 const fmt = n => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN")
@@ -201,8 +205,8 @@ function Counter({ value, duration=1200 }) {
 function ProgressBar({ value, max, color, height=6 }) {
   const w = Math.min(100, pct(value, max))
   return (
-    <div style={{background:"rgba(0,0,0,.07)",borderRadius:99,height,overflow:"hidden"}}>
-      <div style={{height:"100%",width:`${w}%`,borderRadius:99,background:`linear-gradient(90deg,${color}99,${color})`,transition:"width 1.2s cubic-bezier(.4,0,.2,1)"}}/>
+    <div style={{background:T.bgInset,borderRadius:99,height,overflow:"hidden"}}>
+      <div style={{height:"100%",width:`${w}%`,borderRadius:99,background:color,transition:"width .9s cubic-bezier(.4,0,.2,1)"}}/>
     </div>
   )
 }
@@ -211,16 +215,18 @@ function Panel({ children, style={}, accent, title, sub }) {
   return (
     <div style={{
       background:T.bgCard,
-      border:`1px solid ${accent ? accent+"28" : T.border}`,
-      borderRadius:14,
+      border:`1px solid ${T.border}`,
+      borderTop: accent ? `2px solid ${accent}` : `1px solid ${T.border}`,
+      borderRadius:10,
       padding:"18px 20px",
-      boxShadow:"0 1px 4px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04)",
+      boxShadow:"0 1px 2px rgba(19,26,43,.04)",
+      position:"relative",
       ...style
     }}>
       {title && (
         <div style={{marginBottom:14}}>
-          <div style={{fontSize:13,fontWeight:800,color:T.ink}}>{title}</div>
-          {sub && <div style={{fontSize:11,color:T.inkSub,marginTop:2}}>{sub}</div>}
+          <div style={{fontSize:13,fontWeight:700,color:T.ink,letterSpacing:"0"}}>{title}</div>
+          {sub && <div style={{fontSize:11.5,color:T.inkSub,marginTop:2}}>{sub}</div>}
         </div>
       )}
       {children}
@@ -231,9 +237,9 @@ function Panel({ children, style={}, accent, title, sub }) {
 function Badge({ label, color }) {
   return (
     <span style={{
-      fontSize:10,fontWeight:700,color,textTransform:"uppercase",letterSpacing:".07em",
-      background:`${color}15`,padding:"2px 7px",borderRadius:5,
-      border:`1px solid ${color}25`
+      fontSize:10,fontWeight:700,color,textTransform:"uppercase",letterSpacing:".06em",
+      background:`${color}12`,padding:"2px 7px",borderRadius:4,
+      border:`1px solid ${color}2e`,
     }}>{label}</span>
   )
 }
@@ -244,8 +250,8 @@ function Tip({ active, payload, label }) {
     <div style={{
       background:T.bgCard,
       border:`1px solid ${T.borderMd}`,
-      borderRadius:10,padding:"10px 14px",fontSize:12,
-      boxShadow:"0 4px 16px rgba(0,0,0,.12)"
+      borderRadius:8,padding:"10px 14px",fontSize:12,
+      boxShadow:"0 4px 16px rgba(19,26,43,.12)"
     }}>
       <div style={{color:T.inkSub,marginBottom:4}}>{label}</div>
       {payload.map((p,i)=>(<div key={i} style={{color:p.color,fontWeight:700}}>{p.name}: {p.value>999?fmt(p.value):p.value}</div>))}
@@ -262,26 +268,26 @@ function KPI({ icon, label, value, sub, color, progress, progressMax, isMoney, t
       onMouseLeave={() => setHover(false)}
       style={{
       background:T.bgCard,
-      border:`1px solid ${hover ? color+'60' : color+'20'}`,
-      borderRadius:14,padding:"16px 18px",
+      border:`1px solid ${hover ? color+'55' : T.border}`,
+      borderTop:`2px solid ${color}`,
+      borderRadius:10,padding:"16px 18px",
       display:"flex",flexDirection:"column",gap:7,
-      position:"relative",overflow:"hidden",
-      boxShadow: hover ? `0 2px 6px rgba(0,0,0,.06), 0 8px 22px ${color}1c` : "0 1px 3px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.04)",
+      position:"relative",
+      boxShadow: hover ? "0 4px 12px rgba(19,26,43,.08)" : "0 1px 2px rgba(19,26,43,.04)",
       cursor: onClick ? "pointer" : "default",
       transition: "box-shadow .15s ease, border-color .15s ease",
     }}>
-      <div style={{position:"absolute",top:-16,right:-16,width:70,height:70,borderRadius:"50%",background:`${color}10`,filter:"blur(16px)"}}/>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <span style={{fontSize:20}}>{icon}</span>
+        <span style={{fontSize:18,opacity:.85}}>{icon}</span>
         <Badge label={label} color={color}/>
       </div>
-      <div style={{fontSize:24,fontWeight:900,color:T.ink,letterSpacing:"-.02em",lineHeight:1}}>
+      <div style={{fontSize:23,fontWeight:800,color:T.ink,letterSpacing:"-.01em",lineHeight:1}}>
         {isMoney ? fmt(value) : <Counter value={value}/>}
       </div>
-      {sub && <div style={{fontSize:11,color:T.inkSub}}>{sub}</div>}
+      {sub && <div style={{fontSize:11.5,color:T.inkSub}}>{sub}</div>}
       {trend!==undefined && <div style={{fontSize:11,fontWeight:700,color:trend>=0?T.emerald:T.rose}}>{trend>=0?"▲":"▼"} {Math.abs(trend)}% vs last month</div>}
       {progress!==undefined && <ProgressBar value={progress} max={progressMax} color={color}/>}
-      {onClick && <div style={{position:"absolute",bottom:8,right:10,fontSize:9.5,fontWeight:700,color,opacity:hover?1:0,transition:"opacity .15s ease"}}>Open →</div>}
+      {onClick && <div style={{fontSize:10.5,fontWeight:600,color:T.inkSub,opacity:hover?1:0,transition:"opacity .15s ease",marginTop:-2}}>View details →</div>}
     </div>
   )
 }
@@ -293,15 +299,15 @@ function Gauge({ value, max=100, color, size=90 }) {
   const filled=arc-(arc*(1-Math.min(value,max)/max))
   return (
     <svg width={size} height={size} style={{overflow:"visible"}}>
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(0,0,0,.08)" strokeWidth={8} strokeDasharray={`${arc} ${circumference-arc}`} strokeDashoffset={-circumference*0.125} strokeLinecap="round"/>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={T.bgInset} strokeWidth={8} strokeDasharray={`${arc} ${circumference-arc}`} strokeDashoffset={-circumference*0.125} strokeLinecap="round"/>
       <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={8} strokeDasharray={`${filled} ${circumference-filled}`} strokeDashoffset={-circumference*0.125} strokeLinecap="round"/>
-      <text x={cx} y={cy+6} textAnchor="middle" fill={T.ink} fontSize={15} fontWeight={900}>{Math.round(value)}%</text>
+      <text x={cx} y={cy+6} textAnchor="middle" fill={T.ink} fontSize={15} fontWeight={800}>{Math.round(value)}%</text>
     </svg>
   )
 }
 
 function Skeleton({ h=20, w="100%", r=8 }) {
-  return <div style={{height:h,width:w,borderRadius:r,background:"rgba(0,0,0,.06)",animation:"shimmer 1.5s infinite"}}/>
+  return <div style={{height:h,width:w,borderRadius:r,background:T.bgInset,animation:"shimmer 1.5s infinite"}}/>
 }
 
 function EmptyState({ msg }) {
@@ -310,14 +316,55 @@ function EmptyState({ msg }) {
 
 function SectionHeader({ icon, title }) {
   return (
-    <h2 style={{fontSize:19,fontWeight:900,margin:"0 0 18px",color:T.ink,display:"flex",alignItems:"center",gap:8}}>
-      <span style={{fontSize:20}}>{icon}</span> {title}
-    </h2>
+    <div style={{display:"flex",alignItems:"center",gap:9,margin:"0 0 16px",paddingBottom:12,borderBottom:`1px solid ${T.border}`}}>
+      <span style={{fontSize:17,opacity:.75}}>{icon}</span>
+      <h2 style={{fontSize:16,fontWeight:700,margin:0,color:T.ink,letterSpacing:"0"}}>{title}</h2>
+    </div>
   )
 }
 
 function TableWrap({ children }) {
   return <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>{children}</div>
+}
+
+// AI Insight panel — dropped into each section, reading that section's
+// slice of getModuleInsights(data)'s output. Renders nothing when the
+// section has no insights (a quiet module is not itself worth a card).
+const INSIGHT_STYLE = {
+  critical: { color: "#b3273f", label: "Critical" },
+  warning:  { color: "#9a6a08", label: "Watch" },
+  good:     { color: "#0f7a52", label: "Nominal" },
+  info:     { color: "#1e5fa8", label: "Note" },
+}
+function InsightPanel({ insights }) {
+  if (!insights || insights.length === 0) return null
+  return (
+    <div style={{
+      background:T.bgCardAlt,
+      border:`1px solid ${T.border}`,
+      borderLeft:`3px solid ${T.accent}`,
+      borderRadius:8, padding:"13px 16px", marginBottom:14,
+    }}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:9}}>
+        <span style={{fontSize:10.5,fontWeight:700,color:T.accent,textTransform:"uppercase",letterSpacing:".07em"}}>Analysis</span>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:7}}>
+        {insights.map((ins, i) => {
+          const s = INSIGHT_STYLE[ins.level] || INSIGHT_STYLE.info
+          return (
+            <div key={i} style={{display:"flex",gap:9,alignItems:"flex-start",fontSize:12.5,lineHeight:1.5}}>
+              <span style={{
+                fontSize:9,fontWeight:700,color:s.color,flexShrink:0,marginTop:2,
+                padding:"1px 6px",borderRadius:3,background:`${s.color}12`,
+                textTransform:"uppercase",letterSpacing:".04em",whiteSpace:"nowrap",
+              }}>{s.label}</span>
+              <span style={{color:T.inkMid}}>{ins.text}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 // ─── DROPOUT TRACKING ─────────────────────────────────────────────────────────
@@ -398,6 +445,123 @@ function getDropoutData(students) {
     recentDropouts,
     undatedCount: dropouts.filter(s => !s.left_date).length,
   }
+}
+
+// ─── AI INSIGHT ENGINE (rule-based, deterministic — no external API call) ──
+// Reads the SAME `data` object every section already renders from and
+// derives a short list of plain-language observations per module. Each
+// insight is { level: 'critical'|'warning'|'good'|'info', text }. Nothing
+// here is a network call or an LLM prompt — every sentence is a threshold
+// check against numbers loadAllData() already computed, so it's instant,
+// free, and never wrong in a way the underlying data isn't already wrong.
+// Called once per render from the already-loaded `data` (see
+// getModuleInsights(data) usage in the component body) — not during
+// loadAllData itself, so a future insight rule can never block or slow
+// down the actual data fetch.
+function getModuleInsights(data) {
+  const insights = {}
+  const push = (section, level, text) => {
+    insights[section] ??= []
+    insights[section].push({ level, text })
+  }
+
+  // ── Overview / Finance ──
+  if (data.feePending > 0) {
+    push('overview', 'warning', `₹${fmt(data.feePending)} in fees is still pending collection.`)
+    push('finance', 'warning', `Outstanding balance of ₹${fmt(data.feePending)} across the roster.`)
+  } else {
+    push('finance', 'good', `No outstanding fee balance is currently tracked.`)
+  }
+  if (data.netPL < 0) {
+    push('overview', 'critical', `Running at a loss this session — expenses (₹${fmt(data.totalExpenses)}) exceed income.`)
+    push('expenses', 'critical', `Net P&L is negative: ₹${fmt(data.netPL)}.`)
+  } else if (data.totalExpenses > 0 && data.netPL > 0) {
+    push('expenses', 'good', `Profitable — ₹${fmt(data.netPL)} net after ₹${fmt(data.totalExpenses)} in expenses.`)
+  }
+  if (data.totalWaivers > 0) {
+    push('finance', 'info', `₹${fmt(data.totalWaivers)} waived across the session so far.`)
+  }
+
+  // ── Students / Dropout ──
+  if (data.dropoutData) {
+    const dd = data.dropoutData
+    if (dd.dropoutRate > 10) push('dropout', 'critical', `Dropout rate is ${dd.dropoutRate}% — above the 10% concern threshold.`)
+    else if (dd.dropoutRate > 5) push('dropout', 'warning', `Dropout rate is ${dd.dropoutRate}% — worth monitoring.`)
+    else push('dropout', 'good', `Dropout rate is ${dd.dropoutRate}% — within a healthy range.`)
+    if (dd.undatedCount > 0) push('dropout', 'info', `${dd.undatedCount} dropout record(s) have no left_date — trend chart is likely undercounting recent exits.`)
+    if (dd.byCourse[0] && dd.totalDropouts > 0) push('dropout', 'info', `${dd.byCourse[0].name} accounts for the most dropouts (${dd.byCourse[0].count}).`)
+  }
+  if (data.totalStudents > 0 && data.maleStudents === 0 && data.femaleStudents === 0) {
+    push('students', 'warning', `Gender is not being recorded or matched for any of the ${data.totalStudents} students on file.`)
+  }
+
+  // ── Attendance ──
+  if (data.totalToday > 0) {
+    const rate = pct(data.presentToday, data.totalToday)
+    if (rate < 75) push('attendance', 'critical', `Today's attendance is ${rate}% — below the 75% healthy threshold.`)
+    else if (rate < 85) push('attendance', 'warning', `Today's attendance is ${rate}%, trailing the 85% target.`)
+    else push('attendance', 'good', `Today's attendance is ${rate}%, meeting target.`)
+    if (data.lateToday > 0) push('attendance', 'info', `${data.lateToday} student(s) marked late today.`)
+  } else {
+    push('attendance', 'info', `No attendance marked yet today.`)
+  }
+
+  // ── Academic / Tests ──
+  if (data.atRisk > 0) push('academic', 'warning', `${data.atRisk} student(s) are scoring below 35% and need attention.`)
+  if (data.passRate != null && data.passRate < 60) push('academic', 'critical', `Pass rate is ${data.passRate}% — below 60%.`)
+  else if (data.passRate != null && data.passRate >= 90) push('academic', 'good', `Pass rate is strong at ${data.passRate}%.`)
+
+  // ── Staff / Operations ──
+  if (data.taskOverdue > 0) push('staff', 'warning', `${data.taskOverdue} staff task(s) are overdue.`)
+  if (data.taskOverdue > 0) push('operations', 'warning', `${data.taskOverdue} overdue task(s) across departments.`)
+  if (data.taskPending > 0 && data.taskDone === 0) push('operations', 'critical', `No tasks completed yet against ${data.taskPending} pending.`)
+
+  // ── Hostel ──
+  if (data.hostelTotalRooms > 0) {
+    const occ = pct(data.hostelOccupied, data.hostelTotalRooms)
+    if (occ >= 95) push('hostel', 'warning', `Hostel occupancy at ${occ}% — near capacity.`)
+    else push('hostel', 'info', `Hostel occupancy at ${occ}% (${data.hostelOccupied}/${data.hostelTotalRooms} rooms).`)
+  }
+
+  // ── Enquiry / Admissions ──
+  if (data.totalEnquiries > 0 && data.conversionRate < 20) push('enquiry', 'warning', `Lead-to-enrollment conversion is ${data.conversionRate}%, on the low side.`)
+  if (data.admissionFunnel?.length && data.admApplied === 0 && data.totalAdmissions > 0) {
+    push('admissions', 'info', `${data.totalAdmissions} admission record(s) on file but the status pipeline shows 0 in every stage — check whether admission status values still match what this dashboard filters on.`)
+  }
+
+  // ── Doubts ──
+  if (data.unresolvedDoubts > 0 && data.totalDoubts > 0) {
+    const unresolvedPct = pct(data.unresolvedDoubts, data.totalDoubts)
+    if (unresolvedPct > 50) push('doubts', 'critical', `${unresolvedPct}% of student doubts remain unresolved.`)
+    else if (unresolvedPct > 20) push('doubts', 'warning', `${data.unresolvedDoubts} doubt(s) still open.`)
+  }
+
+  // ── Social / Connect ──
+  if (data.overdueFollowUps > 0) push('social', 'warning', `${data.overdueFollowUps} lead follow-up(s) are overdue.`)
+  if (data.openGrievances > 0) push('connect', 'warning', `${data.openGrievances} grievance(s) still open.`)
+  if (data.unreadReplies > 0) push('connect', 'info', `${data.unreadReplies} unread parent repl${data.unreadReplies===1?'y':'ies'}.`)
+
+  // ── Syllabus / Teaching ──
+  if (data.syllabusOverallPct != null && data.totalSyllabusTopics > 0) {
+    if (data.syllabusOverallPct < 40) push('syllabus', 'critical', `Syllabus completion is only ${data.syllabusOverallPct}%.`)
+    else if (data.syllabusOverallPct < 70) push('syllabus', 'warning', `Syllabus completion at ${data.syllabusOverallPct}%, behind pace.`)
+  }
+  if (data.overallCoverage != null && data.totalTopics > 0 && data.overallCoverage < 50) {
+    push('teaching', 'warning', `Teaching log coverage is ${data.overallCoverage}% of planned topics.`)
+  }
+
+  return insights
+}
+
+// Flattens getModuleInsights() output into the handful of sentences most
+// worth a daily glance — for the header briefing panel, not any one
+// section. Priority: critical > warning > good/info, capped small so the
+// briefing stays a briefing.
+function getDailyBriefing(data, max = 5) {
+  const all = getModuleInsights(data)
+  const flat = Object.values(all).flat()
+  const order = { critical: 0, warning: 1, good: 2, info: 3 }
+  return flat.sort((a, b) => order[a.level] - order[b.level]).slice(0, max)
 }
 
 // ─── DATA LOADING ─────────────────────────────────────────────────────────────
@@ -1091,8 +1255,8 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
 
   if(error) return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12}}>
-      <div style={{color:T.rose,fontSize:14,fontWeight:700}}>❌ {error}</div>
-      <button onClick={load} style={{padding:"8px 20px",borderRadius:8,border:"none",background:T.gold,color:"#fff",fontWeight:700,cursor:"pointer"}}>Retry</button>
+      <div style={{color:T.rose,fontSize:14,fontWeight:700}}>Unable to load dashboard — {error}</div>
+      <button onClick={load} style={{padding:"8px 20px",borderRadius:8,border:"none",background:T.accent,color:"#fff",fontWeight:700,cursor:"pointer"}}>Retry</button>
     </div>
   )
 
@@ -1100,6 +1264,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
     <div style={{minHeight:"100vh",background:T.bg,padding:24,display:"flex",gap:20}}>
       <style>{`@keyframes shimmer{0%{opacity:.4}50%{opacity:.7}100%{opacity:.4}}`}</style>
       <div style={{flex:1,display:"flex",flexDirection:"column",gap:16}}>
+        <div style={{fontSize:11.5,fontWeight:600,color:T.inkSub}}>Loading dashboard…</div>
         <Skeleton h={48} w={280} r={10}/>
         <div className={G.kpi} style={{display:"grid",gap:12}}>
           {[...Array(6)].map((_,i)=><Skeleton key={i} h={120} r={14}/>)}
@@ -1112,6 +1277,11 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
   // FIX #5: feeProgress — clamp feePending to ≥0 so ratio never exceeds 100%
   const feeProgress = Math.min(100, pct(liveTotal, liveTotal + Math.max(0, data.feePending)))
   const attProgress=pct(data.presentToday,data.totalToday)
+  // Computed once per render pass, not inside loadAllData — insights are
+  // a pure function of already-loaded data, so recomputing here is cheap
+  // and keeps the rule engine decoupled from the fetch/cache lifecycle.
+  const insightsBySection = getModuleInsights(data)
+  const dailyBriefing = getDailyBriefing(data)
 
   const td = (extra={}) => ({fontSize:13,color:T.inkMid,padding:"9px 12px",background:T.bgInset,...extra})
   const tdFirst = {fontSize:13,fontWeight:700,color:T.ink,padding:"9px 12px",background:T.bgInset,borderRadius:"10px 0 0 10px"}
@@ -1119,13 +1289,18 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
   const th = {textAlign:"left",fontSize:10,color:T.inkSub,fontWeight:700,padding:"5px 12px",textTransform:"uppercase",letterSpacing:".07em",whiteSpace:"nowrap"}
 
   return (
-    <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'DM Sans','Segoe UI',system-ui,sans-serif",color:T.ink}}>
+    <div style={{
+      minHeight:"100vh",
+      background:T.bg,
+      fontFamily:"'DM Sans','Segoe UI',system-ui,sans-serif",color:T.ink,
+    }}>
       <style>{`
         @keyframes shimmer{0%{opacity:.4}50%{opacity:.7}100%{opacity:.4}}
         @keyframes slideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-        *{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent}
-        ::-webkit-scrollbar{width:4px;height:4px}
-        ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:2px}
+        *{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:#c7ccd6 transparent}
+        ::-webkit-scrollbar{width:5px;height:5px}
+        ::-webkit-scrollbar-thumb{background:#c7ccd6;border-radius:3px}
+        ::-webkit-scrollbar-thumb:hover{background:#a7aeba}
         html{scroll-behavior:smooth}
         .grid-kpi{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
         .grid-cols2{display:grid;grid-template-columns:1fr;gap:12px}
@@ -1144,11 +1319,13 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
           .grid-cols2{grid-template-columns:repeat(2,1fr)}
           .grid-split{grid-template-columns:2fr 1fr}
         }
-        .dash-section{margin-bottom:36px}
+        .dash-section{margin-bottom:32px}
         .fee-banner{
-          background:linear-gradient(135deg,${T.gold}14,${T.gold}06);
-          border:1px solid ${T.gold}30;
-          border-radius:14px;
+          background:${T.bgCard};
+          border:1px solid ${T.border};
+          border-top:2px solid ${T.gold};
+          box-shadow:0 1px 2px rgba(19,26,43,.04);
+          border-radius:10px;
           padding:16px 20px;
           margin-bottom:18px;
           display:flex;
@@ -1167,13 +1344,19 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
 
         {/* ═══ OVERVIEW ════════════════════════════════════════ */}
         <div ref={setSectionRef('overview')} className="dash-section">
-          <div style={{marginBottom:18}}>
-            <h1 style={{fontSize:20,fontWeight:900,margin:0,color:T.ink}}>
-              Good {now.getHours()<12?"Morning":now.getHours()<17?"Afternoon":"Evening"} 👋
-            </h1>
-            <p style={{color:T.inkSub,fontSize:12,margin:"3px 0 0"}}>
-              {now.toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})} · AY {CURRENT_YEAR}–{CURRENT_YEAR+1}
-            </p>
+          <div style={{
+            display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:16,
+            marginBottom:20,paddingBottom:18,borderBottom:`1px solid ${T.border}`,
+          }}>
+            <div>
+              <div style={{fontSize:10,fontWeight:700,color:T.gold,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}}>Administrator Dashboard</div>
+              <h1 style={{fontSize:22,fontWeight:800,margin:0,color:T.ink,letterSpacing:"-.01em"}}>
+                Good {now.getHours()<12?"Morning":now.getHours()<17?"Afternoon":"Evening"}
+              </h1>
+              <p style={{color:T.inkSub,fontSize:12.5,margin:"4px 0 0"}}>
+                {now.toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})} · {now.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})} · Academic Year {CURRENT_YEAR}–{CURRENT_YEAR+1}
+              </p>
+            </div>
             <button onClick={async()=>{
               try{
                 const reg=await navigator.serviceWorker.ready
@@ -1192,11 +1375,47 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
                 alert("✅ Push notifications enabled! You'll get alerts for payments, students, and tasks.")
               }catch(e){alert("❌ Failed: "+e.message)}
             }} style={{
-              marginTop:8,padding:"5px 14px",borderRadius:8,
-              border:`1px solid ${T.gold}40`,background:`${T.gold}10`,
-              color:T.gold,fontSize:11,fontWeight:700,
-              cursor:"pointer",fontFamily:"inherit"
-            }}>🔔 Enable Notifications</button>
+              padding:"7px 15px",borderRadius:7,
+              border:`1px solid ${T.border}`,background:T.bgCard,
+              color:T.inkMid,fontSize:12,fontWeight:600,
+              cursor:"pointer",fontFamily:"inherit",
+            }}>Enable Notifications</button>
+          </div>
+
+          {/* Daily Briefing — rule-based summary (getDailyBriefing →
+              getModuleInsights), sorted worst-first so anything critical
+              is never buried under routine info lines. */}
+          <div style={{
+            background:T.bgCard,
+            border:`1px solid ${T.border}`,
+            borderLeft:`3px solid ${T.accent}`,
+            borderRadius:10, padding:"18px 22px", marginBottom:18,
+          }}>
+            <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:13}}>
+              <span style={{fontSize:11.5,fontWeight:700,color:T.ink,letterSpacing:".01em"}}>Daily Briefing</span>
+              <span style={{fontSize:10.5,color:T.inkSub}}>· {dailyBriefing.length} item{dailyBriefing.length!==1?"s":""} requiring review</span>
+            </div>
+            {dailyBriefing.length===0 ? (
+              <div style={{fontSize:12.5,color:T.inkSub,display:"flex",alignItems:"center",gap:8}}>
+                <span style={{color:T.emerald,fontWeight:700}}>✓</span> No items require attention today.
+              </div>
+            ) : (
+              <div style={{display:"flex",flexDirection:"column",gap:9}}>
+                {dailyBriefing.map((ins, i) => {
+                  const s = INSIGHT_STYLE[ins.level] || INSIGHT_STYLE.info
+                  return (
+                    <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start",fontSize:13,lineHeight:1.5}}>
+                      <span style={{
+                        color:s.color,fontSize:9,fontWeight:700,flexShrink:0,marginTop:3,
+                        padding:"2px 6px",borderRadius:3,background:`${s.color}12`,
+                        textTransform:"uppercase",letterSpacing:".05em",whiteSpace:"nowrap",
+                      }}>{s.label}</span>
+                      <span style={{color:T.inkMid}}>{ins.text}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           <div className="fee-banner">
@@ -1349,6 +1568,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ FINANCE ═══════════════════════════════════════ */}
         <div ref={setSectionRef('finance')} className="dash-section">
           <SectionHeader icon="💰" title="Finance & Fee Analytics"/>
+          <InsightPanel insights={insightsBySection['finance']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('finance', "Total Collected")} icon="💰" label="Total Collected" value={liveTotal} isMoney color={T.gold}/>
             <KPI onClick={kpiClick('finance', "Fee Pending")} icon="📌" label="Fee Pending" value={data.feePending} isMoney color={data.feePending>0?T.rose:T.slateL} sub={data.feePending>0?"Outstanding":"Not tracked yet"}/>
@@ -1401,6 +1621,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ STUDENTS ══════════════════════════════════════ */}
         <div ref={setSectionRef('students')} className="dash-section">
           <SectionHeader icon="🎓" title="Student Analytics"/>
+          <InsightPanel insights={insightsBySection['students']}/>
           {/* FIX #1: main value = DB total; sub = enrolled count */}
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('students', "Total")} icon="👥" label="Total" value={data.totalStudents} color={T.sky} sub={`${data.enrolledStudents} enrolled`}/>
@@ -1469,6 +1690,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ DROPOUT TRACKING ══════════════════════════════ */}
         <div ref={setSectionRef('dropout')} className="dash-section">
           <SectionHeader icon="📉" title="Dropout Tracking"/>
+          <InsightPanel insights={insightsBySection['dropout']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('dropout', "Total Dropouts")} icon="📉" label="Total Dropouts" value={data.dropoutData.totalDropouts} color={T.rose} sub={`of ${data.dropoutData.totalEver} ever enrolled`}/>
             <KPI onClick={kpiClick('dropout', "Dropout Rate")} icon="📊" label="Dropout Rate" value={data.dropoutData.dropoutRate} color={data.dropoutData.dropoutRate>10?T.rose:data.dropoutData.dropoutRate>5?T.amber:T.emerald} sub={`${data.dropoutData.dropoutRate}%`}/>
@@ -1560,6 +1782,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ ADMISSIONS ════════════════════════════════════ */}
         <div ref={setSectionRef('admissions')} className="dash-section">
           <SectionHeader icon="📋" title="Admissions Deep Dive"/>
+          <InsightPanel insights={insightsBySection['admissions']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('admissions', "Applied")} icon="📩" label="Applied" value={data.admApplied} color={T.sky}/>
             <KPI onClick={kpiClick('admissions', "Under Review")} icon="🔍" label="Under Review" value={data.admUnderReview} color={T.violet}/>
@@ -1628,6 +1851,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ STAFF ════════════════════════════════════════ */}
         <div ref={setSectionRef('staff')} className="dash-section">
           <SectionHeader icon="👨‍💼" title="Staff & HR"/>
+          <InsightPanel insights={insightsBySection['staff']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('staff', "Total Staff")} icon="👥" label="Total Staff" value={data.totalStaff} color={T.sky} sub={`${data.activeStaffCnt} active`}/>
             <KPI onClick={kpiClick('staff', "Active")} icon="✅" label="Active" value={data.activeStaffCnt} color={T.emerald}/>
@@ -1672,6 +1896,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ ATTENDANCE ════════════════════════════════════ */}
         <div ref={setSectionRef('attendance')} className="dash-section">
           <SectionHeader icon="✅" title="Attendance Analytics"/>
+          <InsightPanel insights={insightsBySection['attendance']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('attendance', "Present")} icon="✅" label="Present" value={data.presentToday} color={T.emerald} progress={data.presentToday} progressMax={data.totalToday}/>
             <KPI onClick={kpiClick('attendance', "Absent")} icon="❌" label="Absent" value={data.absentToday} color={T.rose}/>
@@ -1725,6 +1950,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ ACADEMIC ══════════════════════════════════════ */}
         <div ref={setSectionRef('academic')} className="dash-section">
           <SectionHeader icon="📚" title="Academic Performance"/>
+          <InsightPanel insights={insightsBySection['academic']}/>
           {/* FIX — avg score sub now shows % clearly */}
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('academic', "Avg Score")} icon="📊" label="Avg Score" value={data.avgScore} color={T.sky} sub={`Class average: ${data.avgScore}%`}/>
@@ -1762,6 +1988,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ TESTS ════════════════════════════════════════ */}
         <div ref={setSectionRef('tests')} className="dash-section">
           <SectionHeader icon="📝" title="Test & Performance Analytics"/>
+          <InsightPanel insights={insightsBySection['tests']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('tests', "Exam Dates")} icon="📝" label="Exam Dates" value={data.totalTests} color={T.violet}/>
             <KPI onClick={kpiClick('tests', "Total Entries")} icon="👥" label="Total Entries" value={data.totalTestEntries} color={T.sky}/>
@@ -1828,6 +2055,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ ENQUIRY ══════════════════════════════════════ */}
         <div ref={setSectionRef('enquiry')} className="dash-section">
           <SectionHeader icon="🔍" title="Enquiry & Lead Management"/>
+          <InsightPanel insights={insightsBySection['enquiry']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('enquiry', "Total")} icon="📞" label="Total" value={data.totalEnquiries} color={T.sky} sub="From admissions"/>
             <KPI onClick={kpiClick('enquiry', "Open")} icon="🔓" label="Open" value={data.openEnquiries} color={T.amber}/>
@@ -1877,6 +2105,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ HOSTEL ════════════════════════════════════════ */}
         <div ref={setSectionRef('hostel')} className="dash-section">
           <SectionHeader icon="🛏️" title="Hostel & Boarding"/>
+          <InsightPanel insights={insightsBySection['hostel']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('hostel', "Boarders")} icon="🏠" label="Boarders" value={data.boarders} color={T.sky}/>
             <KPI onClick={kpiClick('hostel', "Rooms Total")} icon="🛏️" label="Rooms Total" value={data.hostelTotalRooms} color={T.amber}/>
@@ -1915,6 +2144,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ HOUSES ════════════════════════════════════════ */}
         <div ref={setSectionRef('houses')} className="dash-section">
           <SectionHeader icon="🏆" title="Houses & Co-curricular"/>
+          <InsightPanel insights={insightsBySection['houses']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             {data.housePoints.map((h,i)=>(
               <div key={h.name} style={{background:`${h.color}08`,border:`1px solid ${h.color}25`,borderRadius:14,padding:"14px 16px"}}>
@@ -1931,6 +2161,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ OPERATIONS ════════════════════════════════════ */}
         <div ref={setSectionRef('operations')} className="dash-section">
           <SectionHeader icon="⚙️" title="Operations & Admin"/>
+          <InsightPanel insights={insightsBySection['operations']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('operations', "Total Tasks")} icon="📋" label="Total Tasks" value={data.taskPending+data.taskDone+data.taskOverdue} color={T.sky}/>
             <KPI onClick={kpiClick('operations', "Completed")} icon="✅" label="Completed" value={data.taskDone} color={T.emerald} progress={data.taskDone} progressMax={data.taskPending+data.taskDone+data.taskOverdue}/>
@@ -1976,6 +2207,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ BATCHES ════════════════════════════════════════ */}
         <div ref={setSectionRef('batches')} className="dash-section">
           <SectionHeader icon="🗂️" title="Batches & Timetable"/>
+          <InsightPanel insights={insightsBySection['batches']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('batches', "Total Batches")} icon="🗂️" label="Total Batches" value={data.totalBatches} color={T.indigo}/>
             <KPI onClick={kpiClick('batches', "Active")} icon="✅" label="Active" value={data.activeBatches} color={T.emerald}/>
@@ -2007,6 +2239,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ DOUBTS ════════════════════════════════════════ */}
         <div ref={setSectionRef('doubts')} className="dash-section">
           <SectionHeader icon="💬" title="Doubt & Query Management"/>
+          <InsightPanel insights={insightsBySection['doubts']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('doubts', "Total Doubts")} icon="💬" label="Total Doubts" value={data.totalDoubts} color={T.sky}/>
             <KPI onClick={kpiClick('doubts', "Resolved")} icon="✅" label="Resolved" value={data.resolvedDoubts} color={T.emerald} progress={data.resolvedDoubts} progressMax={data.totalDoubts}/>
@@ -2063,6 +2296,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ PARENT COMMUNICATION ═══════════════════════════ */}
         <div ref={setSectionRef('parents')} className="dash-section">
           <SectionHeader icon="👨‍👩‍👧" title="Parent Communication"/>
+          <InsightPanel insights={insightsBySection['parents']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('parents', "Total Sent")} icon="📨" label="Total Sent" value={data.totalSMSSent} color={T.sky}/>
             <KPI onClick={kpiClick('parents', "Delivered")} icon="✅" label="Delivered" value={data.smsSent} color={T.emerald}/>
@@ -2094,6 +2328,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ STUDY MATERIAL ══════════════════════════════════ */}
         <div ref={setSectionRef('material')} className="dash-section">
           <SectionHeader icon="📦" title="Study Material Management"/>
+          <InsightPanel insights={insightsBySection['material']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('material', "Total Materials")} icon="📦" label="Total Materials" value={data.totalMaterials} color={T.sky}/>
             <KPI onClick={kpiClick('material', "Distributed")} icon="✅" label="Distributed" value={data.distributedMat} color={T.emerald} progress={data.distributedMat} progressMax={data.totalMaterials}/>
@@ -2123,6 +2358,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ RESULTS ════════════════════════════════════════ */}
         <div ref={setSectionRef('results')} className="dash-section">
           <SectionHeader icon="🏅" title="Results & Selections"/>
+          <InsightPanel insights={insightsBySection['results']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('results', "Total")} icon="🏅" label="Total" value={data.totalSelections} color={T.gold}/>
             <KPI onClick={kpiClick('results', "JNV Navodaya")} icon="🏫" label="JNV Navodaya" value={data.jnvSelections} color={T.emerald}/>
@@ -2152,6 +2388,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ TEACHING ═══════════════════════════════════════ */}
         <div ref={setSectionRef('teaching')} className="dash-section">
           <SectionHeader icon="🖊️" title="Staff Teaching Analytics"/>
+          <InsightPanel insights={insightsBySection['teaching']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('teaching', "Topics Total")} icon="📚" label="Topics Total" value={data.totalTopics} color={T.sky}/>
             <KPI onClick={kpiClick('teaching', "Covered")} icon="✅" label="Covered" value={data.coveredTopics} color={T.emerald} progress={data.coveredTopics} progressMax={data.totalTopics}/>
@@ -2209,6 +2446,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ FEE SETUP ══════════════════════════════════════ */}
         <div ref={setSectionRef('feesetup')} className="dash-section">
           <SectionHeader icon="💳" title="Fee Setup & Structure"/>
+          <InsightPanel insights={insightsBySection['feesetup']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('feesetup', "Fee Structures")} icon="📋" label="Fee Structures" value={data.totalFeeStructures} color={T.sky} sub={`${data.activeSessionStructures.length} this session`}/>
             <KPI onClick={kpiClick('feesetup', "Flat Fee Collected")} icon="💰" label="Flat Fee Collected" value={data.flatFeePaid_fs} isMoney color={T.emerald}/>
@@ -2262,6 +2500,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ FEE LEDGER ══════════════════════════════════════ */}
         <div ref={setSectionRef('feeledger')} className="dash-section">
           <SectionHeader icon="📒" title="Student Fee Ledger"/>
+          <InsightPanel insights={insightsBySection['feeledger']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('feeledger', "Flat Fee Total")} icon="💰" label="Flat Fee Total" value={data.flatFeeTotal_fs} isMoney color={T.gold}/>
             <KPI onClick={kpiClick('feeledger', "Flat Fee Paid")} icon="✅" label="Flat Fee Paid" value={data.flatFeePaid_fs} isMoney color={T.emerald} progress={data.flatFeePaid_fs} progressMax={data.flatFeeTotal_fs}/>
@@ -2296,6 +2535,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ ENTRANCE ════════════════════════════════════════ */}
         <div ref={setSectionRef('entrance')} className="dash-section">
           <SectionHeader icon="🏆" title="Entrance Exam Management"/>
+          <InsightPanel insights={insightsBySection['entrance']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('entrance', "Total Exams")} icon="📝" label="Total Exams" value={data.totalEntranceExams} color={T.sky}/>
             <KPI onClick={kpiClick('entrance', "Completed")} icon="✅" label="Completed" value={data.completedExams} color={T.emerald}/>
@@ -2350,6 +2590,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ STUDY LOCKERS ═══════════════════════════════════ */}
         <div ref={setSectionRef('lockers')} className="dash-section">
           <SectionHeader icon="🗃️" title="Study Lockers"/>
+          <InsightPanel insights={insightsBySection['lockers']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('lockers', "Total Lockers")} icon="🗃️" label="Total Lockers" value={data.totalLockers} color={T.sky}/>
             <KPI onClick={kpiClick('lockers', "Total Materials")} icon="📦" label="Total Materials" value={data.totalLockerMaterials} color={T.violet}/>
@@ -2389,6 +2630,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ SYLLABUS ════════════════════════════════════════ */}
         <div ref={setSectionRef('syllabus')} className="dash-section">
           <SectionHeader icon="📐" title="Syllabus Manager"/>
+          <InsightPanel insights={insightsBySection['syllabus']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('syllabus', "Total Topics")} icon="📐" label="Total Topics" value={data.totalSyllabusTopics} color={T.sky}/>
             <KPI onClick={kpiClick('syllabus', "Completed")} icon="✅" label="Completed" value={data.completedTopics_st} color={T.emerald} progress={data.completedTopics_st} progressMax={data.totalSyllabusTopics}/>
@@ -2439,6 +2681,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ QUESTION BANK ════════════════════════════════════ */}
         <div ref={setSectionRef('qbank')} className="dash-section">
           <SectionHeader icon="❓" title="Question Bank"/>
+          <InsightPanel insights={insightsBySection['qbank']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('qbank', "Total Questions")} icon="❓" label="Total Questions" value={data.totalQBankQuestions} color={T.sky}/>
             <KPI onClick={kpiClick('qbank', "Easy")} icon="✅" label="Easy" value={data.qbankByDifficulty[0]?.count||0} color={T.emerald}/>
@@ -2480,6 +2723,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ SOCIAL ═══════════════════════════════════════════ */}
         <div ref={setSectionRef('social')} className="dash-section">
           <SectionHeader icon="📣" title="Social & Marketing"/>
+          <InsightPanel insights={insightsBySection['social']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('social', "Campaigns")} icon="📣" label="Campaigns" value={data.totalCampaigns} color={T.sky} sub={`${data.activeCampaigns} active`}/>
             <KPI onClick={kpiClick('social', "Total Leads")} icon="👥" label="Total Leads" value={data.totalSocialLeads} color={T.violet}/>
@@ -2525,6 +2769,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ CONNECT ══════════════════════════════════════════ */}
         <div ref={setSectionRef('connect')} className="dash-section">
           <SectionHeader icon="🔗" title="Connect — Broadcast & Communication"/>
+          <InsightPanel insights={insightsBySection['connect']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('connect', "Broadcasts")} icon="📡" label="Broadcasts" value={data.totalBroadcasts} color={T.sky} sub={`${data.sentBroadcasts} sent`}/>
             <KPI onClick={kpiClick('connect', "Recipients")} icon="👥" label="Recipients" value={data.totalRecipients} color={T.violet}/>
@@ -2569,6 +2814,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         {/* ═══ EXPENSES ═════════════════════════════════════════ */}
         <div ref={setSectionRef('expenses')} className="dash-section">
           <SectionHeader icon="📉" title="Expenses & P&L"/>
+          <InsightPanel insights={insightsBySection['expenses']}/>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('expenses', "Total Income")} icon="💰" label="Total Income" value={data.totalFeeCollected} isMoney color={T.emerald}/>
             <KPI onClick={kpiClick('expenses', "Total Expenses")} icon="📉" label="Total Expenses" value={data.totalExpenses} isMoney color={T.rose}/>
