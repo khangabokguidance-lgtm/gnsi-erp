@@ -230,13 +230,37 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
 
   useEffect(() => { loadSubjectQuestions(activeSubject) }, [activeSubject, loadSubjectQuestions])
 
-  const chapters = courseData.subjects[activeSubject]?.chapters || []
+  const knownChapters = courseData.subjects[activeSubject]?.chapters || []
 
   const countsByChapter = useMemo(() => {
     const map = {}
-    subjectQuestions.forEach(q => { if (q.chapter) map[q.chapter] = (map[q.chapter] || 0) + 1 })
+    subjectQuestions.forEach(q => {
+      // Questions with no chapter tagged at all are real rows too — bucket
+      // them under "Uncategorized" instead of dropping them, so the
+      // chapter list's total always equals subjectQuestions.length.
+      const key = q.chapter || 'Uncategorized'
+      map[key] = (map[key] || 0) + 1
+    })
     return map
   }, [subjectQuestions])
+
+  // Full chapter list = this course's known/curated chapters (in their
+  // defined order) PLUS any chapter name that actually exists in the
+  // fetched data but isn't in that list. Necessary because the "Language"
+  // QBank bucket pools questions tagged under every course's own chapter
+  // names (Sainik's, Navodaya's, Foundation's — see StudyMaterialBridge's
+  // many-to-one SUBJECT_TO_QBANK map), so a chapter list built only from
+  // the CURRENT course's own curated list would silently hide whichever
+  // fraction of the 10,220 questions were tagged under a different
+  // course's chapter names. Extra chapters are appended after the known
+  // ones, sorted by count descending, so the visible total always equals
+  // subjectQuestions.length exactly.
+  const chapters = useMemo(() => {
+    const extra = Object.keys(countsByChapter)
+      .filter(ch => !knownChapters.includes(ch))
+      .sort((a, b) => (countsByChapter[b] || 0) - (countsByChapter[a] || 0))
+    return [...knownChapters, ...extra]
+  }, [knownChapters, countsByChapter])
 
   // Auto-select the first chapter that actually has questions when the
   // subject changes and nothing's picked yet — otherwise a subject whose
@@ -250,7 +274,11 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
   }, [activeSubject, chapters, countsByChapter])
 
   const chapterQuestions = useMemo(() => {
-    let list = subjectQuestions.filter(q => q.chapter === activeChapter)
+    // "Uncategorized" is a synthetic bucket (see countsByChapter) for rows
+    // where q.chapter is null/empty — match those, not the literal string.
+    let list = activeChapter === 'Uncategorized'
+      ? subjectQuestions.filter(q => !q.chapter)
+      : subjectQuestions.filter(q => q.chapter === activeChapter)
     if (difficultyFilter !== 'All') list = list.filter(q => q.difficulty === difficultyFilter)
     if (search.trim()) {
       const s = search.trim().toLowerCase()
@@ -296,7 +324,7 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '260px 1fr', gap: 16 }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.slate, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>
-            Chapters {loading && '· loading…'}
+            Chapters {loading ? '· loading…' : `· ${subjectQuestions.length} total`}
           </div>
           <ChapterList chapters={chapters} activeChapter={activeChapter} onSelect={setActiveChapter} countsByChapter={countsByChapter} />
         </div>
