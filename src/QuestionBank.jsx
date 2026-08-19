@@ -17,6 +17,43 @@ import { supabase } from './supabase'
 import { useStudyMaterialsByChapter, normalizeToQBank } from './StudyMaterialBridge'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 
+// ── BMEI04 font (base64, embedded once per file load) — needed because
+// browsers can't render this legacy encoding without the font that maps
+// its custom glyph codepoints to actual Meetei Mayek shapes. See
+// bmei04_font_base64.js's own header for why this is embedded rather than
+// loaded from an external file/CDN. Injected via a <style> tag the first
+// time any component in this file mounts (see BmeiFontFace below) —
+// declaring @font-face more than once is harmless in CSS, so no
+// singleton guard is needed the way the jsPDF font registration below
+// required.
+import { BMEI04_BASE64 } from './bmei04_font_base64'
+
+function BmeiFontFace() {
+  return (
+    <style>{`
+      @font-face {
+        font-family: 'BMEI04';
+        src: url(data:font/ttf;base64,${BMEI04_BASE64}) format('truetype');
+        font-weight: normal;
+        font-style: normal;
+      }
+    `}</style>
+  )
+}
+
+// Resolves which font-family a question_mayek string should render with.
+// Existing rows (and any new Unicode Meetei Mayek text) have no
+// question_mayek_font value or 'unicode' — those keep using Noto Sans
+// Meetei Mayek, unchanged from before this feature existed. Rows tagged
+// 'bmei04' (set by parseQuestions() when the transliteration detector
+// fires on a Bulk Paste — see isLikelyMayekTransliteration) use the BMEI04
+// font instead, since that's a different glyph encoding, not real Unicode
+// Meetei Mayek, and rendering it with the Noto font would show garbled
+// Latin-looking characters instead of Meetei script.
+function mayekFontFamily(fontTag) {
+  return fontTag === 'bmei04' ? "'BMEI04', sans-serif" : "'Noto Sans Meetei Mayek', sans-serif"
+}
+
 // ── SUBJECTS & CHAPTERS ──────────────────────────────────────────────────────
 const SUBJECTS = {
   Mathematics: [
@@ -607,6 +644,43 @@ function extractOptionsFromLine(line) {
   return result
 }
 
+// Detects whether a line is romanized Meetei Mayek transliteration (the
+// bilingual paper format used by GNSI's Sainik/Navodaya papers — Latin
+// letters spelling Meetei phonetics, e.g. "43861 d 4 gi fes velu Asi:")
+// as opposed to English prose, by scoring the ratio of common English
+// function/stop words to total words on the line. Transliterated lines
+// consistently score near 0 (they're phonetic Meetei, not English, so
+// they almost never contain "the", "of", "number", "difference", etc.)
+// while genuine English lines — even short ones — consistently score
+// well above the threshold, since English sentences are dense with these
+// exact words. Verified against a real 136-question paste (Q1–Q136,
+// Number System paper): every transliterated line scored ≤0.12, every
+// English line scored ≥0.50 — the 0.25 threshold below has comfortable
+// margin on both sides.
+const ENGLISH_SIGNAL_WORDS = new Set([
+  'the','of','in','is','are','was','were','a','an','and','or','to','for',
+  'with','by','from','as','at','on','if','then','number','numbers','digit',
+  'digits','following','greatest','smallest','sum','difference','product',
+  'value','values','face','place','successor','predecessor','which','what',
+  'how','many','written','formed','using','each','used','least','once',
+  'system','numeral','write','find','that','this','can','divisible',
+  'remainder','symbol','symbols','correct','incorrect','always','never',
+  'not','less','more','equal','before','after','there','only',
+])
+function englishWordScore(line) {
+  const words = (line.match(/[A-Za-z']+/g) || []).map(w => w.toLowerCase())
+  if (!words.length) return 0
+  const hits = words.filter(w => ENGLISH_SIGNAL_WORDS.has(w)).length
+  return hits / words.length
+}
+function isLikelyMayekTransliteration(line) {
+  // A blank or option/answer-marker line is never a question-text line at
+  // all — this function is only meaningful for actual continuation text,
+  // callers already filter those out before reaching here.
+  if (!line.trim()) return false
+  return englishWordScore(line) < 0.25
+}
+
 function parseQuestions(rawText) {
   const lines = rawText.split('\n').map(l => l.replace(/\r/g, '').trimEnd()).filter(l => l.trim())
   const questions = []
@@ -642,11 +716,28 @@ function parseQuestions(rawText) {
       const qNum   = line.match(/^Q?\s*(\d+)/i)?.[1]
       let qText    = line.replace(/^Q?\s*\d+[\.\)]\s*/i, '').trim()
 
+      // First line of a question block is classified too — the GNSI
+      // bilingual papers put the transliteration BEFORE the English line
+      // (see e.g. "Q1. 43861 d 4 gi fes velu Asi:" followed by "The face
+      // value of 4 in the number 43861 is"), so the very first line after
+      // the Q-number marker is transliteration, not English, more often
+      // than not for this format. qTextMayek collects those lines
+      // separately from qText (English) instead of concatenating
+      // everything into one garbled string.
+      let qTextMayek = isLikelyMayekTransliteration(qText) ? qText : ''
+      if (qTextMayek) qText = ''
+
       let j = i + 1
       while (j < lines.length) {
         const next = lines[j].trim()
         if (hasOptionMarker(next) || isQuestionStart(next) || isHeading(next) || isAnswerLine(next)) break
-        if (next) qText += ' ' + next
+        if (next) {
+          if (isLikelyMayekTransliteration(next)) {
+            qTextMayek = qTextMayek ? qTextMayek + ' ' + next : next
+          } else {
+            qText = qText ? qText + ' ' + next : next
+          }
+        }
         j++
       }
       i = j
@@ -678,11 +769,31 @@ function parseQuestions(rawText) {
         i++
       }
 
+      // Fallback: if EVERY line in this question's body scored as
+      // transliteration (no English line ever showed up — e.g. a
+      // Mayek-only paper with no bilingual pairing), qText would be
+      // empty here even though real question content was captured. Use
+      // qTextMayek as the question itself in that case rather than
+      // silently dropping the row for having a blank "question" field.
+      if (!qText.trim() && qTextMayek.trim()) {
+        qText = qTextMayek
+        qTextMayek = ''
+      }
+
       if (qText && (options.A || options.B || options.C || options.D)) {
         questions.push({
           _id: questions.length,
           _qNum: parseInt(qNum) || questions.length + 1,
           question: qText.trim(),
+          question_mayek: qTextMayek.trim(),
+          // Tagged 'bmei04' whenever this row's Mayek line came through
+          // the transliteration detector (isLikelyMayekTransliteration) —
+          // that heuristic is specifically catching BMEI-encoded text
+          // (garbled-Latin glyphs from this legacy font, not real Unicode
+          // Meetei Mayek), so anything it flags needs the BMEI04 font at
+          // render time, not Noto Sans Meetei Mayek. Left unset ('') for
+          // rows with no Mayek line at all.
+          question_mayek_font: qTextMayek.trim() ? 'bmei04' : '',
           option_a: options.A, option_b: options.B,
           option_c: options.C, option_d: options.D,
           correct_option: correctOption,
@@ -876,7 +987,7 @@ function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onD
             {q.question}
           </div>
           {q.question_mayek && (
-            <div style={{ fontSize:15, color:'#374151', lineHeight:1.7, marginBottom:8, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+            <div style={{ fontSize:15, color:'#374151', lineHeight:1.7, marginBottom:8, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
               {q.question_mayek}
             </div>
           )}
@@ -1717,6 +1828,9 @@ Answer: B`} />
                 {q._subsectionHint && (
                   <Badge text={`Section: ${q._subsectionHint}`} color="#0369a1" bg="#e0f2fe" />
                 )}
+                {q.question_mayek && (
+                  <Badge text="🈯 Meetei Mayek text detected" color="#065f46" bg="#d1fae5" />
+                )}
               </div>
               {dupeIndexSet.has(i) && (
                 <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap', marginBottom:10,
@@ -1746,7 +1860,7 @@ Answer: B`} />
                 {q.question}
               </div>
               {q.question_mayek && (
-                <div style={{ fontSize:14, color:'#374151', marginBottom:10, lineHeight:1.7, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+                <div style={{ fontSize:14, color:'#374151', marginBottom:10, lineHeight:1.7, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
                   {q.question_mayek}
                 </div>
               )}
@@ -2292,7 +2406,7 @@ function TabPaper({ questions, showToast }) {
                   <span style={{ float:'right', fontSize:11, color:C.slate }}>[{q.marks||1}M]</span>
                 </div>
                 {q.question_mayek && (
-                  <div style={{ fontSize:13, color:'#374151', marginBottom:6, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+                  <div style={{ fontSize:13, color:'#374151', marginBottom:6, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
                     {q.question_mayek}
                   </div>
                 )}
@@ -2517,7 +2631,7 @@ function TabTest({ questions, showToast }) {
                 <span style={{ color:C.slate, marginRight:6 }}>Q{i+1}.</span>{q.question}
               </div>
               {q.question_mayek && (
-                <div style={{ fontSize:13, color:'#374151', marginBottom:5, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+                <div style={{ fontSize:13, color:'#374151', marginBottom:5, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
                   {q.question_mayek}
                 </div>
               )}
@@ -2574,7 +2688,7 @@ function TabTest({ questions, showToast }) {
               <span style={{ float:'right', fontSize:11, color:C.slate }}>[{q.marks||1}M]</span>
             </div>
             {q.question_mayek && (
-              <div style={{ fontSize:14, color:'#374151', marginBottom:10, lineHeight:1.6, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+              <div style={{ fontSize:14, color:'#374151', marginBottom:10, lineHeight:1.6, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
                 {q.question_mayek}
               </div>
             )}
@@ -3133,6 +3247,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
 
   return (
     <div style={{ padding:24, fontFamily:'system-ui,sans-serif', background:C.bg, minHeight:'100vh' }}>
+      <BmeiFontFace />
       {toast && <Toast msg={toast.msg} color={toast.color} />}
 
       <div style={{ marginBottom:22 }}>
