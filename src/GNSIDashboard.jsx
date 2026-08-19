@@ -1310,8 +1310,10 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
 
   // Collapsible sections — every section except Overview (the landing
   // summary, always shown open) starts collapsed so the page loads
-  // compact; clicking a SectionHeader (or a SectionNav tab) drops it
-  // open. Lazy initializer so this only runs once, not on every render.
+  // compact; clicking a SectionHeader drops it open. Independent of tab
+  // switching below — a section can be the active tab and still be
+  // collapsed/expanded within its own view. Lazy initializer so this
+  // only runs once, not on every render.
   const [collapsedSections, setCollapsedSections] = useState(() => {
     const initial = {}
     SECTION_TABS.forEach(t => { if (t.id !== 'overview') initial[t.id] = true })
@@ -1321,44 +1323,17 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
     setCollapsedSections(prev => ({ ...prev, [id]: !prev[id] }))
   }, [])
 
-  // Scroll-spy for SectionNav: highlights whichever section is currently
-  // in view as the admin scrolls, independent of tab clicks. Observes the
-  // same DOM nodes sectionRefs already holds — set up once data/loading
-  // settles, since sections don't exist in the DOM before that.
-  useEffect(() => {
-    if (loading || !data) return
-    const nodes = SECTION_TABS.map(t => sectionRefs.current[t.id]).filter(Boolean)
-    if (nodes.length === 0) return
-    const observer = new IntersectionObserver(
-      entries => {
-        const visible = entries.filter(e => e.isIntersecting)
-        if (visible.length === 0) return
-        // Pick the entry closest to the top of the viewport among those
-        // currently visible, so scrolling down advances the active tab
-        // predictably instead of jumping to whichever section fired last.
-        const top = visible.reduce((a, b) => (a.boundingClientRect.top < b.boundingClientRect.top ? a : b))
-        const id = Object.keys(sectionRefs.current).find(k => sectionRefs.current[k] === top.target)
-        if (id) setActiveSection(id)
-      },
-      { rootMargin: "-64px 0px -70% 0px", threshold: 0 }
-    )
-    nodes.forEach(n => observer.observe(n))
-    return () => observer.disconnect()
-  }, [loading, data])
-
-  // Shared by SectionNav clicks and the scrollToSection prop effect below
-  // — sets the active tab immediately (no waiting on the scroll-spy
-  // observer to catch up), force-expands the target section (a collapsed
-  // section would otherwise scroll to an empty header), and scrolls to it.
+  // True tab switching — only the active section's DOM is shown
+  // (display:none on the rest, see the style prop on each section's
+  // outer div below); no scrolling between sections, no scroll-spy
+  // needed. Switching tabs also force-expands that section if it was
+  // collapsed, and scrolls the page itself back to the top of the
+  // content area so a long previous section doesn't leave the new tab
+  // opening mid-scroll.
   const goToSection = useCallback(id => {
     setActiveSection(id)
     setCollapsedSections(prev => (prev[id] ? { ...prev, [id]: false } : prev))
-    // Collapsed→expanded changes the section's height, so wait a tick for
-    // that to render before measuring scroll position — otherwise this
-    // scrolls to where the (still-collapsed) section used to be.
-    requestAnimationFrame(() => {
-      sectionRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" })
-    })
+    window.scrollTo({ top: 0, behavior: "auto" })
   }, [])
 
   // Click handler for every KPI card in the dashboard: resolves the
@@ -1377,8 +1352,8 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
 
 
   useEffect(() => {
-    if (!loading && scrollToSection && sectionRefs.current[scrollToSection]) {
-      setTimeout(() => { goToSection(scrollToSection) }, 150)
+    if (!loading && scrollToSection) {
+      goToSection(scrollToSection)
     }
   }, [loading, scrollToSection, goToSection])
 
@@ -1500,7 +1475,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
       <div style={{padding:"20px 16px",maxWidth:"100%"}}>
 
         {/* ═══ OVERVIEW ════════════════════════════════════════ */}
-        <div ref={setSectionRef('overview')} className="dash-section">
+        <div ref={setSectionRef('overview')} className="dash-section" style={{display: activeSection === 'overview' ? 'block' : 'none'}}>
           <div style={{
             display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:16,
             marginBottom:20,paddingBottom:18,borderBottom:`1px solid ${T.border}`,
@@ -1723,7 +1698,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ FINANCE ═══════════════════════════════════════ */}
-        <div ref={setSectionRef('finance')} className="dash-section">
+        <div ref={setSectionRef('finance')} className="dash-section" style={{display: activeSection === 'finance' ? 'block' : 'none'}}>
           <SectionHeader sectionId="finance" collapsed={collapsedSections['finance']} onToggle={toggleSection} icon="💰" title="Finance & Fee Analytics"/>
           <InsightPanel insights={insightsBySection['finance']}/>
         {!collapsedSections['finance'] && (
@@ -1780,7 +1755,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ STUDENTS ══════════════════════════════════════ */}
-        <div ref={setSectionRef('students')} className="dash-section">
+        <div ref={setSectionRef('students')} className="dash-section" style={{display: activeSection === 'students' ? 'block' : 'none'}}>
           <SectionHeader sectionId="students" collapsed={collapsedSections['students']} onToggle={toggleSection} icon="🎓" title="Student Analytics"/>
           <InsightPanel insights={insightsBySection['students']}/>
         {!collapsedSections['students'] && (
@@ -1853,7 +1828,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ DROPOUT TRACKING ══════════════════════════════ */}
-        <div ref={setSectionRef('dropout')} className="dash-section">
+        <div ref={setSectionRef('dropout')} className="dash-section" style={{display: activeSection === 'dropout' ? 'block' : 'none'}}>
           <SectionHeader sectionId="dropout" collapsed={collapsedSections['dropout']} onToggle={toggleSection} icon="📉" title="Dropout Tracking"/>
           <InsightPanel insights={insightsBySection['dropout']}/>
         {!collapsedSections['dropout'] && (
@@ -1949,7 +1924,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ ADMISSIONS ════════════════════════════════════ */}
-        <div ref={setSectionRef('admissions')} className="dash-section">
+        <div ref={setSectionRef('admissions')} className="dash-section" style={{display: activeSection === 'admissions' ? 'block' : 'none'}}>
           <SectionHeader sectionId="admissions" collapsed={collapsedSections['admissions']} onToggle={toggleSection} icon="📋" title="Admissions Deep Dive"/>
           <InsightPanel insights={insightsBySection['admissions']}/>
         {!collapsedSections['admissions'] && (
@@ -2022,7 +1997,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ STAFF ════════════════════════════════════════ */}
-        <div ref={setSectionRef('staff')} className="dash-section">
+        <div ref={setSectionRef('staff')} className="dash-section" style={{display: activeSection === 'staff' ? 'block' : 'none'}}>
           <SectionHeader sectionId="staff" collapsed={collapsedSections['staff']} onToggle={toggleSection} icon="👨‍💼" title="Staff & HR"/>
           <InsightPanel insights={insightsBySection['staff']}/>
         {!collapsedSections['staff'] && (
@@ -2071,7 +2046,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ ATTENDANCE ════════════════════════════════════ */}
-        <div ref={setSectionRef('attendance')} className="dash-section">
+        <div ref={setSectionRef('attendance')} className="dash-section" style={{display: activeSection === 'attendance' ? 'block' : 'none'}}>
           <SectionHeader sectionId="attendance" collapsed={collapsedSections['attendance']} onToggle={toggleSection} icon="✅" title="Attendance Analytics"/>
           <InsightPanel insights={insightsBySection['attendance']}/>
         {!collapsedSections['attendance'] && (
@@ -2129,7 +2104,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ ACADEMIC ══════════════════════════════════════ */}
-        <div ref={setSectionRef('academic')} className="dash-section">
+        <div ref={setSectionRef('academic')} className="dash-section" style={{display: activeSection === 'academic' ? 'block' : 'none'}}>
           <SectionHeader sectionId="academic" collapsed={collapsedSections['academic']} onToggle={toggleSection} icon="📚" title="Academic Performance"/>
           <InsightPanel insights={insightsBySection['academic']}/>
         {!collapsedSections['academic'] && (
@@ -2171,7 +2146,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ TESTS ════════════════════════════════════════ */}
-        <div ref={setSectionRef('tests')} className="dash-section">
+        <div ref={setSectionRef('tests')} className="dash-section" style={{display: activeSection === 'tests' ? 'block' : 'none'}}>
           <SectionHeader sectionId="tests" collapsed={collapsedSections['tests']} onToggle={toggleSection} icon="📝" title="Test & Performance Analytics"/>
           <InsightPanel insights={insightsBySection['tests']}/>
         {!collapsedSections['tests'] && (
@@ -2242,7 +2217,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ ENQUIRY ══════════════════════════════════════ */}
-        <div ref={setSectionRef('enquiry')} className="dash-section">
+        <div ref={setSectionRef('enquiry')} className="dash-section" style={{display: activeSection === 'enquiry' ? 'block' : 'none'}}>
           <SectionHeader sectionId="enquiry" collapsed={collapsedSections['enquiry']} onToggle={toggleSection} icon="🔍" title="Enquiry & Lead Management"/>
           <InsightPanel insights={insightsBySection['enquiry']}/>
         {!collapsedSections['enquiry'] && (
@@ -2296,7 +2271,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ HOSTEL ════════════════════════════════════════ */}
-        <div ref={setSectionRef('hostel')} className="dash-section">
+        <div ref={setSectionRef('hostel')} className="dash-section" style={{display: activeSection === 'hostel' ? 'block' : 'none'}}>
           <SectionHeader sectionId="hostel" collapsed={collapsedSections['hostel']} onToggle={toggleSection} icon="🛏️" title="Hostel & Boarding"/>
           <InsightPanel insights={insightsBySection['hostel']}/>
         {!collapsedSections['hostel'] && (
@@ -2339,7 +2314,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ HOUSES ════════════════════════════════════════ */}
-        <div ref={setSectionRef('houses')} className="dash-section">
+        <div ref={setSectionRef('houses')} className="dash-section" style={{display: activeSection === 'houses' ? 'block' : 'none'}}>
           <SectionHeader sectionId="houses" collapsed={collapsedSections['houses']} onToggle={toggleSection} icon="🏆" title="Houses & Co-curricular"/>
           <InsightPanel insights={insightsBySection['houses']}/>
         {!collapsedSections['houses'] && (
@@ -2360,7 +2335,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ OPERATIONS ════════════════════════════════════ */}
-        <div ref={setSectionRef('operations')} className="dash-section">
+        <div ref={setSectionRef('operations')} className="dash-section" style={{display: activeSection === 'operations' ? 'block' : 'none'}}>
           <SectionHeader sectionId="operations" collapsed={collapsedSections['operations']} onToggle={toggleSection} icon="⚙️" title="Operations & Admin"/>
           <InsightPanel insights={insightsBySection['operations']}/>
         {!collapsedSections['operations'] && (
@@ -2410,7 +2385,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ BATCHES ════════════════════════════════════════ */}
-        <div ref={setSectionRef('batches')} className="dash-section">
+        <div ref={setSectionRef('batches')} className="dash-section" style={{display: activeSection === 'batches' ? 'block' : 'none'}}>
           <SectionHeader sectionId="batches" collapsed={collapsedSections['batches']} onToggle={toggleSection} icon="🗂️" title="Batches & Timetable"/>
           <InsightPanel insights={insightsBySection['batches']}/>
         {!collapsedSections['batches'] && (
@@ -2446,7 +2421,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ DOUBTS ════════════════════════════════════════ */}
-        <div ref={setSectionRef('doubts')} className="dash-section">
+        <div ref={setSectionRef('doubts')} className="dash-section" style={{display: activeSection === 'doubts' ? 'block' : 'none'}}>
           <SectionHeader sectionId="doubts" collapsed={collapsedSections['doubts']} onToggle={toggleSection} icon="💬" title="Doubt & Query Management"/>
           <InsightPanel insights={insightsBySection['doubts']}/>
         {!collapsedSections['doubts'] && (
@@ -2507,7 +2482,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ PARENT COMMUNICATION ═══════════════════════════ */}
-        <div ref={setSectionRef('parents')} className="dash-section">
+        <div ref={setSectionRef('parents')} className="dash-section" style={{display: activeSection === 'parents' ? 'block' : 'none'}}>
           <SectionHeader sectionId="parents" collapsed={collapsedSections['parents']} onToggle={toggleSection} icon="👨‍👩‍👧" title="Parent Communication"/>
           <InsightPanel insights={insightsBySection['parents']}/>
         {!collapsedSections['parents'] && (
@@ -2543,7 +2518,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ STUDY MATERIAL ══════════════════════════════════ */}
-        <div ref={setSectionRef('material')} className="dash-section">
+        <div ref={setSectionRef('material')} className="dash-section" style={{display: activeSection === 'material' ? 'block' : 'none'}}>
           <SectionHeader sectionId="material" collapsed={collapsedSections['material']} onToggle={toggleSection} icon="📦" title="Study Material Management"/>
           <InsightPanel insights={insightsBySection['material']}/>
         {!collapsedSections['material'] && (
@@ -2577,7 +2552,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ RESULTS ════════════════════════════════════════ */}
-        <div ref={setSectionRef('results')} className="dash-section">
+        <div ref={setSectionRef('results')} className="dash-section" style={{display: activeSection === 'results' ? 'block' : 'none'}}>
           <SectionHeader sectionId="results" collapsed={collapsedSections['results']} onToggle={toggleSection} icon="🏅" title="Results & Selections"/>
           <InsightPanel insights={insightsBySection['results']}/>
         {!collapsedSections['results'] && (
@@ -2611,7 +2586,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ TEACHING ═══════════════════════════════════════ */}
-        <div ref={setSectionRef('teaching')} className="dash-section">
+        <div ref={setSectionRef('teaching')} className="dash-section" style={{display: activeSection === 'teaching' ? 'block' : 'none'}}>
           <SectionHeader sectionId="teaching" collapsed={collapsedSections['teaching']} onToggle={toggleSection} icon="🖊️" title="Staff Teaching Analytics"/>
           <InsightPanel insights={insightsBySection['teaching']}/>
         {!collapsedSections['teaching'] && (
@@ -2673,7 +2648,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ FEE SETUP ══════════════════════════════════════ */}
-        <div ref={setSectionRef('feesetup')} className="dash-section">
+        <div ref={setSectionRef('feesetup')} className="dash-section" style={{display: activeSection === 'feesetup' ? 'block' : 'none'}}>
           <SectionHeader sectionId="feesetup" collapsed={collapsedSections['feesetup']} onToggle={toggleSection} icon="💳" title="Fee Setup & Structure"/>
           <InsightPanel insights={insightsBySection['feesetup']}/>
         {!collapsedSections['feesetup'] && (
@@ -2731,7 +2706,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ FEE LEDGER ══════════════════════════════════════ */}
-        <div ref={setSectionRef('feeledger')} className="dash-section">
+        <div ref={setSectionRef('feeledger')} className="dash-section" style={{display: activeSection === 'feeledger' ? 'block' : 'none'}}>
           <SectionHeader sectionId="feeledger" collapsed={collapsedSections['feeledger']} onToggle={toggleSection} icon="📒" title="Student Fee Ledger"/>
           <InsightPanel insights={insightsBySection['feeledger']}/>
         {!collapsedSections['feeledger'] && (
@@ -2770,7 +2745,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ ENTRANCE ════════════════════════════════════════ */}
-        <div ref={setSectionRef('entrance')} className="dash-section">
+        <div ref={setSectionRef('entrance')} className="dash-section" style={{display: activeSection === 'entrance' ? 'block' : 'none'}}>
           <SectionHeader sectionId="entrance" collapsed={collapsedSections['entrance']} onToggle={toggleSection} icon="🏆" title="Entrance Exam Management"/>
           <InsightPanel insights={insightsBySection['entrance']}/>
         {!collapsedSections['entrance'] && (
@@ -2829,7 +2804,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ STUDY LOCKERS ═══════════════════════════════════ */}
-        <div ref={setSectionRef('lockers')} className="dash-section">
+        <div ref={setSectionRef('lockers')} className="dash-section" style={{display: activeSection === 'lockers' ? 'block' : 'none'}}>
           <SectionHeader sectionId="lockers" collapsed={collapsedSections['lockers']} onToggle={toggleSection} icon="🗃️" title="Study Lockers"/>
           <InsightPanel insights={insightsBySection['lockers']}/>
         {!collapsedSections['lockers'] && (
@@ -2873,7 +2848,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ SYLLABUS ════════════════════════════════════════ */}
-        <div ref={setSectionRef('syllabus')} className="dash-section">
+        <div ref={setSectionRef('syllabus')} className="dash-section" style={{display: activeSection === 'syllabus' ? 'block' : 'none'}}>
           <SectionHeader sectionId="syllabus" collapsed={collapsedSections['syllabus']} onToggle={toggleSection} icon="📐" title="Syllabus Manager"/>
           <InsightPanel insights={insightsBySection['syllabus']}/>
         {!collapsedSections['syllabus'] && (
@@ -2928,7 +2903,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ QUESTION BANK ════════════════════════════════════ */}
-        <div ref={setSectionRef('qbank')} className="dash-section">
+        <div ref={setSectionRef('qbank')} className="dash-section" style={{display: activeSection === 'qbank' ? 'block' : 'none'}}>
           <SectionHeader sectionId="qbank" collapsed={collapsedSections['qbank']} onToggle={toggleSection} icon="❓" title="Question Bank"/>
           <InsightPanel insights={insightsBySection['qbank']}/>
         {!collapsedSections['qbank'] && (
@@ -2974,7 +2949,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ SOCIAL ═══════════════════════════════════════════ */}
-        <div ref={setSectionRef('social')} className="dash-section">
+        <div ref={setSectionRef('social')} className="dash-section" style={{display: activeSection === 'social' ? 'block' : 'none'}}>
           <SectionHeader sectionId="social" collapsed={collapsedSections['social']} onToggle={toggleSection} icon="📣" title="Social & Marketing"/>
           <InsightPanel insights={insightsBySection['social']}/>
         {!collapsedSections['social'] && (
@@ -3024,7 +2999,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ CONNECT ══════════════════════════════════════════ */}
-        <div ref={setSectionRef('connect')} className="dash-section">
+        <div ref={setSectionRef('connect')} className="dash-section" style={{display: activeSection === 'connect' ? 'block' : 'none'}}>
           <SectionHeader sectionId="connect" collapsed={collapsedSections['connect']} onToggle={toggleSection} icon="🔗" title="Connect — Broadcast & Communication"/>
           <InsightPanel insights={insightsBySection['connect']}/>
         {!collapsedSections['connect'] && (
@@ -3073,7 +3048,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ EXPENSES ═════════════════════════════════════════ */}
-        <div ref={setSectionRef('expenses')} className="dash-section">
+        <div ref={setSectionRef('expenses')} className="dash-section" style={{display: activeSection === 'expenses' ? 'block' : 'none'}}>
           <SectionHeader sectionId="expenses" collapsed={collapsedSections['expenses']} onToggle={toggleSection} icon="📉" title="Expenses & P&L"/>
           <InsightPanel insights={insightsBySection['expenses']}/>
         {!collapsedSections['expenses'] && (
