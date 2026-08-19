@@ -84,6 +84,42 @@ export function resolveStudentKey(entry, row) {
   return { type: 'gcc', value: row[entry.studentKeyCol] }
 }
 
+// Browses the most recent rows of ONE table with no search term — used by
+// the "click a KPI card" shortcut in GlobalSearchDashboard, since
+// globalSearch() itself requires a 2+ character term and can't answer
+// "just show me what's in this table." Orders by the table's own
+// orderCol (see tableRegistry.js's header note on why this must be the
+// table's real confirmed order column, not a hardcoded 'id' or
+// 'created_at' that may not exist on every table).
+export async function browseTable(tableKey, limit = 25) {
+  const entry = TABLE_REGISTRY.find(t => t.key === tableKey)
+  if (!entry) return { table: null, hits: [] }
+
+  let q = supabase.from(entry.key).select('*')
+  if (entry.orderCol) q = q.order(entry.orderCol, { ascending: false })
+  q = q.limit(limit)
+  const { data, error } = await q
+  if (error) { console.error(`browseTable(${tableKey}) failed:`, error.message); return { table: entry, hits: [] } }
+
+  const students = await getActiveStudents('id,name,gcc_no,admission_no,phone,course,batch,status')
+  const byGcc = {}, byId = {}, byName = {}
+  students.forEach(s => {
+    if (s.gcc_no) byGcc[String(s.gcc_no)] = s
+    byId[s.id] = s
+    byName[(s.name || '').toLowerCase()] = s
+  })
+  const resolveHitStudent = row => {
+    const key = resolveStudentKey(entry, row)
+    if (key.type === 'gcc' && key.value) return byGcc[String(key.value)] || null
+    if (key.type === 'id' && key.value) return byId[key.value] || null
+    if (key.type === 'name' && key.value) return byName[key.value.toLowerCase()] || null
+    return null
+  }
+
+  const hits = (data || []).map(row => ({ table: entry, row, student: resolveHitStudent(row), summary: entry.summarize(row) }))
+  return { table: entry, hits }
+}
+
 // Runs the search across every table in the registry, in parallel, then
 // resolves each hit to a student object from the active roster so results
 // can show "who" without a second round-trip per hit.

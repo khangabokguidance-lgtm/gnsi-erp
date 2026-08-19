@@ -20,14 +20,14 @@
 // differently-filtered student list than any other module.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
 import { getActiveStudents, getStudentById } from './studentQueries'
 import { loadFullProfile } from './studentProfileLoader'
 import { detectMismatches } from './mismatchDetector'
 import { logAndNotify, getOpenMismatches, acknowledgeMismatch, resolveMismatch, resolveStaleFlags } from './mismatchLog'
 import { getStudentDues, getDuesForStudents } from './feeDues'
-import { globalSearch } from './globalSearch'
+import { globalSearch, browseTable } from './globalSearch'
 import { downloadCSV, downloadSingleRecordCSV } from './exportUtils'
 import TableBrowser, { useIsMobile } from './TableBrowser'
 import { editField, getEditableFields } from './editEngine'
@@ -479,7 +479,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
 
       {view === 'overview' && <SchoolOverview onOpenStudent={s => { setView('search'); select(s) }} />}
       {view === 'dashboard' && <MismatchDashboard currentUser={currentUser} onOpenStudent={s => { setView('search'); select(s) }} />}
-      {view === 'globalsearch' && <GlobalSearchPanel onOpenStudent={s => { setView('search'); select(s) }} onOpenModule={onNavigate} />}
+      {view === 'globalsearch' && <GlobalSearchPanel onOpenStudent={s => { setView('search'); select(s) }} onOpenModule={onNavigate} onOpenMismatches={() => setView('dashboard')} />}
       {view === 'intel' && <AdminIntelligence onOpenStudent={s => { setView('search'); select(s) }} />}
       {view === 'browser' && <TableBrowser onOpenStudent={s => { setView('search'); select(s) }} onOpenModule={onNavigate} />}
 
@@ -1093,7 +1093,7 @@ function MismatchFlags({ student, profile, onNotify, notifyState }) {
 // plus open mismatches from mismatchLog.js, so admin sees the current
 // size/shape of every data source before searching it. Loads once on
 // mount; the ↻ button lets admin refresh after data changes elsewhere.
-function GlobalSearchDashboard() {
+function GlobalSearchDashboard({ onSelectTable }) {
   const [counts, setCounts] = useState(null)
   const [openMismatches, setOpenMismatches] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -1132,28 +1132,52 @@ function GlobalSearchDashboard() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 8 }}>
         <KpiCard icon="🗄️" label="Total Records" value={totalRows == null ? '…' : fmt(totalRows)} color={NAVY} />
-        <KpiCard icon="🔴" label="Open Mismatches" value={openMismatches == null ? '…' : fmt(openMismatches)} color={openMismatches > 0 ? RED : GREEN} />
+        <KpiCard icon="🔴" label="Open Mismatches" value={openMismatches == null ? '…' : fmt(openMismatches)} color={openMismatches > 0 ? RED : GREEN}
+          onClick={onSelectTable ? () => onSelectTable('__mismatches__') : null} />
         {counts && counts.map(t => (
-          <KpiCard key={t.key} icon={t.icon} label={t.label} value={t.count == null ? '—' : fmt(t.count)} color={SLATE[700]} />
+          <KpiCard key={t.key} icon={t.icon} label={t.label} value={t.count == null ? '—' : fmt(t.count)} color={SLATE[700]}
+            onClick={onSelectTable ? () => onSelectTable(t.key) : null} />
         ))}
       </div>
     </div>
   )
 }
 
-function GlobalSearchPanel({ onOpenStudent, onOpenModule }) {
+function GlobalSearchPanel({ onOpenStudent, onOpenModule, onOpenMismatches }) {
   const [term, setTerm] = useState('')
   const [results, setResults] = useState(null)
   const [loading, setLoading] = useState(false)
   const [tableFilter, setTableFilter] = useState('all')
+  const [browsing, setBrowsing] = useState(null) // table label being browsed via a KPI click, or null when showing search results
+  const inputRef = useRef(null)
 
   const runSearch = useCallback(async () => {
     if (term.trim().length < 2) return
     setLoading(true)
+    setBrowsing(null)
     const hits = await globalSearch(term)
     setResults(hits)
+    setTableFilter('all')
     setLoading(false)
   }, [term])
+
+  // KPI card click — either jumps to the Mismatch Dashboard (for the
+  // "Open Mismatches" card, which isn't a browsable table), or fetches a
+  // preview of that table's own recent rows via browseTable() and shows
+  // it in the same results list search uses, pre-filtered to that table.
+  // The term box is left empty and focused so the admin can immediately
+  // narrow the preview into a real search without an extra click.
+  const handleSelectTable = useCallback(async tableKey => {
+    if (tableKey === '__mismatches__') { onOpenMismatches?.(); return }
+    setLoading(true)
+    setTerm('')
+    const { table, hits } = await browseTable(tableKey)
+    setResults(hits)
+    setTableFilter(tableKey)
+    setBrowsing(table)
+    setLoading(false)
+    inputRef.current?.focus()
+  }, [onOpenMismatches])
 
   const filtered = useMemo(() => {
     if (!results) return []
@@ -1168,14 +1192,15 @@ function GlobalSearchPanel({ onOpenStudent, onOpenModule }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <GlobalSearchDashboard />
+      <GlobalSearchDashboard onSelectTable={handleSelectTable} />
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input
-          value={term} onChange={e => setTerm(e.target.value)}
+          ref={inputRef}
+          value={term} onChange={e => { setTerm(e.target.value); if (browsing) setBrowsing(null) }}
           onKeyDown={e => e.key === 'Enter' && runSearch()}
-          placeholder="Search a receipt number, gate pass reason, discipline note, phone number, anything…"
-          style={{ flex: '1 1 320px', minWidth: 220, padding: '10px 14px', borderRadius: 12, border: `1px solid ${SLATE[200]}`, fontSize: 13.5 }}
+          placeholder={browsing ? `Type to search within ${browsing.label}, or Search to look everywhere…` : "Search a receipt number, gate pass reason, discipline note, phone number, anything…"}
+          style={{ flex: '1 1 320px', minWidth: 220, padding: '10px 14px', borderRadius: 12, border: `1px solid ${browsing ? NAVY : SLATE[200]}`, fontSize: 13.5 }}
         />
         <button onClick={runSearch} disabled={term.trim().length < 2}
           style={{ padding: '10px 20px', borderRadius: 12, border: 'none', background: term.trim().length < 2 ? SLATE[300] : NAVY, color: '#fff', fontSize: 13, fontWeight: 700, cursor: term.trim().length < 2 ? 'default' : 'pointer' }}>
@@ -1183,7 +1208,17 @@ function GlobalSearchPanel({ onOpenStudent, onOpenModule }) {
         </button>
       </div>
 
-      {loading && <div style={{ textAlign: 'center', padding: 40, color: SLATE[400] }}>⏳ Searching every module…</div>}
+      {browsing && !loading && (
+        <div style={{ fontSize: 12, color: SLATE[500], display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>{browsing.icon} Browsing most recent {filtered.length} row(s) in <strong style={{ color: NAVY }}>{browsing.label}</strong> — not a search result.</span>
+          <button onClick={() => { setBrowsing(null); setResults(null); setTableFilter('all') }}
+            style={{ padding: '2px 9px', borderRadius: 7, border: `1px solid ${SLATE[200]}`, background: '#fff', fontSize: 10.5, fontWeight: 700, color: SLATE[600], cursor: 'pointer' }}>
+            ✕ Clear
+          </button>
+        </div>
+      )}
+
+      {loading && <div style={{ textAlign: 'center', padding: 40, color: SLATE[400] }}>⏳ {browsing === null && term ? 'Searching every module…' : 'Loading…'}</div>}
 
       {results !== null && !loading && (
         <>
@@ -1210,7 +1245,7 @@ function GlobalSearchPanel({ onOpenStudent, onOpenModule }) {
 
           {filtered.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 50, color: SLATE[400], background: '#fff', borderRadius: 16, border: `1px solid ${SLATE[200]}` }}>
-              No matches for "{term}".
+              {browsing ? `No rows found in ${browsing.label}.` : `No matches for "${term}".`}
             </div>
           ) : (
             <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${SLATE[200]}`, overflow: 'hidden' }}>
@@ -2084,12 +2119,24 @@ function SchoolOverview({ onOpenStudent }) {
   )
 }
 
-function KpiCard({ icon, label, value, color }) {
+function KpiCard({ icon, label, value, color, onClick }) {
+  const [hover, setHover] = useState(false)
   return (
-    <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${SLATE[200]}`, padding: '12px 14px' }}>
+    <div
+      onClick={onClick}
+      onMouseEnter={() => onClick && setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        background: '#fff', borderRadius: 14, border: `1px solid ${hover ? NAVY : SLATE[200]}`, padding: '12px 14px',
+        cursor: onClick ? 'pointer' : 'default',
+        boxShadow: hover ? '0 4px 14px rgba(11,30,61,.10)' : 'none',
+        transition: 'box-shadow .15s ease, border-color .15s ease',
+      }}
+    >
       <div style={{ fontSize: 18 }}>{icon}</div>
       <div style={{ fontSize: 19, fontWeight: 900, color, marginTop: 4 }}>{value}</div>
       <div style={{ fontSize: 11, color: SLATE[500], marginTop: 2 }}>{label}</div>
+      {onClick && <div style={{ fontSize: 9.5, color: NAVY, marginTop: 4, fontWeight: 700, opacity: hover ? 1 : 0, transition: 'opacity .15s ease' }}>Browse →</div>}
     </div>
   )
 }
