@@ -1010,6 +1010,7 @@ batchesData.forEach(b=>{const t=b.course||"Regular";batchTypeMap[t]=(batchTypeMa
     totalMaterials, distributedMat, pendingDistribution, totalCopies, distributedCopies, materialByType, materialBySubject,
     totalSelections, jnvSelections, sainikSelections, otherSelections, selectionTrend, selByExam, selByBatch, recentSelections,
     overallCoverage, teacherCoverage, subjectCoverage, coverageTrend, teacherStreaks,
+    totalTopics, coveredTopics,
     totalExpenses, netPL, expenseByCategory, plTrend, recentExpenses,
     totalFeeStructures, activeSessionStructures, feeStructureByCourse, totalOverrides, hostelBreakdown_fs, flatFeeTrend, flatFeeTotal_fs, flatFeePaid_fs, courseFeeTotal_fs,
     totalEntranceExams, completedExams, scheduledExams, totalEntranceCandidates, appearedCandidates, passedCandidates, admittedFromEntrance, entrancePassRate, entranceByType, candidatesByStatus, recentEntranceExams,
