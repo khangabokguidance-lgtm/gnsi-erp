@@ -21,6 +21,7 @@ import Connect            from './Connect'
 import Reports            from './Reports'
 import Checklist          from './Checklist'
 import QuestionBank       from './QuestionBank'
+import QuestionBankViewer from './QuestionBankViewer'
 import SystemSettings     from './SystemSettings'
 import AdminPage          from './AdminPage'
 import StudentFeeLedger   from './StudentFeeLedger'
@@ -88,6 +89,7 @@ const ALL_GROUPS = [
       { id: 'teaching',      label: 'Teaching',        icon: '📚' },
       { id: 'courses',       label: 'Courses',         icon: '🎓' },
       { id: 'questionbank',  label: 'Question Bank',   icon: '❓' },
+      { id: 'questionbankviewer', label: 'Question Bank Viewer', icon: '📖' },
       { id: 'entrance',      label: 'Entrance Exam',   icon: '🏆' },
       { id: 'studymaterial', label: 'Study Materials', icon: '📖' },
       { id: 'teachingaids',  label: 'Teaching Aids',   icon: '🔒' },
@@ -701,6 +703,7 @@ export default function App() {
     notice:            <Notice            currentUser={currentUser} perms={perms('notice')}            />,
     social:            <Social            currentUser={currentUser} perms={perms('social')}            />,
     questionbank:      <QuestionBank      currentUser={currentUser} perms={perms('questionbank')} onNavigate={setActive} />,
+    questionbankviewer:<QuestionBankViewer currentUser={currentUser} onNavigate={setActive} />,
     studymaterial:     <StudyMaterial     currentUser={currentUser} perms={perms('studymaterial')} onNavigate={setActive} />,
     teachingaids:      <TeachingAids      currentUser={currentUser} perms={perms('teachingaids')}  />,
     studylockers:      <StudyLockers      currentUser={currentUser} perms={perms('studylockers')}  onNavigate={setActive} />,
