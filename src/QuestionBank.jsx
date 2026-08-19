@@ -767,6 +767,29 @@ function findDuplicates(candidateRows, existingQuestions) {
   }).filter(r => r.isDuplicate)
 }
 
+// ── SHARED: auto-download a JSON backup before a destructive delete ────────
+// Used by both handleBulkDelete (TabBank) and handleDeleteAll (TabStats) —
+// the two delete paths that can destroy more than one question at once.
+// Downloads the FULL row content (every field, not just question text) as
+// pretty-printed JSON, so it's restorable via a straightforward re-insert
+// if the delete turns out to be a mistake. Runs synchronously, in-browser,
+// before the delete call fires — no server round-trip, no way for the
+// delete to proceed without the file already being handed to the browser's
+// download mechanism first.
+function downloadQuestionsBackup(rows, label) {
+  const filename = `qbank_backup_${label}_${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+  const json = JSON.stringify(rows, null, 2)
+  const blob = new Blob([json], { type: 'application/json;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 // ── CSV IMPORT ─────────────────────────────────────────────────────────────
 // Expected header row (case-insensitive, order-independent):
 // question, option_a, option_b, option_c, option_d, correct_option, subject, chapter, subsection, difficulty, marks
@@ -1015,9 +1038,14 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
 
   const handleBulkDelete = async () => {
     if (!selected.size || !confirm(`Delete ${selected.size} questions?`)) return
+    // Auto-backup: download the full content of every row about to be
+    // deleted, BEFORE the delete call fires — see downloadQuestionsBackup's
+    // own comment for why this runs synchronously ahead of the request.
+    const rowsToDelete = questions.filter(q => selected.has(q.id))
+    downloadQuestionsBackup(rowsToDelete, `bulk_${selected.size}`)
     const { error } = await supabase.from('qbank_questions').delete().in('id', [...selected])
     if (error) showToast('Bulk delete failed', C.rose)
-    else { showToast(`${selected.size} questions deleted`, C.rose); setSelected(new Set()); refetch() }
+    else { showToast(`${selected.size} questions deleted (backup downloaded)`, C.rose); setSelected(new Set()); refetch() }
   }
 
   const handleEditSave = async (updatedQ) => {
@@ -2790,8 +2818,10 @@ function TabSmartPPT({ questions, showToast }) {
 }
 
 
-function TabStats({ questions }) {
+function TabStats({ questions, refetch, showToast, isAdmin }) {
   const [filterSubject, setFilterSubject] = useState('All')
+  const [deleteAllInput, setDeleteAllInput] = useState('')
+  const [deletingAll, setDeletingAll] = useState(false)
 
   const stats = useMemo(() => {
     const result = {}
@@ -2841,6 +2871,44 @@ function TabStats({ questions }) {
     a.download = `qbank_coverage_${filterSubject==='All'?'all_subjects':filterSubject.replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.csv`
     document.body.appendChild(a); a.click(); document.body.removeChild(a)
     URL.revokeObjectURL(url)
+  }
+
+  // ── DANGER ZONE: wipe the entire question bank ──────────────────────────
+  // Deletes every row in qbank_questions, no scoping by subject/chapter/
+  // course — the whole table, irreversibly. Deliberately harder to
+  // trigger than the existing single/bulk-selection delete (handleDelete/
+  // handleBulkDelete in TabBank, which only ever act on a bounded
+  // selection the admin explicitly checked): this requires typing the
+  // literal word DELETE into a text field, not just a confirm() dialog,
+  // because a single OK click is too little friction for an action that
+  // destroys every question in the bank at once with no undo. Rendered
+  // only inside TabStats, which is itself already gated to isAdmin at
+  // the call site — never exposed to non-admin roles.
+  const handleDeleteAll = async () => {
+    if (deleteAllInput.trim().toUpperCase() !== 'DELETE') {
+      showToast('Type DELETE exactly to confirm', C.amber)
+      return
+    }
+    if (!confirm(`This will permanently delete ALL ${questions.length} questions in the bank. This cannot be undone. Continue?`)) return
+    setDeletingAll(true)
+    // Auto-backup: full JSON dump of the ENTIRE bank, downloaded BEFORE
+    // the delete call fires — same downloadQuestionsBackup helper used by
+    // handleBulkDelete in TabBank. This is the only recovery path for a
+    // whole-table wipe, so it runs unconditionally, not behind a
+    // separate opt-in step the admin could skip.
+    downloadQuestionsBackup(questions, `full_bank_${questions.length}`)
+    // .neq('id', <impossible value>) is the standard Supabase pattern for
+    // "delete every row" — the client requires SOME filter on delete, it
+    // won't run an unconditional DELETE FROM with none at all.
+    const { error } = await supabase.from('qbank_questions').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+    if (error) {
+      showToast('Delete all failed: ' + error.message, C.rose)
+    } else {
+      showToast(`🗑 Entire question bank deleted — backup downloaded (${questions.length} questions)`, C.rose)
+      setDeleteAllInput('')
+      refetch?.()
+    }
+    setDeletingAll(false)
   }
 
   return (
@@ -2907,6 +2975,33 @@ function TabStats({ questions }) {
           </div>
         )
       })}
+
+      {isAdmin && (
+        <div style={{ ...cardS, marginTop:24, border:'2px solid #fecaca', background:'#fef2f2' }}>
+          <div style={{ fontSize:14, fontWeight:800, color:'#991b1b', marginBottom:6 }}>
+            ⚠️ Danger Zone
+          </div>
+          <div style={{ fontSize:12, color:'#7f1d1d', marginBottom:12, lineHeight:1.6 }}>
+            Permanently deletes <strong>all {questions.length} questions</strong> currently in the bank — every
+            subject, every chapter. A full JSON backup of every question downloads automatically the moment you confirm — this cannot be undone otherwise.
+          </div>
+          <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+            <input
+              value={deleteAllInput}
+              onChange={e => setDeleteAllInput(e.target.value)}
+              placeholder={`Type DELETE to confirm`}
+              style={{ ...iS, width:220, borderColor:'#fecaca' }}
+            />
+            <button
+              onClick={handleDeleteAll}
+              disabled={deletingAll || deleteAllInput.trim().toUpperCase() !== 'DELETE'}
+              style={btn('#991b1b', deletingAll || deleteAllInput.trim().toUpperCase() !== 'DELETE')}
+            >
+              {deletingAll ? '⏳ Deleting…' : `🗑 Delete All ${questions.length} Questions`}
+            </button>
+          </div>
+        </div>
+      )}
     </>
   )
 }
@@ -3076,7 +3171,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
       {isAdmin && tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'smartppt' && <TabSmartPPT questions={questions} showToast={showToast} />}
-      {isAdmin && tab === 'stats'  && <TabStats  questions={questions} />}
+      {isAdmin && tab === 'stats'  && <TabStats  questions={questions} refetch={refetch} showToast={showToast} isAdmin={isAdmin} />}
     </div>
   )
 }
