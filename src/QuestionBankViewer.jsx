@@ -21,6 +21,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from './supabase'
+import { normalizeToQBank } from './StudyMaterialBridge'
 
 // ── Same base course/subject/chapter taxonomy as StudyMaterial.jsx and
 // QuestionBank.jsx (kept in sync manually — all three files currently
@@ -202,13 +203,25 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
   // query, so chapter switching within the same subject is instant and
   // the chapter-list counts (ChapterList's countsByChapter) come from
   // data already in hand rather than a second round-trip per click.
+  //
+  // normalizeToQBank(subject) before querying: this viewer uses
+  // StudyMaterial's rich subject names (English Language, Hindi Language,
+  // Arithmetic, Mental Ability, Science, Social Science, etc.) for its
+  // course/subject picker, but qbank_questions itself is keyed by
+  // QuestionBank.jsx's flat canonical buckets (Mathematics, Intelligence,
+  // Language, General Knowledge) — see StudyMaterialBridge.js's own
+  // header comment for why these are deliberately different vocabularies.
+  // Querying with the raw StudyMaterial subject name would silently
+  // return zero rows for every subject except the two whose names
+  // happen to already match (Mathematics, Intelligence).
   const loadSubjectQuestions = useCallback(async subject => {
     if (!subject) { setSubjectQuestions([]); return }
     setLoading(true)
+    const qbankSubject = normalizeToQBank(subject)
     const { data, error } = await supabase
       .from('qbank_questions')
       .select('id, subject, chapter, subsection, question, question_mayek, option_a, option_a_mayek, option_b, option_b_mayek, option_c, option_c_mayek, option_d, option_d_mayek, correct_option, difficulty, marks, diagram_url, created_at')
-      .eq('subject', subject)
+      .eq('subject', qbankSubject)
       .order('created_at', { ascending: false })
     if (error) { console.error('QuestionBankViewer: load failed —', error.message); setSubjectQuestions([]) }
     else setSubjectQuestions(data || [])
