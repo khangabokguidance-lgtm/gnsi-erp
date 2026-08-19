@@ -59,13 +59,32 @@ export async function getStudentDues(student, sessionYear = getSessionYear()) {
   const gcc = String(student.gcc_no || '')
   if (!gcc) return null
 
+  // Each query wrapped individually rather than relying on Promise.all's
+  // own rejection: a single dropped connection (confirmed in the wild —
+  // "adm_course_fees query failed — TypeError: Failed to fetch") used to
+  // reject the WHOLE Promise.all, throwing out of getStudentDues entirely
+  // and losing admission/flat-fee data that had already succeeded. Each
+  // query now fails to an empty result on its own and the dues object
+  // reports which source(s) failed, so a network blip under-reports one
+  // fee type instead of silently reporting zero dues for the student.
+  const wrap = (p, label) => p.catch(e => {
+    console.error(`getStudentDues(${gcc}): ${label} query failed —`, e.message)
+    return { data: null, error: e, _failed: true }
+  })
+
   const [rates, flatFeeMonths, admFeeRows, flatFeeRows, courseFeeRows] = await Promise.all([
     getFeeRates(sessionYear, student.course, student.batch, student.hostel_type, gcc),
     getFlatFees(student.hostel_type, student.course, student.batch, sessionYear, gcc, student.admission_date),
-    supabase.from('adm_fee_collections').select('amount_paid').eq('adm_app_id', gcc).eq('reverted', false),
-    supabase.from('adm_flat_fees').select('month,year,amount').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false),
-    supabase.from('adm_course_fees').select('for_month,year,amount_paid').eq('adm_app_id', gcc).eq('reverted', false),
+    wrap(supabase.from('adm_fee_collections').select('amount_paid').eq('adm_app_id', gcc).eq('reverted', false), 'adm_fee_collections'),
+    wrap(supabase.from('adm_flat_fees').select('month,year,amount').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false), 'adm_flat_fees'),
+    wrap(supabase.from('adm_course_fees').select('for_month,year,amount_paid').eq('adm_app_id', gcc).eq('reverted', false), 'adm_course_fees'),
   ])
+
+  const failedSources = [
+    admFeeRows._failed && 'admission_fee',
+    flatFeeRows._failed && 'flat_fee',
+    courseFeeRows._failed && 'course_fee',
+  ].filter(Boolean)
 
   // Admission fee — one-time, ADM_FEE_BASE (or fee_structures override via
   // rates.admissionFee). Paid if ANY adm_fee_collections row exists.
@@ -108,6 +127,13 @@ export async function getStudentDues(student, sessionYear = getSessionYear()) {
     totalPaid,
     totalDue,
     monthsOverdue: courseFeeItems.filter(i => !i.paid).length + flatFeeItems.filter(i => !i.paid).length,
+    // Non-empty when one or more of the three fee-source queries above
+    // failed (e.g. a dropped connection) and fell back to treating that
+    // source as zero rows rather than throwing. Callers should treat
+    // totalDue/totalPaid as a LOWER BOUND, not exact, when this is
+    // non-empty — surfacing that beats silently showing a wrong number
+    // as if it were reliable.
+    failedSources,
   }
 }
 

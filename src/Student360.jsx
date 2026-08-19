@@ -640,6 +640,11 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
               moduleLink={onNavigate ? { label: "Fees", onClick: () => onNavigate("fees") } : null}
               full={
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {dues?.failedSources?.length > 0 && (
+                    <div style={{ fontSize: 11, color: AMBER, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '6px 10px' }}>
+                      ⚠ Dues figures may be incomplete — {dues.failedSources.join(', ')} couldn't be fetched (connection issue). Refresh to retry.
+                    </div>
+                  )}
                   {dues && <>
                     <Row label="Total Due" value={`₹${fmt(dues.totalDue)}`} />
                     <Row label="Admission fee" value={dues.admission.due > 0 ? `₹${fmt(dues.admission.due)} due` : 'Paid'} />
@@ -665,6 +670,9 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
                 </div>
               }>
               <Row label="Total Paid" value={`₹${fmt(profile.fees.total)}`} />
+              {dues?.failedSources?.length > 0 && (
+                <div style={{ fontSize: 10.5, color: AMBER, marginTop: 2 }}>⚠ Dues may be incomplete (fetch issue)</div>
+              )}
               {dues && <>
                 <Row label="Total Due" value={`₹${fmt(dues.totalDue)}`} />
                 {dues.totalDue > 0 && <>
@@ -994,7 +1002,7 @@ function StudentDashboardStrip({ profile, dues, selected }) {
         color={attPct == null ? SLATE[500] : attPct < 75 ? RED : GREEN} />
 
       <DashCard icon="💰" label="Fees Paid" value={`₹${fmt(totalPaid)}`}
-        sub={dues ? (totalDue > 0 ? `₹${fmt(totalDue)} due` : 'Up to date') : 'Dues not computed'}
+        sub={dues ? (dues.failedSources?.length > 0 ? '⚠ partial data' : totalDue > 0 ? `₹${fmt(totalDue)} due` : 'Up to date') : 'Dues not computed'}
         color={dues ? (totalDue > 0 ? RED : GREEN) : SLATE[500]} />
 
       <DashCard icon="✏️" label="Exams" value={examCount}

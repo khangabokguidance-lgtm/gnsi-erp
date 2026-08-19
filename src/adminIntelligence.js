@@ -250,7 +250,7 @@ export async function getDataHealthReport() {
 export async function getStaleRecordsReport() {
   const [leave, complaints, gatePasses] = await Promise.all([
     fetchAll('leave_records', { select: 'id,student_id,leave_type,status,from_date' }),
-    fetchAll('reception_complaints', { select: 'id,student_name,category,status,created_at' }),
+    fetchAll('reception_complaints', { select: '*' }),
     fetchAll('reception_gatepasses', { select: 'id,student_name,status,created_at,reason' }),
   ])
 
@@ -492,7 +492,12 @@ export async function getExamParticipationGaps() {
 // than a one-off note in a file.
 export async function getDisciplineRepeatOffenders({ days = 90, minCount = 3 } = {}) {
   const since = daysAgo(days)
-  const records = await fetchAll('discipline_records', { select: 'student_id,category,status,date' })
+  // select('*') rather than an explicit column list: discipline_records'
+  // real schema doesn't have a `category` column (confirmed via a runtime
+  // "column does not exist" error), and rather than guess at the correct
+  // column name from here, pull the full row and read whichever
+  // category-like field is actually present.
+  const records = await fetchAll('discipline_records', { select: '*' })
   const students = await getActiveStudents('id,name,gcc_no,course,batch,house')
   const studentById = Object.fromEntries(students.map(s => [s.id, s]))
 
@@ -563,7 +568,7 @@ export async function getHouseHealthScore() {
 // chronic issue, rather than treating each visit as an isolated event.
 export async function getSickbayPatternAlert({ days = 60, minVisits = 3 } = {}) {
   const since = daysAgo(days)
-  const records = await fetchAll('sickbay_records', { select: 'student_id,condition,reason,status,date' })
+  const records = await fetchAll('sickbay_records', { select: '*' })
   const students = await getActiveStudents('id,name,gcc_no,course,batch,house')
   const studentById = Object.fromEntries(students.map(s => [s.id, s]))
 
