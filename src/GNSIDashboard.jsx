@@ -82,6 +82,7 @@ const SECTION_MODULE_DEFAULT = {
   overview:    'students',
   finance:     'fees',
   students:    'students',
+  dropout:     'students',
   admissions:  'admissions',
   staff:       'staff',
   attendance:  'attendance',
@@ -319,6 +320,86 @@ function TableWrap({ children }) {
   return <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>{children}</div>
 }
 
+// ─── DROPOUT TRACKING ─────────────────────────────────────────────────────────
+// Single function computing everything the Dropout Tracking section needs:
+// counts, rate, monthly trend, breakdown by course/batch/house, and the
+// detailed list itself — one pass over the students table rather than
+// several scattered filters (the pattern the rest of loadAllData already
+// uses per-section, e.g. courseCounts/courseBreakdown above).
+//
+// "Dropout" here means students.status === "Dropout" (same status value
+// studentQueries.js's activeStudentFilter() excludes elsewhere in the
+// portal) — this function is the one place that explicitly SURFACES that
+// excluded population instead of filtering it out.
+//
+// Dropout rate uses ALL students ever recorded (dropouts + everyone else
+// currently in the table) as the denominator, since a rate against only
+// "active" students would be circular — dropouts are by definition not
+// active. Takes the already-fetched student array rather than querying
+// itself, so loadAllData controls the single Promise.all this participates
+// in (same pagination-safety discipline as fetchAllRows elsewhere in this
+// file — 1000+ students would silently truncate a second unpaginated
+// fetch here otherwise).
+function getDropoutData(students) {
+  const all = students || []
+  const dropouts = all.filter(s => s.status === "Dropout")
+  const totalEver = all.length
+  const dropoutRate = totalEver > 0 ? Math.round((dropouts.length / totalEver) * 1000) / 10 : 0
+
+  // Monthly trend — by left_date if present, falling back to nothing
+  // (rather than admission_date) since a student's LEAVING month is what
+  // "dropout trend" means; left_date not being populated for older rows
+  // just means those rows don't appear on the trend line, not that they're
+  // miscounted as leaving in some other month.
+  const byMonth = {}
+  dropouts.forEach(s => {
+    if (!s.left_date) return
+    const d = new Date(s.left_date)
+    if (isNaN(d)) return
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    byMonth[key] = (byMonth[key] || 0) + 1
+  })
+  const trend = Object.entries(byMonth)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, count]) => {
+      const [y, m] = key.split("-")
+      return { month: `${MONTHS_LIST[(Number(m) + 8) % 12].slice(0, 3)} ${y}`, key, count }
+    })
+
+  const byCourse = {}
+  dropouts.forEach(s => { const c = s.course || "Unassigned"; byCourse[c] = (byCourse[c] || 0) + 1 })
+  const byCourseBreakdown = Object.entries(byCourse).sort((a, b) => b[1] - a[1]).map(([name, count], i) => ({ name, count, color: COURSE_COLORS[i % COURSE_COLORS.length] }))
+
+  const byBatch = {}
+  dropouts.forEach(s => { const b = s.batch || "Unassigned"; byBatch[b] = (byBatch[b] || 0) + 1 })
+  const byBatchBreakdown = Object.entries(byBatch).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }))
+
+  const byHouse = {}
+  dropouts.filter(s => s.house).forEach(s => { byHouse[s.house] = (byHouse[s.house] || 0) + 1 })
+  const byHouseBreakdown = Object.entries(byHouse).sort((a, b) => b[1] - a[1]).map(([name, count], i) => ({ name, count, color: HOUSE_COLORS[i % HOUSE_COLORS.length] }))
+
+  // Recent list, most recent leave first (undated rows last) — this is
+  // the "who and when" the section's table renders.
+  const recentDropouts = [...dropouts].sort((a, b) => {
+    if (!a.left_date && !b.left_date) return 0
+    if (!a.left_date) return 1
+    if (!b.left_date) return -1
+    return new Date(b.left_date) - new Date(a.left_date)
+  })
+
+  return {
+    totalDropouts: dropouts.length,
+    totalEver,
+    dropoutRate,
+    trend,
+    byCourse: byCourseBreakdown,
+    byBatch: byBatchBreakdown,
+    byHouse: byHouseBreakdown,
+    recentDropouts,
+    undatedCount: dropouts.filter(s => !s.left_date).length,
+  }
+}
+
 // ─── DATA LOADING ─────────────────────────────────────────────────────────────
 async function loadAllData() {
   const today = todayStr(), nowD = new Date()
@@ -342,6 +423,7 @@ async function loadAllData() {
     studyLockersData, lockerMaterialsData, socialCampaignsData,
     socialLeadsData, socialPostsData, connectBroadcastsData,
     connectGrievancesData, connectRepliesData, qbankData, syllabusTopicsData,
+    dropoutStudentsData,
   ] = await Promise.all([
     supabase.from("students").select("*", {count:"exact", head:true}),
 supabase.from("students").select("gender, state, date_of_birth, created_at, hostel_type, course, batch"),
@@ -411,6 +493,14 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
     safeFetch(()=>supabase.from("connect_replies").select("id,is_read,created_at").order("created_at",{ascending:false}).limit(100)),
     safeFetch(()=>supabase.from("qbank_questions").select("id,course,subject,difficulty,question_type,created_at").order("created_at",{ascending:false})),
     safeFetch(()=>supabase.from("syllabus_topics").select("id,subject_name,course,completed,completed_at,chapter_name,expected_date,display_order").order("display_order",{ascending:true})),
+    // Dropout Tracking section: a dedicated students query rather than
+    // widening the existing narrow-column students fetch above (line
+    // ~347), which several other sections rely on staying lean. Selects
+    // every column getDropoutData() actually reads (status, left_date,
+    // name, gcc_no, course, batch, house, admission_date) — not '*', so
+    // this doesn't inherit the same "accidentally selects a column that
+    // doesn't exist" risk flagged elsewhere in this codebase.
+    safeFetch(()=>supabase.from("students").select("id,name,gcc_no,status,left_date,admission_date,course,batch,house")),
   ])
 
   // HARDENING: unwrap the paginated {rows,pages,complete} results into plain arrays the
@@ -484,6 +574,11 @@ safeFetch(()=>supabase.from("timetable_entries").select("id,class_name,subject_n
   const maleStudents=allStudents.filter(s=>s.gender==="Male"||s.gender==="male").length
   const femaleStudents=allStudents.filter(s=>s.gender==="Female"||s.gender==="female").length
   const boarders=allStudents.filter(s=>s.hostel_type==="Boarder").length
+
+  // ── Dropout Tracking — single function, own dedicated fetch (see
+  // dropoutStudentsData query above) since it needs status/left_date/name
+  // columns the lean allStudents query above doesn't select. ──
+  const dropoutData = getDropoutData(dropoutStudentsData)
   const dayBoarders=allStudents.filter(s=>s.hostel_type==="Day Boarder").length
   const dayScholars=allStudents.filter(s=>s.hostel_type==="Day Scholar").length
   const courseCounts={}
@@ -894,6 +989,7 @@ batchesData.forEach(b=>{const t=b.course||"Regular";batchTypeMap[t]=(batchTypeMa
     enrolledStudents: admEnrolled,
     maleStudents, femaleStudents,
     boarders, dayBoarders, dayScholars, stateData, ageDistribution,
+    dropoutData,
     totalAdmissions:allAdm.length, admApplied, admUnderReview, admAdmitted, admEnrolled, admRejected, admWaitlisted,
     courseBreakdown, applicationSource, yoyAdmissions, recentAdmissions:recentAdmRes.data||[], admissionFunnel,
     totalFeeCollected, feePending, admFeeTotal, flatFeeTotal, courseFeeTotal,
@@ -1367,6 +1463,97 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </TableWrap>
             )}
           </Panel>
+        </div>
+
+        {/* ═══ DROPOUT TRACKING ══════════════════════════════ */}
+        <div ref={setSectionRef('dropout')} className="dash-section">
+          <SectionHeader icon="📉" title="Dropout Tracking"/>
+          <div className="grid-kpi" style={{marginBottom:16}}>
+            <KPI onClick={kpiClick('dropout', "Total Dropouts")} icon="📉" label="Total Dropouts" value={data.dropoutData.totalDropouts} color={T.rose} sub={`of ${data.dropoutData.totalEver} ever enrolled`}/>
+            <KPI onClick={kpiClick('dropout', "Dropout Rate")} icon="📊" label="Dropout Rate" value={data.dropoutData.dropoutRate} color={data.dropoutData.dropoutRate>10?T.rose:data.dropoutData.dropoutRate>5?T.amber:T.emerald} sub={`${data.dropoutData.dropoutRate}%`}/>
+            <KPI onClick={kpiClick('dropout', "Retention Rate")} icon="✅" label="Retention Rate" value={data.dropoutData.totalEver>0?Math.round((1-data.dropoutData.totalDropouts/data.dropoutData.totalEver)*1000)/10:0} color={T.emerald} sub={`${data.dropoutData.totalEver>0?Math.round((1-data.dropoutData.totalDropouts/data.dropoutData.totalEver)*1000)/10:0}%`}/>
+            <KPI onClick={kpiClick('dropout', "Undated Records")} icon="❓" label="Undated Records" value={data.dropoutData.undatedCount} color={T.slateL} sub="No left_date on file"/>
+          </div>
+
+          {data.dropoutData.totalDropouts===0 ? (
+            <Panel><EmptyState msg="No dropout records — every student on file is currently active or another non-dropout status."/></Panel>
+          ) : (
+            <>
+              <div className="grid-split" style={{marginBottom:14}}>
+                <Panel title="Dropout Trend by Month">
+                  {data.dropoutData.trend.length===0 ? <EmptyState msg="No dated dropouts to trend (left_date not recorded on these rows)."/> : (
+                    <ResponsiveContainer width="100%" height={200}>
+                      <AreaChart data={data.dropoutData.trend}>
+                        <XAxis dataKey="month" tick={{fill:T.inkSub,fontSize:11}} axisLine={false} tickLine={false}/>
+                        <YAxis hide/><Tooltip content={<Tip/>}/>
+                        <Area dataKey="count" name="Dropouts" stroke={T.rose} fill={`${T.rose}22`} strokeWidth={2.5}/>
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
+                </Panel>
+                <Panel title="By Course">
+                  {data.dropoutData.byCourse.length===0?<EmptyState msg="No course data"/>:(
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      {data.dropoutData.byCourse.map(c=>(
+                        <div key={c.name}>
+                          <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.inkSub}}>{c.name}</span><span style={{fontSize:12,fontWeight:700,color:c.color}}>{c.count}</span></div>
+                          <ProgressBar value={c.count} max={data.dropoutData.byCourse[0]?.count||1} color={c.color} height={5}/>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Panel>
+              </div>
+
+              <div className="grid-cols2" style={{marginBottom:14}}>
+                <Panel title="By Batch">
+                  {data.dropoutData.byBatch.length===0?<EmptyState msg="No batch data"/>:(
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:8}}>
+                      {data.dropoutData.byBatch.map(b=>(
+                        <div key={b.name} style={{padding:"10px 12px",borderRadius:10,background:T.bgInset,border:`1px solid ${T.border}`}}>
+                          <div style={{fontSize:11,color:T.inkSub}}>{b.name}</div>
+                          <div style={{fontSize:18,fontWeight:900,color:T.rose,marginTop:2}}>{b.count}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Panel>
+                <Panel title="By House (Boarders)">
+                  {data.dropoutData.byHouse.length===0?<EmptyState msg="No boarder dropouts, or house not recorded."/>:(
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      {data.dropoutData.byHouse.map(h=>(
+                        <div key={h.name}>
+                          <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:T.inkSub}}>{h.name}</span><span style={{fontSize:12,fontWeight:700,color:h.color}}>{h.count}</span></div>
+                          <ProgressBar value={h.count} max={data.dropoutData.byHouse[0]?.count||1} color={h.color} height={5}/>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Panel>
+              </div>
+
+              <Panel title="Dropout List" accent={T.rose}>
+                <TableWrap>
+                  <table style={{width:"100%",borderCollapse:"separate",borderSpacing:"0 5px",minWidth:500}}>
+                    <thead><tr>{["Name","GCC","Course","Batch","House","Left Date"].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
+                    <tbody>{data.dropoutData.recentDropouts.slice(0,100).map((s,i)=>(
+                      <tr key={s.id||i}>
+                        <td style={tdFirst}>{s.name||"—"}</td>
+                        <td style={td()}>{s.gcc_no?`GCC-${s.gcc_no}`:"—"}</td>
+                        <td style={td()}>{s.course||"—"}</td>
+                        <td style={td()}>{s.batch||"—"}</td>
+                        <td style={td()}>{s.house||"—"}</td>
+                        <td style={{...tdLast,fontSize:12,color:T.inkSub}}>{s.left_date?.slice(0,10)||"Not recorded"}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </TableWrap>
+                {data.dropoutData.recentDropouts.length>100 && (
+                  <div style={{fontSize:11,color:T.inkSub,marginTop:8,textAlign:"center"}}>+{data.dropoutData.recentDropouts.length-100} more — open Students to see the full list.</div>
+                )}
+              </Panel>
+            </>
+          )}
         </div>
 
         {/* ═══ ADMISSIONS ════════════════════════════════════ */}
