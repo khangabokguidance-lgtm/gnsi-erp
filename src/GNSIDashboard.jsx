@@ -65,6 +65,41 @@ const ACADEMIC_MONTHS = MONTHS_LIST.map((month, i) => {
   return { label: month.slice(0, 3), key: `${year}-${String(moNum).padStart(2,"0")}` }
 })
 
+// Section tab list — id must match the string passed to setSectionRef()
+// for that section (see the grep of every <div ref={setSectionRef('id')}>
+// below). Order here is the order tabs render in the nav bar and follows
+// the order sections actually appear on the page.
+const SECTION_TABS = [
+  { id: 'overview',   icon: '📊', label: 'Overview' },
+  { id: 'finance',    icon: '💰', label: 'Finance' },
+  { id: 'students',   icon: '🎓', label: 'Students' },
+  { id: 'dropout',    icon: '📉', label: 'Dropout' },
+  { id: 'admissions', icon: '📋', label: 'Admissions' },
+  { id: 'staff',      icon: '👨‍💼', label: 'Staff & HR' },
+  { id: 'attendance', icon: '✅', label: 'Attendance' },
+  { id: 'academic',   icon: '📚', label: 'Academic' },
+  { id: 'tests',      icon: '📝', label: 'Tests' },
+  { id: 'enquiry',    icon: '🔍', label: 'Enquiry' },
+  { id: 'hostel',     icon: '🛏️', label: 'Hostel' },
+  { id: 'houses',     icon: '🏆', label: 'Houses' },
+  { id: 'operations', icon: '⚙️', label: 'Operations' },
+  { id: 'batches',    icon: '🗂️', label: 'Batches' },
+  { id: 'doubts',     icon: '💬', label: 'Doubts' },
+  { id: 'parents',    icon: '👨‍👩‍👧', label: 'Parents' },
+  { id: 'material',   icon: '📦', label: 'Study Material' },
+  { id: 'results',    icon: '🏅', label: 'Results' },
+  { id: 'teaching',   icon: '🖊️', label: 'Teaching' },
+  { id: 'feesetup',   icon: '💳', label: 'Fee Setup' },
+  { id: 'feeledger',  icon: '📒', label: 'Fee Ledger' },
+  { id: 'entrance',   icon: '🏆', label: 'Entrance Exam' },
+  { id: 'lockers',    icon: '🗃️', label: 'Study Lockers' },
+  { id: 'syllabus',   icon: '📐', label: 'Syllabus' },
+  { id: 'qbank',      icon: '❓', label: 'Question Bank' },
+  { id: 'social',     icon: '📣', label: 'Social' },
+  { id: 'connect',    icon: '🔗', label: 'Connect' },
+  { id: 'expenses',   icon: '📉', label: 'Expenses' },
+]
+
 const statusColor = s => ({
   Enrolled:T.emerald, Admitted:T.sky, "Under Review":T.amber, Applied:T.violet,
   Overdue:T.rose, Partial:T.amber, Pending:T.slate, Done:T.emerald, Active:T.emerald,
@@ -314,17 +349,82 @@ function EmptyState({ msg }) {
   return <div style={{color:T.inkSub,fontSize:12,padding:"12px 0",textAlign:"center"}}>{msg}</div>
 }
 
-function SectionHeader({ icon, title }) {
+function SectionHeader({ icon, title, sectionId, collapsed, onToggle }) {
+  const clickable = !!onToggle
   return (
-    <div style={{display:"flex",alignItems:"center",gap:9,margin:"0 0 16px",paddingBottom:12,borderBottom:`1px solid ${T.border}`}}>
+    <div
+      onClick={clickable ? () => onToggle(sectionId) : undefined}
+      style={{
+        display:"flex",alignItems:"center",gap:9,margin:"0 0 16px",paddingBottom:12,
+        borderBottom:`1px solid ${T.border}`,
+        cursor: clickable ? "pointer" : "default",
+        userSelect: clickable ? "none" : "auto",
+      }}
+    >
       <span style={{fontSize:17,opacity:.75}}>{icon}</span>
-      <h2 style={{fontSize:16,fontWeight:700,margin:0,color:T.ink,letterSpacing:"0"}}>{title}</h2>
+      <h2 style={{fontSize:16,fontWeight:700,margin:0,color:T.ink,letterSpacing:"0",flex:1}}>{title}</h2>
+      {clickable && (
+        <span style={{
+          fontSize:11,color:T.inkSub,transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
+          transition:"transform .15s ease", display:"inline-block",
+        }}>▾</span>
+      )}
     </div>
   )
 }
 
 function TableWrap({ children }) {
   return <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>{children}</div>
+}
+
+// Sticky section navigation bar — one tab per dashboard section, using the
+// SAME sectionRefs map setSectionRef() already populates, so clicking a
+// tab scrolls exactly where the existing scrollToSection prop effect
+// already knows how to scroll (no second scroll mechanism introduced).
+// activeId is tracked by the parent via a scroll-spy IntersectionObserver
+// so the current section highlights as the admin scrolls, not just on
+// click.
+function SectionNav({ activeId, onSelect }) {
+  const activeRef = useRef(null)
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" })
+  }, [activeId])
+
+  return (
+    <div style={{
+      position: "sticky", top: 0, zIndex: 20,
+      background: T.bgCard, borderBottom: `1px solid ${T.border}`,
+      marginBottom: 20,
+    }}>
+      <div style={{
+        display: "flex", gap: 2, overflowX: "auto", WebkitOverflowScrolling: "touch",
+        padding: "0 16px", scrollbarWidth: "none",
+      }} className="section-nav-scroll">
+        {SECTION_TABS.map(t => {
+          const active = t.id === activeId
+          return (
+            <button
+              key={t.id}
+              ref={active ? activeRef : null}
+              onClick={() => onSelect(t.id)}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "11px 13px", whiteSpace: "nowrap",
+                background: "none", border: "none", cursor: "pointer",
+                fontFamily: "inherit", fontSize: 12.5, fontWeight: active ? 700 : 500,
+                color: active ? T.accent : T.inkSub,
+                borderBottom: `2px solid ${active ? T.accent : "transparent"}`,
+                transition: "color .12s ease, border-color .12s ease",
+              }}
+            >
+              <span style={{fontSize:13,opacity:active?1:.7}}>{t.icon}</span>
+              {t.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 // AI Insight panel — dropped into each section, reading that section's
@@ -1206,6 +1306,60 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
 
   const sectionRefs = useRef({})
   const setSectionRef = (id) => (el) => { if (el) sectionRefs.current[id] = el }
+  const [activeSection, setActiveSection] = useState('overview')
+
+  // Collapsible sections — every section except Overview (the landing
+  // summary, always shown open) starts collapsed so the page loads
+  // compact; clicking a SectionHeader (or a SectionNav tab) drops it
+  // open. Lazy initializer so this only runs once, not on every render.
+  const [collapsedSections, setCollapsedSections] = useState(() => {
+    const initial = {}
+    SECTION_TABS.forEach(t => { if (t.id !== 'overview') initial[t.id] = true })
+    return initial
+  })
+  const toggleSection = useCallback(id => {
+    setCollapsedSections(prev => ({ ...prev, [id]: !prev[id] }))
+  }, [])
+
+  // Scroll-spy for SectionNav: highlights whichever section is currently
+  // in view as the admin scrolls, independent of tab clicks. Observes the
+  // same DOM nodes sectionRefs already holds — set up once data/loading
+  // settles, since sections don't exist in the DOM before that.
+  useEffect(() => {
+    if (loading || !data) return
+    const nodes = SECTION_TABS.map(t => sectionRefs.current[t.id]).filter(Boolean)
+    if (nodes.length === 0) return
+    const observer = new IntersectionObserver(
+      entries => {
+        const visible = entries.filter(e => e.isIntersecting)
+        if (visible.length === 0) return
+        // Pick the entry closest to the top of the viewport among those
+        // currently visible, so scrolling down advances the active tab
+        // predictably instead of jumping to whichever section fired last.
+        const top = visible.reduce((a, b) => (a.boundingClientRect.top < b.boundingClientRect.top ? a : b))
+        const id = Object.keys(sectionRefs.current).find(k => sectionRefs.current[k] === top.target)
+        if (id) setActiveSection(id)
+      },
+      { rootMargin: "-64px 0px -70% 0px", threshold: 0 }
+    )
+    nodes.forEach(n => observer.observe(n))
+    return () => observer.disconnect()
+  }, [loading, data])
+
+  // Shared by SectionNav clicks and the scrollToSection prop effect below
+  // — sets the active tab immediately (no waiting on the scroll-spy
+  // observer to catch up), force-expands the target section (a collapsed
+  // section would otherwise scroll to an empty header), and scrolls to it.
+  const goToSection = useCallback(id => {
+    setActiveSection(id)
+    setCollapsedSections(prev => (prev[id] ? { ...prev, [id]: false } : prev))
+    // Collapsed→expanded changes the section's height, so wait a tick for
+    // that to render before measuring scroll position — otherwise this
+    // scrolls to where the (still-collapsed) section used to be.
+    requestAnimationFrame(() => {
+      sectionRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" })
+    })
+  }, [])
 
   // Click handler for every KPI card in the dashboard: resolves the
   // card's module via SECTION_MODULE_DEFAULT/KPI_MODULE_OVERRIDE and
@@ -1224,9 +1378,9 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
 
   useEffect(() => {
     if (!loading && scrollToSection && sectionRefs.current[scrollToSection]) {
-      setTimeout(() => { sectionRefs.current[scrollToSection].scrollIntoView({ behavior:"smooth", block:"start" }) }, 150)
+      setTimeout(() => { goToSection(scrollToSection) }, 150)
     }
-  }, [loading, scrollToSection])
+  }, [loading, scrollToSection, goToSection])
 
   useEffect(()=>{ const t=setInterval(()=>setNow(new Date()),60000); return()=>clearInterval(t) },[])
 
@@ -1302,6 +1456,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         ::-webkit-scrollbar-thumb{background:#c7ccd6;border-radius:3px}
         ::-webkit-scrollbar-thumb:hover{background:#a7aeba}
         html{scroll-behavior:smooth}
+        .section-nav-scroll::-webkit-scrollbar{display:none}
         .grid-kpi{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
         .grid-cols2{display:grid;grid-template-columns:1fr;gap:12px}
         .grid-cols3{display:grid;grid-template-columns:1fr;gap:12px}
@@ -1339,6 +1494,8 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         .funnel-row{display:flex;flex-wrap:wrap;gap:8px}
         .funnel-row > div{flex:1;min-width:120px}
       `}</style>
+
+      <SectionNav activeId={activeSection} onSelect={goToSection}/>
 
       <div style={{padding:"20px 16px",maxWidth:"100%"}}>
 
@@ -1567,8 +1724,10 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
 
         {/* ═══ FINANCE ═══════════════════════════════════════ */}
         <div ref={setSectionRef('finance')} className="dash-section">
-          <SectionHeader icon="💰" title="Finance & Fee Analytics"/>
+          <SectionHeader sectionId="finance" collapsed={collapsedSections['finance']} onToggle={toggleSection} icon="💰" title="Finance & Fee Analytics"/>
           <InsightPanel insights={insightsBySection['finance']}/>
+        {!collapsedSections['finance'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('finance', "Total Collected")} icon="💰" label="Total Collected" value={liveTotal} isMoney color={T.gold}/>
             <KPI onClick={kpiClick('finance', "Fee Pending")} icon="📌" label="Fee Pending" value={data.feePending} isMoney color={data.feePending>0?T.rose:T.slateL} sub={data.feePending>0?"Outstanding":"Not tracked yet"}/>
@@ -1616,12 +1775,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </TableWrap>
             )}
           </Panel>
+        </>
+        )}
         </div>
 
         {/* ═══ STUDENTS ══════════════════════════════════════ */}
         <div ref={setSectionRef('students')} className="dash-section">
-          <SectionHeader icon="🎓" title="Student Analytics"/>
+          <SectionHeader sectionId="students" collapsed={collapsedSections['students']} onToggle={toggleSection} icon="🎓" title="Student Analytics"/>
           <InsightPanel insights={insightsBySection['students']}/>
+        {!collapsedSections['students'] && (
+        <>
           {/* FIX #1: main value = DB total; sub = enrolled count */}
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('students', "Total")} icon="👥" label="Total" value={data.totalStudents} color={T.sky} sub={`${data.enrolledStudents} enrolled`}/>
@@ -1685,12 +1848,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </TableWrap>
             )}
           </Panel>
+        </>
+        )}
         </div>
 
         {/* ═══ DROPOUT TRACKING ══════════════════════════════ */}
         <div ref={setSectionRef('dropout')} className="dash-section">
-          <SectionHeader icon="📉" title="Dropout Tracking"/>
+          <SectionHeader sectionId="dropout" collapsed={collapsedSections['dropout']} onToggle={toggleSection} icon="📉" title="Dropout Tracking"/>
           <InsightPanel insights={insightsBySection['dropout']}/>
+        {!collapsedSections['dropout'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('dropout', "Total Dropouts")} icon="📉" label="Total Dropouts" value={data.dropoutData.totalDropouts} color={T.rose} sub={`of ${data.dropoutData.totalEver} ever enrolled`}/>
             <KPI onClick={kpiClick('dropout', "Dropout Rate")} icon="📊" label="Dropout Rate" value={data.dropoutData.dropoutRate} color={data.dropoutData.dropoutRate>10?T.rose:data.dropoutData.dropoutRate>5?T.amber:T.emerald} sub={`${data.dropoutData.dropoutRate}%`}/>
@@ -1777,12 +1944,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </Panel>
             </>
           )}
+        </>
+        )}
         </div>
 
         {/* ═══ ADMISSIONS ════════════════════════════════════ */}
         <div ref={setSectionRef('admissions')} className="dash-section">
-          <SectionHeader icon="📋" title="Admissions Deep Dive"/>
+          <SectionHeader sectionId="admissions" collapsed={collapsedSections['admissions']} onToggle={toggleSection} icon="📋" title="Admissions Deep Dive"/>
           <InsightPanel insights={insightsBySection['admissions']}/>
+        {!collapsedSections['admissions'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('admissions', "Applied")} icon="📩" label="Applied" value={data.admApplied} color={T.sky}/>
             <KPI onClick={kpiClick('admissions', "Under Review")} icon="🔍" label="Under Review" value={data.admUnderReview} color={T.violet}/>
@@ -1846,12 +2017,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               )}
             </Panel>
           </div>
+        </>
+        )}
         </div>
 
         {/* ═══ STAFF ════════════════════════════════════════ */}
         <div ref={setSectionRef('staff')} className="dash-section">
-          <SectionHeader icon="👨‍💼" title="Staff & HR"/>
+          <SectionHeader sectionId="staff" collapsed={collapsedSections['staff']} onToggle={toggleSection} icon="👨‍💼" title="Staff & HR"/>
           <InsightPanel insights={insightsBySection['staff']}/>
+        {!collapsedSections['staff'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('staff', "Total Staff")} icon="👥" label="Total Staff" value={data.totalStaff} color={T.sky} sub={`${data.activeStaffCnt} active`}/>
             <KPI onClick={kpiClick('staff', "Active")} icon="✅" label="Active" value={data.activeStaffCnt} color={T.emerald}/>
@@ -1891,12 +2066,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
             </Panel>
           </div>
           <Panel accent={T.slate}><EmptyState msg="Add staff records to gnsi_staff_biodata to see salary trends, performance leaderboard, and recruitment pipeline"/></Panel>
+        </>
+        )}
         </div>
 
         {/* ═══ ATTENDANCE ════════════════════════════════════ */}
         <div ref={setSectionRef('attendance')} className="dash-section">
-          <SectionHeader icon="✅" title="Attendance Analytics"/>
+          <SectionHeader sectionId="attendance" collapsed={collapsedSections['attendance']} onToggle={toggleSection} icon="✅" title="Attendance Analytics"/>
           <InsightPanel insights={insightsBySection['attendance']}/>
+        {!collapsedSections['attendance'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('attendance', "Present")} icon="✅" label="Present" value={data.presentToday} color={T.emerald} progress={data.presentToday} progressMax={data.totalToday}/>
             <KPI onClick={kpiClick('attendance', "Absent")} icon="❌" label="Absent" value={data.absentToday} color={T.rose}/>
@@ -1945,12 +2124,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </Panel>
             </>
           )}
+        </>
+        )}
         </div>
 
         {/* ═══ ACADEMIC ══════════════════════════════════════ */}
         <div ref={setSectionRef('academic')} className="dash-section">
-          <SectionHeader icon="📚" title="Academic Performance"/>
+          <SectionHeader sectionId="academic" collapsed={collapsedSections['academic']} onToggle={toggleSection} icon="📚" title="Academic Performance"/>
           <InsightPanel insights={insightsBySection['academic']}/>
+        {!collapsedSections['academic'] && (
+        <>
           {/* FIX — avg score sub now shows % clearly */}
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('academic', "Avg Score")} icon="📊" label="Avg Score" value={data.avgScore} color={T.sky} sub={`Class average: ${data.avgScore}%`}/>
@@ -1983,12 +2166,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               )}
             </Panel>
           </div>
+        </>
+        )}
         </div>
 
         {/* ═══ TESTS ════════════════════════════════════════ */}
         <div ref={setSectionRef('tests')} className="dash-section">
-          <SectionHeader icon="📝" title="Test & Performance Analytics"/>
+          <SectionHeader sectionId="tests" collapsed={collapsedSections['tests']} onToggle={toggleSection} icon="📝" title="Test & Performance Analytics"/>
           <InsightPanel insights={insightsBySection['tests']}/>
+        {!collapsedSections['tests'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('tests', "Exam Dates")} icon="📝" label="Exam Dates" value={data.totalTests} color={T.violet}/>
             <KPI onClick={kpiClick('tests', "Total Entries")} icon="👥" label="Total Entries" value={data.totalTestEntries} color={T.sky}/>
@@ -2050,12 +2237,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               )}
             </Panel>
           </div>
+        </>
+        )}
         </div>
 
         {/* ═══ ENQUIRY ══════════════════════════════════════ */}
         <div ref={setSectionRef('enquiry')} className="dash-section">
-          <SectionHeader icon="🔍" title="Enquiry & Lead Management"/>
+          <SectionHeader sectionId="enquiry" collapsed={collapsedSections['enquiry']} onToggle={toggleSection} icon="🔍" title="Enquiry & Lead Management"/>
           <InsightPanel insights={insightsBySection['enquiry']}/>
+        {!collapsedSections['enquiry'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('enquiry', "Total")} icon="📞" label="Total" value={data.totalEnquiries} color={T.sky} sub="From admissions"/>
             <KPI onClick={kpiClick('enquiry', "Open")} icon="🔓" label="Open" value={data.openEnquiries} color={T.amber}/>
@@ -2100,12 +2291,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </table>
             </TableWrap>
           </Panel>
+        </>
+        )}
         </div>
 
         {/* ═══ HOSTEL ════════════════════════════════════════ */}
         <div ref={setSectionRef('hostel')} className="dash-section">
-          <SectionHeader icon="🛏️" title="Hostel & Boarding"/>
+          <SectionHeader sectionId="hostel" collapsed={collapsedSections['hostel']} onToggle={toggleSection} icon="🛏️" title="Hostel & Boarding"/>
           <InsightPanel insights={insightsBySection['hostel']}/>
+        {!collapsedSections['hostel'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('hostel', "Boarders")} icon="🏠" label="Boarders" value={data.boarders} color={T.sky}/>
             <KPI onClick={kpiClick('hostel', "Rooms Total")} icon="🛏️" label="Rooms Total" value={data.hostelTotalRooms} color={T.amber}/>
@@ -2139,12 +2334,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               )}
             </Panel>
           </div>
+        </>
+        )}
         </div>
 
         {/* ═══ HOUSES ════════════════════════════════════════ */}
         <div ref={setSectionRef('houses')} className="dash-section">
-          <SectionHeader icon="🏆" title="Houses & Co-curricular"/>
+          <SectionHeader sectionId="houses" collapsed={collapsedSections['houses']} onToggle={toggleSection} icon="🏆" title="Houses & Co-curricular"/>
           <InsightPanel insights={insightsBySection['houses']}/>
+        {!collapsedSections['houses'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             {data.housePoints.map((h,i)=>(
               <div key={h.name} style={{background:`${h.color}08`,border:`1px solid ${h.color}25`,borderRadius:14,padding:"14px 16px"}}>
@@ -2156,12 +2355,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
             ))}
           </div>
           {data.housePoints.every(h=>h.points===0)&&<Panel><EmptyState msg="No house_points data yet."/></Panel>}
+        </>
+        )}
         </div>
 
         {/* ═══ OPERATIONS ════════════════════════════════════ */}
         <div ref={setSectionRef('operations')} className="dash-section">
-          <SectionHeader icon="⚙️" title="Operations & Admin"/>
+          <SectionHeader sectionId="operations" collapsed={collapsedSections['operations']} onToggle={toggleSection} icon="⚙️" title="Operations & Admin"/>
           <InsightPanel insights={insightsBySection['operations']}/>
+        {!collapsedSections['operations'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('operations', "Total Tasks")} icon="📋" label="Total Tasks" value={data.taskPending+data.taskDone+data.taskOverdue} color={T.sky}/>
             <KPI onClick={kpiClick('operations', "Completed")} icon="✅" label="Completed" value={data.taskDone} color={T.emerald} progress={data.taskDone} progressMax={data.taskPending+data.taskDone+data.taskOverdue}/>
@@ -2202,12 +2405,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </div>
             </Panel>
           </div>
+        </>
+        )}
         </div>
 
         {/* ═══ BATCHES ════════════════════════════════════════ */}
         <div ref={setSectionRef('batches')} className="dash-section">
-          <SectionHeader icon="🗂️" title="Batches & Timetable"/>
+          <SectionHeader sectionId="batches" collapsed={collapsedSections['batches']} onToggle={toggleSection} icon="🗂️" title="Batches & Timetable"/>
           <InsightPanel insights={insightsBySection['batches']}/>
+        {!collapsedSections['batches'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('batches', "Total Batches")} icon="🗂️" label="Total Batches" value={data.totalBatches} color={T.indigo}/>
             <KPI onClick={kpiClick('batches', "Active")} icon="✅" label="Active" value={data.activeBatches} color={T.emerald}/>
@@ -2234,12 +2441,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </TableWrap>
             </Panel>
           )}
+        </>
+        )}
         </div>
 
         {/* ═══ DOUBTS ════════════════════════════════════════ */}
         <div ref={setSectionRef('doubts')} className="dash-section">
-          <SectionHeader icon="💬" title="Doubt & Query Management"/>
+          <SectionHeader sectionId="doubts" collapsed={collapsedSections['doubts']} onToggle={toggleSection} icon="💬" title="Doubt & Query Management"/>
           <InsightPanel insights={insightsBySection['doubts']}/>
+        {!collapsedSections['doubts'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('doubts', "Total Doubts")} icon="💬" label="Total Doubts" value={data.totalDoubts} color={T.sky}/>
             <KPI onClick={kpiClick('doubts', "Resolved")} icon="✅" label="Resolved" value={data.resolvedDoubts} color={T.emerald} progress={data.resolvedDoubts} progressMax={data.totalDoubts}/>
@@ -2291,12 +2502,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </div>
             </>
           )}
+        </>
+        )}
         </div>
 
         {/* ═══ PARENT COMMUNICATION ═══════════════════════════ */}
         <div ref={setSectionRef('parents')} className="dash-section">
-          <SectionHeader icon="👨‍👩‍👧" title="Parent Communication"/>
+          <SectionHeader sectionId="parents" collapsed={collapsedSections['parents']} onToggle={toggleSection} icon="👨‍👩‍👧" title="Parent Communication"/>
           <InsightPanel insights={insightsBySection['parents']}/>
+        {!collapsedSections['parents'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('parents', "Total Sent")} icon="📨" label="Total Sent" value={data.totalSMSSent} color={T.sky}/>
             <KPI onClick={kpiClick('parents', "Delivered")} icon="✅" label="Delivered" value={data.smsSent} color={T.emerald}/>
@@ -2323,12 +2538,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </Panel>
             </div>
           )}
+        </>
+        )}
         </div>
 
         {/* ═══ STUDY MATERIAL ══════════════════════════════════ */}
         <div ref={setSectionRef('material')} className="dash-section">
-          <SectionHeader icon="📦" title="Study Material Management"/>
+          <SectionHeader sectionId="material" collapsed={collapsedSections['material']} onToggle={toggleSection} icon="📦" title="Study Material Management"/>
           <InsightPanel insights={insightsBySection['material']}/>
+        {!collapsedSections['material'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('material', "Total Materials")} icon="📦" label="Total Materials" value={data.totalMaterials} color={T.sky}/>
             <KPI onClick={kpiClick('material', "Distributed")} icon="✅" label="Distributed" value={data.distributedMat} color={T.emerald} progress={data.distributedMat} progressMax={data.totalMaterials}/>
@@ -2353,12 +2572,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </Panel>
             </div>
           )}
+        </>
+        )}
         </div>
 
         {/* ═══ RESULTS ════════════════════════════════════════ */}
         <div ref={setSectionRef('results')} className="dash-section">
-          <SectionHeader icon="🏅" title="Results & Selections"/>
+          <SectionHeader sectionId="results" collapsed={collapsedSections['results']} onToggle={toggleSection} icon="🏅" title="Results & Selections"/>
           <InsightPanel insights={insightsBySection['results']}/>
+        {!collapsedSections['results'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('results', "Total")} icon="🏅" label="Total" value={data.totalSelections} color={T.gold}/>
             <KPI onClick={kpiClick('results', "JNV Navodaya")} icon="🏫" label="JNV Navodaya" value={data.jnvSelections} color={T.emerald}/>
@@ -2383,12 +2606,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </div>
             </Panel>
           )}
+        </>
+        )}
         </div>
 
         {/* ═══ TEACHING ═══════════════════════════════════════ */}
         <div ref={setSectionRef('teaching')} className="dash-section">
-          <SectionHeader icon="🖊️" title="Staff Teaching Analytics"/>
+          <SectionHeader sectionId="teaching" collapsed={collapsedSections['teaching']} onToggle={toggleSection} icon="🖊️" title="Staff Teaching Analytics"/>
           <InsightPanel insights={insightsBySection['teaching']}/>
+        {!collapsedSections['teaching'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('teaching', "Topics Total")} icon="📚" label="Topics Total" value={data.totalTopics} color={T.sky}/>
             <KPI onClick={kpiClick('teaching', "Covered")} icon="✅" label="Covered" value={data.coveredTopics} color={T.emerald} progress={data.coveredTopics} progressMax={data.totalTopics}/>
@@ -2441,12 +2668,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </TableWrap>
             </Panel>
           )}
+        </>
+        )}
         </div>
 
         {/* ═══ FEE SETUP ══════════════════════════════════════ */}
         <div ref={setSectionRef('feesetup')} className="dash-section">
-          <SectionHeader icon="💳" title="Fee Setup & Structure"/>
+          <SectionHeader sectionId="feesetup" collapsed={collapsedSections['feesetup']} onToggle={toggleSection} icon="💳" title="Fee Setup & Structure"/>
           <InsightPanel insights={insightsBySection['feesetup']}/>
+        {!collapsedSections['feesetup'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('feesetup', "Fee Structures")} icon="📋" label="Fee Structures" value={data.totalFeeStructures} color={T.sky} sub={`${data.activeSessionStructures.length} this session`}/>
             <KPI onClick={kpiClick('feesetup', "Flat Fee Collected")} icon="💰" label="Flat Fee Collected" value={data.flatFeePaid_fs} isMoney color={T.emerald}/>
@@ -2495,12 +2726,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </ResponsiveContainer>
             )}
           </Panel>
+        </>
+        )}
         </div>
 
         {/* ═══ FEE LEDGER ══════════════════════════════════════ */}
         <div ref={setSectionRef('feeledger')} className="dash-section">
-          <SectionHeader icon="📒" title="Student Fee Ledger"/>
+          <SectionHeader sectionId="feeledger" collapsed={collapsedSections['feeledger']} onToggle={toggleSection} icon="📒" title="Student Fee Ledger"/>
           <InsightPanel insights={insightsBySection['feeledger']}/>
+        {!collapsedSections['feeledger'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('feeledger', "Flat Fee Total")} icon="💰" label="Flat Fee Total" value={data.flatFeeTotal_fs} isMoney color={T.gold}/>
             <KPI onClick={kpiClick('feeledger', "Flat Fee Paid")} icon="✅" label="Flat Fee Paid" value={data.flatFeePaid_fs} isMoney color={T.emerald} progress={data.flatFeePaid_fs} progressMax={data.flatFeeTotal_fs}/>
@@ -2530,12 +2765,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               )}
             </Panel>
           </div>
+        </>
+        )}
         </div>
 
         {/* ═══ ENTRANCE ════════════════════════════════════════ */}
         <div ref={setSectionRef('entrance')} className="dash-section">
-          <SectionHeader icon="🏆" title="Entrance Exam Management"/>
+          <SectionHeader sectionId="entrance" collapsed={collapsedSections['entrance']} onToggle={toggleSection} icon="🏆" title="Entrance Exam Management"/>
           <InsightPanel insights={insightsBySection['entrance']}/>
+        {!collapsedSections['entrance'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('entrance', "Total Exams")} icon="📝" label="Total Exams" value={data.totalEntranceExams} color={T.sky}/>
             <KPI onClick={kpiClick('entrance', "Completed")} icon="✅" label="Completed" value={data.completedExams} color={T.emerald}/>
@@ -2585,12 +2824,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </Panel>
             </>
           )}
+        </>
+        )}
         </div>
 
         {/* ═══ STUDY LOCKERS ═══════════════════════════════════ */}
         <div ref={setSectionRef('lockers')} className="dash-section">
-          <SectionHeader icon="🗃️" title="Study Lockers"/>
+          <SectionHeader sectionId="lockers" collapsed={collapsedSections['lockers']} onToggle={toggleSection} icon="🗃️" title="Study Lockers"/>
           <InsightPanel insights={insightsBySection['lockers']}/>
+        {!collapsedSections['lockers'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('lockers', "Total Lockers")} icon="🗃️" label="Total Lockers" value={data.totalLockers} color={T.sky}/>
             <KPI onClick={kpiClick('lockers', "Total Materials")} icon="📦" label="Total Materials" value={data.totalLockerMaterials} color={T.violet}/>
@@ -2625,12 +2868,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </Panel>
             </div>
           )}
+        </>
+        )}
         </div>
 
         {/* ═══ SYLLABUS ════════════════════════════════════════ */}
         <div ref={setSectionRef('syllabus')} className="dash-section">
-          <SectionHeader icon="📐" title="Syllabus Manager"/>
+          <SectionHeader sectionId="syllabus" collapsed={collapsedSections['syllabus']} onToggle={toggleSection} icon="📐" title="Syllabus Manager"/>
           <InsightPanel insights={insightsBySection['syllabus']}/>
+        {!collapsedSections['syllabus'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('syllabus', "Total Topics")} icon="📐" label="Total Topics" value={data.totalSyllabusTopics} color={T.sky}/>
             <KPI onClick={kpiClick('syllabus', "Completed")} icon="✅" label="Completed" value={data.completedTopics_st} color={T.emerald} progress={data.completedTopics_st} progressMax={data.totalSyllabusTopics}/>
@@ -2676,12 +2923,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </Panel>
             </>
           )}
+        </>
+        )}
         </div>
 
         {/* ═══ QUESTION BANK ════════════════════════════════════ */}
         <div ref={setSectionRef('qbank')} className="dash-section">
-          <SectionHeader icon="❓" title="Question Bank"/>
+          <SectionHeader sectionId="qbank" collapsed={collapsedSections['qbank']} onToggle={toggleSection} icon="❓" title="Question Bank"/>
           <InsightPanel insights={insightsBySection['qbank']}/>
+        {!collapsedSections['qbank'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('qbank', "Total Questions")} icon="❓" label="Total Questions" value={data.totalQBankQuestions} color={T.sky}/>
             <KPI onClick={kpiClick('qbank', "Easy")} icon="✅" label="Easy" value={data.qbankByDifficulty[0]?.count||0} color={T.emerald}/>
@@ -2718,12 +2969,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </Panel>
             </>
           )}
+        </>
+        )}
         </div>
 
         {/* ═══ SOCIAL ═══════════════════════════════════════════ */}
         <div ref={setSectionRef('social')} className="dash-section">
-          <SectionHeader icon="📣" title="Social & Marketing"/>
+          <SectionHeader sectionId="social" collapsed={collapsedSections['social']} onToggle={toggleSection} icon="📣" title="Social & Marketing"/>
           <InsightPanel insights={insightsBySection['social']}/>
+        {!collapsedSections['social'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('social', "Campaigns")} icon="📣" label="Campaigns" value={data.totalCampaigns} color={T.sky} sub={`${data.activeCampaigns} active`}/>
             <KPI onClick={kpiClick('social', "Total Leads")} icon="👥" label="Total Leads" value={data.totalSocialLeads} color={T.violet}/>
@@ -2764,12 +3019,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               )}
             </>
           )}
+        </>
+        )}
         </div>
 
         {/* ═══ CONNECT ══════════════════════════════════════════ */}
         <div ref={setSectionRef('connect')} className="dash-section">
-          <SectionHeader icon="🔗" title="Connect — Broadcast & Communication"/>
+          <SectionHeader sectionId="connect" collapsed={collapsedSections['connect']} onToggle={toggleSection} icon="🔗" title="Connect — Broadcast & Communication"/>
           <InsightPanel insights={insightsBySection['connect']}/>
+        {!collapsedSections['connect'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('connect', "Broadcasts")} icon="📡" label="Broadcasts" value={data.totalBroadcasts} color={T.sky} sub={`${data.sentBroadcasts} sent`}/>
             <KPI onClick={kpiClick('connect', "Recipients")} icon="👥" label="Recipients" value={data.totalRecipients} color={T.violet}/>
@@ -2809,12 +3068,16 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               </div>
             </Panel>
           )}
+        </>
+        )}
         </div>
 
         {/* ═══ EXPENSES ═════════════════════════════════════════ */}
         <div ref={setSectionRef('expenses')} className="dash-section">
-          <SectionHeader icon="📉" title="Expenses & P&L"/>
+          <SectionHeader sectionId="expenses" collapsed={collapsedSections['expenses']} onToggle={toggleSection} icon="📉" title="Expenses & P&L"/>
           <InsightPanel insights={insightsBySection['expenses']}/>
+        {!collapsedSections['expenses'] && (
+        <>
           <div className="grid-kpi" style={{marginBottom:16}}>
             <KPI onClick={kpiClick('expenses', "Total Income")} icon="💰" label="Total Income" value={data.totalFeeCollected} isMoney color={T.emerald}/>
             <KPI onClick={kpiClick('expenses', "Total Expenses")} icon="📉" label="Total Expenses" value={data.totalExpenses} isMoney color={T.rose}/>
@@ -2868,6 +3131,8 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               ))}
             </div>
           </Panel>
+        </>
+        )}
         </div>
 
       </div>
