@@ -37,7 +37,7 @@ const SUBJECTS = {
     'Odd Man Out','Pattern Completion','Classification','Word Formation',
     'Dictionary Word Order','Series Completion','Direction Test','Clock and Calendar',
   ],
-  Language: [
+  'English Language': [
     'Comprehension Passage','Preposition','Article','Vocabulary',
     'Verbs and Types','Confusing Words','Question Tags','Types of Sentence',
     'Tense Forms','Kinds of Nouns','Kinds of Pronouns','Correct Spelling',
@@ -122,7 +122,7 @@ const SUBSECTION_KEYWORDS = {
     'Statement and Conclusions':['statement','conclusion','logically follows','deduction'],
     'Clock and Calendar':      ['clock','time','calendar','day of the week','leap year','date'],
   },
-  Language: {
+  'English Language': {
     'Comprehension':          ['passage','comprehension','read','author','paragraph'],
     'Preposition':            ['preposition','in','on','at','by','with','from','to','into'],
     'Articles':               ['article','a ','an ','the '],
@@ -176,7 +176,7 @@ const C = {
 const SC = {
   Mathematics:         { color: '#1e3a5f', bg: '#eff6ff', border: '#bfdbfe' },
   Intelligence:        { color: '#7c3aed', bg: '#f3e8ff', border: '#ddd6fe' },
-  Language:            { color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
+  'English Language':  { color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
   'General Knowledge': { color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
 }
 const CHART_COLORS = ['#1e3a5f','#16a34a','#dc2626','#d97706','#7c3aed','#0891b2']
