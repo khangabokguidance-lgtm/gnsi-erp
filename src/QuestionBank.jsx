@@ -14,7 +14,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
-import { useStudyMaterialsByChapter, normalizeToQBank } from './StudyMaterialBridge'
+import { useStudyMaterialsByChapter, useMaterialCountsByChapter, normalizeToQBank } from './StudyMaterialBridge'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 
 // ── BMEI04 font (base64, embedded once per file load) — needed because
@@ -801,6 +801,49 @@ function detectSubsection(questionText, subject) {
   return 'General'
 }
 
+// ── SMART CHAPTER DETECTOR ───────────────────────────────────────────────────
+// Suggests which chapter a question belongs to by scoring the question text
+// against the actual chapter names already curated in COURSES for the
+// selected course+subject — no second keyword map to maintain in parallel
+// with SUBSECTION_KEYWORDS (which is subsection-level and doesn't map 1:1
+// onto chapter names across courses — Sainik's "LCM and HCF" chapter vs.
+// Navodaya's differently-worded chapter lists under the same canonical
+// subject). Chapter names are themselves fairly descriptive phrases
+// ("Profit and Loss", "Blood Relations"), so scoring by how many of a
+// chapter's significant words appear in the question text is a reasonable
+// signal without needing curated keyword lists per chapter.
+const STOPWORDS = new Set(['and','or','of','the','a','an','in','on','for','to','with','&'])
+
+function chapterWords(chapterName) {
+  return chapterName
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(w => w.length > 2 && !STOPWORDS.has(w))
+}
+
+function detectChapter(questionText, course, subject) {
+  if (!questionText || !course || !subject) return null
+  const chapters = COURSES[course]?.subjects[subject] || []
+  if (!chapters.length) return null
+  const q = ' ' + questionText.toLowerCase() + ' '
+
+  let best = null
+  let bestScore = 0
+  for (const chapter of chapters) {
+    const words = chapterWords(chapter)
+    if (!words.length) continue
+    const hits = words.filter(w => q.includes(w)).length
+    // Score = fraction of the chapter's significant words present in the
+    // question text. Require at least half the words to match (and at
+    // least one word for single-word chapter names) to avoid one-word
+    // coincidental overlaps ("area" matching "Area and Perimeter" off a
+    // single stray mention) from winning over genuinely unrelated chapters.
+    const score = hits / words.length
+    if (score >= 0.5 && score > bestScore) { bestScore = score; best = chapter }
+  }
+  return best
+}
+
 function needsDiagram(questionText) {
   const q = questionText.toLowerCase()
   return DIAGRAM_KEYWORDS.some(kw => q.includes(kw))
@@ -1260,7 +1303,7 @@ function StudyMaterialsRefPanel({ subject, chapter, onNavigate }) {
 // TAB 1: QUESTION BANK
 // Patch: applies initialFilter on mount + listens for NAVIGATE_TO event
 // ══════════════════════════════════════════════════════════════════════════════
-function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmin }) {
+function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmin, onNavigate }) {
   const [filterCourse,     setFilterCourse]     = useState('All')
   const [filterSubject,    setFilterSubject]    = useState('All')
   const [filterChapter,    setFilterChapter]    = useState('All')
@@ -1388,6 +1431,17 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
           <button onClick={() => { setFilterSubject('All'); setFilterChapter('All'); setPage(1) }}
             style={{ ...btnSm('#7c3aed'), fontSize:10 }}>✕ Clear filter</button>
         </div>
+      )}
+
+      {/* ── PATCH: reciprocal materials panel ──────────────────────────────
+          StudyMaterial already surfaces "N Q" badges that deep-link into
+          this tab; this is the other direction — while browsing a specific
+          chapter here, show what reference materials already exist for it,
+          with a link back to Study Materials. Reuses the same panel the
+          Manual Add / Bulk Paste forms already render, so both entry points
+          stay visually and behaviourally consistent. */}
+      {filterSubject !== 'All' && filterChapter !== 'All' && (
+        <StudyMaterialsRefPanel subject={filterSubject} chapter={filterChapter} onNavigate={onNavigate} />
       )}
 
       {/* Subject stat cards */}
@@ -1539,10 +1593,28 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
 
   const handleQuestionChange = (val) => {
     onChange(index, 'question', val)
-    if (row.subject && val.length > 20) {
-      const detected = detectSubsection(val, row.subject)
-      if (detected !== 'General' && !row.subsection) onChange(index, 'subsection', detected)
+    if (val.length > 20) {
+      // Chapter first (only if not already picked) — subsection detection
+      // downstream depends on subject, not chapter, so order here doesn't
+      // matter for that, but filling chapter first means a teacher who
+      // hasn't touched the chapter dropdown yet sees it populate as they type.
+      if (row.course && row.subject && !row.chapter) {
+        const detectedChapter = detectChapter(val, row.course, row.subject)
+        if (detectedChapter) onChange(index, 'chapter', detectedChapter)
+      }
+      if (row.subject) {
+        const detected = detectSubsection(val, row.subject)
+        if (detected !== 'General' && !row.subsection) onChange(index, 'subsection', detected)
+      }
     }
+  }
+
+  const handleAutoDetectChapter = () => {
+    if (!row.course || !row.subject) { showToast?.('Pick a course and subject first', C.amber); return }
+    if (!row.question || row.question.trim().length < 10) { showToast?.('Type the question first', C.amber); return }
+    const detected = detectChapter(row.question, row.course, row.subject)
+    if (detected) { onChange(index, 'chapter', detected); onChange(index, 'subsection', '') }
+    else showToast?.('Could not confidently match a chapter — pick manually', C.amber)
   }
 
   return (
@@ -1572,7 +1644,18 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
           </select>
         </div>
         <div>
-          <label style={lS}>Chapter *</label>
+          <label style={lS}>
+            Chapter *
+            <button type="button" onClick={handleAutoDetectChapter}
+              disabled={!row.course || !row.subject}
+              title="Guess the chapter from the question text"
+              style={{ marginLeft:6, fontSize:10, fontWeight:700, padding:'1px 6px', borderRadius:5,
+                border:'none', cursor:(!row.course || !row.subject) ? 'default' : 'pointer',
+                color: (!row.course || !row.subject) ? '#94a3b8' : '#7c3aed',
+                background: (!row.course || !row.subject) ? '#f1f5f9' : '#ede9fe' }}>
+              🪄 Auto-detect
+            </button>
+          </label>
           <select style={{ ...iS, opacity: row.subject?1:.5 }} value={row.chapter}
             onChange={e => { onChange(index,'chapter',e.target.value); onChange(index,'subsection','') }}
             disabled={!row.subject}>
@@ -1793,7 +1876,12 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
       ...q,
       course: bulkCourse || '',
       subject: bulkSubject || '',
-      chapter: bulkChapter || '',
+      // If the teacher pre-picked a chapter for the whole batch, every row
+      // uses it (existing behaviour, unchanged). Otherwise try to detect
+      // each row's chapter individually from its own question text — bulk
+      // pastes often mix chapters within one paste, so a single global
+      // pick isn't always right; per-row detection covers that case.
+      chapter: bulkChapter || (bulkCourse && bulkSubject ? (detectChapter(q.question, bulkCourse, bulkSubject) || '') : ''),
       subsection: q._subsectionHint
         ? q._subsectionHint
         : (bulkSubject ? detectSubsection(q.question, bulkSubject) : ''),
@@ -3198,7 +3286,74 @@ function TabSmartPPT({ questions, showToast }) {
 }
 
 
-function TabStats({ questions, refetch, showToast, isAdmin }) {
+// ── PATCH: per-subject stats card, extracted from TabStats' inline map ──────
+// Needs its own component (not an inline arrow inside .map()) so it can
+// call useMaterialCountsByChapter — a hook — once per subject without
+// breaking the rules of hooks. Shows the reciprocal of what
+// StudyMaterialsRefPanel does in TabBank: here, each chapter's question
+// count sits next to how many study materials exist for it, so gaps in
+// either direction (questions with no materials, or materials with no
+// questions) are visible at a glance instead of requiring a trip to the
+// other module.
+function SubjectStatsCard({ subj, chapData, chapters, countColor, countBg, countLabel, onNavigate }) {
+  const sc = SC[subj] || SC.Mathematics
+  const totalSubj = Object.values(chapData).reduce((a,b)=>a+b.total,0)
+  const { counts: materialCounts } = useMaterialCountsByChapter(subj)
+
+  return (
+    <div style={{ ...cardS, borderTop:`3px solid ${sc.color}` }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+        <div>
+          <div style={{ fontSize:15, fontWeight:800, color:sc.color }}>{subj}</div>
+          <div style={{ fontSize:12, color:C.slate }}>{totalSubj} total questions</div>
+        </div>
+        <Badge text={`${totalSubj} Q`} color={sc.color} bg={sc.bg} border={sc.border} />
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
+        {(chapters || []).map(ch => {
+          const chData = chapData[ch] || { total:0, subsections:{} }
+          const matCount = materialCounts[ch] || 0
+          return (
+            <div key={ch} style={{ padding:'10px 14px', borderRadius:8,
+              border:`1px solid ${C.border}`, background:'#fafafa' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6, gap:6 }}>
+                <span style={{ fontSize:12, fontWeight:600, color:'#1e293b', flex:1 }}>{ch}</span>
+                <span style={{ padding:'2px 8px', borderRadius:99, fontSize:11, fontWeight:700,
+                  color: countColor(chData.total), background: countBg(chData.total), whiteSpace:'nowrap' }}>
+                  {countLabel(chData.total)} {chData.total}
+                </span>
+                <span
+                  onClick={() => onNavigate?.('studymaterial')}
+                  title={matCount > 0 ? `${matCount} study material${matCount>1?'s':''} for this chapter — click to open` : 'No study materials yet for this chapter — click to add one'}
+                  style={{ padding:'2px 8px', borderRadius:99, fontSize:11, fontWeight:700, whiteSpace:'nowrap', cursor: onNavigate ? 'pointer' : 'default',
+                    color: matCount > 0 ? '#0369a1' : '#94a3b8', background: matCount > 0 ? '#e0f2fe' : '#f1f5f9' }}>
+                  📄 {matCount}
+                </span>
+              </div>
+              {Object.keys(chData.subsections).length > 0 && (
+                <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:4 }}>
+                  {Object.entries(chData.subsections).map(([ss,cnt]) => (
+                    <span key={ss} style={{ fontSize:10, padding:'2px 6px', borderRadius:4,
+                      background:'#f1f5f9', color:C.slate, border:`1px solid ${C.border}` }}>
+                      {ss}: {cnt}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {chData.total === 0 && (
+                <div style={{ fontSize:11, color:C.rose, marginTop:2 }}>
+                  Add questions via Manual Add or Bulk Paste
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function TabStats({ questions, refetch, showToast, isAdmin, onNavigate }) {
   const [filterCourse, setFilterCourse] = useState(COURSE_LIST[0] || '')
   const [filterSubject, setFilterSubject] = useState('All')
   const [deleteAllInput, setDeleteAllInput] = useState('')
@@ -3315,54 +3470,16 @@ function TabStats({ questions, refetch, showToast, isAdmin }) {
           <span>✅ 20+ Good</span><span>⚠️ 10–19 Low</span><span>❌ 0–9 Empty</span>
         </div>
       </div>
-      {subjects.map(subj => {
-        const sc = SC[subj] || SC.Mathematics
-        const chapData = stats[subj] || {}
-        const totalSubj = Object.values(chapData).reduce((a,b)=>a+b.total,0)
-        return (
-          <div key={subj} style={{ ...cardS, borderTop:`3px solid ${sc.color}` }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
-              <div>
-                <div style={{ fontSize:15, fontWeight:800, color:sc.color }}>{subj}</div>
-                <div style={{ fontSize:12, color:C.slate }}>{totalSubj} total questions</div>
-              </div>
-              <Badge text={`${totalSubj} Q`} color={sc.color} bg={sc.bg} border={sc.border} />
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
-              {(courseSubjects[subj] || []).map(ch => {
-                const chData = chapData[ch] || { total:0, subsections:{} }
-                return (
-                  <div key={ch} style={{ padding:'10px 14px', borderRadius:8,
-                    border:`1px solid ${C.border}`, background:'#fafafa' }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
-                      <span style={{ fontSize:12, fontWeight:600, color:'#1e293b' }}>{ch}</span>
-                      <span style={{ padding:'2px 8px', borderRadius:99, fontSize:11, fontWeight:700,
-                        color: countColor(chData.total), background: countBg(chData.total) }}>
-                        {countLabel(chData.total)} {chData.total}
-                      </span>
-                    </div>
-                    {Object.keys(chData.subsections).length > 0 && (
-                      <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:4 }}>
-                        {Object.entries(chData.subsections).map(([ss,cnt]) => (
-                          <span key={ss} style={{ fontSize:10, padding:'2px 6px', borderRadius:4,
-                            background:'#f1f5f9', color:C.slate, border:`1px solid ${C.border}` }}>
-                            {ss}: {cnt}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {chData.total === 0 && (
-                      <div style={{ fontSize:11, color:C.rose, marginTop:2 }}>
-                        Add questions via Manual Add or Bulk Paste
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })}
+      {subjects.map(subj => (
+        <SubjectStatsCard
+          key={subj}
+          subj={subj}
+          chapData={stats[subj] || {}}
+          chapters={courseSubjects[subj]}
+          countColor={countColor} countBg={countBg} countLabel={countLabel}
+          onNavigate={onNavigate}
+        />
+      ))}
 
       {isAdmin && (
         <div style={{ ...cardS, marginTop:24, border:'2px solid #fecaca', background:'#fef2f2' }}>
@@ -3554,13 +3671,13 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
         ))}
       </div>
 
-      {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} initialFilter={initialFilter} isAdmin={isAdmin} />}
+      {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} initialFilter={initialFilter} isAdmin={isAdmin} onNavigate={onNavigate} />}
       {tab === 'manual' && <TabManualAdd questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'bulk'   && <TabBulkPaste questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {isAdmin && tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'smartppt' && <TabSmartPPT questions={questions} showToast={showToast} />}
-      {isAdmin && tab === 'stats'  && <TabStats  questions={questions} refetch={refetch} showToast={showToast} isAdmin={isAdmin} />}
+      {isAdmin && tab === 'stats'  && <TabStats  questions={questions} refetch={refetch} showToast={showToast} isAdmin={isAdmin} onNavigate={onNavigate} />}
     </div>
   )
 }

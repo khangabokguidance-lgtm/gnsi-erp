@@ -3,7 +3,7 @@
 // Import these hooks in any module that needs cross-module data.
 //
 // USAGE:
-//   import { useQBankCountsByChapter, useStudyMaterialsByChapter, useTeachingLogsByChapter } from './StudyMaterialBridge'
+//   import { useQBankCountsByChapter, useStudyMaterialsByChapter, useMaterialCountsByChapter, useTeachingLogsByChapter } from './StudyMaterialBridge'
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
@@ -119,6 +119,52 @@ export function useStudyMaterialsByChapter(subject, chapter) {
   }, [fetch])
 
   return { materials, loading, refetch: fetch }
+}
+
+// ── HOOK: Study material counts by chapter (bulk) ─────────────────────────────
+// Returns: { counts: { [chapter]: number }, loading, refetch }
+// Bulk counterpart to useStudyMaterialsByChapter — one query per subject
+// instead of per chapter, so a chapter-list render loop (e.g. QuestionBank's
+// Stats tab) can show a materials count next to each chapter's question
+// count without calling a per-chapter hook inside a .map() (which would
+// break the rules of hooks). Mirrors useQBankCountsByChapter's shape
+// exactly so both "N questions" and "N materials" badges can sit side by
+// side using the same counts[chapter] pattern.
+export function useMaterialCountsByChapter(subject) {
+  const [counts,  setCounts]  = useState({})
+  const [loading, setLoading] = useState(false)
+
+  const fetch = useCallback(async () => {
+    if (!subject) { setCounts({}); return }
+    setLoading(true)
+    // Match across all subject-name variants, same as useStudyMaterialsByChapter,
+    // since study_materials is keyed by each module's own rich subject names
+    // (English Language, Arithmetic, etc.) rather than QBank's four buckets.
+    const subjectVariants = Object.entries(SUBJECT_TO_QBANK)
+      .filter(([, v]) => v === normalizeToQBank(subject))
+      .map(([k]) => k)
+    const uniqueVariants = [...new Set([subject, ...subjectVariants])]
+
+    const { data, error } = await supabase
+      .from('study_materials')
+      .select('chapter')
+      .in('subject', uniqueVariants)
+    if (!error && data) {
+      const map = {}
+      data.forEach(r => { if (r.chapter) map[r.chapter] = (map[r.chapter] || 0) + 1 })
+      setCounts(map)
+    }
+    setLoading(false)
+  }, [subject])
+
+  useEffect(() => { fetch() }, [fetch])
+
+  useEffect(() => {
+    const unsub = EventBus.on(GNSI_EVENTS.MATERIAL_SAVED, fetch)
+    return unsub
+  }, [fetch])
+
+  return { counts, loading, refetch: fetch }
 }
 
 // ── HOOK: Teaching log counts by chapter ──────────────────────────────────────
