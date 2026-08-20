@@ -461,6 +461,12 @@ function buildQuestionSlides(questions) {
     id: q.id,
     title: q.question,
     title_mayek: q.question_mayek || '',
+    // Carried through from the source question row so SlideViewer (and any
+    // other consumer of this slide shape) can pick the right font via
+    // mayekFontFamily — without this, BMEI04-transliterated text always
+    // fell back to the Noto Sans Meetei Mayek font, which shows the raw
+    // Latin transliteration instead of Meetei Mayek script.
+    title_mayek_font: q.question_mayek_font || '',
     options: ['A','B','C','D'].map(l => ({ letter: l, text: q[`option_${l.toLowerCase()}`] || '' })),
     correct_option: q.correct_option,
     diagram_url: q.diagram_url || '',
@@ -758,7 +764,7 @@ function SlideViewer({ slides, title, subject, chapter, onClose, showToast }) {
           {slide.title}
         </div>
         {slide.title_mayek && (
-          <div style={{ fontSize:'clamp(16px,1.9vw,24px)', color:'#cbd5e1', maxWidth:1000, marginTop:16, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+          <div style={{ fontSize:'clamp(16px,1.9vw,24px)', color:'#cbd5e1', maxWidth:1000, marginTop:16, fontFamily:mayekFontFamily(slide.title_mayek_font) }}>
             {slide.title_mayek}
           </div>
         )}
@@ -1231,7 +1237,7 @@ function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onD
                 {q[`option_${l.toLowerCase()}`] || '—'}
                 {reveal && q.correct_option===l && ' ✓'}
                 {q[`option_${l.toLowerCase()}_mayek`] && (
-                  <div style={{ fontFamily:"'Noto Sans Meetei Mayek', sans-serif", fontWeight:400, marginTop:2 }}>
+                  <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font), fontWeight:400, marginTop:2 }}>
                     {q[`option_${l.toLowerCase()}_mayek`]}
                   </div>
                 )}
@@ -1690,7 +1696,7 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
               value={row[`option_${l.toLowerCase()}`] || ''}
               onChange={e => onChange(index, `option_${l.toLowerCase()}`, e.target.value)}
               placeholder={`Option ${l}`} />
-            <input style={{ ...iS, marginTop:4, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}
+            <input style={{ ...iS, marginTop:4, fontFamily:mayekFontFamily(row.question_mayek_font) }}
               value={row[`option_${l.toLowerCase()}_mayek`] || ''}
               onChange={e => onChange(index, `option_${l.toLowerCase()}_mayek`, e.target.value)}
               placeholder={`Option ${l} (Meitei Mayek, optional)`} />
@@ -2193,7 +2199,7 @@ Answer: B`} />
                     {q[`option_${l.toLowerCase()}`] || '—'}
                     {q.correct_option===l && ' ✓'}
                     {q[`option_${l.toLowerCase()}_mayek`] && (
-                      <div style={{ fontFamily:"'Noto Sans Meetei Mayek', sans-serif", marginTop:2 }}>
+                      <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font), marginTop:2 }}>
                         {q[`option_${l.toLowerCase()}_mayek`]}
                       </div>
                     )}
@@ -2756,7 +2762,7 @@ function TabPaper({ questions, showToast }) {
                       {q[`option_${l.toLowerCase()}`]||'—'}
                       {withAnswers && q.correct_option===l && <span style={{ color:C.green, marginLeft:6, fontWeight:700 }}>✓</span>}
                       {q[`option_${l.toLowerCase()}_mayek`] && (
-                        <div style={{ fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+                        <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font) }}>
                           {q[`option_${l.toLowerCase()}_mayek`]}
                         </div>
                       )}
@@ -2818,7 +2824,7 @@ function CastQuestionOverlay({ questions, index, onIndexChange, onClose }) {
           {q.question}
         </div>
         {q.question_mayek && (
-          <div style={{ fontSize:'clamp(18px, 2.4vw, 28px)', color:'#cbd5e1', textAlign:'center', maxWidth:1000, marginTop:20, fontFamily:"'Noto Sans Meetei Mayek', sans-serif" }}>
+          <div style={{ fontSize:'clamp(18px, 2.4vw, 28px)', color:'#cbd5e1', textAlign:'center', maxWidth:1000, marginTop:20, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
             {q.question_mayek}
           </div>
         )}
@@ -3049,7 +3055,7 @@ function TabTest({ questions, showToast }) {
                   <div>
                     {q[`option_${l.toLowerCase()}`]||'—'}
                     {q[`option_${l.toLowerCase()}_mayek`] && (
-                      <div style={{ fontFamily:"'Noto Sans Meetei Mayek', sans-serif", fontSize:12 }}>
+                      <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font), fontSize:12 }}>
                         {q[`option_${l.toLowerCase()}_mayek`]}
                       </div>
                     )}

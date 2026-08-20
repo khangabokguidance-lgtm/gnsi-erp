@@ -9,16 +9,17 @@ import { normalizeToQBank } from './StudyMaterialBridge'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
-const COURSES = ['sainik', 'navodaya', 'foundation']
-const COURSE_LABELS = { sainik: 'Sainik School', navodaya: 'Navodaya', foundation: 'Foundation' }
-const COURSE_COLORS = { sainik: '#16a34a', navodaya: '#2563eb', foundation: '#d97706' }
-const COURSE_BG     = { sainik: '#dcfce7', navodaya: '#dbeafe', foundation: '#fef9c3' }
-const COURSE_TEXT   = { sainik: '#15803d', navodaya: '#1d4ed8', foundation: '#b45309' }
+const COURSES = ['sainik', 'navodaya', 'foundation', 'rms']
+const COURSE_LABELS = { sainik: 'Sainik School', navodaya: 'Navodaya', foundation: 'Foundation', rms: 'RMS' }
+const COURSE_COLORS = { sainik: '#16a34a', navodaya: '#2563eb', foundation: '#d97706', rms: '#be123c' }
+const COURSE_BG     = { sainik: '#dcfce7', navodaya: '#dbeafe', foundation: '#fef9c3', rms: '#ffe4e6' }
+const COURSE_TEXT   = { sainik: '#15803d', navodaya: '#1d4ed8', foundation: '#b45309', rms: '#9f1239' }
 
 const SUBJECTS = {
   sainik: ['Mathematics','Intelligence','English Language','General Knowledge','Social Studies'],
   navodaya: ['Mental Ability','Environmental Studies (EVS)','Arithmetic','English Language','Hindi Language'],
   foundation: ['Mathematics','Science','English','Social Science','Hindi'],
+  rms: ['Mathematics','Intelligence','English Language','General Knowledge','Social Science'],
 }
 
 const MATERIAL_TYPES = [

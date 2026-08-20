@@ -52,6 +52,27 @@ const BASE_COURSES = {
       Hindi: { icon: '📙', chapters: ['Gadhya Bodh','Padhya Bodh','Vyakaran — Sangya, Sarvanam','Visheshan and Kriya','Kal aur Vachya','Sandhi aur Samas','Muhavare aur Lokokti','Patra Lekhan','Nibandh Lekhan','Anuchhed Lekhan'] },
     },
   },
+  rms: {
+    label: 'Rashtriya Military School', short: 'RMS CET', exam: 'RMS CET · Class 6 & 9',
+    color: '#be123c', bg: '#ffe4e6', border: '#fda4af', text: '#9f1239',
+    FILE_BUCKET: 'study-materials-rms',
+    // Chapter data ported from QuestionBank.jsx's COURSES.rms — RMS CET
+    // Class 6 + Class 9 (Paper-I) syllabus, Class 6 based on CBSE Class 5,
+    // Class 9 Paper-I on CBSE Class 8, combined into one course-wide
+    // chapter list per subject (same pattern the other three courses use
+    // here rather than splitting by admission class). Subject key uses
+    // 'English Language' to match this file's existing Sainik/Navodaya
+    // naming convention (QuestionBank.jsx uses the bare 'Language'/
+    // 'English Language' names per-course — StudyMaterialBridge.js's
+    // SUBJECT_TO_QBANK map normalizes between the two vocabularies).
+    subjects: {
+      Mathematics: { icon: '📐', chapters: ['Whole Numbers','Natural Numbers','Playing with Numbers','Square Root and Cube Root','Unitary Method','Percentage','Time and Work','Profit and Loss','Simple Interest','Arithmetic Mean','Decimals and Fractions','Ratio and Proportion','Roman Numerals','Algebra','Place Value and Face Value','Temperature Measurement','Area and Volume','Volume of Cube and Cuboid','Area of Circle','Classification of Angles','Angles, Triangles and Circles','Triangles, Quadrilaterals and Polygons','Conversion of Units of Area and Volume','Angle Sum Property','Distance and Displacement','Geometry'] },
+      Intelligence: { icon: '🧠', chapters: ['Blood Relation','Analogy','Classification (Odd Man Out)','Series','Coding-Decoding','Inserting Numbers','Puzzle','Decision Making','Non-Verbal Reasoning'] },
+      'English Language': { icon: '📗', chapters: ['Antonyms','Synonyms','Prepositions','Composition','Framing Questions','Articles','Comprehension Passages','Affirmative and Interrogative Sentences','Fill in the Blanks','Spelling Check','Para Jumbled','Construction of Sentences','Error Correction','Grammatical Structure','Vocabulary','Homonyms','One Word Substitution','Grammar — Verb, Adjective, Noun, Pronoun, Gender'] },
+      'General Knowledge': { icon: '🌍', chapters: ['History','Geography','Indian Polity','Sports','Awards','Science and Health','Committee and Commission','States of India','Our Defence Forces','Atomic Power Stations in India','Classical Dances of India','Books and Authors','International Organizations','Environment and Pollution','General Science','Countries, Capitals and Currencies','National Parks and Wildlife Sanctuaries in India','Union Territories','Famous Rivers'] },
+      'Social Science': { icon: '🗺️', chapters: ['General (NCERT Class 8 basis)'] },
+    },
+  },
 }
 
 const MATERIAL_TYPES = [

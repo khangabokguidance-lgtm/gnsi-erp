@@ -99,6 +99,23 @@ const BASE_COURSES = {
       Hindi: { icon: '📙', chapters: ['Gadhya Bodh','Padhya Bodh','Vyakaran — Sangya, Sarvanam','Visheshan and Kriya','Kal aur Vachya','Sandhi aur Samas','Muhavare aur Lokokti','Patra Lekhan','Nibandh Lekhan','Anuchhed Lekhan'] },
     },
   },
+  rms: {
+    label: 'Rashtriya Military School', short: 'RMS CET', exam: 'RMS CET · Class 6 & 9',
+    color: '#be123c', bg: '#ffe4e6', border: '#fda4af', text: '#9f1239',
+    // Chapter data ported from QuestionBank.jsx's COURSES.rms — RMS CET
+    // Class 6 + Class 9 (Paper-I) syllabus, Class 6 based on CBSE Class 5,
+    // Class 9 Paper-I on CBSE Class 8, combined into one course-wide
+    // chapter list per subject (same pattern the other three courses use
+    // here rather than splitting by admission class). Kept in sync with
+    // StudyMaterial.jsx's own rms block.
+    subjects: {
+      Mathematics: { icon: '📐', chapters: ['Whole Numbers','Natural Numbers','Playing with Numbers','Square Root and Cube Root','Unitary Method','Percentage','Time and Work','Profit and Loss','Simple Interest','Arithmetic Mean','Decimals and Fractions','Ratio and Proportion','Roman Numerals','Algebra','Place Value and Face Value','Temperature Measurement','Area and Volume','Volume of Cube and Cuboid','Area of Circle','Classification of Angles','Angles, Triangles and Circles','Triangles, Quadrilaterals and Polygons','Conversion of Units of Area and Volume','Angle Sum Property','Distance and Displacement','Geometry'] },
+      Intelligence: { icon: '🧠', chapters: ['Blood Relation','Analogy','Classification (Odd Man Out)','Series','Coding-Decoding','Inserting Numbers','Puzzle','Decision Making','Non-Verbal Reasoning'] },
+      'English Language': { icon: '📗', chapters: ['Antonyms','Synonyms','Prepositions','Composition','Framing Questions','Articles','Comprehension Passages','Affirmative and Interrogative Sentences','Fill in the Blanks','Spelling Check','Para Jumbled','Construction of Sentences','Error Correction','Grammatical Structure','Vocabulary','Homonyms','One Word Substitution','Grammar — Verb, Adjective, Noun, Pronoun, Gender'] },
+      'General Knowledge': { icon: '🌍', chapters: ['History','Geography','Indian Polity','Sports','Awards','Science and Health','Committee and Commission','States of India','Our Defence Forces','Atomic Power Stations in India','Classical Dances of India','Books and Authors','International Organizations','Environment and Pollution','General Science','Countries, Capitals and Currencies','National Parks and Wildlife Sanctuaries in India','Union Territories','Famous Rivers'] },
+      'Social Science': { icon: '🗺️', chapters: ['General (NCERT Class 8 basis)'] },
+    },
+  },
 }
 
 const C = {
@@ -137,6 +154,24 @@ function ViewOnlyQCard({ q, index, subjectColor }) {
   const [reveal, setReveal] = useState(false)
   return (
     <div style={{ ...cardS, marginBottom: 8, padding: '12px 16px' }}>
+      {/* Printed copies always show the correct answer highlighted,
+          independent of the on-screen reveal toggle — a printout is a
+          reference/answer-key artifact, not an interactive quiz, so there's
+          no reason to print a blank options grid just because nobody had
+          clicked Show Answer on screen first. .qbv-correct-opt is the hook
+          this print rule targets; qbv-answer-mark is hidden on screen when
+          not revealed and forced visible in print. */}
+      <style>{`
+        @media print {
+          .qbv-correct-opt {
+            background: #dcfce7 !important;
+            border-color: #86efac !important;
+            color: #15803d !important;
+            font-weight: 700 !important;
+          }
+          .qbv-answer-mark { display: inline !important; }
+        }
+      `}</style>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 7, alignItems: 'center' }}>
         <span style={{ fontSize: 11, color: C.slate, fontWeight: 700 }}>Q{index + 1}</span>
         {q.subsection && <Badge text={q.subsection} color="#0369a1" bg="#e0f2fe" />}
@@ -160,14 +195,17 @@ function ViewOnlyQCard({ q, index, subjectColor }) {
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginBottom: 8 }}>
         {['A', 'B', 'C', 'D'].map(l => (
-          <div key={l} style={{ padding: '5px 10px', borderRadius: 6, fontSize: 12,
+          <div key={l} className={q.correct_option === l ? 'qbv-correct-opt' : ''}
+            style={{ padding: '5px 10px', borderRadius: 6, fontSize: 12,
             background: reveal && q.correct_option === l ? '#dcfce7' : '#f8fafc',
             border: `1px solid ${reveal && q.correct_option === l ? '#86efac' : C.border}`,
             color: reveal && q.correct_option === l ? '#15803d' : '#374151',
             fontWeight: reveal && q.correct_option === l ? 700 : 400 }}>
             <span style={{ fontWeight: 700, marginRight: 5, color: C.slate }}>{l}.</span>
             {q[`option_${l.toLowerCase()}`] || '—'}
-            {reveal && q.correct_option === l && ' ✓'}
+            {q.correct_option === l && (
+              <span className="qbv-answer-mark" style={{ display: reveal ? 'inline' : 'none' }}> ✓</span>
+            )}
             {q[`option_${l.toLowerCase()}_mayek`] && (
               <div style={{ fontFamily: mayekFontFamily(q.question_mayek_font), fontWeight: 400, marginTop: 2 }}>
                 {q[`option_${l.toLowerCase()}_mayek`]}
@@ -176,7 +214,7 @@ function ViewOnlyQCard({ q, index, subjectColor }) {
           </div>
         ))}
       </div>
-      <button onClick={() => setReveal(r => !r)} style={btnSm(reveal ? C.slate : subjectColor)}>
+      <button onClick={() => setReveal(r => !r)} className="qbv-no-print" style={btnSm(reveal ? C.slate : subjectColor)}>
         {reveal ? '🙈 Hide Answer' : '👁 Show Answer'}
       </button>
     </div>
@@ -218,6 +256,15 @@ function ChapterList({ chapters, activeChapter, onSelect, countsByChapter }) {
 }
 
 export default function QuestionBankViewer({ currentUser, onNavigate }) {
+  // Same convention as QuestionBank.jsx: role is stored lowercase as
+  // literal 'admin' — Computer Staffs (who also pass isStaffAllowed at the
+  // StudyMaterial.jsx call site) get the read-only preview but not the
+  // print/export action, since printing/distributing question papers is
+  // treated as an admin-level action here, distinct from just viewing
+  // what's in the bank.
+  const roleLower = (currentUser?.role || '').toLowerCase()
+  const isAdmin = roleLower === 'admin'
+
   const [activeCourse, setActiveCourse] = useState('sainik')
   const [activeSubject, setActiveSubject] = useState(null)
   const [activeChapter, setActiveChapter] = useState(null)
@@ -370,7 +417,23 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
         </div>
 
         <div>
-          <div style={{ ...cardS, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* Print-only styles: hides everything except the active
+              question list when printing, and undoes the on-screen
+              answer-hidden/reveal toggle so a printed copy always shows
+              full options (never mid-interaction reveal state, and never
+              blank if nobody had clicked Show Answer). Scoped to this
+              component's own print root via .qbv-print-root so it doesn't
+              affect printing elsewhere in the portal. */}
+          <style>{`
+            @media print {
+              body * { visibility: hidden; }
+              .qbv-print-root, .qbv-print-root * { visibility: visible; }
+              .qbv-print-root { position: absolute; left: 0; top: 0; width: 100%; }
+              .qbv-no-print { display: none !important; }
+            }
+          `}</style>
+
+          <div style={{ ...cardS, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }} className="qbv-no-print">
             <input style={{ ...iS, flex: 1, minWidth: 180 }} placeholder="Search this chapter's questions…"
               value={search} onChange={e => setSearch(e.target.value)} />
             <select style={{ ...iS, width: 'auto' }} value={difficultyFilter} onChange={e => setDifficultyFilter(e.target.value)}>
@@ -379,7 +442,29 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
               <option value="Medium">Medium</option>
               <option value="Hard">Hard</option>
             </select>
+            {isAdmin ? (
+              <button
+                onClick={() => window.print()}
+                disabled={!activeChapter || !chapterQuestions.length}
+                title={!activeChapter ? 'Select a chapter first' : 'Print this chapter\'s questions'}
+                style={{
+                  padding: '8px 14px', borderRadius: 7, border: 'none', fontSize: 12.5, fontWeight: 700,
+                  cursor: (!activeChapter || !chapterQuestions.length) ? 'default' : 'pointer',
+                  color: (!activeChapter || !chapterQuestions.length) ? '#94a3b8' : '#fff',
+                  background: (!activeChapter || !chapterQuestions.length) ? '#f1f5f9' : courseData.color,
+                }}>
+                🖨️ Print Chapter
+              </button>
+            ) : (
+              <span
+                title="Question Bank is preview-only for your account — printing is available to admin accounts"
+                style={{ padding: '5px 12px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: '#64748b', background: '#f1f5f9', border: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>
+                👁 Preview only
+              </span>
+            )}
           </div>
+
+          <div className="qbv-print-root">
 
           {!activeChapter ? (
             <div style={{ ...cardS, textAlign: 'center', padding: 32, color: '#94a3b8' }}>Select a chapter to view its questions.</div>
@@ -391,7 +476,16 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
             </div>
           ) : (
             <>
-              <div style={{ fontSize: 12, color: C.slate, marginBottom: 8, fontWeight: 600 }}>
+              {/* Print-only heading — the on-screen title line below is
+                  hidden via qbv-no-print when printing, since a printed
+                  page needs a clear letterhead-style title rather than the
+                  small in-app label. */}
+              <div className="qbv-print-only" style={{ display: 'none' }}>
+                <style>{`@media print { .qbv-print-only { display: block !important; margin-bottom: 14px; } }`}</style>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{courseData.label} — {activeSubject}</div>
+                <div style={{ fontSize: 13, color: '#475569', marginTop: 2 }}>{activeChapter} · {chapterQuestions.length} question{chapterQuestions.length !== 1 ? 's' : ''}</div>
+              </div>
+              <div className="qbv-no-print" style={{ fontSize: 12, color: C.slate, marginBottom: 8, fontWeight: 600 }}>
                 {chapterQuestions.length} question{chapterQuestions.length !== 1 ? 's' : ''} — {activeSubject} › {activeChapter}
               </div>
               {chapterQuestions.map((q, i) => (
@@ -399,6 +493,7 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
               ))}
             </>
           )}
+          </div>
         </div>
       </div>
     </div>
