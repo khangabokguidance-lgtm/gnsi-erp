@@ -663,6 +663,9 @@ function BulkPasteModal({ course, subject, chapter, onClose, onSaved, showToast 
     const rows = toSave.map(it => ({ course, subject: it.subject || subject, chapter: it.chapter || chapter || '', title: it.title, material_type: it.material_type || 'notes', description: it.description || '', file_url: it.file_url || '', file_name: '', file_size: 0 }))
     const { error } = await supabase.from('study_materials').insert(rows)
     if (error) { showToast('Save failed: ' + error.message, C.rose); setSaving(false); return }
+    // Cross-module signal: QuestionBank's useStudyMaterialsByChapter listens
+    // for this to refresh its reference-materials panel without a remount.
+    EventBus.emit(GNSI_EVENTS.MATERIAL_SAVED, { course, subject, chapter, count: rows.length })
     showToast(`✅ ${rows.length} material${rows.length > 1 ? 's' : ''} saved!`, C.green)
     setSaving(false); onSaved(); onClose()
   }
@@ -759,6 +762,9 @@ function MaterialCard({ mat, onDelete, showToast, isAdmin }) {
     if (mat.file_name) await supabase.storage.from(bucket).remove([mat.file_name])
     const { error } = await supabase.from('study_materials').delete().eq('id', mat.id)
     if (error) { showToast('Delete failed', C.rose); setDeleting(false); return }
+    // Same signal as save — a delete also changes what QuestionBank's
+    // reference-materials panel should show for this chapter.
+    EventBus.emit(GNSI_EVENTS.MATERIAL_SAVED, { course: mat.course, subject: mat.subject, chapter: mat.chapter })
     showToast('Deleted ✓', C.rose); onDelete()
   }
 

@@ -42,11 +42,16 @@ const BASE_COURSES = {
   navodaya: {
     label: 'Navodaya Vidyalaya', short: 'JNVST', exam: 'JNVST · Class 6 & 9',
     color: '#2563eb', bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8',
+    // Updated to JNVST 2027 pattern (NVS Final Prospectus): Section 1 is now
+    // MAT (20Q) + Environmental Studies (20Q, new subject) — see EVS entry
+    // below. Language Test is comprehension-only (4 passages x 5 questions),
+    // no standalone grammar items. Kept in sync with QuestionBank.jsx COURSES.navodaya.
     subjects: {
-      'Mental Ability': { icon: '🧩', chapters: ['Odd One Out','Figure Series','Pattern Completion','Analogy','Geometrical Figure Completion','Mirror Image','Punched Hole Paper Folding','Space Visualisation','Embedded Figures','Coding-Decoding','Arithmetic Operations in Figures','Series','Direction Sense','Clock'] },
-      Arithmetic: { icon: '🔢', chapters: ['Natural Numbers','LCM and HCF','Fractions','Decimals','Simplification','Percentage','Ratio and Proportion','Average','Profit and Loss','Simple Interest','Area and Perimeter','Volume','Speed and Distance','Unitary Method','Roman Numerals','Number System','Conversion of Units','Word Problems'] },
-      'English Language': { icon: '📗', chapters: ['Reading Comprehension','Fill in the Blanks','Sentence Arrangement','Synonyms','Antonyms','One-word Substitution','Correct Spelling','Phrase Meaning','Grammar Usage','Tenses','Articles'] },
-      'Hindi Language': { icon: '📕', chapters: ['Gadhyansh Bodh','Vakya Purti','Paryayvachi Shabd','Vilom Shabd','Shuddh Vartani','Muhavare aur Lokokti','Sandhi','Samas','Anekarthi Shabd','Vakya Nirman'] },
+      'Mental Ability': { icon: '🧩', chapters: ['Pattern Completion','Figure Series Completion','Geometrical Figure Completion','Mirror Image','Water Image','Embedded Figures'] },
+      'Environmental Studies (EVS)': { icon: '🌱', chapters: ['Transportation','Rivers and Mountains','Plants and Animals — Land and Water','Natural Disasters','Types of Houses and Shelters','Water Cycle','Food and Nutrients','Hygiene and Cleanliness','Super Senses of Animals','Digestive System','Circulatory System','Respiratory System','Food Preservation Methods','Water and Air Pollution','Conservation of Water and Soil','Environmental Protection','Superlatives of India','States and Capitals','National Symbols of India','Landscapes of India','Festivals of India','Seasons','Forests','Crops and Agriculture','Clothes and Fibres'] },
+      Arithmetic: { icon: '🔢', chapters: ['Number System — Place Value and Face Value','Ascending and Descending Order','Four Fundamental Operations','Factors and Multiples','LCM and HCF','Prime Factorization','Fractions — Addition and Subtraction of Like Fractions','Multiplication of Fractions','Measurement — Length, Mass, Capacity, Time, Money','Conversion of Units','Simplification (BODMAS)','Perimeter of Polygon','Area of Square, Rectangle and Triangle','Types of Angles','Directions and Basic Mapping','Data Handling — Bar Diagrams, Tables and Pictographs','Averages'] },
+      'English Language': { icon: '📗', chapters: ['Reading Comprehension — Direct Questions','Synonyms in Context','Antonyms in Context','Inference from Passage','Cause and Effect in Passage'] },
+      'Hindi Language': { icon: '📕', chapters: ['Gadhyansh Bodh','Paryayvachi Shabd','Vilom Shabd','Bhavarth aur Nishkarsh','Karan aur Prabhav'] },
     },
   },
   foundation: {

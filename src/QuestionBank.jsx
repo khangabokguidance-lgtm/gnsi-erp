@@ -117,25 +117,45 @@ const COURSES = {
   },
   navodaya: {
     label: 'Navodaya Vidyalaya', short: 'JNVST',
+    // Updated to the JNVST 2027 Final Prospectus pattern (NVS). Section 1
+    // is now Mental Ability Test (20Q) + Environmental Studies (20Q, new —
+    // EVS was not part of the exam in earlier years). Section 2 Arithmetic
+    // and Section 3 Language remain, but Language is comprehension-only in
+    // the current pattern (4 passages x 5 questions each) — no standalone
+    // grammar/vocabulary items outside passage context, so the old
+    // grammar-heavy topic list has been replaced. Hindi Language kept as a
+    // separate chapter list since the Language Test is offered in the
+    // candidate's chosen medium (English/Hindi/regional) and Hindi-medium
+    // question entry still benefits from its own grammar topic set.
     subjects: {
       'Mental Ability': [
-        'Odd One Out','Figure Series','Pattern Completion','Analogy','Geometrical Figure Completion',
-        'Mirror Image','Punched Hole Paper Folding','Space Visualisation','Embedded Figures',
-        'Coding-Decoding','Arithmetic Operations in Figures','Series','Direction Sense','Clock',
+        'Pattern Completion','Figure Series Completion','Geometrical Figure Completion',
+        'Mirror Image','Water Image','Embedded Figures',
+      ],
+      'Environmental Studies (EVS)': [
+        'Transportation','Rivers and Mountains','Plants and Animals — Land and Water',
+        'Natural Disasters','Types of Houses and Shelters','Water Cycle',
+        'Food and Nutrients','Hygiene and Cleanliness','Super Senses of Animals',
+        'Digestive System','Circulatory System','Respiratory System',
+        'Food Preservation Methods','Water and Air Pollution','Conservation of Water and Soil',
+        'Environmental Protection','Superlatives of India','States and Capitals',
+        'National Symbols of India','Landscapes of India','Festivals of India',
+        'Seasons','Forests','Crops and Agriculture','Clothes and Fibres',
       ],
       Arithmetic: [
-        'Natural Numbers','LCM and HCF','Fractions','Decimals','Simplification','Percentage',
-        'Ratio and Proportion','Average','Profit and Loss','Simple Interest','Area and Perimeter',
-        'Volume','Speed and Distance','Unitary Method','Roman Numerals','Number System',
-        'Conversion of Units','Word Problems',
+        'Number System — Place Value and Face Value','Ascending and Descending Order',
+        'Four Fundamental Operations','Factors and Multiples','LCM and HCF','Prime Factorization',
+        'Fractions — Addition and Subtraction of Like Fractions','Multiplication of Fractions',
+        'Measurement — Length, Mass, Capacity, Time, Money','Conversion of Units','Simplification (BODMAS)',
+        'Perimeter of Polygon','Area of Square, Rectangle and Triangle','Types of Angles',
+        'Directions and Basic Mapping','Data Handling — Bar Diagrams, Tables and Pictographs','Averages',
       ],
       'English Language': [
-        'Reading Comprehension','Fill in the Blanks','Sentence Arrangement','Synonyms','Antonyms',
-        'One-word Substitution','Correct Spelling','Phrase Meaning','Grammar Usage','Tenses','Articles',
+        'Reading Comprehension — Direct Questions','Synonyms in Context','Antonyms in Context',
+        'Inference from Passage','Cause and Effect in Passage',
       ],
       'Hindi Language': [
-        'Gadhyansh Bodh','Vakya Purti','Paryayvachi Shabd','Vilom Shabd','Shuddh Vartani',
-        'Muhavare aur Lokokti','Sandhi','Samas','Anekarthi Shabd','Vakya Nirman',
+        'Gadhyansh Bodh','Paryayvachi Shabd','Vilom Shabd','Bhavarth aur Nishkarsh','Karan aur Prabhav',
       ],
     },
   },

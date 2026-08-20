@@ -17,7 +17,7 @@ const COURSE_TEXT   = { sainik: '#15803d', navodaya: '#1d4ed8', foundation: '#b4
 
 const SUBJECTS = {
   sainik: ['Mathematics','Intelligence','English Language','General Knowledge','Social Studies'],
-  navodaya: ['Mental Ability','Arithmetic','English Language','Hindi Language'],
+  navodaya: ['Mental Ability','Environmental Studies (EVS)','Arithmetic','English Language','Hindi Language'],
   foundation: ['Mathematics','Science','English','Social Science','Hindi'],
 }
 

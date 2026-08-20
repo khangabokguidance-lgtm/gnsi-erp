@@ -34,6 +34,8 @@ export const SUBJECT_TO_QBANK = {
   'Science':             'General Knowledge',
   'Social Science':      'General Knowledge',
   'Social Studies':      'General Knowledge',
+  // Navodaya — EVS added to JNVST 2027 pattern (Section 1: MAT + EVS)
+  'Environmental Studies (EVS)': 'General Knowledge',
 }
 
 // Reverse: QBank subject → display subjects (for filtering)
@@ -41,7 +43,7 @@ export const QBANK_TO_SUBJECTS = {
   'Mathematics':       ['Mathematics', 'Arithmetic'],
   'Intelligence':      ['Intelligence', 'Mental Ability'],
   'Language':          ['English Language', 'Hindi Language', 'English', 'Hindi', 'Language'],
-  'General Knowledge': ['General Knowledge', 'Science', 'Social Science', 'Social Studies'],
+  'General Knowledge': ['General Knowledge', 'Science', 'Social Science', 'Social Studies', 'Environmental Studies (EVS)'],
 }
 
 export function normalizeToQBank(subject) {
