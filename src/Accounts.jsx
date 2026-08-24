@@ -228,6 +228,9 @@ function Accounts({role,userId}){
   // tabs
   const [activeTab, setActiveTab] = useState('analytics')
 
+  // stat cards (Total Income / Expense / Net / Transactions / Pending) — hidden by default
+  const [showStatCards, setShowStatCards] = useState(false)
+
   // form
   const [showForm,  setShowForm]  = useState(false)
   const [editEntry, setEditEntry] = useState(null)
@@ -2102,13 +2105,15 @@ function Accounts({role,userId}){
         <p style={{color:'#64748b',fontSize:14,margin:'4px 0 0'}}>Manage income &amp; expense transactions</p>
       </div>
       <div style={{display:'flex',gap:8,flexWrap:'wrap', width: isMobile ? '100%' : 'auto'}}>
+        <button onClick={()=>setShowStatCards(s=>!s)} style={{backgroundColor:'#f8fafc',color:'#475569',border:'1px solid #e2e8f0',borderRadius:8,padding: isMobile ? '8px 12px' : '10px 16px',fontWeight:600,cursor:'pointer',fontSize: isMobile ? 12 : 13, flex: isMobile ? '1' : 'none'}}>{showStatCards?'▲ Hide Summary':'▼ Show Summary'}</button>
         <button onClick={()=>setShowPL(true)} style={{backgroundColor:'#f0f9ff',color:'#0369a1',border:'1px solid #bae6fd',borderRadius:8,padding: isMobile ? '8px 12px' : '10px 16px',fontWeight:600,cursor:'pointer',fontSize: isMobile ? 12 : 13, flex: isMobile ? '1' : 'none'}}>📋 P&L</button>
         <button onClick={exportCSV} style={{backgroundColor:'#f0fdf4',color:'#16a34a',border:'1px solid #bbf7d0',borderRadius:8,padding: isMobile ? '8px 12px' : '10px 16px',fontWeight:600,cursor:'pointer',fontSize: isMobile ? 12 : 13, flex: isMobile ? '1' : 'none'}}>⬇ Export</button>
         {canAddEntry&&<button onClick={()=>(showForm&&!editEntry)?setShowForm(false):openAdd()} style={{backgroundColor:'#1e3a5f',color:'white',border:'none',borderRadius:8,padding: isMobile ? '8px 12px' : '10px 20px',fontWeight:600,cursor:'pointer',fontSize: isMobile ? 12 : 14, flex: isMobile ? '1' : 'none'}}>{showForm&&!editEntry?'✖ Cancel':canAddIncome?'➕ Add':'➕ Add Expenditure'}</button>}
       </div>
     </div>
 
-    {/* ── stat cards ── */}
+    {/* ── stat cards (hidden by default — toggled via "Show Summary" button) ── */}
+    {showStatCards&&(
     <div style={{display:'grid',gridTemplateColumns:statCardCols,gap: isMobile ? 10 : 14,marginBottom:16}}>
       <StatCard label={isFiltered?'Income (filtered)':'Total Income'} value={isFiltered?filteredIncome:totalIncome} color="#16a34a" bg="#dcfce7" icon="📈" sub={isFiltered?`All-time: ${fmt(totalIncome)}`:null}/>
       <StatCard label={isFiltered?'Expense (filtered)':'Total Expense'} value={isFiltered?filteredExpense:totalExpense} color="#dc2626" bg="#fee2e2" icon="📉" sub={isFiltered?`All-time: ${fmt(totalExpense)}`:null}/>
@@ -2116,6 +2121,7 @@ function Accounts({role,userId}){
       <StatCard label="Transactions" value={entries.length} color="#7c3aed" bg="#f3e8ff" icon="🧾" isCurrency={false}/>
       <StatCard label="Pending" value={pendingCount} color="#f59e0b" bg="#fffbeb" icon="⏳" isCurrency={false} sub={pendingCount>0?'Uncleared entries':'All confirmed'}/>
     </div>
+    )}
 
     {/* ── today summary ── */}
     <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? '12px 14px' : '14px 20px',marginBottom:24,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',borderTop:'3px solid #1e3a5f'}}>
