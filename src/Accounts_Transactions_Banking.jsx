@@ -1,466 +1,1107 @@
 /**
- * Banking-Style Transactions View — FIXED & ENHANCED
- * For Accounts module — premium statement-like layout
- * Replaces the tabular Daily view with card-based transaction cards
+ * GNSI ERP — Accounts Overview (Enhanced)
+ * Single-view treasury dashboard: net balance card, summary metrics, transaction ledger.
  * 
- * Key improvements:
- * - Fixed React import
- * - Corrected running balance calculation
- * - Proper null checks for all props
- * - Enhanced mobile responsiveness
- * - CSS-based hover states (better for mobile)
- * - Professional typography and spacing
- * - Accessibility improvements
+ * Improvements:
+ * - Better mobile responsiveness
+ * - Enhanced accessibility (aria-labels, proper semantics)
+ * - Improved visual hierarchy
+ * - Better empty states
+ * - Fixed modal overflow
+ * - Smoother animations
+ * - Better color contrast
  */
 
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 
-export const TransactionsViewBanking = ({
-  dayRows = [],
-  dailyIsIncome = false,
-  dailyDateMode = 'entry',
-  dailyAmtColor = '#0a8042',
-  dayTotal = 0,
-  dailyCashAmt = 0,
-  dailyBankAmt = 0,
-  dailyTotalAmt = 0,
-  fraudFlags = {},
+// ── Type system ────────────────────────────────────────────────────────────
+// Fraunces (a characterful, slightly ink-trapped serif) carries the "private
+// treasury" identity on the wordmark, balance figure, and section titles.
+// JetBrains Mono gives every amount and date true tabular alignment.
+const FONT_DISPLAY = "'Fraunces', Georgia, 'Times New Roman', serif"
+const FONT_MONO     = "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace"
+
+export const AccountsDashboardBanking = ({
+  entries = [],
   canWrite = false,
   canEditExpenditure = null, // if not passed, falls back to canWrite (backward compatible)
   fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`,
+  isMobile = false,
   openEdit = () => {},
   handleDelete = () => {},
-  printReceiptMemo = () => {},
-  isMobile = false,
-  runningBalance = null,
-  onExportReport = null, // (format:'pdf'|'docx'|'excel') => void — generates a full report of ALL entries, independent of this tab's date/filter selection
+  onExportReport = null, // (format:'pdf'|'docx'|'excel') => void — generates a full report of all entries, independent of on-screen filters
   exportingReport = '', // '' | 'pdf' | 'docx' | 'excel' — disables buttons while generating
 }) => {
   const canEdit = canEditExpenditure !== null ? canEditExpenditure : canWrite
-  // Compute running balance with corrected logic
-  const balances = useMemo(() => {
-    if (runningBalance && Array.isArray(runningBalance)) {
-      return runningBalance
-    }
+  const [selectedTxn, setSelectedTxn] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [incomePage, setIncomePage] = useState(1)
+  const [expensePage, setExpensePage] = useState(1)
+  const PAGE_SIZE = isMobile ? 10 : 15
 
-    if (!dayRows || dayRows.length === 0) return []
+  // ── Advanced filters — collapsed by default so the dashboard stays clean
+  // for the common case (just the search box), but available for anyone who
+  // needs to narrow down by date range, category, payment mode, account,
+  // status, or amount range instead of scrolling the full ledger. All
+  // filters AND together with each other and with the text search above.
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+  const [filterCategory, setFilterCategory] = useState('All')
+  const [filterMode, setFilterMode] = useState('All')
+  const [filterAccount, setFilterAccount] = useState('All')
+  const [filterStatus, setFilterStatus] = useState('All')
+  const [filterAmountMin, setFilterAmountMin] = useState('')
+  const [filterAmountMax, setFilterAmountMax] = useState('')
 
-    return dayRows.reduce((acc, item) => {
-      const prevBalance = acc.length > 0 ? acc[acc.length - 1].balance : 0
-      const currentAmount = Number(item.amount) || 0
-      const newBalance = prevBalance + currentAmount
-      return [...acc, { id: item.id, balance: newBalance }]
-    }, [])
-  }, [dayRows, runningBalance])
+  // Option lists built from whatever is actually present in `entries`
+  // rather than a hardcoded list — so a new category or a differently
+  // spelled payment mode shows up here automatically instead of being
+  // unfilterable until someone remembers to update a constant.
+  const categoryOptions = useMemo(
+    () => ['All', ...Array.from(new Set(entries.map((e) => e.category).filter(Boolean))).sort()],
+    [entries]
+  )
+  const modeOptions = useMemo(
+    () => ['All', ...Array.from(new Set(entries.map((e) => e.payment_mode).filter(Boolean))).sort()],
+    [entries]
+  )
+  const accountOptions = useMemo(
+    () => ['All', ...Array.from(new Set(entries.map((e) => e.account_type).filter(Boolean))).sort()],
+    [entries]
+  )
+  const statusOptions = useMemo(
+    () => ['All', ...Array.from(new Set(entries.map((e) => e.status).filter(Boolean))).sort()],
+    [entries]
+  )
 
-  const balanceMap = Object.fromEntries(balances.map((b) => [b.id, b.balance]))
+  const hasAdvancedFilters =
+    filterDateFrom || filterDateTo || filterCategory !== 'All' || filterMode !== 'All' ||
+    filterAccount !== 'All' || filterStatus !== 'All' || filterAmountMin || filterAmountMax
 
-  // Group by date
-  const grouped = useMemo(() => {
-    return dayRows.reduce((acc, item) => {
-      const dateKey = item.entry_date || item.payment_date || 'No Date'
-      if (!acc[dateKey]) acc[dateKey] = []
-      acc[dateKey].push(item)
-      return acc
-    }, {})
-  }, [dayRows])
-
-  const dates = Object.keys(grouped).sort((a, b) => {
-    if (a === 'No Date') return 1
-    if (b === 'No Date') return -1
-    return new Date(b) - new Date(a)
-  })
-
-  // Format date nicely
-  const formatDate = (dateStr) => {
-    if (!dateStr || dateStr === 'No Date') return 'Unspecified Date'
-    try {
-      const d = new Date(dateStr)
-      return new Intl.DateTimeFormat('en-IN', {
-        weekday: 'short',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      }).format(d)
-    } catch {
-      return dateStr
-    }
+  const clearAdvancedFilters = () => {
+    setFilterDateFrom(''); setFilterDateTo(''); setFilterCategory('All'); setFilterMode('All')
+    setFilterAccount('All'); setFilterStatus('All'); setFilterAmountMin(''); setFilterAmountMax('')
   }
 
-  // Payment mode icon
-  const getPaymentModeIcon = (mode) => {
-    const icons = {
-      Cash: '💵',
-      Bank: '🏦',
-      UPI: '📱',
-      Card: '💳',
-      Cheque: '✓',
-      'Online Transfer': '↔️',
-      'Credit Card': '💳',
-    }
-    return icons[mode] || '💰'
+  React.useEffect(() => {
+    setIncomePage(1)
+    setExpensePage(1)
+  }, [searchQuery, filterDateFrom, filterDateTo, filterCategory, filterMode, filterAccount, filterStatus, filterAmountMin, filterAmountMax])
+
+  const stats = useMemo(() => {
+    const income = entries
+      .filter((e) => e.type === 'Income')
+      .reduce((s, e) => s + Number(e.amount || 0), 0)
+    const expense = entries
+      .filter((e) => e.type === 'Expense')
+      .reduce((s, e) => s + Number(e.amount || 0), 0)
+    const confirmed = entries.filter((e) => e.status === 'Confirmed').length
+    const pending = entries.filter((e) => e.status !== 'Confirmed').length
+    return { income, expense, balance: income - expense, confirmed, pending }
+  }, [entries])
+
+  // ── Last 7 Days summary — shown by default at the top of the dashboard,
+  // no tab switch or filter setup needed. Mirrors the "Weekly Report for
+  // Admin's PA" panel in the Reports tab (same rolling 7-day-inclusive
+  // window, same total logic) so the two never disagree — this is just the
+  // always-visible version for whoever opens Accounts and wants today's
+  // picture without going looking for it.
+  const last7Range = useMemo(() => {
+    const pad = (n) => String(n).padStart(2, '0')
+    const fmtDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    const to = new Date()
+    const from = new Date(to)
+    from.setDate(to.getDate() - 6) // last 7 days inclusive of today
+    return { from: fmtDate(from), to: fmtDate(to) }
+  }, [])
+
+  const last7Entries = useMemo(
+    () =>
+      entries
+        .filter((e) => e.entry_date >= last7Range.from && e.entry_date <= last7Range.to)
+        .sort((a, b) => (a.entry_date < b.entry_date ? -1 : a.entry_date > b.entry_date ? 1 : 0)),
+    [entries, last7Range]
+  )
+
+  const last7Stats = useMemo(() => {
+    const income = last7Entries.filter((e) => e.type === 'Income').reduce((s, e) => s + Number(e.amount || 0), 0)
+    const expense = last7Entries.filter((e) => e.type === 'Expense').reduce((s, e) => s + Number(e.amount || 0), 0)
+    return { income, expense, net: income - expense, count: last7Entries.length }
+  }, [last7Entries])
+
+  // Print button for this card — same window.open/write/print pattern used
+  // for every other print view in this codebase (Accounts.jsx's
+  // printDailyRegister etc.), so it needs no library and matches their look.
+  const printLast7Days = () => {
+    const w = window.open('', '_blank')
+    if (!w) return
+    const rows = last7Entries
+      .map(
+        (e, i) =>
+          `<tr><td>${i + 1}</td><td style="font-size:11px;color:#888">${e.entry_date}</td><td style="color:${e.type === 'Income' ? '#16a34a' : '#dc2626'};font-weight:600">${e.type}</td><td>${e.category || '—'}</td><td>${(e.note || '').replace(/</g, '&lt;')}</td><td>${e.payment_mode || ''}</td><td style="text-align:right;font-weight:600">${fmt(e.amount)}</td></tr>`
+      )
+      .join('')
+    w.document.write(`<html><head><title>Last 7 Days — GNSI Portal</title><style>
+      body{font-family:Arial,sans-serif;padding:24px;font-size:12px;color:#1a2535}
+      h1{font-size:18px;margin-bottom:4px}p{color:#666;margin:0 0 16px}
+      table{width:100%;border-collapse:collapse;margin-bottom:20px}
+      th{background:#1e3a5f;color:#fff;padding:7px 10px;text-align:left;font-size:11px}
+      td{padding:7px 10px;border-bottom:1px solid #eee}
+      .grand{background:#1e3a5f;color:#fff;font-weight:bold}
+      .summary{display:flex;gap:14px;margin-bottom:18px}
+      .card{flex:1;border-radius:8px;padding:10px 14px}
+      .card.income{background:#dcfce7;border-left:3px solid #16a34a}
+      .card.expense{background:#fee2e2;border-left:3px solid #dc2626}
+      .card.net{background:#eff6ff;border-left:3px solid #1e3a5f}
+      .card p{margin:0}.card .lbl{font-size:11px;color:#475569;font-weight:600}.card .val{font-size:16px;font-weight:800;color:#0f172a}
+      @page{margin:15mm}
+    </style></head><body>
+    <h1>Last 7 Days — GNSI Portal</h1>
+    <p>${last7Range.from} to ${last7Range.to} · ${last7Stats.count} entries · Generated: ${new Date().toLocaleString('en-IN')}</p>
+    <div class="summary">
+      <div class="card income"><p class="lbl">Income</p><p class="val">${fmt(last7Stats.income)}</p></div>
+      <div class="card expense"><p class="lbl">Expense</p><p class="val">${fmt(last7Stats.expense)}</p></div>
+      <div class="card net"><p class="lbl">Net</p><p class="val">${fmt(last7Stats.net)}</p></div>
+    </div>
+    <table><tr><th>#</th><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th>Pay Mode</th><th style="text-align:right">Amount</th></tr>
+    ${rows}
+    <tr class="grand"><td colspan="6">NET (7 days)</td><td style="text-align:right">${fmt(last7Stats.net)}</td></tr>
+    </table></body></html>`)
+    w.document.close()
+    w.print()
   }
 
-  // Transaction card component
-  const TransactionCard = ({ item, balance, isFlagged }) => {
-    const modeIcon = getPaymentModeIcon(item.payment_mode)
-    const statusIcon = isFlagged ? '⚠️' : item.status === 'Confirmed' ? '✓' : '⏳'
-    const statusColor = isFlagged ? '#d97706' : item.status === 'Confirmed' ? '#16a34a' : '#f59e0b'
-    const statusLabel = isFlagged ? 'FLAGGED' : item.status === 'Confirmed' ? 'CONFIRMED' : 'PENDING'
+  const sortedEntries = useMemo(
+    () =>
+      [...entries].sort(
+        (a, b) => new Date(b.entry_date || 0) - new Date(a.entry_date || 0)
+      ),
+    [entries]
+  )
 
+  const searchedEntries = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    return sortedEntries.filter((e) => {
+      if (q) {
+        const matchesText = [e.category, e.note, e.voucher_head, e.payment_mode, e.account_type]
+          .filter(Boolean)
+          .some((f) => String(f).toLowerCase().includes(q))
+        if (!matchesText) return false
+      }
+      if (filterDateFrom && e.entry_date < filterDateFrom) return false
+      if (filterDateTo && e.entry_date > filterDateTo) return false
+      if (filterCategory !== 'All' && e.category !== filterCategory) return false
+      if (filterMode !== 'All' && e.payment_mode !== filterMode) return false
+      if (filterAccount !== 'All' && e.account_type !== filterAccount) return false
+      if (filterStatus !== 'All' && e.status !== filterStatus) return false
+      const amt = Number(e.amount || 0)
+      if (filterAmountMin && amt < Number(filterAmountMin)) return false
+      if (filterAmountMax && amt > Number(filterAmountMax)) return false
+      return true
+    })
+  }, [sortedEntries, searchQuery, filterDateFrom, filterDateTo, filterCategory, filterMode, filterAccount, filterStatus, filterAmountMin, filterAmountMax])
+
+  const sortedIncomeEntries = useMemo(
+    () => searchedEntries.filter((e) => e.type === 'Income'),
+    [searchedEntries]
+  )
+  const sortedExpenseEntries = useMemo(
+    () => searchedEntries.filter((e) => e.type === 'Expense'),
+    [searchedEntries]
+  )
+
+  // Renders one ledger card (used twice below — once for Income, once for Expenditure —
+  // so the two tables share identical styling/behavior while staying visually separate).
+  const renderLedgerCard = (list, { title, subtitle, accent, emptyIcon, emptyTitle, emptyBody, delay, page, setPage }) => {
+    const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE))
+    const safePage = Math.min(page, totalPages)
+    const rows = list.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
     return (
       <div
+        className="gnsi-animate"
         style={{
-          backgroundColor: isFlagged ? '#fffbf0' : '#ffffff',
-          border: isFlagged ? '1.5px solid #fed7aa' : '1px solid #e5e7eb',
-          borderRadius: 12,
-          padding: isMobile ? '12px 14px' : '14px 16px',
-          marginBottom: 10,
-          display: 'flex',
-          gap: 12,
-          alignItems: 'flex-start',
-          transition: 'all 0.2s ease',
-          boxShadow: isFlagged
-            ? '0 1px 3px rgba(251, 146, 60, 0.1), 0 0 0 2px rgba(251, 191, 36, 0.05)'
-            : '0 1px 2px rgba(0, 0, 0, 0.04)',
-          cursor: canWrite ? 'pointer' : 'default',
-          ':hover': {
-            boxShadow: isFlagged
-              ? '0 2px 8px rgba(251, 146, 60, 0.15)'
-              : '0 4px 12px rgba(0, 0, 0, 0.08)',
-          },
+          backgroundColor: 'white',
+          borderRadius: '16px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06)',
+          border: '1px solid rgba(0,0,0,0.06)',
+          overflow: 'hidden',
+          animationDelay: delay,
         }}
       >
-        {/* Icon + Status Badge */}
+        {/* Accent bar */}
+        <div style={{ height: '3px', background: `linear-gradient(90deg, ${accent}, ${accent}55)` }} />
+
+        {/* Header */}
         <div
           style={{
+            padding: isMobile ? '16px' : '20px 24px',
+            borderBottom: '1px solid rgba(0,0,0,0.06)',
             display: 'flex',
-            flexDirection: 'column',
+            justifyContent: 'space-between',
             alignItems: 'center',
-            gap: 6,
-            minWidth: 48,
-            paddingTop: 2,
           }}
         >
-          <span style={{ fontSize: 20 }}>{modeIcon}</span>
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              color: statusColor,
-              textTransform: 'uppercase',
-              letterSpacing: '0.4px',
-              height: 16,
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            {statusIcon}
-          </span>
-        </div>
-
-        {/* Main Content */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Description Row */}
-          <div style={{ marginBottom: 8 }}>
+          <div>
             <p
               style={{
-                margin: 0,
-                fontSize: isMobile ? 13 : 14,
+                fontFamily: FONT_DISPLAY,
+                fontSize: '17px',
                 fontWeight: 600,
-                color: '#1a2535',
-                wordBreak: 'break-word',
-                lineHeight: 1.4,
+                margin: 0,
+                color: accent,
               }}
             >
-              {item.note || item.category || '—'}
+              {title}
+            </p>
+            <p
+              style={{
+                fontSize: '12px',
+                color: '#65676F',
+                margin: '4px 0 0 0',
+              }}
+            >
+              {subtitle}
             </p>
           </div>
+        </div>
 
-          {/* Metadata Badges Row */}
+        {/* Rows */}
+        <div>
+          {list.length === 0 ? (
+            <div
+              style={{
+                padding: isMobile ? '40px 20px' : '60px 40px',
+                textAlign: 'center',
+                color: '#9C9EA6',
+              }}
+            >
+              <div style={{ fontSize: '40px', marginBottom: '16px', opacity: 0.6 }}>{emptyIcon}</div>
+              <p style={{ fontSize: '15px', fontWeight: 500, margin: 0 }}>
+                {emptyTitle}
+              </p>
+              <p
+                style={{
+                  fontSize: '13px',
+                  color: '#C7C9D1',
+                  margin: '6px 0 0 0',
+                }}
+              >
+                {emptyBody}
+              </p>
+            </div>
+          ) : (
+            rows.map((entry, idx) => {
+              const isIncome = entry.type === 'Income'
+              return (
+                <div
+                  key={entry.id}
+                  tabIndex={0}
+                  role="button"
+                  className="gnsi-row"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: isMobile ? '14px 16px' : '16px 24px',
+                    borderBottom:
+                      idx < rows.length - 1
+                        ? '1px solid rgba(0,0,0,0.04)'
+                        : 'none',
+                    backgroundColor: 'transparent',
+                    transition: 'background-color 0.15s ease, transform 0.15s ease',
+                    cursor: 'pointer',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#FAFAF8'
+                    e.currentTarget.style.transform = 'translateX(2px)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent'
+                    e.currentTarget.style.transform = 'translateX(0)'
+                  }}
+                  onClick={() => setSelectedTxn(entry)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setSelectedTxn(entry)
+                    }
+                  }}
+                >
+                  {/* Left side */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '14px',
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '16px',
+                        flexShrink: 0,
+                        backgroundColor: isIncome
+                          ? 'rgba(10, 128, 66, 0.1)'
+                          : 'rgba(215, 0, 21, 0.1)',
+                        color: isIncome ? '#0E7A4C' : '#AF1830',
+                      }}
+                    >
+                      {isIncome ? '↑' : '↓'}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p
+                        style={{
+                          fontSize: '14px',
+                          fontWeight: 500,
+                          margin: 0,
+                          color: '#16171B',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {entry.note || entry.category || 'Transaction'}
+                      </p>
+                      <p
+                        style={{
+                          fontSize: '12px',
+                          color: '#9C9EA6',
+                          margin: '4px 0 0 0',
+                        }}
+                      >
+                        {entry.entry_date} · {entry.payment_mode || 'Unknown'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Right side */}
+                  <div
+                    style={{
+                      textAlign: 'right',
+                      marginLeft: '16px',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontSize: '15px',
+                        fontWeight: 600,
+                        margin: 0,
+                        fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
+                        color: isIncome ? '#0E7A4C' : '#AF1830',
+                      }}
+                    >
+                      {isIncome ? '+' : '−'}{fmt(entry.amount || 0)}
+                    </p>
+                    {entry.status !== 'Confirmed' && (
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          fontSize: '10px',
+                          fontWeight: 600,
+                          padding: '4px 8px',
+                          borderRadius: '5px',
+                          marginTop: '6px',
+                          backgroundColor: '#FBF0DE',
+                          color: '#9C6410',
+                        }}
+                      >
+                        Pending
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        {/* Pagination */}
+        {list.length > PAGE_SIZE && (
           <div
             style={{
               display: 'flex',
-              gap: 8,
-              flexWrap: 'wrap',
               alignItems: 'center',
-              fontSize: 11,
-              color: '#6b7280',
+              justifyContent: 'space-between',
+              padding: isMobile ? '10px 16px' : '10px 24px',
+              borderTop: '1px solid rgba(0,0,0,0.06)',
             }}
           >
-            {/* Account Type Badge */}
-            {item.account_type && (
-              <span
-                style={{
-                  display: 'inline-block',
-                  padding: '3px 8px',
-                  backgroundColor: '#f3f4f6',
-                  borderRadius: 5,
-                  fontWeight: 500,
-                  fontSize: '11px',
-                  color: '#4b5563',
-                }}
-              >
-                {item.account_type}
-              </span>
-            )}
-
-            {/* Voucher Head Badge */}
-            {item.voucher_head && (
-              <span
-                style={{
-                  display: 'inline-block',
-                  padding: '3px 8px',
-                  backgroundColor: '#ede9fe',
-                  color: '#7c3aed',
-                  borderRadius: 5,
-                  fontWeight: 500,
-                  fontSize: '11px',
-                }}
-              >
-                {item.voucher_head}
-              </span>
-            )}
-
-            {/* Payment Mode Badge */}
-            {item.payment_mode && (
-              <span
-                style={{
-                  display: 'inline-block',
-                  padding: '3px 8px',
-                  backgroundColor: '#f0f9ff',
-                  color: '#0369a1',
-                  borderRadius: 5,
-                  fontWeight: 500,
-                  fontSize: '11px',
-                }}
-              >
-                {item.payment_mode}
-              </span>
-            )}
-
-            {/* Date Mismatch Indicator */}
-            {dailyIsIncome &&
-              item.payment_date &&
-              item.entry_date &&
-              item.payment_date !== item.entry_date && (
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: '#f59e0b',
-                    fontWeight: 600,
-                  }}
-                >
-                  {dailyDateMode === 'payment'
-                    ? `Entry: ${item.entry_date}`
-                    : `Paid: ${item.payment_date}`}
-                </span>
-              )}
-          </div>
-
-          {/* Fraud Alert Box */}
-          {isFlagged && fraudFlags?.[item.id] && Array.isArray(fraudFlags[item.id]) && (
-            <div style={{ marginTop: 10 }}>
-              {fraudFlags[item.id].map((alert, idx) => (
-                <div
-                  key={`fraud-${item.id}-${idx}`}
-                  style={{
-                    display: 'flex',
-                    gap: 6,
-                    alignItems: 'flex-start',
-                    padding: '6px 8px',
-                    backgroundColor: '#fef3c7',
-                    borderRadius: 5,
-                    fontSize: 11,
-                    color: '#92400e',
-                    marginBottom: idx < fraudFlags[item.id].length - 1 ? 4 : 0,
-                    fontWeight: 500,
-                  }}
-                >
-                  <span style={{ marginTop: '-1px' }}>⚠️</span>
-                  <span>{alert?.label || 'Fraud flag detected'}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Amount + Balance Column */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-end',
-            gap: 5,
-            minWidth: isMobile ? 100 : 120,
-            textAlign: 'right',
-            paddingLeft: 8,
-          }}
-        >
-          {/* Amount */}
-          <div
-            style={{
-              fontSize: isMobile ? 14 : 16,
-              fontWeight: 700,
-              fontFamily: "'Courier New', monospace",
-              color: dailyAmtColor || '#0a8042',
-              lineHeight: 1.2,
-            }}
-          >
-            {fmt(item.amount || 0)}
-          </div>
-
-          {/* Running Balance */}
-          {balance !== undefined && (
-            <div
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage === 1}
               style={{
-                fontSize: 10,
-                color: '#6b7280',
-                fontFamily: "'Courier New', monospace",
-                fontWeight: 500,
-                lineHeight: 1.2,
+                padding: '6px 12px',
+                borderRadius: '8px',
+                fontSize: '12px',
+                fontWeight: 600,
+                backgroundColor: safePage === 1 ? '#F1F0EC' : '#EFEFEC',
+                color: safePage === 1 ? '#C7C9D1' : '#16171B',
+                cursor: safePage === 1 ? 'default' : 'pointer',
               }}
             >
-              Bal: {fmt(balance)}
-            </div>
-          )}
-        </div>
+              ← Prev
+            </button>
+            <span style={{ fontSize: '12px', color: '#9C9EA6', fontWeight: 500 }}>
+              Page {safePage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage === totalPages}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                fontSize: '12px',
+                fontWeight: 600,
+                backgroundColor: safePage === totalPages ? '#F1F0EC' : '#EFEFEC',
+                color: safePage === totalPages ? '#C7C9D1' : '#16171B',
+                cursor: safePage === totalPages ? 'default' : 'pointer',
+              }}
+            >
+              Next →
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
 
-        {/* Action Buttons */}
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#F6F5F2', color: '#16171B', padding: isMobile ? '16px' : '24px' }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+
+        button {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          border: none;
+          outline: none;
+        }
+
+        button:focus-visible {
+          outline: 2px solid #B9902F;
+          outline-offset: 2px;
+        }
+
+        .gnsi-row:focus-visible {
+          outline: 2px solid #B9902F;
+          outline-offset: -2px;
+        }
+
+        .smooth-transition {
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes gnsiRise {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes gnsiSheen {
+          0%   { transform: translateX(-120%) rotate(8deg); }
+          100% { transform: translateX(220%) rotate(8deg); }
+        }
+
+        .gnsi-animate {
+          animation: gnsiRise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        .gnsi-sheen {
+          animation: gnsiSheen 3.2s ease-in-out infinite;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .gnsi-animate, .gnsi-sheen {
+            animation: none !important;
+          }
+        }
+      `}</style>
+
+      {/* Header */}
+      <div className="gnsi-animate" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '32px' }}>
         <div
           style={{
+            width: 40,
+            height: 40,
+            borderRadius: '10px',
+            background: 'linear-gradient(135deg, #16171B 0%, #2B2C31 100%)',
+            border: '1px solid rgba(185, 144, 47, 0.35)',
             display: 'flex',
-            gap: 6,
-            marginLeft: 4,
+            alignItems: 'center',
+            justifyContent: 'center',
             flexShrink: 0,
           }}
         >
-          <style>{`
-            .txn-edit-btn {
-              background: #eff6ff;
-              border: 1px solid #bfdbfe;
-              color: #1e3a5f;
-              padding: 6px 8px;
-              borderRadius: 6px;
-              cursor: pointer;
-              fontSize: 13px;
-              fontWeight: 500;
-              transition: all 0.15s ease;
-            }
-            .txn-edit-btn:hover {
-              background: #dbeafe;
-              border-color: #93c5fd;
-            }
-            .txn-edit-btn:active {
-              background: #bfdbfe;
-            }
-
-            .txn-memo-btn {
-              background: #f0fdf4;
-              border: 1px solid #bbf7d0;
-              color: #16a34a;
-              padding: 6px 8px;
-              borderRadius: 6px;
-              cursor: pointer;
-              fontSize: 13px;
-              fontWeight: 500;
-              transition: all 0.15s ease;
-            }
-            .txn-memo-btn:hover {
-              background: #dcfce7;
-              border-color: #86efac;
-            }
-            .txn-memo-btn:active {
-              background: #bbf7d0;
-            }
-
-            .txn-delete-btn {
-              background: #fee2e2;
-              border: 1px solid #fecaca;
-              color: #dc2626;
-              padding: 6px 8px;
-              borderRadius: 6px;
-              cursor: pointer;
-              fontSize: 13px;
-              fontWeight: 500;
-              transition: all 0.15s ease;
-            }
-            .txn-delete-btn:hover {
-              background: #fecaca;
-              border-color: #fca5a5;
-            }
-            .txn-delete-btn:active {
-              background: #fca5a5;
-            }
-          `}</style>
-          <button
-            onClick={() => printReceiptMemo(item)}
-            className="txn-memo-btn"
-            aria-label="Print receipt memo"
-            title="Print Receipt Memo"
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#fff"
+            strokeWidth="2.5"
+            style={{ width: '20px', height: '20px' }}
           >
-            🧾
-          </button>
-          {(canWrite || (canEdit && item.type === 'Expense')) && (
-            <button
-              onClick={() => openEdit(item)}
-              className="txn-edit-btn"
-              aria-label="Edit transaction"
-              title="Edit"
-            >
-              ✏️
-            </button>
-          )}
-          {canWrite && (
-            <button
-              onClick={() => handleDelete(item.id)}
-              className="txn-delete-btn"
-              aria-label="Delete transaction"
-              title="Delete"
-            >
-              🗑
-            </button>
-          )}
+            <path d="M3 12l2-2 4 4 8-8 4 4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+        <div>
+          <p
+            style={{
+              fontFamily: FONT_DISPLAY,
+              fontSize: '18px',
+              fontWeight: 600,
+              lineHeight: 1.3,
+              marginBottom: '2px',
+              letterSpacing: '0.1px',
+            }}
+          >
+            GNSI Treasury
+          </p>
+          <p
+            style={{
+              fontSize: '12px',
+              fontWeight: 500,
+              color: '#9C9EA6',
+              lineHeight: 1.3,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
+            Accounts &amp; cash flow
+          </p>
         </div>
       </div>
-    )
-  }
 
-  // Empty state
-  if (!dayRows || dayRows.length === 0) {
-    return (
+      {/* Treasury Card - Compact */}
       <div
+        className="gnsi-animate"
         style={{
-          paddingTop: 40,
-          textAlign: 'center',
-          color: '#9ca3af',
+          position: 'relative',
+          borderRadius: '18px',
+          padding: isMobile ? '18px' : '22px 26px',
+          marginBottom: '24px',
+          color: 'white',
+          overflow: 'hidden',
+          background: 'linear-gradient(135deg, #16171B 0%, #202126 50%, #16171B 100%)',
+          border: '1px solid rgba(185, 144, 47, 0.25)',
+          boxShadow:
+            '0 1px 2px rgba(0,0,0,0.05), 0 12px 32px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.08)',
+          backdropFilter: 'blur(20px)',
         }}
       >
-        <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
-        <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>No transactions for this period</p>
-        <p style={{ margin: '4px 0 0 0', fontSize: 12, color: '#d1d5db' }}>
-          {dailyIsIncome ? 'No income' : 'No expenses'} recorded yet.
-        </p>
-      </div>
-    )
-  }
+        {/* Animated foil sheen */}
+        <div
+          className="gnsi-sheen"
+          style={{
+            position: 'absolute',
+            top: '-60%',
+            left: '-30%',
+            width: '50%',
+            height: '220%',
+            pointerEvents: 'none',
+            background:
+              'linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.07) 50%, transparent 70%)',
+          }}
+        />
 
-  // Main render
-  return (
-    <div style={{ paddingTop: 8, paddingBottom: 16 }}>
-      {/* Export Report — generates a full letterheaded report of ALL entries, not just this tab's filtered date range */}
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          {/* Top row */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              marginBottom: '14px',
+            }}
+          >
+            <div>
+              <p
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 500,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.4px',
+                  color: 'rgba(255, 255, 255, 0.5)',
+                  marginBottom: '2px',
+                  margin: 0,
+                }}
+              >
+                Net balance
+              </p>
+              <p
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  lineHeight: 1.2,
+                  margin: 0,
+                }}
+              >
+                GNSI · Khangabok, Thoubal
+              </p>
+            </div>
+            {/* Foil seal — the card's signature mark, in place of a plain chip */}
+            <div
+              style={{
+                width: '34px',
+                height: '34px',
+                borderRadius: '50%',
+                background: 'linear-gradient(150deg, #F1DFA6 0%, #C9A227 45%, #8C6D28 100%)',
+                boxShadow: '0 2px 10px rgba(180, 141, 46, 0.35), inset 0 1px 1px rgba(255,255,255,0.5), inset 0 -1px 2px rgba(0,0,0,0.25)',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '1px solid rgba(255,255,255,0.25)',
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: FONT_DISPLAY,
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  color: '#3A2E0E',
+                  lineHeight: 1,
+                }}
+              >
+                G
+              </span>
+            </div>
+          </div>
+
+          {/* Balance */}
+          <p
+            style={{
+              fontSize: isMobile ? '26px' : '34px',
+              fontWeight: 500,
+              margin: '8px 0 14px 0',
+              fontFamily: FONT_MONO,
+              letterSpacing: '-0.3px',
+              lineHeight: 1.1,
+            }}
+          >
+            {fmt(stats.balance)}
+          </p>
+
+          {/* Metrics row - more compact */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr 1fr',
+              gap: isMobile ? '12px' : '16px',
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              paddingTop: '14px',
+            }}
+          >
+            <div>
+              <p
+                style={{
+                  fontSize: '9px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.4px',
+                  color: 'rgba(255, 255, 255, 0.5)',
+                  margin: '0 0 4px 0',
+                  fontWeight: 500,
+                }}
+              >
+                Income
+              </p>
+              <p
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  margin: 0,
+                  fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
+                  color: '#86D9AE',
+                }}
+              >
+                +{fmt(stats.income)}
+              </p>
+            </div>
+            <div>
+              <p
+                style={{
+                  fontSize: '9px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.4px',
+                  color: 'rgba(255, 255, 255, 0.5)',
+                  margin: '0 0 4px 0',
+                  fontWeight: 500,
+                }}
+              >
+                Expense
+              </p>
+              <p
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  margin: 0,
+                  fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
+                  color: '#FF9C93',
+                }}
+              >
+                −{fmt(stats.expense)}
+              </p>
+            </div>
+            <div>
+              <p
+                style={{
+                  fontSize: '9px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.4px',
+                  color: 'rgba(255, 255, 255, 0.5)',
+                  margin: '0 0 4px 0',
+                  fontWeight: 500,
+                }}
+              >
+                Confirmed
+              </p>
+              <p
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  margin: 0,
+                  fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
+                  color: 'rgba(255, 255, 255, 0.9)',
+                }}
+              >
+                {stats.confirmed}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Summary Metrics Grid */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+          gap: '16px',
+          marginBottom: '28px',
+        }}
+      >
+        {/* Pending */}
+        <div
+          className="gnsi-animate smooth-transition"
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '14px',
+            padding: '20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            border: '1px solid rgba(0,0,0,0.06)',
+            animationDelay: '0.05s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)'
+            e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.08)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)'
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.04)'
+          }}
+        >
+          <p
+            style={{
+              fontSize: '12px',
+              fontWeight: 500,
+              color: '#65676F',
+              textTransform: 'uppercase',
+              letterSpacing: '0.3px',
+              margin: 0,
+            }}
+          >
+            Pending
+          </p>
+          <p
+            style={{
+              fontSize: isMobile ? '24px' : '28px',
+              fontWeight: 600,
+              margin: '12px 0 0 0',
+              fontFamily: FONT_MONO,
+            }}
+          >
+            {stats.pending}
+          </p>
+          <p
+            style={{
+              fontSize: '12px',
+              color: '#9C9EA6',
+              margin: '8px 0 0 0',
+            }}
+          >
+            Awaiting confirmation
+          </p>
+        </div>
+
+        {/* Total Transactions */}
+        <div
+          className="gnsi-animate smooth-transition"
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '14px',
+            padding: '20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            border: '1px solid rgba(0,0,0,0.06)',
+            animationDelay: '0.10s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)'
+            e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.08)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)'
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.04)'
+          }}
+        >
+          <p
+            style={{
+              fontSize: '12px',
+              fontWeight: 500,
+              color: '#65676F',
+              textTransform: 'uppercase',
+              letterSpacing: '0.3px',
+              margin: 0,
+            }}
+          >
+            Total
+          </p>
+          <p
+            style={{
+              fontSize: isMobile ? '24px' : '28px',
+              fontWeight: 600,
+              margin: '12px 0 0 0',
+              fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
+            }}
+          >
+            {entries.length}
+          </p>
+          <p
+            style={{
+              fontSize: '12px',
+              color: '#9C9EA6',
+              margin: '8px 0 0 0',
+            }}
+          >
+            All-time transactions
+          </p>
+        </div>
+
+        {/* Income Count */}
+        <div
+          className="gnsi-animate smooth-transition"
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '14px',
+            padding: '20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            border: '1px solid rgba(0,0,0,0.06)',
+            animationDelay: '0.15s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)'
+            e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.08)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)'
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.04)'
+          }}
+        >
+          <p
+            style={{
+              fontSize: '12px',
+              fontWeight: 500,
+              color: '#65676F',
+              textTransform: 'uppercase',
+              letterSpacing: '0.3px',
+              margin: 0,
+            }}
+          >
+            Income
+          </p>
+          <p
+            style={{
+              fontSize: isMobile ? '24px' : '28px',
+              fontWeight: 600,
+              margin: '12px 0 0 0',
+              fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
+              color: '#0E7A4C',
+            }}
+          >
+            {entries.filter((e) => e.type === 'Income').length}
+          </p>
+          <p
+            style={{
+              fontSize: '12px',
+              color: '#9C9EA6',
+              margin: '8px 0 0 0',
+            }}
+          >
+            Credits recorded
+          </p>
+        </div>
+
+        {/* Expense Count */}
+        <div
+          className="gnsi-animate smooth-transition"
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '14px',
+            padding: '20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            border: '1px solid rgba(0,0,0,0.06)',
+            animationDelay: '0.20s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-2px)'
+            e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.08)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)'
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.04)'
+          }}
+        >
+          <p
+            style={{
+              fontSize: '12px',
+              fontWeight: 500,
+              color: '#65676F',
+              textTransform: 'uppercase',
+              letterSpacing: '0.3px',
+              margin: 0,
+            }}
+          >
+            Expense
+          </p>
+          <p
+            style={{
+              fontSize: isMobile ? '24px' : '28px',
+              fontWeight: 600,
+              margin: '12px 0 0 0',
+              fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
+              color: '#AF1830',
+            }}
+          >
+            {entries.filter((e) => e.type === 'Expense').length}
+          </p>
+          <p
+            style={{
+              fontSize: '12px',
+              color: '#9C9EA6',
+              margin: '8px 0 0 0',
+            }}
+          >
+            Debits recorded
+          </p>
+        </div>
+      </div>
+
+      {/* Last 7 Days — shown by default, no filters or tab switch needed.
+          Same rolling-7-day window as Accounts.jsx's "Weekly Report for
+          Admin's PA" panel, so the two agree; this is the always-visible
+          version for whoever opens the dashboard and wants the recent
+          picture immediately. */}
+      <div
+        className="gnsi-animate"
+        style={{
+          backgroundColor: 'white',
+          borderRadius: '14px',
+          padding: isMobile ? '16px' : '20px',
+          marginBottom: '28px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+          border: '1px solid rgba(0,0,0,0.06)',
+          borderLeft: '4px solid #1e3a5f',
+          animationDelay: '0.22s',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '14px',
+            flexWrap: 'wrap',
+            gap: '10px',
+          }}
+        >
+          <div>
+            <p style={{ fontSize: isMobile ? '14px' : '15px', fontWeight: 700, margin: 0, color: '#0f172a' }}>
+              🗓️ Last 7 Days
+            </p>
+            <p style={{ fontSize: '12px', color: '#9C9EA6', margin: '4px 0 0 0' }}>
+              {last7Range.from} to {last7Range.to} · {last7Stats.count} entries
+            </p>
+          </div>
+          <button
+            onClick={printLast7Days}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '8px',
+              border: '1px solid rgba(30,58,95,0.25)',
+              backgroundColor: 'rgba(30,58,95,0.06)',
+              color: '#1e3a5f',
+              fontWeight: 600,
+              fontSize: '12px',
+              cursor: 'pointer',
+            }}
+          >
+            🖨 Print
+          </button>
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)',
+            gap: '12px',
+          }}
+        >
+          <div style={{ backgroundColor: '#dcfce7', borderRadius: '8px', padding: '10px 14px', borderLeft: '3px solid #16a34a' }}>
+            <p style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600, margin: '0 0 2px 0' }}>Income</p>
+            <p style={{ fontSize: '16px', fontWeight: 800, color: '#16a34a', margin: 0, fontFamily: FONT_MONO }}>{fmt(last7Stats.income)}</p>
+          </div>
+          <div style={{ backgroundColor: '#fee2e2', borderRadius: '8px', padding: '10px 14px', borderLeft: '3px solid #dc2626' }}>
+            <p style={{ fontSize: '11px', color: '#dc2626', fontWeight: 600, margin: '0 0 2px 0' }}>Expense</p>
+            <p style={{ fontSize: '16px', fontWeight: 800, color: '#dc2626', margin: 0, fontFamily: FONT_MONO }}>{fmt(last7Stats.expense)}</p>
+          </div>
+          <div style={{ backgroundColor: '#eff6ff', borderRadius: '8px', padding: '10px 14px', borderLeft: '3px solid #1e3a5f' }}>
+            <p style={{ fontSize: '11px', color: '#1e3a5f', fontWeight: 600, margin: '0 0 2px 0' }}>Net</p>
+            <p style={{ fontSize: '16px', fontWeight: 800, color: '#1e3a5f', margin: 0, fontFamily: FONT_MONO }}>{fmt(last7Stats.net)}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Export Report — generates a full letterheaded report of ALL entries (not just the filtered/paginated view) */}
       {onExportReport && (
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div
+          className="gnsi-animate"
+          style={{
+            display: 'flex',
+            gap: '10px',
+            marginBottom: '16px',
+            flexWrap: 'wrap',
+            animationDelay: '0.18s',
+          }}
+        >
           <button
             onClick={() => onExportReport('pdf')}
             disabled={!!exportingReport}
             style={{
               padding: isMobile ? '8px 14px' : '9px 18px',
-              borderRadius: 8,
+              borderRadius: '8px',
               fontWeight: 700,
-              fontSize: 13,
+              fontSize: '13px',
               color: 'white',
-              border: 'none',
               backgroundColor: exportingReport === 'pdf' ? '#94a3b8' : '#dc2626',
               cursor: exportingReport ? 'not-allowed' : 'pointer',
             }}
@@ -472,11 +1113,10 @@ export const TransactionsViewBanking = ({
             disabled={!!exportingReport}
             style={{
               padding: isMobile ? '8px 14px' : '9px 18px',
-              borderRadius: 8,
+              borderRadius: '8px',
               fontWeight: 700,
-              fontSize: 13,
+              fontSize: '13px',
               color: 'white',
-              border: 'none',
               backgroundColor: exportingReport === 'docx' ? '#94a3b8' : '#1d4ed8',
               cursor: exportingReport ? 'not-allowed' : 'pointer',
             }}
@@ -488,11 +1128,10 @@ export const TransactionsViewBanking = ({
             disabled={!!exportingReport}
             style={{
               padding: isMobile ? '8px 14px' : '9px 18px',
-              borderRadius: 8,
+              borderRadius: '8px',
               fontWeight: 700,
-              fontSize: 13,
+              fontSize: '13px',
               color: 'white',
-              border: 'none',
               backgroundColor: exportingReport === 'excel' ? '#94a3b8' : '#16a34a',
               cursor: exportingReport ? 'not-allowed' : 'pointer',
             }}
@@ -502,184 +1141,500 @@ export const TransactionsViewBanking = ({
         </div>
       )}
 
-      {/* Date Group Headers + Cards */}
-      {dates.map((dateKey) => {
-        const dateTransactions = grouped[dateKey]
-        const lastTxnId = dateTransactions[dateTransactions.length - 1]?.id
-        const dateBalance = balanceMap[lastTxnId] || dayTotal
-        const dateSum = dateTransactions.reduce((s, t) => s + Number(t.amount || 0), 0)
-
-        return (
-          <div key={dateKey} style={{ marginBottom: 24 }}>
-            {/* Date Header */}
-            <div
+      {/* Search */}
+      <div
+        className="gnsi-animate"
+        style={{ marginBottom: '20px', animationDelay: '0.2s' }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            backgroundColor: 'white',
+            border: '1px solid rgba(0,0,0,0.08)',
+            borderRadius: '12px',
+            padding: isMobile ? '10px 14px' : '12px 16px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+          }}
+        >
+          <span style={{ fontSize: '15px', color: '#9C9EA6' }}>🔍</span>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search category, note, voucher head, mode…"
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              fontSize: '14px',
+              color: '#16171B',
+              backgroundColor: 'transparent',
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
               style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'baseline',
-                marginBottom: 12,
-                paddingBottom: 10,
-                borderBottom: '1px solid #e5e7eb',
+                fontSize: '13px',
+                color: '#9C9EA6',
+                backgroundColor: 'transparent',
+                cursor: 'pointer',
+                padding: '4px 8px',
               }}
             >
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: '#374151',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                {formatDate(dateKey)}
-              </h3>
+              ✕
+            </button>
+          )}
+          <button
+            onClick={() => setShowAdvancedFilters((v) => !v)}
+            aria-expanded={showAdvancedFilters}
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: hasAdvancedFilters ? '#1e3a5f' : '#9C9EA6',
+              backgroundColor: hasAdvancedFilters ? 'rgba(30,58,95,0.08)' : 'transparent',
+              border: hasAdvancedFilters ? '1px solid rgba(30,58,95,0.2)' : '1px solid rgba(0,0,0,0.08)',
+              borderRadius: '8px',
+              padding: '6px 12px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            ⚙️ Filters{hasAdvancedFilters ? ` (${[filterDateFrom || filterDateTo, filterCategory !== 'All', filterMode !== 'All', filterAccount !== 'All', filterStatus !== 'All', filterAmountMin || filterAmountMax].filter(Boolean).length})` : ''}
+          </button>
+        </div>
+
+        {/* Advanced filters — hidden by default, toggled by the button
+            above. Every control here narrows searchedEntries (and, in turn,
+            both ledger tables and their pagination) — nothing here touches
+            the "Last 7 Days" card or the full-entries export, which
+            deliberately stay independent of whatever the user is currently
+            searching for. */}
+        {showAdvancedFilters && (
+          <div
+            style={{
+              marginTop: '10px',
+              backgroundColor: 'white',
+              border: '1px solid rgba(0,0,0,0.08)',
+              borderRadius: '12px',
+              padding: isMobile ? '14px' : '16px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            }}
+          >
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+                gap: '12px',
+              }}
+            >
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>From date</label>
+                <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>To date</label>
+                <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>Category</label>
+                <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }}>
+                  {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>Payment mode</label>
+                <select value={filterMode} onChange={(e) => setFilterMode(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }}>
+                  {modeOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>Account</label>
+                <select value={filterAccount} onChange={(e) => setFilterAccount(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }}>
+                  {accountOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>Status</label>
+                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }}>
+                  {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>Min amount</label>
+                <input type="number" inputMode="decimal" placeholder="0" value={filterAmountMin} onChange={(e) => setFilterAmountMin(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>Max amount</label>
+                <input type="number" inputMode="decimal" placeholder="Any" value={filterAmountMax} onChange={(e) => setFilterAmountMax(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
+              <p style={{ fontSize: '12px', color: '#9C9EA6', margin: 0 }}>
+                {searchedEntries.length} of {entries.length} transactions match
+              </p>
+              {hasAdvancedFilters && (
+                <button
+                  onClick={clearAdvancedFilters}
+                  style={{ fontSize: '12px', fontWeight: 600, color: '#dc2626', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 8px' }}
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Transaction Ledgers — Income and Expenditure kept in separate tables */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+          gap: '20px',
+        }}
+      >
+        {renderLedgerCard(sortedIncomeEntries, {
+          title: '↑ Income',
+          subtitle: `${sortedIncomeEntries.length} total · sorted by date`,
+          accent: '#0E7A4C',
+          emptyIcon: '📈',
+          emptyTitle: searchQuery ? 'No matches' : 'No income yet',
+          emptyBody: searchQuery ? 'Try a different search term.' : 'Recorded income will show up here.',
+          delay: '0.25s',
+          page: incomePage,
+          setPage: setIncomePage,
+        })}
+        {renderLedgerCard(sortedExpenseEntries, {
+          title: '↓ Expenditure',
+          subtitle: `${sortedExpenseEntries.length} total · sorted by date`,
+          accent: '#AF1830',
+          emptyIcon: '📉',
+          emptyTitle: searchQuery ? 'No matches' : 'No expenditure yet',
+          emptyBody: searchQuery ? 'Try a different search term.' : 'Recorded expenses will show up here.',
+          delay: '0.30s',
+          page: expensePage,
+          setPage: setExpensePage,
+        })}
+      </div>
+
+      {/* Transaction Detail Modal */}
+      {selectedTxn && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 16, 20, 0.55)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+            padding: '16px',
+            zIndex: 50,
+          }}
+          onClick={() => setSelectedTxn(null)}
+        >
+          <div
+            className="gnsi-sheet"
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '20px 20px 0 0',
+              padding: '28px 20px',
+              width: '100%',
+              maxWidth: '480px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              boxShadow: '0 16px 40px rgba(0,0,0,0.20)',
+              borderTop: '3px solid #C9A227',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setSelectedTxn(null)}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                background: 'none',
+                cursor: 'pointer',
+                fontSize: '24px',
+                color: '#9C9EA6',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '8px',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = '#EFEFEC'
+                e.target.style.color = '#16171B'
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = 'transparent'
+                e.target.style.color = '#9C9EA6'
+              }}
+              aria-label="Close modal"
+            >
+              ×
+            </button>
+
+            {/* Content */}
+            <h3
+              style={{
+                fontFamily: FONT_DISPLAY,
+                fontSize: '20px',
+                fontWeight: 600,
+                margin: '0 0 6px 0',
+                paddingRight: '32px',
+              }}
+            >
+              {selectedTxn.note || selectedTxn.category || 'Transaction'}
+            </h3>
+            <div style={{ width: '36px', height: '2px', background: 'linear-gradient(90deg,#C9A227,#8C6D28)', margin: '0 0 20px 0' }} />
+
+            <div style={{ marginBottom: '28px' }}>
               <div
                 style={{
-                  display: 'flex',
-                  gap: 16,
-                  fontSize: 12,
-                  color: '#6b7280',
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '16px',
                 }}
               >
-                <span>
-                  <strong style={{ color: '#374151' }}>{dateTransactions.length}</strong> txn
-                </span>
-                <span
-                  style={{
-                    fontFamily: "'Courier New', monospace",
-                    fontWeight: 500,
-                    color: '#374151',
-                  }}
-                >
-                  {fmt(dateSum)}
-                </span>
+                <div>
+                  <p
+                    style={{
+                      fontSize: '12px',
+                      color: '#9C9EA6',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                      margin: '0 0 6px 0',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Type
+                  </p>
+                  <p
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 500,
+                      margin: 0,
+                      color: '#16171B',
+                    }}
+                  >
+                    {selectedTxn.type}
+                  </p>
+                </div>
+                <div>
+                  <p
+                    style={{
+                      fontSize: '12px',
+                      color: '#9C9EA6',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                      margin: '0 0 6px 0',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Amount
+                  </p>
+                  <p
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      margin: 0,
+                      fontFamily: "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace",
+                      color:
+                        selectedTxn.type === 'Income' ? '#0E7A4C' : '#AF1830',
+                    }}
+                  >
+                    {selectedTxn.type === 'Income' ? '+' : '−'}
+                    {fmt(selectedTxn.amount || 0)}
+                  </p>
+                </div>
+                <div>
+                  <p
+                    style={{
+                      fontSize: '12px',
+                      color: '#9C9EA6',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                      margin: '0 0 6px 0',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Date
+                  </p>
+                  <p
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 500,
+                      margin: 0,
+                      color: '#16171B',
+                    }}
+                  >
+                    {selectedTxn.entry_date}
+                  </p>
+                </div>
+                <div>
+                  <p
+                    style={{
+                      fontSize: '12px',
+                      color: '#9C9EA6',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                      margin: '0 0 6px 0',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Mode
+                  </p>
+                  <p
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 500,
+                      margin: 0,
+                      color: '#16171B',
+                    }}
+                  >
+                    {selectedTxn.payment_mode || '—'}
+                  </p>
+                </div>
+                <div>
+                  <p
+                    style={{
+                      fontSize: '12px',
+                      color: '#9C9EA6',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                      margin: '0 0 6px 0',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Status
+                  </p>
+                  <p
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 500,
+                      margin: 0,
+                      color: selectedTxn.status === 'Confirmed' ? '#0E7A4C' : '#9C6410',
+                    }}
+                  >
+                    {selectedTxn.status}
+                  </p>
+                </div>
+                <div>
+                  <p
+                    style={{
+                      fontSize: '12px',
+                      color: '#9C9EA6',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                      margin: '0 0 6px 0',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Account
+                  </p>
+                  <p
+                    style={{
+                      fontSize: '15px',
+                      fontWeight: 500,
+                      margin: 0,
+                      color: '#16171B',
+                    }}
+                  >
+                    {selectedTxn.account_type || '—'}
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* Transaction Cards */}
-            {dateTransactions.map((item) => {
-              const isFlagged = fraudFlags?.[item.id]
-              return (
-                <TransactionCard
-                  key={item.id}
-                  item={item}
-                  balance={balanceMap[item.id]}
-                  isFlagged={isFlagged}
-                />
-              )
-            })}
-          </div>
-        )
-      })}
-
-      {/* Grand Total Summary Footer */}
-      {dayRows && dayRows.length > 0 && (
-        <div
-          style={{
-            backgroundColor: '#1a2535',
-            borderRadius: 14,
-            padding: isMobile ? '16px' : '20px 28px',
-            marginTop: 28,
-            color: 'white',
-            display: 'flex',
-            flexDirection: isMobile ? 'column' : 'row',
-            justifyContent: 'space-between',
-            alignItems: isMobile ? 'stretch' : 'center',
-            gap: 16,
-            boxShadow: '0 4px 12px rgba(26, 37, 53, 0.15)',
-          }}
-        >
-          <div>
-            <p
-              style={{
-                margin: 0,
-                fontSize: 11,
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                color: 'rgba(255, 255, 255, 0.6)',
-                marginBottom: 6,
-                fontWeight: 500,
-              }}
-            >
-              {dayRows.length} Transaction{dayRows.length !== 1 ? 's' : ''}
-            </p>
-            <p
-              style={{
-                margin: 0,
-                fontSize: isMobile ? 20 : 26,
-                fontWeight: 700,
-                fontFamily: "'Courier New', monospace",
-                color: '#fbbf24',
-              }}
-            >
-              {fmt(dayTotal)}
-            </p>
-          </div>
-
-          {/* Breakdown */}
-          <div
-            style={{
-              display: 'flex',
-              gap: isMobile ? 16 : 40,
-              flexWrap: 'wrap',
-            }}
-          >
-            {dailyCashAmt > 0 && (
-              <div>
-                <p
+            {/* Action Buttons */}
+            {(() => {
+              const isExpense = selectedTxn.type === 'Expense'
+              const showEdit = canWrite || (canEdit && isExpense)
+              return (canWrite || showEdit) && (
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '12px',
+                }}
+              >
+                {showEdit && (
+                <button
+                  onClick={() => {
+                    openEdit(selectedTxn)
+                    setSelectedTxn(null)
+                  }}
                   style={{
-                    margin: '0 0 6px 0',
-                    fontSize: 11,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    color: 'rgba(255, 255, 255, 0.6)',
-                    fontWeight: 500,
+                    flex: 1,
+                    padding: '12px 16px',
+                    backgroundColor: '#16171B',
+                    color: 'white',
+                    fontWeight: 600,
+                    fontSize: '14px',
+                    borderRadius: '10px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = '#2B2C31'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = '#16171B'
                   }}
                 >
-                  💵 Cash
-                </p>
-                <p
+                  Edit
+                </button>
+                )}
+                {canWrite && (
+                <button
+                  onClick={() => {
+                    handleDelete(selectedTxn.id)
+                    setSelectedTxn(null)
+                  }}
                   style={{
-                    margin: 0,
-                    fontSize: isMobile ? 16 : 18,
-                    fontWeight: 700,
-                    fontFamily: "'Courier New', monospace",
-                    color: '#fbbf24',
+                    flex: 1,
+                    padding: '12px 16px',
+                    backgroundColor: '#FDEAEC',
+                    color: '#AF1830',
+                    fontWeight: 600,
+                    fontSize: '14px',
+                    borderRadius: '10px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = '#FFCDD2'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = '#FDEAEC'
                   }}
                 >
-                  {fmt(dailyCashAmt)}
-                </p>
+                  Delete
+                </button>
+                )}
               </div>
-            )}
-
-            {dailyBankAmt > 0 && (
-              <div>
-                <p
-                  style={{
-                    margin: '0 0 6px 0',
-                    fontSize: 11,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    color: 'rgba(255, 255, 255, 0.6)',
-                    fontWeight: 500,
-                  }}
-                >
-                  🏦 Bank
-                </p>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: isMobile ? 16 : 18,
-                    fontWeight: 700,
-                    fontFamily: "'Courier New', monospace",
-                    color: '#e0e7ff',
-                  }}
-                >
-                  {fmt(dailyBankAmt)}
-                </p>
-              </div>
-            )}
+            )
+            })()}
           </div>
         </div>
       )}
@@ -687,4 +1642,4 @@ export const TransactionsViewBanking = ({
   )
 }
 
-export default TransactionsViewBanking
+export default AccountsDashboardBanking

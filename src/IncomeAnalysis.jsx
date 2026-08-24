@@ -159,6 +159,58 @@ export default function IncomeAnalysis({ entries = [], today = '', isMobile = fa
   const thisMonth   = today.slice(0,7)
   const monthIncome = incomeEntries.filter(e => monthKey(e.entry_date) === thisMonth).reduce((s,e) => s + Number(e.amount), 0)
 
+  // ── Last 7 Days — always-visible default view, independent of the
+  // dateFrom/dateTo filters above (which default to empty/all-time). Same
+  // rolling-7-day-inclusive window used in Accounts.jsx and
+  // AccountsDashboardBanking.jsx, so all three agree on what "last 7 days"
+  // means. Anchored on `today` (the prop already passed into this
+  // component) rather than `new Date()`, so it matches whatever date this
+  // component's caller considers "now."
+  const last7Range = useMemo(() => {
+    if (!today) return { from: '', to: '' }
+    const pad = n => String(n).padStart(2, '0')
+    const fmtDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    const toD = new Date(today)
+    const fromD = new Date(toD)
+    fromD.setDate(toD.getDate() - 6)
+    return { from: fmtDate(fromD), to: today }
+  }, [today])
+
+  const last7Entries = useMemo(
+    () => incomeEntries
+      .filter(e => e.entry_date >= last7Range.from && e.entry_date <= last7Range.to)
+      .sort((a, b) => (a.entry_date < b.entry_date ? -1 : a.entry_date > b.entry_date ? 1 : 0)),
+    [incomeEntries, last7Range]
+  )
+  const last7Total = last7Entries.reduce((s, e) => s + Number(e.amount || 0), 0)
+
+  // Print — same window.open/write/print pattern used throughout the rest
+  // of this codebase's print views, so no extra library is needed.
+  const printLast7DaysIncome = () => {
+    const w = window.open('', '_blank')
+    if (!w) return
+    const rows = last7Entries.map((e, i) =>
+      `<tr><td>${i + 1}</td><td style="font-size:11px;color:#888">${e.entry_date}</td><td>${e.category || '—'}</td><td>${(e.note || '').replace(/</g, '&lt;')}</td><td>${e.payment_mode || ''}</td><td style="text-align:right;font-weight:600">${fmt(e.amount)}</td></tr>`
+    ).join('')
+    w.document.write(`<html><head><title>Last 7 Days Income — GNSI Portal</title><style>
+      body{font-family:Arial,sans-serif;padding:24px;font-size:12px;color:#1a2535}
+      h1{font-size:18px;margin-bottom:4px}p{color:#666;margin:0 0 16px}
+      table{width:100%;border-collapse:collapse;margin-bottom:20px}
+      th{background:#16a34a;color:#fff;padding:7px 10px;text-align:left;font-size:11px}
+      td{padding:7px 10px;border-bottom:1px solid #eee}
+      .grand{background:#16a34a;color:#fff;font-weight:bold}
+      @page{margin:15mm}
+    </style></head><body>
+    <h1>Last 7 Days — Income Report — GNSI Portal</h1>
+    <p>${last7Range.from} to ${last7Range.to} · ${last7Entries.length} entries · Generated: ${new Date().toLocaleString('en-IN')}</p>
+    <table><tr><th>#</th><th>Date</th><th>Category</th><th>Description</th><th>Pay Mode</th><th style="text-align:right">Amount</th></tr>
+    ${rows}
+    <tr class="grand"><td colspan="5">TOTAL (7 days)</td><td style="text-align:right">${fmt(last7Total)}</td></tr>
+    </table></body></html>`)
+    w.document.close()
+    w.print()
+  }
+
   // ── by category ───────────────────────────────────────────────────────
   const byCategory = useMemo(() => {
     const map = {}
@@ -480,6 +532,21 @@ export default function IncomeAnalysis({ entries = [], today = '', isMobile = fa
         <SummaryCard label="Confirmed" value={fmt(totalConfirmed)} sub={pct(totalConfirmed, totalFiltered)} color="#1e3a5f" bg="#eff6ff" icon="✅" />
         <SummaryCard label="Pending" value={fmt(totalPending)} sub={pct(totalPending, totalFiltered)} color="#f59e0b" bg="#fffbeb" icon="⏳" />
         <SummaryCard label="Today" value={fmt(todayIncome)} sub={`This month: ${fmt(monthIncome)}`} color="#7c3aed" bg="#f3e8ff" icon="📅" />
+      </div>
+
+      {/* ── Last 7 Days — default view, shown regardless of section tab or
+          the filters above ── */}
+      <div style={{ backgroundColor: 'white', borderRadius: 12, padding: isMobile ? 14 : 18, marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: '4px solid #16a34a' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <p style={{ fontSize: isMobile ? 14 : 15, fontWeight: 700, margin: 0, color: '#0f172a' }}>🗓️ Last 7 Days — Income</p>
+            <p style={{ fontSize: 12, color: '#94a3b8', margin: '4px 0 0' }}>{last7Range.from} to {last7Range.to} · {last7Entries.length} entries</p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <p style={{ fontSize: 18, fontWeight: 800, color: '#16a34a', margin: 0 }}>{fmt(last7Total)}</p>
+            <button onClick={printLast7DaysIncome} style={{ backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 8, padding: '7px 14px', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>🖨 Print</button>
+          </div>
+        </div>
       </div>
 
       {/* ── section nav ── */}

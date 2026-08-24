@@ -5,6 +5,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts'
 import IncomeAnalysis from './IncomeAnalysis'
+import AuditMonitor from './AuditMonitor'
 import { TransactionsViewBanking } from './Accounts_Transactions_Banking'
 import { AccountsDashboardBanking } from './AccountsDashboardBanking'
 // ── Report Generator dependencies ───────────────────────────────────────────
@@ -480,6 +481,31 @@ function Accounts({role,userId}){
   // from the UI. This effect is now a permanent no-op — nothing auto-inserts
   // into the accounts table. Recurring expenses must be entered manually
   // each month.
+  //
+  // If a recurring-expense feature is rebuilt in the future: do NOT reuse a
+  // client-side (localStorage) "already ran" check — that is exactly what
+  // failed here, since it doesn't sync across devices/browsers. Instead:
+  //
+  //   1. Every auto-inserted recurring row MUST set is_recurring = true and
+  //      recurring_period = the 'YYYY-MM' string for the month the entry is
+  //      FOR (e.g. '2026-09'), not derived from entry_date at query time —
+  //      set it explicitly at insert time so it can't drift if entry_date
+  //      is later edited.
+  //   2. The database enforces uniqueness for you: a partial unique index
+  //      — uq_recurring_once_per_period on (note, amount, recurring_period)
+  //      WHERE is_recurring = true AND status != 'Superseded' — already
+  //      exists in this table. Any second insert attempt for the same
+  //      recurring item + amount + month will fail with a unique-violation
+  //      error from Postgres itself, regardless of what any client-side
+  //      check does or doesn't catch. Catch that error and treat it as
+  //      "already exists this month" rather than retrying the insert.
+  //   3. Manual entries are NOT affected by this index — is_recurring only
+  //      gets set to true by the auto-insert path itself, never by a normal
+  //      manual entry, so staff can still enter "Saturday Chicken" or
+  //      "Water Supply" by hand as many times a month as genuinely happened
+  //      without hitting this constraint.
+  //   4. Still validate the day-of-month before inserting: never create a
+  //      row dated later than today (the second bug mentioned above).
   useEffect(()=>{
     return
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1550,6 +1576,60 @@ function Accounts({role,userId}){
     else generateReportExcel(opts)
   }
 
+  // ── Weekly Report — direct browser print (separate from PDF/DOCX/Excel
+  // export above). Same window.open + write + print pattern already used by
+  // printDailyRegister/printExpenditureRegister/printPL, so it matches their
+  // look, opens instantly, and needs no library — just the browser's own
+  // print dialog. Grouped by day like the other print views, with a
+  // grand total and a by-category breakdown since a 7-day report is short
+  // enough that both fit on one printed page.
+  const printWeeklyReport=()=>{
+    const groups=groupByDate(weeklyEntries)
+    const w=window.open('','_blank');if(!w)return
+    let rowNum=0
+    w.document.write(`<html><head><title>Weekly Report — GNSI Portal</title><style>
+      body{font-family:Arial,sans-serif;padding:24px;font-size:12px;color:#1a2535}
+      h1{font-size:18px;margin-bottom:4px}p{color:#666;margin:0 0 16px}
+      table{width:100%;border-collapse:collapse;margin-bottom:20px}
+      th{background:#831843;color:#fff;padding:7px 10px;text-align:left;font-size:11px}
+      td{padding:7px 10px;border-bottom:1px solid #eee}
+      .day-header{background:#fdf2f8;font-weight:bold;padding:6px 10px}
+      .subtotal{background:#fdf7fa;font-weight:bold}
+      .grand{background:#831843;color:#fff;font-weight:bold}
+      .type-income{color:#16a34a;font-weight:600}
+      .type-expense{color:#dc2626;font-weight:600}
+      .amt{text-align:right;font-weight:600}
+      .total-amt{text-align:right;font-weight:bold}
+      .summary{display:flex;gap:14px;margin-bottom:18px}
+      .card{flex:1;border-radius:8px;padding:10px 14px}
+      .card.income{background:#dcfce7;border-left:3px solid #16a34a}
+      .card.expense{background:#fee2e2;border-left:3px solid #dc2626}
+      .card.net{background:#eff6ff;border-left:3px solid #1e3a5f}
+      .card p{margin:0}.card .lbl{font-size:11px;color:#475569;font-weight:600}.card .val{font-size:16px;font-weight:800;color:#0f172a}
+      @page{margin:15mm}
+    </style></head><body>
+    <h1>🗓️ Weekly Income &amp; Expenditure Report — GNSI Portal</h1>
+    <p>${weeklyFilterSummary} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString('en-IN')}</p>
+    <div class="summary">
+      <div class="card income"><p class="lbl">Income (7 days)</p><p class="val">${fmt(weeklyTotals.income)}</p></div>
+      <div class="card expense"><p class="lbl">Expense (7 days)</p><p class="val">${fmt(weeklyTotals.expense)}</p></div>
+      <div class="card net"><p class="lbl">Net</p><p class="val">${fmt(weeklyTotals.net)}</p></div>
+    </div>
+    <table><tr><th>#</th><th>Date</th><th>Type</th><th>Category</th><th>Account</th><th>Description</th><th>Pay Mode</th><th style="text-align:right">Amount</th></tr>
+    ${groups.map(([date,rows])=>{
+      const dayTotal=rows.reduce((s,e)=>s+Number(e.amount),0)
+      const dayRows=rows.map(e=>{rowNum++;return`<tr><td>${rowNum}</td><td style="font-size:11px;color:#888">${date}</td><td class="${e.type==='Income'?'type-income':'type-expense'}">${e.type}</td><td>${e.category||'—'}</td><td>${e.account_type||'Cash A/c'}</td><td>${(e.note||'').replace(/</g,'&lt;')}</td><td>${e.payment_mode}</td><td class="amt">${fmt(e.amount)}</td></tr>`}).join('')
+      return`<tr><td colspan="7" class="day-header">${date} — ${weekdayOf(date)} (${rows.length} entries)</td></tr>${dayRows}<tr class="subtotal"><td colspan="7">Daily Total</td><td class="total-amt">${fmt(dayTotal)}</td></tr>`
+    }).join('')}
+    <tr class="grand"><td colspan="7">GRAND TOTAL (7 days)</td><td class="total-amt">${fmt(weeklyTotals.net)}</td></tr>
+    </table>
+    <h1 style="font-size:14px">By Category</h1>
+    <table><tr><th>Category</th><th>Type</th><th>Entries</th><th style="text-align:right">Total</th></tr>
+    ${weeklyByCategory.map(c=>`<tr><td>${c.category}</td><td class="${c.type==='Income'?'type-income':'type-expense'}">${c.type}</td><td>${c.count}</td><td class="amt">${fmt(c.total)}</td></tr>`).join('')}
+    </table></body></html>`)
+    w.document.close();w.print()
+  }
+
   const reportFilterSummary = useMemo(()=>{
     const parts=[`Type: ${rptType}`]
     if(rptCategory!=='All')parts.push(`Category: ${rptCategory}`)
@@ -2124,6 +2204,13 @@ function Accounts({role,userId}){
         ...(isAdmin?[['savings','💹 Savings Tracker']]:[] ),
         // PHASE 4: Balance Sheet tab (admin only)
         ...(isAdmin?[['balancesheet','📒 Balance Sheet']]:[] ),
+        // Course-wise fee collection + automated anomaly detection for the
+        // specific patterns found in this ledger's audit (duplicate
+        // recurring entries, fee-rate mismatches, missing voucher heads,
+        // outlier amounts, category label fragmentation). Admin only —
+        // this surfaces amounts and per-student detail across the whole
+        // ledger that other roles shouldn't see.
+        ...(isAdmin?[['audit','🛡️ Audit Monitor']]:[] ),
         ['income','💰 Income Analysis'],
         // Activity Timeline shows every user's inserts/edits/deletes — admin-only visibility.
         // Entries are still logged the same way for everyone; this only restricts who can view the log.
@@ -2136,6 +2223,7 @@ function Accounts({role,userId}){
           ...(id==='expenditure'?{backgroundColor:activeTab===id?'#b91c1c':'#fef2f2',color:activeTab===id?'white':'#b91c1c',border:'1px solid #fecaca'}:{}),
           ...(id==='reports'?{backgroundColor:activeTab===id?'#be185d':'#fdf2f8',color:activeTab===id?'white':'#be185d',border:'1px solid #fbcfe8'}:{}),
           ...(id==='balancesheet'?{backgroundColor:activeTab===id?'#047857':'#f0fdf4',color:activeTab===id?'white':'#047857',border:'1px solid #bbf7d0'}:{}),
+          ...(id==='audit'?{backgroundColor:activeTab===id?'#312e81':'#eef2ff',color:activeTab===id?'white':'#312e81',border:'1px solid #c7d2fe'}:{}),
         }} onClick={()=>setActiveTab(id)}>{label}</button>
       ))}
     </div>
@@ -2341,6 +2429,7 @@ function Accounts({role,userId}){
               <p style={{fontSize:12,color:'#94a3b8',margin:'4px 0 0'}}>{weeklyRange.from} to {weeklyRange.to} · {weeklyTotals.count} entries · always the last 7 days, no filters needed</p>
             </div>
             <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+              <button onClick={printWeeklyReport} style={{backgroundColor:'rgba(131,24,67,0.08)',color:'#831843',border:'1px solid #fbcfe8',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:12}}>🖨 Print</button>
               <button onClick={()=>generateWeeklyReport('PDF')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='pdf'?'#94a3b8':'#dc2626',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='pdf'?'⏳ Generating…':'📄 PDF'}</button>
               <button onClick={()=>generateWeeklyReport('DOCX')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='docx'?'#94a3b8':'#1d4ed8',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='docx'?'⏳ Generating…':'📝 DOCX'}</button>
               <button onClick={()=>generateWeeklyReport('Excel')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='excel'?'#94a3b8':'#16a34a',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='excel'?'⏳ Generating…':'📊 Excel'}</button>
@@ -2914,6 +3003,9 @@ function Accounts({role,userId}){
     )}
 
     {/* ══ TAB: INCOME ANALYSIS ══ */}
+    {activeTab==='audit'&&isAdmin&&(
+      <AuditMonitor entries={entries} isMobile={isMobile}/>
+    )}
     {activeTab==='income'&&(
       <IncomeAnalysis entries={entries} today={today} isMobile={isMobile}/>
     )}
