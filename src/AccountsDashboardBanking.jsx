@@ -148,6 +148,37 @@ export const AccountsDashboardBanking = ({
     return { income, expense, net: income - expense, count: last7Entries.length }
   }, [last7Entries])
 
+  // ── Day-wise breakdown — collapsible, arbitrary date range, grouped by
+  // day. Separate from the fixed "Last 7 Days" card above: this is for
+  // when someone needs to pick a specific week or month rather than
+  // always seeing the trailing 7 days.
+  const [showDayWise, setShowDayWise] = useState(false)
+  const [dwFrom, setDwFrom] = useState(last7Range.from)
+  const [dwTo, setDwTo] = useState(last7Range.to)
+
+  const dayWiseRows = useMemo(() => {
+    const map = {}
+    entries
+      .filter((e) => e.status !== 'Superseded' && e.entry_date >= dwFrom && e.entry_date <= dwTo)
+      .forEach((e) => {
+        const d = e.entry_date
+        if (!map[d]) map[d] = { date: d, income: 0, expense: 0, count: 0 }
+        const amt = Number(e.amount || 0)
+        if (e.type === 'Income') map[d].income += amt
+        else map[d].expense += amt
+        map[d].count += 1
+      })
+    return Object.values(map)
+      .map((r) => ({ ...r, net: r.income - r.expense }))
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+  }, [entries, dwFrom, dwTo])
+
+  const dayWiseTotals = useMemo(() => {
+    const income = dayWiseRows.reduce((s, r) => s + r.income, 0)
+    const expense = dayWiseRows.reduce((s, r) => s + r.expense, 0)
+    return { income, expense, net: income - expense }
+  }, [dayWiseRows])
+
   // Print button for this card — same window.open/write/print pattern used
   // for every other print view in this codebase (Accounts.jsx's
   // printDailyRegister etc.), so it needs no library and matches their look.
@@ -1104,6 +1135,96 @@ export const AccountsDashboardBanking = ({
             <p style={{ fontSize: '16px', fontWeight: 800, color: '#1e3a5f', margin: 0, fontFamily: FONT_MONO }}>{fmt(last7Stats.net)}</p>
           </div>
         </div>
+      </div>
+
+      {/* Day-wise Income & Expenditure — collapsed by default, pick any
+          date range and see income/expense/net broken down per day. */}
+      <div
+        className="gnsi-animate"
+        style={{
+          backgroundColor: 'white',
+          borderRadius: '14px',
+          padding: isMobile ? '16px' : '20px',
+          marginBottom: '28px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+          border: '1px solid rgba(0,0,0,0.06)',
+        }}
+      >
+        <div
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: showDayWise ? '14px' : 0 }}
+        >
+          <p style={{ fontSize: isMobile ? '14px' : '15px', fontWeight: 700, margin: 0, color: '#0f172a' }}>
+            📅 Day-wise Income &amp; Expenditure
+          </p>
+          <button
+            onClick={() => setShowDayWise((v) => !v)}
+            style={{
+              padding: '7px 14px', borderRadius: '8px', border: '1px solid rgba(0,0,0,0.1)',
+              backgroundColor: showDayWise ? '#1e3a5f' : '#f8fafc', color: showDayWise ? 'white' : '#1e3a5f',
+              fontWeight: 600, fontSize: '12px', cursor: 'pointer',
+            }}
+          >
+            {showDayWise ? 'Hide' : 'Show'}
+          </button>
+        </div>
+
+        {showDayWise && (
+          <>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '14px' }}>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>From</label>
+                <input type="date" value={dwFrom} onChange={(e) => setDwFrom(e.target.value)}
+                  style={{ padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>To</label>
+                <input type="date" value={dwTo} onChange={(e) => setDwTo(e.target.value)}
+                  style={{ padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px' }} />
+              </div>
+              <p style={{ fontSize: '12px', color: '#9C9EA6', margin: '0 0 8px' }}>{dayWiseRows.length} day{dayWiseRows.length === 1 ? '' : 's'} with activity</p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ backgroundColor: '#dcfce7', borderRadius: '8px', padding: '10px 14px', borderLeft: '3px solid #16a34a' }}>
+                <p style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600, margin: '0 0 2px 0' }}>Income</p>
+                <p style={{ fontSize: '16px', fontWeight: 800, color: '#16a34a', margin: 0, fontFamily: FONT_MONO }}>{fmt(dayWiseTotals.income)}</p>
+              </div>
+              <div style={{ backgroundColor: '#fee2e2', borderRadius: '8px', padding: '10px 14px', borderLeft: '3px solid #dc2626' }}>
+                <p style={{ fontSize: '11px', color: '#dc2626', fontWeight: 600, margin: '0 0 2px 0' }}>Expense</p>
+                <p style={{ fontSize: '16px', fontWeight: 800, color: '#dc2626', margin: 0, fontFamily: FONT_MONO }}>{fmt(dayWiseTotals.expense)}</p>
+              </div>
+              <div style={{ backgroundColor: '#eff6ff', borderRadius: '8px', padding: '10px 14px', borderLeft: '3px solid #1e3a5f' }}>
+                <p style={{ fontSize: '11px', color: '#1e3a5f', fontWeight: 600, margin: '0 0 2px 0' }}>Net</p>
+                <p style={{ fontSize: '16px', fontWeight: 800, color: '#1e3a5f', margin: 0, fontFamily: FONT_MONO }}>{fmt(dayWiseTotals.net)}</p>
+              </div>
+            </div>
+
+            {dayWiseRows.length > 0 && (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#1e3a5f', color: 'white' }}>
+                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Date</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Income</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Expense</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Net</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dayWiseRows.map((r, i) => (
+                      <tr key={r.date} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: i % 2 ? '#fafafa' : 'white' }}>
+                        <td style={{ padding: '8px 10px', fontWeight: 600 }}>{r.date}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#16a34a' }}>{r.income > 0 ? fmt(r.income) : '—'}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#dc2626' }}>{r.expense > 0 ? fmt(r.expense) : '—'}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: r.net >= 0 ? '#16a34a' : '#dc2626' }}>{fmt(r.net)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Export Report — generates a full letterheaded report of ALL entries (not just the filtered/paginated view) */}

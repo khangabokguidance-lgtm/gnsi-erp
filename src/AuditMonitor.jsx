@@ -86,7 +86,43 @@ function FlagRow({ flag, isMobile }) {
 
 // ── main component ──────────────────────────────────────────────────────
 export default function AuditMonitor({ entries = [], isMobile = false }) {
-  const [section, setSection] = useState('overview') // overview | course | flags
+  const [section, setSection] = useState('overview') // overview | course | daywise
+
+  // ── Day-wise income & expenditure ────────────────────────────────────
+  // Date-range filter (defaults to the last 30 days) that groups every
+  // entry in range by entry_date, showing income/expense/net per day —
+  // separate from the "Last 7 Days" fixed-window cards elsewhere in this
+  // codebase, since an admin auditing the ledger often needs to pick an
+  // arbitrary range (a specific week, a full month) rather than always
+  // seeing exactly the trailing 7 days.
+  const [dwFrom, setDwFrom] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 29)
+    return d.toISOString().slice(0, 10)
+  })
+  const [dwTo, setDwTo] = useState(() => new Date().toISOString().slice(0, 10))
+
+  const dayWiseRows = useMemo(() => {
+    const map = {}
+    entries
+      .filter(e => e.status !== 'Superseded' && e.entry_date >= dwFrom && e.entry_date <= dwTo)
+      .forEach(e => {
+        const d = e.entry_date
+        if (!map[d]) map[d] = { date: d, income: 0, expense: 0, incomeCount: 0, expenseCount: 0 }
+        const amt = Number(e.amount || 0)
+        if (e.type === 'Income') { map[d].income += amt; map[d].incomeCount += 1 }
+        else { map[d].expense += amt; map[d].expenseCount += 1 }
+      })
+    return Object.values(map)
+      .map(r => ({ ...r, net: r.income - r.expense }))
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)) // newest first
+  }, [entries, dwFrom, dwTo])
+
+  const dayWiseTotals = useMemo(() => {
+    const income = dayWiseRows.reduce((s, r) => s + r.income, 0)
+    const expense = dayWiseRows.reduce((s, r) => s + r.expense, 0)
+    return { income, expense, net: income - expense, days: dayWiseRows.length }
+  }, [dayWiseRows])
 
   // ── Course-wise fee collection ──────────────────────────────────────
   const courseStats = useMemo(() => {
@@ -265,6 +301,7 @@ export default function AuditMonitor({ entries = [], isMobile = false }) {
         {[
           ['overview', `🛡️ All Flags${flags.length ? ` (${flags.length})` : ''}`],
           ['course', '🎓 Course-wise Collection'],
+          ['daywise', '📅 Day-wise Income & Expenditure'],
         ].map(([id, label]) => (
           <button
             key={id}
@@ -342,6 +379,70 @@ export default function AuditMonitor({ entries = [], isMobile = false }) {
                   "Unrecognized / Other" entries have a note that doesn't match the expected "Name · Course Batch Month · Ref" format — check these manually, they may be miscategorized or use an unlisted course name.
                 </p>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {section === 'daywise' && (
+        <div style={{ backgroundColor: 'white', borderRadius: 12, padding: isMobile ? 14 : 20, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#65676F', display: 'block', marginBottom: 4 }}>From</label>
+              <input type="date" value={dwFrom} onChange={e => setDwFrom(e.target.value)}
+                style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid rgba(0,0,0,0.12)', fontSize: 13 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#65676F', display: 'block', marginBottom: 4 }}>To</label>
+              <input type="date" value={dwTo} onChange={e => setDwTo(e.target.value)}
+                style={{ padding: '7px 9px', borderRadius: 7, border: '1px solid rgba(0,0,0,0.12)', fontSize: 13 }} />
+            </div>
+            <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 8px' }}>
+              {dayWiseTotals.days} day{dayWiseTotals.days === 1 ? '' : 's'} with activity in range
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3,1fr)' : 'repeat(3,1fr)', gap: 12, marginBottom: 18 }}>
+            <StatCard label="Income" value={fmt(dayWiseTotals.income)} sub={`${dwFrom} to ${dwTo}`} color="#16a34a" bg="#dcfce7" icon="📈" />
+            <StatCard label="Expense" value={fmt(dayWiseTotals.expense)} sub={`${dwFrom} to ${dwTo}`} color="#dc2626" bg="#fef2f2" icon="📉" />
+            <StatCard label="Net" value={fmt(dayWiseTotals.net)} sub="Income minus expense" color="#312e81" bg="#eef2ff" icon="⚖️" />
+          </div>
+
+          {dayWiseRows.length === 0 ? (
+            <p style={{ textAlign: 'center', color: '#94a3b8', padding: 32 }}>No entries in this date range.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#312e81', color: 'white' }}>
+                    <th style={{ padding: '9px 12px', textAlign: 'left' }}>Date</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'right' }}>Income</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'right' }}>Expense</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'right' }}>Net</th>
+                    <th style={{ padding: '9px 12px', textAlign: 'right' }}>Entries</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dayWiseRows.map((r, i) => (
+                    <tr key={r.date} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: i % 2 ? '#fafafa' : 'white' }}>
+                      <td style={{ padding: '9px 12px', fontWeight: 600 }}>{r.date}</td>
+                      <td style={{ padding: '9px 12px', textAlign: 'right', color: '#16a34a', fontWeight: 600 }}>{r.income > 0 ? fmt(r.income) : '—'}</td>
+                      <td style={{ padding: '9px 12px', textAlign: 'right', color: '#dc2626', fontWeight: 600 }}>{r.expense > 0 ? fmt(r.expense) : '—'}</td>
+                      <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: r.net >= 0 ? '#16a34a' : '#dc2626' }}>{fmt(r.net)}</td>
+                      <td style={{ padding: '9px 12px', textAlign: 'right', color: '#64748b' }}>{r.incomeCount + r.expenseCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ backgroundColor: '#eef2ff', fontWeight: 800 }}>
+                    <td style={{ padding: '9px 12px' }}>TOTAL</td>
+                    <td style={{ padding: '9px 12px', textAlign: 'right', color: '#16a34a' }}>{fmt(dayWiseTotals.income)}</td>
+                    <td style={{ padding: '9px 12px', textAlign: 'right', color: '#dc2626' }}>{fmt(dayWiseTotals.expense)}</td>
+                    <td style={{ padding: '9px 12px', textAlign: 'right', color: dayWiseTotals.net >= 0 ? '#16a34a' : '#dc2626' }}>{fmt(dayWiseTotals.net)}</td>
+                    <td style={{ padding: '9px 12px', textAlign: 'right' }}>{dayWiseRows.reduce((s, r) => s + r.incomeCount + r.expenseCount, 0)}</td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           )}
         </div>
