@@ -1496,9 +1496,14 @@ function Accounts({role,userId}){
   // Always type==='Expense' — a separate table from the combined Daily register above,
   // and feeds its own one-click PDF/DOCX/Excel report generation (side by side with the
   // generic multi-type Reports tab, not a replacement for it).
+  // BUGFIX: excludes Pending entries — see dailyFilteredEntries fix above
+  // for the same reasoning; this register's totals, category breakdown,
+  // cash/bank split, and print/CSV export were all silently including
+  // uncleared expenses as if they'd already been paid.
   const expenditureFilteredEntries = useMemo(()=>{
     const list = entries.filter(item=>{
       if(item.type!=='Expense')return false
+      if((item.status||'Confirmed')!=='Confirmed')return false
       if(expCategory!=='All'&&item.category!==expCategory)return false
       if(expAcctFilter!=='All'&&(item.account_type||'Cash A/c')!==expAcctFilter)return false
       if(expModeFilter!=='All'&&item.payment_mode!==expModeFilter)return false
@@ -1594,9 +1599,14 @@ function Accounts({role,userId}){
   },[dailyTypeFilter,dailyDateMode])
 
   // PAYMENT-DATE FILTER FIX: now driven by dailyTypeFilter (Income or Expense) instead of being hard-locked to Expense
+  // BUGFIX: also excludes Pending entries — this register (and its print/CSV
+  // exports) is a record of actual cash/bank movement for the day, so an
+  // uncleared/Pending entry showing up here alongside Confirmed ones
+  // overstated the day's real collection or expenditure.
   const dailyFilteredEntries=useMemo(()=>{
     return entries.filter(e=>{
       if(e.type!==dailyTypeFilter)return false
+      if((e.status||'Confirmed')!=='Confirmed')return false
       if(dailyAcctFilter!=='All'&&(e.account_type||'Cash A/c')!==dailyAcctFilter)return false
       if(dailyModeFilter!=='All'&&e.payment_mode!==dailyModeFilter)return false
       if(voucherHead&&!(e.voucher_head||'').toLowerCase().includes(voucherHead.toLowerCase()))return false
@@ -1615,8 +1625,11 @@ function Accounts({role,userId}){
   const dailyDrCr       = dailyIsIncome ? 'Cr.' : 'Dr.'
 
   // PHASE 2 FIX: running balance computed from ALL entries, not filtered subset
+  // BUGFIX: excludes Pending — same reasoning as totalIncome/totalExpense
+  // above; an uncleared entry hasn't actually moved money yet, so it
+  // shouldn't shift a running account balance.
   const runningBalanceMap=useMemo(()=>{
-    const sorted=[...entries].sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0)
+    const sorted=[...entries].filter(e=>(e.status||'Confirmed')==='Confirmed').sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0)
     let balance=0;const map={}
     sorted.forEach(e=>{balance+=e.type==='Income'?Number(e.amount):-Number(e.amount);map[e.id]=balance})
     return map
@@ -1629,29 +1642,37 @@ function Accounts({role,userId}){
   const filteredExpense = filteredEntries.filter(e=>e.type==='Expense'&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
   const filteredNet     = filteredIncome-filteredExpense
   const pendingCount    = entries.filter(e=>e.status==='Pending').length
-  const totalIncome     = entries.filter(e=>e.type==='Income').reduce((s,e)=>s+Number(e.amount),0)
-  const totalExpense    = entries.filter(e=>e.type==='Expense').reduce((s,e)=>s+Number(e.amount),0)
-  const todayIncome     = entries.filter(e=>e.type==='Income'&&e.entry_date===today).reduce((s,e)=>s+Number(e.amount),0)
-  const todayExpense    = entries.filter(e=>e.type==='Expense'&&e.entry_date===today).reduce((s,e)=>s+Number(e.amount),0)
+  // BUGFIX: these previously summed ALL entries regardless of status, while
+  // filteredIncome/filteredExpense above (used the instant any filter is
+  // applied) already excluded Pending — so the dashboard's Total
+  // Income/Expense/Net cards would visibly change the moment a user typed
+  // into search or picked a date range, purely because Pending entries
+  // silently dropped out. Confirmed is the only status that represents
+  // money that has actually moved, so these headline totals now match that
+  // same "Confirmed only" rule everywhere, filtered or not.
+  const totalIncome     = entries.filter(e=>e.type==='Income'&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
+  const totalExpense    = entries.filter(e=>e.type==='Expense'&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
+  const todayIncome     = entries.filter(e=>e.type==='Income'&&e.entry_date===today&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
+  const todayExpense    = entries.filter(e=>e.type==='Expense'&&e.entry_date===today&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
   const todayNet        = todayIncome-todayExpense
   const todayCount      = entries.filter(e=>e.entry_date===today).length
   const isFiltered      = dateFrom||dateTo||typeFilter!=='All'||modeFilter!=='All'||statusFilter!=='All'||acctFilter!=='All'||search
 
   const monthlyData=useMemo(()=>{
     const map={}
-    entries.forEach(e=>{const m=monthKey(e.entry_date);if(!m)return;if(!map[m])map[m]={month:m,Income:0,Expense:0};map[m][e.type]+=Number(e.amount)})
+    entries.filter(e=>(e.status||'Confirmed')==='Confirmed').forEach(e=>{const m=monthKey(e.entry_date);if(!m)return;if(!map[m])map[m]={month:m,Income:0,Expense:0};map[m][e.type]+=Number(e.amount)})
     return Object.values(map).sort((a,b)=>a.month.localeCompare(b.month)).slice(-12)
   },[entries])
 
   const categoryData=useMemo(()=>{
     const map={}
-    entries.forEach(e=>{if(!map[e.category])map[e.category]={name:e.category,value:0,type:e.type};map[e.category].value+=Number(e.amount)})
+    entries.filter(e=>(e.status||'Confirmed')==='Confirmed').forEach(e=>{if(!map[e.category])map[e.category]={name:e.category,value:0,type:e.type};map[e.category].value+=Number(e.amount)})
     return Object.values(map).sort((a,b)=>b.value-a.value).slice(0,8)
   },[entries])
 
   const modeData=useMemo(()=>{
     const map={}
-    entries.forEach(e=>{if(!map[e.payment_mode])map[e.payment_mode]={name:e.payment_mode,value:0};map[e.payment_mode].value+=Number(e.amount)})
+    entries.filter(e=>(e.status||'Confirmed')==='Confirmed').forEach(e=>{if(!map[e.payment_mode])map[e.payment_mode]={name:e.payment_mode,value:0};map[e.payment_mode].value+=Number(e.amount)})
     return Object.values(map)
   },[entries])
 
@@ -1662,7 +1683,7 @@ function Accounts({role,userId}){
   const dailyTrend=useMemo(()=>{
     if(!isAdmin)return[]
     const map={}
-    entries.forEach(e=>{
+    entries.filter(e=>(e.status||'Confirmed')==='Confirmed').forEach(e=>{
       const d=e.entry_date;if(!d)return
       if(!map[d])map[d]={date:d,Income:0,Expense:0}
       map[d][e.type]+=Number(e.amount)
@@ -1682,7 +1703,7 @@ function Accounts({role,userId}){
   const weeklyTrend=useMemo(()=>{
     if(!isAdmin)return[]
     const map={}
-    entries.forEach(e=>{
+    entries.filter(e=>(e.status||'Confirmed')==='Confirmed').forEach(e=>{
       if(!e.entry_date)return
       const wk=weekKey(e.entry_date)
       if(!map[wk])map[wk]={week:wk,Income:0,Expense:0}
@@ -1694,8 +1715,10 @@ function Accounts({role,userId}){
 
   const savingsTracker=useMemo(()=>{
     if(!isAdmin)return null
-    const totalIncomeAll=entries.filter(e=>e.type==='Income').reduce((s,e)=>s+Number(e.amount),0)
-    const totalExpenseAll=entries.filter(e=>e.type==='Expense').reduce((s,e)=>s+Number(e.amount),0)
+    // BUGFIX: excludes Pending — a savings rate calculated on money that
+    // hasn't actually been received/paid yet isn't a real savings rate.
+    const totalIncomeAll=entries.filter(e=>e.type==='Income'&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
+    const totalExpenseAll=entries.filter(e=>e.type==='Expense'&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
     const netSavings=totalIncomeAll-totalExpenseAll
     const savingsRate=totalIncomeAll>0?(netSavings/totalIncomeAll)*100:0
     const thisWeek=weeklyTrend[weeklyTrend.length-1]||{Income:0,Expense:0,Net:0}
