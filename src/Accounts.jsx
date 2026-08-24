@@ -282,6 +282,14 @@ function Accounts({role,userId}){
   // P&L modal
   const [showPL,  setShowPL]  = useState(false)
   const [plMonth, setPlMonth] = useState(()=>getToday().slice(0,7))
+  // P&L: custom date-range mode (in addition to the month picker) + advanced filters
+  const [plRangeMode,  setPlRangeMode]  = useState('month') // 'month' | 'range'
+  const [plDateFrom,   setPlDateFrom]   = useState('')
+  const [plDateTo,     setPlDateTo]     = useState('')
+  const [showPlFilters, setShowPlFilters] = useState(false)
+  const [plAccountType, setPlAccountType] = useState('All')
+  const [plPaymentMode, setPlPaymentMode] = useState('All')
+  const [plStatus,      setPlStatus]      = useState('All')
 
   // daily expenditure filters
   const [dailySearch,      setDailySearch]      = useState('')
@@ -913,9 +921,14 @@ function Accounts({role,userId}){
   const printPL=()=>{
     const w=window.open('','_blank')
     const{thisInc,thisExp,totalThisInc,totalThisExp}=plData,net=totalThisInc-totalThisExp
-    w.document.write(`<html><head><title>P&L - ${plMonth}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#1e293b}h1{font-size:22px}h2{font-size:15px;font-weight:600;margin:20px 0 8px;color:#1e3a5f}p{font-size:13px;color:#64748b;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#f8fafc;padding:8px 12px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f1f5f9}.total{font-weight:bold;background:#f8fafc}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
+    const advParts=[]
+    if(plAccountType!=='All')advParts.push(`Account: ${plAccountType}`)
+    if(plPaymentMode!=='All')advParts.push(`Mode: ${plPaymentMode}`)
+    if(plStatus!=='All')advParts.push(`Status: ${plStatus}`)
+    const advLabel=advParts.length?` | Filters: ${advParts.join(', ')}`:''
+    w.document.write(`<html><head><title>P&L - ${plPeriodLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#1e293b}h1{font-size:22px}h2{font-size:15px;font-weight:600;margin:20px 0 8px;color:#1e3a5f}p{font-size:13px;color:#64748b;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#f8fafc;padding:8px 12px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f1f5f9}.total{font-weight:bold;background:#f8fafc}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
     <h1>Income & Expenditure Statement</h1>
-    <p>Period: ${plMonth} | Generated: ${new Date().toLocaleString('en-IN')}</p>
+    <p>Period: ${plPeriodLabel}${advLabel} | Generated: ${new Date().toLocaleString('en-IN')}</p>
     <h2>Income</h2><table><tr><th>Category</th><th>Amount</th></tr>
     ${Object.entries(thisInc).map(([k,v])=>`<tr><td>${k.replace(/</g,'&lt;')}</td><td class="green">${fmt(v)}</td></tr>`).join('')}
     <tr class="total"><td>Total Income</td><td class="green">${fmt(totalThisInc)}</td></tr></table>
@@ -1930,12 +1943,34 @@ function Accounts({role,userId}){
   },[entries,weeklyTrend,isAdmin])
 
   const plData=useMemo(()=>{
-    const thisM=entries.filter(e=>e.entry_date.startsWith(plMonth))
-    const prevM=(()=>{const[y,m]=plMonth.split('-').map(Number);const d=new Date(y,m-2,1);const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;return entries.filter(e=>e.entry_date.startsWith(key))})()
+    const passesAdv=(e)=>(plAccountType==='All'||e.account_type===plAccountType)&&(plPaymentMode==='All'||e.payment_mode===plPaymentMode)&&(plStatus==='All'||e.status===plStatus)
+    let thisM,prevM
+    if(plRangeMode==='range'&&plDateFrom&&plDateTo){
+      thisM=entries.filter(e=>e.entry_date>=plDateFrom&&e.entry_date<=plDateTo&&passesAdv(e))
+      // previous period = equal-length window immediately preceding the selected range
+      const from=new Date(plDateFrom+'T00:00:00'),to=new Date(plDateTo+'T00:00:00')
+      const days=Math.round((to-from)/86400000)+1
+      const prevTo=new Date(from);prevTo.setDate(prevTo.getDate()-1)
+      const prevFrom=new Date(prevTo);prevFrom.setDate(prevFrom.getDate()-(days-1))
+      const toKey=(d)=>d.toLocaleDateString('en-CA')
+      prevM=entries.filter(e=>e.entry_date>=toKey(prevFrom)&&e.entry_date<=toKey(prevTo)&&passesAdv(e))
+    }else{
+      thisM=entries.filter(e=>e.entry_date.startsWith(plMonth)&&passesAdv(e))
+      prevM=(()=>{const[y,m]=plMonth.split('-').map(Number);const d=new Date(y,m-2,1);const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;return entries.filter(e=>e.entry_date.startsWith(key)&&passesAdv(e))})()
+    }
     const sumBy=(arr,type)=>{const map={};arr.filter(e=>e.type===type).forEach(e=>{map[e.category]=(map[e.category]||0)+Number(e.amount)});return map}
     const thisInc=sumBy(thisM,'Income'),thisExp=sumBy(thisM,'Expense'),prevInc=sumBy(prevM,'Income'),prevExp=sumBy(prevM,'Expense')
     return{thisInc,thisExp,prevInc,prevExp,totalThisInc:Object.values(thisInc).reduce((s,v)=>s+v,0),totalThisExp:Object.values(thisExp).reduce((s,v)=>s+v,0),totalPrevInc:Object.values(prevInc).reduce((s,v)=>s+v,0),totalPrevExp:Object.values(prevExp).reduce((s,v)=>s+v,0)}
-  },[entries,plMonth])
+  },[entries,plMonth,plRangeMode,plDateFrom,plDateTo,plAccountType,plPaymentMode,plStatus])
+
+  // human-readable period label used in the P&L modal header and printout
+  const plPeriodLabel=useMemo(()=>{
+    if(plRangeMode==='range'&&plDateFrom&&plDateTo){
+      const fmtD=(s)=>new Date(s+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})
+      return `${fmtD(plDateFrom)} – ${fmtD(plDateTo)}`
+    }
+    return new Date(plMonth+'-01').toLocaleDateString('en-IN',{month:'long',year:'numeric'})
+  },[plRangeMode,plDateFrom,plDateTo,plMonth])
 
   const thisMonth=today.slice(0,7)
   const monthlyExpenses=useMemo(()=>{
@@ -3090,14 +3125,63 @@ function Accounts({role,userId}){
     {showPL&&(
       <div onClick={()=>setShowPL(false)} style={{position:'fixed',inset:0,backgroundColor:'rgba(0,0,0,0.55)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999,padding: isMobile ? 12 : 0}}>
         <div onClick={e=>e.stopPropagation()} style={{backgroundColor:'white',borderRadius:14,padding: isMobile ? 16 : 28,width: isMobile ? '100%' : 680,maxWidth:'95vw',maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,flexWrap:'wrap',gap:10}}>
-            <div><h2 style={{fontSize: isMobile ? 16 : 20,fontWeight:700,color:'#1e3a5f',margin:0}}>📋 P&L Statement</h2><p style={{fontSize:13,color:'#64748b',margin:'4px 0 0'}}>Income &amp; Expenditure Report</p></div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}}>
+            <div><h2 style={{fontSize: isMobile ? 16 : 20,fontWeight:700,color:'#1e3a5f',margin:0}}>📋 P&L Statement</h2><p style={{fontSize:13,color:'#64748b',margin:'4px 0 0'}}>Income &amp; Expenditure Report · {plPeriodLabel}</p></div>
             <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-              <input type="month" value={plMonth} onChange={e=>setPlMonth(e.target.value)} style={{...iStyle,width: isMobile ? '100%' : 160}}/>
               <button onClick={printPL} style={{backgroundColor:'#1e3a5f',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>🖨 Print</button>
               <button onClick={()=>setShowPL(false)} style={{backgroundColor:'#fee2e2',color:'#dc2626',border:'none',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:13}}>✖</button>
             </div>
           </div>
+
+          {/* ── period selector: Month vs Custom Range ── */}
+          <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:12}}>
+            <div style={{display:'flex',borderRadius:8,overflow:'hidden',border:'1px solid #e5e7eb'}}>
+              <button onClick={()=>setPlRangeMode('month')} style={{padding:'8px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plRangeMode==='month'?'#1e3a5f':'#f8fafc',color:plRangeMode==='month'?'white':'#64748b'}}>Month</button>
+              <button onClick={()=>setPlRangeMode('range')} style={{padding:'8px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plRangeMode==='range'?'#1e3a5f':'#f8fafc',color:plRangeMode==='range'?'white':'#64748b'}}>Custom Range</button>
+            </div>
+            {plRangeMode==='month'
+              ? <input type="month" value={plMonth} onChange={e=>setPlMonth(e.target.value)} style={{...iStyle,width: isMobile ? '100%' : 160}}/>
+              : <>
+                  <input type="date" value={plDateFrom} onChange={e=>setPlDateFrom(e.target.value)} style={{...iStyle,width: isMobile ? '48%' : 150}}/>
+                  <span style={{color:'#94a3b8',fontSize:13}}>to</span>
+                  <input type="date" value={plDateTo} onChange={e=>setPlDateTo(e.target.value)} style={{...iStyle,width: isMobile ? '48%' : 150}}/>
+                </>
+            }
+            <button onClick={()=>setShowPlFilters(s=>!s)} style={{backgroundColor: showPlFilters?'#eef2ff':'#f8fafc',color:'#312e81',border:'1px solid #e0e7ff',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:12}}>⚙ Advanced Filters{(plAccountType!=='All'||plPaymentMode!=='All'||plStatus!=='All')?' •':''}</button>
+          </div>
+
+          {/* ── advanced filters panel ── */}
+          {showPlFilters&&(
+            <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)',gap:10,marginBottom:16,backgroundColor:'#f8fafc',borderRadius:10,padding:14,border:'1px solid #e2e8f0'}}>
+              <div>
+                <label style={lStyle}>Account Type</label>
+                <select value={plAccountType} onChange={e=>setPlAccountType(e.target.value)} style={iStyle}>
+                  <option value="All">All Accounts</option>
+                  {ACCOUNT_TYPES.map(a=><option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lStyle}>Payment Mode</label>
+                <select value={plPaymentMode} onChange={e=>setPlPaymentMode(e.target.value)} style={iStyle}>
+                  <option value="All">All Modes</option>
+                  {PAYMENT_MODES.map(m=><option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lStyle}>Status</label>
+                <select value={plStatus} onChange={e=>setPlStatus(e.target.value)} style={iStyle}>
+                  <option value="All">All Statuses</option>
+                  {STATUS_OPTIONS.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              {(plAccountType!=='All'||plPaymentMode!=='All'||plStatus!=='All')&&(
+                <div style={{gridColumn: isMobile ? '1' : '1 / -1'}}>
+                  <button onClick={()=>{setPlAccountType('All');setPlPaymentMode('All');setPlStatus('All')}} style={{backgroundColor:'#fee2e2',color:'#dc2626',border:'none',borderRadius:6,padding:'6px 12px',fontSize:12,fontWeight:600,cursor:'pointer'}}>✖ Clear Filters</button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{display:'grid',gridTemplateColumns:plModalCols,gap:12,marginBottom:20}}>
             {[{label:'Total Income',value:plData.totalThisInc,color:'#16a34a',bg:'#dcfce7'},{label:'Total Expense',value:plData.totalThisExp,color:'#dc2626',bg:'#fee2e2'},{label:'Net Surplus/Deficit',value:plData.totalThisInc-plData.totalThisExp,color:'#1e3a5f',bg:'#eff6ff'}].map(c=>(
               <div key={c.label} style={{backgroundColor:c.bg,borderRadius:10,padding:'14px 16px',borderLeft:`3px solid ${c.color}`}}>
@@ -3113,7 +3197,7 @@ function Accounts({role,userId}){
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                   <tbody>
                     {Object.entries(sec.data).map(([k,v])=><tr key={k} style={{borderBottom:'1px solid #f1f5f9'}}><td style={{padding:'7px 0',color:'#374151'}}>{k}</td><td style={{padding:'7px 0',textAlign:'right',fontWeight:600,color:sec.color}}>{fmt(v)}</td></tr>)}
-                    {Object.keys(sec.data).length===0&&<tr><td colSpan={2} style={{padding:'12px 0',color:'#94a3b8',textAlign:'center'}}>No {sec.title.toLowerCase()} this month</td></tr>}
+                    {Object.keys(sec.data).length===0&&<tr><td colSpan={2} style={{padding:'12px 0',color:'#94a3b8',textAlign:'center'}}>No {sec.title.toLowerCase()} in this period</td></tr>}
                     <tr style={{borderTop:`2px solid ${sec.color}`}}><td style={{padding:'8px 0',fontWeight:700,color:'#1e293b'}}>Total</td><td style={{padding:'8px 0',textAlign:'right',fontWeight:700,color:sec.color}}>{fmt(sec.total)}</td></tr>
                   </tbody>
                 </table>
