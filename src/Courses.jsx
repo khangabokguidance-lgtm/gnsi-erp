@@ -594,6 +594,47 @@ function EnrollmentsSection({ courseData, isMobile, isAdmin }) {
 
   const save = async () => {
     if (!form.student_name || !form.course) { setErr("Student name and course required."); return; }
+    // Guard against the duplicate-active-enrollment bug found in production:
+    // several students (all created within the same 41-minute window on
+    // 2026-06-23) ended up with two simultaneous Active course_enrollments
+    // rows for the same gcc_no — one Boarder, one Day Scholar — because
+    // nothing here checked for an existing active enrollment before
+    // inserting a new one. A second bulk-edit style save (or a double
+    // submit) silently created a conflicting duplicate instead of updating
+    // the original. This check runs for both new enrollments and edits
+    // (excluding the row being edited itself via .neq) so it can't be
+    // bypassed either way.
+    if (form.status === "Active" && form.gcc_no) {
+      const { data: existingActive } = await supabase
+        .from("course_enrollments")
+        .select("id, hostel_type, course, subtype")
+        .eq("gcc_no", form.gcc_no)
+        .eq("status", "Active")
+        .neq("id", editing?.id ?? -1);
+      if (existingActive && existingActive.length > 0) {
+        const conflict = existingActive[0];
+        const differs = conflict.hostel_type !== form.hostel_type || conflict.course !== form.course;
+        const proceed = window.confirm(
+          `This student already has an active enrollment` +
+          (differs ? ` (${conflict.course || "—"}${conflict.subtype ? " " + conflict.subtype : ""}, ${conflict.hostel_type || "no hostel type set"})` : "") +
+          `.\n\nSaving this will create a SECOND active enrollment for the same student, which can cause conflicting hostel type / fee records like the one this check was added to catch.\n\nDo you want to continue anyway? (Usually you should edit the existing enrollment instead of creating a new one.)`
+        );
+        if (!proceed) return;
+      }
+    }
+    // Soft warning (not blocking) when the hostel type chosen here doesn't
+    // match the hostel type already on the student's own record — this is
+    // the field that handlePick() auto-fills from `students.hostel_type`,
+    // so a mismatch here usually means it was manually overridden after
+    // picking the student, which is the same override pattern that caused
+    // the production duplicates.
+    const pickedStudent = students.find(s => String(s.id) === String(form.student_id));
+    if (pickedStudent && pickedStudent.hostel_type && form.hostel_type && pickedStudent.hostel_type !== form.hostel_type) {
+      const proceed = window.confirm(
+        `This student's own record has hostel type "${pickedStudent.hostel_type}", but "${form.hostel_type}" is selected here.\n\nIf this student's hostel type genuinely changed, update it on the Students page first so it stays consistent everywhere. Continue saving with "${form.hostel_type}" anyway?`
+      );
+      if (!proceed) return;
+    }
     setSaving(true); setErr(null);
     const payload = { student_name: form.student_name, student_id: form.student_id || null, gcc_no: form.gcc_no || null, hostel_type: form.hostel_type || null, course: form.course, subtype: form.subtype || null, class_name: form.class_name || null, batch_id: form.batch_id || null, session_year: form.session_year || null, enrolled_at: form.enrolled_at || null, status: form.status, notes: form.notes || null };
     const { error } = editing

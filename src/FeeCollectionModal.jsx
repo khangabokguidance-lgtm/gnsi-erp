@@ -145,6 +145,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       .then(rates => {
         setFeeRates(rates)
         setCourseAmt(rates.courseFee)
+        setCourseAmtReason('') // fresh rate load — clear any stale reason from a previous month/course
         setHasOverride(!!rates.flatFeeOverride)
         if (rates.flatFeeOverride) {
           setOverrideAmt(String(rates.flatFeeOverride.flat_fee_override))
@@ -193,6 +194,15 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const [courseAmt,        setCourseAmt]         = useState(0)
   const [paidCourseMonths, setPaidCourseMonths] = useState([])
   const [loadingCourse,    setLoadingCourse]    = useState(false)
+  // Discrepancy guard: when staff edit the auto-filled course fee away from
+  // the configured rate, collectFee had no way of knowing whether that was
+  // an approved discount or a mistake/shortfall — it just silently recorded
+  // whatever amount was in the field. Any edit beyond this threshold now
+  // requires the collector to record a reason before saving, so a shortfall
+  // shows up in the audit trail at collection time instead of only being
+  // discoverable later by mining the ledger for below-standard payments.
+  const COURSE_FEE_DISCREPANCY_THRESHOLD = 1000
+  const [courseAmtReason,  setCourseAmtReason]  = useState('')
 
   // ── Cross-check hostel_allocations ────────────────────────────────────────
   useEffect(() => {
@@ -295,6 +305,13 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
 
   const admTotal  = FEE_ITEMS.filter(f => selected[f.id] && !isAdmItemPaid(f.label)).reduce((s, f) => s + (Number(customAmts[f.id]) || f.amount), 0)
   const flatTotal = flatFees.filter(f => flatSel[f.id] && !isMonthPaid(f)).reduce((s, f) => s + f.amount, 0)
+
+  // How far the (possibly hand-edited) course fee amount sits from the
+  // configured rate for this course/batch/hostel combo. Only meaningful
+  // once rates have finished loading — before that feeRates.courseFee is
+  // still the useState default and would falsely read as a huge gap.
+  const courseAmtGap = ratesLoading ? 0 : Number(courseAmt || 0) - Number(feeRates.courseFee || 0)
+  const courseAmtNeedsReason = !ratesLoading && Math.abs(courseAmtGap) >= COURSE_FEE_DISCREPANCY_THRESHOLD
 
   // ── Save flat fee override inline ─────────────────────────────────────────
   const saveOverrideInline = async () => {
@@ -478,6 +495,19 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     if (payMode === 'UPI' && !txnRef.trim()) return alert('UPI Txn / UTR No. is required for UPI payments.')
     const amt = Number(courseAmt)
     if (!amt || amt <= 0) return alert('Enter a valid amount.')
+    // Amount was hand-edited away from the configured rate by ₹1,000+ with
+    // no reason recorded — block the save rather than silently posting an
+    // unexplained shortfall (or overcharge) to the ledger. This is the
+    // fix for entries like "Sainik Champion ₹1,500" against a ₹6,000
+    // configured rate showing up with no discount/reason on file.
+    if (courseAmtNeedsReason && !courseAmtReason.trim()) {
+      return alert(
+        `This amount is ₹${Math.abs(courseAmtGap).toLocaleString('en-IN')} ` +
+        `${courseAmtGap < 0 ? 'below' : 'above'} the standard course fee ` +
+        `(₹${feeRates.courseFee.toLocaleString('en-IN')}/month). Please enter a reason ` +
+        `(e.g. approved scholarship, partial payment, sibling discount) before saving.`
+      )
+    }
     if (isCourseMonthPaid()) { setError(`Course fee for ${courseMonth} ${courseYear} is already recorded.`); return }
     const isAdvance = isFutureFeeMonth(courseMonth, courseYear)
     if (isAdvance && !isAdmin) return alert(`${courseMonth} ${courseYear} hasn't started yet. Only an admin can authorize collecting an advance payment.`)
@@ -485,17 +515,24 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     setSaving(true); setError(null)
     try {
       const rNo = rcptNo()
+      // When the amount diverges from the standard rate, fold the reason into
+      // the note so it's visible on the ledger/receipt itself — not just
+      // sitting in this modal's local state, gone the moment it closes.
+      const courseNote = courseAmtNeedsReason
+        ? `Rate override: ₹${feeRates.courseFee.toLocaleString('en-IN')} standard → ₹${amt.toLocaleString('en-IN')} — ${courseAmtReason.trim()}`
+        : undefined
       const { sections, total } = await collectFee({
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
         collectedBy: collectedBy || null, receiptNo: rNo,
-        items: [{ kind: 'course', course: course || '', subtype: batch || '', month: courseMonth, year: courseYear, amount: amt, isAdvance, advanceAuthorizedBy: isAdvance ? (currentUser?.userName || currentUser?.name || 'Admin') : null }],
+        items: [{ kind: 'course', course: course || '', subtype: batch || '', month: courseMonth, year: courseYear, amount: amt, note: courseNote, isAdvance, advanceAuthorizedBy: isAdvance ? (currentUser?.userName || currentUser?.name || 'Admin') : null }],
       })
       printReceipt({ ...commonReceiptFields(rNo), sections, total })
       setPaidCourseMonths(p => [...new Set([...p, `${courseMonth}_${courseYear}`])])
       setSaved({ rcpt: rNo, items: `${course} · ${batch} · ${courseMonth} ${courseYear}`, total: amt })
       setCourseAdvanceAuthorized(false)
+      setCourseAmtReason('')
       onSaved?.()
     } catch (err) { setError(err.message || 'Failed to save.') }
     finally { setSaving(false) }
@@ -893,6 +930,21 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                   <input type="number" value={courseAmt} onChange={e => setCourseAmt(e.target.value)} style={{ ...inp, fontWeight:700, color:C.violet }} />
                 </div>
               </div>
+              {courseAmtNeedsReason && (
+                <div style={{ background:'#fef2f2', border:'1.5px solid #fca5a5', borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:'#991B1B', marginBottom:8 }}>
+                    ⚠️ This is ₹{Math.abs(courseAmtGap).toLocaleString('en-IN')} {courseAmtGap < 0 ? 'below' : 'above'} the
+                    standard course fee (₹{feeRates.courseFee.toLocaleString('en-IN')}/month). A reason is required to save.
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="e.g. Approved scholarship, sibling discount, partial payment — installment 1 of 2"
+                    value={courseAmtReason}
+                    onChange={e => setCourseAmtReason(e.target.value)}
+                    style={{ ...inp, borderColor:'#fca5a5' }}
+                  />
+                </div>
+              )}
               {loadingCourse ? (
                 <div style={{ fontSize:12, color:C.slate[400], marginBottom:12, padding:'8px 12px', background:C.slate[50], borderRadius:8 }}>⏳ Checking payment history…</div>
               ) : courseMonthPaid ? (

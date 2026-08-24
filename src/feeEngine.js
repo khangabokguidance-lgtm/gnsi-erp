@@ -807,13 +807,21 @@ export const collectFee = async ({
         txn_ref: txnRef || null, receipt_no: receiptNo,
         student_name: studentName, adm_no: admNo,
         is_advance: !!item.isAdvance, advance_authorized_by: item.isAdvance ? (item.advanceAuthorizedBy || null) : null,
+        // Rate-override note (set by FeeCollectionModal when the collected
+        // amount was edited away from the configured course fee by more
+        // than its discrepancy threshold). Explains WHY a below/above-rate
+        // amount was collected, instead of the shortfall only being
+        // discoverable later by cross-referencing fee_structures.
+        ...(item.note ? { override_note: item.note } : {}),
         ...noRevert,
       }, { onConflict: 'id' })
       if (error) throw new Error(`Course fee ${item.month} save failed: ` + error.message)
       await upsertAccountOrRollback({
         entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Fees',
         amount: item.amount, payment_mode: payMode,
-        note: `${studentName} · ${crs}${sub ? ' ' + sub : ''} ${item.month} · ${receiptNo}`,
+        note: item.note
+          ? `${studentName} · ${crs}${sub ? ' ' + sub : ''} ${item.month} · ${receiptNo} · ${item.note}`
+          : `${studentName} · ${crs}${sub ? ' ' + sub : ''} ${item.month} · ${receiptNo}`,
         source_ref: sRef, source_type: 'course_fee',
       }, TABLES.admCourseFees, recId)
       await mirrorToFeeInvoice({

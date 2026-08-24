@@ -1496,9 +1496,19 @@ function DetailPanel({ a, onClose, onAddNote, darkMode, role, housemastersByHous
 function QuickEditRow({ a, onSave, onCancel }) {
   const [status,    setStatus]    = useState(a.status)
   const [house,     setHouse]     = useState(a.house||'')
-  const [hostel,    setHostel]    = useState(a.hostel_type)
   const [followup,  setFollowup]  = useState(a.followupDate||'')
   const [bedNum,    setBedNum]    = useState(a.bedNumber||'')
+  // hostel_type is no longer an independent field here. It was previously a
+  // second dropdown that staff could set to any value regardless of `house`
+  // — e.g. house="Kombirei" (a real boarding house) with hostel_type
+  // manually left at "Day Scholar", or vice versa. That exact combination
+  // is what produced the duplicate/conflicting course_enrollments rows
+  // found in production (multiple students on 2026-06-23 ended up with two
+  // enrollment rows, one Boarder and one Day Scholar, from what was meant
+  // to be a single house reassignment). hostel_type is now always derived
+  // from house via the same deriveHostelType() rule used elsewhere in this
+  // file, so the two fields can never disagree.
+  const hostel = deriveHostelType(house, a.hostel_type)
 
   return createPortal(
     <div onClick={onCancel} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:99998, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
@@ -1506,7 +1516,9 @@ function QuickEditRow({ a, onSave, onCancel }) {
       <span style={{ fontSize:11, fontWeight:700, color:T.amber[700], marginRight:4, width:'100%' }}>Quick Edit: {a.name}</span>
       <select value={status}   onChange={e=>setStatus(e.target.value)}   style={{ ...styles.inp, width:'auto', fontSize:11, padding:'5px 8px' }}>{ADM_STATUSES.map(s=><option key={s}>{s}</option>)}</select>
       <select value={house}    onChange={e=>setHouse(e.target.value)}    style={{ ...styles.inp, width:'auto', fontSize:11, padding:'5px 8px' }}><option value="">— House —</option>{HOUSES_LIST.map(h=><option key={h}>{h}</option>)}</select>
-      <select value={hostel}   onChange={e=>setHostel(e.target.value)}   style={{ ...styles.inp, width:'auto', fontSize:11, padding:'5px 8px' }}>{HOSTEL_TYPES.map(h=><option key={h}>{h}</option>)}</select>
+      <span style={{ fontSize:11, fontWeight:600, color:T.slate[500], padding:'5px 8px', border:`1px dashed ${T.slate[300]}`, borderRadius:6 }} title="Derived from House — Day Scholar house always maps to Day Scholar, any other house maps to Boarder">
+        {hostel} (auto)
+      </span>
       <input  value={followup} onChange={e=>setFollowup(e.target.value)} type="date" style={{ ...styles.inp, width:'auto', fontSize:11, padding:'5px 8px' }} placeholder="Follow-up date" />
       <input  value={bedNum}   onChange={e=>setBedNum(e.target.value)}   style={{ ...styles.inp, width:90, fontSize:11, padding:'5px 8px' }} placeholder="Bed No." />
       <button onClick={() => onSave(a.id,{status,house,hostel_type:hostel,followupDate:followup,bedNumber:bedNum})}
@@ -2686,10 +2698,23 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
               )}
             </GovField>
             <GovField label="Hostel Type" required>
-              <select style={{ ...govInp, background:form.house&&DAY_SCHOLAR_HOUSES.includes(form.house)?'#F4F3EF':'#fff', color:form.house&&DAY_SCHOLAR_HOUSES.includes(form.house)?'#9CA0AC':ink }}
-                value={form.hostel_type} onChange={e=>set('hostel_type',e.target.value)}>
+              {/* Previously an independently editable dropdown. Even though
+                  the useEffect above (keyed on form.house) pushed a derived
+                  value into form.hostel_type on every house change, this
+                  select's onChange let staff immediately override that
+                  value afterward — so house="Kombirei" (a boarding house)
+                  could still be saved alongside hostel_type="Day Scholar",
+                  or vice versa. That exact mismatch is what produced
+                  conflicting/duplicate course_enrollments rows for several
+                  students (all created 2026-06-23). hostel_type is now
+                  always derived from house and never independently
+                  editable — disabled + fed from deriveHostelType(), same
+                  rule used everywhere else in this file. */}
+              <select style={{ ...govInp, background:'#F4F3EF', color:'#9CA0AC', cursor:'not-allowed' }}
+                value={deriveHostelType(form.house, form.hostel_type)} disabled>
                 {HOSTEL_TYPES.map(h=><option key={h} value={h}>{h}</option>)}
               </select>
+              <div style={{ fontSize:11, color:T.slate[500], marginTop:3 }}>Derived from House — select "Day Scholar" as the house to set this to Day Scholar, any other house sets Boarder.</div>
             </GovField>
             <GovField label="Bed / Room No.">
               <input style={govInp} value={form.bedNumber} onChange={e=>set('bedNumber',e.target.value)} placeholder="e.g. K-12" />
@@ -2858,7 +2883,14 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
               onEdit={() => setStep('form')}
               onConfirm={async () => {
                 setSubmitting(true)
-                try { await onSave(editing?.id||null, form) }
+                // Belt-and-braces: re-derive hostel_type from house right at
+                // the save boundary rather than trusting form.hostel_type to
+                // already be correct. The useEffect above keeps them in sync
+                // on every house change, but forcing it again here means a
+                // stale/pre-fix draft (e.g. one restored from the
+                // localStorage DRAFT_KEY autosave, written before this fix
+                // existed) can never write a mismatched pair to the database.
+                try { await onSave(editing?.id||null, { ...form, hostel_type: deriveHostelType(form.house, form.hostel_type) }) }
                 finally { setSubmitting(false) }
               }}
             />
