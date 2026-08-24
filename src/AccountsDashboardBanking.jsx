@@ -39,10 +39,55 @@ export const AccountsDashboardBanking = ({
   const [expensePage, setExpensePage] = useState(1)
   const PAGE_SIZE = isMobile ? 10 : 15
 
+  // ── Advanced filters — collapsed by default so the dashboard stays clean
+  // for the common case (just the search box), but available for anyone who
+  // needs to narrow down by date range, category, payment mode, account,
+  // status, or amount range instead of scrolling the full ledger. All
+  // filters AND together with each other and with the text search above.
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+  const [filterCategory, setFilterCategory] = useState('All')
+  const [filterMode, setFilterMode] = useState('All')
+  const [filterAccount, setFilterAccount] = useState('All')
+  const [filterStatus, setFilterStatus] = useState('All')
+  const [filterAmountMin, setFilterAmountMin] = useState('')
+  const [filterAmountMax, setFilterAmountMax] = useState('')
+
+  // Option lists built from whatever is actually present in `entries`
+  // rather than a hardcoded list — so a new category or a differently
+  // spelled payment mode shows up here automatically instead of being
+  // unfilterable until someone remembers to update a constant.
+  const categoryOptions = useMemo(
+    () => ['All', ...Array.from(new Set(entries.map((e) => e.category).filter(Boolean))).sort()],
+    [entries]
+  )
+  const modeOptions = useMemo(
+    () => ['All', ...Array.from(new Set(entries.map((e) => e.payment_mode).filter(Boolean))).sort()],
+    [entries]
+  )
+  const accountOptions = useMemo(
+    () => ['All', ...Array.from(new Set(entries.map((e) => e.account_type).filter(Boolean))).sort()],
+    [entries]
+  )
+  const statusOptions = useMemo(
+    () => ['All', ...Array.from(new Set(entries.map((e) => e.status).filter(Boolean))).sort()],
+    [entries]
+  )
+
+  const hasAdvancedFilters =
+    filterDateFrom || filterDateTo || filterCategory !== 'All' || filterMode !== 'All' ||
+    filterAccount !== 'All' || filterStatus !== 'All' || filterAmountMin || filterAmountMax
+
+  const clearAdvancedFilters = () => {
+    setFilterDateFrom(''); setFilterDateTo(''); setFilterCategory('All'); setFilterMode('All')
+    setFilterAccount('All'); setFilterStatus('All'); setFilterAmountMin(''); setFilterAmountMax('')
+  }
+
   React.useEffect(() => {
     setIncomePage(1)
     setExpensePage(1)
-  }, [searchQuery])
+  }, [searchQuery, filterDateFrom, filterDateTo, filterCategory, filterMode, filterAccount, filterStatus, filterAmountMin, filterAmountMax])
 
   const stats = useMemo(() => {
     const income = entries
@@ -56,6 +101,77 @@ export const AccountsDashboardBanking = ({
     return { income, expense, balance: income - expense, confirmed, pending }
   }, [entries])
 
+  // ── Last 7 Days summary — shown by default at the top of the dashboard,
+  // no tab switch or filter setup needed. Mirrors the "Weekly Report for
+  // Admin's PA" panel in the Reports tab (same rolling 7-day-inclusive
+  // window, same total logic) so the two never disagree — this is just the
+  // always-visible version for whoever opens Accounts and wants today's
+  // picture without going looking for it.
+  const last7Range = useMemo(() => {
+    const pad = (n) => String(n).padStart(2, '0')
+    const fmtDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    const to = new Date()
+    const from = new Date(to)
+    from.setDate(to.getDate() - 6) // last 7 days inclusive of today
+    return { from: fmtDate(from), to: fmtDate(to) }
+  }, [])
+
+  const last7Entries = useMemo(
+    () =>
+      entries
+        .filter((e) => e.entry_date >= last7Range.from && e.entry_date <= last7Range.to)
+        .sort((a, b) => (a.entry_date < b.entry_date ? -1 : a.entry_date > b.entry_date ? 1 : 0)),
+    [entries, last7Range]
+  )
+
+  const last7Stats = useMemo(() => {
+    const income = last7Entries.filter((e) => e.type === 'Income').reduce((s, e) => s + Number(e.amount || 0), 0)
+    const expense = last7Entries.filter((e) => e.type === 'Expense').reduce((s, e) => s + Number(e.amount || 0), 0)
+    return { income, expense, net: income - expense, count: last7Entries.length }
+  }, [last7Entries])
+
+  // Print button for this card — same window.open/write/print pattern used
+  // for every other print view in this codebase (Accounts.jsx's
+  // printDailyRegister etc.), so it needs no library and matches their look.
+  const printLast7Days = () => {
+    const w = window.open('', '_blank')
+    if (!w) return
+    const rows = last7Entries
+      .map(
+        (e, i) =>
+          `<tr><td>${i + 1}</td><td style="font-size:11px;color:#888">${e.entry_date}</td><td style="color:${e.type === 'Income' ? '#16a34a' : '#dc2626'};font-weight:600">${e.type}</td><td>${e.category || '—'}</td><td>${(e.note || '').replace(/</g, '&lt;')}</td><td>${e.payment_mode || ''}</td><td style="text-align:right;font-weight:600">${fmt(e.amount)}</td></tr>`
+      )
+      .join('')
+    w.document.write(`<html><head><title>Last 7 Days — GNSI Portal</title><style>
+      body{font-family:Arial,sans-serif;padding:24px;font-size:12px;color:#1a2535}
+      h1{font-size:18px;margin-bottom:4px}p{color:#666;margin:0 0 16px}
+      table{width:100%;border-collapse:collapse;margin-bottom:20px}
+      th{background:#1e3a5f;color:#fff;padding:7px 10px;text-align:left;font-size:11px}
+      td{padding:7px 10px;border-bottom:1px solid #eee}
+      .grand{background:#1e3a5f;color:#fff;font-weight:bold}
+      .summary{display:flex;gap:14px;margin-bottom:18px}
+      .card{flex:1;border-radius:8px;padding:10px 14px}
+      .card.income{background:#dcfce7;border-left:3px solid #16a34a}
+      .card.expense{background:#fee2e2;border-left:3px solid #dc2626}
+      .card.net{background:#eff6ff;border-left:3px solid #1e3a5f}
+      .card p{margin:0}.card .lbl{font-size:11px;color:#475569;font-weight:600}.card .val{font-size:16px;font-weight:800;color:#0f172a}
+      @page{margin:15mm}
+    </style></head><body>
+    <h1>Last 7 Days — GNSI Portal</h1>
+    <p>${last7Range.from} to ${last7Range.to} · ${last7Stats.count} entries · Generated: ${new Date().toLocaleString('en-IN')}</p>
+    <div class="summary">
+      <div class="card income"><p class="lbl">Income</p><p class="val">${fmt(last7Stats.income)}</p></div>
+      <div class="card expense"><p class="lbl">Expense</p><p class="val">${fmt(last7Stats.expense)}</p></div>
+      <div class="card net"><p class="lbl">Net</p><p class="val">${fmt(last7Stats.net)}</p></div>
+    </div>
+    <table><tr><th>#</th><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th>Pay Mode</th><th style="text-align:right">Amount</th></tr>
+    ${rows}
+    <tr class="grand"><td colspan="6">NET (7 days)</td><td style="text-align:right">${fmt(last7Stats.net)}</td></tr>
+    </table></body></html>`)
+    w.document.close()
+    w.print()
+  }
+
   const sortedEntries = useMemo(
     () =>
       [...entries].sort(
@@ -66,13 +182,25 @@ export const AccountsDashboardBanking = ({
 
   const searchedEntries = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return sortedEntries
-    return sortedEntries.filter((e) =>
-      [e.category, e.note, e.voucher_head, e.payment_mode, e.account_type]
-        .filter(Boolean)
-        .some((f) => String(f).toLowerCase().includes(q))
-    )
-  }, [sortedEntries, searchQuery])
+    return sortedEntries.filter((e) => {
+      if (q) {
+        const matchesText = [e.category, e.note, e.voucher_head, e.payment_mode, e.account_type]
+          .filter(Boolean)
+          .some((f) => String(f).toLowerCase().includes(q))
+        if (!matchesText) return false
+      }
+      if (filterDateFrom && e.entry_date < filterDateFrom) return false
+      if (filterDateTo && e.entry_date > filterDateTo) return false
+      if (filterCategory !== 'All' && e.category !== filterCategory) return false
+      if (filterMode !== 'All' && e.payment_mode !== filterMode) return false
+      if (filterAccount !== 'All' && e.account_type !== filterAccount) return false
+      if (filterStatus !== 'All' && e.status !== filterStatus) return false
+      const amt = Number(e.amount || 0)
+      if (filterAmountMin && amt < Number(filterAmountMin)) return false
+      if (filterAmountMax && amt > Number(filterAmountMax)) return false
+      return true
+    })
+  }, [sortedEntries, searchQuery, filterDateFrom, filterDateTo, filterCategory, filterMode, filterAccount, filterStatus, filterAmountMin, filterAmountMax])
 
   const sortedIncomeEntries = useMemo(
     () => searchedEntries.filter((e) => e.type === 'Income'),
@@ -879,6 +1007,80 @@ export const AccountsDashboardBanking = ({
         </div>
       </div>
 
+      {/* Last 7 Days — shown by default, no filters or tab switch needed.
+          Same rolling-7-day window as Accounts.jsx's "Weekly Report for
+          Admin's PA" panel, so the two agree; this is the always-visible
+          version for whoever opens the dashboard and wants the recent
+          picture immediately. */}
+      <div
+        className="gnsi-animate"
+        style={{
+          backgroundColor: 'white',
+          borderRadius: '14px',
+          padding: isMobile ? '16px' : '20px',
+          marginBottom: '28px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+          border: '1px solid rgba(0,0,0,0.06)',
+          borderLeft: '4px solid #1e3a5f',
+          animationDelay: '0.22s',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '14px',
+            flexWrap: 'wrap',
+            gap: '10px',
+          }}
+        >
+          <div>
+            <p style={{ fontSize: isMobile ? '14px' : '15px', fontWeight: 700, margin: 0, color: '#0f172a' }}>
+              🗓️ Last 7 Days
+            </p>
+            <p style={{ fontSize: '12px', color: '#9C9EA6', margin: '4px 0 0 0' }}>
+              {last7Range.from} to {last7Range.to} · {last7Stats.count} entries
+            </p>
+          </div>
+          <button
+            onClick={printLast7Days}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '8px',
+              border: '1px solid rgba(30,58,95,0.25)',
+              backgroundColor: 'rgba(30,58,95,0.06)',
+              color: '#1e3a5f',
+              fontWeight: 600,
+              fontSize: '12px',
+              cursor: 'pointer',
+            }}
+          >
+            🖨 Print
+          </button>
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)',
+            gap: '12px',
+          }}
+        >
+          <div style={{ backgroundColor: '#dcfce7', borderRadius: '8px', padding: '10px 14px', borderLeft: '3px solid #16a34a' }}>
+            <p style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600, margin: '0 0 2px 0' }}>Income</p>
+            <p style={{ fontSize: '16px', fontWeight: 800, color: '#16a34a', margin: 0, fontFamily: FONT_MONO }}>{fmt(last7Stats.income)}</p>
+          </div>
+          <div style={{ backgroundColor: '#fee2e2', borderRadius: '8px', padding: '10px 14px', borderLeft: '3px solid #dc2626' }}>
+            <p style={{ fontSize: '11px', color: '#dc2626', fontWeight: 600, margin: '0 0 2px 0' }}>Expense</p>
+            <p style={{ fontSize: '16px', fontWeight: 800, color: '#dc2626', margin: 0, fontFamily: FONT_MONO }}>{fmt(last7Stats.expense)}</p>
+          </div>
+          <div style={{ backgroundColor: '#eff6ff', borderRadius: '8px', padding: '10px 14px', borderLeft: '3px solid #1e3a5f' }}>
+            <p style={{ fontSize: '11px', color: '#1e3a5f', fontWeight: 600, margin: '0 0 2px 0' }}>Net</p>
+            <p style={{ fontSize: '16px', fontWeight: 800, color: '#1e3a5f', margin: 0, fontFamily: FONT_MONO }}>{fmt(last7Stats.net)}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Export Report — generates a full letterheaded report of ALL entries (not just the filtered/paginated view) */}
       {onExportReport && (
         <div
@@ -986,7 +1188,116 @@ export const AccountsDashboardBanking = ({
               ✕
             </button>
           )}
+          <button
+            onClick={() => setShowAdvancedFilters((v) => !v)}
+            aria-expanded={showAdvancedFilters}
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: hasAdvancedFilters ? '#1e3a5f' : '#9C9EA6',
+              backgroundColor: hasAdvancedFilters ? 'rgba(30,58,95,0.08)' : 'transparent',
+              border: hasAdvancedFilters ? '1px solid rgba(30,58,95,0.2)' : '1px solid rgba(0,0,0,0.08)',
+              borderRadius: '8px',
+              padding: '6px 12px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            ⚙️ Filters{hasAdvancedFilters ? ` (${[filterDateFrom || filterDateTo, filterCategory !== 'All', filterMode !== 'All', filterAccount !== 'All', filterStatus !== 'All', filterAmountMin || filterAmountMax].filter(Boolean).length})` : ''}
+          </button>
         </div>
+
+        {/* Advanced filters — hidden by default, toggled by the button
+            above. Every control here narrows searchedEntries (and, in turn,
+            both ledger tables and their pagination) — nothing here touches
+            the "Last 7 Days" card or the full-entries export, which
+            deliberately stay independent of whatever the user is currently
+            searching for. */}
+        {showAdvancedFilters && (
+          <div
+            style={{
+              marginTop: '10px',
+              backgroundColor: 'white',
+              border: '1px solid rgba(0,0,0,0.08)',
+              borderRadius: '12px',
+              padding: isMobile ? '14px' : '16px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+            }}
+          >
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+                gap: '12px',
+              }}
+            >
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>From date</label>
+                <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>To date</label>
+                <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>Category</label>
+                <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }}>
+                  {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>Payment mode</label>
+                <select value={filterMode} onChange={(e) => setFilterMode(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }}>
+                  {modeOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>Account</label>
+                <select value={filterAccount} onChange={(e) => setFilterAccount(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }}>
+                  {accountOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>Status</label>
+                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }}>
+                  {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>Min amount</label>
+                <input type="number" inputMode="decimal" placeholder="0" value={filterAmountMin} onChange={(e) => setFilterAmountMin(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#65676F', display: 'block', marginBottom: '4px' }}>Max amount</label>
+                <input type="number" inputMode="decimal" placeholder="Any" value={filterAmountMax} onChange={(e) => setFilterAmountMax(e.target.value)}
+                  style={{ width: '100%', padding: '7px 9px', borderRadius: '7px', border: '1px solid rgba(0,0,0,0.12)', fontSize: '13px', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
+              <p style={{ fontSize: '12px', color: '#9C9EA6', margin: 0 }}>
+                {searchedEntries.length} of {entries.length} transactions match
+              </p>
+              {hasAdvancedFilters && (
+                <button
+                  onClick={clearAdvancedFilters}
+                  style={{ fontSize: '12px', fontWeight: 600, color: '#dc2626', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 8px' }}
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Transaction Ledgers — Income and Expenditure kept in separate tables */}
