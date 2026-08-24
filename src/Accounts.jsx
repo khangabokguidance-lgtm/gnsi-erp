@@ -75,6 +75,40 @@ const monthKey = (d) => d ? d.slice(0,7) : ''
 // PHASE 1 FIX: getToday() helper used for reactive today state
 const getToday = () => new Date().toLocaleDateString('en-CA')
 
+// PHASE 6 FIX: timezone-safe weekday label for a 'YYYY-MM-DD' string.
+// new Date('YYYY-MM-DD') parses as UTC midnight, so formatting it back in a
+// timezone behind UTC (or any browser not set to IST) can print the wrong
+// weekday. Parsing the parts explicitly and constructing a local Date avoids
+// the UTC round-trip entirely. Was previously duplicated inline in two report
+// generators (transaction report + daily-grouped report) — now a single
+// shared helper used by both.
+const weekdayOf = (dateStr) => {
+  if (!dateStr) return ''
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-IN', { weekday: 'long' })
+}
+
+// PHASE 6 FIX: single place for every Supabase insert/update/delete so error
+// handling can no longer be silently dropped in a copy-pasted call site.
+// Always alerts the user and logs to console on failure; returns true/false
+// so callers can decide whether to proceed (e.g. skip fetchEntries() on fail).
+// on Success can be used for the follow up chain and toasts / audit logs.
+async function mutateAccountsTable(queryBuilderFn, { errorContext = 'Action' } = {}) {
+  try {
+    const { error } = await queryBuilderFn()
+    if (error) {
+      console.error(`${errorContext} failed:`, error)
+      alert(`${errorContext} failed: ${error.message}`)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.error(`${errorContext} threw:`, e)
+    alert(`${errorContext} failed: ${e.message || 'Unknown error'}`)
+    return false
+  }
+}
+
 // ── responsive hook ────────────────────────────────────────────────────────
 function useWindowWidth() {
   const [width, setWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024)
@@ -519,7 +553,11 @@ function Accounts({role,userId}){
     if(!item.receipt_url)return
     const path=item.receipt_url.split('/').pop()
     await supabase.storage.from(RECEIPT_BUCKET).remove([path])
-    await supabase.from('accounts').update({receipt_url:null}).eq('id',item.id)
+    const ok=await mutateAccountsTable(
+      ()=>supabase.from('accounts').update({receipt_url:null}).eq('id',item.id),
+      {errorContext:'Remove receipt'}
+    )
+    if(!ok)return
     fetchEntries()
   }
 
@@ -575,7 +613,13 @@ function Accounts({role,userId}){
       const{data:inserted,error}=await supabase.from('accounts').insert(payloads).select()
       if(error)alert('Error: '+error.message)
       else{
-        if(receiptFile&&inserted?.[0]){const ru=await uploadReceipt(inserted[0].id);if(ru)await supabase.from('accounts').update({receipt_url:ru}).eq('id',inserted[0].id)}
+        if(receiptFile&&inserted?.[0]){
+          const ru=await uploadReceipt(inserted[0].id)
+          if(ru)await mutateAccountsTable(
+            ()=>supabase.from('accounts').update({receipt_url:ru}).eq('id',inserted[0].id),
+            {errorContext:'Attach receipt'}
+          )
+        }
         for(const ins of(inserted||[]))await writeAuditLog({action:'insert',role:enteredByName,targetId:ins.id,newValues:ins})
         setShowForm(false);setReceiptFile(null);setRows([{...emptyRow}])
         if(inserted?.[0])setReceiptMemoEntry({...inserted[0],receipt_url:rows[0].receipt_url||inserted[0].receipt_url})
@@ -589,15 +633,24 @@ function Accounts({role,userId}){
     if(!isAdmin){alert('Only admin can delete transactions.');return}
     if(!window.confirm('Delete this transaction?'))return
     const original=entries.find(e=>e.id===id)
-    const{error}=await supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString()}).eq('id',id)
-    if(error){alert('Error: '+error.message);return}
+    const ok=await mutateAccountsTable(
+      ()=>supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString()}).eq('id',id),
+      {errorContext:'Delete'}
+    )
+    if(!ok)return
     await writeAuditLog({action:'delete',role,targetId:id,oldValues:original})
     fetchEntries();fetchDeletedRows()
   }
 
   const handleRestore=async(id)=>{
     if(!isAdmin)return
-    await supabase.from('accounts').update({is_soft_deleted:false,deleted_by:null,deleted_at:null}).eq('id',id)
+    // PHASE 6 FIX: was previously fire-and-forget with no error check —
+    // a failed restore looked identical to a successful one to the user.
+    const ok=await mutateAccountsTable(
+      ()=>supabase.from('accounts').update({is_soft_deleted:false,deleted_by:null,deleted_at:null}).eq('id',id),
+      {errorContext:'Restore'}
+    )
+    if(!ok)return
     await writeAuditLog({action:'restore',role,targetId:id})
     fetchEntries();fetchDeletedRows()
   }
@@ -610,8 +663,11 @@ function Accounts({role,userId}){
       const path=item.receipt_url.split('/').pop()
       await supabase.storage.from(RECEIPT_BUCKET).remove([path])
     }
-    const{error}=await supabase.from('accounts').delete().eq('id',id)
-    if(error){alert('Error: '+error.message);return}
+    const ok=await mutateAccountsTable(
+      ()=>supabase.from('accounts').delete().eq('id',id),
+      {errorContext:'Permanent delete'}
+    )
+    if(!ok)return
     await writeAuditLog({action:'permanent_delete',role,targetId:id,oldValues:item})
     fetchDeletedRows()
   }
@@ -620,10 +676,24 @@ function Accounts({role,userId}){
     if(!isAdmin){alert('Only admin can delete transactions.');return}
     if(!selected.size)return
     if(!window.confirm(`Delete ${selected.size} selected transaction(s)?`))return
+    // PHASE 6 FIX: previously no error check per-row — one failed row in the
+    // loop would silently continue to the next, and the audit log could end
+    // up recording a 'bulk_delete' for a row that was never actually updated
+    // in the database. Now each row's result is tracked and failures are
+    // reported to the user by id, without aborting the rest of the batch.
+    const failedIds=[]
     for(const id of[...selected]){
       const original=entries.find(e=>e.id===id)
-      await supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString()}).eq('id',id)
+      const{error}=await supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString()}).eq('id',id)
+      if(error){
+        console.error(`Bulk delete failed for id ${id}:`,error)
+        failedIds.push(id)
+        continue
+      }
       await writeAuditLog({action:'bulk_delete',role,targetId:id,oldValues:original})
+    }
+    if(failedIds.length){
+      alert(`${failedIds.length} of ${selected.size} deletion(s) failed (id: ${failedIds.join(', ')}). The rest were deleted successfully.`)
     }
     setSelected(new Set());fetchEntries();fetchDeletedRows()
   }
@@ -733,7 +803,7 @@ function Accounts({role,userId}){
     ${groups.map(([date,rows])=>{
       const dayTotal=rows.reduce((s,e)=>s+Number(e.amount),0)
       const dayRows=rows.map(e=>{rowNum++;return`<tr><td>${rowNum}</td><td style="color:#888;font-size:11px">${e.id||''}</td><td><b>${e.account_type||'Cash A/c'}</b></td><td>${(e.note||e.category||'').replace(/</g,'&lt;')}</td><td>${e.payment_mode}</td>${dailyIsIncome?`<td style="font-size:11px;color:#888">${e.entry_date}</td>`:''}<td class="amt">${fmt(e.amount)}</td></tr>`}).join('')
-      return`<tr><td colspan="${dailyIsIncome?7:6}" class="day-header">${date} — ${new Date(date).toLocaleDateString('en-IN',{weekday:'long'})} (${rows.length} entries)</td></tr>${dayRows}<tr class="subtotal"><td colspan="${dailyIsIncome?6:5}">Daily Total</td><td class="total-amt">${fmt(dayTotal)}</td></tr>`
+      return`<tr><td colspan="${dailyIsIncome?7:6}" class="day-header">${date} — ${weekdayOf(date)} (${rows.length} entries)</td></tr>${dayRows}<tr class="subtotal"><td colspan="${dailyIsIncome?6:5}">Daily Total</td><td class="total-amt">${fmt(dayTotal)}</td></tr>`
     }).join('')}
     <tr class="grand"><td colspan="4">GRAND TOTAL</td><td colspan="${dailyIsIncome?2:1}">Cash: ${fmt(cashAmt)} | Bank: ${fmt(bankAmt)}</td><td class="total-amt">${fmt(totalAmt)}</td></tr>
     </table></body></html>`)
@@ -1585,7 +1655,7 @@ function Accounts({role,userId}){
       let rowNum=0
       const dayTotal=rows.reduce((s,e)=>s+Number(e.amount),0)
       const dayRows=rows.map(e=>{rowNum++;return`<tr><td>${rowNum}</td><td style="color:#888;font-size:10px">${e.id||''}</td><td><b>${e.account_type||'Cash A/c'}</b></td><td>${(e.note||e.category||'').replace(/</g,'&lt;')}</td><td>${e.payment_mode}</td><td class="amt">${fmt(e.amount)}</td></tr>`}).join('')
-      return`<tr><td colspan="6" class="day-header">${date} — ${new Date(date).toLocaleDateString('en-IN',{weekday:'long'})} (${rows.length} entries)</td></tr>${dayRows}<tr class="subtotal"><td colspan="5">Daily Total</td><td class="total-amt">${fmt(dayTotal)}</td></tr>`
+      return`<tr><td colspan="6" class="day-header">${date} — ${weekdayOf(date)} (${rows.length} entries)</td></tr>${dayRows}<tr class="subtotal"><td colspan="5">Daily Total</td><td class="total-amt">${fmt(dayTotal)}</td></tr>`
     }).join('')}
     <tr class="grand"><td colspan="4">GRAND TOTAL</td><td>Cash: ${fmt(expenditureCashAmt)} | Bank: ${fmt(expenditureBankAmt)}</td><td class="total-amt">${fmt(totalAmt)}</td></tr>
     </table></body></html>`)
@@ -2563,8 +2633,11 @@ function Accounts({role,userId}){
                 <td style={{...tdS,fontWeight:600}}>{f.new_values?.amount!=null?fmt(f.new_values.amount):'-'}</td>
                 <td style={{...tdS,maxWidth:220,whiteSpace:'normal'}}>{f.reason||<span style={{color:'#cbd5e1'}}>—</span>}</td>
                 <td style={tdS}><button onClick={async()=>{
-                  await supabase.from('superintendent_edit_flags').update({verified:true,verified_by:role,verified_at:new Date().toISOString()}).eq('id',f.id)
-                  fetchSuperintendentFlags()
+                  const ok=await mutateAccountsTable(
+                    ()=>supabase.from('superintendent_edit_flags').update({verified:true,verified_by:role,verified_at:new Date().toISOString()}).eq('id',f.id),
+                    {errorContext:'Mark verified'}
+                  )
+                  if(ok)fetchSuperintendentFlags()
                 }} style={{...smallBtn('#f0fdf4','#16a34a'),fontSize:12}}>✓ Verified</button></td>
               </tr>))}</tbody>
             </table>
@@ -2588,8 +2661,11 @@ function Accounts({role,userId}){
                       <span style={{fontSize:11,color:'#374151'}}>{f.label}</span>
                       <SeverityBadge severity={f.severity}/>
                       {f.alertId&&<button onClick={async()=>{
-                        await supabase.from('fraud_alerts').update({resolved:true,resolved_by:role,resolved_at:new Date().toISOString()}).eq('id',f.alertId)
-                        fetchEntries()
+                        const ok=await mutateAccountsTable(
+                          ()=>supabase.from('fraud_alerts').update({resolved:true,resolved_by:role,resolved_at:new Date().toISOString()}).eq('id',f.alertId),
+                          {errorContext:'Resolve fraud flag'}
+                        )
+                        if(ok)fetchEntries()
                       }} style={{...smallBtn('#f0fdf4','#16a34a'),fontSize:10,padding:'1px 6px'}}>✓</button>}
                     </span>
                   ))}
