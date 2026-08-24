@@ -612,10 +612,17 @@ function Accounts({role,userId}){
         amount:Number(r.amount)||0,payment_mode:r.payment_mode,
         account_type:r.account_type,voucher_head:r.voucher_head,
         note:r.note,is_recurring:r.is_recurring,status:r.status,
+        recurring_period: r.is_recurring ? (r.entry_date||'').slice(0,7) : null,
         receipt_url:receiptUrl,edited_by:enteredByName,edited_at:new Date().toISOString(),
       }
       const{error}=await supabase.from('accounts').update(payload).eq('id',editEntry.id)
-      if(error)alert('Error: '+error.message)
+      if(error){
+        if(error.code==='23505'){
+          alert('This recurring expense already has an entry for this month (same description and amount). Saving this edit would create a duplicate — check the existing entry for this month instead.')
+        } else {
+          alert('Error: '+error.message)
+        }
+      }
       else{
         await writeAuditLog({action:'update',role:enteredByName,targetId:editEntry.id,oldValues:editEntry,newValues:payload})
         // Superintendent is edit-only — every edit they make is auto-flagged
@@ -630,14 +637,34 @@ function Accounts({role,userId}){
         setShowForm(false);setEditEntry(null);setReceiptFile(null);fetchEntries()
       }
     }else{
+      // Every row marked is_recurring gets recurring_period set explicitly
+      // here — 'YYYY-MM' of its own entry_date — rather than left null or
+      // derived later from entry_date at query time. This is what the
+      // uq_recurring_once_per_period unique index (note, amount,
+      // recurring_period) actually matches against; without setting it at
+      // insert time, every recurring row would insert with
+      // recurring_period = null and the constraint would never catch a
+      // real duplicate (NULL never equals NULL in a uniqueness check).
       const payloads=rows.filter(r=>canAddIncome||r.type==='Expense').map(r=>({
         entry_date:r.entry_date,payment_date:r.payment_date||r.entry_date,type:r.type,category:r.category,
         amount:Number(r.amount)||0,payment_mode:r.payment_mode,
         account_type:r.account_type,voucher_head:r.voucher_head,
         note:r.note,is_recurring:r.is_recurring,status:r.status,added_by:enteredByName,
+        recurring_period: r.is_recurring ? (r.entry_date||'').slice(0,7) : null,
       }))
       const{data:inserted,error}=await supabase.from('accounts').insert(payloads).select()
-      if(error)alert('Error: '+error.message)
+      if(error){
+        // Postgres unique_violation is code 23505. This is the
+        // uq_recurring_once_per_period index rejecting a second recurring
+        // entry for the same note+amount+month — surface it as a clear,
+        // specific message instead of the raw constraint-name error text,
+        // so whoever's entering data understands WHY it was blocked.
+        if(error.code==='23505'){
+          alert('This recurring expense already has an entry for this month (same description and amount). A duplicate was blocked — check the existing entry for this month instead of adding a new one.')
+        } else {
+          alert('Error: '+error.message)
+        }
+      }
       else{
         if(receiptFile&&inserted?.[0]){
           const ru=await uploadReceipt(inserted[0].id)
