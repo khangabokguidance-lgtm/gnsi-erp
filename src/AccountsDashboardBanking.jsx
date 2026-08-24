@@ -90,14 +90,28 @@ export const AccountsDashboardBanking = ({
   }, [searchQuery, filterDateFrom, filterDateTo, filterCategory, filterMode, filterAccount, filterStatus, filterAmountMin, filterAmountMax])
 
   const stats = useMemo(() => {
-    const income = entries
+    // Excludes Superseded rows (duplicate/deactivated entries, e.g. the
+    // auto-recurring duplicates found and marked Superseded this session)
+    // from every total here. Previously income/expense summed ALL rows
+    // regardless of status, so a Superseded duplicate still inflated the
+    // expense total and therefore the balance — this is exactly why the
+    // Treasury card's expense figure (₹30,38,398) didn't match the top
+    // summary cards elsewhere on the same page (₹29,38,048): the ₹1,00,350
+    // gap is precisely the 7 known duplicate rows' worth of expense that
+    // should never have been counted as real spend.
+    const activeEntries = entries.filter((e) => e.status !== 'Superseded')
+    const income = activeEntries
       .filter((e) => e.type === 'Income')
       .reduce((s, e) => s + Number(e.amount || 0), 0)
-    const expense = entries
+    const expense = activeEntries
       .filter((e) => e.type === 'Expense')
       .reduce((s, e) => s + Number(e.amount || 0), 0)
-    const confirmed = entries.filter((e) => e.status === 'Confirmed').length
-    const pending = entries.filter((e) => e.status !== 'Confirmed').length
+    const confirmed = activeEntries.filter((e) => e.status === 'Confirmed').length
+    // Was `e.status !== 'Confirmed'`, which counted Superseded rows (a
+    // settled, deliberately-deactivated state) as "awaiting confirmation."
+    // Already excluded from activeEntries above, but kept explicit here
+    // too in case this line is ever copied elsewhere without that filter.
+    const pending = activeEntries.filter((e) => e.status !== 'Confirmed' && e.status !== 'Superseded').length
     return { income, expense, balance: income - expense, confirmed, pending }
   }, [entries])
 
@@ -119,6 +133,10 @@ export const AccountsDashboardBanking = ({
   const last7Entries = useMemo(
     () =>
       entries
+        // Excludes Superseded rows for the same reason as `stats` above —
+        // a duplicate marked Superseded within the last 7 days would
+        // otherwise still count toward this week's income/expense totals.
+        .filter((e) => e.status !== 'Superseded')
         .filter((e) => e.entry_date >= last7Range.from && e.entry_date <= last7Range.to)
         .sort((a, b) => (a.entry_date < b.entry_date ? -1 : a.entry_date > b.entry_date ? 1 : 0)),
     [entries, last7Range]
@@ -401,7 +419,14 @@ export const AccountsDashboardBanking = ({
                     >
                       {isIncome ? '+' : '−'}{fmt(entry.amount || 0)}
                     </p>
-                    {entry.status !== 'Confirmed' && (
+                    {/* Shows the entry's real status instead of a
+                        hardcoded "Pending" label — a Superseded row (a
+                        known duplicate deliberately deactivated, e.g. the
+                        recurring-entry cleanup done this session) is a
+                        settled state, not something awaiting approval, so
+                        it gets its own muted styling instead of the amber
+                        "needs attention" look used for genuine Pending. */}
+                    {entry.status && entry.status !== 'Confirmed' && (
                       <span
                         style={{
                           display: 'inline-block',
@@ -410,11 +435,11 @@ export const AccountsDashboardBanking = ({
                           padding: '4px 8px',
                           borderRadius: '5px',
                           marginTop: '6px',
-                          backgroundColor: '#FBF0DE',
-                          color: '#9C6410',
+                          backgroundColor: entry.status === 'Superseded' ? '#F1F0EE' : '#FBF0DE',
+                          color: entry.status === 'Superseded' ? '#6B6E76' : '#9C6410',
                         }}
                       >
-                        Pending
+                        {entry.status}
                       </span>
                     )}
                   </div>

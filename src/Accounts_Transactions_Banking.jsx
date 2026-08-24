@@ -104,9 +104,15 @@ export const TransactionsViewBanking = ({
   // Transaction card component
   const TransactionCard = ({ item, balance, isFlagged }) => {
     const modeIcon = getPaymentModeIcon(item.payment_mode)
-    const statusIcon = isFlagged ? '⚠️' : item.status === 'Confirmed' ? '✓' : '⏳'
-    const statusColor = isFlagged ? '#d97706' : item.status === 'Confirmed' ? '#16a34a' : '#f59e0b'
-    const statusLabel = isFlagged ? 'FLAGGED' : item.status === 'Confirmed' ? 'CONFIRMED' : 'PENDING'
+    // Superseded (a duplicate/deactivated entry, e.g. from the
+    // auto-recurring cleanup) is a settled state, not something awaiting
+    // approval — previously it fell through to the same "else Pending"
+    // branch as a genuinely unconfirmed entry, showing an hourglass and
+    // amber "PENDING" label on a row that isn't actually pending anything.
+    const isSuperseded = item.status === 'Superseded'
+    const statusIcon = isFlagged ? '⚠️' : item.status === 'Confirmed' ? '✓' : isSuperseded ? '⊘' : '⏳'
+    const statusColor = isFlagged ? '#d97706' : item.status === 'Confirmed' ? '#16a34a' : isSuperseded ? '#6b7280' : '#f59e0b'
+    const statusLabel = isFlagged ? 'FLAGGED' : item.status === 'Confirmed' ? 'CONFIRMED' : isSuperseded ? 'SUPERSEDED' : 'PENDING'
 
     return (
       <div
