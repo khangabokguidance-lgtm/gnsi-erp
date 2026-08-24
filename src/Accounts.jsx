@@ -226,7 +226,7 @@ function Accounts({role,userId}){
   const fileInputRef = useRef(null)
 
   // tabs
-  const [activeTab, setActiveTab] = useState('transactions')
+  const [activeTab, setActiveTab] = useState('analytics')
 
   // form
   const [showForm,  setShowForm]  = useState(false)
