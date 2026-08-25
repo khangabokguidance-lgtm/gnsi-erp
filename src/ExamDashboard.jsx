@@ -19,6 +19,12 @@ const COURSE_MAX_MARKS_FALLBACK = {
   ELITE:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
   PRIME:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
   LAKSHYA:   { "Grammar": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
+  // Live batches are "LAKSHYA - A"/"LAKSHYA - B" (StudentDB's "Lakshya A"/
+  // "Lakshya B" translated via Exams.jsx's STUDENTDB_BATCH_TO_EXAM_KEY) — this
+  // fallback only kicks in if window.__gnsiCourseMaxMarks is empty/missing
+  // these keys, same as Exams.jsx's own COURSE_MAX_MARKS fallback.
+  "LAKSHYA - A": { "Grammar": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
+  "LAKSHYA - B": { "Grammar": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
   UMEED:     { "Grammar & Vocabulary": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
   CHAMPION:  { "Vocabulary": 10, "General Knowledge": 10, "Mathematics-II": 20, "Mathematics - I": 20, "Reasoning": 20, "Grammar": 10, "Science": 10 },
   LEADER:    { "Vocabulary": 10, "Grammar": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
@@ -146,10 +152,14 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
   const courseStats = courses.map((course, ci) => {
     const courseSchedule = scheduleForType.filter(s => (s.course || "").toUpperCase() === course.toUpperCase());
     const subjects = [...new Set(courseSchedule.length ? courseSchedule.map(s => s.subject) : (courseSubjects[course] || []))];
-    const courseStudents = students.filter(s =>
-      (s.class_name || "").toUpperCase() === course ||
-      (s.course || "").toUpperCase() === course
-    );
+    // `course` here is a BATCH key (ACHIEVER, LAKSHYA - A, ...), matched only
+    // against class_name — which Exams.jsx's normalizeStudent already
+    // translates every StudentDB batch value into (see
+    // STUDENTDB_BATCH_TO_EXAM_KEY there). `s.course` on a student row is the
+    // real TRACK (Sainik/Navodaya/Foundation/Combined Course) and can never
+    // equal a batch key, so it was never a working match — comparing against
+    // class_name alone is both correct and sufficient.
+    const courseStudents = students.filter(s => (s.class_name || "").toUpperCase() === course);
 
     // Latest date for this course
     const courseDates = [...new Set(
@@ -242,10 +252,7 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
   courseStats.forEach(c => {
     const courseScheduleLocal = scheduleForType.filter(s => (s.course || "").toUpperCase() === c.course.toUpperCase() && s.exam_date === c.latestDate);
     const subjects = [...new Set(courseScheduleLocal.length ? courseScheduleLocal.map(s => s.subject) : (courseSubjects[c.course] || []))];
-    const courseStudentsLocal = students.filter(s =>
-      (s.class_name || "").toUpperCase() === c.course ||
-      (s.course || "").toUpperCase() === c.course
-    );
+    const courseStudentsLocal = students.filter(s => (s.class_name || "").toUpperCase() === c.course);
     const latestMarksLocal = resolvedMarks.filter(r =>
       r.exam_date === c.latestDate &&
       courseStudentsLocal.some(s => s.id === r.student_id)
