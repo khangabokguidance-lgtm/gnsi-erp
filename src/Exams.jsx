@@ -80,6 +80,34 @@ function trackForBatch(batch) {
   return "";
 }
 
+// ─── StudentDB batch spelling → courseSubjects/COURSE_MAX_MARKS key ──────────
+// StudentDB (Attendance.jsx → TabStudentDB) writes students.batch using its
+// own COURSE_STRUCTURE spelling: "Achiever", "Leader", "Champion", "Umeed",
+// "Lakshya A", "Lakshya B", "Prime", "Elite", "—" (Combined Course). Every
+// exam function in this file keys courseSubjects/COURSE_MAX_MARKS/TRACK_BATCHES
+// by the all-caps, unsplit spelling instead: "ACHIEVER", "LAKSHYA", "UMEED",
+// etc. — with no Lakshya A/B distinction, since exams don't need that split.
+// Without translating one spelling into the other, every courseSubjects[batch]
+// lookup here silently returned [] for every StudentDB-entered student.
+const STUDENTDB_BATCH_TO_EXAM_KEY = {
+  ACHIEVER: "ACHIEVER",
+  LEADER: "LEADER",
+  CHAMPION: "CHAMPION",
+  UMEED: "UMEED",
+  "LAKSHYA A": "LAKSHYA",
+  "LAKSHYA B": "LAKSHYA",
+  LAKSHYA: "LAKSHYA",
+  PRIME: "PRIME",
+  ELITE: "ELITE",
+};
+function batchToCourseSubjectsKey(batch) {
+  const b = (batch || "").trim().toUpperCase();
+  if (!b || b === "—") return COMBINED_COURSE_BATCH_LABEL_CONST;
+  return STUDENTDB_BATCH_TO_EXAM_KEY[b] || batch || "";
+}
+// Combined Course has no batch split — StudentDB stores "—" as its placeholder.
+const COMBINED_COURSE_BATCH_LABEL_CONST = "Combined Navodaya Course (Sainik Appearing Group)";
+
 // ─── Max marks per subject per course (all total to 100) ─────────────────────
 const COURSE_MAX_MARKS = {
   ACHIEVER:  { "English Grammar": 10, "Vocabulary": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
@@ -1325,39 +1353,13 @@ for (const st of courseStudents) {
   };
 
   const saveNewStudentFromError = async (idx) => {
-    const errRow = importErrors[idx];
-    if (!errRow) return;
-    setAddStudentError("");
-    const name = newStudentForm.name.trim();
-    const gccRaw = newStudentForm.gcc_no.trim();
-    const trackVal = newStudentForm.track;
-    const batchVal = newStudentForm.batch.trim().toUpperCase();
-    if (!name) { setAddStudentError("Name is required."); return; }
-    if (!gccRaw) { setAddStudentError("GCC No. is required."); return; }
-    if (!trackVal) { setAddStudentError("Track is required."); return; }
-    if (!batchVal) { setAddStudentError("Batch is required."); return; }
-    const gccNum = Number(normalizeGccValue(gccRaw) || gccRaw);
-    if (isNaN(gccNum)) { setAddStudentError("GCC No. must contain digits."); return; }
-    if (students.find(s => normalizeGccValue(s.gcc_no) === normalizeGccValue(gccRaw))) {
-      setAddStudentError(`GCC No. ${gccRaw} already belongs to another student.`);
-      return;
-    }
-    setAddingStudent(true);
-    const payload = {
-      name: name.toUpperCase(), gcc_no: gccNum,
-      admission_no: newStudentForm.admission_no.trim() || null,
-      course: trackVal, class_name: batchVal, batch: batchVal,
-    };
-    const { data, error } = await supabase.from("students").insert([payload]).select();
-    setAddingStudent(false);
-    if (error) { setAddStudentError(error.message); return; }
-    const newStudent = data[0];
-    onStudentsChange?.([...students, newStudent].sort((a, b) => (a.name || "").localeCompare(b.name || "")));
-    setImportRows(rows => [...rows, { student: newStudent, subMarks: errRow.subMarks, matchType: "New", confidence: 1, rowIndex: errRow.rowIndex }]);
-    setImportErrors(prev => prev.filter(e => e !== errRow));
-    setAddNewOpenIdx(null);
-    setManualOpenIdx(null);
+    // Student records are now managed exclusively in StudentDB (Attendance
+    // module → Students tab). Exams no longer creates new student rows —
+    // this keeps a single source of truth for course/batch, so add the
+    // missing student there first, then re-run this import.
+    setAddStudentError("This student isn't in the system yet. Please add them in StudentDB (Attendance → Students) first, then re-import this file — Exams no longer creates student records directly.");
   };
+
 
   // ─── Manual remap of a subject -> spreadsheet column (fixes a wrong/missing auto-detection) ──
   const remapSubjectColumn = (subjectName, newCol) => {
@@ -3448,6 +3450,15 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   };
 
   const handleAdd = async () => {
+    // Student records are now managed exclusively in StudentDB (Attendance
+    // module → Students tab), which is the single source of truth for
+    // name/course/batch/GCC. Exams reads students from there — creating
+    // one here would let the two screens' data drift apart again.
+    setError("Adding students has moved to StudentDB (Attendance → Students). Please add the student there — they'll appear here automatically.");
+    return;
+  };
+
+  const _unused_handleAdd = async () => {
     setError("");
     if (!form.name.trim())       { setError("Student name is required."); return; }
     if (!form.gcc_no.trim())     { setError("GCC No. is required."); return; }
@@ -3471,6 +3482,11 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   };
 
   const startEdit = (st) => {
+    // Editing has moved to StudentDB too (see handleAdd note above) — this
+    // now only opens a read-only detail view rather than an editable form.
+    setEditId(null);
+  };
+  const _unused_startEdit = (st) => {
     setEditId(st.id);
     setEditForm({
       name: st.name, gcc_no: st.gcc_no, admission_no: st.admission_no || "",
@@ -3480,6 +3496,10 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   };
   const cancelEdit = () => { setEditId(null); setEditForm({}); };
   const saveEdit = async (id) => {
+    // See handleAdd note — student records are edited in StudentDB only now.
+    return;
+  };
+  const _unused_saveEdit = async (id) => {
     setEditSaving(true);
     const batchVal = (editForm.batch || "").trim();
     const payload = {
@@ -3494,11 +3514,19 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   };
 
   const confirmDelete = async () => {
+    // See handleAdd note — students are removed in StudentDB only now
+    // (StudentDB also distinguishes soft-delete/dropout vs. permanent
+    // delete, which this screen didn't).
+    setDeleteId(null);
+    return;
+  };
+  const _unused_confirmDelete = async () => {
     if (!deleteId) return;
     await supabase.from("students").delete().eq("id", deleteId);
     onStudentsChange(students.filter(s => s.id !== deleteId));
     setDeleteId(null);
   };
+
 
   const filtered = students.filter(s => {
     const q = search.trim().toLowerCase();
@@ -3544,7 +3572,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
         </button>
         {perm.canEdit && (
           <button onClick={() => { setView("add"); setError(""); setForm(EMPTY_FORM); setSaved(false); }} style={{ ...css.btn, padding: "8px 20px", background: view === "add" ? "#1a3c2e" : "#F3F4F6", color: view === "add" ? "white" : "#374151" }}>
-            ➕ Add New Student
+            👤 Add Student (via StudentDB)
           </button>
         )}
         {perm.canEdit && (
@@ -3649,56 +3677,19 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
         <div style={{ maxWidth: 560 }}>
           <div style={{ background: "white", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", overflow: "hidden", marginBottom: 20 }}>
             <div style={{ background: "linear-gradient(135deg,#1a3c2e,#2A5C45)", padding: "18px 24px" }}>
-              <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, color: "white", fontWeight: 400 }}>➕ Register New Student</div>
+              <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, color: "white", fontWeight: 400 }}>👤 Student Records Have Moved</div>
             </div>
             <div style={{ padding: 24 }}>
-              {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>⚠️ {error}</div>}
-              {saved && <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16 }}>✅ Student added successfully!</div>}
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Full Name *</label>
-                <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. LAISHRAM TOMTHIN SINGH" style={{ ...css.input, fontSize: 14 }} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-                <div>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>GCC No. *</label>
-                  <input type="number" value={form.gcc_no} onChange={e => setForm(p => ({ ...p, gcc_no: e.target.value }))} placeholder="e.g. 1125" style={css.input} />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Admission No.</label>
-                  <input value={form.admission_no} onChange={e => setForm(p => ({ ...p, admission_no: e.target.value }))} placeholder="Optional" style={css.input} />
-                </div>
-              </div>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>Track *</label>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {TRACKS.map(t => (
-                    <button key={t} onClick={() => setForm(p => ({ ...p, track: t, batch: TRACK_BATCHES[t][0] || p.batch }))}
-                      style={{ ...css.btn, padding: "6px 16px", fontSize: 12, background: form.track === t ? "#1a3c2e" : "#F3F4F6", color: form.track === t ? "white" : "#374151", border: form.track === t ? "none" : "1px solid #E5E7EB" }}>
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>Batch *</label>
-                {batchesForTrack(form.track).length > 0 && (
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-                    {batchesForTrack(form.track).map(b => (
-                      <button key={b} onClick={() => setForm(p => ({ ...p, batch: b }))}
-                        style={{ ...css.btn, padding: "5px 14px", fontSize: 12, background: form.batch === b ? "#7c3aed" : "#F5F3FF", color: form.batch === b ? "white" : "#5B21B6", border: form.batch === b ? "none" : "1px solid #DDD6FE" }}>
-                        {b}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <input value={form.batch} onChange={e => setForm(p => ({ ...p, batch: e.target.value }))} placeholder="Type batch name or pick above…" style={css.input} />
-              </div>
-              <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={() => { setView("list"); setError(""); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151", flex: 1 }}>Cancel</button>
-                <button onClick={handleAdd} disabled={saving} style={{ ...css.btn, background: saving ? "#93C5FD" : "#1a3c2e", color: "white", flex: 2, fontSize: 14 }}>
-                  {saving ? "⏳ Saving…" : "✅ Add Student"}
-                </button>
-              </div>
+              <p style={{ fontSize: 14, color: "#374151", lineHeight: 1.6, marginBottom: 16 }}>
+                Adding and editing students is now done in <b>StudentDB</b>, inside the Attendance module's Students tab.
+                That keeps name, GCC No., course, and batch in one place instead of two screens quietly drifting apart.
+              </p>
+              <p style={{ fontSize: 14, color: "#374151", lineHeight: 1.6, marginBottom: 20 }}>
+                Once a student is added in StudentDB, they'll appear here automatically — no separate step needed.
+              </p>
+              <button onClick={() => { setView("list"); setError(""); }} style={{ ...css.btn, background: "#1a3c2e", color: "white", padding: "10px 24px" }}>
+                Back to Student List
+              </button>
             </div>
           </div>
         </div>
@@ -3710,6 +3701,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
             {statsPerCourse.map(s => (
               <div key={s.course} style={{ background: "white", borderRadius: 10, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", borderTop: "3px solid #1a3c2e" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".08em" }}>{s.course}</div>
+
                 <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: "#1a3c2e", lineHeight: 1.2, marginTop: 4 }}>{s.count}</div>
                 <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 3 }}>{s.batches.join(", ") || "no batches"}</div>
               </div>
@@ -3855,9 +3847,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                         <td style={{ padding: "9px 12px", textAlign: "center", color: "#94A3B8", fontSize: 12 }}>{st.admission_no || "—"}</td>
                         <td style={{ padding: "9px 12px", textAlign: "center" }}>
                           <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                            <button onClick={() => startEdit(st)} style={{ ...css.btn, padding: "4px 10px", background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", fontSize: 11 }}>✏️</button>
                             {perm.canEdit && <button onClick={() => setSecondaryBatchStudent(st)} style={{ ...css.btn, padding: "4px 8px", background: "#F5F3FF", color: "#7c3aed", border: "1px solid #DDD6FE", fontSize: 11 }} title="Manage secondary batch (e.g. also appearing for Combined Navodaya)">🔗</button>}
-                            {perm.canDelete && <button onClick={() => setDeleteId(st.id)} style={{ ...css.btn, padding: "4px 8px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 11 }}>🗑️</button>}
                           </div>
                         </td>
                       </>
@@ -4281,6 +4271,12 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
   })();
 
   const handleSaveNew = async () => {
+    // Roster import no longer creates students here — see StudentsTab's
+    // handleAdd note. Rows marked "new" must be added in StudentDB first.
+    setSaveSummary({ ok: false, message: "New students can't be created from this import anymore. Add them in StudentDB (Attendance → Students) first, then re-run this import so they match instead of appearing as \"new\"." });
+    return;
+  };
+  const _unused_handleSaveNew = async () => {
     if (gccConflicts.length) return; // blocked — see warning banner in the UI
     setSaving(true);
     const toInsert = rows.filter(r => r.status === "new").map(r => {
@@ -4883,35 +4879,28 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
 
   const handleImportAll = async () => {
     if (gccConflicts.length) return; // blocked — see warning banner in the UI
+
+    // Student records are created in StudentDB only now (see StudentsTab's
+    // handleAdd note) — this importer used to silently create a student row
+    // for every unmatched name, which is exactly the kind of side-door
+    // creation that let this file's roster drift from StudentDB's. Any row
+    // that didn't match an existing student now blocks the whole import
+    // instead, so nothing gets imported half-linked to a phantom student.
+    const unmatchedNewRows = rows.filter(r => r.status === "new" && r.rawName);
+    if (unmatchedNewRows.length) {
+      setSaveSummary({
+        ok: false,
+        message: `${unmatchedNewRows.length} student(s) in this file don't match anyone in the system yet (e.g. "${unmatchedNewRows[0].rawName}"). Add them in StudentDB (Attendance → Students) first, then re-run this import — Exams no longer creates student records.`,
+      });
+      return;
+    }
+
     setSaving(true);
     const batchVal = batch.trim();
     const sectionSuffix = section.trim() ? ` — ${section.trim().toUpperCase()}` : "";
-
-    // 1) Insert new students (roster), tagging batch with the section suffix.
-    // Each outgoing row carries a client-side `_rowIdx` so the inserted rows
-    // can be matched back to their source row by GCC/name instead of by
-    // array position — Postgres/PostgREST does NOT guarantee that a bulk
-    // insert().select() returns rows in the same order they were sent.
-    const newRowsToInsert = rows.filter(r => r.status === "new" && r.rawName);
-    const toInsert = newRowsToInsert.map(r => ({
-      name: r.rawName.trim().toUpperCase(),
-      gcc_no: r.rawGcc ? Number(normalizeGccValue(r.rawGcc)) || null : null,
-      admission_no: r.rawAdm ? String(r.rawAdm).trim() : null,
-      course: track,
-      class_name: batchVal.toUpperCase(),
-      batch: batchVal + sectionSuffix,
-    }));
-
+    const newRowsToInsert = [];
     let insertedStudents = [];
-    if (toInsert.length) {
-      const { data, error } = await supabase.from("students").insert(toInsert).select();
-      if (error) {
-        setSaveSummary({ ok: false, message: `Import stopped before any changes were made: ${error.message}` });
-        setSaving(false);
-        return;
-      }
-      insertedStudents = data || [];
-    }
+
 
     // Map each inserted DB row back to its source file row by GCC (or, lacking
     // a GCC, by exact normalized name) — never by position.
@@ -5489,18 +5478,20 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
     const errors = [];
 
     for (const s of toFix) {
-      // 1) Restore the real primary batch (strip the corrupted suffix).
-      const { error: batchErr } = await supabase.from("students").update({ batch: s._restoredBatch }).eq("id", s.id);
-      if (batchErr) { errors.push(`${s.name}: ${batchErr.message}`); continue; }
+      // Batch is a core student field now — restoring it here would be
+      // exactly the kind of direct students.batch write we removed
+      // elsewhere. Only the secondary-batch tag (exam-only metadata) gets
+      // fixed automatically; the real batch itself must be corrected in
+      // StudentDB.
 
-      // 2) Remove any WRONG "Combined Navodaya Course..." secondary tag the
+      // Remove any WRONG "Combined Navodaya Course..." secondary tag the
       // bug applied (e.g. tagged "(MM)" when the student is actually ENG).
       for (const wrongBatch of s._wrongSecondaryBatches) {
         const { error } = await supabase.from("student_secondary_batches").delete().eq("student_id", s.id).eq("batch", wrongBatch);
         if (error) errors.push(`${s.name} (removing "${wrongBatch}"): ${error.message}`);
       }
 
-      // 3) Add the CORRECT secondary batch based on the suffix that was
+      // Add the CORRECT secondary batch based on the suffix that was
       // extracted (ENG/MM), if it isn't already there.
       if (s._correctSecondaryBatch && !s._alreadyHasCorrectTag) {
         const { error } = await supabase.from("student_secondary_batches")
@@ -5514,12 +5505,13 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
     if (errors.length) {
       setResult({ ok: false, message: `${errors.length} operation(s) failed: ${errors[0]}${errors.length > 1 ? ` (+${errors.length - 1} more)` : ""}` });
     } else {
-      setResult({ ok: true, message: `Fixed ${toFix.length} student(s) — batch restored and correctly tagged by section (ENG/MM).` });
+      setResult({ ok: true, message: `Tagged ${toFix.length} student(s) with the correct section (ENG/MM). Their Batch field still shows the "— ENG"/"— MM" suffix — please strip that in StudentDB (Attendance → Students) to fully clean it up, since Exams no longer edits students.batch directly.` });
     }
-    const fixedIds = new Set(toFix.map(s => s.id));
-    const restoredBatchById = new Map(toFix.map(s => [s.id, s._restoredBatch]));
-    onStudentsChange(students.map(s => fixedIds.has(s.id) ? { ...s, batch: restoredBatchById.get(s.id) } : s));
-    setAffected(prev => prev.filter(s => !fixedIds.has(s.id)));
+    setAffected(prev => prev.filter(s => !selected.has(s.id) || false));
+    // Batch itself is untouched here, so re-run the scan next time this
+    // modal opens rather than optimistically clearing fixed rows — they'll
+    // keep showing up until StudentDB corrects the suffix, which is the
+    // point (it's a visible reminder the batch field itself still needs fixing).
     setSelected(new Set());
   };
 
@@ -5531,9 +5523,11 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
           <button onClick={onClose} style={{ ...css.btn, padding: "4px 10px", background: "#F3F4F6", color: "#374151" }}>✕</button>
         </div>
         <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
-          Finds students whose Batch shows a stray suffix like "Achiever — ENG" from an earlier import bug. For each one, this: restores
-          their Batch to the real value ("Achiever"), removes any wrong "Combined Navodaya Course..." tag the bug applied, and adds the
-          <b> correct</b> one based on their actual section — ENG → <code>Combined Navodaya Course(ENG)</code>, MM → <code>Combined Navodaya Course (MM)</code>.
+          Finds students whose Batch shows a stray suffix like "Achiever — ENG" from an earlier import bug. For each one, this
+          removes any wrong "Combined Navodaya Course..." tag the bug applied and adds the <b>correct</b> one based on their
+          actual section — ENG → <code>Combined Navodaya Course(ENG)</code>, MM → <code>Combined Navodaya Course (MM)</code>.
+          The Batch field itself (e.g. restoring "Achiever — ENG" to "Achiever") must be corrected in StudentDB
+          (Attendance → Students) — Exams no longer edits student records directly.
         </div>
 
         {scanning ? (
@@ -9476,9 +9470,16 @@ export default function Exams({ currentUser, perms }) {
   // normalizer, fixes every exam function at once without touching each one.
   const COMBINED_COURSE_BATCH_LABEL = "Combined Navodaya Course (Sainik Appearing Group)";
   const normalizeStudent = (s) => {
-    const batch = (s.course === "Combined Course" && (!s.class_name || s.class_name === "—"))
+    // `students.class_name` is StudentDB's free-text "Class (optional)"
+    // section field (e.g. "9A") and is unrelated to the exam batch group —
+    // it must never be used for exam grouping/lookups. `students.batch`
+    // (e.g. "Achiever", "Lakshya A") is the field StudentDB's Course/Batch
+    // selects actually write the batch to, so that's the source of truth
+    // here, translated to the exam-side spelling via batchToCourseSubjectsKey.
+    const rawBatch = (s.course === "Combined Course" && (!s.batch || s.batch === "—"))
       ? COMBINED_COURSE_BATCH_LABEL
-      : (s.class_name || s.batch || "");
+      : (s.batch || "");
+    const batch = batchToCourseSubjectsKey(rawBatch);
     return { ...s, class_name: batch };
   };
 
