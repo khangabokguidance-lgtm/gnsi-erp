@@ -3551,18 +3551,34 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   };
 
 
+  const knownBatchKeys = new Set(courses.map(c => c.trim().toUpperCase()));
+  const isUnrecognizedBatch = (s) => {
+    const cn = (s.class_name || "").trim().toUpperCase();
+    return !cn || !knownBatchKeys.has(cn);
+  };
+  const unrecognizedBatchCount = students.filter(isUnrecognizedBatch).length;
+
   const filtered = students.filter(s => {
     const q = search.trim().toLowerCase();
     const matchSearch = !q || (s.name || "").toLowerCase().includes(q) || String(s.gcc_no ?? "").includes(q);
     const fc = filterCourse.trim().toUpperCase();
-    const matchCourse = fc === "ALL" || (s.class_name || "").trim().toUpperCase() === fc;
+    const matchCourse = fc === "ALL" ? true
+      : fc === "__UNRECOGNIZED__" ? isUnrecognizedBatch(s)
+      : (s.class_name || "").trim().toUpperCase() === fc;
     return matchSearch && matchCourse;
   });
 
   const statsPerCourse = courses.map(c => ({
     course: c,
     count: students.filter(s => (s.class_name || "").trim().toUpperCase() === c.trim().toUpperCase()).length,
-    batches: batchesForTrack(trackForBatch(c)),
+    // Canonical batches only (TRACK_BATCHES), NOT batchesForTrack — that
+    // helper also surfaces every distinct class_name value seen in the data,
+    // including corrupted/stray ones (e.g. "???", "LAKSHYAA" with no
+    // space/dash from a bad import). Mixing those into this summary card
+    // made every card list batches that don't belong to it. This card is
+    // just a display of "what batches make up this track", so it should
+    // only ever show the real, known batch list.
+    batches: TRACK_BATCHES[trackForBatch(c)] || [],
   }));
 
   const EditCell = ({ field, width = 120, type = "text" }) => (
@@ -3743,6 +3759,17 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                   {c}
                 </button>
               ))}
+              {/* A student whose class_name doesn't match any real batch key (e.g. "???",
+                  or a stray value from a bad import/edit) is otherwise invisible in this
+                  filter row — there's no button for it, so staff can't find or fix it here.
+                  This button surfaces exactly those students so they can be corrected in
+                  StudentDB. */}
+              {unrecognizedBatchCount > 0 && (
+                <button onClick={() => setFilterCourse("__UNRECOGNIZED__")}
+                  style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: filterCourse === "__UNRECOGNIZED__" ? "#DC2626" : "#FEF2F2", color: filterCourse === "__UNRECOGNIZED__" ? "white" : "#DC2626", border: filterCourse === "__UNRECOGNIZED__" ? "none" : "1px solid #FECACA", fontWeight: 700 }}>
+                  ⚠️ Unrecognized Batch ({unrecognizedBatchCount})
+                </button>
+              )}
             </div>
             {(search || filterCourse !== "ALL") && (
               <button onClick={() => { setSearch(""); setFilterCourse("ALL"); }}
