@@ -83,20 +83,22 @@ function trackForBatch(batch) {
 // ─── StudentDB batch spelling → courseSubjects/COURSE_MAX_MARKS key ──────────
 // StudentDB (Attendance.jsx → TabStudentDB) writes students.batch using its
 // own COURSE_STRUCTURE spelling: "Achiever", "Leader", "Champion", "Umeed",
-// "Lakshya A", "Lakshya B", "Prime", "Elite", "—" (Combined Course). Every
-// exam function in this file keys courseSubjects/COURSE_MAX_MARKS/TRACK_BATCHES
-// by the all-caps, unsplit spelling instead: "ACHIEVER", "LAKSHYA", "UMEED",
-// etc. — with no Lakshya A/B distinction, since exams don't need that split.
-// Without translating one spelling into the other, every courseSubjects[batch]
-// lookup here silently returned [] for every StudentDB-entered student.
+// "Lakshya A", "Lakshya B", "Prime", "Elite", "—" (Combined Course). The
+// exam side's courseSubjects (a saved system_settings row, editable in
+// Exams → Course/Subjects) determines the actual live keys — confirmed here
+// to be the all-caps spelling with Lakshya kept SPLIT ("LAKSHYA - A",
+// "LAKSHYA - B"), not merged. Every exam function keys courseSubjects/
+// COURSE_MAX_MARKS/TRACK_BATCHES by that spelling, so this map translates
+// StudentDB's batch value into it. Without this translation every
+// courseSubjects[batch] lookup here silently returned [] for every
+// StudentDB-entered student.
 const STUDENTDB_BATCH_TO_EXAM_KEY = {
   ACHIEVER: "ACHIEVER",
   LEADER: "LEADER",
   CHAMPION: "CHAMPION",
   UMEED: "UMEED",
-  "LAKSHYA A": "LAKSHYA",
-  "LAKSHYA B": "LAKSHYA",
-  LAKSHYA: "LAKSHYA",
+  "LAKSHYA A": "LAKSHYA - A",
+  "LAKSHYA B": "LAKSHYA - B",
   PRIME: "PRIME",
   ELITE: "ELITE",
 };
