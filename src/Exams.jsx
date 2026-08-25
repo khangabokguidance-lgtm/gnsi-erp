@@ -47,6 +47,13 @@ const DEFAULT_COURSE_SUBJECTS = {
   ELITE:     ["English Grammar", "Science", "Mathematics", "Reasoning", "Meitei Mayek"],
   PRIME:     ["English Grammar", "Science", "Mathematics", "Reasoning", "Meitei Mayek"],
   LAKSHYA:   ["Grammar", "Mental", "Mathematics", "Meitei Mayek"],
+  // Split to match the live saved config's actual keys ("LAKSHYA - A" /
+  // "LAKSHYA - B"), which StudentDB's "Lakshya A"/"Lakshya B" batches
+  // translate to (see STUDENTDB_BATCH_TO_EXAM_KEY). Only used if the saved
+  // system_settings row is ever missing/reset — the live config already has
+  // its own entries for these, which always take priority.
+  "LAKSHYA - A": ["Grammar", "Mental", "Mathematics", "Meitei Mayek"],
+  "LAKSHYA - B": ["Grammar", "Mental", "Mathematics", "Meitei Mayek"],
   UMEED:     ["Grammar & Vocabulary", "Mental", "Mathematics", "Meitei Mayek"],
   CHAMPION:  ["Vocabulary", "General Knowledge", "Mathematics-II", "Mathematics - I", "Reasoning", "Grammar", "Science"],
   LEADER:    ["Vocabulary", "Grammar", "General Knowledge", "Mathematics -I", "Mathematics - II", "Reasoning", "Science"],
@@ -67,7 +74,10 @@ const DEFAULT_COURSE_SUBJECTS = {
 // courseSubjects-style batch value.
 const TRACK_BATCHES = {
   Sainik:           ["ACHIEVER", "LEADER", "CHAMPION"],
-  Navodaya:         ["LAKSHYA", "UMEED"],
+  // Split to match the live saved courseSubjects keys ("LAKSHYA - A" /
+  // "LAKSHYA - B") — see STUDENTDB_BATCH_TO_EXAM_KEY. Kept the old
+  // unsplit "LAKSHYA" too in case any legacy record still uses it.
+  Navodaya:         ["LAKSHYA - A", "LAKSHYA - B", "LAKSHYA", "UMEED"],
   Foundation:       ["PRIME", "ELITE"],
   "Combined Course": ["Combined Navodaya Course (Sainik Appearing Group)"],
 };
@@ -116,6 +126,17 @@ const COURSE_MAX_MARKS = {
   ELITE:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
   PRIME:     { "English Grammar": 20, "Science": 15, "Mathematics": 30, "Reasoning": 20, "Meitei Mayek": 15 },
   LAKSHYA:   { "Grammar": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
+  // "LAKSHYA - A"/"LAKSHYA - B" are the live, split batch keys StudentDB's
+  // "Lakshya A"/"Lakshya B" batches translate to (see
+  // STUDENTDB_BATCH_TO_EXAM_KEY) — this file's courseSubjects/TRACK_BATCHES
+  // already use the split spelling, but this max-marks table still only had
+  // the old unsplit "LAKSHYA" key, so any Lakshya-A/B student fell through
+  // to getSubjectMax's hardcoded 100-per-subject default instead of the
+  // correct split. Using the same values as unsplit LAKSHYA as a sane
+  // fallback — this only applies where the live saved exam config (edited
+  // via Exams → Course/Subjects) doesn't already override it.
+  "LAKSHYA - A": { "Grammar": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
+  "LAKSHYA - B": { "Grammar": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
   UMEED:     { "Grammar & Vocabulary": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
   CHAMPION:  { "Vocabulary": 10, "General Knowledge": 10, "Mathematics-II": 20, "Mathematics - I": 20, "Reasoning": 20, "Grammar": 10, "Science": 10 },
   LEADER:    { "Vocabulary": 10, "Grammar": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
@@ -8090,6 +8111,8 @@ const EXAM_CONFIG_PRESETS = [
       ELITE:     ["English Grammar","Science","Mathematics","Reasoning","Meitei Mayek"],
       PRIME:     ["English Grammar","Science","Mathematics","Reasoning","Meitei Mayek"],
       LAKSHYA:   ["Grammar","Mental","Mathematics","Meitei Mayek"],
+      "LAKSHYA - A":   ["Grammar","Mental","Mathematics","Meitei Mayek"],
+      "LAKSHYA - B":   ["Grammar","Mental","Mathematics","Meitei Mayek"],
       UMEED:     ["Grammar & Vocabulary","Mental","Mathematics","Meitei Mayek"],
       CHAMPION:  ["Vocabulary","General Knowledge","Mathematics-II","Mathematics - I","Reasoning","Grammar","Science"],
       LEADER:    ["Vocabulary","Grammar","General Knowledge","Mathematics -I","Mathematics - II","Reasoning","Science"],
@@ -8099,6 +8122,8 @@ const EXAM_CONFIG_PRESETS = [
       ELITE:     {"English Grammar":20,"Science":15,"Mathematics":30,"Reasoning":20,"Meitei Mayek":15},
       PRIME:     {"English Grammar":20,"Science":15,"Mathematics":30,"Reasoning":20,"Meitei Mayek":15},
       LAKSHYA:   {"Grammar":20,"Mental":30,"Mathematics":30,"Meitei Mayek":20},
+      "LAKSHYA - A":   {"Grammar":20,"Mental":30,"Mathematics":30,"Meitei Mayek":20},
+      "LAKSHYA - B":   {"Grammar":20,"Mental":30,"Mathematics":30,"Meitei Mayek":20},
       UMEED:     {"Grammar & Vocabulary":20,"Mental":30,"Mathematics":30,"Meitei Mayek":20},
       CHAMPION:  {"Vocabulary":10,"General Knowledge":10,"Mathematics-II":20,"Mathematics - I":20,"Reasoning":20,"Grammar":10,"Science":10},
       LEADER:    {"Vocabulary":10,"Grammar":10,"General Knowledge":10,"Mathematics -I":20,"Mathematics - II":20,"Reasoning":20,"Science":10},
@@ -8118,6 +8143,8 @@ const EXAM_CONFIG_PRESETS = [
 CHAMPION:  ["Mathematics -I","Mathematics - II","Reasoning","English Grammar","Vocabulary","Science","General Knowledge"],
 LEADER:    ["Mathematics -I","Mathematics - II","Reasoning","English Grammar","Vocabulary","Science","General Knowledge"],
       LAKSHYA:   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
+      "LAKSHYA - A":   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
+      "LAKSHYA - B":   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
       UMEED:     ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
       ELITE:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
       PRIME:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
@@ -8127,6 +8154,8 @@ LEADER:    ["Mathematics -I","Mathematics - II","Reasoning","English Grammar","V
 CHAMPION:  {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":20,"General Knowledge":30},
 LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":20,"General Knowledge":30},
       LAKSHYA:   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
+      "LAKSHYA - A":   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
+      "LAKSHYA - B":   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
       UMEED:     {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
       ELITE:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
       PRIME:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
@@ -8147,6 +8176,8 @@ LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Gr
       CHAMPION:  ["Mathematics -I","Mathematics - II","Reasoning","English Grammar","Vocabulary","Science","General Knowledge"],
       LEADER:    ["Mathematics -I","Mathematics - II","Reasoning","English Grammar","Vocabulary","Science","General Knowledge"],
       LAKSHYA:   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
+      "LAKSHYA - A":   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
+      "LAKSHYA - B":   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
       UMEED:     ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
       ELITE:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
       PRIME:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
@@ -8156,6 +8187,8 @@ LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Gr
       CHAMPION:  {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":20,"General Knowledge":30},
       LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":20,"General Knowledge":30},
       LAKSHYA:   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
+      "LAKSHYA - A":   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
+      "LAKSHYA - B":   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
       UMEED:     {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
       ELITE:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
       PRIME:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
@@ -8176,6 +8209,8 @@ LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Gr
       CHAMPION:  ["Mathematics -I","Mathematics - II","Reasoning","English Grammar","Vocabulary","Science","General Knowledge"],
       LEADER:    ["Mathematics -I","Mathematics - II","Reasoning","English Grammar","Vocabulary","Science","General Knowledge"],
       LAKSHYA:   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
+      "LAKSHYA - A":   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
+      "LAKSHYA - B":   ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
       UMEED:     ["Mathematics","Mental ability","Meitei Mayek / English Passage","English Grammar & Vocabulary"],
       ELITE:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
       PRIME:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
@@ -8185,6 +8220,8 @@ LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Gr
       CHAMPION:  {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":20,"General Knowledge":30},
       LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Grammar":30,"Vocabulary":20,"Science":20,"General Knowledge":30},
       LAKSHYA:   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
+      "LAKSHYA - A":   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
+      "LAKSHYA - B":   {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
       UMEED:     {"Mathematics":30,"Mental ability":30,"Meitei Mayek / English Passage":20,"English Grammar & Vocabulary":20},
       ELITE:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
       PRIME:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
@@ -8205,6 +8242,8 @@ LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Gr
       CHAMPION:  ["Mathematics I","Mathematics II","Reasoning","English Grammar & Vocabulary","General Knowledge & Science"],
       LEADER:    ["Mathematics I","Mathematics II","Reasoning","English Grammar & Vocabulary","General Knowledge & Science"],
       LAKSHYA:   ["Mathematics I","Mathematics II","Mental ability","Meitei Mayek / English Passage","EVS"],
+      "LAKSHYA - A":   ["Mathematics I","Mathematics II","Mental ability","Meitei Mayek / English Passage","EVS"],
+      "LAKSHYA - B":   ["Mathematics I","Mathematics II","Mental ability","Meitei Mayek / English Passage","EVS"],
       UMEED:     ["Mathematics I","Mathematics II","Mental ability","Meitei Mayek / English Passage","EVS"],
       ELITE:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
       PRIME:     ["Mathematics","Reasoning","English Grammar & Vocabulary","Meitei Mayek","Science"],
@@ -8214,6 +8253,8 @@ LEADER:    {"Mathematics -I":75,"Mathematics - II":75,"Reasoning":50,"English Gr
       CHAMPION:  {"Mathematics I":75,"Mathematics II":75,"Reasoning":50,"English Grammar & Vocabulary":50,"General Knowledge & Science":50},
       LEADER:    {"Mathematics I":75,"Mathematics II":75,"Reasoning":50,"English Grammar & Vocabulary":50,"General Knowledge & Science":50},
       LAKSHYA:   {"Mathematics I":20,"Mathematics II":20,"Mental ability":20,"Meitei Mayek / English Passage":20,"EVS":20},
+      "LAKSHYA - A":   {"Mathematics I":20,"Mathematics II":20,"Mental ability":20,"Meitei Mayek / English Passage":20,"EVS":20},
+      "LAKSHYA - B":   {"Mathematics I":20,"Mathematics II":20,"Mental ability":20,"Meitei Mayek / English Passage":20,"EVS":20},
       UMEED:     {"Mathematics I":20,"Mathematics II":20,"Mental ability":20,"Meitei Mayek / English Passage":20,"EVS":20},
       ELITE:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
       PRIME:     {"Mathematics":30,"Reasoning":20,"English Grammar & Vocabulary":20,"Meitei Mayek":15,"Science":15},
