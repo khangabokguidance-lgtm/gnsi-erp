@@ -3557,6 +3557,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
     return !cn || !knownBatchKeys.has(cn);
   };
   const unrecognizedBatchCount = students.filter(isUnrecognizedBatch).length;
+  const combinedCourseRawCount = students.filter(s => s.course === "Combined Course").length;
 
   const filtered = students.filter(s => {
     const q = search.trim().toLowerCase();
@@ -3564,6 +3565,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
     const fc = filterCourse.trim().toUpperCase();
     const matchCourse = fc === "ALL" ? true
       : fc === "__UNRECOGNIZED__" ? isUnrecognizedBatch(s)
+      : fc === "__COMBINED_COURSE_RAW__" ? s.course === "Combined Course"
       : (s.class_name || "").trim().toUpperCase() === fc;
     return matchSearch && matchCourse;
   });
@@ -3770,6 +3772,16 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                   ⚠️ Unrecognized Batch ({unrecognizedBatchCount})
                 </button>
               )}
+              {/* Filters by the RAW students.course value (StudentDB's real Combined Course
+                  enrollment), independent of what batch key it resolved to — lets you find
+                  every student StudentDB has marked "Combined Course" even if their resolved
+                  class_name landed somewhere unexpected. */}
+              {combinedCourseRawCount > 0 && (
+                <button onClick={() => setFilterCourse("__COMBINED_COURSE_RAW__")}
+                  style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: filterCourse === "__COMBINED_COURSE_RAW__" ? "#7c3aed" : "#F5F3FF", color: filterCourse === "__COMBINED_COURSE_RAW__" ? "white" : "#7c3aed", border: filterCourse === "__COMBINED_COURSE_RAW__" ? "none" : "1px solid #DDD6FE", fontWeight: 700 }}>
+                  🔎 Raw "Combined Course" ({combinedCourseRawCount})
+                </button>
+              )}
             </div>
             {(search || filterCourse !== "ALL") && (
               <button onClick={() => { setSearch(""); setFilterCourse("ALL"); }}
@@ -3885,6 +3897,16 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                         <td style={{ padding: "9px 12px", fontWeight: 600, color: "#1e293b" }}>{st.name}</td>
                         <td style={{ padding: "9px 12px", textAlign: "center" }}>
                           <span style={{ background: "#E0F2FE", color: "#0369A1", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{st.class_name || "—"}</span>
+                          {(isUnrecognizedBatch(st) || st.course === "Combined Course") && (
+                            // Shown when the resolved batch is unrecognized, OR when this student's
+                            // real StudentDB course IS "Combined Course" — the exact case we're
+                            // debugging, where the summary card showed 0 despite real students
+                            // existing. Surfaces the RAW course/batch values as actually stored, so
+                            // it's possible to see exactly what's in the database instead of guessing.
+                            <div style={{ marginTop: 3, fontSize: 9, color: "#DC2626" }}>
+                              raw: course="{st.course || "∅"}" batch="{st.batch || "∅"}"
+                            </div>
+                          )}
                           {(secondaryBatchMap?.[st.id] || []).map(b => (
                             <div key={b} style={{ marginTop: 3 }}>
                               <span style={{ background: "#F5F3FF", color: "#7c3aed", padding: "1px 7px", borderRadius: 999, fontSize: 9.5, fontWeight: 700 }}>+ {b}</span>
