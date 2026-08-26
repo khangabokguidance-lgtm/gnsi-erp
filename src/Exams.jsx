@@ -6280,7 +6280,7 @@ function ExamSettings({ institute, onUpdateInstitute }) {
 }
 
 // ─── SCHEDULE (v2 — Full Bulk Assign + Mobile) ────────────────────────────────
-function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
+function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfig }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [schedule, setSchedule] = useState([]);
@@ -6359,6 +6359,92 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
   const [dupDate, setDupDate] = useState("");
   const [dupSaving, setDupSaving] = useState(false);
   const [dupSaved, setDupSaved] = useState(false);
+
+  // ── Auto-Generate Schedule from the ACTIVE Exam Config ────────────────────
+  // Unlike the single-batch "Generate" tool above (genCourse/genPreview),
+  // this builds a schedule for EVERY batch in the currently active config in
+  // one pass — the config already defines each batch's subject list and max
+  // marks, so the only new input needed is which exam type + starting date
+  // this run of the schedule is for.
+  const [acExamType, setAcExamType] = useState(examTypes[0]?.id || "");
+  const [acStartDate, setAcStartDate] = useState("");
+  const [acTime, setAcTime] = useState("09:00");
+  const [acShift, setAcShift] = useState("Morning");
+  const [acRoom, setAcRoom] = useState("");
+  const [acSkipWeekends, setAcSkipWeekends] = useState(true);
+  const [acSameDateAllBatches, setAcSameDateAllBatches] = useState(true);
+  const [acSaving, setAcSaving] = useState(false);
+  const [acSaved, setAcSaved] = useState(false);
+  const [acError, setAcError] = useState("");
+
+  const acConfigBatches = activeExamConfig?.courseSubjects
+    ? Object.keys(activeExamConfig.courseSubjects)
+    : [];
+
+  // Builds the full preview: for each batch in the active config, one row
+  // per subject, dated sequentially. `acSameDateAllBatches` controls whether
+  // every batch's Subject 1 lands on the same start date (typical when all
+  // batches sit the same exam on the same day, just different subjects per
+  // session) or whether each batch's subjects continue sequentially from
+  // where the PREVIOUS batch's subjects left off (for a single shared
+  // timetable that runs one batch after another).
+  const acPreview = React.useMemo(() => {
+    if (!acStartDate || !acConfigBatches.length) return [];
+    const advance = (d) => {
+      d.setDate(d.getDate() + 1);
+      if (acSkipWeekends) while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+    };
+    const rows = [];
+    let sharedDate = new Date(acStartDate);
+    if (acSkipWeekends) while (sharedDate.getDay() === 0 || sharedDate.getDay() === 6) sharedDate.setDate(sharedDate.getDate() + 1);
+
+    for (const course of acConfigBatches) {
+      const subjects = activeExamConfig.courseSubjects[course] || [];
+      const maxMap = activeExamConfig.courseMaxMarks?.[course] || {};
+      let d = acSameDateAllBatches ? new Date(sharedDate) : new Date(sharedDate);
+      subjects.forEach((subject) => {
+        rows.push({
+          course, subject,
+          exam_date: d.toISOString().split("T")[0],
+          total_marks: maxMap[subject] || getSubjectMax(course, subject),
+        });
+        advance(d);
+      });
+      // Only advance the shared starting point across batches when batches
+      // are meant to continue one after another; if every batch starts on
+      // the same date, sharedDate never moves between batches.
+      if (!acSameDateAllBatches) sharedDate = d;
+    }
+    return rows;
+  }, [acStartDate, acConfigBatches.join("|"), acSameDateAllBatches, acSkipWeekends, activeExamConfig]);
+
+  // Rows that would collide with a schedule entry that already exists for
+  // this exam type — re-running Auto-Generate (e.g. after fixing a date)
+  // must never create duplicate exam_schedule rows for the same
+  // (exam_type, course, subject).
+  const acExistingKeys = new Set(
+    schedule.filter(s => s.exam_type_id === acExamType).map(s => `${s.course}|${s.subject}`)
+  );
+  const acNewRows = acPreview.filter(r => !acExistingKeys.has(`${r.course}|${r.subject}`));
+  const acSkippedCount = acPreview.length - acNewRows.length;
+
+  const handleSaveAutoGenerate = async () => {
+    if (!activeExamConfig) { setAcError("No active exam config found — set one as active in Exam Config first."); return; }
+    if (!acExamType) { setAcError("Pick an exam type."); return; }
+    if (!acNewRows.length) { setAcError(acSkippedCount ? "Every subject in this config already has a schedule entry for this exam type." : "Pick a start date."); return; }
+    setAcError("");
+    setAcSaving(true);
+    const rows = acNewRows.map(r => ({
+      exam_type_id: acExamType, course: r.course, subject: r.subject,
+      exam_date: r.exam_date, time: acTime, shift: acShift, room: acRoom,
+      total_marks: Number(r.total_marks) || 100,
+    }));
+    const { error } = await supabase.from("exam_schedule").insert(rows);
+    setAcSaving(false);
+    if (error) { setAcError(error.message); return; }
+    setAcSaved(true); fetchSchedule(); onScheduleChange?.();
+    setTimeout(() => setAcSaved(false), 2500);
+  };
 
   const [importRows, setImportRows] = useState([]);
   const [importErrors, setImportErrors] = useState([]);
@@ -6557,6 +6643,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
         <ModeBtn id="multi"     icon="📋" label="Multi-Subject" />
         <ModeBtn id="bulk"      icon="🔀" label="One Subject → Many Courses" />
         <ModeBtn id="generate"  icon="⚡" label="Auto-Generate Timetable" />
+        <ModeBtn id="autoconfig" icon="🎯" label="From Active Config (All Batches)" />
         <ModeBtn id="duplicate" icon="📄" label="Duplicate Entries" />
         <ModeBtn id="import"    icon="📂" label="Import CSV/Excel" />
       </div>
@@ -6762,6 +6849,89 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange }) {
                     {!genPreview.length && <tr><td colSpan={5} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>Set a start date to preview.</td></tr>}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AUTO-GENERATE FROM ACTIVE CONFIG (all batches at once) */}
+      {mode === "autoconfig" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {!activeExamConfig && (
+            <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", padding: "12px 16px", borderRadius: 8, fontSize: 13 }}>
+              ⚠️ No active exam config found. Go to <b>Exam Config</b> and set one as active first — this tool generates a schedule for every batch defined in whichever config is currently active there.
+            </div>
+          )}
+          {activeExamConfig && (
+            <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "10px 16px", borderRadius: 8, fontSize: 13 }}>
+              🎯 Active config: <b>{activeExamConfig.name}</b> — {acConfigBatches.length} batch(es), {acConfigBatches.reduce((n, c) => n + (activeExamConfig.courseSubjects[c]?.length || 0), 0)} subject-slots total.
+            </div>
+          )}
+          <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "320px 1fr", gap: isMobile ? 14 : 20 }}>
+            <div style={css.card}>
+              <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 4 }}>🎯 From Active Config</div>
+              <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 14 }}>
+                Generates one schedule entry per subject, for every batch the active config defines — subjects and max marks come straight from the config, so there's nothing to re-enter here.
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div><FieldLabel>Exam Type</FieldLabel><select value={acExamType} onChange={e => setAcExamType(e.target.value)} style={css.input}>{examTypes.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
+                <div><FieldLabel>Start Date</FieldLabel><input type="date" value={acStartDate} onChange={e => setAcStartDate(e.target.value)} style={css.input} /></div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div><FieldLabel>Shift</FieldLabel><select value={acShift} onChange={e => setAcShift(e.target.value)} style={css.input}><option>Morning</option><option>Afternoon</option><option>Evening</option></select></div>
+                  <div><FieldLabel>Time</FieldLabel><input type="time" value={acTime} onChange={e => setAcTime(e.target.value)} style={css.input} /></div>
+                </div>
+                <div><FieldLabel>Room</FieldLabel><input value={acRoom} onChange={e => setAcRoom(e.target.value)} style={css.input} placeholder="Optional" /></div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                  <input type="checkbox" checked={acSkipWeekends} onChange={e => setAcSkipWeekends(e.target.checked)} />Skip weekends
+                </label>
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                  <input type="checkbox" checked={acSameDateAllBatches} onChange={e => setAcSameDateAllBatches(e.target.checked)} style={{ marginTop: 2 }} />
+                  <span>All batches start on the same date<div style={{ fontSize: 11, color: "#9CA3AF" }}>Uncheck to run one batch's subjects, then continue straight into the next batch's subjects on the following day.</div></span>
+                </label>
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ ...css.card, padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                <div>
+                  <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 600, color: "#1e293b" }}>{acNewRows.length} entries will be created</div>
+                  <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>
+                    {acConfigBatches.length} batches · starts {acStartDate || "—"}
+                    {acSkippedCount > 0 && ` · ${acSkippedCount} already scheduled, skipped`}
+                  </div>
+                </div>
+                <button onClick={handleSaveAutoGenerate} disabled={!acNewRows.length || acSaving}
+                  style={{ ...css.btn, background: acSaved ? "#16A34A" : acSaving ? "#93C5FD" : "#1a3c2e", color: "white", padding: "10px 22px", fontSize: 13 }}>
+                  {acSaved ? `✓ Saved!` : acSaving ? "Saving…" : `💾 Save ${acNewRows.length} Entries`}
+                </button>
+              </div>
+              {acError && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13 }}>⚠️ {acError}</div>}
+              <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+                <div style={{ padding: "11px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Preview</div>
+                <div style={{ overflowX: "auto", maxHeight: 480, overflowY: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 420 }}>
+                    <thead style={{ position: "sticky", top: 0 }}><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
+                      {["Batch","Date","Day","Subject","Marks","Status"].map(h => <th key={h} style={{ padding: "9px 14px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {acPreview.map((r, i) => {
+                        const day = new Date(r.exam_date).toLocaleDateString("en-IN", { weekday: "short" });
+                        const alreadyExists = acExistingKeys.has(`${r.course}|${r.subject}`);
+                        return <tr key={i} style={{ background: alreadyExists ? "#FFFBEB" : (i % 2 ? "#F9FAFB" : "white"), borderBottom: "1px solid #F1F5F9" }}>
+                          <td style={{ padding: "8px 14px" }}><span style={{ background: "#E0F2FE", color: "#0369A1", padding: "2px 8px", borderRadius: 999, fontSize: 10.5, fontWeight: 700 }}>{r.course}</span></td>
+                          <td style={{ padding: "8px 14px", fontWeight: 600 }}>{r.exam_date}</td>
+                          <td style={{ padding: "8px 14px", color: "#64748b" }}>{day}</td>
+                          <td style={{ padding: "8px 14px", fontWeight: 600, color: "#1a3c2e" }}>{r.subject}</td>
+                          <td style={{ padding: "8px 14px", color: "#64748b" }}>{r.total_marks}</td>
+                          <td style={{ padding: "8px 14px" }}>{alreadyExists
+                            ? <span style={{ fontSize: 10.5, color: "#92400E", fontWeight: 700 }}>Already scheduled</span>
+                            : <span style={{ fontSize: 10.5, color: "#166534", fontWeight: 700 }}>New</span>}</td>
+                        </tr>;
+                      })}
+                      {!acPreview.length && <tr><td colSpan={6} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>{activeExamConfig ? "Set a start date to preview." : "Set an active exam config first."}</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
@@ -9551,6 +9721,31 @@ export default function Exams({ currentUser, perms }) {
   const [loading, setLoading]       = useState(true);
   const [institute, setInstitute]   = useState(INSTITUTE_DEFAULT);
   const [activeConfigId, setActiveConfigId] = useState("default");
+  // Full active config object (subjects/marks/sessions/examDate) — needed by
+  // Schedule's "Auto-Generate from Active Config" and kept in sync whenever
+  // the config is switched in ExamConfigManager. Previously only the ID was
+  // tracked at this level (courseMaxMarks went through a window.* side
+  // channel instead), so nothing up here could ever see the full active
+  // config's sessions/examDate, and a page refresh lost track of which
+  // config was even active until ExamConfigManager re-fetched it itself.
+  const [activeExamConfig, setActiveExamConfig] = useState(null);
+  useEffect(() => {
+    (async () => {
+      const [{ data: cfgData }, { data: actData }] = await Promise.all([
+        supabase.from("system_settings").select("value").eq("key", "exam_configs").single(),
+        supabase.from("system_settings").select("value").eq("key", "active_exam_config").single(),
+      ]);
+      let allConfigs = [...EXAM_CONFIG_PRESETS];
+      if (cfgData?.value) {
+        try { allConfigs = [...EXAM_CONFIG_PRESETS, ...JSON.parse(cfgData.value)]; } catch (_) {}
+      }
+      const savedId = actData?.value || "default";
+      const cfg = allConfigs.find(c => c.id === savedId) || allConfigs[0];
+      setActiveConfigId(savedId);
+      setActiveExamConfig(cfg || null);
+      if (cfg?.courseMaxMarks) window.__gnsiCourseMaxMarks = cfg.courseMaxMarks;
+    })();
+  }, []);
   const [markEntryRefreshKey, setMarkEntryRefreshKey] = useState(0);
   const [lastCSVImportContext, setLastCSVImportContext] = useState(null);
   const [syncVersion, setSyncVersion] = useState(0); // Trigger for global sync
@@ -9802,14 +9997,14 @@ export default function Exams({ currentUser, perms }) {
     merit:          () => <MeritList courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} />,
     reportcard:     () => <ReportCards courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} />,
     // ── SYNCED: Schedule now uses syncVersion and refetchSchedule ──
-    schedule:       () => <Schedule key={syncVersion} courseSubjects={courseSubjects} examTypes={examTypes} onScheduleChange={refetchSchedule} />,
+    schedule:       () => <Schedule key={syncVersion} courseSubjects={courseSubjects} examTypes={examTypes} onScheduleChange={refetchSchedule} activeExamConfig={activeExamConfig} />,
     seatplan:       () => <SeatArrangement courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} schedule={schedule} />,
     studentsmgr:    () => <StudentsTab courseSubjects={courseSubjects} students={students} examTypes={examTypes} onStudentsChange={setStudents} currentUser={currentUser} perms={perms} secondaryBatchMap={secondaryBatchMap} onSecondaryBatchesChange={refetchSecondaryBatches} />,
     // ── SYNCED: CourseSubjectsManager uses centralized handler ──
     coursesubjects: () => <CourseSubjectsManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} />,
     examtypes:      () => <ExamTypesManager examTypes={examTypes} onUpdate={setExamTypes} onSetupSchedule={(name) => { setExamConfigPrefillName(name); setTab("examconfig"); }} courseSubjects={courseSubjects} onScheduleChange={refetchSchedule} />,
     // ── SYNCED: ExamConfigManager notifies on config switch ──
-    examconfig:     () => <ExamConfigManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} activeConfigId={activeConfigId} onConfigSwitch={(cfg) => { setActiveConfigId(cfg.id); window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {}; setSyncVersion(v => v + 1); }} prefillName={examConfigPrefillName} onPrefillConsumed={() => setExamConfigPrefillName("")} />,
+    examconfig:     () => <ExamConfigManager key={syncVersion} courseSubjects={courseSubjects} onUpdate={handleCourseSubjectsUpdate} activeConfigId={activeConfigId} onConfigSwitch={(cfg) => { setActiveConfigId(cfg.id); setActiveExamConfig(cfg); window.__gnsiCourseMaxMarks = cfg.courseMaxMarks || {}; setSyncVersion(v => v + 1); }} prefillName={examConfigPrefillName} onPrefillConsumed={() => setExamConfigPrefillName("")} />,
     settings:       () => <ExamSettings institute={institute} onUpdateInstitute={setInstitute} />,
     progress:       () => <ProgressTab courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} />,
     compare:        () => <CompareTab courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} />,
