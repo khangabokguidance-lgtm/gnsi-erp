@@ -4165,7 +4165,17 @@ function BulkSecondaryBatchModal({ selectedIds, students, courseSubjects, second
     }
 
     const rows = toAdd.map(s => ({ student_id: s.id, batch }));
-    const { error } = await supabase.from("student_secondary_batches").upsert(rows, { onConflict: "student_id,batch" });
+    // Same de-dup guard as the CSV-import version of this tool: if the same
+    // student was selected via two different rows/checkboxes, dedupe by
+    // student_id before upserting, or Postgres rejects the whole batch with
+    // "ON CONFLICT DO UPDATE command cannot affect row a second time".
+    const seenIds = new Set();
+    const dedupedRows = rows.filter(r => {
+      if (seenIds.has(r.student_id)) return false;
+      seenIds.add(r.student_id);
+      return true;
+    });
+    const { error } = await supabase.from("student_secondary_batches").upsert(dedupedRows, { onConflict: "student_id,batch" });
     setSaving(false);
     if (error) { setErr(error.message); return; }
     setResult({ ok: true, added: toAdd.length, skipped: alreadySet });
@@ -4639,11 +4649,27 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
       return;
     }
     const dbRows = matched.map(r => ({ student_id: r.student.id, batch }));
-    const { error } = await supabase.from("student_secondary_batches").upsert(dbRows, { onConflict: "student_id,batch" });
+    // A student can legitimately appear twice in an uploaded file (e.g. listed
+    // once by name and once by GCC No. on a different row, or a genuinely
+    // duplicated line) — both rows resolve to the SAME real student, so this
+    // produces two identical {student_id, batch} pairs in one upsert call.
+    // Postgres rejects that outright ("ON CONFLICT DO UPDATE command cannot
+    // affect row a second time") since a single statement can't apply two
+    // updates to the same conflict target. De-duplicating by student_id here
+    // (keep the first occurrence) fixes it without silently skipping anyone —
+    // it's the same student being written once, not a student being dropped.
+    const seenIds = new Set();
+    const dedupedRows = dbRows.filter(r => {
+      if (seenIds.has(r.student_id)) return false;
+      seenIds.add(r.student_id);
+      return true;
+    });
+    const duplicateCount = dbRows.length - dedupedRows.length;
+    const { error } = await supabase.from("student_secondary_batches").upsert(dedupedRows, { onConflict: "student_id,batch" });
     setSaving(false);
     if (error) { setSaveSummary({ ok: false, message: error.message }); return; }
     onChanged?.();
-    setSaveSummary({ ok: true, added: matched.length, skipped: rows.length - matched.length });
+    setSaveSummary({ ok: true, added: dedupedRows.length, skipped: rows.length - matched.length, duplicatesInFile: duplicateCount });
   };
 
   return (
@@ -4777,7 +4803,7 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
             {saveSummary && (
               <div style={{ background: saveSummary.ok ? "#F0FDF4" : "#FEF2F2", border: `1px solid ${saveSummary.ok ? "#BBF7D0" : "#FECACA"}`, color: saveSummary.ok ? "#166534" : "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 14 }}>
                 {saveSummary.ok
-                  ? (saveSummary.message || `✅ Added secondary batch "${batch}" to ${saveSummary.added} student(s). ${saveSummary.skipped || 0} skipped/unmatched.`)
+                  ? (saveSummary.message || `✅ Added secondary batch "${batch}" to ${saveSummary.added} student(s). ${saveSummary.skipped || 0} skipped/unmatched.${saveSummary.duplicatesInFile ? ` (${saveSummary.duplicatesInFile} duplicate row(s) in the file pointed to a student already counted above, so they weren't added twice.)` : ""}`)
                   : `⚠️ ${saveSummary.message}`}
               </div>
             )}
@@ -5004,7 +5030,18 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
     const linkErrors = [];
     if (existingToLink.length) {
       const linkRows = existingToLink.map(r => ({ student_id: r.student.id, batch: secondaryBatchValue }));
-      const { error } = await supabase.from("student_secondary_batches").upsert(linkRows, { onConflict: "student_id,batch" });
+      // Same de-dup guard as the other secondary-batch upserts: a result
+      // sheet can list the same student on two rows (e.g. matched once by
+      // GCC and once by name), which would send Postgres two identical
+      // {student_id, batch} pairs in one upsert and fail with "ON CONFLICT
+      // DO UPDATE command cannot affect row a second time".
+      const seenLinkIds = new Set();
+      const dedupedLinkRows = linkRows.filter(r => {
+        if (seenLinkIds.has(r.student_id)) return false;
+        seenLinkIds.add(r.student_id);
+        return true;
+      });
+      const { error } = await supabase.from("student_secondary_batches").upsert(dedupedLinkRows, { onConflict: "student_id,batch" });
       if (error) linkErrors.push(`student_secondary_batches: ${error.message}`);
     }
 
