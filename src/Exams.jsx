@@ -90,6 +90,56 @@ function trackForBatch(batch) {
   return "";
 }
 
+// ─── Shared course-batch matcher (handles "Combined Navodaya ... ENG/MAN") ──
+// ResultSheetImport (see its own comment where it sets `section`) writes the
+// ENG/MAN medium-of-instruction tag only as a suffix on the unused `batch`
+// column "purely for display" — class_name is never split by section, so
+// every Combined Navodaya student keeps one shared class_name no matter
+// which section they sat. A plain class_name === courseKey check therefore
+// always returns 0 students for any courseSubjects key that encodes a
+// section (e.g. "COMBINED NAVODAY ENG", "COMBINED NAVODAYA MAN"), even
+// though those students genuinely exist. Every exam-facing filter that
+// matches students to a courseSubjects key should go through this function
+// instead of a bare equality check, so this fallback only needs to live in
+// one place.
+function matchesCourseBatch(s, courseKey) {
+  const cn = (s.class_name || "").trim().toUpperCase();
+  const target = (courseKey || "").trim().toUpperCase();
+  if (cn === target) return true; // exact match — normal, unaffected case
+
+  // Does the target course key carry a trailing section tag (ENG / MAN / MM /
+  // HIN / MEI) on top of a base batch name? e.g.
+  // "COMBINED NAVODAY ENG"  -> base "COMBINED NAVODAY",  section "ENG"
+  // "COMBINED NAVODAYA MAN" -> base "COMBINED NAVODAYA", section "MAN"
+  const sectionMatch = target.match(/^(.*?)[\s(]*\b(ENG|MAN|MM|HIN|MEI)\b\)?\s*$/);
+  if (!sectionMatch) return false;
+  const base = sectionMatch[1].trim();
+  let section = sectionMatch[2];
+  if (section === "MAN") section = "MM"; // "Man"(ipuri) and "MM" are the same medium tag elsewhere in this file
+
+  // The student's class_name must at least belong to the same Combined
+  // Navodaya family as the target's base name (loose match, since the full
+  // stored class_name is "COMBINED NAVODAYA COURSE (SAINIK APPEARING GROUP)").
+  const sameFamily = cn.startsWith(base) || base.startsWith(cn) || cn.includes("COMBINED NAVODAY");
+  if (!sameFamily) return false;
+
+  // Signal 1: raw batch suffix, e.g. "...GROUP) MAN" or "...GROUP)-ENG"
+  const rawBatch = (s.batch || "").toUpperCase();
+  if (rawBatch.includes(section) || (section === "MM" && rawBatch.includes("MAN"))) return true;
+
+  // Signal 2: secondary-batch tag, e.g. class_name got set to
+  // "Combined Navodaya Course(ENG)" / "Combined Navodaya Course (MM)" for
+  // the phantom expanded entry (see expandWithSecondaryBatches) — check for
+  // the section token inside class_name too, guarding against the token
+  // already being part of the base name.
+  const classNameHasSectionTag = cn.includes(`(${section})`) || cn.includes(` ${section})`) || cn.includes(section);
+  if (!base.includes(section) && classNameHasSectionTag) {
+    return true;
+  }
+
+  return false;
+}
+
 // ─── StudentDB batch spelling → courseSubjects/COURSE_MAX_MARKS key ──────────
 // StudentDB (Attendance.jsx → TabStudentDB) writes students.batch using its
 // own COURSE_STRUCTURE spelling: "Achiever", "Leader", "Champion", "Umeed",
@@ -7641,9 +7691,7 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
-  const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course.toUpperCase()
-  );
+  const courseStudents = students.filter(s => matchesCourseBatch(s, course));
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
   const [marks, setMarks] = useState({});
@@ -7792,8 +7840,12 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
   const rcCourseMax = rcScheduledRows.length
     ? rcScheduledRows.reduce((sum, s) => sum + (Number(s.total_marks) || 0), 0)
     : getCourseMax(rcCourse);
-  const rcStudents = students.filter(s => (s.class_name||"").trim().toUpperCase()===rcCourse.trim().toUpperCase());
-  const acStudents = students.filter(s => (s.class_name||"").trim().toUpperCase()===acCourse.trim().toUpperCase());
+  // Section-aware matching (handles "Combined Navodaya ... ENG/MAN" buttons)
+  // is done via the shared top-level matchesCourseBatch() — see its comment
+  // near the top of the file for why a plain class_name equality check isn't
+  // enough for these.
+  const rcStudents = students.filter(s => matchesCourseBatch(s, rcCourse));
+  const acStudents = students.filter(s => matchesCourseBatch(s, acCourse));
   const acSchedule = schedule.filter(s => s.exam_type_id === acExamType && (!s.course || s.course.toUpperCase() === acCourse.toUpperCase()));
   const acExamName = examTypes.find(e=>e.id===acExamType)?.name||"Examination";
 
@@ -8129,7 +8181,7 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
   // convention as MarkEntry above. Their past admit cards/history aren't
   // affected since those were already generated/printed at the time.
   const courseStudents = students.filter(s =>
-    (s.class_name || "").toUpperCase() === course.toUpperCase() && s.status !== "Dropout"
+    matchesCourseBatch(s, course) && s.status !== "Dropout"
   );
   const filtered = courseStudents.filter(s =>
     !search || s.name?.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search)
