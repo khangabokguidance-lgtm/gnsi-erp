@@ -73,18 +73,37 @@ function matchSubject(csvHeader, subjectList) {
   return best && best.score >= 0.3 ? best : null;
 }
 
+// Recognizes "COMBINED NAVODAY(A) ... ENG/MAN/MM"-style text and resolves it
+// to the ONE real course key, regardless of spelling variant or which section
+// it names. ENG/MM is a secondary-batch tag on a student, never a separate
+// courseSubjects key — but stray junk keys with that exact text have existed
+// in the saved config before (e.g. "COMBINED NAVODAY ENG"), and both
+// detectCourse and detectFromFilename below do plain inclusion checks against
+// whatever's in courseSubjects, so they'd happily match a junk key too. This
+// must be checked before any generic key-inclusion match.
+function resolveCombinedNavodayaCourse(text, courseSubjects) {
+  const t = (text || "").toUpperCase();
+  if (!t.includes("COMBINED NAVODAY")) return null;
+  const realKey = "Combined Navodaya Course (Sainik Appearing Group)";
+  return courseSubjects[realKey] ? realKey : null;
+}
+
 function detectCourse(headers, dataRows, courseSubjects) {
   const courses = Object.keys(courseSubjects);
   const courseCol = headers.findIndex(h => /^course$/i.test(h.trim()));
   if (courseCol > -1) {
     for (const row of dataRows.slice(0, 8)) {
       const v = String(row[courseCol] || "").trim().toUpperCase();
+      const combinedMatch = resolveCombinedNavodayaCourse(v, courseSubjects);
+      if (combinedMatch) return { course: combinedMatch, method: "course-column-combined-navodaya", conf: 1.0 };
       if (courses.includes(v)) return { course: v, method: "course-column", conf: 1.0 };
       const found = courses.find(c => v.includes(c) || c.includes(v));
       if (found) return { course: found, method: "course-column-partial", conf: 0.92 };
     }
   }
   const combined = headers.join(" ").toUpperCase();
+  const combinedHeaderMatch = resolveCombinedNavodayaCourse(combined, courseSubjects);
+  if (combinedHeaderMatch) return { course: combinedHeaderMatch, method: "header-name-combined-navodaya", conf: 1.0 };
   for (const c of courses) {
     if (combined.includes(c)) return { course: c, method: "header-name", conf: 1.0 };
   }
@@ -102,11 +121,19 @@ function detectCourse(headers, dataRows, courseSubjects) {
   return null;
 }
 
-function detectFromFilename(filename, courses) {
+function detectFromFilename(filename, courses, courseSubjects) {
   const base = filename.replace(/\.[^.]+$/, "").toUpperCase();
   let detectedCourse = null;
-  for (const c of courses) {
-    if (base.includes(c.toUpperCase())) { detectedCourse = c; break; }
+  // Check the Combined Navodaya text pattern before any plain key match, for
+  // the same reason as detectCourse above — this also directly fixes
+  // filenames like "COMBINED_NAVODAYA_ENG_RESULT_OK.xls".
+  const combinedMatch = courseSubjects ? resolveCombinedNavodayaCourse(base.replace(/_/g, " "), courseSubjects) : null;
+  if (combinedMatch) {
+    detectedCourse = combinedMatch;
+  } else {
+    for (const c of courses) {
+      if (base.includes(c.toUpperCase())) { detectedCourse = c; break; }
+    }
   }
   let detectedDate = null;
   const isoMatch     = base.match(/(\d{4})[_\-](\d{2})[_\-](\d{2})/);
@@ -249,7 +276,7 @@ export default function ExamCSVImport({
     if (!rows || rows.length < 2) return null;
     const headers  = rows[0].map(h => String(h).trim());
     const dataRows = rows.slice(1).filter(r => r.some(c => String(c).trim()));
-    const fromFile = detectFromFilename(name, courses);
+    const fromFile = detectFromFilename(name, courses, courseSubjects);
     const det      = detectCourse(headers, dataRows, courseSubjects);
     const course   = overrideCourse || fromFile.detectedCourse || det?.course || (courses[0] || "");
     const autoDate = overrideDate   || fromFile.detectedDate   || localExamDate || null;

@@ -1247,7 +1247,20 @@ for (const st of courseStudents) {
     let detectedCourse = course;
     if (courseCol !== -1 && rows.length > 1) {
       const raw = rows[1][courseCol]?.toString().trim().toUpperCase();
-      if (raw && courseSubjects[raw]) detectedCourse = raw;
+      // Recognize "COMBINED NAVODAY(A) ENG/MAN/MM"-style text and resolve it to
+      // the ONE real course key regardless of spelling variants or which
+      // section it names — ENG/MM is a secondary-batch tag, never a separate
+      // courseSubjects key, so this must be checked BEFORE the generic
+      // raw/key match below. Otherwise a stray junk key with matching text
+      // (e.g. an old "COMBINED NAVODAY ENG" config entry) would be picked
+      // instead, and importing would fail looking for a schedule under that
+      // junk key. See matchesCourseBatch's own comment for the same family
+      // of naming variants this handles.
+      const isCombinedNavodayaText = raw && raw.includes("COMBINED NAVODAY");
+      const realCombinedKey = "Combined Navodaya Course (Sainik Appearing Group)";
+      if (isCombinedNavodayaText && courseSubjects[realCombinedKey]) {
+        detectedCourse = realCombinedKey;
+      } else if (raw && courseSubjects[raw]) detectedCourse = raw;
       else if (raw) { const match = Object.keys(courseSubjects).find(k => raw.includes(k) || k.includes(raw)); if (match) detectedCourse = match; }
     }
 
