@@ -3622,7 +3622,11 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
 
   const statsPerCourse = courses.map(c => ({
     course: c,
-    count: students.filter(s => (s.class_name || "").trim().toUpperCase() === c.trim().toUpperCase()).length,
+    // Uses matchesCourseBatch (not a bare class_name === check) so Combined
+    // Navodaya's ENG/MAN section-tagged courseSubjects keys correctly count
+    // the students whose class_name carries the section as a suffix/tag
+    // instead of an exact match — see matchesCourseBatch's own comment.
+    count: students.filter(s => matchesCourseBatch(s, c)).length,
     // Canonical batches only (TRACK_BATCHES), NOT batchesForTrack — that
     // helper also surfaces every distinct class_name value seen in the data,
     // including corrupted/stray ones (e.g. "???", "LAKSHYAA" with no
