@@ -57,11 +57,12 @@ const DEFAULT_COURSE_SUBJECTS = {
   UMEED:     ["Grammar & Vocabulary", "Mental", "Mathematics", "Meitei Mayek"],
   CHAMPION:  ["Vocabulary", "General Knowledge", "Mathematics-II", "Mathematics - I", "Reasoning", "Grammar", "Science"],
   LEADER:    ["Vocabulary", "Grammar", "General Knowledge", "Mathematics -I", "Mathematics - II", "Reasoning", "Science"],
-  // Corrected to match this batch's actual exam papers (Mathematics-I,
-  // Mathematics-II, Mental Ability, Passage, EVS — confirmed from real
-  // result sheets) rather than the Sainik-style subject set this previously
-  // held, which never matched what was actually being marked for this batch.
-  "Combined Navodaya Course (Sainik Appearing Group)": ["Mathematics -I", "Mathematics - II", "Mental Ability", "Passage", "EVS"],
+  // Corrected again: the batch's actual exam papers have ONE Mathematics
+  // paper, not two — confirmed from the real COMBINED_NAVODAYA_ENG/MAN result
+  // sheets (both have a single "MATHEMATICS" column). The prior "Mathematics
+  // -I" / "Mathematics - II" split was wrong despite its own comment claiming
+  // it was confirmed from result sheets — it wasn't.
+  "Combined Navodaya Course (Sainik Appearing Group)": ["Mathematics", "Mental Ability", "Passage", "EVS"],
 };
 
 // ─── Track (real exam track) → Batches it contains ───────────────────────────
@@ -190,8 +191,10 @@ const COURSE_MAX_MARKS = {
   UMEED:     { "Grammar & Vocabulary": 20, "Mental": 30, "Mathematics": 30, "Meitei Mayek": 20 },
   CHAMPION:  { "Vocabulary": 10, "General Knowledge": 10, "Mathematics-II": 20, "Mathematics - I": 20, "Reasoning": 20, "Grammar": 10, "Science": 10 },
   LEADER:    { "Vocabulary": 10, "Grammar": 10, "General Knowledge": 10, "Mathematics -I": 20, "Mathematics - II": 20, "Reasoning": 20, "Science": 10 },
-  // Matches actual result sheets: each subject out of 20, totaling 100.
-  "Combined Navodaya Course (Sainik Appearing Group)": { "Mathematics -I": 20, "Mathematics - II": 20, "Mental Ability": 20, "Passage": 20, "EVS": 20 },
+  // Matches actual result sheets: 4 subjects (Mathematics is one paper, not
+  // split into I/II), each out of 25, totaling 100 — confirmed from the max
+  // observed marks in COMBINED_NAVODAYA_ENG/MAN_RESULT_OK.xls (25.00 each).
+  "Combined Navodaya Course (Sainik Appearing Group)": { "Mathematics": 25, "Mental Ability": 25, "Passage": 25, "EVS": 25 },
 };
 
 function getCourseMax(course) {
@@ -6198,6 +6201,8 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [renamingCourse, setRenamingCourse] = useState(null); // course name currently being renamed
+  const [deletingCourse, setDeletingCourse] = useState(null); // course name pending delete confirmation
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => { setList(courseSubjects[selected] || []); }, [selected, courseSubjects]);
 
@@ -6207,6 +6212,25 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
     await supabase.from("system_settings").upsert({ key: "course_subjects", value: JSON.stringify(updated) }, { onConflict: "key" });
     onUpdate(updated); setSaving(false); setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  // Removes a course/batch KEY from the saved courseSubjects config only —
+  // this is for cleaning up stray/corrupted config entries (e.g. junk
+  // "COMBINED NAVODAY ENG" keys from a bad import) that never correspond to
+  // a real courseSubjects.<key> naming convention. This does NOT touch any
+  // student record — a student's class_name field lives in `students` and is
+  // untouched by this. If students still have a class_name matching the
+  // deleted key, they'll just show under "Unrecognized Batch" elsewhere in
+  // the app until their class_name is corrected in StudentDB.
+  const deleteCourse = async (name) => {
+    setDeleting(true);
+    const updated = { ...courseSubjects };
+    delete updated[name];
+    await supabase.from("system_settings").upsert({ key: "course_subjects", value: JSON.stringify(updated) }, { onConflict: "key" });
+    onUpdate(updated);
+    setDeleting(false);
+    setDeletingCourse(null);
+    if (selected === name) setSelected(Object.keys(updated)[0] || "");
   };
 
   const addCourse = () => {
@@ -6228,8 +6252,12 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
                 {c} <span style={{ fontSize: 11, opacity: 0.7 }}>({(courseSubjects[c] || []).length})</span>
               </button>
               <button onClick={() => setRenamingCourse(c)} title={`Rename "${c}" everywhere (students, schedule, marks, configs)`}
-                style={{ ...css.btn, padding: "6px 10px", background: selected === c ? "#14532d" : "#E5E7EB", color: selected === c ? "white" : "#6B7280", border: "1.5px solid " + (selected === c ? "#1a3c2e" : "#E5E7EB"), borderLeft: "none", borderRadius: "0 8px 8px 0", fontSize: 12 }}>
+                style={{ ...css.btn, padding: "6px 10px", background: selected === c ? "#14532d" : "#E5E7EB", color: selected === c ? "white" : "#6B7280", border: "1.5px solid " + (selected === c ? "#1a3c2e" : "#E5E7EB"), borderLeft: "none", fontSize: 12 }}>
                 ✏️
+              </button>
+              <button onClick={() => setDeletingCourse(c)} title={`Remove "${c}" from Course Subjects config (does not touch student records)`}
+                style={{ ...css.btn, padding: "6px 10px", background: selected === c ? "#7f1d1d" : "#FEE2E2", color: selected === c ? "white" : "#B91C1C", border: "1.5px solid " + (selected === c ? "#1a3c2e" : "#E5E7EB"), borderLeft: "none", borderRadius: "0 8px 8px 0", fontSize: 12 }}>
+                🗑️
               </button>
             </div>
           ))}
@@ -6252,6 +6280,23 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
             }}
             onCourseSubjectsUpdate={onUpdate}
           />
+        )}
+        {deletingCourse && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+            <div style={{ background: "white", borderRadius: 12, padding: 24, maxWidth: 420, boxShadow: "0 8px 30px rgba(0,0,0,0.2)" }}>
+              <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, marginBottom: 10 }}>Remove "{deletingCourse}"?</div>
+              <p style={{ fontSize: 13, color: "#4B5563", lineHeight: 1.6, marginBottom: 16 }}>
+                This removes the course/batch key and its subject list from the saved config. It does <b>not</b> delete or move any student —
+                if any student's class_name still matches "{deletingCourse}" exactly, they'll show up as an Unrecognized Batch until corrected in StudentDB.
+              </p>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button onClick={() => setDeletingCourse(null)} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>Cancel</button>
+                <button onClick={() => deleteCourse(deletingCourse)} disabled={deleting} style={{ ...css.btn, background: "#B91C1C", color: "white" }}>
+                  {deleting ? "Removing…" : "Remove Course"}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
         {selected && (
           <>
@@ -7695,7 +7740,24 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
-  const courseStudents = students.filter(s => matchesCourseBatch(s, course));
+  // Combined Navodaya students sit ENG or MM medium sections. Their marks/
+  // schedule are stored under the ONE real course key below regardless of
+  // section — ENG/MM is only a secondary-batch tag (see expandWithSecondary
+  // Batches), which shows up as a phantom row with class_name set to one of
+  // these two exact strings. So filtering by section here means matching
+  // against these tag values directly, not against courseSubjects at all.
+  const isCombinedNavodaya = course === "Combined Navodaya Course (Sainik Appearing Group)";
+  const COMBINED_ENG_TAG = "Combined Navodaya Course(ENG)";
+  const COMBINED_MM_TAG = "Combined Navodaya Course (MM)";
+  const [combinedSection, setCombinedSection] = useState("ALL"); // "ALL" | "ENG" | "MM"
+  const courseStudents = students.filter(s => {
+    if (!matchesCourseBatch(s, course)) return false;
+    if (isCombinedNavodaya && combinedSection !== "ALL") {
+      const tag = combinedSection === "ENG" ? COMBINED_ENG_TAG : COMBINED_MM_TAG;
+      return s.class_name === tag;
+    }
+    return true;
+  });
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
   const [marks, setMarks] = useState({});
@@ -7761,7 +7823,20 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
   return (
     <div>
       <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
-        <CoursePicker courses={courses} value={course} onChange={c => { setCourse(c); setMarks({}); }} />
+        <CoursePicker courses={courses} value={course} onChange={c => { setCourse(c); setMarks({}); setCombinedSection("ALL"); }} />
+        {isCombinedNavodaya && (
+          <div style={{ marginTop: 10 }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Medium / Section</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              {[["ALL", "All"], ["ENG", "English"], ["MM", "Manipuri (MM)"]].map(([val, label]) => (
+                <button key={val} onClick={() => setCombinedSection(val)}
+                  style={{ ...css.btn, padding: "6px 14px", background: combinedSection === val ? "#1a3c2e" : "#F3F4F6", color: combinedSection === val ? "white" : "#374151", border: "1.5px solid " + (combinedSection === val ? "#1a3c2e" : "#E5E7EB") }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "flex-end" }}>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
