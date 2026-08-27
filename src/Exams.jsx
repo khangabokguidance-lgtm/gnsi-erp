@@ -141,7 +141,17 @@ function matchesCourseBatch(s, courseKey) {
   return false;
 }
 
-// ─── StudentDB batch spelling → courseSubjects/COURSE_MAX_MARKS key ──────────
+// ─── Shared: list of distinct secondary-batch values from secondaryBatchMap ──
+// ({ studentId: [batchName, ...] }) — used anywhere a tab needs to let staff
+// pick a secondary batch (e.g. "Combined Navodaya Course(ENG)") directly,
+// since these values are NOT courseSubjects keys and so never show up in a
+// normal CoursePicker. See CourseSubjectsManager's "junk key" comment for why
+// they shouldn't be added there either.
+function listSecondaryBatches(secondaryBatchMap) {
+  return [...new Set(Object.values(secondaryBatchMap || {}).flat().filter(Boolean))].sort();
+}
+
+
 // StudentDB (Attendance.jsx → TabStudentDB) writes students.batch using its
 // own COURSE_STRUCTURE spelling: "Achiever", "Leader", "Champion", "Umeed",
 // "Lakshya A", "Lakshya B", "Prime", "Elite", "—" (Combined Course). The
@@ -3653,6 +3663,22 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
     batches: TRACK_BATCHES[trackForBatch(c)] || [],
   }));
 
+  // ── Secondary-batch stats (dual-appearing students, e.g. Combined Navodaya ENG/MM) ──
+  // Built straight from secondaryBatchMap ({ studentId: [batchName, ...] }) — the real
+  // source of truth for "who's also sitting another exam" — rather than from
+  // courseSubjects keys, which is where the old junk "COMBINED NAVODAY ENG"/"COMBINED
+  // NAVODAYA MAN" config entries came from (see matchesCourseBatch's comment). This
+  // counts each distinct secondary batch value actually assigned to at least one student.
+  const secondaryBatchCounts = new Map();
+  Object.values(secondaryBatchMap || {}).forEach(batchList => {
+    (batchList || []).forEach(b => {
+      secondaryBatchCounts.set(b, (secondaryBatchCounts.get(b) || 0) + 1);
+    });
+  });
+  const statsPerSecondaryBatch = [...secondaryBatchCounts.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([batch, count]) => ({ batch, count }));
+
   const EditCell = ({ field, width = 120, type = "text" }) => (
     <input type={type} value={editForm[field] ?? ""}
       onChange={e => setEditForm(p => ({ ...p, [field]: e.target.value }))}
@@ -3822,6 +3848,23 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
               <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: "white", lineHeight: 1.2, marginTop: 4 }}>{students.length}</div>
             </div>
           </div>
+
+          {statsPerSecondaryBatch.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>
+                🔗 Secondary Batches (dual-appearing students)
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 10, marginBottom: 16 }}>
+                {statsPerSecondaryBatch.map(s => (
+                  <div key={s.batch} style={{ background: "white", borderRadius: 10, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", borderTop: "3px solid #C9A24B" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: ".08em" }}>{s.batch}</div>
+                    <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: "#1a3c2e", lineHeight: 1.2, marginTop: 4 }}>{s.count}</div>
+                    <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 3 }}>secondary batch</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
           <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
             <input placeholder="🔍 Search by name or GCC…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...css.input, flex: 1, minWidth: 180 }} />
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
@@ -7749,10 +7792,17 @@ function ReportCardItem({ st, subjects, subjectMaxMap, courseMax, marks, examTyp
 }
 
 // ─── REPORT CARDS TAB ─────────────────────────────────────────────────────────
-function ReportCards({ courseSubjects, examTypes, students, institute }) {
+function ReportCards({ courseSubjects, examTypes, students, institute, secondaryBatchMap }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
+  // ── Generic secondary-batch filter (any batch from student_secondary_batches,
+  // not just Combined Navodaya) — lets staff print report cards scoped to just
+  // the dual-appearing students under one secondary tag, e.g. "Combined
+  // Navodaya Course(ENG)". "" means no secondary-batch filter is active and the
+  // normal course/track picker below governs courseStudents as before.
+  const secondaryBatches = listSecondaryBatches(secondaryBatchMap);
+  const [secondaryBatchFilter, setSecondaryBatchFilter] = useState("");
   // Combined Navodaya students sit ENG or MM medium sections. Their marks/
   // schedule are stored under the ONE real course key below regardless of
   // section — ENG/MM is only a secondary-batch tag (see expandWithSecondary
@@ -7763,14 +7813,16 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
   const COMBINED_ENG_TAG = "Combined Navodaya Course(ENG)";
   const COMBINED_MM_TAG = "Combined Navodaya Course (MM)";
   const [combinedSection, setCombinedSection] = useState("ALL"); // "ALL" | "ENG" | "MM"
-  const courseStudents = students.filter(s => {
-    if (!matchesCourseBatch(s, course)) return false;
-    if (isCombinedNavodaya && combinedSection !== "ALL") {
-      const tag = combinedSection === "ENG" ? COMBINED_ENG_TAG : COMBINED_MM_TAG;
-      return s.class_name === tag;
-    }
-    return true;
-  });
+  const courseStudents = secondaryBatchFilter
+    ? students.filter(s => s.class_name === secondaryBatchFilter)
+    : students.filter(s => {
+        if (!matchesCourseBatch(s, course)) return false;
+        if (isCombinedNavodaya && combinedSection !== "ALL") {
+          const tag = combinedSection === "ENG" ? COMBINED_ENG_TAG : COMBINED_MM_TAG;
+          return s.class_name === tag;
+        }
+        return true;
+      });
   const [examType, setExamType] = useState(examTypes[0]?.id || "");
   const [examDate, setExamDate] = useState("");
   const [marks, setMarks] = useState({});
@@ -7836,7 +7888,7 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
   return (
     <div>
       <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
-        <CoursePicker courses={courses} value={course} onChange={c => { setCourse(c); setMarks({}); setCombinedSection("ALL"); }} />
+        <CoursePicker courses={courses} value={course} onChange={c => { setCourse(c); setMarks({}); setCombinedSection("ALL"); setSecondaryBatchFilter(""); }} />
         {isCombinedNavodaya && (
           <div style={{ marginTop: 10 }}>
             <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Medium / Section</label>
@@ -7848,6 +7900,15 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
                 </button>
               ))}
             </div>
+          </div>
+        )}
+        {secondaryBatches.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#92400E", marginBottom: 5, textTransform: "uppercase" }}>🔗 Or filter to a secondary batch</label>
+            <select value={secondaryBatchFilter} onChange={e => setSecondaryBatchFilter(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 320, border: "1.5px solid #C9A24B" }}>
+              <option value="">— None (use Batch/Course above) —</option>
+              {secondaryBatches.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
           </div>
         )}
       </div>
@@ -7894,10 +7955,15 @@ function ReportCards({ courseSubjects, examTypes, students, institute }) {
 }
 
 // ─── BULK REPORTS (mobile: stacked) ──────────────────────────────────────────
-function BulkReports({ courseSubjects, examTypes, students, institute, schedule }) {
+function BulkReports({ courseSubjects, examTypes, students, institute, schedule, secondaryBatchMap }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [activeSection, setActiveSection] = useState("reportcard");
+  // ── Generic secondary-batch filter, shared by both the Report Card and
+  // Admit Card sub-tabs below — see the same block's comment in ReportCards.
+  const secondaryBatches = listSecondaryBatches(secondaryBatchMap);
+  const [rcSecondaryBatchFilter, setRcSecondaryBatchFilter] = useState("");
+  const [acSecondaryBatchFilter, setAcSecondaryBatchFilter] = useState("");
 
   const [rcCourse, setRcCourse]       = useState(courses[0] || "");
   const [rcExamType, setRcExamType]   = useState(examTypes[0]?.id || "");
@@ -7936,8 +8002,8 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
   // is done via the shared top-level matchesCourseBatch() — see its comment
   // near the top of the file for why a plain class_name equality check isn't
   // enough for these.
-  const rcStudents = students.filter(s => matchesCourseBatch(s, rcCourse));
-  const acStudents = students.filter(s => matchesCourseBatch(s, acCourse));
+  const rcStudents = rcSecondaryBatchFilter ? students.filter(s => s.class_name === rcSecondaryBatchFilter) : students.filter(s => matchesCourseBatch(s, rcCourse));
+  const acStudents = acSecondaryBatchFilter ? students.filter(s => s.class_name === acSecondaryBatchFilter) : students.filter(s => matchesCourseBatch(s, acCourse));
   const acSchedule = schedule.filter(s => s.exam_type_id === acExamType && (!s.course || s.course.toUpperCase() === acCourse.toUpperCase()));
   const acExamName = examTypes.find(e=>e.id===acExamType)?.name||"Examination";
 
@@ -8107,9 +8173,18 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
                 <div>
                   <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:6, textTransform:"uppercase" }}>Batch / Course</label>
                   <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-                    {courses.map(c => <button key={c} onClick={()=>setRcCourse(c)} style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:rcCourse===c?"#1a3c2e":"#F3F4F6", color:rcCourse===c?"white":"#374151", border:rcCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>)}
+                    {courses.map(c => <button key={c} onClick={()=>{setRcCourse(c); setRcSecondaryBatchFilter("");}} style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:rcCourse===c?"#1a3c2e":"#F3F4F6", color:rcCourse===c?"white":"#374151", border:rcCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>)}
                   </div>
                 </div>
+                {secondaryBatches.length > 0 && (
+                  <div>
+                    <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#92400E", marginBottom:6, textTransform:"uppercase" }}>🔗 Or Secondary Batch</label>
+                    <select value={rcSecondaryBatchFilter} onChange={e=>setRcSecondaryBatchFilter(e.target.value)} style={{ ...css.input, border:"1.5px solid #C9A24B" }}>
+                      <option value="">— None (use Batch/Course above) —</option>
+                      {secondaryBatches.map(b => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Exam Type</label>
                   <select value={rcExamType} onChange={e=>setRcExamType(e.target.value)} style={css.input}>{examTypes.map(et=><option key={et.id} value={et.id}>{et.name}</option>)}</select></div>
                 <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Date</label>
@@ -8210,9 +8285,18 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
                 <div>
                   <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:6, textTransform:"uppercase" }}>Batch / Course</label>
                   <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-                    {courses.map(c=><button key={c} onClick={()=>setAcCourse(c)} style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:acCourse===c?"#1a3c2e":"#F3F4F6", color:acCourse===c?"white":"#374151", border:acCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>)}
+                    {courses.map(c=><button key={c} onClick={()=>{setAcCourse(c); setAcSecondaryBatchFilter("");}} style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:acCourse===c?"#1a3c2e":"#F3F4F6", color:acCourse===c?"white":"#374151", border:acCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>)}
                   </div>
                 </div>
+                {secondaryBatches.length > 0 && (
+                  <div>
+                    <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#92400E", marginBottom:6, textTransform:"uppercase" }}>🔗 Or Secondary Batch</label>
+                    <select value={acSecondaryBatchFilter} onChange={e=>setAcSecondaryBatchFilter(e.target.value)} style={{ ...css.input, border:"1.5px solid #C9A24B" }}>
+                      <option value="">— None (use Batch/Course above) —</option>
+                      {secondaryBatches.map(b => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Exam Type</label>
                   <select value={acExamType} onChange={e=>setAcExamType(e.target.value)} style={css.input}>{examTypes.map(et=><option key={et.id} value={et.id}>{et.name}</option>)}</select></div>
                 <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:6, textTransform:"uppercase" }}>Sort By</label>
@@ -8260,7 +8344,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule 
 }
 
 // ─── ADMIT CARDS TAB ──────────────────────────────────────────────────────────
-function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedule, onScheduleChange }) {
+function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedule, onScheduleChange, secondaryBatchMap }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [course, setCourse] = useState(courses[0] || "");
@@ -8268,13 +8352,18 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
   const [search, setSearch] = useState("");
   const [populating, setPopulating] = useState(false);
   const [populateError, setPopulateError] = useState("");
+  // ── Generic secondary-batch filter — see the same block's comment in
+  // ReportCards for why courseSubjects/CoursePicker alone can't reach these.
+  const secondaryBatches = listSecondaryBatches(secondaryBatchMap);
+  const [secondaryBatchFilter, setSecondaryBatchFilter] = useState("");
 
   // Dropout students don't get admit cards for an upcoming sitting — same
   // convention as MarkEntry above. Their past admit cards/history aren't
   // affected since those were already generated/printed at the time.
-  const courseStudents = students.filter(s =>
-    matchesCourseBatch(s, course) && s.status !== "Dropout"
-  );
+  const courseStudents = (secondaryBatchFilter
+    ? students.filter(s => s.class_name === secondaryBatchFilter)
+    : students.filter(s => matchesCourseBatch(s, course))
+  ).filter(s => s.status !== "Dropout");
   const filtered = courseStudents.filter(s =>
     !search || s.name?.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search)
   );
@@ -8341,7 +8430,16 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
   return (
     <div>
       <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
-        <CoursePicker courses={courses} value={course} onChange={setCourse} />
+        <CoursePicker courses={courses} value={course} onChange={c => { setCourse(c); setSecondaryBatchFilter(""); }} />
+        {secondaryBatches.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#92400E", marginBottom: 5, textTransform: "uppercase" }}>🔗 Or filter to a secondary batch</label>
+            <select value={secondaryBatchFilter} onChange={e => setSecondaryBatchFilter(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 320, border: "1.5px solid #C9A24B" }}>
+              <option value="">— None (use Batch/Course above) —</option>
+              {secondaryBatches.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+        )}
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "flex-end" }}>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
@@ -10139,7 +10237,7 @@ export default function Exams({ currentUser, perms }) {
     analytics:      () => <Analytics courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} />,
     rankings:       () => <Rankings courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} />,
     merit:          () => <MeritList courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} />,
-    reportcard:     () => <ReportCards courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} />,
+    reportcard:     () => <ReportCards courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} secondaryBatchMap={secondaryBatchMap} />,
     // ── SYNCED: Schedule now uses syncVersion and refetchSchedule ──
     schedule:       () => <Schedule key={syncVersion} courseSubjects={courseSubjects} examTypes={examTypes} onScheduleChange={refetchSchedule} activeExamConfig={activeExamConfig} />,
     seatplan:       () => <SeatArrangement courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} schedule={schedule} />,
@@ -10152,8 +10250,8 @@ export default function Exams({ currentUser, perms }) {
     settings:       () => <ExamSettings institute={institute} onUpdateInstitute={setInstitute} />,
     progress:       () => <ProgressTab courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} />,
     compare:        () => <CompareTab courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} />,
-    admitcard:      () => <AdmitCardsTab courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} schedule={schedule} onScheduleChange={refetchSchedule} />,
-    bulkreport:     () => <BulkReports courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} schedule={schedule} />,
+    admitcard:      () => <AdmitCardsTab courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} schedule={schedule} onScheduleChange={refetchSchedule} secondaryBatchMap={secondaryBatchMap} />,
+    bulkreport:     () => <BulkReports courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} schedule={schedule} secondaryBatchMap={secondaryBatchMap} />,
   };
  
   const activeTabInfo = TAB_GROUPS.flatMap(g => g.tabs).find(t => t.id === tab);
