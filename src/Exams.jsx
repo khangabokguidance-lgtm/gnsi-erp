@@ -141,14 +141,42 @@ function matchesCourseBatch(s, courseKey) {
   return false;
 }
 
+// ─── Canonical secondary-batch spelling normalizer ───────────────────────────
+// Secondary batches should only ever be tagged as one of the two canonical
+// strings the rest of this file uses everywhere else (see
+// SUFFIX_TO_SECONDARY_BATCH in BatchSuffixCleanupTool and the ENG/MM consts in
+// DuplicateSectionTagResolver / ReportCards / etc.): "Combined Navodaya
+// Course(ENG)" and "Combined Navodaya Course (MM)". Older/other import paths
+// have left stray variant spellings behind (e.g. "Combined Navoday ENG",
+// missing the "a" and using a space instead of the exact "(ENG)" format) that
+// mean the same thing but don't string-match the canonical tag. This function
+// maps any recognized variant to its canonical form so DISPLAY (stats cards,
+// dropdowns) can merge them into one entry without needing the underlying
+// student_secondary_batches rows to be fixed first — see
+// SecondaryBatchSpellingCleanupTool below for actually fixing the rows.
+const CANONICAL_ENG_TAG = "Combined Navodaya Course(ENG)";
+const CANONICAL_MM_TAG = "Combined Navodaya Course (MM)";
+function normalizeSecondaryBatchSpelling(raw) {
+  const v = (raw || "").trim();
+  const upper = v.toUpperCase();
+  if (v === CANONICAL_ENG_TAG || v === CANONICAL_MM_TAG) return v;
+  if (upper.includes("COMBINED NAVODAY") && /\bENG\b/.test(upper)) return CANONICAL_ENG_TAG;
+  if (upper.includes("COMBINED NAVODAY") && /\b(MM|MAN|MANIPURI)\b/.test(upper)) return CANONICAL_MM_TAG;
+  return v; // unrelated/unrecognized batch value — leave untouched
+}
+
 // ─── Shared: list of distinct secondary-batch values from secondaryBatchMap ──
 // ({ studentId: [batchName, ...] }) — used anywhere a tab needs to let staff
 // pick a secondary batch (e.g. "Combined Navodaya Course(ENG)") directly,
 // since these values are NOT courseSubjects keys and so never show up in a
 // normal CoursePicker. See CourseSubjectsManager's "junk key" comment for why
-// they shouldn't be added there either.
+// they shouldn't be added there either. Variant spellings (see
+// normalizeSecondaryBatchSpelling above) are merged into their canonical form
+// here, so the list/counts staff see are correct even before the underlying
+// data is cleaned up.
 function listSecondaryBatches(secondaryBatchMap) {
-  return [...new Set(Object.values(secondaryBatchMap || {}).flat().filter(Boolean))].sort();
+  const all = Object.values(secondaryBatchMap || {}).flat().filter(Boolean).map(normalizeSecondaryBatchSpelling);
+  return [...new Set(all)].sort();
 }
 
 
@@ -3533,6 +3561,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   const [bulkSecondaryOpen, setBulkSecondaryOpen] = useState(false); // bulk-add secondary batch to selected students
   const [batchCleanupOpen, setBatchCleanupOpen] = useState(false); // fix corrupted "Batch — SUFFIX" entries
   const [dupTagResolverOpen, setDupTagResolverOpen] = useState(false); // resolve students tagged into both ENG and MM sections
+  const [spellingCleanupOpen, setSpellingCleanupOpen] = useState(false); // fix variant secondary-batch spellings (e.g. "Combined Navoday ENG")
 
   // Existing batch values already in use (for quick-pick buttons). Track has no further
   // sub-hierarchy under it in the data — TRACK_BATCHES gives the canonical list per track,
@@ -3669,9 +3698,17 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   // courseSubjects keys, which is where the old junk "COMBINED NAVODAY ENG"/"COMBINED
   // NAVODAYA MAN" config entries came from (see matchesCourseBatch's comment). This
   // counts each distinct secondary batch value actually assigned to at least one student.
+  // Variant spellings (e.g. "Combined Navoday ENG" vs the canonical "Combined Navodaya
+  // Course(ENG)") are merged via normalizeSecondaryBatchSpelling so they show as ONE
+  // card instead of two — see that function's comment for why the raw data can still
+  // have both spellings even after this display-side merge.
   const secondaryBatchCounts = new Map();
-  Object.values(secondaryBatchMap || {}).forEach(batchList => {
-    (batchList || []).forEach(b => {
+  Object.entries(secondaryBatchMap || {}).forEach(([studentId, batchList]) => {
+    // Dedupe per student: a student with BOTH "Combined Navoday ENG" and "Combined
+    // Navodaya Course(ENG)" tags (the exact spelling-drift case this normalizer
+    // exists for) must only count once toward the merged ENG card, not twice.
+    const canonicalTagsForStudent = new Set((batchList || []).map(normalizeSecondaryBatchSpelling));
+    canonicalTagsForStudent.forEach(b => {
       secondaryBatchCounts.set(b, (secondaryBatchCounts.get(b) || 0) + 1);
     });
   });
@@ -3742,6 +3779,11 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
             🔀 Resolve Duplicate Section Tags
           </button>
         )}
+        {perm.canEdit && (
+          <button onClick={() => setSpellingCleanupOpen(true)} style={{ ...css.btn, padding: "8px 20px", background: "#FFFBEB", color: "#92400E", border: "1px solid #FDE68A" }}>
+            🔤 Fix Secondary Batch Spellings
+          </button>
+        )}
       </div>
 
       {bulkAbsentOpen && (
@@ -3769,6 +3811,15 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
           secondaryBatchMap={secondaryBatchMap}
           onSecondaryBatchesChange={onSecondaryBatchesChange}
           onClose={() => setDupTagResolverOpen(false)}
+        />
+      )}
+
+      {spellingCleanupOpen && (
+        <SecondaryBatchSpellingCleanupTool
+          students={students}
+          secondaryBatchMap={secondaryBatchMap}
+          onSecondaryBatchesChange={onSecondaryBatchesChange}
+          onClose={() => setSpellingCleanupOpen(false)}
         />
       )}
 
@@ -3835,7 +3886,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
       {view === "list" && (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 10, marginBottom: 16 }}>
-            {statsPerCourse.map(s => (
+            {statsPerCourse.filter(s => s.count > 0).map(s => (
               <div key={s.course} style={{ background: "white", borderRadius: 10, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", borderTop: "3px solid #1a3c2e" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".08em" }}>{s.course}</div>
 
@@ -5929,6 +5980,150 @@ function DuplicateSectionTagResolver({ students, secondaryBatchMap, onSecondaryB
   );
 }
 
+// ─── FIX SECONDARY BATCH SPELLINGS (variant spellings → canonical) ────────────
+// Some student_secondary_batches rows use an older/variant spelling of the
+// Combined Navodaya section tags (e.g. "Combined Navoday ENG" — missing the
+// "a" and shaped differently) instead of the canonical strings used
+// everywhere else in this file: "Combined Navodaya Course(ENG)" and "Combined
+// Navodaya Course (MM)" (see normalizeSecondaryBatchSpelling's comment). The
+// display-side normalizer merges these for stats cards and the secondary-
+// batch filter dropdowns, but the underlying rows are still split across two
+// spellings — this tool actually rewrites them to the canonical form so
+// there's only ever one real tag per student going forward.
+function SecondaryBatchSpellingCleanupTool({ students, secondaryBatchMap, onSecondaryBatchesChange, onClose }) {
+  const [scanning, setScanning] = useState(true);
+  const [affected, setAffected] = useState([]); // [{ student, rawBatch, canonicalBatch, alreadyHasCanonical }]
+  const [selected, setSelected] = useState(new Set());
+  const [applying, setApplying] = useState(false);
+  const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    const found = [];
+    Object.entries(secondaryBatchMap || {}).forEach(([studentId, batchList]) => {
+      (batchList || []).forEach(raw => {
+        const canonical = normalizeSecondaryBatchSpelling(raw);
+        // Only variant spellings that actually differ from their canonical
+        // form need fixing — an already-canonical tag or an unrelated batch
+        // value (normalizeSecondaryBatchSpelling returns it unchanged) is left alone.
+        if (canonical !== raw && (canonical === CANONICAL_ENG_TAG || canonical === CANONICAL_MM_TAG)) {
+          const student = students.find(s => String(s.id) === String(studentId));
+          if (!student) return; // stale row pointing at a deleted student
+          found.push({
+            student,
+            rawBatch: raw,
+            canonicalBatch: canonical,
+            // If the student ALREADY has the canonical tag too, this is a pure
+            // duplicate-spelling case — fixing it means just deleting the
+            // variant row, not upserting (which would be a no-op anyway, but
+            // this makes the affected-row summary accurate).
+            alreadyHasCanonical: (batchList || []).includes(canonical),
+          });
+        }
+      });
+    });
+    setAffected(found);
+    setSelected(new Set(found.map((f, i) => i)));
+    setScanning(false);
+  }, [students, secondaryBatchMap]);
+
+  const toggleSel = (i) => setSelected(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+  const selectAll = () => setSelected(new Set(affected.map((_, i) => i)));
+  const deselectAll = () => setSelected(new Set());
+
+  const applyFix = async () => {
+    if (!selected.size) return;
+    setApplying(true);
+    setResult(null);
+    const toFix = affected.filter((_, i) => selected.has(i));
+    const errors = [];
+
+    for (const f of toFix) {
+      // Always remove the variant-spelling row first.
+      const { error: delErr } = await supabase.from("student_secondary_batches")
+        .delete().eq("student_id", f.student.id).eq("batch", f.rawBatch);
+      if (delErr) { errors.push(`${f.student.name} (removing "${f.rawBatch}"): ${delErr.message}`); continue; }
+
+      // Only add the canonical row if the student doesn't already have it —
+      // otherwise this would just be recreating a duplicate we didn't need to touch.
+      if (!f.alreadyHasCanonical) {
+        const { error: upErr } = await supabase.from("student_secondary_batches")
+          .upsert([{ student_id: f.student.id, batch: f.canonicalBatch }], { onConflict: "student_id,batch" });
+        if (upErr) errors.push(`${f.student.name} (adding "${f.canonicalBatch}"): ${upErr.message}`);
+      }
+    }
+
+    setApplying(false);
+    onSecondaryBatchesChange?.();
+    if (errors.length) {
+      setResult({ ok: false, message: `${toFix.length - errors.length} fixed, ${errors.length} failed: ${errors[0]}${errors.length > 1 ? ` (+${errors.length - 1} more)` : ""}` });
+    } else {
+      setResult({ ok: true, message: `Fixed ${toFix.length} row(s) — all now use the canonical spelling.` });
+    }
+    setSelected(new Set());
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, overflowY: "auto" }}>
+      <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 700, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)", marginTop: 30 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600 }}>🔤 Fix Secondary Batch Spellings</div>
+          <button onClick={onClose} style={{ ...css.btn, padding: "4px 10px", background: "#F3F4F6", color: "#374151" }}>✕</button>
+        </div>
+        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+          These students have a secondary-batch tag using an older or variant spelling (e.g. "Combined Navoday ENG") instead of
+          the canonical form ("Combined Navodaya Course(ENG)" / "Combined Navodaya Course (MM)"). Stats cards and print filters
+          already merge these for display, but fixing the underlying tag here means Report Cards / Admit Cards / Bulk Reports
+          will find everyone under a single, correct secondary-batch selection going forward.
+        </div>
+
+        {scanning && <div style={{ padding: 24, textAlign: "center", color: "#6B7280" }}>Scanning…</div>}
+
+        {!scanning && result && (
+          <div style={{ background: result.ok ? "#F0FDF4" : "#FEF2F2", border: `1px solid ${result.ok ? "#BBF7D0" : "#FECACA"}`, color: result.ok ? "#166534" : "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 12.5, marginBottom: 14 }}>
+            {result.ok ? "✅ " : "⚠️ "}{result.message}
+          </div>
+        )}
+
+        {!scanning && affected.length === 0 && !result && (
+          <div style={{ padding: 24, textAlign: "center", color: "#0F6E56", fontWeight: 600 }}>
+            ✅ No variant spellings found. Every secondary batch tag already uses the canonical form.
+          </div>
+        )}
+
+        {!scanning && affected.length > 0 && (
+          <>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
+              <button onClick={selectAll} style={{ ...css.btn, padding: "5px 12px", fontSize: 11.5, background: "#F3F4F6", color: "#374151" }}>Select All</button>
+              <button onClick={deselectAll} style={{ ...css.btn, padding: "5px 12px", fontSize: 11.5, background: "#F3F4F6", color: "#374151" }}>Deselect All</button>
+              <span style={{ fontSize: 12, color: "#6B7280", marginLeft: "auto" }}>{selected.size} of {affected.length} selected</span>
+            </div>
+            <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 8, marginBottom: 16 }}>
+              {affected.map((f, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderBottom: i < affected.length - 1 ? "1px solid #F1F5F9" : "none", fontSize: 12.5 }}>
+                  <input type="checkbox" checked={selected.has(i)} onChange={() => toggleSel(i)} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600 }}>{f.student.name} <span style={{ color: "#9CA3AF", fontWeight: 400 }}>({f.student.gcc_no})</span></div>
+                    <div style={{ color: "#92400E", fontSize: 11.5, marginTop: 2 }}>
+                      "{f.rawBatch}" → "{f.canonicalBatch}"{f.alreadyHasCanonical && <span style={{ color: "#DC2626" }}> — already has canonical tag; variant will just be removed</span>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={onClose} style={{ ...css.btn, background: "#F3F4F6", color: "#374151", padding: "9px 18px" }}>Close</button>
+              <button onClick={applyFix} disabled={applying || !selected.size} style={{ ...css.btn, background: "#1a3c2e", color: "white", padding: "9px 18px" }}>
+                {applying ? "⏳ Fixing…" : `Fix ${selected.size} Selected`}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 // ─── MERIT LIST ───────────────────────────────────────────────────────────────
 function MeritList({ courseSubjects, examTypes, students }) {
   const isMobile = useMobile();
@@ -7814,7 +8009,7 @@ function ReportCards({ courseSubjects, examTypes, students, institute, secondary
   const COMBINED_MM_TAG = "Combined Navodaya Course (MM)";
   const [combinedSection, setCombinedSection] = useState("ALL"); // "ALL" | "ENG" | "MM"
   const courseStudents = secondaryBatchFilter
-    ? students.filter(s => s.class_name === secondaryBatchFilter)
+    ? students.filter(s => normalizeSecondaryBatchSpelling(s.class_name) === secondaryBatchFilter)
     : students.filter(s => {
         if (!matchesCourseBatch(s, course)) return false;
         if (isCombinedNavodaya && combinedSection !== "ALL") {
@@ -8002,8 +8197,8 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
   // is done via the shared top-level matchesCourseBatch() — see its comment
   // near the top of the file for why a plain class_name equality check isn't
   // enough for these.
-  const rcStudents = rcSecondaryBatchFilter ? students.filter(s => s.class_name === rcSecondaryBatchFilter) : students.filter(s => matchesCourseBatch(s, rcCourse));
-  const acStudents = acSecondaryBatchFilter ? students.filter(s => s.class_name === acSecondaryBatchFilter) : students.filter(s => matchesCourseBatch(s, acCourse));
+  const rcStudents = rcSecondaryBatchFilter ? students.filter(s => normalizeSecondaryBatchSpelling(s.class_name) === rcSecondaryBatchFilter) : students.filter(s => matchesCourseBatch(s, rcCourse));
+  const acStudents = acSecondaryBatchFilter ? students.filter(s => normalizeSecondaryBatchSpelling(s.class_name) === acSecondaryBatchFilter) : students.filter(s => matchesCourseBatch(s, acCourse));
   const acSchedule = schedule.filter(s => s.exam_type_id === acExamType && (!s.course || s.course.toUpperCase() === acCourse.toUpperCase()));
   const acExamName = examTypes.find(e=>e.id===acExamType)?.name||"Examination";
 
@@ -8361,7 +8556,7 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
   // convention as MarkEntry above. Their past admit cards/history aren't
   // affected since those were already generated/printed at the time.
   const courseStudents = (secondaryBatchFilter
-    ? students.filter(s => s.class_name === secondaryBatchFilter)
+    ? students.filter(s => normalizeSecondaryBatchSpelling(s.class_name) === secondaryBatchFilter)
     : students.filter(s => matchesCourseBatch(s, course))
   ).filter(s => s.status !== "Dropout");
   const filtered = courseStudents.filter(s =>
