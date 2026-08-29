@@ -117,7 +117,7 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
       // both go through for the same face either.
       const { data: existingRows, error: fetchErr } = await supabase
         .from('staff_face_descriptors')
-        .select('staff_id, descriptor, status, staff_profiles(name)')
+        .select('staff_id, descriptor, status')
         .in('status', ['approved', 'pending'])
         .neq('staff_id', staffMember.id)
 
@@ -126,8 +126,16 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
       for (const row of existingRows || []) {
         const result = matchDescriptor(avgDescriptor, row.descriptor)
         if (result.verified) {
+          let conflictName = 'another staff member'
+          const { data: conflictStaff } = await supabase
+            .from('staff_profiles')
+            .select('name')
+            .eq('id', row.staff_id)
+            .maybeSingle()
+          if (conflictStaff?.name) conflictName = conflictStaff.name
+
           notify(
-            `This face closely matches an existing enrollment for ${row.staff_profiles?.name || 'another staff member'}. Contact admin if this is a mistake.`,
+            `This face closely matches an existing enrollment for ${conflictName}. Contact admin if this is a mistake.`,
             'err'
           )
           setSaving(false)
