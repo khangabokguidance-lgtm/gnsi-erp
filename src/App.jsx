@@ -48,6 +48,7 @@ import TeachingAids       from './TeachingAids'
 import CastReceiver       from './CastReceiver'
 import Awards             from './Awards'
 import FaceAttendance     from './FaceAttendance'
+import TimeAndPay         from './TimeAndPay'
 import Student360         from './Student360'
 import { useMismatchAutoScan } from './mismatchScanner'
 
@@ -107,6 +108,7 @@ const ALL_GROUPS = [
       { id: 'hostel',  label: 'Hostel',  icon: '🏨' },
       { id: 'awards',  label: 'Awards',  icon: '🏅' },
       { id: 'faceattendance', label: 'Face Attendance', icon: '🧑‍💼' },
+      { id: 'timeandpay',     label: 'Time & Pay',      icon: '💰' },
     ],
   },
   {
@@ -358,6 +360,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     if (isAdmin) return new Set(ALL_ITEMS.map(i => i.id))
     const set = new Set(['dashboard'])
     if (currentUser?.staff_profile_id) set.add('faceattendance')
+    if (currentUser?.staff_profile_id) set.add('timeandpay')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
     return set
   }, [permMap, isAdmin, currentUser?.staff_profile_id])
@@ -470,6 +473,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
     if (isAdmin) return new Set(ALL_ITEMS.map(i => i.id))
     const set = new Set(['dashboard'])
     if (currentUser?.staff_profile_id) set.add('faceattendance')
+    if (currentUser?.staff_profile_id) set.add('timeandpay')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
     return set
   }, [permMap, isAdmin, currentUser?.staff_profile_id])
@@ -687,6 +691,7 @@ export default function App() {
     // linked profile, not gated by the permission matrix like admin tools —
     // the component itself only exposes enrollment management to admins.
     if (key === 'faceattendance') return isAdmin || !!currentUser?.staff_profile_id
+    if (key === 'timeandpay')     return isAdmin || !!currentUser?.staff_profile_id
     if (isAdmin) return true
     return permMap[key]?.read === true
   }
@@ -708,6 +713,8 @@ export default function App() {
     hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}            />,
     awards:            <Awards            currentUser={currentUser} perms={perms('awards')}            />,
     faceattendance:    <FaceAttendance currentUser={currentUser} isAdmin={isAdmin} staff={sharedStaff}
+                          loggedInStaff={!isAdmin && currentUser?.staff_profile_id ? sharedStaff.find(s => s.id === currentUser.staff_profile_id) || null : null} />,
+    timeandpay:        <TimeAndPay currentUser={currentUser} isAdmin={isAdmin} staff={sharedStaff}
                           loggedInStaff={!isAdmin && currentUser?.staff_profile_id ? sharedStaff.find(s => s.id === currentUser.staff_profile_id) || null : null} />,
     reception:         <Reception         currentUser={currentUser} perms={perms('reception')}         />,
     notice:            <Notice            currentUser={currentUser} perms={perms('notice')}            />,
