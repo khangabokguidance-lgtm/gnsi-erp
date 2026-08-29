@@ -411,6 +411,23 @@ function HomeTile({ icon, label, badge, onClick }) {
   )
 }
 
+// Smaller, lighter secondary shortcut tile — matches PagarBook's "Quick
+// Actions" row (round icon badge over a lavender-tinted circle, label below).
+function QuickActionTile({ icon, label, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '4px 2px',
+    }}>
+      <span style={{
+        width: 44, height: 44, borderRadius: '50%', background: '#F1EEFB',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19,
+      }}>{icon}</span>
+      <span style={{ fontSize: 11, fontWeight: 700, color: '#1e293b', textAlign: 'center', lineHeight: 1.2 }}>{label}</span>
+    </button>
+  )
+}
+
 // ─── Bottom nav bar — PagarBook-style fixed 4-item bar ─────────────────────
 
 function useIsDesktopWidth() {
@@ -527,6 +544,15 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
     coverage: 'Staff coverage', approvals: 'Pending approvals', cashbook: 'Cash book', settings: 'Settings',
   }
 
+  // Quick actions row, below the main tile grid — role-aware, matching
+  // PagarBook's smaller secondary shortcut row.
+  const quickActions = isAdmin
+    ? [{ key: 'enroll', icon: '🧑‍💼', label: 'Enroll face', onClick: () => setTab('coverage') }]
+    : [
+        { key: 'qa-checkin',  icon: '✅', label: 'Take attendance', onClick: () => loggedInStaff && setTab('checkin') },
+        { key: 'qa-timecard', icon: '🕐', label: 'Time card', onClick: () => setTab('timecard') },
+      ]
+
   return (
     <div style={S.page}>
       {toastEl}
@@ -574,6 +600,13 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
             {primaryTiles.map(t => (
               <HomeTile key={t.key} icon={t.icon} label={t.label} badge={t.badge} onClick={() => setTab(t.key)} />
+            ))}
+          </div>
+
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#0B1E3D', margin: '20px 0 10px 2px' }}>Quick actions</div>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${quickActions.length},1fr)`, gap: 10 }}>
+            {quickActions.map(q => (
+              <QuickActionTile key={q.key} icon={q.icon} label={q.label} onClick={q.onClick} />
             ))}
           </div>
         </>
