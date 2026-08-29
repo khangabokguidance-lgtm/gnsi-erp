@@ -140,10 +140,13 @@ function TimeCard({ staffId, isAdmin, staffList }) {
 
 // ─── Advances — view into Salary.jsx's staff_advances table ────────────────
 
-function AdvancesView({ staffId, isAdmin, staffList }) {
+function AdvancesView({ staffId, isAdmin, staffList, currentAdminId, showToast }) {
   const [advances, setAdvances] = useState([])
   const [loading, setLoading]   = useState(true)
   const [staffFilter, setStaffFilter] = useState(isAdmin ? 'all' : String(staffId))
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ staff_id: '', amount: '', reason: '', issued_month: currentMonth(), repay_months: 1 })
+  const [submitting, setSubmitting] = useState(false)
 
   const fetchAdvances = useCallback(async () => {
     setLoading(true)
@@ -163,10 +166,73 @@ function AdvancesView({ staffId, isAdmin, staffList }) {
     outstanding: advances.reduce((s, a) => s + (Number(a.amount || 0) - Number(a.repaid_amount || 0)), 0),
   }), [advances])
 
+  const submitAdvance = async () => {
+    if (!form.staff_id) { showToast?.('Select a staff member', 'err'); return }
+    if (!form.amount || Number(form.amount) <= 0) { showToast?.('Enter a valid amount', 'err'); return }
+    setSubmitting(true)
+    // Same insert shape as Salary.jsx's handleAddAdvance — single source of
+    // truth stays staff_advances, this just gives admins a second entry point.
+    const { error } = await supabase.from('staff_advances').insert([{
+      staff_id: Number(form.staff_id),
+      amount: Number(form.amount),
+      reason: form.reason || null,
+      issued_month: form.issued_month,
+      repay_months: Number(form.repay_months) || 1,
+      repaid_amount: 0,
+      status: 'Active',
+    }])
+    if (error) showToast?.('Could not issue advance: ' + error.message, 'err')
+    else {
+      showToast?.('Advance issued', 'ok')
+      setForm({ staff_id: '', amount: '', reason: '', issued_month: currentMonth(), repay_months: 1 })
+      setShowForm(false)
+      fetchAdvances()
+    }
+    setSubmitting(false)
+  }
+
   return (
-    <div style={S.card}>
+    <div>
+      {isAdmin && (
+        showForm ? (
+          <div style={S.card}>
+            <div style={{ fontWeight: 800, fontSize: 13, color: '#0B1E3D', marginBottom: 12 }}>Issue new advance</div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Staff member</label>
+            <select style={{ ...S.inputFull, marginBottom: 10 }} value={form.staff_id} onChange={e => setForm(f => ({ ...f, staff_id: e.target.value }))}>
+              <option value="">Select staff…</option>
+              {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Amount (₹)</label>
+            <input type="number" style={{ ...S.inputFull, marginBottom: 10 }} value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="5000" />
+            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Issued month</label>
+                <input type="month" style={S.inputFull} value={form.issued_month} onChange={e => setForm(f => ({ ...f, issued_month: e.target.value }))} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Repay over (months)</label>
+                <input type="number" min="1" style={S.inputFull} value={form.repay_months} onChange={e => setForm(f => ({ ...f, repay_months: e.target.value }))} />
+              </div>
+            </div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Reason (optional)</label>
+            <input style={{ ...S.inputFull, marginBottom: 14 }} value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} placeholder="e.g. Medical emergency" />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: 12, borderRadius: 10, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={submitAdvance} disabled={submitting} style={{ flex: 2, padding: 12, borderRadius: 10, border: 'none', background: '#0B1E3D', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
+                {submitting ? 'Issuing…' : 'Issue advance'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setShowForm(true)} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#0B1E3D', color: 'white', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 16 }}>
+            + Issue new advance
+          </button>
+        )
+      )}
+
+      <div style={S.card}>
       <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 14px' }}>
-        View only — advances are recorded and repayments applied from the Salary module during payroll processing.
+        Repayments are applied automatically from the Salary module during payroll processing.
       </p>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
         {isAdmin && (
@@ -224,6 +290,7 @@ function AdvancesView({ staffId, isAdmin, staffList }) {
           </table>
         </div>
       )}
+      </div>
     </div>
   )
 }
@@ -644,7 +711,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
 
           {tab === 'attendancesummary' && <AttendanceSummaryView isAdmin={isAdmin} staffList={filteredStaff} showToast={showToast} onNavigate={onNavigate} />}
           {tab === 'timecard' && <TimeCard staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
-          {tab === 'advances' && <AdvancesView staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
+          {tab === 'advances' && <AdvancesView staffId={staffId} isAdmin={isAdmin} staffList={staff} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />}
           {tab === 'fines'    && <LateFinesView staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
           {tab === 'reports'  && <ReportsView isAdmin={isAdmin} staffList={staff} />}
           {tab === 'broadcast' && <BroadcastView isAdmin={isAdmin} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />}
