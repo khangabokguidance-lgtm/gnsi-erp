@@ -307,23 +307,45 @@ export function FaceApprovalQueue({ currentAdminId, showToast }) {
     setLoading(true)
     const { data, error } = await supabase
       .from('staff_face_descriptors')
-      .select('id, staff_id, enrolled_at, photo_path_1, staff_profiles(name, designation)')
+      .select('id, staff_id, enrolled_at, photo_path_1')
       .eq('status', 'pending')
       .order('enrolled_at', { ascending: true })
-    if (!error) {
-      setPending(data || [])
-      // Signed URLs expire in 1 hour — generated fresh each load, never stored/public
-      const urls = {}
-      for (const p of data || []) {
-        if (p.photo_path_1) {
-          const { data: signed } = await supabase.storage.from('face-enrollments').createSignedUrl(p.photo_path_1, 3600)
-          if (signed?.signedUrl) urls[p.id] = signed.signedUrl
-        }
-      }
-      setThumbUrls(urls)
+
+    if (error) {
+      showToast?.('Could not load pending approvals: ' + error.message, 'err')
+      setPending([])
+      setLoading(false)
+      return
     }
+
+    const rows = data || []
+
+    // staff_face_descriptors has 3 FKs to staff_profiles (staff_id,
+    // enrolled_by, reviewed_by), so an embedded staff_profiles(...) select
+    // is ambiguous and Supabase refuses it — fetch names separately instead.
+    let namesById = {}
+    const staffIds = [...new Set(rows.map(r => r.staff_id))]
+    if (staffIds.length) {
+      const { data: staffRows } = await supabase
+        .from('staff_profiles')
+        .select('id, name, designation')
+        .in('id', staffIds)
+      for (const s of staffRows || []) namesById[s.id] = s
+    }
+
+    setPending(rows.map(r => ({ ...r, staff_profiles: namesById[r.staff_id] || null })))
+
+    // Signed URLs expire in 1 hour — generated fresh each load, never stored/public
+    const urls = {}
+    for (const p of rows) {
+      if (p.photo_path_1) {
+        const { data: signed } = await supabase.storage.from('face-enrollments').createSignedUrl(p.photo_path_1, 3600)
+        if (signed?.signedUrl) urls[p.id] = signed.signedUrl
+      }
+    }
+    setThumbUrls(urls)
     setLoading(false)
-  }, [])
+  }, [showToast])
 
   useEffect(() => { fetchPending() }, [fetchPending])
 
