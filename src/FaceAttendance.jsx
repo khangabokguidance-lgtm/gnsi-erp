@@ -422,10 +422,12 @@ function BottomNav({ active, onNavigate, pendingCount }) {
   ]
   return (
     <div style={{
-      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 500,
+      position: 'sticky', bottom: 0, left: 0, right: 0, zIndex: 500,
       background: 'white', borderTop: '1px solid #e2e8f0',
       display: 'flex', justifyContent: 'space-around', padding: '8px 0 10px',
       boxShadow: '0 -2px 10px rgba(0,0,0,.05)',
+      marginLeft: -20, marginRight: -20, width: 'calc(100% + 40px)',
+      boxSizing: 'border-box',
     }}>
       {items.map(it => (
         <button key={it.key} onClick={() => onNavigate(it.key)} style={{
