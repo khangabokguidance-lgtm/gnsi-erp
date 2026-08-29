@@ -964,7 +964,16 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
 
       // Give the person a moment to see the success toast before jumping
       // back to the Face Attendance home grid.
-      if (onCheckInSuccess) setTimeout(() => onCheckInSuccess(), 1200)
+      console.log('[GeoAttendance] check-in success — onCheckInSuccess is:', typeof onCheckInSuccess, onCheckInSuccess)
+      if (onCheckInSuccess) {
+        console.log('[GeoAttendance] scheduling redirect in 1200ms')
+        setTimeout(() => {
+          console.log('[GeoAttendance] firing onCheckInSuccess now')
+          onCheckInSuccess()
+        }, 1200)
+      } else {
+        console.log('[GeoAttendance] onCheckInSuccess is falsy, skipping redirect')
+      }
     } catch (err) {
       showToast('❌ ' + err.message, 'err')
     }
