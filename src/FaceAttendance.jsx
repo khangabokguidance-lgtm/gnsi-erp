@@ -13,9 +13,11 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from './supabase'
 import FaceEnroll, { FaceApprovalQueue } from './FaceEnroll'
 import GeoAttendance from './GeoAttendance'
+import { AttendanceSummaryView, ReportsView, BroadcastView, NotificationsView } from './FaceAttendanceExtras'
+import SettingsView from './SettingsView'
 
 const S = {
-  page:  { padding: 20, fontFamily: "'Outfit',system-ui,sans-serif", background: '#f1f5f9', minHeight: '100vh' },
+  page:  { padding: '20px 20px 96px', fontFamily: "'Outfit',system-ui,sans-serif", background: '#EEF2FB', minHeight: '100vh' },
   card:  { background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.07)', padding: 20, marginBottom: 16 },
   input: { padding: '9px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, fontFamily: 'inherit' },
   inputFull: { width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box', fontFamily: 'inherit', minHeight: 44 },
@@ -43,7 +45,7 @@ function useToast() {
   const [toast, setToast] = useState(null)
   const show = useCallback((message, type = 'ok') => { setToast({ message, type }); setTimeout(() => setToast(null), 3500) }, [])
   const el = toast ? (
-    <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: toast.type === 'err' ? '#fee2e2' : toast.type === 'warn' ? '#fef9c3' : '#dcfce7', color: toast.type === 'err' ? '#dc2626' : toast.type === 'warn' ? '#ca8a04' : '#16a34a', padding: '12px 20px', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,.15)', fontSize: 13, fontWeight: 600 }}>
+    <div style={{ position: 'fixed', bottom: 88, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: toast.type === 'err' ? '#fee2e2' : toast.type === 'warn' ? '#fef9c3' : '#dcfce7', color: toast.type === 'err' ? '#dc2626' : toast.type === 'warn' ? '#ca8a04' : '#16a34a', padding: '12px 20px', borderRadius: 10, boxShadow: '0 4px 20px rgba(0,0,0,.15)', fontSize: 13, fontWeight: 600 }}>
       {toast.message}
     </div>
   ) : null
@@ -389,11 +391,64 @@ function CashBookView() {
   )
 }
 
+// ─── Home tile grid — PagarBook-style icon tiles ───────────────────────────
+
+function HomeTile({ icon, label, badge, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      background: '#E9EEFB', border: 'none', borderRadius: 16, padding: '18px 10px 14px',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+      cursor: 'pointer', position: 'relative', fontFamily: 'inherit',
+    }}>
+      {badge > 0 && (
+        <span style={{ position: 'absolute', top: 8, right: 10, background: '#dc2626', color: 'white', fontSize: 10, fontWeight: 800, borderRadius: 99, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+          {badge}
+        </span>
+      )}
+      <span style={{ fontSize: 26 }}>{icon}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b', textAlign: 'center', lineHeight: 1.25 }}>{label}</span>
+    </button>
+  )
+}
+
+// ─── Bottom nav bar — PagarBook-style fixed 4-item bar ─────────────────────
+
+function BottomNav({ active, onNavigate, pendingCount }) {
+  const items = [
+    { key: 'home',     icon: '🏠', label: 'Home' },
+    { key: 'checkin',  icon: '✅', label: 'Attendance', badge: pendingCount },
+    { key: 'advances', icon: '💵', label: 'Advances' },
+    { key: 'settings', icon: '⚙️', label: 'Settings' },
+  ]
+  return (
+    <div style={{
+      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 500,
+      background: 'white', borderTop: '1px solid #e2e8f0',
+      display: 'flex', justifyContent: 'space-around', padding: '8px 0 10px',
+      boxShadow: '0 -2px 10px rgba(0,0,0,.05)',
+    }}>
+      {items.map(it => (
+        <button key={it.key} onClick={() => onNavigate(it.key)} style={{
+          background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+          color: active === it.key ? '#0B1E3D' : '#94a3b8', position: 'relative', padding: '2px 10px',
+        }}>
+          {it.badge > 0 && (
+            <span style={{ position: 'absolute', top: -2, right: 4, width: 8, height: 8, borderRadius: '50%', background: '#dc2626' }} />
+          )}
+          <span style={{ fontSize: 20 }}>{it.icon}</span>
+          <span style={{ fontSize: 11, fontWeight: active === it.key ? 800 : 600 }}>{it.label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ─── Main export ────────────────────────────────────────────────────────────
 
-export default function FaceAttendance({ currentUser, isAdmin, staff = [], loggedInStaff = null }) {
+export default function FaceAttendance({ currentUser, isAdmin, staff = [], loggedInStaff = null, onNavigate = null, onLogout = null }) {
   const { show: showToast, el: toastEl } = useToast()
-  const [tab, setTab] = useState(loggedInStaff ? 'checkin' : 'coverage')
+  const [tab, setTab] = useState('home')
   const [faceRows, setFaceRows] = useState([]) // staff_face_descriptors, latest per staff
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -433,97 +488,154 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
     return <div style={S.page}><div style={S.card}>Your account isn't linked to a staff profile — contact admin to check in.</div></div>
   }
 
-  const tabs = [
-    ...(loggedInStaff ? [{ key: 'checkin', label: 'Take attendance' }] : []),
-    { key: 'timecard', label: 'Time card' },
-    { key: 'advances', label: 'Advances' },
-    { key: 'fines',    label: 'Late fines' },
+  const initials = (currentUser?.name || currentUser?.role || 'U').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+
+  const primaryTiles = [
+    ...(loggedInStaff ? [{ key: 'checkin', icon: '✅', label: 'Take attendance' }] : []),
+    { key: 'attendancesummary', icon: '📅', label: 'Attendance' },
+    { key: 'timecard', icon: '🕐', label: 'Time card' },
+    { key: 'advances', icon: '💵', label: 'Advances' },
+    { key: 'fines',    icon: '⏰', label: 'Late fines' },
+    { key: 'reports',  icon: '📊', label: 'Reports' },
+    { key: 'broadcast', icon: '📣', label: 'Broadcast messages' },
+    { key: 'notifications', icon: '🔔', label: 'Notifications' },
     ...(isAdmin ? [
-      { key: 'coverage',  label: 'Staff coverage' },
-      { key: 'approvals', label: `Pending approvals${counts.pending > 0 ? ` (${counts.pending})` : ''}` },
-      { key: 'cashbook',  label: 'Cash book' },
+      { key: 'coverage',  icon: '👥', label: 'Staff coverage' },
+      { key: 'approvals', icon: '📋', label: 'Approvals', badge: counts.pending },
+      { key: 'cashbook',  icon: '📒', label: 'Cash book' },
     ] : []),
+    { key: 'settings', icon: '⚙️', label: 'Settings' },
   ]
+
+  const pageTitles = {
+    checkin: 'Take attendance', attendancesummary: 'Attendance', timecard: 'Time card', advances: 'Advances',
+    fines: 'Late fines', reports: 'Reports', broadcast: 'Broadcast messages', notifications: 'Notifications',
+    coverage: 'Staff coverage', approvals: 'Pending approvals', cashbook: 'Cash book', settings: 'Settings',
+  }
 
   return (
     <div style={S.page}>
       {toastEl}
-      <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0B1E3D' }}>🧑‍💼 Face Attendance</h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
-          Check-in, working hours, advances, fines, and enrollment — all in one place.
-        </p>
-      </div>
 
-      {isAdmin && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 16 }}>
-          <div style={{ ...S.card, marginBottom: 0, textAlign: 'center' }}>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#16a34a' }}>{counts.approved}</div>
-            <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Enrolled</div>
+      {/* ── Header, PagarBook-style: org name + greeting + avatar ── */}
+      <div style={{
+        margin: '-20px -20px 16px', padding: '16px 20px 22px',
+        background: 'linear-gradient(180deg, #0B1E3D 0%, #16305C 100%)',
+        borderRadius: '0 0 20px 20px', color: 'white',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}>
+              GNSI Face Attendance <span style={{ fontSize: 12, opacity: 0.6 }}>⌄</span>
+            </div>
+            <div style={{ fontSize: 12.5, color: '#C9A24B', marginTop: 2 }}>
+              Hello, {loggedInStaff?.name || currentUser?.name || 'Administrator'}
+            </div>
           </div>
-          <div style={{ ...S.card, marginBottom: 0, textAlign: 'center' }}>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#ca8a04' }}>{counts.pending}</div>
-            <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Pending approval</div>
-          </div>
-          <div style={{ ...S.card, marginBottom: 0, textAlign: 'center' }}>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#dc2626' }}>{counts.none}</div>
-            <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Not enrolled</div>
+          <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#C9A24B', color: '#0B1E3D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>
+            {initials}
           </div>
         </div>
-      )}
-
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid #e2e8f0', overflowX: 'auto' }}>
-        {tabs.map(t => <button key={t.key} style={S.tab(tab === t.key)} onClick={() => setTab(t.key)}>{t.label}</button>)}
       </div>
 
-      {tab === 'checkin' && loggedInStaff && (
-        <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} />
-      )}
-
-      {tab === 'timecard' && <TimeCard staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
-      {tab === 'advances' && <AdvancesView staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
-      {tab === 'fines'    && <LateFinesView staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
-      {tab === 'cashbook' && isAdmin && <CashBookView />}
-
-      {tab === 'coverage' && isAdmin && (
-        <div style={S.card}>
-          <input style={{ ...S.inputFull, marginBottom: 14 }} placeholder="Search staff by name…" value={search} onChange={e => setSearch(e.target.value)} />
-          {loading ? (
-            <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Loading…</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {filteredStaff.map(s => {
-                const status = statusFor(s.id)
-                const meta = {
-                  approved: { label: 'Enrolled', color: '#16a34a', bg: '#dcfce7' },
-                  pending:  { label: 'Pending approval', color: '#ca8a04', bg: '#fef9c3' },
-                  none:     { label: 'Not enrolled', color: '#dc2626', bg: '#fee2e2' },
-                }[status]
-                return (
-                  <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #f1f5f9', borderRadius: 10, padding: '10px 14px' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{s.name}</div>
-                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{s.designation || ''}</div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, color: meta.color, background: meta.bg }}>{meta.label}</span>
-                      <button onClick={() => setEnrollTarget(s)} style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#0B1E3D', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-                        {status === 'approved' ? 'Re-enroll' : 'Enroll'}
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
-              {!filteredStaff.length && <p style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>No staff found.</p>}
+      {tab === 'home' ? (
+        <>
+          {isAdmin && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 18 }}>
+              <div style={{ ...S.card, marginBottom: 0, textAlign: 'center', padding: 14 }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: '#16a34a' }}>{counts.approved}</div>
+                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Enrolled</div>
+              </div>
+              <div style={{ ...S.card, marginBottom: 0, textAlign: 'center', padding: 14 }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: '#ca8a04' }}>{counts.pending}</div>
+                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Pending</div>
+              </div>
+              <div style={{ ...S.card, marginBottom: 0, textAlign: 'center', padding: 14 }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: '#dc2626' }}>{counts.none}</div>
+                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Not enrolled</div>
+              </div>
             </div>
           )}
-        </div>
-      )}
 
-      {tab === 'approvals' && isAdmin && (
-        <div style={S.card}>
-          <FaceApprovalQueue currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />
-        </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
+            {primaryTiles.map(t => (
+              <HomeTile key={t.key} icon={t.icon} label={t.label} badge={t.badge} onClick={() => setTab(t.key)} />
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <button onClick={() => setTab('home')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#0B1E3D', padding: 4 }}>←</button>
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#0B1E3D' }}>{pageTitles[tab]}</h2>
+          </div>
+
+          {tab === 'checkin' && loggedInStaff && (
+            <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} />
+          )}
+
+          {tab === 'attendancesummary' && <AttendanceSummaryView isAdmin={isAdmin} staffList={filteredStaff} showToast={showToast} />}
+          {tab === 'timecard' && <TimeCard staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
+          {tab === 'advances' && <AdvancesView staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
+          {tab === 'fines'    && <LateFinesView staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
+          {tab === 'reports'  && <ReportsView isAdmin={isAdmin} staffList={staff} />}
+          {tab === 'broadcast' && <BroadcastView isAdmin={isAdmin} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />}
+          {tab === 'notifications' && <NotificationsView staffId={staffId} isAdmin={isAdmin} />}
+          {tab === 'cashbook' && isAdmin && <CashBookView />}
+          {tab === 'settings' && (
+            <>
+              <SettingsView isAdmin={isAdmin} currentUser={currentUser} onNavigate={onNavigate} showToast={showToast} />
+              {onLogout && (
+                <div style={{ ...S.card, marginTop: 12 }}>
+                  <button onClick={onLogout} style={{ width: '100%', background: 'none', border: 'none', color: '#dc2626', fontWeight: 800, fontSize: 14, cursor: 'pointer', padding: '6px 0', textAlign: 'left' }}>
+                    Logout
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {tab === 'coverage' && isAdmin && (
+            <div style={S.card}>
+              <input style={{ ...S.inputFull, marginBottom: 14 }} placeholder="Search staff by name…" value={search} onChange={e => setSearch(e.target.value)} />
+              {loading ? (
+                <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Loading…</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {filteredStaff.map(s => {
+                    const status = statusFor(s.id)
+                    const meta = {
+                      approved: { label: 'Enrolled', color: '#16a34a', bg: '#dcfce7' },
+                      pending:  { label: 'Pending approval', color: '#ca8a04', bg: '#fef9c3' },
+                      none:     { label: 'Not enrolled', color: '#dc2626', bg: '#fee2e2' },
+                    }[status]
+                    return (
+                      <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #f1f5f9', borderRadius: 10, padding: '10px 14px' }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{s.name}</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8' }}>{s.designation || ''}</div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, color: meta.color, background: meta.bg }}>{meta.label}</span>
+                          <button onClick={() => setEnrollTarget(s)} style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#0B1E3D', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                            {status === 'approved' ? 'Re-enroll' : 'Enroll'}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {!filteredStaff.length && <p style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>No staff found.</p>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === 'approvals' && isAdmin && (
+            <div style={S.card}>
+              <FaceApprovalQueue currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />
+            </div>
+          )}
+        </>
       )}
 
       {enrollTarget && (
@@ -540,6 +652,18 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
           </div>
         </div>
       )}
+
+      <BottomNav
+        active={tab === 'home' ? 'home' : (tab === 'checkin' ? 'checkin' : (tab === 'advances' ? 'advances' : (tab === 'settings' ? 'settings' : 'home')))}
+        onNavigate={(key) => {
+          if (key === 'home') setTab('home')
+          else if (key === 'checkin' && loggedInStaff) setTab('checkin')
+          else if (key === 'advances') setTab('advances')
+          else if (key === 'settings') setTab('settings')
+          else setTab('home')
+        }}
+        pendingCount={isAdmin ? counts.pending : 0}
+      />
     </div>
   )
 }
