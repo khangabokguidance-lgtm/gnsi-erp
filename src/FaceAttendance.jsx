@@ -686,7 +686,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
 
           {tab === 'checkin' && loggedInStaff && (
             statusFor(loggedInStaff.id) === 'approved' ? (
-              <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} />
+              <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} onCheckInSuccess={() => setTab('home')} />
             ) : (
               <div style={S.card}>
                 <div style={{ textAlign: 'center', padding: '20px 10px' }}>

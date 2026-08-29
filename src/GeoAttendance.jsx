@@ -481,7 +481,7 @@ function AttendanceChart({ rows, monthFilter }) {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allStaff = [] }) {
+export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allStaff = [], onCheckInSuccess = null }) {
   const safeAllStaff = Array.isArray(allStaff) ? allStaff : []
 
   // ── Server-verified admin role (do NOT trust props alone) ─────────────────
@@ -961,6 +961,10 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
       if (status === 'Late')         showToast(`🕐 Checked in LATE — ${data.late_minutes} min. Tracking started.`, 'warn')
       else if (status === 'Flagged') showToast('🚨 Check-in flagged for review. Tracking started.', 'warn')
       else                           showToast(`✅ Checked in — Shift ${shift.shift_label}. Tracking active.`, 'ok')
+
+      // Give the person a moment to see the success toast before jumping
+      // back to the Face Attendance home grid.
+      if (onCheckInSuccess) setTimeout(() => onCheckInSuccess(), 1200)
     } catch (err) {
       showToast('❌ ' + err.message, 'err')
     }
