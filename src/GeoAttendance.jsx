@@ -14,6 +14,7 @@ import React, {
   useEffect, useState, useRef, useCallback, useMemo, Component,
 } from 'react'
 import { supabase } from './supabase'
+import FaceCapture from './FaceCapture'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -877,14 +878,25 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   }, [activeTracking, campus, currentStaff?.id, showToast, fetchMyLogs])
 
   // ── Check-in ──────────────────────────────────────────────────────────────
+  // Face verification now gates check-in (see server_checkin's Step 0).
+  // handleCheckIn validates GPS/campus same as before, then opens the
+  // FaceCapture overlay; performCheckIn (below) runs after a face result
+  // comes back, carrying p_face_verified / p_face_score into the RPC.
 
-  const handleCheckIn = async (shift) => {
+  const [faceCaptureShift, setFaceCaptureShift] = useState(null) // shift pending face scan, or null
+
+  const handleCheckIn = (shift) => {
     if (!currentStaff?.id) { showToast('❌ Staff profile not linked — contact admin', 'err'); return }
     if (!campus)            { showToast('❌ Campus zone not configured', 'err'); return }
     if (!gpsCoords)         { showToast('❌ GPS not ready — click Detect Location first', 'err'); return }
     if (!navigator.onLine)  { showToast('❌ No internet connection — please try when online', 'err'); return }
-if (gpsAccuracy && gpsAccuracy > (campus.radius / 2)) { showToast(`❌ GPS too weak (±${Math.round(gpsAccuracy)}m) — move to open area`, 'err'); return }
+    if (gpsAccuracy && gpsAccuracy > (campus.radius / 2)) { showToast(`❌ GPS too weak (±${Math.round(gpsAccuracy)}m) — move to open area`, 'err'); return }
 
+    setFaceCaptureShift(shift) // opens <FaceCapture> overlay, see render section
+  }
+
+  const performCheckIn = async (shift, faceResult) => {
+    setFaceCaptureShift(null)
     setCheckingIn(true)
     try {
       const { data, error } = await supabase.rpc('server_checkin', {
@@ -902,17 +914,21 @@ if (gpsAccuracy && gpsAccuracy > (campus.radius / 2)) { showToast(`❌ GPS too w
         p_campus_lat:          campus.lat,
         p_campus_lng:          campus.lng,
         p_campus_radius:       campus.radius,
+        p_face_verified:       faceResult.verified,
+        p_face_score:          faceResult.score,
       })
 
       if (error) { showToast('❌ ' + error.message, 'err'); setCheckingIn(false); return }
 
       if (!data.success) {
         const msgs = {
-          rate_limited:  '🚫 Too many attempts — wait an hour.',
-          wrong_time:    `⏰ Outside check-in window (server time: ${fmtTime(data.server_time)})`,
-          duplicate:     '⚠️ Already checked in for this shift',
-          weak_gps:      `📡 ${data.message}`,
-          unauthorized:  '❌ Authentication error — please refresh',
+          rate_limited:      '🚫 Too many attempts — wait an hour.',
+          wrong_time:        `⏰ Outside check-in window (server time: ${fmtTime(data.server_time)})`,
+          duplicate:         '⚠️ Already checked in for this shift',
+          weak_gps:          `📡 ${data.message}`,
+          unauthorized:      '❌ Authentication error — please refresh',
+          face_not_enrolled: '🧑‍💼 Face not enrolled or not yet approved — contact admin',
+          face_mismatch:     '❌ Face did not match your enrolled profile — try again',
         }
         showToast(msgs[data.error] || `❌ ${data.message || 'Check-in failed'}`, 'warn')
         setCheckingIn(false)
@@ -1788,6 +1804,14 @@ if (gpsAccuracy && gpsAccuracy > (campus.radius / 2)) { showToast(`❌ GPS too w
           </>
         )}
       </div>
+
+      {faceCaptureShift && (
+        <FaceCapture
+          staffId={currentStaff?.id}
+          onVerified={(faceResult) => performCheckIn(faceCaptureShift, faceResult)}
+          onCancel={() => setFaceCaptureShift(null)}
+        />
+      )}
     </ErrorBoundary>
   )
 }

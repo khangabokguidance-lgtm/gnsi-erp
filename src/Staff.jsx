@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import { useCourseData, CoursePicker } from './Courses'
 import GeoAttendance from './GeoAttendance'
+import FaceEnroll, { FaceApprovalQueue } from './FaceEnroll'
 import { staffDB } from './staffDB'
 import { useCurrentUser } from './useCurrentUser'
 import { EventBus, GNSI_EVENTS } from './EventBus'
@@ -680,6 +681,8 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
   const [formErrors,        setFormErrors]        = useState({})
   const [activeTab,         setActiveTab]         = useState('staff')
   const [editingStaff,      setEditingStaff]      = useState(null)
+  const [enrollFaceTarget,  setEnrollFaceTarget]  = useState(null)
+  const [faceEnrolledIds,   setFaceEnrolledIds]   = useState(new Set())
   const [page,              setPage]              = useState(1)
   const [scoreMonth,        setScoreMonth]        = useState(currentMonth())
   const [scores,            setScores]            = useState({})
@@ -707,6 +710,16 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
   const [autoMarkResults,   setAutoMarkResults]   = useState(null)
 
   const taskStatusInFlight = useRef(new Set())
+
+  // Track which staff have an approved face enrollment, for the row badge
+  const fetchFaceEnrolledIds = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('staff_face_descriptors')
+      .select('staff_id')
+      .eq('status', 'approved')
+    if (!error) setFaceEnrolledIds(new Set((data || []).map(r => r.staff_id)))
+  }, [])
+  useEffect(() => { fetchFaceEnrolledIds() }, [fetchFaceEnrolledIds, staff.length])
 
   const loggedInStaff = useMemo(() => {
   if (currentUser?.role === 'Admin') return null
@@ -1468,6 +1481,11 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
                         <button onClick={() => handleDelete(item.id)} style={{ flex:1, minWidth:60, padding:'8px 10px', borderRadius:8, border:'none', background:'#dc262611', color:'#dc2626', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:4, minHeight:36 }}
                           onMouseEnter={e => { e.currentTarget.style.background='#dc2626'; e.currentTarget.style.color='white' }}
                           onMouseLeave={e => { e.currentTarget.style.background='#dc262611'; e.currentTarget.style.color='#dc2626' }}>🗑 Delete</button>
+                        <button onClick={() => setEnrollFaceTarget(item)} style={{ flex:1, minWidth:60, padding:'8px 10px', borderRadius:8, border:'none', background: faceEnrolledIds.has(item.id) ? '#16a34a11' : '#C9A24B22', color: faceEnrolledIds.has(item.id) ? '#16a34a' : '#8a6d1f', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:4, minHeight:36 }}
+                          onMouseEnter={e => { e.currentTarget.style.background = faceEnrolledIds.has(item.id) ? '#16a34a' : '#C9A24B'; e.currentTarget.style.color='white' }}
+                          onMouseLeave={e => { e.currentTarget.style.background = faceEnrolledIds.has(item.id) ? '#16a34a11' : '#C9A24B22'; e.currentTarget.style.color = faceEnrolledIds.has(item.id) ? '#16a34a' : '#8a6d1f' }}>
+                          {faceEnrolledIds.has(item.id) ? '🧑‍💼 Face ✓' : '🧑‍💼 Enroll Face'}
+                        </button>
                       </>
                     )}
                     {totalScore !== null && (
@@ -2133,6 +2151,12 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
       {/* ══ GEO ATTENDANCE ══ */}
       {activeTab === 'geo' && (
         <>
+          {isAdmin && (
+            <div style={{ ...S.card }}>
+              <h3 style={{ margin:'0 0 12px', fontSize:14, fontWeight:800, color:'#1e3a5f' }}>🧑‍💼 Pending Face Enrollments</h3>
+              <FaceApprovalQueue currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />
+            </div>
+          )}
           {!canEdit && (
             <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:10, padding:'12px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:10 }}>
               <span style={{ fontSize:20 }}>📍</span>
@@ -2154,6 +2178,20 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
       {editingStaff && canEdit && (
         <EditStaffModal staffMember={editingStaff} onClose={() => setEditingStaff(null)}
           onSaved={() => { fetchStaff(); setEditingStaff(null) }} showToast={showToast}/>
+      )}
+      {enrollFaceTarget && canEdit && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.6)', zIndex:9997, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style={{ position:'relative' }}>
+            <button onClick={() => setEnrollFaceTarget(null)} style={{ position:'absolute', top:-14, right:-14, width:32, height:32, borderRadius:'50%', border:'none', background:'white', color:'#374151', fontWeight:700, cursor:'pointer', boxShadow:'0 2px 8px rgba(0,0,0,.2)', zIndex:1 }}>✕</button>
+            <FaceEnroll
+              staffMember={enrollFaceTarget}
+              mode="admin"
+              currentAdminId={currentUser?.staff_profile_id || null}
+              onDone={() => { setEnrollFaceTarget(null); fetchFaceEnrolledIds() }}
+              showToast={showToast}
+            />
+          </div>
+        </div>
       )}
       {showPinModal && (
         <AdminPinModal
