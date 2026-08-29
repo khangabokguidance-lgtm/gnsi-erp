@@ -916,6 +916,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
         p_campus_radius:       campus.radius,
         p_face_verified:       faceResult.verified,
         p_face_score:          faceResult.score,
+        p_liveness_challenge_id: faceResult.challengeId,
       })
 
       if (error) { showToast('❌ ' + error.message, 'err'); setCheckingIn(false); return }
@@ -929,6 +930,8 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
           unauthorized:      '❌ Authentication error — please refresh',
           face_not_enrolled: '🧑‍💼 Face not enrolled or not yet approved — contact admin',
           face_mismatch:     '❌ Face did not match your enrolled profile — try again',
+          liveness_missing:  '❌ Liveness check missing — try again',
+          liveness_failed:   '❌ Liveness check expired or invalid — try again',
         }
         showToast(msgs[data.error] || `❌ ${data.message || 'Check-in failed'}`, 'warn')
         setCheckingIn(false)

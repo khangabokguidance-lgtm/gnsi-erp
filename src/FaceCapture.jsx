@@ -1,11 +1,15 @@
-// FaceCapture.jsx — Live face verification step, used inside GeoAttendance.jsx's
-// check-in flow. Renders a camera modal, matches against the staff member's
-// approved descriptor, and resolves with { verified, score } for the caller
-// to pass into server_checkin.
+// FaceCapture.jsx — Live face verification + liveness challenge, used inside
+// GeoAttendance.jsx's check-in flow.
+//
+// Sequence: fetch enrolled descriptor -> issue server challenge -> blink ->
+// turn head in server-specified direction -> final face match -> resolve
+// with { verified, score, challengeId } for the caller to pass into
+// server_checkin (which independently consumes/validates the challenge).
 
 import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { loadFaceModels, extractDescriptor, matchDescriptor } from './faceEngine'
+import { issueChallenge, runLivenessSequence } from './faceLiveness'
 
 const S = {
   overlay: { position: 'fixed', inset: 0, background: 'rgba(11,30,61,0.85)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
@@ -18,15 +22,23 @@ const S = {
   }),
 }
 
-// staffId: the logged-in staff's id, used to fetch their approved descriptor
+const PHASE_COPY = {
+  idle:    'Position your face inside the frame',
+  blink:   'Blink slowly',
+  turn:    (dir) => `Turn your head ${dir}`,
+  matching:'Verifying identity…',
+  timeout: 'Timed out — try again',
+}
+
 export default function FaceCapture({ staffId, onVerified, onCancel }) {
   const videoRef  = useRef(null)
   const streamRef = useRef(null)
   const [modelsReady, setModelsReady] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
   const [descriptorRow, setDescriptorRow] = useState(null)
-  const [status, setStatus]   = useState('Loading…')
-  const [scanning, setScanning] = useState(false)
+  const [phase, setPhase]     = useState('idle')
+  const [turnDir, setTurnDir] = useState(null)
+  const [running, setRunning] = useState(false)
   const [error, setError]     = useState('')
 
   useEffect(() => {
@@ -40,12 +52,10 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
         if (cancelled) return
         if (fetchErr || !data) {
           setError('No approved face enrollment found. Contact admin to enroll your face.')
-          setStatus('Not enrolled')
           return
         }
         setDescriptorRow(data)
         setModelsReady(true)
-        setStatus('Position your face inside the frame')
       } catch (e) {
         if (!cancelled) setError('Setup failed: ' + e.message)
       }
@@ -77,23 +87,39 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
     }
   }, [])
 
-  const scan = async () => {
-    if (!cameraReady || !modelsReady || !descriptorRow || scanning) return
-    setScanning(true)
-    setStatus('Hold still, verifying…')
+  const startScan = async () => {
+    if (!cameraReady || !modelsReady || !descriptorRow || running) return
+    setRunning(true)
+    setError('')
     try {
-      const liveDescriptor = await extractDescriptor(videoRef.current)
-      if (!liveDescriptor) {
-        setStatus('No face detected — try again')
-        setScanning(false)
+      // 1. Server issues a fresh, single-use challenge with a random direction —
+      //    the client cannot know it in advance, so a pre-recorded video can't satisfy it.
+      const { challenge_id, turn_direction } = await issueChallenge(staffId)
+      setTurnDir(turn_direction)
+
+      // 2. Run blink -> turn detection against the live video feed
+      const livenessPassed = await runLivenessSequence(videoRef.current, turn_direction, (p) => setPhase(p))
+      if (!livenessPassed) {
+        setError('Liveness check failed — make sure your face is well lit and try again.')
+        setRunning(false)
         return
       }
-      const result = matchDescriptor(liveDescriptor, descriptorRow.descriptor)
+
+      // 3. Final face match, taken right after liveness passes
+      setPhase('matching')
+      const liveDescriptor = await extractDescriptor(videoRef.current)
+      if (!liveDescriptor) {
+        setError('Lost face tracking — try again.')
+        setRunning(false)
+        return
+      }
+      const matchResult = matchDescriptor(liveDescriptor, descriptorRow.descriptor)
+
       streamRef.current?.getTracks().forEach(t => t.stop())
-      onVerified(result)
+      onVerified({ ...matchResult, challengeId: challenge_id })
     } catch (e) {
       setError('Verification failed: ' + e.message)
-      setScanning(false)
+      setRunning(false)
     }
   }
 
@@ -101,6 +127,12 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
     streamRef.current?.getTracks().forEach(t => t.stop())
     onCancel()
   }
+
+  const statusText = error
+    ? error
+    : phase === 'turn'
+      ? PHASE_COPY.turn(turnDir)
+      : PHASE_COPY[phase] || PHASE_COPY.idle
 
   return (
     <div style={S.overlay}>
@@ -116,17 +148,17 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
             </div>
           )}
         </div>
-        <div style={{ color: error ? '#f87171' : '#F5F1E6', fontFamily: 'Arial,sans-serif', fontSize: 13, textAlign: 'center', marginTop: 12, minHeight: 18 }}>
-          {error || status}
+        <div style={{ color: error ? '#f87171' : '#F5F1E6', fontFamily: 'Arial,sans-serif', fontSize: 13, textAlign: 'center', marginTop: 12, minHeight: 18, fontWeight: running ? 700 : 400 }}>
+          {statusText}
         </div>
         {!error ? (
-          <button style={S.btn('#C9A24B', !cameraReady || !modelsReady || scanning)} disabled={!cameraReady || !modelsReady || scanning} onClick={scan}>
-            {scanning ? 'Scanning…' : 'Scan face'}
+          <button style={S.btn('#C9A24B', !cameraReady || !modelsReady || running)} disabled={!cameraReady || !modelsReady || running} onClick={startScan}>
+            {running ? 'Scanning…' : 'Start face scan'}
           </button>
         ) : (
-          <button style={S.btn('#5b6473', false)} onClick={cancel}>Close</button>
+          <button style={S.btn('#5b6473', false)} onClick={() => { setError(''); setPhase('idle') }}>Try again</button>
         )}
-        {!error && (
+        {!running && (
           <button onClick={cancel} style={{ width: '100%', marginTop: 8, background: 'none', border: 'none', color: '#8FA0BF', fontSize: 12, fontFamily: 'Arial,sans-serif', cursor: 'pointer', padding: 6 }}>
             Cancel
           </button>

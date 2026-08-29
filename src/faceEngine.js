@@ -57,3 +57,49 @@ export function matchDescriptor(liveDescriptor, storedDescriptor) {
   const score = euclideanDistance(liveDescriptor, storedDescriptor)
   return { verified: score <= MATCH_THRESHOLD, score: parseFloat(score.toFixed(4)) }
 }
+
+// ─── Liveness detection (blink + head-turn) ────────────────────────────────
+// Uses face-api.js's 68-point landmarks — no extra library needed.
+// Must be paired with the server-issued liveness challenge (see faceLiveness.js
+// and issue_liveness_challenge / consume_liveness_challenge RPCs) — this module
+// only does the client-side signal detection; the server decides trust.
+
+const LEFT_EYE_IDX  = [36, 37, 38, 39, 40, 41]
+const RIGHT_EYE_IDX = [42, 43, 44, 45, 46, 47]
+const NOSE_TIP_IDX  = 30
+const LEFT_JAW_IDX  = 0
+const RIGHT_JAW_IDX = 16
+
+// Eye Aspect Ratio — drops sharply during a blink, recovers after
+export function eyeAspectRatio(landmarks, eyeIdx) {
+  const pts = eyeIdx.map(i => landmarks.positions[i])
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y)
+  const vertical1 = dist(pts[1], pts[5])
+  const vertical2 = dist(pts[2], pts[4])
+  const horizontal = dist(pts[0], pts[3])
+  return (vertical1 + vertical2) / (2 * horizontal)
+}
+
+export function avgEyeAspectRatio(landmarks) {
+  return (eyeAspectRatio(landmarks, LEFT_EYE_IDX) + eyeAspectRatio(landmarks, RIGHT_EYE_IDX)) / 2
+}
+
+// Horizontal head-turn signal: nose tip position relative to the jaw-width midpoint.
+// Returns a signed ratio: negative = turned left, positive = turned right, ~0 = facing forward.
+export function headTurnRatio(landmarks) {
+  const nose = landmarks.positions[NOSE_TIP_IDX]
+  const leftJaw = landmarks.positions[LEFT_JAW_IDX]
+  const rightJaw = landmarks.positions[RIGHT_JAW_IDX]
+  const jawWidth = rightJaw.x - leftJaw.x
+  const jawMid = (leftJaw.x + rightJaw.x) / 2
+  if (jawWidth === 0) return 0
+  return (nose.x - jawMid) / jawWidth
+}
+
+export async function detectFaceWithLandmarks(mediaEl) {
+  const faceapi = await import('face-api.js')
+  return faceapi
+    .detectSingleFace(mediaEl, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+    .withFaceLandmarks()
+}
+
