@@ -413,7 +413,18 @@ function HomeTile({ icon, label, badge, onClick }) {
 
 // ─── Bottom nav bar — PagarBook-style fixed 4-item bar ─────────────────────
 
+function useIsDesktopWidth() {
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 900)
+  useEffect(() => {
+    const onResize = () => setIsDesktop(window.innerWidth >= 900)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  return isDesktop
+}
+
 function BottomNav({ active, onNavigate, pendingCount }) {
+  const isDesktop = useIsDesktopWidth()
   const items = [
     { key: 'home',     icon: '🏠', label: 'Home' },
     { key: 'checkin',  icon: '✅', label: 'Attendance', badge: pendingCount },
@@ -422,11 +433,12 @@ function BottomNav({ active, onNavigate, pendingCount }) {
   ]
   return (
     <div style={{
-      position: 'sticky', bottom: 0, left: 0, right: 0, zIndex: 500,
+      position: 'fixed', bottom: 0,
+      left: isDesktop ? 'var(--gnsi-sidebar-width, 260px)' : 0,
+      right: 0, zIndex: 500,
       background: 'white', borderTop: '1px solid #e2e8f0',
       display: 'flex', justifyContent: 'space-around', padding: '8px 0 10px',
       boxShadow: '0 -2px 10px rgba(0,0,0,.05)',
-      marginLeft: -20, marginRight: -20, width: 'calc(100% + 40px)',
       boxSizing: 'border-box',
     }}>
       {items.map(it => (
