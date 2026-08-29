@@ -97,12 +97,7 @@ export function headTurnRatio(landmarks) {
 }
 
 export async function detectFaceWithLandmarks(mediaEl) {
-  // Uses the module's static `faceapi` import (already loaded with nets by
-  // loadFaceModels()) instead of a fresh dynamic import(). A dynamic import
-  // here — called dozens of times per second inside the liveness polling
-  // loop — could resolve to a separate, unloaded module instance whose
-  // neural nets were never initialized, causing every detection to silently
-  // fail or throw inside the loop.
+  const faceapi = await import('face-api.js')
   const result = await faceapi
     .detectSingleFace(mediaEl, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
     .withFaceLandmarks()
