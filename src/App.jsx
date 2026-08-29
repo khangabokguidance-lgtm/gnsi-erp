@@ -47,6 +47,7 @@ import CertificateGenerator from './CertificateGenerator'
 import TeachingAids       from './TeachingAids'
 import CastReceiver       from './CastReceiver'
 import Awards             from './Awards'
+import FaceAttendance     from './FaceAttendance'
 import Student360         from './Student360'
 import { useMismatchAutoScan } from './mismatchScanner'
 
@@ -105,6 +106,7 @@ const ALL_GROUPS = [
       { id: 'leave',   label: 'Leave',   icon: '🏖️' },
       { id: 'hostel',  label: 'Hostel',  icon: '🏨' },
       { id: 'awards',  label: 'Awards',  icon: '🏅' },
+      { id: 'faceattendance', label: 'Face Attendance', icon: '🧑‍💼' },
     ],
   },
   {
@@ -699,6 +701,7 @@ export default function App() {
     leave:             <Leave             currentUser={currentUser} perms={perms('leave')}             />,
     hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}            />,
     awards:            <Awards            currentUser={currentUser} perms={perms('awards')}            />,
+    faceattendance:    isAdmin ? <FaceAttendance currentUser={currentUser} isAdmin={isAdmin} staff={sharedStaff} /> : <AccessDenied />,
     reception:         <Reception         currentUser={currentUser} perms={perms('reception')}         />,
     notice:            <Notice            currentUser={currentUser} perms={perms('notice')}            />,
     social:            <Social            currentUser={currentUser} perms={perms('social')}            />,
