@@ -10,7 +10,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from './supabase'
-import { loadFaceModels, extractDescriptor, averageDescriptors } from './faceEngine'
+import { loadFaceModels, extractDescriptor, averageDescriptors, matchDescriptor } from './faceEngine'
 
 const CAPTURES_NEEDED = 3
 
@@ -109,6 +109,31 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
       const avgDescriptor = averageDescriptors(captures.map(c => c.descriptor))
       const isAdminEnroll = mode === 'admin'
       const enrollTs = Date.now()
+
+      // Block enrollment if this face matches another staff member's
+      // already-approved descriptor — prevents buddy enrollment or
+      // accidentally enrolling under the wrong account. Compares against
+      // approved AND pending descriptors so two pending enrollments can't
+      // both go through for the same face either.
+      const { data: existingRows, error: fetchErr } = await supabase
+        .from('staff_face_descriptors')
+        .select('staff_id, descriptor, status, staff_profiles(name)')
+        .in('status', ['approved', 'pending'])
+        .neq('staff_id', staffMember.id)
+
+      if (fetchErr) throw new Error('Could not verify uniqueness: ' + fetchErr.message)
+
+      for (const row of existingRows || []) {
+        const result = matchDescriptor(avgDescriptor, row.descriptor)
+        if (result.verified) {
+          notify(
+            `This face closely matches an existing enrollment for ${row.staff_profiles?.name || 'another staff member'}. Contact admin if this is a mistake.`,
+            'err'
+          )
+          setSaving(false)
+          return
+        }
+      }
 
       // Upload the 3 enrollment shots to a PRIVATE storage bucket.
       // Path convention: {staff_id}/{timestamp}_{n}.jpg — never publicly listable.
