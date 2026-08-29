@@ -42,7 +42,7 @@ const MARK_META = {
   Leave:     { label: 'L',  color: '#2563eb', bg: '#dbeafe' },
 }
 
-export function AttendanceSummaryView({ isAdmin, staffList, showToast }) {
+export function AttendanceSummaryView({ isAdmin, staffList, showToast, onNavigate }) {
   const [date, setDate] = useState(isoDate(new Date()))
   const [search, setSearch] = useState('')
   const [geoRows, setGeoRows] = useState([])
@@ -137,6 +137,18 @@ export function AttendanceSummaryView({ isAdmin, staffList, showToast }) {
       <div style={{ height: 16 }} />
 
       {isAdmin && (
+        <div style={S.card}>
+          <button onClick={() => onNavigate?.('staff')} style={{
+            background: 'none', border: 'none', cursor: 'pointer', width: '100%',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, fontFamily: 'inherit',
+          }}>
+            <span style={{ width: 44, height: 44, borderRadius: 12, background: '#EEE9FB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>📅</span>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>Roster schedule</span>
+          </button>
+        </div>
+      )}
+
+      {isAdmin && (
         <input style={{ ...S.inputFull, marginBottom: 14 }} placeholder="Search staff…" value={search} onChange={e => setSearch(e.target.value)} />
       )}
 
@@ -147,17 +159,21 @@ export function AttendanceSummaryView({ isAdmin, staffList, showToast }) {
           {unmarked.length > 0 && (
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>Not marked ({unmarked.length})</div>
-              {unmarked.map(s => (
-                <StaffMarkRow key={s.id} staff={s} mark={null} onMark={setMark} saving={savingId === s.id} disabled={!isAdmin} />
-              ))}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+                {unmarked.map(s => (
+                  <StaffMarkRow key={s.id} staff={s} mark={null} onMark={setMark} saving={savingId === s.id} disabled={!isAdmin} />
+                ))}
+              </div>
             </div>
           )}
           {marked.length > 0 && (
             <div>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>Marked ({marked.length})</div>
-              {marked.map(s => (
-                <StaffMarkRow key={s.id} staff={s} mark={marks[s.id]} geo={geoByStaff[s.id]} onMark={setMark} saving={savingId === s.id} disabled={!isAdmin} />
-              ))}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+                {marked.map(s => (
+                  <StaffMarkRow key={s.id} staff={s} mark={marks[s.id]} geo={geoByStaff[s.id]} onMark={setMark} saving={savingId === s.id} disabled={!isAdmin} />
+                ))}
+              </div>
             </div>
           )}
           {!filteredStaff.length && <p style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>No staff found.</p>}
@@ -170,18 +186,16 @@ export function AttendanceSummaryView({ isAdmin, staffList, showToast }) {
 function StaffMarkRow({ staff, mark, geo, onMark, saving, disabled }) {
   const currentStatus = mark?.status || (geo ? 'Present' : null)
   return (
-    <div style={{ background: 'white', borderRadius: 10, padding: '12px 14px', marginBottom: 8, boxShadow: '0 1px 4px rgba(0,0,0,.05)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{staff.name}</div>
-        <div style={{ fontSize: 11, color: currentStatus ? '#94a3b8' : '#dc2626', fontWeight: 600 }}>
-          {geo ? `In ${geo.check_in_time ? new Date(geo.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}` : currentStatus || 'Not marked'}
-        </div>
+    <div style={{ background: 'white', borderRadius: 10, padding: '10px 12px', boxShadow: '0 1px 4px rgba(0,0,0,.05)' }}>
+      <div style={{ fontWeight: 700, fontSize: 12.5, color: '#1e293b', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{staff.name}</div>
+      <div style={{ fontSize: 10.5, color: currentStatus ? '#94a3b8' : '#dc2626', fontWeight: 600, marginBottom: 8 }}>
+        {geo ? `In ${geo.check_in_time ? new Date(geo.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}` : currentStatus || 'Not marked'}
       </div>
-      <div style={{ display: 'flex', gap: 6 }}>
+      <div style={{ display: 'flex', gap: 4 }}>
         {Object.entries(MARK_META).map(([status, meta]) => (
           <button key={status} disabled={disabled || saving} onClick={() => onMark(staff.id, status)}
             style={{
-              flex: 1, padding: '6px 0', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: disabled ? 'default' : 'pointer',
+              flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 10.5, fontWeight: 700, cursor: disabled ? 'default' : 'pointer',
               border: `1px solid ${currentStatus === status ? meta.color : '#e2e8f0'}`,
               background: currentStatus === status ? meta.bg : 'white',
               color: currentStatus === status ? meta.color : '#94a3b8',
