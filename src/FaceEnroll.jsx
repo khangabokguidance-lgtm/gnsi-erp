@@ -30,7 +30,7 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
   const streamRef  = useRef(null)
   const [ready, setReady]         = useState(false)
   const [modelsReady, setModelsReady] = useState(false)
-  const [captures, setCaptures]   = useState([])   // array of descriptor arrays
+  const [captures, setCaptures]   = useState([])   // array of { descriptor, blob }
   const [capturing, setCapturing] = useState(false)
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
@@ -82,7 +82,18 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
         setCapturing(false)
         return
       }
-      setCaptures(prev => [...prev, descriptor])
+      // Snapshot the frame as a JPEG blob for enrollment photo storage.
+      // Mirrored to match the on-screen preview (video has scaleX(-1)).
+      const canvas = canvasRef.current
+      canvas.width = videoRef.current.videoWidth
+      canvas.height = videoRef.current.videoHeight
+      const ctx = canvas.getContext('2d')
+      ctx.translate(canvas.width, 0)
+      ctx.scale(-1, 1)
+      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height)
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85))
+
+      setCaptures(prev => [...prev, { descriptor, blob }])
     } catch (e) {
       notify('Capture failed: ' + e.message, 'err')
     }
@@ -95,8 +106,21 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
     if (captures.length < CAPTURES_NEEDED) return
     setSaving(true)
     try {
-      const avgDescriptor = averageDescriptors(captures)
+      const avgDescriptor = averageDescriptors(captures.map(c => c.descriptor))
       const isAdminEnroll = mode === 'admin'
+      const enrollTs = Date.now()
+
+      // Upload the 3 enrollment shots to a PRIVATE storage bucket.
+      // Path convention: {staff_id}/{timestamp}_{n}.jpg — never publicly listable.
+      const photoPaths = []
+      for (let i = 0; i < captures.length; i++) {
+        const path = `${staffMember.id}/${enrollTs}_${i + 1}.jpg`
+        const { error: uploadErr } = await supabase.storage
+          .from('face-enrollments')
+          .upload(path, captures[i].blob, { contentType: 'image/jpeg', upsert: false })
+        if (uploadErr) throw new Error('Photo upload failed: ' + uploadErr.message)
+        photoPaths.push(path)
+      }
 
       const { error: dbError } = await supabase.from('staff_face_descriptors').insert([{
         staff_id:    staffMember.id,
@@ -105,6 +129,9 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
         enrolled_by: isAdminEnroll ? currentAdminId : null,
         reviewed_by: isAdminEnroll ? currentAdminId : null,
         reviewed_at: isAdminEnroll ? new Date().toISOString() : null,
+        photo_path_1: photoPaths[0] || null,
+        photo_path_2: photoPaths[1] || null,
+        photo_path_3: photoPaths[2] || null,
       }])
 
       if (dbError) throw dbError
@@ -150,6 +177,15 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
         ))}
       </div>
 
+      {captures.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {captures.map((c, i) => (
+            <img key={i} src={URL.createObjectURL(c.blob)} alt={`Capture ${i + 1}`}
+              style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover', border: '1px solid #e2e8f0' }} />
+          ))}
+        </div>
+      )}
+
       {error && <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 10 }}>{error}</div>}
 
       {captures.length < CAPTURES_NEEDED ? (
@@ -173,15 +209,27 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
 export function FaceApprovalQueue({ currentAdminId, showToast }) {
   const [pending, setPending] = useState([])
   const [loading, setLoading] = useState(true)
+  const [thumbUrls, setThumbUrls] = useState({}) // descriptor id -> signed url
 
   const fetchPending = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from('staff_face_descriptors')
-      .select('id, staff_id, enrolled_at, staff_profiles(name, designation)')
+      .select('id, staff_id, enrolled_at, photo_path_1, staff_profiles(name, designation)')
       .eq('status', 'pending')
       .order('enrolled_at', { ascending: true })
-    if (!error) setPending(data || [])
+    if (!error) {
+      setPending(data || [])
+      // Signed URLs expire in 1 hour — generated fresh each load, never stored/public
+      const urls = {}
+      for (const p of data || []) {
+        if (p.photo_path_1) {
+          const { data: signed } = await supabase.storage.from('face-enrollments').createSignedUrl(p.photo_path_1, 3600)
+          if (signed?.signedUrl) urls[p.id] = signed.signedUrl
+        }
+      }
+      setThumbUrls(urls)
+    }
     setLoading(false)
   }, [])
 
@@ -202,9 +250,14 @@ export function FaceApprovalQueue({ currentAdminId, showToast }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {pending.map(p => (
         <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', borderRadius: 10, padding: '12px 14px', boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{p.staff_profiles?.name}</div>
-            <div style={{ fontSize: 11, color: '#64748b' }}>{p.staff_profiles?.designation || ''}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {thumbUrls[p.id] && (
+              <img src={thumbUrls[p.id]} alt="Enrollment shot" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', border: '1px solid #e2e8f0' }} />
+            )}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{p.staff_profiles?.name}</div>
+              <div style={{ fontSize: 11, color: '#64748b' }}>{p.staff_profiles?.designation || ''}</div>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={() => decide(p.id, 'approved')} style={{ background: '#16a34a', color: 'white', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Approve</button>

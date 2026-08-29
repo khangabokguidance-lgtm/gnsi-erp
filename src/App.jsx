@@ -357,9 +357,10 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
   const allowedModules = useMemo(() => {
     if (isAdmin) return new Set(ALL_ITEMS.map(i => i.id))
     const set = new Set(['dashboard'])
+    if (currentUser?.staff_profile_id) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
     return set
-  }, [permMap, isAdmin])
+  }, [permMap, isAdmin, currentUser?.staff_profile_id])
 
   useEffect(() => {
     const handler = e => { if (e.key === '/' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); searchRef.current?.focus() } }
@@ -468,9 +469,10 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
   const allowedModules = useMemo(() => {
     if (isAdmin) return new Set(ALL_ITEMS.map(i => i.id))
     const set = new Set(['dashboard'])
+    if (currentUser?.staff_profile_id) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
     return set
-  }, [permMap, isAdmin])
+  }, [permMap, isAdmin, currentUser?.staff_profile_id])
 
   useEffect(() => { setDrawerOpen(false) }, [activePage])
   useEffect(() => {
@@ -681,6 +683,10 @@ export default function App() {
   // FIX 1: use unified isAdminRole in canAccess
   const canAccess = (key) => {
     if (key === 'dashboard') return true
+    // Face Attendance check-in must be reachable by any staff member with a
+    // linked profile, not gated by the permission matrix like admin tools —
+    // the component itself only exposes enrollment management to admins.
+    if (key === 'faceattendance') return isAdmin || !!currentUser?.staff_profile_id
     if (isAdmin) return true
     return permMap[key]?.read === true
   }
@@ -701,7 +707,8 @@ export default function App() {
     leave:             <Leave             currentUser={currentUser} perms={perms('leave')}             />,
     hostel:            <Hostel            currentUser={currentUser} perms={perms('hostel')}            />,
     awards:            <Awards            currentUser={currentUser} perms={perms('awards')}            />,
-    faceattendance:    isAdmin ? <FaceAttendance currentUser={currentUser} isAdmin={isAdmin} staff={sharedStaff} /> : <AccessDenied />,
+    faceattendance:    <FaceAttendance currentUser={currentUser} isAdmin={isAdmin} staff={sharedStaff}
+                          loggedInStaff={!isAdmin && currentUser?.staff_profile_id ? sharedStaff.find(s => s.id === currentUser.staff_profile_id) || null : null} />,
     reception:         <Reception         currentUser={currentUser} perms={perms('reception')}         />,
     notice:            <Notice            currentUser={currentUser} perms={perms('notice')}            />,
     social:            <Social            currentUser={currentUser} perms={perms('social')}            />,

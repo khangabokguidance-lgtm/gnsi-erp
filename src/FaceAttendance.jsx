@@ -7,6 +7,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import FaceEnroll, { FaceApprovalQueue } from './FaceEnroll'
+import GeoAttendance from './GeoAttendance'
 
 const S = {
   page:  { padding: 20, fontFamily: "'Outfit',system-ui,sans-serif", background: '#f1f5f9', minHeight: '100vh' },
@@ -31,9 +32,9 @@ function useToast() {
   return { show, el }
 }
 
-export default function FaceAttendance({ currentUser, isAdmin, staff = [] }) {
+export default function FaceAttendance({ currentUser, isAdmin, staff = [], loggedInStaff = null }) {
   const { show: showToast, el: toastEl } = useToast()
-  const [tab, setTab] = useState('coverage') // coverage | approvals
+  const [tab, setTab] = useState(isAdmin ? 'coverage' : 'checkin') // checkin | coverage | approvals
   const [faceRows, setFaceRows] = useState([]) // staff_face_descriptors, latest per staff
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -67,8 +68,10 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [] }) {
     none:     filteredStaff.filter(s => statusFor(s.id) === 'none').length,
   }
 
-  if (!isAdmin) {
-    return <div style={S.page}><div style={S.card}>Admin access required to manage face attendance.</div></div>
+  // Non-admins only ever see the check-in tab — everything else here is
+  // enrollment management, which stays admin-only.
+  if (!isAdmin && !loggedInStaff) {
+    return <div style={S.page}><div style={S.card}>Your account isn't linked to a staff profile — contact admin to check in.</div></div>
   }
 
   return (
@@ -77,33 +80,48 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [] }) {
       <div style={{ marginBottom: 16 }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0B1E3D' }}>🧑‍💼 Face Attendance</h2>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
-          Manage face enrollment for staff biometric check-in. Check-in is blocked for anyone without an approved enrollment.
+          {isAdmin
+            ? 'Manage face enrollment for staff biometric check-in. Check-in is blocked for anyone without an approved enrollment.'
+            : 'Check in for your shift using GPS location and face verification.'}
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 16 }}>
-        <div style={{ ...S.card, marginBottom: 0, textAlign: 'center' }}>
-          <div style={{ fontSize: 24, fontWeight: 800, color: '#16a34a' }}>{counts.approved}</div>
-          <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Enrolled</div>
+      {isAdmin && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 16 }}>
+          <div style={{ ...S.card, marginBottom: 0, textAlign: 'center' }}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#16a34a' }}>{counts.approved}</div>
+            <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Enrolled</div>
+          </div>
+          <div style={{ ...S.card, marginBottom: 0, textAlign: 'center' }}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#ca8a04' }}>{counts.pending}</div>
+            <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Pending approval</div>
+          </div>
+          <div style={{ ...S.card, marginBottom: 0, textAlign: 'center' }}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#dc2626' }}>{counts.none}</div>
+            <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Not enrolled</div>
+          </div>
         </div>
-        <div style={{ ...S.card, marginBottom: 0, textAlign: 'center' }}>
-          <div style={{ fontSize: 24, fontWeight: 800, color: '#ca8a04' }}>{counts.pending}</div>
-          <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Pending approval</div>
-        </div>
-        <div style={{ ...S.card, marginBottom: 0, textAlign: 'center' }}>
-          <div style={{ fontSize: 24, fontWeight: 800, color: '#dc2626' }}>{counts.none}</div>
-          <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>Not enrolled</div>
-        </div>
-      </div>
+      )}
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid #e2e8f0' }}>
-        <button style={S.tab(tab === 'coverage')} onClick={() => setTab('coverage')}>Staff coverage</button>
-        <button style={S.tab(tab === 'approvals')} onClick={() => setTab('approvals')}>
-          Pending approvals {counts.pending > 0 && `(${counts.pending})`}
-        </button>
+        {loggedInStaff && (
+          <button style={S.tab(tab === 'checkin')} onClick={() => setTab('checkin')}>Take attendance</button>
+        )}
+        {isAdmin && (
+          <>
+            <button style={S.tab(tab === 'coverage')} onClick={() => setTab('coverage')}>Staff coverage</button>
+            <button style={S.tab(tab === 'approvals')} onClick={() => setTab('approvals')}>
+              Pending approvals {counts.pending > 0 && `(${counts.pending})`}
+            </button>
+          </>
+        )}
       </div>
 
-      {tab === 'coverage' && (
+      {tab === 'checkin' && loggedInStaff && (
+        <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} />
+      )}
+
+      {tab === 'coverage' && isAdmin && (
         <div style={S.card}>
           <input style={{ ...S.input, marginBottom: 14 }} placeholder="Search staff by name…" value={search} onChange={e => setSearch(e.target.value)} />
           {loading ? (
@@ -138,7 +156,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [] }) {
         </div>
       )}
 
-      {tab === 'approvals' && (
+      {tab === 'approvals' && isAdmin && (
         <div style={S.card}>
           <FaceApprovalQueue currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />
         </div>
