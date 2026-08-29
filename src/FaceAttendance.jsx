@@ -618,7 +618,28 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
           </div>
 
           {tab === 'checkin' && loggedInStaff && (
-            <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} />
+            statusFor(loggedInStaff.id) === 'approved' ? (
+              <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} />
+            ) : (
+              <div style={S.card}>
+                <div style={{ textAlign: 'center', padding: '20px 10px' }}>
+                  <div style={{ fontSize: 36, marginBottom: 10 }}>🧑‍💼</div>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: '#0B1E3D', marginBottom: 6 }}>
+                    {statusFor(loggedInStaff.id) === 'pending' ? 'Face enrollment pending approval' : 'Face not enrolled yet'}
+                  </div>
+                  <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 16px' }}>
+                    {statusFor(loggedInStaff.id) === 'pending'
+                      ? 'An admin needs to approve your face enrollment before you can check in.'
+                      : 'Check-in requires an approved face enrollment. Ask an admin to enroll your face, or enroll yourself for admin approval.'}
+                  </p>
+                  {statusFor(loggedInStaff.id) !== 'pending' && (
+                    <button onClick={() => setEnrollTarget(loggedInStaff)} style={{ padding: '12px 24px', borderRadius: 10, border: 'none', background: '#0B1E3D', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
+                      Enroll my face
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
           )}
 
           {tab === 'attendancesummary' && <AttendanceSummaryView isAdmin={isAdmin} staffList={filteredStaff} showToast={showToast} onNavigate={onNavigate} />}
@@ -691,7 +712,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
             <button onClick={() => setEnrollTarget(null)} style={{ position: 'absolute', top: -14, right: -14, width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'white', color: '#374151', fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,.2)', zIndex: 1 }}>✕</button>
             <FaceEnroll
               staffMember={enrollTarget}
-              mode="admin"
+              mode={isAdmin ? 'admin' : 'self'}
               currentAdminId={currentUser?.staff_profile_id || null}
               onDone={() => { setEnrollTarget(null); fetchFaceRows() }}
               showToast={showToast}
