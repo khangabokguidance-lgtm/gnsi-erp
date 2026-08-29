@@ -98,8 +98,8 @@ export function headTurnRatio(landmarks) {
 
 export async function detectFaceWithLandmarks(mediaEl) {
   const faceapi = await import('face-api.js')
-  return faceapi
+  const result = await faceapi
     .detectSingleFace(mediaEl, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
     .withFaceLandmarks()
+  return result || null
 }
-

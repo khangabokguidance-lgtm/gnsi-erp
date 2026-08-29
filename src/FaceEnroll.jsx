@@ -13,27 +13,42 @@ import { supabase } from './supabase'
 import { loadFaceModels, extractDescriptor, averageDescriptors, matchDescriptor, avgEyeAspectRatio, detectFaceWithLandmarks } from './faceEngine'
 
 const CAPTURES_NEEDED = 3
-const BLINK_EAR_THRESHOLD = 0.22
-const BLINK_TIMEOUT_MS = 6000
-const SAMPLE_INTERVAL_MS = 120
+const BLINK_EAR_THRESHOLD = 0.28   // loosened from 0.22 — real faces/cameras often sit higher than the textbook default
+const BLINK_TIMEOUT_MS = 8000      // more time for first-time users to react to the prompt
+const SAMPLE_INTERVAL_MS = 80      // faster sampling so quick blinks (~100-150ms) aren't missed between checks
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 
 // Requires an eyes-closed-then-reopened cycle before allowing a capture —
 // a printed photo or static image can never blink, so this blocks
 // photo-based fake enrollment. Required before each of the 3 shots.
-async function waitForBlink(videoEl) {
+// onEar(value) is called with each live EAR reading so the UI can show a
+// real-time readout — useful for calibrating BLINK_EAR_THRESHOLD per device.
+async function waitForBlink(videoEl, onEar) {
   const start = Date.now()
   let sawClosed = false
+  let minEarSeen = 1
+  let sampleCount = 0
+  let noFaceCount = 0
   while (Date.now() - start < BLINK_TIMEOUT_MS) {
     const detection = await detectFaceWithLandmarks(videoEl)
-    if (detection) {
+    sampleCount++
+    if (detection && detection.landmarks) {
       const ear = avgEyeAspectRatio(detection.landmarks)
+      minEarSeen = Math.min(minEarSeen, ear)
+      onEar?.(ear)
       if (ear < BLINK_EAR_THRESHOLD) sawClosed = true
       else if (sawClosed) return true
+    } else {
+      noFaceCount++
     }
     await sleep(SAMPLE_INTERVAL_MS)
   }
+  console.warn(
+    '[FaceEnroll] blink not detected —',
+    `samples: ${sampleCount}, no-face frames: ${noFaceCount}, lowest EAR: ${minEarSeen.toFixed(3)}`,
+    `(threshold: ${BLINK_EAR_THRESHOLD}, video size: ${videoEl?.videoWidth}x${videoEl?.videoHeight})`
+  )
   return false
 }
 
@@ -56,6 +71,7 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
   const [captures, setCaptures]   = useState([])   // array of { descriptor, blob }
   const [capturing, setCapturing] = useState(false)
   const [blinkPrompt, setBlinkPrompt] = useState(false)
+  const [liveEar, setLiveEar] = useState(null)
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
 
@@ -101,7 +117,7 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
     setError('')
     try {
       setBlinkPrompt(true)
-      const blinked = await waitForBlink(videoRef.current)
+      const blinked = await waitForBlink(videoRef.current, setLiveEar)
       setBlinkPrompt(false)
       if (!blinked) {
         notify('No blink detected — blink naturally and try again.', 'err')
@@ -233,6 +249,16 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
         {!modelsReady && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 12, background: 'rgba(15,23,42,0.6)', borderRadius: 10 }}>
             Loading face models…
+          </div>
+        )}
+        {blinkPrompt && (
+          <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15,23,42,0.75)', borderRadius: 8, padding: '6px 10px' }}>
+            <span style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700 }}>👁 Blink now…</span>
+            {liveEar !== null && (
+              <span style={{ color: liveEar < 0.28 ? '#4ade80' : '#e2e8f0', fontSize: 11, fontFamily: 'monospace' }}>
+                EAR {liveEar.toFixed(2)}
+              </span>
+            )}
           </div>
         )}
       </div>
