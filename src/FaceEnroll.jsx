@@ -10,9 +10,32 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from './supabase'
-import { loadFaceModels, extractDescriptor, averageDescriptors, matchDescriptor } from './faceEngine'
+import { loadFaceModels, extractDescriptor, averageDescriptors, matchDescriptor, avgEyeAspectRatio, detectFaceWithLandmarks } from './faceEngine'
 
 const CAPTURES_NEEDED = 3
+const BLINK_EAR_THRESHOLD = 0.22
+const BLINK_TIMEOUT_MS = 6000
+const SAMPLE_INTERVAL_MS = 120
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
+
+// Requires an eyes-closed-then-reopened cycle before allowing a capture —
+// a printed photo or static image can never blink, so this blocks
+// photo-based fake enrollment. Required before each of the 3 shots.
+async function waitForBlink(videoEl) {
+  const start = Date.now()
+  let sawClosed = false
+  while (Date.now() - start < BLINK_TIMEOUT_MS) {
+    const detection = await detectFaceWithLandmarks(videoEl)
+    if (detection) {
+      const ear = avgEyeAspectRatio(detection.landmarks)
+      if (ear < BLINK_EAR_THRESHOLD) sawClosed = true
+      else if (sawClosed) return true
+    }
+    await sleep(SAMPLE_INTERVAL_MS)
+  }
+  return false
+}
 
 const S = {
   card:  { background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.07)', padding: 20, maxWidth: 420, margin: '0 auto' },
@@ -32,6 +55,7 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
   const [modelsReady, setModelsReady] = useState(false)
   const [captures, setCaptures]   = useState([])   // array of { descriptor, blob }
   const [capturing, setCapturing] = useState(false)
+  const [blinkPrompt, setBlinkPrompt] = useState(false)
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
 
@@ -76,6 +100,15 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
     setCapturing(true)
     setError('')
     try {
+      setBlinkPrompt(true)
+      const blinked = await waitForBlink(videoRef.current)
+      setBlinkPrompt(false)
+      if (!blinked) {
+        notify('No blink detected — blink naturally and try again.', 'err')
+        setCapturing(false)
+        return
+      }
+
       const descriptor = await extractDescriptor(videoRef.current)
       if (!descriptor) {
         notify('No face detected — center your face in the frame and try again.', 'err')
@@ -190,8 +223,8 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
       </h3>
       <p style={{ margin: '0 0 14px', fontSize: 12, color: '#64748b' }}>
         {mode === 'admin'
-          ? 'Capture 3 clear shots. This enrollment is approved immediately.'
-          : 'Capture 3 clear shots. An admin must approve this before it unlocks check-in.'}
+          ? 'Capture 3 clear shots — blink when prompted for each. This enrollment is approved immediately.'
+          : 'Capture 3 clear shots — blink when prompted for each. An admin must approve this before it unlocks check-in.'}
       </p>
 
       <div style={{ position: 'relative', marginBottom: 12 }}>
@@ -223,7 +256,7 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
 
       {captures.length < CAPTURES_NEEDED ? (
         <button style={S.btn('#1e3a5f', !ready || !modelsReady || capturing)} disabled={!ready || !modelsReady || capturing} onClick={captureOne}>
-          {capturing ? 'Capturing…' : `Capture shot ${captures.length + 1} of ${CAPTURES_NEEDED}`}
+          {blinkPrompt ? 'Blink now…' : capturing ? 'Capturing…' : `Capture shot ${captures.length + 1} of ${CAPTURES_NEEDED}`}
         </button>
       ) : (
         <div style={{ display: 'flex', gap: 8 }}>

@@ -25,7 +25,6 @@ const S = {
 const PHASE_COPY = {
   idle:    'Position your face inside the frame',
   blink:   'Blink slowly',
-  turn:    (dir) => `Turn your head ${dir}`,
   matching:'Verifying identity…',
   timeout: 'Timed out — try again',
 }
@@ -130,9 +129,7 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
 
   const statusText = error
     ? error
-    : phase === 'turn'
-      ? PHASE_COPY.turn(turnDir)
-      : PHASE_COPY[phase] || PHASE_COPY.idle
+    : PHASE_COPY[phase] || PHASE_COPY.idle
 
   return (
     <div style={S.overlay}>
