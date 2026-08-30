@@ -57,6 +57,16 @@ import { useMismatchAutoScan } from './mismatchScanner'
 const ADMIN_ROLES = ['Admin', 'Administrator']
 const isAdminRole = (role) => ADMIN_ROLES.includes(role)
 
+// Roles that manage Face Attendance for other staff (coverage, approvals,
+// enrollment) without necessarily having their own linked staff_profile_id —
+// unlike an ordinary staff member, who only sees this module to check
+// themselves in and therefore does need that link.
+const FACE_ATTENDANCE_MANAGER_ROLES = ['Staff Manager']
+const canSeeFaceAttendance = (currentUser, isAdmin) =>
+  isAdmin ||
+  !!currentUser?.staff_profile_id ||
+  FACE_ATTENDANCE_MANAGER_ROLES.includes(currentUser?.role)
+
 // ─────────────────────────────────────────────────────────────
 //  NAV GROUPS
 // ─────────────────────────────────────────────────────────────
@@ -357,10 +367,10 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
   const allowedModules = useMemo(() => {
     if (isAdmin) return new Set(ALL_ITEMS.map(i => i.id))
     const set = new Set(['dashboard'])
-    if (currentUser?.staff_profile_id) set.add('faceattendance')
+    if (canSeeFaceAttendance(currentUser, isAdmin)) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
     return set
-  }, [permMap, isAdmin, currentUser?.staff_profile_id])
+  }, [permMap, isAdmin, currentUser])
 
   useEffect(() => {
     const handler = e => { if (e.key === '/' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); searchRef.current?.focus() } }
@@ -469,10 +479,10 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
   const allowedModules = useMemo(() => {
     if (isAdmin) return new Set(ALL_ITEMS.map(i => i.id))
     const set = new Set(['dashboard'])
-    if (currentUser?.staff_profile_id) set.add('faceattendance')
+    if (canSeeFaceAttendance(currentUser, isAdmin)) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
     return set
-  }, [permMap, isAdmin, currentUser?.staff_profile_id])
+  }, [permMap, isAdmin, currentUser])
 
   useEffect(() => { setDrawerOpen(false) }, [activePage])
   useEffect(() => {
@@ -686,7 +696,7 @@ export default function App() {
     // Face Attendance check-in must be reachable by any staff member with a
     // linked profile, not gated by the permission matrix like admin tools —
     // the component itself only exposes enrollment management to admins.
-    if (key === 'faceattendance') return isAdmin || !!currentUser?.staff_profile_id
+    if (key === 'faceattendance') return canSeeFaceAttendance(currentUser, isAdmin)
     if (isAdmin) return true
     return permMap[key]?.read === true
   }
