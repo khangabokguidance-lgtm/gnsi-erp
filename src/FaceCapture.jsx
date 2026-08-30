@@ -54,6 +54,7 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
   const [running, setRunning] = useState(false)
   const [error, setError]     = useState('')
   const [quality, setQuality] = useState({ ok: false, reason: 'no_frame' })
+  const [liveEar, setLiveEar] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -124,7 +125,7 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
       const { challenge_id } = await issueChallenge(staffId)
 
       // Blink liveness against the live video feed
-      const livenessPassed = await runLivenessSequence(videoRef.current, null, (p) => setPhase(p))
+      const livenessPassed = await runLivenessSequence(videoRef.current, null, (p) => setPhase(p), setLiveEar)
       if (!livenessPassed) {
         setError('No blink detected — make sure your face is well lit and centered, then try again.')
         setRunning(false)
@@ -197,6 +198,15 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
           {(!cameraReady || !modelsReady) && !error && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F5F1E6', fontSize: 12, fontFamily: 'Arial,sans-serif' }}>
               Preparing camera…
+            </div>
+          )}
+
+          {running && phase === 'blink' && liveEar !== null && (
+            <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(15,23,42,0.75)', borderRadius: 8, padding: '6px 10px' }}>
+              <span style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700 }}>👁 Blink now…</span>
+              <span style={{ color: liveEar < 0.28 ? '#4ade80' : '#e2e8f0', fontSize: 11, fontFamily: 'monospace' }}>
+                EAR {liveEar.toFixed(2)}
+              </span>
             </div>
           )}
         </div>
