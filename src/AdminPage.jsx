@@ -53,7 +53,7 @@ const CRUD_BG     = { read: '#F0F9FF', add: '#F0FDF4', edit: '#FFFBEB', delete: 
 const ALL_ROLES = [
   'Teacher','Staff','Faculty','House Master','Accountant',
   'Computer Staffs','Administrator','Hostel Supervisor',
-  'Superintendent','Non Teaching Staffs','Receptionist',
+  'Superintendent','Non Teaching Staffs','Receptionist','Staff Manager',
 ]
 
 const NAV = [
