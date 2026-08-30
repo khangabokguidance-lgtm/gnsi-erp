@@ -287,6 +287,7 @@ function Accounts({role,userId}){
   const [plDateFrom,   setPlDateFrom]   = useState('')
   const [plDateTo,     setPlDateTo]     = useState('')
   const [showPlFilters, setShowPlFilters] = useState(false)
+  const [plShowDatewise, setPlShowDatewise] = useState(false) // toggles category view vs date-wise (per-day, not combined) view in the P&L modal
   const [plManualIncome, setPlManualIncome] = useState('') // admin-entered manual cashbook total, for mismatch comparison
   const [plAccountType, setPlAccountType] = useState('All')
   const [plPaymentMode, setPlPaymentMode] = useState('All')
@@ -936,15 +937,19 @@ function Accounts({role,userId}){
     <tr><td>Manual Cash Book Income</td><td>${fmt(manualAmt)}</td></tr>
     <tr class="total"><td>Difference (Manual − System)</td><td class="${mismatchDiff===0?'green':(mismatchDiff>0?'red':'red')}">${mismatchDiff>=0?'+':''}${fmt(mismatchDiff)}</td></tr>
     </table>`:''
+    const datewiseSection=plShowDatewise?`<h2>Date-wise Income &amp; Expenditure</h2><table><tr><th>Date</th><th>Income</th><th>Expenditure</th><th>Net</th></tr>
+    ${plDatewise.map(d=>`<tr><td>${d.date}</td><td class="green">${fmt(d.income)}</td><td class="red">${fmt(d.expense)}</td><td class="${d.income-d.expense>=0?'green':'red'}">${fmt(d.income-d.expense)}</td></tr>`).join('')}
+    <tr class="total"><td>Total</td><td class="green">${fmt(totalThisInc)}</td><td class="red">${fmt(totalThisExp)}</td><td class="${net>=0?'green':'red'}">${fmt(net)}</td></tr>
+    </table>`:''
     w.document.write(`<html><head><title>P&L - ${plPeriodLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#1e293b}h1{font-size:22px}h2{font-size:15px;font-weight:600;margin:20px 0 8px;color:#1e3a5f}p{font-size:13px;color:#64748b;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#f8fafc;padding:8px 12px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f1f5f9}.total{font-weight:bold;background:#f8fafc}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
     <h1>Income & Expenditure Statement</h1>
     <p>Period: ${plPeriodLabel}${advLabel} | Generated: ${new Date().toLocaleString('en-IN')}</p>
-    <h2>Income</h2><table><tr><th>Category</th><th>Amount</th></tr>
+    ${plShowDatewise?datewiseSection:`<h2>Income</h2><table><tr><th>Category</th><th>Amount</th></tr>
     ${Object.entries(thisInc).map(([k,v])=>`<tr><td>${k.replace(/</g,'&lt;')}</td><td class="green">${fmt(v)}</td></tr>`).join('')}
     <tr class="total"><td>Total Income</td><td class="green">${fmt(totalThisInc)}</td></tr></table>
     <h2>Expenditure</h2><table><tr><th>Category</th><th>Amount</th></tr>
     ${Object.entries(thisExp).map(([k,v])=>`<tr><td>${k.replace(/</g,'&lt;')}</td><td class="red">${fmt(v)}</td></tr>`).join('')}
-    <tr class="total"><td>Total Expenditure</td><td class="red">${fmt(totalThisExp)}</td></tr></table>
+    <tr class="total"><td>Total Expenditure</td><td class="red">${fmt(totalThisExp)}</td></tr></table>`}
     ${mismatchSection}
     <h2>Summary</h2><table>
     <tr><td>Total Income</td><td class="green">${fmt(totalThisInc)}</td></tr>
@@ -2001,8 +2006,22 @@ function Accounts({role,userId}){
     }
     const sumBy=(arr,type)=>{const map={};arr.filter(e=>e.type===type).forEach(e=>{map[e.category]=(map[e.category]||0)+Number(e.amount)});return map}
     const thisInc=sumBy(thisM,'Income'),thisExp=sumBy(thisM,'Expense'),prevInc=sumBy(prevM,'Income'),prevExp=sumBy(prevM,'Expense')
-    return{thisInc,thisExp,prevInc,prevExp,totalThisInc:Object.values(thisInc).reduce((s,v)=>s+v,0),totalThisExp:Object.values(thisExp).reduce((s,v)=>s+v,0),totalPrevInc:Object.values(prevInc).reduce((s,v)=>s+v,0),totalPrevExp:Object.values(prevExp).reduce((s,v)=>s+v,0)}
+    return{thisInc,thisExp,prevInc,prevExp,totalThisInc:Object.values(thisInc).reduce((s,v)=>s+v,0),totalThisExp:Object.values(thisExp).reduce((s,v)=>s+v,0),totalPrevInc:Object.values(prevInc).reduce((s,v)=>s+v,0),totalPrevExp:Object.values(prevExp).reduce((s,v)=>s+v,0),thisMEntries:thisM}
   },[entries,plMonth,plRangeMode,plDateFrom,plDateTo,plAccountType,plPaymentMode,plStatus])
+
+  // ── Date-wise breakdown for the P&L modal — one row per date with income
+  // total and expense total (NOT combined into categories), for the exact
+  // same period/filters plData already computed. Toggled via plShowDatewise.
+  const plDatewise=useMemo(()=>{
+    const map={}
+    for(const e of plData.thisMEntries){
+      const d=e.entry_date
+      if(!map[d])map[d]={date:d,income:0,expense:0}
+      if(e.type==='Income')map[d].income+=Number(e.amount)
+      else if(e.type==='Expense')map[d].expense+=Number(e.amount)
+    }
+    return Object.values(map).sort((a,b)=>a.date<b.date?-1:1) // oldest first, matches from-date to-date reading order
+  },[plData])
 
   // human-readable period label used in the P&L modal header and printout
   const plPeriodLabel=useMemo(()=>{
@@ -3304,6 +3323,44 @@ function Accounts({role,userId}){
             </div>
           </div>
 
+          <div style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}>
+            <div style={{display:'flex',borderRadius:8,overflow:'hidden',border:'1px solid #e5e7eb'}}>
+              <button onClick={()=>setPlShowDatewise(false)} style={{padding:'6px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:!plShowDatewise?'#1e3a5f':'#f8fafc',color:!plShowDatewise?'white':'#64748b'}}>By Category</button>
+              <button onClick={()=>setPlShowDatewise(true)} style={{padding:'6px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plShowDatewise?'#1e3a5f':'#f8fafc',color:plShowDatewise?'white':'#64748b'}}>Date-wise</button>
+            </div>
+          </div>
+
+          {plShowDatewise?(
+            <div>
+              <h3 style={{fontSize:14,fontWeight:700,color:'#1e3a5f',marginBottom:10,borderBottom:'2px solid #eff6ff',paddingBottom:6}}>Date-wise Income &amp; Expenditure — {plPeriodLabel}</h3>
+              {plDatewise.length===0?(
+                <p style={{color:'#94a3b8',textAlign:'center',padding:20}}>No entries in this period.</p>
+              ):(
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                  <thead><tr style={{backgroundColor:'#f8fafc'}}>{['Date','Income','Expenditure','Net'].map(h=><th key={h} style={{padding:'8px 10px',textAlign:h==='Date'?'left':'right',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {plDatewise.map(d=>{
+                      const net=d.income-d.expense
+                      return (
+                        <tr key={d.date} style={{borderBottom:'1px solid #f1f5f9'}}>
+                          <td style={{padding:'7px 10px',color:'#374151'}}>{d.date}</td>
+                          <td style={{padding:'7px 10px',textAlign:'right',fontWeight:600,color:'#16a34a'}}>{fmt(d.income)}</td>
+                          <td style={{padding:'7px 10px',textAlign:'right',fontWeight:600,color:'#dc2626'}}>{fmt(d.expense)}</td>
+                          <td style={{padding:'7px 10px',textAlign:'right',fontWeight:600,color:net>=0?'#16a34a':'#dc2626'}}>{fmt(net)}</td>
+                        </tr>
+                      )
+                    })}
+                    <tr style={{borderTop:'2px solid #1e3a5f'}}>
+                      <td style={{padding:'8px 10px',fontWeight:700,color:'#1e293b'}}>Total</td>
+                      <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:'#16a34a'}}>{fmt(plData.totalThisInc)}</td>
+                      <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:'#dc2626'}}>{fmt(plData.totalThisExp)}</td>
+                      <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:(plData.totalThisInc-plData.totalThisExp)>=0?'#16a34a':'#dc2626'}}>{fmt(plData.totalThisInc-plData.totalThisExp)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ):(
           <div style={{display:'grid',gridTemplateColumns:plContentCols,gap:20}}>
             {[{title:'Income',color:'#16a34a',bg:'#dcfce7',data:plData.thisInc,total:plData.totalThisInc},{title:'Expenditure',color:'#dc2626',bg:'#fee2e2',data:plData.thisExp,total:plData.totalThisExp}].map(sec=>(
               <div key={sec.title}>
@@ -3318,6 +3375,7 @@ function Accounts({role,userId}){
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
     )}
