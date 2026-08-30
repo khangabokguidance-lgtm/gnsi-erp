@@ -377,7 +377,24 @@ function SalarySetupModal({ staffMember, onClose, onSaved, showToast }) {
     role_bonus:staffMember.role_bonus||0,
   })
   const [saving, setSaving] = useState(false)
+  const [activeAdvances, setActiveAdvances] = useState(null) // null = loading, [] = none, else rows
   const gross = Object.values(salaryForm).reduce((a, b) => a + Number(b), 0)
+
+  // Read-only view of this staff member's current active advances — the real
+  // "Advance" deduction is calculated monthly from staff_advances (in
+  // Salary.jsx's pendingAdvance), not a fixed number set here, so this modal
+  // only shows it and links to the actual Advances screen rather than
+  // duplicating a second, disconnected advance value.
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('staff_advances').select('amount, repaid_amount, repay_months')
+      .eq('staff_id', staffMember.id).eq('status', 'Active')
+      .then(({ data }) => { if (!cancelled) setActiveAdvances(data || []) })
+    return () => { cancelled = true }
+  }, [staffMember.id])
+
+  const advanceOutstanding = (activeAdvances || []).reduce((sum, a) => sum + (Number(a.amount) - Number(a.repaid_amount)), 0)
+
   if (!isAdminUnlocked()) { onClose(); return null }
   const handleSave = async () => {
     setSaving(true)
@@ -418,6 +435,29 @@ function SalarySetupModal({ staffMember, onClose, onSaved, showToast }) {
               </div>
             ))}
           </div>
+
+          {/* Advance is calculated monthly from active loans, not a fixed
+              number — shown read-only here with a link to the real screen. */}
+          <div style={{ background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:10, padding:'12px 14px', marginBottom:18, display:'flex', alignItems:'center', gap:12 }}>
+            <div style={{ width:34, height:34, borderRadius:8, background:'white', display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, flexShrink:0 }}>💵</div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'#374151' }}>Advance</div>
+              <div style={{ fontSize:11, color:'#94a3b8' }}>
+                {activeAdvances === null
+                  ? 'Loading…'
+                  : advanceOutstanding > 0
+                    ? `₹${advanceOutstanding.toLocaleString('en-IN')} outstanding — deducted automatically each month`
+                    : 'No active advance for this staff member'}
+              </div>
+            </div>
+            <button
+              onClick={() => { onClose(); showToast?.('Open Salary → Advances to manage advances', '#b45309') }}
+              style={{ background:'#b45309', color:'white', border:'none', borderRadius:8, padding:'8px 12px', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}
+            >
+              💰 Manage in Salary
+            </button>
+          </div>
+
           <div style={{ background:'linear-gradient(135deg,#E6F1FB,#EAF3DE)', borderRadius:10, padding:'14px 16px', display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
             <div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase' }}>Gross Monthly</div>
             <div style={{ fontSize:24, fontWeight:800, color:'#0C447C', fontFamily:"'JetBrains Mono',monospace" }}>{fmt(gross)}</div>
