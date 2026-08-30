@@ -1,20 +1,25 @@
 // FaceCapture.jsx — Live face verification + liveness challenge, used inside
 // GeoAttendance.jsx's check-in flow.
 //
-// Sequence: fetch enrolled descriptor -> issue server challenge -> blink ->
-// turn head in server-specified direction -> final face match -> resolve
-// with { verified, score, challengeId } for the caller to pass into
-// server_checkin (which independently consumes/validates the challenge).
+// Adds live frame-quality monitoring (lighting/backlight detection) BEFORE
+// the scan starts, plus a positioning guide oval — so bad lighting or poor
+// framing is caught immediately with a specific message, instead of only
+// surfacing as a generic "liveness check failed" deep inside the blink loop.
+//
+// Sequence: fetch enrolled descriptor -> continuously assess frame quality
+// -> (once quality is good) issue server challenge -> blink -> final face
+// match -> resolve with { verified, score, challengeId } for the caller to
+// pass into server_checkin (which independently consumes/validates the challenge).
 
 import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
-import { loadFaceModels, extractDescriptor, matchDescriptor } from './faceEngine'
+import { loadFaceModels, extractDescriptor, matchDescriptor, assessFrameQuality } from './faceEngine'
 import { issueChallenge, runLivenessSequence } from './faceLiveness'
 
 const S = {
   overlay: { position: 'fixed', inset: 0, background: 'rgba(11,30,61,0.85)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
   card: { background: '#0B1E3D', borderRadius: 20, padding: 20, maxWidth: 340, width: '100%', border: '1px solid rgba(201,162,75,0.3)' },
-  video: { width: '100%', borderRadius: 14, background: '#081527', transform: 'scaleX(-1)' },
+  video: { width: '100%', borderRadius: 14, background: '#081527', transform: 'scaleX(-1)', display: 'block' },
   btn: (color = '#C9A24B', disabled = false) => ({
     width: '100%', marginTop: 14, background: disabled ? '#5b6473' : color, color: '#0B1E3D',
     border: 'none', borderRadius: 12, padding: 13, fontWeight: 700, fontSize: 14,
@@ -29,16 +34,26 @@ const PHASE_COPY = {
   timeout: 'Timed out — try again',
 }
 
+const QUALITY_MESSAGES = {
+  too_dark: 'Too dark — move to a brighter, evenly lit spot',
+  too_bright: 'Too bright — move away from direct light',
+  backlit: 'Light is behind you — face a light source instead of your back to it',
+  no_frame: 'Waiting for camera…',
+}
+
+const QUALITY_CHECK_INTERVAL_MS = 400
+
 export default function FaceCapture({ staffId, onVerified, onCancel }) {
   const videoRef  = useRef(null)
   const streamRef = useRef(null)
+  const qualityTimerRef = useRef(null)
   const [modelsReady, setModelsReady] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
   const [descriptorRow, setDescriptorRow] = useState(null)
   const [phase, setPhase]     = useState('idle')
-  const [turnDir, setTurnDir] = useState(null)
   const [running, setRunning] = useState(false)
   const [error, setError]     = useState('')
+  const [quality, setQuality] = useState({ ok: false, reason: 'no_frame' })
 
   useEffect(() => {
     let cancelled = false
@@ -83,28 +98,40 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
     return () => {
       cancelled = true
       streamRef.current?.getTracks().forEach(t => t.stop())
+      if (qualityTimerRef.current) clearInterval(qualityTimerRef.current)
     }
   }, [])
 
+  // Continuously monitor lighting/frame quality once the camera is live,
+  // so the person gets specific feedback ("too dark", "light behind you")
+  // before ever attempting the scan — not just a generic failure after.
+  useEffect(() => {
+    if (!cameraReady || running) return
+    qualityTimerRef.current = setInterval(() => {
+      if (videoRef.current) setQuality(assessFrameQuality(videoRef.current))
+    }, QUALITY_CHECK_INTERVAL_MS)
+    return () => clearInterval(qualityTimerRef.current)
+  }, [cameraReady, running])
+
   const startScan = async () => {
-    if (!cameraReady || !modelsReady || !descriptorRow || running) return
+    if (!cameraReady || !modelsReady || !descriptorRow || running || !quality.ok) return
+    if (qualityTimerRef.current) clearInterval(qualityTimerRef.current)
     setRunning(true)
     setError('')
     try {
-      // 1. Server issues a fresh, single-use challenge with a random direction —
-      //    the client cannot know it in advance, so a pre-recorded video can't satisfy it.
-      const { challenge_id, turn_direction } = await issueChallenge(staffId)
-      setTurnDir(turn_direction)
+      // Server issues a fresh, single-use challenge — the client cannot
+      // fake completing it, and it expires quickly to prevent replay.
+      const { challenge_id } = await issueChallenge(staffId)
 
-      // 2. Run blink -> turn detection against the live video feed
-      const livenessPassed = await runLivenessSequence(videoRef.current, turn_direction, (p) => setPhase(p))
+      // Blink liveness against the live video feed
+      const livenessPassed = await runLivenessSequence(videoRef.current, null, (p) => setPhase(p))
       if (!livenessPassed) {
-        setError('Liveness check failed — make sure your face is well lit and try again.')
+        setError('No blink detected — make sure your face is well lit and centered, then try again.')
         setRunning(false)
         return
       }
 
-      // 3. Final face match, taken right after liveness passes
+      // Final face match, taken right after liveness passes
       setPhase('matching')
       const liveDescriptor = await extractDescriptor(videoRef.current)
       if (!liveDescriptor) {
@@ -124,12 +151,25 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
 
   const cancel = () => {
     streamRef.current?.getTracks().forEach(t => t.stop())
+    if (qualityTimerRef.current) clearInterval(qualityTimerRef.current)
     onCancel()
   }
 
+  const retry = () => {
+    setError('')
+    setPhase('idle')
+    setRunning(false)
+  }
+
+  const qualityWarning = !error && !running && cameraReady && !quality.ok ? QUALITY_MESSAGES[quality.reason] : null
+
   const statusText = error
     ? error
-    : PHASE_COPY[phase] || PHASE_COPY.idle
+    : qualityWarning
+      ? qualityWarning
+      : PHASE_COPY[phase] || PHASE_COPY.idle
+
+  const canScan = cameraReady && modelsReady && !running && quality.ok
 
   return (
     <div style={S.overlay}>
@@ -139,21 +179,36 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
         </div>
         <div style={{ position: 'relative', marginTop: 10 }}>
           <video ref={videoRef} muted playsInline style={S.video} />
+
+          {/* Positioning guide oval — solid green once framing+lighting are good */}
+          {cameraReady && !error && (
+            <svg viewBox="0 0 200 200" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+              <ellipse
+                cx="100" cy="100" rx="62" ry="82"
+                fill="none"
+                stroke={quality.ok ? '#4ade80' : '#fbbf24'}
+                strokeWidth="3"
+                strokeDasharray={quality.ok ? 'none' : '8 6'}
+                opacity="0.9"
+              />
+            </svg>
+          )}
+
           {(!cameraReady || !modelsReady) && !error && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F5F1E6', fontSize: 12, fontFamily: 'Arial,sans-serif' }}>
               Preparing camera…
             </div>
           )}
         </div>
-        <div style={{ color: error ? '#f87171' : '#F5F1E6', fontFamily: 'Arial,sans-serif', fontSize: 13, textAlign: 'center', marginTop: 12, minHeight: 18, fontWeight: running ? 700 : 400 }}>
+        <div style={{ color: error ? '#f87171' : qualityWarning ? '#fbbf24' : '#F5F1E6', fontFamily: 'Arial,sans-serif', fontSize: 13, textAlign: 'center', marginTop: 12, minHeight: 18, fontWeight: running ? 700 : 400 }}>
           {statusText}
         </div>
         {!error ? (
-          <button style={S.btn('#C9A24B', !cameraReady || !modelsReady || running)} disabled={!cameraReady || !modelsReady || running} onClick={startScan}>
-            {running ? 'Scanning…' : 'Start face scan'}
+          <button style={S.btn('#C9A24B', !canScan)} disabled={!canScan} onClick={startScan}>
+            {running ? 'Scanning…' : !quality.ok && cameraReady ? 'Waiting for good lighting…' : 'Start face scan'}
           </button>
         ) : (
-          <button style={S.btn('#5b6473', false)} onClick={() => { setError(''); setPhase('idle') }}>Try again</button>
+          <button style={S.btn('#5b6473', false)} onClick={retry}>Try again</button>
         )}
         {!running && (
           <button onClick={cancel} style={{ width: '100%', marginTop: 8, background: 'none', border: 'none', color: '#8FA0BF', fontSize: 12, fontFamily: 'Arial,sans-serif', cursor: 'pointer', padding: 6 }}>

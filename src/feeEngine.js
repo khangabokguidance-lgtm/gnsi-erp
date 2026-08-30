@@ -1,1309 +1,161 @@
-// feeEngine.js
-// ─────────────────────────────────────────────────────────────────────────────
-//  SINGLE SOURCE OF TRUTH for all fee logic across GNSI Portal
-// ─────────────────────────────────────────────────────────────────────────────
+// faceEngine.js — shared face-api.js loader, descriptor extraction, matching
+// Used by FaceEnroll.jsx (enrollment) and FaceCapture.jsx (check-in verification)
 
-import { supabase } from './supabase'
+import * as faceapi from 'face-api.js'
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 1. LEGACY HARDCODED RATES  (kept as fallback only — DB is now source of truth)
-// ═══════════════════════════════════════════════════════════════════════════
+const MODEL_URL = '/models'          // served from public/models — see README
+export const MATCH_THRESHOLD = 0.5   // euclidean distance; lower = stricter. Tune after pilot testing.
+export const WEAK_MATCH_THRESHOLD = 0.5 // mirrors server_checkin's weak_face_match flag cutoff
 
-export const FLAT_RATES = {
-  'Boarder':     5500,
-  'Day Boarder': 4000,
-  'Day Scholar': 2000,
+let modelsLoaded = false
+let loadingPromise = null
+
+export function loadFaceModels() {
+  if (modelsLoaded) return Promise.resolve()
+  if (loadingPromise) return loadingPromise
+  loadingPromise = Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+  ]).then(() => { modelsLoaded = true })
+  return loadingPromise
 }
 
-export const COURSE_RATES = {
-  Navodaya: { 'Boarder': 4500, 'Day Boarder': 3500, 'Day Scholar': 2500 },
-  Sainik:   { 'Boarder': 5000, 'Day Boarder': 4000, 'Day Scholar': 3000 },
-  Foundation: { 'Boarder': 4000, 'Day Boarder': 3000, 'Day Scholar': 2000 },
-  'Combined Course': { 'Boarder': 5500, 'Day Boarder': 4500, 'Day Scholar': 3000 },
+export function areModelsLoaded() {
+  return modelsLoaded
 }
 
-export const ADM_FEE_BASE   = 6000
-export const PROSPECTUS_FEE = 200
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 2. CONSTANTS
-// ═══════════════════════════════════════════════════════════════════════════
-
-export const TABLES = {
-  students:           'students',
-  admissions:         'admissions',
-  fees:               'fee_invoices',
-  feeInvoices:        'fee_invoices',
-  feePayments:        'fee_payments',
-  admFeeCollections:  'adm_fee_collections',
-  admFlatFees:        'adm_flat_fees',
-  admCourseFees:      'adm_course_fees',
-  accounts:           'accounts',
-  feeStructures:      'fee_structures',
-  studentFeeOverrides:'student_fee_overrides',   // ← NEW
+// Extracts a 128-length descriptor from a single video frame or image element.
+// Returns null if no face (or more than one face) was confidently detected.
+export async function extractDescriptor(mediaEl) {
+  const detection = await faceapi
+    .detectSingleFace(mediaEl, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+    .withFaceLandmarks()
+    .withFaceDescriptor()
+  if (!detection) return null
+  return Array.from(detection.descriptor)
 }
 
-export const INVOICE_STATUS = {
-  PENDING: 'Pending', PARTIAL: 'Partial', PAID: 'Paid',
-  OVERDUE: 'Overdue', WAIVED: 'Waived',  CANCELLED: 'Cancelled',
-}
-
-export const PAYMENT_METHODS = ['Cash', 'UPI', 'Cheque', 'Bank Transfer', 'DD', 'Other']
-export const PAY_MODES        = PAYMENT_METHODS
-
-export const MONTHS_LIST = [
-  'April','May','June','July','August','September',
-  'October','November','December','January','February','March',
-]
-
-export const INSTITUTE = {
-  name:    'Guidance Navodaya & Sainik Institute',
-  short:   'GNSI',
-  address: 'Khangabok, Thoubal District, Manipur',
-  phone:   '',
-}
-
-export const CURRENT_YEAR = (() => {
-  const m = new Date().getMonth() + 1
-  const y = new Date().getFullYear()
-  return m >= 4 ? y : y - 1
-})()
-
-export const COURSE_STRUCTURE = {
-  Sainik:            ['Achiever', 'Leader', 'Champion'],
-  Navodaya:          ['Umeed', 'Lakshya A', 'Lakshya B'],
-  Foundation:        ['Prime', 'Elite'],
-  'Combined Course': ['—'],
-}
-
-// ✦ Session-year format normalizer — canonicalizes to "YYYY-YYYY".
-//   Some older student/admission records store session as "2026-27"
-//   (2-digit end year) instead of "2026-2027" (4-digit), which caused
-//   getFeeRates' exact-string match against fee_structures.session_year
-//   to silently miss configured rows and fall back to legacy rates.
-//   All session_year lookups/writes should pass through this first.
-export const normalizeSessionYear = (sessionYear) => {
-  if (!sessionYear || typeof sessionYear !== 'string') return sessionYear
-  const m = sessionYear.match(/^(\d{4})-(\d{2}|\d{4})$/)
-  if (!m) return sessionYear
-  const startYear = parseInt(m[1], 10)
-  const endPart = m[2]
-  const endYear = endPart.length === 4 ? parseInt(endPart, 10) : startYear + 1
-  return `${startYear}-${endYear}`
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 3. FORMATTERS
-// ═══════════════════════════════════════════════════════════════════════════
-
-export const fmt = n =>
-  '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
-
-export const fmtMoney = fmt
-
-export const fmtDate = d =>
-  d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
-
-export const fmtMonth = m => {
-  if (!m) return ''
-  const [y, mo] = m.split('-')
-  return new Date(y, parseInt(mo) - 1).toLocaleString('default', { month: 'long', year: 'numeric' })
-}
-
-// LOCAL-DATE FIX: toISOString() returns the UTC date, which lags a day behind
-// IST between 12:00 AM and 5:30 AM. This caused payDate (used when SAVING a
-// payment) to disagree with todayStr in Fees.jsx's dashboard (used when
-// FILTERING "today's collection"), so a payment saved as "today" could be
-// invisible on the dashboard until the next day. en-CA locale formats as
-// YYYY-MM-DD in the browser's local timezone — same method used everywhere
-// else in the app (Fees.jsx dashboard, Accounts.jsx) — so this must match.
-export const today = () => new Date().toLocaleDateString('en-CA')
-
-export const gccStr = v => String(parseInt(v) || 0)
-
-export const rcptNo = (prefix = 'INV') => {
-  const d = new Date()
-  const stamp = [
-    d.getFullYear(),
-    String(d.getMonth() + 1).padStart(2, '0'),
-    String(d.getDate()).padStart(2, '0'),
-    String(d.getHours()).padStart(2, '0'),
-    String(d.getMinutes()).padStart(2, '0'),
-    String(d.getSeconds()).padStart(2, '0'),
-  ].join('')
-  return `${prefix}-${stamp}`
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 4. FEE RATE HELPERS  — DB-fetched (fee_structures + student_fee_overrides)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/** In-memory caches — both cleared on save */
-const _rateCache     = {}   // key = session__course__batch__hostel
-const _overrideCache = {}   // key = gcc__session
-
-/** Clear both caches (call after saving fee_structures or student_fee_overrides) */
-export const clearFeeRateCache = () => {
-  Object.keys(_rateCache).forEach(k => delete _rateCache[k])
-  Object.keys(_overrideCache).forEach(k => delete _overrideCache[k])
-}
-
-// ─── 4a. Per-student flat fee override ───────────────────────────────────────
-
-/**
- * Fetch the flat_fee_override for one student in a session.
- * Returns null if no override exists.
- */
-export const getStudentFlatFeeOverride = async (gccNo, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`) => {
-  sessionYear = normalizeSessionYear(sessionYear)
-  const key = `${gccNo}__${sessionYear}`
-  if (_overrideCache[key] !== undefined) return _overrideCache[key]
-
-  const { data } = await supabase
-    .from(TABLES.studentFeeOverrides)
-    .select('flat_fee_override, reason, updated_by, updated_at')
-    .eq('gcc_no', gccNo)
-    .eq('session_year', sessionYear)
-    .maybeSingle()
-
-  const result = data ?? null
-  _overrideCache[key] = result
-  return result
-}
-
-/**
- * Save (upsert) a per-student flat fee override.
- * Pass null / undefined flatFeeOverride to REMOVE the override.
- */
-export const saveStudentFlatFeeOverride = async (gccNo, sessionYear, flatFeeOverride, reason = '', updatedBy = '') => {
-  sessionYear = normalizeSessionYear(sessionYear)
-  // Remove override
-  if (flatFeeOverride === null || flatFeeOverride === undefined) {
-    await supabase
-      .from(TABLES.studentFeeOverrides)
-      .delete()
-      .eq('gcc_no', gccNo)
-      .eq('session_year', sessionYear)
-  } else {
-    const { error } = await supabase
-      .from(TABLES.studentFeeOverrides)
-      .upsert(
-        { gcc_no: gccNo, session_year: sessionYear, flat_fee_override: flatFeeOverride, reason, updated_by: updatedBy },
-        { onConflict: 'gcc_no,session_year', ignoreDuplicates: false }
-      )
-    if (error) throw error
+// Averages multiple descriptors captured during enrollment into one reference vector.
+export function averageDescriptors(descriptors) {
+  const len = descriptors[0].length
+  const avg = new Array(len).fill(0)
+  for (const d of descriptors) {
+    for (let i = 0; i < len; i++) avg[i] += d[i]
   }
-  // Bust override cache for this student
-  delete _overrideCache[`${gccNo}__${sessionYear}`]
+  return avg.map(v => v / descriptors.length)
 }
 
-// ─── 4b. Structural rates ─────────────────────────────────────────────────────
-
-/**
- * Fetch flat_fee, course_fee, admission_fee from fee_structures.
- * Falls back to legacy FLAT_RATES / COURSE_RATES if not configured in DB.
- *
- * ✦ NEW: if gccNo is supplied, checks student_fee_overrides first and
- *        substitutes flatFee with the override value when present.
- *
- * ✦ Bug fix #4: previously this fell back to hardcoded legacy rates with
- *   zero indication anything unusual happened — a newly-added course/batch/
- *   hostel combo not yet configured in Fee Setup would silently bill the
- *   old hardcoded amount. Now returns `usingFallbackRates: true` and logs a
- *   console.warn whenever fee_structures has no row for this combo, so
- *   callers (and anyone watching the console) can tell the amount shown
- *   isn't actually configured yet. Existing callers that only destructure
- *   { flatFee, courseFee, admissionFee } are unaffected — this is an
- *   additive field, not a shape change.
- */
-export const getFeeRates = async (
-  sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`,
-  course      = '',
-  batch       = '',
-  hostelType  = 'Day Scholar',
-  gccNo       = null,   // ← NEW optional param
-) => {
-  sessionYear = normalizeSessionYear(sessionYear)
-  const structKey = `${sessionYear}__${course}__${batch}__${hostelType}`
-
-  // Fetch structural rates (cached)
-  if (!_rateCache[structKey]) {
-    let { data } = await supabase
-      .from(TABLES.feeStructures)
-      .select('flat_fee, course_fee, admission_fee')
-      .eq('session_year', sessionYear)
-      .eq('course',       course)
-      .eq('batch',        batch)
-      .eq('hostel_type',  hostelType)
-      .maybeSingle()
-
-    // ✦ Batch-less fallback: if batch wasn't supplied (student record has no
-    //   batch assigned yet), the exact match above can never succeed because
-    //   Fee Setup always writes real batch names. Rather than drop straight
-    //   to hardcoded legacy rates, try any configured row for this
-    //   session/course/hostel regardless of batch — closer to the real
-    //   configured rate than the static fallback constants. This does NOT
-    //   fix the underlying missing-batch data; it's a stopgap so billing
-    //   isn't silently stale while that gets cleaned up.
-    let usedBatchlessFallback = false
-    if (!data && !batch) {
-      const { data: anyBatchRow } = await supabase
-        .from(TABLES.feeStructures)
-        .select('flat_fee, course_fee, admission_fee')
-        .eq('session_year', sessionYear)
-        .eq('course',       course)
-        .eq('hostel_type',  hostelType)
-        .limit(1)
-        .maybeSingle()
-      if (anyBatchRow) {
-        data = anyBatchRow
-        usedBatchlessFallback = true
-      }
-    }
-
-    const usingFallbackRates = !data
-    if (usingFallbackRates) {
-      console.warn(
-        `getFeeRates: no fee_structures row for session=${sessionYear} course=${course} ` +
-        `batch=${batch} hostelType=${hostelType} — falling back to legacy hardcoded rates. ` +
-        `Configure this combination in Fee Setup to avoid billing stale amounts.`
-      )
-    } else if (usedBatchlessFallback) {
-      console.warn(
-        `getFeeRates: student has no batch set (session=${sessionYear} course=${course} ` +
-        `hostelType=${hostelType}) — used a configured rate from another batch in this ` +
-        `course/hostel as a stopgap. Assign this student a batch to bill the correct amount.`
-      )
-    }
-
-    _rateCache[structKey] = {
-      flatFee:      data?.flat_fee      ?? FLAT_RATES[hostelType]             ?? 0,
-      courseFee:    data?.course_fee    ?? COURSE_RATES[course]?.[hostelType] ?? 0,
-      admissionFee: data?.admission_fee ?? ADM_FEE_BASE,
-      usingFallbackRates,
-      usedBatchlessFallback,
-    }
-  }
-
-  const rates = { ..._rateCache[structKey] }
-
-  // ✦ Apply per-student flat fee override if gcc supplied
-  if (gccNo) {
-    const override = await getStudentFlatFeeOverride(gccNo, sessionYear)
-    if (override !== null) {
-      rates.flatFee         = Number(override.flat_fee_override)
-      rates.flatFeeOverride = override   // attach metadata so callers can show badge
-    }
-  }
-
-  return rates
+export function euclideanDistance(a, b) {
+  let sum = 0
+  for (let i = 0; i < a.length; i++) sum += (a[i] - b[i]) ** 2
+  return Math.sqrt(sum)
 }
 
-/** Async — returns flat fee amount for this student (respects override) */
-export const getFlatFeeAmt = async (hostelType, course, batch, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, gccNo = null) => {
-  const r = await getFeeRates(sessionYear, course, batch, hostelType, gccNo)
-  return r.flatFee
+// Returns { verified, score } — score is the raw distance (lower = better match)
+export function matchDescriptor(liveDescriptor, storedDescriptor) {
+  const score = euclideanDistance(liveDescriptor, storedDescriptor)
+  return { verified: score <= MATCH_THRESHOLD, score: parseFloat(score.toFixed(4)) }
 }
 
-/**
- * Sync — quick flat fee estimate using the legacy hardcoded rate tables only
- * (no DB lookup, no per-student override). For inline/render-time aggregates
- * (dashboard totals, running sums in reduce/useMemo) where awaiting a DB
- * round-trip per row isn't practical. NOT for actual billing/invoicing —
- * those must use the async getFlatFeeAmt so overrides are respected.
- */
-export const getFlatFeeAmtSync = (hostelType, course) => {
-  if (course && COURSE_RATES[course]?.[hostelType] != null) return COURSE_RATES[course][hostelType]
-  return FLAT_RATES[hostelType] ?? 0
+// ─── Liveness detection (blink + head-turn) ────────────────────────────────
+// Uses face-api.js's 68-point landmarks — no extra library needed.
+// Must be paired with the server-issued liveness challenge (see faceLiveness.js
+// and issue_liveness_challenge / consume_liveness_challenge RPCs) — this module
+// only does the client-side signal detection; the server decides trust.
+
+const LEFT_EYE_IDX  = [36, 37, 38, 39, 40, 41]
+const RIGHT_EYE_IDX = [42, 43, 44, 45, 46, 47]
+const NOSE_TIP_IDX  = 30
+const LEFT_JAW_IDX  = 0
+const RIGHT_JAW_IDX = 16
+
+// Eye Aspect Ratio — drops sharply during a blink, recovers after
+export function eyeAspectRatio(landmarks, eyeIdx) {
+  const pts = eyeIdx.map(i => landmarks.positions[i])
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y)
+  const vertical1 = dist(pts[1], pts[5])
+  const vertical2 = dist(pts[2], pts[4])
+  const horizontal = dist(pts[0], pts[3])
+  return (vertical1 + vertical2) / (2 * horizontal)
 }
 
-/** Async — returns course fee amount for this student */
-export const getCourseFeeAmt = async (hostelType, course, batch, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`) => {
-  const r = await getFeeRates(sessionYear, course, batch, hostelType)
-  return r.courseFee
+export function avgEyeAspectRatio(landmarks) {
+  return (eyeAspectRatio(landmarks, LEFT_EYE_IDX) + eyeAspectRatio(landmarks, RIGHT_EYE_IDX)) / 2
 }
 
-// ─── Flat-fee month helpers ───────────────────────────────────────────────────
-
-export const FLAT_FEE_MONTHS = ['February', 'March']
-export const isFlatFeeMonth   = (month) => FLAT_FEE_MONTHS.includes(month)
-export const isCourseFeeMonth = (month) => !FLAT_FEE_MONTHS.includes(month)
-
-/**
- * Async — returns ONLY flat fee months (Feb & Mar) for the session.
- * Respects per-student override when gccNo is supplied.
- *
- * ✦ NEW: admissionDate (YYYY-MM-DD or Date) — when supplied, any flat-fee
- *        month that ENDED before the student's admission date is excluded.
- *        This stops repeaters/late admissions from being billed for months
- *        that predate when they actually joined. When admissionDate is not
- *        supplied (student record still missing it), behavior is unchanged
- *        from before — every caller should be moving toward always passing
- *        it now that admission_date is a required field going forward.
- */
-export const getFlatFees = async (hostelType, course, batch, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, gccNo = null, admissionDate = null) => {
-  const amount = await getFlatFeeAmt(hostelType, course, batch, sessionYear, gccNo)
-  const now = new Date()
-  const currentCalYear  = now.getFullYear()
-  const currentCalMonth = now.getMonth() + 1
-  const admDate = admissionDate ? new Date(admissionDate) : null
-
-  return FLAT_FEE_MONTHS.map(month => {
-    let year = currentCalYear
-    const d  = new Date(`${month} 1, ${year}`)
-    const calMonth = d.getMonth() + 1
-    if (calMonth > currentCalMonth) year = currentCalYear - 1
-    return {
-      id: `flat_${month.slice(0, 3).toLowerCase()}_${year}`,
-      month, year, amount, hostelType,
-    }
-  }).filter(f => {
-    if (!admDate || isNaN(admDate.getTime())) return true
-    // Last calendar day of the fee month — student owes this month's fee
-    // only if they'd already joined by the time that month ended.
-    const feeMonthIdx = new Date(`${f.month} 1, ${f.year}`).getMonth()
-    const feeMonthEnd = new Date(f.year, feeMonthIdx + 1, 0)
-    return feeMonthEnd >= admDate
-  })
+// Horizontal head-turn signal: nose tip position relative to the jaw-width midpoint.
+// Returns a signed ratio: negative = turned left, positive = turned right, ~0 = facing forward.
+export function headTurnRatio(landmarks) {
+  const nose = landmarks.positions[NOSE_TIP_IDX]
+  const leftJaw = landmarks.positions[LEFT_JAW_IDX]
+  const rightJaw = landmarks.positions[RIGHT_JAW_IDX]
+  const jawWidth = rightJaw.x - leftJaw.x
+  const jawMid = (leftJaw.x + rightJaw.x) / 2
+  if (jawWidth === 0) return 0
+  return (nose.x - jawMid) / jawWidth
 }
 
-/**
- * True if the given fee month (name + calendar year) ENDED before the
- * student's admission date — i.e. the student hadn't joined yet during
- * that month, so it shouldn't be billed.
- *
- * Shares the exact rule getFlatFees() already uses internally (line ~314
- * above) so flat fee and course fee agree on what counts as "before
- * admission." Course fee has no auto-generated month list the way flat
- * fee does (staff pick the month manually via a dropdown), so this is
- * exposed standalone for FeeCollectionModal to call per-selection rather
- * than baked into a list-filter like getFlatFees.
- *
- * Returns false (never blocks) if admissionDate is missing/invalid —
- * same fail-open behavior as getFlatFees when admission_date isn't set yet.
- */
-export const isPreAdmissionMonth = (monthName, year, admissionDate) => {
-  if (!admissionDate) return false
-  const admDate = new Date(admissionDate)
-  if (isNaN(admDate.getTime())) return false
-  const monthIdx = MONTHS_LIST.indexOf(monthName)
-  if (monthIdx === -1) return false
-  const feeMonthIdx = new Date(`${monthName} 1, ${year}`).getMonth()
-  const feeMonthEnd = new Date(year, feeMonthIdx + 1, 0)
-  return feeMonthEnd < admDate
+export async function detectFaceWithLandmarks(mediaEl) {
+  // Uses the module's static `faceapi` import (already loaded with nets by
+  // loadFaceModels()) instead of a fresh dynamic import(). A dynamic import
+  // here — called dozens of times per second inside the liveness polling
+  // loop — could resolve to a separate, unloaded module instance whose
+  // neural nets were never initialized, causing every detection to silently
+  // fail or throw inside the loop.
+  const result = await faceapi
+    .detectSingleFace(mediaEl, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+    .withFaceLandmarks()
+  return result || null
 }
 
-export const getSessionYear = () => `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
+// ─── Frame quality check — lighting/positioning, before liveness runs ──────
+// Samples pixel brightness from the live video frame so the UI can warn
+// about bad lighting/backlighting BEFORE attempting face/blink detection,
+// instead of only discovering the problem after several failed detection
+// attempts deep inside the liveness loop.
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 5. SOURCE REF HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
+let qualityCanvas = null
 
-export const sourceRef = {
-  admission:  (gcc)                    => `adm_${gcc}`,
-  admItem:    (gcc, itemName)          => `adm_item_${gcc}_${itemName.toLowerCase().replace(/\s+/g, '_')}`,
-  flatFee:    (gcc, month, year)       => `flat_${gcc}_${month.slice(0, 3).toLowerCase()}_${year}`,
-  courseFee:  (gcc, month, year)       => `course_${gcc}_${month.slice(0, 3).toLowerCase()}_${year}`,
-  advance:    (gcc, ts)                => `adv_${gcc}_${ts}`,
-  invoice:    (gcc, feeType, invMonth) => `${gcc}_${feeType.toLowerCase().replace(/\s+/g, '_')}_${invMonth}`,
-}
+export function assessFrameQuality(videoEl) {
+  if (!videoEl || !videoEl.videoWidth) return { ok: false, reason: 'no_frame' }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 6. DUPLICATE-CHECK GUARDS
-// ═══════════════════════════════════════════════════════════════════════════
+  if (!qualityCanvas) qualityCanvas = document.createElement('canvas')
+  const w = 64, h = 64 // downsample — only need a rough brightness estimate
+  qualityCanvas.width = w
+  qualityCanvas.height = h
+  const ctx = qualityCanvas.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(videoEl, 0, 0, w, h)
 
-export const checkFlatFeeExists = async (gcc, month, year) => {
-  const { data } = await supabase
-    .from(TABLES.admFlatFees)
-    .select('id')
-    .eq('adm_app_id', gcc)
-    .eq('month', month)
-    .eq('year', year)
-    .eq('paid', true)
-    .eq('reverted', false)
-    .maybeSingle()
-  return !!data
-}
-
-export const checkCourseFeeExists = async (gcc, forMonth, year) => {
-  const { data } = await supabase
-    .from(TABLES.admCourseFees)
-    .select('id')
-    .eq('adm_app_id', gcc)
-    .eq('for_month', forMonth)
-    .eq('year', year)
-    .eq('reverted', false)
-    .maybeSingle()
-  return !!data
-}
-
-/**
- * Fix #2 — Admission Fee and item (dress/prospectus) lines had no
- * server-side duplicate guard; only the modal's client-side "already paid"
- * filter stopped a double-charge, which fails under concurrent staff use or
- * a stale client cache. This mirrors checkFlatFeeExists/checkCourseFeeExists
- * for the admission-side items, keyed the same way collectFee derives rowId
- * so it catches the exact same row a second attempt would try to (re)write.
- */
-export const checkAdmItemExists = async (gcc, label) => {
-  const { data } = await supabase
-    .from(TABLES.admFeeCollections)
-    .select('id')
-    .eq('adm_app_id', gcc)
-    .eq('description', label)
-    .eq('reverted', false)
-    .maybeSingle()
-  return !!data
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 7. ACCOUNTS UPSERT
-// ═══════════════════════════════════════════════════════════════════════════
-
-export const upsertAccount = async ({
-  entry_date, payment_date, type, category, amount,
-  payment_mode, note, source_ref: sRef, source_type,
-  is_recurring = false, receipt_url = null,
-}) => {
-  const resolvedEntryDate = entry_date || today() // local date, matches `today` fixed above
-  const { error } = await supabase
-    .from(TABLES.accounts)
-    .upsert(
-      {
-        entry_date: resolvedEntryDate,
-        // ACTUAL PAYMENT DATE FIX: every fee-driven income row must carry the
-        // real payment date too, not just entry_date — falls back to entry_date
-        // only if a caller forgets to pass it (should never happen going forward).
-        payment_date: payment_date || resolvedEntryDate,
-        type, category, amount, payment_mode, note,
-        source_ref: sRef, source_type,
-        is_recurring, receipt_url,
-      },
-      { onConflict: 'source_ref,source_type', ignoreDuplicates: false }
-    )
-  if (error) {
-    console.error('upsertAccount error:', error.message)
-    throw new Error('Account update failed: ' + error.message)
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 8. FEE INVOICE MIRROR
-// ═══════════════════════════════════════════════════════════════════════════
-
-export const mirrorToFeeInvoice = async ({
-  gcc, studentId, studentName, course, hostelType, className,
-  feeType, amount, payDate, invoiceMonth,
-}) => {
-  const invRef    = sourceRef.invoice(gcc, feeType, invoiceMonth)
-  const sessionYr = getSessionYear()
-
+  let data
   try {
-    const { data: existing } = await supabase
-      .from(TABLES.feeInvoices)
-      .select('id, amount_paid, total_amount')
-      .eq('source_ref', invRef)
-      .maybeSingle()
-
-    if (existing) {
-      const newPaid = parseFloat(existing.amount_paid || 0) + amount
-      await supabase
-        .from(TABLES.feeInvoices)
-        .update({ amount_paid: newPaid, amount_due: 0, status: INVOICE_STATUS.PAID, last_payment_at: new Date().toISOString() })
-        .eq('id', existing.id)
-    } else {
-      await supabase.from(TABLES.feeInvoices).insert({
-        source_ref: invRef, student_id: studentId, student_name: studentName,
-        gcc_no: gcc, course: course || '', hostel_type: hostelType,
-        class_name: className || '', session_year: sessionYr,
-        invoice_month: invoiceMonth, fee_type: feeType,
-        base_amount: amount, discount_amount: 0, penalty_amount: 0,
-        total_amount: amount, amount_paid: amount, amount_due: 0,
-        due_date: payDate, status: INVOICE_STATUS.PAID,
-        generated_at: new Date().toISOString(), generated_by: 'collection',
-        last_payment_at: new Date().toISOString(),
-      })
-    }
-  } catch (err) {
-    console.error('mirrorToFeeInvoice error:', err.message)
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 8b. REVERT FEE COLLECTION — admin-only undo of a single collected item
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// Design: SOFT revert, not delete. The source row stays (reverted=true,
-// reverted_at/by/reason recorded) so there's a permanent audit trail of who
-// collected it and who undid it and why. It's filtered out of every "paid"
-// view and out of every total. The matching `accounts` income entry (the
-// double-entry bookkeeping row) IS hard-deleted, since a reverted fee should
-// not appear as income in the books.
-//
-// Requires these columns on adm_fee_collections / adm_flat_fees / adm_course_fees:
-//   reverted boolean DEFAULT false NOT NULL, reverted_at timestamptz,
-//   reverted_by text, revert_reason text
-// (see migration SQL provided alongside this change)
-//
-// NOTE: this does NOT roll back the `fee_invoices` mirror table. That table
-// aggregates by calendar month at save-time and doesn't store enough back-
-// reference to safely un-aggregate a single item without risking touching
-// the wrong month. It's a reporting mirror, not the source of truth — the
-// real ledger (`accounts`) and the source collection tables are both
-// corrected here.
-export const revertFeeCollection = async ({
-  table, id, accountSourceRef = null, accountSourceType = null,
-  revertedBy = 'Admin', reason = '',
-}) => {
-  if (!table || !id) throw new Error('revertFeeCollection: table and id are required')
-
-  // Fetch the row BEFORE updating it, so the audit log can carry the real
-  // amount/mode/gcc/student_name of what's being reverted — without this,
-  // fee_revert audit entries only ever had source_ref/source_type/reason,
-  // leaving Amount and Mode permanently blank in the Activity Log no matter
-  // how the display layer parses source_ref (GCC and a description can be
-  // recovered from source_ref, but amount and pay_mode never appear in it).
-  // Column names differ per table (adm_fee_collections uses amount_paid,
-  // adm_flat_fees uses amount; adm_app_id is the GCC column on all three).
-  let originalRow = null
-  try {
-    const { data } = await supabase.from(table).select('*').eq('id', id).maybeSingle()
-    originalRow = data || null
-  } catch (e) { console.warn('revertFeeCollection: could not fetch original row for audit log', e) }
-
-  const updates = {
-    reverted: true,
-    reverted_at: new Date().toISOString(),
-    reverted_by: revertedBy,
-    revert_reason: reason || null,
-  }
-  // Flat fees are also gated on `paid` everywhere else in the app —
-  // flip it so every existing filter keeps working with zero other changes.
-  if (table === TABLES.admFlatFees) updates.paid = false
-
-  const { error } = await supabase.from(table).update(updates).eq('id', id)
-  if (error) throw error
-
-  if (accountSourceRef && accountSourceType) {
-    // Soft-delete the accounts ledger row so it is recoverable and auditable
-    const { data: acctRows } = await supabase.from(TABLES.accounts)
-      .select('id')
-      .eq('source_ref', accountSourceRef)
-      .eq('source_type', accountSourceType)
-    for (const row of (acctRows || [])) {
-      await supabase.from(TABLES.accounts).update({
-        is_soft_deleted: true,
-        deleted_by: revertedBy,
-        deleted_at: new Date().toISOString(),
-      }).eq('id', row.id)
-      try {
-        await supabase.from('audit_log').insert({
-          action: 'fee_revert', changed_by: revertedBy, target_id: row.id,
-          old_values: JSON.stringify({
-            source_ref: accountSourceRef, source_type: accountSourceType, revert_reason: reason,
-            gcc: originalRow?.adm_app_id ?? null,
-            amount: originalRow?.amount ?? originalRow?.amount_paid ?? null,
-            pay_mode: originalRow?.pay_mode ?? null,
-            receipt_no: originalRow?.receipt_no ?? null,
-          }),
-          created_at: new Date().toISOString(),
-        })
-      } catch (e) { console.warn('Audit log failed during revert', e) }
-    }
-  }
-}
-
-// ─── Correct a mistakenly-entered payment date (admin) ───────────────────────
-// Fixes the date on the source row AND on the matching `accounts` entry, so
-// the books and the collection record never disagree. Does not touch
-
-// =============================================================================
-// 8c. collectFee — SINGLE SOURCE OF TRUTH FOR ALL FEE WRITES
-// =============================================================================
-// Every fee write in the portal goes through this one function.
-// Fees.jsx (FeePaymentTab) and FeeCollectionModal.jsx both call this.
-// Fixes: INSERT vs UPSERT, missing revert fields, wrong source_type,
-//        missing subtype column, no audit trail from FeeCollectionModal.
-//
-// items[] shapes:
-//   { kind: 'admission', amount }
-//   { kind: 'item',      label, amount }          <- dress/prospectus
-//   { kind: 'flat',      month, year, amount, isAdvance?, advanceAuthorizedBy? }
-//   { kind: 'course',    course, subtype, month, year, amount, isAdvance?, advanceAuthorizedBy? }
-//   { kind: 'advance',   label, amount }
-//
-// isAdvance / advanceAuthorizedBy (flat + course only): set when the caller
-// is collecting for a month that hasn't started yet — a genuine authorized
-// advance, not the "staff picked the wrong month by accident" bug this was
-// built to distinguish from (see the future_month_tag anomaly check in
-// Fees.jsx). advanceAuthorizedBy should be the admin's name/id who entered
-// their PIN to approve it; the caller (FeeCollectionModal) is responsible
-// for actually verifying the PIN before setting these fields — collectFee
-// just persists whatever it's given, so the same claim shows up consistently
-// on the row, the receipt, and every report/anomaly check downstream.
-//
-// Requires these ADDITIONAL columns (nullable) on adm_flat_fees and
-// adm_course_fees, alongside the existing revert columns:
-//   is_advance boolean DEFAULT false NOT NULL,
-//   advance_authorized_by text
-//
-// Returns { sections, total, skipped } ready for printReceipt(). `skipped`
-// lists any items that were not charged because they were already paid
-// (server-side check, not just the client's cache) — callers can surface
-// this to staff instead of silently under-charging or double-charging.
-//
-// ── Bug fix #1 (data-integrity): the collection-table write (adm_fee_
-//    collections / adm_flat_fees / adm_course_fees) and the accounts-ledger
-//    write (upsertAccount) are two separate Supabase calls — Supabase's JS
-//    client has no cross-table transaction. Previously, if the accounts
-//    write failed after the collection write succeeded, the fee was
-//    recorded as paid in the collection table but silently missing from
-//    the books — exactly the ₹86,300 gap found in an earlier session.
-//    Fix: every write below is now wrapped so that if upsertAccount throws,
-//    the just-written collection row is deleted again (rolled back) before
-//    the error propagates — so a failure always leaves BOTH tables in their
-//    pre-call state, never one-written-one-missing. Nothing is left
-//    half-saved either way.
-//
-// ── Bug fix #2 (duplicate charge): admission/item kinds previously had no
-//    server-side "already paid" check — only the modal's client-side cache
-//    stopped a double-charge. Now uses checkAdmItemExists the same way
-//    flat/course already used checkFlatFeeExists/checkCourseFeeExists.
-// =============================================================================
-export const collectFee = async ({
-  gcc, studentName, admNo = '--', className = '', course = '',
-  hostelType = 'Day Scholar', payDate, payMode = 'Cash',
-  txnRef = null, collectedBy = 'Admin',
-  studentId = null, receiptNo, items = [],
-}) => {
-  if (!gcc)       throw new Error('collectFee: gcc is required')
-  if (!payDate)   throw new Error('collectFee: payDate is required')
-  if (!receiptNo) throw new Error('collectFee: receiptNo is required')
-  if (!items.length) throw new Error('collectFee: at least one item is required')
-
-  const noRevert = { reverted: false, reverted_at: null, reverted_by: null, revert_reason: null }
-  const admItems = [], flatItems = [], crsfItems = [], sections = [], skipped = []
-
-  // Runs an upsertAccount call; if it throws, deletes the collection-table
-  // row just written (by table+id) so nothing is left half-saved, then
-  // re-throws so the caller sees the original failure.
-  const upsertAccountOrRollback = async (accountPayload, rollbackTable, rollbackId) => {
-    try {
-      await upsertAccount(accountPayload)
-    } catch (err) {
-      try {
-        await supabase.from(rollbackTable).delete().eq('id', rollbackId)
-      } catch (rollbackErr) {
-        console.error(`collectFee: rollback of ${rollbackTable} id=${rollbackId} also failed after accounts write failed`, rollbackErr)
-        throw new Error(
-          `Payment save failed AND rollback failed — ${rollbackTable} row "${rollbackId}" may be ` +
-          `recorded as paid without a matching accounts entry. Please check manually. Original error: ${err.message}`
-        )
-      }
-      throw err
-    }
+    data = ctx.getImageData(0, 0, w, h).data
+  } catch {
+    return { ok: true, reason: 'unreadable' } // don't block on a read failure (e.g. CORS on some devices)
   }
 
-  for (const item of items) {
-
-    // 1. ADMISSION FEE
-    if (item.kind === 'admission') {
-      const already = await checkAdmItemExists(gcc, 'Admission Fee')
-      if (already) { skipped.push('Admission Fee'); continue }
-      const rowId = `${receiptNo}-adm`
-      const { error } = await supabase.from(TABLES.admFeeCollections).upsert({
-        id: rowId, adm_app_id: gcc, fee_type: 'admission',
-        amount_paid: item.amount, pay_date: payDate, pay_mode: payMode,
-        txn_ref: txnRef || null, description: 'Admission Fee',
-        receipt_no: receiptNo, student_name: studentName,
-        adm_no: admNo, class_name: className || null, collected_by: collectedBy,
-        ...noRevert,
-      }, { onConflict: 'id' })
-      if (error) throw new Error('Admission fee save failed: ' + error.message)
-      await upsertAccountOrRollback({
-        entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Admission',
-        amount: item.amount, payment_mode: payMode,
-        note: `${studentName} · Admission Fee · ${receiptNo}`,
-        source_ref: sourceRef.admission(gcc), source_type: 'adm_fee',
-      }, TABLES.admFeeCollections, rowId)
-      admItems.push({ label: 'Admission Fee', amount: item.amount })
-    }
-
-    // 2. DRESS / ITEM
-    else if (item.kind === 'item') {
-      const lbl = item.label || 'Item'
-      const already = await checkAdmItemExists(gcc, lbl)
-      if (already) { skipped.push(lbl); continue }
-      const itemKey = lbl.replace(/^Dress Kit — /, '').toLowerCase().replace(/\s+/g, '_')
-      const rowId   = `${receiptNo}-item-${itemKey}`
-      const sRef    = lbl.toLowerCase().includes('prospectus')
-        ? sourceRef.admItem(gcc, 'prospectus')
-        : sourceRef.admItem(gcc, lbl.replace(/^Dress Kit — /, ''))
-      const { error } = await supabase.from(TABLES.admFeeCollections).upsert({
-        id: rowId, adm_app_id: gcc, fee_type: 'item',
-        amount_paid: item.amount, pay_date: payDate, pay_mode: payMode,
-        txn_ref: txnRef || null, description: lbl,
-        receipt_no: receiptNo, student_name: studentName,
-        adm_no: admNo, class_name: className || null, collected_by: collectedBy,
-        ...noRevert,
-      }, { onConflict: 'id' })
-      if (error) throw new Error(`Item (${lbl}) save failed: ` + error.message)
-      await upsertAccountOrRollback({
-        entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Admission',
-        amount: item.amount, payment_mode: payMode,
-        note: `${studentName} · ${lbl} · ${receiptNo}`,
-        source_ref: sRef, source_type: 'adm_fee',
-      }, TABLES.admFeeCollections, rowId)
-      admItems.push({ label: lbl, amount: item.amount })
-    }
-
-    // 3. FLAT FEE
-    else if (item.kind === 'flat') {
-      const alreadyPaid = await checkFlatFeeExists(gcc, item.month, item.year)
-      if (alreadyPaid) { skipped.push(`${item.month} ${item.year} Flat Fee`); console.warn(`collectFee: flat ${item.month} ${item.year} already paid for GCC-${gcc}`); continue }
-      const flatId = `${gcc}_flat_${item.month.slice(0, 3).toLowerCase()}_${item.year}`
-      const sRef   = sourceRef.flatFee(gcc, item.month, item.year)
-      // Fee-period month (e.g. "2026-02"), not the entry/pay date's month —
-      // so mirrorToFeeInvoice files a backdated Feb payment under Feb, not
-      // under whatever month it was actually keyed in.
-      const invoiceMonth = `${item.year}-${String(new Date(`${item.month} 1, ${item.year}`).getMonth() + 1).padStart(2, '0')}`
-      const { error } = await supabase.from(TABLES.admFlatFees).upsert({
-        id: flatId, adm_app_id: gcc, month: item.month, year: item.year,
-        amount: item.amount, hostel_type: hostelType, paid: true,
-        pay_date: payDate, pay_mode: payMode, txn_ref: txnRef || null,
-        receipt_no: receiptNo, student_name: studentName, adm_no: admNo,
-        is_advance: !!item.isAdvance, advance_authorized_by: item.isAdvance ? (item.advanceAuthorizedBy || null) : null,
-        ...noRevert,
-      }, { onConflict: 'id' })
-      if (error) throw new Error(`Flat fee ${item.month} save failed: ` + error.message)
-      await upsertAccountOrRollback({
-        entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Hostel',
-        amount: item.amount, payment_mode: payMode,
-        note: `${studentName} · ${item.month} ${item.year} Flat Fee [${hostelType}] · ${receiptNo}`,
-        source_ref: sRef, source_type: 'flat_fee',
-      }, TABLES.admFlatFees, flatId)
-      await mirrorToFeeInvoice({
-        gcc, studentId, studentName, course, hostelType, className,
-        feeType: 'Monthly Flat Fee', amount: item.amount, payDate, invoiceMonth,
-      })
-      flatItems.push({ label: `${item.month} ${item.year} [${hostelType}]${item.isAdvance ? ' · ADVANCE (authorized)' : ''}`, amount: item.amount })
-    }
-
-    // 4. COURSE FEE
-    else if (item.kind === 'course') {
-      const yr  = item.year || CURRENT_YEAR
-      const crs = item.course || course
-      const sub = item.subtype || ''
-      const alreadyPaid = await checkCourseFeeExists(gcc, item.month, yr)
-      if (alreadyPaid) { skipped.push(`${item.month} ${yr} Course Fee`); console.warn(`collectFee: course ${item.month} ${yr} already paid for GCC-${gcc}`); continue }
-      const recId = `${gcc}_course_${item.month.slice(0, 3).toLowerCase()}_${yr}`
-      const sRef  = sourceRef.courseFee(gcc, item.month, yr)
-      // Fee-period month, same reasoning as the flat-fee branch above.
-      const invoiceMonth = `${yr}-${String(new Date(`${item.month} 1, ${yr}`).getMonth() + 1).padStart(2, '0')}`
-      const { error } = await supabase.from(TABLES.admCourseFees).upsert({
-        id: recId, adm_app_id: gcc, course: crs, subtype: sub,
-        hostel_type: hostelType, for_month: item.month, year: yr,
-        amount_paid: item.amount, pay_date: payDate, pay_mode: payMode,
-        txn_ref: txnRef || null, receipt_no: receiptNo,
-        student_name: studentName, adm_no: admNo,
-        is_advance: !!item.isAdvance, advance_authorized_by: item.isAdvance ? (item.advanceAuthorizedBy || null) : null,
-        // Rate-override note (set by FeeCollectionModal when the collected
-        // amount was edited away from the configured course fee by more
-        // than its discrepancy threshold). Explains WHY a below/above-rate
-        // amount was collected, instead of the shortfall only being
-        // discoverable later by cross-referencing fee_structures.
-        ...(item.note ? { override_note: item.note } : {}),
-        ...noRevert,
-      }, { onConflict: 'id' })
-      if (error) throw new Error(`Course fee ${item.month} save failed: ` + error.message)
-      await upsertAccountOrRollback({
-        entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Fees',
-        amount: item.amount, payment_mode: payMode,
-        note: item.note
-          ? `${studentName} · ${crs}${sub ? ' ' + sub : ''} ${item.month} · ${receiptNo} · ${item.note}`
-          : `${studentName} · ${crs}${sub ? ' ' + sub : ''} ${item.month} · ${receiptNo}`,
-        source_ref: sRef, source_type: 'course_fee',
-      }, TABLES.admCourseFees, recId)
-      await mirrorToFeeInvoice({
-        gcc, studentId, studentName, course: crs, hostelType, className,
-        feeType: 'Course Fee', amount: item.amount, payDate, invoiceMonth,
-      })
-      crsfItems.push({ label: `${crs}${sub ? ' · ' + sub : ''} — ${item.month}${item.isAdvance ? ' · ADVANCE (authorized)' : ''}`, amount: item.amount })
-    }
-
-    // 5. ADVANCE
-    else if (item.kind === 'advance') {
-      const advId = sourceRef.advance(gcc, Date.now())
-      const { error } = await supabase.from(TABLES.admFeeCollections).upsert({
-        id: advId, adm_app_id: gcc, fee_type: 'advance',
-        amount_paid: item.amount, advance_for: item.label || '',
-        pay_date: payDate, pay_mode: payMode, txn_ref: txnRef || null,
-        description: 'Advance — ' + (item.label || ''),
-        receipt_no: receiptNo, student_name: studentName,
-        adm_no: admNo, class_name: className || null, collected_by: collectedBy,
-        ...noRevert,
-      }, { onConflict: 'id' })
-      if (error) throw new Error('Advance fee save failed: ' + error.message)
-      await upsertAccountOrRollback({
-        entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Advance',
-        amount: item.amount, payment_mode: payMode,
-        note: `${studentName} · Advance (${item.label || ''}) · ${receiptNo}`,
-        source_ref: advId, source_type: 'advance_fee',
-      }, TABLES.admFeeCollections, advId)
-      sections.push({ title: 'Advance', color: '#b45309',
-        items: [{ label: item.label || 'Advance', amount: item.amount }],
-        subtotal: item.amount })
-    }
+  let total = 0
+  let overexposedCount = 0
+  let underexposedCount = 0
+  const pixelCount = w * h
+  for (let i = 0; i < data.length; i += 4) {
+    const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3
+    total += brightness
+    if (brightness > 240) overexposedCount++
+    if (brightness < 25) underexposedCount++
   }
+  const avgBrightness = total / pixelCount
+  const overexposedRatio = overexposedCount / pixelCount
+  const underexposedRatio = underexposedCount / pixelCount
 
-  // Build receipt sections
-  if (admItems.length)  sections.unshift({ title: 'Admission Package',           color: '#4f46e5', items: admItems,  subtotal: admItems.reduce((s, i) => s + i.amount, 0) })
-  if (flatItems.length) sections.push(   { title: `Monthly Flat Fees — ${hostelType}`, color: '#059669', items: flatItems, subtotal: flatItems.reduce((s, i) => s + i.amount, 0) })
-  if (crsfItems.length) sections.push(   { title: 'Course Fees',                 color: '#7c3aed', items: crsfItems, subtotal: crsfItems.reduce((s, i) => s + i.amount, 0) })
+  // Too dark overall
+  if (avgBrightness < 40) return { ok: false, reason: 'too_dark' }
+  // Strong backlight — bright ceiling/window behind a dark face, exactly
+  // the pattern in a photo taken under an overhead light with no fill light
+  // on the face itself.
+  if (overexposedRatio > 0.25 && underexposedRatio > 0.15) return { ok: false, reason: 'backlit' }
+  // Blown-out overall (camera pointed near a light source)
+  if (avgBrightness > 235) return { ok: false, reason: 'too_bright' }
 
-  const total = sections.reduce((s, sec) => s + sec.subtotal, 0)
-  return { sections, total, skipped }
-}
-
-// deleteLegacyFeeRecord — admin hard-delete for the legacy `fees` table only.
-// Live tables (adm_fee_collections / adm_flat_fees / adm_course_fees) are
-// always soft-reverted via revertFeeCollection so there is always an audit trail.
-export const deleteLegacyFeeRecord = async (id, role = 'admin') => {
-  if (!id) throw new Error('deleteLegacyFeeRecord: id is required')
-  const { data: original } = await supabase.from('fees').select('*').eq('id', id).maybeSingle()
-  const { error } = await supabase.from('fees').delete().eq('id', id)
-  if (error) throw new Error('Delete failed: ' + error.message)
-  try {
-    await supabase.from('audit_log').insert({
-      action: 'legacy_fee_delete', changed_by: role, target_id: id,
-      old_values: original ? JSON.stringify(original) : null,
-      created_at: new Date().toISOString(),
-    })
-  } catch (e) { console.warn('Audit log failed', e) }
-}
-
-// amount/mode/anything else — date-only correction.
-export const correctFeeCollectionDate = async ({
-  table, id, newDate, accountSourceRef = null, accountSourceType = null,
-}) => {
-  if (!table || !id || !newDate) throw new Error('correctFeeCollectionDate: table, id and newDate are required')
-
-  const { error } = await supabase.from(table).update({ pay_date: newDate }).eq('id', id)
-  if (error) throw error
-
-  if (accountSourceRef && accountSourceType) {
-    await supabase.from(TABLES.accounts)
-      .update({ entry_date: newDate, payment_date: newDate })
-      .eq('source_ref', accountSourceRef)
-      .eq('source_type', accountSourceType)
-  }
-}
-
-export const getStudentFeeSummary = async (studentId, sessionYear) => {
-  const [invRes, payRes] = await Promise.all([
-    supabase.from(TABLES.feeInvoices).select('*').eq('student_id', studentId).eq('session_year', sessionYear).order('invoice_month', { ascending: true }),
-    supabase.from(TABLES.feePayments).select('*').eq('student_id', studentId).order('paid_at', { ascending: false }),
-  ])
-  const invoices = invRes.data || []
-  const payments = payRes.data || []
-  return {
-    invoices, payment_history: payments,
-    total_expected: invoices.reduce((s, i) => s + (Number(i.total_amount) || 0), 0),
-    total_paid:     invoices.reduce((s, i) => s + (Number(i.amount_paid)  || 0), 0),
-    total_due:      invoices.reduce((s, i) => s + (Number(i.amount_due)   || 0), 0),
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 10. RECORD PAYMENT
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * ✦ Bug fix #7: this was the one fee-write path in the file that never
- *   touched `accounts` at all — every payment recorded here (fee_invoices +
- *   fee_payments) was completely invisible to the books, with no equivalent
- *   of the rollback-guarded upsertAccount used everywhere else in collectFee.
- *   Now inserts a matching Income row the same way collectFee does. If that
- *   accounts write fails, the fee_payments insert and the fee_invoices
- *   balance update are rolled back so this path has the same all-or-nothing
- *   guarantee as collectFee, rather than a silent books gap.
- */
-export const recordPayment = async ({ invoiceId, amount, method }) => {
-  const amt = parseFloat(amount)
-  if (!amt || amt <= 0) throw new Error('Invalid payment amount')
-  const { data: inv, error: invErr } = await supabase.from(TABLES.feeInvoices).select('*').eq('id', invoiceId).single()
-  if (invErr) throw invErr
-  const newPaid = parseFloat(inv.amount_paid || 0) + amt
-  const newDue  = Math.max(0, parseFloat(inv.total_amount || 0) - newPaid)
-  const status  = newDue <= 0 ? INVOICE_STATUS.PAID : INVOICE_STATUS.PARTIAL
-
-  const { data: payment, error: payErr } = await supabase.from(TABLES.feePayments)
-    .insert({ invoice_id: invoiceId, student_id: inv.student_id, amount: amt, method: method || 'Cash', paid_at: new Date().toISOString() })
-    .select().single()
-  if (payErr) throw payErr
-
-  const { error: updErr } = await supabase.from(TABLES.feeInvoices).update({ amount_paid: newPaid, amount_due: newDue, status, last_payment_at: new Date().toISOString() }).eq('id', invoiceId)
-  if (updErr) {
-    await supabase.from(TABLES.feePayments).delete().eq('id', payment.id)
-    throw updErr
-  }
-
-  const payDate = new Date().toLocaleDateString('en-CA')
-  try {
-    await upsertAccount({
-      entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Fees',
-      amount: amt, payment_mode: method || 'Cash',
-      note: `${inv.student_name || 'Student'} · ${inv.fee_type || 'Fee'} (${inv.invoice_month || ''}) · Payment ${payment.id}`,
-      source_ref: `fee_payment_${payment.id}`, source_type: 'fee_payment',
-    })
-  } catch (err) {
-    // Roll back both writes above so this stays all-or-nothing, same as collectFee.
-    await supabase.from(TABLES.feePayments).delete().eq('id', payment.id)
-    await supabase.from(TABLES.feeInvoices).update({
-      amount_paid: inv.amount_paid, amount_due: inv.amount_due, status: inv.status, last_payment_at: inv.last_payment_at,
-    }).eq('id', invoiceId)
-    throw new Error('Payment save failed while updating accounts: ' + err.message)
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 11. HOUSE OCCUPANCY — SHARED SOURCE OF TRUTH
-// ═══════════════════════════════════════════════════════════════════════════
-// Both Admissions.jsx (assigning a house to an applicant) and Hostel.jsx's
-// HouseTab (assigning/reassigning a house to an existing student) need the
-// same answer to "how full is this house, right now?" — this is that one
-// answer, computed live from real data instead of two separate hardcoded
-// guesses living in two separate files.
-//
-// "Occupancy" counts BOTH:
-//   - students already in the `students` table with this house (Hostel side)
-//   - admissions in flight (status Admitted/Enrolled) with this house, that
-//     haven't been promoted to a student row yet (Admissions side) — an
-//     applicant who has been assigned a bed but hasn't formally enrolled
-//     yet still occupies that bed in practice.
-// Counting only one side would let the two modules independently overbook
-// the same house without either one ever seeing the other's bookings.
-
-const _houseCapacityCache = {}  // key = house name, cleared on demand
-
-export const clearHouseCapacityCache = () => {
-  Object.keys(_houseCapacityCache).forEach(k => delete _houseCapacityCache[k])
-}
-
-/**
- * Returns { capacity, occupied, available, isFull } for one house, OR for
- * every house if `houseName` is omitted (returns an array instead).
- *
- * @param houseName - exact house name as stored in houses.name, or omit for all houses
- * @param excludeGcc - GCC number to exclude from the admissions-side count
- *                     (use this when re-checking a house an applicant is
- *                     ALREADY assigned to, so they don't count against
- *                     their own seat)
- */
-/**
- * ✦ Bug fix: house names are reused every session (e.g. "Kombirei" exists
- *   as a separate cohort in 2024-2025, 2025-2026, 2026-2027...). This
- *   previously summed EVERY student and admission ever assigned to that
- *   house name across ALL sessions combined — so occupancy could read
- *   wildly over capacity (e.g. 91/43) once a house name had been reused
- *   for a few years. Now scoped to a single session — pass the session
- *   whose occupancy you actually want to check.
- */
-export const getHouseOccupancy = async (houseName = null, excludeGcc = null, sessionName = null) => {
-  const { data: houses, error: housesErr } = await supabase
-    .from('houses')
-    .select('name, capacity')
-    .order('name')
-  if (housesErr) throw housesErr
-
-  const targetHouses = houseName
-    ? houses.filter(h => h.name.toLowerCase() === houseName.toLowerCase())
-    : houses
-  if (houseName && targetHouses.length === 0) {
-    throw new Error(`getHouseOccupancy: no house named "${houseName}" found in houses table`)
-  }
-
-  let studentsQuery = supabase.from(TABLES.students).select('house, session').not('house', 'is', null)
-  let admissionsQuery = supabase.from(TABLES.admissions).select('gcc_no, house, session').not('house', 'is', null).in('status', ['Admitted', 'Enrolled'])
-  if (sessionName) {
-    studentsQuery = studentsQuery.eq('session', sessionName)
-    admissionsQuery = admissionsQuery.eq('session', sessionName)
-  }
-
-  const [{ data: students, error: studentsErr }, { data: admissions, error: admissionsErr }] = await Promise.all([
-    studentsQuery, admissionsQuery,
-  ])
-  if (studentsErr) throw studentsErr
-  if (admissionsErr) throw admissionsErr
-
-  const norm = h => (h || '').toString().trim().toLowerCase()
-
-  const result = targetHouses.map(h => {
-    const studentCount = students.filter(s => norm(s.house) === norm(h.name)).length
-    const admissionCount = admissions.filter(a =>
-      norm(a.house) === norm(h.name) &&
-      String(a.gcc_no) !== String(excludeGcc)
-    ).length
-    const occupied = studentCount + admissionCount
-    const capacity = h.capacity ?? 40
-    return {
-      name: h.name,
-      capacity,
-      occupied,
-      available: Math.max(0, capacity - occupied),
-      isFull: occupied >= capacity,
-    }
-  })
-
-  return houseName ? result[0] : result
-}
-
-/**
- * Convenience check used right before assigning a house to an applicant or
- * student. Returns { ok: true } or { ok: false, reason } — never throws for
- * the "house is full" case, only for actual lookup errors, so callers can
- * show a clean toast instead of catching exceptions for normal business logic.
- */
-export const checkHouseCapacity = async (houseName, excludeGcc = null, sessionName = null) => {
-  if (!houseName) return { ok: true }  // unassigning / no house selected is always fine
-  try {
-    const occ = await getHouseOccupancy(houseName, excludeGcc, sessionName)
-    if (!occ) return { ok: false, reason: `House "${houseName}" not found` }
-    if (occ.isFull) {
-      return { ok: false, reason: `${houseName} is full (${occ.occupied}/${occ.capacity}) — choose another house or increase capacity in Hostel → Houses` }
-    }
-    return { ok: true, occupied: occ.occupied, capacity: occ.capacity }
-  } catch (err) {
-    // Lookup failure (network, etc.) — fail OPEN with a warning rather than
-    // blocking staff from completing an admission over a transient error.
-    console.error('checkHouseCapacity lookup failed:', err)
-    return { ok: true, warning: 'Could not verify house capacity — proceeding anyway' }
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 12. PROMOTE ADMISSION → STUDENT
-// ═══════════════════════════════════════════════════════════════════════════
-
-export const promoteToStudent = async (admission) => {
-  const gccNo = parseInt(admission.gcc || admission.gcc_no)
-  const { data: existing } = await supabase.from(TABLES.students).select('id').eq('gcc_no', gccNo).maybeSingle()
-  if (existing) return { created: false, id: existing.id }
-
-  // Re-verify house capacity at the actual moment of enrollment, not just
-  // at the moment the house was first picked in the Admissions form. Time
-  // may have passed; other students may have filled the house since.
-  // `excludeGcc: gccNo` because this exact applicant already "occupies" a
-  // notional seat in getHouseOccupancy's admissions-side count — we don't
-  // want them double-counted against their own seat.
-  let houseWarning = null
-  if (admission.house) {
-    const check = await checkHouseCapacity(admission.house, gccNo, admission.session)
-    if (!check.ok) {
-      // Don't silently drop the house — don't silently keep it either.
-      // Surface this back to the caller (Admissions.jsx's handleEnroll) so
-      // staff sees it, rather than the student landing in an invisible
-      // overflow the way the old code allowed.
-      throw new Error(`Cannot enroll: ${check.reason}`)
-    }
-    if (check.warning) houseWarning = check.warning
-  }
-
-  const payload = {
-    gcc_no: gccNo, name: admission.name || admission.applicant_name || '',
-    dob: admission.dob || null, gender: admission.gender || null,
-    course: admission.course || null, batch: admission.cls || admission.batch || null,
-    house: admission.house || null, session: admission.session || null,
-    hostel_type: admission.hostel_type || 'Day Scholar', status: 'Active',
-    father_name: admission.father || admission.father_name || null,
-    mother_name: admission.mother || admission.mother_name || null,
-    phone: admission.phone || null, address: admission.address || null,
-  }
-  const { data, error } = await supabase.from(TABLES.students).insert(payload).select().single()
-  if (error) throw error
-  clearHouseCapacityCache()
-  return { created: true, id: data.id, houseWarning }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 12. PRINT RECEIPT
-// ═══════════════════════════════════════════════════════════════════════════
-
-export const buildReceiptHTML = ({
-  receipt_no, pay_date, pay_mode, txn_ref, collected_by,
-  student_name, adm_no, gcc_no, class_name, course, hostel_type,
-  sections = [], items = [], total = 0,
-}) => {
-  const fmtAmt = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
-  const allSections = [
-    ...sections,
-    ...(items.length > 0 ? [{ title: '', color: '#1e3a5f', items, subtotal: items.reduce((s, i) => s + (Number(i.amount) || 0), 0) }] : []),
-  ]
-  const sectionHtml = allSections.map(sec => `
-    <div style="margin-bottom:14px;">
-      ${sec.title ? `<div style="background:${sec.color}18;border-left:3px solid ${sec.color};padding:6px 10px;font-weight:700;font-size:13px;color:${sec.color};margin-bottom:6px;">${sec.title}</div>` : ''}
-      ${sec.items.map(it => `<div style="display:flex;justify-content:space-between;padding:4px 10px;font-size:12px;color:#334155;"><span>${it.label}</span><span style="font-weight:600;">${fmtAmt(it.amount)}</span></div>`).join('')}
-      ${allSections.length > 1 ? `<div style="display:flex;justify-content:space-between;padding:5px 10px;font-size:12px;font-weight:700;border-top:1px solid #e2e8f0;margin-top:4px;color:${sec.color||'#1e3a5f'}"><span>Subtotal</span><span>${fmtAmt(sec.subtotal)}</span></div>` : ''}
-    </div>`).join('')
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:system-ui,sans-serif;padding:24px;max-width:480px;margin:auto;color:#0f172a;}@media print{body{padding:0}}</style></head><body>
-    <div style="text-align:center;margin-bottom:18px;border-bottom:2px solid #1e3a5f;padding-bottom:14px;">
-      <div style="font-size:18px;font-weight:800;color:#1e3a5f;">${INSTITUTE.name}</div>
-      <div style="font-size:12px;color:#64748b;margin-top:3px;">${INSTITUTE.address}</div>
-      <div style="font-size:20px;font-weight:900;color:#4f46e5;margin-top:8px;letter-spacing:1px;">FEE RECEIPT</div>
-      <div style="font-size:12px;color:#64748b;margin-top:2px;">${receipt_no}</div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px;background:#f8fafc;border-radius:8px;padding:10px 12px;font-size:12px;">
-      <div><span style="color:#94a3b8;">Student</span><br/><strong>${student_name}</strong></div>
-      <div><span style="color:#94a3b8;">Adm. No.</span><br/><strong>${adm_no}</strong></div>
-      <div><span style="color:#94a3b8;">GCC No.</span><br/><strong>${gcc_no || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Class</span><br/><strong>${class_name || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Course</span><br/><strong>${course || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Hostel Type</span><br/><strong>${hostel_type || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Date</span><br/><strong>${pay_date}</strong></div>
-      <div><span style="color:#94a3b8;">Mode</span><br/><strong>${pay_mode}${txn_ref ? ' · ' + txn_ref : ''}</strong></div>
-      ${collected_by ? `<div><span style="color:#94a3b8;">Collected By</span><br/><strong>${collected_by}</strong></div>` : ''}
-    </div>
-    ${sectionHtml}
-    <div style="display:flex;justify-content:space-between;background:linear-gradient(135deg,#1e3a5f,#3730a3);color:white;padding:12px 14px;border-radius:8px;font-size:16px;font-weight:900;margin-top:8px;">
-      <span>GRAND TOTAL</span><span>${fmtAmt(total)}</span>
-    </div>
-    <div style="margin-top:24px;text-align:center;font-size:10px;color:#94a3b8;">This is a computer-generated receipt. No signature required.<br/>${INSTITUTE.short} · ${INSTITUTE.address}</div>
-    </body></html>`
-}
-
-export const printReceipt = ({
-  receipt_no, pay_date, pay_mode, txn_ref, collected_by,
-  student_name, adm_no, gcc_no, class_name, course, hostel_type,
-  sections = [], items = [], total = 0,
-}) => {
-  const html = buildReceiptHTML({ receipt_no, pay_date, pay_mode, txn_ref, collected_by, student_name, adm_no, gcc_no, class_name, course, hostel_type, sections, items, total })
-  const win = window.open('', '_blank', 'width=520,height=750')
-  if (!win) { alert('Allow pop-ups to print receipt'); return }
-  win.document.write(html)
-  win.document.close()
-  win.focus()
-  setTimeout(() => { win.print(); win.close() }, 400)
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SCHOLARSHIP / FEE WAIVER — printable request form & approval certificate
-// ═══════════════════════════════════════════════════════════════════════════
-// Two documents for the stepwise scholarship/waiver process: a signed
-// request form (printed at submission, before admin review) and a signed
-// approval certificate (printed after admin approves). Both reuse the same
-// letterhead style as printReceipt above for visual consistency across the
-// portal's printed documents.
-
-const _fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'
-
-function buildScholarshipRequestFormHTML({ ref_no, type, amount, reason, student_name, gcc_no, course, batch, hostel_type, requested_by, requested_at }) {
-  const typeLabel = type === 'scholarship' ? 'Scholarship' : 'Fee Waiver'
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:system-ui,sans-serif;padding:24px;max-width:560px;margin:auto;color:#0f172a;}@media print{body{padding:0}}</style></head><body>
-    <div style="text-align:center;margin-bottom:18px;border-bottom:2px solid #1e3a5f;padding-bottom:14px;">
-      <div style="font-size:18px;font-weight:800;color:#1e3a5f;">${INSTITUTE.name}</div>
-      <div style="font-size:12px;color:#64748b;margin-top:3px;">${INSTITUTE.address}</div>
-      <div style="font-size:20px;font-weight:900;color:#059669;margin-top:8px;letter-spacing:1px;">${typeLabel.toUpperCase()} REQUEST FORM</div>
-      <div style="font-size:12px;color:#64748b;margin-top:2px;">${ref_no}</div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px;background:#f8fafc;border-radius:8px;padding:10px 12px;font-size:12px;">
-      <div><span style="color:#94a3b8;">Student</span><br/><strong>${student_name}</strong></div>
-      <div><span style="color:#94a3b8;">GCC No.</span><br/><strong>${gcc_no || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Course</span><br/><strong>${course || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Batch</span><br/><strong>${batch || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Hostel Type</span><br/><strong>${hostel_type || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Request Date</span><br/><strong>${_fmtDate(requested_at)}</strong></div>
-    </div>
-    <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:12px 14px;margin-bottom:16px;">
-      <div style="font-size:11px;color:#065f46;text-transform:uppercase;font-weight:700;letter-spacing:.5px;">${typeLabel} Requested</div>
-      <div style="font-size:22px;font-weight:900;color:#059669;margin-top:4px;">₹${Number(amount || 0).toLocaleString('en-IN')} / month</div>
-    </div>
-    <div style="margin-bottom:20px;">
-      <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:.5px;margin-bottom:4px;">Reason</div>
-      <div style="font-size:13px;line-height:1.6;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;min-height:44px;">${reason || '—'}</div>
-    </div>
-    <div style="font-size:11px;color:#94a3b8;margin-bottom:24px;">Requested by: <strong style="color:#334155;">${requested_by || 'Staff'}</strong></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:40px;">
-      <div style="text-align:center;">
-        <div style="border-top:1px solid #334155;padding-top:6px;font-size:11px;color:#64748b;">Requesting Staff Signature</div>
-      </div>
-      <div style="text-align:center;">
-        <div style="border-top:1px solid #334155;padding-top:6px;font-size:11px;color:#64748b;">Parent / Guardian Signature</div>
-      </div>
-    </div>
-    <div style="margin-top:24px;text-align:center;font-size:10px;color:#94a3b8;">This request is pending admin approval and does not take effect until approved.<br/>${INSTITUTE.short} · ${INSTITUTE.address}</div>
-    </body></html>`
-}
-
-export const printScholarshipRequestForm = (record, student) => {
-  const html = buildScholarshipRequestFormHTML({
-    ref_no: `GNSI/SW-REQ/${record.id || 'DRAFT'}`,
-    type: record.type, amount: record.amount, reason: record.reason,
-    student_name: student?.name, gcc_no: student?.gcc_no,
-    course: student?.course, batch: student?.batch, hostel_type: student?.hostel_type,
-    requested_by: record.requested_by, requested_at: record.requested_at || new Date().toISOString(),
-  })
-  const win = window.open('', '_blank', 'width=560,height=750')
-  if (!win) { alert('Allow pop-ups to print the request form'); return }
-  win.document.write(html)
-  win.document.close()
-  win.focus()
-  setTimeout(() => { win.print() }, 400)
-}
-
-function buildScholarshipCertificateHTML({ ref_no, type, amount, reason, student_name, gcc_no, course, batch, hostel_type, requested_by, requested_at, approved_by, approved_at }) {
-  const typeLabel = type === 'scholarship' ? 'Scholarship' : 'Fee Waiver'
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:system-ui,sans-serif;padding:24px;max-width:560px;margin:auto;color:#0f172a;}@media print{body{padding:0}}</style></head><body>
-    <div style="text-align:center;margin-bottom:18px;border-bottom:3px double #1e3a5f;padding-bottom:14px;">
-      <div style="font-size:18px;font-weight:800;color:#1e3a5f;">${INSTITUTE.name}</div>
-      <div style="font-size:12px;color:#64748b;margin-top:3px;">${INSTITUTE.address}</div>
-      <div style="font-size:20px;font-weight:900;color:#1e3a5f;margin-top:8px;letter-spacing:1px;">${typeLabel.toUpperCase()} APPROVAL CERTIFICATE</div>
-      <div style="font-size:12px;color:#64748b;margin-top:2px;">${ref_no}</div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px;background:#f8fafc;border-radius:8px;padding:10px 12px;font-size:12px;">
-      <div><span style="color:#94a3b8;">Student</span><br/><strong>${student_name}</strong></div>
-      <div><span style="color:#94a3b8;">GCC No.</span><br/><strong>${gcc_no || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Course</span><br/><strong>${course || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Batch</span><br/><strong>${batch || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Hostel Type</span><br/><strong>${hostel_type || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Requested</span><br/><strong>${_fmtDate(requested_at)}</strong></div>
-    </div>
-    <div style="background:linear-gradient(135deg,#1e3a5f,#3730a3);color:white;border-radius:8px;padding:14px 16px;margin-bottom:16px;">
-      <div style="font-size:11px;opacity:.8;text-transform:uppercase;font-weight:700;letter-spacing:.5px;">${typeLabel} Approved</div>
-      <div style="font-size:24px;font-weight:900;margin-top:4px;">₹${Number(amount || 0).toLocaleString('en-IN')} / month</div>
-    </div>
-    <div style="margin-bottom:20px;">
-      <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:.5px;margin-bottom:4px;">Reason</div>
-      <div style="font-size:13px;line-height:1.6;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;">${reason || '—'}</div>
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;margin-bottom:24px;">
-      <span>Requested by: <strong style="color:#334155;">${requested_by || 'Staff'}</strong></span>
-      <span>Approved: <strong style="color:#334155;">${_fmtDate(approved_at)}</strong></span>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:48px;">
-      <div style="text-align:center;">
-        <div style="border-top:1px solid #334155;padding-top:6px;font-size:11px;color:#64748b;">${approved_by || 'Administrator'}<br/>Approving Administrator</div>
-      </div>
-      <div style="text-align:center;">
-        <div style="border-top:1px solid #334155;padding-top:6px;font-size:11px;color:#64748b;">Institutional Seal</div>
-      </div>
-    </div>
-    <div style="margin-top:24px;text-align:center;font-size:10px;color:#94a3b8;">This certificate confirms the ${typeLabel.toLowerCase()} is now in effect on the student's fee account.<br/>${INSTITUTE.short} · ${INSTITUTE.address}</div>
-    </body></html>`
-}
-
-export const printScholarshipApprovalCertificate = (record, student) => {
-  const html = buildScholarshipCertificateHTML({
-    ref_no: `GNSI/SW-APP/${record.id}`,
-    type: record.type, amount: record.amount, reason: record.reason,
-    student_name: student?.name, gcc_no: student?.gcc_no,
-    course: student?.course, batch: student?.batch, hostel_type: student?.hostel_type,
-    requested_by: record.requested_by, requested_at: record.requested_at,
-    approved_by: record.approved_by, approved_at: record.approved_at,
-  })
-  const win = window.open('', '_blank', 'width=560,height=750')
-  if (!win) { alert('Allow pop-ups to print the certificate'); return }
-  win.document.write(html)
-  win.document.close()
-  win.focus()
-  setTimeout(() => { win.print() }, 400)
+  return { ok: true, reason: 'good', avgBrightness }
 }
