@@ -13,7 +13,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from './supabase'
 import FaceEnroll, { FaceApprovalQueue } from './FaceEnroll'
 import GeoAttendance from './GeoAttendance'
-import { AttendanceSummaryView, ReportsView, BroadcastView, NotificationsView } from './FaceAttendanceExtras'
+import { AttendanceSummaryView, ReportsView, BroadcastView, NotificationsView, RegularizationView } from './FaceAttendanceExtras'
 import SettingsView from './SettingsView'
 
 const S = {
@@ -594,6 +594,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
     { key: 'timecard', icon: '🕐', label: 'Time card' },
     { key: 'advances', icon: '💵', label: 'Advances' },
     { key: 'fines',    icon: '⏰', label: 'Late fines' },
+    { key: 'regularization', icon: '🛠️', label: 'Correct attendance' },
     { key: 'reports',  icon: '📊', label: 'Reports' },
     { key: 'broadcast', icon: '📣', label: 'Broadcast messages' },
     { key: 'notifications', icon: '🔔', label: 'Notifications' },
@@ -607,7 +608,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
 
   const pageTitles = {
     checkin: 'Take attendance', attendancesummary: 'Attendance', timecard: 'Time card', advances: 'Advances',
-    fines: 'Late fines', reports: 'Reports', broadcast: 'Broadcast messages', notifications: 'Notifications',
+    fines: 'Late fines', regularization: 'Correct attendance', reports: 'Reports', broadcast: 'Broadcast messages', notifications: 'Notifications',
     coverage: 'Staff coverage', approvals: 'Pending approvals', cashbook: 'Cash book', settings: 'Settings',
   }
 
@@ -686,7 +687,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
 
           {tab === 'checkin' && loggedInStaff && (
             statusFor(loggedInStaff.id) === 'approved' ? (
-              <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} onCheckInSuccess={() => setTab('home')} />
+              <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} />
             ) : (
               <div style={S.card}>
                 <div style={{ textAlign: 'center', padding: '20px 10px' }}>
@@ -709,10 +710,11 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
             )
           )}
 
-          {tab === 'attendancesummary' && <AttendanceSummaryView isAdmin={isAdmin} staffList={filteredStaff} showToast={showToast} onNavigate={onNavigate} />}
+          {tab === 'attendancesummary' && <AttendanceSummaryView isAdmin={isAdmin} staffList={filteredStaff} showToast={showToast} onNavigate={onNavigate} currentUsername={currentUser?.username} />}
           {tab === 'timecard' && <TimeCard staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
           {tab === 'advances' && <AdvancesView staffId={staffId} isAdmin={isAdmin} staffList={staff} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />}
           {tab === 'fines'    && <LateFinesView staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
+          {tab === 'regularization' && <RegularizationView staffId={staffId} isAdmin={isAdmin} showToast={showToast} currentUsername={currentUser?.username} />}
           {tab === 'reports'  && <ReportsView isAdmin={isAdmin} staffList={staff} />}
           {tab === 'broadcast' && <BroadcastView isAdmin={isAdmin} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />}
           {tab === 'notifications' && <NotificationsView staffId={staffId} isAdmin={isAdmin} />}

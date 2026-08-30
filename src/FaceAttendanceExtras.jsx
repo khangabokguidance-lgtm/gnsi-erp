@@ -42,7 +42,7 @@ const MARK_META = {
   Leave:     { label: 'L',  color: '#2563eb', bg: '#dbeafe' },
 }
 
-export function AttendanceSummaryView({ isAdmin, staffList, showToast, onNavigate }) {
+export function AttendanceSummaryView({ isAdmin, staffList, showToast, onNavigate, currentUsername }) {
   const [date, setDate] = useState(isoDate(new Date()))
   const [search, setSearch] = useState('')
   const [geoRows, setGeoRows] = useState([])
@@ -91,11 +91,17 @@ export function AttendanceSummaryView({ isAdmin, staffList, showToast, onNavigat
 
   const setMark = async (staffId, status) => {
     setSavingId(staffId)
-    const { error } = await supabase.from('staff_attendance_marks').upsert(
-      { staff_id: staffId, date, status, updated_at: new Date().toISOString() },
-      { onConflict: 'staff_id,date' }
-    )
+    // Server-side enforced: set_attendance_mark checks the caller's actual
+    // portal_users role before writing, so this can't be bypassed by
+    // disabling the UI check alone (see 009_secure_attendance_marks.sql).
+    const { data, error } = await supabase.rpc('set_attendance_mark', {
+      p_acting_username: currentUsername,
+      p_staff_id: staffId,
+      p_date: date,
+      p_status: status,
+    })
     if (error) showToast?.('Could not save: ' + error.message, 'err')
+    else if (!data?.success) showToast?.(data?.message || 'Not allowed', 'err')
     else { showToast?.(`Marked ${status}`, 'ok'); fetchDay() }
     setSavingId(null)
   }
@@ -444,6 +450,149 @@ export function NotificationsView({ staffId, isAdmin }) {
             </div>
           ))}
           {!filtered.length && <p style={{ textAlign: 'center', color: '#94a3b8', padding: 40 }}>{tab === 'all' ? 'No notifications yet.' : 'No cleared notifications.'}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Attendance Regularization — staff request + admin approval ───────────
+
+export function RegularizationView({ staffId, isAdmin, showToast, currentUsername }) {
+  const [tab, setTab] = useState(isAdmin ? 'queue' : 'mine')
+  const [requests, setRequests] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ date: isoDate(new Date()), requested_status: 'Present', reason: '' })
+  const [submitting, setSubmitting] = useState(false)
+
+  const fetchRequests = useCallback(async () => {
+    setLoading(true)
+    let q = supabase.from('staff_regularization_requests').select('*, staff_profiles(name)').order('created_at', { ascending: false })
+    if (tab === 'mine' && staffId) q = q.eq('staff_id', staffId)
+    else if (tab === 'queue') q = q.eq('status', 'pending')
+    const { data, error } = await q
+    if (error) showToast?.('Could not load requests: ' + error.message, 'err')
+    setRequests(data || [])
+    setLoading(false)
+  }, [tab, staffId, showToast])
+
+  useEffect(() => { fetchRequests() }, [fetchRequests])
+
+  const submitRequest = async () => {
+    if (!form.reason.trim()) { showToast?.('Enter a reason for this correction', 'err'); return }
+    setSubmitting(true)
+    const { error } = await supabase.from('staff_regularization_requests').insert([{
+      staff_id: staffId, date: form.date, requested_status: form.requested_status, reason: form.reason.trim(),
+    }])
+    if (error) showToast?.('Could not submit: ' + error.message, 'err')
+    else {
+      showToast?.('Request submitted for approval', 'ok')
+      setForm({ date: isoDate(new Date()), requested_status: 'Present', reason: '' })
+      setShowForm(false)
+      fetchRequests()
+    }
+    setSubmitting(false)
+  }
+
+  const decide = async (req, status) => {
+    const { error: updateErr } = await supabase.from('staff_regularization_requests').update({
+      status, reviewed_at: new Date().toISOString(),
+    }).eq('id', req.id)
+    if (updateErr) { showToast?.('Could not update: ' + updateErr.message, 'err'); return }
+
+    if (status === 'approved') {
+      // Server-side enforced via the same RPC manual marking uses — approval
+      // is only allowed for an actual admin account, checked in Postgres,
+      // not just gated by this screen being hidden from non-admins.
+      const { data, error: markErr } = await supabase.rpc('set_attendance_mark', {
+        p_acting_username: currentUsername,
+        p_staff_id: req.staff_id,
+        p_date: req.date,
+        p_status: req.requested_status,
+      })
+      if (markErr || !data?.success) {
+        showToast?.('Approved, but could not update attendance: ' + (markErr?.message || data?.message), 'err')
+        fetchRequests()
+        return
+      }
+    }
+    showToast?.(status === 'approved' ? 'Approved and attendance updated' : 'Rejected', status === 'approved' ? 'ok' : 'warn')
+    fetchRequests()
+  }
+
+  const statusMeta = {
+    pending:  { label: 'Pending', color: '#ca8a04', bg: '#fef9c3' },
+    approved: { label: 'Approved', color: '#16a34a', bg: '#dcfce7' },
+    rejected: { label: 'Rejected', color: '#dc2626', bg: '#fee2e2' },
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 14, borderBottom: '1px solid #e2e8f0' }}>
+        <button style={S.tab(tab === 'mine')} onClick={() => setTab('mine')}>My requests</button>
+        {isAdmin && <button style={S.tab(tab === 'queue')} onClick={() => setTab('queue')}>Pending queue</button>}
+      </div>
+
+      {tab === 'mine' && (
+        showForm ? (
+          <div style={S.card}>
+            <div style={{ fontWeight: 800, fontSize: 13, color: '#0B1E3D', marginBottom: 12 }}>Request attendance correction</div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Date</label>
+            <input type="date" style={{ ...S.inputFull, marginBottom: 10 }} value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Mark as</label>
+            <select style={{ ...S.inputFull, marginBottom: 10 }} value={form.requested_status} onChange={e => setForm(f => ({ ...f, requested_status: e.target.value }))}>
+              <option value="Present">Present</option>
+              <option value="Half Day">Half Day</option>
+            </select>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Reason</label>
+            <textarea style={{ ...S.inputFull, minHeight: 80, resize: 'vertical', marginBottom: 14 }} value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} placeholder="e.g. Forgot to check in, was on campus all day" />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: 12, borderRadius: 10, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={submitRequest} disabled={submitting} style={{ flex: 2, padding: 12, borderRadius: 10, border: 'none', background: '#0B1E3D', color: 'white', fontWeight: 700, cursor: 'pointer' }}>
+                {submitting ? 'Submitting…' : 'Submit request'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setShowForm(true)} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#0B1E3D', color: 'white', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 16 }}>
+            + Request correction
+          </button>
+        )
+      )}
+
+      {loading ? (
+        <p style={{ color: '#94a3b8', textAlign: 'center', padding: 24 }}>Loading…</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {requests.map(r => {
+            const meta = statusMeta[r.status]
+            return (
+              <div key={r.id} style={S.card}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>
+                      {isAdmin && tab === 'queue' ? (r.staff_profiles?.name || '—') + ' · ' : ''}{fmtDate(r.date)}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Requesting: {r.requested_status}</div>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, color: meta.color, background: meta.bg }}>{meta.label}</span>
+                </div>
+                <div style={{ fontSize: 13, color: '#334155', marginBottom: r.status === 'pending' && isAdmin ? 10 : 0 }}>{r.reason}</div>
+                {r.status === 'pending' && isAdmin && tab === 'queue' && (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => decide(r, 'approved')} style={{ flex: 1, padding: 8, borderRadius: 8, border: 'none', background: '#16a34a', color: 'white', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Approve</button>
+                    <button onClick={() => decide(r, 'rejected')} style={{ flex: 1, padding: 8, borderRadius: 8, border: 'none', background: '#fee2e2', color: '#dc2626', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Reject</button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {!requests.length && (
+            <p style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>
+              {tab === 'queue' ? 'No pending requests.' : 'No correction requests yet.'}
+            </p>
+          )}
         </div>
       )}
     </div>
