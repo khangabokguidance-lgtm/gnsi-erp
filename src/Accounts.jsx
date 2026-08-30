@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback, Fragment } from 'react'
 import { supabase } from './supabase'
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -287,6 +287,7 @@ function Accounts({role,userId}){
   const [plDateFrom,   setPlDateFrom]   = useState('')
   const [plDateTo,     setPlDateTo]     = useState('')
   const [showPlFilters, setShowPlFilters] = useState(false)
+  const [plManualIncome, setPlManualIncome] = useState('') // admin-entered manual cashbook total, for mismatch comparison
   const [plAccountType, setPlAccountType] = useState('All')
   const [plPaymentMode, setPlPaymentMode] = useState('All')
   const [plStatus,      setPlStatus]      = useState('All')
@@ -338,6 +339,8 @@ function Accounts({role,userId}){
   const [rptDateFrom,    setRptDateFrom]    = useState('')
   const [rptDateTo,      setRptDateTo]      = useState('')
   const [rptQuick,       setRptQuick]       = useState('')
+  const [rptViewMode,    setRptViewMode]    = useState('list') // 'list' | 'datewise'
+  const [rptExpandedDate,setRptExpandedDate]= useState(null)   // which date is expanded in datewise view
   const [generatingReport, setGeneratingReport] = useState('') // '' | 'pdf' | 'docx' | 'excel'
 
   // ── fetch ─────────────────────────────────────────────────────────────
@@ -926,6 +929,13 @@ function Accounts({role,userId}){
     if(plPaymentMode!=='All')advParts.push(`Mode: ${plPaymentMode}`)
     if(plStatus!=='All')advParts.push(`Status: ${plStatus}`)
     const advLabel=advParts.length?` | Filters: ${advParts.join(', ')}`:''
+    const manualAmt=Number(plManualIncome)||0
+    const mismatchDiff=manualAmt-totalThisInc
+    const mismatchSection=plManualIncome!==''?`<h2>Manual Ledger Reconciliation</h2><table>
+    <tr><td>System Income (this period)</td><td class="green">${fmt(totalThisInc)}</td></tr>
+    <tr><td>Manual Cash Book Income</td><td>${fmt(manualAmt)}</td></tr>
+    <tr class="total"><td>Difference (Manual − System)</td><td class="${mismatchDiff===0?'green':(mismatchDiff>0?'red':'red')}">${mismatchDiff>=0?'+':''}${fmt(mismatchDiff)}</td></tr>
+    </table>`:''
     w.document.write(`<html><head><title>P&L - ${plPeriodLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#1e293b}h1{font-size:22px}h2{font-size:15px;font-weight:600;margin:20px 0 8px;color:#1e3a5f}p{font-size:13px;color:#64748b;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#f8fafc;padding:8px 12px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f1f5f9}.total{font-weight:bold;background:#f8fafc}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
     <h1>Income & Expenditure Statement</h1>
     <p>Period: ${plPeriodLabel}${advLabel} | Generated: ${new Date().toLocaleString('en-IN')}</p>
@@ -935,10 +945,26 @@ function Accounts({role,userId}){
     <h2>Expenditure</h2><table><tr><th>Category</th><th>Amount</th></tr>
     ${Object.entries(thisExp).map(([k,v])=>`<tr><td>${k.replace(/</g,'&lt;')}</td><td class="red">${fmt(v)}</td></tr>`).join('')}
     <tr class="total"><td>Total Expenditure</td><td class="red">${fmt(totalThisExp)}</td></tr></table>
+    ${mismatchSection}
     <h2>Summary</h2><table>
     <tr><td>Total Income</td><td class="green">${fmt(totalThisInc)}</td></tr>
     <tr><td>Total Expenditure</td><td class="red">${fmt(totalThisExp)}</td></tr>
     <tr class="total"><td>Net Surplus / Deficit</td><td class="${net>=0?'green':'red'}">${fmt(net)}</td></tr>
+    </table></body></html>`)
+    w.document.close();w.print()
+  }
+
+  // ── Date-wise report print — one row per date with income/expense/net,
+  // matching the on-screen "Date-wise" preview mode in the Reports tab.
+  const printDatewise=()=>{
+    const w=window.open('','_blank')
+    const periodLabel=`${rptDateFrom||'Beginning'} to ${rptDateTo||'Present'}`
+    w.document.write(`<html><head><title>Date-wise Income &amp; Expenditure - ${periodLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#1e293b}h1{font-size:22px}p{font-size:13px;color:#64748b;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#f8fafc;padding:8px 12px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f1f5f9}.total{font-weight:bold;background:#f8fafc}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
+    <h1>Date-wise Income &amp; Expenditure</h1>
+    <p>Period: ${periodLabel} | Generated: ${new Date().toLocaleString('en-IN')}</p>
+    <table><tr><th>Date</th><th>Income</th><th>Expense</th><th>Net</th></tr>
+    ${[...reportByDate].sort((a,b)=>a.date<b.date?-1:1).map(d=>`<tr><td>${d.date}</td><td class="green">${fmt(d.income)}</td><td class="red">${fmt(d.expense)}</td><td class="${d.income-d.expense>=0?'green':'red'}">${fmt(d.income-d.expense)}</td></tr>`).join('')}
+    <tr class="total"><td>Total</td><td class="green">${fmt(reportTotals.income)}</td><td class="red">${fmt(reportTotals.expense)}</td><td class="${reportTotals.net>=0?'green':'red'}">${fmt(reportTotals.net)}</td></tr>
     </table></body></html>`)
     w.document.close();w.print()
   }
@@ -1509,6 +1535,21 @@ function Accounts({role,userId}){
     const income  = reportEntries.filter(e=>e.type==='Income').reduce((s,e)=>s+Number(e.amount),0)
     const expense = reportEntries.filter(e=>e.type==='Expense').reduce((s,e)=>s+Number(e.amount),0)
     return { income, expense, net: income-expense, count: reportEntries.length }
+  },[reportEntries])
+
+  // ── Date-wise breakdown of reportEntries — income/expense/net per day, for the
+  // clickable "Date-wise" preview mode. Groups whatever reportEntries already
+  // has (same filters/date-range as the flat list), so it always matches.
+  const reportByDate = useMemo(()=>{
+    const map = {}
+    for(const e of reportEntries){
+      const d = e.entry_date
+      if(!map[d]) map[d] = { date:d, income:0, expense:0, entries:[] }
+      if(e.type==='Income') map[d].income += Number(e.amount)
+      else if(e.type==='Expense') map[d].expense += Number(e.amount)
+      map[d].entries.push(e)
+    }
+    return Object.values(map).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0) // newest first
   },[reportEntries])
 
   const reportByCategory = useMemo(()=>{
@@ -2612,8 +2653,57 @@ function Accounts({role,userId}){
 
         {/* ── preview table ── */}
         <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',overflowX:'auto'}}>
-          <h3 style={{...chartTitle,fontSize:15,marginBottom:12}}>Preview {reportEntries.length>8?`(first 8 of ${reportEntries.length})`:`(${reportEntries.length} entries)`}</h3>
-          {reportEntries.length===0?(
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:12}}>
+            <h3 style={{...chartTitle,fontSize:15,margin:0}}>{rptViewMode==='datewise'?`Date-wise (${reportByDate.length} day${reportByDate.length===1?'':'s'})`:`Preview ${reportEntries.length>8?`(first 8 of ${reportEntries.length})`:`(${reportEntries.length} entries)`}`}</h3>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              <div style={{display:'flex',borderRadius:8,overflow:'hidden',border:'1px solid #e5e7eb'}}>
+                <button onClick={()=>setRptViewMode('list')} style={{padding:'6px 12px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:rptViewMode==='list'?'#1e3a5f':'#f8fafc',color:rptViewMode==='list'?'white':'#64748b'}}>List</button>
+                <button onClick={()=>setRptViewMode('datewise')} style={{padding:'6px 12px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:rptViewMode==='datewise'?'#1e3a5f':'#f8fafc',color:rptViewMode==='datewise'?'white':'#64748b'}}>Date-wise</button>
+              </div>
+              {rptViewMode==='datewise'&&<button onClick={printDatewise} style={{backgroundColor:'#1e3a5f',color:'white',border:'none',borderRadius:8,padding:'6px 14px',fontWeight:600,cursor:'pointer',fontSize:12}}>🖨 Print</button>}
+            </div>
+          </div>
+
+          {rptViewMode==='datewise'?(
+            reportByDate.length===0?(
+              <p style={{color:'#94a3b8',textAlign:'center',padding:24}}>No entries match the selected filters.</p>
+            ):(
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize: isMobile ? 12 : 13}}>
+                <thead><tr style={{backgroundColor:'#f8fafc'}}>{['Date','Income','Expense','Net',''].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {reportByDate.map(d=>{
+                    const net=d.income-d.expense, expanded=rptExpandedDate===d.date
+                    return (
+                      <Fragment key={d.date}>
+                        <tr onClick={()=>setRptExpandedDate(expanded?null:d.date)} style={{borderBottom:'1px solid #f1f5f9',cursor:'pointer',backgroundColor:expanded?'#f8fafc':'transparent'}}>
+                          <td style={{...tdS,color:'#1e293b',fontWeight:600}}>{expanded?'▾':'▸'} {d.date}</td>
+                          <td style={{...tdS,fontWeight:700,color:'#16a34a'}}>{fmt(d.income)}</td>
+                          <td style={{...tdS,fontWeight:700,color:'#dc2626'}}>{fmt(d.expense)}</td>
+                          <td style={{...tdS,fontWeight:700,color:net>=0?'#16a34a':'#dc2626'}}>{fmt(net)}</td>
+                          <td style={{...tdS,color:'#94a3b8',fontSize:11}}>{d.entries.length} entr{d.entries.length===1?'y':'ies'}</td>
+                        </tr>
+                        {expanded&&d.entries.map((e,i)=>(
+                          <tr key={i} style={{borderBottom:'1px solid #f1f5f9',backgroundColor:'#fafbfc'}}>
+                            <td style={{...tdS,paddingLeft:28,fontSize:12}} colSpan={2}>{e.category}{e.note?` — ${e.note}`:''}</td>
+                            <td style={{...tdS,fontSize:12}}>{e.payment_mode}</td>
+                            <td colSpan={2} style={{...tdS,textAlign:'right',fontWeight:600,fontSize:12,color:e.type==='Income'?'#16a34a':'#dc2626'}}>{fmt(e.amount)}</td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    )
+                  })}
+                  <tr style={{borderTop:'2px solid #1e3a5f'}}>
+                    <td style={{...tdS,fontWeight:800,color:'#1e293b'}}>Total</td>
+                    <td style={{...tdS,fontWeight:800,color:'#16a34a'}}>{fmt(reportTotals.income)}</td>
+                    <td style={{...tdS,fontWeight:800,color:'#dc2626'}}>{fmt(reportTotals.expense)}</td>
+                    <td style={{...tdS,fontWeight:800,color:reportTotals.net>=0?'#16a34a':'#dc2626'}}>{fmt(reportTotals.net)}</td>
+                    <td/>
+                  </tr>
+                </tbody>
+              </table>
+            )
+          ):(
+          reportEntries.length===0?(
             <p style={{color:'#94a3b8',textAlign:'center',padding:24}}>No entries match the selected filters.</p>
           ):(
             <table style={{width:'100%',borderCollapse:'collapse',fontSize: isMobile ? 12 : 13}}>
@@ -2633,6 +2723,7 @@ function Accounts({role,userId}){
                 ))}
               </tbody>
             </table>
+          )
           )}
         </div>
       </div>
@@ -3190,6 +3281,29 @@ function Accounts({role,userId}){
               </div>
             ))}
           </div>
+
+          {/* ── Manual Ledger Reconciliation — compares system income for this period against a manually-entered cash book total ── */}
+          <div style={{backgroundColor:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,padding:14,marginBottom:20}}>
+            <p style={{fontSize:12,fontWeight:700,color:'#92400e',margin:'0 0 8px'}}>⚠ Manual Ledger Reconciliation</p>
+            <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+              <div style={{flex:'1 1 180px'}}>
+                <label style={{...lStyle,marginBottom:4}}>Manual cash book income for this period</label>
+                <input type="number" value={plManualIncome} onChange={e=>setPlManualIncome(e.target.value)} placeholder="Enter manual total" style={{...iStyle,width:'100%'}}/>
+              </div>
+              {plManualIncome!==''&&(()=>{
+                const manualAmt=Number(plManualIncome)||0
+                const diff=manualAmt-plData.totalThisInc
+                const diffColor=diff===0?'#16a34a':'#dc2626'
+                return (
+                  <div style={{flex:'1 1 180px',backgroundColor:'white',borderRadius:8,padding:'10px 14px',border:`1px solid ${diffColor}33`}}>
+                    <p style={{fontSize:11,color:'#64748b',margin:'0 0 2px'}}>Difference (Manual − System)</p>
+                    <p style={{fontSize:16,fontWeight:800,color:diffColor,margin:0}}>{diff>=0?'+':''}{fmt(diff)}</p>
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+
           <div style={{display:'grid',gridTemplateColumns:plContentCols,gap:20}}>
             {[{title:'Income',color:'#16a34a',bg:'#dcfce7',data:plData.thisInc,total:plData.totalThisInc},{title:'Expenditure',color:'#dc2626',bg:'#fee2e2',data:plData.thisExp,total:plData.totalThisExp}].map(sec=>(
               <div key={sec.title}>
