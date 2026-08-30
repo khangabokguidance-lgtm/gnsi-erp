@@ -105,6 +105,7 @@ function minutesToShiftEnd(shift) {
 }
 
 // Offline-resilient ping queue
+const MAX_PING_RETRIES = 5 // give up on a stale ping after 5 attempts rather than retrying forever
 const pingQueue = []
 let pingFlushing = false
 async function enqueuePing(payload) {
