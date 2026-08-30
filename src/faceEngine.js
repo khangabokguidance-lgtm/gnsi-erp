@@ -108,3 +108,54 @@ export async function detectFaceWithLandmarks(mediaEl) {
     .withFaceLandmarks()
   return result || null
 }
+
+// ─── Frame quality check — lighting/positioning, before liveness runs ──────
+// Samples pixel brightness from the live video frame so the UI can warn
+// about bad lighting/backlighting BEFORE attempting face/blink detection,
+// instead of only discovering the problem after several failed detection
+// attempts deep inside the liveness loop.
+
+let qualityCanvas = null
+
+export function assessFrameQuality(videoEl) {
+  if (!videoEl || !videoEl.videoWidth) return { ok: false, reason: 'no_frame' }
+
+  if (!qualityCanvas) qualityCanvas = document.createElement('canvas')
+  const w = 64, h = 64 // downsample — only need a rough brightness estimate
+  qualityCanvas.width = w
+  qualityCanvas.height = h
+  const ctx = qualityCanvas.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(videoEl, 0, 0, w, h)
+
+  let data
+  try {
+    data = ctx.getImageData(0, 0, w, h).data
+  } catch {
+    return { ok: true, reason: 'unreadable' } // don't block on a read failure (e.g. CORS on some devices)
+  }
+
+  let total = 0
+  let overexposedCount = 0
+  let underexposedCount = 0
+  const pixelCount = w * h
+  for (let i = 0; i < data.length; i += 4) {
+    const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3
+    total += brightness
+    if (brightness > 240) overexposedCount++
+    if (brightness < 25) underexposedCount++
+  }
+  const avgBrightness = total / pixelCount
+  const overexposedRatio = overexposedCount / pixelCount
+  const underexposedRatio = underexposedCount / pixelCount
+
+  // Too dark overall
+  if (avgBrightness < 40) return { ok: false, reason: 'too_dark' }
+  // Strong backlight — bright ceiling/window behind a dark face, exactly
+  // the pattern in a photo taken under an overhead light with no fill light
+  // on the face itself.
+  if (overexposedRatio > 0.25 && underexposedRatio > 0.15) return { ok: false, reason: 'backlit' }
+  // Blown-out overall (camera pointed near a light source)
+  if (avgBrightness > 235) return { ok: false, reason: 'too_bright' }
+
+  return { ok: true, reason: 'good', avgBrightness }
+}
