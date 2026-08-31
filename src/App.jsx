@@ -639,8 +639,20 @@ export default function App() {
   const handleLogin = async (user) => {
     // FIX 2: clear lockout on successful login
     clearLoginAttempts()
-    const { data } = await supabase.from('portal_users').select('staff_profile_id').eq('id', user.id).maybeSingle()
-    const enriched = { ...user, staff_profile_id: data?.staff_profile_id ?? null }
+    // The hardcoded VITE_ADMIN_USERNAME login (see Login.jsx) has id:
+    // 'admin' — a literal string, not a real portal_users row id — and
+    // already resolves its own staff_profile_id before calling onLogin.
+    // Re-querying portal_users by that fake id here would always return
+    // no row and silently overwrite a real staff_profile_id back to null,
+    // which is exactly what was happening: this line clobbered the fix
+    // in Login.jsx on every single login. Only do the portal_users
+    // lookup for real numeric-id logins that didn't already resolve one.
+    let staffProfileId = user.staff_profile_id ?? null
+    if (staffProfileId == null && typeof user.id === 'number') {
+      const { data } = await supabase.from('portal_users').select('staff_profile_id').eq('id', user.id).maybeSingle()
+      staffProfileId = data?.staff_profile_id ?? null
+    }
+    const enriched = { ...user, staff_profile_id: staffProfileId }
     localStorage.setItem('gnsi_session', JSON.stringify({ user: enriched, expiry: Date.now() + 8*60*60*1000 }))
     setCurrentUser(enriched); setActive('dashboard'); loadPermissions(user.role)
   }
