@@ -19,7 +19,7 @@ import AdvancedSettingsPanel from './AdvancedSettingsPanel'
 import PremiumToggleCard from './PremiumToggleCard'
 import AdminControlCenter from './AdminControlCenter'
 import { tabHasSettings } from './premiumSettings'
-import { COLOR, FONT, RADIUS, SHADOW, ledger, Seal, injectLedgerGlobalStyles } from './ledgerTheme'
+import { COLOR, FONT, RADIUS, SHADOW, ledger, Seal, injectLedgerGlobalStyles } from './ledgerTheme.jsx'
 
 const S = {
   page:  ledger.page,

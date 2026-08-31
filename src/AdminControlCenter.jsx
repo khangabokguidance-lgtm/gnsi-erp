@@ -20,7 +20,7 @@
 
 import React, { useState } from 'react'
 import { supabase } from './supabase'
-import { COLOR, FONT, RADIUS, SHADOW, ledger } from './ledgerTheme'
+import { COLOR, FONT, RADIUS, SHADOW, ledger } from './ledgerTheme.jsx'
 import { TAB_SETTINGS, usePremiumStatus, useTabSettings, setPremiumPlan } from './premiumSettings'
 import { useSystemControl, forceCheckoutAll, useAutomationRules, RULE_DEFS } from './systemControl'
 

@@ -15,7 +15,7 @@ import React, {
 } from 'react'
 import { supabase } from './supabase'
 import FaceCapture from './FaceCapture'
-import { COLOR, FONT, RADIUS, SHADOW, ledger, Seal, injectLedgerGlobalStyles } from './ledgerTheme'
+import { COLOR, FONT, RADIUS, SHADOW, ledger, Seal, injectLedgerGlobalStyles } from './ledgerTheme.jsx'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
