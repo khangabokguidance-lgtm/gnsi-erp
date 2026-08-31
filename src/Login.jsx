@@ -511,8 +511,16 @@ export default function Login({ onLogin }) {
 
       if (!ok) { showError('Invalid username or password.'); setLoading(false); return }
 
-      await supabase.rpc('set_staff_context', { p_staff_id: 0, p_is_admin: true })
-onLogin({ id: 'admin', name: 'Administrator', username: ADMIN_USER, role: 'Admin' })
+      // This hardcoded admin login is separate from portal_users, so it
+      // has no row to join against staff_profiles automatically the way
+      // the normal login path below does. staff_profile_id is set here
+      // directly to Moirangthem Himan Singh's staff_profiles row (id 37)
+      // so admin-only RPCs (Control Center, Premium toggle, automation
+      // rules) — which check is_staff_admin(p_admin_id) against a real
+      // staff_profiles id — can verify this session. If this admin login
+      // is ever handed to a different person, update this id to match.
+      await supabase.rpc('set_staff_context', { p_staff_id: 37, p_is_admin: true })
+onLogin({ id: 'admin', name: 'Administrator', username: ADMIN_USER, role: 'Admin', staff_profile_id: 37 })
       setLoading(false); return
     }
 
