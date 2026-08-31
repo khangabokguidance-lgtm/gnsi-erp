@@ -66,6 +66,8 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
   const videoRef   = useRef(null)
   const canvasRef  = useRef(null)
   const streamRef  = useRef(null)
+  const capturingRef = useRef(false) // ref-lock mirrors `capturing` state to survive rapid double-clicks
+  const savingRef  = useRef(false)   // ref-lock mirrors `saving` state, see save()
   const [ready, setReady]         = useState(false)
   const [modelsReady, setModelsReady] = useState(false)
   const [captures, setCaptures]   = useState([])   // array of { descriptor, blob }
@@ -112,7 +114,9 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
   }, [notify])
 
   const captureOne = async () => {
+    if (capturingRef.current) return
     if (!ready || !modelsReady || capturing) return
+    capturingRef.current = true
     setCapturing(true)
     setError('')
     try {
@@ -121,6 +125,7 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
       setBlinkPrompt(false)
       if (!blinked) {
         notify('No blink detected — blink naturally and try again.', 'err')
+        capturingRef.current = false
         setCapturing(false)
         return
       }
@@ -128,6 +133,7 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
       const descriptor = await extractDescriptor(videoRef.current)
       if (!descriptor) {
         notify('No face detected — center your face in the frame and try again.', 'err')
+        capturingRef.current = false
         setCapturing(false)
         return
       }
@@ -146,51 +152,25 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
     } catch (e) {
       notify('Capture failed: ' + e.message, 'err')
     }
+    capturingRef.current = false
     setCapturing(false)
   }
 
   const reset = () => setCaptures([])
 
   const save = async () => {
+    // Ref-based lock — savingRef, not just the `saving` state, blocks a
+    // second save() invocation fired before React re-renders the disabled
+    // button (rapid double-click), which would otherwise upload duplicate
+    // photos and risk two descriptor rows for the same enrollment.
+    if (savingRef.current) return
     if (captures.length < CAPTURES_NEEDED) return
+    savingRef.current = true
     setSaving(true)
     try {
       const avgDescriptor = averageDescriptors(captures.map(c => c.descriptor))
       const isAdminEnroll = mode === 'admin'
       const enrollTs = Date.now()
-
-      // Block enrollment if this face matches another staff member's
-      // already-approved descriptor — prevents buddy enrollment or
-      // accidentally enrolling under the wrong account. Compares against
-      // approved AND pending descriptors so two pending enrollments can't
-      // both go through for the same face either.
-      const { data: existingRows, error: fetchErr } = await supabase
-        .from('staff_face_descriptors')
-        .select('staff_id, descriptor, status')
-        .in('status', ['approved', 'pending'])
-        .neq('staff_id', staffMember.id)
-
-      if (fetchErr) throw new Error('Could not verify uniqueness: ' + fetchErr.message)
-
-      for (const row of existingRows || []) {
-        const result = matchDescriptor(avgDescriptor, row.descriptor)
-        if (result.verified) {
-          let conflictName = 'another staff member'
-          const { data: conflictStaff } = await supabase
-            .from('staff_profiles')
-            .select('name')
-            .eq('id', row.staff_id)
-            .maybeSingle()
-          if (conflictStaff?.name) conflictName = conflictStaff.name
-
-          notify(
-            `This face closely matches an existing enrollment for ${conflictName}. Contact admin if this is a mistake.`,
-            'err'
-          )
-          setSaving(false)
-          return
-        }
-      }
 
       // Upload the 3 enrollment shots to a PRIVATE storage bucket.
       // Path convention: {staff_id}/{timestamp}_{n}.jpg — never publicly listable.
@@ -204,19 +184,37 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
         photoPaths.push(path)
       }
 
-      const { error: dbError } = await supabase.from('staff_face_descriptors').insert([{
-        staff_id:    staffMember.id,
-        descriptor:  avgDescriptor,
-        status:      isAdminEnroll ? 'approved' : 'pending',
-        enrolled_by: isAdminEnroll ? currentAdminId : null,
-        reviewed_by: isAdminEnroll ? currentAdminId : null,
-        reviewed_at: isAdminEnroll ? new Date().toISOString() : null,
-        photo_path_1: photoPaths[0] || null,
-        photo_path_2: photoPaths[1] || null,
-        photo_path_3: photoPaths[2] || null,
-      }])
+      // Duplicate-face uniqueness check AND the actual status/enrolled_by/
+      // reviewed_by decision now happen server-side in enroll_face() (see
+      // migration_face_server_trust.sql) — not here. Previously this
+      // function ran the uniqueness check client-side and then inserted
+      // directly into staff_face_descriptors with status chosen by the
+      // client, which meant a crafted request could set status:'approved'
+      // directly and skip the uniqueness check entirely. The RPC is now
+      // the only sanctioned way to create a descriptor row.
+      const { data, error: rpcErr } = await supabase.rpc('enroll_face', {
+        p_staff_id:     staffMember.id,
+        p_descriptor:   avgDescriptor,
+        p_is_admin:     isAdminEnroll,
+        p_admin_id:     isAdminEnroll ? currentAdminId : null,
+        p_photo_path_1: photoPaths[0] || null,
+        p_photo_path_2: photoPaths[1] || null,
+        p_photo_path_3: photoPaths[2] || null,
+      })
 
-      if (dbError) throw dbError
+      if (rpcErr) throw rpcErr
+      if (!data?.success) {
+        if (data?.error === 'duplicate_face') {
+          notify(data.message || 'This face matches an existing enrollment. Contact admin if this is a mistake.', 'err')
+        } else if (data?.error === 'enrollment_locked') {
+          notify('Enrollment is temporarily locked by admin — try again shortly.', 'err')
+        } else {
+          notify(data?.message || 'Enrollment could not be saved.', 'err')
+        }
+        savingRef.current = false
+        setSaving(false)
+        return
+      }
 
       streamRef.current?.getTracks().forEach(t => t.stop())
       notify(
@@ -227,6 +225,7 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
     } catch (e) {
       notify('Could not save enrollment: ' + e.message, 'err')
     }
+    savingRef.current = false
     setSaving(false)
   }
 

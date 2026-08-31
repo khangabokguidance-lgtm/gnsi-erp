@@ -7,9 +7,17 @@
 // surfacing as a generic "liveness check failed" deep inside the blink loop.
 //
 // Sequence: fetch enrolled descriptor -> continuously assess frame quality
-// -> (once quality is good) issue server challenge -> blink -> final face
-// match -> resolve with { verified, score, challengeId } for the caller to
-// pass into server_checkin (which independently consumes/validates the challenge).
+// -> (once quality is good) issue server challenge -> blink -> head-turn
+// (direction chosen by the server, unknown to the client until the
+// challenge is issued) -> resolve with { liveDescriptor, clientScore,
+// challengeId } for the caller to pass into server_checkin.
+//
+// SECURITY: the client's own matchDescriptor() result (clientScore/
+// clientVerified below) is advisory only, shown for instant UI feedback.
+// It is NOT what gates check-in — the RAW live descriptor is sent to
+// server_checkin, which independently recomputes the match server-side
+// against the stored enrolled descriptor. A forged client boolean can no
+// longer bypass verification; there is no boolean to forge anymore.
 
 import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
@@ -30,6 +38,7 @@ const S = {
 const PHASE_COPY = {
   idle:    'Position your face inside the frame',
   blink:   'Blink slowly',
+  turn:    'Now turn your head as shown',
   matching:'Verifying identity…',
   timeout: 'Timed out — try again',
 }
@@ -47,6 +56,11 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
   const videoRef  = useRef(null)
   const streamRef = useRef(null)
   const qualityTimerRef = useRef(null)
+  // Ref-based lock — 'running' state alone isn't enough to block a second
+  // startScan() invocation fired before React re-renders the disabled
+  // button (double-tap / rapid click), which would otherwise issue two
+  // single-use liveness challenges and race two scans on one camera stream.
+  const scanLockRef = useRef(false)
   const [modelsReady, setModelsReady] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
   const [descriptorRow, setDescriptorRow] = useState(null)
@@ -115,44 +129,61 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
   }, [cameraReady, running])
 
   const startScan = async () => {
+    if (scanLockRef.current) return
     if (!cameraReady || !modelsReady || !descriptorRow || running || !quality.ok) return
+    scanLockRef.current = true
     if (qualityTimerRef.current) clearInterval(qualityTimerRef.current)
     setRunning(true)
     setError('')
     try {
-      // Server issues a fresh, single-use challenge — the client cannot
-      // fake completing it, and it expires quickly to prevent replay.
-      const { challenge_id } = await issueChallenge(staffId)
+      // Server issues a fresh, single-use challenge with a randomly chosen
+      // turn direction the client doesn't know in advance — the client
+      // cannot fake completing it, and it expires quickly to prevent replay.
+      const { challenge_id, turn_direction } = await issueChallenge(staffId)
 
-      // Blink liveness against the live video feed
-      const livenessPassed = await runLivenessSequence(videoRef.current, null, (p) => setPhase(p), setLiveEar)
+      // Blink, then turn toward the server-chosen direction
+      const livenessPassed = await runLivenessSequence(videoRef.current, turn_direction, (p) => setPhase(p), setLiveEar)
       if (!livenessPassed) {
-        setError('No blink detected — make sure your face is well lit and centered, then try again.')
+        setError(phase === 'turn'
+          ? 'Head turn not detected — turn a little further, then try again.'
+          : 'No blink detected — make sure your face is well lit and centered, then try again.')
         setRunning(false)
+        scanLockRef.current = false
         return
       }
 
-      // Final face match, taken right after liveness passes
+      // Extract the live descriptor right after liveness passes. This is
+      // sent to the server as-is — the client's own matchDescriptor() call
+      // below is ONLY for immediate on-screen feedback and is never trusted
+      // as the verification result itself.
       setPhase('matching')
       const liveDescriptor = await extractDescriptor(videoRef.current)
       if (!liveDescriptor) {
         setError('Lost face tracking — try again.')
         setRunning(false)
+        scanLockRef.current = false
         return
       }
-      const matchResult = matchDescriptor(liveDescriptor, descriptorRow.descriptor)
+      const clientPreview = matchDescriptor(liveDescriptor, descriptorRow.descriptor)
 
       streamRef.current?.getTracks().forEach(t => t.stop())
-      onVerified({ ...matchResult, challengeId: challenge_id })
+      onVerified({
+        liveDescriptor,
+        clientScore: clientPreview.score,       // advisory only — for UI/logging, not trust
+        clientVerified: clientPreview.verified,  // advisory only — for UI/logging, not trust
+        challengeId: challenge_id,
+      })
     } catch (e) {
       setError('Verification failed: ' + e.message)
       setRunning(false)
+      scanLockRef.current = false
     }
   }
 
   const cancel = () => {
     streamRef.current?.getTracks().forEach(t => t.stop())
     if (qualityTimerRef.current) clearInterval(qualityTimerRef.current)
+    scanLockRef.current = false
     onCancel()
   }
 
@@ -160,6 +191,7 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
     setError('')
     setPhase('idle')
     setRunning(false)
+    scanLockRef.current = false
   }
 
   const qualityWarning = !error && !running && cameraReady && !quality.ok ? QUALITY_MESSAGES[quality.reason] : null
@@ -207,6 +239,12 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
               <span style={{ color: liveEar < 0.28 ? '#4ade80' : '#e2e8f0', fontSize: 11, fontFamily: 'monospace' }}>
                 EAR {liveEar.toFixed(2)}
               </span>
+            </div>
+          )}
+
+          {running && phase === 'turn' && (
+            <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(15,23,42,0.75)', borderRadius: 8, padding: '6px 10px' }}>
+              <span style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700 }}>↔ Turn your head slowly…</span>
             </div>
           )}
         </div>

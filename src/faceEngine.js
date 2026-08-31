@@ -53,6 +53,17 @@ export function euclideanDistance(a, b) {
 }
 
 // Returns { verified, score } — score is the raw distance (lower = better match)
+//
+// SECURITY NOTE: this is a CLIENT-SIDE convenience check only. It is used
+// for instant UI feedback (enrollment duplicate-face pre-check, etc.) but
+// the result of this function must NEVER be sent to server_checkin as the
+// basis for a security decision — it runs in the user's browser and can be
+// trivially forged (devtools console, patched bundle, intercepted request).
+// server_checkin independently recomputes this same distance server-side
+// against the stored descriptor (see face_descriptor_distance() in
+// migration_face_server_trust.sql) using the raw live descriptor the client
+// sends via p_live_descriptor. That server-side computation is the only
+// one that gates check-in.
 export function matchDescriptor(liveDescriptor, storedDescriptor) {
   const score = euclideanDistance(liveDescriptor, storedDescriptor)
   return { verified: score <= MATCH_THRESHOLD, score: parseFloat(score.toFixed(4)) }
