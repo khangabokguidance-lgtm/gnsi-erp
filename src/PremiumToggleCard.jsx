@@ -30,6 +30,10 @@ export default function PremiumToggleCard({ isAdmin, adminId, showToast }) {
 
   const handleToggle = async () => {
     if (busy || loading) return
+    if (!adminId) {
+      showToast?.('Your account isn\'t linked to a staff profile (staff_profile_id is missing) — can\'t verify admin status.', 'err')
+      return
+    }
     const nextPlan = isPremium ? 'free' : 'premium'
     setBusy(true)
     try {

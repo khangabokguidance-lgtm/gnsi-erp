@@ -68,7 +68,12 @@ export function tabHasSettings(tabKey) {
 // disabled for this project), so the real enforcement lives in the RPC.
 export async function setPremiumPlan(supabase, plan, adminId) {
   const { data, error } = await supabase.rpc('set_org_premium_plan', { p_plan: plan, p_admin_id: adminId })
-  if (error) throw error
+  if (error) {
+    if (/function .* does not exist|could not find/i.test(error.message || '')) {
+      throw new Error('Premium controls aren\'t set up yet — run migration_premium_settings.sql against the database, then try again.')
+    }
+    throw error
+  }
   if (!data?.success) throw new Error(data?.error === 'unauthorized' ? 'Only admins can change the plan' : (data?.error || 'Could not update plan'))
   return data
 }
@@ -76,17 +81,28 @@ export async function setPremiumPlan(supabase, plan, adminId) {
 export function usePremiumStatus() {
   const [isPremium, setIsPremium] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase.rpc('is_premium_active')
-    if (!error) setIsPremium(!!data)
+    if (error) {
+      // Most likely cause: migration_premium_settings.sql hasn't been run
+      // yet, so is_premium_active() doesn't exist. Default to "not
+      // premium" (fail closed on the feature-gate) rather than crashing,
+      // but keep the error visible for whoever's debugging deploy issues.
+      setLoadError(error.message)
+      setIsPremium(false)
+    } else {
+      setLoadError(null)
+      setIsPremium(!!data)
+    }
     setLoading(false)
   }, [])
 
   useEffect(() => { refresh() }, [refresh])
 
-  return { isPremium, loading, refresh }
+  return { isPremium, loading, loadError, refresh }
 }
 
 // Loads/saves both free (per-staff) and premium (org-level) setting values

@@ -59,6 +59,10 @@ function SettingsOverviewSection({ isAdmin, adminId, showToast }) {
 
   const handlePlanToggle = async () => {
     if (busyPlan || premiumLoading) return
+    if (!adminId) {
+      showToast?.('Your account isn\'t linked to a staff profile (staff_profile_id is missing) — can\'t verify admin status.', 'err')
+      return
+    }
     setBusyPlan(true)
     try {
       await setPremiumPlan(supabase, isPremium ? 'free' : 'premium', adminId)
@@ -200,11 +204,15 @@ function ConfirmInline({ prompt, confirmWord, onConfirm, onCancel, tone = COLOR.
 }
 
 function EmergencyControlsSection({ adminId, showToast }) {
-  const { state, loading, apply } = useSystemControl()
+  const { state, loading, loadError, apply } = useSystemControl()
   const [confirming, setConfirming] = useState(null) // 'pause' | 'lock' | 'forceCheckout' | null
   const [busy, setBusy] = useState(false)
 
   const doApply = async (patch) => {
+    if (!adminId) {
+      showToast?.('Your account isn\'t linked to a staff profile (staff_profile_id is missing) — can\'t verify admin status.', 'err')
+      return
+    }
     setBusy(true)
     try {
       await apply(patch, adminId)
@@ -217,6 +225,10 @@ function EmergencyControlsSection({ adminId, showToast }) {
   }
 
   const doForceCheckout = async () => {
+    if (!adminId) {
+      showToast?.('Your account isn\'t linked to a staff profile — can\'t verify admin status.', 'err')
+      return
+    }
     setBusy(true)
     try {
       const res = await forceCheckoutAll(adminId, 'Admin Control Center — force checkout')
@@ -228,7 +240,26 @@ function EmergencyControlsSection({ adminId, showToast }) {
     setConfirming(null)
   }
 
-  if (loading || !state) return <div style={S.section}><div style={{ fontSize: 12, color: COLOR.slate }}>Loading system controls…</div></div>
+  if (loading) return <div style={S.section}><div style={{ fontSize: 12, color: COLOR.slate }}>Loading system controls…</div></div>
+
+  if (loadError || !state) {
+    const isMissingMigration = /relation .* does not exist|schema cache/i.test(loadError || '')
+    return (
+      <div style={S.section}>
+        <div style={S.sectionTitle}>Emergency controls</div>
+        <div style={{ marginTop: 8, padding: 14, background: COLOR.dangerBg, border: `1px solid ${COLOR.danger}44`, borderRadius: RADIUS.md }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: COLOR.danger, fontFamily: FONT.display }}>
+            {isMissingMigration ? 'Database not set up yet' : 'Could not load system controls'}
+          </div>
+          <div style={{ fontSize: 12, color: COLOR.danger, marginTop: 6, lineHeight: 1.5 }}>
+            {isMissingMigration
+              ? "The system_control table doesn't exist yet. Run migration_system_control.sql against your Supabase project, then reload this page."
+              : (loadError || 'Unknown error.')}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={S.section}>
@@ -321,6 +352,10 @@ function AutomationRulesSection({ adminId, showToast }) {
   const findRule = (ruleType) => rules.find(r => r.rule_type === ruleType)
 
   const handleToggle = async (ruleType, enabled) => {
+    if (!adminId) {
+      showToast?.('Your account isn\'t linked to a staff profile (staff_profile_id is missing), so admin actions can\'t be verified. Check your portal_users row.', 'err')
+      return
+    }
     setBusyType(ruleType)
     try {
       const existing = findRule(ruleType)
@@ -335,6 +370,10 @@ function AutomationRulesSection({ adminId, showToast }) {
   }
 
   const handleConfigChange = async (ruleType, key, value) => {
+    if (!adminId) {
+      showToast?.('Your account isn\'t linked to a staff profile — can\'t save this change.', 'err')
+      return
+    }
     setBusyType(ruleType)
     try {
       const existing = findRule(ruleType)

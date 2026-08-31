@@ -11,15 +11,26 @@ import { supabase } from './supabase'
 export function useSystemControl() {
   const [state, setState] = useState(null) // { check_ins_paused, pause_reason, enrollment_locked, lock_reason }
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
+    setLoadError(null)
     const { data, error } = await supabase
       .from('system_control')
       .select('check_ins_paused, pause_reason, enrollment_locked, lock_reason, updated_at')
       .eq('id', 1)
       .maybeSingle()
-    if (!error) setState(data)
+    if (error) {
+      // Most common cause: migration_system_control.sql hasn't been run
+      // yet, so the system_control table doesn't exist (Postgres error
+      // 42P01 / PostgREST "relation does not exist"). Surface this
+      // instead of leaving the UI stuck on "Loading system controls…"
+      // with no explanation.
+      setLoadError(error.message || 'Could not load system controls')
+    } else {
+      setState(data)
+    }
     setLoading(false)
   }, [])
 
@@ -37,12 +48,18 @@ export function useSystemControl() {
     })
     if (error || !data?.success) {
       refresh() // roll back to server truth
+      // Distinguish "the RPC doesn't exist" (migration not run) from a
+      // genuine permission denial, so the person isn't told they're not
+      // an admin when the real problem is a missing migration.
+      if (error && /function .* does not exist|could not find/i.test(error.message || '')) {
+        throw new Error('System controls aren\'t set up yet — run migration_system_control.sql against the database, then try again.')
+      }
       throw new Error(error?.message || (data?.error === 'unauthorized' ? 'Only admins can change system controls' : 'Could not update'))
     }
     return data
   }, [state, refresh])
 
-  return { state, loading, apply, refresh }
+  return { state, loading, loadError, apply, refresh }
 }
 
 export async function forceCheckoutAll(adminId, note) {
@@ -90,7 +107,12 @@ export function useAutomationRules() {
     const { data, error } = await supabase.rpc('upsert_automation_rule', {
       p_admin_id: adminId, p_id: id, p_rule_type: ruleType, p_enabled: enabled, p_config: config,
     })
-    if (error) throw error
+    if (error) {
+      if (/function .* does not exist|could not find|relation .* does not exist/i.test(error.message || '')) {
+        throw new Error('Automation rules aren\'t set up yet — run migration_system_control.sql against the database, then try again.')
+      }
+      throw error
+    }
     if (!data?.success) throw new Error(data?.error === 'unauthorized' ? 'Only admins can change automation rules' : (data?.error || 'Could not save rule'))
     await refresh()
     return data
