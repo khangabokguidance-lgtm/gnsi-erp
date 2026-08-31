@@ -166,12 +166,23 @@ export function useTabSettings(tabKey, staffId) {
     if (error) { load(); throw error } // roll back to server truth on failure
   }, [staffId, load])
 
+  // Goes through the set_org_face_setting RPC rather than a direct upsert.
+  // org_face_settings has RLS enabled, and RLS is keyed on auth.uid() —
+  // but this app's staff sessions aren't Supabase Auth sessions, so
+  // auth.uid() is always null here and any auth.uid()-based policy can
+  // never pass. The RPC is SECURITY DEFINER and checks admin status
+  // server-side against the passed-in adminId instead, mirroring how
+  // setPremiumPlan/set_org_premium_plan already works.
   const savePremium = useCallback(async (key, value, adminId) => {
     setValues(v => ({ ...v, [key]: value })) // optimistic
-    const { error } = await supabase
-      .from('org_face_settings')
-      .upsert({ setting_key: key, value, updated_by: adminId, updated_at: new Date().toISOString() }, { onConflict: 'setting_key' })
+    const { data, error } = await supabase.rpc('set_org_face_setting', {
+      p_setting_key: key, p_value: value, p_admin_id: adminId,
+    })
     if (error) { load(); throw error }
+    if (!data?.success) {
+      load()
+      throw new Error(data?.error === 'unauthorized' ? 'Only admins can change this setting' : (data?.error || 'Could not save'))
+    }
   }, [load])
 
   return { defs, values, loading, saveFree, savePremium, reload: load }
