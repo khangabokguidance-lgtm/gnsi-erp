@@ -828,7 +828,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   // ── Server-verified admin role (do NOT trust props alone) ─────────────────
   const [serverIsAdmin,   setServerIsAdmin]   = useState(false)
   const [adminVerified,   setAdminVerified]   = useState(false)
-  const isAdmin = adminVerified ? serverIsAdmin : !!isAdminProp
+  const isAdmin = serverIsAdmin || (isAdminProp && adminVerified)
 
   const [activeTab,     setActiveTab]     = useState('checkin')
   const [campus,        setCampus]        = useState(null)
