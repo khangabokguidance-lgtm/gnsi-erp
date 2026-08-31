@@ -86,6 +86,7 @@ export function usePremiumStatus() {
   const refresh = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase.rpc('is_premium_active')
+    let result
     if (error) {
       // Most likely cause: migration_premium_settings.sql hasn't been run
       // yet, so is_premium_active() doesn't exist. Default to "not
@@ -93,11 +94,18 @@ export function usePremiumStatus() {
       // but keep the error visible for whoever's debugging deploy issues.
       setLoadError(error.message)
       setIsPremium(false)
+      result = { isPremium: false, loadError: error.message }
     } else {
       setLoadError(null)
       setIsPremium(!!data)
+      result = { isPremium: !!data, loadError: null }
     }
     setLoading(false)
+    // Return the outcome directly (not just via state) so callers that
+    // await refresh() right after a write — e.g. handleToggle — can
+    // verify the change actually took effect instead of trusting the
+    // write alone.
+    return result
   }, [])
 
   useEffect(() => { refresh() }, [refresh])
@@ -142,6 +150,10 @@ export function useTabSettings(tabKey, staffId) {
     }
     setValues(next)
     setLoading(false)
+    // Return the freshly-loaded values so callers that await load()/reload()
+    // right after a write can confirm what the server actually has, rather
+    // than trusting the optimistic update or an undefined return value.
+    return next
   }, [tabKey, staffId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load() }, [load])
