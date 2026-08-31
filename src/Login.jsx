@@ -528,7 +528,7 @@ onLogin({ id: 'admin', name: 'Administrator', username: ADMIN_USER, role: 'Admin
 
     const { data, error: dbErr } = await supabase
       .from('portal_users')
-      .select('id, name, username, role, active')
+      .select('id, name, username, role, active, staff_profile_id')
       .eq('username', username.trim().toLowerCase())
       .eq('password_hash', hashedPassword)
       .eq('active', true)
@@ -539,11 +539,27 @@ onLogin({ id: 'admin', name: 'Administrator', username: ADMIN_USER, role: 'Admin
       setLoading(false); return
     }
 
-    const { data: profile } = await supabase
-      .from('staff_profiles')
-      .select('id, department, designation, email')
-      .eq('name', data.name)
-      .maybeSingle()
+    // Trust the existing portal_users.staff_profile_id link when it's set —
+    // matching on name is fragile (duplicate/near-duplicate names, casing,
+    // whitespace) and can silently attach the wrong profile or none at all.
+    // Only fall back to a name lookup for legacy accounts that were never
+    // linked in the database.
+    let profile = null
+    if (data.staff_profile_id != null) {
+      const { data: p } = await supabase
+        .from('staff_profiles')
+        .select('id, department, designation, email')
+        .eq('id', data.staff_profile_id)
+        .maybeSingle()
+      profile = p
+    } else {
+      const { data: p } = await supabase
+        .from('staff_profiles')
+        .select('id, department, designation, email')
+        .eq('name', data.name)
+        .maybeSingle()
+      profile = p
+    }
 
     await supabase.rpc('set_staff_context', {
   p_staff_id: profile?.id ?? 0,
@@ -551,7 +567,7 @@ onLogin({ id: 'admin', name: 'Administrator', username: ADMIN_USER, role: 'Admin
 })
 onLogin({
   ...data,
-  staff_profile_id: profile?.id         ?? null,
+  staff_profile_id: profile?.id         ?? data.staff_profile_id ?? null,
   department:       profile?.department  ?? null,
   designation:      profile?.designation ?? null,
   email:            profile?.email       ?? null,
