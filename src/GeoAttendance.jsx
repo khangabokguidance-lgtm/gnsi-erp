@@ -830,7 +830,7 @@ function AttendanceChart({ rows, monthFilter }) {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allStaff = [], onCheckInSuccess = null }) {
+export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allStaff = [], onCheckInSuccess = null, initialTab = 'checkin' }) {
   const safeAllStaff = Array.isArray(allStaff) ? allStaff : []
 
   // ── Server-verified admin role (do NOT trust props alone) ─────────────────
@@ -838,7 +838,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   const [adminVerified,   setAdminVerified]   = useState(false)
   const isAdmin = serverIsAdmin || (isAdminProp && adminVerified)
 
-  const [activeTab,     setActiveTab]     = useState('checkin')
+  const [activeTab,     setActiveTab]     = useState(initialTab)
   const [campus,        setCampus]        = useState(null)
   const [todayLogs,     setTodayLogs]     = useState([])
   const [fraudLogs,     setFraudLogs]     = useState([])

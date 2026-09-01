@@ -1350,6 +1350,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
     ...(!isAdmin && hasPerm('view_cashbook') ? [{ key: 'cashbook', icon: '📒', label: 'Cash book' }] : []),
     ...(isAdmin ? [
       { key: 'coverage',  icon: '👥', label: 'Staff coverage' },
+      { key: 'livemonitor', icon: '📍', label: 'Live geo monitor' },
       { key: 'approvals', icon: '📋', label: 'Approvals', badge: counts.pending },
       { key: 'cashbook',  icon: '📒', label: 'Cash book' },
       { key: 'deductionrules', icon: '📐', label: 'Deduction Rules' },
@@ -1363,7 +1364,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
   const pageTitles = {
     checkin: 'Take attendance', attendancesummary: 'Attendance', timecard: 'Time card', advances: 'Advances',
     fines: 'Late fines', payroll: 'Payroll', regularization: 'Correct attendance', reports: 'Reports', broadcast: 'Broadcast messages', notifications: 'Notifications',
-    coverage: 'Staff coverage', approvals: 'Pending approvals', cashbook: 'Cash book', deductionrules: 'Deduction Rules (Daily)', rolepermissions: 'Role Permissions', attendancehelpers: 'Attendance Helpers', controlcenter: 'Admin Control Center', settings: 'Settings',
+    coverage: 'Staff coverage', livemonitor: 'Live geo monitor', approvals: 'Pending approvals', cashbook: 'Cash book', deductionrules: 'Deduction Rules (Daily)', rolepermissions: 'Role Permissions', attendancehelpers: 'Attendance Helpers', controlcenter: 'Admin Control Center', settings: 'Settings',
   }
 
   // Quick actions row, below the main tile grid — role-aware, matching
@@ -1565,6 +1566,10 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
                 </div>
               )}
             </div>
+          )}
+
+          {tab === 'livemonitor' && isAdmin && (
+            <GeoAttendance currentStaff={loggedInStaff} isAdmin={true} allStaff={staff} initialTab="monitor" />
           )}
 
           {tab === 'approvals' && isAdmin && (
