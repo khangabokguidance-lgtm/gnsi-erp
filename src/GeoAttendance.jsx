@@ -592,19 +592,23 @@ function SmartPunchButton({ myShifts, todayMyLogs, activeTracking, gpsStatus, ch
   }
 
   const btnBase = (bg, disabled) => dark ? {
-    flex: 1, border: 'none', borderRadius: 14, padding: '17px 14px',
+    flex: 1, minWidth: 0, border: 'none', borderRadius: 14, padding: '17px 10px',
     background: disabled ? 'rgba(255,255,255,0.05)' : bg,
     cursor: disabled ? 'not-allowed' : 'pointer',
-    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textAlign: 'center',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, textAlign: 'center',
+    minHeight: 92,
     boxShadow: disabled ? 'none' : '0 4px 16px -4px rgba(0,0,0,0.5)', fontFamily: FONT.body,
     transition: 'transform 0.15s cubic-bezier(.34,1.56,.64,1), box-shadow 0.15s',
+    boxSizing: 'border-box',
   } : {
-    flex: 1, border: 'none', borderRadius: RADIUS.lg, padding: '16px 14px',
+    flex: 1, minWidth: 0, border: 'none', borderRadius: RADIUS.lg, padding: '16px 10px',
     background: disabled ? COLOR.rule : bg,
     cursor: disabled ? 'not-allowed' : 'pointer',
-    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textAlign: 'center',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, textAlign: 'center',
+    minHeight: 92,
     boxShadow: disabled ? 'none' : SHADOW.seal, fontFamily: FONT.body,
     transition: 'transform 0.12s ease',
+    boxSizing: 'border-box',
   }
 
   const press = (disabled) => disabled ? {} : {
@@ -630,11 +634,11 @@ function SmartPunchButton({ myShifts, todayMyLogs, activeTracking, gpsStatus, ch
           {...press(inDisabled)}
         >
           <span style={{ fontSize: 20 }}>{checkingIn && canPunchIn ? '⋯' : '→'}</span>
-          <span style={{ fontSize: 14.5, fontWeight: 700, fontFamily: FONT.display, color: inDisabled ? (dark ? VAULT.textFaint : COLOR.ink2) : (dark ? '#081527' : 'white') }}>
+          <span style={{ fontSize: 14.5, fontWeight: 700, fontFamily: FONT.display, color: inDisabled ? (dark ? VAULT.textFaint : COLOR.ink2) : (dark ? '#081527' : 'white'), maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {checkingIn && canPunchIn ? 'Verifying…' : (offCampus && canPunchIn ? 'Punch in (off campus)' : 'Punch in')}
           </span>
           {inSub && (
-            <span style={{ fontSize: 10.5, color: inDisabled ? (dark ? VAULT.textFaint : COLOR.slate) : (dark ? 'rgba(8,21,39,0.75)' : 'rgba(255,255,255,0.82)'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+            <span style={{ fontSize: 10, color: inDisabled ? (dark ? VAULT.textFaint : COLOR.slate) : (dark ? 'rgba(8,21,39,0.75)' : 'rgba(255,255,255,0.82)'), maxWidth: '100%', overflowWrap: 'break-word', lineHeight: 1.3 }}>
               {inSub}
             </span>
           )}
@@ -647,11 +651,11 @@ function SmartPunchButton({ myShifts, todayMyLogs, activeTracking, gpsStatus, ch
           {...press(outDisabled)}
         >
           <span style={{ fontSize: 20 }}>{checkingIn && canPunchOut ? '⋯' : '■'}</span>
-          <span style={{ fontSize: 14.5, fontWeight: 700, fontFamily: FONT.display, color: outDisabled ? (dark ? VAULT.textFaint : COLOR.ink2) : (dark ? '#081527' : 'white') }}>
+          <span style={{ fontSize: 14.5, fontWeight: 700, fontFamily: FONT.display, color: outDisabled ? (dark ? VAULT.textFaint : COLOR.ink2) : (dark ? '#081527' : 'white'), maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             Punch out
           </span>
           {outSub && (
-            <span style={{ fontSize: 10.5, color: outDisabled ? (dark ? VAULT.textFaint : COLOR.slate) : (dark ? 'rgba(8,21,39,0.75)' : 'rgba(255,255,255,0.82)'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+            <span style={{ fontSize: 10, color: outDisabled ? (dark ? VAULT.textFaint : COLOR.slate) : (dark ? 'rgba(8,21,39,0.75)' : 'rgba(255,255,255,0.82)'), maxWidth: '100%', overflowWrap: 'break-word', lineHeight: 1.3 }}>
               {outSub}
             </span>
           )}
