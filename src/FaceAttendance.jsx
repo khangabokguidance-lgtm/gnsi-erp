@@ -744,7 +744,12 @@ function DeductionRulesSetup({ currentAdminId, showToast }) {
 // Granted permission keys are checked via hasPerm() below; a plain isAdmin
 // staff member already has every permission implicitly.
 
+// 'full_admin' is a single grant that makes hasPerm() return true for every
+// key below, without an admin having to tick each box individually — see
+// hasPerm() in useModulePermissions(). It's listed first and rendered with
+// its own emphasis in RolePermissionsSetup below.
 const ASSIGNABLE_PERMISSIONS = [
+  { key: 'full_admin',        label: 'Full Admin (this module)',    desc: 'Grants every permission below at once — same access as an app-wide admin, but scoped to Face Attendance only.' },
   { key: 'view_payroll',      label: 'View Payroll (all staff)',   desc: 'See the daily-attendance payroll estimate for every staff member, not just their own.' },
   { key: 'view_fines',        label: 'View Late Fines (all staff)', desc: 'See late/absent fine calculations across all staff.' },
   { key: 'view_cashbook',     label: 'View Cash Book',              desc: 'Read-only access to the accounts cash book.' },
@@ -772,7 +777,7 @@ function useModulePermissions(staffId, isAdmin) {
 
   useEffect(() => { fetch_() }, [fetch_])
 
-  const hasPerm = useCallback((key) => isAdmin || perms.has(key), [isAdmin, perms])
+  const hasPerm = useCallback((key) => isAdmin || perms.has('full_admin') || perms.has(key), [isAdmin, perms])
   return { hasPerm, loading, refetch: fetch_ }
 }
 
