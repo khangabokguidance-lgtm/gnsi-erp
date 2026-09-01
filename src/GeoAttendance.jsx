@@ -880,6 +880,62 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   const [expandedTrail, setExpandedTrail] = useState(null)
   const [loadingMonth,  setLoadingMonth]  = useState(false)
 
+  // ── No-phone staff helper feature ────────────────────────────────────────
+  // If the logged-in staff has been assigned as a "helper" for one or more
+  // no-phone colleagues, they get a picker to punch in/out FOR that person
+  // instead of themselves. Deliberately kept as separate, parallel state
+  // rather than repointing myShifts/myLogs/activeTracking (which the rest
+  // of this component uses for the self-view history/exports/advances) —
+  // this only affects the punch action itself.
+  const [helperAssignments, setHelperAssignments] = useState([]) // [{id, assisted_staff_id, name}]
+  const [punchTarget, setPunchTarget] = useState(null) // null = punching for self; else { id, name }
+  const [targetShifts, setTargetShifts] = useState([])
+  const [targetLogs, setTargetLogs] = useState([])
+  const [targetActiveTracking, setTargetActiveTracking] = useState([])
+  const [loadingTarget, setLoadingTarget] = useState(false)
+
+  const fetchHelperAssignments = useCallback(async () => {
+    if (!currentStaff?.id) return
+    const { data, error } = await supabase
+      .from('staff_attendance_helpers')
+      .select('id, assisted_staff_id')
+      .eq('helper_staff_id', currentStaff.id)
+      .eq('active', true)
+    if (error || !data || data.length === 0) { setHelperAssignments([]); return }
+    const ids = data.map(r => r.assisted_staff_id)
+    const { data: profiles } = await supabase.from('staff_profiles').select('id, name').in('id', ids)
+    const nameById = Object.fromEntries((profiles || []).map(p => [p.id, p.name]))
+    setHelperAssignments(data.map(r => ({
+      id: r.id,
+      assisted_staff_id: r.assisted_staff_id,
+      name: nameById[r.assisted_staff_id] || `Staff #${r.assisted_staff_id}`,
+    })))
+  }, [currentStaff?.id])
+
+  useEffect(() => { fetchHelperAssignments() }, [fetchHelperAssignments])
+
+  const fetchTargetData = useCallback(async (targetId) => {
+    if (!targetId) return
+    setLoadingTarget(true)
+    const [{ data: shifts }, { data: logs }] = await Promise.all([
+      supabase.from('staff_shifts').select('*').eq('staff_id', targetId).eq('is_active', true).order('shift_start'),
+      supabase.from('staff_geo_attendance').select('*').eq('staff_id', targetId).order('date', { ascending: false }).limit(30),
+    ])
+    setTargetShifts(shifts || [])
+    setTargetLogs(logs || [])
+    const todayIso = today()
+    setTargetActiveTracking(
+      (logs || [])
+        .filter(l => l.date === todayIso && !l.check_out_time && !l.session_dead)
+        .map(l => ({ logId: l.id, shiftId: l.shift_id, shiftLabel: l.shift_label, shift: (shifts || []).find(s => s.shift_label === l.shift_label) }))
+    )
+    setLoadingTarget(false)
+  }, [])
+
+  useEffect(() => {
+    if (punchTarget?.id) fetchTargetData(punchTarget.id)
+  }, [punchTarget?.id, fetchTargetData])
+
   const { subscribe, unsubscribe } = usePushSubscription(currentStaff, isAdmin)
   const watchRef       = useRef(null)
   const trackRef       = useRef(null)
@@ -1257,9 +1313,10 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   const performCheckIn = async (shift, faceResult) => {
     setFaceCaptureShift(null)
     setCheckingIn(true)
+    const targetStaffId = punchTarget?.id || currentStaff.id
     try {
       const { data, error } = await supabase.rpc('server_checkin', {
-        p_staff_id:            currentStaff.id,
+        p_staff_id:            targetStaffId,
         p_shift_id:            shift.id,
         p_shift_label:         shift.shift_label,
         p_shift_start:         shift.shift_start,
@@ -1321,26 +1378,36 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
       const logId = data.log_id
 
       if (logId) {
-        setActiveTracking(prev => [...prev, { logId, shiftId: shift.id, shiftLabel: shift.shift_label, shift }])
-        setGpsStatus('tracking')
+        if (punchTarget?.id) {
+          setTargetActiveTracking(prev => [...prev, { logId, shiftId: shift.id, shiftLabel: shift.shift_label, shift }])
+        } else {
+          setActiveTracking(prev => [...prev, { logId, shiftId: shift.id, shiftLabel: shift.shift_label, shift }])
+          setGpsStatus('tracking')
 
-        // Sync bridge — self_attendance (geo_verified + geo_distance added by migration)
-        await supabase.rpc('sync_self_attendance', {
-  p_staff_id:    currentStaff.id,
-  p_date:        today(),
-  p_lat:         gpsCoords.lat,
-  p_lng:         gpsCoords.lng,
-  p_geo_verified: (gpsDistance || 999) <= campus.radius,
-  p_geo_distance: Math.round(gpsDistance || 0),
-  p_device_fp:   getDeviceFingerprint(),
-})
+          // Sync bridge — self_attendance (geo_verified + geo_distance added by migration)
+          // Only for a normal self-punch; an on-behalf-of punch shouldn't
+          // touch the ACTOR's own self_attendance sync row.
+          await supabase.rpc('sync_self_attendance', {
+            p_staff_id:    currentStaff.id,
+            p_date:        today(),
+            p_lat:         gpsCoords.lat,
+            p_lng:         gpsCoords.lng,
+            p_geo_verified: (gpsDistance || 999) <= campus.radius,
+            p_geo_distance: Math.round(gpsDistance || 0),
+            p_device_fp:   getDeviceFingerprint(),
+          })
+        }
       }
 
-      await fetchMyLogs()
+      if (punchTarget?.id) {
+        await fetchTargetData(punchTarget.id)
+      } else {
+        await fetchMyLogs()
+      }
       const status = data.status
       if (status === 'Late')         showToast(`🕐 Checked in LATE — ${data.late_minutes} min. Tracking started.`, 'warn')
       else if (status === 'Flagged') showToast('🚨 Check-in flagged for review. Tracking started.', 'warn')
-      else                           showToast(`✅ Checked in — Shift ${shift.shift_label}. Tracking active.`, 'ok')
+      else                           showToast(`✅ Checked in — Shift ${shift.shift_label}${punchTarget ? ` for ${punchTarget.name}` : ''}. Tracking active.`, 'ok')
 
       // Give the person a moment to see the success toast before jumping
       // back to the Face Attendance home grid.
@@ -1366,9 +1433,11 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
     if (!navigator.onLine && !window.confirm('No internet connection. Queue checkout for when you\'re back online?')) return
     if (!gpsCoords && !window.confirm('GPS not available. Check out without location? This will be flagged.')) return
 
+    const targetStaffId = punchTarget?.id || currentStaff?.id
+
     const { data, error } = await supabase.rpc('server_checkout', {
       p_attendance_id: logId,
-      p_staff_id:      currentStaff?.id ? parseInt(currentStaff.id) : null,
+      p_staff_id:      targetStaffId ? parseInt(targetStaffId) : null,
       p_lat:           gpsCoords?.lat ?? null,
       p_lng:           gpsCoords?.lng ?? null,
       p_accuracy:      gpsAccuracy   ?? null,
@@ -1379,17 +1448,25 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
 
     if (error) { showToast('❌ ' + error.message, 'err'); return }
 
-    setActiveTracking(prev => {
-      const remaining = prev.filter(t => t.logId !== logId)
-      if (!remaining.length) setGpsStatus('oncampus')
-      return remaining
-    })
+    if (punchTarget?.id) {
+      setTargetActiveTracking(prev => {
+        const remaining = prev.filter(t => t.logId !== logId)
+        return remaining
+      })
+      await fetchTargetData(punchTarget.id)
+    } else {
+      setActiveTracking(prev => {
+        const remaining = prev.filter(t => t.logId !== logId)
+        if (!remaining.length) setGpsStatus('oncampus')
+        return remaining
+      })
+      await fetchMyLogs()
+    }
 
-    await fetchMyLogs()
     showToast(
       data?.early_out
         ? `⚠️ Checked out early (${Math.round(data.mins_left || 0)} min before shift end) — flagged`
-        : `✅ Checked out — Shift ${shiftLabel}`,
+        : `✅ Checked out — Shift ${shiftLabel}${punchTarget ? ` for ${punchTarget.name}` : ''}`,
       data?.early_out ? 'warn' : 'ok'
     )
   }
@@ -1704,6 +1781,29 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                 minsLeft={activeTracking.length > 0 ? minutesToShiftEnd(activeTracking[0].shift) : null}
               />
 
+              {helperAssignments.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 11.5, fontWeight: 700, color: COLOR.slate, display: 'block', marginBottom: 4 }}>
+                    Who are you punching in for?
+                  </label>
+                  <select
+                    value={punchTarget?.id || ''}
+                    onChange={e => {
+                      const id = e.target.value
+                      if (!id) { setPunchTarget(null); return }
+                      const a = helperAssignments.find(h => String(h.assisted_staff_id) === id)
+                      if (a) setPunchTarget({ id: a.assisted_staff_id, name: a.name })
+                    }}
+                    style={{ ...S.input, width: '100%', boxSizing: 'border-box' }}
+                  >
+                    <option value="">Myself ({currentStaff?.name})</option>
+                    {helperAssignments.map(a => (
+                      <option key={a.id} value={a.assisted_staff_id}>{a.name} (no phone)</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {gpsStatus === 'idle' && (
                 <button onClick={startGPS} style={{ ...S.btn(COLOR.ink), width: '100%', padding: 14, fontSize: 15, fontWeight: 800 }}>
                   📡 Detect My Location
@@ -1717,16 +1817,20 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
               )}
 
               {['oncampus', 'outside', 'tracking'].includes(gpsStatus) && (
-                <SmartPunchButton
-                  myShifts={myShifts}
-                  todayMyLogs={todayMyLogs}
-                  activeTracking={activeTracking}
-                  gpsStatus={gpsStatus}
-                  checkingIn={checkingIn}
-                  onPunchIn={handleCheckIn}
-                  onPunchOut={handleCheckOut}
-                  onChooseBelow={() => shiftListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                />
+                loadingTarget ? (
+                  <div style={{ textAlign: 'center', color: COLOR.slate, padding: 16, fontSize: 13 }}>Loading {punchTarget?.name}'s shifts…</div>
+                ) : (
+                  <SmartPunchButton
+                    myShifts={punchTarget ? targetShifts : myShifts}
+                    todayMyLogs={punchTarget ? targetLogs.filter(l => l.date === today()) : todayMyLogs}
+                    activeTracking={punchTarget ? targetActiveTracking : activeTracking}
+                    gpsStatus={gpsStatus}
+                    checkingIn={checkingIn}
+                    onPunchIn={handleCheckIn}
+                    onPunchOut={handleCheckOut}
+                    onChooseBelow={() => shiftListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  />
+                )
               )}
 
               {['oncampus', 'outside', 'tracking'].includes(gpsStatus) && myShifts.length > 0 && (
@@ -2232,7 +2336,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
 
       {faceCaptureShift && (
         <FaceCapture
-          staffId={currentStaff?.id}
+          staffId={punchTarget?.id || currentStaff?.id}
           onVerified={(faceResult) => performCheckIn(faceCaptureShift, faceResult)}
           onCancel={() => setFaceCaptureShift(null)}
         />
