@@ -194,42 +194,79 @@ const td = ledger.td
 // and its supporting components: GPSRing, SmartPunchButton, ShiftTimeline,
 // OfflineBanner, StatusBadge, CheckInFailureExplainer). Admin/monitor tabs
 // keep the existing parchment Ledger & Crest look untouched for now.
-const VAULT = {
-  bg:        '#081527',
-  bgRaised:  'linear-gradient(135deg, #0f2544 0%, #0a1a30 100%)',
-  panel:     'rgba(255,255,255,0.03)',
-  panelHover:'rgba(255,255,255,0.06)',
-  panelBorder: 'rgba(201,162,75,0.16)',
-  goldBorder:  'rgba(201,162,75,0.32)',
-  gold:      COLOR.brass,
-  goldDeep:  COLOR.brassDeep,
-  textPrimary: '#F3EEE0',
-  textMuted:   '#8493ab',
-  textFaint:   '#5d6b82',
-  ok:        '#5DCAA5',
-  warn:      '#F0B429',
-  danger:    '#E2574C',
+// ─── Google Pay theme — white surfaces, single blue accent, pill buttons ──
+// Same token shape/keys as before so every consumer using `dark` /
+// GPAY.* / gpayPress / gpayBtnStyle keeps working unchanged — only the
+// actual colors and button geometry changed.
+const GPAY = {
+  bg:        '#F6F6F6',
+  bgRaised:  '#ffffff',
+  panel:     '#ffffff',
+  panelHover:'#F1F3F4',
+  panelBorder: '#E8EAED',
+  goldBorder:  '#E8EAED',
+  gold:      '#1A73E8',
+  goldDeep:  '#1558B0',
+  textPrimary: '#202124',
+  textMuted:   '#5f6368',
+  textFaint:   '#80868b',
+  ok:        '#1E8E3E',
+  warn:      '#EA8600',
+  danger:    '#D93025',
 }
 
-// Shared press/hover animation for every button in the Vault check-in
-// screen — one consistent feel (scale down on press, lift on hover)
-// instead of each button hand-rolling its own onMouseDown/Up pair.
-const vaultPress = {
-  onMouseDown: e => { e.currentTarget.style.transform = 'scale(0.96)' },
+// Shared press animation for every button on the check-in screen. GPay's
+// signature interaction is a tap ripple rather than a scale — this fires
+// an expanding, fading circle from the actual tap/click point, then a
+// gentle scale-back so the button still feels responsive on hold.
+function spawnRipple(e) {
+  const btn = e.currentTarget
+  const rect = btn.getBoundingClientRect()
+  const size = Math.max(rect.width, rect.height)
+  const isLight = getComputedStyle(btn).backgroundColor === 'rgba(0, 0, 0, 0)' || btn.dataset.rippleDark === 'true'
+  const x = (e.clientX ?? (e.touches?.[0]?.clientX) ?? rect.left + rect.width / 2) - rect.left - size / 2
+  const y = (e.clientY ?? (e.touches?.[0]?.clientY) ?? rect.top + rect.height / 2) - rect.top - size / 2
+  const span = document.createElement('span')
+  span.style.position = 'absolute'
+  span.style.left = x + 'px'
+  span.style.top = y + 'px'
+  span.style.width = span.style.height = size + 'px'
+  span.style.borderRadius = '50%'
+  span.style.background = isLight ? 'rgba(60,64,67,0.15)' : 'rgba(255,255,255,0.45)'
+  span.style.transform = 'scale(0)'
+  span.style.pointerEvents = 'none'
+  span.style.animation = 'gpay-ripple 0.55s ease-out'
+  if (getComputedStyle(btn).position === 'static') btn.style.position = 'relative'
+  btn.style.overflow = 'hidden'
+  btn.appendChild(span)
+  setTimeout(() => span.remove(), 600)
+}
+const gpayPress = {
+  onClick: spawnRipple,
+  onMouseDown: e => { e.currentTarget.style.transform = 'scale(0.98)' },
   onMouseUp:   e => { e.currentTarget.style.transform = 'scale(1)' },
   onMouseLeave:e => { e.currentTarget.style.transform = 'scale(1)' },
-  onTouchStart:e => { e.currentTarget.style.transform = 'scale(0.96)' },
+  onTouchStart:e => { e.currentTarget.style.transform = 'scale(0.98)' },
   onTouchEnd:  e => { e.currentTarget.style.transform = 'scale(1)' },
 }
-function vaultBtnStyle({ bg, color = '#081527', disabled = false, size = 'md' }) {
-  const pad = size === 'lg' ? '16px 14px' : size === 'sm' ? '8px 14px' : '12px 18px'
+function gpayBtnStyle({ bg, color = '#ffffff', disabled = false, size = 'md', variant = 'primary' }) {
+  const pad = size === 'lg' ? '16px 20px' : size === 'sm' ? '9px 16px' : '12px 20px'
+  if (variant === 'secondary') {
+    return {
+      background: disabled ? '#F1F3F4' : '#ffffff',
+      color: disabled ? '#9aa0a6' : (color === '#ffffff' ? GPAY.textPrimary : color),
+      border: `1.5px solid ${disabled ? '#F1F3F4' : '#DADCE0'}`, borderRadius: 28, padding: pad,
+      fontWeight: 600, fontFamily: FONT.body, cursor: disabled ? 'not-allowed' : 'pointer',
+      transition: 'transform 0.12s ease, border-color 0.15s', position: 'relative', overflow: 'hidden',
+    }
+  }
   return {
-    background: disabled ? 'rgba(255,255,255,0.06)' : bg,
-    color: disabled ? '#5d6b82' : color,
-    border: 'none', borderRadius: 12, padding: pad,
-    fontWeight: 700, fontFamily: FONT.body, cursor: disabled ? 'not-allowed' : 'pointer',
-    transition: 'transform 0.12s cubic-bezier(.34,1.56,.64,1), box-shadow 0.15s, background 0.15s',
-    boxShadow: disabled ? 'none' : '0 2px 10px -2px rgba(0,0,0,0.4)',
+    background: disabled ? '#F1F3F4' : bg,
+    color: disabled ? '#9aa0a6' : color,
+    border: 'none', borderRadius: 28, padding: pad,
+    fontWeight: 600, fontFamily: FONT.body, cursor: disabled ? 'not-allowed' : 'pointer',
+    transition: 'transform 0.12s ease, box-shadow 0.15s, background 0.15s', position: 'relative', overflow: 'hidden',
+    boxShadow: disabled ? 'none' : '0 1px 3px rgba(0,0,0,0.15), 0 2px 6px -2px rgba(26,115,232,0.35)',
   }
 }
 
@@ -280,13 +317,13 @@ function StatusBadge({ status, dark = false }) {
     EarlyOut: { bg: COLOR.dangerBg, color: COLOR.danger, icon: '🏃' },
   }
   const darkMap = {
-    Present:  { bg: 'rgba(93,202,165,0.14)', color: VAULT.ok, icon: '✅' },
-    Late:     { bg: 'rgba(240,180,41,0.14)', color: VAULT.warn, icon: '🕐' },
-    Outside:  { bg: 'rgba(226,87,76,0.14)', color: VAULT.danger, icon: '📍' },
-    Flagged:  { bg: 'rgba(226,87,76,0.14)', color: VAULT.danger, icon: '🚨' },
-    Absent:   { bg: 'rgba(255,255,255,0.06)', color: VAULT.textMuted, icon: '⭕' },
-    Pending:  { bg: 'rgba(255,255,255,0.06)', color: VAULT.textMuted, icon: '⏳' },
-    EarlyOut: { bg: 'rgba(226,87,76,0.14)', color: VAULT.danger, icon: '🏃' },
+    Present:  { bg: '#E6F4EA', color: '#1E8E3E', icon: '✅' },
+    Late:     { bg: '#FEF7E0', color: '#EA8600', icon: '🕐' },
+    Outside:  { bg: '#FCE8E6', color: '#D93025', icon: '📍' },
+    Flagged:  { bg: '#FCE8E6', color: '#D93025', icon: '🚨' },
+    Absent:   { bg: '#F1F3F4', color: '#5f6368', icon: '⭕' },
+    Pending:  { bg: '#F1F3F4', color: '#5f6368', icon: '⏳' },
+    EarlyOut: { bg: '#FCE8E6', color: '#D93025', icon: '🏃' },
   }
   const m = (dark ? darkMap : map)[status] || (dark ? darkMap.Pending : map.Pending)
   return (
@@ -366,15 +403,15 @@ function CheckInFailureExplainer({ failure, gpsDistance, campusRadius, onDismiss
   }
   if (dark) {
     return (
-      <div style={{ marginTop: 14, padding: 16, background: 'rgba(240,180,41,0.08)', border: `1px solid ${VAULT.warn}44`, borderRadius: 14, animation: 'vault-fade-in 0.25s ease' }}>
+      <div style={{ marginTop: 14, padding: 16, background: 'rgba(240,180,41,0.08)', border: `1px solid ${GPAY.warn}44`, borderRadius: 14, animation: 'vault-fade-in 0.25s ease' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: VAULT.warn, fontFamily: FONT.display }}>Why did check-in fail? — {content.title}</div>
-          <button onClick={onDismiss} style={{ background: 'none', border: 'none', color: VAULT.warn, cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1, transition: 'transform 0.12s' }}
+          <div style={{ fontWeight: 700, fontSize: 13, color: GPAY.warn, fontFamily: FONT.display }}>Why did check-in fail? — {content.title}</div>
+          <button onClick={onDismiss} style={{ background: 'none', border: 'none', color: GPAY.warn, cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1, transition: 'transform 0.12s' }}
             onMouseDown={e => e.currentTarget.style.transform = 'scale(0.85)'} onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'} onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
           >✕</button>
         </div>
-        <div style={{ fontSize: 12, color: VAULT.textPrimary, marginTop: 7, lineHeight: 1.5, opacity: 0.9 }}>{content.body}</div>
-        <div style={{ fontSize: 11.5, color: VAULT.warn, marginTop: 7, fontStyle: 'italic' }}>💡 {content.tip}</div>
+        <div style={{ fontSize: 12, color: GPAY.textPrimary, marginTop: 7, lineHeight: 1.5, opacity: 0.9 }}>{content.body}</div>
+        <div style={{ fontSize: 11.5, color: GPAY.warn, marginTop: 7, fontStyle: 'italic' }}>💡 {content.tip}</div>
       </div>
     )
   }
@@ -591,18 +628,26 @@ function SmartPunchButton({ myShifts, todayMyLogs, activeTracking, gpsStatus, ch
     helperText = typeof NONE_COPY[action.reason] === 'function' ? NONE_COPY[action.reason](action) : NONE_COPY[action.reason]
   }
 
-  const btnBase = (bg, disabled) => dark ? {
-    flex: 1, minWidth: 0, border: 'none', borderRadius: 14, padding: '17px 10px',
-    background: disabled ? 'rgba(255,255,255,0.05)' : bg,
+  // Which side is the "live" action right now — that one gets the solid
+  // blue/green filled pill (GPay's primary button); the other renders as
+  // a white, grey-bordered pill (GPay's secondary/disabled button) rather
+  // than a dimmed gradient of the same shape.
+  const inIsPrimary  = canPunchIn && !checkingIn
+  const outIsPrimary = canPunchOut && !checkingIn
+
+  const pillBase = (isPrimary, disabled, accentColor) => dark ? {
+    flex: 1, minWidth: 0, borderRadius: 28, padding: '16px 10px',
+    border: isPrimary ? 'none' : '1.5px solid #E8EAED',
+    background: isPrimary ? accentColor : (disabled ? '#F1F3F4' : '#ffffff'),
     cursor: disabled ? 'not-allowed' : 'pointer',
-    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, textAlign: 'center',
-    minHeight: 92,
-    boxShadow: disabled ? 'none' : '0 4px 16px -4px rgba(0,0,0,0.5)', fontFamily: FONT.body,
-    transition: 'transform 0.15s cubic-bezier(.34,1.56,.64,1), box-shadow 0.15s',
-    boxSizing: 'border-box',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, textAlign: 'center',
+    minHeight: 90, boxSizing: 'border-box',
+    boxShadow: isPrimary ? `0 1px 3px rgba(0,0,0,0.15), 0 3px 8px -2px ${accentColor}55` : 'none',
+    fontFamily: FONT.body, transition: 'transform 0.12s ease, box-shadow 0.15s, border-color 0.15s',
+    position: 'relative', overflow: 'hidden',
   } : {
     flex: 1, minWidth: 0, border: 'none', borderRadius: RADIUS.lg, padding: '16px 10px',
-    background: disabled ? COLOR.rule : bg,
+    background: disabled ? COLOR.rule : accentColor,
     cursor: disabled ? 'not-allowed' : 'pointer',
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, textAlign: 'center',
     minHeight: 92,
@@ -611,13 +656,13 @@ function SmartPunchButton({ myShifts, todayMyLogs, activeTracking, gpsStatus, ch
     boxSizing: 'border-box',
   }
 
-  const press = (disabled) => disabled ? {} : {
+  const press = (disabled) => disabled ? {} : (dark ? { ...gpayPress } : {
     onMouseDown: e => { e.currentTarget.style.transform = 'scale(0.96)' },
     onMouseUp:   e => { e.currentTarget.style.transform = 'scale(1)' },
     onMouseLeave:e => { e.currentTarget.style.transform = 'scale(1)' },
     onTouchStart:e => { e.currentTarget.style.transform = 'scale(0.96)' },
     onTouchEnd:  e => { e.currentTarget.style.transform = 'scale(1)' },
-  }
+  })
 
   return (
     <div>
@@ -625,20 +670,21 @@ function SmartPunchButton({ myShifts, todayMyLogs, activeTracking, gpsStatus, ch
         <button
           onClick={inDisabled ? undefined : () => onPunchIn(action.shift)}
           disabled={inDisabled}
-          style={btnBase(
+          style={pillBase(
+            dark ? inIsPrimary : true,
+            inDisabled,
             dark
-              ? (offCampus && canPunchIn ? `linear-gradient(155deg, ${VAULT.warn}, #8a5f0f)` : `linear-gradient(155deg, ${VAULT.ok}, #2f7a5f)`)
-              : (offCampus && canPunchIn ? `linear-gradient(155deg, ${COLOR.warn}, #6b5117)` : `linear-gradient(155deg, ${COLOR.sage}, ${COLOR.sageDeep})`),
-            inDisabled
+              ? (offCampus && canPunchIn ? GPAY.warn : GPAY.ok)
+              : (offCampus && canPunchIn ? `linear-gradient(155deg, ${COLOR.warn}, #6b5117)` : `linear-gradient(155deg, ${COLOR.sage}, ${COLOR.sageDeep})`)
           )}
           {...press(inDisabled)}
         >
-          <span style={{ fontSize: 20 }}>{checkingIn && canPunchIn ? '⋯' : '→'}</span>
-          <span style={{ fontSize: 14.5, fontWeight: 700, fontFamily: FONT.display, color: inDisabled ? (dark ? VAULT.textFaint : COLOR.ink2) : (dark ? '#081527' : 'white'), maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <span style={{ fontSize: 18 }}>{checkingIn && canPunchIn ? '⋯' : '→'}</span>
+          <span style={{ fontSize: 14, fontWeight: 600, fontFamily: dark ? FONT.body : FONT.display, color: dark ? (inIsPrimary ? '#ffffff' : (inDisabled ? '#9aa0a6' : GPAY.textPrimary)) : (inDisabled ? COLOR.ink2 : 'white'), maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {checkingIn && canPunchIn ? 'Verifying…' : (offCampus && canPunchIn ? 'Punch in (off campus)' : 'Punch in')}
           </span>
           {inSub && (
-            <span style={{ fontSize: 10, color: inDisabled ? (dark ? VAULT.textFaint : COLOR.slate) : (dark ? 'rgba(8,21,39,0.75)' : 'rgba(255,255,255,0.82)'), maxWidth: '100%', overflowWrap: 'break-word', lineHeight: 1.3 }}>
+            <span style={{ fontSize: 10, color: dark ? (inIsPrimary ? 'rgba(255,255,255,0.85)' : GPAY.textFaint) : (inDisabled ? COLOR.slate : 'rgba(255,255,255,0.82)'), maxWidth: '100%', overflowWrap: 'break-word', lineHeight: 1.3 }}>
               {inSub}
             </span>
           )}
@@ -647,15 +693,20 @@ function SmartPunchButton({ myShifts, todayMyLogs, activeTracking, gpsStatus, ch
         <button
           onClick={outDisabled ? undefined : () => onPunchOut(action.logId, action.shiftLabel)}
           disabled={outDisabled}
-          style={btnBase(dark ? `linear-gradient(155deg, ${VAULT.gold}, ${VAULT.goldDeep})` : `linear-gradient(155deg, ${COLOR.brass}, ${COLOR.brassDeep})`, outDisabled)}
+          style={pillBase(
+            dark ? outIsPrimary : true,
+            outDisabled,
+            dark ? GPAY.gold : `linear-gradient(155deg, ${COLOR.brass}, ${COLOR.brassDeep})`
+          )}
           {...press(outDisabled)}
         >
-          <span style={{ fontSize: 20 }}>{checkingIn && canPunchOut ? '⋯' : '■'}</span>
-          <span style={{ fontSize: 14.5, fontWeight: 700, fontFamily: FONT.display, color: outDisabled ? (dark ? VAULT.textFaint : COLOR.ink2) : (dark ? '#081527' : 'white'), maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <span style={{ fontSize: 18 }}>{checkingIn && canPunchOut ? '⋯' : '■'}</span>
+          <span style={{ fontSize: 14, fontWeight: 600, fontFamily: dark ? FONT.body : FONT.display, color: dark ? (outIsPrimary ? '#ffffff' : (outDisabled ? '#9aa0a6' : GPAY.textPrimary)) : (outDisabled ? COLOR.ink2 : 'white'), maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             Punch out
+
           </span>
           {outSub && (
-            <span style={{ fontSize: 10, color: outDisabled ? (dark ? VAULT.textFaint : COLOR.slate) : (dark ? 'rgba(8,21,39,0.75)' : 'rgba(255,255,255,0.82)'), maxWidth: '100%', overflowWrap: 'break-word', lineHeight: 1.3 }}>
+            <span style={{ fontSize: 10, color: dark ? (outIsPrimary ? 'rgba(255,255,255,0.85)' : GPAY.textFaint) : (outDisabled ? COLOR.slate : 'rgba(255,255,255,0.82)'), maxWidth: '100%', overflowWrap: 'break-word', lineHeight: 1.3 }}>
               {outSub}
             </span>
           )}
@@ -669,7 +720,7 @@ function SmartPunchButton({ myShifts, todayMyLogs, activeTracking, gpsStatus, ch
           style={{
             width: '100%', border: 'none', background: 'none', padding: '0 0 16px',
             cursor: isAmbiguous ? 'pointer' : 'default', textAlign: 'center',
-            fontSize: 12, color: dark ? VAULT.textMuted : COLOR.slate, fontFamily: FONT.body,
+            fontSize: 12, color: dark ? GPAY.textMuted : COLOR.slate, fontFamily: FONT.body,
           }}
         >
           {helperText}
@@ -683,19 +734,19 @@ function SmartPunchButton({ myShifts, todayMyLogs, activeTracking, gpsStatus, ch
 
 function GPSRing({ status, distance, accuracy, campus, tracking, minsLeft, dark = false }) {
   const colorsLight = { idle: COLOR.slate, locating: COLOR.warn, oncampus: COLOR.sageDeep, outside: COLOR.danger, error: COLOR.danger, weak: COLOR.warn, tracking: COLOR.sageDeep }
-  const colorsDark  = { idle: VAULT.textMuted, locating: VAULT.warn, oncampus: VAULT.ok, outside: VAULT.danger, error: VAULT.danger, weak: VAULT.warn, tracking: VAULT.ok }
+  const colorsDark  = { idle: GPAY.textMuted, locating: GPAY.warn, oncampus: GPAY.gold, outside: GPAY.danger, error: GPAY.danger, weak: GPAY.warn, tracking: GPAY.gold }
   const colors = dark ? colorsDark : colorsLight
   const color    = colors[status] || colors.idle
   const isActive = status === 'oncampus' || status === 'tracking'
   const isVerified = status === 'oncampus' || status === 'tracking'
   const pct      = campus ? Math.max(0, Math.min(100, (1 - (distance || 0) / campus.radius) * 100)) : 0
   const icon     = { idle: '📍', locating: '📡', outside: '❌', weak: '⚠️', error: '❌' }[status]
-  const trackColor = dark ? 'rgba(255,255,255,0.08)' : COLOR.rule
+  const trackColor = dark ? '#E8EAED' : COLOR.rule
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, padding: '26px 16px' }} aria-label={`GPS status: ${status}`}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18, padding: dark ? '8px 4px 4px' : '26px 16px' }} aria-label={`GPS status: ${status}`}>
       <div style={{ position: 'relative', width: 148, height: 148 }}>
         {isActive && <div style={{ position: 'absolute', inset: -8, borderRadius: '50%', border: `1.5px solid ${color}44`, animation: 'pulse 2.4s infinite' }} />}
-        {tracking  && <div style={{ position: 'absolute', inset: -17, borderRadius: '50%', border: `1.5px solid ${dark ? VAULT.gold : COLOR.brass}55`, animation: 'pulse 1.6s infinite' }} />}
+        {tracking  && <div style={{ position: 'absolute', inset: -17, borderRadius: '50%', border: `1.5px solid ${dark ? GPAY.gold : COLOR.brass}55`, animation: 'pulse 1.6s infinite' }} />}
         <svg width="148" height="148" style={{ transform: 'rotate(-90deg)', position: 'absolute', inset: 0 }} aria-hidden="true">
           <circle cx="74" cy="74" r="61" fill="none" stroke={trackColor} strokeWidth="9" />
           <circle cx="74" cy="74" r="61" fill="none" stroke={color} strokeWidth="9"
@@ -707,22 +758,31 @@ function GPSRing({ status, distance, accuracy, campus, tracking, minsLeft, dark 
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           {isVerified ? (
-            <div style={{ animation: 'ledger-seal-pop 0.4s ease' }}>
-              <Seal size={44} tone={tracking ? 'brass' : 'sage'} />
-            </div>
+            dark ? (
+              <div style={{
+                width: 46, height: 46, borderRadius: '50%', background: GPAY.gold,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff', fontSize: 22, fontWeight: 700,
+                boxShadow: `0 2px 8px ${GPAY.gold}55`, animation: 'gpay-pop 0.35s ease',
+              }}>✓</div>
+            ) : (
+              <div style={{ animation: 'ledger-seal-pop 0.4s ease' }}>
+                <Seal size={44} tone={tracking ? 'brass' : 'sage'} />
+              </div>
+            )
           ) : (
             <div style={{ fontSize: 30, lineHeight: 1 }}>{icon}</div>
           )}
           {distance !== null && distance !== undefined && !['locating','idle'].includes(status) && (
-            <div style={{ fontSize: 13, fontWeight: 700, color, marginTop: 6, fontFamily: FONT.display, fontVariantNumeric: 'tabular-nums' }}>{Math.round(distance)}m</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color, marginTop: 6, fontFamily: dark ? FONT.body : FONT.display, fontVariantNumeric: 'tabular-nums' }}>{Math.round(distance)}m</div>
           )}
           {tracking && minsLeft !== null && (
-            <div style={{ fontSize: 10, color: dark ? VAULT.gold : COLOR.brassDeep, marginTop: 2, fontWeight: 700 }}>{Math.max(0, Math.round(minsLeft))}m left</div>
+            <div style={{ fontSize: 10, color: dark ? GPAY.gold : COLOR.brassDeep, marginTop: 2, fontWeight: 700 }}>{Math.max(0, Math.round(minsLeft))}m left</div>
           )}
         </div>
       </div>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 15.5, fontWeight: 600, color: status === 'idle' ? (dark ? VAULT.textPrimary : COLOR.ink2) : color, fontFamily: FONT.display }}>
+        <div style={{ fontSize: 15.5, fontWeight: dark ? 500 : 600, color: status === 'idle' ? (dark ? GPAY.textPrimary : COLOR.ink2) : color, fontFamily: dark ? FONT.body : FONT.display }}>
           {status === 'idle'      ? 'Ready to check in'
           : status === 'locating' ? 'Detecting location…'
           : status === 'oncampus' ? 'Verified — on campus'
@@ -731,15 +791,16 @@ function GPSRing({ status, distance, accuracy, campus, tracking, minsLeft, dark 
           : status === 'weak'     ? 'GPS signal weak'
           : 'Location error'}
         </div>
-        {tracking && <div style={{ fontSize: 12, color: dark ? VAULT.gold : COLOR.brassDeep, marginTop: 5, fontWeight: 600 }}>Location verified every 2 minutes</div>}
+        {tracking && <div style={{ fontSize: 12, color: dark ? GPAY.gold : COLOR.brassDeep, marginTop: 5, fontWeight: 600 }}>Location verified every 2 minutes</div>}
         {accuracy && !['idle','error'].includes(status) && (
-          <div style={{ fontSize: 12, color: accuracy > 50 ? (dark ? VAULT.warn : COLOR.warn) : (dark ? VAULT.textMuted : COLOR.slate), marginTop: 5 }}>
+          <div style={{ fontSize: 12, color: accuracy > 50 ? (dark ? GPAY.warn : COLOR.warn) : (dark ? GPAY.textMuted : COLOR.slate), marginTop: 5 }}>
             GPS accuracy ±{Math.round(accuracy)}m{accuracy > 50 ? ' — weak signal' : ''}
           </div>
         )}
       </div>
       <style>{`
         @keyframes pulse{0%,100%{transform:scale(1);opacity:0.8}50%{transform:scale(1.08);opacity:0.3}}
+        @keyframes gpay-pop{0%{transform:scale(0.6);opacity:0}60%{transform:scale(1.08);opacity:1}100%{transform:scale(1)}}
       `}</style>
     </div>
   )
@@ -800,9 +861,9 @@ function OfflineBanner({ offline, dark = false }) {
   if (!offline) return null
   return (
     <div role="alert" style={dark ? {
-      background: 'rgba(240,180,41,0.1)', border: `1px solid ${VAULT.warn}44`, borderRadius: 12,
+      background: 'rgba(240,180,41,0.1)', border: `1px solid ${GPAY.warn}44`, borderRadius: 12,
       padding: '10px 14px', marginBottom: 14, display: 'flex', gap: 8, alignItems: 'center',
-      fontSize: 13, fontWeight: 600, color: VAULT.warn, fontFamily: FONT.body,
+      fontSize: 13, fontWeight: 600, color: GPAY.warn, fontFamily: FONT.body,
       animation: 'vault-fade-in 0.25s ease',
     } : {
       background: COLOR.warnBg, border: `1px solid ${COLOR.warn}44`, borderRadius: RADIUS.md, padding: '10px 14px', marginBottom: 14, display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, fontWeight: 600, color: COLOR.warn, fontFamily: FONT.body,
@@ -1819,10 +1880,10 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
           ))}
         </div>
 
-        {/* ══ MY CHECK-IN — "Vault" navy/gold theme ══ */}
+        {/* ══ MY CHECK-IN — Google Pay style: white cards, blue accent ══ */}
         {activeTab === 'checkin' && (
           <div style={{
-            maxWidth: 500, margin: '-20px auto 0', background: VAULT.bg,
+            maxWidth: 500, margin: '-20px auto 0', background: GPAY.bg,
             padding: '20px 16px 32px', borderRadius: '0 0 20px 20px',
           }}>
             <OfflineBanner offline={offline} dark />
@@ -1831,68 +1892,73 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
               const wasOff = offCampusSince
               return (
                 <div role="status" style={{
-                  background: wasOff ? 'rgba(226,87,76,0.1)' : 'rgba(93,202,165,0.08)',
-                  border: `1px solid ${wasOff ? VAULT.danger + '55' : VAULT.ok + '44'}`,
+                  background: wasOff ? '#FCE8E6' : '#E6F4EA',
+                  border: `1px solid ${wasOff ? GPAY.danger + '55' : GPAY.ok + '44'}`,
                   borderRadius: 14, padding: '13px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center',
                   animation: 'vault-fade-in 0.3s ease',
                 }}>
-                  <div style={{ flexShrink: 0 }}>{wasOff ? <span style={{ fontSize: 20 }}>⚠️</span> : <Seal size={30} tone="brass" />}</div>
+                  <div style={{ flexShrink: 0 }}>
+                    {wasOff
+                      ? <span style={{ fontSize: 20 }}>⚠️</span>
+                      : <div style={{ width: 30, height: 30, borderRadius: '50%', background: GPAY.gold, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, fontWeight: 700 }}>✓</div>
+                    }
+                  </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, color: wasOff ? VAULT.danger : VAULT.ok, fontSize: 13, fontFamily: FONT.display }}>
+                    <div style={{ fontWeight: 700, color: wasOff ? GPAY.danger : GPAY.ok, fontSize: 13, fontFamily: FONT.display }}>
                       {wasOff ? `Off campus — auto checkout in ${AUTO_CHECKOUT_THRESHOLD} min if not returned` : 'Location tracking active'}
                     </div>
-                    <div style={{ fontSize: 12, color: wasOff ? VAULT.danger : VAULT.textMuted, marginTop: 2, opacity: 0.9 }}>
+                    <div style={{ fontSize: 12, color: wasOff ? GPAY.danger : GPAY.textMuted, marginTop: 2, opacity: 0.9 }}>
                       {activeTracking.map(t => `Shift ${t.shiftLabel} (ends ${fmt12(t.shift.shift_end)})`).join(' · ')}
                       {lastPingTime && ` · Last ping: ${fmtTime(lastPingTime)}`}
                     </div>
                   </div>
-                  {wasOff && <div style={{ fontSize: 10.5, background: VAULT.danger, color: '#fff', padding: '4px 10px', borderRadius: 8, fontWeight: 700, whiteSpace: 'nowrap' }}>Admin notified</div>}
+                  {wasOff && <div style={{ fontSize: 10.5, background: GPAY.danger, color: '#fff', padding: '4px 10px', borderRadius: 8, fontWeight: 700, whiteSpace: 'nowrap' }}>Admin notified</div>}
                 </div>
               )
             })()}
 
             {todayMyLogs.some(l => l.session_dead && !l.check_out_time) && (
-              <div role="alert" style={{ background: 'rgba(226,87,76,0.1)', border: `1px solid ${VAULT.danger}44`, borderRadius: 14, padding: '13px 16px', marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, color: VAULT.danger, fontSize: 13, fontFamily: FONT.display }}>Session interrupted — location tracking was lost</div>
-                <div style={{ fontSize: 12, color: VAULT.danger, marginTop: 4, opacity: 0.85 }}>
+              <div role="alert" style={{ background: 'rgba(226,87,76,0.1)', border: `1px solid ${GPAY.danger}44`, borderRadius: 14, padding: '13px 16px', marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, color: GPAY.danger, fontSize: 13, fontFamily: FONT.display }}>Session interrupted — location tracking was lost</div>
+                <div style={{ fontSize: 12, color: GPAY.danger, marginTop: 4, opacity: 0.85 }}>
                   {todayMyLogs.filter(l => l.session_dead && !l.check_out_time).map(l => `Shift ${l.shift_label}`).join(', ')} — tab was closed or app killed mid-shift. Admin has been notified.
                 </div>
               </div>
             )}
 
             {!currentStaff && (
-              <div style={{ background: 'rgba(240,180,41,0.1)', border: `1px solid ${VAULT.warn}44`, borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: VAULT.warn, fontWeight: 600 }}>
+              <div style={{ background: 'rgba(240,180,41,0.1)', border: `1px solid ${GPAY.warn}44`, borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: GPAY.warn, fontWeight: 600 }}>
                 Staff profile not linked to your account. Contact admin to link your profile.
               </div>
             )}
 
             {myPendingAdvanceTotal > 0 && (
-              <div style={{ background: 'rgba(240,180,41,0.1)', border: `1px solid ${VAULT.warn}44`, borderRadius: 12, padding: '11px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 13, color: VAULT.warn, fontWeight: 600 }}>Pending advance deduction this month</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: VAULT.warn, fontFamily: FONT.display, fontVariantNumeric: 'tabular-nums' }}>{fmtRupee(myPendingAdvanceTotal)}</div>
+              <div style={{ background: 'rgba(240,180,41,0.1)', border: `1px solid ${GPAY.warn}44`, borderRadius: 12, padding: '11px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: 13, color: GPAY.warn, fontWeight: 600 }}>Pending advance deduction this month</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: GPAY.warn, fontFamily: FONT.display, fontVariantNumeric: 'tabular-nums' }}>{fmtRupee(myPendingAdvanceTotal)}</div>
               </div>
             )}
 
             {todayMyLogs.length > 0 && (
-              <div style={{ background: VAULT.panel, border: `1px solid ${VAULT.panelBorder}`, borderRadius: 16, padding: 18, marginBottom: 16 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: VAULT.textPrimary, marginBottom: 12, fontFamily: FONT.display }}>Today's attendance</div>
+              <div style={{ background: GPAY.panel, border: `1px solid ${GPAY.panelBorder}`, borderRadius: 16, padding: 18, marginBottom: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: GPAY.textPrimary, marginBottom: 12, fontFamily: FONT.display }}>Today's attendance</div>
                 {todayMyLogs.map(log => {
                   const isBeingTracked = activeTracking.some(t => t.logId === log.id)
                   return (
-                    <div key={log.id} style={{ padding: '13px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 12, marginBottom: 8, border: `1px solid ${log.session_dead ? VAULT.danger + '44' : isBeingTracked ? VAULT.ok + '44' : VAULT.panelBorder}` }}>
+                    <div key={log.id} style={{ padding: '13px 14px', background: GPAY.panelHover, borderRadius: 12, marginBottom: 8, border: `1px solid ${log.session_dead ? GPAY.danger + '44' : isBeingTracked ? GPAY.ok + '44' : GPAY.panelBorder}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: VAULT.textPrimary, fontFamily: FONT.body }}>Shift {log.shift_label}</div>
-                          <div style={{ fontSize: 12, color: VAULT.textMuted, fontVariantNumeric: 'tabular-nums' }}>In: {fmtTime(log.server_check_in_time || log.check_in_time)} · Out: {fmtTime(log.server_check_out_time || log.check_out_time)}</div>
-                          {log.distance_from_campus !== null && <div style={{ fontSize: 11, color: VAULT.textMuted }}>{Math.round(log.distance_from_campus)}m from campus at check-in</div>}
-                          {log.late_minutes > 0 && <div style={{ fontSize: 11, color: VAULT.warn, fontWeight: 600, marginTop: 3 }}>Late by {log.late_minutes} min</div>}
-                          {log.session_dead && <div style={{ fontSize: 11, color: VAULT.danger, fontWeight: 600, marginTop: 4 }}>Session lost — tracking interrupted</div>}
-                          {isBeingTracked && <div style={{ fontSize: 11, color: VAULT.ok, fontWeight: 600, marginTop: 4 }}>Tracking active</div>}
+                          <div style={{ fontWeight: 700, fontSize: 13, color: GPAY.textPrimary, fontFamily: FONT.body }}>Shift {log.shift_label}</div>
+                          <div style={{ fontSize: 12, color: GPAY.textMuted, fontVariantNumeric: 'tabular-nums' }}>In: {fmtTime(log.server_check_in_time || log.check_in_time)} · Out: {fmtTime(log.server_check_out_time || log.check_out_time)}</div>
+                          {log.distance_from_campus !== null && <div style={{ fontSize: 11, color: GPAY.textMuted }}>{Math.round(log.distance_from_campus)}m from campus at check-in</div>}
+                          {log.late_minutes > 0 && <div style={{ fontSize: 11, color: GPAY.warn, fontWeight: 600, marginTop: 3 }}>Late by {log.late_minutes} min</div>}
+                          {log.session_dead && <div style={{ fontSize: 11, color: GPAY.danger, fontWeight: 600, marginTop: 4 }}>Session lost — tracking interrupted</div>}
+                          {isBeingTracked && <div style={{ fontSize: 11, color: GPAY.ok, fontWeight: 600, marginTop: 4 }}>Tracking active</div>}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                           <StatusBadge status={log.status} dark />
                           {log.check_in_time && !log.check_out_time && !log.session_dead && (
-                            <button onClick={() => handleCheckOut(log.id, log.shift_label)} style={vaultBtnStyle({ bg: VAULT.ok, color: '#081527', size: 'sm' })} {...vaultPress}>Check out</button>
+                            <button onClick={() => handleCheckOut(log.id, log.shift_label)} style={gpayBtnStyle({ bg: GPAY.ok, size: 'sm' })} {...gpayPress}>Check out</button>
                           )}
                           {(log.fraud_flags || []).map((f, i) => <FraudBadge key={i} type={f.type} />)}
                         </div>
@@ -1904,17 +1970,17 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
             )}
 
             {'Notification' in window && Notification.permission === 'default' && (
-              <div style={{ background: 'rgba(93,202,165,0.08)', border: `1px solid ${VAULT.ok}44`, borderRadius: 12,
+              <div style={{ background: 'rgba(93,202,165,0.08)', border: `1px solid ${GPAY.ok}44`, borderRadius: 12,
                 padding: '11px 16px', marginBottom: 14, display: 'flex',
                 justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 13, color: VAULT.ok, fontWeight: 600 }}>
+                <div style={{ fontSize: 13, color: GPAY.ok, fontWeight: 600 }}>
                   Enable push notifications to get shift alerts
                 </div>
-                <button onClick={subscribe} style={vaultBtnStyle({ bg: VAULT.ok, color: '#081527', size: 'sm' })} {...vaultPress}>Enable</button>
+                <button onClick={subscribe} style={gpayBtnStyle({ bg: GPAY.ok, size: 'sm' })} {...gpayPress}>Enable</button>
               </div>
             )}
 
-            <div style={{ background: VAULT.bgRaised, border: `1px solid ${VAULT.goldBorder}`, borderRadius: 18, padding: 18 }}>
+            <div style={{ background: GPAY.bgRaised, border: `1px solid ${GPAY.goldBorder}`, borderRadius: 18, padding: 18 }}>
               <GPSRing
                 status={gpsStatus} distance={gpsDistance} accuracy={gpsAccuracy} campus={campus}
                 tracking={activeTracking.length > 0}
@@ -1924,7 +1990,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
 
               {helperAssignments.length > 0 && (
                 <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 11.5, fontWeight: 700, color: VAULT.textMuted, display: 'block', marginBottom: 4 }}>
+                  <label style={{ fontSize: 11.5, fontWeight: 700, color: GPAY.textMuted, display: 'block', marginBottom: 4 }}>
                     Who are you punching in for?
                   </label>
                   <select
@@ -1937,8 +2003,8 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                     }}
                     style={{
                       width: '100%', padding: '10px 14px', borderRadius: 10, boxSizing: 'border-box',
-                      border: `1px solid ${VAULT.panelBorder}`, fontSize: 14, fontFamily: FONT.body,
-                      background: 'rgba(255,255,255,0.04)', color: VAULT.textPrimary,
+                      border: `1px solid ${GPAY.panelBorder}`, fontSize: 14, fontFamily: FONT.body,
+                      background: '#ffffff', color: GPAY.textPrimary,
                     }}
                   >
                     <option value="">Myself ({currentStaff?.name})</option>
@@ -1950,22 +2016,22 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
               )}
 
               {gpsStatus === 'idle' && (
-                <button onClick={startGPS} style={{ ...vaultBtnStyle({ bg: VAULT.gold, color: '#081527', size: 'lg' }), width: '100%', fontSize: 15 }} {...vaultPress}>
+                <button onClick={startGPS} style={{ ...gpayBtnStyle({ bg: GPAY.gold, size: 'lg' }), width: '100%', fontSize: 15 }} {...gpayPress}>
                   📡 Detect My Location
                 </button>
               )}
               {gpsStatus === 'locating' && (
-                <div style={{ textAlign: 'center', color: VAULT.warn, fontWeight: 600, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <div style={{ textAlign: 'center', color: GPAY.warn, fontWeight: 600, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <span style={{ display: 'inline-block', animation: 'vault-spin 1s linear infinite' }}>📡</span> Acquiring GPS signal...
                 </div>
               )}
               {['weak', 'error'].includes(gpsStatus) && (
-                <button onClick={startGPS} style={{ ...vaultBtnStyle({ bg: VAULT.warn, color: '#081527' }), width: '100%' }} {...vaultPress}>🔄 Retry Detection</button>
+                <button onClick={startGPS} style={{ ...gpayBtnStyle({ bg: GPAY.warn }), width: '100%' }} {...gpayPress}>🔄 Retry Detection</button>
               )}
 
               {['oncampus', 'outside', 'tracking'].includes(gpsStatus) && (
                 loadingTarget ? (
-                  <div style={{ textAlign: 'center', color: VAULT.textMuted, padding: 16, fontSize: 13 }}>Loading {punchTarget?.name}'s shifts…</div>
+                  <div style={{ textAlign: 'center', color: GPAY.textMuted, padding: 16, fontSize: 13 }}>Loading {punchTarget?.name}'s shifts…</div>
                 ) : (
                   <SmartPunchButton
                     myShifts={punchTarget ? targetShifts : myShifts}
@@ -1990,26 +2056,26 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                     const isTracked     = activeTracking.some(t => t.shiftLabel === shift.shift_label)
                     const shiftMinsLeft = minutesToShiftEnd(shift)
                     return (
-                      <div key={shift.id} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 14, border: `1px solid ${alreadyDone ? VAULT.ok + '55' : isTracked ? VAULT.ok + '55' : inWindow ? VAULT.goldBorder : VAULT.panelBorder}` }}>
+                      <div key={shift.id} style={{ background: GPAY.panelHover, borderRadius: 12, padding: 14, border: `1px solid ${alreadyDone ? GPAY.ok + '55' : isTracked ? GPAY.ok + '55' : inWindow ? GPAY.goldBorder : GPAY.panelBorder}` }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div>
-                            <div style={{ fontWeight: 700, color: VAULT.textPrimary, fontSize: 14 }}>Shift {shift.shift_label}</div>
-                            <div style={{ fontSize: 12, color: VAULT.textMuted }}>{fmt12(shift.shift_start)} → {fmt12(shift.shift_end)}</div>
-                            <div style={{ fontSize: 11, color: VAULT.textFaint }}>Window: ±{shift.check_in_window_min || 10} min</div>
+                            <div style={{ fontWeight: 700, color: GPAY.textPrimary, fontSize: 14 }}>Shift {shift.shift_label}</div>
+                            <div style={{ fontSize: 12, color: GPAY.textMuted }}>{fmt12(shift.shift_start)} → {fmt12(shift.shift_end)}</div>
+                            <div style={{ fontSize: 11, color: GPAY.textFaint }}>Window: ±{shift.check_in_window_min || 10} min</div>
                             {isTracked && shiftMinsLeft > 0 && (
-                              <div style={{ fontSize: 11, color: VAULT.ok, fontWeight: 600, marginTop: 3 }}>🕐 {Math.max(0, Math.round(shiftMinsLeft))} min until shift end</div>
+                              <div style={{ fontSize: 11, color: GPAY.ok, fontWeight: 600, marginTop: 3 }}>🕐 {Math.max(0, Math.round(shiftMinsLeft))} min until shift end</div>
                             )}
                           </div>
                           {alreadyDone
                             ? <StatusBadge status={todayMyLogs.find(l => l.shift_label === shift.shift_label)?.status || 'Present'} dark />
                             : inWindow
                               ? <button onClick={() => handleCheckIn(shift)} disabled={checkingIn}
-                                  style={vaultBtnStyle({ bg: gpsStatus === 'outside' ? VAULT.warn : VAULT.ok, color: '#081527', disabled: checkingIn, size: 'sm' })} {...vaultPress}>
+                                  style={gpayBtnStyle({ bg: gpsStatus === 'outside' ? GPAY.warn : GPAY.ok, disabled: checkingIn, size: 'sm' })} {...gpayPress}>
                                   {checkingIn ? '⏳' : gpsStatus === 'outside' ? '⚠️ Check In (Off Campus)' : '✅ Check In'}
                                 </button>
                               : minsLeft > 0
-                                ? <span style={{ fontSize: 12, color: VAULT.warn, fontWeight: 700 }}>Opens in {minsLeft}m</span>
-                                : <span style={{ fontSize: 12, color: VAULT.textFaint, fontWeight: 600 }}>Window closed</span>
+                                ? <span style={{ fontSize: 12, color: GPAY.warn, fontWeight: 700 }}>Opens in {minsLeft}m</span>
+                                : <span style={{ fontSize: 12, color: GPAY.textFaint, fontWeight: 600 }}>Window closed</span>
                           }
                         </div>
                       </div>
@@ -2019,7 +2085,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
               )}
 
               {['oncampus', 'outside', 'tracking'].includes(gpsStatus) && myShifts.length === 0 && (
-                <div style={{ marginTop: 12, padding: 14, background: 'rgba(240,180,41,0.1)', borderRadius: 12, textAlign: 'center', fontSize: 13, color: VAULT.warn, fontWeight: 600 }}>
+                <div style={{ marginTop: 12, padding: 14, background: 'rgba(240,180,41,0.1)', borderRadius: 12, textAlign: 'center', fontSize: 13, color: GPAY.warn, fontWeight: 600 }}>
                   ⚠️ No shifts assigned. Contact admin.
                 </div>
               )}
