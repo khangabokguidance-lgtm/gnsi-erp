@@ -39,6 +39,22 @@ const S = {
   td: ledger.td,
 }
 
+// ─── "Vault" home-screen palette ────────────────────────────────────────────
+// Home tab only: deep navy canvas + brushed-gold accents, layered on top of
+// the existing Ledger & Crest tokens (COLOR.ink/brass/cream) rather than
+// replacing them, so every other tab/view in this file is untouched.
+const VAULT = {
+  bg: '#081527',
+  bgRaised: 'linear-gradient(135deg, #0f2544 0%, #0a1a30 100%)',
+  panel: 'rgba(255,255,255,0.03)',
+  panelBorder: 'rgba(201,162,75,0.15)',
+  goldBorder: 'rgba(201,162,75,0.3)',
+  textPrimary: '#F3EEE0',
+  textMuted: '#7d8ba3',
+  tileLabel: '#cfd6e2',
+  ok: '#5DCAA5',
+}
+
 const fmtRupee = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`
 const fmtDate  = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const fmtTime  = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '—'
@@ -1190,6 +1206,35 @@ function HomeTile({ icon, label, badge, onClick }) {
   )
 }
 
+// ─── Vault-style home tile — deep navy panel, gold-tinted icon well ────────
+// Used only on the Home tab's primary tile grid; every other screen keeps
+// the existing parchment HomeTile/QuickActionTile untouched.
+function VaultTile({ icon, label, badge, accent = false, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      background: VAULT.panel, border: `1px solid ${VAULT.panelBorder}`, borderRadius: RADIUS.lg,
+      padding: '16px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+      cursor: 'pointer', position: 'relative', fontFamily: FONT.body,
+      transition: 'transform 0.12s ease, border-color 0.12s ease',
+    }}
+      onMouseDown={e => e.currentTarget.style.transform = 'scale(0.97)'}
+      onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+      onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+    >
+      {badge > 0 && (
+        <span style={{ position: 'absolute', top: 8, right: 10, background: COLOR.danger, color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 99, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', fontFamily: FONT.body }}>
+          {badge}
+        </span>
+      )}
+      <span style={{
+        width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 17, background: accent ? COLOR.brass : 'rgba(201,162,75,0.12)',
+      }}>{icon}</span>
+      <span style={{ fontSize: 10.5, fontWeight: 600, color: VAULT.tileLabel, textAlign: 'center', lineHeight: 1.25, fontFamily: FONT.body, letterSpacing: '0.01em' }}>{label}</span>
+    </button>
+  )
+}
+
 // Smaller, lighter secondary shortcut tile.
 function QuickActionTile({ icon, label, onClick, disabled = false }) {
   return (
@@ -1234,19 +1279,19 @@ function BottomNav({ active, onNavigate, pendingCount }) {
       position: 'fixed', bottom: 0,
       left: isDesktop ? 'var(--gnsi-sidebar-width, 260px)' : 0,
       right: 0, zIndex: 500,
-      background: COLOR.parchmentRaised, borderTop: `1px solid ${COLOR.rule}`,
+      background: '#0a1a30', borderTop: '1px solid rgba(201,162,75,0.2)',
       display: 'flex', justifyContent: 'space-around', padding: '9px 0 11px',
-      boxShadow: '0 -4px 20px -8px rgba(11,23,48,.15)',
+      boxShadow: '0 -4px 20px -8px rgba(0,0,0,.4)',
       boxSizing: 'border-box',
     }}>
       {items.map(it => (
         <button key={it.key} onClick={() => onNavigate(it.key)} style={{
           background: 'none', border: 'none', cursor: 'pointer', fontFamily: FONT.body,
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-          color: active === it.key ? COLOR.ink : COLOR.slate, position: 'relative', padding: '2px 10px',
+          color: active === it.key ? COLOR.brass : '#5d6b82', position: 'relative', padding: '2px 10px',
         }}>
           {it.badge > 0 && (
-            <span style={{ position: 'absolute', top: -2, right: 4, width: 8, height: 8, borderRadius: '50%', background: COLOR.danger, border: `1.5px solid ${COLOR.parchmentRaised}` }} />
+            <span style={{ position: 'absolute', top: -2, right: 4, width: 8, height: 8, borderRadius: '50%', background: COLOR.danger, border: '1.5px solid #0a1a30' }} />
           )}
           <span style={{ fontSize: 19, opacity: active === it.key ? 1 : 0.75 }}>{it.icon}</span>
           <span style={{ fontSize: 10.5, fontWeight: active === it.key ? 700 : 500 }}>{it.label}</span>
@@ -1415,37 +1460,85 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
       </div>
 
       {tab === 'home' ? (
-        <>
+        <div style={{
+          background: VAULT.bg, margin: '-18px -16px 0', padding: '18px 16px 28px',
+          minHeight: 'calc(100vh - 140px)', boxSizing: 'border-box',
+        }}>
+          {/* Check-in status card — the Vault's brushed-gold focal point */}
+          {loggedInStaff && (
+            <div style={{
+              background: VAULT.bgRaised, border: `1px solid ${VAULT.goldBorder}`, borderRadius: 14,
+              padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              marginBottom: 18,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 10, height: 10, borderRadius: '50%',
+                  background: hasOpenPunch ? VAULT.ok : '#7d8ba3',
+                  boxShadow: hasOpenPunch ? `0 0 8px ${VAULT.ok}99` : 'none',
+                }} />
+                <div>
+                  <div style={{ color: VAULT.textPrimary, fontSize: 13, fontWeight: 700, fontFamily: FONT.body }}>
+                    {hasOpenPunch ? 'Checked in' : 'Not checked in yet'}
+                  </div>
+                  <div style={{ color: VAULT.textMuted, fontSize: 11, marginTop: 2, fontFamily: FONT.body }}>
+                    {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short' })}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => loggedInStaff && setTab('checkin')}
+                style={{
+                  background: COLOR.brass, color: COLOR.ink, fontSize: 11.5, fontWeight: 700,
+                  padding: '9px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: FONT.body,
+                }}
+              >
+                {hasOpenPunch ? 'Check out' : 'Check in'}
+              </button>
+            </div>
+          )}
+
           {isAdmin && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 18 }}>
-              <div style={{ ...S.card, marginBottom: 0, textAlign: 'center', padding: '16px 10px', borderTop: `2px solid ${COLOR.sage}` }}>
-                <div style={{ fontSize: 21, fontWeight: 700, color: COLOR.sageDeep, fontFamily: FONT.display }}>{counts.approved}</div>
-                <div style={{ fontSize: 10.5, color: COLOR.slate, fontWeight: 700, marginTop: 2, letterSpacing: '0.02em' }}>Enrolled</div>
+              <div style={{ background: VAULT.panel, border: `1px solid ${VAULT.panelBorder}`, borderRadius: 12, textAlign: 'center', padding: '14px 8px' }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: VAULT.ok, fontFamily: FONT.display }}>{counts.approved}</div>
+                <div style={{ fontSize: 10, color: VAULT.textMuted, fontWeight: 700, marginTop: 2, letterSpacing: '0.02em' }}>Enrolled</div>
               </div>
-              <div style={{ ...S.card, marginBottom: 0, textAlign: 'center', padding: '16px 10px', borderTop: `2px solid ${COLOR.warn}` }}>
-                <div style={{ fontSize: 21, fontWeight: 700, color: COLOR.warn, fontFamily: FONT.display }}>{counts.pending}</div>
-                <div style={{ fontSize: 10.5, color: COLOR.slate, fontWeight: 700, marginTop: 2, letterSpacing: '0.02em' }}>Pending</div>
+              <div style={{ background: VAULT.panel, border: `1px solid ${VAULT.panelBorder}`, borderRadius: 12, textAlign: 'center', padding: '14px 8px' }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: COLOR.warn, fontFamily: FONT.display }}>{counts.pending}</div>
+                <div style={{ fontSize: 10, color: VAULT.textMuted, fontWeight: 700, marginTop: 2, letterSpacing: '0.02em' }}>Pending</div>
               </div>
-              <div style={{ ...S.card, marginBottom: 0, textAlign: 'center', padding: '16px 10px', borderTop: `2px solid ${COLOR.danger}` }}>
-                <div style={{ fontSize: 21, fontWeight: 700, color: COLOR.danger, fontFamily: FONT.display }}>{counts.none}</div>
-                <div style={{ fontSize: 10.5, color: COLOR.slate, fontWeight: 700, marginTop: 2, letterSpacing: '0.02em' }}>Not enrolled</div>
+              <div style={{ background: VAULT.panel, border: `1px solid ${VAULT.panelBorder}`, borderRadius: 12, textAlign: 'center', padding: '14px 8px' }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: COLOR.danger, fontFamily: FONT.display }}>{counts.none}</div>
+                <div style={{ fontSize: 10, color: VAULT.textMuted, fontWeight: 700, marginTop: 2, letterSpacing: '0.02em' }}>Not enrolled</div>
               </div>
             </div>
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
-            {primaryTiles.map(t => (
-              <HomeTile key={t.key} icon={t.icon} label={t.label} badge={t.badge} onClick={() => setTab(t.key)} />
+            {primaryTiles.map((t, i) => (
+              <VaultTile key={t.key} icon={t.icon} label={t.label} badge={t.badge} accent={i === 0} onClick={() => setTab(t.key)} />
             ))}
           </div>
 
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: COLOR.slate, letterSpacing: '0.03em', margin: '22px 0 12px 2px', fontFamily: FONT.body }}>QUICK ACTIONS</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: VAULT.textMuted, letterSpacing: '0.08em', textTransform: 'uppercase', margin: '22px 0 12px 2px', fontFamily: FONT.body }}>Quick actions</div>
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${quickActions.length},1fr)`, gap: 10 }}>
             {quickActions.map(q => (
-              <QuickActionTile key={q.key} icon={q.icon} label={q.label} onClick={q.onClick} disabled={q.disabled} />
+              <button key={q.key} onClick={q.disabled ? undefined : q.onClick} disabled={q.disabled} style={{
+                background: 'none', border: 'none', cursor: q.disabled ? 'not-allowed' : 'pointer', fontFamily: FONT.body,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, padding: '4px 2px',
+                opacity: q.disabled ? 0.4 : 1,
+              }}>
+                <span style={{
+                  width: 44, height: 44, borderRadius: '50%',
+                  background: 'rgba(201,162,75,0.1)', border: `1px solid ${VAULT.panelBorder}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+                }}>{q.icon}</span>
+                <span style={{ fontSize: 10.5, fontWeight: 600, color: VAULT.tileLabel, textAlign: 'center', lineHeight: 1.2, fontFamily: FONT.body }}>{q.label}</span>
+              </button>
             ))}
           </div>
-        </>
+        </div>
       ) : (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
