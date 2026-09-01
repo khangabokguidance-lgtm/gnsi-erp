@@ -1319,7 +1319,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
             )
           )}
 
-          {tab === 'attendancesummary' && <AttendanceSummaryView isAdmin={isAdmin} staffList={filteredStaff} showToast={showToast} onNavigate={onNavigate} currentUsername={currentUser?.username} />}
+          {tab === 'attendancesummary' && <AttendanceSummaryView isAdmin={isAdmin} staffId={staffId} staffList={filteredStaff} showToast={showToast} onNavigate={onNavigate} currentUsername={currentUser?.username} />}
           {tab === 'timecard' && <TimeCard staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
           {tab === 'advances' && <AdvancesView staffId={staffId} isAdmin={isAdmin || hasPerm('manage_advances')} staffList={staff} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />}
           {tab === 'fines'    && <LateFinesView staffId={staffId} isAdmin={isAdmin || hasPerm('view_fines')} staffList={staff} />}

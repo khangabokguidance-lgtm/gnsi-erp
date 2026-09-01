@@ -42,7 +42,127 @@ const MARK_META = {
   Leave:     { label: 'L',  color: '#2563eb', bg: '#dbeafe' },
 }
 
-export function AttendanceSummaryView({ isAdmin, staffList, showToast, onNavigate, currentUsername }) {
+export function AttendanceSummaryView({ isAdmin, staffId, staffList, showToast, onNavigate, currentUsername }) {
+  return isAdmin
+    ? <AdminAttendanceRoster staffList={staffList} showToast={showToast} onNavigate={onNavigate} currentUsername={currentUsername} />
+    : <MyAttendanceHistory staffId={staffId} />
+}
+
+// ─── My Attendance History — what a logged-in staff member sees ───────────
+// Read-only, scoped to their own staff_id only. No other staff member's
+// name, status, or check-in time is fetched or rendered here — replaces
+// the old behaviour where every staff account saw the full roster (with
+// disabled mark buttons) for all other staff, which leaked everyone's
+// daily attendance status to anyone logged in.
+
+function MyAttendanceHistory({ staffId }) {
+  const [month, setMonth] = useState(currentMonth())
+  const [geoRows, setGeoRows] = useState([])
+  const [markRows, setMarkRows] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchMine = useCallback(async () => {
+    if (!staffId) { setLoading(false); return }
+    setLoading(true)
+    const [{ data: geo }, { data: marks }] = await Promise.all([
+      supabase.from('staff_geo_attendance')
+        .select('date, status, late_minutes, check_in_time, check_out_time')
+        .eq('staff_id', staffId)
+        .gte('date', `${month}-01`).lte('date', `${month}-31`),
+      supabase.from('staff_attendance_marks')
+        .select('date, status')
+        .eq('staff_id', staffId)
+        .gte('date', `${month}-01`).lte('date', `${month}-31`),
+    ])
+    setGeoRows(geo || [])
+    setMarkRows(marks || [])
+    setLoading(false)
+  }, [staffId, month])
+
+  useEffect(() => { fetchMine() }, [fetchMine])
+
+  const days = useMemo(() => {
+    const byDate = {}
+    for (const r of geoRows) byDate[r.date] = { ...byDate[r.date], geo: r }
+    for (const r of markRows) byDate[r.date] = { ...byDate[r.date], mark: r }
+    return Object.entries(byDate)
+      .map(([date, v]) => ({ date, ...v }))
+      .sort((a, b) => b.date.localeCompare(a.date))
+  }, [geoRows, markRows])
+
+  const summary = useMemo(() => {
+    const counts = { Present: 0, Absent: 0, 'Half Day': 0, Leave: 0 }
+    let fineMinutes = 0
+    for (const d of days) {
+      const status = d.mark?.status || (d.geo ? 'Present' : null)
+      if (status) counts[status] = (counts[status] || 0) + 1
+      if (d.geo) fineMinutes += d.geo.late_minutes || 0
+    }
+    return { ...counts, fineMinutes }
+  }, [days])
+
+  if (!staffId) {
+    return <p style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>Your account isn't linked to a staff profile.</p>
+  }
+
+  return (
+    <div>
+      <div style={{ ...S.card, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
+        <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={{ ...S.input, flex: 1 }} />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 16 }}>
+        {[
+          { label: 'Present', value: summary.Present, color: '#16a34a' },
+          { label: 'Absent', value: summary.Absent, color: '#dc2626' },
+          { label: 'Half day', value: summary['Half Day'], color: '#ca8a04' },
+          { label: 'Leave', value: summary.Leave, color: '#2563eb' },
+          { label: 'Fine (min)', value: summary.fineMinutes, color: '#b45309' },
+        ].map(c => (
+          <div key={c.label} style={{ background: 'white', borderRadius: 10, padding: 12, boxShadow: '0 2px 6px rgba(0,0,0,.05)' }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: c.color }}>{c.value}</div>
+            <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>{c.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {loading ? (
+        <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Loading…</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {days.map(d => {
+            const status = d.mark?.status || (d.geo ? 'Present' : null)
+            const meta = status ? MARK_META[status] : null
+            return (
+              <div key={d.date} style={{ background: 'white', borderRadius: 10, padding: '10px 14px', boxShadow: '0 1px 4px rgba(0,0,0,.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{fmtDate(d.date)}</div>
+                  {d.geo && (
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                      In {d.geo.check_in_time ? new Date(d.geo.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                      {(d.geo.late_minutes || 0) > 0 && <span style={{ color: '#b45309', fontWeight: 700 }}> · +{d.geo.late_minutes}m late</span>}
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 99, color: meta?.color || '#94a3b8', background: meta?.bg || '#f1f5f9' }}>
+                  {status || 'Not marked'}
+                </span>
+              </div>
+            )
+          })}
+          {!days.length && <p style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>No attendance records for this month.</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Admin roster — the original full-staff overview + manual marking ─────
+// Admin-only now (enforced by the branch in AttendanceSummaryView above,
+// not just a disabled prop on the buttons) so no other staff member's
+// per-day status is ever fetched into a non-admin's browser.
+
+function AdminAttendanceRoster({ staffList, showToast, onNavigate, currentUsername }) {
   const [date, setDate] = useState(isoDate(new Date()))
   const [search, setSearch] = useState('')
   const [geoRows, setGeoRows] = useState([])
@@ -142,21 +262,17 @@ export function AttendanceSummaryView({ isAdmin, staffList, showToast, onNavigat
 
       <div style={{ height: 16 }} />
 
-      {isAdmin && (
-        <div style={S.card}>
-          <button onClick={() => onNavigate?.('staff')} style={{
-            background: 'none', border: 'none', cursor: 'pointer', width: '100%',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, fontFamily: 'inherit',
-          }}>
-            <span style={{ width: 44, height: 44, borderRadius: 12, background: '#EEE9FB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>📅</span>
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>Roster schedule</span>
-          </button>
-        </div>
-      )}
+      <div style={S.card}>
+        <button onClick={() => onNavigate?.('staff')} style={{
+          background: 'none', border: 'none', cursor: 'pointer', width: '100%',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, fontFamily: 'inherit',
+        }}>
+          <span style={{ width: 44, height: 44, borderRadius: 12, background: '#EEE9FB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>📅</span>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>Roster schedule</span>
+        </button>
+      </div>
 
-      {isAdmin && (
-        <input style={{ ...S.inputFull, marginBottom: 14 }} placeholder="Search staff…" value={search} onChange={e => setSearch(e.target.value)} />
-      )}
+      <input style={{ ...S.inputFull, marginBottom: 14 }} placeholder="Search staff…" value={search} onChange={e => setSearch(e.target.value)} />
 
       {loading ? (
         <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Loading…</p>
@@ -167,7 +283,7 @@ export function AttendanceSummaryView({ isAdmin, staffList, showToast, onNavigat
               <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>Not marked ({unmarked.length})</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
                 {unmarked.map(s => (
-                  <StaffMarkRow key={s.id} staff={s} mark={null} onMark={setMark} saving={savingId === s.id} disabled={!isAdmin} />
+                  <StaffMarkRow key={s.id} staff={s} mark={null} onMark={setMark} saving={savingId === s.id} disabled={false} />
                 ))}
               </div>
             </div>
@@ -177,7 +293,7 @@ export function AttendanceSummaryView({ isAdmin, staffList, showToast, onNavigat
               <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>Marked ({marked.length})</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
                 {marked.map(s => (
-                  <StaffMarkRow key={s.id} staff={s} mark={marks[s.id]} geo={geoByStaff[s.id]} onMark={setMark} saving={savingId === s.id} disabled={!isAdmin} />
+                  <StaffMarkRow key={s.id} staff={s} mark={marks[s.id]} geo={geoByStaff[s.id]} onMark={setMark} saving={savingId === s.id} disabled={false} />
                 ))}
               </div>
             </div>
