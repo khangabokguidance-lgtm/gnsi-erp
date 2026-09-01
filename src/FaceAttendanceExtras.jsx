@@ -56,28 +56,31 @@ export function AttendanceSummaryView({ isAdmin, staffId, staffList, showToast, 
 // daily attendance status to anyone logged in.
 
 function MyAttendanceHistory({ staffId }) {
-  const [month, setMonth] = useState(currentMonth())
+  const todayIso = isoDate(new Date())
+  const [fromDate, setFromDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return isoDate(d) })
+  const [toDate, setToDate] = useState(todayIso)
   const [geoRows, setGeoRows] = useState([])
   const [markRows, setMarkRows] = useState([])
   const [loading, setLoading] = useState(true)
 
   const fetchMine = useCallback(async () => {
     if (!staffId) { setLoading(false); return }
+    if (fromDate > toDate) { setLoading(false); return }
     setLoading(true)
     const [{ data: geo }, { data: marks }] = await Promise.all([
       supabase.from('staff_geo_attendance')
         .select('date, status, late_minutes, check_in_time, check_out_time')
         .eq('staff_id', staffId)
-        .gte('date', `${month}-01`).lte('date', `${month}-31`),
+        .gte('date', fromDate).lte('date', toDate),
       supabase.from('staff_attendance_marks')
         .select('date, status')
         .eq('staff_id', staffId)
-        .gte('date', `${month}-01`).lte('date', `${month}-31`),
+        .gte('date', fromDate).lte('date', toDate),
     ])
     setGeoRows(geo || [])
     setMarkRows(marks || [])
     setLoading(false)
-  }, [staffId, month])
+  }, [staffId, fromDate, toDate])
 
   useEffect(() => { fetchMine() }, [fetchMine])
 
@@ -101,57 +104,83 @@ function MyAttendanceHistory({ staffId }) {
     return { ...counts, fineMinutes }
   }, [days])
 
+  const invalidRange = fromDate > toDate
+
+  const applyPreset = (preset) => {
+    const today = new Date()
+    if (preset === 'today') { setFromDate(todayIso); setToDate(todayIso) }
+    else if (preset === '7d') { const d = new Date(); d.setDate(d.getDate() - 6); setFromDate(isoDate(d)); setToDate(todayIso) }
+    else if (preset === '30d') { const d = new Date(); d.setDate(d.getDate() - 29); setFromDate(isoDate(d)); setToDate(todayIso) }
+    else if (preset === 'month') { setFromDate(`${currentMonth()}-01`); setToDate(todayIso) }
+  }
+
   if (!staffId) {
     return <p style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>Your account isn't linked to a staff profile.</p>
   }
 
   return (
     <div>
-      <div style={{ ...S.card, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
-        <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={{ ...S.input, flex: 1 }} />
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 16 }}>
-        {[
-          { label: 'Present', value: summary.Present, color: '#16a34a' },
-          { label: 'Absent', value: summary.Absent, color: '#dc2626' },
-          { label: 'Half day', value: summary['Half Day'], color: '#ca8a04' },
-          { label: 'Leave', value: summary.Leave, color: '#2563eb' },
-          { label: 'Fine (min)', value: summary.fineMinutes, color: '#b45309' },
-        ].map(c => (
-          <div key={c.label} style={{ background: 'white', borderRadius: 10, padding: 12, boxShadow: '0 2px 6px rgba(0,0,0,.05)' }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: c.color }}>{c.value}</div>
-            <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>{c.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {loading ? (
-        <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Loading…</p>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {days.map(d => {
-            const status = d.mark?.status || (d.geo ? 'Present' : null)
-            const meta = status ? MARK_META[status] : null
-            return (
-              <div key={d.date} style={{ background: 'white', borderRadius: 10, padding: '10px 14px', boxShadow: '0 1px 4px rgba(0,0,0,.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{fmtDate(d.date)}</div>
-                  {d.geo && (
-                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                      In {d.geo.check_in_time ? new Date(d.geo.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
-                      {(d.geo.late_minutes || 0) > 0 && <span style={{ color: '#b45309', fontWeight: 700 }}> · +{d.geo.late_minutes}m late</span>}
-                    </div>
-                  )}
-                </div>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 99, color: meta?.color || '#94a3b8', background: meta?.bg || '#f1f5f9' }}>
-                  {status || 'Not marked'}
-                </span>
-              </div>
-            )
-          })}
-          {!days.length && <p style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>No attendance records for this month.</p>}
+      <div style={{ ...S.card, padding: '12px 14px' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>From</label>
+          <input type="date" value={fromDate} max={toDate} onChange={e => setFromDate(e.target.value)} style={{ ...S.input, flex: '1 1 130px' }} />
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>To</label>
+          <input type="date" value={toDate} min={fromDate} max={todayIso} onChange={e => setToDate(e.target.value)} style={{ ...S.input, flex: '1 1 130px' }} />
         </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {[['today', 'Today'], ['7d', 'Last 7 days'], ['30d', 'Last 30 days'], ['month', 'This month']].map(([key, label]) => (
+            <button key={key} onClick={() => applyPreset(key)} style={S.pill(false)}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      {invalidRange ? (
+        <p style={{ textAlign: 'center', color: '#dc2626', padding: 20 }}>"From" date must be on or before "To" date.</p>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 16 }}>
+            {[
+              { label: 'Present', value: summary.Present, color: '#16a34a' },
+              { label: 'Absent', value: summary.Absent, color: '#dc2626' },
+              { label: 'Half day', value: summary['Half Day'], color: '#ca8a04' },
+              { label: 'Leave', value: summary.Leave, color: '#2563eb' },
+              { label: 'Fine (min)', value: summary.fineMinutes, color: '#b45309' },
+            ].map(c => (
+              <div key={c.label} style={{ background: 'white', borderRadius: 10, padding: 12, boxShadow: '0 2px 6px rgba(0,0,0,.05)' }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: c.color }}>{c.value}</div>
+                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>{c.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {loading ? (
+            <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Loading…</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {days.map(d => {
+                const status = d.mark?.status || (d.geo ? 'Present' : null)
+                const meta = status ? MARK_META[status] : null
+                return (
+                  <div key={d.date} style={{ background: 'white', borderRadius: 10, padding: '10px 14px', boxShadow: '0 1px 4px rgba(0,0,0,.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{fmtDate(d.date)}</div>
+                      {d.geo && (
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                          In {d.geo.check_in_time ? new Date(d.geo.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                          {(d.geo.late_minutes || 0) > 0 && <span style={{ color: '#b45309', fontWeight: 700 }}> · +{d.geo.late_minutes}m late</span>}
+                        </div>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 99, color: meta?.color || '#94a3b8', background: meta?.bg || '#f1f5f9' }}>
+                      {status || 'Not marked'}
+                    </span>
+                  </div>
+                )
+              })}
+              {!days.length && <p style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>No attendance records for this date range.</p>}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -163,6 +192,7 @@ function MyAttendanceHistory({ staffId }) {
 // per-day status is ever fetched into a non-admin's browser.
 
 function AdminAttendanceRoster({ staffList, showToast, onNavigate, currentUsername }) {
+  const [view, setView] = useState('mark') // 'mark' | 'range'
   const [date, setDate] = useState(isoDate(new Date()))
   const [search, setSearch] = useState('')
   const [geoRows, setGeoRows] = useState([])
@@ -238,6 +268,15 @@ function AdminAttendanceRoster({ staffList, showToast, onNavigate, currentUserna
 
   return (
     <div>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 14, borderBottom: '1px solid #e2e8f0' }}>
+        <button style={S.tab(view === 'mark')} onClick={() => setView('mark')}>Mark attendance</button>
+        <button style={S.tab(view === 'range')} onClick={() => setView('range')}>Date-range report</button>
+      </div>
+
+      {view === 'range' ? (
+        <AdminDateRangeReport staffList={staffList} search={search} setSearch={setSearch} />
+      ) : (
+        <>
       <div style={{ ...S.card, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
         <button onClick={() => shiftDate(-1)} style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#64748b' }}>‹</button>
         <div style={{ flex: 1, textAlign: 'center', fontSize: 13, fontWeight: 700, color: '#0B1E3D' }}>{fmtDate(date)}</div>
@@ -300,6 +339,161 @@ function AdminAttendanceRoster({ staffList, showToast, onNavigate, currentUserna
           )}
           {!filteredStaff.length && <p style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>No staff found.</p>}
         </>
+      )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── Admin date-range report — all staff, multi-day, read-only table ──────
+// Separate from the single-day marking view above: this fetches every
+// staff_geo_attendance / staff_attendance_marks row across the chosen
+// range and renders one row per staff with day-by-day status dots, so an
+// admin can review a week/month at a glance instead of paging day by day.
+
+function AdminDateRangeReport({ staffList, search, setSearch }) {
+  const todayIso = isoDate(new Date())
+  const [fromDate, setFromDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 6); return isoDate(d) })
+  const [toDate, setToDate] = useState(todayIso)
+  const [geoRows, setGeoRows] = useState([])
+  const [markRows, setMarkRows] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchRange = useCallback(async () => {
+    if (fromDate > toDate) { setLoading(false); return }
+    setLoading(true)
+    const [{ data: geo }, { data: marks }] = await Promise.all([
+      supabase.from('staff_geo_attendance')
+        .select('staff_id, date, status, late_minutes, check_in_time, check_out_time')
+        .gte('date', fromDate).lte('date', toDate),
+      supabase.from('staff_attendance_marks')
+        .select('staff_id, date, status')
+        .gte('date', fromDate).lte('date', toDate),
+    ])
+    setGeoRows(geo || [])
+    setMarkRows(marks || [])
+    setLoading(false)
+  }, [fromDate, toDate])
+
+  useEffect(() => { fetchRange() }, [fetchRange])
+
+  const dateList = useMemo(() => {
+    if (fromDate > toDate) return []
+    const list = []
+    const d = new Date(fromDate)
+    const end = new Date(toDate)
+    while (d <= end) { list.push(isoDate(d)); d.setDate(d.getDate() + 1) }
+    return list
+  }, [fromDate, toDate])
+
+  // staff_id -> date -> { status, late_minutes? }
+  const byStaffDate = useMemo(() => {
+    const m = {}
+    for (const r of geoRows) {
+      m[r.staff_id] = m[r.staff_id] || {}
+      m[r.staff_id][r.date] = { status: 'Present', late_minutes: r.late_minutes || 0 }
+    }
+    for (const r of markRows) {
+      m[r.staff_id] = m[r.staff_id] || {}
+      m[r.staff_id][r.date] = { status: r.status } // an explicit mark overrides the geo-derived Present
+    }
+    return m
+  }, [geoRows, markRows])
+
+  const staffSummary = useMemo(() => {
+    return staffList.map(s => {
+      const days = byStaffDate[s.id] || {}
+      const counts = { Present: 0, Absent: 0, 'Half Day': 0, Leave: 0, notMarked: 0 }
+      let fineMinutes = 0
+      for (const date of dateList) {
+        const d = days[date]
+        if (d) { counts[d.status] = (counts[d.status] || 0) + 1; fineMinutes += d.late_minutes || 0 }
+        else counts.notMarked++
+      }
+      return { staff: s, days, counts, fineMinutes }
+    }).filter(r => !search || r.staff.name?.toLowerCase().includes(search.toLowerCase()))
+  }, [staffList, byStaffDate, dateList, search])
+
+  const invalidRange = fromDate > toDate
+
+  const applyPreset = (preset) => {
+    if (preset === '7d') { const d = new Date(); d.setDate(d.getDate() - 6); setFromDate(isoDate(d)); setToDate(todayIso) }
+    else if (preset === '30d') { const d = new Date(); d.setDate(d.getDate() - 29); setFromDate(isoDate(d)); setToDate(todayIso) }
+    else if (preset === 'month') { setFromDate(`${currentMonth()}-01`); setToDate(todayIso) }
+  }
+
+  return (
+    <div>
+      <div style={{ ...S.card, padding: '12px 14px' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>From</label>
+          <input type="date" value={fromDate} max={toDate} onChange={e => setFromDate(e.target.value)} style={{ ...S.input, flex: '1 1 130px' }} />
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>To</label>
+          <input type="date" value={toDate} min={fromDate} max={todayIso} onChange={e => setToDate(e.target.value)} style={{ ...S.input, flex: '1 1 130px' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {[['7d', 'Last 7 days'], ['30d', 'Last 30 days'], ['month', 'This month']].map(([key, label]) => (
+            <button key={key} onClick={() => applyPreset(key)} style={S.pill(false)}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      <input style={{ ...S.inputFull, marginBottom: 14 }} placeholder="Search staff…" value={search} onChange={e => setSearch(e.target.value)} />
+
+      {invalidRange ? (
+        <p style={{ textAlign: 'center', color: '#dc2626', padding: 20 }}>"From" date must be on or before "To" date.</p>
+      ) : dateList.length > 31 ? (
+        <p style={{ textAlign: 'center', color: '#dc2626', padding: 20 }}>Please pick a range of 31 days or fewer.</p>
+      ) : loading ? (
+        <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Loading…</p>
+      ) : (
+        <div style={{ overflowX: 'auto', background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.07)' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>
+            <thead>
+              <tr>
+                <th style={{ ...S.th, position: 'sticky', left: 0, background: '#f8fafc', zIndex: 1 }}>Staff</th>
+                {dateList.map(d => (
+                  <th key={d} style={{ ...S.th, textAlign: 'center' }}>{new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</th>
+                ))}
+                <th style={{ ...S.th, textAlign: 'center' }}>P</th>
+                <th style={{ ...S.th, textAlign: 'center' }}>AB</th>
+                <th style={{ ...S.th, textAlign: 'center' }}>HD</th>
+                <th style={{ ...S.th, textAlign: 'center' }}>L</th>
+                <th style={{ ...S.th, textAlign: 'center' }}>Fine (min)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {staffSummary.map(r => (
+                <tr key={r.staff.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td style={{ ...S.td, position: 'sticky', left: 0, background: 'white', fontWeight: 700, whiteSpace: 'nowrap' }}>{r.staff.name}</td>
+                  {dateList.map(d => {
+                    const day = r.days[d]
+                    const meta = day ? MARK_META[day.status] : null
+                    return (
+                      <td key={d} style={{ ...S.td, textAlign: 'center' }}>
+                        <span style={{
+                          display: 'inline-flex', width: 22, height: 22, borderRadius: 6, alignItems: 'center', justifyContent: 'center',
+                          fontSize: 10, fontWeight: 700, color: meta?.color || '#cbd5e1', background: meta?.bg || '#f8fafc',
+                        }} title={day ? `${day.status}${day.late_minutes ? ` · +${day.late_minutes}m late` : ''}` : 'Not marked'}>
+                          {meta?.label || '·'}
+                        </span>
+                      </td>
+                    )
+                  })}
+                  <td style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: '#16a34a' }}>{r.counts.Present}</td>
+                  <td style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: '#dc2626' }}>{r.counts.Absent}</td>
+                  <td style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: '#ca8a04' }}>{r.counts['Half Day']}</td>
+                  <td style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: '#2563eb' }}>{r.counts.Leave}</td>
+                  <td style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: '#b45309' }}>{r.fineMinutes || '—'}</td>
+                </tr>
+              ))}
+              {!staffSummary.length && (
+                <tr><td colSpan={dateList.length + 6} style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>No staff found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )

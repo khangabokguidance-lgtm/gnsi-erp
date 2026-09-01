@@ -22,7 +22,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import { loadFaceModels, extractDescriptor, matchDescriptor, assessFrameQuality } from './faceEngine'
-import { issueChallenge, runLivenessSequence } from './faceLiveness'
+import { issueChallenge, runLivenessSequence, TURN_RATIO_THRESHOLD } from './faceLiveness'
 
 const S = {
   overlay: { position: 'fixed', inset: 0, background: 'rgba(11,30,61,0.85)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
@@ -69,6 +69,7 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
   const [error, setError]     = useState('')
   const [quality, setQuality] = useState({ ok: false, reason: 'no_frame' })
   const [liveEar, setLiveEar] = useState(null)
+  const [turnRatio, setTurnRatio] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -142,7 +143,7 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
       const { challenge_id, turn_direction } = await issueChallenge(staffId)
 
       // Blink, then turn toward the server-chosen direction
-      const livenessPassed = await runLivenessSequence(videoRef.current, turn_direction, (p) => setPhase(p), setLiveEar)
+      const livenessPassed = await runLivenessSequence(videoRef.current, turn_direction, (p) => setPhase(p), setLiveEar, setTurnRatio)
       if (!livenessPassed) {
         setError(phase === 'turn'
           ? 'Head turn not detected — turn a little further, then try again.'
@@ -191,6 +192,7 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
     setError('')
     setPhase('idle')
     setRunning(false)
+    setTurnRatio(0)
     scanLockRef.current = false
   }
 
@@ -243,8 +245,16 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
           )}
 
           {running && phase === 'turn' && (
-            <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(15,23,42,0.75)', borderRadius: 8, padding: '6px 10px' }}>
-              <span style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700 }}>↔ Turn your head slowly…</span>
+            <div style={{ position: 'absolute', bottom: 8, left: 8, right: 8, background: 'rgba(15,23,42,0.75)', borderRadius: 8, padding: '6px 10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
+                <span style={{ color: '#fbbf24', fontSize: 12, fontWeight: 700 }}>↔ Turn your head slowly…</span>
+              </div>
+              <div style={{ height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.15)', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', borderRadius: 3, background: '#4ade80', transition: 'width 0.1s linear',
+                  width: `${Math.min(100, Math.round((Math.abs(turnRatio) / TURN_RATIO_THRESHOLD) * 100))}%`,
+                }} />
+              </div>
             </div>
           )}
         </div>
