@@ -1244,8 +1244,15 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
 
   // Quick actions row, below the main tile grid — role-aware, matching
   // PagarBook's smaller secondary shortcut row.
+  // Admins normally only see "Enroll face" here — but an admin/co-admin
+  // who is ALSO linked to a staff profile (loggedInStaff set) is staff
+  // too and needs to punch in/out like anyone else, so they get the same
+  // dynamic Punch In/Punch Out tile alongside their admin quick action.
   const quickActions = isAdmin
-    ? [{ key: 'enroll', icon: '🧑‍💼', label: 'Enroll face', onClick: () => setTab('coverage') }]
+    ? [
+        { key: 'enroll', icon: '🧑‍💼', label: 'Enroll face', onClick: () => setTab('coverage') },
+        ...(loggedInStaff ? [{ key: 'qa-checkin', icon: hasOpenPunch ? '⏹️' : '✅', label: hasOpenPunch ? 'Punch Out' : 'Punch In', onClick: () => setTab('checkin') }] : []),
+      ]
     : [
         { key: 'qa-checkin',  icon: hasOpenPunch ? '⏹️' : '✅', label: hasOpenPunch ? 'Punch Out' : 'Punch In', onClick: () => loggedInStaff && setTab('checkin') },
         { key: 'qa-timecard', icon: '🕐', label: 'Time card', onClick: () => setTab('timecard') },
