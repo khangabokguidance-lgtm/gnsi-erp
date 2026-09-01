@@ -1149,6 +1149,33 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
   const [enrollTarget, setEnrollTarget] = useState(null)
   const [settingsTab, setSettingsTab] = useState(null) // tab key whose Advanced Settings sheet is open, or null
 
+  // Lightweight punch-state signal for the Home-screen "Punch In/Punch Out"
+  // quick action tile. Deliberately NOT the full SmartPunchButton logic
+  // (that needs live GPS + active-tracking state, meaningful only once the
+  // check-in screen is mounted) — this only answers "does the logged-in
+  // staff member currently have an open (punched-in, not punched-out)
+  // shift today", which is enough to label the tile correctly without
+  // running background GPS on the Home screen.
+  const [hasOpenPunch, setHasOpenPunch] = useState(false)
+  const fetchPunchState = useCallback(async () => {
+    if (!loggedInStaff?.id) { setHasOpenPunch(false); return }
+    const todayIso = new Date().toISOString().slice(0, 10)
+    const { data, error } = await supabase
+      .from('staff_geo_attendance')
+      .select('id')
+      .eq('staff_id', loggedInStaff.id)
+      .eq('date', todayIso)
+      .is('check_out_time', null)
+      .eq('session_dead', false)
+      .limit(1)
+    if (!error) setHasOpenPunch((data || []).length > 0)
+  }, [loggedInStaff?.id])
+
+  useEffect(() => { fetchPunchState() }, [fetchPunchState])
+  // Refresh whenever we return to Home — covers the case where the staff
+  // member just punched in/out on the check-in screen and tapped back.
+  useEffect(() => { if (tab === 'home') fetchPunchState() }, [tab, fetchPunchState])
+
   const staffId = loggedInStaff?.id || null
   const { hasPerm } = useModulePermissions(staffId, isAdmin)
 
@@ -1220,7 +1247,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
   const quickActions = isAdmin
     ? [{ key: 'enroll', icon: '🧑‍💼', label: 'Enroll face', onClick: () => setTab('coverage') }]
     : [
-        { key: 'qa-checkin',  icon: '✅', label: 'Take attendance', onClick: () => loggedInStaff && setTab('checkin') },
+        { key: 'qa-checkin',  icon: hasOpenPunch ? '⏹️' : '✅', label: hasOpenPunch ? 'Punch Out' : 'Punch In', onClick: () => loggedInStaff && setTab('checkin') },
         { key: 'qa-timecard', icon: '🕐', label: 'Time card', onClick: () => setTab('timecard') },
       ]
 
