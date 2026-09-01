@@ -583,7 +583,12 @@ export default function Login({ onLogin }) {
 
     await supabase.rpc('set_staff_context', {
   p_staff_id: profile?.id ?? 0,
-  p_is_admin: data.role === 'Admin' || data.role === 'HM',
+  // Matches App.jsx's ADMIN_ROLES set. Previously checked only
+  // 'Admin' || 'HM', which never matched 'Administrator' or 'Co-Admin'
+  // — meaning every real admin login (not the hardcoded shortcut path
+  // above) silently got p_is_admin: false, breaking every RLS policy
+  // and RPC that gates on app.is_admin for real admin accounts.
+  p_is_admin: ['Admin', 'Administrator', 'Co-Admin', 'admin', 'HM'].includes(data.role),
 })
 onLogin({
   ...data,
