@@ -1012,10 +1012,11 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   const fetchTodayLogs = useCallback(async () => {
     // FIX 1: removed 'department' from staff_profiles join — column not confirmed in schema
     const { data, error } = await supabase.from('staff_geo_attendance')
-      .select('*, staff_profiles(name, designation)')
+      .select('*, staff_profiles!staff_geo_attendance_staff_id_fkey(name, designation)')
       .eq('date', today())
       .order('check_in_time', { ascending: false })
     if (!error) setTodayLogs(data || [])
+    else console.error('fetchTodayLogs error:', error)
   }, [])
 
   const fetchFraudLogs = useCallback(async () => {
@@ -1043,13 +1044,14 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
     const to = new Date(y, m, 0).toISOString().split('T')[0]
     // FIX 1 (same): removed 'department' from staff_profiles join
     let q = supabase.from('staff_geo_attendance')
-      .select('*, staff_profiles(name, designation)')
+      .select('*, staff_profiles!staff_geo_attendance_staff_id_fkey(name, designation)')
       .gte('date', from).lte('date', to)
       .order('date', { ascending: false })
       .limit(500)
     if (selectedStaff) q = q.eq('staff_id', selectedStaff)
     const { data, error } = await q
     if (!error) setMonthLogs(data || [])
+    else console.error('fetchMonthLogs error:', error)
     setLoadingMonth(false)
   }, [monthFilter, selectedStaff])
 
