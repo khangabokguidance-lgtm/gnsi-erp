@@ -781,6 +781,125 @@ function useModulePermissions(staffId, isAdmin) {
   return { hasPerm, loading, refetch: fetch_ }
 }
 
+// ─── Attendance Helpers — no-phone staff assistance ────────────────────────
+// Lets an admin assign a "helper" staff member who can take attendance on
+// behalf of a specific colleague who doesn't have a phone. The helper uses
+// their own device; the assisted person's face is what actually gets
+// verified (server_checkin enforces this — see p_actor_staff_id).
+function AttendanceHelpersSetup({ staffList, currentAdminId, showToast }) {
+  const [helperId, setHelperId] = useState('')
+  const [assistedId, setAssistedId] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchRows = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('staff_attendance_helpers')
+      .select('id, helper_staff_id, assisted_staff_id, active, assigned_at')
+      .eq('active', true)
+      .order('assigned_at', { ascending: false })
+    if (!error) setRows(data || [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchRows() }, [fetchRows])
+
+  const nameById = useMemo(() => {
+    const m = {}
+    staffList.forEach(s => { m[s.id] = s.name })
+    return m
+  }, [staffList])
+
+  const handleAssign = async () => {
+    if (!helperId || !assistedId) return
+    if (helperId === assistedId) { showToast?.('Helper and assisted staff must be different people', 'err'); return }
+    setSaving(true)
+    try {
+      const { error } = await supabase.from('staff_attendance_helpers').insert({
+        helper_staff_id: helperId,
+        assisted_staff_id: assistedId,
+        active: true,
+        assigned_by: currentAdminId || null,
+      })
+      if (error) throw error
+      showToast?.('✅ Helper assigned', 'ok')
+      setHelperId(''); setAssistedId('')
+      fetchRows()
+    } catch (err) {
+      showToast?.(
+        err.message?.includes('duplicate') || err.code === '23505'
+          ? 'This helper is already assigned to this person'
+          : 'Failed to assign: ' + err.message,
+        'err'
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleRemove = async (id) => {
+    const { error } = await supabase.from('staff_attendance_helpers').update({ active: false }).eq('id', id)
+    if (error) { showToast?.('Failed to remove: ' + error.message, 'err'); return }
+    showToast?.('Helper assignment removed', 'ok')
+    fetchRows()
+  }
+
+  return (
+    <div>
+      <div style={S.card}>
+        <p style={{ fontSize: 12, color: COLOR.slate, margin: '0 0 14px' }}>
+          For staff without a phone: assign a colleague as their "helper." The helper can then take attendance for them from the helper's own device — the assisted person's face is still verified, and GPS uses the helper's phone location.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+          <div>
+            <label style={{ fontSize: 11.5, fontWeight: 700, color: COLOR.slate, display: 'block', marginBottom: 4 }}>Helper (has a phone)</label>
+            <select value={helperId} onChange={e => setHelperId(e.target.value)} style={{ ...S.input, width: '100%', boxSizing: 'border-box' }}>
+              <option value="">Select helper…</option>
+              {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 11.5, fontWeight: 700, color: COLOR.slate, display: 'block', marginBottom: 4 }}>Assisted staff (no phone)</label>
+            <select value={assistedId} onChange={e => setAssistedId(e.target.value)} style={{ ...S.input, width: '100%', boxSizing: 'border-box' }}>
+              <option value="">Select assisted staff…</option>
+              {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <button onClick={handleAssign} disabled={saving || !helperId || !assistedId} style={ledger.btnPrimary(saving)}>
+          {saving ? 'Assigning…' : 'Assign helper'}
+        </button>
+      </div>
+
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: COLOR.slate, letterSpacing: '0.03em', margin: '20px 0 10px 2px' }}>CURRENT ASSIGNMENTS</div>
+      {loading ? (
+        <p style={{ color: COLOR.slate, textAlign: 'center', padding: 20 }}>Loading…</p>
+      ) : rows.length === 0 ? (
+        <p style={{ color: COLOR.slate, textAlign: 'center', padding: 20, fontSize: 13 }}>No helper assignments yet.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {rows.map(r => (
+            <div key={r.id} style={{ ...S.card, marginBottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px' }}>
+              <div style={{ fontSize: 13 }}>
+                <strong>{nameById[r.helper_staff_id] || '—'}</strong>
+                <span style={{ color: COLOR.slate }}> helps </span>
+                <strong>{nameById[r.assisted_staff_id] || '—'}</strong>
+              </div>
+              <button onClick={() => handleRemove(r.id)} style={{ background: 'none', border: `1px solid ${COLOR.rule}`, borderRadius: RADIUS.sm, padding: '5px 10px', fontSize: 11.5, color: COLOR.danger, cursor: 'pointer' }}>
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function RolePermissionsSetup({ staffList, currentAdminId, showToast }) {
   const [selectedStaffId, setSelectedStaffId] = useState('')
   const [grants, setGrants] = useState(new Set())
@@ -1160,7 +1279,10 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
   const [hasOpenPunch, setHasOpenPunch] = useState(false)
   const fetchPunchState = useCallback(async () => {
     if (!loggedInStaff?.id) { setHasOpenPunch(false); return }
-    const todayIso = new Date().toISOString().slice(0, 10)
+    // IST date, matching server_checkin's own date computation — using
+    // toISOString() here (UTC) could pick the wrong calendar day near
+    // the midnight boundary, since IST is UTC+5:30.
+    const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
     const { data, error } = await supabase
       .from('staff_geo_attendance')
       .select('id')
@@ -1232,6 +1354,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
       { key: 'cashbook',  icon: '📒', label: 'Cash book' },
       { key: 'deductionrules', icon: '📐', label: 'Deduction Rules' },
       { key: 'rolepermissions', icon: '🔑', label: 'Role Permissions' },
+      { key: 'attendancehelpers', icon: '🤝', label: 'Attendance Helpers' },
       { key: 'controlcenter', icon: '🎛️', label: 'Control Center' },
     ] : []),
     { key: 'settings', icon: '⚙️', label: 'Settings' },
@@ -1240,7 +1363,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
   const pageTitles = {
     checkin: 'Take attendance', attendancesummary: 'Attendance', timecard: 'Time card', advances: 'Advances',
     fines: 'Late fines', payroll: 'Payroll', regularization: 'Correct attendance', reports: 'Reports', broadcast: 'Broadcast messages', notifications: 'Notifications',
-    coverage: 'Staff coverage', approvals: 'Pending approvals', cashbook: 'Cash book', deductionrules: 'Deduction Rules (Daily)', rolepermissions: 'Role Permissions', controlcenter: 'Admin Control Center', settings: 'Settings',
+    coverage: 'Staff coverage', approvals: 'Pending approvals', cashbook: 'Cash book', deductionrules: 'Deduction Rules (Daily)', rolepermissions: 'Role Permissions', attendancehelpers: 'Attendance Helpers', controlcenter: 'Admin Control Center', settings: 'Settings',
   }
 
   // Quick actions row, below the main tile grid — role-aware, matching
@@ -1378,6 +1501,9 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
           )}
           {tab === 'rolepermissions' && isAdmin && (
             <RolePermissionsSetup staffList={staff} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />
+          )}
+          {tab === 'attendancehelpers' && isAdmin && (
+            <AttendanceHelpersSetup staffList={staff} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />
           )}
           {tab === 'controlcenter' && isAdmin && (
             <AdminControlCenter isAdmin={isAdmin} adminId={currentUser?.staff_profile_id || null} showToast={showToast} />
