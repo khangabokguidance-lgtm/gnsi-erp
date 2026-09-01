@@ -1351,7 +1351,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
     setLoading(true)
     const { data, error } = await supabase
       .from('staff_face_descriptors')
-      .select('staff_id, status, enrolled_at')
+      .select('staff_id, status, enrolled_at, reviewed_by, reviewed_at')
       .order('enrolled_at', { ascending: false })
     if (!error) {
       const latestByStaff = {}
@@ -1364,6 +1364,8 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
   useEffect(() => { fetchFaceRows() }, [fetchFaceRows])
 
   const statusFor = (sid) => faceRows.find(r => r.staff_id === sid)?.status || 'none'
+  const faceRowFor = (sid) => faceRows.find(r => r.staff_id === sid) || null
+  const staffNameById = (sid) => staff.find(s => s.id === sid)?.name || null
 
   const filteredStaff = staff
     .filter(s => s.status !== 'Inactive')
@@ -1557,7 +1559,23 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
 
           {tab === 'checkin' && loggedInStaff && (
             statusFor(loggedInStaff.id) === 'approved' ? (
-              <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} />
+              <>
+                <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} />
+                {(() => {
+                  const row = faceRowFor(loggedInStaff.id)
+                  if (!row) return null
+                  const reviewerName = row.reviewed_by ? staffNameById(row.reviewed_by) : null
+                  return (
+                    <div style={{ ...S.card, marginTop: 12, padding: '12px 16px' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: COLOR.slate, letterSpacing: '0.03em', marginBottom: 4 }}>YOUR FACE ENROLLMENT</div>
+                      <div style={{ fontSize: 12.5, color: COLOR.ink2 }}>
+                        Enrolled {fmtDate(row.enrolled_at)}
+                        {row.reviewed_at && ` · Approved ${fmtDate(row.reviewed_at)}${reviewerName ? ` by ${reviewerName}` : ''}`}
+                      </div>
+                    </div>
+                  )
+                })()}
+              </>
             ) : (
               <div style={S.card}>
                 <div style={{ textAlign: 'center', padding: '20px 10px' }}>
@@ -1570,6 +1588,11 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
                       ? 'An admin needs to approve your face enrollment before you can check in.'
                       : 'Check-in requires an approved face enrollment. Ask an admin to enroll your face, or enroll yourself for admin approval.'}
                   </p>
+                  {statusFor(loggedInStaff.id) === 'pending' && faceRowFor(loggedInStaff.id) && (
+                    <p style={{ fontSize: 11.5, color: COLOR.slate, margin: '-8px 0 16px' }}>
+                      Submitted {fmtDate(faceRowFor(loggedInStaff.id).enrolled_at)}
+                    </p>
+                  )}
                   {statusFor(loggedInStaff.id) !== 'pending' && (
                     <button onClick={() => setEnrollTarget(loggedInStaff)} style={ledger.btnPrimary()}>
                       Enroll my face

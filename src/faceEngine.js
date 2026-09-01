@@ -39,7 +39,7 @@ export function areModelsLoaded() {
 }
 
 // Extracts a 128-length descriptor from a single video frame or image element.
-// Returns null if no face (or more than one face) was confidently detected.
+// Returns null if no face was confidently detected.
 export async function extractDescriptor(mediaEl) {
   const detection = await faceapi
     .detectSingleFace(mediaEl, DETECTOR_OPTIONS)
@@ -47,6 +47,18 @@ export async function extractDescriptor(mediaEl) {
     .withFaceDescriptor()
   if (!detection) return null
   return Array.from(detection.descriptor)
+}
+
+// Checks how many faces are visible in the frame right now. Used before
+// enrollment captures and before a check-in liveness sequence starts, so a
+// second person standing in frame (assisting, photobombing, or coaching
+// someone through the scan) is caught explicitly with its own message
+// instead of face-api.js silently picking one of the faces via
+// detectSingleFace and proceeding as if only one person was present.
+// Returns the raw detection count; callers decide what to do with >1.
+export async function countFacesInFrame(mediaEl) {
+  const detections = await faceapi.detectAllFaces(mediaEl, DETECTOR_OPTIONS)
+  return detections.length
 }
 
 // Averages multiple descriptors captured during enrollment into one reference vector.
@@ -63,6 +75,30 @@ export function euclideanDistance(a, b) {
   let sum = 0
   for (let i = 0; i < a.length; i++) sum += (a[i] - b[i]) ** 2
   return Math.sqrt(sum)
+}
+
+// Quality-checks a set of enrollment descriptors against each other before
+// they're averaged and saved as the permanent reference vector. If one shot
+// was blurry, poorly lit, or caught mid-blink, its descriptor can sit far
+// from the other two — averaging it in quietly degrades the stored
+// reference without anyone noticing until check-in starts failing weeks
+// later. This flags that at enrollment time instead, when a retake is
+// still cheap. Returns the pairwise distances and whether any exceeded a
+// consistency threshold.
+export const CAPTURE_CONSISTENCY_THRESHOLD = 0.42 // looser than MATCH_THRESHOLD — these are 3 shots of the same live person seconds apart, so they should agree more closely than a separate check-in attempt would
+export function assessCaptureConsistency(descriptors) {
+  const pairs = []
+  for (let i = 0; i < descriptors.length; i++) {
+    for (let j = i + 1; j < descriptors.length; j++) {
+      pairs.push({ i, j, distance: euclideanDistance(descriptors[i], descriptors[j]) })
+    }
+  }
+  const maxDistance = pairs.length ? Math.max(...pairs.map(p => p.distance)) : 0
+  return {
+    ok: maxDistance <= CAPTURE_CONSISTENCY_THRESHOLD,
+    maxDistance: parseFloat(maxDistance.toFixed(4)),
+    pairs,
+  }
 }
 
 // Returns { verified, score } — score is the raw distance (lower = better match)

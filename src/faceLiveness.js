@@ -32,6 +32,11 @@ const TURN_TIMEOUT_MS       = 9000
 const SAMPLE_INTERVAL_MS    = 80     // faster sampling so quick blinks (~100-150ms) aren't missed between checks
 
 export async function issueChallenge(staffId) {
+  if (!navigator.onLine) {
+    const err = new Error('No internet connection — check your connection and try again.')
+    err.offline = true
+    throw err
+  }
   const { data, error } = await supabase.rpc('issue_liveness_challenge', { p_staff_id: staffId })
   if (error) throw error
   return data // { challenge_id, turn_direction } — turn_direction now drives the second liveness factor below
@@ -52,6 +57,15 @@ export async function runLivenessSequence(videoEl, turnDirection, onPhase, onEar
   onPhase('blink')
   const blinkOk = await waitForBlink(videoEl, onEar)
   if (!blinkOk) { onPhase('timeout'); return false }
+
+  // Connection may have dropped during the blink wait — surface that now
+  // rather than letting the person complete the turn too, then fail only
+  // at the final server_checkin call after the whole sequence is done.
+  if (!navigator.onLine) {
+    const err = new Error('Connection lost during verification — check your connection and try again.')
+    err.offline = true
+    throw err
+  }
 
   if (turnDirection === 'left' || turnDirection === 'right') {
     onPhase('turn')

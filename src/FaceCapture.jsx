@@ -21,7 +21,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
-import { loadFaceModels, extractDescriptor, matchDescriptor, assessFrameQuality } from './faceEngine'
+import { loadFaceModels, extractDescriptor, matchDescriptor, assessFrameQuality, countFacesInFrame } from './faceEngine'
 import { issueChallenge, runLivenessSequence, TURN_RATIO_THRESHOLD } from './faceLiveness'
 
 const S = {
@@ -51,6 +51,7 @@ const QUALITY_MESSAGES = {
 }
 
 const QUALITY_CHECK_INTERVAL_MS = 400
+const RATE_LIMIT_COOLDOWN_SECONDS = 3600 // mirrors server_checkin's rate_limited window — see GeoAttendance.jsx FAILURE_EXPLAINERS.rate_limited
 
 export default function FaceCapture({ staffId, onVerified, onCancel }) {
   const videoRef  = useRef(null)
@@ -70,6 +71,41 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
   const [quality, setQuality] = useState({ ok: false, reason: 'no_frame' })
   const [liveEar, setLiveEar] = useState(null)
   const [turnRatio, setTurnRatio] = useState(0)
+  const [multiFaceWarning, setMultiFaceWarning] = useState(false)
+  const [isOffline, setIsOffline] = useState(!navigator.onLine)
+  const [rateLimitedUntil, setRateLimitedUntil] = useState(null) // epoch ms, or null
+  const [rateLimitSecondsLeft, setRateLimitSecondsLeft] = useState(0)
+
+  // Track connectivity live — startScan() also checks navigator.onLine
+  // directly at the moment it's clicked, but this keeps the "Start scan"
+  // button itself disabled (with a clear reason) while offline, instead of
+  // letting the person tap it and only find out after the camera/liveness
+  // flow has already run.
+  useEffect(() => {
+    const goOnline = () => setIsOffline(false)
+    const goOffline = () => setIsOffline(true)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+    }
+  }, [])
+
+  // Countdown display for a rate-limited state, so the person sees exactly
+  // how long is left instead of a static "wait about an hour" with no way
+  // to tell how much of that hour has already passed.
+  useEffect(() => {
+    if (!rateLimitedUntil) { setRateLimitSecondsLeft(0); return }
+    const tick = () => {
+      const secondsLeft = Math.max(0, Math.round((rateLimitedUntil - Date.now()) / 1000))
+      setRateLimitSecondsLeft(secondsLeft)
+      if (secondsLeft <= 0) setRateLimitedUntil(null)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [rateLimitedUntil])
 
   useEffect(() => {
     let cancelled = false
@@ -129,9 +165,34 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
     return () => clearInterval(qualityTimerRef.current)
   }, [cameraReady, running])
 
+  // Separately, at a slower interval, check whether more than one face is
+  // visible — e.g. someone standing behind/beside the person scanning.
+  // This runs face detection (heavier than the brightness sampling above)
+  // so it's checked less often; it only needs to catch a sustained second
+  // person, not react instantly to someone briefly walking through frame.
+  useEffect(() => {
+    if (!cameraReady || !modelsReady || running) { setMultiFaceWarning(false); return }
+    let cancelled = false
+    const id = setInterval(async () => {
+      if (!videoRef.current) return
+      try {
+        const count = await countFacesInFrame(videoRef.current)
+        if (!cancelled) setMultiFaceWarning(count > 1)
+      } catch {
+        // face-api not ready yet or a transient decode error — not worth surfacing
+      }
+    }, 1200)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [cameraReady, modelsReady, running])
+
   const startScan = async () => {
     if (scanLockRef.current) return
     if (!cameraReady || !modelsReady || !descriptorRow || running || !quality.ok) return
+    if (multiFaceWarning) return
+    if (!navigator.onLine) {
+      setError('No internet connection — check your connection and try again.')
+      return
+    }
     scanLockRef.current = true
     if (qualityTimerRef.current) clearInterval(qualityTimerRef.current)
     setRunning(true)
@@ -175,7 +236,14 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
         challengeId: challenge_id,
       })
     } catch (e) {
-      setError('Verification failed: ' + e.message)
+      if (e?.offline || !navigator.onLine) {
+        setError('Connection lost — check your internet and try again.')
+      } else if (e?.message?.toLowerCase().includes('rate') || e?.code === 'rate_limited') {
+        setRateLimitedUntil(Date.now() + RATE_LIMIT_COOLDOWN_SECONDS * 1000)
+        setError('Too many attempts — please wait before trying again.')
+      } else {
+        setError('Verification failed: ' + e.message)
+      }
       setRunning(false)
       scanLockRef.current = false
     }
@@ -197,14 +265,27 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
   }
 
   const qualityWarning = !error && !running && cameraReady && !quality.ok ? QUALITY_MESSAGES[quality.reason] : null
+  const multiFaceMessage = !error && !running && cameraReady && quality.ok && multiFaceWarning
+    ? 'More than one face detected — make sure you\'re alone in frame'
+    : null
 
-  const statusText = error
-    ? error
-    : qualityWarning
-      ? qualityWarning
-      : PHASE_COPY[phase] || PHASE_COPY.idle
+  const rateLimitMessage = rateLimitSecondsLeft > 0
+    ? `Too many attempts — try again in ${Math.ceil(rateLimitSecondsLeft / 60)}m`
+    : null
 
-  const canScan = cameraReady && modelsReady && !running && quality.ok
+  const statusText = rateLimitMessage
+    ? rateLimitMessage
+    : isOffline
+      ? 'No internet connection'
+      : error
+        ? error
+        : multiFaceMessage
+          ? multiFaceMessage
+          : qualityWarning
+            ? qualityWarning
+            : PHASE_COPY[phase] || PHASE_COPY.idle
+
+  const canScan = cameraReady && modelsReady && !running && quality.ok && !multiFaceWarning && !isOffline && !rateLimitMessage
 
   return (
     <div style={S.overlay}>
@@ -215,15 +296,15 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
         <div style={{ position: 'relative', marginTop: 10 }}>
           <video ref={videoRef} muted playsInline style={S.video} />
 
-          {/* Positioning guide oval — solid green once framing+lighting are good */}
+          {/* Positioning guide oval — solid green once framing+lighting are good, amber if lighting is off or more than one face is in frame */}
           {cameraReady && !error && (
             <svg viewBox="0 0 200 200" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
               <ellipse
                 cx="100" cy="100" rx="62" ry="82"
                 fill="none"
-                stroke={quality.ok ? '#4ade80' : '#fbbf24'}
+                stroke={quality.ok && !multiFaceWarning ? '#4ade80' : '#fbbf24'}
                 strokeWidth="3"
-                strokeDasharray={quality.ok ? 'none' : '8 6'}
+                strokeDasharray={quality.ok && !multiFaceWarning ? 'none' : '8 6'}
                 opacity="0.9"
               />
             </svg>
@@ -258,12 +339,17 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
             </div>
           )}
         </div>
-        <div style={{ color: error ? '#f87171' : qualityWarning ? '#fbbf24' : '#F5F1E6', fontFamily: 'Arial,sans-serif', fontSize: 13, textAlign: 'center', marginTop: 12, minHeight: 18, fontWeight: running ? 700 : 400 }}>
+        <div style={{ color: rateLimitMessage ? '#fbbf24' : isOffline ? '#f87171' : error ? '#f87171' : (multiFaceMessage || qualityWarning) ? '#fbbf24' : '#F5F1E6', fontFamily: 'Arial,sans-serif', fontSize: 13, textAlign: 'center', marginTop: 12, minHeight: 18, fontWeight: running ? 700 : 400 }}>
           {statusText}
         </div>
         {!error ? (
           <button style={S.btn('#C9A24B', !canScan)} disabled={!canScan} onClick={startScan}>
-            {running ? 'Scanning…' : !quality.ok && cameraReady ? 'Waiting for good lighting…' : 'Start face scan'}
+            {rateLimitMessage ? 'Please wait…'
+              : isOffline ? 'Waiting for connection…'
+              : running ? 'Scanning…'
+              : multiFaceWarning ? 'Only one person in frame…'
+              : !quality.ok && cameraReady ? 'Waiting for good lighting…'
+              : 'Start face scan'}
           </button>
         ) : (
           <button style={S.btn('#5b6473', false)} onClick={retry}>Try again</button>

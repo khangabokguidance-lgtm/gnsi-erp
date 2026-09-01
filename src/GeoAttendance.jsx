@@ -551,6 +551,16 @@ export function DriftFlaggedStaffPanel({ showToast }) {
 //      neutral "choose a shift below" state rather than guessing wrong.
 //   4. Else -> nothing is actionable right now; show why (window not
 //      open yet, already completed, no shifts assigned).
+// Matches a shift row against today's attendance logs by shift_id first —
+// the actual foreign key — falling back to shift_label only for older log
+// rows that predate shift_id being recorded. Matching by label alone (the
+// previous behavior throughout this file) silently conflates two different
+// shifts that happen to share the same label, which double-shift staff can
+// easily hit if an admin names two time blocks the same thing.
+function isShiftLoggedToday(shift, logs) {
+  return logs.some(l => (l.shift_id != null ? l.shift_id === shift.id : l.shift_label === shift.shift_label))
+}
+
 function detectPunchAction({ myShifts, todayMyLogs, activeTracking, gpsStatus }) {
   const openForCheckout = activeTracking // already being tracked
   if (openForCheckout.length === 1) {
@@ -562,7 +572,7 @@ function detectPunchAction({ myShifts, todayMyLogs, activeTracking, gpsStatus })
   }
 
   const eligibleForCheckin = (myShifts || []).filter(shift => {
-    const alreadyDone = todayMyLogs.some(l => l.shift_label === shift.shift_label)
+    const alreadyDone = isShiftLoggedToday(shift, todayMyLogs)
     const inWindow = isWithinWindow(shift.shift_start, shift.check_in_window_min || 10)
     return !alreadyDone && inWindow
   })
@@ -576,13 +586,13 @@ function detectPunchAction({ myShifts, todayMyLogs, activeTracking, gpsStatus })
   // Nothing actionable — figure out the most useful reason why, so the
   // button can explain itself instead of just going grey.
   if (!myShifts || myShifts.length === 0) return { kind: 'none', reason: 'no_shifts' }
-  const allDoneToday = myShifts.every(s => todayMyLogs.some(l => l.shift_label === s.shift_label))
+  const allDoneToday = myShifts.every(s => isShiftLoggedToday(s, todayMyLogs))
   if (allDoneToday) return { kind: 'none', reason: 'all_done' }
 
   // Otherwise: something is assigned but its window isn't open. Surface
   // the soonest upcoming one.
   const upcoming = myShifts
-    .filter(s => !todayMyLogs.some(l => l.shift_label === s.shift_label))
+    .filter(s => !isShiftLoggedToday(s, todayMyLogs))
     .map(s => ({ s, mins: minutesUntilWindow(s.shift_start, s.check_in_window_min || 10) }))
     .filter(x => x.mins > 0)
     .sort((a, b) => a.mins - b.mins)[0]
@@ -872,6 +882,68 @@ function OfflineBanner({ offline, dark = false }) {
     </div>
   )
 }
+
+// ─── Success overlay — GPay-style self-drawing checkmark ───────────────────
+// A brief, full-screen confirmation shown right after a clean punch in/out,
+// separate from the toast (which stays as the permanent record of what
+// happened). The toast is enough information; this is purely the "yes, it
+// worked" feeling — so it's skipped entirely for Late/Flagged/early-out
+// outcomes, which already carry their own amber warning toast and would
+// feel wrong paired with a celebratory green check.
+function SuccessOverlay({ kind, label, onDone }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 1400)
+    return () => clearTimeout(t)
+  }, [onDone])
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(255,255,255,0.92)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        animation: 'gpay-success-fade-in 0.2s ease',
+      }}
+    >
+      <div style={{
+        width: 88, height: 88, borderRadius: '50%', background: '#1E8E3E',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        animation: 'gpay-success-pop 0.4s cubic-bezier(.34,1.56,.64,1)',
+        boxShadow: '0 4px 20px rgba(30,142,62,0.35)',
+      }}>
+        <svg width="46" height="46" viewBox="0 0 52 52" fill="none">
+          <path
+            d="M14 27 L23 36 L40 17"
+            stroke="#ffffff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"
+            pathLength="1"
+            style={{
+              strokeDasharray: 1,
+              strokeDashoffset: 1,
+              animation: 'gpay-success-draw 0.35s ease-out 0.25s forwards',
+            }}
+          />
+        </svg>
+      </div>
+      <div style={{ marginTop: 18, fontSize: 17, fontWeight: 600, color: GPAY.textPrimary, fontFamily: FONT.body, animation: 'gpay-success-text-in 0.3s ease 0.35s both' }}>
+        {kind === 'in' ? 'Punched in' : 'Punched out'}
+      </div>
+      {label && (
+        <div style={{ marginTop: 4, fontSize: 13, color: GPAY.textMuted, fontFamily: FONT.body, animation: 'gpay-success-text-in 0.3s ease 0.4s both' }}>
+          {label}
+        </div>
+      )}
+      <style>{`
+        @keyframes gpay-success-fade-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes gpay-success-pop { 0% { transform: scale(0.5); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
+        @keyframes gpay-success-draw { to { stroke-dashoffset: 0; } }
+        @keyframes gpay-success-text-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
+    </div>
+  )
+}
+
 function usePushSubscription(currentStaff, isAdmin) {
   const subscriptionRef = useRef(null)
   const subscribe = useCallback(async () => {
@@ -1015,6 +1087,56 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   const [gpsAccuracy,   setGpsAccuracy]   = useState(null)
   const [checkingIn,    setCheckingIn]    = useState(false)
   const [lastCheckInFailure, setLastCheckInFailure] = useState(null) // last failed attempt's signals, for the explainer panel
+  const [successOverlay, setSuccessOverlay] = useState(null) // { kind: 'in' | 'out', label } or null — drives the full-screen success animation
+  const [punchOutReminder, setPunchOutReminder] = useState(null) // { shiftLabel, shiftEnd } or null — in-app banner shown once shift end approaches
+  const punchOutReminderTimersRef = useRef({}) // logId -> timeout id, so a reminder isn't double-scheduled and is cleared on checkout
+
+  // Schedules the in-app punch-out reminder banner (and, if permission was
+  // already granted earlier, a real browser notification) to fire a fixed
+  // window before the shift's scheduled end. Only meaningful while this
+  // component instance stays mounted/tab stays open — there is no server-
+  // side push tied to this specific reminder, since scheduling an actual
+  // push notification requires a backend job that isn't part of this file.
+  // If the person closes the tab before shift end, the reminder simply
+  // won't fire; the in-app banner is best-effort convenience, not the
+  // system of record for attendance (server_checkin/server_checkout are).
+  const REMINDER_LEAD_MINUTES = 10
+  const schedulePunchOutReminder = useCallback((logId, shift) => {
+    if (punchOutReminderTimersRef.current[logId]) return // already scheduled for this log
+    const msUntilReminder = (minutesToShiftEnd(shift) - REMINDER_LEAD_MINUTES) * 60000
+    if (msUntilReminder <= 0) return // shift already ending/ended — nothing useful to schedule
+    const timerId = setTimeout(() => {
+      setPunchOutReminder({ shiftLabel: shift.shift_label, shiftEnd: shift.shift_end })
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification('GNSI — Punch out reminder', {
+            body: `Shift ${shift.shift_label} ends soon (${fmt12(shift.shift_end)}). Don't forget to punch out.`,
+            tag: `punch-out-reminder-${logId}`,
+          })
+        } catch (e) {
+          console.warn('Local punch-out notification failed:', e.message)
+        }
+      }
+      delete punchOutReminderTimersRef.current[logId]
+    }, msUntilReminder)
+    punchOutReminderTimersRef.current[logId] = timerId
+  }, [])
+
+  const clearPunchOutReminder = useCallback((logId) => {
+    if (punchOutReminderTimersRef.current[logId]) {
+      clearTimeout(punchOutReminderTimersRef.current[logId])
+      delete punchOutReminderTimersRef.current[logId]
+    }
+    setPunchOutReminder(null)
+  }, [])
+
+  // Clear any pending reminder timers if the component unmounts mid-shift
+  // (e.g. navigating away) so they don't fire against stale state.
+  useEffect(() => {
+    return () => {
+      Object.values(punchOutReminderTimersRef.current).forEach(clearTimeout)
+    }
+  }, [])
   const [myLogs,        setMyLogs]        = useState([])
   const [myShifts,      setMyShifts]      = useState([])
 
@@ -1085,7 +1207,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
     setTargetActiveTracking(
       (logs || [])
         .filter(l => l.date === todayIso && !l.check_out_time && !l.session_dead)
-        .map(l => ({ logId: l.id, shiftId: l.shift_id, shiftLabel: l.shift_label, shift: (shifts || []).find(s => s.shift_label === l.shift_label) }))
+        .map(l => ({ logId: l.id, shiftId: l.shift_id, shiftLabel: l.shift_label, shift: (shifts || []).find(s => l.shift_id != null ? s.id === l.shift_id : s.shift_label === l.shift_label) }))
     )
     setLoadingTarget(false)
   }, [])
@@ -1553,6 +1675,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
         } else {
           setActiveTracking(prev => [...prev, { logId, shiftId: shift.id, shiftLabel: shift.shift_label, shift }])
           setGpsStatus('tracking')
+          schedulePunchOutReminder(logId, shift)
 
           // Sync bridge — self_attendance (geo_verified + geo_distance added by migration)
           // Only for a normal self-punch; an on-behalf-of punch shouldn't
@@ -1577,7 +1700,10 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
       const status = data.status
       if (status === 'Late')         showToast(`🕐 Checked in LATE — ${data.late_minutes} min. Tracking started.`, 'warn')
       else if (status === 'Flagged') showToast('🚨 Check-in flagged for review. Tracking started.', 'warn')
-      else                           showToast(`✅ Checked in — Shift ${shift.shift_label}${punchTarget ? ` for ${punchTarget.name}` : ''}. Tracking active.`, 'ok')
+      else {
+        showToast(`✅ Checked in — Shift ${shift.shift_label}${punchTarget ? ` for ${punchTarget.name}` : ''}. Tracking active.`, 'ok')
+        setSuccessOverlay({ kind: 'in', label: `Shift ${shift.shift_label}${punchTarget ? ` for ${punchTarget.name}` : ''}` })
+      }
 
       // Give the person a moment to see the success toast before jumping
       // back to the Face Attendance home grid.
@@ -1630,6 +1756,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
         if (!remaining.length) setGpsStatus('oncampus')
         return remaining
       })
+      clearPunchOutReminder(logId)
       await fetchMyLogs()
     }
 
@@ -1639,6 +1766,9 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
         : `✅ Checked out — Shift ${shiftLabel}${punchTarget ? ` for ${punchTarget.name}` : ''}`,
       data?.early_out ? 'warn' : 'ok'
     )
+    if (!data?.early_out) {
+      setSuccessOverlay({ kind: 'out', label: `Shift ${shiftLabel}${punchTarget ? ` for ${punchTarget.name}` : ''}` })
+    }
   }
 
   // ── Campus save ───────────────────────────────────────────────────────────
@@ -1888,6 +2018,22 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
           }}>
             <OfflineBanner offline={offline} dark />
 
+            {punchOutReminder && (
+              <div role="status" style={{
+                background: '#FEF7E0', border: `1px solid ${GPAY.warn}55`, borderRadius: 14,
+                padding: '13px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between',
+                animation: 'vault-fade-in 0.3s ease',
+              }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: GPAY.warn, fontSize: 13, fontFamily: FONT.body }}>⏰ Shift ending soon</div>
+                  <div style={{ fontSize: 12, color: GPAY.textMuted, marginTop: 2 }}>
+                    Shift {punchOutReminder.shiftLabel} ends at {fmt12(punchOutReminder.shiftEnd)} — don't forget to punch out.
+                  </div>
+                </div>
+                <button onClick={() => setPunchOutReminder(null)} style={{ background: 'none', border: 'none', color: GPAY.warn, cursor: 'pointer', fontSize: 14, padding: 4, lineHeight: 1, flexShrink: 0 }} aria-label="Dismiss reminder">✕</button>
+              </div>
+            )}
+
             {activeTracking.length > 0 && (() => {
               const wasOff = offCampusSince
               return (
@@ -2050,10 +2196,10 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
               {['oncampus', 'outside', 'tracking'].includes(gpsStatus) && myShifts.length > 0 && (
                 <div ref={shiftListRef} style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {myShifts.map(shift => {
-                    const alreadyDone   = todayMyLogs.some(l => l.shift_label === shift.shift_label)
+                    const alreadyDone   = isShiftLoggedToday(shift, todayMyLogs)
                     const inWindow      = isWithinWindow(shift.shift_start, shift.check_in_window_min || 10)
                     const minsLeft      = minutesUntilWindow(shift.shift_start, shift.check_in_window_min || 10)
-                    const isTracked     = activeTracking.some(t => t.shiftLabel === shift.shift_label)
+                    const isTracked     = activeTracking.some(t => t.shiftId != null ? t.shiftId === shift.id : t.shiftLabel === shift.shift_label)
                     const shiftMinsLeft = minutesToShiftEnd(shift)
                     return (
                       <div key={shift.id} style={{ background: GPAY.panelHover, borderRadius: 12, padding: 14, border: `1px solid ${alreadyDone ? GPAY.ok + '55' : isTracked ? GPAY.ok + '55' : inWindow ? GPAY.goldBorder : GPAY.panelBorder}` }}>
@@ -2067,7 +2213,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                             )}
                           </div>
                           {alreadyDone
-                            ? <StatusBadge status={todayMyLogs.find(l => l.shift_label === shift.shift_label)?.status || 'Present'} dark />
+                            ? <StatusBadge status={(todayMyLogs.find(l => l.shift_id != null ? l.shift_id === shift.id : l.shift_label === shift.shift_label))?.status || 'Present'} dark />
                             : inWindow
                               ? <button onClick={() => handleCheckIn(shift)} disabled={checkingIn}
                                   style={gpayBtnStyle({ bg: gpsStatus === 'outside' ? GPAY.warn : GPAY.ok, disabled: checkingIn, size: 'sm' })} {...gpayPress}>
@@ -2554,6 +2700,14 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
           staffId={punchTarget?.id || currentStaff?.id}
           onVerified={(faceResult) => performCheckIn(faceCaptureShift, faceResult)}
           onCancel={() => setFaceCaptureShift(null)}
+        />
+      )}
+
+      {successOverlay && (
+        <SuccessOverlay
+          kind={successOverlay.kind}
+          label={successOverlay.label}
+          onDone={() => setSuccessOverlay(null)}
         />
       )}
     </ErrorBoundary>

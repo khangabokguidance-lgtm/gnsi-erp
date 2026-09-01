@@ -10,7 +10,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from './supabase'
-import { loadFaceModels, extractDescriptor, averageDescriptors, matchDescriptor, avgEyeAspectRatio, detectFaceWithLandmarks } from './faceEngine'
+import { loadFaceModels, extractDescriptor, averageDescriptors, matchDescriptor, avgEyeAspectRatio, detectFaceWithLandmarks, countFacesInFrame, assessCaptureConsistency } from './faceEngine'
 
 const CAPTURES_NEEDED = 3
 const BLINK_EAR_THRESHOLD = 0.28   // loosened from 0.22 — real faces/cameras often sit higher than the textbook default
@@ -116,10 +116,32 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
   const captureOne = async () => {
     if (capturingRef.current) return
     if (!ready || !modelsReady || capturing) return
+    if (!navigator.onLine) {
+      notify('No internet connection — check your connection and try again.', 'err')
+      return
+    }
     capturingRef.current = true
     setCapturing(true)
     setError('')
     try {
+      // Reject a capture attempt outright if more than one face is visible
+      // right now — otherwise face-api.js's detectSingleFace would silently
+      // pick one of the faces and the enrollment could end up keyed to the
+      // wrong person, or to whichever face happened to be more prominent.
+      const faceCount = await countFacesInFrame(videoRef.current)
+      if (faceCount > 1) {
+        notify('More than one face detected — make sure you\'re alone in frame and try again.', 'err')
+        capturingRef.current = false
+        setCapturing(false)
+        return
+      }
+      if (faceCount === 0) {
+        notify('No face detected — center your face in the frame and try again.', 'err')
+        capturingRef.current = false
+        setCapturing(false)
+        return
+      }
+
       setBlinkPrompt(true)
       const blinked = await waitForBlink(videoRef.current, setLiveEar)
       setBlinkPrompt(false)
@@ -165,6 +187,23 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
     // photos and risk two descriptor rows for the same enrollment.
     if (savingRef.current) return
     if (captures.length < CAPTURES_NEEDED) return
+    if (!navigator.onLine) {
+      notify('No internet connection — check your connection and try again.', 'err')
+      return
+    }
+
+    // Check the 3 captures agree closely enough with each other before
+    // averaging them into the permanent reference vector. A blurry or
+    // poorly-lit shot among the 3 can silently drag the average away from
+    // the person's real appearance, which then only surfaces weeks later
+    // as unexplained check-in failures. Catching it here costs a retake;
+    // catching it later costs a support conversation and a re-enrollment.
+    const consistency = assessCaptureConsistency(captures.map(c => c.descriptor))
+    if (!consistency.ok) {
+      notify('These 3 shots don\'t match each other closely enough — try retaking with steadier framing and consistent lighting.', 'err')
+      return
+    }
+
     savingRef.current = true
     setSaving(true)
     try {
@@ -301,6 +340,8 @@ export function FaceApprovalQueue({ currentAdminId, showToast }) {
   const [pending, setPending] = useState([])
   const [loading, setLoading] = useState(true)
   const [thumbUrls, setThumbUrls] = useState({}) // descriptor id -> signed url
+  const [selected, setSelected] = useState(new Set()) // ids checked for bulk action
+  const [bulkWorking, setBulkWorking] = useState(false)
 
   const fetchPending = useCallback(async () => {
     setLoading(true)
@@ -333,6 +374,7 @@ export function FaceApprovalQueue({ currentAdminId, showToast }) {
     }
 
     setPending(rows.map(r => ({ ...r, staff_profiles: namesById[r.staff_id] || null })))
+    setSelected(prev => new Set([...prev].filter(id => rows.some(r => r.id === id)))) // drop selections for rows no longer pending
 
     // Signed URLs expire in 1 hour — generated fresh each load, never stored/public
     const urls = {}
@@ -356,14 +398,73 @@ export function FaceApprovalQueue({ currentAdminId, showToast }) {
     else { showToast?.(status === 'approved' ? '✅ Approved' : 'Rejected', status === 'approved' ? 'ok' : 'warn'); fetchPending() }
   }
 
+  const toggleSelected = (id) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelected(prev => prev.size === pending.length ? new Set() : new Set(pending.map(p => p.id)))
+  }
+
+  // Applies one decision to every selected row. Runs the same update the
+  // single-row Approve/Reject buttons use, one row at a time — there's no
+  // separate bulk RPC, so this is a plain sequential loop rather than a
+  // single request, but it saves an admin from clicking through every row
+  // individually during a start-of-year enrollment rush.
+  const decideBulk = async (status) => {
+    if (!selected.size || bulkWorking) return
+    setBulkWorking(true)
+    const ids = [...selected]
+    let failCount = 0
+    for (const id of ids) {
+      const { error } = await supabase.from('staff_face_descriptors').update({
+        status, reviewed_by: currentAdminId, reviewed_at: new Date().toISOString(),
+      }).eq('id', id)
+      if (error) failCount++
+    }
+    setBulkWorking(false)
+    setSelected(new Set())
+    if (failCount > 0) {
+      showToast?.(`${ids.length - failCount} of ${ids.length} updated — ${failCount} failed, please retry those individually`, 'warn')
+    } else {
+      showToast?.(status === 'approved' ? `✅ ${ids.length} approved` : `${ids.length} rejected`, status === 'approved' ? 'ok' : 'warn')
+    }
+    fetchPending()
+  }
+
   if (loading) return <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Loading…</p>
   if (!pending.length) return <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>No pending face enrollments.</p>
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {pending.length > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 2px 4px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b', cursor: 'pointer' }}>
+            <input type="checkbox" checked={selected.size === pending.length} onChange={toggleSelectAll} />
+            {selected.size > 0 ? `${selected.size} selected` : 'Select all'}
+          </label>
+          {selected.size > 0 && (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => decideBulk('approved')} disabled={bulkWorking}
+                style={{ background: '#16a34a', color: 'white', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: bulkWorking ? 'not-allowed' : 'pointer', opacity: bulkWorking ? 0.6 : 1 }}>
+                {bulkWorking ? 'Working…' : `Approve ${selected.size}`}
+              </button>
+              <button onClick={() => decideBulk('rejected')} disabled={bulkWorking}
+                style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: bulkWorking ? 'not-allowed' : 'pointer', opacity: bulkWorking ? 0.6 : 1 }}>
+                {bulkWorking ? 'Working…' : `Reject ${selected.size}`}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {pending.map(p => (
         <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', borderRadius: 10, padding: '12px 14px', boxShadow: '0 1px 4px rgba(0,0,0,.06)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelected(p.id)} />
             {thumbUrls[p.id] && (
               <img src={thumbUrls[p.id]} alt="Enrollment shot" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', border: '1px solid #e2e8f0' }} />
             )}
