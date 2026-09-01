@@ -1026,22 +1026,25 @@ useEffect(() => {
     // 2. Read from pre-aggregated salary feed (written by GeoAttendance report tab)
 const { data: feedData } = await supabase
   .from('attendance_salary_feed')
-  .select('staff_id, total_late_min, absent_days, early_out_days')
+  .select('staff_id, late_days, total_late_min, absent_days, early_out_days')
   .eq('month', regMonth)
 
 // 3. Build late/absent map from feed
 const lateMap = {}
 ;(feedData || []).forEach(row => {
   lateMap[row.staff_id] = {
-    lateMin:  row.total_late_min  || 0,
+    // late_days = number of days marked late (deduction is per DAY, not
+    // per minute). Falls back to counting total_late_min as at least one
+    // late day if the feed hasn't been migrated to include late_days yet.
+    lateDays: row.late_days != null ? row.late_days : (row.total_late_min > 0 ? 1 : 0),
     absent:   row.absent_days     || 0,
     earlyOut: row.early_out_days  || 0,
   }
 })
 
     // 4. Fill unsaved staff — auto-calculate late_deduction from geo
-    // ₹10 per late minute · ₹300 per absent day · ₹150 per early-out
-    // Adjust these rates as needed
+    // ₹X per late DAY (flat, regardless of how late) · ₹Y per absent day
+    // · ₹Z per early-out day. Adjust rates in the Deduction Rules tab.
     const LATE_RATE   = Number(dedRules.late_rate)
 const ABSENT_RATE = Number(dedRules.absent_rate)
 const EARLY_RATE  = Number(dedRules.early_out_rate)
@@ -1050,7 +1053,7 @@ const EARLY_RATE  = Number(dedRules.early_out_rate)
       if (!map[s.id]) {
         const geo = lateMap[s.id]
         const autoLateDed = geo
-          ? (geo.lateMin * LATE_RATE) + (geo.absent * ABSENT_RATE) + (geo.earlyOut * EARLY_RATE)
+          ? (geo.lateDays * LATE_RATE) + (geo.absent * ABSENT_RATE) + (geo.earlyOut * EARLY_RATE)
           : 0
         const level = scoreMap[s.id]?.level || null
         const autoPerfAdj = level ? performanceAdjustment(level, dedRules) : 0
@@ -1098,14 +1101,18 @@ const EARLY_RATE  = Number(dedRules.early_out_rate)
     try {
       const { data: feedData, error: feedErr } = await supabase
         .from('attendance_salary_feed')
-        .select('staff_id, total_late_min, absent_days, early_out_days')
+        .select('staff_id, late_days, total_late_min, absent_days, early_out_days')
         .eq('month', regMonth)
       if (feedErr) throw feedErr
 
       const lateMap = {}
       ;(feedData || []).forEach(row => {
         lateMap[row.staff_id] = {
-          lateMin:  row.total_late_min  || 0,
+          // Flat per-day rate — a day marked late costs the same
+          // regardless of how many minutes late. Falls back to treating
+          // any recorded late minutes as one late day if the feed
+          // hasn't been migrated to include late_days yet.
+          lateDays: row.late_days != null ? row.late_days : (row.total_late_min > 0 ? 1 : 0),
           absent:   row.absent_days     || 0,
           earlyOut: row.early_out_days  || 0,
         }
@@ -1124,7 +1131,7 @@ const EARLY_RATE  = Number(dedRules.early_out_rate)
         if (geo) withAttendance++
         else flaggedNoData++
         const autoLateDed = geo
-          ? (geo.lateMin * LATE_RATE) + (geo.absent * ABSENT_RATE) + (geo.earlyOut * EARLY_RATE)
+          ? (geo.lateDays * LATE_RATE) + (geo.absent * ABSENT_RATE) + (geo.earlyOut * EARLY_RATE)
           : 0
         const level = scoreMap[s.id]?.level || null
         const autoPerfAdj = level ? performanceAdjustment(level, dedRules) : 0
@@ -2148,7 +2155,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
       <div style={{ flex:1 }}>
         <div style={{ fontWeight:700, color:'#1e3a5f', fontSize:14 }}>Currently Active Rates</div>
         <div style={{ fontSize:12, color:'#64748b', marginTop:4, display:'flex', gap:16, flexWrap:'wrap' }}>
-          <span>🕐 Late: <strong style={{ color:'#dc2626' }}>₹{dedRules.late_rate}/min</strong></span>
+          <span>🕐 Late: <strong style={{ color:'#dc2626' }}>₹{dedRules.late_rate}/day</strong></span>
           <span>⭕ Absent: <strong style={{ color:'#dc2626' }}>₹{dedRules.absent_rate}/day</strong></span>
           <span>🏃 Early Out: <strong style={{ color:'#dc2626' }}>₹{dedRules.early_out_rate}/day</strong></span>
           <span>💎 Elite: <strong style={{ color:'#16a34a' }}>+₹{dedRules.perf_elite_bonus}</strong></span>
@@ -2172,11 +2179,11 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
         {[
           {
             key:   'late_rate',
-            label: '🕐 Late Per Minute',
-            desc:  'Deducted for each minute staff checks in late',
+            label: '🕐 Late Per Day',
+            desc:  'Flat deduction for each day staff checks in late (any minutes late counts as one late day)',
             color: '#b45309',
             bg:    '#fef3c7',
-            unit:  '₹ / minute',
+            unit:  '₹ / day',
           },
           {
             key:   'absent_rate',
@@ -2216,11 +2223,11 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
       <div style={{ background:'#f8fafc', borderRadius:10, padding:'12px 14px', marginBottom:20, border:'1px solid #e2e8f0' }}>
         <div style={{ fontSize:12, fontWeight:700, color:'#374151', marginBottom:8 }}>📊 Example Calculation</div>
         <div style={{ fontSize:12, color:'#64748b', display:'flex', flexDirection:'column', gap:4 }}>
-          <span>Staff late by <strong>30 min</strong> → ₹{Number(rulesForm.late_rate||0) * 30} deducted</span>
+          <span>Staff late on <strong>2 days</strong> → ₹{Number(rulesForm.late_rate||0) * 2} deducted</span>
           <span>Staff absent <strong>2 days</strong> → ₹{Number(rulesForm.absent_rate||0) * 2} deducted</span>
           <span>Staff early out <strong>3 days</strong> → ₹{Number(rulesForm.early_out_rate||0) * 3} deducted</span>
           <div style={{ borderTop:'1px solid #e2e8f0', marginTop:6, paddingTop:6, fontWeight:700, color:'#dc2626' }}>
-            Total deduction example: ₹{(Number(rulesForm.late_rate||0)*30) + (Number(rulesForm.absent_rate||0)*2) + (Number(rulesForm.early_out_rate||0)*3)}
+            Total deduction example: ₹{(Number(rulesForm.late_rate||0)*2) + (Number(rulesForm.absent_rate||0)*2) + (Number(rulesForm.early_out_rate||0)*3)}
           </div>
         </div>
       </div>
@@ -2311,7 +2318,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
           <thead>
             <tr style={{ background:'#f8fafc' }}>
-              {['Effective From','Late/min','Absent/day','Early Out/day','Elite','Outstanding','Good','Probation','Status','Set By'].map(h => (
+              {['Effective From','Late/day','Absent/day','Early Out/day','Elite','Outstanding','Good','Probation','Status','Set By'].map(h => (
                 <th key={h} style={{ padding:'9px 12px', textAlign:'left', fontWeight:600, color:'#374151', fontSize:11 }}>{h}</th>
               ))}
             </tr>

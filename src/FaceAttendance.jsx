@@ -344,16 +344,17 @@ function LateFinesView({ staffId, isAdmin, staffList }) {
 
   const totalLateInstances = rows.length
   const totalLateMinutes = rows.reduce((s, r) => s + (r.late_minutes || 0), 0)
+  const estimatedFine = rules ? totalLateInstances * Number(rules.late_rate || 0) : null // flat per late DAY, not per minute
 
   return (
     <div style={S.card}>
       <p style={{ fontSize: 12, color: COLOR.slate, margin: '0 0 14px' }}>
-        View only — the actual fine amount is applied in Salary.jsx's monthly payroll run using the active deduction rule below.
+        View only — the actual fine amount is applied in Salary.jsx's monthly payroll run using the active deduction rule below. Late deduction is a flat rate per late day, regardless of how many minutes late.
       </p>
 
       {rules && (
         <div style={{ background: '#fffbeb', border: '1px dashed #fbbf24', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#92400e' }}>
-          Active rule: late deduction rate <strong>{rules.late_rate}</strong> · absent rate <strong>{rules.absent_rate}</strong> · early-out rate <strong>{rules.early_out_rate}</strong>
+          Active rule: <strong>₹{rules.late_rate}</strong>/late day · <strong>₹{rules.absent_rate}</strong>/absent day · <strong>₹{rules.early_out_rate}</strong>/early-out day
         </div>
       )}
 
@@ -366,7 +367,7 @@ function LateFinesView({ staffId, isAdmin, staffList }) {
           </select>
         )}
         <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: COLOR.warn }}>
-          {totalLateInstances} late check-in{totalLateInstances !== 1 ? 's' : ''} · {totalLateMinutes} min total
+          {totalLateInstances} late day{totalLateInstances !== 1 ? 's' : ''} ({totalLateMinutes} min total){estimatedFine !== null && ` · est. fine ${fmtRupee(estimatedFine)}`}
         </div>
       </div>
 
@@ -463,9 +464,10 @@ function PayrollView({ staffId, isAdmin, staffList }) {
   const perDay = useMemo(() => {
     const map = {}
     attRows.forEach(r => {
-      if (!map[r.staff_id]) map[r.staff_id] = { lateMin: 0, absent: 0, earlyOut: 0, present: 0 }
+      if (!map[r.staff_id]) map[r.staff_id] = { lateMin: 0, lateDays: 0, absent: 0, earlyOut: 0, present: 0 }
       const m = map[r.staff_id]
       m.lateMin += r.late_minutes || 0
+      if ((r.late_minutes || 0) > 0) m.lateDays++ // flat per-day count — any minutes late counts as one late day
       if (r.status === 'Absent') m.absent++
       else if (r.status === 'Early Out' || r.status === 'EarlyOut') m.earlyOut++
       else m.present++
@@ -478,8 +480,8 @@ function PayrollView({ staffId, isAdmin, staffList }) {
     const ABSENT = Number(rules?.absent_rate || 0)
     const EARLY = Number(rules?.early_out_rate || 0)
     return staffFull.map(s => {
-      const d = perDay[s.id] || { lateMin: 0, absent: 0, earlyOut: 0, present: 0 }
-      const lateDed = d.lateMin * LATE
+      const d = perDay[s.id] || { lateMin: 0, lateDays: 0, absent: 0, earlyOut: 0, present: 0 }
+      const lateDed = d.lateDays * LATE
       const absentDed = d.absent * ABSENT
       const earlyDed = d.earlyOut * EARLY
       const advDed = advMap[s.id] || 0
@@ -502,7 +504,7 @@ function PayrollView({ staffId, isAdmin, staffList }) {
 
       {rules ? (
         <div style={{ background: '#fffbeb', border: '1px dashed #fbbf24', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#92400e' }}>
-          Active daily rule: <strong>₹{rules.late_rate}</strong>/late-minute · <strong>₹{rules.absent_rate}</strong>/absent day · <strong>₹{rules.early_out_rate}</strong>/early-out day
+          Active daily rule: <strong>₹{rules.late_rate}</strong>/late day · <strong>₹{rules.absent_rate}</strong>/absent day · <strong>₹{rules.early_out_rate}</strong>/early-out day
         </div>
       ) : (
         <div style={{ background: COLOR.dangerBg, border: `1px dashed ${COLOR.danger}`, borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: COLOR.danger }}>
@@ -530,7 +532,7 @@ function PayrollView({ staffId, isAdmin, staffList }) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {['Staff', 'Present', 'Late (min)', 'Absent', 'Early Out', 'Late Ded.', 'Absent Ded.', 'Early Ded.', 'Advance', 'Gross', 'Est. Net'].map(h => (
+                {['Staff', 'Present', 'Late Days', 'Absent', 'Early Out', 'Late Ded.', 'Absent Ded.', 'Early Ded.', 'Advance', 'Gross', 'Est. Net'].map(h => (
                   <th key={h} style={S.th}>{h}</th>
                 ))}
               </tr>
@@ -543,7 +545,9 @@ function PayrollView({ staffId, isAdmin, staffList }) {
                     <div style={{ fontSize: 10.5, color: COLOR.slate }}>{r.staff.designation || r.staff.department || ''}</div>
                   </td>
                   <td style={S.td}>{r.d.present}</td>
-                  <td style={{ ...S.td, color: r.d.lateMin > 0 ? COLOR.warn : COLOR.slate, fontWeight: 600 }}>{r.d.lateMin || '—'}</td>
+                  <td style={{ ...S.td, color: r.d.lateDays > 0 ? COLOR.warn : COLOR.slate, fontWeight: 600 }}>
+                    {r.d.lateDays > 0 ? `${r.d.lateDays} (${r.d.lateMin}m)` : '—'}
+                  </td>
                   <td style={{ ...S.td, color: r.d.absent > 0 ? COLOR.danger : COLOR.slate, fontWeight: 600 }}>{r.d.absent || '—'}</td>
                   <td style={{ ...S.td, color: r.d.earlyOut > 0 ? COLOR.warn : COLOR.slate, fontWeight: 600 }}>{r.d.earlyOut || '—'}</td>
                   <td style={{ ...S.td, color: COLOR.danger }}>{r.lateDed ? fmtRupee(r.lateDed) : '—'}</td>
@@ -659,11 +663,11 @@ function DeductionRulesSetup({ currentAdminId, showToast }) {
     <div>
       <div style={S.card}>
         <p style={{ fontSize: 12, color: COLOR.slate, margin: '0 0 14px' }}>
-          Set the ₹ amount deducted <strong>per day</strong> (or per late minute) from daily attendance. These rates feed the Payroll preview here and Salary.jsx's Auto-Generate Payroll — one rule, used everywhere.
+          Set the ₹ amount deducted <strong>per day</strong> from daily attendance — late, absent, and early-out are each a flat per-day rate, regardless of how many minutes late. These rates feed the Payroll preview here and Salary.jsx's Auto-Generate Payroll — one rule, used everywhere.
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
-          {field('late_rate', '⏰ Late Deduction', 'Per minute late for check-in', COLOR.warn, '₹ / minute')}
+          {field('late_rate', '⏰ Late Deduction', 'Flat amount per day staff checks in late (any minutes late = one late day)', COLOR.warn, '₹ / day')}
           {field('absent_rate', '🚫 Absent Deduction', 'Per full day marked Absent', COLOR.danger, '₹ / day')}
           {field('early_out_rate', '🚪 Early-Out Deduction', 'Per day of early check-out', '#7c3aed', '₹ / day')}
         </div>
@@ -699,7 +703,7 @@ function DeductionRulesSetup({ currentAdminId, showToast }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr>
-                  {['Effective From', 'Late/min', 'Absent/day', 'Early Out/day', 'Elite', 'Outstanding', 'Good', 'Probation', 'Status'].map(h => (
+                  {['Effective From', 'Late/day', 'Absent/day', 'Early Out/day', 'Elite', 'Outstanding', 'Good', 'Probation', 'Status'].map(h => (
                     <th key={h} style={S.th}>{h}</th>
                   ))}
                 </tr>
