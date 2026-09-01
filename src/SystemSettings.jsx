@@ -9,6 +9,35 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./supabase";
 
+// ─── Access control ─────────────────────────────────────────
+// SystemSettings has no auth of its own to fall back on — every
+// action inside it (plaintext API secrets, table-clearing deletes,
+// bulk CSV import) is a real Supabase call, not a demo. Historically
+// this component only ever checked `currentUser` cosmetically (for
+// the fake sessions list), so anyone the caller happened to route
+// here got full access regardless of role. Gate it the same way
+// App.jsx gates every other admin-only module: same allowed-roles
+// list, same case-sensitive comparison, so there is exactly one
+// admin definition in the portal, not two that could disagree.
+const ADMIN_ROLES = ["Admin", "Administrator", "Co-Admin"];
+function isAdminRole(role) {
+  return ADMIN_ROLES.includes(role);
+}
+
+function AccessDenied() {
+  return (
+    <div style={{ minHeight: "100vh", background: "#F8FAFC", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ background: "white", border: "1.5px solid #E5E7EB", borderRadius: 14, padding: "32px 28px", maxWidth: 380, textAlign: "center" }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+        <h2 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "#111827" }}>Access restricted</h2>
+        <p style={{ margin: 0, fontSize: 13, color: "#6B7280" }}>
+          System Settings is admin-only. Ask an administrator if you need something changed here.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Nav Tabs ────────────────────────────────────────────────
 const NAV_TABS = [
   { id: "basic",        icon: "🏫", label: "Basic Info"      },
@@ -42,29 +71,36 @@ function Spinner() {
   );
 }
 
-function SaveBtn({ onClick, saving, saved, disabled }) {
+function SaveBtn({ onClick, saving, saved, disabled, dirty }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={saving || disabled}
-      style={{
-        padding: "10px 24px",
-        borderRadius: 10,
-        fontSize: 14,
-        fontWeight: 700,
-        cursor: saving || disabled ? "default" : "pointer",
-        border: "none",
-        background: saved ? "#16A34A" : saving ? "#93C5FD" : "#1D4ED8",
-        color: "white",
-        marginTop: 10,
-        opacity: disabled ? 0.6 : 1,
-        width: "100%",
-        letterSpacing: 0.2,
-        transition: "background 0.25s",
-      }}
-    >
-      {saved ? "✓ Saved!" : saving ? "Saving…" : "Save Changes"}
-    </button>
+    <div>
+      {dirty && !saving && !saved && (
+        <p style={{ margin: "0 0 8px", fontSize: 12, color: "#B45309", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
+          ● Unsaved changes
+        </p>
+      )}
+      <button
+        onClick={onClick}
+        disabled={saving || disabled}
+        style={{
+          padding: "10px 24px",
+          borderRadius: 10,
+          fontSize: 14,
+          fontWeight: 700,
+          cursor: saving || disabled ? "default" : "pointer",
+          border: "none",
+          background: saved ? "#16A34A" : saving ? "#93C5FD" : "#1D4ED8",
+          color: "white",
+          marginTop: 10,
+          opacity: disabled ? 0.6 : 1,
+          width: "100%",
+          letterSpacing: 0.2,
+          transition: "background 0.25s",
+        }}
+      >
+        {saved ? "✓ Saved!" : saving ? "Saving…" : "Save Changes"}
+      </button>
+    </div>
   );
 }
 
@@ -98,6 +134,9 @@ function Field({ label, value, onChange, type = "text", placeholder = "", readOn
 }
 
 function Toggle({ label, desc, checked, onChange }) {
+  const onKeyDown = (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onChange(); }
+  };
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -108,11 +147,17 @@ function Toggle({ label, desc, checked, onChange }) {
         {desc && <p style={{ margin: 0, fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>{desc}</p>}
       </div>
       <div
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        tabIndex={0}
         onClick={onChange}
+        onKeyDown={onKeyDown}
         style={{
           width: 46, height: 26, borderRadius: 13, cursor: "pointer",
           background: checked ? "#1D4ED8" : "#D1D5DB",
           position: "relative", transition: "background 0.2s", flexShrink: 0,
+          outlineOffset: 2,
         }}
       >
         <div style={{
@@ -215,9 +260,13 @@ async function saveSettings(map) {
 
 // ─── Hook: shared section logic ───────────────────────────────
 // FIX #5: stable key string in dep array to avoid stale effect
+// FIX #2/#3: tracks a dirty flag (unsaved changes vs. last-loaded/
+// last-saved snapshot) so callers can warn before navigating away,
+// and a saved value is never mistaken for a still-pending edit.
 function useSettingsSection(keys) {
   const keysStr = keys.join(",");
   const [s, setS] = useState({});
+  const [savedSnapshot, setSavedSnapshot] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -226,17 +275,20 @@ function useSettingsSection(keys) {
   useEffect(() => {
     setLoading(true);
     loadSettings(keys)
-      .then(d => { setS(d); setLoading(false); })
+      .then(d => { setS(d); setSavedSnapshot(d); setLoading(false); })
       .catch(err => { setError(err.message); setLoading(false); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keysStr]);
 
   const update = useCallback((k, v) => setS(p => ({ ...p, [k]: v })), []);
 
+  const dirty = JSON.stringify(s) !== JSON.stringify(savedSnapshot);
+
   const save = async () => {
     setSaving(true); setSaved(false); setError(null);
     try {
       await saveSettings(s);
+      setSavedSnapshot(s);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
@@ -246,7 +298,90 @@ function useSettingsSection(keys) {
     }
   };
 
-  return { s, setS, loading, saving, saved, error, setError, update, save };
+  return { s, setS, loading, saving, saved, error, setError, update, save, dirty };
+}
+
+// ─── Unsaved-changes guard ─────────────────────────────────────
+// FIX #2: warns on browser close/refresh/tab-close when any section
+// currently has unsaved edits. Registered once per section via the
+// `dirty` flag from useSettingsSection. Also reports into a small
+// module-level registry so the root nav (switching between Basic
+// Info / Security / etc, which unmounts the previous section) can
+// warn before discarding in-progress edits — sections never import
+// or know about each other, they just report their own dirty state.
+const dirtyRegistry = new Set();
+const dirtyListeners = new Set();
+function setSectionDirty(id, isDirty) {
+  if (isDirty) dirtyRegistry.add(id); else dirtyRegistry.delete(id);
+  dirtyListeners.forEach(fn => fn());
+}
+function useAnyDirty() {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const fn = () => force(x => x + 1);
+    dirtyListeners.add(fn);
+    return () => dirtyListeners.delete(fn);
+  }, []);
+  return dirtyRegistry.size > 0;
+}
+function useUnsavedGuard(dirty, sectionId) {
+  useEffect(() => {
+    if (sectionId) setSectionDirty(sectionId, dirty);
+    return () => { if (sectionId) setSectionDirty(sectionId, false); };
+  }, [dirty, sectionId]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
+}
+
+// ─── Small inline confirm dialog ───────────────────────────────
+// FIX #1: replaces window.confirm() for destructive actions with an
+// in-UI modal that requires typing the exact resource name before
+// the confirm button enables — much harder to click through on
+// reflex than a native confirm() dialog.
+function ConfirmDialog({ title, body, confirmWord, confirmLabel = "Delete", onConfirm, onCancel }) {
+  const [typed, setTyped] = useState("");
+  const ready = typed.trim() === confirmWord;
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 9998,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+    }}>
+      <div style={{ background: "white", borderRadius: 14, padding: "22px 20px", maxWidth: 380, width: "100%" }}>
+        <h3 style={{ margin: "0 0 8px", fontSize: 15, fontWeight: 800, color: "#111827" }}>{title}</h3>
+        <p style={{ margin: "0 0 14px", fontSize: 13, color: "#6B7280" }}>{body}</p>
+        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>
+          Type <span style={{ fontFamily: "monospace", color: "#991B1B" }}>{confirmWord}</span> to confirm
+        </label>
+        <input
+          autoFocus
+          value={typed}
+          onChange={e => setTyped(e.target.value)}
+          style={{ width: "100%", padding: "10px 12px", borderRadius: 9, fontSize: 14, border: "1.5px solid #D1D5DB", outline: "none", boxSizing: "border-box", marginBottom: 14 }}
+        />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onCancel} style={{ flex: 1, padding: "10px 14px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", border: "1.5px solid #E5E7EB", background: "white", color: "#374151" }}>
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!ready}
+            style={{
+              flex: 1, padding: "10px 14px", borderRadius: 9, fontSize: 13, fontWeight: 700,
+              cursor: ready ? "pointer" : "default", border: "none",
+              background: ready ? "#DC2626" : "#FCA5A5", color: "white",
+            }}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Grid helper (responsive) ─────────────────────────────────
@@ -272,7 +407,8 @@ function BasicSection() {
     "session_year","portal_version","institute_type","affiliation",
     "principal_name","established_year",
   ];
-  const { s, loading, saving, saved, error, update, save } = useSettingsSection(KEYS);
+  const { s, loading, saving, saved, error, update, save, dirty } = useSettingsSection(KEYS);
+  useUnsavedGuard(dirty, "basic");
 
   if (loading) return <Spinner />;
 
@@ -287,7 +423,7 @@ function BasicSection() {
         <Field label="Email"                   value={s.school_email ?? ""} onChange={e => update("school_email", e.target.value)} type="email" />
         <Field label="Principal Name"          value={s.principal_name ?? ""} onChange={e => update("principal_name", e.target.value)} />
         <Field label="Year Established"        value={s.established_year ?? ""} onChange={e => update("established_year", e.target.value)} placeholder="e.g. 2010" />
-        <SaveBtn onClick={save} saving={saving} saved={saved} />
+        <SaveBtn onClick={save} saving={saving} saved={saved} dirty={dirty} />
       </Card>
 
       <Card>
@@ -316,7 +452,8 @@ function SecuritySection({ currentUser }) {
     "session_timeout_minutes","max_login_attempts",
     "lockout_duration_minutes","force_password_change","two_factor_required",
   ];
-  const { s, loading, saving, saved, error, update, save } = useSettingsSection(KEYS);
+  const { s, loading, saving, saved, error, update, save, dirty } = useSettingsSection(KEYS);
+  useUnsavedGuard(dirty, "security");
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [pwMsg, setPwMsg] = useState(null);
 
@@ -407,10 +544,24 @@ function SecuritySection({ currentUser }) {
           checked={s.two_factor_required === "true"}
           onChange={() => update("two_factor_required", s.two_factor_required === "true" ? "false" : "true")}
         />
-        <SaveBtn onClick={save} saving={saving} saved={saved} />
+        <SaveBtn onClick={save} saving={saving} saved={saved} dirty={dirty} />
       </Card>
     </Grid>
   );
+}
+
+// ─── Small URL sanity check ─────────────────────────────────────
+// FIX #6: not full validation (no network check), just catches the
+// two most common paste mistakes before Save — not a URL at all, or
+// an insecure http:// link that will silently fail as mixed content
+// once the portal is served over https.
+function urlWarning(value) {
+  if (!value) return null;
+  let parsed;
+  try { parsed = new URL(value); } catch { return "Doesn't look like a valid URL."; }
+  if (parsed.protocol === "http:") return "Insecure http:// link — use https:// or it may be blocked on the live site.";
+  if (!["http:", "https:"].includes(parsed.protocol)) return "Doesn't look like a valid URL.";
+  return null;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -419,7 +570,8 @@ function SecuritySection({ currentUser }) {
 function AppearanceSection() {
   const mobile = useIsMobile();
   const KEYS = ["primary_color","sidebar_color","accent_color","font_family","logo_url","favicon_url","portal_title"];
-  const { s, setS, loading, saving, saved, error, update, save } = useSettingsSection(KEYS);
+  const { s, setS, loading, saving, saved, error, update, save, dirty } = useSettingsSection(KEYS);
+  useUnsavedGuard(dirty, "appearance");
 
   const FONTS = ["DM Sans","Poppins","Nunito","Outfit","Roboto","Raleway"];
   const PRESETS = [
@@ -438,25 +590,32 @@ function AppearanceSection() {
         <Card>
           <SectionTitle>🎨 Color Presets</SectionTitle>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
-            {PRESETS.map(p => (
-              <button
-                key={p.name}
-                onClick={() => setS(prev => ({ ...prev, primary_color: p.primary, sidebar_color: p.sidebar, accent_color: p.accent }))}
-                style={{
-                  display: "flex", alignItems: "center", gap: 7,
-                  padding: "8px 13px", borderRadius: 9,
-                  border: s.primary_color === p.primary ? "2px solid #1D4ED8" : "1.5px solid #E5E7EB",
-                  cursor: "pointer", background: "white", fontSize: 13, fontWeight: 500,
-                }}
-              >
-                <span style={{ display: "flex", gap: 3 }}>
-                  {[p.primary, p.sidebar, p.accent].map((c, i) => (
-                    <span key={i} style={{ width: 13, height: 13, borderRadius: "50%", background: c, display: "inline-block" }} />
-                  ))}
-                </span>
-                {p.name}
-              </button>
-            ))}
+            {PRESETS.map(p => {
+              // FIX #5: a preset only shows as "selected" when ALL THREE of
+              // its colors currently match — previously only primary_color
+              // was compared, so manually tweaking just the accent after
+              // picking a preset left that preset looking still-selected.
+              const isSelected = s.primary_color === p.primary && s.sidebar_color === p.sidebar && s.accent_color === p.accent;
+              return (
+                <button
+                  key={p.name}
+                  onClick={() => setS(prev => ({ ...prev, primary_color: p.primary, sidebar_color: p.sidebar, accent_color: p.accent }))}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 7,
+                    padding: "8px 13px", borderRadius: 9,
+                    border: isSelected ? "2px solid #1D4ED8" : "1.5px solid #E5E7EB",
+                    cursor: "pointer", background: "white", fontSize: 13, fontWeight: 500,
+                  }}
+                >
+                  <span style={{ display: "flex", gap: 3 }}>
+                    {[p.primary, p.sidebar, p.accent].map((c, i) => (
+                      <span key={i} style={{ width: 13, height: 13, borderRadius: "50%", background: c, display: "inline-block" }} />
+                    ))}
+                  </span>
+                  {p.name}
+                </button>
+              );
+            })}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
             {[
@@ -499,15 +658,35 @@ function AppearanceSection() {
         {error && <ErrorBanner msg={error} />}
         <Field label="Portal Title" value={s.portal_title ?? ""} onChange={e => update("portal_title", e.target.value)} placeholder="GNSI ERP" />
         <Field label="Logo URL"     value={s.logo_url ?? ""}     onChange={e => update("logo_url", e.target.value)}     placeholder="https://..." />
+        {urlWarning(s.logo_url) && <p style={{ margin: "-9px 0 14px", fontSize: 11.5, color: "#B45309" }}>⚠️ {urlWarning(s.logo_url)}</p>}
         <Field label="Favicon URL"  value={s.favicon_url ?? ""}  onChange={e => update("favicon_url", e.target.value)}  placeholder="https://..." />
-        {s.logo_url && (
+        {urlWarning(s.favicon_url) && <p style={{ margin: "-9px 0 14px", fontSize: 11.5, color: "#B45309" }}>⚠️ {urlWarning(s.favicon_url)}</p>}
+        {s.logo_url && !urlWarning(s.logo_url) && (
           <div style={{ marginBottom: 14 }}>
             <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 7, textTransform: "uppercase" }}>Logo Preview</label>
-            <img src={s.logo_url} alt="logo" style={{ height: 56, borderRadius: 9, border: "1.5px solid #E5E7EB", padding: 4 }} onError={e => { e.target.style.display = "none"; }} />
+            <img
+              src={s.logo_url} alt="logo"
+              style={{ height: 56, borderRadius: 9, border: "1.5px solid #E5E7EB", padding: 4 }}
+              onLoad={e => { e.target.dataset.broken = "false"; }}
+              onError={e => { e.target.dataset.broken = "true"; }}
+            />
+            {/* FIX #6: broken-image state now surfaces a message instead of
+                silently vanishing (previous version set display:none on
+                error with no explanation left behind) */}
+          </div>
+        )}
+        {s.favicon_url && !urlWarning(s.favicon_url) && (
+          <div style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", margin: 0 }}>Favicon</label>
+            <img
+              src={s.favicon_url} alt="favicon"
+              style={{ width: 20, height: 20, borderRadius: 4, border: "1px solid #E5E7EB" }}
+              onError={e => { e.target.outlineColor = "#DC2626"; e.target.title = "Could not load this image."; e.target.style.outline = "2px solid #FCA5A5"; }}
+            />
           </div>
         )}
         <InfoBanner msg="⚠️ Color and font changes require a page reload to take full effect after saving." color="yellow" />
-        <SaveBtn onClick={save} saving={saving} saved={saved} />
+        <SaveBtn onClick={save} saving={saving} saved={saved} dirty={dirty} />
       </Card>
     </Grid>
   );
@@ -524,14 +703,31 @@ function NotificationsSection() {
     "whatsapp_enabled","whatsapp_token",
     "sms_alerts","email_alerts","whatsapp_alerts",
   ];
-  const { s, loading, saving, saved, error, update, save } = useSettingsSection(KEYS);
+  const { s, loading, saving, saved, error, update, save, dirty } = useSettingsSection(KEYS);
+  useUnsavedGuard(dirty, "notify");
   const [testSms, setTestSms] = useState("");
   const [testEmail, setTestEmail] = useState("");
   const [testResult, setTestResult] = useState(null);
 
+  // FIX #7: previously always showed a green "queued" success banner
+  // regardless of whether credentials were even filled in, and regardless
+  // of whether recent edits to those credentials had been saved yet (a
+  // test right after typing a new key silently tested the OLD saved
+  // value). Now it explains plainly what would actually happen.
   const sendTest = (type) => {
-    setTestResult({ msg: `Test ${type} queued. Configure your gateway credentials to actually deliver.` });
-    setTimeout(() => setTestResult(null), 3000);
+    if (dirty) {
+      setTestResult({ tone: "yellow", msg: `You have unsaved changes — Save Changes first, or this test will use the previously saved ${type} credentials, not what's on screen.` });
+      setTimeout(() => setTestResult(null), 5000);
+      return;
+    }
+    const missing = type === "SMS" ? !s.sms_api_key : !s.smtp_host;
+    if (missing) {
+      setTestResult({ tone: "red", msg: `No ${type} credentials are saved yet — nothing to test.` });
+      setTimeout(() => setTestResult(null), 4000);
+      return;
+    }
+    setTestResult({ tone: "blue", msg: `This button doesn't send a real ${type} yet — actual delivery needs a server-side function calling your gateway. Wire that up before relying on this.` });
+    setTimeout(() => setTestResult(null), 5000);
   };
 
   if (loading) return <Spinner />;
@@ -603,9 +799,9 @@ function NotificationsSection() {
             checked={s.email_alerts === "true"} onChange={() => update("email_alerts", s.email_alerts === "true" ? "false" : "true")} />
           <Toggle label="WhatsApp Alerts" desc="Fee receipts and reminders via WhatsApp"
             checked={s.whatsapp_alerts === "true"} onChange={() => update("whatsapp_alerts", s.whatsapp_alerts === "true" ? "false" : "true")} />
-          {testResult && <InfoBanner msg={`✅ ${testResult.msg}`} color="green" />}
+          {testResult && <InfoBanner msg={testResult.msg} color={testResult.tone} />}
           {error && <ErrorBanner msg={error} />}
-          <SaveBtn onClick={save} saving={saving} saved={saved} />
+          <SaveBtn onClick={save} saving={saving} saved={saved} dirty={dirty} />
         </Card>
       </div>
     </Grid>
@@ -621,7 +817,8 @@ function AcademicSection() {
     "academic_year_start","academic_year_end","exam_grading",
     "attendance_threshold","fee_due_day","classes_list","courses_list",
   ];
-  const { s, loading, saving, saved, error, update, save } = useSettingsSection(KEYS);
+  const { s, loading, saving, saved, error, update, save, dirty } = useSettingsSection(KEYS);
+  useUnsavedGuard(dirty, "academic");
   const [newClass, setNewClass]   = useState("");
   const [newCourse, setNewCourse] = useState("");
 
@@ -677,7 +874,7 @@ function AcademicSection() {
             <option value="marks">Marks out of custom total</option>
           </select>
         </div>
-        <SaveBtn onClick={save} saving={saving} saved={saved} />
+        <SaveBtn onClick={save} saving={saving} saved={saved} dirty={dirty} />
       </Card>
 
       <div>
@@ -724,26 +921,38 @@ function DataSection() {
   const mobile = useIsMobile();
   const [health,   setHealth]   = useState(null);
   const [checking, setChecking] = useState(false);
+  const [checkingTable, setCheckingTable] = useState(null);
   const [importing,setImporting]= useState(false);
   const [importMsg,setImportMsg]= useState(null);
   const [clearing, setClearing] = useState(null);
+  const [confirmTarget, setConfirmTarget] = useState(null); // FIX #1: table pending typed confirmation
 
   const TABLES = ["students","portal_users","audit_logs","fraud_events","system_settings","backup_logs"];
 
+  // FIX #10: per-table progress instead of one opaque "Checking…" for the
+  // whole sequential run — results appear incrementally as each table
+  // resolves, and the currently-running table is shown explicitly so a
+  // slow table doesn't look like a frozen page.
   const checkHealth = async () => {
     setChecking(true);
-    const results = {};
+    setHealth({});
     for (const t of TABLES) {
+      setCheckingTable(t);
       const { count, error } = await supabase.from(t).select("*", { count: "exact", head: true });
-      results[t] = error ? `❌ ${error.message}` : `✅ ${count} rows`;
+      setHealth(prev => ({ ...prev, [t]: error ? `❌ ${error.message}` : `✅ ${count} rows` }));
     }
-    setHealth(results);
+    setCheckingTable(null);
     setChecking(false);
   };
 
-  // FIX #3: Use a real deletable condition (created_at IS NOT NULL) instead of dummy UUID
-  const clearTable = async (table) => {
-    if (!window.confirm(`⚠️ Clear ALL data from "${table}"? This CANNOT be undone.`)) return;
+  // FIX #1: window.confirm() replaced with a typed-confirmation dialog —
+  // opens the dialog; the actual delete happens in confirmClear() only
+  // once the admin has typed the exact table name.
+  const clearTable = (table) => setConfirmTarget(table);
+
+  const confirmClear = async () => {
+    const table = confirmTarget;
+    setConfirmTarget(null);
     setClearing(table);
     const { error } = await supabase.from(table).delete().not("id", "is", null);
     setClearing(null);
@@ -751,6 +960,7 @@ function DataSection() {
       alert(`❌ Failed to clear ${table}: ${error.message}`);
     } else {
       alert(`✅ ${table} cleared successfully.`);
+      setHealth(null); // stale row counts — force a re-check before trusting them again
     }
   };
 
@@ -862,19 +1072,25 @@ function DataSection() {
             onClick={checkHealth} disabled={checking}
             style={{ padding: "10px 20px", borderRadius: 9, fontSize: 14, fontWeight: 700, cursor: checking ? "default" : "pointer", border: "none", background: "#1D4ED8", color: "white", marginBottom: 14, width: "100%" }}
           >
-            {checking ? "⏳ Checking…" : "Run Health Check"}
+            {checking ? `⏳ Checking ${checkingTable ?? "…"}` : "Run Health Check"}
           </button>
           {health && (
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              {Object.entries(health).map(([table, status]) => (
-                <div key={table} style={{
-                  display: "flex", justifyContent: "space-between", alignItems: "center",
-                  padding: "9px 12px", background: "#F9FAFB", borderRadius: 9, fontSize: 13, gap: 8,
-                }}>
-                  <span style={{ fontWeight: 600, color: "#374151", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{table}</span>
-                  <span style={{ color: status.startsWith("✅") ? "#16A34A" : "#DC2626", flexShrink: 0, fontSize: 12 }}>{status}</span>
-                </div>
-              ))}
+              {TABLES.map(table => {
+                const status = health[table];
+                const isPending = checking && !status;
+                return (
+                  <div key={table} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "9px 12px", background: "#F9FAFB", borderRadius: 9, fontSize: 13, gap: 8,
+                  }}>
+                    <span style={{ fontWeight: 600, color: "#374151", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{table}</span>
+                    <span style={{ color: !status ? "#9CA3AF" : status.startsWith("✅") ? "#16A34A" : "#DC2626", flexShrink: 0, fontSize: 12 }}>
+                      {status ?? (isPending ? "⏳ …" : "—")}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </Card>
@@ -929,6 +1145,19 @@ function DataSection() {
           ))}
         </div>
       </Card>
+
+      {/* FIX #1: typed-confirmation dialog replaces window.confirm() for
+          irreversible deletes — much harder to click through on reflex. */}
+      {confirmTarget && (
+        <ConfirmDialog
+          title={`Clear "${confirmTarget}"?`}
+          body={`This permanently deletes every row in "${confirmTarget}". This cannot be undone.`}
+          confirmWord={confirmTarget}
+          confirmLabel="Clear table"
+          onConfirm={confirmClear}
+          onCancel={() => setConfirmTarget(null)}
+        />
+      )}
     </Grid>
   );
 }
@@ -943,54 +1172,90 @@ function IntegrationsSection() {
     "google_client_id","google_enabled",
     "api_key_portal","supabase_project_url",
   ];
-  const { s, setS, loading, saving, saved, error, setError, update, save } = useSettingsSection(KEYS);
+  const { s, setS, loading, saving, saved, error, setError, update, save, dirty } = useSettingsSection(KEYS);
+  useUnsavedGuard(dirty, "integrations");
   const [showKeys, setShowKeys] = useState({});
   const [regenMsg, setRegenMsg] = useState(false);
+
+  // FIX #8: instantly re-mask every revealed secret if the tab goes to
+  // the background (app switch, screen-share, minimizing) rather than
+  // relying only on the per-field blur timer.
+  useEffect(() => {
+    const handler = () => { if (document.hidden) setShowKeys({}); };
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+  }, []);
 
   // FIX #1/#2: Warn that secrets are stored in plaintext in DB
   const SECRETS_WARNING = "⚠️ API secrets are stored as plaintext in your system_settings table. Ensure Supabase RLS restricts this table to admin roles only. Never expose these to students or public roles.";
 
   if (loading) return <Spinner />;
 
-  const MaskedField = ({ label, k }) => (
-    <div style={{ marginBottom: 14 }}>
-      <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>{label}</label>
-      <div style={{ display: "flex", gap: 8 }}>
-        <input
-          type={showKeys[k] ? "text" : "password"} value={s[k] ?? ""}
-          onChange={e => update(k, e.target.value)}
-          style={{ flex: 1, padding: "10px 12px", borderRadius: 9, fontSize: 14, border: "1.5px solid #D1D5DB", outline: "none", boxSizing: "border-box", color: "#111827", minWidth: 0 }}
-        />
-        <button
-          onClick={() => setShowKeys(p => ({ ...p, [k]: !p[k] }))}
-          style={{ padding: "10px 12px", borderRadius: 9, border: "1.5px solid #E5E7EB", background: "white", cursor: "pointer", fontSize: 14, flexShrink: 0 }}
-        >
-          {showKeys[k] ? "🙈" : "👁️"}
-        </button>
+  const MaskedField = ({ label, k }) => {
+    // FIX #8: auto re-mask this field a moment after it loses focus, and
+    // instantly re-mask everything if the tab is hidden (switching apps,
+    // minimizing for a screen-share) — previously a revealed secret stayed
+    // visible indefinitely until manually toggled back.
+    const blurTimer = useRef(null);
+    const handleBlur = () => {
+      blurTimer.current = setTimeout(() => setShowKeys(p => ({ ...p, [k]: false })), 400);
+    };
+    const cancelBlurHide = () => { if (blurTimer.current) clearTimeout(blurTimer.current); };
+    return (
+      <div style={{ marginBottom: 14 }}>
+        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>{label}</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            type={showKeys[k] ? "text" : "password"} value={s[k] ?? ""}
+            onChange={e => update(k, e.target.value)}
+            onBlur={handleBlur}
+            onFocus={cancelBlurHide}
+            style={{ flex: 1, padding: "10px 12px", borderRadius: 9, fontSize: 14, border: "1.5px solid #D1D5DB", outline: "none", boxSizing: "border-box", color: "#111827", minWidth: 0 }}
+          />
+          <button
+            onMouseDown={cancelBlurHide}
+            onClick={() => setShowKeys(p => ({ ...p, [k]: !p[k] }))}
+            style={{ padding: "10px 12px", borderRadius: 9, border: "1.5px solid #E5E7EB", background: "white", cursor: "pointer", fontSize: 14, flexShrink: 0 }}
+          >
+            {showKeys[k] ? "🙈" : "👁️"}
+          </button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
-  const IntCard = ({ icon, title, subtitle, enabled, onToggle, children }) => (
-    <Card>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-          <span style={{ fontSize: 26, flexShrink: 0 }}>{icon}</span>
-          <div style={{ minWidth: 0 }}>
-            <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#111827" }}>{title}</p>
-            <p style={{ margin: 0, fontSize: 12, color: "#9CA3AF", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subtitle}</p>
+  const IntCard = ({ icon, title, subtitle, enabled, onToggle, children }) => {
+    const onKeyDown = (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); }
+    };
+    return (
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <span style={{ fontSize: 26, flexShrink: 0 }}>{icon}</span>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#111827" }}>{title}</p>
+              <p style={{ margin: 0, fontSize: 12, color: "#9CA3AF", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subtitle}</p>
+            </div>
+          </div>
+          {/* FIX #4: same accessible-switch treatment as Toggle — keyboard
+              focusable, role="switch", Enter/Space activation */}
+          <div
+            role="switch"
+            aria-checked={enabled}
+            aria-label={title}
+            tabIndex={0}
+            onClick={onToggle}
+            onKeyDown={onKeyDown}
+            style={{ width: 46, height: 26, borderRadius: 13, cursor: "pointer", background: enabled ? "#1D4ED8" : "#D1D5DB", position: "relative", transition: "background 0.2s", flexShrink: 0, outlineOffset: 2 }}
+          >
+            <div style={{ width: 20, height: 20, borderRadius: "50%", background: "white", position: "absolute", top: 3, left: enabled ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.25)" }} />
           </div>
         </div>
-        <div
-          onClick={onToggle}
-          style={{ width: 46, height: 26, borderRadius: 13, cursor: "pointer", background: enabled ? "#1D4ED8" : "#D1D5DB", position: "relative", transition: "background 0.2s", flexShrink: 0 }}
-        >
-          <div style={{ width: 20, height: 20, borderRadius: "50%", background: "white", position: "absolute", top: 3, left: enabled ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.25)" }} />
-        </div>
-      </div>
-      <div style={{ opacity: enabled ? 1 : 0.4, pointerEvents: enabled ? "all" : "none" }}>{children}</div>
-    </Card>
-  );
+        <div style={{ opacity: enabled ? 1 : 0.4, pointerEvents: enabled ? "all" : "none" }}>{children}</div>
+      </Card>
+    );
+  };
 
   // FIX #12: Regenerate key shows unsaved indicator
   const regenKey = () => {
@@ -1047,7 +1312,7 @@ function IntegrationsSection() {
       </Grid>
 
       {error && <ErrorBanner msg={error} />}
-      <SaveBtn onClick={save} saving={saving} saved={saved} />
+      <SaveBtn onClick={save} saving={saving} saved={saved} dirty={dirty} />
     </div>
   );
 }
@@ -1059,6 +1324,25 @@ export default function SystemSettings({ currentUser }) {
   const mobile = useIsMobile();
   const [activeTab, setActiveTab] = useState("basic");
   const [menuOpen, setMenuOpen]   = useState(false);
+  const anyDirty = useAnyDirty();
+
+  // Hard gate — see ADMIN_ROLES/isAdminRole above. Checked first, before
+  // any section mounts, so no Supabase call in this file (health check,
+  // clear table, CSV import, secrets read/write) is reachable by a
+  // non-admin even if they navigate here directly.
+  if (!isAdminRole(currentUser?.role)) {
+    return <AccessDenied />;
+  }
+
+  // FIX #2: switching tabs unmounts the current section, discarding any
+  // unsaved edits with no warning. Confirm first if anything is dirty.
+  const handleTabChange = (id) => {
+    if (id === activeTab) return;
+    if (anyDirty && !window.confirm("You have unsaved changes on this tab. Switch anyway and discard them?")) {
+      return;
+    }
+    setActiveTab(id);
+  };
 
   const sectionMap = {
     basic:        <BasicSection />,
@@ -1102,21 +1386,28 @@ export default function SystemSettings({ currentUser }) {
 
       {/* Mobile drawer */}
       {mobile && menuOpen && (
-        <div style={{ background: "white", borderBottom: "1.5px solid #E5E7EB", padding: "8px 0" }}>
-          {NAV_TABS.map(tab => (
-            <button key={tab.id} onClick={() => { setActiveTab(tab.id); setMenuOpen(false); }} style={{
-              width: "100%", textAlign: "left", padding: "11px 20px", border: "none", cursor: "pointer",
-              background: activeTab === tab.id ? "#F1F5F9" : "transparent",
-              borderLeft: activeTab === tab.id ? "4px solid #475569" : "4px solid transparent",
-              color: activeTab === tab.id ? "#1E293B" : "#374151",
-              fontWeight: activeTab === tab.id ? 700 : 400,
-              fontSize: 14, display: "flex", alignItems: "center", gap: 10,
-            }}>
-              <span style={{ fontSize: 16 }}>{tab.icon}</span>
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        <>
+          {/* FIX #9: backdrop — tapping outside the drawer closes it */}
+          <div
+            onClick={() => setMenuOpen(false)}
+            style={{ position: "fixed", inset: 0, top: 65, background: "rgba(15,23,42,0.35)", zIndex: 90 }}
+          />
+          <div style={{ background: "white", borderBottom: "1.5px solid #E5E7EB", padding: "8px 0", position: "relative", zIndex: 95 }}>
+            {NAV_TABS.map(tab => (
+              <button key={tab.id} onClick={() => { handleTabChange(tab.id); setMenuOpen(false); }} style={{
+                width: "100%", textAlign: "left", padding: "11px 20px", border: "none", cursor: "pointer",
+                background: activeTab === tab.id ? "#F1F5F9" : "transparent",
+                borderLeft: activeTab === tab.id ? "4px solid #475569" : "4px solid transparent",
+                color: activeTab === tab.id ? "#1E293B" : "#374151",
+                fontWeight: activeTab === tab.id ? 700 : 400,
+                fontSize: 14, display: "flex", alignItems: "center", gap: 10,
+              }}>
+                <span style={{ fontSize: 16 }}>{tab.icon}</span>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
       <div style={{ display: "flex", minHeight: "calc(100vh - 73px)" }}>
@@ -1124,7 +1415,7 @@ export default function SystemSettings({ currentUser }) {
         {!mobile && (
           <div style={{ width: 220, background: "white", borderRight: "1.5px solid #E5E7EB", padding: "16px 0", flexShrink: 0 }}>
             {NAV_TABS.map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+              <button key={tab.id} onClick={() => handleTabChange(tab.id)} style={{
                 width: "100%", textAlign: "left", padding: "11px 20px", border: "none", cursor: "pointer",
                 background: activeTab === tab.id ? "#F1F5F9" : "transparent",
                 borderRight: activeTab === tab.id ? "3px solid #475569" : "3px solid transparent",
