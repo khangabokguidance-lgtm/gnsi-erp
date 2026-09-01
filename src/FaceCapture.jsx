@@ -296,19 +296,81 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
         <div style={{ position: 'relative', marginTop: 10 }}>
           <video ref={videoRef} muted playsInline style={S.video} />
 
-          {/* Positioning guide oval — solid green once framing+lighting are good, amber if lighting is off or more than one face is in frame */}
-          {cameraReady && !error && (
-            <svg viewBox="0 0 200 200" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
-              <ellipse
-                cx="100" cy="100" rx="62" ry="82"
-                fill="none"
-                stroke={quality.ok && !multiFaceWarning ? '#4ade80' : '#fbbf24'}
-                strokeWidth="3"
-                strokeDasharray={quality.ok && !multiFaceWarning ? 'none' : '8 6'}
-                opacity="0.9"
-              />
-            </svg>
-          )}
+          {/* Premium scan frame — vignette + animated corner brackets + a
+              slow scanning sweep while waiting, all reading off the same
+              quality/multiFaceWarning signals the plain oval used before.
+              Green + soft glow once framing/lighting/single-face are all
+              good; amber and no sweep otherwise. Purely decorative — none
+              of this affects the actual liveness/match logic below it. */}
+          {cameraReady && !error && (() => {
+            const ok = quality.ok && !multiFaceWarning
+            const frameColor = ok ? '#4ade80' : '#fbbf24'
+            return (
+              <>
+                <svg viewBox="0 0 200 200" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+                  <defs>
+                    <mask id="scanVignetteMask">
+                      <rect x="0" y="0" width="200" height="200" fill="white" />
+                      <ellipse cx="100" cy="100" rx="64" ry="84" fill="black" />
+                    </mask>
+                    <clipPath id="scanFrameClip">
+                      <ellipse cx="100" cy="100" rx="62" ry="82" />
+                    </clipPath>
+                  </defs>
+
+                  {/* Vignette — softly darkens everything outside the scan area so the frame reads as the focal point */}
+                  <rect x="0" y="0" width="200" height="200" fill="rgba(8,21,39,0.45)" mask="url(#scanVignetteMask)" />
+
+                  {/* Slow vertical scan sweep while not yet ready — stops once quality is good, since running isn't idle waiting */}
+                  {!ok && !running && (
+                    <g clipPath="url(#scanFrameClip)">
+                      <rect x="38" y="18" width="124" height="26" fill="rgba(251,191,36,0.22)" style={{ animation: 'facecap-scan-sweep 2.4s ease-in-out infinite' }} />
+                    </g>
+                  )}
+
+                  {/* Base guide ellipse — the same state-driven oval as before, now paired with the corner brackets */}
+                  <ellipse
+                    cx="100" cy="100" rx="62" ry="82"
+                    fill="none"
+                    stroke={frameColor}
+                    strokeWidth="2.5"
+                    strokeDasharray={ok ? 'none' : '8 6'}
+                    opacity="0.55"
+                    style={{ transition: 'stroke 0.3s ease' }}
+                  />
+
+                  {/* Corner brackets — the actual "premium scan frame" signature (camera-app / Face ID style), positioned around the ellipse's bounding box */}
+                  {[
+                    { x: 34, y: 14, dx: 1, dy: 1 },
+                    { x: 166, y: 14, dx: -1, dy: 1 },
+                    { x: 34, y: 186, dx: 1, dy: -1 },
+                    { x: 166, y: 186, dx: -1, dy: -1 },
+                  ].map((c, i) => (
+                    <path
+                      key={i}
+                      d={`M ${c.x} ${c.y + c.dy * 16} L ${c.x} ${c.y} L ${c.x + c.dx * 16} ${c.y}`}
+                      fill="none"
+                      stroke={frameColor}
+                      strokeWidth="4"
+                      strokeLinecap="round"
+                      style={{
+                        transition: 'stroke 0.3s ease, filter 0.3s ease',
+                        filter: ok ? `drop-shadow(0 0 3px ${frameColor}99)` : 'none',
+                      }}
+                    />
+                  ))}
+                </svg>
+                <style>{`
+                  @keyframes facecap-scan-sweep {
+                    0%   { transform: translateY(0);    opacity: 0; }
+                    10%  { opacity: 1; }
+                    90%  { opacity: 1; }
+                    100% { transform: translateY(140px); opacity: 0; }
+                  }
+                `}</style>
+              </>
+            )
+          })()}
 
           {(!cameraReady || !modelsReady) && !error && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#F5F1E6', fontSize: 12, fontFamily: 'Arial,sans-serif' }}>
