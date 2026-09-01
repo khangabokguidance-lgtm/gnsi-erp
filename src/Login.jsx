@@ -520,7 +520,27 @@ export default function Login({ onLogin }) {
       // staff_profiles id — can verify this session. If this admin login
       // is ever handed to a different person, update this id to match.
       await supabase.rpc('set_staff_context', { p_staff_id: 37, p_is_admin: true })
-onLogin({ id: 'admin', name: 'Administrator', username: ADMIN_USER, role: 'Admin', staff_profile_id: 37 })
+
+      // Look up the REAL portal_users row for this username (if one
+      // exists) so the session carries the actual stored role/name/id
+      // rather than the hardcoded placeholders below. This matters
+      // because server-side RPCs like set_attendance_mark look the
+      // acting user up by username in portal_users directly — a session
+      // built from placeholders alone (role: 'Admin', a fake id) would
+      // silently fail those lookups even though the login itself
+      // succeeded. Falls back to the placeholder object only if no
+      // matching portal_users row exists (e.g. VITE_ADMIN_USERNAME set
+      // to a value with no corresponding row).
+      const { data: realUser } = await supabase
+        .from('portal_users')
+        .select('id, name, username, role, staff_profile_id')
+        .eq('username', ADMIN_USER)
+        .maybeSingle()
+
+      onLogin(realUser
+        ? { ...realUser, staff_profile_id: realUser.staff_profile_id ?? 37 }
+        : { id: 'admin', name: 'Administrator', username: ADMIN_USER, role: 'Admin', staff_profile_id: 37 }
+      )
       setLoading(false); return
     }
 
