@@ -1072,11 +1072,12 @@ function HomeTile({ icon, label, badge, onClick }) {
 }
 
 // Smaller, lighter secondary shortcut tile.
-function QuickActionTile({ icon, label, onClick }) {
+function QuickActionTile({ icon, label, onClick, disabled = false }) {
   return (
-    <button onClick={onClick} style={{
-      background: 'none', border: 'none', cursor: 'pointer', fontFamily: FONT.body,
+    <button onClick={disabled ? undefined : onClick} disabled={disabled} style={{
+      background: 'none', border: 'none', cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: FONT.body,
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, padding: '4px 2px',
+      opacity: disabled ? 0.45 : 1,
     }}>
       <span style={{
         width: 46, height: 46, borderRadius: '50%',
@@ -1251,10 +1252,14 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
   const quickActions = isAdmin
     ? [
         { key: 'enroll', icon: '🧑‍💼', label: 'Enroll face', onClick: () => setTab('coverage') },
-        ...(loggedInStaff ? [{ key: 'qa-checkin', icon: hasOpenPunch ? '⏹️' : '✅', label: hasOpenPunch ? 'Punch Out' : 'Punch In', onClick: () => setTab('checkin') }] : []),
+        ...(loggedInStaff ? [
+          { key: 'qa-punchin',  icon: '✅', label: 'Punch In',  disabled: hasOpenPunch,  onClick: () => setTab('checkin') },
+          { key: 'qa-punchout', icon: '⏹️', label: 'Punch Out', disabled: !hasOpenPunch, onClick: () => setTab('checkin') },
+        ] : []),
       ]
     : [
-        { key: 'qa-checkin',  icon: hasOpenPunch ? '⏹️' : '✅', label: hasOpenPunch ? 'Punch Out' : 'Punch In', onClick: () => loggedInStaff && setTab('checkin') },
+        { key: 'qa-punchin',  icon: '✅', label: 'Punch In',  disabled: hasOpenPunch,  onClick: () => loggedInStaff && setTab('checkin') },
+        { key: 'qa-punchout', icon: '⏹️', label: 'Punch Out', disabled: !hasOpenPunch, onClick: () => loggedInStaff && setTab('checkin') },
         { key: 'qa-timecard', icon: '🕐', label: 'Time card', onClick: () => setTab('timecard') },
       ]
 
@@ -1313,7 +1318,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
           <div style={{ fontSize: 12.5, fontWeight: 700, color: COLOR.slate, letterSpacing: '0.03em', margin: '22px 0 12px 2px', fontFamily: FONT.body }}>QUICK ACTIONS</div>
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${quickActions.length},1fr)`, gap: 10 }}>
             {quickActions.map(q => (
-              <QuickActionTile key={q.key} icon={q.icon} label={q.label} onClick={q.onClick} />
+              <QuickActionTile key={q.key} icon={q.icon} label={q.label} onClick={q.onClick} disabled={q.disabled} />
             ))}
           </div>
         </>

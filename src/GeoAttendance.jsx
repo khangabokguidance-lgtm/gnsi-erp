@@ -487,6 +487,11 @@ function detectPunchAction({ myShifts, todayMyLogs, activeTracking, gpsStatus })
   return { kind: 'none', reason: 'window_closed' }
 }
 
+// Two always-visible buttons (Punch In / Punch Out), each enabled only
+// when its action is actually valid right now — replaces the old single
+// auto-switching button. Ambiguous-shift and "nothing to do" states are
+// shown as a helper line below the buttons rather than swallowing them,
+// since there's no longer one slot to repurpose for that messaging.
 function SmartPunchButton({ myShifts, todayMyLogs, activeTracking, gpsStatus, checkingIn, onPunchIn, onPunchOut, onChooseBelow }) {
   const action = detectPunchAction({ myShifts, todayMyLogs, activeTracking, gpsStatus })
   const offCampus = gpsStatus === 'outside'
@@ -498,89 +503,92 @@ function SmartPunchButton({ myShifts, todayMyLogs, activeTracking, gpsStatus, ch
     window_not_open: (a) => `Opens in ${a.minsUntil}m — Shift ${a.shift.shift_label}`,
   }
 
-  let label, sub, tone, disabled, onClick
-  if (action.kind === 'out') {
-    label = 'Punch out'
-    sub = `Shift ${action.shiftLabel} · tap to end tracking`
-    tone = 'out'
-    disabled = false
-    onClick = () => onPunchOut(action.logId, action.shiftLabel)
-  } else if (action.kind === 'in') {
-    label = offCampus ? 'Punch in (off campus)' : 'Punch in'
-    sub = `Shift ${action.shift.shift_label} · ${fmt12(action.shift.shift_start)} – ${fmt12(action.shift.shift_end)}`
-    tone = offCampus ? 'warn' : 'in'
-    disabled = checkingIn
-    onClick = () => onPunchIn(action.shift)
-  } else if (action.kind === 'ambiguous-in' || action.kind === 'ambiguous-out') {
-    label = action.kind === 'ambiguous-out' ? 'Multiple shifts active' : 'Multiple shifts open'
-    sub = 'Choose which shift below'
-    tone = 'neutral'
-    disabled = true
-    onClick = onChooseBelow
-  } else {
-    label = 'Nothing to punch'
-    sub = typeof NONE_COPY[action.reason] === 'function' ? NONE_COPY[action.reason](action) : NONE_COPY[action.reason]
-    tone = 'idle'
-    disabled = true
-    onClick = undefined
+  const canPunchIn  = action.kind === 'in'
+  const canPunchOut = action.kind === 'out'
+  const isAmbiguous = action.kind === 'ambiguous-in' || action.kind === 'ambiguous-out'
+
+  const inDisabled  = !canPunchIn || checkingIn
+  const outDisabled = !canPunchOut || checkingIn
+
+  const inSub = canPunchIn
+    ? `Shift ${action.shift.shift_label} · ${fmt12(action.shift.shift_start)} – ${fmt12(action.shift.shift_end)}`
+    : null
+  const outSub = canPunchOut
+    ? `Shift ${action.shiftLabel} · tap to end tracking`
+    : null
+
+  let helperText = null
+  if (isAmbiguous) {
+    helperText = action.kind === 'ambiguous-out' ? 'Multiple shifts active — choose which shift below' : 'Multiple shifts open — choose which shift below'
+  } else if (action.kind === 'none') {
+    helperText = typeof NONE_COPY[action.reason] === 'function' ? NONE_COPY[action.reason](action) : NONE_COPY[action.reason]
   }
 
-  const TONE = {
-    in:      { bg: `linear-gradient(155deg, ${COLOR.sage}, ${COLOR.sageDeep})`, ring: COLOR.sage, knobIcon: '→' },
-    out:     { bg: `linear-gradient(155deg, ${COLOR.brass}, ${COLOR.brassDeep})`, ring: COLOR.brass, knobIcon: '■' },
-    warn:    { bg: `linear-gradient(155deg, ${COLOR.warn}, #6b5117)`, ring: COLOR.warn, knobIcon: '!' },
-    neutral: { bg: `linear-gradient(155deg, ${COLOR.slate}, ${COLOR.ink2})`, ring: COLOR.slate, knobIcon: '?' },
-    idle:    { bg: COLOR.rule, ring: COLOR.rule, knobIcon: '·' },
-  }[tone]
-
-  const isKnobRight = action.kind === 'out' // the sliding knob sits right for "out", left for anything else — echoes the premium toggle's on/off metaphor
+  const btnBase = (bg, disabled) => ({
+    flex: 1, border: 'none', borderRadius: RADIUS.lg, padding: '16px 14px',
+    background: disabled ? COLOR.rule : bg,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textAlign: 'center',
+    boxShadow: disabled ? 'none' : SHADOW.seal, fontFamily: FONT.body,
+    transition: 'transform 0.12s ease',
+  })
 
   return (
-    <button
-      onClick={disabled && action.kind !== 'ambiguous-in' && action.kind !== 'ambiguous-out' ? undefined : onClick}
-      disabled={disabled && action.kind !== 'ambiguous-in' && action.kind !== 'ambiguous-out'}
-      style={{
-        width: '100%', border: 'none', borderRadius: RADIUS.lg, padding: '16px 18px',
-        background: tone === 'idle' ? COLOR.rule : TONE.bg, cursor: disabled && tone === 'idle' ? 'not-allowed' : 'pointer',
-        display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', marginBottom: 16,
-        boxShadow: tone === 'idle' ? 'none' : SHADOW.seal, fontFamily: FONT.body,
-        transition: 'transform 0.12s ease',
-      }}
-      onMouseDown={e => { if (!disabled) e.currentTarget.style.transform = 'scale(0.985)' }}
-      onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
-      onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-    >
-      {/* the sliding pill — visually echoes PremiumToggleCard's switch, scaled up */}
-      <div style={{
-        width: 56, height: 32, borderRadius: 999, flexShrink: 0, position: 'relative',
-        background: tone === 'idle' ? '#00000018' : 'rgba(255,255,255,0.22)',
-        border: `1px solid ${tone === 'idle' ? COLOR.slate + '33' : 'rgba(255,255,255,0.4)'}`,
-      }}>
-        <div style={{
-          position: 'absolute', top: 3, left: isKnobRight ? 27 : 3, width: 26, height: 26, borderRadius: '50%',
-          background: tone === 'idle' ? COLOR.parchmentRaised : 'white',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800,
-          color: tone === 'idle' ? COLOR.slate : COLOR.ink,
-          transition: 'left 0.2s ease', boxShadow: '0 1px 3px rgba(0,0,0,.25)',
-        }}>
-          {checkingIn ? '⋯' : TONE.knobIcon}
-        </div>
+    <div>
+      <div style={{ display: 'flex', gap: 12, marginBottom: helperText ? 8 : 16 }}>
+        <button
+          onClick={inDisabled ? undefined : () => onPunchIn(action.shift)}
+          disabled={inDisabled}
+          style={btnBase(offCampus && canPunchIn ? `linear-gradient(155deg, ${COLOR.warn}, #6b5117)` : `linear-gradient(155deg, ${COLOR.sage}, ${COLOR.sageDeep})`, inDisabled)}
+          onMouseDown={e => { if (!inDisabled) e.currentTarget.style.transform = 'scale(0.985)' }}
+          onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+        >
+          <span style={{ fontSize: 20 }}>{checkingIn && canPunchIn ? '⋯' : '→'}</span>
+          <span style={{ fontSize: 14.5, fontWeight: 700, fontFamily: FONT.display, color: inDisabled ? COLOR.ink2 : 'white' }}>
+            {checkingIn && canPunchIn ? 'Verifying…' : (offCampus && canPunchIn ? 'Punch in (off campus)' : 'Punch in')}
+          </span>
+          {inSub && (
+            <span style={{ fontSize: 10.5, color: inDisabled ? COLOR.slate : 'rgba(255,255,255,0.82)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+              {inSub}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={outDisabled ? undefined : () => onPunchOut(action.logId, action.shiftLabel)}
+          disabled={outDisabled}
+          style={btnBase(`linear-gradient(155deg, ${COLOR.brass}, ${COLOR.brassDeep})`, outDisabled)}
+          onMouseDown={e => { if (!outDisabled) e.currentTarget.style.transform = 'scale(0.985)' }}
+          onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+        >
+          <span style={{ fontSize: 20 }}>{checkingIn && canPunchOut ? '⋯' : '■'}</span>
+          <span style={{ fontSize: 14.5, fontWeight: 700, fontFamily: FONT.display, color: outDisabled ? COLOR.ink2 : 'white' }}>
+            Punch out
+          </span>
+          {outSub && (
+            <span style={{ fontSize: 10.5, color: outDisabled ? COLOR.slate : 'rgba(255,255,255,0.82)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
+              {outSub}
+            </span>
+          )}
+        </button>
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 15.5, fontWeight: 700, fontFamily: FONT.display,
-          color: tone === 'idle' ? COLOR.ink2 : 'white',
-        }}>
-          {checkingIn ? 'Verifying…' : label}
-        </div>
-        <div style={{
-          fontSize: 11.5, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          color: tone === 'idle' ? COLOR.slate : 'rgba(255,255,255,0.82)',
-        }}>
-          {sub}
-        </div>
-      </div>
-    </button>
+
+      {helperText && (
+        <button
+          onClick={isAmbiguous ? onChooseBelow : undefined}
+          disabled={!isAmbiguous}
+          style={{
+            width: '100%', border: 'none', background: 'none', padding: '0 0 16px',
+            cursor: isAmbiguous ? 'pointer' : 'default', textAlign: 'center',
+            fontSize: 12, color: COLOR.slate, fontFamily: FONT.body,
+          }}
+        >
+          {helperText}
+        </button>
+      )}
+    </div>
   )
 }
 
