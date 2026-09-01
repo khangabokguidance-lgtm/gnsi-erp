@@ -1306,8 +1306,18 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
     // camera/liveness flow only to be rejected at the last step. The
     // REAL enforcement is server-side inside server_checkin itself
     // (is_checkin_paused()), since a client check alone can be bypassed.
-    const { data: paused } = await supabase.rpc('is_checkin_paused')
-    if (paused) { showToast('⏸ Check-ins are temporarily paused by admin — try again shortly', 'warn'); return }
+    // Wrapped in try/catch: if this RPC fails or times out, fall through
+    // to the face-capture flow anyway rather than dying silently — the
+    // server-side check inside server_checkin still enforces the pause
+    // for real, so failing open here only affects this early friendly
+    // warning, not actual security.
+    try {
+      const { data: paused, error: pauseErr } = await supabase.rpc('is_checkin_paused')
+      if (pauseErr) throw pauseErr
+      if (paused) { showToast('⏸ Check-ins are temporarily paused by admin — try again shortly', 'warn'); return }
+    } catch (e) {
+      console.warn('is_checkin_paused check failed, continuing to face capture:', e)
+    }
 
     setFaceCaptureShift(shift) // opens <FaceCapture> overlay, see render section
   }
