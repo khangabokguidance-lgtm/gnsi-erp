@@ -7,6 +7,19 @@ const MODEL_URL = '/models'          // served from public/models — see README
 export const MATCH_THRESHOLD = 0.5   // euclidean distance; lower = stricter. Tune after pilot testing.
 export const WEAK_MATCH_THRESHOLD = 0.5 // mirrors server_checkin's weak_face_match flag cutoff
 
+// Shared TinyFaceDetector config — used by every detectSingleFace() call in
+// this module so "make detection faster/looser" is one change, not three.
+// inputSize: smaller = faster inference, at some cost to accuracy on small/
+// distant faces. 160 is TinyFaceDetector's next standard step down from the
+// default 224 — a real speed win on low-end phones without normally losing
+// track of a face that fills a typical selfie-camera frame.
+// scoreThreshold: minimum detector confidence before it reports a face at
+// all. Lowered from 0.5 so a face is still recognized under mediocre
+// lighting or a slightly off angle — this only affects "is there a face
+// here," not who it's matched against (see MATCH_THRESHOLD security note
+// on matchDescriptor below, which this does NOT loosen).
+export const DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.35 })
+
 let modelsLoaded = false
 let loadingPromise = null
 
@@ -29,7 +42,7 @@ export function areModelsLoaded() {
 // Returns null if no face (or more than one face) was confidently detected.
 export async function extractDescriptor(mediaEl) {
   const detection = await faceapi
-    .detectSingleFace(mediaEl, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+    .detectSingleFace(mediaEl, DETECTOR_OPTIONS)
     .withFaceLandmarks()
     .withFaceDescriptor()
   if (!detection) return null
@@ -54,7 +67,21 @@ export function euclideanDistance(a, b) {
 
 // Returns { verified, score } — score is the raw distance (lower = better match)
 //
-// SECURITY NOTE: this is a CLIENT-SIDE convenience check only. It is used
+// NOTE ON "LOOSENING" THIS: MATCH_THRESHOLD is not like the detector
+// settings above — it's the distance cutoff for "is this the enrolled
+// person," which is exactly what stops one staff member checking in as
+// another. Raising it (e.g. 0.5 -> 0.6) makes matching more forgiving of
+// lighting/angle differences, but also more likely to accept a different,
+// similar-looking face. If check-in is failing specifically at the
+// "verifying identity" step (not detection, not liveness) for a real
+// enrolled user, the safer fix is usually re-enrolling them with 3 clearer
+// shots rather than loosening this number — but if you do want to raise
+// it, 0.55 is a reasonable small step, do it here and in
+// migration_face_server_trust.sql's server-side copy together, since the
+// server recomputes this independently and both must agree.
+//
+// SECURITY NOTE: this client-side result itself is a CLIENT-SIDE
+// convenience check only. It is used
 // for instant UI feedback (enrollment duplicate-face pre-check, etc.) but
 // the result of this function must NEVER be sent to server_checkin as the
 // basis for a security decision — it runs in the user's browser and can be
@@ -115,7 +142,7 @@ export async function detectFaceWithLandmarks(mediaEl) {
   // neural nets were never initialized, causing every detection to silently
   // fail or throw inside the loop.
   const result = await faceapi
-    .detectSingleFace(mediaEl, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+    .detectSingleFace(mediaEl, DETECTOR_OPTIONS)
     .withFaceLandmarks()
   return result || null
 }
