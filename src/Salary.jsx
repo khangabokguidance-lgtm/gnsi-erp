@@ -179,6 +179,304 @@ function exportToCSV(staffList, dedMap, month) {
   URL.revokeObjectURL(url)
 }
 
+// ─── Report Generator (Advanced Filter + Search Past Reports) ────────────────
+// Reads directly from `salary` (all months, all staff) + `staff_profiles` +
+// `staff_advances` so it is fully interconnected with the rest of Salary.jsx —
+// no separate table, no duplicate data entry. Filters combine with AND logic.
+
+const REPORT_STATUS_OPTS = ['All', 'Paid', 'Unpaid']
+
+function monthsBetween(fromM, toM) {
+  if (!fromM || !toM) return null
+  const [fy, fm] = fromM.split('-').map(Number)
+  const [ty, tm] = toM.split('-').map(Number)
+  const out = []
+  let y = fy, m = fm
+  while (y < ty || (y === ty && m <= tm)) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`)
+    m++; if (m > 12) { m = 1; y++ }
+  }
+  return out
+}
+
+function reportRowNet(r) {
+  // net_salary is stored, but recompute defensively in case of legacy rows
+  if (r.net_salary != null) return Number(r.net_salary) || 0
+  const perfAdj = Number(r.performance_adjustment || 0)
+  const totDed = (Number(r.advance_deduction)||0)+(Number(r.late_deduction)||0)+(Number(r.admin_deduction)||0)+(Number(r.pf_deduction)||0)+(perfAdj<0?-perfAdj:0)
+  const g = (Number(r.basic_salary)||0)+(Number(r.seniority_allowance)||0)+(Number(r.loyalty_bonus)||0)+(Number(r.role_bonus)||0)
+  return g + (perfAdj>0?perfAdj:0) - totDed
+}
+
+function exportReportCSV(rows, staffMap, label) {
+  const headers = ['Month','Staff','Designation','Basic','Gross Adj.','Advance Ded','Late Ded','Admin Ded','PF Ded','Perf. Adj.','Net Salary','Status','Payment Mode','Paid At']
+  const body = rows.map(r => {
+    const st = staffMap[r.staff_id] || {}
+    return [
+      fmtMonth(r.month), st.name || `#${r.staff_id}`, st.designation || st.department || '',
+      r.basic_salary || 0, (r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0),
+      r.advance_deduction || 0, r.late_deduction || 0, r.admin_deduction || 0, r.pf_deduction || 0,
+      r.performance_adjustment || 0, reportRowNet(r), r.status || 'Unpaid', r.payment_mode || '',
+      r.paid_at ? fmtDate(r.paid_at) : ''
+    ]
+  })
+  const csv = [headers, ...body].map(row => row.map(v => `"${v}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a'); a.href = url; a.download = `GNSI_Salary_Report_${label}.csv`; a.click()
+  URL.revokeObjectURL(url)
+}
+
+function printReport(rows, staffMap, label, totals) {
+  injectPrintCSS()
+  let root = document.getElementById('gnsi-print-root')
+  if (!root) { root = document.createElement('div'); root.id = 'gnsi-print-root'; document.body.appendChild(root) }
+  root.style.display = 'none'
+  const trs = rows.map(r => {
+    const st = staffMap[r.staff_id] || {}
+    return `<tr>
+      <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:11px">${fmtMonth(r.month)}</td>
+      <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:11px">${st.name||`#${r.staff_id}`}</td>
+      <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:11px">${st.designation||st.department||''}</td>
+      <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:11px;text-align:right">${fmt(reportRowNet(r))}</td>
+      <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:11px">${r.status||'Unpaid'}</td>
+      <td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:11px">${r.payment_mode||'—'}</td>
+    </tr>`
+  }).join('')
+  root.innerHTML = `<div style="width:196mm;font-family:Arial,sans-serif;padding:8mm">
+    <div style="border-bottom:2px solid #1B3A6B;padding-bottom:8px;margin-bottom:10px">
+      <div style="font-size:16px;font-weight:700;color:#1B3A6B">Guidance Navodaya &amp; Sainik Institute</div>
+      <div style="font-size:11px;color:#666">Salary Report — ${label}</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:#1B3A6B">
+        ${['Month','Staff','Designation','Net Salary','Status','Mode'].map(h=>`<th style="padding:6px 8px;color:#fff;font-size:11px;text-align:left">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>${trs}</tbody>
+    </table>
+    <div style="margin-top:10px;font-size:12px;font-weight:700;color:#1B3A6B">
+      Total Records: ${rows.length} &nbsp;·&nbsp; Total Net: ${fmt(totals.net)} &nbsp;·&nbsp; Paid: ${totals.paidCount} &nbsp;·&nbsp; Unpaid: ${totals.unpaidCount}
+    </div>
+  </div>`
+  root.style.display = 'block'
+  setTimeout(() => { window.print(); setTimeout(() => { root.style.display = 'none' }, 1200) }, 80)
+}
+
+function ReportsTab({ salaryRows, staff, advances, isMobile }) {
+  const staffMap = useMemo(() => Object.fromEntries(staff.map(s => [s.id, s])), [staff])
+
+  const allMonths = useMemo(
+    () => [...new Set(salaryRows.map(r => r.month).filter(Boolean))].sort(),
+    [salaryRows]
+  )
+  const designations = useMemo(
+    () => [...new Set(staff.map(s => s.designation || s.department).filter(Boolean))].sort(),
+    [staff]
+  )
+
+  const [fromMonth, setFromMonth]   = useState(allMonths[0] || cm())
+  const [toMonth, setToMonth]       = useState(allMonths[allMonths.length - 1] || cm())
+  const [fStaffId, setFStaffId]     = useState('')
+  const [fDesignation, setFDesignation] = useState('')
+  const [fStatus, setFStatus]       = useState('All')
+  const [fPayMode, setFPayMode]     = useState('')
+  const [fMinNet, setFMinNet]       = useState('')
+  const [fMaxNet, setFMaxNet]       = useState('')
+  const [sortBy, setSortBy]         = useState('month_desc')
+  const [savedViews, setSavedViews] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('gnsi_salary_report_views') || '[]') } catch { return [] }
+  })
+  const [viewName, setViewName]     = useState('')
+
+  const filters = { fromMonth, toMonth, fStaffId, fDesignation, fStatus, fPayMode, fMinNet, fMaxNet, sortBy }
+
+  const saveView = () => {
+    if (!viewName.trim()) return
+    const next = [...savedViews.filter(v => v.name !== viewName.trim()), { name: viewName.trim(), filters }]
+    setSavedViews(next)
+    localStorage.setItem('gnsi_salary_report_views', JSON.stringify(next))
+    setViewName('')
+  }
+  const applyView = (v) => {
+    const f = v.filters
+    setFromMonth(f.fromMonth); setToMonth(f.toMonth); setFStaffId(f.fStaffId)
+    setFDesignation(f.fDesignation); setFStatus(f.fStatus); setFPayMode(f.fPayMode)
+    setFMinNet(f.fMinNet); setFMaxNet(f.fMaxNet); setSortBy(f.sortBy || 'month_desc')
+  }
+  const deleteView = (name) => {
+    const next = savedViews.filter(v => v.name !== name)
+    setSavedViews(next)
+    localStorage.setItem('gnsi_salary_report_views', JSON.stringify(next))
+  }
+
+  const monthRange = useMemo(() => monthsBetween(fromMonth, toMonth), [fromMonth, toMonth])
+
+  const filtered = useMemo(() => {
+    let rows = salaryRows.filter(r => {
+      if (monthRange && !monthRange.includes(r.month)) return false
+      if (fStaffId && String(r.staff_id) !== String(fStaffId)) return false
+      if (fStatus !== 'All' && (r.status || 'Unpaid') !== fStatus) return false
+      if (fPayMode && (r.payment_mode || '') !== fPayMode) return false
+      if (fDesignation) {
+        const st = staffMap[r.staff_id]
+        if (!st || (st.designation || st.department) !== fDesignation) return false
+      }
+      const net = reportRowNet(r)
+      if (fMinNet !== '' && net < Number(fMinNet)) return false
+      if (fMaxNet !== '' && net > Number(fMaxNet)) return false
+      return true
+    })
+    rows = [...rows].sort((a, b) => {
+      switch (sortBy) {
+        case 'month_asc':  return (a.month||'').localeCompare(b.month||'')
+        case 'net_desc':   return reportRowNet(b) - reportRowNet(a)
+        case 'net_asc':    return reportRowNet(a) - reportRowNet(b)
+        case 'name':       return (staffMap[a.staff_id]?.name||'').localeCompare(staffMap[b.staff_id]?.name||'')
+        case 'month_desc':
+        default:           return (b.month||'').localeCompare(a.month||'')
+      }
+    })
+    return rows
+  }, [salaryRows, monthRange, fStaffId, fStatus, fPayMode, fDesignation, fMinNet, fMaxNet, sortBy, staffMap])
+
+  const totals = useMemo(() => {
+    const net = filtered.reduce((s, r) => s + reportRowNet(r), 0)
+    const paidCount = filtered.filter(r => r.status === 'Paid').length
+    const advTotal = advances
+      .filter(a => (!fStaffId || String(a.staff_id) === String(fStaffId)))
+      .reduce((s, a) => s + (Number(a.amount) - Number(a.repaid_amount || 0)), 0)
+    return { net, paidCount, unpaidCount: filtered.length - paidCount, advTotal }
+  }, [filtered, advances, fStaffId])
+
+  const label = fromMonth === toMonth ? fmtMonth(fromMonth) : `${fmtMonth(fromMonth)} – ${fmtMonth(toMonth)}`
+
+  return (
+    <div>
+      {/* Advanced Filter Panel */}
+      <div style={S.card}>
+        <div style={{ fontWeight: 700, color: '#1e3a5f', marginBottom: 12, fontSize: 14 }}>🔎 Advanced Filter</div>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={S.lbl}>From Month</label>
+            <input type="month" value={fromMonth} onChange={e => setFromMonth(e.target.value)} style={S.inpSm} />
+          </div>
+          <div>
+            <label style={S.lbl}>To Month</label>
+            <input type="month" value={toMonth} onChange={e => setToMonth(e.target.value)} style={S.inpSm} />
+          </div>
+          <div>
+            <label style={S.lbl}>Staff</label>
+            <select value={fStaffId} onChange={e => setFStaffId(e.target.value)} style={S.inpSm}>
+              <option value="">All Staff</option>
+              {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={S.lbl}>Designation</label>
+            <select value={fDesignation} onChange={e => setFDesignation(e.target.value)} style={S.inpSm}>
+              <option value="">All</option>
+              {designations.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={S.lbl}>Status</label>
+            <select value={fStatus} onChange={e => setFStatus(e.target.value)} style={S.inpSm}>
+              {REPORT_STATUS_OPTS.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={S.lbl}>Payment Mode</label>
+            <select value={fPayMode} onChange={e => setFPayMode(e.target.value)} style={S.inpSm}>
+              <option value="">All</option>
+              {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={S.lbl}>Min Net (₹)</label>
+            <input type="number" value={fMinNet} onChange={e => setFMinNet(e.target.value)} style={S.inpSm} placeholder="0" />
+          </div>
+          <div>
+            <label style={S.lbl}>Max Net (₹)</label>
+            <input type="number" value={fMaxNet} onChange={e => setFMaxNet(e.target.value)} style={S.inpSm} placeholder="No limit" />
+          </div>
+          <div>
+            <label style={S.lbl}>Sort By</label>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={S.inpSm}>
+              <option value="month_desc">Month (Newest)</option>
+              <option value="month_asc">Month (Oldest)</option>
+              <option value="net_desc">Net Salary (High→Low)</option>
+              <option value="net_asc">Net Salary (Low→High)</option>
+              <option value="name">Staff Name</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Saved views */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
+          <input value={viewName} onChange={e => setViewName(e.target.value)} placeholder="Save this filter as..."
+            style={{ ...S.inpSm, maxWidth: 200 }} />
+          <button onClick={saveView} style={S.btnSm('#1e3a5f')}>💾 Save View</button>
+          {savedViews.map(v => (
+            <span key={v.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#eff6ff', borderRadius: 999, padding: '4px 10px' }}>
+              <button onClick={() => applyView(v)} style={{ background: 'none', border: 'none', color: '#1e3a5f', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>{v.name}</button>
+              <button onClick={() => deleteView(v.name)} style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: 12, cursor: 'pointer' }}>✕</button>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Summary + Export */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10, marginBottom: 16 }}>
+        <div style={S.statCard('#1e3a5f', '#eff6ff')}><p style={{ fontSize: 11, color: '#1e3a5f', fontWeight: 600, margin: 0 }}>Records</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#1e3a5f' }}>{filtered.length}</h2></div>
+        <div style={S.statCard('#16a34a', '#f0fdf4')}><p style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, margin: 0 }}>Total Net</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#16a34a' }}>{fmt(totals.net)}</h2></div>
+        <div style={S.statCard('#0891b2', '#e0f2fe')}><p style={{ fontSize: 11, color: '#0891b2', fontWeight: 600, margin: 0 }}>Paid / Unpaid</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#0891b2' }}>{totals.paidCount} / {totals.unpaidCount}</h2></div>
+        <div style={S.statCard('#f59e0b', '#fef3c7')}><p style={{ fontSize: 11, color: '#f59e0b', fontWeight: 600, margin: 0 }}>Advance Outstanding</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#f59e0b' }}>{fmt(totals.advTotal)}</h2></div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <button onClick={() => exportReportCSV(filtered, staffMap, label.replace(/\s/g, '_'))} style={S.btnSm('#0891b2')}>⬇ Export CSV</button>
+        <button onClick={() => printReport(filtered, staffMap, label, totals)} style={S.btnSm('#B8860B')}>🖨 Print Report</button>
+      </div>
+
+      {/* Results table */}
+      <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 700 }}>
+            <thead>
+              <tr style={{ background: '#f8fafc' }}>
+                {['Month', 'Staff', 'Designation', 'Net Salary', 'Status', 'Mode', 'Paid At'].map(h => (
+                  <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 600, color: '#374151', fontSize: 11 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr><td colSpan={7} style={{ padding: 20, textAlign: 'center', color: '#94a3b8' }}>No records match these filters.</td></tr>
+              )}
+              {filtered.map(r => {
+                const st = staffMap[r.staff_id] || {}
+                return (
+                  <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '9px 12px', fontWeight: 600 }}>{fmtMonth(r.month)}</td>
+                    <td style={{ padding: '9px 12px' }}>{st.name || `#${r.staff_id}`}</td>
+                    <td style={{ padding: '9px 12px', color: '#64748b' }}>{st.designation || st.department || '—'}</td>
+                    <td style={{ padding: '9px 12px', fontWeight: 700, color: '#16a34a' }}>{fmt(reportRowNet(r))}</td>
+                    <td style={{ padding: '9px 12px' }}>
+                      <span style={S.badge(r.status === 'Paid' ? '#16a34a' : '#dc2626', r.status === 'Paid' ? '#dcfce7' : '#fee2e2')}>{r.status || 'Unpaid'}</span>
+                    </td>
+                    <td style={{ padding: '9px 12px', color: '#64748b' }}>{r.payment_mode || '—'}</td>
+                    <td style={{ padding: '9px 12px', color: '#64748b' }}>{r.paid_at ? fmtDate(r.paid_at) : '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Slip Modal ───────────────────────────────────────────────────────────────
 
 function SlipModal({ s, ded, month, onClose }) {
@@ -785,6 +1083,96 @@ const EARLY_RATE  = Number(dedRules.early_out_rate)
     setDedMap(prev => { const m={...prev}; filteredStaff.forEach(s=>{m[s.id]={advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,performance_adjustment:0,payment_mode:'Cash',status:'Unpaid'}}); return m })
   }, [filteredStaff])
 
+  // ── Auto Payroll — rebuild dedMap purely from live FaceAttendance data ──
+  // (attendance_salary_feed → late/absent/early-out, staff_monthly_scores →
+  // performance, staff_advances → EMI) for every staff member, overwriting
+  // any manual edits, then immediately saves the register. One click takes
+  // attendance straight through to a saved, payable salary row.
+  const [autoGenBusy, setAutoGenBusy] = useState(false)
+  const [autoGenSummary, setAutoGenSummary] = useState(null)
+
+  const runAutoPayroll = useCallback(async () => {
+    if (!staff.length) return
+    setAutoGenBusy(true)
+    setAutoGenSummary(null)
+    try {
+      const { data: feedData, error: feedErr } = await supabase
+        .from('attendance_salary_feed')
+        .select('staff_id, total_late_min, absent_days, early_out_days')
+        .eq('month', regMonth)
+      if (feedErr) throw feedErr
+
+      const lateMap = {}
+      ;(feedData || []).forEach(row => {
+        lateMap[row.staff_id] = {
+          lateMin:  row.total_late_min  || 0,
+          absent:   row.absent_days     || 0,
+          earlyOut: row.early_out_days  || 0,
+        }
+      })
+
+      const LATE_RATE   = Number(dedRules.late_rate)
+      const ABSENT_RATE = Number(dedRules.absent_rate)
+      const EARLY_RATE  = Number(dedRules.early_out_rate)
+
+      const targetStaff = roleFilter ? filteredStaff : staff
+      const newMap = {}
+      let withAttendance = 0, flaggedNoData = 0
+
+      targetStaff.forEach(s => {
+        const geo = lateMap[s.id]
+        if (geo) withAttendance++
+        else flaggedNoData++
+        const autoLateDed = geo
+          ? (geo.lateMin * LATE_RATE) + (geo.absent * ABSENT_RATE) + (geo.earlyOut * EARLY_RATE)
+          : 0
+        const level = scoreMap[s.id]?.level || null
+        const autoPerfAdj = level ? performanceAdjustment(level, dedRules) : 0
+        newMap[s.id] = {
+          advance_deduction: pendingAdvance(s.id),
+          late_deduction:    autoLateDed,
+          admin_deduction:   dedMap[s.id]?.admin_deduction || 0, // manual-only field, preserved
+          pf_deduction:      dedMap[s.id]?.pf_deduction || 0,    // manual-only field, preserved
+          performance_adjustment: autoPerfAdj,
+          payment_mode:      dedMap[s.id]?.payment_mode || 'Cash',
+          status:            'Unpaid',
+          _geo:              geo || null,
+        }
+      })
+
+      setDedMap(prev => ({ ...prev, ...newMap }))
+
+      // Build & save rows directly (mirrors handleSaveRegister) using the
+      // freshly computed map rather than waiting on state to flush.
+      const rows = targetStaff.map(s => {
+        const d = newMap[s.id]
+        const perfAdj = Number(d.performance_adjustment || 0)
+        const g = gross(s)
+        const totDed = (d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)
+        return { staff_id:s.id, month:regMonth, basic_salary:s.basic_salary||0, seniority_allowance:s.seniority_allowance||0, loyalty_bonus:s.loyalty_bonus||0, role_bonus:s.role_bonus||0, allowance:(s.seniority_allowance||0)+(s.loyalty_bonus||0)+(s.role_bonus||0), advance_deduction:d.advance_deduction||0, late_deduction:d.late_deduction||0, admin_deduction:d.admin_deduction||0, pf_deduction:d.pf_deduction||0, performance_adjustment:perfAdj, deduction:totDed, net_salary:g+(perfAdj>0?perfAdj:0)-totDed, status:'Unpaid', payment_mode:d.payment_mode||'Cash' }
+      })
+      const { error } = await supabase.from('salary').upsert(rows, { onConflict: 'staff_id,month' })
+      if (error) throw error
+
+      await fetchAll()
+      targetStaff.forEach(s => {
+        const d = newMap[s.id]
+        const perfAdj = Number(d.performance_adjustment || 0)
+        EventBus.emit(GNSI_EVENTS.SALARY_SAVED, {
+          staffId: s.id, month: regMonth,
+          netSalary: gross(s) + (perfAdj>0?perfAdj:0) - ((d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)),
+          status: 'Unpaid',
+        })
+      })
+
+      setAutoGenSummary({ total: targetStaff.length, withAttendance, flaggedNoData, month: regMonth })
+    } catch (err) {
+      alert('Auto payroll failed: ' + err.message)
+    } finally {
+      setAutoGenBusy(false)
+    }
+  }, [staff, filteredStaff, roleFilter, regMonth, dedRules, scoreMap, dedMap, pendingAdvance, fetchAll])
+
   const toggleSelect = (id) => setSelected(prev => { const s=new Set(prev); s.has(id)?s.delete(id):s.add(id); return s })
   const selectAll    = () => setSelected(new Set(filteredStaff.map(s=>s.id)))
   const clearSelect  = () => setSelected(new Set())
@@ -956,6 +1344,7 @@ const handleDeleteAdvance = useCallback(async (id) => {
   { key:'advances',  label:'💳 Advances',  labelFull:'💳 Advances' },
   { key:'history',   label:'📅 History',   labelFull:'📅 History' },
   { key:'annual',    label:'📆 Annual',    labelFull:'📆 Annual Summary' },
+  { key:'reports',   label:'📊 Reports',   labelFull:'📊 Report Generator' },
   { key:'rules',     label:'⚙️ Rules',    labelFull:'⚙️ Deduction Rules' },
 ]
 
@@ -1032,9 +1421,25 @@ const handleDeleteAdvance = useCallback(async (id) => {
                 <button onClick={()=>exportToCSV(filteredStaff,dedMap,regMonth)} style={S.btnSm('#0891b2')}>⬇ CSV</button>
                 {!isMobile && <button onClick={()=>printAllSlips(filteredStaff,dedMap,regMonth)} style={S.btnSm('#B8860B')}>🖨 All Slips</button>}
                 {!isMobile && <button onClick={()=>printRegister(tableRef)} style={S.btnSm('#1e3a5f')}>🖨 Register</button>}
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Auto-generate payroll for ${fmtMonth(regMonth)} from face attendance data? This recalculates late/absent/performance deductions for ${roleFilter?filteredStaff.length:staff.length} staff and saves the register immediately.`)) runAutoPayroll()
+                  }}
+                  disabled={autoGenBusy}
+                  style={{ ...S.btn('#7c3aed', autoGenBusy), flex: isMobile ? '1 1 100%' : 'none' }}
+                >
+                  {autoGenBusy ? '⏳ Generating...' : '⚡ Auto-Generate Payroll'}
+                </button>
                 <button onClick={handleSaveRegister} disabled={saving} style={{ ...S.btn('#16a34a',saving), flex: isMobile ? 1 : 'none' }}>
                   {saving?'⏳ Saving...':'💾 Save Register'}
                 </button>
+              </div>
+            )}
+
+            {autoGenSummary && autoGenSummary.month === regMonth && (
+              <div style={{ marginTop: 8, background: '#f5f3ff', border: '1px dashed #a78bfa', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#5b21b6' }}>
+                ⚡ Auto-payroll generated for {fmtMonth(autoGenSummary.month)} — {autoGenSummary.withAttendance} staff matched with attendance data
+                {autoGenSummary.flaggedNoData > 0 && <>, <strong>{autoGenSummary.flaggedNoData} had no attendance record this month</strong> (late/absent deduction set to ₹0 — verify manually)</>}.
               </div>
             )}
 
@@ -1731,6 +2136,9 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
       )}
 
       {/* ══ TAB: DEDUCTION RULES ══ */}
+{activeTab === 'reports' && (
+  <ReportsTab salaryRows={salaryRows} staff={staff} advances={advances} isMobile={isMobile} />
+)}
 {activeTab === 'rules' && (
   <div style={{ maxWidth: 600 }}>
 

@@ -395,6 +395,571 @@ function LateFinesView({ staffId, isAdmin, staffList }) {
   )
 }
 
+// ─── Payroll (auto-counted from daily attendance) — READ-ONLY PREVIEW ──────
+// Computes a live estimate of this month's net salary per staff, straight
+// from staff_geo_attendance (day-by-day) using the active daily deduction
+// rule below. This is a preview only — the actual payable salary row is
+// still generated and saved in Salary.jsx (Auto-Generate Payroll), so there
+// remains exactly one source of truth for what staff actually get paid.
+
+const gross = (s) => (Number(s.basic_salary)||0) + (Number(s.seniority_allowance)||0) + (Number(s.loyalty_bonus)||0) + (Number(s.role_bonus)||0)
+
+function PayrollView({ staffId, isAdmin, staffList }) {
+  const [month, setMonth] = useState(currentMonth())
+  const [staffFilter, setStaffFilter] = useState(isAdmin ? 'all' : String(staffId))
+  const [rules, setRules] = useState(null)
+  const [attRows, setAttRows] = useState([])
+  const [staffFull, setStaffFull] = useState([])
+  const [advMap, setAdvMap] = useState({})
+  const [loading, setLoading] = useState(true)
+
+  const fetchRules = useCallback(async () => {
+    const { data } = await supabase
+      .from('salary_deduction_rules')
+      .select('*')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    setRules(data || null)
+  }, [])
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true)
+    const staffIds = isAdmin ? null : [staffId]
+
+    let attQ = supabase
+      .from('staff_geo_attendance')
+      .select('staff_id, date, late_minutes, status')
+      .gte('date', `${month}-01`)
+      .lte('date', `${month}-31`)
+    if (!isAdmin) attQ = attQ.eq('staff_id', staffId)
+    else if (staffFilter !== 'all') attQ = attQ.eq('staff_id', staffFilter)
+
+    let staffQ = supabase.from('staff_profiles').select('id, name, designation, department, basic_salary, seniority_allowance, loyalty_bonus, role_bonus')
+    if (!isAdmin) staffQ = staffQ.eq('id', staffId)
+    else if (staffFilter !== 'all') staffQ = staffQ.eq('id', staffFilter)
+
+    let advQ = supabase.from('staff_advances').select('staff_id, amount, repaid_amount, repay_months, status').eq('status', 'Active')
+    if (!isAdmin) advQ = advQ.eq('staff_id', staffId)
+    else if (staffFilter !== 'all') advQ = advQ.eq('staff_id', staffFilter)
+
+    const [{ data: att }, { data: sf }, { data: adv }] = await Promise.all([attQ, staffQ, advQ])
+    setAttRows(att || [])
+    setStaffFull(sf || [])
+    const am = {}
+    ;(adv || []).forEach(a => {
+      const rem = Number(a.amount) - Number(a.repaid_amount || 0)
+      const emi = Number(a.repay_months) > 0 ? Math.ceil(rem / Number(a.repay_months)) : rem
+      am[a.staff_id] = (am[a.staff_id] || 0) + Math.min(emi, rem)
+    })
+    setAdvMap(am)
+    setLoading(false)
+  }, [month, isAdmin, staffId, staffFilter])
+
+  useEffect(() => { fetchRules() }, [fetchRules])
+  useEffect(() => { fetchAll() }, [fetchAll])
+
+  const perDay = useMemo(() => {
+    const map = {}
+    attRows.forEach(r => {
+      if (!map[r.staff_id]) map[r.staff_id] = { lateMin: 0, absent: 0, earlyOut: 0, present: 0 }
+      const m = map[r.staff_id]
+      m.lateMin += r.late_minutes || 0
+      if (r.status === 'Absent') m.absent++
+      else if (r.status === 'Early Out' || r.status === 'EarlyOut') m.earlyOut++
+      else m.present++
+    })
+    return map
+  }, [attRows])
+
+  const rows = useMemo(() => {
+    const LATE = Number(rules?.late_rate || 0)
+    const ABSENT = Number(rules?.absent_rate || 0)
+    const EARLY = Number(rules?.early_out_rate || 0)
+    return staffFull.map(s => {
+      const d = perDay[s.id] || { lateMin: 0, absent: 0, earlyOut: 0, present: 0 }
+      const lateDed = d.lateMin * LATE
+      const absentDed = d.absent * ABSENT
+      const earlyDed = d.earlyOut * EARLY
+      const advDed = advMap[s.id] || 0
+      const g = gross(s)
+      const totalDed = lateDed + absentDed + earlyDed + advDed
+      const net = g - totalDed
+      return { staff: s, d, lateDed, absentDed, earlyDed, advDed, gross: g, totalDed, net }
+    }).sort((a, b) => (a.staff.name || '').localeCompare(b.staff.name || ''))
+  }, [staffFull, perDay, advMap, rules])
+
+  const monthTotals = useMemo(() => rows.reduce((acc, r) => ({
+    gross: acc.gross + r.gross, ded: acc.ded + r.totalDed, net: acc.net + r.net,
+  }), { gross: 0, ded: 0, net: 0 }), [rows])
+
+  return (
+    <div style={S.card}>
+      <p style={{ fontSize: 12, color: COLOR.slate, margin: '0 0 14px' }}>
+        Live estimate from daily attendance — this is a preview. The staff still get paid via the salary register that Salary.jsx saves (Auto-Generate Payroll there uses these same daily rates).
+      </p>
+
+      {rules ? (
+        <div style={{ background: '#fffbeb', border: '1px dashed #fbbf24', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#92400e' }}>
+          Active daily rule: <strong>₹{rules.late_rate}</strong>/late-minute · <strong>₹{rules.absent_rate}</strong>/absent day · <strong>₹{rules.early_out_rate}</strong>/early-out day
+        </div>
+      ) : (
+        <div style={{ background: COLOR.dangerBg, border: `1px dashed ${COLOR.danger}`, borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: COLOR.danger }}>
+          No active deduction rule set. {isAdmin ? 'Set one up in Deduction Rules.' : 'Ask an admin to set one up.'}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+        <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={S.input} />
+        {isAdmin && (
+          <select value={staffFilter} onChange={e => setStaffFilter(e.target.value)} style={S.input}>
+            <option value="all">All staff</option>
+            {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        )}
+        <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: COLOR.ink }}>
+          Est. net payable: {fmtRupee(monthTotals.net)}
+        </div>
+      </div>
+
+      {loading ? (
+        <p style={{ color: COLOR.slate, textAlign: 'center', padding: 24 }}>Loading…</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                {['Staff', 'Present', 'Late (min)', 'Absent', 'Early Out', 'Late Ded.', 'Absent Ded.', 'Early Ded.', 'Advance', 'Gross', 'Est. Net'].map(h => (
+                  <th key={h} style={S.th}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.staff.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={S.td}>
+                    <div style={{ fontWeight: 700 }}>{r.staff.name}</div>
+                    <div style={{ fontSize: 10.5, color: COLOR.slate }}>{r.staff.designation || r.staff.department || ''}</div>
+                  </td>
+                  <td style={S.td}>{r.d.present}</td>
+                  <td style={{ ...S.td, color: r.d.lateMin > 0 ? COLOR.warn : COLOR.slate, fontWeight: 600 }}>{r.d.lateMin || '—'}</td>
+                  <td style={{ ...S.td, color: r.d.absent > 0 ? COLOR.danger : COLOR.slate, fontWeight: 600 }}>{r.d.absent || '—'}</td>
+                  <td style={{ ...S.td, color: r.d.earlyOut > 0 ? COLOR.warn : COLOR.slate, fontWeight: 600 }}>{r.d.earlyOut || '—'}</td>
+                  <td style={{ ...S.td, color: COLOR.danger }}>{r.lateDed ? fmtRupee(r.lateDed) : '—'}</td>
+                  <td style={{ ...S.td, color: COLOR.danger }}>{r.absentDed ? fmtRupee(r.absentDed) : '—'}</td>
+                  <td style={{ ...S.td, color: COLOR.danger }}>{r.earlyDed ? fmtRupee(r.earlyDed) : '—'}</td>
+                  <td style={{ ...S.td, color: COLOR.danger }}>{r.advDed ? fmtRupee(r.advDed) : '—'}</td>
+                  <td style={S.td}>{fmtRupee(r.gross)}</td>
+                  <td style={{ ...S.td, fontWeight: 800, color: COLOR.sageDeep }}>{fmtRupee(r.net)}</td>
+                </tr>
+              ))}
+              {!rows.length && <tr><td colSpan="11" style={{ padding: 32, textAlign: 'center', color: COLOR.slate }}>No staff/attendance data for this month.</td></tr>}
+            </tbody>
+            {rows.length > 0 && (
+              <tfoot>
+                <tr style={{ borderTop: `2px solid ${COLOR.rule}`, fontWeight: 800 }}>
+                  <td style={S.td} colSpan={9}>Total</td>
+                  <td style={S.td}>{fmtRupee(monthTotals.gross)}</td>
+                  <td style={{ ...S.td, color: COLOR.sageDeep }}>{fmtRupee(monthTotals.net)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Deduction Rules (Daily) — ADMIN SETUP, writes salary_deduction_rules ──
+// The only write path in this file: admins configure the per-day rates that
+// both this Payroll preview and Salary.jsx's auto-payroll read from
+// (salary_deduction_rules, is_active flag). Saving deactivates the previous
+// rule and inserts a new one, preserving full history.
+
+function DeductionRulesSetup({ currentAdminId, showToast }) {
+  const [active, setActive] = useState(null)
+  const [history, setHistory] = useState([])
+  const [form, setForm] = useState({
+    late_rate: 10, absent_rate: 300, early_out_rate: 150,
+    perf_elite_bonus: 0, perf_outstanding_bonus: 0, perf_good_bonus: 0, perf_probation_penalty: 0,
+    effective_from: new Date().toISOString().slice(0, 10),
+  })
+  const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  const fetchRules = useCallback(async () => {
+    setLoading(true)
+    const { data: act } = await supabase.from('salary_deduction_rules').select('*').eq('is_active', true).order('created_at', { ascending: false }).limit(1).maybeSingle()
+    const { data: hist } = await supabase.from('salary_deduction_rules').select('*').order('created_at', { ascending: false }).limit(10)
+    setActive(act || null)
+    setHistory(hist || [])
+    if (act) {
+      setForm({
+        late_rate: act.late_rate ?? 10, absent_rate: act.absent_rate ?? 300, early_out_rate: act.early_out_rate ?? 150,
+        perf_elite_bonus: act.perf_elite_bonus || 0, perf_outstanding_bonus: act.perf_outstanding_bonus || 0,
+        perf_good_bonus: act.perf_good_bonus || 0, perf_probation_penalty: act.perf_probation_penalty || 0,
+        effective_from: new Date().toISOString().slice(0, 10),
+      })
+    }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchRules() }, [fetchRules])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      if (active?.id) {
+        await supabase.from('salary_deduction_rules').update({ is_active: false }).eq('id', active.id)
+      }
+      const { error } = await supabase.from('salary_deduction_rules').insert([{
+        late_rate: Number(form.late_rate) || 0,
+        absent_rate: Number(form.absent_rate) || 0,
+        early_out_rate: Number(form.early_out_rate) || 0,
+        perf_elite_bonus: Number(form.perf_elite_bonus) || 0,
+        perf_outstanding_bonus: Number(form.perf_outstanding_bonus) || 0,
+        perf_good_bonus: Number(form.perf_good_bonus) || 0,
+        perf_probation_penalty: Number(form.perf_probation_penalty) || 0,
+        effective_from: form.effective_from,
+        is_active: true,
+        created_by: currentAdminId || null,
+      }])
+      if (error) throw error
+      showToast?.('✅ Daily deduction rules saved and activated', 'ok')
+      fetchRules()
+    } catch (err) {
+      showToast?.('Failed to save: ' + err.message, 'err')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const field = (key, label, desc, color, unit) => (
+    <div style={{ background: `${color}10`, borderRadius: 10, padding: 14, border: `1.5px solid ${color}33` }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color, marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 10.5, color: COLOR.slate, marginBottom: 8 }}>{desc}</div>
+      <div style={{ position: 'relative' }}>
+        <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 13, fontWeight: 700, color }}>₹</span>
+        <input
+          type="number" min="0" step="1"
+          value={form[key]}
+          onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))}
+          style={{ ...S.input, paddingLeft: 26, fontWeight: 700, fontSize: 15, color, border: `1.5px solid ${color}44`, width: '100%', boxSizing: 'border-box' }}
+        />
+      </div>
+      <div style={{ fontSize: 10.5, color, marginTop: 5, fontWeight: 600 }}>{unit}</div>
+    </div>
+  )
+
+  if (loading) return <div style={S.card}><p style={{ color: COLOR.slate, textAlign: 'center', padding: 24 }}>Loading…</p></div>
+
+  return (
+    <div>
+      <div style={S.card}>
+        <p style={{ fontSize: 12, color: COLOR.slate, margin: '0 0 14px' }}>
+          Set the ₹ amount deducted <strong>per day</strong> (or per late minute) from daily attendance. These rates feed the Payroll preview here and Salary.jsx's Auto-Generate Payroll — one rule, used everywhere.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
+          {field('late_rate', '⏰ Late Deduction', 'Per minute late for check-in', COLOR.warn, '₹ / minute')}
+          {field('absent_rate', '🚫 Absent Deduction', 'Per full day marked Absent', COLOR.danger, '₹ / day')}
+          {field('early_out_rate', '🚪 Early-Out Deduction', 'Per day of early check-out', '#7c3aed', '₹ / day')}
+        </div>
+
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: COLOR.ink, margin: '18px 0 10px' }}>Performance adjustments (monthly, applied alongside daily deductions)</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
+          {field('perf_elite_bonus', '💎 Elite Bonus', 'Monthly score level = Elite', '#7c3aed', '₹ / month')}
+          {field('perf_outstanding_bonus', '🥇 Outstanding Bonus', 'Monthly score level = Outstanding', '#b45309', '₹ / month')}
+          {field('perf_good_bonus', '🥉 Good Bonus', 'Monthly score level = Good', '#0891b2', '₹ / month')}
+          {field('perf_probation_penalty', '🔰 Probation Penalty', 'Monthly score level = Probation', COLOR.danger, '₹ / month')}
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: COLOR.ink, marginBottom: 6 }}>Effective From</label>
+          <input type="date" value={form.effective_from} onChange={e => setForm(prev => ({ ...prev, effective_from: e.target.value }))} style={{ ...S.input, maxWidth: 220 }} />
+        </div>
+
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{ width: '100%', padding: 14, borderRadius: RADIUS.md, border: 'none', background: saving ? COLOR.slate : COLOR.ink, color: COLOR.cream, fontWeight: 800, fontSize: 14, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: FONT.body }}
+        >
+          {saving ? '⏳ Saving...' : '💾 Save & Activate New Rates'}
+        </button>
+      </div>
+
+      {history.length > 0 && (
+        <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', fontWeight: 700, color: COLOR.ink, borderBottom: `1px solid ${COLOR.rule}`, fontSize: 13, fontFamily: FONT.display }}>
+            📅 Rate History
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr>
+                  {['Effective From', 'Late/min', 'Absent/day', 'Early Out/day', 'Elite', 'Outstanding', 'Good', 'Probation', 'Status'].map(h => (
+                    <th key={h} style={S.th}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {history.map(r => (
+                  <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9', background: r.is_active ? '#f0fdf4' : 'transparent' }}>
+                    <td style={{ ...S.td, fontWeight: 700 }}>{r.effective_from || fmtDate(r.created_at)}</td>
+                    <td style={{ ...S.td, color: COLOR.warn, fontWeight: 700 }}>₹{r.late_rate}</td>
+                    <td style={{ ...S.td, color: COLOR.danger, fontWeight: 700 }}>₹{r.absent_rate}</td>
+                    <td style={{ ...S.td, color: '#7c3aed', fontWeight: 700 }}>₹{r.early_out_rate}</td>
+                    <td style={S.td}>+₹{r.perf_elite_bonus || 0}</td>
+                    <td style={S.td}>+₹{r.perf_outstanding_bonus || 0}</td>
+                    <td style={S.td}>+₹{r.perf_good_bonus || 0}</td>
+                    <td style={S.td}>−₹{r.perf_probation_penalty || 0}</td>
+                    <td style={S.td}>
+                      <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 700, background: r.is_active ? COLOR.okBg : '#f1f5f9', color: r.is_active ? COLOR.sageDeep : COLOR.slate }}>
+                        {r.is_active ? '✅ Active' : 'Inactive'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Role Permissions — ADMIN SETUP, writes staff_module_permissions ──────
+// Lets an admin grant individual staff access to specific tabs in this
+// module beyond their default (self-service) access, without making them a
+// full admin. Stored in a new, dedicated table so it never touches
+// portal_users/staff_profiles roles — purely additive, per-module grants.
+//
+// Granted permission keys are checked via hasPerm() below; a plain isAdmin
+// staff member already has every permission implicitly.
+
+const ASSIGNABLE_PERMISSIONS = [
+  { key: 'view_payroll',      label: 'View Payroll (all staff)',   desc: 'See the daily-attendance payroll estimate for every staff member, not just their own.' },
+  { key: 'view_fines',        label: 'View Late Fines (all staff)', desc: 'See late/absent fine calculations across all staff.' },
+  { key: 'view_cashbook',     label: 'View Cash Book',              desc: 'Read-only access to the accounts cash book.' },
+  { key: 'view_reports',      label: 'View Attendance Reports',     desc: 'Access the admin attendance reports view.' },
+  { key: 'approve_regularization', label: 'Approve Attendance Corrections', desc: 'Approve/reject staff regularization requests.' },
+  { key: 'manage_deduction_rules',  label: 'Manage Deduction Rules', desc: 'Set the daily late/absent/early-out deduction rates.' },
+  { key: 'manage_advances',   label: 'Manage Advances (all staff)', desc: 'Issue/edit salary advances for any staff member.' },
+]
+
+function useModulePermissions(staffId, isAdmin) {
+  const [perms, setPerms] = useState(new Set())
+  const [loading, setLoading] = useState(true)
+
+  const fetch_ = useCallback(async () => {
+    if (isAdmin || !staffId) { setLoading(false); return }
+    setLoading(true)
+    const { data } = await supabase
+      .from('staff_module_permissions')
+      .select('permission_key')
+      .eq('staff_id', staffId)
+      .eq('module', 'face_attendance')
+    setPerms(new Set((data || []).map(r => r.permission_key)))
+    setLoading(false)
+  }, [staffId, isAdmin])
+
+  useEffect(() => { fetch_() }, [fetch_])
+
+  const hasPerm = useCallback((key) => isAdmin || perms.has(key), [isAdmin, perms])
+  return { hasPerm, loading, refetch: fetch_ }
+}
+
+function RolePermissionsSetup({ staffList, currentAdminId, showToast }) {
+  const [selectedStaffId, setSelectedStaffId] = useState('')
+  const [grants, setGrants] = useState(new Set())
+  const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [allGrants, setAllGrants] = useState([]) // for the summary list below
+
+  const fetchAllGrants = useCallback(async () => {
+    const { data } = await supabase
+      .from('staff_module_permissions')
+      .select('staff_id, permission_key, granted_at')
+      .eq('module', 'face_attendance')
+    setAllGrants(data || [])
+  }, [])
+
+  useEffect(() => { fetchAllGrants() }, [fetchAllGrants])
+
+  const fetchGrantsFor = useCallback(async (sid) => {
+    if (!sid) { setGrants(new Set()); return }
+    setLoading(true)
+    const { data } = await supabase
+      .from('staff_module_permissions')
+      .select('permission_key')
+      .eq('staff_id', sid)
+      .eq('module', 'face_attendance')
+    setGrants(new Set((data || []).map(r => r.permission_key)))
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchGrantsFor(selectedStaffId) }, [selectedStaffId, fetchGrantsFor])
+
+  const toggle = (key) => {
+    setGrants(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
+
+  const handleSave = async () => {
+    if (!selectedStaffId) return
+    setSaving(true)
+    try {
+      // Replace this staff member's grants wholesale: delete then re-insert
+      // the checked set, so unticking a box actually revokes it.
+      const { error: delErr } = await supabase
+        .from('staff_module_permissions')
+        .delete()
+        .eq('staff_id', selectedStaffId)
+        .eq('module', 'face_attendance')
+      if (delErr) throw delErr
+
+      if (grants.size > 0) {
+        const rows = [...grants].map(key => ({
+          staff_id: selectedStaffId,
+          module: 'face_attendance',
+          permission_key: key,
+          granted_by: currentAdminId || null,
+          granted_at: new Date().toISOString(),
+        }))
+        const { error: insErr } = await supabase.from('staff_module_permissions').insert(rows)
+        if (insErr) throw insErr
+      }
+      showToast?.('✅ Permissions updated', 'ok')
+      fetchAllGrants()
+    } catch (err) {
+      showToast?.('Failed to save permissions: ' + err.message, 'err')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const filteredStaff = staffList.filter(s => !search || s.name?.toLowerCase().includes(search.toLowerCase()))
+
+  const grantCountByStaff = useMemo(() => {
+    const m = {}
+    allGrants.forEach(g => { m[g.staff_id] = (m[g.staff_id] || 0) + 1 })
+    return m
+  }, [allGrants])
+
+  return (
+    <div>
+      <div style={S.card}>
+        <p style={{ fontSize: 12, color: COLOR.slate, margin: '0 0 14px' }}>
+          Grant a staff member access to specific admin-level views in this module without making them a full admin. Unchecked boxes revoke access.
+        </p>
+
+        <input
+          style={{ ...S.inputFull, marginBottom: 12 }}
+          placeholder="Search staff by name…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+
+        <select
+          value={selectedStaffId}
+          onChange={e => setSelectedStaffId(e.target.value)}
+          style={{ ...S.input, width: '100%', marginBottom: 16, boxSizing: 'border-box' }}
+        >
+          <option value="">Select a staff member…</option>
+          {filteredStaff.map(s => (
+            <option key={s.id} value={s.id}>
+              {s.name}{grantCountByStaff[s.id] ? ` (${grantCountByStaff[s.id]} permission${grantCountByStaff[s.id] !== 1 ? 's' : ''})` : ''}
+            </option>
+          ))}
+        </select>
+
+        {selectedStaffId && (
+          loading ? (
+            <p style={{ color: COLOR.slate, textAlign: 'center', padding: 20 }}>Loading…</p>
+          ) : (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                {ASSIGNABLE_PERMISSIONS.map(p => {
+                  const checked = grants.has(p.key)
+                  return (
+                    <label
+                      key={p.key}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px',
+                        borderRadius: RADIUS.md, border: `1.5px solid ${checked ? COLOR.brass : COLOR.rule}`,
+                        background: checked ? `${COLOR.brass}12` : 'transparent', cursor: 'pointer',
+                      }}
+                    >
+                      <input type="checkbox" checked={checked} onChange={() => toggle(p.key)} style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: COLOR.ink, fontFamily: FONT.body }}>{p.label}</div>
+                        <div style={{ fontSize: 11.5, color: COLOR.slate, marginTop: 1 }}>{p.desc}</div>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                style={{ width: '100%', padding: 13, borderRadius: RADIUS.md, border: 'none', background: saving ? COLOR.slate : COLOR.ink, color: COLOR.cream, fontWeight: 800, fontSize: 14, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: FONT.body }}
+              >
+                {saving ? '⏳ Saving...' : '💾 Save Permissions'}
+              </button>
+            </>
+          )
+        )}
+      </div>
+
+      {allGrants.length > 0 && (
+        <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', fontWeight: 700, color: COLOR.ink, borderBottom: `1px solid ${COLOR.rule}`, fontSize: 13, fontFamily: FONT.display }}>
+            🔑 Current Grants
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead><tr>{['Staff', 'Permission', 'Granted'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {allGrants.map((g, i) => {
+                  const st = staffList.find(s => String(s.id) === String(g.staff_id))
+                  const perm = ASSIGNABLE_PERMISSIONS.find(p => p.key === g.permission_key)
+                  return (
+                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ ...S.td, fontWeight: 700 }}>{st?.name || `#${g.staff_id}`}</td>
+                      <td style={S.td}>{perm?.label || g.permission_key}</td>
+                      <td style={{ ...S.td, color: COLOR.slate }}>{fmtDate(g.granted_at)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NoAccessCard() {
+  return (
+    <div style={S.card}>
+      <div style={{ textAlign: 'center', padding: '20px 10px' }}>
+        <div style={{ fontSize: 32, marginBottom: 10 }}>🔒</div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: COLOR.ink, marginBottom: 4, fontFamily: FONT.display }}>Access restricted</div>
+        <p style={{ fontSize: 12.5, color: COLOR.slate, margin: 0 }}>You don't have permission to view this. Ask an admin to grant it under Role Permissions.</p>
+      </div>
+    </div>
+  )
+}
+
 // ─── Cash book — view into Accounts.jsx's accounts table ───────────────────
 
 function CashBookView() {
@@ -576,6 +1141,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
   const [settingsTab, setSettingsTab] = useState(null) // tab key whose Advanced Settings sheet is open, or null
 
   const staffId = loggedInStaff?.id || null
+  const { hasPerm } = useModulePermissions(staffId, isAdmin)
 
   const fetchFaceRows = useCallback(async () => {
     setLoading(true)
@@ -617,14 +1183,18 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
     { key: 'timecard', icon: '🕐', label: 'Time card' },
     { key: 'advances', icon: '💵', label: 'Advances' },
     { key: 'fines',    icon: '⏰', label: 'Late fines' },
+    { key: 'payroll',  icon: '💰', label: 'Payroll' },
     { key: 'regularization', icon: '🛠️', label: 'Correct attendance' },
     { key: 'reports',  icon: '📊', label: 'Reports' },
     { key: 'broadcast', icon: '📣', label: 'Broadcast messages' },
     { key: 'notifications', icon: '🔔', label: 'Notifications' },
+    ...(!isAdmin && hasPerm('view_cashbook') ? [{ key: 'cashbook', icon: '📒', label: 'Cash book' }] : []),
     ...(isAdmin ? [
       { key: 'coverage',  icon: '👥', label: 'Staff coverage' },
       { key: 'approvals', icon: '📋', label: 'Approvals', badge: counts.pending },
       { key: 'cashbook',  icon: '📒', label: 'Cash book' },
+      { key: 'deductionrules', icon: '📐', label: 'Deduction Rules' },
+      { key: 'rolepermissions', icon: '🔑', label: 'Role Permissions' },
       { key: 'controlcenter', icon: '🎛️', label: 'Control Center' },
     ] : []),
     { key: 'settings', icon: '⚙️', label: 'Settings' },
@@ -632,8 +1202,8 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
 
   const pageTitles = {
     checkin: 'Take attendance', attendancesummary: 'Attendance', timecard: 'Time card', advances: 'Advances',
-    fines: 'Late fines', regularization: 'Correct attendance', reports: 'Reports', broadcast: 'Broadcast messages', notifications: 'Notifications',
-    coverage: 'Staff coverage', approvals: 'Pending approvals', cashbook: 'Cash book', controlcenter: 'Admin Control Center', settings: 'Settings',
+    fines: 'Late fines', payroll: 'Payroll', regularization: 'Correct attendance', reports: 'Reports', broadcast: 'Broadcast messages', notifications: 'Notifications',
+    coverage: 'Staff coverage', approvals: 'Pending approvals', cashbook: 'Cash book', deductionrules: 'Deduction Rules (Daily)', rolepermissions: 'Role Permissions', controlcenter: 'Admin Control Center', settings: 'Settings',
   }
 
   // Quick actions row, below the main tile grid — role-aware, matching
@@ -747,13 +1317,20 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
 
           {tab === 'attendancesummary' && <AttendanceSummaryView isAdmin={isAdmin} staffList={filteredStaff} showToast={showToast} onNavigate={onNavigate} currentUsername={currentUser?.username} />}
           {tab === 'timecard' && <TimeCard staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
-          {tab === 'advances' && <AdvancesView staffId={staffId} isAdmin={isAdmin} staffList={staff} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />}
-          {tab === 'fines'    && <LateFinesView staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
+          {tab === 'advances' && <AdvancesView staffId={staffId} isAdmin={isAdmin || hasPerm('manage_advances')} staffList={staff} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />}
+          {tab === 'fines'    && <LateFinesView staffId={staffId} isAdmin={isAdmin || hasPerm('view_fines')} staffList={staff} />}
+          {tab === 'payroll'  && <PayrollView staffId={staffId} isAdmin={isAdmin || hasPerm('view_payroll')} staffList={staff} />}
           {tab === 'regularization' && <RegularizationView staffId={staffId} isAdmin={isAdmin} showToast={showToast} currentUsername={currentUser?.username} />}
-          {tab === 'reports'  && <ReportsView isAdmin={isAdmin} staffList={staff} />}
+          {tab === 'reports'  && (hasPerm('view_reports') ? <ReportsView isAdmin={isAdmin} staffList={staff} /> : <NoAccessCard />)}
           {tab === 'broadcast' && <BroadcastView isAdmin={isAdmin} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />}
           {tab === 'notifications' && <NotificationsView staffId={staffId} isAdmin={isAdmin} />}
-          {tab === 'cashbook' && isAdmin && <CashBookView />}
+          {tab === 'cashbook' && (isAdmin || hasPerm('view_cashbook')) && <CashBookView />}
+          {tab === 'deductionrules' && isAdmin && (
+            <DeductionRulesSetup currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />
+          )}
+          {tab === 'rolepermissions' && isAdmin && (
+            <RolePermissionsSetup staffList={staff} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />
+          )}
           {tab === 'controlcenter' && isAdmin && (
             <AdminControlCenter isAdmin={isAdmin} adminId={currentUser?.staff_profile_id || null} showToast={showToast} />
           )}

@@ -27,7 +27,27 @@ export function useSystemControl() {
       // 42P01 / PostgREST "relation does not exist"). Surface this
       // instead of leaving the UI stuck on "Loading system controls…"
       // with no explanation.
-      setLoadError(error.message || 'Could not load system controls')
+      //
+      // error.message can legitimately be empty/undefined for some
+      // failure shapes (e.g. network/CORS errors, or a thrown object
+      // that isn't a standard PostgrestError) — in that case fall back
+      // to whatever other fields are populated instead of silently
+      // showing "Unknown error." Logging the raw object here means the
+      // browser console always has the real cause even if the UI can
+      // only show a short string.
+      // eslint-disable-next-line no-console
+      console.error('[systemControl] load failed:', error)
+      const msg = error.message || error.details || error.hint
+        || (error.code ? `Error code ${error.code}` : '')
+        || 'Could not load system controls — check the browser console for details'
+      setLoadError(msg)
+    } else if (!data) {
+      // Table exists and the query succeeded, but there's no row with
+      // id = 1 — the migration created the table without seeding it.
+      // .maybeSingle() returns {data: null, error: null} here, which
+      // would otherwise fall through to the UI's generic "Unknown
+      // error." with no clue as to why. Name the real cause instead.
+      setLoadError('system_control table has no row with id = 1 — the migration ran but didn\'t seed the initial row. Insert one (check_ins_paused=false, enrollment_locked=false) with id 1, then reload.')
     } else {
       setState(data)
     }
