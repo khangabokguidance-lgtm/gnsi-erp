@@ -1584,7 +1584,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
           {tab === 'checkin' && loggedInStaff && (
             statusFor(loggedInStaff.id) === 'approved' ? (
               <>
-                <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} initialTab="checkin" />
+                <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} initialTab="checkin" onCheckInSuccess={fetchPunchState} onCheckOutSuccess={fetchPunchState} />
                 {(() => {
                   const row = faceRowFor(loggedInStaff.id)
                   if (!row) return null

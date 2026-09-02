@@ -1102,7 +1102,7 @@ function AttendanceChart({ rows, monthFilter }) {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allStaff = [], onCheckInSuccess = null, initialTab = 'checkin' }) {
+export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allStaff = [], onCheckInSuccess = null, onCheckOutSuccess = null, initialTab = 'checkin' }) {
   const safeAllStaff = Array.isArray(allStaff) ? allStaff : []
 
   // ── Server-verified admin role (do NOT trust props alone) ─────────────────
@@ -1880,6 +1880,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
     if (!data?.early_out && !data?.half_day) {
       setSuccessOverlay({ kind: 'out', label: `Shift ${shiftLabel}${punchTarget ? ` for ${punchTarget.name}` : ''}` })
     }
+    if (!punchTarget && onCheckOutSuccess) onCheckOutSuccess()
   }
 
   // ── Campus save ───────────────────────────────────────────────────────────
