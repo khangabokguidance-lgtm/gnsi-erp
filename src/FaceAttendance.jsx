@@ -2240,8 +2240,14 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
             {menuOpen && (
               <>
                 <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 998 }} />
+                {/* BUGFIX: this used to be position:absolute inside the
+                    header, which clips overflow to render its rounded
+                    card shape — so the dropdown was cut off/overlapping
+                    content beneath it instead of floating cleanly above
+                    the page. position:fixed with an explicit viewport
+                    offset escapes that clipping entirely. */}
                 <div style={{
-                  position: 'absolute', top: 48, right: 0, zIndex: 999, width: 250,
+                  position: 'fixed', top: 64, right: 16, zIndex: 999, width: 250,
                   background: PAY.card, borderRadius: PAY.radius, boxShadow: PAY.shadowRaised,
                   border: `1px solid ${PAY.cardBorder}`, padding: 8, maxHeight: '70vh', overflowY: 'auto',
                 }}>
