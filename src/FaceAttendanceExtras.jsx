@@ -97,7 +97,10 @@ function MyAttendanceHistory({ staffId }) {
     const counts = { Present: 0, Absent: 0, 'Half Day': 0, Leave: 0 }
     let fineMinutes = 0
     for (const d of days) {
-      const status = d.mark?.status || (d.geo ? 'Present' : null)
+      // BUGFIX: use the geo row's real status instead of hardcoding
+      // 'Present' whenever a geo row exists (see StaffMarkRow fix below —
+      // same underlying bug, occurs three times in this file).
+      const status = d.mark?.status || d.geo?.status || null
       if (status) counts[status] = (counts[status] || 0) + 1
       if (d.geo) fineMinutes += d.geo.late_minutes || 0
     }
@@ -228,8 +231,12 @@ function AdminAttendanceRoster({ staffList, showToast, onNavigate, currentUserna
     for (const s of staffList) {
       const mark = marks[s.id]
       const geo = geoByStaff[s.id]
-      if (mark) counts[mark.status] = (counts[mark.status] || 0) + 1
-      else if (geo) counts.Present += 1
+      // BUGFIX: use geo.status instead of assuming every geo row means
+      // Present — an auto-marked-absent or Flagged/Late row was inflating
+      // this count (e.g. dashboard showing "14 Present" while most of the
+      // list actually shows AB).
+      const status = mark?.status || geo?.status || null
+      if (status) counts[status] = (counts[status] || 0) + 1
       if (geo) {
         totalLateMin += geo.late_minutes || 0
         if (geo.check_in_time) punchIn += 1
