@@ -96,6 +96,41 @@ function landmarksLookLikeAFace(landmarks) {
   return true
 }
 
+// BUGFIX (round 2): landmarksLookLikeAFace checks ORDERING/SPACING of
+// landmarks, but a genuinely partial face — a real eye and nose fragment
+// clipped in one corner of the frame, rest of the frame being background
+// — can still produce landmarks in plausible relative order if
+// face-api.js extrapolates positions for parts it can't clearly see. That
+// let through a photo showing roughly a third of a face crammed into one
+// corner, which then produced a weak/non-distinctive descriptor that
+// landed close to an unrelated real enrollment. This checks the face
+// bounding box itself: is it big enough relative to the frame, and is it
+// not clipped against an edge — i.e. is a genuinely COMPLETE face
+// present, not a corner fragment.
+function faceBoxIsComplete(box, mediaEl) {
+  if (!box || !mediaEl) return false
+  const frameW = mediaEl.videoWidth || mediaEl.naturalWidth || mediaEl.width
+  const frameH = mediaEl.videoHeight || mediaEl.naturalHeight || mediaEl.height
+  if (!frameW || !frameH) return false
+
+  // Face should occupy a reasonable portion of the frame — too small and
+  // either it's far away (low detail, unreliable descriptor) or it's a
+  // small fragment being mistaken for a face at low relative size.
+  const faceAreaRatio = (box.width * box.height) / (frameW * frameH)
+  if (faceAreaRatio < 0.04) return false // face too small relative to the frame
+
+  // Face box should not be clipped against any frame edge — a real,
+  // complete, centered face has margin on all sides; a fragment crammed
+  // into a corner touches or nearly touches an edge.
+  const margin = Math.min(box.width, box.height) * 0.15
+  if (box.x < margin) return false
+  if (box.y < margin) return false
+  if (box.x + box.width > frameW - margin) return false
+  if (box.y + box.height > frameH - margin) return false
+
+  return true
+}
+
 export async function extractDescriptor(mediaEl) {
   const detection = await faceapi
     .detectSingleFace(mediaEl, DETECTOR_OPTIONS)
@@ -103,6 +138,7 @@ export async function extractDescriptor(mediaEl) {
     .withFaceDescriptor()
   if (!detection) return null
   if (!landmarksLookLikeAFace(detection.landmarks)) return null
+  if (!faceBoxIsComplete(detection.detection.box, mediaEl)) return null
   return Array.from(detection.descriptor)
 }
 
@@ -119,7 +155,7 @@ export async function extractDescriptor(mediaEl) {
 // only real faces are actually present.
 export async function countFacesInFrame(mediaEl) {
   const detections = await faceapi.detectAllFaces(mediaEl, DETECTOR_OPTIONS).withFaceLandmarks()
-  return detections.filter(d => landmarksLookLikeAFace(d.landmarks)).length
+  return detections.filter(d => landmarksLookLikeAFace(d.landmarks) && faceBoxIsComplete(d.detection.box, mediaEl)).length
 }
 
 // Averages multiple descriptors captured during enrollment into one reference vector.
