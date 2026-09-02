@@ -608,87 +608,93 @@ function DayCompleteCard() {
 function FaceScanFrame({ punchState, onTap }) {
   if (punchState === 'done') return <DayCompleteCard />
 
-  const label = punchState === 'open' ? 'Tap to Check Out' : 'Tap to Check In'
+  const label = punchState === 'open' ? 'CHECK-OUT' : 'CHECK-IN'
   return (
     <div
       onClick={onTap}
       role="button"
       style={{
-        background: `linear-gradient(180deg, ${PAY.card} 0%, #FAFBFF 100%)`,
-        border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius, padding: '28px 20px',
-        boxShadow: PAY.shadowRaised, textAlign: 'center', position: 'relative', overflow: 'hidden',
-        cursor: 'pointer',
-        transition: 'transform 0.12s ease',
+        background: 'linear-gradient(180deg, #1A1F26 0%, #0D1013 100%)',
+        border: '1px solid #2A3038', borderRadius: 4, padding: '22px 20px',
+        boxShadow: '0 8px 28px rgba(0,0,0,0.35)', textAlign: 'center', position: 'relative', overflow: 'hidden',
+        cursor: 'pointer', transition: 'transform 0.1s ease', fontFamily: '"Courier New", monospace',
       }}
-      onMouseDown={e => { e.currentTarget.style.transform = 'scale(0.985)' }}
+      onMouseDown={e => { e.currentTarget.style.transform = 'scale(0.99)' }}
       onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)' }}
       onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)' }}
     >
       <style>{`
-        @keyframes faceScanSweep { 0% { top: 14%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 82%; opacity: 0; } }
-        @keyframes faceScanPulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+        @keyframes govScanSweep { 0% { top: 8%; opacity: 0; } 12% { opacity: 0.9; } 88% { opacity: 0.9; } 100% { top: 90%; opacity: 0; } }
+        @keyframes govBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        @keyframes govScanline { 0% { background-position: 0 0; } 100% { background-position: 0 4px; } }
       `}</style>
 
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: PAY.blueBg, color: PAY.blue, fontSize: 10.5, fontWeight: 700, padding: '4px 12px', borderRadius: 999, marginBottom: 14, letterSpacing: '0.02em' }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: PAY.blue, animation: 'faceScanPulse 1.6s ease-in-out infinite' }} />
-        BIOMETRIC SECURITY
+      {/* faint horizontal scanline texture over the whole panel */}
+      <div style={{
+        position: 'absolute', inset: 0, opacity: 0.06, pointerEvents: 'none',
+        backgroundImage: 'repeating-linear-gradient(0deg, #fff 0px, #fff 1px, transparent 1px, transparent 4px)',
+        animation: 'govScanline 0.5s linear infinite',
+      }} />
+
+      {/* top status bar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, position: 'relative', zIndex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 9.5, fontWeight: 700, color: '#5DCAA5', letterSpacing: '0.08em' }}>
+          <span style={{ width: 6, height: 6, background: '#5DCAA5', display: 'inline-block', animation: 'govBlink 1.2s step-start infinite' }} />
+          SYSTEM READY
+        </div>
+        <div style={{ fontSize: 9, color: '#5A6472', letterSpacing: '0.06em' }}>ID · GNSI-BIO-01</div>
       </div>
 
-      <div style={{ fontWeight: 800, fontSize: 15, color: PAY.textPrimary, fontFamily: FONT.display, marginBottom: 16 }}>{label}</div>
+      <div style={{ fontWeight: 800, fontSize: 13, color: '#E8EBEE', letterSpacing: '0.12em', marginBottom: 4, position: 'relative', zIndex: 1 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 9.5, color: '#5A6472', letterSpacing: '0.05em', marginBottom: 18, position: 'relative', zIndex: 1 }}>
+        BIOMETRIC AUTHENTICATION REQUIRED
+      </div>
 
-      <div style={{ position: 'relative', width: 140, height: 140, margin: '0 auto' }}>
-        <svg width="140" height="140" viewBox="0 0 140 140" style={{ display: 'block', position: 'relative', zIndex: 1 }}>
-          <defs>
-            <linearGradient id="fsCorner" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor={PAY.blue} />
-              <stop offset="100%" stopColor="#1D4ED8" />
-            </linearGradient>
-            <radialGradient id="fsGlow" cx="50%" cy="45%" r="55%">
-              <stop offset="0%" stopColor={PAY.blueBg} stopOpacity="0.9" />
-              <stop offset="100%" stopColor={PAY.blueBg} stopOpacity="0" />
-            </radialGradient>
-          </defs>
+      {/* scanner reticle */}
+      <div style={{ position: 'relative', width: 148, height: 148, margin: '0 auto', zIndex: 1 }}>
+        <svg width="148" height="148" viewBox="0 0 148 148" style={{ display: 'block', position: 'relative', zIndex: 1 }}>
+          {/* outer sharp-corner frame, no rounding */}
+          <path d="M6,32 L6,6 L32,6" stroke="#5DCAA5" strokeWidth="2.5" fill="none" />
+          <path d="M116,6 L142,6 L142,32" stroke="#5DCAA5" strokeWidth="2.5" fill="none" />
+          <path d="M142,116 L142,142 L116,142" stroke="#5DCAA5" strokeWidth="2.5" fill="none" />
+          <path d="M32,142 L6,142 L6,116" stroke="#5DCAA5" strokeWidth="2.5" fill="none" />
 
-          {/* soft glow behind the face */}
-          <circle cx="70" cy="70" r="52" fill="url(#fsGlow)" />
+          {/* fine crosshair reticle */}
+          <line x1="74" y1="4" x2="74" y2="18" stroke="#3A4148" strokeWidth="1" />
+          <line x1="74" y1="130" x2="74" y2="144" stroke="#3A4148" strokeWidth="1" />
+          <line x1="4" y1="74" x2="18" y2="74" stroke="#3A4148" strokeWidth="1" />
+          <line x1="130" y1="74" x2="144" y2="74" stroke="#3A4148" strokeWidth="1" />
 
-          {/* corner brackets, gradient + rounded, slightly inset for a tighter frame */}
-          <path d="M8,30 L8,8 L30,8" stroke="url(#fsCorner)" strokeWidth="5" fill="none" strokeLinecap="round" />
-          <path d="M110,8 L132,8 L132,30" stroke="url(#fsCorner)" strokeWidth="5" fill="none" strokeLinecap="round" />
-          <path d="M132,110 L132,132 L110,132" stroke="url(#fsCorner)" strokeWidth="5" fill="none" strokeLinecap="round" />
-          <path d="M30,132 L8,132 L8,110" stroke="url(#fsCorner)" strokeWidth="5" fill="none" strokeLinecap="round" />
+          {/* precise, technical face outline — angular, not rounded/cute */}
+          <ellipse cx="74" cy="62" rx="26" ry="30" fill="none" stroke="#4A5560" strokeWidth="1.5" />
+          <line x1="74" y1="62" x2="74" y2="98" stroke="#3A4148" strokeWidth="1" strokeDasharray="2 3" />
+          <line x1="48" y1="62" x2="100" y2="62" stroke="#3A4148" strokeWidth="1" strokeDasharray="2 3" />
+          <circle cx="63" cy="58" r="1.4" fill="#5A6472" />
+          <circle cx="85" cy="58" r="1.4" fill="#5A6472" />
+          <path d="M64,76 L84,76" stroke="#4A5560" strokeWidth="1.2" />
 
-          {/* refined face outline — head, shoulders, subtle features */}
-          <circle cx="70" cy="58" r="27" fill="none" stroke="#94A3B8" strokeWidth="2.5" />
-          <path d="M40,104 Q70,84 100,104" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" />
-          <circle cx="60" cy="55" r="2.2" fill="#CBD5E1" />
-          <circle cx="80" cy="55" r="2.2" fill="#CBD5E1" />
-          <path d="M64,66 Q70,70 76,66" fill="none" stroke="#CBD5E1" strokeWidth="2" strokeLinecap="round" />
-
-          {/* alignment ticks, like a real scanning UI */}
-          <line x1="70" y1="14" x2="70" y2="22" stroke={PAY.blue} strokeWidth="2" strokeOpacity="0.4" />
-          <line x1="70" y1="118" x2="70" y2="126" stroke={PAY.blue} strokeWidth="2" strokeOpacity="0.4" />
-          <line x1="14" y1="70" x2="22" y2="70" stroke={PAY.blue} strokeWidth="2" strokeOpacity="0.4" />
-          <line x1="118" y1="70" x2="126" y2="70" stroke={PAY.blue} strokeWidth="2" strokeOpacity="0.4" />
+          {/* corner tick marks for measurement feel */}
+          {[[38,38],[110,38],[38,110],[110,110]].map(([x,y], i) => (
+            <circle key={i} cx={x} cy={y} r="1.2" fill="#5DCAA5" fillOpacity="0.5" />
+          ))}
         </svg>
 
         <div style={{
-          position: 'absolute', left: 14, right: 14, height: 2, borderRadius: 2,
-          background: `linear-gradient(90deg, transparent, ${PAY.blue}, transparent)`,
-          animation: 'faceScanSweep 2.6s ease-in-out infinite', zIndex: 2,
+          position: 'absolute', left: 10, right: 10, height: 1.5,
+          background: 'linear-gradient(90deg, transparent, #5DCAA5, transparent)',
+          animation: 'govScanSweep 2.8s linear infinite', zIndex: 2, boxShadow: '0 0 6px #5DCAA5',
         }} />
       </div>
 
-      <div style={{ fontSize: 11.5, color: PAY.textMuted, marginTop: 16, fontWeight: 500 }}>
-        Tap anywhere on this card to start face verification
+      <div style={{ fontSize: 9.5, color: '#5A6472', marginTop: 18, letterSpacing: '0.04em', position: 'relative', zIndex: 1 }}>
+        TAP TO INITIATE VERIFICATION SEQUENCE
       </div>
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: PAY.textMuted }}>
-          <span style={{ fontSize: 12 }}>🔒</span> Encrypted
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: PAY.textMuted }}>
-          <span style={{ fontSize: 12 }}>⚡</span> Instant match
-        </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 20, marginTop: 16, paddingTop: 14, borderTop: '1px solid #2A3038', position: 'relative', zIndex: 1 }}>
+        <div style={{ fontSize: 8.5, color: '#5A6472', letterSpacing: '0.06em' }}>AES-256 ENCRYPTED</div>
+        <div style={{ fontSize: 8.5, color: '#5A6472', letterSpacing: '0.06em' }}>GPS-VERIFIED</div>
       </div>
     </div>
   )
