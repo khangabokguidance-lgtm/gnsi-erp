@@ -527,22 +527,100 @@ function CheckInFlowDiagram() {
 // Face-scan viewfinder frame — decorative only (per instruction: not a
 // working camera), styled like a scanning UI with corner brackets around
 // a face outline, to reinforce that biometric verification is required.
+// Distinct "day complete" state — not a dimmed version of the active
+// scan frame, but its own premium achievement-style card: dark gradient,
+// glowing seal, subtle sparkle accents.
+function DayCompleteCard() {
+  return (
+    <div style={{
+      background: 'linear-gradient(155deg, #0B1E3D 0%, #142A52 55%, #0B1E3D 100%)',
+      borderRadius: PAY.radius, padding: '32px 20px', textAlign: 'center',
+      position: 'relative', overflow: 'hidden',
+      boxShadow: '0 12px 32px rgba(11,30,61,0.35)',
+    }}>
+      <style>{`
+        @keyframes dcSealGlow { 0%, 100% { box-shadow: 0 0 0 0 rgba(93,202,165,0.45), 0 8px 24px rgba(93,202,165,0.3); } 50% { box-shadow: 0 0 0 14px rgba(93,202,165,0), 0 8px 24px rgba(93,202,165,0.4); } }
+        @keyframes dcSparkle { 0%, 100% { opacity: 0.25; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1); } }
+        @keyframes dcShimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+      `}</style>
+
+      {/* faint sparkle accents scattered around */}
+      {[
+        { top: '14%', left: '12%', size: 5, delay: '0s' },
+        { top: '22%', left: '82%', size: 4, delay: '0.6s' },
+        { top: '72%', left: '18%', size: 4, delay: '1.1s' },
+        { top: '78%', left: '78%', size: 6, delay: '0.3s' },
+        { top: '48%', left: '6%', size: 3, delay: '0.9s' },
+      ].map((s, i) => (
+        <span key={i} style={{
+          position: 'absolute', top: s.top, left: s.left, width: s.size, height: s.size,
+          background: '#C9A24B', borderRadius: '50%', animation: `dcSparkle 2.2s ease-in-out ${s.delay} infinite`,
+        }} />
+      ))}
+
+      <div style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(93,202,165,0.14)',
+        color: '#5DCAA5', fontSize: 10.5, fontWeight: 700, padding: '4px 12px', borderRadius: 999,
+        marginBottom: 20, letterSpacing: '0.04em', border: '1px solid rgba(93,202,165,0.3)',
+      }}>
+        ATTENDANCE COMPLETE
+      </div>
+
+      {/* glowing seal */}
+      <div style={{ position: 'relative', width: 92, height: 92, margin: '0 auto 20px' }}>
+        <div style={{
+          width: 92, height: 92, borderRadius: '50%',
+          background: 'linear-gradient(155deg, #5DCAA5, #2F8F6E)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation: 'dcSealGlow 2.4s ease-in-out infinite',
+          border: '3px solid rgba(255,255,255,0.15)',
+        }}>
+          <svg width="46" height="46" viewBox="0 0 52 52" fill="none">
+            <path d="M14 27 L23 36 L40 17" stroke="#ffffff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+      </div>
+
+      <div style={{ fontWeight: 800, fontSize: 19, color: '#F3EEE0', fontFamily: FONT.display, marginBottom: 6 }}>
+        You're all set for today
+      </div>
+      <div style={{ fontSize: 12.5, color: 'rgba(243,238,224,0.65)', maxWidth: 260, margin: '0 auto', lineHeight: 1.5 }}>
+        Both check-in and check-out are verified and recorded. See you tomorrow.
+      </div>
+
+      <div style={{
+        marginTop: 22, height: 1, width: '100%', maxWidth: 200, marginLeft: 'auto', marginRight: 'auto',
+        background: 'linear-gradient(90deg, transparent, rgba(201,162,75,0.4), transparent)',
+      }} />
+
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 18, marginTop: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: 'rgba(243,238,224,0.55)' }}>
+          <span style={{ fontSize: 12 }}>🔒</span> Verified
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: 'rgba(243,238,224,0.55)' }}>
+          <span style={{ fontSize: 12 }}>📋</span> Recorded
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function FaceScanFrame({ punchState, onTap }) {
-  const label = punchState === 'open' ? 'Tap to Check Out' : punchState === 'done' ? "You're done for today" : 'Tap to Check In'
-  const disabled = punchState === 'done'
+  if (punchState === 'done') return <DayCompleteCard />
+
+  const label = punchState === 'open' ? 'Tap to Check Out' : 'Tap to Check In'
   return (
     <div
-      onClick={disabled ? undefined : onTap}
+      onClick={onTap}
       role="button"
-      aria-disabled={disabled}
       style={{
         background: `linear-gradient(180deg, ${PAY.card} 0%, #FAFBFF 100%)`,
         border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius, padding: '28px 20px',
         boxShadow: PAY.shadowRaised, textAlign: 'center', position: 'relative', overflow: 'hidden',
-        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.7 : 1,
+        cursor: 'pointer',
         transition: 'transform 0.12s ease',
       }}
-      onMouseDown={e => { if (!disabled) e.currentTarget.style.transform = 'scale(0.985)' }}
+      onMouseDown={e => { e.currentTarget.style.transform = 'scale(0.985)' }}
       onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)' }}
       onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)' }}
     >
@@ -594,17 +672,15 @@ function FaceScanFrame({ punchState, onTap }) {
           <line x1="118" y1="70" x2="126" y2="70" stroke={PAY.blue} strokeWidth="2" strokeOpacity="0.4" />
         </svg>
 
-        {!disabled && (
-          <div style={{
-            position: 'absolute', left: 14, right: 14, height: 2, borderRadius: 2,
-            background: `linear-gradient(90deg, transparent, ${PAY.blue}, transparent)`,
-            animation: 'faceScanSweep 2.6s ease-in-out infinite', zIndex: 2,
-          }} />
-        )}
+        <div style={{
+          position: 'absolute', left: 14, right: 14, height: 2, borderRadius: 2,
+          background: `linear-gradient(90deg, transparent, ${PAY.blue}, transparent)`,
+          animation: 'faceScanSweep 2.6s ease-in-out infinite', zIndex: 2,
+        }} />
       </div>
 
       <div style={{ fontSize: 11.5, color: PAY.textMuted, marginTop: 16, fontWeight: 500 }}>
-        {disabled ? 'Both check-in and check-out are complete for today' : 'Tap anywhere on this card to start face verification'}
+        Tap anywhere on this card to start face verification
       </div>
       <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: PAY.textMuted }}>

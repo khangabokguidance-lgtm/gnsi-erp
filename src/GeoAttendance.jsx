@@ -148,8 +148,12 @@ function speak(text) {
     if (!('speechSynthesis' in window)) return
     window.speechSynthesis.cancel() // don't stack overlapping announcements
     const u = new SpeechSynthesisUtterance(text)
-    u.rate = 1
-    u.pitch = 1
+    // Slightly slower and a touch higher-pitched than flat default TTS —
+    // reads as a warmer, more confident confirmation (closer to how
+    // payment apps' "Payment successful" voice line lands) rather than a
+    // robotic monotone.
+    u.rate = 0.95
+    u.pitch = 1.08
     u.volume = 1
     window.speechSynthesis.speak(u)
   } catch (e) {
@@ -921,19 +925,38 @@ function OfflineBanner({ offline, dark = false }) {
 function SuccessOverlay({ kind, label, onDone }) {
   // BUGFIX: onDone was passed as a fresh inline arrow function on every
   // parent render, and was in this effect's dependency array — so any
-  // re-render during the 1.4s window (very likely here, given active GPS
-  // tracking pings, realtime subscriptions, and the fetchMyLogs()/state
-  // updates that follow a checkout) tore down and restarted the timer
-  // from zero. If re-renders kept arriving faster than 1.4s apart, the
-  // timer could never complete, leaving this overlay stuck on screen
-  // indefinitely. Fix: stash the latest onDone in a ref and start the
-  // timer only once, on mount — re-renders no longer reset it.
+  // re-render during the display window (very likely here, given active
+  // GPS tracking pings, realtime subscriptions, and the fetchMyLogs()/
+  // state updates that follow a checkout) tore down and restarted the
+  // timer from zero. If re-renders kept arriving faster than the timer
+  // window, the overlay could get stuck on screen indefinitely. Fix:
+  // stash the latest onDone in a ref and start the timer only once, on
+  // mount — re-renders no longer reset it.
   const onDoneRef = useRef(onDone)
   onDoneRef.current = onDone
 
   useEffect(() => {
-    const t = setTimeout(() => onDoneRef.current(), 1400)
+    const t = setTimeout(() => onDoneRef.current(), 1900)
     return () => clearTimeout(t)
+  }, [])
+
+  // Small confetti burst — a handful of colored pieces flung outward from
+  // center with randomized angle/distance/rotation, purely decorative.
+  const confetti = useMemo(() => {
+    const colors = ['#1E8E3E', '#34A853', '#FBBC04', '#4285F4', '#EA4335']
+    return Array.from({ length: 18 }, (_, i) => {
+      const angle = (i / 18) * Math.PI * 2 + Math.random() * 0.4
+      const dist = 90 + Math.random() * 70
+      return {
+        id: i,
+        color: colors[i % colors.length],
+        dx: Math.cos(angle) * dist,
+        dy: Math.sin(angle) * dist,
+        rot: Math.random() * 360,
+        delay: Math.random() * 0.15,
+        size: 6 + Math.random() * 5,
+      }
+    })
   }, [])
 
   return (
@@ -943,44 +966,67 @@ function SuccessOverlay({ kind, label, onDone }) {
       onClick={() => onDoneRef.current()}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'rgba(255,255,255,0.92)',
+        background: 'linear-gradient(180deg, rgba(255,255,255,0.97) 0%, rgba(240,253,244,0.97) 100%)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        animation: 'gpay-success-fade-in 0.2s ease',
-        cursor: 'pointer',
+        animation: 'gpay-success-fade-in 0.25s ease',
+        cursor: 'pointer', overflow: 'hidden',
       }}
     >
-      <div style={{
-        width: 88, height: 88, borderRadius: '50%', background: '#1E8E3E',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        animation: 'gpay-success-pop 0.4s cubic-bezier(.34,1.56,.64,1)',
-        boxShadow: '0 4px 20px rgba(30,142,62,0.35)',
-      }}>
-        <svg width="46" height="46" viewBox="0 0 52 52" fill="none">
-          <path
-            d="M14 27 L23 36 L40 17"
-            stroke="#ffffff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"
-            pathLength="1"
-            style={{
-              strokeDasharray: 1,
-              strokeDashoffset: 1,
-              animation: 'gpay-success-draw 0.35s ease-out 0.25s forwards',
-            }}
-          />
-        </svg>
+      <div style={{ position: 'relative', width: 130, height: 130, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {/* confetti burst */}
+        {confetti.map(c => (
+          <span key={c.id} style={{
+            position: 'absolute', left: '50%', top: '50%', width: c.size, height: c.size,
+            background: c.color, borderRadius: c.id % 2 === 0 ? '50%' : 2,
+            transform: 'translate(-50%,-50%)',
+            animation: `gpay-confetti-burst 0.9s cubic-bezier(.2,.7,.3,1) ${c.delay}s both`,
+            '--dx': `${c.dx}px`, '--dy': `${c.dy}px`, '--rot': `${c.rot}deg`,
+          }} />
+        ))}
+        {/* pulsing ripple ring behind the checkmark */}
+        <div style={{
+          position: 'absolute', width: 96, height: 96, borderRadius: '50%',
+          border: '3px solid #1E8E3E', animation: 'gpay-success-ring 1.3s ease-out 0.15s infinite',
+        }} />
+        <div style={{
+          width: 96, height: 96, borderRadius: '50%',
+          background: 'linear-gradient(155deg, #1E8E3E, #14602A)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation: 'gpay-success-pop 0.45s cubic-bezier(.34,1.56,.64,1)',
+          boxShadow: '0 6px 28px rgba(30,142,62,0.4)', position: 'relative', zIndex: 1,
+        }}>
+          <svg width="50" height="50" viewBox="0 0 52 52" fill="none">
+            <path
+              d="M14 27 L23 36 L40 17"
+              stroke="#ffffff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"
+              pathLength="1"
+              style={{
+                strokeDasharray: 1,
+                strokeDashoffset: 1,
+                animation: 'gpay-success-draw 0.35s ease-out 0.3s forwards',
+              }}
+            />
+          </svg>
+        </div>
       </div>
-      <div style={{ marginTop: 18, fontSize: 17, fontWeight: 600, color: GPAY.textPrimary, fontFamily: FONT.body, animation: 'gpay-success-text-in 0.3s ease 0.35s both' }}>
+      <div style={{ marginTop: 22, fontSize: 19, fontWeight: 700, color: GPAY.textPrimary, fontFamily: FONT.body, animation: 'gpay-success-text-in 0.3s ease 0.4s both' }}>
         {kind === 'in' ? 'Punched in' : 'Punched out'}
       </div>
       {label && (
-        <div style={{ marginTop: 4, fontSize: 13, color: GPAY.textMuted, fontFamily: FONT.body, animation: 'gpay-success-text-in 0.3s ease 0.4s both' }}>
+        <div style={{ marginTop: 5, fontSize: 13.5, color: GPAY.textMuted, fontFamily: FONT.body, animation: 'gpay-success-text-in 0.3s ease 0.48s both' }}>
           {label}
         </div>
       )}
       <style>{`
         @keyframes gpay-success-fade-in { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes gpay-success-pop { 0% { transform: scale(0.5); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
+        @keyframes gpay-success-pop { 0% { transform: scale(0.5); opacity: 0; } 60% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); } }
         @keyframes gpay-success-draw { to { stroke-dashoffset: 0; } }
         @keyframes gpay-success-text-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes gpay-success-ring { 0% { transform: scale(0.8); opacity: 0.9; } 100% { transform: scale(1.6); opacity: 0; } }
+        @keyframes gpay-confetti-burst {
+          0% { transform: translate(-50%,-50%) rotate(0deg); opacity: 1; }
+          100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)); opacity: 0; }
+        }
       `}</style>
     </div>
   )
