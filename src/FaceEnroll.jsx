@@ -273,7 +273,7 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
         if (data?.error === 'duplicate_face') {
           // Surface the actual match distance so an admin can tell a
           // confident real duplicate (distance near 0) from a borderline
-          // false positive (distance just under the 0.5 threshold) —
+          // false positive (distance just under threshold) —
           // previously this said only a name, with no way to judge how
           // close the match really was.
           const distNote = typeof data.distance === 'number'

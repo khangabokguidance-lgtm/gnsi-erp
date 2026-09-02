@@ -4,8 +4,26 @@
 import * as faceapi from 'face-api.js'
 
 const MODEL_URL = '/models'          // served from public/models — see README
-export const MATCH_THRESHOLD = 0.5   // euclidean distance; lower = stricter. Tune after pilot testing.
-export const WEAK_MATCH_THRESHOLD = 0.5 // mirrors server_checkin's weak_face_match flag cutoff
+export const MATCH_THRESHOLD = 0.4   // euclidean distance; lower = stricter.
+// TIGHTENED from 0.5 to 0.4 after real-world enrollment attempts showed
+// 0.5 was too loose: multiple genuinely different staff, captured with
+// good framing/lighting (ruling out the detection-quality issues fixed
+// separately — see DETECTOR_OPTIONS/landmarksLookLikeAFace/
+// faceBoxIsComplete above), still scored in the 0.44-0.49 range against
+// each other — close enough to false-match under the old 0.5 cutoff.
+// Tightening trades the other way: some genuine matches may now score
+// closer to this new, stricter line, so a real user might occasionally
+// need a retake/re-enrollment with a clearer photo where they wouldn't
+// have before. That tradeoff was made deliberately, not accidentally —
+// if check-in verification starts failing for real enrolled users more
+// than expected, re-enrolling them with 3 clear, well-lit, fully-in-frame
+// shots is the first thing to try before considering loosening this
+// again. THE SERVER-SIDE COPY OF THIS EXACT VALUE (in server_checkin's
+// MATCH_THRESHOLD constant and its own face_descriptor_distance
+// comparison) MUST be updated to match — see
+// fix_tighten_match_threshold.sql. If the two disagree, the client's
+// preview and the server's actual decision will contradict each other.
+export const WEAK_MATCH_THRESHOLD = 0.4 // mirrors server_checkin's weak_face_match flag cutoff — kept equal to MATCH_THRESHOLD, same as before
 
 // Shared TinyFaceDetector config — used by every detectSingleFace() call in
 // this module so "make detection faster/looser" is one change, not three.
