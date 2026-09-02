@@ -527,21 +527,93 @@ function CheckInFlowDiagram() {
 // Face-scan viewfinder frame — decorative only (per instruction: not a
 // working camera), styled like a scanning UI with corner brackets around
 // a face outline, to reinforce that biometric verification is required.
-function FaceScanFrame() {
+function FaceScanFrame({ punchState, onTap }) {
+  const label = punchState === 'open' ? 'Tap to Check Out' : punchState === 'done' ? "You're done for today" : 'Tap to Check In'
+  const disabled = punchState === 'done'
   return (
-    <div style={{ background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius, padding: 20, boxShadow: PAY.shadow, textAlign: 'center' }}>
-      <div style={{ fontWeight: 700, fontSize: 13.5, color: PAY.textPrimary, fontFamily: FONT.body, marginBottom: 12 }}>Face verification required</div>
-      <svg width="120" height="120" viewBox="0 0 120 120" style={{ display: 'block', margin: '0 auto' }}>
-        {/* corner brackets */}
-        <path d="M4,24 L4,4 L24,4" stroke={PAY.blue} strokeWidth="4" fill="none" strokeLinecap="round" />
-        <path d="M96,4 L116,4 L116,24" stroke={PAY.blue} strokeWidth="4" fill="none" strokeLinecap="round" />
-        <path d="M116,96 L116,116 L96,116" stroke={PAY.blue} strokeWidth="4" fill="none" strokeLinecap="round" />
-        <path d="M24,116 L4,116 L4,96" stroke={PAY.blue} strokeWidth="4" fill="none" strokeLinecap="round" />
-        {/* simple face outline */}
-        <circle cx="60" cy="52" r="24" fill="none" stroke={PAY.textMuted} strokeWidth="2.5" />
-        <path d="M36,80 Q60,64 84,80" fill="none" stroke={PAY.textMuted} strokeWidth="2.5" strokeLinecap="round" />
-      </svg>
-      <div style={{ fontSize: 11, color: PAY.textMuted, marginTop: 10 }}>Position your face inside the frame to check in or out</div>
+    <div
+      onClick={disabled ? undefined : onTap}
+      role="button"
+      aria-disabled={disabled}
+      style={{
+        background: `linear-gradient(180deg, ${PAY.card} 0%, #FAFBFF 100%)`,
+        border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius, padding: '28px 20px',
+        boxShadow: PAY.shadowRaised, textAlign: 'center', position: 'relative', overflow: 'hidden',
+        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.7 : 1,
+        transition: 'transform 0.12s ease',
+      }}
+      onMouseDown={e => { if (!disabled) e.currentTarget.style.transform = 'scale(0.985)' }}
+      onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)' }}
+      onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)' }}
+    >
+      <style>{`
+        @keyframes faceScanSweep { 0% { top: 14%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 82%; opacity: 0; } }
+        @keyframes faceScanPulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+      `}</style>
+
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: PAY.blueBg, color: PAY.blue, fontSize: 10.5, fontWeight: 700, padding: '4px 12px', borderRadius: 999, marginBottom: 14, letterSpacing: '0.02em' }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: PAY.blue, animation: 'faceScanPulse 1.6s ease-in-out infinite' }} />
+        BIOMETRIC SECURITY
+      </div>
+
+      <div style={{ fontWeight: 800, fontSize: 15, color: PAY.textPrimary, fontFamily: FONT.display, marginBottom: 16 }}>{label}</div>
+
+      <div style={{ position: 'relative', width: 140, height: 140, margin: '0 auto' }}>
+        <svg width="140" height="140" viewBox="0 0 140 140" style={{ display: 'block', position: 'relative', zIndex: 1 }}>
+          <defs>
+            <linearGradient id="fsCorner" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor={PAY.blue} />
+              <stop offset="100%" stopColor="#1D4ED8" />
+            </linearGradient>
+            <radialGradient id="fsGlow" cx="50%" cy="45%" r="55%">
+              <stop offset="0%" stopColor={PAY.blueBg} stopOpacity="0.9" />
+              <stop offset="100%" stopColor={PAY.blueBg} stopOpacity="0" />
+            </radialGradient>
+          </defs>
+
+          {/* soft glow behind the face */}
+          <circle cx="70" cy="70" r="52" fill="url(#fsGlow)" />
+
+          {/* corner brackets, gradient + rounded, slightly inset for a tighter frame */}
+          <path d="M8,30 L8,8 L30,8" stroke="url(#fsCorner)" strokeWidth="5" fill="none" strokeLinecap="round" />
+          <path d="M110,8 L132,8 L132,30" stroke="url(#fsCorner)" strokeWidth="5" fill="none" strokeLinecap="round" />
+          <path d="M132,110 L132,132 L110,132" stroke="url(#fsCorner)" strokeWidth="5" fill="none" strokeLinecap="round" />
+          <path d="M30,132 L8,132 L8,110" stroke="url(#fsCorner)" strokeWidth="5" fill="none" strokeLinecap="round" />
+
+          {/* refined face outline — head, shoulders, subtle features */}
+          <circle cx="70" cy="58" r="27" fill="none" stroke="#94A3B8" strokeWidth="2.5" />
+          <path d="M40,104 Q70,84 100,104" fill="none" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" />
+          <circle cx="60" cy="55" r="2.2" fill="#CBD5E1" />
+          <circle cx="80" cy="55" r="2.2" fill="#CBD5E1" />
+          <path d="M64,66 Q70,70 76,66" fill="none" stroke="#CBD5E1" strokeWidth="2" strokeLinecap="round" />
+
+          {/* alignment ticks, like a real scanning UI */}
+          <line x1="70" y1="14" x2="70" y2="22" stroke={PAY.blue} strokeWidth="2" strokeOpacity="0.4" />
+          <line x1="70" y1="118" x2="70" y2="126" stroke={PAY.blue} strokeWidth="2" strokeOpacity="0.4" />
+          <line x1="14" y1="70" x2="22" y2="70" stroke={PAY.blue} strokeWidth="2" strokeOpacity="0.4" />
+          <line x1="118" y1="70" x2="126" y2="70" stroke={PAY.blue} strokeWidth="2" strokeOpacity="0.4" />
+        </svg>
+
+        {!disabled && (
+          <div style={{
+            position: 'absolute', left: 14, right: 14, height: 2, borderRadius: 2,
+            background: `linear-gradient(90deg, transparent, ${PAY.blue}, transparent)`,
+            animation: 'faceScanSweep 2.6s ease-in-out infinite', zIndex: 2,
+          }} />
+        )}
+      </div>
+
+      <div style={{ fontSize: 11.5, color: PAY.textMuted, marginTop: 16, fontWeight: 500 }}>
+        {disabled ? 'Both check-in and check-out are complete for today' : 'Tap anywhere on this card to start face verification'}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: PAY.textMuted }}>
+          <span style={{ fontSize: 12 }}>🔒</span> Encrypted
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: PAY.textMuted }}>
+          <span style={{ fontSize: 12 }}>⚡</span> Instant match
+        </div>
+      </div>
     </div>
   )
 }
@@ -2356,9 +2428,11 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
           {/* Check-in / check-out flow diagram — purely illustrative. */}
           <CheckInFlowDiagram />
 
-          {/* Face-scan viewfinder frame — decorative only, per instruction;
-              not a working camera. */}
-          <FaceScanFrame />
+          {/* Face-scan viewfinder — now a real shortcut: tapping it opens
+              the same Check-In/Check-Out tab (GeoAttendance) that Quick
+              Actions uses, so it triggers a real face scan + GPS punch,
+              not just a decorative graphic. */}
+          <FaceScanFrame punchState={punchState} onTap={() => loggedInStaff && setTab('checkin')} />
         </div>
       ) : (
         <>
