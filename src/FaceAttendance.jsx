@@ -56,6 +56,32 @@ const VAULT = {
   ok: '#5DCAA5',
 }
 
+// PAY — the "premium payment app" theme (Stripe/Razorpay-style): clean
+// white cards, blue/green accents, soft shadows. Used for the redesigned
+// Home and Payroll screens; VAULT above stays untouched for everything
+// not yet migrated, so both can coexist without one breaking the other.
+const PAY = {
+  bg: '#F7F9FC',
+  card: '#FFFFFF',
+  cardBorder: '#EAEEF3',
+  shadow: '0 1px 3px rgba(16,24,40,0.06), 0 1px 2px rgba(16,24,40,0.04)',
+  shadowRaised: '0 4px 16px rgba(16,24,40,0.08), 0 1px 3px rgba(16,24,40,0.06)',
+  textPrimary: '#0F172A',
+  textSecondary: '#475569',
+  textMuted: '#94A3B8',
+  blue: '#2563EB',
+  blueBg: '#EFF6FF',
+  green: '#16A34A',
+  greenBg: '#F0FDF4',
+  red: '#DC2626',
+  redBg: '#FEF2F2',
+  amber: '#D97706',
+  amberBg: '#FFFBEB',
+  divider: '#F1F5F9',
+  radius: 16,
+  radiusSm: 10,
+}
+
 const fmtRupee = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`
 const fmtDate  = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const fmtTime  = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '—'
@@ -422,6 +448,27 @@ function LateFinesView({ staffId, isAdmin, staffList }) {
 
 const gross = (s) => (Number(s.basic_salary)||0) + (Number(s.seniority_allowance)||0) + (Number(s.loyalty_bonus)||0) + (Number(s.role_bonus)||0)
 
+// PayrollView's own report export — a CSV of exactly what's on screen for
+// the selected month/staff filter, including any admin adjustment already
+// saved. Separate from Salary.jsx's exportReportCSV, which exports saved
+// register rows across a date range rather than this live single-month
+// preview.
+function exportPayrollPreviewCSV(rows, month) {
+  const headers = ['Staff','Designation','Present','Late Days','Half Day','Absent','Early Out','Late Ded.','Half Day Ded.','Absent Ded.','Early Ded.','Admin Adj.','Advance','Gross','Est. Net']
+  const body = rows.map(r => [
+    r.staff.name, r.staff.designation || r.staff.department || '',
+    r.d.present, r.d.lateDays, r.d.halfDay, r.d.absent, r.d.earlyOut,
+    r.lateDed, r.halfDayDed, r.absentDed, r.earlyDed, r.adminDed, r.advDed,
+    r.gross, r.net,
+  ])
+  const csv = [headers, ...body].map(row => row.map(v => `"${v}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a'); a.href = url; a.download = `GNSI_Payroll_Preview_${month}.csv`; a.click()
+  URL.revokeObjectURL(url)
+}
+
+
 function PayrollView({ staffId, isAdmin, staffList }) {
   const [month, setMonth] = useState(currentMonth())
   const [staffFilter, setStaffFilter] = useState(isAdmin ? 'all' : String(staffId))
@@ -430,6 +477,24 @@ function PayrollView({ staffId, isAdmin, staffList }) {
   const [staffFull, setStaffFull] = useState([])
   const [advMap, setAdvMap] = useState({})
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null)
+  // Inline admin-deduction adjustment — writes directly into the salary
+  // table (creating the row for this staff/month if it doesn't exist yet)
+  // rather than waiting for Salary.jsx to generate the register first.
+  // Uses the exact same row shape Salary.jsx's own save does, built from
+  // this view's already-computed late/absent/early/half-day deductions,
+  // so the created row is internally consistent rather than a partial one
+  // that Salary.jsx would later have to reconcile.
+  const [adjustingId, setAdjustingId] = useState(null)
+  const [adjustForm, setAdjustForm] = useState({ amount: '', note: '' })
+  const [savingAdjust, setSavingAdjust] = useState(false)
+  const [existingSalaryRows, setExistingSalaryRows] = useState({}) // staff_id -> existing salary row for `month`, if any
+
+  const fetchExistingSalary = useCallback(async () => {
+    const { data } = await supabase.from('salary').select('*').eq('month', month)
+    setExistingSalaryRows(Object.fromEntries((data || []).map(r => [r.staff_id, r])))
+  }, [month])
+  useEffect(() => { if (isAdmin) fetchExistingSalary() }, [isAdmin, fetchExistingSalary])
 
   const fetchRules = useCallback(async () => {
     const { data } = await supabase
@@ -446,11 +511,23 @@ function PayrollView({ staffId, isAdmin, staffList }) {
     setLoading(true)
     const staffIds = isAdmin ? null : [staffId]
 
+    // BUGFIX: this used to hardcode `${month}-31` as the end of the
+    // range — an invalid date for any 28/29/30-day month (April, June,
+    // September, November, February). Whether Postgres rejected that
+    // literal outright or coerced it unpredictably, the net effect was a
+    // query that could silently return nothing for exactly the months
+    // this bug affects — which is why "Present" showed 0 for staff who
+    // really did check in during September. Compute the real last day of
+    // the month instead.
+    const [y, m] = month.split('-').map(Number)
+    const lastDay = new Date(y, m, 0).getDate() // day 0 of next month = last day of this month
+    const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`
+
     let attQ = supabase
       .from('staff_geo_attendance')
       .select('staff_id, date, late_minutes, status')
       .gte('date', `${month}-01`)
-      .lte('date', `${month}-31`)
+      .lte('date', monthEnd)
     if (!isAdmin) attQ = attQ.eq('staff_id', staffId)
     else if (staffFilter !== 'all') attQ = attQ.eq('staff_id', staffFilter)
 
@@ -462,11 +539,23 @@ function PayrollView({ staffId, isAdmin, staffList }) {
     if (!isAdmin) advQ = advQ.eq('staff_id', staffId)
     else if (staffFilter !== 'all') advQ = advQ.eq('staff_id', staffFilter)
 
-    const [{ data: att }, { data: sf }, { data: adv }] = await Promise.all([attQ, staffQ, advQ])
-    setAttRows(att || [])
-    setStaffFull(sf || [])
+    // BUGFIX: errors from all three queries used to be destructured away
+    // and never checked — a failed attendance query silently rendered as
+    // "no attendance this month" (Present: 0 everywhere) with no
+    // indication anything had gone wrong. Now surfaced as a visible error
+    // state instead of a quietly-wrong table.
+    const [attRes, staffRes, advRes] = await Promise.all([attQ, staffQ, advQ])
+    const firstError = attRes.error || staffRes.error || advRes.error
+    if (firstError) {
+      console.error('PayrollView fetchAll error:', firstError)
+      setFetchError(firstError.message)
+    } else {
+      setFetchError(null)
+    }
+    setAttRows(attRes.data || [])
+    setStaffFull(staffRes.data || [])
     const am = {}
-    ;(adv || []).forEach(a => {
+    ;(advRes.data || []).forEach(a => {
       const rem = Number(a.amount) - Number(a.repaid_amount || 0)
       const emi = Number(a.repay_months) > 0 ? Math.ceil(rem / Number(a.repay_months)) : rem
       am[a.staff_id] = (am[a.staff_id] || 0) + Math.min(emi, rem)
@@ -517,22 +606,75 @@ function PayrollView({ staffId, isAdmin, staffList }) {
       const earlyDed = d.earlyOut * EARLY
       const halfDayDed = d.halfDay * HALFDAY
       const advDed = advMap[s.id] || 0
+      // Fold in any admin_deduction already saved for this staff/month —
+      // otherwise saving an adjustment and reloading would show a net
+      // figure that silently ignores what was just stored.
+      const adminDed = Number(existingSalaryRows[s.id]?.admin_deduction || 0)
       const g = gross(s)
-      const totalDed = lateDed + absentDed + earlyDed + halfDayDed + advDed
+      const totalDed = lateDed + absentDed + earlyDed + halfDayDed + advDed + adminDed
       const net = g - totalDed
-      return { staff: s, d, lateDed, absentDed, earlyDed, halfDayDed, advDed, gross: g, totalDed, net }
+      return { staff: s, d, lateDed, absentDed, earlyDed, halfDayDed, advDed, adminDed, gross: g, totalDed, net }
     }).sort((a, b) => (a.staff.name || '').localeCompare(b.staff.name || ''))
-  }, [staffFull, perDay, advMap, rules])
+  }, [staffFull, perDay, advMap, rules, existingSalaryRows])
 
   const monthTotals = useMemo(() => rows.reduce((acc, r) => ({
     gross: acc.gross + r.gross, ded: acc.ded + r.totalDed, net: acc.net + r.net,
   }), { gross: 0, ded: 0, net: 0 }), [rows])
+
+  const startAdjust = (row) => {
+    setAdjustingId(row.staff.id)
+    setAdjustForm({ amount: String(existingSalaryRows[row.staff.id]?.admin_deduction || ''), note: '' })
+  }
+
+  const saveAdjust = async (row) => {
+    setSavingAdjust(true)
+    const amount = Number(adjustForm.amount) || 0
+    const existing = existingSalaryRows[row.staff.id]
+    // Recompute using this row's OWN already-correct late/absent/early/
+    // half-day deductions plus the new admin_deduction, rather than
+    // trusting any stale value from `existing` — this view's live
+    // attendance numbers are the source of truth for those fields even
+    // when a salary row already exists (e.g. it was created by an
+    // earlier partial save here, before more of the month's attendance
+    // had come in).
+    const baseDed = row.lateDed + row.absentDed + row.earlyDed + row.halfDayDed + row.advDed
+    const perfAdj = Number(existing?.performance_adjustment || 0)
+    const totDed = baseDed + amount + (perfAdj < 0 ? -perfAdj : 0)
+    const payload = {
+      staff_id: row.staff.id, month,
+      basic_salary: row.staff.basic_salary || 0,
+      seniority_allowance: row.staff.seniority_allowance || 0,
+      loyalty_bonus: row.staff.loyalty_bonus || 0,
+      role_bonus: row.staff.role_bonus || 0,
+      allowance: (row.staff.seniority_allowance || 0) + (row.staff.loyalty_bonus || 0) + (row.staff.role_bonus || 0),
+      advance_deduction: row.advDed,
+      late_deduction: row.lateDed + row.halfDayDed, // Salary.jsx has no separate half-day column — folded into late_deduction so nothing is silently dropped
+      admin_deduction: amount,
+      pf_deduction: existing?.pf_deduction || 0,
+      performance_adjustment: perfAdj,
+      deduction: totDed,
+      net_salary: row.gross + (perfAdj > 0 ? perfAdj : 0) - totDed,
+      status: existing?.status || 'Unpaid',
+      payment_mode: existing?.payment_mode || 'Cash',
+    }
+    const { error } = await supabase.from('salary').upsert([payload], { onConflict: 'staff_id,month' })
+    setSavingAdjust(false)
+    if (error) { alert('Could not save adjustment: ' + error.message); return }
+    setAdjustingId(null)
+    await fetchExistingSalary()
+  }
 
   return (
     <div style={S.card}>
       <p style={{ fontSize: 12, color: COLOR.slate, margin: '0 0 14px' }}>
         Live estimate from daily attendance — this is a preview. The staff still get paid via the salary register that Salary.jsx saves (Auto-Generate Payroll there uses these same daily rates).
       </p>
+
+      {fetchError && (
+        <div style={{ background: COLOR.dangerBg, border: `1px dashed ${COLOR.danger}`, borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: COLOR.danger }}>
+          ⚠️ Could not load attendance data: {fetchError}
+        </div>
+      )}
 
       {rules ? (
         <div style={{ background: '#fffbeb', border: '1px dashed #fbbf24', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#92400e' }}>
@@ -552,6 +694,9 @@ function PayrollView({ staffId, isAdmin, staffList }) {
             {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         )}
+        {isAdmin && (
+          <button onClick={() => exportPayrollPreviewCSV(rows, month)} style={{ ...S.btn(COLOR.sage), padding: '8px 14px', fontSize: 12 }}>⬇ Export report</button>
+        )}
         <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: COLOR.ink }}>
           Est. net payable: {fmtRupee(monthTotals.net)}
         </div>
@@ -561,17 +706,18 @@ function PayrollView({ staffId, isAdmin, staffList }) {
         <p style={{ color: COLOR.slate, textAlign: 'center', padding: 24 }}>Loading…</p>
       ) : (
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1200 }}>
             <thead>
               <tr>
-                {['Staff', 'Present', 'Late Days', 'Half Day', 'Absent', 'Early Out', 'Late Ded.', 'Half Day Ded.', 'Absent Ded.', 'Early Ded.', 'Advance', 'Gross', 'Est. Net'].map(h => (
-                  <th key={h} style={S.th}>{h}</th>
-                ))}
+                {['Staff', 'Present', 'Late Days', 'Half Day', 'Absent', 'Early Out', 'Late Ded.', 'Half Day Ded.', 'Absent Ded.', 'Early Ded.', 'Admin Adj.', 'Advance', 'Gross', 'Est. Net']
+                  .concat(isAdmin ? ['Action'] : [])
+                  .map((h, i) => <th key={i} style={S.th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {rows.map(r => (
-                <tr key={r.staff.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <React.Fragment key={r.staff.id}>
+                <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                   <td style={S.td}>
                     <div style={{ fontWeight: 700 }}>{r.staff.name}</div>
                     <div style={{ fontSize: 10.5, color: COLOR.slate }}>{r.staff.designation || r.staff.department || ''}</div>
@@ -587,17 +733,51 @@ function PayrollView({ staffId, isAdmin, staffList }) {
                   <td style={{ ...S.td, color: COLOR.danger }}>{r.halfDayDed ? fmtRupee(r.halfDayDed) : '—'}</td>
                   <td style={{ ...S.td, color: COLOR.danger }}>{r.absentDed ? fmtRupee(r.absentDed) : '—'}</td>
                   <td style={{ ...S.td, color: COLOR.danger }}>{r.earlyDed ? fmtRupee(r.earlyDed) : '—'}</td>
+                  <td style={{ ...S.td, color: COLOR.danger }}>{r.adminDed ? fmtRupee(r.adminDed) : '—'}</td>
                   <td style={{ ...S.td, color: COLOR.danger }}>{r.advDed ? fmtRupee(r.advDed) : '—'}</td>
                   <td style={S.td}>{fmtRupee(r.gross)}</td>
                   <td style={{ ...S.td, fontWeight: 800, color: COLOR.sageDeep }}>{fmtRupee(r.net)}</td>
+                  {isAdmin && (
+                    <td style={S.td}>
+                      <button onClick={() => adjustingId === r.staff.id ? setAdjustingId(null) : startAdjust(r)} style={{ ...S.btnSm(COLOR.ink), fontSize: 11 }}>
+                        {r.adminDed ? 'Edit adj.' : '+ Adjust'}
+                      </button>
+                    </td>
+                  )}
                 </tr>
+                {adjustingId === r.staff.id && (
+                  <tr style={{ background: COLOR.parchment }}>
+                    <td colSpan={isAdmin ? 15 : 14} style={{ padding: '10px 14px' }}>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: COLOR.slate, marginBottom: 2 }}>Admin adjustment (₹)</div>
+                          <input type="number" value={adjustForm.amount}
+                            onChange={e => setAdjustForm(f => ({ ...f, amount: e.target.value }))}
+                            placeholder="0" style={{ ...S.input, width: 120 }} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 180 }}>
+                          <div style={{ fontSize: 11, color: COLOR.slate, marginBottom: 2 }}>Reason</div>
+                          <input type="text" value={adjustForm.note}
+                            onChange={e => setAdjustForm(f => ({ ...f, note: e.target.value }))}
+                            placeholder="e.g. bonus, correction, fine" style={{ ...S.input, width: '100%' }} />
+                        </div>
+                        <button onClick={() => saveAdjust(r)} disabled={savingAdjust} style={S.btnSm(COLOR.sageDeep)}>{savingAdjust ? '⏳' : '💾 Save'}</button>
+                        <button onClick={() => setAdjustingId(null)} style={S.btnSm(COLOR.slate)}>Cancel</button>
+                      </div>
+                      <div style={{ fontSize: 10.5, color: COLOR.slate, marginTop: 6 }}>
+                        This writes directly to this staff's payroll register for {month} — creating it now if Salary.jsx hasn't generated it yet. A positive number deducts; use a negative number to add a bonus.
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               ))}
-              {!rows.length && <tr><td colSpan="13" style={{ padding: 32, textAlign: 'center', color: COLOR.slate }}>No staff/attendance data for this month.</td></tr>}
+              {!rows.length && <tr><td colSpan={isAdmin ? 15 : 14} style={{ padding: 32, textAlign: 'center', color: COLOR.slate }}>No staff/attendance data for this month.</td></tr>}
             </tbody>
             {rows.length > 0 && (
               <tfoot>
                 <tr style={{ borderTop: `2px solid ${COLOR.rule}`, fontWeight: 800 }}>
-                  <td style={S.td} colSpan={11}>Total</td>
+                  <td style={S.td} colSpan={12}>Total</td>
                   <td style={S.td}>{fmtRupee(monthTotals.gross)}</td>
                   <td style={{ ...S.td, color: COLOR.sageDeep }}>{fmtRupee(monthTotals.net)}</td>
                 </tr>
@@ -1256,6 +1436,36 @@ function VaultTile({ icon, label, badge, accent = false, onClick }) {
   )
 }
 
+// PayTile — same shape as VaultTile, restyled for the white payment-app
+// Home screen. VaultTile itself is left untouched since other screens
+// not yet migrated still use it.
+function PayTile({ icon, label, badge, accent = false, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius,
+      padding: '18px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 9,
+      cursor: 'pointer', position: 'relative', fontFamily: FONT.body,
+      boxShadow: accent ? PAY.shadowRaised : PAY.shadow,
+      transition: 'transform 0.12s ease, box-shadow 0.12s ease',
+    }}
+      onMouseDown={e => e.currentTarget.style.transform = 'scale(0.97)'}
+      onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+      onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+    >
+      {badge > 0 && (
+        <span style={{ position: 'absolute', top: 8, right: 10, background: PAY.red, color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 99, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', fontFamily: FONT.body }}>
+          {badge}
+        </span>
+      )}
+      <span style={{
+        width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 18, background: accent ? PAY.blue : PAY.blueBg,
+      }}>{icon}</span>
+      <span style={{ fontSize: 11, fontWeight: 600, color: PAY.textSecondary, textAlign: 'center', lineHeight: 1.25, fontFamily: FONT.body, letterSpacing: '0.01em' }}>{label}</span>
+    </button>
+  )
+}
+
 // Smaller, lighter secondary shortcut tile.
 function QuickActionTile({ icon, label, onClick, disabled = false }) {
   return (
@@ -1497,27 +1707,27 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
 
       {tab === 'home' ? (
         <div style={{
-          background: VAULT.bg, margin: '-18px -16px 0', padding: '18px 16px 28px',
+          background: PAY.bg, margin: '-18px -16px 0', padding: '18px 16px 28px',
           minHeight: 'calc(100vh - 140px)', boxSizing: 'border-box',
         }}>
-          {/* Check-in status card — the Vault's brushed-gold focal point */}
+          {/* Check-in status card — white, blue/green accent, soft shadow */}
           {loggedInStaff && (
             <div style={{
-              background: VAULT.bgRaised, border: `1px solid ${VAULT.goldBorder}`, borderRadius: 14,
-              padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              marginBottom: 18,
+              background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius,
+              padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              marginBottom: 18, boxShadow: PAY.shadowRaised,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
                   width: 10, height: 10, borderRadius: '50%',
-                  background: punchState === 'open' ? VAULT.ok : punchState === 'done' ? COLOR.brass : '#7d8ba3',
-                  boxShadow: punchState === 'open' ? `0 0 8px ${VAULT.ok}99` : 'none',
+                  background: punchState === 'open' ? PAY.green : punchState === 'done' ? PAY.amber : PAY.textMuted,
+                  boxShadow: punchState === 'open' ? `0 0 8px ${PAY.green}66` : 'none',
                 }} />
                 <div>
-                  <div style={{ color: VAULT.textPrimary, fontSize: 13, fontWeight: 700, fontFamily: FONT.body }}>
+                  <div style={{ color: PAY.textPrimary, fontSize: 14, fontWeight: 700, fontFamily: FONT.body }}>
                     {punchState === 'open' ? 'Checked in' : punchState === 'done' ? 'Done for today' : 'Not checked in yet'}
                   </div>
-                  <div style={{ color: VAULT.textMuted, fontSize: 11, marginTop: 2, fontFamily: FONT.body }}>
+                  <div style={{ color: PAY.textMuted, fontSize: 11.5, marginTop: 2, fontFamily: FONT.body }}>
                     {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short' })}
                   </div>
                 </div>
@@ -1526,11 +1736,12 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
                 onClick={() => loggedInStaff && setTab('checkin')}
                 disabled={punchState === 'done'}
                 style={{
-                  background: punchState === 'done' ? '#3a4762' : COLOR.brass,
-                  color: punchState === 'done' ? VAULT.textMuted : COLOR.ink,
-                  fontSize: 11.5, fontWeight: 700,
-                  padding: '9px 16px', borderRadius: 8, border: 'none',
+                  background: punchState === 'done' ? PAY.divider : punchState === 'open' ? PAY.red : PAY.blue,
+                  color: punchState === 'done' ? PAY.textMuted : '#fff',
+                  fontSize: 12, fontWeight: 700,
+                  padding: '10px 18px', borderRadius: 10, border: 'none',
                   cursor: punchState === 'done' ? 'default' : 'pointer', fontFamily: FONT.body,
+                  boxShadow: punchState === 'done' ? 'none' : '0 2px 8px rgba(37,99,235,0.25)',
                 }}
               >
                 {punchState === 'open' ? 'Check out' : punchState === 'done' ? 'Completed' : 'Check in'}
@@ -1540,28 +1751,28 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
 
           {isAdmin && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 18 }}>
-              <div style={{ background: VAULT.panel, border: `1px solid ${VAULT.panelBorder}`, borderRadius: 12, textAlign: 'center', padding: '14px 8px' }}>
-                <div style={{ fontSize: 20, fontWeight: 700, color: VAULT.ok, fontFamily: FONT.display }}>{counts.approved}</div>
-                <div style={{ fontSize: 10, color: VAULT.textMuted, fontWeight: 700, marginTop: 2, letterSpacing: '0.02em' }}>Enrolled</div>
+              <div style={{ background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radiusSm, textAlign: 'center', padding: '14px 8px', boxShadow: PAY.shadow }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: PAY.green, fontFamily: FONT.display }}>{counts.approved}</div>
+                <div style={{ fontSize: 10, color: PAY.textMuted, fontWeight: 700, marginTop: 2, letterSpacing: '0.02em' }}>Enrolled</div>
               </div>
-              <div style={{ background: VAULT.panel, border: `1px solid ${VAULT.panelBorder}`, borderRadius: 12, textAlign: 'center', padding: '14px 8px' }}>
-                <div style={{ fontSize: 20, fontWeight: 700, color: COLOR.warn, fontFamily: FONT.display }}>{counts.pending}</div>
-                <div style={{ fontSize: 10, color: VAULT.textMuted, fontWeight: 700, marginTop: 2, letterSpacing: '0.02em' }}>Pending</div>
+              <div style={{ background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radiusSm, textAlign: 'center', padding: '14px 8px', boxShadow: PAY.shadow }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: PAY.amber, fontFamily: FONT.display }}>{counts.pending}</div>
+                <div style={{ fontSize: 10, color: PAY.textMuted, fontWeight: 700, marginTop: 2, letterSpacing: '0.02em' }}>Pending</div>
               </div>
-              <div style={{ background: VAULT.panel, border: `1px solid ${VAULT.panelBorder}`, borderRadius: 12, textAlign: 'center', padding: '14px 8px' }}>
-                <div style={{ fontSize: 20, fontWeight: 700, color: COLOR.danger, fontFamily: FONT.display }}>{counts.none}</div>
-                <div style={{ fontSize: 10, color: VAULT.textMuted, fontWeight: 700, marginTop: 2, letterSpacing: '0.02em' }}>Not enrolled</div>
+              <div style={{ background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radiusSm, textAlign: 'center', padding: '14px 8px', boxShadow: PAY.shadow }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: PAY.red, fontFamily: FONT.display }}>{counts.none}</div>
+                <div style={{ fontSize: 10, color: PAY.textMuted, fontWeight: 700, marginTop: 2, letterSpacing: '0.02em' }}>Not enrolled</div>
               </div>
             </div>
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
             {primaryTiles.map((t, i) => (
-              <VaultTile key={t.key} icon={t.icon} label={t.label} badge={t.badge} accent={i === 0} onClick={() => setTab(t.key)} />
+              <PayTile key={t.key} icon={t.icon} label={t.label} badge={t.badge} accent={i === 0} onClick={() => setTab(t.key)} />
             ))}
           </div>
 
-          <div style={{ fontSize: 11, fontWeight: 700, color: VAULT.textMuted, letterSpacing: '0.08em', textTransform: 'uppercase', margin: '22px 0 12px 2px', fontFamily: FONT.body }}>Quick actions</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: PAY.textMuted, letterSpacing: '0.08em', textTransform: 'uppercase', margin: '22px 0 12px 2px', fontFamily: FONT.body }}>Quick actions</div>
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${quickActions.length},1fr)`, gap: 10 }}>
             {quickActions.map(q => (
               <button key={q.key} onClick={q.disabled ? undefined : q.onClick} disabled={q.disabled} style={{
@@ -1571,10 +1782,10 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
               }}>
                 <span style={{
                   width: 44, height: 44, borderRadius: '50%',
-                  background: 'rgba(201,162,75,0.1)', border: `1px solid ${VAULT.panelBorder}`,
+                  background: PAY.card, border: `1px solid ${PAY.cardBorder}`, boxShadow: PAY.shadow,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
                 }}>{q.icon}</span>
-                <span style={{ fontSize: 10.5, fontWeight: 600, color: VAULT.tileLabel, textAlign: 'center', lineHeight: 1.2, fontFamily: FONT.body }}>{q.label}</span>
+                <span style={{ fontSize: 10.5, fontWeight: 600, color: PAY.textSecondary, textAlign: 'center', lineHeight: 1.2, fontFamily: FONT.body }}>{q.label}</span>
               </button>
             ))}
           </div>
