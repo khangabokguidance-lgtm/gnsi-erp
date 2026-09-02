@@ -1782,14 +1782,32 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
 
     if (error) { showToast('❌ ' + error.message, 'err'); return }
 
-    if (!data.success) {
+    // BUGFIX: server_checkout's own early rejections (unauthorized,
+    // not_found_or_already_out) return {ok:false,...}, while the later
+    // face-verification rejections return {success:false,...} — an
+    // inconsistency in the function itself. This code only ever checked
+    // data.success, so an {ok:false} response's real error/message never
+    // surfaced — showing a bare "Checkout failed" toast with no
+    // indication of what actually happened. Check both shapes explicitly.
+    const failed = data?.success === false || data?.ok === false
+    if (failed) {
       const msgs = {
-        face_not_enrolled: '🧑‍💼 Face not enrolled or not yet approved — contact admin',
-        face_mismatch:     '❌ Face did not match your enrolled profile — try again',
-        liveness_missing:  '❌ Liveness check missing — try again',
-        liveness_failed:   '❌ Liveness check expired or invalid — try again',
+        face_not_enrolled:        '🧑‍💼 Face not enrolled or not yet approved — contact admin',
+        face_mismatch:            '❌ Face did not match your enrolled profile — try again',
+        liveness_missing:         '❌ Liveness check missing — try again',
+        liveness_failed:          '❌ Liveness check expired or invalid — try again',
+        unauthorized:             '❌ Not authorized for this checkout — please refresh and try again',
+        not_found_or_already_out: 'ℹ️ Already checked out (or this session ended) — refreshing…',
       }
-      showToast(msgs[data.error] || `❌ ${data.message || 'Checkout failed'}`, 'warn')
+      showToast(msgs[data.error] || `❌ ${data.message || `Checkout failed (${data?.error || 'unknown reason'})`}`, 'warn')
+      // A stale/already-closed record means our local "still tracking"
+      // state is wrong — refresh from the server instead of leaving the
+      // UI showing an active Check-out button for a shift that's already
+      // closed.
+      if (data?.error === 'not_found_or_already_out') {
+        if (punchTarget?.id) await fetchTargetData(punchTarget.id)
+        else await fetchMyLogs()
+      }
       return
     }
 
