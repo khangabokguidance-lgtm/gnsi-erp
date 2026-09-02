@@ -10,7 +10,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from './supabase'
-import { loadFaceModels, extractDescriptor, averageDescriptors, matchDescriptor, avgEyeAspectRatio, detectFaceWithLandmarks, countFacesInFrame, assessCaptureConsistency } from './faceEngine'
+import { loadFaceModels, extractDescriptor, averageDescriptors, matchDescriptor, avgEyeAspectRatio, detectFaceWithLandmarks, countFacesInFrame, assessCaptureConsistency, assessFrameQuality } from './faceEngine'
 
 const CAPTURES_NEEDED = 3
 const BLINK_EAR_THRESHOLD = 0.28   // loosened from 0.22 — real faces/cameras often sit higher than the textbook default
@@ -124,6 +124,33 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
     setCapturing(true)
     setError('')
     try {
+      // BUGFIX: assessFrameQuality() already existed in faceEngine.js
+      // specifically to catch overexposed/backlit frames (a bright light
+      // source or window behind/near the camera) — exactly the scenario
+      // where a photo of a wall/ceiling/signage under harsh lighting got
+      // detected as "a face" (DETECTOR_OPTIONS' scoreThreshold is
+      // deliberately loosened to 0.35 for mediocre-lighting tolerance,
+      // which trades off against false positives on bright non-face
+      // regions) and produced a garbage descriptor that then matched an
+      // unrelated staff member's real enrollment. This check was defined
+      // but never actually called from the capture flow — wiring it in
+      // here rejects a bad-lighting frame before detection is even
+      // attempted, rather than letting a false-positive detection through
+      // to the duplicate-face check.
+      const quality = assessFrameQuality(videoRef.current)
+      if (!quality.ok) {
+        const messages = {
+          too_dark: 'Too dark — move to better lighting and try again.',
+          too_bright: 'Too bright — point the camera away from direct light and try again.',
+          backlit: 'Strong light behind you — face a light source instead of having it behind you, then try again.',
+          no_frame: 'Camera not ready — try again in a moment.',
+        }
+        notify(messages[quality.reason] || 'Lighting conditions are not suitable — try again.', 'err')
+        capturingRef.current = false
+        setCapturing(false)
+        return
+      }
+
       // Reject a capture attempt outright if more than one face is visible
       // right now — otherwise face-api.js's detectSingleFace would silently
       // pick one of the faces and the enrollment could end up keyed to the
