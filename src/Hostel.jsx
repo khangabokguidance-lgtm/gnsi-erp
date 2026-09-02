@@ -5474,6 +5474,38 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           })()}
         </div>
         <div style={card}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 4px', fontFamily: 'Georgia, serif' }}>Today's Snapshot — Chart</h3>
+          <p style={{ fontSize: '11px', color: MD.color.onSurfaceVariant, margin: '0 0 18px' }}>Same figures as the tally, at a glance</p>
+          {(() => {
+            const chartItems = [
+              { label: 'Present', value: presentCount, color: MD.color.success },
+              { label: 'Absent', value: absentCount, color: MD.color.error },
+              { label: 'Leave', value: leaveToday.length, color: MD.color.primary },
+              { label: 'Sickbay', value: sickbayToday.length, color: '#7c3aed' },
+              { label: 'Unmarked', value: unmarkedCount, color: MD.color.secondary },
+              { label: 'Discipline', value: disciplineOpen.length, color: MD.color.error },
+              { label: 'Repairs', value: maintenanceOpen.length, color: '#a8842f' },
+              { label: 'Doubt', value: myDoubtTasks.length, color: '#b45309' },
+            ]
+            const max = Math.max(1, ...chartItems.map(i => i.value))
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {chartItems.map(item => (
+                  <div key={item.label}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, marginBottom: 3 }}>
+                      <span style={{ color: MD.color.onSurfaceVariant, fontWeight: 600 }}>{item.label}</span>
+                      <span style={{ color: item.color, fontWeight: 800 }}>{item.value}</span>
+                    </div>
+                    <div style={{ background: MD.color.surfaceDim, borderRadius: 999, height: 9, overflow: 'hidden' }}>
+                      <div style={{ width: `${(item.value / max) * 100}%`, height: '100%', background: item.color, borderRadius: 999, transition: 'width 0.3s ease' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+        </div>
+        <div style={card}>
           <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 16px', fontFamily: 'Georgia, serif' }}>Attention Required</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {unmarkedCount > 0 && (
@@ -8656,6 +8688,7 @@ function Hostel() {
     const t = initialParams?.get('tab')
     return t && VALID_TABS.includes(t) ? t : 'hmdashboard'
   })
+  const [menuOpen, setMenuOpen] = useState(false) // hamburger dropdown, top-right of the header — replaces the old always-visible tab bar/grid
   const [students, setStudents] = useState([])
   const [staffProfiles, setStaffProfiles] = useState([])
   const [dataLoading, setDataLoading] = useState(true)
@@ -8801,7 +8834,7 @@ function Hostel() {
         marginBottom: mobile ? '16px' : '22px', position: 'relative', overflow: 'hidden',
       }}>
         <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '3px', background: `linear-gradient(90deg, ${MD.color.secondary}, ${MD.color.secondary}00 75%)` }} />
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
           <div>
             <div style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase', color: MD.color.secondary, marginBottom: '4px' }}>
               GNSI · Boarding Administration
@@ -8810,96 +8843,56 @@ function Hostel() {
               Hostel Management
             </h1>
           </div>
-          <p style={{ color: 'rgba(255,255,255,0.72)', fontSize: mobile ? '12px' : '13px', margin: 0, fontWeight: '500', textAlign: 'right' }}>
-            {dataLoading
-              ? <span style={{ color: MD.color.secondary, fontWeight: 700 }}>Loading…</span>
-              : <span style={{ fontWeight: 700 }}>{students.length} students · {staffProfiles.length} staff</span>
-            }
-          </p>
-        </div>
-        <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: mobile ? '11px' : '12px', margin: '8px 0 0', fontWeight: '500', letterSpacing: '0.01em' }}>
-          {mobile ? 'Allotments · Schedule · Duty · Discipline · Sickbay · House · Kitchen · Roll Call · Leave · Dashboard · Repairs · Journal' : 'Allotments · Schedule · Night Duty · Discipline · Sickbay · House · Kitchen'}
-        </p>
-      </div>
-      {/* Desktop/Tablet Tab Bar — quiet register strip, gold underline marks the active section */}
-      {!mobile && (
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: '2px', marginBottom: '24px',
-          borderBottom: `1px solid ${MD.color.outlineVariant}`, paddingBottom: 0,
-        }}>
-          {TABS.map(t => {
-            const isActive = activeTab === t.id
-            return (
-              <button key={t.id} onClick={() => changeTab(t.id)} style={{
-                padding: '9px 14px 10px',
-                border: 'none',
-                borderBottom: isActive ? `2px solid ${MD.color.secondary}` : '2px solid transparent',
-                marginBottom: '-1px',
-                background: 'transparent',
-                color: isActive ? MD.color.primary : MD.color.onSurfaceVariant,
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontFamily: FONT_BODY,
-                fontWeight: isActive ? 700 : 500,
-                whiteSpace: 'nowrap',
-                textAlign: 'center',
-                transition: 'color .15s, border-color .15s',
-              }}>{t.label}</button>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Mobile Tab Grid — quiet outlined cards, navy fill only on the active tab */}
-      {mobile && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr',
-          gap: '8px',
-          marginBottom: '18px',
-          position: 'sticky',
-          top: 0,
-          zIndex: 50,
-          background: MD.color.surfaceDim,
-          paddingTop: '8px',
-          paddingBottom: '10px',
-          marginTop: '-8px',
-        }}>
-          {TABS.map(t => {
-            const isActive = activeTab === t.id
-            return (
-              <button
-                key={t.id}
-                onClick={() => changeTab(t.id)}
-                style={{
-                  padding: '9px 6px',
-                  borderRadius: MD.radius.field,
-                  border: isActive ? `1px solid ${MD.color.primary}` : `1px solid ${MD.color.outlineVariant}`,
-                  background: isActive ? MD.color.primary : MD.color.surfaceContainer,
-                  color: isActive ? 'white' : MD.color.onSurfaceVariant,
-                  fontSize: '10px',
-                  fontFamily: FONT_BODY,
-                  fontWeight: isActive ? '700' : '600',
-                  cursor: 'pointer',
-                  boxShadow: isActive ? MD.elevation[2] : MD.elevation[1],
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '4px',
-                  minHeight: '54px',
-                  justifyContent: 'center',
-                  lineHeight: 1.2,
-                  textAlign: 'center',
-                  transition: 'all .15s',
-                }}
-              >
-                <span style={{ fontSize: '15px' }}>{t.label.split(' ')[0]}</span>
-                <span>{t.label.split(' ').slice(1).join(' ')}</span>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <p style={{ color: 'rgba(255,255,255,0.72)', fontSize: mobile ? '12px' : '13px', margin: 0, fontWeight: '500', textAlign: 'right' }}>
+              {dataLoading
+                ? <span style={{ color: MD.color.secondary, fontWeight: 700 }}>Loading…</span>
+                : <span style={{ fontWeight: 700 }}>{students.length} students · {staffProfiles.length} staff</span>
+              }
+            </p>
+            {/* Hamburger — all 19 tabs now live in this dropdown instead of
+                an always-visible tab bar/grid, per instruction. Dashboard
+                (hmdashboard) stays the default landing tab (VALID_TABS
+                fallback above already does this — unchanged). */}
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setMenuOpen(o => !o)} aria-label="Menu" style={{
+                width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                border: '1px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.1)',
+                color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 16, cursor: 'pointer',
+              }}>
+                ☰
               </button>
-            )
-          })}
+              {menuOpen && (
+                <>
+                  <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 998 }} />
+                  <div style={{
+                    position: 'fixed', top: mobile ? 100 : 120, right: mobile ? 12 : 28, zIndex: 999,
+                    width: mobile ? 240 : 260, maxHeight: '75vh', overflowY: 'auto',
+                    background: 'white', borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,0.25)',
+                    padding: 8,
+                  }}>
+                    {TABS.map(t => (
+                      <button key={t.id} onClick={() => { changeTab(t.id); setMenuOpen(false) }} style={{
+                        width: '100%', textAlign: 'left', padding: '10px 12px', borderRadius: 8,
+                        border: 'none', cursor: 'pointer', fontFamily: FONT_BODY, fontSize: 13,
+                        background: activeTab === t.id ? MD.color.primary + '14' : 'none',
+                        color: activeTab === t.id ? MD.color.primary : '#1e293b',
+                        fontWeight: activeTab === t.id ? 700 : 500,
+                        display: 'block', marginBottom: 2,
+                      }}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
-      )}
+      </div>
+      {/* Desktop/Tablet Tab Bar and Mobile Tab Grid removed — all tabs now
+          live in the hamburger menu in the header above, per instruction. */}
 
       {dataLoading && !standaloneTab
         ? (

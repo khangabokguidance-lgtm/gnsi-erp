@@ -311,6 +311,158 @@ const loadDailyChecks = hmId => {
 }
 const saveDailyChecksCache = (hmId, obj) => localStorage.setItem(`hm_daily_${hmId}_${todayKey()}`, JSON.stringify(obj))
 
+// ─── House Students — lets a housemaster pick their house (or an admin
+// pick any house) and see/select the students assigned to it ───────────
+// Follows the same "select who you are" pattern as DailyTaskChecklist
+// (a housemaster picker, not an auto-detected identity) since that's the
+// existing convention in this file rather than assuming currentUser maps
+// cleanly onto the housemasters table.
+function HouseStudentsPanel({ houses, isAdmin, currentUser }) {
+  const [housemasters, setHousemasters] = useState([])
+  const [selectedHM, setSelectedHM] = useState(null)
+  const [selectedHouse, setSelectedHouse] = useState('')
+  const [students, setStudents] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [selectedIds, setSelectedIds] = useState(new Set())
+
+  useEffect(() => {
+    supabase
+      .from('housemasters')
+      .select('*')
+      .eq('status', 'Active')
+      .order('name')
+      .then(({ data }) => {
+        setHousemasters(data || [])
+        // Non-admin housemaster: auto-select themselves by matching on
+        // name against the housemasters table (no direct FK to currentUser
+        // is assumed, matching the lookup style already used elsewhere in
+        // this file) so their own house pre-fills without needing the
+        // admin-only picker dropdown at all.
+        if (!isAdmin && currentUser?.name) {
+          const self = (data || []).find(h => h.name === currentUser.name)
+          if (self) setSelectedHM(self)
+        }
+      })
+  }, [isAdmin, currentUser?.name])
+
+  // Picking a housemaster defaults the house dropdown to their assigned
+  // house, same convention as DailyTaskChecklist — but the house dropdown
+  // itself stays independently editable, since a housemaster can cover
+  // more than one house, or an admin may want to browse any house without
+  // picking a specific housemaster at all.
+  useEffect(() => {
+    if (selectedHM?.house) setSelectedHouse(selectedHM.house)
+  }, [selectedHM])
+
+  const effectiveHouse = selectedHouse
+
+  useEffect(() => {
+    if (!effectiveHouse) { setStudents([]); return }
+    setLoading(true)
+    setSelectedIds(new Set())
+    supabase
+      .from('students')
+      .select('id, name, house, hostel_type, class_name, roll_number')
+      .eq('house', effectiveHouse)
+      .order('name')
+      .then(({ data, error }) => {
+        if (error) console.error('HouseStudentsPanel students fetch error:', error)
+        setStudents(data || [])
+        setLoading(false)
+      })
+  }, [effectiveHouse])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return students
+    return students.filter(s =>
+      (s.name || '').toLowerCase().includes(q) ||
+      (s.roll_number || '').toString().toLowerCase().includes(q) ||
+      (s.class_name || '').toLowerCase().includes(q)
+    )
+  }, [students, search])
+
+  const toggleStudent = (id) => setSelectedIds(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+  const toggleSelectAll = () => setSelectedIds(prev =>
+    prev.size === filtered.length ? new Set() : new Set(filtered.map(s => s.id))
+  )
+
+  return (
+    <div>
+      {!isAdmin && selectedHM && (
+        <div style={{ background: '#eff6ff', borderRadius: 8, padding: '8px 14px', marginBottom: 14, fontSize: 12, color: '#1e3a5f', fontWeight: 600 }}>
+          👤 Signed in as {selectedHM.name} — house pre-filled below. You can still switch to a different house if you cover more than one.
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: isAdmin ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 20 }}>
+        {isAdmin && (
+          <div>
+            <label style={lbl}>Housemaster (optional — sets house below)</label>
+            <select value={selectedHM?.id || ''} onChange={e => setSelectedHM(housemasters.find(h => String(h.id) === e.target.value) || null)} style={inp}>
+              <option value="">— Select Housemaster —</option>
+              {housemasters.map(h => <option key={h.id} value={h.id}>{h.name} · {h.house || '—'}</option>)}
+            </select>
+          </div>
+        )}
+        <div>
+          <label style={lbl}>House</label>
+          <select value={selectedHouse} onChange={e => setSelectedHouse(e.target.value)} style={inp}>
+            <option value="">— Select House —</option>
+            {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {!effectiveHouse ? (
+        <p style={{ color: '#94a3b8', textAlign: 'center', padding: 32 }}>Select a house to see its students.</p>
+      ) : loading ? (
+        <p style={{ color: '#94a3b8', textAlign: 'center', padding: 32 }}>Loading…</p>
+      ) : (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1e3a5f' }}>
+              🏠 {effectiveHouse} — {filtered.length} student{filtered.length === 1 ? '' : 's'}
+              {selectedIds.size > 0 && <span style={{ color: '#7c3aed', marginLeft: 8 }}>({selectedIds.size} selected)</span>}
+            </div>
+            <input placeholder="🔍 Search name, roll no, class..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, width: 'auto', minWidth: 220 }} />
+          </div>
+
+          {filtered.length === 0 ? (
+            <p style={{ color: '#94a3b8', textAlign: 'center', padding: 32 }}>No students found for this house.</p>
+          ) : (
+            <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                <input type="checkbox" checked={filtered.length > 0 && selectedIds.size === filtered.length} onChange={toggleSelectAll} />
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: '#64748b' }}>Select all</span>
+              </div>
+              {filtered.map(s => (
+                <div key={s.id} onClick={() => toggleStudent(s.id)} style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px',
+                  borderBottom: '1px solid #f1f5f9', cursor: 'pointer',
+                  background: selectedIds.has(s.id) ? '#eff6ff' : 'white',
+                }}>
+                  <input type="checkbox" checked={selectedIds.has(s.id)} onChange={() => toggleStudent(s.id)} onClick={e => e.stopPropagation()} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: '#1e293b' }}>{s.name}</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                      {s.class_name || '—'}{s.roll_number ? ` · Roll ${s.roll_number}` : ''}{s.hostel_type ? ` · ${s.hostel_type}` : ''}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 function DailyTaskChecklist({ staffProfiles, houses }) {
   const [housemasters, setHousemasters] = useState([])
   const [selectedHM, setSelectedHM] = useState(null)
@@ -1001,6 +1153,7 @@ export function HousemasterActivitiesTab({ staffProfiles, currentUser }) {
 
   const VIEW_TABS = [
     { id: 'checklist', label: '✅ Daily Checklist' },
+    { id: 'students',  label: '🏠 House Students' },
     { id: 'log',       label: '📋 Activity Log' },
   ]
 
@@ -1023,6 +1176,11 @@ export function HousemasterActivitiesTab({ staffProfiles, currentUser }) {
       {/* ── Daily Checklist View ── */}
       {activeView === 'checklist' && (
         <DailyTaskChecklist staffProfiles={staffProfiles} houses={houses} />
+      )}
+
+      {/* ── House Students View ── */}
+      {activeView === 'students' && (
+        <HouseStudentsPanel houses={houses} isAdmin={isAdmin} currentUser={currentUser} />
       )}
 
       {/* ── Doubt Session View ── */}
