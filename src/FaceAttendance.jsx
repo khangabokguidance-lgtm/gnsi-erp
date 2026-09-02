@@ -480,13 +480,26 @@ function PayrollView({ staffId, isAdmin, staffList }) {
   const perDay = useMemo(() => {
     const map = {}
     attRows.forEach(r => {
-      if (!map[r.staff_id]) map[r.staff_id] = { lateMin: 0, lateDays: 0, absent: 0, earlyOut: 0, present: 0 }
+      if (!map[r.staff_id]) map[r.staff_id] = { lateMin: 0, lateDays: 0, absent: 0, earlyOut: 0, halfDay: 0, present: 0 }
       const m = map[r.staff_id]
       m.lateMin += r.late_minutes || 0
       if ((r.late_minutes || 0) > 0) m.lateDays++ // flat per-day count — any minutes late counts as one late day
+      // BUGFIX: this used to be if/else-if/else, so any status other than
+      // exactly 'Absent' or 'Early Out'/'EarlyOut' fell into the final
+      // else and got counted as "present" — silently absorbing Late,
+      // Half Day, and Flagged days into the present count with zero
+      // deduction for them. Each status is now checked independently so
+      // Half Day gets its own count/deduction, and none of the others get
+      // miscounted as present just because they didn't match the first
+      // two branches.
       if (r.status === 'Absent') m.absent++
       else if (r.status === 'Early Out' || r.status === 'EarlyOut') m.earlyOut++
-      else m.present++
+      else if (r.status === 'Half Day') m.halfDay++
+      else if (r.status === 'Present' || r.status === 'Late') m.present++
+      // Flagged or any other status: not counted in any bucket here —
+      // matches attendance_summary_for_range/sync_attendance_salary_feed,
+      // which also leave Flagged out of present/absent/late/half-day/early
+      // counts until an admin resolves it.
     })
     return map
   }, [attRows])
@@ -495,16 +508,18 @@ function PayrollView({ staffId, isAdmin, staffList }) {
     const LATE = Number(rules?.late_rate || 0)
     const ABSENT = Number(rules?.absent_rate || 0)
     const EARLY = Number(rules?.early_out_rate || 0)
+    const HALFDAY = Number(rules?.half_day_rate || 0)
     return staffFull.map(s => {
-      const d = perDay[s.id] || { lateMin: 0, lateDays: 0, absent: 0, earlyOut: 0, present: 0 }
+      const d = perDay[s.id] || { lateMin: 0, lateDays: 0, absent: 0, earlyOut: 0, halfDay: 0, present: 0 }
       const lateDed = d.lateDays * LATE
       const absentDed = d.absent * ABSENT
       const earlyDed = d.earlyOut * EARLY
+      const halfDayDed = d.halfDay * HALFDAY
       const advDed = advMap[s.id] || 0
       const g = gross(s)
-      const totalDed = lateDed + absentDed + earlyDed + advDed
+      const totalDed = lateDed + absentDed + earlyDed + halfDayDed + advDed
       const net = g - totalDed
-      return { staff: s, d, lateDed, absentDed, earlyDed, advDed, gross: g, totalDed, net }
+      return { staff: s, d, lateDed, absentDed, earlyDed, halfDayDed, advDed, gross: g, totalDed, net }
     }).sort((a, b) => (a.staff.name || '').localeCompare(b.staff.name || ''))
   }, [staffFull, perDay, advMap, rules])
 
@@ -520,7 +535,7 @@ function PayrollView({ staffId, isAdmin, staffList }) {
 
       {rules ? (
         <div style={{ background: '#fffbeb', border: '1px dashed #fbbf24', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#92400e' }}>
-          Active daily rule: <strong>₹{rules.late_rate}</strong>/late day · <strong>₹{rules.absent_rate}</strong>/absent day · <strong>₹{rules.early_out_rate}</strong>/early-out day
+          Active daily rule: <strong>₹{rules.late_rate}</strong>/late day · <strong>₹{rules.absent_rate}</strong>/absent day · <strong>₹{rules.early_out_rate}</strong>/early-out day · <strong>₹{rules.half_day_rate || 0}</strong>/half day
         </div>
       ) : (
         <div style={{ background: COLOR.dangerBg, border: `1px dashed ${COLOR.danger}`, borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: COLOR.danger }}>
@@ -548,7 +563,7 @@ function PayrollView({ staffId, isAdmin, staffList }) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {['Staff', 'Present', 'Late Days', 'Absent', 'Early Out', 'Late Ded.', 'Absent Ded.', 'Early Ded.', 'Advance', 'Gross', 'Est. Net'].map(h => (
+                {['Staff', 'Present', 'Late Days', 'Half Day', 'Absent', 'Early Out', 'Late Ded.', 'Half Day Ded.', 'Absent Ded.', 'Early Ded.', 'Advance', 'Gross', 'Est. Net'].map(h => (
                   <th key={h} style={S.th}>{h}</th>
                 ))}
               </tr>
@@ -564,9 +579,11 @@ function PayrollView({ staffId, isAdmin, staffList }) {
                   <td style={{ ...S.td, color: r.d.lateDays > 0 ? COLOR.warn : COLOR.slate, fontWeight: 600 }}>
                     {r.d.lateDays > 0 ? `${r.d.lateDays} (${r.d.lateMin}m)` : '—'}
                   </td>
+                  <td style={{ ...S.td, color: r.d.halfDay > 0 ? '#0369a1' : COLOR.slate, fontWeight: 600 }}>{r.d.halfDay || '—'}</td>
                   <td style={{ ...S.td, color: r.d.absent > 0 ? COLOR.danger : COLOR.slate, fontWeight: 600 }}>{r.d.absent || '—'}</td>
                   <td style={{ ...S.td, color: r.d.earlyOut > 0 ? COLOR.warn : COLOR.slate, fontWeight: 600 }}>{r.d.earlyOut || '—'}</td>
                   <td style={{ ...S.td, color: COLOR.danger }}>{r.lateDed ? fmtRupee(r.lateDed) : '—'}</td>
+                  <td style={{ ...S.td, color: COLOR.danger }}>{r.halfDayDed ? fmtRupee(r.halfDayDed) : '—'}</td>
                   <td style={{ ...S.td, color: COLOR.danger }}>{r.absentDed ? fmtRupee(r.absentDed) : '—'}</td>
                   <td style={{ ...S.td, color: COLOR.danger }}>{r.earlyDed ? fmtRupee(r.earlyDed) : '—'}</td>
                   <td style={{ ...S.td, color: COLOR.danger }}>{r.advDed ? fmtRupee(r.advDed) : '—'}</td>
@@ -574,12 +591,12 @@ function PayrollView({ staffId, isAdmin, staffList }) {
                   <td style={{ ...S.td, fontWeight: 800, color: COLOR.sageDeep }}>{fmtRupee(r.net)}</td>
                 </tr>
               ))}
-              {!rows.length && <tr><td colSpan="11" style={{ padding: 32, textAlign: 'center', color: COLOR.slate }}>No staff/attendance data for this month.</td></tr>}
+              {!rows.length && <tr><td colSpan="13" style={{ padding: 32, textAlign: 'center', color: COLOR.slate }}>No staff/attendance data for this month.</td></tr>}
             </tbody>
             {rows.length > 0 && (
               <tfoot>
                 <tr style={{ borderTop: `2px solid ${COLOR.rule}`, fontWeight: 800 }}>
-                  <td style={S.td} colSpan={9}>Total</td>
+                  <td style={S.td} colSpan={11}>Total</td>
                   <td style={S.td}>{fmtRupee(monthTotals.gross)}</td>
                   <td style={{ ...S.td, color: COLOR.sageDeep }}>{fmtRupee(monthTotals.net)}</td>
                 </tr>

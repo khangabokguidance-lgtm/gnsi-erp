@@ -227,6 +227,25 @@ function exportReportCSV(rows, staffMap, label) {
   URL.revokeObjectURL(url)
 }
 
+// Custom-period (e.g. 10th-to-10th) attendance summary export — this is an
+// attendance report, not a payout, since actual pay always runs by
+// calendar month and a live range can't be matched to a saved salary row.
+function exportCustomRangeCSV(rows, staffMap, from, to) {
+  const headers = ['Staff','Designation','Working Days','Present','Late','Half Day','Early Out','Absent','Attendance %']
+  const body = rows.map(r => {
+    const st = staffMap[r.staff_id] || {}
+    return [
+      st.name || `#${r.staff_id}`, st.designation || st.department || '',
+      r.working_days, r.present_days, r.late_days, r.half_day_days, r.early_out_days, r.absent_days, r.attendance_rate
+    ]
+  })
+  const csv = [headers, ...body].map(row => row.map(v => `"${v}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a'); a.href = url; a.download = `GNSI_Attendance_${from}_to_${to}.csv`; a.click()
+  URL.revokeObjectURL(url)
+}
+
 function printReport(rows, staffMap, label, totals) {
   injectPrintCSS()
   let root = document.getElementById('gnsi-print-root')
@@ -283,6 +302,23 @@ function ReportsTab({ salaryRows, staff, advances, isMobile }) {
   const [fMinNet, setFMinNet]       = useState('')
   const [fMaxNet, setFMaxNet]       = useState('')
   const [sortBy, setSortBy]         = useState('month_desc')
+  // Period mode: 'calendar' (existing behaviour — filters saved salary
+  // register rows, which are always calendar-month) or 'custom' (a
+  // free date range — e.g. 10th to 10th — that pulls a LIVE attendance
+  // summary directly from staff_geo_attendance instead, since a saved
+  // salary row can't be split mid-month. Custom mode is an attendance
+  // report, not a payout report — actual pay always stays calendar-month.
+  const [periodMode, setPeriodMode] = useState('calendar')
+  const [customFrom, setCustomFrom] = useState(() => {
+    const d = new Date(); d.setDate(10); if (new Date().getDate() < 10) d.setMonth(d.getMonth() - 1)
+    return d.toISOString().split('T')[0]
+  })
+  const [customTo, setCustomTo] = useState(() => {
+    const d = new Date(); d.setDate(10); if (new Date().getDate() >= 10) d.setMonth(d.getMonth() + 1)
+    return d.toISOString().split('T')[0]
+  })
+  const [customRows, setCustomRows] = useState([])
+  const [customLoading, setCustomLoading] = useState(false)
   const [savedViews, setSavedViews] = useState(() => {
     try { return JSON.parse(localStorage.getItem('gnsi_salary_report_views') || '[]') } catch { return [] }
   })
@@ -310,6 +346,33 @@ function ReportsTab({ salaryRows, staff, advances, isMobile }) {
   }
 
   const monthRange = useMemo(() => monthsBetween(fromMonth, toMonth), [fromMonth, toMonth])
+
+  const fetchCustomRange = useCallback(async () => {
+    if (!customFrom || !customTo) return
+    setCustomLoading(true)
+    const { data, error } = await supabase.rpc('attendance_summary_for_range', {
+      p_from: customFrom, p_to: customTo,
+    })
+    if (!error) setCustomRows(data || [])
+    setCustomLoading(false)
+  }, [customFrom, customTo])
+
+  useEffect(() => { if (periodMode === 'custom') fetchCustomRange() }, [periodMode, fetchCustomRange])
+
+  const customFiltered = useMemo(() => {
+    let rows = customRows.filter(r => {
+      if (fStaffId && String(r.staff_id) !== String(fStaffId)) return false
+      if (fDesignation) {
+        const st = staffMap[r.staff_id]
+        if (!st || (st.designation || st.department) !== fDesignation) return false
+      }
+      return true
+    })
+    return [...rows].sort((a, b) => {
+      if (sortBy === 'name') return (staffMap[a.staff_id]?.name||'').localeCompare(staffMap[b.staff_id]?.name||'')
+      return (staffMap[a.staff_id]?.name||'').localeCompare(staffMap[b.staff_id]?.name||'')
+    })
+  }, [customRows, fStaffId, fDesignation, sortBy, staffMap])
 
   const filtered = useMemo(() => {
     let rows = salaryRows.filter(r => {
@@ -355,6 +418,26 @@ function ReportsTab({ salaryRows, staff, advances, isMobile }) {
       {/* Advanced Filter Panel */}
       <div style={S.card}>
         <div style={{ fontWeight: 700, color: '#1e3a5f', marginBottom: 12, fontSize: 14 }}>🔎 Advanced Filter</div>
+
+        {/* Period mode toggle */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          <button onClick={() => setPeriodMode('calendar')}
+            style={{ ...S.btnSm(periodMode === 'calendar' ? '#1e3a5f' : '#94a3b8'), opacity: periodMode === 'calendar' ? 1 : 0.6 }}>
+            📅 Calendar month (payroll)
+          </button>
+          <button onClick={() => setPeriodMode('custom')}
+            style={{ ...S.btnSm(periodMode === 'custom' ? '#1e3a5f' : '#94a3b8'), opacity: periodMode === 'custom' ? 1 : 0.6 }}>
+            🗓️ Custom period (attendance)
+          </button>
+        </div>
+
+        {periodMode === 'custom' && (
+          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 11.5, color: '#92400e' }}>
+            Custom period shows a live attendance summary for the exact dates below (e.g. 10th to 10th) — not a saved payout. Salary payouts are always run and saved by calendar month.
+          </div>
+        )}
+
+        {periodMode === 'calendar' ? (
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10, marginBottom: 10 }}>
           <div>
             <label style={S.lbl}>From Month</label>
@@ -410,6 +493,37 @@ function ReportsTab({ salaryRows, staff, advances, isMobile }) {
             </select>
           </div>
         </div>
+        ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={S.lbl}>From date</label>
+            <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={S.inpSm} />
+          </div>
+          <div>
+            <label style={S.lbl}>To date</label>
+            <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={S.inpSm} />
+          </div>
+          <div>
+            <label style={S.lbl}>Staff</label>
+            <select value={fStaffId} onChange={e => setFStaffId(e.target.value)} style={S.inpSm}>
+              <option value="">All Staff</option>
+              {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={S.lbl}>Designation</label>
+            <select value={fDesignation} onChange={e => setFDesignation(e.target.value)} style={S.inpSm}>
+              <option value="">All</option>
+              {designations.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <button onClick={fetchCustomRange} disabled={customLoading} style={S.btnSm('#1e3a5f')}>
+              {customLoading ? '⏳ Loading…' : '🔄 Refresh'}
+            </button>
+          </div>
+        </div>
+        )}
 
         {/* Saved views */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
@@ -425,6 +539,59 @@ function ReportsTab({ salaryRows, staff, advances, isMobile }) {
         </div>
       </div>
 
+      {periodMode === 'custom' ? (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10, marginBottom: 16 }}>
+            <div style={S.statCard('#1e3a5f', '#eff6ff')}><p style={{ fontSize: 11, color: '#1e3a5f', fontWeight: 600, margin: 0 }}>Staff Records</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#1e3a5f' }}>{customFiltered.length}</h2></div>
+            <div style={S.statCard('#16a34a', '#f0fdf4')}><p style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, margin: 0 }}>Total Present Days</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#16a34a' }}>{customFiltered.reduce((s,r)=>s+Number(r.present_days||0),0)}</h2></div>
+            <div style={S.statCard('#dc2626', '#fee2e2')}><p style={{ fontSize: 11, color: '#dc2626', fontWeight: 600, margin: 0 }}>Total Absent Days</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#dc2626' }}>{customFiltered.reduce((s,r)=>s+Number(r.absent_days||0),0)}</h2></div>
+            <div style={S.statCard('#0369a1', '#e0f2fe')}><p style={{ fontSize: 11, color: '#0369a1', fontWeight: 600, margin: 0 }}>Total Half Days</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#0369a1' }}>{customFiltered.reduce((s,r)=>s+Number(r.half_day_days||0),0)}</h2></div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            <button onClick={() => exportCustomRangeCSV(customFiltered, staffMap, customFrom, customTo)} style={S.btnSm('#0891b2')}>⬇ Export CSV</button>
+          </div>
+
+          <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 760 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc' }}>
+                    {['Staff', 'Designation', 'Working Days', 'Present', 'Late', 'Half Day', 'Early Out', 'Absent', 'Attendance %'].map(h => (
+                      <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 600, color: '#374151', fontSize: 11 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {customLoading && (
+                    <tr><td colSpan={9} style={{ padding: 20, textAlign: 'center', color: '#94a3b8' }}>Loading attendance…</td></tr>
+                  )}
+                  {!customLoading && customFiltered.length === 0 && (
+                    <tr><td colSpan={9} style={{ padding: 20, textAlign: 'center', color: '#94a3b8' }}>No attendance records in this range.</td></tr>
+                  )}
+                  {!customLoading && customFiltered.map(r => {
+                    const st = staffMap[r.staff_id] || {}
+                    return (
+                      <tr key={r.staff_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '9px 12px', fontWeight: 600 }}>{st.name || `#${r.staff_id}`}</td>
+                        <td style={{ padding: '9px 12px', color: '#64748b' }}>{st.designation || st.department || '—'}</td>
+                        <td style={{ padding: '9px 12px' }}>{r.working_days}</td>
+                        <td style={{ padding: '9px 12px', color: '#16a34a', fontWeight: 600 }}>{r.present_days}</td>
+                        <td style={{ padding: '9px 12px', color: '#b45309' }}>{r.late_days}</td>
+                        <td style={{ padding: '9px 12px', color: '#0369a1' }}>{r.half_day_days}</td>
+                        <td style={{ padding: '9px 12px', color: '#7c3aed' }}>{r.early_out_days}</td>
+                        <td style={{ padding: '9px 12px', color: '#dc2626' }}>{r.absent_days}</td>
+                        <td style={{ padding: '9px 12px', fontWeight: 600 }}>{r.attendance_rate}%</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : (
+      <>
       {/* Summary + Export */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10, marginBottom: 16 }}>
         <div style={S.statCard('#1e3a5f', '#eff6ff')}><p style={{ fontSize: 11, color: '#1e3a5f', fontWeight: 600, margin: 0 }}>Records</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#1e3a5f' }}>{filtered.length}</h2></div>
@@ -473,6 +640,8 @@ function ReportsTab({ salaryRows, staff, advances, isMobile }) {
           </table>
         </div>
       </div>
+      </>
+      )}
     </div>
   )
 }
@@ -882,8 +1051,8 @@ const [scoreMap, setScoreMap] = useState({})
 const [probationMap, setProbationMap] = useState({})
 
 // Deduction rules
-const [dedRules, setDedRules]         = useState({ late_rate:10, absent_rate:100, early_out_rate:50, perf_elite_bonus:0, perf_outstanding_bonus:0, perf_good_bonus:0, perf_probation_penalty:0 })
-const [rulesForm, setRulesForm]       = useState({ late_rate:10, absent_rate:100, early_out_rate:50, perf_elite_bonus:0, perf_outstanding_bonus:0, perf_good_bonus:0, perf_probation_penalty:0 })
+const [dedRules, setDedRules]         = useState({ late_rate:10, absent_rate:100, early_out_rate:50, half_day_rate:50, perf_elite_bonus:0, perf_outstanding_bonus:0, perf_good_bonus:0, perf_probation_penalty:0 })
+const [rulesForm, setRulesForm]       = useState({ late_rate:10, absent_rate:100, early_out_rate:50, half_day_rate:50, perf_elite_bonus:0, perf_outstanding_bonus:0, perf_good_bonus:0, perf_probation_penalty:0 })
 const [rulesSaving, setRulesSaving]   = useState(false)
 const [rulesHistory, setRulesHistory] = useState([])
 
@@ -930,10 +1099,10 @@ const fetchDeductionRules = useCallback(async () => {
     .limit(1)
     .maybeSingle()
   if (data) {
-    setDedRules({ late_rate: data.late_rate, absent_rate: data.absent_rate, early_out_rate: data.early_out_rate,
+    setDedRules({ late_rate: data.late_rate, absent_rate: data.absent_rate, early_out_rate: data.early_out_rate, half_day_rate: data.half_day_rate ?? 50,
       perf_elite_bonus: data.perf_elite_bonus||0, perf_outstanding_bonus: data.perf_outstanding_bonus||0,
       perf_good_bonus: data.perf_good_bonus||0, perf_probation_penalty: data.perf_probation_penalty||0 })
-    setRulesForm({ late_rate: data.late_rate, absent_rate: data.absent_rate, early_out_rate: data.early_out_rate,
+    setRulesForm({ late_rate: data.late_rate, absent_rate: data.absent_rate, early_out_rate: data.early_out_rate, half_day_rate: data.half_day_rate ?? 50,
       perf_elite_bonus: data.perf_elite_bonus||0, perf_outstanding_bonus: data.perf_outstanding_bonus||0,
       perf_good_bonus: data.perf_good_bonus||0, perf_probation_penalty: data.perf_probation_penalty||0 })
   }
@@ -1026,7 +1195,7 @@ useEffect(() => {
     // 2. Read from pre-aggregated salary feed (written by GeoAttendance report tab)
 const { data: feedData } = await supabase
   .from('attendance_salary_feed')
-  .select('staff_id, late_days, total_late_min, absent_days, early_out_days')
+  .select('staff_id, late_days, total_late_min, absent_days, early_out_days, half_day_days')
   .eq('month', regMonth)
 
 // 3. Build late/absent map from feed
@@ -1039,21 +1208,26 @@ const lateMap = {}
     lateDays: row.late_days != null ? row.late_days : (row.total_late_min > 0 ? 1 : 0),
     absent:   row.absent_days     || 0,
     earlyOut: row.early_out_days  || 0,
+    halfDay:  row.half_day_days   || 0,
   }
 })
 
     // 4. Fill unsaved staff — auto-calculate late_deduction from geo
     // ₹X per late DAY (flat, regardless of how late) · ₹Y per absent day
-    // · ₹Z per early-out day. Adjust rates in the Deduction Rules tab.
+    // · ₹Z per early-out day · ₹W per half-day. Adjust rates in the
+    // Deduction Rules tab. Half Day is counted separately from Late/
+    // EarlyOut — server_checkout only ever sets ONE status per day, so
+    // there's no double-counting between these categories.
     const LATE_RATE   = Number(dedRules.late_rate)
 const ABSENT_RATE = Number(dedRules.absent_rate)
 const EARLY_RATE  = Number(dedRules.early_out_rate)
+const HALFDAY_RATE = Number(dedRules.half_day_rate)
 
     staff.forEach(s => {
       if (!map[s.id]) {
         const geo = lateMap[s.id]
         const autoLateDed = geo
-          ? (geo.lateDays * LATE_RATE) + (geo.absent * ABSENT_RATE) + (geo.earlyOut * EARLY_RATE)
+          ? (geo.lateDays * LATE_RATE) + (geo.absent * ABSENT_RATE) + (geo.earlyOut * EARLY_RATE) + (geo.halfDay * HALFDAY_RATE)
           : 0
         const level = scoreMap[s.id]?.level || null
         const autoPerfAdj = level ? performanceAdjustment(level, dedRules) : 0
@@ -1101,7 +1275,7 @@ const EARLY_RATE  = Number(dedRules.early_out_rate)
     try {
       const { data: feedData, error: feedErr } = await supabase
         .from('attendance_salary_feed')
-        .select('staff_id, late_days, total_late_min, absent_days, early_out_days')
+        .select('staff_id, late_days, total_late_min, absent_days, early_out_days, half_day_days')
         .eq('month', regMonth)
       if (feedErr) throw feedErr
 
@@ -1115,12 +1289,14 @@ const EARLY_RATE  = Number(dedRules.early_out_rate)
           lateDays: row.late_days != null ? row.late_days : (row.total_late_min > 0 ? 1 : 0),
           absent:   row.absent_days     || 0,
           earlyOut: row.early_out_days  || 0,
+          halfDay:  row.half_day_days   || 0,
         }
       })
 
       const LATE_RATE   = Number(dedRules.late_rate)
       const ABSENT_RATE = Number(dedRules.absent_rate)
       const EARLY_RATE  = Number(dedRules.early_out_rate)
+      const HALFDAY_RATE = Number(dedRules.half_day_rate)
 
       const targetStaff = roleFilter ? filteredStaff : staff
       const newMap = {}
@@ -1131,7 +1307,7 @@ const EARLY_RATE  = Number(dedRules.early_out_rate)
         if (geo) withAttendance++
         else flaggedNoData++
         const autoLateDed = geo
-          ? (geo.lateDays * LATE_RATE) + (geo.absent * ABSENT_RATE) + (geo.earlyOut * EARLY_RATE)
+          ? (geo.lateDays * LATE_RATE) + (geo.absent * ABSENT_RATE) + (geo.earlyOut * EARLY_RATE) + (geo.halfDay * HALFDAY_RATE)
           : 0
         const level = scoreMap[s.id]?.level || null
         const autoPerfAdj = level ? performanceAdjustment(level, dedRules) : 0
@@ -1310,6 +1486,7 @@ const EARLY_RATE  = Number(dedRules.early_out_rate)
         late_rate:      Number(rulesForm.late_rate),
         absent_rate:    Number(rulesForm.absent_rate),
         early_out_rate: Number(rulesForm.early_out_rate),
+        half_day_rate:  Number(rulesForm.half_day_rate)||0,
         perf_elite_bonus:       Number(rulesForm.perf_elite_bonus)||0,
         perf_outstanding_bonus: Number(rulesForm.perf_outstanding_bonus)||0,
         perf_good_bonus:        Number(rulesForm.perf_good_bonus)||0,
@@ -2158,6 +2335,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
           <span>🕐 Late: <strong style={{ color:'#dc2626' }}>₹{dedRules.late_rate}/day</strong></span>
           <span>⭕ Absent: <strong style={{ color:'#dc2626' }}>₹{dedRules.absent_rate}/day</strong></span>
           <span>🏃 Early Out: <strong style={{ color:'#dc2626' }}>₹{dedRules.early_out_rate}/day</strong></span>
+          <span>🌓 Half Day: <strong style={{ color:'#dc2626' }}>₹{dedRules.half_day_rate}/day</strong></span>
           <span>💎 Elite: <strong style={{ color:'#16a34a' }}>+₹{dedRules.perf_elite_bonus}</strong></span>
           <span>🥇 Outstanding: <strong style={{ color:'#16a34a' }}>+₹{dedRules.perf_outstanding_bonus}</strong></span>
           <span>🥉 Good: <strong style={{ color:'#16a34a' }}>+₹{dedRules.perf_good_bonus}</strong></span>
@@ -2175,7 +2353,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
         Rates apply when auto-calculating from GeoAttendance data. Previous rates are saved as history.
       </p>
 
-      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap:16, marginBottom:20 }}>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr 1fr', gap:16, marginBottom:20 }}>
         {[
           {
             key:   'late_rate',
@@ -2199,6 +2377,14 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
             desc:  'Deducted for each early departure day',
             color: '#7c3aed',
             bg:    '#f3e8ff',
+            unit:  '₹ / day',
+          },
+          {
+            key:   'half_day_rate',
+            label: '🌓 Half Day',
+            desc:  'Deducted for each day auto-marked Half Day (very late check-in or very early checkout — see Attendance advanced settings for the thresholds)',
+            color: '#0369a1',
+            bg:    '#e0f2fe',
             unit:  '₹ / day',
           },
         ].map(field => (
@@ -2226,8 +2412,9 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
           <span>Staff late on <strong>2 days</strong> → ₹{Number(rulesForm.late_rate||0) * 2} deducted</span>
           <span>Staff absent <strong>2 days</strong> → ₹{Number(rulesForm.absent_rate||0) * 2} deducted</span>
           <span>Staff early out <strong>3 days</strong> → ₹{Number(rulesForm.early_out_rate||0) * 3} deducted</span>
+          <span>Staff Half Day <strong>1 day</strong> → ₹{Number(rulesForm.half_day_rate||0) * 1} deducted</span>
           <div style={{ borderTop:'1px solid #e2e8f0', marginTop:6, paddingTop:6, fontWeight:700, color:'#dc2626' }}>
-            Total deduction example: ₹{(Number(rulesForm.late_rate||0)*2) + (Number(rulesForm.absent_rate||0)*2) + (Number(rulesForm.early_out_rate||0)*3)}
+            Total deduction example: ₹{(Number(rulesForm.late_rate||0)*2) + (Number(rulesForm.absent_rate||0)*2) + (Number(rulesForm.early_out_rate||0)*3) + (Number(rulesForm.half_day_rate||0)*1)}
           </div>
         </div>
       </div>

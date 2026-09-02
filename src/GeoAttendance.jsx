@@ -1751,7 +1751,17 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
 
   // ── Check-out ─────────────────────────────────────────────────────────────
 
-  const handleCheckOut = async (logId, shiftLabel) => {
+  const [checkoutPending, setCheckoutPending] = useState(null) // { logId, shiftLabel } awaiting mandatory face scan, or null
+
+  // Checkout now requires a face scan, same as check-in — no skip option.
+  // This closes the gap where checkout was pure GPS with zero biometric
+  // check, so anyone with the device/session could punch someone else out.
+  const handleCheckOut = (logId, shiftLabel) => {
+    setCheckoutPending({ logId, shiftLabel })
+  }
+
+  const performCheckOut = async (logId, shiftLabel, faceResult) => {
+    setCheckoutPending(null)
     if (!navigator.onLine && !window.confirm('No internet connection. Queue checkout for when you\'re back online?')) return
     if (!gpsCoords && !window.confirm('GPS not available. Check out without location? This will be flagged.')) return
 
@@ -1766,9 +1776,22 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
       p_campus_lat:    campus?.lat,
       p_campus_lng:    campus?.lng,
       p_campus_radius: campus?.radius,
+      p_live_descriptor:       faceResult.liveDescriptor,
+      p_liveness_challenge_id: faceResult.challengeId,
     })
 
     if (error) { showToast('❌ ' + error.message, 'err'); return }
+
+    if (!data.success) {
+      const msgs = {
+        face_not_enrolled: '🧑‍💼 Face not enrolled or not yet approved — contact admin',
+        face_mismatch:     '❌ Face did not match your enrolled profile — try again',
+        liveness_missing:  '❌ Liveness check missing — try again',
+        liveness_failed:   '❌ Liveness check expired or invalid — try again',
+      }
+      showToast(msgs[data.error] || `❌ ${data.message || 'Checkout failed'}`, 'warn')
+      return
+    }
 
     if (punchTarget?.id) {
       setTargetActiveTracking(prev => {
@@ -1786,13 +1809,14 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
       await fetchMyLogs()
     }
 
-    showToast(
-      data?.early_out
-        ? `⚠️ Checked out early (${Math.round(data.mins_left || 0)} min before shift end) — flagged`
-        : `✅ Checked out — Shift ${shiftLabel}${punchTarget ? ` for ${punchTarget.name}` : ''}`,
-      data?.early_out ? 'warn' : 'ok'
-    )
-    if (!data?.early_out) {
+    if (data?.half_day) {
+      showToast(`⚠️ Checked out — marked Half Day (late arrival or early departure)`, 'warn')
+    } else if (data?.early_out) {
+      showToast(`⚠️ Checked out early (${Math.round(data.mins_left || 0)} min before shift end) — flagged`, 'warn')
+    } else {
+      showToast(`✅ Checked out — Shift ${shiftLabel}${punchTarget ? ` for ${punchTarget.name}` : ''}`, 'ok')
+    }
+    if (!data?.early_out && !data?.half_day) {
       setSuccessOverlay({ kind: 'out', label: `Shift ${shiftLabel}${punchTarget ? ` for ${punchTarget.name}` : ''}` })
     }
   }
@@ -2817,6 +2841,17 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
           staffId={punchTarget?.id || currentStaff?.id}
           onVerified={(faceResult) => performCheckIn(faceCaptureShift, faceResult)}
           onCancel={() => setFaceCaptureShift(null)}
+        />
+      )}
+
+      {checkoutPending && (
+        <FaceCapture
+          staffId={punchTarget?.id || currentStaff?.id}
+          onVerified={(faceResult) => performCheckOut(checkoutPending.logId, checkoutPending.shiftLabel, faceResult)}
+          // Face scan is mandatory for checkout, same as check-in — Cancel
+          // here genuinely cancels the checkout attempt (stays punched in),
+          // it does not skip the scan and check out anyway.
+          onCancel={() => setCheckoutPending(null)}
         />
       )}
 
