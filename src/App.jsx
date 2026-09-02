@@ -85,7 +85,9 @@ const ALL_GROUPS = [
     items: [
       { id: 'fees',             label: 'Fees',               icon: '💰' },
       { id: 'accounts',         label: 'Accounts',           icon: '🧾' },
-      { id: 'salary',           label: 'Salary',             icon: '💵' },
+      // Salary/Payroll moved into Face Attendance's own "Payroll" tab
+      // (admins get the full register there now — Salary.jsx itself is
+      // unchanged, just no longer mounted as a separate top-level page).
       { id: 'studentfeeledger', label: 'Student Fee Ledger', icon: '📒' },
       // FIX: feesetup now visible in nav (was hidden but reachable)
       { id: 'feesetup',         label: 'Fee Setup',          icon: '⚙️' },

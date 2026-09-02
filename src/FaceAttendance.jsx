@@ -18,6 +18,7 @@ import SettingsView from './SettingsView'
 import AdvancedSettingsPanel from './AdvancedSettingsPanel'
 import PremiumToggleCard from './PremiumToggleCard'
 import AdminControlCenter from './AdminControlCenter'
+import Salary from './Salary'
 import { tabHasSettings } from './premiumSettings'
 import { COLOR, FONT, RADIUS, SHADOW, ledger, Seal, injectLedgerGlobalStyles } from './ledgerTheme.jsx'
 
@@ -619,7 +620,7 @@ function DeductionRulesSetup({ currentAdminId, showToast }) {
   const [active, setActive] = useState(null)
   const [history, setHistory] = useState([])
   const [form, setForm] = useState({
-    late_rate: 10, absent_rate: 300, early_out_rate: 150,
+    late_rate: 10, absent_rate: 300, early_out_rate: 150, half_day_rate: 150,
     perf_elite_bonus: 0, perf_outstanding_bonus: 0, perf_good_bonus: 0, perf_probation_penalty: 0,
     effective_from: new Date().toISOString().slice(0, 10),
   })
@@ -634,7 +635,7 @@ function DeductionRulesSetup({ currentAdminId, showToast }) {
     setHistory(hist || [])
     if (act) {
       setForm({
-        late_rate: act.late_rate ?? 10, absent_rate: act.absent_rate ?? 300, early_out_rate: act.early_out_rate ?? 150,
+        late_rate: act.late_rate ?? 10, absent_rate: act.absent_rate ?? 300, early_out_rate: act.early_out_rate ?? 150, half_day_rate: act.half_day_rate ?? 150,
         perf_elite_bonus: act.perf_elite_bonus || 0, perf_outstanding_bonus: act.perf_outstanding_bonus || 0,
         perf_good_bonus: act.perf_good_bonus || 0, perf_probation_penalty: act.perf_probation_penalty || 0,
         effective_from: new Date().toISOString().slice(0, 10),
@@ -655,6 +656,7 @@ function DeductionRulesSetup({ currentAdminId, showToast }) {
         late_rate: Number(form.late_rate) || 0,
         absent_rate: Number(form.absent_rate) || 0,
         early_out_rate: Number(form.early_out_rate) || 0,
+        half_day_rate: Number(form.half_day_rate) || 0,
         perf_elite_bonus: Number(form.perf_elite_bonus) || 0,
         perf_outstanding_bonus: Number(form.perf_outstanding_bonus) || 0,
         perf_good_bonus: Number(form.perf_good_bonus) || 0,
@@ -696,13 +698,14 @@ function DeductionRulesSetup({ currentAdminId, showToast }) {
     <div>
       <div style={S.card}>
         <p style={{ fontSize: 12, color: COLOR.slate, margin: '0 0 14px' }}>
-          Set the ₹ amount deducted <strong>per day</strong> from daily attendance — late, absent, and early-out are each a flat per-day rate, regardless of how many minutes late. These rates feed the Payroll preview here and Salary.jsx's Auto-Generate Payroll — one rule, used everywhere.
+          Set the ₹ amount deducted <strong>per day</strong> from daily attendance — late, absent, early-out, and half-day are each a flat per-day rate, regardless of how many minutes late. These rates feed the Payroll preview here and Salary.jsx's Auto-Generate Payroll — one rule, used everywhere.
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
           {field('late_rate', '⏰ Late Deduction', 'Flat amount per day staff checks in late (any minutes late = one late day)', COLOR.warn, '₹ / day')}
           {field('absent_rate', '🚫 Absent Deduction', 'Per full day marked Absent', COLOR.danger, '₹ / day')}
           {field('early_out_rate', '🚪 Early-Out Deduction', 'Per day of early check-out', '#7c3aed', '₹ / day')}
+          {field('half_day_rate', '🌓 Half Day Deduction', 'Per day auto-marked Half Day (very late check-in or very early checkout)', '#0369a1', '₹ / day')}
         </div>
 
         <div style={{ fontSize: 12.5, fontWeight: 700, color: COLOR.ink, margin: '18px 0 10px' }}>Performance adjustments (monthly, applied alongside daily deductions)</div>
@@ -736,7 +739,7 @@ function DeductionRulesSetup({ currentAdminId, showToast }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr>
-                  {['Effective From', 'Late/day', 'Absent/day', 'Early Out/day', 'Elite', 'Outstanding', 'Good', 'Probation', 'Status'].map(h => (
+                  {['Effective From', 'Late/day', 'Absent/day', 'Early Out/day', 'Half Day/day', 'Elite', 'Outstanding', 'Good', 'Probation', 'Status'].map(h => (
                     <th key={h} style={S.th}>{h}</th>
                   ))}
                 </tr>
@@ -748,6 +751,7 @@ function DeductionRulesSetup({ currentAdminId, showToast }) {
                     <td style={{ ...S.td, color: COLOR.warn, fontWeight: 700 }}>₹{r.late_rate}</td>
                     <td style={{ ...S.td, color: COLOR.danger, fontWeight: 700 }}>₹{r.absent_rate}</td>
                     <td style={{ ...S.td, color: '#7c3aed', fontWeight: 700 }}>₹{r.early_out_rate}</td>
+                    <td style={{ ...S.td, color: '#0369a1', fontWeight: 700 }}>₹{r.half_day_rate || 0}</td>
                     <td style={S.td}>+₹{r.perf_elite_bonus || 0}</td>
                     <td style={S.td}>+₹{r.perf_outstanding_bonus || 0}</td>
                     <td style={S.td}>+₹{r.perf_good_bonus || 0}</td>
@@ -1406,7 +1410,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
     { key: 'timecard', icon: '🕐', label: 'Time card' },
     { key: 'advances', icon: '💵', label: 'Advances' },
     { key: 'fines',    icon: '⏰', label: 'Late fines' },
-    { key: 'payroll',  icon: '💰', label: 'Payroll' },
+    { key: 'payroll',  icon: '💰', label: 'Payroll' }, // admins get the full Salary.jsx suite here (register, advances, history, reports, rules); non-admin staff see their own live preview only
     { key: 'regularization', icon: '🛠️', label: 'Correct attendance' },
     { key: 'reports',  icon: '📊', label: 'Reports' },
     { key: 'broadcast', icon: '📣', label: 'Broadcast messages' },
@@ -1421,7 +1425,6 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
       { key: 'georeport', icon: '📊', label: 'Geo attendance report' },
       { key: 'approvals', icon: '📋', label: 'Approvals', badge: counts.pending },
       { key: 'cashbook',  icon: '📒', label: 'Cash book' },
-      { key: 'deductionrules', icon: '📐', label: 'Deduction Rules' },
       { key: 'rolepermissions', icon: '🔑', label: 'Role Permissions' },
       { key: 'attendancehelpers', icon: '🤝', label: 'Attendance Helpers' },
       { key: 'controlcenter', icon: '🎛️', label: 'Control Center' },
@@ -1628,15 +1631,13 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
           {tab === 'timecard' && <TimeCard staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
           {tab === 'advances' && <AdvancesView staffId={staffId} isAdmin={isAdmin || hasPerm('manage_advances')} staffList={staff} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />}
           {tab === 'fines'    && <LateFinesView staffId={staffId} isAdmin={isAdmin || hasPerm('view_fines')} staffList={staff} />}
-          {tab === 'payroll'  && <PayrollView staffId={staffId} isAdmin={isAdmin || hasPerm('view_payroll')} staffList={staff} />}
+          {tab === 'payroll' && isAdmin && <Salary />}
+          {tab === 'payroll' && !isAdmin && <PayrollView staffId={staffId} isAdmin={isAdmin || hasPerm('view_payroll')} staffList={staff} />}
           {tab === 'regularization' && <RegularizationView staffId={staffId} isAdmin={isAdmin} showToast={showToast} currentUsername={currentUser?.username} />}
           {tab === 'reports'  && (hasPerm('view_reports') ? <ReportsView isAdmin={isAdmin} staffList={staff} /> : <NoAccessCard />)}
           {tab === 'broadcast' && <BroadcastView isAdmin={isAdmin} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />}
           {tab === 'notifications' && <NotificationsView staffId={staffId} isAdmin={isAdmin} />}
           {tab === 'cashbook' && (isAdmin || hasPerm('view_cashbook')) && <CashBookView />}
-          {tab === 'deductionrules' && isAdmin && (
-            <DeductionRulesSetup currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />
-          )}
           {tab === 'rolepermissions' && isAdmin && (
             <RolePermissionsSetup staffList={staff} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />
           )}
