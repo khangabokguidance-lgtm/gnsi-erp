@@ -51,12 +51,58 @@ export function areModelsLoaded() {
 
 // Extracts a 128-length descriptor from a single video frame or image element.
 // Returns null if no face was confidently detected.
+// Validates that face-api.js's 68-point landmarks actually form a
+// plausible face geometry — eyes above the nose, nose above the mouth,
+// eye spacing a sane fraction of face width — rather than trusting the
+// detector's raw confidence score alone. Even at scoreThreshold 0.5,
+// TinyFaceDetector (a small, fast model chosen for phone performance, not
+// precision) has repeatedly reported textured non-face regions — shirt
+// collars, printed patterns, a hairline with no eyes in frame — as "a
+// face" with enough landmark-fitting confidence to pass. This catches
+// what the confidence score alone doesn't: the landmarks it produced
+// don't correspond to an actual face layout.
+function landmarksLookLikeAFace(landmarks) {
+  if (!landmarks) return false
+  const pts = landmarks.positions
+  if (!pts || pts.length < 68) return false
+
+  // 68-point layout: 36-41 left eye, 42-47 right eye, 27-35 nose, 48-67 mouth
+  const avg = (idxs) => {
+    const xs = idxs.map(i => pts[i].x), ys = idxs.map(i => pts[i].y)
+    return { x: xs.reduce((a, b) => a + b, 0) / xs.length, y: ys.reduce((a, b) => a + b, 0) / ys.length }
+  }
+  const leftEye  = avg([36, 37, 38, 39, 40, 41])
+  const rightEye = avg([42, 43, 44, 45, 46, 47])
+  const nose     = avg([30])
+  const mouth    = avg([48, 51, 54, 57])
+
+  const eyeDist = Math.hypot(rightEye.x - leftEye.x, rightEye.y - leftEye.y)
+  if (eyeDist < 4) return false // eyes essentially on top of each other — not a real face layout
+
+  const eyeMidY = (leftEye.y + rightEye.y) / 2
+  // Vertical ordering: eyes clearly above nose, nose clearly above mouth,
+  // by at least a fraction of the eye-distance scale (so this check scales
+  // with face size in the frame rather than using fixed pixel gaps).
+  const minGap = eyeDist * 0.15
+  if (!(nose.y > eyeMidY + minGap)) return false
+  if (!(mouth.y > nose.y + minGap)) return false
+
+  // Eyes should be roughly level with each other, not wildly tilted —
+  // a real face photographed normally has eyes within a modest vertical
+  // offset relative to how far apart they are.
+  const eyeTilt = Math.abs(leftEye.y - rightEye.y) / eyeDist
+  if (eyeTilt > 0.6) return false
+
+  return true
+}
+
 export async function extractDescriptor(mediaEl) {
   const detection = await faceapi
     .detectSingleFace(mediaEl, DETECTOR_OPTIONS)
     .withFaceLandmarks()
     .withFaceDescriptor()
   if (!detection) return null
+  if (!landmarksLookLikeAFace(detection.landmarks)) return null
   return Array.from(detection.descriptor)
 }
 
@@ -66,10 +112,14 @@ export async function extractDescriptor(mediaEl) {
 // someone through the scan) is caught explicitly with its own message
 // instead of face-api.js silently picking one of the faces via
 // detectSingleFace and proceeding as if only one person was present.
-// Returns the raw detection count; callers decide what to do with >1.
+// Returns the count of detections that also pass landmarksLookLikeAFace —
+// same geometric sanity check extractDescriptor uses — so a textured
+// non-face region (shirt collar, patterned fabric) that the raw detector
+// flags doesn't inflate the count or get treated as "the one face" when
+// only real faces are actually present.
 export async function countFacesInFrame(mediaEl) {
-  const detections = await faceapi.detectAllFaces(mediaEl, DETECTOR_OPTIONS)
-  return detections.length
+  const detections = await faceapi.detectAllFaces(mediaEl, DETECTOR_OPTIONS).withFaceLandmarks()
+  return detections.filter(d => landmarksLookLikeAFace(d.landmarks)).length
 }
 
 // Averages multiple descriptors captured during enrollment into one reference vector.
@@ -318,7 +368,12 @@ export async function detectFaceWithLandmarks(mediaEl) {
   const result = await faceapi
     .detectSingleFace(mediaEl, DETECTOR_OPTIONS)
     .withFaceLandmarks()
-  return result || null
+  if (!result) return null
+  // Same geometric sanity check as extractDescriptor/countFacesInFrame —
+  // a textured non-face region passing the raw detector shouldn't be able
+  // to drive blink/head-turn tracking either.
+  if (!landmarksLookLikeAFace(result.landmarks)) return null
+  return result
 }
 
 // ─── Frame quality check — lighting/positioning, before liveness runs ──────
