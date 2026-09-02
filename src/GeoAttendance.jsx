@@ -241,8 +241,16 @@ function spawnRipple(e) {
   btn.appendChild(span)
   setTimeout(() => span.remove(), 600)
 }
+// NOTE: gpayPress no longer defines onClick directly. When spread onto a
+// <button onClick={handler} {...gpayPress}>, JSX prop order means whichever
+// onClick appears LAST wins — so gpayPress used to silently swallow every
+// real click handler it was combined with (ripple fired, handler never
+// ran, which is why "Detect My Location" looked responsive but did nothing).
+// gpayRipple() wraps your own handler instead of replacing it.
+function gpayRipple(handler) {
+  return (e) => { spawnRipple(e); if (handler) handler(e) }
+}
 const gpayPress = {
-  onClick: spawnRipple,
   onMouseDown: e => { e.currentTarget.style.transform = 'scale(0.98)' },
   onMouseUp:   e => { e.currentTarget.style.transform = 'scale(1)' },
   onMouseLeave:e => { e.currentTarget.style.transform = 'scale(1)' },
@@ -2104,7 +2112,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                           <StatusBadge status={log.status} dark />
                           {log.check_in_time && !log.check_out_time && !log.session_dead && (
-                            <button onClick={() => handleCheckOut(log.id, log.shift_label)} style={gpayBtnStyle({ bg: GPAY.ok, size: 'sm' })} {...gpayPress}>Check out</button>
+                            <button onClick={gpayRipple(() => handleCheckOut(log.id, log.shift_label))} style={gpayBtnStyle({ bg: GPAY.ok, size: 'sm' })} {...gpayPress}>Check out</button>
                           )}
                           {(log.fraud_flags || []).map((f, i) => <FraudBadge key={i} type={f.type} />)}
                         </div>
@@ -2122,7 +2130,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                 <div style={{ fontSize: 13, color: GPAY.ok, fontWeight: 600 }}>
                   Enable push notifications to get shift alerts
                 </div>
-                <button onClick={subscribe} style={gpayBtnStyle({ bg: GPAY.ok, size: 'sm' })} {...gpayPress}>Enable</button>
+                <button onClick={gpayRipple(subscribe)} style={gpayBtnStyle({ bg: GPAY.ok, size: 'sm' })} {...gpayPress}>Enable</button>
               </div>
             )}
 
@@ -2162,7 +2170,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
               )}
 
               {gpsStatus === 'idle' && (
-                <button onClick={startGPS} style={{ ...gpayBtnStyle({ bg: GPAY.gold, size: 'lg' }), width: '100%', fontSize: 15 }} {...gpayPress}>
+                <button onClick={gpayRipple(startGPS)} style={{ ...gpayBtnStyle({ bg: GPAY.gold, size: 'lg' }), width: '100%', fontSize: 15 }} {...gpayPress}>
                   📡 Detect My Location
                 </button>
               )}
@@ -2172,7 +2180,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                 </div>
               )}
               {['weak', 'error'].includes(gpsStatus) && (
-                <button onClick={startGPS} style={{ ...gpayBtnStyle({ bg: GPAY.warn }), width: '100%' }} {...gpayPress}>🔄 Retry Detection</button>
+                <button onClick={gpayRipple(startGPS)} style={{ ...gpayBtnStyle({ bg: GPAY.warn }), width: '100%' }} {...gpayPress}>🔄 Retry Detection</button>
               )}
 
               {['oncampus', 'outside', 'tracking'].includes(gpsStatus) && (
@@ -2215,7 +2223,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                           {alreadyDone
                             ? <StatusBadge status={(todayMyLogs.find(l => l.shift_id != null ? l.shift_id === shift.id : l.shift_label === shift.shift_label))?.status || 'Present'} dark />
                             : inWindow
-                              ? <button onClick={() => handleCheckIn(shift)} disabled={checkingIn}
+                              ? <button onClick={gpayRipple(() => handleCheckIn(shift))} disabled={checkingIn}
                                   style={gpayBtnStyle({ bg: gpsStatus === 'outside' ? GPAY.warn : GPAY.ok, disabled: checkingIn, size: 'sm' })} {...gpayPress}>
                                   {checkingIn ? '⏳' : gpsStatus === 'outside' ? '⚠️ Check In (Off Campus)' : '✅ Check In'}
                                 </button>
