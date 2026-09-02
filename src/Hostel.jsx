@@ -9017,7 +9017,6 @@ function Hostel() {
   )
 }
 function StudentTransferTab({ students, currentUser }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [houses, setHouses] = useState([])
   const [search, setSearch] = useState('')
   const [filterHouse, setFilterHouse] = useState('All')
@@ -9088,10 +9087,6 @@ function StudentTransferTab({ students, currentUser }) {
   }
 
   const handleTransfer = async () => {
-    if (!isAdmin) {
-      showToast('Only admins can transfer students.', '#dc2626')
-      return
-    }
     if (selectedIds.size === 0) {
       showToast('Select at least one student.', '#a8842f')
       return
@@ -9135,10 +9130,6 @@ function StudentTransferTab({ students, currentUser }) {
   }
 
   const handleSingleTransfer = async (student) => {
-    if (!isAdmin) {
-      showToast('Only admins can transfer students.', '#dc2626')
-      return
-    }
     if (!targetHouse) {
       showToast('Please select a target house.', '#a8842f')
       return
@@ -9280,7 +9271,7 @@ function StudentTransferTab({ students, currentUser }) {
                     )}
                   </td>
                   <td style={{ padding: '9px 14px' }}>
-                    {isAdmin && targetHouse && (
+                    {targetHouse && (
                       <button
                         onClick={() => handleSingleTransfer(s)}
                         disabled={transferring}
@@ -9306,11 +9297,6 @@ function StudentTransferTab({ students, currentUser }) {
         </table>
       </div>
 
-      {!isAdmin && (
-        <div style={{ marginTop: 16, textAlign: 'center', color: '#dc2626', fontSize: 13, fontWeight: 600 }}>
-          ⚠️ Only admins can perform transfers.
-        </div>
-      )}
     </div>
   )
 }
