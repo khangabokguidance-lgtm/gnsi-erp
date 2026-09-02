@@ -18,7 +18,7 @@ import SettingsView from './SettingsView'
 import AdvancedSettingsPanel from './AdvancedSettingsPanel'
 import PremiumToggleCard from './PremiumToggleCard'
 import AdminControlCenter from './AdminControlCenter'
-import Salary from './Salary'
+import Salary, { SlipModal, buildSlipHTML as buildSalarySlipHTML, printSlip as printSalarySlip } from './Salary'
 import { tabHasSettings } from './premiumSettings'
 import { COLOR, FONT, RADIUS, SHADOW, ledger, Seal, injectLedgerGlobalStyles } from './ledgerTheme.jsx'
 
@@ -83,6 +83,7 @@ const PAY = {
 }
 
 const fmtRupee = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`
+const fmtMonth = (m) => { if (!m) return ''; const [y, mo] = m.split('-'); return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) }
 const fmtDate  = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 const fmtTime  = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '—'
 const currentMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
@@ -1065,12 +1066,41 @@ function PayrollView({ staffId, isAdmin, staffList }) {
   const [savingAdjust, setSavingAdjust] = useState(false)
   const [expandedId, setExpandedId] = useState(null) // which staff card is expanded to show its breakdown
   const [existingSalaryRows, setExistingSalaryRows] = useState({}) // staff_id -> existing salary row for `month`, if any
+  // #1 search, #2 sort, #8 designation filter
+  const [search, setSearch] = useState('')
+  const [sortBy, setSortBy] = useState('name') // 'name' | 'net_desc' | 'net_asc' | 'ded_desc'
+  const [designationFilter, setDesignationFilter] = useState('all')
+  // #3 bulk select + bulk adjustment
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [bulkAdjusting, setBulkAdjusting] = useState(false)
+  const [bulkForm, setBulkForm] = useState({ amount: '', note: '' })
+  const [savingBulk, setSavingBulk] = useState(false)
+  // #4 payslip modal — reuses Salary.jsx's SlipModal via _dedOverride/_monthOverride
+  const [slipStaff, setSlipStaff] = useState(null)
+  // #5 last month's totals, for comparison
+  const [lastMonthTotals, setLastMonthTotals] = useState(null)
+  // #6 mark as paid, #7 payment mode — editable per row
+  const [paymentModeDraft, setPaymentModeDraft] = useState({}) // staff_id -> mode being edited, before save
 
   const fetchExistingSalary = useCallback(async () => {
     const { data } = await supabase.from('salary').select('*').eq('month', month)
     setExistingSalaryRows(Object.fromEntries((data || []).map(r => [r.staff_id, r])))
   }, [month])
   useEffect(() => { if (isAdmin) fetchExistingSalary() }, [isAdmin, fetchExistingSalary])
+
+  // #5 month-over-month comparison — last month's saved salary totals
+  // (not a live estimate, since a past month's real attendance won't
+  // change) so "vs last month" reflects what was actually paid, not a
+  // second live computation.
+  const fetchLastMonth = useCallback(async () => {
+    const [y, m] = month.split('-').map(Number)
+    const prevDate = new Date(y, m - 2, 1) // m is 1-indexed; -2 lands on previous month
+    const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`
+    const { data } = await supabase.from('salary').select('net_salary').eq('month', prevMonth)
+    if (!data || !data.length) { setLastMonthTotals(null); return }
+    setLastMonthTotals({ month: prevMonth, net: data.reduce((s, r) => s + Number(r.net_salary || 0), 0), count: data.length })
+  }, [month])
+  useEffect(() => { if (isAdmin) fetchLastMonth() }, [isAdmin, fetchLastMonth])
 
   const fetchRules = useCallback(async () => {
     const { data } = await supabase
@@ -1197,6 +1227,142 @@ function PayrollView({ staffId, isAdmin, staffList }) {
     gross: acc.gross + r.gross, ded: acc.ded + r.totalDed, net: acc.net + r.net,
   }), { gross: 0, ded: 0, net: 0 }), [rows])
 
+  // #8 designation list for the filter dropdown
+  const designations = useMemo(() => {
+    const set = new Set(rows.map(r => r.staff.designation || r.staff.department).filter(Boolean))
+    return Array.from(set).sort()
+  }, [rows])
+
+  // #1 search, #8 designation filter, #2 sort — applied together, in
+  // that order, without touching `rows` itself (still the source of
+  // truth for totals/exports of the full set).
+  const visibleRows = useMemo(() => {
+    let list = rows
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      list = list.filter(r => (r.staff.name || '').toLowerCase().includes(q))
+    }
+    if (designationFilter !== 'all') {
+      list = list.filter(r => (r.staff.designation || r.staff.department) === designationFilter)
+    }
+    const sorted = [...list]
+    if (sortBy === 'net_desc') sorted.sort((a, b) => b.net - a.net)
+    else if (sortBy === 'net_asc') sorted.sort((a, b) => a.net - b.net)
+    else if (sortBy === 'ded_desc') sorted.sort((a, b) => b.totalDed - a.totalDed)
+    else sorted.sort((a, b) => (a.staff.name || '').localeCompare(b.staff.name || ''))
+    return sorted
+  }, [rows, search, designationFilter, sortBy])
+
+  // #3 bulk selection helpers
+  const toggleSelect = (id) => setSelectedIds(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+  const toggleSelectAllVisible = () => setSelectedIds(prev => {
+    const allSelected = visibleRows.every(r => prev.has(r.staff.id))
+    if (allSelected) return new Set()
+    return new Set(visibleRows.map(r => r.staff.id))
+  })
+
+  // #3 bulk adjustment — applies the SAME amount/note to every selected
+  // staff member, one upsert per row (kept simple/sequential rather than
+  // a single batch query, so a partial failure is easy to see and doesn't
+  // silently corrupt the rest — matches the same pattern used elsewhere
+  // in this codebase, e.g. saveBulkShift in GeoAttendance.jsx).
+  const saveBulkAdjust = async () => {
+    setSavingBulk(true)
+    const amount = Number(bulkForm.amount) || 0
+    let successCount = 0
+    const failed = []
+    for (const row of rows.filter(r => selectedIds.has(r.staff.id))) {
+      const existing = existingSalaryRows[row.staff.id]
+      const baseDed = row.lateDed + row.absentDed + row.earlyDed + row.halfDayDed + row.advDed
+      const perfAdj = Number(existing?.performance_adjustment || 0)
+      const totDed = baseDed + amount + (perfAdj < 0 ? -perfAdj : 0)
+      const payload = {
+        staff_id: row.staff.id, month,
+        basic_salary: row.staff.basic_salary || 0,
+        seniority_allowance: row.staff.seniority_allowance || 0,
+        loyalty_bonus: row.staff.loyalty_bonus || 0,
+        role_bonus: row.staff.role_bonus || 0,
+        allowance: (row.staff.seniority_allowance || 0) + (row.staff.loyalty_bonus || 0) + (row.staff.role_bonus || 0),
+        advance_deduction: row.advDed,
+        late_deduction: row.lateDed + row.halfDayDed,
+        admin_deduction: amount,
+        pf_deduction: existing?.pf_deduction || 0,
+        performance_adjustment: perfAdj,
+        deduction: totDed,
+        net_salary: row.gross + (perfAdj > 0 ? perfAdj : 0) - totDed,
+        status: existing?.status || 'Unpaid',
+        payment_mode: existing?.payment_mode || 'Cash',
+      }
+      const { error } = await supabase.from('salary').upsert([payload], { onConflict: 'staff_id,month' })
+      if (error) failed.push({ name: row.staff.name, message: error.message })
+      else successCount++
+    }
+    setSavingBulk(false)
+    setBulkAdjusting(false)
+    setSelectedIds(new Set())
+    await fetchExistingSalary()
+    if (failed.length) {
+      alert(`${successCount} updated, ${failed.length} failed:\n${failed.map(f => `${f.name}: ${f.message}`).join('\n')}`)
+    }
+  }
+
+  // #6 mark as paid / unpaid — only touches status on a row this screen
+  // (or Salary.jsx) has already created; never invents a payment record
+  // with no underlying salary row, since the upsert below always sends
+  // the full current computed figures alongside the status change.
+  const setPaidStatus = async (row, status) => {
+    const existing = existingSalaryRows[row.staff.id]
+    const perfAdj = Number(existing?.performance_adjustment || 0)
+    const mode = paymentModeDraft[row.staff.id] || existing?.payment_mode || 'Cash'
+    const payload = {
+      staff_id: row.staff.id, month,
+      basic_salary: row.staff.basic_salary || 0,
+      seniority_allowance: row.staff.seniority_allowance || 0,
+      loyalty_bonus: row.staff.loyalty_bonus || 0,
+      role_bonus: row.staff.role_bonus || 0,
+      allowance: (row.staff.seniority_allowance || 0) + (row.staff.loyalty_bonus || 0) + (row.staff.role_bonus || 0),
+      advance_deduction: row.advDed,
+      late_deduction: row.lateDed + row.halfDayDed,
+      admin_deduction: row.adminDed,
+      pf_deduction: existing?.pf_deduction || 0,
+      performance_adjustment: perfAdj,
+      deduction: row.totalDed,
+      net_salary: row.net,
+      status,
+      payment_mode: mode,
+      paid_at: status === 'Paid' ? new Date().toISOString() : (existing?.paid_at || null),
+    }
+    const { error } = await supabase.from('salary').upsert([payload], { onConflict: 'staff_id,month' })
+    if (error) { alert('Could not update status: ' + error.message); return }
+    await fetchExistingSalary()
+  }
+
+  // #10 export payslips for every visible staff as one combined,
+  // multi-page-friendly HTML document (print-to-PDF gives one PDF with
+  // every payslip) — reuses Salary.jsx's exact slip template so the
+  // output is identical to individual slips, just concatenated.
+  const exportAllSlips = () => {
+    const w = window.open('', '_blank')
+    if (!w) { alert('Please allow pop-ups to export payslips.'); return }
+    const sections = visibleRows.map(r => {
+      const existing = existingSalaryRows[r.staff.id]
+      const ded = {
+        advance_deduction: r.advDed, late_deduction: r.lateDed + r.halfDayDed,
+        admin_deduction: r.adminDed, pf_deduction: existing?.pf_deduction || 0,
+        performance_adjustment: existing?.performance_adjustment || 0,
+      }
+      return `<div style="page-break-after: always;">${buildSalarySlipHTML(r.staff, ded, month, 'office')}</div>`
+    }).join('')
+    w.document.write(`<html><head><title>Payslips ${month}</title></head><body style="font-family:Arial,sans-serif;margin:0;">${sections}</body></html>`)
+    w.document.close()
+    w.focus()
+    setTimeout(() => w.print(), 400)
+  }
+
   const startAdjust = (row) => {
     setAdjustingId(row.staff.id)
     setAdjustForm({ amount: String(existingSalaryRows[row.staff.id]?.admin_deduction || ''), note: '' })
@@ -1273,20 +1439,53 @@ function PayrollView({ staffId, isAdmin, staffList }) {
           </select>
         )}
         {isAdmin && (
-          <button onClick={() => exportPayrollPreviewCSV(rows, month)}
-            style={{ padding: '9px 14px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, fontFamily: FONT.body, fontSize: 12, fontWeight: 600, color: PAY.textSecondary, cursor: 'pointer' }}>
-            ⬇ Export
-          </button>
+          <>
+            <button onClick={() => exportPayrollPreviewCSV(rows, month)}
+              style={{ padding: '9px 14px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, fontFamily: FONT.body, fontSize: 12, fontWeight: 600, color: PAY.textSecondary, cursor: 'pointer' }}>
+              ⬇ Export CSV
+            </button>
+            {/* #10 export all payslips */}
+            <button onClick={exportAllSlips}
+              style={{ padding: '9px 14px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, fontFamily: FONT.body, fontSize: 12, fontWeight: 600, color: PAY.textSecondary, cursor: 'pointer' }}>
+              🖨️ Print all payslips
+            </button>
+          </>
         )}
       </div>
 
-      {/* Summary card — the payment-app style hero number */}
+      {/* #1 search, #8 designation filter, #2 sort */}
+      {isAdmin && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search staff by name…"
+            style={{ flex: '1 1 180px', padding: '9px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, fontFamily: FONT.body, fontSize: 13, color: PAY.textPrimary }} />
+          <select value={designationFilter} onChange={e => setDesignationFilter(e.target.value)}
+            style={{ padding: '9px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, fontFamily: FONT.body, fontSize: 13, color: PAY.textPrimary }}>
+            <option value="all">All designations</option>
+            {designations.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+            style={{ padding: '9px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, fontFamily: FONT.body, fontSize: 13, color: PAY.textPrimary }}>
+            <option value="name">Sort: Name</option>
+            <option value="net_desc">Sort: Net pay (high→low)</option>
+            <option value="net_asc">Sort: Net pay (low→high)</option>
+            <option value="ded_desc">Sort: Deductions (high→low)</option>
+          </select>
+        </div>
+      )}
+
+      {/* Summary card — the payment-app style hero number, plus #9 gross
+          cost projection and #5 month-over-month comparison */}
       <div style={{ background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius, padding: '20px 22px', marginBottom: 16, boxShadow: PAY.shadowRaised }}>
         <div style={{ fontSize: 11.5, color: PAY.textMuted, fontWeight: 600, letterSpacing: '0.02em', textTransform: 'uppercase' }}>Estimated net payable</div>
         <div style={{ fontSize: 30, fontWeight: 800, color: PAY.textPrimary, fontFamily: FONT.display, marginTop: 4 }}>{fmtRupee(monthTotals.net)}</div>
-        <div style={{ display: 'flex', gap: 18, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${PAY.divider}` }}>
+        {isAdmin && lastMonthTotals && (
+          <div style={{ fontSize: 11.5, marginTop: 4, color: monthTotals.net >= lastMonthTotals.net ? PAY.red : PAY.green, fontWeight: 600 }}>
+            {monthTotals.net >= lastMonthTotals.net ? '▲' : '▼'} {fmtRupee(Math.abs(monthTotals.net - lastMonthTotals.net))} vs {fmtMonth(lastMonthTotals.month)} ({fmtRupee(lastMonthTotals.net)})
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 18, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${PAY.divider}`, flexWrap: 'wrap' }}>
           <div>
-            <div style={{ fontSize: 10.5, color: PAY.textMuted, fontWeight: 600 }}>Gross</div>
+            <div style={{ fontSize: 10.5, color: PAY.textMuted, fontWeight: 600 }}>Gross cost</div>
             <div style={{ fontSize: 15, fontWeight: 700, color: PAY.textPrimary }}>{fmtRupee(monthTotals.gross)}</div>
           </div>
           <div>
@@ -1295,10 +1494,56 @@ function PayrollView({ staffId, isAdmin, staffList }) {
           </div>
           <div>
             <div style={{ fontSize: 10.5, color: PAY.textMuted, fontWeight: 600 }}>Staff</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: PAY.textPrimary }}>{rows.length}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: PAY.textPrimary }}>{visibleRows.length}{visibleRows.length !== rows.length ? ` / ${rows.length}` : ''}</div>
           </div>
         </div>
       </div>
+
+      {/* #3 bulk selection toolbar */}
+      {isAdmin && visibleRows.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: PAY.textSecondary, cursor: 'pointer' }}>
+            <input type="checkbox" checked={visibleRows.length > 0 && visibleRows.every(r => selectedIds.has(r.staff.id))} onChange={toggleSelectAllVisible} />
+            Select all
+          </label>
+          {selectedIds.size > 0 && (
+            <>
+              <span style={{ fontSize: 12, color: PAY.textMuted }}>{selectedIds.size} selected</span>
+              <button onClick={() => setBulkAdjusting(true)}
+                style={{ padding: '6px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.blue}33`, background: PAY.blueBg, color: PAY.blue, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                Bulk adjust {selectedIds.size}
+              </button>
+              <button onClick={() => setSelectedIds(new Set())}
+                style={{ padding: '6px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, color: PAY.textMuted, fontSize: 12, cursor: 'pointer' }}>
+                Clear
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {bulkAdjusting && (
+        <div style={{ background: PAY.card, border: `1px solid ${PAY.blue}33`, borderRadius: PAY.radius, padding: 14, marginBottom: 14 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: PAY.textPrimary, marginBottom: 8 }}>Bulk adjustment for {selectedIds.size} staff</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            <input type="number" value={bulkForm.amount} onChange={e => setBulkForm(f => ({ ...f, amount: e.target.value }))}
+              placeholder="Amount (₹)" style={{ flex: '1 1 120px', padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+            <input type="text" value={bulkForm.note} onChange={e => setBulkForm(f => ({ ...f, note: e.target.value }))}
+              placeholder="Reason (e.g. festival bonus)" style={{ flex: '2 1 200px', padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+          </div>
+          <div style={{ fontSize: 10.5, color: PAY.textMuted, marginBottom: 10 }}>Applies this same amount to every selected staff member's admin adjustment for {month}. Positive deducts; negative adds a bonus.</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={saveBulkAdjust} disabled={savingBulk}
+              style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: PAY.blue, color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>
+              {savingBulk ? '⏳ Applying…' : `Apply to ${selectedIds.size}`}
+            </button>
+            <button onClick={() => setBulkAdjusting(false)}
+              style={{ padding: '9px 16px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, color: PAY.textSecondary, fontWeight: 600, fontSize: 12.5, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <p style={{ color: PAY.textMuted, textAlign: 'center', padding: 24, fontFamily: FONT.body }}>Loading…</p>
@@ -1308,19 +1553,25 @@ function PayrollView({ staffId, isAdmin, staffList }) {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {rows.map(r => {
+          {visibleRows.map(r => {
             const isExpanded = expandedId === r.staff.id
             const isAdjusting = adjustingId === r.staff.id
+            const isSelected = selectedIds.has(r.staff.id)
+            const existing = existingSalaryRows[r.staff.id]
+            const isPaid = existing?.status === 'Paid'
             const flags = []
             if (r.d.lateDays > 0) flags.push({ label: `${r.d.lateDays} late`, color: PAY.amber, bg: PAY.amberBg })
             if (r.d.halfDay > 0) flags.push({ label: `${r.d.halfDay} half day`, color: '#0369A1', bg: '#EFF8FF' })
             if (r.d.absent > 0) flags.push({ label: `${r.d.absent} absent`, color: PAY.red, bg: PAY.redBg })
             if (r.d.earlyOut > 0) flags.push({ label: `${r.d.earlyOut} early out`, color: PAY.amber, bg: PAY.amberBg })
             return (
-              <div key={r.staff.id} style={{ background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius, boxShadow: PAY.shadow, overflow: 'hidden' }}>
+              <div key={r.staff.id} style={{ background: PAY.card, border: `1px solid ${isSelected ? PAY.blue : PAY.cardBorder}`, borderRadius: PAY.radius, boxShadow: PAY.shadow, overflow: 'hidden' }}>
                 {/* Card header — tap to expand, payment-app row: name left, net amount right */}
-                <div onClick={() => setExpandedId(isExpanded ? null : r.staff.id)} style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1, cursor: 'pointer' }} onClick={() => setExpandedId(isExpanded ? null : r.staff.id)}>
+                    {isAdmin && (
+                      <input type="checkbox" checked={isSelected} onClick={e => e.stopPropagation()} onChange={() => toggleSelect(r.staff.id)} style={{ flexShrink: 0 }} />
+                    )}
                     <div style={{
                       width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
                       background: PAY.blueBg, color: PAY.blue, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1329,7 +1580,10 @@ function PayrollView({ staffId, isAdmin, staffList }) {
                       {(r.staff.name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
                     </div>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: PAY.textPrimary, fontFamily: FONT.body, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.staff.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: PAY.textPrimary, fontFamily: FONT.body, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.staff.name}</div>
+                        {isPaid && <span style={{ fontSize: 9, fontWeight: 800, color: PAY.green, background: PAY.greenBg, padding: '1px 6px', borderRadius: 999, flexShrink: 0 }}>PAID</span>}
+                      </div>
                       <div style={{ fontSize: 11, color: PAY.textMuted, marginTop: 1 }}>{r.staff.designation || r.staff.department || ''}</div>
                       {flags.length > 0 && (
                         <div style={{ display: 'flex', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
@@ -1340,7 +1594,7 @@ function PayrollView({ staffId, isAdmin, staffList }) {
                       )}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  <div onClick={() => setExpandedId(isExpanded ? null : r.staff.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, cursor: 'pointer' }}>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontWeight: 800, fontSize: 16, color: PAY.textPrimary, fontFamily: FONT.display }}>{fmtRupee(r.net)}</div>
                       {r.totalDed > 0 && <div style={{ fontSize: 10.5, color: PAY.red, fontWeight: 600 }}>−{fmtRupee(r.totalDed)}</div>}
@@ -1427,6 +1681,33 @@ function PayrollView({ staffId, isAdmin, staffList }) {
                         )}
                       </div>
                     )}
+
+                    {/* #4 payslip, #6 mark as paid, #7 payment mode */}
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${PAY.divider}`, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                      <button onClick={() => setSlipStaff({ ...r.staff, _dedOverride: { advance_deduction: r.advDed, late_deduction: r.lateDed + r.halfDayDed, admin_deduction: r.adminDed, pf_deduction: existing?.pf_deduction || 0, performance_adjustment: existing?.performance_adjustment || 0 }, _monthOverride: month })}
+                        style={{ padding: '8px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, color: PAY.textSecondary, fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
+                        📄 Payslip
+                      </button>
+                      <select value={paymentModeDraft[r.staff.id] ?? existing?.payment_mode ?? 'Cash'}
+                        onChange={e => setPaymentModeDraft(prev => ({ ...prev, [r.staff.id]: e.target.value }))}
+                        style={{ padding: '8px 10px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, fontSize: 11.5, fontFamily: FONT.body, color: PAY.textSecondary }}>
+                        {['Cash', 'Bank Transfer', 'UPI', 'Cheque'].map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                      {isPaid ? (
+                        <button onClick={() => setPaidStatus(r, 'Unpaid')}
+                          style={{ padding: '8px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.amber}44`, background: PAY.amberBg, color: PAY.amber, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+                          Mark Unpaid
+                        </button>
+                      ) : (
+                        <button onClick={() => setPaidStatus(r, 'Paid')}
+                          style={{ padding: '8px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.green}44`, background: PAY.greenBg, color: PAY.green, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+                          ✓ Mark Paid
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 10, color: PAY.textMuted, marginTop: 6 }}>
+                      Marking Paid records this exact figure directly — it does not replace running the actual register in Payroll → Salary if you also track payments there.
+                    </div>
                   </div>
                 )}
               </div>
@@ -1434,6 +1715,9 @@ function PayrollView({ staffId, isAdmin, staffList }) {
           })}
         </div>
       )}
+
+      {/* #4/#6 payslip modal — reuses Salary.jsx's SlipModal exactly */}
+      {slipStaff && <SlipModal s={slipStaff} ded={slipStaff._dedOverride} month={slipStaff._monthOverride} onClose={() => setSlipStaff(null)} />}
     </div>
   )
 }

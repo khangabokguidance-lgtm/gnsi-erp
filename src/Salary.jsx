@@ -2542,3 +2542,9 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
     </div>
   )
 }
+
+// Named exports so PayrollView (FaceAttendance.jsx) can reuse the exact
+// same slip-generation logic rather than duplicating it — same payslip
+// look/format whether generated from the authoritative register here or
+// PayrollView's live preview.
+export { SlipModal, buildSlipHTML, printSlip, gross }
