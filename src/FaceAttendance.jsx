@@ -11,7 +11,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from './supabase'
-import FaceEnroll, { FaceApprovalQueue } from './FaceEnroll'
+import FaceEnroll, { FaceApprovalQueue, FaceEnrollReport } from './FaceEnroll'
 import GeoAttendance, { DriftFlaggedStaffPanel } from './GeoAttendance'
 import { AttendanceSummaryView, ReportsView, BroadcastView, NotificationsView, RegularizationView } from './FaceAttendanceExtras'
 import SettingsView from './SettingsView'
@@ -2596,6 +2596,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
       { key: 'geocampus', icon: '🗺️', label: 'Campus zones' },
       { key: 'georeport', icon: '📊', label: 'Geo attendance report' },
       { key: 'approvals', icon: '📋', label: 'Approvals', badge: counts.pending },
+      { key: 'faceenrollreport', icon: '🪪', label: 'Enrollment report' },
       { key: 'cashbook',  icon: '📒', label: 'Cash book' },
       { key: 'rolepermissions', icon: '🔑', label: 'Role Permissions' },
       { key: 'attendancehelpers', icon: '🤝', label: 'Attendance Helpers' },
@@ -2607,7 +2608,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
   const pageTitles = {
     dashboard: 'Dashboard', checkin: 'Take attendance', attendancesummary: 'Attendance', timecard: 'Time card', advances: 'Advances',
     fines: 'Late fines', payroll: 'Payroll', regularization: 'Correct attendance', reports: 'Reports', broadcast: 'Broadcast messages', notifications: 'Notifications',
-    coverage: 'Staff coverage', livemonitor: 'Live geo monitor', geofraud: 'Geo fraud alerts', geoshifts: 'Shift configuration', geocampus: 'Campus zones', georeport: 'Geo attendance report', approvals: 'Pending approvals', cashbook: 'Cash book', deductionrules: 'Deduction Rules (Daily)', rolepermissions: 'Role Permissions', attendancehelpers: 'Attendance Helpers', controlcenter: 'Admin Control Center', settings: 'Settings',
+    coverage: 'Staff coverage', livemonitor: 'Live geo monitor', geofraud: 'Geo fraud alerts', geoshifts: 'Shift configuration', geocampus: 'Campus zones', georeport: 'Geo attendance report', approvals: 'Pending approvals', faceenrollreport: 'Face Enrollment Report', cashbook: 'Cash book', deductionrules: 'Deduction Rules (Daily)', rolepermissions: 'Role Permissions', attendancehelpers: 'Attendance Helpers', controlcenter: 'Admin Control Center', settings: 'Settings',
   }
 
   // Quick actions row, below the main tile grid — role-aware, matching
@@ -2982,6 +2983,11 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
           {tab === 'approvals' && isAdmin && (
             <div style={S.card}>
               <FaceApprovalQueue currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />
+            </div>
+          )}
+          {tab === 'faceenrollreport' && isAdmin && (
+            <div style={S.card}>
+              <FaceEnrollReport staffList={staff} />
             </div>
           )}
         </>

@@ -482,3 +482,193 @@ export function FaceApprovalQueue({ currentAdminId, showToast }) {
     </div>
   )
 }
+
+// ─── Face Enrollment Report — org-wide status/history view ─────────────────
+// Every staff member's enrollment status, when they enrolled, who
+// reviewed it, and how long approval took. Read-only, admin-facing.
+// Distinct from FaceApprovalQueue (which only shows pending items and
+// exists to act on them) — this is the reporting/audit layer over the
+// same staff_face_descriptors table.
+
+const REPORT_STATUS_META = {
+  approved: { label: 'Approved', color: '#16A34A', bg: '#F0FDF4' },
+  pending:  { label: 'Pending',  color: '#D97706', bg: '#FFFBEB' },
+  rejected: { label: 'Rejected', color: '#DC2626', bg: '#FEF2F2' },
+  none:     { label: 'Not enrolled', color: '#94A3B8', bg: '#F1F5F9' },
+}
+
+function exportEnrollReportCSV(rows) {
+  const headers = ['Staff', 'Designation', 'Status', 'Enrolled At', 'Reviewed At', 'Reviewed By', 'Turnaround (hrs)']
+  const body = rows.map(r => [
+    r.staffName, r.designation || '', REPORT_STATUS_META[r.status]?.label || r.status,
+    r.enrolled_at ? new Date(r.enrolled_at).toLocaleString('en-IN') : '',
+    r.reviewed_at ? new Date(r.reviewed_at).toLocaleString('en-IN') : '',
+    r.reviewerName || '', r.turnaroundHrs ?? '',
+  ])
+  const csv = [headers, ...body].map(row => row.map(v => `"${v}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a'); a.href = url; a.download = `GNSI_Face_Enrollment_Report_${new Date().toISOString().slice(0, 10)}.csv`; a.click()
+  URL.revokeObjectURL(url)
+}
+
+export function FaceEnrollReport({ staffList = [] }) {
+  const [descriptors, setDescriptors] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true)
+    // One row per staff_id kept — the most recent by enrolled_at — since a
+    // staff member can have multiple historical descriptor rows (e.g. a
+    // rejected attempt followed by a later approved one); the report
+    // should reflect their CURRENT standing, not every historical row.
+    const { data, error } = await supabase
+      .from('staff_face_descriptors')
+      .select('id, staff_id, status, enrolled_at, enrolled_by, reviewed_at, reviewed_by')
+      .order('enrolled_at', { ascending: false })
+    if (error) {
+      setFetchError(error.message)
+      setDescriptors([])
+    } else {
+      setFetchError(null)
+      setDescriptors(data || [])
+    }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchAll() }, [fetchAll])
+
+  const staffNameById = React.useMemo(() => Object.fromEntries(staffList.map(s => [s.id, s.name])), [staffList])
+
+  const rows = React.useMemo(() => {
+    // Most-recent descriptor per staff_id (data is already ordered
+    // enrolled_at desc, so the first match per staff_id wins).
+    const latestByStaff = {}
+    for (const d of descriptors) {
+      if (!latestByStaff[d.staff_id]) latestByStaff[d.staff_id] = d
+    }
+    return staffList.map(s => {
+      const d = latestByStaff[s.id]
+      const turnaroundHrs = d?.enrolled_at && d?.reviewed_at
+        ? Math.round((new Date(d.reviewed_at) - new Date(d.enrolled_at)) / 36e5 * 10) / 10
+        : null
+      return {
+        staffId: s.id,
+        staffName: s.name,
+        designation: s.designation || s.department || '',
+        status: d?.status || 'none',
+        enrolled_at: d?.enrolled_at || null,
+        reviewed_at: d?.reviewed_at || null,
+        reviewerName: d?.reviewed_by ? (staffNameById[d.reviewed_by] || `#${d.reviewed_by}`) : null,
+        turnaroundHrs,
+      }
+    }).sort((a, b) => (a.staffName || '').localeCompare(b.staffName || ''))
+  }, [descriptors, staffList, staffNameById])
+
+  const counts = React.useMemo(() => {
+    const c = { approved: 0, pending: 0, rejected: 0, none: 0 }
+    for (const r of rows) c[r.status] = (c[r.status] || 0) + 1
+    return c
+  }, [rows])
+
+  const avgTurnaroundHrs = React.useMemo(() => {
+    const withTurnaround = rows.filter(r => r.turnaroundHrs != null)
+    if (!withTurnaround.length) return null
+    return Math.round(withTurnaround.reduce((s, r) => s + r.turnaroundHrs, 0) / withTurnaround.length * 10) / 10
+  }, [rows])
+
+  const visibleRows = React.useMemo(() => {
+    let list = rows
+    if (statusFilter !== 'all') list = list.filter(r => r.status === statusFilter)
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      list = list.filter(r => (r.staffName || '').toLowerCase().includes(q))
+    }
+    return list
+  }, [rows, statusFilter, search])
+
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14, lineHeight: 1.4 }}>
+        Every staff member's current face enrollment status — approved, pending, rejected, or never enrolled — with review history. Read-only; use the Approvals queue to act on pending requests.
+      </div>
+
+      {fetchError && (
+        <div style={{ background: '#FEF2F2', border: '1px solid #DC262633', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#DC2626' }}>
+          ⚠️ Could not load enrollment data: {fetchError}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 16 }}>
+        {['approved', 'pending', 'rejected', 'none'].map(k => (
+          <button key={k} onClick={() => setStatusFilter(statusFilter === k ? 'all' : k)}
+            style={{
+              background: REPORT_STATUS_META[k].bg, border: `1px solid ${REPORT_STATUS_META[k].color}33`, borderRadius: 10,
+              padding: '12px 10px', textAlign: 'center', cursor: 'pointer',
+              outline: statusFilter === k ? `2px solid ${REPORT_STATUS_META[k].color}` : 'none',
+            }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: REPORT_STATUS_META[k].color }}>{counts[k] || 0}</div>
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: REPORT_STATUS_META[k].color, marginTop: 2 }}>{REPORT_STATUS_META[k].label}</div>
+          </button>
+        ))}
+      </div>
+
+      {avgTurnaroundHrs != null && (
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+          Average approval turnaround: <strong style={{ color: '#1e293b' }}>{avgTurnaroundHrs}h</strong>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search staff by name…"
+          style={{ flex: '1 1 180px', padding: '9px 12px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 13 }} />
+        <button onClick={() => exportEnrollReportCSV(visibleRows)}
+          style={{ padding: '9px 14px', borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', fontSize: 12, fontWeight: 600, color: '#475569', cursor: 'pointer' }}>
+          ⬇ Export CSV
+        </button>
+      </div>
+
+      {loading ? (
+        <p style={{ color: '#94a3b8', textAlign: 'center', padding: 24 }}>Loading…</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 640 }}>
+            <thead>
+              <tr>
+                {['Staff', 'Status', 'Enrolled', 'Reviewed', 'Reviewed By', 'Turnaround'].map(h => (
+                  <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 600, color: '#374151', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.map(r => {
+                const meta = REPORT_STATUS_META[r.status]
+                return (
+                  <tr key={r.staffId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '9px 12px' }}>
+                      <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.staffName}</div>
+                      <div style={{ fontSize: 10.5, color: '#94a3b8' }}>{r.designation}</div>
+                    </td>
+                    <td style={{ padding: '9px 12px' }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999, color: meta.color, background: meta.bg }}>{meta.label}</span>
+                    </td>
+                    <td style={{ padding: '9px 12px', color: '#64748b' }}>{r.enrolled_at ? new Date(r.enrolled_at).toLocaleDateString('en-IN') : '—'}</td>
+                    <td style={{ padding: '9px 12px', color: '#64748b' }}>{r.reviewed_at ? new Date(r.reviewed_at).toLocaleDateString('en-IN') : '—'}</td>
+                    <td style={{ padding: '9px 12px', color: '#64748b' }}>{r.reviewerName || '—'}</td>
+                    <td style={{ padding: '9px 12px', color: '#64748b' }}>{r.turnaroundHrs != null ? `${r.turnaroundHrs}h` : '—'}</td>
+                  </tr>
+                )
+              })}
+              {!visibleRows.length && (
+                <tr><td colSpan="6" style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>No staff match this filter.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
