@@ -360,6 +360,7 @@ function LateFinesView({ staffId, isAdmin, staffList }) {
   const [rows, setRows]   = useState([])
   const [loading, setLoading] = useState(true)
   const [staffFilter, setStaffFilter] = useState(isAdmin ? 'all' : String(staffId))
+  const [fetchError, setFetchError] = useState(null)
 
   const fetchRules = useCallback(async () => {
     const { data } = await supabase.from('salary_deduction_rules').select('*').eq('is_active', true).order('created_at', { ascending: false }).limit(1).maybeSingle()
@@ -368,17 +369,38 @@ function LateFinesView({ staffId, isAdmin, staffList }) {
 
   const fetchLateRows = useCallback(async () => {
     setLoading(true)
+    // BUGFIX: this hardcoded `${month}-31` as the end of the range —
+    // invalid for any 28/29/30-day month (identical bug to the one fixed
+    // in PayrollView). For September this silently broke the query and
+    // the screen showed "0 late days" even with real Late/Half Day rows
+    // on file. Compute the real last day of the month instead.
+    const [y, m] = month.split('-').map(Number)
+    const lastDay = new Date(y, m, 0).getDate()
+    const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`
+
     let q = supabase
       .from('staff_geo_attendance')
       .select('id, staff_id, date, shift_label, late_minutes, status, staff_profiles(name)')
       .gte('date', `${month}-01`)
-      .lte('date', `${month}-31`)
-      .gt('late_minutes', 0)
+      .lte('date', monthEnd)
+      // Filter to status = 'Late' specifically, not just late_minutes > 0
+      // — under the three-band lateness rule, a Half Day row also carries
+      // a positive late_minutes, and Half Day already has its own
+      // separate deduction (half_day_rate) elsewhere. Including it here
+      // too would double-charge the same day under both rules.
+      .eq('status', 'Late')
       .order('date', { ascending: false })
     if (!isAdmin) q = q.eq('staff_id', staffId)
     else if (staffFilter !== 'all') q = q.eq('staff_id', staffFilter)
     const { data, error } = await q
-    if (!error) setRows(data || [])
+    if (error) {
+      console.error('LateFinesView fetchLateRows error:', error)
+      setFetchError(error.message)
+      setRows([])
+    } else {
+      setFetchError(null)
+      setRows(data || [])
+    }
     setLoading(false)
   }, [month, isAdmin, staffId, staffFilter])
 
@@ -394,6 +416,12 @@ function LateFinesView({ staffId, isAdmin, staffList }) {
       <p style={{ fontSize: 12, color: COLOR.slate, margin: '0 0 14px' }}>
         View only — the actual fine amount is applied in Salary.jsx's monthly payroll run using the active deduction rule below. Late deduction is a flat rate per late day, regardless of how many minutes late.
       </p>
+
+      {fetchError && (
+        <div style={{ background: COLOR.dangerBg, border: `1px dashed ${COLOR.danger}`, borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: COLOR.danger }}>
+          ⚠️ Could not load late check-ins: {fetchError}
+        </div>
+      )}
 
       {rules && (
         <div style={{ background: '#fffbeb', border: '1px dashed #fbbf24', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#92400e' }}>
@@ -435,6 +463,343 @@ function LateFinesView({ staffId, isAdmin, staffList }) {
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Dashboard — 6 org-wide charts, hand-rolled SVG (no chart library
+// dependency, matching the existing FraudScatterWidget pattern in
+// GeoAttendance.jsx). Admin-only, read-only, aggregates straight from
+// staff_geo_attendance/salary_deduction_rules — doesn't write anything.
+
+const STATUS_COLORS = {
+  Present:  PAY.green,
+  Late:     PAY.amber,
+  'Half Day': '#0369A1',
+  Absent:   PAY.red,
+  EarlyOut: '#7C3AED',
+  Flagged:  '#7C3AED',
+}
+
+function DashCard({ title, subtitle, children }) {
+  return (
+    <div style={{ background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius, padding: 18, boxShadow: PAY.shadow }}>
+      <div style={{ fontWeight: 700, fontSize: 14, color: PAY.textPrimary, fontFamily: FONT.body }}>{title}</div>
+      {subtitle && <div style={{ fontSize: 11.5, color: PAY.textMuted, marginTop: 2, marginBottom: 12 }}>{subtitle}</div>}
+      <div style={{ marginTop: subtitle ? 0 : 12 }}>{children}</div>
+    </div>
+  )
+}
+
+function EmptyChart({ text }) {
+  return <div style={{ padding: '32px 0', textAlign: 'center', color: PAY.textMuted, fontSize: 12.5 }}>{text}</div>
+}
+
+// Chart 1 — stacked bar, daily Present/Late/Half Day/Absent counts this month.
+function StackedTrendChart({ days }) {
+  if (!days.length) return <EmptyChart text="No attendance data yet this month." />
+  const W = 640, H = 200, PAD_L = 32, PAD_B = 24, PAD_T = 8
+  const maxTotal = Math.max(1, ...days.map(d => d.Present + d.Late + d['Half Day'] + d.Absent))
+  const barW = (W - PAD_L - 8) / days.length
+  const yScale = (v) => (v / maxTotal) * (H - PAD_T - PAD_B)
+  const statuses = ['Present', 'Late', 'Half Day', 'Absent']
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+      <line x1={PAD_L} y1={H - PAD_B} x2={W} y2={H - PAD_B} stroke={PAY.divider} strokeWidth="1" />
+      {days.map((d, i) => {
+        let yOffset = H - PAD_B
+        const x = PAD_L + i * barW + 2
+        return (
+          <g key={d.date}>
+            {statuses.map(s => {
+              const h = yScale(d[s] || 0)
+              yOffset -= h
+              if (h <= 0) return null
+              return <rect key={s} x={x} y={yOffset} width={Math.max(1, barW - 3)} height={h} fill={STATUS_COLORS[s]} rx="1">
+                <title>{`${d.date}: ${s} ${d[s]}`}</title>
+              </rect>
+            })}
+            {(i % Math.ceil(days.length / 10 || 1) === 0) && (
+              <text x={x + barW / 2} y={H - PAD_B + 14} fontSize="8.5" fill={PAY.textMuted} textAnchor="middle">{d.date.slice(-2)}</text>
+            )}
+          </g>
+        )
+      })}
+      <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={H - PAD_B} stroke={PAY.divider} strokeWidth="1" />
+    </svg>
+  )
+}
+
+// Chart 2 — donut, today's status breakdown.
+function DonutChart({ segments }) {
+  const total = segments.reduce((s, x) => s + x.value, 0)
+  if (total === 0) return <EmptyChart text="No check-ins yet today." />
+  const R = 60, CX = 74, CY = 74, STROKE = 26
+  const circumference = 2 * Math.PI * R
+  let offset = 0
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+      <svg width="148" height="148" viewBox="0 0 148 148">
+        <circle cx={CX} cy={CY} r={R} fill="none" stroke={PAY.divider} strokeWidth={STROKE} />
+        {segments.filter(s => s.value > 0).map((s, i) => {
+          const frac = s.value / total
+          const dash = frac * circumference
+          const el = (
+            <circle key={s.label} cx={CX} cy={CY} r={R} fill="none" stroke={s.color} strokeWidth={STROKE}
+              strokeDasharray={`${dash} ${circumference - dash}`} strokeDashoffset={-offset}
+              transform={`rotate(-90 ${CX} ${CY})`}>
+              <title>{`${s.label}: ${s.value}`}</title>
+            </circle>
+          )
+          offset += dash
+          return el
+        })}
+        <text x={CX} y={CY - 4} textAnchor="middle" fontSize="20" fontWeight="800" fill={PAY.textPrimary} fontFamily={FONT.display}>{total}</text>
+        <text x={CX} y={CY + 14} textAnchor="middle" fontSize="9" fill={PAY.textMuted}>staff</text>
+      </svg>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {segments.filter(s => s.value > 0).map(s => (
+          <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <span style={{ width: 9, height: 9, borderRadius: 3, background: s.color, display: 'inline-block' }} />
+            <span style={{ color: PAY.textSecondary }}>{s.label}</span>
+            <span style={{ color: PAY.textPrimary, fontWeight: 700, marginLeft: 2 }}>{s.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Chart 3 — simple bar, daily late-day count this month.
+function DailyLateBarChart({ days }) {
+  const withLate = days.filter(d => d.Late > 0 || d['Half Day'] > 0)
+  if (!withLate.length) return <EmptyChart text="No late or half-day check-ins this month." />
+  const W = 640, H = 160, PAD_L = 24, PAD_B = 22, PAD_T = 8
+  const maxV = Math.max(1, ...days.map(d => d.Late + d['Half Day']))
+  const barW = (W - PAD_L) / days.length
+  const yScale = (v) => (v / maxV) * (H - PAD_T - PAD_B)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+      <line x1={PAD_L} y1={H - PAD_B} x2={W} y2={H - PAD_B} stroke={PAY.divider} strokeWidth="1" />
+      {days.map((d, i) => {
+        const lateH = yScale(d.Late || 0)
+        const halfH = yScale(d['Half Day'] || 0)
+        const x = PAD_L + i * barW + 1
+        return (
+          <g key={d.date}>
+            {lateH > 0 && <rect x={x} y={H - PAD_B - lateH} width={Math.max(1, barW - 2)} height={lateH} fill={PAY.amber} rx="1"><title>{`${d.date}: ${d.Late} late`}</title></rect>}
+            {halfH > 0 && <rect x={x} y={H - PAD_B - lateH - halfH} width={Math.max(1, barW - 2)} height={halfH} fill="#0369A1" rx="1"><title>{`${d.date}: ${d['Half Day']} half day`}</title></rect>}
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+// Chart 4 — horizontal bar, top late staff this month (ranked).
+function TopLateStaffChart({ rows }) {
+  if (!rows.length) return <EmptyChart text="No late or half-day staff this month." />
+  const max = Math.max(1, ...rows.map(r => r.count))
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {rows.map(r => (
+        <div key={r.name}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+            <span style={{ color: PAY.textSecondary, fontWeight: 600 }}>{r.name}</span>
+            <span style={{ color: PAY.textPrimary, fontWeight: 700 }}>{r.count}</span>
+          </div>
+          <div style={{ background: PAY.divider, borderRadius: 999, height: 8, overflow: 'hidden' }}>
+            <div style={{ width: `${(r.count / max) * 100}%`, height: '100%', background: PAY.amber, borderRadius: 999 }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Chart 5 — horizontal bar, payroll deduction breakdown this month.
+function DeductionBreakdownChart({ items }) {
+  const total = items.reduce((s, i) => s + i.value, 0)
+  if (total === 0) return <EmptyChart text="No deductions recorded this month." />
+  const max = Math.max(1, ...items.map(i => i.value))
+  return (
+    <div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: PAY.textPrimary, fontFamily: FONT.display, marginBottom: 14 }}>{fmtRupee(total)}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {items.filter(i => i.value > 0).map(i => (
+          <div key={i.label}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+              <span style={{ color: PAY.textSecondary, fontWeight: 600 }}>{i.label}</span>
+              <span style={{ color: i.color, fontWeight: 700 }}>{fmtRupee(i.value)}</span>
+            </div>
+            <div style={{ background: PAY.divider, borderRadius: 999, height: 8, overflow: 'hidden' }}>
+              <div style={{ width: `${(i.value / max) * 100}%`, height: '100%', background: i.color, borderRadius: 999 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Chart 6 — horizontal bar, attendance rate (% present) by staff this month.
+function AttendanceRateChart({ rows }) {
+  if (!rows.length) return <EmptyChart text="No attendance data yet this month." />
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto' }}>
+      {rows.map(r => (
+        <div key={r.name}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+            <span style={{ color: PAY.textSecondary, fontWeight: 600 }}>{r.name}</span>
+            <span style={{ color: r.rate >= 90 ? PAY.green : r.rate >= 75 ? PAY.amber : PAY.red, fontWeight: 700 }}>{r.rate}%</span>
+          </div>
+          <div style={{ background: PAY.divider, borderRadius: 999, height: 8, overflow: 'hidden' }}>
+            <div style={{ width: `${r.rate}%`, height: '100%', background: r.rate >= 90 ? PAY.green : r.rate >= 75 ? PAY.amber : PAY.red, borderRadius: 999 }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DashboardView({ staffList }) {
+  const [month] = useState(currentMonth())
+  const [monthRows, setMonthRows] = useState([])
+  const [todayRows, setTodayRows] = useState([])
+  const [rules, setRules] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null)
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true)
+    const [y, m] = month.split('-').map(Number)
+    const lastDay = new Date(y, m, 0).getDate()
+    const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`
+    const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+
+    const [monthRes, todayRes, rulesRes] = await Promise.all([
+      supabase.from('staff_geo_attendance').select('staff_id, date, status, late_minutes').gte('date', `${month}-01`).lte('date', monthEnd),
+      supabase.from('staff_geo_attendance').select('staff_id, status').eq('date', todayIso),
+      supabase.from('salary_deduction_rules').select('*').eq('is_active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    ])
+    const firstError = monthRes.error || todayRes.error
+    if (firstError) {
+      console.error('DashboardView fetchAll error:', firstError)
+      setFetchError(firstError.message)
+    } else {
+      setFetchError(null)
+    }
+    setMonthRows(monthRes.data || [])
+    setTodayRows(todayRes.data || [])
+    setRules(rulesRes.data || null)
+    setLoading(false)
+  }, [month])
+
+  useEffect(() => { fetchAll() }, [fetchAll])
+
+  const staffNameById = useMemo(() => Object.fromEntries(staffList.map(s => [s.id, s.name])), [staffList])
+
+  // Chart 1 + 3 data: per-day status counts across the month.
+  const dayBuckets = useMemo(() => {
+    const map = {}
+    for (const r of monthRows) {
+      if (!map[r.date]) map[r.date] = { date: r.date, Present: 0, Late: 0, 'Half Day': 0, Absent: 0 }
+      const bucket = map[r.date]
+      if (r.status === 'Present') bucket.Present++
+      else if (r.status === 'Late') bucket.Late++
+      else if (r.status === 'Half Day') bucket['Half Day']++
+      else if (r.status === 'Absent') bucket.Absent++
+      // Flagged/EarlyOut intentionally excluded from these buckets — same
+      // convention as attendance_summary_for_range/sync_attendance_salary_feed.
+    }
+    return Object.values(map).sort((a, b) => a.date.localeCompare(b.date))
+  }, [monthRows])
+
+  // Chart 2 data: today's breakdown.
+  const todaySegments = useMemo(() => {
+    const counts = { Present: 0, Late: 0, 'Half Day': 0, Absent: 0, Flagged: 0 }
+    for (const r of todayRows) if (counts[r.status] !== undefined) counts[r.status]++
+    return [
+      { label: 'Present', value: counts.Present, color: STATUS_COLORS.Present },
+      { label: 'Late', value: counts.Late, color: STATUS_COLORS.Late },
+      { label: 'Half Day', value: counts['Half Day'], color: STATUS_COLORS['Half Day'] },
+      { label: 'Absent', value: counts.Absent, color: STATUS_COLORS.Absent },
+      { label: 'Flagged', value: counts.Flagged, color: STATUS_COLORS.Flagged },
+    ]
+  }, [todayRows])
+
+  // Chart 4 data: top late/half-day staff this month, ranked.
+  const topLateStaff = useMemo(() => {
+    const counts = {}
+    for (const r of monthRows) {
+      if (r.status === 'Late' || r.status === 'Half Day') {
+        counts[r.staff_id] = (counts[r.staff_id] || 0) + 1
+      }
+    }
+    return Object.entries(counts)
+      .map(([id, count]) => ({ name: staffNameById[id] || `#${id}`, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8)
+  }, [monthRows, staffNameById])
+
+  // Chart 5 data: payroll deduction breakdown this month, using the active rule.
+  const deductionBreakdown = useMemo(() => {
+    if (!rules) return []
+    const counts = { Late: 0, 'Half Day': 0, Absent: 0 }
+    for (const r of monthRows) if (counts[r.status] !== undefined) counts[r.status]++
+    return [
+      { label: 'Late', value: counts.Late * Number(rules.late_rate || 0), color: STATUS_COLORS.Late },
+      { label: 'Half Day', value: counts['Half Day'] * Number(rules.half_day_rate || 0), color: STATUS_COLORS['Half Day'] },
+      { label: 'Absent', value: counts.Absent * Number(rules.absent_rate || 0), color: STATUS_COLORS.Absent },
+    ]
+  }, [monthRows, rules])
+
+  // Chart 6 data: attendance rate (% Present or Late, i.e. showed up) by staff.
+  const attendanceRate = useMemo(() => {
+    const byStaff = {}
+    for (const r of monthRows) {
+      if (!byStaff[r.staff_id]) byStaff[r.staff_id] = { total: 0, present: 0 }
+      byStaff[r.staff_id].total++
+      if (r.status === 'Present' || r.status === 'Late' || r.status === 'Half Day') byStaff[r.staff_id].present++
+    }
+    return Object.entries(byStaff)
+      .map(([id, v]) => ({ name: staffNameById[id] || `#${id}`, rate: v.total > 0 ? Math.round((v.present / v.total) * 100) : 0 }))
+      .sort((a, b) => b.rate - a.rate)
+  }, [monthRows, staffNameById])
+
+  if (loading) {
+    return <div style={{ background: PAY.bg, margin: '-18px -16px 0', padding: '18px 16px 28px', minHeight: 'calc(100vh - 140px)' }}>
+      <p style={{ color: PAY.textMuted, textAlign: 'center', padding: 40, fontFamily: FONT.body }}>Loading dashboard…</p>
+    </div>
+  }
+
+  return (
+    <div style={{ background: PAY.bg, margin: '-18px -16px 0', padding: '18px 16px 28px', minHeight: 'calc(100vh - 140px)', boxSizing: 'border-box' }}>
+      {fetchError && (
+        <div style={{ background: PAY.redBg, border: `1px solid ${PAY.red}33`, borderRadius: PAY.radiusSm, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: PAY.red }}>
+          ⚠️ Could not load dashboard data: {fetchError}
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+        <DashCard title="Attendance trend this month" subtitle="Present · Late · Half Day · Absent, by day">
+          <StackedTrendChart days={dayBuckets} />
+        </DashCard>
+        <DashCard title="Today's status breakdown" subtitle="All staff, right now">
+          <DonutChart segments={todaySegments} />
+        </DashCard>
+        <DashCard title="Late arrivals trend" subtitle="Late + Half Day check-ins by day this month">
+          <DailyLateBarChart days={dayBuckets} />
+        </DashCard>
+        <DashCard title="Top late staff this month" subtitle="Ranked by Late + Half Day days">
+          <TopLateStaffChart rows={topLateStaff} />
+        </DashCard>
+        <DashCard title="Payroll deductions this month" subtitle="Estimated from the active deduction rule">
+          <DeductionBreakdownChart items={deductionBreakdown} />
+        </DashCard>
+        <DashCard title="Attendance rate by staff" subtitle="% of days present or late (not absent), this month">
+          <AttendanceRateChart rows={attendanceRate} />
+        </DashCard>
+      </div>
     </div>
   )
 }
@@ -488,6 +853,7 @@ function PayrollView({ staffId, isAdmin, staffList }) {
   const [adjustingId, setAdjustingId] = useState(null)
   const [adjustForm, setAdjustForm] = useState({ amount: '', note: '' })
   const [savingAdjust, setSavingAdjust] = useState(false)
+  const [expandedId, setExpandedId] = useState(null) // which staff card is expanded to show its breakdown
   const [existingSalaryRows, setExistingSalaryRows] = useState({}) // staff_id -> existing salary row for `month`, if any
 
   const fetchExistingSalary = useCallback(async () => {
@@ -665,125 +1031,197 @@ function PayrollView({ staffId, isAdmin, staffList }) {
   }
 
   return (
-    <div style={S.card}>
-      <p style={{ fontSize: 12, color: COLOR.slate, margin: '0 0 14px' }}>
-        Live estimate from daily attendance — this is a preview. The staff still get paid via the salary register that Salary.jsx saves (Auto-Generate Payroll there uses these same daily rates).
-      </p>
+    <div style={{ background: PAY.bg, margin: '-18px -16px 0', padding: '16px 16px 28px', minHeight: 'calc(100vh - 140px)', boxSizing: 'border-box' }}>
+      <div style={{ fontSize: 11.5, color: PAY.textMuted, marginBottom: 12, lineHeight: 1.4, fontFamily: FONT.body }}>
+        Live estimate from daily attendance — a preview. Staff are actually paid via the register Salary.jsx saves (its Auto-Generate Payroll uses these same daily rates).
+      </div>
 
       {fetchError && (
-        <div style={{ background: COLOR.dangerBg, border: `1px dashed ${COLOR.danger}`, borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: COLOR.danger }}>
+        <div style={{ background: PAY.redBg, border: `1px solid ${PAY.red}33`, borderRadius: PAY.radiusSm, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: PAY.red }}>
           ⚠️ Could not load attendance data: {fetchError}
         </div>
       )}
 
       {rules ? (
-        <div style={{ background: '#fffbeb', border: '1px dashed #fbbf24', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#92400e' }}>
-          Active daily rule: <strong>₹{rules.late_rate}</strong>/late day · <strong>₹{rules.absent_rate}</strong>/absent day · <strong>₹{rules.early_out_rate}</strong>/early-out day · <strong>₹{rules.half_day_rate || 0}</strong>/half day
+        <div style={{ background: PAY.amberBg, border: `1px solid ${PAY.amber}33`, borderRadius: PAY.radiusSm, padding: '10px 14px', marginBottom: 12, fontSize: 11.5, color: '#92400e' }}>
+          <strong>₹{rules.late_rate}</strong>/late · <strong>₹{rules.absent_rate}</strong>/absent · <strong>₹{rules.early_out_rate}</strong>/early-out · <strong>₹{rules.half_day_rate || 0}</strong>/half day
         </div>
       ) : (
-        <div style={{ background: COLOR.dangerBg, border: `1px dashed ${COLOR.danger}`, borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: COLOR.danger }}>
+        <div style={{ background: PAY.redBg, border: `1px solid ${PAY.red}33`, borderRadius: PAY.radiusSm, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: PAY.red }}>
           No active deduction rule set. {isAdmin ? 'Set one up in Deduction Rules.' : 'Ask an admin to set one up.'}
         </div>
       )}
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
-        <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={S.input} />
+        <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+          style={{ padding: '9px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, fontFamily: FONT.body, fontSize: 13, color: PAY.textPrimary }} />
         {isAdmin && (
-          <select value={staffFilter} onChange={e => setStaffFilter(e.target.value)} style={S.input}>
+          <select value={staffFilter} onChange={e => setStaffFilter(e.target.value)}
+            style={{ padding: '9px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, fontFamily: FONT.body, fontSize: 13, color: PAY.textPrimary }}>
             <option value="all">All staff</option>
             {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         )}
         {isAdmin && (
-          <button onClick={() => exportPayrollPreviewCSV(rows, month)} style={{ ...S.btn(COLOR.sage), padding: '8px 14px', fontSize: 12 }}>⬇ Export report</button>
+          <button onClick={() => exportPayrollPreviewCSV(rows, month)}
+            style={{ padding: '9px 14px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, fontFamily: FONT.body, fontSize: 12, fontWeight: 600, color: PAY.textSecondary, cursor: 'pointer' }}>
+            ⬇ Export
+          </button>
         )}
-        <div style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: COLOR.ink }}>
-          Est. net payable: {fmtRupee(monthTotals.net)}
+      </div>
+
+      {/* Summary card — the payment-app style hero number */}
+      <div style={{ background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius, padding: '20px 22px', marginBottom: 16, boxShadow: PAY.shadowRaised }}>
+        <div style={{ fontSize: 11.5, color: PAY.textMuted, fontWeight: 600, letterSpacing: '0.02em', textTransform: 'uppercase' }}>Estimated net payable</div>
+        <div style={{ fontSize: 30, fontWeight: 800, color: PAY.textPrimary, fontFamily: FONT.display, marginTop: 4 }}>{fmtRupee(monthTotals.net)}</div>
+        <div style={{ display: 'flex', gap: 18, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${PAY.divider}` }}>
+          <div>
+            <div style={{ fontSize: 10.5, color: PAY.textMuted, fontWeight: 600 }}>Gross</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: PAY.textPrimary }}>{fmtRupee(monthTotals.gross)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10.5, color: PAY.textMuted, fontWeight: 600 }}>Deductions</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: PAY.red }}>{fmtRupee(monthTotals.ded)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10.5, color: PAY.textMuted, fontWeight: 600 }}>Staff</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: PAY.textPrimary }}>{rows.length}</div>
+          </div>
         </div>
       </div>
 
       {loading ? (
-        <p style={{ color: COLOR.slate, textAlign: 'center', padding: 24 }}>Loading…</p>
+        <p style={{ color: PAY.textMuted, textAlign: 'center', padding: 24, fontFamily: FONT.body }}>Loading…</p>
+      ) : rows.length === 0 ? (
+        <div style={{ background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius, padding: 32, textAlign: 'center', color: PAY.textMuted, fontFamily: FONT.body }}>
+          No staff/attendance data for this month.
+        </div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1200 }}>
-            <thead>
-              <tr>
-                {['Staff', 'Present', 'Late Days', 'Half Day', 'Absent', 'Early Out', 'Late Ded.', 'Half Day Ded.', 'Absent Ded.', 'Early Ded.', 'Admin Adj.', 'Advance', 'Gross', 'Est. Net']
-                  .concat(isAdmin ? ['Action'] : [])
-                  .map((h, i) => <th key={i} style={S.th}>{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(r => (
-                <React.Fragment key={r.staff.id}>
-                <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={S.td}>
-                    <div style={{ fontWeight: 700 }}>{r.staff.name}</div>
-                    <div style={{ fontSize: 10.5, color: COLOR.slate }}>{r.staff.designation || r.staff.department || ''}</div>
-                  </td>
-                  <td style={S.td}>{r.d.present}</td>
-                  <td style={{ ...S.td, color: r.d.lateDays > 0 ? COLOR.warn : COLOR.slate, fontWeight: 600 }}>
-                    {r.d.lateDays > 0 ? `${r.d.lateDays} (${r.d.lateMin}m)` : '—'}
-                  </td>
-                  <td style={{ ...S.td, color: r.d.halfDay > 0 ? '#0369a1' : COLOR.slate, fontWeight: 600 }}>{r.d.halfDay || '—'}</td>
-                  <td style={{ ...S.td, color: r.d.absent > 0 ? COLOR.danger : COLOR.slate, fontWeight: 600 }}>{r.d.absent || '—'}</td>
-                  <td style={{ ...S.td, color: r.d.earlyOut > 0 ? COLOR.warn : COLOR.slate, fontWeight: 600 }}>{r.d.earlyOut || '—'}</td>
-                  <td style={{ ...S.td, color: COLOR.danger }}>{r.lateDed ? fmtRupee(r.lateDed) : '—'}</td>
-                  <td style={{ ...S.td, color: COLOR.danger }}>{r.halfDayDed ? fmtRupee(r.halfDayDed) : '—'}</td>
-                  <td style={{ ...S.td, color: COLOR.danger }}>{r.absentDed ? fmtRupee(r.absentDed) : '—'}</td>
-                  <td style={{ ...S.td, color: COLOR.danger }}>{r.earlyDed ? fmtRupee(r.earlyDed) : '—'}</td>
-                  <td style={{ ...S.td, color: COLOR.danger }}>{r.adminDed ? fmtRupee(r.adminDed) : '—'}</td>
-                  <td style={{ ...S.td, color: COLOR.danger }}>{r.advDed ? fmtRupee(r.advDed) : '—'}</td>
-                  <td style={S.td}>{fmtRupee(r.gross)}</td>
-                  <td style={{ ...S.td, fontWeight: 800, color: COLOR.sageDeep }}>{fmtRupee(r.net)}</td>
-                  {isAdmin && (
-                    <td style={S.td}>
-                      <button onClick={() => adjustingId === r.staff.id ? setAdjustingId(null) : startAdjust(r)} style={{ ...S.btnSm(COLOR.ink), fontSize: 11 }}>
-                        {r.adminDed ? 'Edit adj.' : '+ Adjust'}
-                      </button>
-                    </td>
-                  )}
-                </tr>
-                {adjustingId === r.staff.id && (
-                  <tr style={{ background: COLOR.parchment }}>
-                    <td colSpan={isAdmin ? 15 : 14} style={{ padding: '10px 14px' }}>
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                        <div>
-                          <div style={{ fontSize: 11, color: COLOR.slate, marginBottom: 2 }}>Admin adjustment (₹)</div>
-                          <input type="number" value={adjustForm.amount}
-                            onChange={e => setAdjustForm(f => ({ ...f, amount: e.target.value }))}
-                            placeholder="0" style={{ ...S.input, width: 120 }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {rows.map(r => {
+            const isExpanded = expandedId === r.staff.id
+            const isAdjusting = adjustingId === r.staff.id
+            const flags = []
+            if (r.d.lateDays > 0) flags.push({ label: `${r.d.lateDays} late`, color: PAY.amber, bg: PAY.amberBg })
+            if (r.d.halfDay > 0) flags.push({ label: `${r.d.halfDay} half day`, color: '#0369A1', bg: '#EFF8FF' })
+            if (r.d.absent > 0) flags.push({ label: `${r.d.absent} absent`, color: PAY.red, bg: PAY.redBg })
+            if (r.d.earlyOut > 0) flags.push({ label: `${r.d.earlyOut} early out`, color: PAY.amber, bg: PAY.amberBg })
+            return (
+              <div key={r.staff.id} style={{ background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius, boxShadow: PAY.shadow, overflow: 'hidden' }}>
+                {/* Card header — tap to expand, payment-app row: name left, net amount right */}
+                <div onClick={() => setExpandedId(isExpanded ? null : r.staff.id)} style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                    <div style={{
+                      width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
+                      background: PAY.blueBg, color: PAY.blue, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 700, fontSize: 14, fontFamily: FONT.body,
+                    }}>
+                      {(r.staff.name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: PAY.textPrimary, fontFamily: FONT.body, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.staff.name}</div>
+                      <div style={{ fontSize: 11, color: PAY.textMuted, marginTop: 1 }}>{r.staff.designation || r.staff.department || ''}</div>
+                      {flags.length > 0 && (
+                        <div style={{ display: 'flex', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
+                          {flags.map((f, i) => (
+                            <span key={i} style={{ fontSize: 10, fontWeight: 700, color: f.color, background: f.bg, padding: '2px 7px', borderRadius: 999 }}>{f.label}</span>
+                          ))}
                         </div>
-                        <div style={{ flex: 1, minWidth: 180 }}>
-                          <div style={{ fontSize: 11, color: COLOR.slate, marginBottom: 2 }}>Reason</div>
-                          <input type="text" value={adjustForm.note}
-                            onChange={e => setAdjustForm(f => ({ ...f, note: e.target.value }))}
-                            placeholder="e.g. bonus, correction, fine" style={{ ...S.input, width: '100%' }} />
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: PAY.textPrimary, fontFamily: FONT.display }}>{fmtRupee(r.net)}</div>
+                      {r.totalDed > 0 && <div style={{ fontSize: 10.5, color: PAY.red, fontWeight: 600 }}>−{fmtRupee(r.totalDed)}</div>}
+                    </div>
+                    <span style={{ fontSize: 12, color: PAY.textMuted, transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>▾</span>
+                  </div>
+                </div>
+
+                {/* Expanded breakdown */}
+                {isExpanded && (
+                  <div style={{ padding: '4px 16px 16px', borderTop: `1px solid ${PAY.divider}` }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginTop: 12 }}>
+                      {[
+                        ['Present', r.d.present, PAY.green],
+                        ['Late days', r.d.lateDays > 0 ? `${r.d.lateDays} (${r.d.lateMin}m)` : '—', PAY.amber],
+                        ['Half day', r.d.halfDay || '—', '#0369A1'],
+                        ['Absent', r.d.absent || '—', PAY.red],
+                        ['Early out', r.d.earlyOut || '—', PAY.amber],
+                      ].map(([label, value, color]) => (
+                        <div key={label} style={{ background: PAY.bg, borderRadius: PAY.radiusSm, padding: '8px 12px' }}>
+                          <div style={{ fontSize: 10, color: PAY.textMuted, fontWeight: 600 }}>{label}</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color, marginTop: 1 }}>{value}</div>
                         </div>
-                        <button onClick={() => saveAdjust(r)} disabled={savingAdjust} style={S.btnSm(COLOR.sageDeep)}>{savingAdjust ? '⏳' : '💾 Save'}</button>
-                        <button onClick={() => setAdjustingId(null)} style={S.btnSm(COLOR.slate)}>Cancel</button>
+                      ))}
+                    </div>
+
+                    <div style={{ marginTop: 14 }}>
+                      {[
+                        ['Late deduction', r.lateDed],
+                        ['Half day deduction', r.halfDayDed],
+                        ['Absent deduction', r.absentDed],
+                        ['Early-out deduction', r.earlyDed],
+                        ['Admin adjustment', r.adminDed],
+                        ['Advance repayment', r.advDed],
+                      ].filter(([, v]) => v).map(([label, v]) => (
+                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 12.5 }}>
+                          <span style={{ color: PAY.textSecondary }}>{label}</span>
+                          <span style={{ color: PAY.red, fontWeight: 600 }}>−{fmtRupee(v)}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 12.5, borderTop: `1px solid ${PAY.divider}`, marginTop: 4 }}>
+                        <span style={{ color: PAY.textSecondary, fontWeight: 600 }}>Gross</span>
+                        <span style={{ color: PAY.textPrimary, fontWeight: 700 }}>{fmtRupee(r.gross)}</span>
                       </div>
-                      <div style={{ fontSize: 10.5, color: COLOR.slate, marginTop: 6 }}>
-                        This writes directly to this staff's payroll register for {month} — creating it now if Salary.jsx hasn't generated it yet. A positive number deducts; use a negative number to add a bonus.
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 14 }}>
+                        <span style={{ color: PAY.textPrimary, fontWeight: 700 }}>Net payable</span>
+                        <span style={{ color: PAY.green, fontWeight: 800 }}>{fmtRupee(r.net)}</span>
                       </div>
-                    </td>
-                  </tr>
+                    </div>
+
+                    {isAdmin && (
+                      <div style={{ marginTop: 12 }}>
+                        {!isAdjusting ? (
+                          <button onClick={() => startAdjust(r)}
+                            style={{ width: '100%', padding: '10px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.blue}33`, background: PAY.blueBg, color: PAY.blue, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: FONT.body }}>
+                            {r.adminDed ? '✏️ Edit adjustment' : '+ Add adjustment'}
+                          </button>
+                        ) : (
+                          <div style={{ background: PAY.bg, borderRadius: PAY.radiusSm, padding: 12 }}>
+                            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                              <input type="number" value={adjustForm.amount}
+                                onChange={e => setAdjustForm(f => ({ ...f, amount: e.target.value }))}
+                                placeholder="Amount (₹)"
+                                style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+                            </div>
+                            <input type="text" value={adjustForm.note}
+                              onChange={e => setAdjustForm(f => ({ ...f, note: e.target.value }))}
+                              placeholder="Reason (e.g. bonus, correction, fine)"
+                              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body, boxSizing: 'border-box', marginBottom: 8 }} />
+                            <div style={{ fontSize: 10.5, color: PAY.textMuted, marginBottom: 10 }}>
+                              Writes directly to the payroll register for {month}. Positive deducts; negative adds a bonus.
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button onClick={() => saveAdjust(r)} disabled={savingAdjust}
+                                style={{ flex: 1, padding: '9px', borderRadius: 8, border: 'none', background: PAY.blue, color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: FONT.body }}>
+                                {savingAdjust ? '⏳' : 'Save'}
+                              </button>
+                              <button onClick={() => setAdjustingId(null)}
+                                style={{ flex: 1, padding: '9px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, color: PAY.textSecondary, fontWeight: 600, fontSize: 12.5, cursor: 'pointer', fontFamily: FONT.body }}>
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
-                </React.Fragment>
-              ))}
-              {!rows.length && <tr><td colSpan={isAdmin ? 15 : 14} style={{ padding: 32, textAlign: 'center', color: COLOR.slate }}>No staff/attendance data for this month.</td></tr>}
-            </tbody>
-            {rows.length > 0 && (
-              <tfoot>
-                <tr style={{ borderTop: `2px solid ${COLOR.rule}`, fontWeight: 800 }}>
-                  <td style={S.td} colSpan={12}>Total</td>
-                  <td style={S.td}>{fmtRupee(monthTotals.gross)}</td>
-                  <td style={{ ...S.td, color: COLOR.sageDeep }}>{fmtRupee(monthTotals.net)}</td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -1538,7 +1976,7 @@ function BottomNav({ active, onNavigate, pendingCount }) {
 export default function FaceAttendance({ currentUser, isAdmin, staff = [], loggedInStaff = null, onNavigate = null, onLogout = null }) {
   useEffect(() => { injectLedgerGlobalStyles() }, [])
   const { show: showToast, el: toastEl } = useToast()
-  const [tab, setTab] = useState('home')
+  const [tab, setTab] = useState(isAdmin ? 'dashboard' : 'home')
   const [faceRows, setFaceRows] = useState([]) // staff_face_descriptors, latest per staff
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -1625,6 +2063,8 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
   const initials = (currentUser?.name || currentUser?.role || 'U').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
 
   const primaryTiles = [
+    ...(isAdmin ? [{ key: 'dashboard', icon: '📊', label: 'Dashboard' }] : []),
+    ...(isAdmin ? [{ key: 'home', icon: '🏠', label: 'Home' }] : []),
     ...(loggedInStaff ? [{ key: 'checkin', icon: '✅', label: 'Take attendance' }] : []),
     { key: 'attendancesummary', icon: '📅', label: 'Attendance' },
     { key: 'timecard', icon: '🕐', label: 'Time card' },
@@ -1653,7 +2093,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
   ]
 
   const pageTitles = {
-    checkin: 'Take attendance', attendancesummary: 'Attendance', timecard: 'Time card', advances: 'Advances',
+    dashboard: 'Dashboard', checkin: 'Take attendance', attendancesummary: 'Attendance', timecard: 'Time card', advances: 'Advances',
     fines: 'Late fines', payroll: 'Payroll', regularization: 'Correct attendance', reports: 'Reports', broadcast: 'Broadcast messages', notifications: 'Notifications',
     coverage: 'Staff coverage', livemonitor: 'Live geo monitor', geofraud: 'Geo fraud alerts', geoshifts: 'Shift configuration', geocampus: 'Campus zones', georeport: 'Geo attendance report', approvals: 'Pending approvals', cashbook: 'Cash book', deductionrules: 'Deduction Rules (Daily)', rolepermissions: 'Role Permissions', attendancehelpers: 'Attendance Helpers', controlcenter: 'Admin Control Center', settings: 'Settings',
   }
@@ -1852,6 +2292,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
             )
           )}
 
+          {tab === 'dashboard' && isAdmin && <DashboardView staffList={staff} />}
           {tab === 'attendancesummary' && <AttendanceSummaryView isAdmin={isAdmin} staffId={staffId} staffList={filteredStaff} showToast={showToast} onNavigate={onNavigate} currentUsername={currentUser?.username} />}
           {tab === 'timecard' && <TimeCard staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
           {tab === 'advances' && <AdvancesView staffId={staffId} isAdmin={isAdmin || hasPerm('manage_advances')} staffList={staff} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />}
