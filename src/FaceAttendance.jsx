@@ -608,93 +608,84 @@ function DayCompleteCard() {
 function FaceScanFrame({ punchState, onTap }) {
   if (punchState === 'done') return <DayCompleteCard />
 
-  const label = punchState === 'open' ? 'CHECK-OUT' : 'CHECK-IN'
+  const label = punchState === 'open' ? 'Check Out' : 'Check In'
   return (
     <div
       onClick={onTap}
       role="button"
       style={{
-        background: 'linear-gradient(180deg, #1A1F26 0%, #0D1013 100%)',
-        border: '1px solid #2A3038', borderRadius: 4, padding: '22px 20px',
-        boxShadow: '0 8px 28px rgba(0,0,0,0.35)', textAlign: 'center', position: 'relative', overflow: 'hidden',
-        cursor: 'pointer', transition: 'transform 0.1s ease', fontFamily: '"Courier New", monospace',
+        background: 'radial-gradient(circle at 50% 0%, #1C2333 0%, #0A0D14 70%)',
+        borderRadius: 24, padding: '30px 20px', textAlign: 'center',
+        position: 'relative', overflow: 'hidden', cursor: 'pointer',
+        transition: 'transform 0.15s ease', boxShadow: '0 16px 40px rgba(0,0,0,0.4)',
       }}
       onMouseDown={e => { e.currentTarget.style.transform = 'scale(0.99)' }}
       onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)' }}
       onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)' }}
     >
       <style>{`
-        @keyframes govScanSweep { 0% { top: 8%; opacity: 0; } 12% { opacity: 0.9; } 88% { opacity: 0.9; } 100% { top: 90%; opacity: 0; } }
-        @keyframes govBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        @keyframes govScanline { 0% { background-position: 0 0; } 100% { background-position: 0 4px; } }
+        @keyframes fsRingSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes fsBreathe { 0%, 100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 0.9; transform: scale(1.04); } }
+        @keyframes fsDotPulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
       `}</style>
 
-      {/* faint horizontal scanline texture over the whole panel */}
+      {/* ambient glow */}
       <div style={{
-        position: 'absolute', inset: 0, opacity: 0.06, pointerEvents: 'none',
-        backgroundImage: 'repeating-linear-gradient(0deg, #fff 0px, #fff 1px, transparent 1px, transparent 4px)',
-        animation: 'govScanline 0.5s linear infinite',
+        position: 'absolute', top: '18%', left: '50%', width: 220, height: 220,
+        transform: 'translateX(-50%)', borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(99,145,255,0.22) 0%, transparent 70%)',
+        animation: 'fsBreathe 3.5s ease-in-out infinite', pointerEvents: 'none',
       }} />
 
-      {/* top status bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, position: 'relative', zIndex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 9.5, fontWeight: 700, color: '#5DCAA5', letterSpacing: '0.08em' }}>
-          <span style={{ width: 6, height: 6, background: '#5DCAA5', display: 'inline-block', animation: 'govBlink 1.2s step-start infinite' }} />
-          SYSTEM READY
-        </div>
-        <div style={{ fontSize: 9, color: '#5A6472', letterSpacing: '0.06em' }}>ID · GNSI-BIO-01</div>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10.5, fontWeight: 600, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.12em', marginBottom: 22, position: 'relative' }}>
+        <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#6391FF', animation: 'fsDotPulse 1.8s ease-in-out infinite' }} />
+        FACE ID
       </div>
 
-      <div style={{ fontWeight: 800, fontSize: 13, color: '#E8EBEE', letterSpacing: '0.12em', marginBottom: 4, position: 'relative', zIndex: 1 }}>
+      {/* scanner ring */}
+      <div style={{ position: 'relative', width: 156, height: 156, margin: '0 auto' }}>
+        {/* rotating gradient ring */}
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: '50%',
+          background: 'conic-gradient(from 0deg, transparent 0%, #6391FF 15%, transparent 30%, transparent 100%)',
+          animation: 'fsRingSpin 3s linear infinite',
+          maskImage: 'radial-gradient(circle, transparent 62%, black 63%, black 68%, transparent 69%)',
+          WebkitMaskImage: 'radial-gradient(circle, transparent 62%, black 63%, black 68%, transparent 69%)',
+        }} />
+        {/* static faint ring track */}
+        <div style={{
+          position: 'absolute', inset: 8, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.08)',
+        }} />
+
+        <svg width="156" height="156" viewBox="0 0 156 156" style={{ display: 'block', position: 'relative', zIndex: 1 }}>
+          <defs>
+            <linearGradient id="fsFaceGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="rgba(255,255,255,0.85)" />
+              <stop offset="100%" stopColor="rgba(255,255,255,0.35)" />
+            </linearGradient>
+          </defs>
+          {/* glass panel behind the face */}
+          <circle cx="78" cy="78" r="52" fill="rgba(255,255,255,0.04)" />
+          {/* refined face silhouette */}
+          <circle cx="78" cy="68" r="26" fill="none" stroke="url(#fsFaceGrad)" strokeWidth="2" />
+          <path d="M48,112 Q78,92 108,112" fill="none" stroke="url(#fsFaceGrad)" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </div>
+
+      <div style={{ fontWeight: 700, fontSize: 17, color: '#FFFFFF', marginTop: 22, letterSpacing: '-0.01em' }}>
         {label}
       </div>
-      <div style={{ fontSize: 9.5, color: '#5A6472', letterSpacing: '0.05em', marginBottom: 18, position: 'relative', zIndex: 1 }}>
-        BIOMETRIC AUTHENTICATION REQUIRED
+      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 5, fontWeight: 400 }}>
+        Tap to scan and verify your identity
       </div>
 
-      {/* scanner reticle */}
-      <div style={{ position: 'relative', width: 148, height: 148, margin: '0 auto', zIndex: 1 }}>
-        <svg width="148" height="148" viewBox="0 0 148 148" style={{ display: 'block', position: 'relative', zIndex: 1 }}>
-          {/* outer sharp-corner frame, no rounding */}
-          <path d="M6,32 L6,6 L32,6" stroke="#5DCAA5" strokeWidth="2.5" fill="none" />
-          <path d="M116,6 L142,6 L142,32" stroke="#5DCAA5" strokeWidth="2.5" fill="none" />
-          <path d="M142,116 L142,142 L116,142" stroke="#5DCAA5" strokeWidth="2.5" fill="none" />
-          <path d="M32,142 L6,142 L6,116" stroke="#5DCAA5" strokeWidth="2.5" fill="none" />
-
-          {/* fine crosshair reticle */}
-          <line x1="74" y1="4" x2="74" y2="18" stroke="#3A4148" strokeWidth="1" />
-          <line x1="74" y1="130" x2="74" y2="144" stroke="#3A4148" strokeWidth="1" />
-          <line x1="4" y1="74" x2="18" y2="74" stroke="#3A4148" strokeWidth="1" />
-          <line x1="130" y1="74" x2="144" y2="74" stroke="#3A4148" strokeWidth="1" />
-
-          {/* precise, technical face outline — angular, not rounded/cute */}
-          <ellipse cx="74" cy="62" rx="26" ry="30" fill="none" stroke="#4A5560" strokeWidth="1.5" />
-          <line x1="74" y1="62" x2="74" y2="98" stroke="#3A4148" strokeWidth="1" strokeDasharray="2 3" />
-          <line x1="48" y1="62" x2="100" y2="62" stroke="#3A4148" strokeWidth="1" strokeDasharray="2 3" />
-          <circle cx="63" cy="58" r="1.4" fill="#5A6472" />
-          <circle cx="85" cy="58" r="1.4" fill="#5A6472" />
-          <path d="M64,76 L84,76" stroke="#4A5560" strokeWidth="1.2" />
-
-          {/* corner tick marks for measurement feel */}
-          {[[38,38],[110,38],[38,110],[110,110]].map(([x,y], i) => (
-            <circle key={i} cx={x} cy={y} r="1.2" fill="#5DCAA5" fillOpacity="0.5" />
-          ))}
-        </svg>
-
-        <div style={{
-          position: 'absolute', left: 10, right: 10, height: 1.5,
-          background: 'linear-gradient(90deg, transparent, #5DCAA5, transparent)',
-          animation: 'govScanSweep 2.8s linear infinite', zIndex: 2, boxShadow: '0 0 6px #5DCAA5',
-        }} />
-      </div>
-
-      <div style={{ fontSize: 9.5, color: '#5A6472', marginTop: 18, letterSpacing: '0.04em', position: 'relative', zIndex: 1 }}>
-        TAP TO INITIATE VERIFICATION SEQUENCE
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 20, marginTop: 16, paddingTop: 14, borderTop: '1px solid #2A3038', position: 'relative', zIndex: 1 }}>
-        <div style={{ fontSize: 8.5, color: '#5A6472', letterSpacing: '0.06em' }}>AES-256 ENCRYPTED</div>
-        <div style={{ fontSize: 8.5, color: '#5A6472', letterSpacing: '0.06em' }}>GPS-VERIFIED</div>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 20, marginTop: 22, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>
+          <span style={{ fontSize: 11 }}>🔒</span> Encrypted
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>
+          <span style={{ fontSize: 11 }}>📍</span> GPS-verified
+        </div>
       </div>
     </div>
   )
