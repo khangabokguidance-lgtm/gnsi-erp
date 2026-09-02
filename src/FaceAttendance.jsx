@@ -1342,22 +1342,32 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
   // staff member currently have an open (punched-in, not punched-out)
   // shift today", which is enough to label the tile correctly without
   // running background GPS on the Home screen.
-  const [hasOpenPunch, setHasOpenPunch] = useState(false)
+  // Three real states, not two: 'none' (never checked in today),
+  // 'open' (checked in, not yet out), 'done' (checked in AND out already).
+  // The old boolean hasOpenPunch could only tell "open" from "everything
+  // else," so a completed day (checked in, worked the shift, checked
+  // out) looked identical to "never checked in" — showing the same
+  // "Not checked in yet" / "Check in" prompt for someone who'd already
+  // finished for the day.
+  const [punchState, setPunchState] = useState('none')
+  const hasOpenPunch = punchState === 'open' // kept for existing call sites (quick-action disabled states, etc.)
   const fetchPunchState = useCallback(async () => {
-    if (!loggedInStaff?.id) { setHasOpenPunch(false); return }
+    if (!loggedInStaff?.id) { setPunchState('none'); return }
     // IST date, matching server_checkin's own date computation — using
     // toISOString() here (UTC) could pick the wrong calendar day near
     // the midnight boundary, since IST is UTC+5:30.
     const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
     const { data, error } = await supabase
       .from('staff_geo_attendance')
-      .select('id')
+      .select('id, check_out_time')
       .eq('staff_id', loggedInStaff.id)
       .eq('date', todayIso)
-      .is('check_out_time', null)
       .eq('session_dead', false)
-      .limit(1)
-    if (!error) setHasOpenPunch((data || []).length > 0)
+    if (error) return
+    const rows = data || []
+    if (rows.length === 0) setPunchState('none')
+    else if (rows.some(r => !r.check_out_time)) setPunchState('open')
+    else setPunchState('done')
   }, [loggedInStaff?.id])
 
   useEffect(() => { fetchPunchState() }, [fetchPunchState])
@@ -1448,13 +1458,13 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
     ? [
         { key: 'enroll', icon: '🧑‍💼', label: 'Enroll face', onClick: () => setTab('coverage') },
         ...(loggedInStaff ? [
-          { key: 'qa-punchin',  icon: '✅', label: 'Punch In',  disabled: hasOpenPunch,  onClick: () => setTab('checkin') },
-          { key: 'qa-punchout', icon: '⏹️', label: 'Punch Out', disabled: !hasOpenPunch, onClick: () => setTab('checkin') },
+          { key: 'qa-punchin',  icon: '✅', label: 'Punch In',  disabled: punchState !== 'none', onClick: () => setTab('checkin') },
+          { key: 'qa-punchout', icon: '⏹️', label: 'Punch Out', disabled: punchState !== 'open', onClick: () => setTab('checkin') },
         ] : []),
       ]
     : [
-        { key: 'qa-punchin',  icon: '✅', label: 'Punch In',  disabled: hasOpenPunch,  onClick: () => loggedInStaff && setTab('checkin') },
-        { key: 'qa-punchout', icon: '⏹️', label: 'Punch Out', disabled: !hasOpenPunch, onClick: () => loggedInStaff && setTab('checkin') },
+        { key: 'qa-punchin',  icon: '✅', label: 'Punch In',  disabled: punchState !== 'none', onClick: () => loggedInStaff && setTab('checkin') },
+        { key: 'qa-punchout', icon: '⏹️', label: 'Punch Out', disabled: punchState !== 'open', onClick: () => loggedInStaff && setTab('checkin') },
         { key: 'qa-timecard', icon: '🕐', label: 'Time card', onClick: () => setTab('timecard') },
       ]
 
@@ -1500,12 +1510,12 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
                   width: 10, height: 10, borderRadius: '50%',
-                  background: hasOpenPunch ? VAULT.ok : '#7d8ba3',
-                  boxShadow: hasOpenPunch ? `0 0 8px ${VAULT.ok}99` : 'none',
+                  background: punchState === 'open' ? VAULT.ok : punchState === 'done' ? COLOR.brass : '#7d8ba3',
+                  boxShadow: punchState === 'open' ? `0 0 8px ${VAULT.ok}99` : 'none',
                 }} />
                 <div>
                   <div style={{ color: VAULT.textPrimary, fontSize: 13, fontWeight: 700, fontFamily: FONT.body }}>
-                    {hasOpenPunch ? 'Checked in' : 'Not checked in yet'}
+                    {punchState === 'open' ? 'Checked in' : punchState === 'done' ? 'Done for today' : 'Not checked in yet'}
                   </div>
                   <div style={{ color: VAULT.textMuted, fontSize: 11, marginTop: 2, fontFamily: FONT.body }}>
                     {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short' })}
@@ -1514,12 +1524,16 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
               </div>
               <button
                 onClick={() => loggedInStaff && setTab('checkin')}
+                disabled={punchState === 'done'}
                 style={{
-                  background: COLOR.brass, color: COLOR.ink, fontSize: 11.5, fontWeight: 700,
-                  padding: '9px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: FONT.body,
+                  background: punchState === 'done' ? '#3a4762' : COLOR.brass,
+                  color: punchState === 'done' ? VAULT.textMuted : COLOR.ink,
+                  fontSize: 11.5, fontWeight: 700,
+                  padding: '9px 16px', borderRadius: 8, border: 'none',
+                  cursor: punchState === 'done' ? 'default' : 'pointer', fontFamily: FONT.body,
                 }}
               >
-                {hasOpenPunch ? 'Check out' : 'Check in'}
+                {punchState === 'open' ? 'Check out' : punchState === 'done' ? 'Completed' : 'Check in'}
               </button>
             </div>
           )}
