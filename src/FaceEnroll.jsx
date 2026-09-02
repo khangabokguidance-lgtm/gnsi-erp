@@ -553,6 +553,8 @@ export function FaceEnrollReport({ staffList = [] }) {
   const [fetchError, setFetchError] = useState(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [thumbUrls, setThumbUrls] = useState({}) // staff_id -> signed url for their latest photo
+  const [viewingStaffId, setViewingStaffId] = useState(null) // full-size photo modal
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -562,15 +564,33 @@ export function FaceEnrollReport({ staffList = [] }) {
     // should reflect their CURRENT standing, not every historical row.
     const { data, error } = await supabase
       .from('staff_face_descriptors')
-      .select('id, staff_id, status, enrolled_at, enrolled_by, reviewed_at, reviewed_by')
+      .select('id, staff_id, status, enrolled_at, enrolled_by, reviewed_at, reviewed_by, photo_path_1')
       .order('enrolled_at', { ascending: false })
     if (error) {
       setFetchError(error.message)
       setDescriptors([])
-    } else {
-      setFetchError(null)
-      setDescriptors(data || [])
+      setLoading(false)
+      return
     }
+    setFetchError(null)
+    setDescriptors(data || [])
+
+    // Signed URLs expire in 1 hour — generated fresh each load, never
+    // stored/public, same pattern as FaceApprovalQueue. Only the most
+    // recent row per staff_id needs a thumbnail — this is what lets an
+    // admin actually SEE a staff member's stored enrollment photo (e.g.
+    // to judge whether it's the cause of a false duplicate-match, rather
+    // than guessing from a different, unrelated screenshot).
+    const latestByStaff = {}
+    for (const d of data || []) if (!latestByStaff[d.staff_id]) latestByStaff[d.staff_id] = d
+    const urls = {}
+    for (const d of Object.values(latestByStaff)) {
+      if (d.photo_path_1) {
+        const { data: signed } = await supabase.storage.from('face-enrollments').createSignedUrl(d.photo_path_1, 3600)
+        if (signed?.signedUrl) urls[d.staff_id] = signed.signedUrl
+      }
+    }
+    setThumbUrls(urls)
     setLoading(false)
   }, [])
 
@@ -670,10 +690,10 @@ export function FaceEnrollReport({ staffList = [] }) {
         <p style={{ color: '#94a3b8', textAlign: 'center', padding: 24 }}>Loading…</p>
       ) : (
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 640 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 700 }}>
             <thead>
               <tr>
-                {['Staff', 'Status', 'Enrolled', 'Reviewed', 'Reviewed By', 'Turnaround'].map(h => (
+                {['Photo', 'Staff', 'Status', 'Enrolled', 'Reviewed', 'Reviewed By', 'Turnaround'].map(h => (
                   <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 600, color: '#374151', fontSize: 11, borderBottom: '1px solid #e2e8f0' }}>{h}</th>
                 ))}
               </tr>
@@ -683,6 +703,15 @@ export function FaceEnrollReport({ staffList = [] }) {
                 const meta = REPORT_STATUS_META[r.status]
                 return (
                   <tr key={r.staffId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '9px 12px' }}>
+                      {thumbUrls[r.staffId] ? (
+                        <img src={thumbUrls[r.staffId]} alt={`${r.staffName} enrollment`}
+                          onClick={() => setViewingStaffId(r.staffId)}
+                          style={{ width: 34, height: 34, borderRadius: 8, objectFit: 'cover', border: '1px solid #e2e8f0', cursor: 'pointer' }} />
+                      ) : (
+                        <div style={{ width: 34, height: 34, borderRadius: 8, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>—</div>
+                      )}
+                    </td>
                     <td style={{ padding: '9px 12px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.staffName}</div>
                       <div style={{ fontSize: 10.5, color: '#94a3b8' }}>{r.designation}</div>
@@ -698,10 +727,25 @@ export function FaceEnrollReport({ staffList = [] }) {
                 )
               })}
               {!visibleRows.length && (
-                <tr><td colSpan="6" style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>No staff match this filter.</td></tr>
+                <tr><td colSpan="7" style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>No staff match this filter.</td></tr>
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Full-size photo view — lets an admin actually judge a stored
+          enrollment photo's quality/lighting directly, e.g. to check
+          whether a staff member flagged in a duplicate-match error has a
+          poor-quality reference photo themselves. */}
+      {viewingStaffId && thumbUrls[viewingStaffId] && (
+        <div onClick={() => setViewingStaffId(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, cursor: 'pointer' }}>
+          <div style={{ maxWidth: 420, width: '100%' }}>
+            <img src={thumbUrls[viewingStaffId]} alt="Enrollment photo" style={{ width: '100%', borderRadius: 12, display: 'block' }} />
+            <div style={{ color: 'white', textAlign: 'center', marginTop: 10, fontSize: 13, fontWeight: 600 }}>
+              {staffNameById[viewingStaffId] || `#${viewingStaffId}`} — tap anywhere to close
+            </div>
+          </div>
         </div>
       )}
     </div>
