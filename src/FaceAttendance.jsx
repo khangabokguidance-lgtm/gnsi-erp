@@ -1398,6 +1398,10 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
     ...(isAdmin ? [
       { key: 'coverage',  icon: '👥', label: 'Staff coverage' },
       { key: 'livemonitor', icon: '📍', label: 'Live geo monitor' },
+      { key: 'geofraud',  icon: '🚨', label: 'Geo fraud alerts' },
+      { key: 'geoshifts', icon: '⏰', label: 'Shift configuration' },
+      { key: 'geocampus', icon: '🗺️', label: 'Campus zones' },
+      { key: 'georeport', icon: '📊', label: 'Geo attendance report' },
       { key: 'approvals', icon: '📋', label: 'Approvals', badge: counts.pending },
       { key: 'cashbook',  icon: '📒', label: 'Cash book' },
       { key: 'deductionrules', icon: '📐', label: 'Deduction Rules' },
@@ -1411,7 +1415,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
   const pageTitles = {
     checkin: 'Take attendance', attendancesummary: 'Attendance', timecard: 'Time card', advances: 'Advances',
     fines: 'Late fines', payroll: 'Payroll', regularization: 'Correct attendance', reports: 'Reports', broadcast: 'Broadcast messages', notifications: 'Notifications',
-    coverage: 'Staff coverage', livemonitor: 'Live geo monitor', approvals: 'Pending approvals', cashbook: 'Cash book', deductionrules: 'Deduction Rules (Daily)', rolepermissions: 'Role Permissions', attendancehelpers: 'Attendance Helpers', controlcenter: 'Admin Control Center', settings: 'Settings',
+    coverage: 'Staff coverage', livemonitor: 'Live geo monitor', geofraud: 'Geo fraud alerts', geoshifts: 'Shift configuration', geocampus: 'Campus zones', georeport: 'Geo attendance report', approvals: 'Pending approvals', cashbook: 'Cash book', deductionrules: 'Deduction Rules (Daily)', rolepermissions: 'Role Permissions', attendancehelpers: 'Attendance Helpers', controlcenter: 'Admin Control Center', settings: 'Settings',
   }
 
   // Quick actions row, below the main tile grid — role-aware, matching
@@ -1560,7 +1564,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
           {tab === 'checkin' && loggedInStaff && (
             statusFor(loggedInStaff.id) === 'approved' ? (
               <>
-                <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} />
+                <GeoAttendance currentStaff={loggedInStaff} isAdmin={false} allStaff={[loggedInStaff]} initialTab="checkin" />
                 {(() => {
                   const row = faceRowFor(loggedInStaff.id)
                   if (!row) return null
@@ -1686,6 +1690,22 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
 
           {tab === 'livemonitor' && isAdmin && (
             <GeoAttendance currentStaff={loggedInStaff} isAdmin={true} allStaff={staff} initialTab="monitor" />
+          )}
+
+          {tab === 'geofraud' && isAdmin && (
+            <GeoAttendance currentStaff={loggedInStaff} isAdmin={true} allStaff={staff} initialTab="fraud" />
+          )}
+
+          {tab === 'geoshifts' && isAdmin && (
+            <GeoAttendance currentStaff={loggedInStaff} isAdmin={true} allStaff={staff} initialTab="shifts" />
+          )}
+
+          {tab === 'geocampus' && isAdmin && (
+            <GeoAttendance currentStaff={loggedInStaff} isAdmin={true} allStaff={staff} initialTab="campus" />
+          )}
+
+          {tab === 'georeport' && isAdmin && (
+            <GeoAttendance currentStaff={loggedInStaff} isAdmin={true} allStaff={staff} initialTab="report" />
           )}
 
           {tab === 'approvals' && isAdmin && (

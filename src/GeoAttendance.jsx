@@ -1275,7 +1275,15 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
       const { data } = await supabase.rpc('auth_is_admin')
       setServerIsAdmin(!!data)
       setAdminVerified(true)
-      if (!!data) setActiveTab('monitor')
+      // BUGFIX: this used to force activeTab to 'monitor' for any verified
+      // admin unconditionally, overriding whatever initialTab this instance
+      // was mounted with. That was tolerable while an internal tab bar let
+      // the admin click back to "My Check-In" — now that each
+      // <GeoAttendance> instance is mounted once per outer Face Attendance
+      // tab with a fixed section (initialTab), and Face Attendance itself
+      // decides which section each tab shows, this component must not
+      // override that choice. Removed — initialTab is now the single
+      // source of truth for which section renders.
       subscribe()
     }
     verify()
@@ -1993,19 +2001,9 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
       }, 0),
   [advances, currentStaff?.id])
 
-  const tabs = [
-    { key: 'checkin', label: '📍 My Check-In' },
-    ...(isAdmin ? [
-      { key: 'monitor', label: '👁️ Live Monitor' },
-      { key: 'fraud',   label: `🚨 Alerts${fraudLogs.length > 0 ? ` (${fraudLogs.length})` : ''}` },
-      { key: 'shifts',  label: '⏰ Shifts' },
-      { key: 'campus',  label: '🗺️ Campus' },
-      { key: 'report',  label: '📊 Report' },
-    ] : [
-      { key: 'history',  label: '📅 My History' },
-      { key: 'advances', label: '💳 My Advances' },
-    ])
-  ]
+  // Internal `tabs` array removed along with the tab bar above — section
+  // selection is now driven entirely by the `initialTab` prop from
+  // FaceAttendance.jsx's outer tab shell (see render section below).
 
   if (loading) return (
     <div style={{ ...S.page, padding: 32 }}>
@@ -2059,23 +2057,35 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
         <ToastQueue toasts={toasts} />
 
         <div style={{ marginBottom: 24 }}>
-          <div style={{ fontFamily: FONT.body, fontSize: 10.5, letterSpacing: '0.1em', color: COLOR.brassDeep, fontWeight: 700 }}>GNSI · CAMPUS LEDGER</div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, color: COLOR.ink, margin: '2px 0 0', fontFamily: FONT.display, letterSpacing: '-0.01em' }}>Geo-Attendance</h1>
-          <p style={{ color: COLOR.slate, fontSize: 12.5, margin: '5px 0 0' }}>
+          <p style={{ color: COLOR.slate, fontSize: 12.5, margin: 0 }}>
             Server-verified · Continuous tracking · Shift-aware
             {campus && <span style={{ marginLeft: 12, color: COLOR.sageDeep, fontWeight: 600 }}>{campus.name} ({campus.radius}m)</span>}
             {offline && <span style={{ marginLeft: 12, color: COLOR.danger, fontWeight: 600 }}>Offline</span>}
           </p>
         </div>
 
-        <div role="tablist" style={{ display: 'flex', borderBottom: `1px solid ${COLOR.rule}`, marginBottom: 24, gap: 4, flexWrap: 'wrap' }}>
-          {tabs.map(t => (
-            <button key={t.key} role="tab" aria-selected={activeTab === t.key}
-              onClick={() => setActiveTab(t.key)} style={S.tab(activeTab === t.key)}>
-              {t.label}
-            </button>
-          ))}
-        </div>
+        {/* Minimal staff-only section switcher — Check-in / History /
+            Advances. Admin sections (Monitor, Fraud, Shifts, Campus,
+            Report) no longer have any switcher here at all; each is its
+            own outer tab in FaceAttendance.jsx now, so an admin instance
+            of this component always renders exactly the one section it
+            was mounted for. This switcher exists only so a single staff
+            mount (with its GPS watch/tracking already running) can also
+            reach History/Advances without a second/third full mount. */}
+        {!isAdmin && (
+          <div role="tablist" style={{ display: 'flex', borderBottom: `1px solid ${COLOR.rule}`, marginBottom: 20, gap: 4 }}>
+            {[
+              { key: 'checkin',  label: '📍 Check-In' },
+              { key: 'history',  label: '📅 History' },
+              { key: 'advances', label: '💳 Advances' },
+            ].map(t => (
+              <button key={t.key} role="tab" aria-selected={activeTab === t.key}
+                onClick={() => setActiveTab(t.key)} style={S.tab(activeTab === t.key)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* ══ MY CHECK-IN — Google Pay style: white cards, blue accent ══ */}
         {activeTab === 'checkin' && (
