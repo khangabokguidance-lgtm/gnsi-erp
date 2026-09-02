@@ -1166,6 +1166,9 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   const [resolvingId,   setResolvingId]   = useState(null)
   const [resolveNote,   setResolveNote]   = useState('')
   const [expandedTrail, setExpandedTrail] = useState(null)
+  const [editingTimeId, setEditingTimeId] = useState(null)
+  const [editTimeForm,  setEditTimeForm]  = useState({ check_in: '', check_out: '', status: '', note: '' })
+  const [savingTimeEdit, setSavingTimeEdit] = useState(false)
   const [loadingMonth,  setLoadingMonth]  = useState(false)
 
   // ── No-phone staff helper feature ────────────────────────────────────────
@@ -1916,6 +1919,55 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
     showToast(`✅ Status → ${newStatus}`, 'ok')
   }
 
+  // Opens the inline check-in/check-out time editor for a log row,
+  // pre-filled with its current values (converted to a local datetime-
+  // local input string) so admins can correct a missed/wrong device
+  // check-in — e.g. GPS failure, phone issue — directly on the real
+  // attendance record, rather than only being able to flip a status label
+  // that's disconnected from actual check-in/out times.
+  const startEditTime = (log) => {
+    const toLocalInput = (iso) => {
+      if (!iso) return ''
+      const d = new Date(iso)
+      const pad = n => String(n).padStart(2, '0')
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+    }
+    setEditingTimeId(log.id)
+    setEditTimeForm({
+      check_in:  toLocalInput(log.check_in_time),
+      check_out: toLocalInput(log.check_out_time),
+      status:    log.status || 'Present',
+      note:      '',
+    })
+  }
+
+  const saveEditTime = async (log) => {
+    if (!currentStaff?.id) {
+      showToast('⚠️ Your account isn\'t linked to a staff profile — can\'t verify admin status.', 'warn')
+      return
+    }
+    setSavingTimeEdit(true)
+    const { data, error } = await supabase.rpc('admin_override_attendance', {
+      p_admin_id:        currentStaff.id,
+      p_staff_id:        log.staff_id,
+      p_date:            log.date,
+      p_shift_id:        log.shift_id || null,
+      p_shift_label:     log.shift_label,
+      p_status:          editTimeForm.status || null,
+      p_check_in_time:   editTimeForm.check_in  ? new Date(editTimeForm.check_in).toISOString()  : null,
+      p_check_out_time:  editTimeForm.check_out ? new Date(editTimeForm.check_out).toISOString() : null,
+      p_clear_check_in:  !editTimeForm.check_in,
+      p_clear_check_out: !editTimeForm.check_out,
+      p_note:            editTimeForm.note || 'Manual time correction',
+    })
+    setSavingTimeEdit(false)
+    if (error) { showToast('❌ ' + error.message, 'err'); return }
+    if (!data?.success) { showToast('❌ ' + (data?.error || 'Could not save'), 'err'); return }
+    setEditingTimeId(null)
+    await fetchTodayLogs()
+    showToast('✅ Attendance record updated', 'ok')
+  }
+
   const handleExpandTrail = async (log) => {
     if (expandedTrail === log.id) { setExpandedTrail(null); return }
     await fetchTrailForLog(log.id)
@@ -2383,9 +2435,46 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                             <div style={{ display: 'flex', gap: 4 }}>
                               <button onClick={() => adminOverride(log.id, 'Present', 'Admin verified')} style={S.btnSm(COLOR.sageDeep)} title="Mark Present">✅</button>
                               <button onClick={() => adminOverride(log.id, 'Absent',  'Admin override')} style={S.btnSm(COLOR.danger)} title="Mark Absent">⭕</button>
+                              <button onClick={() => editingTimeId === log.id ? setEditingTimeId(null) : startEditTime(log)} style={S.btnSm(COLOR.ink)} title="Fix check-in/out time">✏️</button>
                             </div>
                           </td>
                         </tr>
+                        {editingTimeId === log.id && (
+                          <tr style={{ background: COLOR.parchment }}>
+                            <td colSpan="10" style={{ padding: '12px 16px' }}>
+                              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                <div>
+                                  <div style={{ fontSize: 11, color: COLOR.slate, marginBottom: 2 }}>Check-in</div>
+                                  <input type="datetime-local" value={editTimeForm.check_in}
+                                    onChange={e => setEditTimeForm(f => ({ ...f, check_in: e.target.value }))}
+                                    style={{ padding: '6px 8px', borderRadius: 6, border: `1px solid ${COLOR.rule}` }} />
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 11, color: COLOR.slate, marginBottom: 2 }}>Check-out</div>
+                                  <input type="datetime-local" value={editTimeForm.check_out}
+                                    onChange={e => setEditTimeForm(f => ({ ...f, check_out: e.target.value }))}
+                                    style={{ padding: '6px 8px', borderRadius: 6, border: `1px solid ${COLOR.rule}` }} />
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 11, color: COLOR.slate, marginBottom: 2 }}>Status</div>
+                                  <select value={editTimeForm.status} onChange={e => setEditTimeForm(f => ({ ...f, status: e.target.value }))}
+                                    style={{ padding: '6px 8px', borderRadius: 6, border: `1px solid ${COLOR.rule}` }}>
+                                    {['Present','Late','EarlyOut','Absent','Flagged'].map(s => <option key={s} value={s}>{s}</option>)}
+                                  </select>
+                                </div>
+                                <div style={{ flex: 1, minWidth: 160 }}>
+                                  <div style={{ fontSize: 11, color: COLOR.slate, marginBottom: 2 }}>Reason (audit note)</div>
+                                  <input type="text" value={editTimeForm.note} placeholder="e.g. GPS failed, device issue"
+                                    onChange={e => setEditTimeForm(f => ({ ...f, note: e.target.value }))}
+                                    style={{ padding: '6px 8px', borderRadius: 6, border: `1px solid ${COLOR.rule}`, width: '100%', boxSizing: 'border-box' }} />
+                                </div>
+                                <button onClick={() => saveEditTime(log)} disabled={savingTimeEdit} style={S.btnSm(COLOR.sageDeep)}>{savingTimeEdit ? '⏳' : '💾 Save'}</button>
+                                <button onClick={() => setEditingTimeId(null)} style={S.btnSm(COLOR.slate)}>Cancel</button>
+                              </div>
+                              <div style={{ fontSize: 10.5, color: COLOR.slate, marginTop: 6 }}>Leaving a time field blank clears it. This edit is logged as an admin override on the attendance record itself.</div>
+                            </td>
+                          </tr>
+                        )}
                         {expandedTrail === log.id && (
                           <tr style={{ background: COLOR.parchment }}>
                             <td colSpan="10" style={{ padding: '0 16px 16px' }}>
