@@ -21,7 +21,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
-import { loadFaceModels, extractDescriptor, matchDescriptor, assessFrameQuality, countFacesInFrame } from './faceEngine'
+import { loadFaceModels, extractDescriptor, extractDescriptorMultiFrame, matchDescriptor, assessFrameQuality, countFacesInFrame, assessReplaySignals, resetReplayBaseline } from './faceEngine'
 import { issueChallenge, runLivenessSequence, TURN_RATIO_THRESHOLD } from './faceLiveness'
 
 const S = {
@@ -197,6 +197,7 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
     if (qualityTimerRef.current) clearInterval(qualityTimerRef.current)
     setRunning(true)
     setError('')
+    resetReplayBaseline() // fresh comparison baseline for this attempt — never compare against a previous person's last frame
     try {
       // Server issues a fresh, single-use challenge with a randomly chosen
       // turn direction the client doesn't know in advance — the client
@@ -214,12 +215,17 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
         return
       }
 
-      // Extract the live descriptor right after liveness passes. This is
-      // sent to the server as-is — the client's own matchDescriptor() call
-      // below is ONLY for immediate on-screen feedback and is never trusted
-      // as the verification result itself.
+      // Extract the live descriptor right after liveness passes. Uses
+      // multiple frames from this same window (extractDescriptorMultiFrame)
+      // and picks the most representative one, rather than trusting
+      // whichever single frame happened to be sampled — a single unlucky
+      // frame (motion blur, brief bad angle) could otherwise push a real
+      // match's distance closer to the threshold than it should be. This
+      // is sent to the server as-is — the client's own matchDescriptor()
+      // call below is ONLY for immediate on-screen feedback and is never
+      // trusted as the verification result itself.
       setPhase('matching')
-      const liveDescriptor = await extractDescriptor(videoRef.current)
+      const liveDescriptor = await extractDescriptorMultiFrame(videoRef.current, 3, 120)
       if (!liveDescriptor) {
         setError('Lost face tracking — try again.')
         setRunning(false)
@@ -228,12 +234,22 @@ export default function FaceCapture({ staffId, onVerified, onCancel }) {
       }
       const clientPreview = matchDescriptor(liveDescriptor, descriptorRow.descriptor)
 
+      // Soft anti-replay signal — NOT a block. See assessReplaySignals()
+      // in faceEngine.js for exactly what this can and can't detect; it's
+      // a heuristic for admin review, not a guarantee against a held-up
+      // photo or screen. Passed through to onVerified so the caller can
+      // log/flag it server-side alongside the check-in — this component
+      // never rejects a check-in based on it.
+      const replaySignal = assessReplaySignals(videoRef.current)
+
       streamRef.current?.getTracks().forEach(t => t.stop())
       onVerified({
         liveDescriptor,
         clientScore: clientPreview.score,       // advisory only — for UI/logging, not trust
         clientVerified: clientPreview.verified,  // advisory only — for UI/logging, not trust
         challengeId: challenge_id,
+        replaySuspicious: replaySignal.suspicious, // advisory only — see assessReplaySignals notes
+        replayFlags: replaySignal.flags,
       })
     } catch (e) {
       if (e?.offline || !navigator.onLine) {

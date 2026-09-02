@@ -1755,6 +1755,16 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   const performCheckIn = async (shift, faceResult) => {
     setFaceCaptureShift(null)
     setCheckingIn(true)
+    // Soft anti-replay heuristic (see assessReplaySignals in faceEngine.js)
+    // — advisory only, same trust boundary as clientScore/clientVerified.
+    // Not sent to server_checkin (which has no parameter for it and isn't
+    // being given a new one without deliberate sign-off, after the
+    // overload-ambiguity issue caused by an uncoordinated signature
+    // change) — logged client-side only, for now, so it's at least visible
+    // during review rather than silently discarded.
+    if (faceResult.replaySuspicious) {
+      console.warn('[check-in] Possible screen/photo replay signals detected:', faceResult.replayFlags)
+    }
     const targetStaffId = punchTarget?.id || currentStaff.id
     try {
       const { data, error } = await supabase.rpc('server_checkin', {
@@ -1898,6 +1908,12 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
     setCheckoutPending(null)
     if (!navigator.onLine && !window.confirm('No internet connection. Queue checkout for when you\'re back online?')) return
     if (!gpsCoords && !window.confirm('GPS not available. Check out without location? This will be flagged.')) return
+    // Soft anti-replay heuristic — advisory only, same trust boundary as
+    // check-in's clientScore/clientVerified. See performCheckIn's comment
+    // for why this isn't sent to the RPC yet.
+    if (faceResult.replaySuspicious) {
+      console.warn('[check-out] Possible screen/photo replay signals detected:', faceResult.replayFlags)
+    }
 
     const targetStaffId = punchTarget?.id || currentStaff?.id
 

@@ -14,11 +14,22 @@ export const WEAK_MATCH_THRESHOLD = 0.5 // mirrors server_checkin's weak_face_ma
 // default 224 — a real speed win on low-end phones without normally losing
 // track of a face that fills a typical selfie-camera frame.
 // scoreThreshold: minimum detector confidence before it reports a face at
-// all. Lowered from 0.5 so a face is still recognized under mediocre
-// lighting or a slightly off angle — this only affects "is there a face
-// here," not who it's matched against (see MATCH_THRESHOLD security note
-// on matchDescriptor below, which this does NOT loosen).
-export const DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.35 })
+// all. This was previously lowered to 0.35 (from face-api.js's default
+// 0.5) to tolerate mediocre lighting — but real-world enrollment attempts
+// showed this was too permissive: a flat green surface with no face
+// whatsoever, and a bright ceiling-light glare with only a hairline
+// visible, both passed as "a face detected" at this threshold, producing
+// meaningless descriptors that then coincidentally landed within
+// MATCH_THRESHOLD of a real staff member's enrollment — surfacing as
+// false "this face matches an existing enrollment for X" errors that had
+// nothing to do with any real resemblance between two people. Restored
+// to face-api.js's default 0.5: this only affects "is there a face here,"
+// not who it's matched against (see MATCH_THRESHOLD security note on
+// matchDescriptor below, which this does NOT loosen or tighten). A
+// genuinely dim-but-real face may need a retake in better light more
+// often now — that's the correct tradeoff versus accepting non-face
+// frames into the recognition pipeline at all.
+export const DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 })
 
 let modelsLoaded = false
 let loadingPromise = null
@@ -130,6 +141,133 @@ export function assessCaptureConsistency(descriptors) {
 export function matchDescriptor(liveDescriptor, storedDescriptor) {
   const score = euclideanDistance(liveDescriptor, storedDescriptor)
   return { verified: score <= MATCH_THRESHOLD, score: parseFloat(score.toFixed(4)) }
+}
+
+// ─── Multi-frame descriptor capture — reduces reliance on a single frame ───
+// Check-in previously extracted a descriptor from exactly one video frame.
+// A single unlucky frame (motion blur mid-blink, a brief bad angle, a
+// momentary lighting flicker) could produce a noisier-than-usual
+// descriptor — not garbage enough to fail detection outright, but poor
+// enough to push a real match's distance closer to MATCH_THRESHOLD than
+// it should be, or conversely make a borderline false-positive slightly
+// more likely. This captures several frames during the same window the
+// liveness check is already running (no extra time cost to the user) and
+// picks the median-quality descriptor rather than trusting whichever
+// single frame happened to be sampled.
+//
+// "Median-quality" here means: compute the pairwise distance of each
+// candidate descriptor to every other candidate, and pick the one with
+// the smallest average distance to the rest — i.e. the most representative/
+// central descriptor of the set, discarding whichever frame was the outlier.
+// This is a purely client-side selection step; server_checkin still
+// independently recomputes the final distance against the stored
+// descriptor for the ONE descriptor ultimately sent — nothing here weakens
+// that server-side check, it only improves which single descriptor is sent.
+export async function extractDescriptorMultiFrame(mediaEl, frameCount = 3, intervalMs = 120) {
+  const candidates = []
+  for (let i = 0; i < frameCount; i++) {
+    const d = await extractDescriptor(mediaEl)
+    if (d) candidates.push(d)
+    if (i < frameCount - 1) await new Promise(r => setTimeout(r, intervalMs))
+  }
+  if (candidates.length === 0) return null
+  if (candidates.length === 1) return candidates[0]
+
+  let bestIdx = 0
+  let bestAvgDist = Infinity
+  for (let i = 0; i < candidates.length; i++) {
+    let total = 0
+    for (let j = 0; j < candidates.length; j++) {
+      if (i === j) continue
+      total += euclideanDistance(candidates[i], candidates[j])
+    }
+    const avg = total / (candidates.length - 1)
+    if (avg < bestAvgDist) { bestAvgDist = avg; bestIdx = i }
+  }
+  return candidates[bestIdx]
+}
+
+// ─── Screen/photo-replay heuristic — SOFT FLAG ONLY, not a hard block ──────
+// Real depth- or texture-based liveness (the kind that reliably tells a
+// live face from a printed photo or a phone/screen held up to the camera)
+// needs either specialized hardware (structured light, ToF depth camera)
+// or a dedicated anti-spoofing ML model — neither is available through
+// face-api.js. This is NOT that. It's a cheap heuristic that flags frames
+// with the visual signature commonly produced by photographing a screen or
+// a flat printed photo — unnaturally uniform brightness across the face
+// region (a real face lit by ambient/room light has natural falloff and
+// shading from its own contours; a photograph of a photograph tends to be
+// flatter) and near-zero frame-to-frame pixel change (a live person can't
+// hold perfectly still to the sub-pixel level; a static photo held in
+// front of a camera can). This WILL have false positives (someone braced
+// very still, or genuinely flat studio-style lighting) and WILL miss real
+// spoofing attempts (a video replay showing natural movement, or a
+// well-lit high-quality print). Treat its output only as an extra signal
+// for admin review (see is_fraud_suspected/fraud_flags), never as a
+// rejection reason on its own.
+let replayCanvas = null
+let previousFrameData = null
+
+export function assessReplaySignals(videoEl) {
+  if (!videoEl || !videoEl.videoWidth) return { suspicious: false, reason: 'no_frame' }
+
+  if (!replayCanvas) replayCanvas = document.createElement('canvas')
+  const w = 48, h = 48
+  replayCanvas.width = w
+  replayCanvas.height = h
+  const ctx = replayCanvas.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(videoEl, 0, 0, w, h)
+
+  let data
+  try {
+    data = ctx.getImageData(0, 0, w, h).data
+  } catch {
+    return { suspicious: false, reason: 'unreadable' }
+  }
+
+  // Signal 1: brightness uniformity. Compute standard deviation of
+  // grayscale brightness across the sampled region — a real face has
+  // natural shading (nose bridge highlight, under-eye/jaw shadow); a flat
+  // photo or screen tends toward more uniform brightness.
+  const brightness = []
+  for (let i = 0; i < data.length; i += 4) {
+    brightness.push((data[i] + data[i + 1] + data[i + 2]) / 3)
+  }
+  const mean = brightness.reduce((a, b) => a + b, 0) / brightness.length
+  const variance = brightness.reduce((a, b) => a + (b - mean) ** 2, 0) / brightness.length
+  const stdDev = Math.sqrt(variance)
+
+  // Signal 2: frame-to-frame stillness. A held-up static photo/screen
+  // moves only as much as the holder's hand trembles — typically less
+  // frame-to-frame pixel change than a live face's natural micro-
+  // movement (breathing, tiny head adjustments, blinking).
+  let frameDelta = null
+  if (previousFrameData) {
+    let diffSum = 0
+    for (let i = 0; i < data.length; i += 4) {
+      diffSum += Math.abs(data[i] - previousFrameData[i])
+    }
+    frameDelta = diffSum / (data.length / 4)
+  }
+  previousFrameData = new Uint8ClampedArray(data)
+
+  const flags = []
+  if (stdDev < 18) flags.push('flat_lighting') // real faces rarely this uniform
+  if (frameDelta !== null && frameDelta < 1.2) flags.push('low_motion') // suspiciously still between frames
+
+  return {
+    suspicious: flags.length >= 2, // require BOTH signals — either alone is too common in ordinary conditions to be meaningful on its own
+    flags,
+    stdDev: parseFloat(stdDev.toFixed(2)),
+    frameDelta: frameDelta !== null ? parseFloat(frameDelta.toFixed(2)) : null,
+  }
+}
+
+// Resets the frame-to-frame comparison baseline — call this when starting
+// a fresh check-in/enrollment attempt so a previous person's last frame
+// never gets compared against a new person's first frame.
+export function resetReplayBaseline() {
+  previousFrameData = null
 }
 
 // ─── Liveness detection (blink + head-turn) ────────────────────────────────
