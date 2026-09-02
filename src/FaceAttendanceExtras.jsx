@@ -161,7 +161,11 @@ function MyAttendanceHistory({ staffId }) {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {days.map(d => {
-                const status = d.mark?.status || (d.geo ? 'Present' : null)
+                // BUGFIX: same pattern as StaffMarkRow/summary above — use
+                // the geo row's real status instead of hardcoding Present
+                // whenever any geo row exists. This is what let auto-marked
+                // Absent days show as a green "Present" pill.
+                const status = d.mark?.status || d.geo?.status || null
                 const meta = status ? MARK_META[status] : null
                 return (
                   <div key={d.date} style={{ background: 'white', borderRadius: 10, padding: '10px 14px', boxShadow: '0 1px 4px rgba(0,0,0,.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -169,7 +173,9 @@ function MyAttendanceHistory({ staffId }) {
                       <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{fmtDate(d.date)}</div>
                       {d.geo && (
                         <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                          In {d.geo.check_in_time ? new Date(d.geo.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                          {d.geo.check_in_time
+                            ? `In ${new Date(d.geo.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
+                            : 'Auto-marked (no check-in)'}
                           {(d.geo.late_minutes || 0) > 0 && <span style={{ color: '#b45309', fontWeight: 700 }}> · +{d.geo.late_minutes}m late</span>}
                         </div>
                       )}
