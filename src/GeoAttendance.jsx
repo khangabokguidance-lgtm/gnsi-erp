@@ -599,10 +599,19 @@ function detectPunchAction({ myShifts, todayMyLogs, activeTracking, gpsStatus })
     return { kind: 'ambiguous-out' }
   }
 
+  // BUGFIX: this used to require inWindow (isWithinWindow, typically
+  // ±10 min around shift_start) for a shift to be eligible for check-in
+  // at all — so once that window closed, the Punch In button disappeared
+  // entirely (reason: 'window_closed'/'window_not_open'), regardless of
+  // what server_checkin itself would accept. That directly contradicted
+  // the new rule: check-in is never rejected for lateness anymore (0-20
+  // min late stays Present, past that is Half Day) — but the button
+  // never even reached the server if the window had passed. Eligibility
+  // is now just "not already logged today"; the actual Present/Half Day
+  // outcome is decided server-side from the real check-in time.
   const eligibleForCheckin = (myShifts || []).filter(shift => {
     const alreadyDone = isShiftLoggedToday(shift, todayMyLogs)
-    const inWindow = isWithinWindow(shift.shift_start, shift.check_in_window_min || 10)
-    return !alreadyDone && inWindow
+    return !alreadyDone
   })
   if (eligibleForCheckin.length === 1) {
     return { kind: 'in', shift: eligibleForCheckin[0] }
@@ -616,15 +625,6 @@ function detectPunchAction({ myShifts, todayMyLogs, activeTracking, gpsStatus })
   if (!myShifts || myShifts.length === 0) return { kind: 'none', reason: 'no_shifts' }
   const allDoneToday = myShifts.every(s => isShiftLoggedToday(s, todayMyLogs))
   if (allDoneToday) return { kind: 'none', reason: 'all_done' }
-
-  // Otherwise: something is assigned but its window isn't open. Surface
-  // the soonest upcoming one.
-  const upcoming = myShifts
-    .filter(s => !isShiftLoggedToday(s, todayMyLogs))
-    .map(s => ({ s, mins: minutesUntilWindow(s.shift_start, s.check_in_window_min || 10) }))
-    .filter(x => x.mins > 0)
-    .sort((a, b) => a.mins - b.mins)[0]
-  if (upcoming) return { kind: 'none', reason: 'window_not_open', shift: upcoming.s, minsUntil: upcoming.mins }
 
   return { kind: 'none', reason: 'window_closed' }
 }
@@ -1802,7 +1802,12 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
         await fetchMyLogs()
       }
       const status = data.status
-      if (status === 'Late') {
+      if (status === 'Half Day') {
+        showToast(`⚠️ Checked in ${data.late_minutes}+ min late — marked Half Day. Tracking started.`, 'warn')
+        speak(`Checked in, marked half day, ${data.late_minutes} minutes late`)
+      } else if (status === 'Late') {
+        // Three-band lateness rule: 0-10 min late stays Present, 10-20
+        // min late is Late (this branch), past 20 min is Half Day above.
         showToast(`🕐 Checked in LATE — ${data.late_minutes} min. Tracking started.`, 'warn')
         speak(`Checked in, ${data.late_minutes} minutes late`)
       } else if (status === 'Flagged') {
@@ -2493,14 +2498,20 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                           </div>
                           {alreadyDone
                             ? <StatusBadge status={(todayMyLogs.find(l => l.shift_id != null ? l.shift_id === shift.id : l.shift_label === shift.shift_label))?.status || 'Present'} dark />
-                            : inWindow
-                              ? <button onClick={gpayRipple(() => handleCheckIn(shift))} disabled={checkingIn}
-                                  style={gpayBtnStyle({ bg: gpsStatus === 'outside' ? GPAY.warn : GPAY.ok, disabled: checkingIn, size: 'sm' })} {...gpayPress}>
-                                  {checkingIn ? '⏳' : gpsStatus === 'outside' ? '⚠️ Check In (Off Campus)' : '✅ Check In'}
-                                </button>
-                              : minsLeft > 0
-                                ? <span style={{ fontSize: 12, color: GPAY.warn, fontWeight: 700 }}>Opens in {minsLeft}m</span>
-                                : <span style={{ fontSize: 12, color: GPAY.textFaint, fontWeight: 600 }}>Window closed</span>
+                            // BUGFIX: this used to hide the Check In button
+                            // entirely once inWindow was false, replacing it
+                            // with a static "Window closed" label — so once
+                            // the check-in window passed, there was no way
+                            // to check in at all, even though server_checkin
+                            // now always accepts a late check-in (0-20 min
+                            // late stays Present, past that becomes Half
+                            // Day). The button is now always shown until the
+                            // shift is actually logged; only its label/color
+                            // reflects lateness.
+                            : <button onClick={gpayRipple(() => handleCheckIn(shift))} disabled={checkingIn}
+                                style={gpayBtnStyle({ bg: gpsStatus === 'outside' ? GPAY.warn : inWindow ? GPAY.ok : GPAY.warn, disabled: checkingIn, size: 'sm' })} {...gpayPress}>
+                                {checkingIn ? '⏳' : gpsStatus === 'outside' ? '⚠️ Check In (Off Campus)' : inWindow ? '✅ Check In' : '⚠️ Check In (Late)'}
+                              </button>
                           }
                         </div>
                       </div>
