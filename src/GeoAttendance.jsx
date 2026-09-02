@@ -2566,7 +2566,12 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
         {activeTab === 'advances' && !isAdmin && (
           <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
             <div style={{ padding: '14px 16px', fontWeight: 700, color: COLOR.ink, borderBottom: `1px solid ${COLOR.rule}`, fontSize: 15 }}>💳 My Advances</div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            {/* BUGFIX: this table had no overflowX wrapper, unlike every
+                other table in this file — on a phone screen its 6 columns
+                overflow with no way to scroll it into view, cutting off
+                content at the screen edge. */}
+            <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 560 }}>
               <thead><tr>{['Month','Amount','Repaid','Remaining','Per Month','Status'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>
                 {advances.filter(a => String(a.staff_id) === String(currentStaff?.id)).map(a => {
@@ -2588,6 +2593,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -2617,8 +2623,15 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
               <button onClick={fetchTodayLogs} style={S.btnSm(COLOR.ink)}>🔄 Refresh</button>
             </div>
             <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+              {/* BUGFIX: 10 columns (including name+designation, two
+                  timestamps, fraud badges, and two action buttons) with no
+                  minWidth meant the table tried to compress to fit the
+                  phone's viewport instead of scrolling properly — content
+                  overlapped/clipped rather than staying readable behind a
+                  horizontal scrollbar, the same way every other wide table
+                  in this file already handles it. */}
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1100 }}>
                   <thead>
                     <tr>{['Staff','Shift','Check-In','Check-Out','Late','Distance','Status','Fraud','Trail','Override'].map(h => <th key={h} style={th}>{h}</th>)}</tr>
                   </thead>
@@ -2920,7 +2933,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                         {!sf.shift_label && (
                           <div style={{ fontSize: 11, color: COLOR.danger, fontWeight: 700, marginBottom: 8 }}>⚠️ Missing label — this shift won't save until you fill it in</div>
                         )}
-                        <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 80px', gap: 10, alignItems: 'flex-end' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 10, alignItems: 'flex-end' }}>
                           <div>
                             <label style={S.label}>Label</label>
                             <input value={sf.shift_label} onChange={e => setShiftForms(prev => prev.map((s, j) => j === i ? { ...s, shift_label: e.target.value } : s))} placeholder="A/B/C" style={S.input} maxLength={3} />
