@@ -211,23 +211,35 @@ export function assessFrameQuality(videoEl) {
   let total = 0
   let overexposedCount = 0
   let underexposedCount = 0
+  let dimCount = 0 // face-region-plausible darkness that isn't full blackout, but is still too dark to trust
   const pixelCount = w * h
   for (let i = 0; i < data.length; i += 4) {
     const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3
     total += brightness
     if (brightness > 240) overexposedCount++
     if (brightness < 25) underexposedCount++
+    // BUGFIX: the original backlit check only counted pixels under 25
+    // (near-total black) as "underexposed" — a face that's merely dim/
+    // shadowed from strong backlighting (roughly 25-90 brightness, clearly
+    // visible as a face but too degraded for a reliable descriptor) never
+    // crossed that bar, so overexposedRatio>0.25 && underexposedRatio>0.15
+    // stayed false even for a badly backlit shot with a bright window
+    // filling a third of the frame and a shadowed face. That let through
+    // exactly the kind of photo whose degraded descriptor then produced
+    // false "matches an existing staff member" results at enrollment.
+    if (brightness >= 25 && brightness < 90) dimCount++
   }
   const avgBrightness = total / pixelCount
   const overexposedRatio = overexposedCount / pixelCount
   const underexposedRatio = underexposedCount / pixelCount
+  const dimRatio = dimCount / pixelCount
 
   // Too dark overall
   if (avgBrightness < 40) return { ok: false, reason: 'too_dark' }
-  // Strong backlight — bright ceiling/window behind a dark face, exactly
-  // the pattern in a photo taken under an overhead light with no fill light
-  // on the face itself.
-  if (overexposedRatio > 0.25 && underexposedRatio > 0.15) return { ok: false, reason: 'backlit' }
+  // Strong backlight — bright ceiling/window behind a dark face. Widened
+  // to also catch a merely-dim (not pitch-black) shadowed face alongside
+  // a bright light source, not just a true silhouette.
+  if (overexposedRatio > 0.2 && (underexposedRatio > 0.15 || dimRatio > 0.3)) return { ok: false, reason: 'backlit' }
   // Blown-out overall (camera pointed near a light source)
   if (avgBrightness > 235) return { ok: false, reason: 'too_bright' }
 

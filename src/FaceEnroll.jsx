@@ -271,7 +271,15 @@ export default function FaceEnroll({ staffMember, mode = 'self', currentAdminId 
       if (rpcErr) throw rpcErr
       if (!data?.success) {
         if (data?.error === 'duplicate_face') {
-          notify(data.message || 'This face matches an existing enrollment. Contact admin if this is a mistake.', 'err')
+          // Surface the actual match distance so an admin can tell a
+          // confident real duplicate (distance near 0) from a borderline
+          // false positive (distance just under the 0.5 threshold) —
+          // previously this said only a name, with no way to judge how
+          // close the match really was.
+          const distNote = typeof data.distance === 'number'
+            ? ` (match distance ${data.distance.toFixed(3)} of ${data.threshold ?? 0.5} threshold — closer to 0 means a stronger/more confident match)`
+            : ''
+          notify((data.message || 'This face matches an existing enrollment.') + distNote + ' If lighting was poor, retake in better light before assuming this is a real duplicate.', 'err')
         } else if (data?.error === 'enrollment_locked') {
           notify('Enrollment is temporarily locked by admin — try again shortly.', 'err')
         } else {
