@@ -899,20 +899,34 @@ function OfflineBanner({ offline, dark = false }) {
 // outcomes, which already carry their own amber warning toast and would
 // feel wrong paired with a celebratory green check.
 function SuccessOverlay({ kind, label, onDone }) {
+  // BUGFIX: onDone was passed as a fresh inline arrow function on every
+  // parent render, and was in this effect's dependency array — so any
+  // re-render during the 1.4s window (very likely here, given active GPS
+  // tracking pings, realtime subscriptions, and the fetchMyLogs()/state
+  // updates that follow a checkout) tore down and restarted the timer
+  // from zero. If re-renders kept arriving faster than 1.4s apart, the
+  // timer could never complete, leaving this overlay stuck on screen
+  // indefinitely. Fix: stash the latest onDone in a ref and start the
+  // timer only once, on mount — re-renders no longer reset it.
+  const onDoneRef = useRef(onDone)
+  onDoneRef.current = onDone
+
   useEffect(() => {
-    const t = setTimeout(onDone, 1400)
+    const t = setTimeout(() => onDoneRef.current(), 1400)
     return () => clearTimeout(t)
-  }, [onDone])
+  }, [])
 
   return (
     <div
       role="status"
       aria-live="polite"
+      onClick={() => onDoneRef.current()}
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
         background: 'rgba(255,255,255,0.92)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         animation: 'gpay-success-fade-in 0.2s ease',
+        cursor: 'pointer',
       }}
     >
       <div style={{
@@ -1878,16 +1892,41 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
       is_active: true, effective_from: today(), created_by: 'Admin',
     }
     let successCount = 0
+    const failed = []
+    const skippedDupes = []
     for (const staffId of bulkStaffIds) {
+      // BUGFIX: this used to always insert, with no check for an existing
+      // active shift of the same label for that staff member — running
+      // this twice (or reassigning after a typo) silently created
+      // duplicate rows, which the on-screen help text even acknowledged
+      // as something admins had to notice and clean up manually via the
+      // single-staff editor. Now it skips anyone who already has an
+      // active shift with this exact label, rather than duplicating it.
+      const { data: existing } = await supabase.from('staff_shifts')
+        .select('id').eq('staff_id', parseInt(staffId)).eq('shift_label', payload.shift_label).eq('is_active', true).maybeSingle()
+      if (existing) {
+        skippedDupes.push(staffId)
+        continue
+      }
       const { error } = await supabase.from('staff_shifts').insert({ ...payload, staff_id: parseInt(staffId) })
       if (!error) successCount++
+      else failed.push({ staffId, message: error.message })
     }
     setSavingBulkShift(false)
-    if (successCount === bulkStaffIds.size) {
+
+    // BUGFIX: partial failures used to only report a bare count
+    // ("3/5 saved — check console for errors"), leaving a non-technical
+    // admin with no way to know WHO failed or WHY without opening dev
+    // tools. Now names and reasons are surfaced directly in the toast.
+    const nameFor = (id) => safeAllStaff.find(s => String(s.id) === String(id))?.name || `#${id}`
+    if (failed.length === 0 && skippedDupes.length === 0) {
       showToast(`✅ Shift assigned to ${successCount} staff`, 'ok')
       setBulkStaffIds(new Set())
     } else {
-      showToast(`⚠️ ${successCount}/${bulkStaffIds.size} saved — check console for errors`, 'warn')
+      const parts = [`✅ ${successCount} assigned`]
+      if (skippedDupes.length) parts.push(`⏭️ ${skippedDupes.length} already had this shift (${skippedDupes.map(nameFor).join(', ')})`)
+      if (failed.length) parts.push(`❌ ${failed.length} failed: ${failed.map(f => `${nameFor(f.staffId)} (${f.message})`).join('; ')}`)
+      showToast(parts.join(' · '), failed.length ? 'err' : 'warn')
     }
     if (selectedStaff && bulkStaffIds.has(String(selectedStaff))) {
       const sh = await fetchShiftsFor(selectedStaff)
@@ -1906,24 +1945,72 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   const saveShifts = async () => {
     if (!selectedStaff) { showToast('❌ Select a staff member first', 'err'); return }
     setSavingShifts(true)
+    // BUGFIX: this used to silently `continue` past any shift missing a
+    // label/start/end, then still show "✅ Shifts saved" — so filling in
+    // times but leaving Label blank (or accidentally clearing it while
+    // editing) meant the row was dropped with zero feedback. It looked
+    // exactly like "I configured a shift and it disappeared." Now every
+    // incomplete row is collected and reported, and nothing is silently
+    // discarded.
+    const incomplete = []
+    const dupes = []
+    let savedCount = 0
     for (const sf of shiftForms) {
-      if (!sf.shift_label || !sf.shift_start || !sf.shift_end) continue
+      if (!sf.shift_label || !sf.shift_start || !sf.shift_end) {
+        incomplete.push(sf)
+        continue
+      }
+      const isNewRow = !sf.id || String(sf.id).startsWith('new')
+      if (isNewRow) {
+        // BUGFIX: a new row always inserted with no check for an existing
+        // active shift of the same label for this staff member — typing
+        // a label that matches one already on file silently created a
+        // duplicate. Skip and report instead of inserting a dupe.
+        const dupeAmongOthers = shiftForms.some(other => other !== sf && other.shift_label === sf.shift_label && !String(other.id || '').startsWith('new'))
+        if (dupeAmongOthers) {
+          dupes.push(sf)
+          continue
+        }
+      }
       const payload = {
         staff_id: parseInt(selectedStaff), shift_label: sf.shift_label,
         shift_start: sf.shift_start, shift_end: sf.shift_end,
         check_in_window_min: parseInt(sf.check_in_window_min) || 10,
         is_active: true, effective_from: today(), created_by: 'Admin',
       }
-      if (sf.id && !String(sf.id).startsWith('new')) {
+      if (!isNewRow) {
         await supabase.from('staff_shifts').update(payload).eq('id', sf.id)
       } else {
         await supabase.from('staff_shifts').insert(payload)
       }
+      savedCount++
     }
-    showToast('✅ Shifts saved', 'ok')
     setSavingShifts(false)
+    if (incomplete.length || dupes.length) {
+      const parts = [`✅ ${savedCount} saved`]
+      if (incomplete.length) {
+        const missing = incomplete.map(sf => {
+          const gaps = []
+          if (!sf.shift_label) gaps.push('label')
+          if (!sf.shift_start) gaps.push('start time')
+          if (!sf.shift_end) gaps.push('end time')
+          return gaps.join('/')
+        }).join('; ')
+        parts.push(`⚠️ ${incomplete.length} skipped (missing: ${missing})`)
+      }
+      if (dupes.length) {
+        parts.push(`⏭️ ${dupes.length} skipped — this staff member already has a "${dupes.map(d => d.shift_label).join(', ')}" shift`)
+      }
+      showToast(parts.join(' · '), 'warn')
+    } else {
+      showToast('✅ Shifts saved', 'ok')
+    }
     const sh = await fetchShiftsFor(selectedStaff)
-    setShiftForms(sh.map(s => ({ ...s, _edit: false })))
+    // Preserve any still-incomplete or duplicate rows in the form (don't
+    // let a refetch silently wipe out what the user typed but hadn't
+    // finished, or a duplicate they still need to rename/remove) —
+    // successfully-saved rows come fresh from the server.
+    setShiftForms([...sh.map(s => ({ ...s, _edit: false })), ...incomplete, ...dupes])
   }
 
   const deleteShift = async (id) => {
@@ -2664,7 +2751,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                 {savingBulkShift ? '⏳ Assigning…' : `💾 Assign Shift to ${bulkStaffIds.size || 0} Staff`}
               </button>
               <p style={{ fontSize: 11.5, color: COLOR.slate, marginTop: 10, marginBottom: 0 }}>
-                This adds a new shift for each selected staff member — it does not remove or edit shifts they already have. Use the single-staff editor below for edits or to remove a duplicate.
+                This adds a new shift for each selected staff member who doesn't already have one with this exact label — it won't create duplicates, but it also won't edit an existing shift's times. Use the single-staff editor below to edit times or remove a shift.
               </p>
             </div>
 
@@ -2681,7 +2768,10 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                 <>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
                     {shiftForms.map((sf, i) => (
-                      <div key={sf.id || i} style={{ background: COLOR.parchment, borderRadius: 10, padding: 14, border: `1px solid ${COLOR.rule}` }}>
+                      <div key={sf.id || i} style={{ background: COLOR.parchment, borderRadius: 10, padding: 14, border: `1px solid ${!sf.shift_label ? COLOR.danger : COLOR.rule}` }}>
+                        {!sf.shift_label && (
+                          <div style={{ fontSize: 11, color: COLOR.danger, fontWeight: 700, marginBottom: 8 }}>⚠️ Missing label — this shift won't save until you fill it in</div>
+                        )}
                         <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 80px', gap: 10, alignItems: 'flex-end' }}>
                           <div>
                             <label style={S.label}>Label</label>
