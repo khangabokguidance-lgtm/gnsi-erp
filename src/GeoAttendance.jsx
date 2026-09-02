@@ -1403,6 +1403,13 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
 
   useEffect(() => { if (isAdmin && activeTab === 'monitor') fetchTodayLogs() },  [activeTab, isAdmin])
   useEffect(() => { if (isAdmin && activeTab === 'fraud')   fetchFraudLogs() },  [activeTab, isAdmin])
+  // BUGFIX: "My Attendance History" (non-admin) never refetched myLogs when
+  // opened — it only relied on the initial mount fetch and post-checkin/
+  // checkout refreshes. If the tab was opened in an already-loaded session
+  // (e.g. before that day's check-in, or after switching tabs), it showed
+  // stale data — a real Late/Present check-in could still render as the
+  // earlier Absent state. Refetch whenever this tab becomes active.
+  useEffect(() => { if (!isAdmin && activeTab === 'history') fetchMyLogs() }, [activeTab, isAdmin])
   useEffect(() => {
   if (!isAdmin || activeTab !== 'report') return
   fetchMonthLogs().then(() => {
@@ -2262,7 +2269,10 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
           <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: `1px solid ${COLOR.rule}` }}>
               <div style={{ fontWeight: 700, color: COLOR.ink, fontSize: 15 }}>📅 My Attendance History</div>
-              <button onClick={() => exportCSV(myLogs.map(l => ({ ...l, staff_profiles: currentStaff })), `attendance-${today()}.csv`)} style={S.btnSm(COLOR.ink)}>⬇ Export CSV</button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={fetchMyLogs} style={S.btnSm(COLOR.slate)}>🔄 Refresh</button>
+                <button onClick={() => exportCSV(myLogs.map(l => ({ ...l, staff_profiles: currentStaff })), `attendance-${today()}.csv`)} style={S.btnSm(COLOR.ink)}>⬇ Export CSV</button>
+              </div>
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
