@@ -64,8 +64,8 @@ function broadcastStudentsUpdate(detail) {
 //  panels rather than app "cards". Every shared primitive below derives
 //  from this single token block.
 // ══════════════════════════════════════════════════════════════
-const FONT_DISPLAY = '"Georgia", "Iowan Old Style", "Times New Roman", serif'
-const FONT_BODY = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+const FONT_DISPLAY = '"Fraunces", "Georgia", "Iowan Old Style", "Times New Roman", serif'
+const FONT_BODY = '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
 
 const MD = {
   color: {
@@ -5099,7 +5099,7 @@ function MealHeadcountCard({ presentCount, sickbayCount, leaveCount, mobile, onS
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: mobile ? '12px' : '16px' }}>
         <span key={toFeed} className="hr-meal-count-anim" style={{
           fontSize: mobile ? '42px' : '52px', fontWeight: '800', lineHeight: 1,
-          fontFamily: 'Georgia, serif', color: 'white',
+          fontFamily: FONT_DISPLAY, color: 'white',
         }}>
           {animatedCount}
         </span>
@@ -5159,7 +5159,7 @@ function FeatureCardsStrip({ cards }) {
           border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '14px 16px',
         }}>
           <div style={{ width: '7px', height: '7px', borderRadius: '2px', background: c.color, marginBottom: '10px' }} />
-          <div style={{ fontSize: '19px', fontWeight: '800', color: '#F3EEE0', fontFamily: 'Georgia, serif', lineHeight: 1.1 }}>{c.value}</div>
+          <div style={{ fontSize: '19px', fontWeight: '800', color: '#F3EEE0', fontFamily: FONT_DISPLAY, lineHeight: 1.1 }}>{c.value}</div>
           <div style={{ fontSize: '10.5px', color: 'rgba(243,238,224,0.55)', fontWeight: '600', marginTop: '4px' }}>{c.label}</div>
           <div style={{ fontSize: '9.5px', color: 'rgba(243,238,224,0.35)', marginTop: '2px' }}>{c.sub}</div>
         </div>
@@ -5323,7 +5323,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           <div style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', color: MD.color.secondary, marginBottom: '4px' }}>
             Today's Entry
           </div>
-          <h2 style={{ fontSize: '19px', fontWeight: '800', color: 'white', margin: 0, fontFamily: 'Georgia, "Times New Roman", serif' }}>
+          <h2 style={{ fontSize: '19px', fontWeight: '800', color: 'white', margin: 0, fontFamily: FONT_DISPLAY }}>
             Good {greetingWord()}, {currentHousemaster?.name || currentUser?.name || 'House Master'}
           </h2>
           <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '13px', margin: '4px 0 0' }}>
@@ -5392,7 +5392,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           ))}
         </div>
         <div style={{ ...mobileCard, marginBottom: '14px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 2px', fontFamily: 'Georgia, serif' }}>Today's Snapshot</h3>
+          <h3 style={{ fontSize: '15px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 2px', fontFamily: FONT_DISPLAY }}>Today's Snapshot</h3>
           <p style={{ fontSize: '10px', color: MD.color.onSurfaceVariant, margin: '0 0 14px' }}>Morning roll call</p>
           {(() => {
             const totalMarked = presentCount + absentCount
@@ -5407,7 +5407,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
             return (
               <>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '12px' }}>
-                  <span style={{ fontSize: '32px', fontWeight: '800', color: attendedPct === null ? MD.color.onSurfaceVariant : attendedPct >= 90 ? MD.color.success : attendedPct >= 70 ? MD.color.secondary : MD.color.error, lineHeight: 1, fontFamily: 'Georgia, serif' }}>
+                  <span style={{ fontSize: '32px', fontWeight: '800', color: attendedPct === null ? MD.color.onSurfaceVariant : attendedPct >= 90 ? MD.color.success : attendedPct >= 70 ? MD.color.secondary : MD.color.error, lineHeight: 1, fontFamily: FONT_DISPLAY }}>
                     {attendedPct === null ? '—' : `${attendedPct}%`}
                   </span>
                   <span style={{ fontSize: '12px', color: MD.color.onSurfaceVariant, fontWeight: '600' }}>present of {totalMarked || activeStudentCount} marked</span>
@@ -5463,7 +5463,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase', color: MD.color.secondary, marginBottom: '6px' }}>
             Today's Entry · {today()}
           </div>
-          <h2 style={{ fontSize: '27px', fontWeight: '800', color: 'white', margin: 0, fontFamily: 'Georgia, "Times New Roman", serif' }}>
+          <h2 style={{ fontSize: '27px', fontWeight: '800', color: 'white', margin: 0, fontFamily: FONT_DISPLAY }}>
             Good {greetingWord()}, {currentHousemaster?.name || currentUser?.name || 'House Master'}
           </h2>
           <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '14px', margin: '5px 0 0' }}>
@@ -5529,7 +5529,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
         <div style={card}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 4px', fontFamily: 'Georgia, serif' }}>Today's Snapshot</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 4px', fontFamily: FONT_DISPLAY }}>Today's Snapshot</h3>
           <p style={{ fontSize: '11px', color: MD.color.onSurfaceVariant, margin: '0 0 18px' }}>Morning roll call · {today()}</p>
           {(() => {
             const totalMarked = presentCount + absentCount
@@ -5545,7 +5545,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
               <>
                 {/* Anchor stat — the number an HM actually scans for first */}
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '16px' }}>
-                  <span style={{ fontSize: '40px', fontWeight: '800', color: attendedPct === null ? MD.color.onSurfaceVariant : attendedPct >= 90 ? MD.color.success : attendedPct >= 70 ? MD.color.secondary : MD.color.error, lineHeight: 1, fontFamily: 'Georgia, serif' }}>
+                  <span style={{ fontSize: '40px', fontWeight: '800', color: attendedPct === null ? MD.color.onSurfaceVariant : attendedPct >= 90 ? MD.color.success : attendedPct >= 70 ? MD.color.secondary : MD.color.error, lineHeight: 1, fontFamily: FONT_DISPLAY }}>
                     {attendedPct === null ? '—' : `${attendedPct}%`}
                   </span>
                   <span style={{ fontSize: '13px', color: MD.color.onSurfaceVariant, fontWeight: '600' }}>present of {totalMarked || activeStudentCount} marked</span>
@@ -5567,7 +5567,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           })()}
         </div>
         <div style={card}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 4px', fontFamily: 'Georgia, serif' }}>Today's Snapshot — Chart</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 4px', fontFamily: FONT_DISPLAY }}>Today's Snapshot — Chart</h3>
           <p style={{ fontSize: '11px', color: MD.color.onSurfaceVariant, margin: '0 0 18px' }}>Same figures as the tally, at a glance</p>
           {(() => {
             const chartItems = [
@@ -5599,7 +5599,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           })()}
         </div>
         <div style={card}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 16px', fontFamily: 'Georgia, serif' }}>Attention Required</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: MD.color.onSurface, margin: '0 0 16px', fontFamily: FONT_DISPLAY }}>Attention Required</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {unmarkedCount > 0 && (
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px 14px', background: MD.color.secondaryContainer, borderRadius: MD.radius.control }}>
@@ -8766,6 +8766,21 @@ function NeglectReportTab({ currentUser }) {
 }
 
 function Hostel() {
+  // Loads Fraunces (display/headings) and Inter (body) from Google Fonts
+  // once, on first mount — FONT_DISPLAY/FONT_BODY above already fall back
+  // to Georgia/system-ui if this hasn't loaded yet or fails, so nothing
+  // breaks if the network request is slow or blocked. Guarded by a
+  // document-level check so re-mounting this component doesn't inject
+  // the same <link> tags repeatedly.
+  useEffect(() => {
+    if (document.getElementById('hostel-premium-fonts')) return
+    const link = document.createElement('link')
+    link.id = 'hostel-premium-fonts'
+    link.rel = 'stylesheet'
+    link.href = 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap'
+    document.head.appendChild(link)
+  }, [])
+
   // BUG FIX: activeTab previously only ever initialized to 'hmdashboard' —
   // any link built with a `?tab=...` query string (e.g. the "🏠↗" open-HM
   // arrow linking to /hostel?tab=doubtsession&hm=Sir%20James) was silently
