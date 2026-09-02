@@ -733,7 +733,7 @@ export default function App() {
     awards:            <Awards            currentUser={currentUser} perms={perms('awards')}            />,
     faceattendance:    <FaceAttendance currentUser={currentUser} isAdmin={isAdmin} staff={sharedStaff}
                           loggedInStaff={currentUser?.staff_profile_id ? sharedStaff.find(s => s.id === currentUser.staff_profile_id) || null : null}
-                          onNavigate={setActive} onLogout={handleLogout} />,
+                          onNavigate={setActive} onLogout={handleLogout} onStaffChange={fetchSharedStaff} />,
     reception:         <Reception         currentUser={currentUser} perms={perms('reception')}         />,
     notice:            <Notice            currentUser={currentUser} perms={perms('notice')}            />,
     social:            <Social            currentUser={currentUser} perms={perms('social')}            />,

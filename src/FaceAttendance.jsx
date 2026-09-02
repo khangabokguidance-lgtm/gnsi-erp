@@ -481,6 +481,71 @@ const STATUS_COLORS = {
   Flagged:  '#7C3AED',
 }
 
+// Check-in/check-out flow diagram — purely illustrative, shows the 4-step
+// process (Open app → Face scan → GPS verify → Tracking starts) plus the
+// mirrored checkout steps. No live data, no interactivity.
+function CheckInFlowDiagram() {
+  const steps = [
+    { icon: '📱', label: 'Open Check-In' },
+    { icon: '🤳', label: 'Face scan' },
+    { icon: '📍', label: 'GPS verified' },
+    { icon: '✅', label: 'Tracking starts' },
+  ]
+  const outSteps = [
+    { icon: '⏹️', label: 'Tap Check Out' },
+    { icon: '🤳', label: 'Face scan' },
+    { icon: '📝', label: 'Day recorded' },
+  ]
+  const Row = ({ items, tint }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, overflowX: 'auto', paddingBottom: 2 }}>
+      {items.map((s, i) => (
+        <React.Fragment key={s.label}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 68, flexShrink: 0 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: '50%', background: tint,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19,
+            }}>{s.icon}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: PAY.textSecondary, textAlign: 'center', lineHeight: 1.2 }}>{s.label}</div>
+          </div>
+          {i < items.length - 1 && <div style={{ color: PAY.textMuted, fontSize: 16, flexShrink: 0, marginBottom: 20 }}>→</div>}
+        </React.Fragment>
+      ))}
+    </div>
+  )
+  return (
+    <div style={{ background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius, padding: 18, boxShadow: PAY.shadow, marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, fontSize: 13.5, color: PAY.textPrimary, fontFamily: FONT.body, marginBottom: 2 }}>How attendance works</div>
+      <div style={{ fontSize: 11, color: PAY.textMuted, marginBottom: 14 }}>Every check-in and check-out is verified by face scan and location</div>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: PAY.blue, marginBottom: 6, letterSpacing: '0.03em', textTransform: 'uppercase' }}>Check-in</div>
+      <Row items={steps} tint={PAY.blueBg} />
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: PAY.red, margin: '16px 0 6px', letterSpacing: '0.03em', textTransform: 'uppercase' }}>Check-out</div>
+      <Row items={outSteps} tint={PAY.redBg} />
+    </div>
+  )
+}
+
+// Face-scan viewfinder frame — decorative only (per instruction: not a
+// working camera), styled like a scanning UI with corner brackets around
+// a face outline, to reinforce that biometric verification is required.
+function FaceScanFrame() {
+  return (
+    <div style={{ background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius, padding: 20, boxShadow: PAY.shadow, textAlign: 'center' }}>
+      <div style={{ fontWeight: 700, fontSize: 13.5, color: PAY.textPrimary, fontFamily: FONT.body, marginBottom: 12 }}>Face verification required</div>
+      <svg width="120" height="120" viewBox="0 0 120 120" style={{ display: 'block', margin: '0 auto' }}>
+        {/* corner brackets */}
+        <path d="M4,24 L4,4 L24,4" stroke={PAY.blue} strokeWidth="4" fill="none" strokeLinecap="round" />
+        <path d="M96,4 L116,4 L116,24" stroke={PAY.blue} strokeWidth="4" fill="none" strokeLinecap="round" />
+        <path d="M116,96 L116,116 L96,116" stroke={PAY.blue} strokeWidth="4" fill="none" strokeLinecap="round" />
+        <path d="M24,116 L4,116 L4,96" stroke={PAY.blue} strokeWidth="4" fill="none" strokeLinecap="round" />
+        {/* simple face outline */}
+        <circle cx="60" cy="52" r="24" fill="none" stroke={PAY.textMuted} strokeWidth="2.5" />
+        <path d="M36,80 Q60,64 84,80" fill="none" stroke={PAY.textMuted} strokeWidth="2.5" strokeLinecap="round" />
+      </svg>
+      <div style={{ fontSize: 11, color: PAY.textMuted, marginTop: 10 }}>Position your face inside the frame to check in or out</div>
+    </div>
+  )
+}
+
 function DashCard({ title, subtitle, children }) {
   return (
     <div style={{ background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius, padding: 18, boxShadow: PAY.shadow }}>
@@ -1973,10 +2038,11 @@ function BottomNav({ active, onNavigate, pendingCount }) {
 
 // ─── Main export ────────────────────────────────────────────────────────────
 
-export default function FaceAttendance({ currentUser, isAdmin, staff = [], loggedInStaff = null, onNavigate = null, onLogout = null }) {
+export default function FaceAttendance({ currentUser, isAdmin, staff = [], loggedInStaff = null, onNavigate = null, onLogout = null, onStaffChange = null }) {
   useEffect(() => { injectLedgerGlobalStyles() }, [])
   const { show: showToast, el: toastEl } = useToast()
   const [tab, setTab] = useState(isAdmin ? 'dashboard' : 'home')
+  const [menuOpen, setMenuOpen] = useState(false) // hamburger dropdown, top-right of the shared header
   const [faceRows, setFaceRows] = useState([]) // staff_face_descriptors, latest per staff
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -2045,6 +2111,23 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
   const statusFor = (sid) => faceRows.find(r => r.staff_id === sid)?.status || 'none'
   const faceRowFor = (sid) => faceRows.find(r => r.staff_id === sid) || null
   const staffNameById = (sid) => staff.find(s => s.id === sid)?.name || null
+
+  // Soft-delete/reactivate — sets staff_profiles.status only. Never
+  // deletes the row or any related attendance/payroll history, per
+  // instruction: a deactivate/archive, not a permanent delete.
+  const deactivateStaff = async (s) => {
+    if (!window.confirm(`Deactivate ${s.name}? They'll be hidden from active staff lists (attendance, payroll, etc.) but all their existing records are kept, and this can be undone from "Deactivated staff" below.`)) return
+    const { error } = await supabase.from('staff_profiles').update({ status: 'Inactive' }).eq('id', s.id)
+    if (error) { showToast?.('Could not deactivate: ' + error.message, 'err'); return }
+    showToast?.(`${s.name} deactivated`, 'ok')
+    if (onStaffChange) await onStaffChange()
+  }
+  const reactivateStaff = async (s) => {
+    const { error } = await supabase.from('staff_profiles').update({ status: 'Active' }).eq('id', s.id)
+    if (error) { showToast?.('Could not reactivate: ' + error.message, 'err'); return }
+    showToast?.(`${s.name} reactivated`, 'ok')
+    if (onStaffChange) await onStaffChange()
+  }
 
   const filteredStaff = staff
     .filter(s => s.status !== 'Inactive')
@@ -2133,14 +2216,51 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
               {loggedInStaff?.name || currentUser?.name || 'Administrator'}
             </div>
           </div>
-          <div style={{
-            width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
-            background: `linear-gradient(155deg, ${COLOR.brass}, ${COLOR.brassDeep})`,
-            color: COLOR.ink, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 800, fontSize: 13, fontFamily: FONT.body,
-            boxShadow: SHADOW.seal, border: `1px solid ${COLOR.brass}`,
-          }}>
-            {initials}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
+            {/* Hamburger — opens a dropdown listing every tab that used to
+                live in the Home tile grid, per instruction to collapse
+                that grid into a top-right menu instead. */}
+            <button onClick={() => setMenuOpen(o => !o)} aria-label="Menu" style={{
+              width: 40, height: 40, borderRadius: '50%', flexShrink: 0, border: `1px solid ${COLOR.brass}55`,
+              background: 'rgba(255,255,255,0.06)', color: COLOR.cream, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: 18, cursor: 'pointer',
+            }}>
+              ☰
+            </button>
+            <div style={{
+              width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+              background: `linear-gradient(155deg, ${COLOR.brass}, ${COLOR.brassDeep})`,
+              color: COLOR.ink, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 800, fontSize: 13, fontFamily: FONT.body,
+              boxShadow: SHADOW.seal, border: `1px solid ${COLOR.brass}`,
+            }}>
+              {initials}
+            </div>
+
+            {menuOpen && (
+              <>
+                <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 998 }} />
+                <div style={{
+                  position: 'absolute', top: 48, right: 0, zIndex: 999, width: 250,
+                  background: PAY.card, borderRadius: PAY.radius, boxShadow: PAY.shadowRaised,
+                  border: `1px solid ${PAY.cardBorder}`, padding: 8, maxHeight: '70vh', overflowY: 'auto',
+                }}>
+                  {primaryTiles.map(t => (
+                    <button key={t.key} onClick={() => { setTab(t.key); setMenuOpen(false) }} style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                      background: tab === t.key ? PAY.blueBg : 'none', border: 'none', borderRadius: PAY.radiusSm,
+                      cursor: 'pointer', textAlign: 'left', fontFamily: FONT.body,
+                    }}>
+                      <span style={{ fontSize: 17 }}>{t.icon}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: tab === t.key ? PAY.blue : PAY.textPrimary, flex: 1 }}>{t.label}</span>
+                      {t.badge > 0 && (
+                        <span style={{ background: PAY.red, color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 99, minWidth: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{t.badge}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -2206,14 +2326,11 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
-            {primaryTiles.map((t, i) => (
-              <PayTile key={t.key} icon={t.icon} label={t.label} badge={t.badge} accent={i === 0} onClick={() => setTab(t.key)} />
-            ))}
-          </div>
-
-          <div style={{ fontSize: 11, fontWeight: 700, color: PAY.textMuted, letterSpacing: '0.08em', textTransform: 'uppercase', margin: '22px 0 12px 2px', fontFamily: FONT.body }}>Quick actions</div>
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${quickActions.length},1fr)`, gap: 10 }}>
+          {/* Tile grid moved into the hamburger menu (top-right) — Home now
+              stays to the status card, quick actions, and the diagram/scan
+              frame below. */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: PAY.textMuted, letterSpacing: '0.08em', textTransform: 'uppercase', margin: '4px 0 12px 2px', fontFamily: FONT.body }}>Quick actions</div>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${quickActions.length},1fr)`, gap: 10, marginBottom: 26 }}>
             {quickActions.map(q => (
               <button key={q.key} onClick={q.disabled ? undefined : q.onClick} disabled={q.disabled} style={{
                 background: 'none', border: 'none', cursor: q.disabled ? 'not-allowed' : 'pointer', fontFamily: FONT.body,
@@ -2229,6 +2346,13 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
               </button>
             ))}
           </div>
+
+          {/* Check-in / check-out flow diagram — purely illustrative. */}
+          <CheckInFlowDiagram />
+
+          {/* Face-scan viewfinder frame — decorative only, per instruction;
+              not a working camera. */}
+          <FaceScanFrame />
         </div>
       ) : (
         <>
@@ -2362,11 +2486,37 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
                           <button onClick={() => setEnrollTarget(s)} style={{ padding: '7px 13px', borderRadius: RADIUS.sm, border: 'none', background: COLOR.ink, color: COLOR.cream, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: FONT.body }}>
                             {status === 'approved' ? 'Re-enroll' : 'Enroll'}
                           </button>
+                          {/* Soft-delete: sets staff_profiles.status to
+                              'Inactive' rather than deleting the row —
+                              filteredStaff already excludes Inactive staff
+                              everywhere, so this immediately hides them
+                              from active lists while keeping all their
+                              historical attendance/payroll data intact and
+                              reversible. */}
+                          <button onClick={() => deactivateStaff(s)} style={{ padding: '7px 13px', borderRadius: RADIUS.sm, border: `1px solid ${COLOR.danger}55`, background: 'none', color: COLOR.danger, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: FONT.body }}>
+                            Deactivate
+                          </button>
                         </div>
                       </div>
                     )
                   })}
                   {!filteredStaff.length && <p style={{ textAlign: 'center', color: COLOR.slate, padding: 24 }}>No staff found.</p>}
+                </div>
+              )}
+
+              {/* Deactivated staff — reactivate here, since they're hidden
+                  from filteredStaff above by design. */}
+              {staff.some(s => s.status === 'Inactive') && (
+                <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${COLOR.rule}` }}>
+                  <div style={{ fontWeight: 700, fontSize: 12.5, color: COLOR.slate, marginBottom: 10 }}>Deactivated staff</div>
+                  {staff.filter(s => s.status === 'Inactive').map(s => (
+                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
+                      <div style={{ fontSize: 13, color: COLOR.slate }}>{s.name}</div>
+                      <button onClick={() => reactivateStaff(s)} style={{ padding: '6px 12px', borderRadius: RADIUS.sm, border: `1px solid ${COLOR.sageDeep}55`, background: 'none', color: COLOR.sageDeep, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: FONT.body }}>
+                        Reactivate
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
