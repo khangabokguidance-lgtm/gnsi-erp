@@ -1197,6 +1197,14 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   const [bulkStaffIds, setBulkStaffIds]   = useState(new Set())   // multi-select for bulk shift assignment
   const [bulkShiftForm, setBulkShiftForm] = useState({ shift_label: '', shift_start: '08:00', shift_end: '14:00', check_in_window_min: 10 })
   const [savingBulkShift, setSavingBulkShift] = useState(false)
+  // All-staff shift overview — a single table of every active shift
+  // across every staff member, so an admin can spot a bad entry (e.g. a
+  // shift end time entered as 05:30 instead of 17:30) at a glance instead
+  // of only being able to see one staff member's shifts at a time.
+  const [allShiftsView, setAllShiftsView]   = useState('list') // 'list' | 'editor' — which shifts sub-view is showing
+  const [allShiftsRows, setAllShiftsRows]   = useState([])
+  const [loadingAllShifts, setLoadingAllShifts] = useState(false)
+  const [shiftSearch, setShiftSearch]       = useState('')
   const [monthFilter,   setMonthFilter]   = useState(new Date().toISOString().slice(0, 7))
   const [resolvingId,   setResolvingId]   = useState(null)
   const [resolveNote,   setResolveNote]   = useState('')
@@ -1342,6 +1350,41 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
       .eq('staff_id', parseInt(staffId)).eq('is_active', true).order('shift_start')
     return data || []
   }, [])
+
+  // All-staff shift overview — every active shift, joined to the staff
+  // name/designation, sorted by staff name then start time. Flags any
+  // shift whose end time looks earlier than its start time as a same-day
+  // shift (rather than one that legitimately wraps past midnight) —
+  // exactly the class of data-entry mistake (05:30 typed instead of
+  // 17:30) that a per-staff-only view made hard to spot.
+  const fetchAllShifts = useCallback(async () => {
+    setLoadingAllShifts(true)
+    // Uses the already-loaded staff list (safeAllStaff) to attach name/
+    // designation client-side, rather than guessing at a foreign-key
+    // constraint name for an embedded join — avoids a fragile assumption
+    // about a name this codebase hasn't confirmed for this table.
+    const { data, error } = await supabase
+      .from('staff_shifts')
+      .select('*')
+      .eq('is_active', true)
+      .order('staff_id')
+      .order('shift_start')
+    if (!error) {
+      const staffById = Object.fromEntries(safeAllStaff.map(s => [String(s.id), s]))
+      setAllShiftsRows((data || []).map(row => ({
+        ...row,
+        _staffName: staffById[String(row.staff_id)]?.name || `#${row.staff_id}`,
+        _staffDesignation: staffById[String(row.staff_id)]?.designation || '',
+      })))
+    } else {
+      console.error('fetchAllShifts error:', error)
+    }
+    setLoadingAllShifts(false)
+  }, [safeAllStaff])
+
+  useEffect(() => {
+    if (isAdmin && activeTab === 'shifts' && allShiftsView === 'list') fetchAllShifts()
+  }, [isAdmin, activeTab, allShiftsView, fetchAllShifts])
 
   const fetchTodayLogs = useCallback(async () => {
     // FIX 1: removed 'department' from staff_profiles join — column not confirmed in schema
@@ -2716,12 +2759,87 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
 
         {/* ══ SHIFT SETUP ══ */}
         {activeTab === 'shifts' && isAdmin && (
-          <div style={{ maxWidth: 640 }}>
+          <div style={{ maxWidth: allShiftsView === 'list' ? 900 : 640 }}>
             {safeAllStaff.length === 0 && (
               <div style={{ padding: '12px 16px', background: COLOR.warnBg, border: `1px solid ${COLOR.warn}44`, borderRadius: 10, marginBottom: 16, fontSize: 13, color: COLOR.warn, fontWeight: 600 }}>
                 ⚠️ No staff loaded — pass the <code>allStaff</code> prop.
               </div>
             )}
+
+            {/* ── View toggle: All Staff Shifts (overview table) vs Editor (bulk-assign + single-staff) ── */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+              <button onClick={() => setAllShiftsView('list')} style={S.tab(allShiftsView === 'list')}>📋 All Staff Shifts</button>
+              <button onClick={() => setAllShiftsView('editor')} style={S.tab(allShiftsView === 'editor')}>✏️ Assign / Edit</button>
+            </div>
+
+            {allShiftsView === 'list' ? (
+              <div style={S.card}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+                  <div>
+                    <h2 style={{ fontSize: 17, fontWeight: 700, color: COLOR.ink, margin: 0 }}>📋 All Staff Shifts</h2>
+                    <p style={{ fontSize: 12, color: COLOR.slate, margin: '4px 0 0' }}>Every active shift across every staff member, in one place — useful for spotting a bad entry (e.g. an end time typed as AM instead of PM) that's easy to miss when viewing one staff member at a time.</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input value={shiftSearch} onChange={e => setShiftSearch(e.target.value)} placeholder="Search name or shift label…" style={{ ...S.input, width: 220 }} />
+                    <button onClick={fetchAllShifts} style={S.btnSm(COLOR.slate)}>🔄 Refresh</button>
+                  </div>
+                </div>
+
+                {loadingAllShifts ? (
+                  <p style={{ textAlign: 'center', color: COLOR.slate, padding: 24 }}>Loading…</p>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr>{['Staff', 'Shift', 'Start', 'End', 'Duration', 'Window', ''].map(h => <th key={h} style={th}>{h}</th>)}</tr>
+                      </thead>
+                      <tbody>
+                        {allShiftsRows
+                          .filter(r => {
+                            if (!shiftSearch.trim()) return true
+                            const q = shiftSearch.trim().toLowerCase()
+                            return r._staffName.toLowerCase().includes(q) || (r.shift_label || '').toLowerCase().includes(q)
+                          })
+                          .map(r => {
+                            // Flag anything under 2 hours or over 16 hours as
+                            // worth a second look — real shifts here run
+                            // roughly 5-8 hours; either extreme is far more
+                            // likely to be an AM/PM slip than an intentional
+                            // shift length.
+                            const [sh, sm] = (r.shift_start || '0:0').split(':').map(Number)
+                            const [eh, em] = (r.shift_end || '0:0').split(':').map(Number)
+                            let durMin = (eh * 60 + em) - (sh * 60 + sm)
+                            if (durMin < 0) durMin += 1440 // wraps past midnight
+                            const suspicious = durMin < 120 || durMin > 960
+                            return (
+                              <tr key={r.id} style={{ borderBottom: `1px solid ${COLOR.rule}`, background: suspicious ? COLOR.dangerBg : 'transparent' }}>
+                                <td style={td}>
+                                  <div style={{ fontWeight: 600 }}>{r._staffName}</div>
+                                  <div style={{ fontSize: 11, color: COLOR.slate }}>{r._staffDesignation}</div>
+                                </td>
+                                <td style={td}>{r.shift_label}</td>
+                                <td style={td}>{fmt12(r.shift_start)}</td>
+                                <td style={{ ...td, color: suspicious ? COLOR.danger : COLOR.ink, fontWeight: suspicious ? 700 : 400 }}>{fmt12(r.shift_end)}</td>
+                                <td style={{ ...td, color: suspicious ? COLOR.danger : COLOR.slate }}>
+                                  {suspicious && '⚠️ '}{Math.floor(durMin / 60)}h {durMin % 60}m
+                                </td>
+                                <td style={td}>±{r.check_in_window_min || 10}m</td>
+                                <td style={td}>
+                                  <button onClick={() => { setSelectedStaff(String(r.staff_id)); setAllShiftsView('editor') }} style={S.btnSm(COLOR.ink)}>Edit</button>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        {allShiftsRows.length === 0 && (
+                          <tr><td colSpan="7" style={{ padding: 32, textAlign: 'center', color: COLOR.slate }}>No active shifts found.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : (
+            <>
 
             {/* ── Bulk Assign Shift — one shift definition, many staff at once ── */}
             <div style={{ ...S.card, marginBottom: 20, border: `1.5px solid ${COLOR.sage}55`, background: `${COLOR.sage}0f` }}>
@@ -2834,6 +2952,8 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
                 </>
               )}
             </div>
+            </>
+            )}
           </div>
         )}
 
