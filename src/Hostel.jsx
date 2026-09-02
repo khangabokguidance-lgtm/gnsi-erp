@@ -9171,6 +9171,42 @@ function StudentTransferTab({ students, currentUser }) {
     setTransferring(false)
   }
 
+  const handleBulkRemove = async () => {
+    if (selectedIds.size === 0) {
+      showToast('Select at least one student.', '#a8842f')
+      return
+    }
+    const selectedStudents = activeStudents.filter(s => selectedIds.has(s.id))
+    const alreadyUnassigned = selectedStudents.filter(s => !isAssigned(s)).length
+    const toRemove = selectedStudents.filter(s => isAssigned(s))
+    if (toRemove.length === 0) {
+      showToast('Selected students are already unassigned.', '#a8842f')
+      return
+    }
+    if (!window.confirm(
+      `Remove ${toRemove.length} student(s) from their houses? They will become unassigned.` +
+      (alreadyUnassigned ? ` (${alreadyUnassigned} already unassigned will be skipped.)` : '')
+    )) return
+
+    setTransferring(true)
+    let failed = 0
+    for (const s of toRemove) {
+      try {
+        await vacateStudent(s.id)
+      } catch (e) {
+        failed++
+      }
+    }
+    broadcastStudentsUpdate({ type: 'bulk_house_reassign', ids: new Set(toRemove.map(s => s.id)), house: null })
+    if (failed === 0) {
+      showToast(`✅ Removed ${toRemove.length} student(s) from their houses`)
+    } else {
+      showToast(`Removed ${toRemove.length - failed} of ${toRemove.length}. ${failed} failed.`, '#dc2626')
+    }
+    setSelectedIds(new Set())
+    setTransferring(false)
+  }
+
   // Stats
   const totalActive = activeStudents.length
   const unassignedCount = activeStudents.filter(s => !isAssigned(s)).length
@@ -9230,6 +9266,25 @@ function StudentTransferTab({ students, currentUser }) {
           }}
         >
           {transferring ? '⏳ Transferring...' : `🔄 Transfer (${selectedCount})`}
+        </button>
+        <button
+          onClick={handleBulkRemove}
+          disabled={transferring || selectedIds.size === 0}
+          style={{
+            ...btn(transferring || selectedIds.size === 0 ? '#94a3b8' : '#dc2626'),
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {transferring ? '⏳ Removing...' : `🗑 Remove (${selectedCount})`}
+        </button>
+        <button
+          onClick={() => setFilterHouse('Unassigned')}
+          style={{
+            ...btn(filterHouse === 'Unassigned' ? '#1a2f4d' : '#eff6ff', filterHouse === 'Unassigned' ? 'white' : '#1a2f4d'),
+            whiteSpace: 'nowrap',
+          }}
+        >
+          ⚠️ Show Unassigned ({unassignedCount})
         </button>
         {selectedIds.size > 0 && (
           <button onClick={() => setSelectedIds(new Set())} style={{ ...btn('#fee2e2', '#dc2626') }}>
