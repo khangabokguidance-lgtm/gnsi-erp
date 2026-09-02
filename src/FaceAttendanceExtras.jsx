@@ -203,7 +203,7 @@ function AdminAttendanceRoster({ staffList, showToast, onNavigate, currentUserna
   const fetchDay = useCallback(async () => {
     setLoading(true)
     const [{ data: geo }, { data: markRows }] = await Promise.all([
-      supabase.from('staff_geo_attendance').select('staff_id, late_minutes, status, check_in_time, check_out_time').eq('date', date),
+      supabase.from('staff_geo_attendance').select('staff_id, late_minutes, status, check_in_time, check_out_time, marked_by').eq('date', date),
       supabase.from('staff_attendance_marks').select('*').eq('date', date),
     ])
     setGeoRows(geo || [])
@@ -500,12 +500,26 @@ function AdminDateRangeReport({ staffList, search, setSearch }) {
 }
 
 function StaffMarkRow({ staff, mark, geo, onMark, saving, disabled }) {
-  const currentStatus = mark?.status || (geo ? 'Present' : null)
+  // BUGFIX: this used to fall back to a hardcoded 'Present' whenever ANY
+  // geo row existed for the day, ignoring geo.status entirely — so a
+  // Flagged/fraud-suspected/EarlyOut/auto-marked-Absent row still rendered
+  // as a clean green "P". Use the geo row's actual status instead.
+  const currentStatus = mark?.status || geo?.status || null
+  // A geo row with no check_in_time is an auto-absent-sweep entry, not a
+  // real check-in attempt — label it plainly instead of implying "In —"
+  // ever happened. (Not relying on marked_by here: sample data shows the
+  // sweep writes marked_by='self', which is itself a separate mislabel
+  // worth fixing in mark_absent_no_checkin — flagging, not fixing here.)
+  const subtitle = geo?.check_in_time
+    ? `In ${new Date(geo.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
+    : geo && !mark
+      ? 'Auto-marked (no check-in)'
+      : (currentStatus || 'Not marked')
   return (
     <div style={{ background: 'white', borderRadius: 10, padding: '10px 12px', boxShadow: '0 1px 4px rgba(0,0,0,.05)' }}>
       <div style={{ fontWeight: 700, fontSize: 12.5, color: '#1e293b', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{staff.name}</div>
-      <div style={{ fontSize: 10.5, color: currentStatus ? '#94a3b8' : '#dc2626', fontWeight: 600, marginBottom: 8 }}>
-        {geo ? `In ${geo.check_in_time ? new Date(geo.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}` : currentStatus || 'Not marked'}
+      <div style={{ fontSize: 10.5, color: currentStatus === 'Present' ? '#94a3b8' : '#dc2626', fontWeight: 600, marginBottom: 8 }}>
+        {subtitle}
       </div>
       <div style={{ display: 'flex', gap: 4 }}>
         {Object.entries(MARK_META).map(([status, meta]) => (
