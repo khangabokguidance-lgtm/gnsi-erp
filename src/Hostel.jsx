@@ -5140,9 +5140,38 @@ function MealHeadcountCard({ presentCount, sickbayCount, leaveCount, mobile, onS
   )
 }
 
+// Premium 10-card feature strip for HMDashboard — a horizontally
+// scrollable row of small glass-effect cards, each a real computed metric
+// (attendance, roll call, leave, sickbay, discipline, repairs, doubt
+// sessions, night duty, 7-day trend). Dropped into both the mobile and
+// desktop dashboard layouts, right below each one's header, without
+// altering either layout's existing structure below it.
+function FeatureCardsStrip({ cards }) {
+  return (
+    <div style={{
+      display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px', marginBottom: '18px',
+      WebkitOverflowScrolling: 'touch',
+    }}>
+      {cards.map(c => (
+        <div key={c.label} style={{
+          minWidth: '140px', flexShrink: 0,
+          background: 'linear-gradient(160deg, #16233F 0%, #0F1B33 100%)',
+          border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '14px 16px',
+        }}>
+          <div style={{ width: '7px', height: '7px', borderRadius: '2px', background: c.color, marginBottom: '10px' }} />
+          <div style={{ fontSize: '19px', fontWeight: '800', color: '#F3EEE0', fontFamily: 'Georgia, serif', lineHeight: 1.1 }}>{c.value}</div>
+          <div style={{ fontSize: '10.5px', color: 'rgba(243,238,224,0.55)', fontWeight: '600', marginTop: '4px' }}>{c.label}</div>
+          <div style={{ fontSize: '9.5px', color: 'rgba(243,238,224,0.35)', marginTop: '2px' }}>{c.sub}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange, currentUser }) {
   const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
   const [attendanceToday, setAttendanceToday] = useState([])
+  const [eveningToday, setEveningToday] = useState([]) // #2: evening roll call, same shape as morning
   const [leaveToday, setLeaveToday] = useState([])
   const [sickbayToday, setSickbayToday] = useState([])
   const [maintenanceOpen, setMaintenanceOpen] = useState([])
@@ -5154,6 +5183,8 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
   // notifyHousemasterByName). Surfaced here so a housemaster sees their
   // pending teaching-support task the moment they land on the dashboard.
   const [myDoubtTasks, setMyDoubtTasks] = useState([])
+  // #10: this week's morning attendance rate per day, for the trend chart.
+  const [weekTrend, setWeekTrend] = useState([]) // [{ date, presentPct }]
   const [loading, setLoading] = useState(true)
   const mobile = useMobileView()
 
@@ -5162,8 +5193,14 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
       setLoading(true)
       const todayStr = today()
       const hmName = (currentHousemaster?.name || '').trim()
-      const [a, l, s, m, d, n, ds] = await Promise.all([
+      // 7-day window ending today, for the trend chart (#10).
+      const weekStart = new Date()
+      weekStart.setDate(weekStart.getDate() - 6)
+      const weekStartStr = weekStart.toISOString().split('T')[0]
+
+      const [a, ev, l, s, m, d, n, ds, wk] = await Promise.all([
         supabase.from('attendance_records').select('*').eq('date', todayStr).eq('session', 'morning'),
+        supabase.from('attendance_records').select('*').eq('date', todayStr).eq('session', 'evening'),
         supabase.from('leave_records').select('*').eq('from_date', todayStr).in('status', ['Approved', 'Pending']),
         supabase.from('sickbay_records').select('*').eq('status', 'Admitted'),
         supabase.from('maintenance_records').select('*').in('status', ['Raised', 'Assigned', 'In Progress']).eq('priority', 'Urgent'),
@@ -5172,14 +5209,39 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
         hmName
           ? supabase.from('doubt_sessions').select('*').ilike('hm_name', hmName).eq('status', 'open').order('created_at', { ascending: false })
           : Promise.resolve({ data: [] }),
+        fetchAllRows(() => supabase.from('attendance_records').select('date, status, session').eq('session', 'morning').gte('date', weekStartStr).lte('date', todayStr)),
       ])
       setAttendanceToday(a.data || [])
+      setEveningToday(ev.data || [])
       setLeaveToday(l.data || [])
       setSickbayToday(s.data || [])
       setMaintenanceOpen(m.data || [])
       setDisciplineOpen(d.data || [])
       setNightDutyTonight(n.data)
       setMyDoubtTasks(ds.data || [])
+
+      // Build the 7-day trend from the raw rows — one bar per calendar day
+      // in the window, present% of whatever was actually marked that day
+      // (not a fixed denominator, since the active student count itself
+      // can drift day to day with admissions/dropouts).
+      const byDate = {}
+      for (const r of (wk || [])) {
+        if (!byDate[r.date]) byDate[r.date] = { present: 0, total: 0 }
+        byDate[r.date].total++
+        if (r.status === 'Present') byDate[r.date].present++
+      }
+      const trend = []
+      for (let i = 6; i >= 0; i--) {
+        const d2 = new Date()
+        d2.setDate(d2.getDate() - i)
+        const key = d2.toISOString().split('T')[0]
+        const bucket = byDate[key]
+        trend.push({
+          date: key,
+          presentPct: bucket && bucket.total > 0 ? Math.round((bucket.present / bucket.total) * 100) : null,
+        })
+      }
+      setWeekTrend(trend)
       setLoading(false)
     }
     loadDashboard()
@@ -5196,11 +5258,18 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
   const activeStudentCount = students.filter(s => s.status !== 'Inactive' && s.status !== 'Dropout').length
   const unmarkedCount = activeStudentCount - attendanceToday.length
 
+  // #2 evening roll call status
+  const eveningPresentCount = eveningToday.filter(r => r.status === 'Present').length
+  const eveningMarkedCount = eveningToday.length
+  const eveningDone = eveningMarkedCount >= activeStudentCount && activeStudentCount > 0
+
   // One-row-per-metric summary, for the dashboard's Generate Report button.
   const snapshotRows = [
     { metric: 'Present (Morning)', value: presentCount },
     { metric: 'Absent (Morning)', value: absentCount },
     { metric: 'Unmarked', value: unmarkedCount },
+    { metric: 'Present (Evening)', value: eveningPresentCount },
+    { metric: 'Total Students', value: activeStudentCount },
     { metric: 'Pending Leave Requests', value: leaveToday.length },
     { metric: 'Currently in Sickbay', value: sickbayToday.length },
     { metric: 'Open Discipline Cases', value: disciplineOpen.length },
@@ -5219,6 +5288,28 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
   ]
 
   if (loading) return <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>⏳ Loading dashboard...</div>
+
+  // ── Premium overview strip — 10 feature-data cards for at-a-glance
+  // staff knowledge, all computed from real data above (no placeholder
+  // numbers). Rendered above the existing mobile/desktop dashboard body,
+  // which is left completely intact below this. ──────────────────────
+  const attendedPctToday = (presentCount + absentCount) > 0 ? Math.round((presentCount / (presentCount + absentCount)) * 100) : null
+  const featureCards = [
+    { label: 'Attendance today', value: attendedPctToday === null ? '—' : `${attendedPctToday}%`, sub: `${presentCount}/${activeStudentCount} marked`, color: '#5DCAA5' },
+    { label: 'Evening roll call', value: eveningDone ? 'Done' : `${eveningMarkedCount}/${activeStudentCount}`, sub: eveningDone ? `${eveningPresentCount} present` : 'In progress', color: eveningDone ? '#5DCAA5' : '#C9A24B' },
+    { label: 'Total students', value: activeStudentCount, sub: currentHousemaster?.house || 'This house', color: '#7F9CF5' },
+    { label: 'On leave', value: leaveToday.length, sub: 'Approved + pending', color: '#378ADD' },
+    { label: 'In sickbay', value: sickbayToday.length, sub: 'Currently admitted', color: '#A78BDA' },
+    { label: 'Discipline cases', value: disciplineOpen.length, sub: 'Open or in progress', color: '#E24B4A' },
+    { label: 'Urgent repairs', value: maintenanceOpen.length, sub: 'Pending action', color: '#D98E2B' },
+    { label: 'Doubt sessions', value: myDoubtTasks.length, sub: 'Assigned to you', color: '#B45309' },
+    { label: 'Tonight\'s duty', value: nightDutyTonight ? (nightDutyTonight.staff1 || 'Assigned') : 'Unassigned', sub: nightDutyTonight ? (nightDutyTonight.shift || '') : 'No staff set', color: '#8FA0BF' },
+    { label: '7-day trend', value: (() => {
+        const withData = weekTrend.filter(d => d.presentPct !== null)
+        if (!withData.length) return '—'
+        return `${Math.round(withData.reduce((s, d) => s + d.presentPct, 0) / withData.length)}%`
+      })(), sub: 'Avg. present rate', color: '#5DCAA5' },
+  ]
 
   if (mobile) {
     return (
@@ -5250,6 +5341,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
             />
           </div>
         </div>
+        <FeatureCardsStrip cards={featureCards} />
         {myDoubtTasks.length > 0 && (
           <div
             onClick={() => onTabChange?.('doubtsession')}
@@ -5397,6 +5489,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           </div>
         )}
       </div>
+      <FeatureCardsStrip cards={featureCards} />
       {myDoubtTasks.length > 0 && (
         <div
           onClick={() => onTabChange?.('doubtsession')}
