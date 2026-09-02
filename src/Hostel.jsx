@@ -9158,6 +9158,19 @@ function StudentTransferTab({ students, currentUser }) {
     setTransferring(false)
   }
 
+  const handleRemove = async (student) => {
+    if (!window.confirm(`Remove ${student.name} from ${student.house}? They will become unassigned.`)) return
+    setTransferring(true)
+    try {
+      await vacateStudent(student.id)
+      broadcastStudentsUpdate({ type: 'house_reassign', student_id: student.id, house: null })
+      showToast(`✅ ${student.name} removed from house`)
+    } catch (e) {
+      showToast('Remove failed: ' + (e.message || 'unknown error'), '#dc2626')
+    }
+    setTransferring(false)
+  }
+
   // Stats
   const totalActive = activeStudents.length
   const unassignedCount = activeStudents.filter(s => !isAssigned(s)).length
@@ -9270,7 +9283,7 @@ function StudentTransferTab({ students, currentUser }) {
                       <span style={{ color: '#dc2626', fontWeight: 600 }}>Unassigned</span>
                     )}
                   </td>
-                  <td style={{ padding: '9px 14px' }}>
+                  <td style={{ padding: '9px 14px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {targetHouse && (
                       <button
                         onClick={() => handleSingleTransfer(s)}
@@ -9284,6 +9297,21 @@ function StudentTransferTab({ students, currentUser }) {
                         }}
                       >
                         ➜ Move
+                      </button>
+                    )}
+                    {currentHouse !== '—' && (
+                      <button
+                        onClick={() => handleRemove(s)}
+                        disabled={transferring}
+                        style={{
+                          ...btn('#fee2e2', '#dc2626'),
+                          fontSize: 11,
+                          padding: '5px 12px',
+                          cursor: transferring ? 'wait' : 'pointer',
+                          opacity: transferring ? 0.6 : 1,
+                        }}
+                      >
+                        ✕ Remove
                       </button>
                     )}
                   </td>
