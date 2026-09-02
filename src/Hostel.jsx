@@ -231,6 +231,7 @@ const TABS = [
   { id: 'kitchen', label: '🍽️ Kitchen' },
   { id: 'nightduty', label: '🌙 Mess Duty' },
   { id: 'allotments', label: '🚌 Day Scholar' },
+  { id: 'transfer', label: '🔄 Transfer' },
   // ─── NEW: House Master Daily Features ──────────────────
   { id: 'attendance', label: '✅ Roll Call' },
   { id: 'leave', label: '🧳 Leave' },
@@ -8898,7 +8899,7 @@ function Hostel() {
   const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport' || activeTab === 'hmrollreport'
 
   const tabContent = {
-    allotments: <DayScholarTab students={students} currentUser={currentUser} />,
+    allotments: <DayScholarTab students={students} currentUser={currentUser} />,transfer: <StudentTransferTab students={students} currentUser={currentUser} />,
     schedule: <ScheduleTab currentUser={currentUser} />,
     nightduty: <NightDutyTab staffProfiles={staffProfiles} autoOpenForm={autoOpenForm?.tabId === 'nightduty' ? autoOpenForm : null} currentUser={currentUser} />,
     discipline: <DisciplineTab students={students} autoOpenForm={autoOpenForm?.tabId === 'discipline' ? autoOpenForm : null} currentUser={currentUser} />,
@@ -9012,6 +9013,304 @@ function Hostel() {
         )
         : tabContent[activeTab]
       }
+    </div>
+  )
+}
+function StudentTransferTab({ students, currentUser }) {
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const [houses, setHouses] = useState([])
+  const [search, setSearch] = useState('')
+  const [filterHouse, setFilterHouse] = useState('All')
+  const [targetHouse, setTargetHouse] = useState('')
+  const [roomNumber, setRoomNumber] = useState('')
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [loading, setLoading] = useState(true)
+  const [transferring, setTransferring] = useState(false)
+  const [toast, setToast] = useState(null)
+  const mobile = useMobileView()
+
+  const showToast = (msg, color = '#16a34a') => {
+    setToast({ msg, color })
+    setTimeout(() => setToast(null), 3500)
+  }
+
+  // Load houses
+  useEffect(() => {
+    supabase.from('houses').select('*').order('name')
+      .then(({ data }) => setHouses(data || []))
+      .finally(() => setLoading(false))
+  }, [])
+
+  // Students filtered by search and current house
+  const activeStudents = useMemo(() =>
+    students.filter(s => s.status !== 'Inactive' && s.status !== 'Dropout'),
+    [students]
+  )
+  const dropoutStudents = useMemo(() =>
+    students.filter(s => s.status === 'Dropout'),
+    [students]
+  )
+
+  const filteredStudents = useMemo(() => {
+    let list = activeStudents
+    if (filterHouse === 'Unassigned') {
+      list = list.filter(s => !isAssigned(s))
+    } else if (filterHouse !== 'All') {
+      list = list.filter(s => normalizeHouse(s.house) === normalizeHouse(filterHouse))
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter(s =>
+        (s.name || '').toLowerCase().includes(q) ||
+        String(s.gcc_no || '').includes(q) ||
+        (s.batch || '').toLowerCase().includes(q)
+      )
+    }
+    return list
+  }, [activeStudents, filterHouse, search])
+
+  const allStudentIds = filteredStudents.map(s => s.id)
+  const allSelected = selectedIds.size > 0 && selectedIds.size === allStudentIds.length
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(allStudentIds))
+    }
+  }
+
+  const toggleSelect = (id) => {
+    const newSet = new Set(selectedIds)
+    if (newSet.has(id)) newSet.delete(id)
+    else newSet.add(id)
+    setSelectedIds(newSet)
+  }
+
+  const handleTransfer = async () => {
+    if (!isAdmin) {
+      showToast('Only admins can transfer students.', '#dc2626')
+      return
+    }
+    if (selectedIds.size === 0) {
+      showToast('Select at least one student.', '#a8842f')
+      return
+    }
+    if (!targetHouse) {
+      showToast('Please select a target house.', '#a8842f')
+      return
+    }
+    const selectedStudents = activeStudents.filter(s => selectedIds.has(s.id))
+    // Check capacity
+    const house = houses.find(h => normalizeHouse(h.name) === normalizeHouse(targetHouse))
+    const capacity = house?.capacity ?? 40
+    const currentOccupants = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(targetHouse))
+    const available = capacity - currentOccupants.length
+    if (selectedStudents.length > available) {
+      if (!window.confirm(`⚠️ ${targetHouse} has only ${available} seat(s) left. ${selectedStudents.length} students selected. Continue anyway? (will exceed capacity)`)) {
+        return
+      }
+    }
+
+    setTransferring(true)
+    try {
+      await bulkAllocateStudents(
+        selectedStudents.map(s => ({
+          id: s.id,
+          name: s.name,
+          gcc_no: s.gcc_no,
+          class_name: getStudentClass(s),
+        })),
+        targetHouse,
+        roomNumber || 'TBD'
+      )
+      broadcastStudentsUpdate({ type: 'bulk_house_reassign', ids: selectedIds, house: targetHouse })
+      showToast(`✅ Transferred ${selectedStudents.length} student(s) to ${targetHouse}`)
+      setSelectedIds(new Set())
+      setRoomNumber('')
+    } catch (e) {
+      showToast('Transfer failed: ' + (e.message || 'unknown error'), '#dc2626')
+    }
+    setTransferring(false)
+  }
+
+  const handleSingleTransfer = async (student) => {
+    if (!isAdmin) {
+      showToast('Only admins can transfer students.', '#dc2626')
+      return
+    }
+    if (!targetHouse) {
+      showToast('Please select a target house.', '#a8842f')
+      return
+    }
+    const house = houses.find(h => normalizeHouse(h.name) === normalizeHouse(targetHouse))
+    const capacity = house?.capacity ?? 40
+    const currentOccupants = activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(targetHouse))
+    const available = capacity - currentOccupants.length
+    if (available <= 0) {
+      if (!window.confirm(`⚠️ ${targetHouse} is full (${currentOccupants.length}/${capacity}). Transfer ${student.name} anyway?`)) {
+        return
+      }
+    }
+    setTransferring(true)
+    try {
+      await allocateStudent(
+        { id: student.id, name: student.name, gcc_no: student.gcc_no, class_name: getStudentClass(student) },
+        { hostelName: targetHouse, roomNumber: roomNumber || 'TBD' }
+      )
+      broadcastStudentsUpdate({ type: 'house_reassign', student_id: student.id, house: targetHouse })
+      showToast(`✅ ${student.name} transferred to ${targetHouse}`)
+      setRoomNumber('')
+    } catch (e) {
+      showToast('Transfer failed: ' + (e.message || 'unknown error'), '#dc2626')
+    }
+    setTransferring(false)
+  }
+
+  // Stats
+  const totalActive = activeStudents.length
+  const unassignedCount = activeStudents.filter(s => !isAssigned(s)).length
+  const dropoutCount = dropoutStudents.length
+  const selectedCount = selectedIds.size
+
+  if (loading) return <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading houses...</div>
+
+  return (
+    <div>
+      {toast && (
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 99,
+          background: '#fff', border: `1px solid #e2e8f0`,
+          borderLeft: `3px solid ${toast.color}`, borderRadius: 10,
+          padding: '11px 16px', fontSize: 13, fontWeight: 600,
+          boxShadow: '0 2px 8px rgba(0,0,0,.10)', color: '#1e293b',
+          marginBottom: 12,
+        }}>{toast.msg}</div>
+      )}
+
+      <div style={mobile ? mobileStatGrid : statGrid(130)}>
+        <StatCard icon="👥" label="Total Active" value={totalActive} color="#1a2f4d" bg="#eff6ff" compact={mobile} />
+        <StatCard icon="⚠️" label="Unassigned" value={unassignedCount} color="#dc2626" bg="#fee2e2" compact={mobile} />
+        <StatCard icon="🚪" label="Dropout" value={dropoutCount} color="#b45309" bg="#fef3c7" compact={mobile} />
+        <StatCard icon="✅" label="Selected" value={selectedCount} color="#16a34a" bg="#dcfce7" compact={mobile} />
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '16px', alignItems: 'center' }}>
+        <input
+          placeholder="🔍 Search name, GCC, batch..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ ...inp, flex: 2, minWidth: '160px' }}
+        />
+        <select value={filterHouse} onChange={e => setFilterHouse(e.target.value)} style={{ ...inp, width: 'auto' }}>
+          <option value="All">All Houses</option>
+          <option value="Unassigned">Unassigned Only</option>
+          {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+        </select>
+        <select value={targetHouse} onChange={e => setTargetHouse(e.target.value)} style={{ ...inp, width: 'auto' }}>
+          <option value="">— Target House —</option>
+          {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+        </select>
+        <input
+          value={roomNumber}
+          onChange={e => setRoomNumber(e.target.value)}
+          placeholder="Room (optional)"
+          style={{ ...inp, width: '120px' }}
+        />
+        <button
+          onClick={handleTransfer}
+          disabled={transferring || selectedIds.size === 0 || !targetHouse}
+          style={{
+            ...btn(transferring || selectedIds.size === 0 || !targetHouse ? '#94a3b8' : '#1a2f4d'),
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {transferring ? '⏳ Transferring...' : `🔄 Transfer (${selectedCount})`}
+        </button>
+        {selectedIds.size > 0 && (
+          <button onClick={() => setSelectedIds(new Set())} style={{ ...btn('#fee2e2', '#dc2626') }}>
+            ✕ Clear
+          </button>
+        )}
+      </div>
+
+      <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 600 }}>
+          <thead>
+            <tr style={{ background: '#1a2f4d' }}>
+              <th style={{ padding: '11px 14px', color: 'white', width: '40px' }}>
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  style={{ width: 18, height: 18, cursor: 'pointer' }}
+                />
+              </th>
+              <th style={{ padding: '11px 14px', color: 'white', textAlign: 'left' }}>#</th>
+              <th style={{ padding: '11px 14px', color: 'white', textAlign: 'left' }}>Student</th>
+              <th style={{ padding: '11px 14px', color: 'white', textAlign: 'left' }}>GCC</th>
+              <th style={{ padding: '11px 14px', color: 'white', textAlign: 'left' }}>Batch</th>
+              <th style={{ padding: '11px 14px', color: 'white', textAlign: 'left' }}>Current House</th>
+              <th style={{ padding: '11px 14px', color: 'white', textAlign: 'left' }}>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredStudents.map((s, i) => {
+              const isSelected = selectedIds.has(s.id)
+              const currentHouse = isAssigned(s) ? s.house : '—'
+              return (
+                <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9', background: isSelected ? '#f0fdf4' : 'white' }}>
+                  <td style={{ padding: '9px 14px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelect(s.id)}
+                      style={{ width: 18, height: 18, cursor: 'pointer' }}
+                    />
+                  </td>
+                  <td style={{ padding: '9px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
+                  <td style={{ padding: '9px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
+                  <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1a2f4d' }}>{s.gcc_no || '—'}</td>
+                  <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
+                  <td style={{ padding: '9px 14px' }}>
+                    {currentHouse !== '—' ? (
+                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1a2f4d' }}>🏠 {currentHouse}</span>
+                    ) : (
+                      <span style={{ color: '#dc2626', fontWeight: 600 }}>Unassigned</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '9px 14px' }}>
+                    {isAdmin && targetHouse && (
+                      <button
+                        onClick={() => handleSingleTransfer(s)}
+                        disabled={transferring}
+                        style={{
+                          ...btn('#16a34a'),
+                          fontSize: 11,
+                          padding: '5px 12px',
+                          cursor: transferring ? 'wait' : 'pointer',
+                          opacity: transferring ? 0.6 : 1,
+                        }}
+                      >
+                        ➜ Move
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+            {filteredStudents.length === 0 && (
+              <tr><td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No students match the current filters.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {!isAdmin && (
+        <div style={{ marginTop: 16, textAlign: 'center', color: '#dc2626', fontSize: 13, fontWeight: 600 }}>
+          ⚠️ Only admins can perform transfers.
+        </div>
+      )}
     </div>
   )
 }
