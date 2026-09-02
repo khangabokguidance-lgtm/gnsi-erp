@@ -137,6 +137,26 @@ const fmtDate  = (d)   => d   ? new Date(d).toLocaleDateString('en-IN', { day: '
 const fmt12    = (t)   => { if (!t) return '—'; const [h, m] = t.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}` }
 const fmtRupee = (n)   => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`
 
+// Spoken confirmation/reminder using the browser's built-in Web Speech
+// API — no new dependency, works offline once the voice list is loaded.
+// Fails silently (voice is a nice-to-have on top of the toast/overlay
+// that already show the same information) if the browser/webview doesn't
+// support speechSynthesis at all, so this never blocks or breaks the
+// actual check-in/check-out flow.
+function speak(text) {
+  try {
+    if (!('speechSynthesis' in window)) return
+    window.speechSynthesis.cancel() // don't stack overlapping announcements
+    const u = new SpeechSynthesisUtterance(text)
+    u.rate = 1
+    u.pitch = 1
+    u.volume = 1
+    window.speechSynthesis.speak(u)
+  } catch (e) {
+    console.warn('Speech announcement failed:', e.message)
+  }
+}
+
 function exportCSV(rows, filename) {
   const headers = ['Date','Staff','Shift','Check-In','Check-Out','Late (min)','Distance','Status','Fraud']
   const lines   = rows.map(l => [
@@ -1129,6 +1149,7 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
     if (msUntilReminder <= 0) return // shift already ending/ended — nothing useful to schedule
     const timerId = setTimeout(() => {
       setPunchOutReminder({ shiftLabel: shift.shift_label, shiftEnd: shift.shift_end })
+      speak(`Reminder: your shift ${shift.shift_label} ends soon. Don't forget to punch out.`)
       if ('Notification' in window && Notification.permission === 'granted') {
         try {
           new Notification('GNSI — Punch out reminder', {
@@ -1738,11 +1759,16 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
         await fetchMyLogs()
       }
       const status = data.status
-      if (status === 'Late')         showToast(`🕐 Checked in LATE — ${data.late_minutes} min. Tracking started.`, 'warn')
-      else if (status === 'Flagged') showToast('🚨 Check-in flagged for review. Tracking started.', 'warn')
-      else {
+      if (status === 'Late') {
+        showToast(`🕐 Checked in LATE — ${data.late_minutes} min. Tracking started.`, 'warn')
+        speak(`Checked in, ${data.late_minutes} minutes late`)
+      } else if (status === 'Flagged') {
+        showToast('🚨 Check-in flagged for review. Tracking started.', 'warn')
+        speak('Check in flagged for review')
+      } else {
         showToast(`✅ Checked in — Shift ${shift.shift_label}${punchTarget ? ` for ${punchTarget.name}` : ''}. Tracking active.`, 'ok')
         setSuccessOverlay({ kind: 'in', label: `Shift ${shift.shift_label}${punchTarget ? ` for ${punchTarget.name}` : ''}` })
+        if (!punchTarget) speak('Checked in successfully')
       }
 
       // Give the person a moment to see the success toast before jumping
@@ -1843,10 +1869,13 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
 
     if (data?.half_day) {
       showToast(`⚠️ Checked out — marked Half Day (late arrival or early departure)`, 'warn')
+      if (!punchTarget) speak('Checked out, marked half day')
     } else if (data?.early_out) {
       showToast(`⚠️ Checked out early (${Math.round(data.mins_left || 0)} min before shift end) — flagged`, 'warn')
+      if (!punchTarget) speak('Checked out early')
     } else {
       showToast(`✅ Checked out — Shift ${shiftLabel}${punchTarget ? ` for ${punchTarget.name}` : ''}`, 'ok')
+      if (!punchTarget) speak('Checked out successfully')
     }
     if (!data?.early_out && !data?.half_day) {
       setSuccessOverlay({ kind: 'out', label: `Shift ${shiftLabel}${punchTarget ? ` for ${punchTarget.name}` : ''}` })
