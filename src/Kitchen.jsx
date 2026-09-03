@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase.js'
+import { isAdminRole } from './App'
 
 // ── Responsive hook (same pattern as Fees.jsx) ────────────────────────────────
 function useWindowWidth() {
@@ -602,10 +603,12 @@ function ItemSetupPanel({ onClose, showToast, isMobile }) {
     if (!form.name.trim()) return
     const row = { name:form.name, name_meitei:form.name_meitei||null, category:form.category, unit:form.unit, default_price:Number(form.default_price)||null, is_active:true }
     if (editId) {
-      await supabase.from('kitchen_items').update(row).eq('id',editId)
+      const { error } = await supabase.from('kitchen_items').update(row).eq('id',editId)
+      if (error) { showToast('Item update failed: '+error.message, '#dc2626'); return }
       showToast('Item updated ✓', '#d97706')
     } else {
-      await supabase.from('kitchen_items').insert(row)
+      const { error } = await supabase.from('kitchen_items').insert(row)
+      if (error) { showToast('Item save failed: '+error.message, '#dc2626'); return }
       showToast('Item added ✓', '#16a34a')
     }
     setForm({ name:'', name_meitei:'', category:'vegetable', unit:'kg', default_price:'' })
@@ -613,7 +616,9 @@ function ItemSetupPanel({ onClose, showToast, isMobile }) {
   }
 
   const toggleActive = async (id, val) => {
-    await supabase.from('kitchen_items').update({ is_active:!val }).eq('id',id); loadItems()
+    const { error } = await supabase.from('kitchen_items').update({ is_active:!val }).eq('id',id)
+    if (error) { showToast('Update failed: '+error.message, '#dc2626'); return }
+    loadItems()
   }
 
   const startEdit = item => {
@@ -1323,7 +1328,7 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems, isMob
 }
 
 // ─── Entry Card ───────────────────────────────────────────────────────────────
-function EntryCard({ e, locked, onEdit, onDelete }) {
+function EntryCard({ e, locked, onEdit, onDelete, isAdmin }) {
   const m = MEALS[e.meal_type]
   const [viewReceipt, setViewReceipt] = useState(false)
   return (
@@ -1372,7 +1377,7 @@ function EntryCard({ e, locked, onEdit, onDelete }) {
         {!locked && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <button type="button" style={{ ...btnGhost, padding: '4px 10px', fontSize: 11 }} onClick={()=>onEdit(e)}>Edit</button>
-            <button type="button" style={{ padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, color: '#dc2626', border: '1.5px solid #fecaca', background: '#fef2f2', cursor: 'pointer' }} onClick={()=>onDelete(e.id)}>Del</button>
+            {isAdmin && <button type="button" style={{ padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, color: '#dc2626', border: '1.5px solid #fecaca', background: '#fef2f2', cursor: 'pointer' }} onClick={()=>onDelete(e.id)}>Del</button>}
           </div>
         )}
       </div>
@@ -1381,7 +1386,7 @@ function EntryCard({ e, locked, onEdit, onDelete }) {
 }
 
 // ─── Day Group ────────────────────────────────────────────────────────────────
-function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlockDay }) {
+function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlockDay, isAdmin }) {
   const dayE    = entries.filter(e=>e.expense_date===dateStr)
   const total   = dayE.reduce((s,e)=>s+Number(e.amount),0)
   const isToday = dateStr===today()
@@ -1406,20 +1411,20 @@ function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlo
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 14, fontWeight: 800, color: '#1e293b' }}>{moneyFmt(total)}</span>
-          {!locked
+          {isAdmin && (!locked
             ? <button type="button" onClick={e=>{e.stopPropagation();onLockDay(dateStr)}} style={{ padding: '4px 10px', borderRadius: 8, fontSize: 10, fontWeight: 700, color: '#dc2626', border: '1.5px solid #fecaca', background: '#fef2f2', cursor: 'pointer' }}>
                 🔒 Lock
               </button>
             : <button type="button" onClick={e=>{e.stopPropagation();onUnlockDay(dateStr)}} style={{ padding: '4px 10px', borderRadius: 8, fontSize: 10, fontWeight: 700, color: '#d97706', border: '1.5px solid #fde68a', background: '#fffbeb', cursor: 'pointer' }}>
                 🔓 Unlock
               </button>
-          }
+          )}
           <span style={{ fontSize: 12, color: '#94a3b8', transition: 'transform .2s', display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none' }}>▾</span>
         </div>
       </div>
       {!collapsed && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {dayE.map(e=><EntryCard key={e.id} e={e} locked={locked} onEdit={onEdit} onDelete={onDelete} />)}
+          {dayE.map(e=><EntryCard key={e.id} e={e} locked={locked} onEdit={onEdit} onDelete={onDelete} isAdmin={isAdmin} />)}
         </div>
       )}
     </div>
@@ -1562,7 +1567,7 @@ function generateWhatsAppMsg(entries, dateStr) {
 function LedgerTab({
   entries, filterDate, setFilterDate, filterMeal, setFilterMeal,
   uniqueDates, filteredByMeal, locks, viewMonth, setFormOpen,
-  handleDelete, handleLockDay, handleUnlockDay, setEditing, setTab, isMobile
+  handleDelete, handleLockDay, handleUnlockDay, setEditing, setTab, isMobile, isAdmin
 }) {
   return (
     <>
@@ -1616,6 +1621,7 @@ function LedgerTab({
               onDelete={handleDelete}
               onLockDay={handleLockDay}
               onUnlockDay={handleUnlockDay}
+              isAdmin={isAdmin}
             />
           ))}
         </>
@@ -1652,9 +1658,18 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin,
   const now     = new Date()
   const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
   const dateStr = now.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDocClick = e => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false) }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [menuOpen])
 
   const ACTIONS = [
-    { id: 'items',      label: 'Items',      emoji: '🧺', fn: onItemSetup, toggle: true,  adminOnly: false },
+    { id: 'items',      label: 'Items',      emoji: '🧺', fn: onItemSetup, toggle: true,  adminOnly: true  },
     { id: 'monitor',    label: 'Monitor',    emoji: '🛡',  fn: onMonitor,   toggle: true,  adminOnly: true  },
     { id: 'cooklog',    label: 'Cook Log',   emoji: '👨‍🍳', fn: onCookLog,   toggle: true,  adminOnly: true  },
     { id: 'attendance', label: 'Attendance', emoji: '📋', fn: onCookAtt,   toggle: true,  adminOnly: true  },
@@ -1665,6 +1680,15 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin,
     { id: 'add',        label: 'Add Entry',  emoji: '+',  fn: onAdd,       toggle: false, adminOnly: false, primary: true },
   ].filter(a => !a.adminOnly || isAdmin)
 
+  // Menu = the same two ledger/analytics view-tabs plus every action above,
+  // all in one place — a single always-available entry point to everything
+  // in the topbar, independent of screen width.
+  const MENU_TABS = [
+    { id: 'ledger',    label: 'Ledger',    emoji: '📋', fn: () => setTab('ledger'),    active: tab === 'ledger' },
+    { id: 'analytics', label: 'Analytics', emoji: '📊', fn: () => setTab('analytics'), active: tab === 'analytics' },
+  ]
+  const MENU_ACTIONS = ACTIONS.map(a => ({ ...a, active: a.toggle && activePanel === a.id }))
+
   return (
     <div className="no-print" style={{ background: 'white', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 100 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: isMobile ? '10px 14px' : '12px 22px', flexWrap: 'wrap', gap: 10 }}>
@@ -1673,12 +1697,13 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin,
           <p style={{ color: '#64748b', fontSize: 12, margin: '3px 0 0' }}>GNSI · Khangabok, Thoubal</p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', width: isMobile ? '100%' : 'auto' }}>
+          <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0', flex: isMobile ? '1 1 auto' : 'initial' }}>
             {[['ledger', '📋 Ledger'], ['analytics', '📊 Analytics']].map(([k, l]) => (
               <button key={k} type="button" onClick={() => setTab(k)} style={{
-                padding: '7px 14px', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
+                padding: isMobile ? '7px 10px' : '7px 14px', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
                 background: tab === k ? '#1e3a5f' : '#fff', color: tab === k ? '#fff' : '#64748b',
+                flex: isMobile ? 1 : 'initial',
               }}>
                 {l}
               </button>
@@ -1689,10 +1714,60 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin,
             <div style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>{timeStr}</div>
             {dateStr}
           </div>
+
+          <div ref={menuRef} style={{ position: 'relative' }}>
+            <button
+              type="button"
+              aria-label="Open menu"
+              onClick={() => setMenuOpen(v => !v)}
+              style={{
+                width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: 8, border: '1.5px solid #e2e8f0', cursor: 'pointer', fontSize: 16,
+                background: menuOpen ? '#1e3a5f' : '#fff', color: menuOpen ? '#fff' : '#374151',
+                flexShrink: 0,
+              }}
+            >
+              ☰
+            </button>
+
+            {menuOpen && (
+              <div style={{
+                position: 'absolute', top: '44px', right: 0, zIndex: 200,
+                background: 'white', borderRadius: 10, border: '1px solid #e2e8f0',
+                boxShadow: '0 12px 32px rgba(0,0,0,.15)', minWidth: 200, overflow: 'hidden',
+                maxHeight: '70vh', overflowY: 'auto',
+              }}>
+                <div style={{ padding: '8px 14px', fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em', background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                  View
+                </div>
+                {MENU_TABS.map(t => (
+                  <button key={t.id} type="button" onClick={() => { t.fn(); setMenuOpen(false) }} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+                    padding: '10px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                    background: t.active ? '#eff6ff' : '#fff', color: t.active ? '#1e3a5f' : '#374151',
+                  }}>
+                    <span>{t.emoji}</span>{t.label}
+                  </button>
+                ))}
+                <div style={{ padding: '8px 14px', fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em', background: '#f8fafc', borderTop: '1px solid #f1f5f9', borderBottom: '1px solid #f1f5f9' }}>
+                  Actions
+                </div>
+                {MENU_ACTIONS.map(a => (
+                  <button key={a.id} type="button" onClick={() => { a.fn(); setMenuOpen(false) }} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+                    padding: '10px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                    background: a.active ? '#eff6ff' : '#fff', color: a.active ? '#1e3a5f' : (a.primary ? '#1e3a5f' : '#374151'),
+                  }}>
+                    <span>{a.emoji}</span>{a.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, padding: '0 22px 12px', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
+      <div style={{ display: 'flex', gap: 8, padding: isMobile ? '0 12px 12px' : '0 22px 12px', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
         {ACTIONS.map(a => {
           const isActive = a.toggle && activePanel === a.id
           return (
@@ -1701,7 +1776,8 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin,
               type="button"
               onClick={a.fn}
               style={{
-                display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8,
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: isMobile ? '7px 10px' : '7px 14px', borderRadius: 8,
                 fontSize: 12, fontWeight: 700, cursor: 'pointer', border: '1.5px solid',
                 ...(a.primary
                   ? { background: 'linear-gradient(135deg,#1e3a5f,#3730a3)', color: '#fff', borderColor: 'transparent' }
@@ -1709,7 +1785,7 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin,
                     ? { background: '#eff6ff', color: '#1e3a5f', borderColor: '#bfdbfe' }
                     : { background: '#fff', color: '#64748b', borderColor: '#e2e8f0' }),
               }}>
-              <span>{a.emoji}</span>{a.label}
+              <span>{a.emoji}</span>{isMobile ? '' : a.label}
             </button>
           )
         })}
@@ -1724,7 +1800,10 @@ function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin,
 export default function Kitchen({ currentUser }) {
   const w        = useWindowWidth()
   const isMobile = w < 640
-  const isAdmin = ['admin','superintendent'].includes((currentUser?.role||'').toLowerCase())
+  // isAdminRole covers Admin/Administrator/Co-Admin; Superintendent is
+  // included separately since this module's original check explicitly
+  // granted Superintendents the same kitchen-management access.
+  const isAdmin = isAdminRole(currentUser?.role) || (currentUser?.role || '').toLowerCase() === 'superintendent'
 
   const [entries,      setEntries]      = useState([])
   const [locks,        setLocks]        = useState([])
@@ -1819,6 +1898,7 @@ export default function Kitchen({ currentUser }) {
   }
 
   const handleDelete = async id => {
+    if (!isAdmin) { showToast('Only admins can delete entries', '#dc2626'); return }
     if (!window.confirm('Delete this entry?')) return
     const { error } = await supabase.from('kitchen_expenditure').delete().eq('id',id)
     if (error) { showToast('Delete failed', '#dc2626'); return }
@@ -1826,18 +1906,24 @@ export default function Kitchen({ currentUser }) {
   }
 
   const handleLockDay = async dateStr => {
+    if (!isAdmin) { showToast('Only admins can lock a day', '#dc2626'); return }
     if (!window.confirm(`Lock all entries for ${dateFmt(dateStr)}?`)) return
-    await supabase.from('kitchen_daily_locks').insert({ lock_date:dateStr })
+    const { error } = await supabase.from('kitchen_daily_locks').insert({ lock_date:dateStr })
+    if (error) { showToast('Lock failed: '+error.message, '#dc2626'); return }
     showToast(`🔒 ${dateFmt(dateStr)} locked`, '#dc2626'); load()
   }
 
   const handleUnlockDay = async dateStr => {
-    await supabase.from('kitchen_daily_locks').delete().eq('lock_date',dateStr)
+    if (!isAdmin) { showToast('Only admins can unlock a day', '#dc2626'); return }
+    const { error } = await supabase.from('kitchen_daily_locks').delete().eq('lock_date',dateStr)
+    if (error) { showToast('Unlock failed: '+error.message, '#dc2626'); return }
     showToast(`🔓 ${dateFmt(dateStr)} unlocked`, '#d97706'); load()
   }
 
   const handleBudgetSave = async amount => {
-    await supabase.from('kitchen_budgets').upsert({ month:viewMonth, budget_amount:amount },{ onConflict:'month' })
+    if (!isAdmin) { showToast('Only admins can update the budget', '#dc2626'); return }
+    const { error } = await supabase.from('kitchen_budgets').upsert({ month:viewMonth, budget_amount:amount },{ onConflict:'month' })
+    if (error) { showToast('Budget update failed: '+error.message, '#dc2626'); return }
     setBudget(amount); setShowBudget(false); showToast('Budget updated ✓', '#16a34a')
   }
 
@@ -1971,6 +2057,7 @@ export default function Kitchen({ currentUser }) {
               setEditing={setEditing}
               setTab={setTab}
               isMobile={isMobile}
+              isAdmin={isAdmin}
             />
           )}
           {tab === 'analytics' && (
