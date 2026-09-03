@@ -658,11 +658,271 @@ function StaffMarkRow({ staff, mark, geo, onMark, onManualPunch, saving, disable
 // ─── Reports — drill-down list into existing data ──────────────────────────
 
 const REPORT_DEFS = [
-  { key: 'attendance', title: 'Attendance report', subtitle: 'Staff-level summary for the selected month' },
+  { key: 'attendance', title: 'Attendance report', subtitle: 'Date-range, per-status, exportable' },
   { key: 'payroll',    title: 'Staff payroll report', subtitle: 'Complete payroll report of all staff' },
   { key: 'advances',   title: 'Payment logs report', subtitle: 'Advance issue and repayment logs' },
   { key: 'fines',      title: 'Fines report', subtitle: 'Late check-ins and fine minutes by staff' },
 ]
+
+// ─── Attendance Report Generator ────────────────────────────────────────
+//
+// Replaces the old month-only Present/Late-only attendance report with a
+// proper generator: date-range picker, all-staff or single-staff scope,
+// full per-status breakdown (Present/Absent/Half Day/Leave/Late) combining
+// staff_geo_attendance + staff_attendance_marks the same way
+// AdminAttendanceRoster does, CSV export, and a print-formatted summary
+// view. Read-only — never writes to either table.
+
+function csvEscape(val) {
+  const s = String(val ?? '')
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+function downloadCsv(filename, headers, rowsArr) {
+  const lines = [headers.map(csvEscape).join(',')]
+  for (const row of rowsArr) lines.push(row.map(csvEscape).join(','))
+  const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function AttendanceReportGenerator({ staffList }) {
+  const todayIso = isoDate(new Date())
+  const [fromDate, setFromDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return isoDate(d) })
+  const [toDate, setToDate] = useState(todayIso)
+  const [scope, setScope] = useState('all') // 'all' | a staff_id
+  const [geoRows, setGeoRows] = useState([])
+  const [markRows, setMarkRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [printing, setPrinting] = useState(false)
+
+  const fetchData = useCallback(async () => {
+    if (fromDate > toDate) { setLoading(false); return }
+    setLoading(true)
+    setError(null)
+    let geoQ = supabase.from('staff_geo_attendance')
+      .select('staff_id, date, status, late_minutes, check_in_time, check_out_time, marked_by')
+      .gte('date', fromDate).lte('date', toDate)
+    let markQ = supabase.from('staff_attendance_marks')
+      .select('staff_id, date, status, marked_by')
+      .gte('date', fromDate).lte('date', toDate)
+    if (scope !== 'all') { geoQ = geoQ.eq('staff_id', scope); markQ = markQ.eq('staff_id', scope) }
+
+    const [{ data: geo, error: geoErr }, { data: marks, error: markErr }] = await Promise.all([geoQ, markQ])
+    const firstError = geoErr || markErr
+    if (firstError) { setError(firstError.message); setLoading(false); return }
+    setGeoRows(geo || [])
+    setMarkRows(marks || [])
+    setLoading(false)
+  }, [fromDate, toDate, scope])
+
+  useEffect(() => { fetchData() }, [fetchData])
+
+  const invalidRange = fromDate > toDate
+  const tooLong = (() => {
+    if (invalidRange) return false
+    const days = (new Date(toDate) - new Date(fromDate)) / 86400000
+    return days > 366
+  })()
+
+  // staff_id -> date -> { status, late_minutes, check_in_time, check_out_time }
+  // Same precedence as AdminAttendanceRoster/AdminDateRangeReport: an
+  // explicit staff_attendance_marks row wins over the geo-derived status,
+  // since that's the human decision for the day when one was made.
+  const byStaffDate = useMemo(() => {
+    const m = {}
+    for (const r of geoRows) {
+      m[r.staff_id] = m[r.staff_id] || {}
+      m[r.staff_id][r.date] = {
+        status: r.status || (r.check_in_time ? (r.check_out_time ? 'Present' : 'Half Day') : null),
+        late_minutes: r.late_minutes || 0,
+        check_in_time: r.check_in_time,
+        check_out_time: r.check_out_time,
+      }
+    }
+    for (const r of markRows) {
+      m[r.staff_id] = m[r.staff_id] || {}
+      m[r.staff_id][r.date] = { ...(m[r.staff_id][r.date] || {}), status: r.status }
+    }
+    return m
+  }, [geoRows, markRows])
+
+  const staffSummary = useMemo(() => {
+    const targets = scope === 'all' ? staffList : staffList.filter(s => String(s.id) === String(scope))
+    return targets.map(s => {
+      const days = byStaffDate[s.id] || {}
+      const counts = { Present: 0, Absent: 0, 'Half Day': 0, Leave: 0, Late: 0, notMarked: 0 }
+      let lateMinutes = 0
+      for (const [, d] of Object.entries(days)) {
+        if (d.status && counts[d.status] !== undefined) counts[d.status]++
+        else if (d.status) counts[d.status] = (counts[d.status] || 0) + 1 // unrecognized status: still counted, not dropped
+        lateMinutes += d.late_minutes || 0
+      }
+      const totalDaysInRange = Math.round((new Date(toDate) - new Date(fromDate)) / 86400000) + 1
+      const markedDays = Object.keys(days).length
+      counts.notMarked = Math.max(0, totalDaysInRange - markedDays)
+      return { staff: s, counts, lateMinutes, days }
+    }).filter(r => scope === 'all' ? true : true) // scope already filters `targets` above
+  }, [staffList, byStaffDate, fromDate, toDate, scope])
+
+  const exportCsv = () => {
+    const headers = ['Staff', 'Present', 'Absent', 'Half Day', 'Leave', 'Late (days)', 'Late (total minutes)', 'Not marked']
+    const rowsArr = staffSummary.map(r => [
+      r.staff.name || '',
+      r.counts.Present || 0,
+      r.counts.Absent || 0,
+      r.counts['Half Day'] || 0,
+      r.counts.Leave || 0,
+      r.counts.Late || 0,
+      r.lateMinutes || 0,
+      r.counts.notMarked || 0,
+    ])
+    downloadCsv(`attendance_${fromDate}_to_${toDate}.csv`, headers, rowsArr)
+  }
+
+  // Detailed day-by-day CSV for a single staff member — only offered when
+  // scope !== 'all', since a full day-by-day export across every staff for
+  // a year-long range would be an unwieldy, likely-useless file.
+  const exportDetailedCsv = () => {
+    if (scope === 'all' || !staffSummary.length) return
+    const r = staffSummary[0]
+    const headers = ['Date', 'Status', 'Check-in', 'Check-out', 'Late minutes']
+    const dateList = []
+    const d = new Date(fromDate); const end = new Date(toDate)
+    while (d <= end) { dateList.push(isoDate(d)); d.setDate(d.getDate() + 1) }
+    const rowsArr = dateList.map(date => {
+      const day = r.days[date]
+      const fmtT = t => t ? new Date(t).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''
+      return [date, day?.status || 'Not marked', fmtT(day?.check_in_time), fmtT(day?.check_out_time), day?.late_minutes || '']
+    })
+    downloadCsv(`attendance_${r.staff.name || 'staff'}_${fromDate}_to_${toDate}.csv`, headers, rowsArr)
+  }
+
+  const applyPreset = (preset) => {
+    if (preset === '7d') { const d = new Date(); d.setDate(d.getDate() - 6); setFromDate(isoDate(d)); setToDate(todayIso) }
+    else if (preset === '30d') { const d = new Date(); d.setDate(d.getDate() - 29); setFromDate(isoDate(d)); setToDate(todayIso) }
+    else if (preset === 'month') { setFromDate(`${currentMonth()}-01`); setToDate(todayIso) }
+  }
+
+  if (printing) {
+    return (
+      <div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }} className="no-print">
+          <button onClick={() => setPrinting(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }}>← Back</button>
+          <button onClick={() => window.print()} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#0B1E3D', color: 'white', cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }}>🖨️ Print</button>
+        </div>
+        <style>{`@media print { .no-print { display: none !important; } body { background: white; } }`}</style>
+        <div style={{ padding: 20 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0B1E3D', marginBottom: 4 }}>Attendance Report</h2>
+          <div style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>{fmtDate(fromDate)} — {fmtDate(toDate)}{scope !== 'all' ? ` · ${staffSummary[0]?.staff.name || ''}` : ' · All staff'}</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                {['Staff', 'Present', 'Absent', 'Half Day', 'Leave', 'Late', 'Late min', 'Not marked'].map(h => (
+                  <th key={h} style={{ ...S.th, border: '1px solid #e2e8f0' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {staffSummary.map(r => (
+                <tr key={r.staff.id}>
+                  <td style={{ ...S.td, border: '1px solid #e2e8f0' }}>{r.staff.name}</td>
+                  <td style={{ ...S.td, border: '1px solid #e2e8f0' }}>{r.counts.Present || 0}</td>
+                  <td style={{ ...S.td, border: '1px solid #e2e8f0' }}>{r.counts.Absent || 0}</td>
+                  <td style={{ ...S.td, border: '1px solid #e2e8f0' }}>{r.counts['Half Day'] || 0}</td>
+                  <td style={{ ...S.td, border: '1px solid #e2e8f0' }}>{r.counts.Leave || 0}</td>
+                  <td style={{ ...S.td, border: '1px solid #e2e8f0' }}>{r.counts.Late || 0}</td>
+                  <td style={{ ...S.td, border: '1px solid #e2e8f0' }}>{r.lateMinutes || 0}</td>
+                  <td style={{ ...S.td, border: '1px solid #e2e8f0' }}>{r.counts.notMarked || 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{ ...S.card, padding: '12px 14px' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>From</label>
+          <input type="date" value={fromDate} max={toDate} onChange={e => setFromDate(e.target.value)} style={{ ...S.input, flex: '1 1 130px' }} />
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>To</label>
+          <input type="date" value={toDate} min={fromDate} max={todayIso} onChange={e => setToDate(e.target.value)} style={{ ...S.input, flex: '1 1 130px' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {[['7d', 'Last 7 days'], ['30d', 'Last 30 days'], ['month', 'This month']].map(([key, label]) => (
+            <button key={key} onClick={() => applyPreset(key)} style={S.pill(false)}>{label}</button>
+          ))}
+        </div>
+        <select value={scope} onChange={e => setScope(e.target.value)} style={{ ...S.input, width: '100%' }}>
+          <option value="all">All staff</option>
+          {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      </div>
+
+      {invalidRange ? (
+        <p style={{ textAlign: 'center', color: '#dc2626', padding: 20 }}>"From" date must be on or before "To" date.</p>
+      ) : tooLong ? (
+        <p style={{ textAlign: 'center', color: '#dc2626', padding: 20 }}>Please pick a range of 366 days or fewer.</p>
+      ) : error ? (
+        <p style={{ textAlign: 'center', color: '#dc2626', padding: 20 }}>Could not load report: {error}</p>
+      ) : loading ? (
+        <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Loading…</p>
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+            <button onClick={exportCsv} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #0B1E3D33', background: '#EEF2FF', color: '#0B1E3D', fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>
+              ⬇ Export CSV
+            </button>
+            {scope !== 'all' && (
+              <button onClick={exportDetailedCsv} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #0B1E3D33', background: '#EEF2FF', color: '#0B1E3D', fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>
+                ⬇ Export day-by-day CSV
+              </button>
+            )}
+            <button onClick={() => setPrinting(true)} style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #d1d5db', background: 'white', color: '#374151', fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>
+              🖨️ Printable summary
+            </button>
+          </div>
+
+          <div style={{ overflowX: 'auto', background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.07)' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>
+              <thead>
+                <tr>
+                  {['Staff', 'Present', 'Absent', 'Half Day', 'Leave', 'Late', 'Late min', 'Not marked'].map(h => <th key={h} style={S.th}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {staffSummary.map(r => (
+                  <tr key={r.staff.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={S.td}>{r.staff.name}</td>
+                    <td style={S.td}>{r.counts.Present || 0}</td>
+                    <td style={S.td}>{r.counts.Absent || 0}</td>
+                    <td style={S.td}>{r.counts['Half Day'] || 0}</td>
+                    <td style={S.td}>{r.counts.Leave || 0}</td>
+                    <td style={S.td}>{r.counts.Late || 0}</td>
+                    <td style={S.td}>{r.lateMinutes || 0}</td>
+                    <td style={S.td}>{r.counts.notMarked || 0}</td>
+                  </tr>
+                ))}
+                {!staffSummary.length && <tr><td colSpan="8" style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>No staff found.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 export function ReportsView({ isAdmin, staffList }) {
   const [openReport, setOpenReport] = useState(null)
@@ -671,19 +931,10 @@ export function ReportsView({ isAdmin, staffList }) {
   const [loading, setLoading] = useState(false)
 
   const runReport = useCallback(async (key) => {
+    if (key === 'attendance') { setOpenReport(key); return } // handled entirely by AttendanceReportGenerator below
     setLoading(true)
     setOpenReport(key)
-    if (key === 'attendance') {
-      const { data } = await supabase.from('staff_geo_attendance').select('staff_id, date, status, late_minutes, staff_profiles(name)').gte('date', `${month}-01`).lte('date', `${month}-31`)
-      const byStaff = {}
-      for (const r of data || []) {
-        const id = r.staff_id
-        byStaff[id] = byStaff[id] || { name: r.staff_profiles?.name, present: 0, late: 0 }
-        byStaff[id].present += 1
-        if ((r.late_minutes || 0) > 0) byStaff[id].late += 1
-      }
-      setRows(Object.values(byStaff))
-    } else if (key === 'payroll') {
+    if (key === 'payroll') {
       const { data } = await supabase.from('salary').select('staff_id, net_salary, status, staff_profiles(name)').eq('month', month)
       setRows((data || []).map(r => ({ name: r.staff_profiles?.name, net: r.net_salary, status: r.status })))
     } else if (key === 'advances') {
@@ -721,6 +972,15 @@ export function ReportsView({ isAdmin, staffList }) {
     )
   }
 
+  if (openReport === 'attendance') {
+    return (
+      <div>
+        <button onClick={() => setOpenReport(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#0B1E3D', marginBottom: 14 }}>← Back to reports</button>
+        <AttendanceReportGenerator staffList={staffList} />
+      </div>
+    )
+  }
+
   const def = REPORT_DEFS.find(r => r.key === openReport)
   return (
     <div>
@@ -735,7 +995,6 @@ export function ReportsView({ isAdmin, staffList }) {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {openReport === 'attendance' && ['Staff', 'Present days', 'Late instances'].map(h => <th key={h} style={S.th}>{h}</th>)}
                   {openReport === 'payroll' && ['Staff', 'Net salary', 'Status'].map(h => <th key={h} style={S.th}>{h}</th>)}
                   {openReport === 'advances' && ['Staff', 'Amount', 'Repaid', 'Status'].map(h => <th key={h} style={S.th}>{h}</th>)}
                   {openReport === 'fines' && ['Staff', 'Late instances', 'Total minutes'].map(h => <th key={h} style={S.th}>{h}</th>)}
@@ -745,7 +1004,6 @@ export function ReportsView({ isAdmin, staffList }) {
                 {rows.map((r, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={S.td}>{r.name || '—'}</td>
-                    {openReport === 'attendance' && <><td style={S.td}>{r.present}</td><td style={S.td}>{r.late}</td></>}
                     {openReport === 'payroll' && <><td style={S.td}>₹{Math.round(r.net || 0).toLocaleString('en-IN')}</td><td style={S.td}>{r.status}</td></>}
                     {openReport === 'advances' && <><td style={S.td}>₹{r.amount}</td><td style={S.td}>₹{r.repaid}</td><td style={S.td}>{r.status}</td></>}
                     {openReport === 'fines' && <><td style={S.td}>{r.instances}</td><td style={S.td}>{r.minutes} min</td></>}
