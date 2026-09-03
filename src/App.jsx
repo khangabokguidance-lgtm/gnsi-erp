@@ -54,8 +54,8 @@ import { useMismatchAutoScan } from './mismatchScanner'
 // ─────────────────────────────────────────────────────────────
 //  FIX 1: Unified admin role check — consistent everywhere
 // ─────────────────────────────────────────────────────────────
-const ADMIN_ROLES = ['Admin', 'Administrator', 'Co-Admin']
-const isAdminRole = (role) => ADMIN_ROLES.includes(role)
+export const ADMIN_ROLES = ['Admin', 'Administrator', 'Co-Admin']
+export const isAdminRole = (role) => ADMIN_ROLES.includes(role)
 
 // Roles that manage Face Attendance for other staff (coverage, approvals,
 // enrollment) without necessarily having their own linked staff_profile_id —

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
+import { isAdminRole } from './App'
 import { getActiveStudents, getAllStudents } from './studentQueries'
 import jsPDF from 'jspdf'
 import { generateAwardCertificate, CERT_SCHOOL_NAME } from './AwardCertificate'
@@ -1241,7 +1242,7 @@ function UnassignedHouseRoomPicker({ student, houseNames, onAssign }) {
 
 
 function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange, onCompleteTab }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const userRole = (currentUser?.role || currentHousemaster?.role || 'hm').toLowerCase()
   // Mirrors LeaveTab.jsx's canApprove: level 0 needs HM/admin, level 1 needs Superintendent/admin
   const canApproveLeaveLevel = (approvalLevel) => {
@@ -3586,7 +3587,7 @@ const MAINTENANCE_STATUSES = ['Raised', 'Assigned', 'In Progress', 'Resolved', '
 const MAINTENANCE_CATEGORIES = ['Plumbing', 'Electrical', 'Furniture', 'Civil', 'Cleaning', 'IT', 'Other']
 
 function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const isHM = (currentUser?.role || '').toLowerCase() === 'house master'
 
   const [records, setRecords] = useState([])
@@ -5170,7 +5171,7 @@ function FeatureCardsStrip({ cards }) {
 }
 
 function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange, currentUser }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const [attendanceToday, setAttendanceToday] = useState([])
   const [eveningToday, setEveningToday] = useState([]) // #2: evening roll call, same shape as morning
   const [leaveToday, setLeaveToday] = useState([])
@@ -5659,7 +5660,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
 //  TAB: HOUSEMASTER JOURNAL
 // ══════════════════════════════════════════════════════════════
 function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -5859,7 +5860,7 @@ const emptyDayScholar = {
 }
 
 function DayScholarTab({ students, currentUser }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -6238,7 +6239,7 @@ function saveChecks(obj) {
 }
 
 function ScheduleTab({ currentUser }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const TYPE_TABS = [
     { id: 'weekday', label: '📅 Mon–Sat' },
     { id: 'sunday',  label: '🌿 Sunday' },
@@ -6614,7 +6615,7 @@ const SHIFT_STYLE = {
 }
 
 function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -7084,7 +7085,7 @@ const emptyDisc = {
 const DISC_STATUSES = ['Open', 'In Progress', 'Resolved', 'Closed']
 
 function DisciplineTab({ students, autoOpenForm, currentUser }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -7314,7 +7315,7 @@ const emptySick = {
 }
 
 function SickbayTab({ students, autoOpenForm, currentUser }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -7552,7 +7553,7 @@ const emptyHouse = {
 }
 
 function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const { session: activeSession } = useActiveSession()
   const [houses, setHouses] = useState([])
   const [students, setStudents] = useState(propStudents || [])
@@ -8209,7 +8210,7 @@ const emptyHM = {
 }
 
 function HousemasterTab({ currentUser }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const [records, setRecords] = useState([])
   const [houses, setHouses] = useState([])
   const [loading, setLoading] = useState(true)
@@ -8384,7 +8385,7 @@ const emptyMeal = { date: today(), meal_type: 'Breakfast', menu: '', prepared_by
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Tea', 'Dinner']
 
 function KitchenTab({ currentUser }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -8568,7 +8569,7 @@ function KitchenTab({ currentUser }) {
 //  which of the 6 mandatory tabs, for which house/date/session.
 // ══════════════════════════════════════════════════════════════
 function NeglectReportTab({ currentUser }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [houseFilter, setHouseFilter] = useState('All')
@@ -8836,7 +8837,7 @@ function Hostel() {
     }
   }, [])
   const userRole = (currentUser?.role || '').toLowerCase()
-  const isAdmin = userRole === 'admin'
+  const isAdmin = isAdminRole(userRole)
   const isHM = userRole === 'house master'
 
   // Track mobile state
