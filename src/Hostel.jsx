@@ -228,6 +228,7 @@ const TABS = [
   { id: 'hmactivities', label: '📋 Activities' },
   { id: 'adminmonitor', label: '🖥️ Monitor' },
   { id: 'discipline', label: '⚠️ Discipline' },
+  { id: 'superintendentdash', label: '🛡️ Superintendent' },
   { id: 'sickbay', label: '➕ Sickbay' },
   { id: 'kitchen', label: '🍽️ Kitchen' },
   { id: 'nightduty', label: '🌙 Mess Duty' },
@@ -7112,6 +7113,7 @@ const DISC_STATUSES = ['Open', 'In Progress', 'Resolved', 'Closed']
 
 function DisciplineTab({ students, autoOpenForm, currentUser }) {
   const isAdmin = isAdminRole(currentUser?.role)
+  const mobile = useMobileView()
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -7160,6 +7162,20 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
           (form.incident || 'New discipline record logged').slice(0, 140),
           '/hostel?tab=discipline'
         )
+        // Superintendent must see every new discipline case, not just the
+        // student's own housemaster — push to all Superintendent-role staff,
+        // mirroring the existing "notify all admins" pattern elsewhere.
+        try {
+          const { data: supers } = await supabase.from('staff_profiles').select('id').ilike('role', 'superintendent')
+          if (supers?.length) {
+            await Promise.all(supers.map(sp => sendPushToStaffId(
+              sp.id,
+              `⚠️ Discipline: ${form.student_name}`,
+              `${student?.house ? student.house + ' · ' : ''}${(form.incident || 'New discipline record logged').slice(0, 140)}`,
+              '/hostel?tab=superintendentdash'
+            )))
+          }
+        } catch (e) { console.error('Superintendent discipline notify failed:', e) }
       }
       setForm(emptyDisc); setShowForm(false); setEditRec(null); load()
     }
@@ -7273,7 +7289,37 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
 
       {loading
         ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
-        : (
+        : mobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {filtered.map(r => (
+              <div key={r.id} style={{ background: 'white', borderRadius: 12, padding: 14, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#1e293b' }}>{r.student_name}</div>
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                      {r.gcc_no ? `GCC-${r.gcc_no} · ` : ''}{r.class_name || '—'}{r._house ? ` · ${r._house}` : ''}
+                    </div>
+                    {r.student_id && <div style={{ fontSize: 10, color: '#16a34a', marginTop: 2 }}>🔗 linked</div>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
+                    {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>}
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: '#374151', marginBottom: 4 }}><b>Incident:</b> {r.incident}</div>
+                {r.action_taken && <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}><b>Action:</b> {r.action_taken}</div>}
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>{r.date} · Reported by {r.reported_by || '—'}</div>
+                <select value={r.status} onChange={e => handleStatusChange(r.id, e.target.value)}
+                  style={{ ...statusStyle(r.status), border: 'none', cursor: 'pointer', fontFamily: 'system-ui', width: '100%' }}>
+                  {DISC_STATUSES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No discipline records found</div>
+            )}
+          </div>
+        ) : (
           <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 900 }}>
               <thead>
@@ -7332,6 +7378,97 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  Superintendent Dashboard — cross-house discipline review feed
+//  All new discipline records are pushed here (and to the
+//  Superintendent's phone via sendPushToStaffId in DisciplineTab's
+//  handleSave) so nothing gets missed sitting only inside a
+//  housemaster's own view.
+// ══════════════════════════════════════════════════════════════
+function SuperintendentDashboard({ students, currentUser }) {
+  const canReview = isAdminRole(currentUser?.role) || (currentUser?.role || '').toLowerCase() === 'superintendent'
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState('Open')
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase.from('discipline_records').select('*').order('date', { ascending: false })
+    setRecords(data || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const enriched = useMemo(() => records.map(r => {
+    if (r.student_id) {
+      const s = students.find(s => s.id === r.student_id)
+      if (s) return { ...r, student_name: s.name, class_name: getStudentClass(s) || r.class_name, _house: s.house }
+    }
+    return r
+  }), [records, students])
+
+  const filtered = filter === 'All' ? enriched : enriched.filter(r => r.status === filter)
+  const open = records.filter(r => r.status === 'Open').length
+  const inProgress = records.filter(r => r.status === 'In Progress').length
+
+  const handleStatusChange = async (id, status) => {
+    if (!canReview) { alert('Only the Superintendent or an admin can update review status.'); return }
+    await supabase.from('discipline_records').update({ status }).eq('id', id)
+    setRecords(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+  }
+
+  if (!canReview) {
+    return (
+      <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '16px 20px', fontSize: 13, color: '#92400e', fontWeight: 600 }}>
+        ⚠️ This dashboard is restricted to the Superintendent and admins.
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={statGrid()}>
+        <StatCard icon="📋" label="Total" value={records.length} color="#1a2f4d" bg="#eff6ff" />
+        <StatCard icon="🔴" label="Open" value={open} color="#dc2626" bg="#fee2e2" />
+        <StatCard icon="🟡" label="In Progress" value={inProgress} color="#a8842f" bg="#fef9c3" />
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ fontSize: 14, color: '#64748b' }}>Discipline cases across all houses, newest first</div>
+        <select value={filter} onChange={e => setFilter(e.target.value)} style={{ ...inp, width: 'auto' }}>
+          <option value="All">All Status</option>
+          {DISC_STATUSES.map(s => <option key={s}>{s}</option>)}
+        </select>
+      </div>
+
+      {loading
+        ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
+        : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {filtered.map(r => (
+              <div key={r.id} style={{ background: 'white', borderRadius: 10, padding: '14px 18px', boxShadow: '0 1px 6px rgba(0,0,0,.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: '#1e293b' }}>
+                    {r.student_name} {r._house && <span style={{ fontWeight: 600, color: '#64748b', fontSize: 12 }}>· {r._house}</span>}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>{r.incident}</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>{r.date} · Reported by {r.reported_by || '—'}</div>
+                </div>
+                <select value={r.status} onChange={e => handleStatusChange(r.id, e.target.value)} style={{ ...inp, width: 'auto', fontSize: 12, padding: '6px 10px' }}>
+                  {DISC_STATUSES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No {filter !== 'All' ? filter.toLowerCase() : ''} discipline records</div>
+            )}
+          </div>
+        )
+      }
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
 //  TAB 5 — Sickbay
 // ══════════════════════════════════════════════════════════════
 const emptySick = {
@@ -7342,6 +7479,7 @@ const emptySick = {
 
 function SickbayTab({ students, autoOpenForm, currentUser }) {
   const isAdmin = isAdminRole(currentUser?.role)
+  const mobile = useMobileView()
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -7502,7 +7640,38 @@ function SickbayTab({ students, autoOpenForm, currentUser }) {
 
       {loading
         ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
-        : (
+        : mobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {filtered.map(r => (
+              <div key={r.id} style={{ background: r.status === 'Admitted' ? '#eff6ff' : 'white', borderRadius: 12, padding: 14, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#1e293b' }}>{r.student_name}</div>
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                      {r.gcc_no ? `GCC-${r.gcc_no} · ` : ''}{r.class_name || '—'}{r._house ? ` · ${r._house}` : ''}{r._hostel_type ? ` · ${r._hostel_type}` : ''}
+                    </div>
+                    {r.student_id && <div style={{ fontSize: 10, color: '#16a34a', marginTop: 2 }}>🔗 linked</div>}
+                  </div>
+                  <span style={statusStyle(r.status)}>{r.status}</span>
+                </div>
+                <div style={{ fontSize: 12, color: '#374151', marginBottom: 4 }}><b>Complaint:</b> {r.complaint}</div>
+                {r.treatment && <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}><b>Treatment:</b> {r.treatment}</div>}
+                {r.referred_to && <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}><b>Referred:</b> {r.referred_to}</div>}
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>{r.date}{r.attended_by ? ` · Attended by ${r.attended_by}` : ''}</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => { setEditRec(r); setForm({ ...r, discharge_date: r.discharge_date || '' }); setShowForm(true) }} style={{ flex: 1, background: '#e8edfb', color: '#1433a8', border: 'none', borderRadius: 6, padding: '7px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️ Edit</button>
+                  {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ flex: 1, background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '7px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑 Remove</button>}
+                  {r.status === 'Admitted' && (
+                    <button onClick={() => handleDischarge(r.id)} style={{ flex: 1, background: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: 6, padding: '7px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✅ Discharge</button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No sickbay records found</div>
+            )}
+          </div>
+        ) : (
           <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1000 }}>
               <thead>
@@ -7580,6 +7749,7 @@ const emptyHouse = {
 
 function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   const isAdmin = isAdminRole(currentUser?.role)
+  const mobile = useMobileView()
   const { session: activeSession } = useActiveSession()
   const [houses, setHouses] = useState([])
   const [students, setStudents] = useState(propStudents || [])
@@ -7892,7 +8062,24 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               </div>
               {houseStudents.length === 0
                 ? <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No students assigned to this house yet</div>
-                : (
+                : mobile ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10 }}>
+                    {houseStudents.map(s => (
+                      <div key={s.id} style={{ background: '#f8fafc', borderRadius: 10, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <div>
+                          <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 13 }}>{s.name}</div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                            {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{s.gender || '—'} · {s.batch || '—'}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                            {s.course || '—'}{s.hostel_type ? ` · ${s.hostel_type}` : ''}
+                          </div>
+                        </div>
+                        {isAdmin && <button onClick={() => handleAssign(s, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>✕ Remove</button>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500 }}>
                     <thead>
                       <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
@@ -7930,6 +8117,20 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                 <div style={{ background: '#fff8f8', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontWeight: 700, color: '#b45309', fontSize: 13 }}>🚪 {houseDropouts.length} Dropout — Unassigned/Dropout signature (house left over from before they dropped out)</span>
                 </div>
+                {mobile ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10 }}>
+                    {houseDropouts.map(s => (
+                      <div key={s.id} style={{ background: '#fef2f2', borderRadius: 10, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <div>
+                          <div style={{ fontWeight: 600, color: '#7c2d12', fontSize: 13 }}>{s.name}</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</div>
+                          <div style={{ fontSize: 11, color: '#b45309', fontWeight: 700, marginTop: 2 }}>🚪 Unassigned/Dropout</div>
+                        </div>
+                        {isAdmin && <button onClick={() => handleAssign(s, '')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>✕ Clear House</button>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500 }}>
                   <tbody>
                     {houseDropouts.map(s => (
@@ -7944,6 +8145,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                     ))}
                   </tbody>
                 </table>
+                )}
               </div>
             )}
           </div>
@@ -8173,6 +8375,47 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                 <span style={{ fontWeight: 700, color: 'white', fontSize: 13 }}>📋 All Students — House Assignment</span>
                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)' }}>{unassignedCount} unassigned</span>
               </div>
+              {mobile ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10 }}>
+                  {filteredStudents.map(s => {
+                    const h = houses.find(h => normalizeHouse(h.name) === normalizeHouse(s.house))
+                    const hs = h ? getHouseStyle(h) : null
+                    return (
+                      <div key={s.id} style={{ background: '#f8fafc', borderRadius: 10, padding: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                          <div>
+                            <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 13 }}>{s.name}</div>
+                            <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                              {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{s.batch || '—'}{s.course ? ` · ${s.course}` : ''}
+                            </div>
+                          </div>
+                          {s.status === 'Dropout'
+                            ? <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: '#fef2f2', color: '#b45309', flexShrink: 0 }}>🚪 Dropout</span>
+                            : s.house && hs
+                            ? <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: hs.bg, color: hs.color, flexShrink: 0 }}>● {s.house}</span>
+                            : <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 600, flexShrink: 0 }}>⚠ Not assigned</span>
+                          }
+                        </div>
+                        {s.status === 'Dropout' ? (
+                          isAdmin && s.house ? (
+                            <button onClick={() => handleAssign(s, '')} style={{ width: '100%', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '7px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕ Clear House</button>
+                          ) : (
+                            <span style={{ fontSize: 12, color: '#94a3b8' }}>— Dropout —</span>
+                          )
+                        ) : isAdmin ? (
+                          <select value={s.house || ''} onChange={e => handleAssign(s, e.target.value)} style={{ ...inp, width: '100%', padding: '7px 10px', fontSize: 12 }}>
+                            <option value="">— Remove / None —</option>
+                            {houses.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+                          </select>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                  {filteredStudents.length === 0 && (
+                    <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>No students found</div>
+                  )}
+                </div>
+              ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 600 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
@@ -8227,6 +8470,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                   )}
                 </tbody>
               </table>
+              )}
             </div>
           )}
         </>
@@ -8434,6 +8678,7 @@ const MEAL_TYPES = ['Breakfast', 'Lunch', 'Tea', 'Dinner']
 
 function KitchenTab({ currentUser }) {
   const isAdmin = isAdminRole(currentUser?.role)
+  const mobile = useMobileView()
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -8563,7 +8808,30 @@ function KitchenTab({ currentUser }) {
 
       {loading
         ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div>
-        : (
+        : mobile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {filtered.map(r => (
+              <div key={r.id} style={{ background: 'white', borderRadius: 12, padding: 14, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1a2f4d' }}>{r.meal_type}</span>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>{r.date}</div>
+                  </div>
+                  {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>}
+                </div>
+                <div style={{ fontSize: 13, color: '#374151', marginBottom: 6 }}>{r.menu}</div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>
+                  {r.prepared_by && <span>By {r.prepared_by}</span>}
+                  {r.served_count ? <span>{r.prepared_by ? ' · ' : ''}Served {r.served_count}</span> : null}
+                </div>
+                {r.remarks && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>{r.remarks}</div>}
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No kitchen records found</div>
+            )}
+          </div>
+        ) : (
           <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 600 }}>
               <thead>
@@ -8841,7 +9109,7 @@ function Hostel() {
   const initialParams = useMemo(() => {
     try { return new URLSearchParams(window.location.search) } catch { return null }
   }, [])
-  const VALID_TABS = ['allotments','schedule','nightduty','discipline','sickbay','house','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
+  const VALID_TABS = ['allotments','schedule','nightduty','discipline','superintendentdash','sickbay','house','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
   const [activeTab, setActiveTab] = useState(() => {
     const t = initialParams?.get('tab')
     return t && VALID_TABS.includes(t) ? t : 'hmdashboard'
@@ -8952,6 +9220,7 @@ function Hostel() {
     schedule: <ScheduleTab currentUser={currentUser} />,
     nightduty: <NightDutyTab staffProfiles={staffProfiles} autoOpenForm={autoOpenForm?.tabId === 'nightduty' ? autoOpenForm : null} currentUser={currentUser} />,
     discipline: <DisciplineTab students={students} autoOpenForm={autoOpenForm?.tabId === 'discipline' ? autoOpenForm : null} currentUser={currentUser} />,
+    superintendentdash: <SuperintendentDashboard students={students} currentUser={currentUser} />,
     sickbay: <SickbayTab students={students} autoOpenForm={autoOpenForm?.tabId === 'sickbay' ? autoOpenForm : null} currentUser={currentUser} />,
     house: <HouseTab students={students} currentUser={currentUser} houseColorMap={houseColorMap} />,
     housemaster: <HousemasterTab currentUser={currentUser} />,
@@ -9342,6 +9611,63 @@ function StudentTransferTab({ students, currentUser }) {
         )}
       </div>
 
+      {mobile ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {filteredStudents.map(s => {
+            const isSelected = selectedIds.has(s.id)
+            const currentHouse = isAssigned(s) ? s.house : '—'
+            return (
+              <div key={s.id} onClick={() => toggleSelect(s.id)} style={{ background: isSelected ? '#f0fdf4' : 'white', border: isSelected ? '1.5px solid #16a34a' : '1px solid #f1f5f9', borderRadius: 12, padding: 14, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelect(s.id)}
+                      onClick={e => e.stopPropagation()}
+                      style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2 }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#1e293b' }}>{s.name}</div>
+                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                        {s.gcc_no ? `GCC-${s.gcc_no} · ` : ''}{s.batch || '—'}
+                      </div>
+                    </div>
+                  </div>
+                  {currentHouse !== '—' ? (
+                    <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1a2f4d', flexShrink: 0 }}>🏠 {currentHouse}</span>
+                  ) : (
+                    <span style={{ color: '#dc2626', fontWeight: 600, fontSize: 12, flexShrink: 0 }}>Unassigned</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }} onClick={e => e.stopPropagation()}>
+                  {targetHouse && (
+                    <button
+                      onClick={() => handleSingleTransfer(s)}
+                      disabled={transferring}
+                      style={{ ...btn('#16a34a'), flex: 1, fontSize: 12, padding: '7px', cursor: transferring ? 'wait' : 'pointer', opacity: transferring ? 0.6 : 1 }}
+                    >
+                      ➜ Move
+                    </button>
+                  )}
+                  {currentHouse !== '—' && (
+                    <button
+                      onClick={() => handleRemove(s)}
+                      disabled={transferring}
+                      style={{ ...btn('#fee2e2', '#dc2626'), flex: 1, fontSize: 12, padding: '7px', cursor: transferring ? 'wait' : 'pointer', opacity: transferring ? 0.6 : 1 }}
+                    >
+                      ✕ Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+          {filteredStudents.length === 0 && (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No students match the current filters.</div>
+          )}
+        </div>
+      ) : (
       <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 600 }}>
           <thead>
@@ -9428,6 +9754,7 @@ function StudentTransferTab({ students, currentUser }) {
           </tbody>
         </table>
       </div>
+      )}
 
     </div>
   )
