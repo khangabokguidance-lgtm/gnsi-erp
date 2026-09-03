@@ -891,6 +891,32 @@ function StaffSearchInput({ staff, onSelect, placeholder = 'Search staff by name
 // ══════════════════════════════════════════════════════════════
 // ── Helpers ──
 export const normalizeHouse = (h) => (h || '').toString().trim().toLowerCase()
+
+// Best-effort gender guess from a name — NOT reliable, used only as a
+// suggested default that admins can override. Manipuri/Indian names don't
+// fit Western name dictionaries (e.g. "Singh" is used by all genders), so
+// this only recognizes a short curated list of common given names and
+// returns null (unknown) otherwise rather than guessing wrong confidently.
+const GENDER_NAME_HINTS = {
+  M: ['shrinivash', 'romesh', 'arunkumar', 'himan', 'suresh', 'ramesh', 'rajesh',
+      'dinesh', 'mahesh', 'naresh', 'santosh', 'bikash',
+      'prakash', 'vikash', 'sanjoy', 'ranjit', 'ajit', 'sanjit', 'somorjit',
+      'ibomcha', 'ibungohal', 'inaocha', 'iboyaima', 'romeo', 'thoiba',
+      'sanatomba', 'ngangbam', 'gojen', 'gyaneshwor'],
+  F: ['ibemhal', 'ibetombi', 'ibeyaima', 'ibecha', 'sana', 'sanahanbi',
+      'rebika', 'monika', 'rita', 'sunita', 'anita', 'kavita', 'babita',
+      'ranjita', 'nirmala', 'chaoba', 'tombi', 'thoibi', 'leima', 'ema',
+      'ngangbi', 'chanu', 'devi', 'kumari'],
+}
+export const guessGender = (fullName) => {
+  const tokens = (fullName || '').toString().trim().toLowerCase().split(/\s+/)
+  for (const t of tokens) {
+    if (GENDER_NAME_HINTS.M.includes(t)) return 'M'
+    if (GENDER_NAME_HINTS.F.includes(t)) return 'F'
+  }
+  return null // unknown — let the admin decide, never guess silently wrong
+}
+export const genderIcon = (g) => g === 'M' ? '♂️' : g === 'F' ? '♀️' : '❔'
 const isAssigned = (s) => {
   const h = s.house
   return h !== null && h !== undefined && String(h).trim() !== ''
@@ -8119,8 +8145,16 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                         )}
                         {(h.captain || h.vice_captain) && (
                           <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-                            {h.captain && <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 99, background: hs.bg, color: hs.color, fontWeight: 700 }}>🎖 {h.captain}</span>}
-                            {h.vice_captain && <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 99, background: hs.bg, color: hs.color, fontWeight: 600 }}>🎗 {h.vice_captain}</span>}
+                            {h.captain && (() => {
+                              const match = houseStudents.find(s => (s.name || '').trim().toLowerCase() === h.captain.trim().toLowerCase())
+                              const g = match ? (match.gender === 'Male' ? 'M' : match.gender === 'Female' ? 'F' : null) : guessGender(h.captain)
+                              return <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 99, background: hs.bg, color: hs.color, fontWeight: 700 }}>🎖 {g && genderIcon(g)} {h.captain}</span>
+                            })()}
+                            {h.vice_captain && (() => {
+                              const match = houseStudents.find(s => (s.name || '').trim().toLowerCase() === h.vice_captain.trim().toLowerCase())
+                              const g = match ? (match.gender === 'Male' ? 'M' : match.gender === 'Female' ? 'F' : null) : guessGender(h.vice_captain)
+                              return <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 99, background: hs.bg, color: hs.color, fontWeight: 600 }}>🎗 {g && genderIcon(g)} {h.vice_captain}</span>
+                            })()}
                           </div>
                         )}
                         {hms.length > 0 && <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>👨‍🏫 {hms.map(m => m.name).join(', ')}</div>}
@@ -8205,7 +8239,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 //  TAB 7 — Housemasters
 // ══════════════════════════════════════════════════════════════
 const emptyHM = {
-  name: '', house: '', phone: '', email: '', designation: '',
+  name: '', house: '', gender: '', phone: '', email: '', designation: '',
   assigned_date: today(), status: 'Active', remarks: '',
 }
 
@@ -8303,12 +8337,26 @@ function HousemasterTab({ currentUser }) {
           <form onSubmit={handleSave}>
             {/* FIXED: was 1fr 1fr */}
             <div style={grid2}>
-              <div><label style={lbl}>Full Name *</label><input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required style={inp} /></div>
+              <div>
+                <label style={lbl}>Full Name *</label>
+                <input value={form.name} onChange={e => {
+                  const name = e.target.value
+                  setForm(f => ({ ...f, name, gender: f.gender || guessGender(name) || '' }))
+                }} required style={inp} />
+              </div>
               <div>
                 <label style={lbl}>Assigned House *</label>
                 <select value={form.house} onChange={e => setForm(f => ({ ...f, house: e.target.value }))} required style={inp}>
                   <option value="">— Select House —</option>
                   {houseNames.map(h => <option key={h}>{h}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Gender {!form.gender && form.name && <span style={{ color: '#94a3b8', fontWeight: 400 }}>(auto-detect unsure — please confirm)</span>}</label>
+                <select value={form.gender || ''} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))} style={inp}>
+                  <option value="">— Select —</option>
+                  <option value="M">Male</option>
+                  <option value="F">Female</option>
                 </select>
               </div>
               <div><label style={lbl}>Phone</label><input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} style={inp} /></div>
@@ -8343,7 +8391,7 @@ function HousemasterTab({ currentUser }) {
                   <div style={{ padding: '16px 18px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                       <div>
-                        <div style={{ fontWeight: 800, fontSize: 15, color: '#1e293b' }}>{r.name}</div>
+                        <div style={{ fontWeight: 800, fontSize: 15, color: '#1e293b' }}>{genderIcon(r.gender)} {r.name}</div>
                         <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{r.designation || 'Housemaster'}</div>
                       </div>
                       <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: hs.bg, color: hs.color }}>🏠 {r.house || '—'}</span>
