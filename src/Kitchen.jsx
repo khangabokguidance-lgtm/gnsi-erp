@@ -526,7 +526,7 @@ function PettyCashWidget({ entries, dateFilter }) {
   )
 }
 
-function MissingMealAlert({ entries, dateFilter }) {
+function MissingMealAlert({ entries, dateFilter, onLogMeal }) {
   if (dateFilter !== today()) return null
   const present = entries.filter(e=>e.expense_date===dateFilter).map(e=>e.meal_type)
   const overdue = MEAL_KEYS.filter(mk => {
@@ -542,9 +542,13 @@ function MissingMealAlert({ entries, dateFilter }) {
     }}>
       <span style={{ fontSize: 16, marginTop: 1 }}>⚠️</span>
       <div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', marginBottom: 6 }}>Missing meal entries — past scheduled time</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', marginBottom: 6 }}>Missing meal entries — tap to log now</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {overdue.map(mk => <MealBadge key={mk} type={mk} />)}
+          {overdue.map(mk => (
+            <button key={mk} type="button" onClick={() => onLogMeal?.(mk)} style={{ border: 'none', background: 'none', padding: 0, cursor: onLogMeal ? 'pointer' : 'default' }}>
+              <MealBadge type={mk} />
+            </button>
+          ))}
         </div>
       </div>
     </div>
@@ -1151,10 +1155,10 @@ function CookAttendancePanel({ onClose, showToast, isMobile }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ENTRY FORM
 // ═══════════════════════════════════════════════════════════════════════════════
-function EntryForm({ onSave, onCancel, editing, defaultDate, kitchenItems, isMobile }) {
+function EntryForm({ onSave, onCancel, editing, defaultDate, defaultMealType, kitchenItems, isMobile }) {
   const def = (k, fb='') => editing ? (editing[k]??fb) : fb
   const [form, setForm] = useState({
-    meal_type:    def('meal_type','lunch'),
+    meal_type:    editing ? def('meal_type','lunch') : (defaultMealType || 'lunch'),
     expense_date: def('expense_date', defaultDate||today()),
     amount:       def('amount',''),
     item_details: def('item_details',''),
@@ -1567,7 +1571,7 @@ function generateWhatsAppMsg(entries, dateStr) {
 function LedgerTab({
   entries, filterDate, setFilterDate, filterMeal, setFilterMeal,
   uniqueDates, filteredByMeal, locks, viewMonth, setFormOpen,
-  handleDelete, handleLockDay, handleUnlockDay, setEditing, setTab, isMobile, isAdmin
+  handleDelete, handleLockDay, handleUnlockDay, setEditing, setTab, isMobile, isAdmin, onLogMeal
 }) {
   return (
     <>
@@ -1589,7 +1593,7 @@ function LedgerTab({
       </div>
 
       {/* Alerts & Widgets */}
-      <MissingMealAlert entries={entries} dateFilter={filterDate} />
+      <MissingMealAlert entries={entries} dateFilter={filterDate} onLogMeal={onLogMeal} />
       <CostPerStudentCard entries={entries} dateFilter={filterDate} />
       <MealKpiStrip entries={entries} dateFilter={filterDate} cols={isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)'} />
       <PettyCashWidget entries={entries} dateFilter={filterDate} />
@@ -1813,6 +1817,10 @@ export default function Kitchen({ currentUser }) {
   const [loading,      setLoading]      = useState(true)
   const [formOpen,     setFormOpen]     = useState(false)
   const [editing,      setEditing]      = useState(null)
+  // Set when the person taps a specific meal in MissingMealAlert, so the
+  // form opens pre-selected to exactly that meal rather than the generic
+  // "next overdue" default — a one-tap "log this now" shortcut.
+  const [pendingMealType, setPendingMealType] = useState(null)
   const [toast,        setToast]        = useState(null)
   const [filterDate,   setFilterDate]   = useState(today())
   const [filterMeal,   setFilterMeal]   = useState('all')
@@ -1870,6 +1878,34 @@ export default function Kitchen({ currentUser }) {
 
   useEffect(() => { load() }, [load])
 
+  // First-run "today's entry" landing: if this is the initial mount and
+  // today has nothing logged yet, open Add Entry immediately instead of
+  // showing an empty ledger — the whole point of opening Kitchen day to
+  // day is to log today's meals, so get straight to that. Only fires once
+  // (autoOpenedRef), so it never reopens after a save/reload or a month
+  // change, and only when looking at today (not some other month/date).
+  // Recomputes the smart meal default inline (same logic as nextMealToLog
+  // below) since hooks must sit together near the top of the component,
+  // before that value is derived further down in the render body.
+  const autoOpenedRef = useRef(false)
+  useEffect(() => {
+    if (loading || autoOpenedRef.current) return
+    autoOpenedRef.current = true
+    if (viewMonth !== monthKey() || filterDate !== today()) return
+    const todaysEntries = entries.filter(e => e.expense_date === today())
+    if (todaysEntries.length > 0) return
+    const logged = todaysEntries.map(e => e.meal_type)
+    const overdueNow = MEAL_KEYS.filter(mk => {
+      if (logged.includes(mk)) return false
+      const [h, m] = MEALS[mk].time.split(':').map(Number)
+      return h * 100 + m < nowHHMM()
+    })
+    const smartDefault = overdueNow[0] || MEAL_KEYS.find(mk => !logged.includes(mk)) || MEAL_KEYS[0]
+    setEditing(null)
+    setPendingMealType(smartDefault)
+    setFormOpen(true)
+  }, [loading])
+
   const handleSave = async (eid, form) => {
     const row = {
       meal_type:    form.meal_type,
@@ -1894,7 +1930,7 @@ export default function Kitchen({ currentUser }) {
       if (error) { showToast('Save failed: '+error.message, '#dc2626'); return }
       showToast('Entry saved ✓', '#16a34a')
     }
-    setFormOpen(false); setEditing(null); load()
+    setFormOpen(false); setEditing(null); setPendingMealType(null); load()
   }
 
   const handleDelete = async id => {
@@ -1950,7 +1986,22 @@ export default function Kitchen({ currentUser }) {
   showCookAtt   ? 'attendance' : null
   const filteredByMeal = filterMeal==='all' ? entries : entries.filter(e=>e.meal_type===filterMeal)
   const uniqueDates    = [...new Set(filteredByMeal.map(e=>e.expense_date))].sort().reverse()
-  const todayTotal     = entries.filter(e=>e.expense_date===today()).reduce((s,e)=>s+Number(e.amount),0)
+  const todayEntries   = entries.filter(e=>e.expense_date===today())
+  const todayTotal     = todayEntries.reduce((s,e)=>s+Number(e.amount),0)
+  // Practical default for a fresh "Add Entry": whichever of today's 4 meals
+  // is overdue (scheduled time has passed) and not yet logged, in meal
+  // order — so the person opening the form on a normal day lands straight
+  // on the meal they actually need to log, instead of always "Lunch".
+  const nextMealToLog = (() => {
+    const logged = todayEntries.map(e=>e.meal_type)
+    const overdue = MEAL_KEYS.filter(mk => {
+      if (logged.includes(mk)) return false
+      const [h,m] = MEALS[mk].time.split(':').map(Number)
+      return h*100+m < nowHHMM()
+    })
+    if (overdue.length) return overdue[0]
+    return MEAL_KEYS.find(mk => !logged.includes(mk)) || MEAL_KEYS[0]
+  })()
   const weekTotal      = entries.filter(e=>e.expense_date>=weekStart()).reduce((s,e)=>s+Number(e.amount),0)
   const monthTotal     = entries.reduce((s,e)=>s+Number(e.amount),0)
   const allDays        = [...new Set(entries.map(e=>e.expense_date))]
@@ -2031,9 +2082,10 @@ export default function Kitchen({ currentUser }) {
         {formOpen && (
           <EntryForm
             onSave={handleSave}
-            onCancel={()=>{ setFormOpen(false); setEditing(null) }}
+            onCancel={()=>{ setFormOpen(false); setEditing(null); setPendingMealType(null) }}
             editing={editing}
             defaultDate={filterDate}
+            defaultMealType={pendingMealType || (filterDate===today() ? nextMealToLog : 'lunch')}
             kitchenItems={kitchenItems}
             isMobile={isMobile}
           />
@@ -2058,6 +2110,7 @@ export default function Kitchen({ currentUser }) {
               setTab={setTab}
               isMobile={isMobile}
               isAdmin={isAdmin}
+              onLogMeal={mk => { setEditing(null); setPendingMealType(mk); setFormOpen(true) }}
             />
           )}
           {tab === 'analytics' && (
