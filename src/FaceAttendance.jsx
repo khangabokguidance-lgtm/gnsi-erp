@@ -1137,9 +1137,17 @@ function PayrollView({ staffId, isAdmin, staffList }) {
     if (!isAdmin) attQ = attQ.eq('staff_id', staffId)
     else if (staffFilter !== 'all') attQ = attQ.eq('staff_id', staffFilter)
 
-    let staffQ = supabase.from('staff_profiles').select('id, name, designation, department, basic_salary, seniority_allowance, loyalty_bonus, role_bonus')
+    let staffQ = supabase.from('staff_profiles').select('id, name, designation, department, basic_salary, seniority_allowance, loyalty_bonus, role_bonus, status')
     if (!isAdmin) staffQ = staffQ.eq('id', staffId)
     else if (staffFilter !== 'all') staffQ = staffQ.eq('id', staffFilter)
+    // BUGFIX: this had no active/inactive filter at all when browsing "all"
+    // staff, so anyone marked Inactive (resigned/exited, see the Inactive
+    // flow at line ~2549) still got a full payroll row generated every
+    // month — a real risk of generating and paying salary for someone no
+    // longer employed. Only applied for the "all" view: an admin explicitly
+    // picking one staff_id from staffFilter (e.g. to pull a former
+    // employee's final month's payslip) can still reach an Inactive record.
+    else staffQ = staffQ.neq('status', 'Inactive')
 
     let advQ = supabase.from('staff_advances').select('staff_id, amount, repaid_amount, repay_months, status').eq('status', 'Active')
     if (!isAdmin) advQ = advQ.eq('staff_id', staffId)
@@ -1219,7 +1227,22 @@ function PayrollView({ staffId, isAdmin, staffList }) {
       const g = gross(s)
       const totalDed = lateDed + absentDed + earlyDed + halfDayDed + advDed + adminDed
       const net = g - totalDed
-      return { staff: s, d, lateDed, absentDed, earlyDed, halfDayDed, advDed, adminDed, gross: g, totalDed, net }
+      // Catches NULL/undefined AND an explicit 0 — a real staff.basic_salary
+      // of exactly 0 is indistinguishable on this dashboard from "not set
+      // yet" (confirmed real cases: two active staff both showed
+      // basic_salary=0, both generating a near-empty payslip silently
+      // rather than an error). If a staff member's true base pay genuinely
+      // is ₹0 (e.g. unpaid intern), this over-flags them — acceptable,
+      // since a false "check this" costs far less than a silently unpaid
+      // staff member.
+      const missingBasicSalary = s.basic_salary === null || s.basic_salary === undefined || Number(s.basic_salary) === 0
+      // Same idea for attendance: a staff member with zero geo rows this
+      // month (never punched at all, vs. punched-but-Absent) nets to
+      // gross - advances - adminDed only, with no late/absent/half-day
+      // deduction applied — indistinguishable on screen from someone who
+      // was perfectly present unless flagged.
+      const noAttendanceThisMonth = !perDay[s.id]
+      return { staff: s, d, lateDed, absentDed, earlyDed, halfDayDed, advDed, adminDed, gross: g, totalDed, net, missingBasicSalary, noAttendanceThisMonth }
     }).sort((a, b) => (a.staff.name || '').localeCompare(b.staff.name || ''))
   }, [staffFull, perDay, advMap, rules, existingSalaryRows])
 
@@ -1453,6 +1476,18 @@ function PayrollView({ staffId, isAdmin, staffList }) {
         )}
       </div>
 
+      {/* No active deduction rule at all: every late/absent/half-day/early-
+          out deduction below silently computes as ₹0 (see LATE/ABSENT/
+          EARLY/HALFDAY falling back to `|| 0` in rows above), which looks
+          identical on screen to "this rule genuinely charges nothing" —
+          flag it plainly so admin doesn't run payroll believing deductions
+          were applied when none were. */}
+      {isAdmin && !rules && (
+        <div style={{ background: PAY.redBg, border: `1px solid ${PAY.red}55`, borderRadius: PAY.radius, padding: '12px 16px', marginBottom: 14, fontSize: 12.5, color: PAY.red, fontWeight: 600 }}>
+          ⚠ No active salary deduction rule found — late/absent/half-day/early-out deductions will all compute as ₹0 this month.
+        </div>
+      )}
+
       {/* #1 search, #8 designation filter, #2 sort */}
       {isAdmin && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
@@ -1564,6 +1599,12 @@ function PayrollView({ staffId, isAdmin, staffList }) {
             if (r.d.halfDay > 0) flags.push({ label: `${r.d.halfDay} half day`, color: '#0369A1', bg: '#EFF8FF' })
             if (r.d.absent > 0) flags.push({ label: `${r.d.absent} absent`, color: PAY.red, bg: PAY.redBg })
             if (r.d.earlyOut > 0) flags.push({ label: `${r.d.earlyOut} early out`, color: PAY.amber, bg: PAY.amberBg })
+            // Data-integrity warnings, distinct from attendance flags above:
+            // these don't describe the staff member's month, they describe a
+            // gap that makes this row's numbers unreliable. See gross()/
+            // noAttendanceThisMonth comments where these are computed.
+            if (r.missingBasicSalary) flags.push({ label: `⚠ basic salary is ${fmtRupee(Number(r.staff.basic_salary) || 0)}`, color: PAY.red, bg: PAY.redBg })
+            if (r.noAttendanceThisMonth) flags.push({ label: '⚠ no attendance this month', color: PAY.red, bg: PAY.redBg })
             return (
               <div key={r.staff.id} style={{ background: PAY.card, border: `1px solid ${isSelected ? PAY.blue : PAY.cardBorder}`, borderRadius: PAY.radius, boxShadow: PAY.shadow, overflow: 'hidden' }}>
                 {/* Card header — tap to expand, payment-app row: name left, net amount right */}

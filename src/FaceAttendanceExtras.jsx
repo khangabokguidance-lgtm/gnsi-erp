@@ -231,7 +231,7 @@ function AdminAttendanceRoster({ staffList, showToast, onNavigate, currentUserna
   }, [geoRows])
 
   const summary = useMemo(() => {
-    const counts = { Present: 0, Absent: 0, 'Half Day': 0, Leave: 0 }
+    const counts = { Present: 0, Absent: 0, 'Half Day': 0, Leave: 0, Late: 0 }
     let totalLateMin = 0
     let punchIn = 0, punchOut = 0
     for (const s of staffList) {
@@ -242,14 +242,23 @@ function AdminAttendanceRoster({ staffList, showToast, onNavigate, currentUserna
       // this count (e.g. dashboard showing "14 Present" while most of the
       // list actually shows AB).
       const status = mark?.status || geo?.status || null
-      if (status) counts[status] = (counts[status] || 0) + 1
+      // BUGFIX: `counts` only had 4 keys (Present/Absent/Half Day/Leave),
+      // so a real geo status of "Late" (or "Flagged") silently created an
+      // untracked key with nowhere to render — those people counted toward
+      // Punch in below but vanished from every stat card above, which is
+      // exactly the "14 punch-ins, only 7 Present, where did the rest go"
+      // mismatch. Any status outside the known set now falls into an
+      // "Other" bucket instead of disappearing.
+      if (status) counts[status] = (counts[status] ?? 0) + 1
       if (geo) {
         totalLateMin += geo.late_minutes || 0
         if (geo.check_in_time) punchIn += 1
         if (geo.check_out_time) punchOut += 1
       }
     }
-    return { ...counts, fineMinutes: totalLateMin, punchIn, punchOut }
+    const known = ['Present', 'Absent', 'Half Day', 'Leave', 'Late']
+    const other = Object.entries(counts).filter(([k]) => !known.includes(k)).reduce((s, [, v]) => s + v, 0)
+    return { ...counts, other, fineMinutes: totalLateMin, punchIn, punchOut }
   }, [staffList, marks, geoByStaff])
 
   const setMark = async (staffId, status) => {
@@ -257,6 +266,8 @@ function AdminAttendanceRoster({ staffList, showToast, onNavigate, currentUserna
     // Server-side enforced: set_attendance_mark checks the caller's actual
     // portal_users role before writing, so this can't be bypassed by
     // disabling the UI check alone (see 009_secure_attendance_marks.sql).
+    // It also now refuses to override a day that already has a REAL punch
+    // (see 010_link_punch_and_marks.sql) — surfaced below via data.message.
     const { data, error } = await supabase.rpc('set_attendance_mark', {
       p_acting_username: currentUsername,
       p_staff_id: staffId,
@@ -266,6 +277,34 @@ function AdminAttendanceRoster({ staffList, showToast, onNavigate, currentUserna
     if (error) showToast?.('Could not save: ' + error.message, 'err')
     else if (!data?.success) showToast?.(data?.message || 'Not allowed', 'err')
     else { showToast?.(`Marked ${status}`, 'ok'); fetchDay() }
+    setSavingId(null)
+  }
+
+  // Admin entering a manual in/out time for a staff member with no punch
+  // record that day (see admin_set_manual_punch in 010_link_punch_and_marks.sql).
+  // These times are tagged marked_by='admin-manual' so they stay clearly
+  // distinguishable from a real face/GPS scan, and the DB trigger derives
+  // the Present/Half Day mark from them automatically — no separate
+  // set_attendance_mark call needed for that case.
+  const setManualPunch = async (staffId, checkInLocal, checkOutLocal) => {
+    setSavingId(staffId)
+    const toIso = (localTime) => {
+      if (!localTime) return null
+      const [h, m] = localTime.split(':').map(Number)
+      const d = new Date(date)
+      d.setHours(h, m, 0, 0)
+      return d.toISOString()
+    }
+    const { data, error } = await supabase.rpc('admin_set_manual_punch', {
+      p_acting_username: currentUsername,
+      p_staff_id: staffId,
+      p_date: date,
+      p_check_in_time: toIso(checkInLocal),
+      p_check_out_time: toIso(checkOutLocal),
+    })
+    if (error) showToast?.('Could not save: ' + error.message, 'err')
+    else if (!data?.success) showToast?.(data?.message || 'Not allowed', 'err')
+    else { showToast?.('Manual punch saved', 'ok'); fetchDay() }
     setSavingId(null)
   }
 
@@ -299,11 +338,14 @@ function AdminAttendanceRoster({ staffList, showToast, onNavigate, currentUserna
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 4 }}>
         {[
           { label: 'Present', value: summary.Present, color: '#16a34a' },
+          { label: 'Late', value: summary.Late, color: '#d97706' },
           { label: 'Absent', value: summary.Absent, color: '#dc2626' },
           { label: 'Half day', value: summary['Half Day'], color: '#ca8a04' },
           { label: 'Leave', value: summary.Leave, color: '#2563eb' },
           { label: 'Fine (min)', value: summary.fineMinutes, color: '#b45309' },
           { label: 'Punch in', value: summary.punchIn, color: '#0B1E3D' },
+          { label: 'Punch out', value: summary.punchOut, color: '#334155' },
+          ...(summary.other > 0 ? [{ label: 'Other', value: summary.other, color: '#64748b' }] : []),
         ].map(c => (
           <div key={c.label} style={{ background: 'white', borderRadius: 10, padding: 12, boxShadow: '0 2px 6px rgba(0,0,0,.05)' }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: c.color }}>{c.value}</div>
@@ -335,7 +377,7 @@ function AdminAttendanceRoster({ staffList, showToast, onNavigate, currentUserna
               <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>Not marked ({unmarked.length})</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
                 {unmarked.map(s => (
-                  <StaffMarkRow key={s.id} staff={s} mark={null} onMark={setMark} saving={savingId === s.id} disabled={false} />
+                  <StaffMarkRow key={s.id} staff={s} mark={null} onMark={setMark} onManualPunch={setManualPunch} saving={savingId === s.id} disabled={false} />
                 ))}
               </div>
             </div>
@@ -345,7 +387,7 @@ function AdminAttendanceRoster({ staffList, showToast, onNavigate, currentUserna
               <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>Marked ({marked.length})</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
                 {marked.map(s => (
-                  <StaffMarkRow key={s.id} staff={s} mark={marks[s.id]} geo={geoByStaff[s.id]} onMark={setMark} saving={savingId === s.id} disabled={false} />
+                  <StaffMarkRow key={s.id} staff={s} mark={marks[s.id]} geo={geoByStaff[s.id]} onMark={setMark} onManualPunch={setManualPunch} saving={savingId === s.id} disabled={false} />
                 ))}
               </div>
             </div>
@@ -512,41 +554,103 @@ function AdminDateRangeReport({ staffList, search, setSearch }) {
   )
 }
 
-function StaffMarkRow({ staff, mark, geo, onMark, saving, disabled }) {
+function StaffMarkRow({ staff, mark, geo, onMark, onManualPunch, saving, disabled }) {
   // BUGFIX: this used to fall back to a hardcoded 'Present' whenever ANY
   // geo row existed for the day, ignoring geo.status entirely — so a
   // Flagged/fraud-suspected/EarlyOut/auto-marked-Absent row still rendered
   // as a clean green "P". Use the geo row's actual status instead.
   const currentStatus = mark?.status || geo?.status || null
+  // A real punch = a geo row with check_in_time set that did NOT come from
+  // admin's own manual entry. Once that exists, the server (see
+  // set_attendance_mark in 010_link_punch_and_marks.sql) refuses to let
+  // admin override the status by hand — the P/HD/AB/L buttons are locked
+  // and the mark is driven by the punch instead.
+  const hasRealPunch = !!geo?.check_in_time && geo?.marked_by !== 'admin-manual'
+  const isAdminManualPunch = !!geo?.check_in_time && geo?.marked_by === 'admin-manual'
+  const [showManualEntry, setShowManualEntry] = useState(false)
+  const [manualIn, setManualIn] = useState('')
+  const [manualOut, setManualOut] = useState('')
+
   // A geo row with no check_in_time is an auto-absent-sweep entry, not a
   // real check-in attempt — label it plainly instead of implying "In —"
   // ever happened. (Not relying on marked_by here: sample data shows the
   // sweep writes marked_by='self', which is itself a separate mislabel
   // worth fixing in mark_absent_no_checkin — flagging, not fixing here.)
+  const fmtTime = t => new Date(t).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
   const subtitle = geo?.check_in_time
-    ? `In ${new Date(geo.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
+    ? `In ${fmtTime(geo.check_in_time)}${geo.check_out_time ? ` · Out ${fmtTime(geo.check_out_time)}` : ''}${isAdminManualPunch ? ' · entered by admin' : ''}`
     : geo && !mark
       ? 'Auto-marked (no check-in)'
       : (currentStatus || 'Not marked')
+
+  const buttonsLocked = disabled || saving || hasRealPunch
+
+  const handleClick = (status) => {
+    // Present/Half Day for a day with no punch yet means admin is
+    // vouching for hours worked without a scan — collect real in/out
+    // times instead of writing a bare status with nothing behind it.
+    if (!geo?.check_in_time && (status === 'Present' || status === 'Half Day')) {
+      setShowManualEntry(status)
+      return
+    }
+    onMark(staff.id, status)
+  }
+
+  const submitManual = () => {
+    if (!manualIn) return
+    onManualPunch(staff.id, manualIn, showManualEntry === 'Present' ? manualOut : null)
+    setShowManualEntry(false)
+    setManualIn('')
+    setManualOut('')
+  }
+
   return (
     <div style={{ background: 'white', borderRadius: 10, padding: '10px 12px', boxShadow: '0 1px 4px rgba(0,0,0,.05)' }}>
       <div style={{ fontWeight: 700, fontSize: 12.5, color: '#1e293b', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{staff.name}</div>
       <div style={{ fontSize: 10.5, color: currentStatus === 'Present' ? '#94a3b8' : '#dc2626', fontWeight: 600, marginBottom: 8 }}>
         {subtitle}
       </div>
-      <div style={{ display: 'flex', gap: 4 }}>
-        {Object.entries(MARK_META).map(([status, meta]) => (
-          <button key={status} disabled={disabled || saving} onClick={() => onMark(staff.id, status)}
-            style={{
-              flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 10.5, fontWeight: 700, cursor: disabled ? 'default' : 'pointer',
-              border: `1px solid ${currentStatus === status ? meta.color : '#e2e8f0'}`,
-              background: currentStatus === status ? meta.bg : 'white',
-              color: currentStatus === status ? meta.color : '#94a3b8',
-            }}>
-            {meta.label}
-          </button>
-        ))}
-      </div>
+
+      {hasRealPunch ? (
+        <div style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic', padding: '4px 0' }}>
+          Locked — status follows the punch record
+        </div>
+      ) : showManualEntry ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <input type="time" value={manualIn} onChange={e => setManualIn(e.target.value)}
+              placeholder="In" style={{ flex: 1, fontSize: 11, padding: '4px 6px', borderRadius: 6, border: '1px solid #d1d5db' }} />
+            {showManualEntry === 'Present' && (
+              <input type="time" value={manualOut} onChange={e => setManualOut(e.target.value)}
+                placeholder="Out" style={{ flex: 1, fontSize: 11, padding: '4px 6px', borderRadius: 6, border: '1px solid #d1d5db' }} />
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button onClick={submitManual} disabled={!manualIn || (showManualEntry === 'Present' && !manualOut)}
+              style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 10.5, fontWeight: 700, cursor: 'pointer', border: '1px solid #16a34a', background: '#dcfce7', color: '#16a34a' }}>
+              Save
+            </button>
+            <button onClick={() => setShowManualEntry(false)}
+              style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 10.5, fontWeight: 700, cursor: 'pointer', border: '1px solid #e2e8f0', background: 'white', color: '#94a3b8' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 4 }}>
+          {Object.entries(MARK_META).map(([status, meta]) => (
+            <button key={status} disabled={buttonsLocked} onClick={() => handleClick(status)}
+              style={{
+                flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 10.5, fontWeight: 700, cursor: buttonsLocked ? 'default' : 'pointer',
+                border: `1px solid ${currentStatus === status ? meta.color : '#e2e8f0'}`,
+                background: currentStatus === status ? meta.bg : 'white',
+                color: currentStatus === status ? meta.color : '#94a3b8',
+              }}>
+              {meta.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
