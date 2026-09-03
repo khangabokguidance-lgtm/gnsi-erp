@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import { isAdminRole } from './App'
+import jsPDF from 'jspdf'
 
 // ─── Shared style tokens (kept consistent with parent file) ───
 const inp = {
@@ -1087,40 +1088,70 @@ const emptyHMA = {
 //  to time slots, plus a shared instructions block — closer to a
 //  printed daily duty notice than a checklist.
 // ══════════════════════════════════════════════════════════════
-const emptyDutyRow = { time: '', duty: '', assigned_to: '' }
-const emptyDutyRoster = {
+const makeDutyRowId = () => `d_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+const emptyDutyRow = () => ({ id: makeDutyRowId(), time: '', duty: '', assigned_to: '' })
+const emptyDutyRoster = () => ({
   date: today_str(),
-  duties: [{ ...emptyDutyRow }],
+  duties: [emptyDutyRow()],
   instructions: '',
-}
+})
 
 function DutyRosterPanel({ currentUser }) {
   const isAdmin = isAdminRole(currentUser?.role)
   const [viewDate, setViewDate] = useState(today_str())
   const [roster, setRoster] = useState(null)
+  const [completions, setCompletions] = useState({}) // { [duty_id]: true }
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState(emptyDutyRoster)
+  const [form, setForm] = useState(emptyDutyRoster())
+  const [waStatus, setWaStatus] = useState('idle') // idle | preparing | ready
+  const [pdfStatus, setPdfStatus] = useState('idle')
 
   const load = async (date) => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('hostel_duty_rosters')
-      .select('*')
-      .eq('date', date)
-      .maybeSingle()
+    const [{ data, error }, { data: comp, error: compError }] = await Promise.all([
+      supabase.from('hostel_duty_rosters').select('*').eq('date', date).maybeSingle(),
+      supabase.from('hostel_duty_completions').select('duty_id, done').eq('date', date),
+    ])
     if (error) console.error('hostel_duty_rosters fetch error (has the table been created?):', error)
+    if (compError) console.error('hostel_duty_completions fetch error (has the table been created?):', compError)
     setRoster(data || null)
+    const compMap = {}
+    ;(comp || []).forEach(c => { if (c.done) compMap[c.duty_id] = true })
+    setCompletions(compMap)
     setLoading(false)
     setEditing(false)
   }
   useEffect(() => { load(viewDate) }, [viewDate])
 
+  const toggleCompletion = async (dutyId) => {
+    const nextVal = !completions[dutyId]
+    setCompletions(c => ({ ...c, [dutyId]: nextVal })) // optimistic
+    const { error } = await supabase.from('hostel_duty_completions').upsert([{
+      date: viewDate,
+      duty_id: dutyId,
+      done: nextVal,
+      marked_by: currentUser?.name || null,
+      marked_at: new Date().toISOString(),
+    }], { onConflict: 'date,duty_id' })
+    if (error) {
+      console.error('Failed to save duty completion:', error)
+      setCompletions(c => ({ ...c, [dutyId]: !nextVal })) // roll back
+      alert('Could not save — check your connection and try again.')
+    }
+  }
+
   const startEdit = () => {
     setForm(roster
-      ? { date: roster.date, duties: roster.duties?.length ? roster.duties : [{ ...emptyDutyRow }], instructions: roster.instructions || '' }
-      : { ...emptyDutyRoster, date: viewDate }
+      ? {
+          date: roster.date,
+          duties: roster.duties?.length
+            ? roster.duties.map(d => ({ ...d, id: d.id || makeDutyRowId() }))
+            : [emptyDutyRow()],
+          instructions: roster.instructions || '',
+        }
+      : { ...emptyDutyRoster(), date: viewDate }
     )
     setEditing(true)
   }
@@ -1132,7 +1163,7 @@ function DutyRosterPanel({ currentUser }) {
       return { ...f, duties }
     })
   }
-  const addDutyRow = () => setForm(f => ({ ...f, duties: [...f.duties, { ...emptyDutyRow }] }))
+  const addDutyRow = () => setForm(f => ({ ...f, duties: [...f.duties, emptyDutyRow()] }))
   const removeDutyRow = (i) => setForm(f => ({ ...f, duties: f.duties.filter((_, idx) => idx !== i) }))
 
   const handleSave = async (e) => {
@@ -1140,7 +1171,7 @@ function DutyRosterPanel({ currentUser }) {
     if (!isAdmin) { alert('Only admins can create or edit the duty roster.'); return }
     setSaving(true)
     const cleanDuties = form.duties
-      .map(d => ({ time: d.time.trim(), duty: d.duty.trim(), assigned_to: d.assigned_to.trim() }))
+      .map(d => ({ id: d.id || makeDutyRowId(), time: d.time.trim(), duty: d.duty.trim(), assigned_to: d.assigned_to.trim() }))
       .filter(d => d.duty || d.assigned_to)
     const payload = {
       date: form.date,
@@ -1167,6 +1198,141 @@ function DutyRosterPanel({ currentUser }) {
     try {
       return new Date(dstr + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })
     } catch { return dstr }
+  }
+
+  // ── WhatsApp share — same wa.me pattern used elsewhere in the app
+  //    (attendance/certificate sharing): builds a plain-text summary
+  //    and opens a WhatsApp chat with it prefilled. WhatsApp links
+  //    can't auto-attach a file, so this is text-only (no PDF attach).
+  const buildDutyMessage = () => {
+    if (!roster) return ''
+    const lines = [
+      `📋 *DAILY DUTY LIST*`,
+      `Date: ${dateLabel(roster.date)}`,
+      '',
+      ...(roster.duties || []).map(d => `• ${d.time || '—'} — ${d.duty || '—'} — _${d.assigned_to || '—'}_`),
+    ]
+    if (roster.instructions) {
+      lines.push('', '*IMPORTANT INSTRUCTIONS*')
+      roster.instructions.split('\n').filter(l => l.trim()).forEach(l => lines.push(`* ${l.replace(/^\*\s*/, '').trim()}`))
+    }
+    return lines.join('\n')
+  }
+
+  const handleSendWhatsApp = () => {
+    if (!roster) return
+    setWaStatus('preparing')
+    const message = buildDutyMessage()
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`
+    setTimeout(() => {
+      window.open(waUrl, '_blank', 'noopener,noreferrer')
+      setWaStatus('ready')
+      setTimeout(() => setWaStatus('idle'), 2000)
+    }, 300)
+  }
+
+  // ── PDF generator — a standalone, portrait "notice" layout (not the
+  //    generic landscape table used by ReportExportButtons elsewhere)
+  //    since a duty roster reads like a printed daily notice: a duty
+  //    table followed by a separate instructions block.
+  const handleGeneratePDF = () => {
+    if (!roster) return
+    setPdfStatus('generating')
+    const NAVY = [30, 58, 95], GOLD = [202, 138, 4], GREY = [100, 116, 139]
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const W = 210, marginX = 16
+    let y = 20
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(15)
+    doc.setTextColor(...NAVY)
+    doc.text('Guidance Navodaya & Sainik Institute', W / 2, y, { align: 'center' })
+    y += 7
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(12)
+    doc.setTextColor(...GREY)
+    doc.text('Daily Duty List', W / 2, y, { align: 'center' })
+    y += 6
+    doc.setFontSize(10)
+    doc.text(`Date: ${dateLabel(roster.date)}`, W / 2, y, { align: 'center' })
+    y += 6
+    doc.setDrawColor(...GOLD)
+    doc.setLineWidth(0.6)
+    doc.line(marginX, y, W - marginX, y)
+    y += 10
+
+    // Duty table
+    const usableWidth = W - marginX * 2
+    const colWeights = [0.9, 1.6, 1.5]
+    const totalWeight = colWeights.reduce((a, b) => a + b, 0)
+    const colWidths = colWeights.map(w => (usableWidth * w) / totalWeight)
+    const headers = ['Time', 'Duty / Responsibility', 'Assigned To']
+    const rowHeight = 9
+    const headerHeight = 9
+
+    const drawTableHeader = () => {
+      doc.setFillColor(...NAVY)
+      doc.rect(marginX, y, usableWidth, headerHeight, 'F')
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(9)
+      doc.setTextColor(255, 255, 255)
+      let x = marginX
+      headers.forEach((h, i) => { doc.text(h, x + 3, y + 6); x += colWidths[i] })
+      y += headerHeight
+    }
+    drawTableHeader()
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+
+    const duties = roster.duties || []
+    if (duties.length === 0) {
+      doc.setTextColor(...GREY)
+      doc.text('No duty rows added', marginX + 3, y + 6)
+      y += rowHeight
+    }
+    duties.forEach((d, i) => {
+      if (y + rowHeight > 280) { doc.addPage(); y = 20; drawTableHeader() }
+      if (i % 2 === 1) { doc.setFillColor(244, 246, 249); doc.rect(marginX, y, usableWidth, rowHeight, 'F') }
+      doc.setTextColor(30, 41, 59)
+      let x = marginX
+      const cells = [d.time || '—', d.duty || '—', d.assigned_to || '—']
+      cells.forEach((c, ci) => {
+        const lines = doc.splitTextToSize(String(c), colWidths[ci] - 5)
+        doc.text(lines, x + 3, y + 6)
+        x += colWidths[ci]
+      })
+      doc.setDrawColor(226, 232, 240)
+      doc.line(marginX, y + rowHeight, W - marginX, y + rowHeight)
+      y += rowHeight
+    })
+    y += 8
+
+    // Instructions
+    if (roster.instructions) {
+      const lines = roster.instructions.split('\n').filter(l => l.trim())
+      if (lines.length) {
+        if (y + 14 > 280) { doc.addPage(); y = 20 }
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(10.5)
+        doc.setTextColor(146, 64, 14)
+        doc.text('IMPORTANT INSTRUCTIONS', marginX, y)
+        y += 6
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(9.5)
+        doc.setTextColor(120, 53, 15)
+        lines.forEach(line => {
+          const clean = '•  ' + line.replace(/^\*\s*/, '').trim()
+          const wrapped = doc.splitTextToSize(clean, usableWidth)
+          if (y + wrapped.length * 5 > 280) { doc.addPage(); y = 20 }
+          doc.text(wrapped, marginX, y)
+          y += wrapped.length * 5 + 1.5
+        })
+      }
+    }
+
+    doc.save(`Duty_Roster_${roster.date}.pdf`)
+    setPdfStatus('ready')
+    setTimeout(() => setPdfStatus('idle'), 2000)
   }
 
   return (
@@ -1221,30 +1387,65 @@ function DutyRosterPanel({ currentUser }) {
         </div>
       ) : (
         <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'hidden' }}>
-          <div style={{ background: '#1e3a5f', padding: '16px 22px' }}>
-            <div style={{ color: 'white', fontWeight: 800, fontSize: 16 }}>📋 Daily Duty List</div>
-            <div style={{ color: 'rgba(255,255,255,.75)', fontSize: 13, marginTop: 2 }}>{dateLabel(roster.date)}</div>
+          <div style={{ background: '#1e3a5f', padding: '16px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <div style={{ color: 'white', fontWeight: 800, fontSize: 16 }}>📋 Daily Duty List</div>
+              <div style={{ color: 'rgba(255,255,255,.75)', fontSize: 13, marginTop: 2 }}>{dateLabel(roster.date)}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                onClick={handleGeneratePDF}
+                disabled={pdfStatus === 'generating'}
+                style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: pdfStatus === 'ready' ? '#16a34a' : '#eab308', color: pdfStatus === 'ready' ? 'white' : '#1e293b', fontSize: 12, fontWeight: 800, cursor: pdfStatus === 'generating' ? 'wait' : 'pointer' }}
+              >
+                {pdfStatus === 'generating' && '⏳ Generating...'}
+                {pdfStatus === 'ready' && '✅ Downloaded'}
+                {pdfStatus === 'idle' && '⬇️ PDF'}
+              </button>
+              <button
+                onClick={handleSendWhatsApp}
+                disabled={waStatus === 'preparing'}
+                style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: waStatus === 'ready' ? '#16a34a' : '#25D366', color: 'white', fontSize: 12, fontWeight: 800, cursor: waStatus === 'preparing' ? 'wait' : 'pointer' }}
+              >
+                {waStatus === 'preparing' && '⏳ Preparing...'}
+                {waStatus === 'ready' && '✅ Opened'}
+                {waStatus === 'idle' && '📲 WhatsApp'}
+              </button>
+            </div>
           </div>
 
           <div style={{ overflow: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 560 }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                  {['Time', 'Duty / Responsibility', 'Assigned To'].map(h => (
+                  {['Done', 'Time', 'Duty / Responsibility', 'Assigned To'].map(h => (
                     <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 700, color: '#374151', fontSize: 12 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {(roster.duties || []).map((d, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '11px 16px', fontWeight: 700, color: '#1e3a5f' }}>{d.time || '—'}</td>
-                    <td style={{ padding: '11px 16px', color: '#1e293b' }}>{d.duty || '—'}</td>
-                    <td style={{ padding: '11px 16px', color: '#374151' }}>{d.assigned_to || '—'}</td>
-                  </tr>
-                ))}
+                {(roster.duties || []).map((d, i) => {
+                  const done = !!completions[d.id]
+                  return (
+                    <tr key={d.id || i} style={{ borderBottom: '1px solid #f1f5f9', background: done ? '#f0fdf4' : 'white' }}>
+                      <td style={{ padding: '11px 16px' }}>
+                        <input
+                          type="checkbox"
+                          checked={done}
+                          onChange={() => d.id && toggleCompletion(d.id)}
+                          disabled={!d.id}
+                          title={d.id ? '' : 'Re-save this roster once to enable completion tracking on this row'}
+                          style={{ width: 18, height: 18, cursor: d.id ? 'pointer' : 'not-allowed' }}
+                        />
+                      </td>
+                      <td style={{ padding: '11px 16px', fontWeight: 700, color: '#1e3a5f', textDecoration: done ? 'line-through' : 'none' }}>{d.time || '—'}</td>
+                      <td style={{ padding: '11px 16px', color: '#1e293b', textDecoration: done ? 'line-through' : 'none' }}>{d.duty || '—'}</td>
+                      <td style={{ padding: '11px 16px', color: '#374151' }}>{d.assigned_to || '—'}</td>
+                    </tr>
+                  )
+                })}
                 {(!roster.duties || roster.duties.length === 0) && (
-                  <tr><td colSpan={3} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>No duty rows added</td></tr>
+                  <tr><td colSpan={4} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>No duty rows added</td></tr>
                 )}
               </tbody>
             </table>

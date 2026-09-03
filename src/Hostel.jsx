@@ -5212,6 +5212,12 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
   // notifyHousemasterByName). Surfaced here so a housemaster sees their
   // pending teaching-support task the moment they land on the dashboard.
   const [myDoubtTasks, setMyDoubtTasks] = useState([])
+  // Today's duty roster ("wall") — same hostel_duty_rosters /
+  // hostel_duty_completions tables the Duty Roster sub-tab under
+  // Activities reads/writes, surfaced here so an HM sees today's
+  // assignments and can tick them done right from the dashboard.
+  const [todayDuty, setTodayDuty] = useState(null)
+  const [dutyCompletions, setDutyCompletions] = useState({})
   // #10: this week's morning attendance rate per day, for the trend chart.
   const [weekTrend, setWeekTrend] = useState([]) // [{ date, presentPct }]
   const [loading, setLoading] = useState(true)
@@ -5227,7 +5233,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
       weekStart.setDate(weekStart.getDate() - 6)
       const weekStartStr = weekStart.toISOString().split('T')[0]
 
-      const [a, ev, l, s, m, d, n, ds, wk] = await Promise.all([
+      const [a, ev, l, s, m, d, n, ds, wk, dutyRes, dutyCompRes] = await Promise.all([
         supabase.from('attendance_records').select('*').eq('date', todayStr).eq('session', 'morning'),
         supabase.from('attendance_records').select('*').eq('date', todayStr).eq('session', 'evening'),
         supabase.from('leave_records').select('*').eq('from_date', todayStr).in('status', ['Approved', 'Pending']),
@@ -5239,6 +5245,8 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
           ? supabase.from('doubt_sessions').select('*').ilike('hm_name', hmName).eq('status', 'open').order('created_at', { ascending: false })
           : Promise.resolve({ data: [] }),
         fetchAllRows(() => supabase.from('attendance_records').select('date, status, session').eq('session', 'morning').gte('date', weekStartStr).lte('date', todayStr)),
+        supabase.from('hostel_duty_rosters').select('*').eq('date', todayStr).maybeSingle(),
+        supabase.from('hostel_duty_completions').select('duty_id, done').eq('date', todayStr),
       ])
       setAttendanceToday(a.data || [])
       setEveningToday(ev.data || [])
@@ -5248,6 +5256,10 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
       setDisciplineOpen(d.data || [])
       setNightDutyTonight(n.data)
       setMyDoubtTasks(ds.data || [])
+      setTodayDuty(dutyRes.data || null)
+      const dutyCompMap = {}
+      ;(dutyCompRes.data || []).forEach(c => { if (c.done) dutyCompMap[c.duty_id] = true })
+      setDutyCompletions(dutyCompMap)
 
       // Build the 7-day trend from the raw rows — one bar per calendar day
       // in the window, present% of whatever was actually marked that day
@@ -5278,6 +5290,23 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
 
   const presentCount = attendanceToday.filter(r => r.status === 'Present').length
   const absentCount = attendanceToday.filter(r => r.status === 'Absent').length
+
+  const toggleDutyCompletion = async (dutyId) => {
+    const nextVal = !dutyCompletions[dutyId]
+    setDutyCompletions(c => ({ ...c, [dutyId]: nextVal })) // optimistic
+    const { error } = await supabase.from('hostel_duty_completions').upsert([{
+      date: today(),
+      duty_id: dutyId,
+      done: nextVal,
+      marked_by: currentUser?.name || currentHousemaster?.name || null,
+      marked_at: new Date().toISOString(),
+    }], { onConflict: 'date,duty_id' })
+    if (error) {
+      console.error('Failed to save duty completion:', error)
+      setDutyCompletions(c => ({ ...c, [dutyId]: !nextVal })) // roll back
+    }
+  }
+
   // Shared active-only count — students.length alone includes Dropout/
   // Inactive students, which previously made the Roll Call quick-action's
   // "X/Y marked" ratio permanently short (a dropout is never getting
@@ -5391,6 +5420,27 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
                 </div>
               </div>
               <span style={{ fontSize: '18px', color: MD.color.onSecondaryContainer }}>→</span>
+            </div>
+          </div>
+        )}
+        {todayDuty && (todayDuty.duties || []).length > 0 && (
+          <div style={{ ...mobileCard, marginBottom: '14px' }}>
+            <div style={{ fontSize: '13px', fontWeight: '800', color: '#1e3a5f', marginBottom: '10px' }}>📋 Today's Duty</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {todayDuty.duties.map((d, i) => {
+                const done = !!dutyCompletions[d.id]
+                return (
+                  <div key={d.id || i} onClick={() => d.id && toggleDutyCompletion(d.id)} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: d.id ? 'pointer' : 'default' }}>
+                    <input type="checkbox" checked={done} onChange={() => d.id && toggleDutyCompletion(d.id)} disabled={!d.id} style={{ width: 17, height: 17, marginTop: 1, cursor: d.id ? 'pointer' : 'not-allowed' }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: done ? '#94a3b8' : '#1e293b', textDecoration: done ? 'line-through' : 'none' }}>
+                        {d.time ? `${d.time} — ` : ''}{d.duty || '—'}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>{d.assigned_to || '—'}</div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
@@ -5539,6 +5589,27 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
             </div>
           </div>
           <span style={{ fontSize: '20px', color: MD.color.onSecondaryContainer, fontWeight: '700' }}>→</span>
+        </div>
+      )}
+      {todayDuty && (todayDuty.duties || []).length > 0 && (
+        <div style={{ ...card, marginBottom: '20px' }}>
+          <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e3a5f', marginBottom: '14px' }}>📋 Today's Duty</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
+            {todayDuty.duties.map((d, i) => {
+              const done = !!dutyCompletions[d.id]
+              return (
+                <div key={d.id || i} onClick={() => d.id && toggleDutyCompletion(d.id)} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: done ? '#f0fdf4' : '#f8fafc', cursor: d.id ? 'pointer' : 'default' }}>
+                  <input type="checkbox" checked={done} onChange={() => d.id && toggleDutyCompletion(d.id)} disabled={!d.id} style={{ width: 18, height: 18, marginTop: 1, cursor: d.id ? 'pointer' : 'not-allowed' }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: done ? '#94a3b8' : '#1e293b', textDecoration: done ? 'line-through' : 'none' }}>
+                      {d.time ? `${d.time} — ` : ''}{d.duty || '—'}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: 2 }}>{d.assigned_to || '—'}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
       {/* ── Index-tab quick actions: flat surface cards with a colored top tab, not a filled tonal block ── */}
