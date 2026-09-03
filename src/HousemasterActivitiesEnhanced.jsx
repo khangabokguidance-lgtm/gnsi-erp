@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
+import { isAdminRole } from './App'
 
 // ─── Shared style tokens (kept consistent with parent file) ───
 const inp = {
@@ -1076,8 +1077,203 @@ const emptyHMA = {
   freq: HM_ACTIVITY_TYPES[0].freq, description: '', outcome: '', status: 'Completed',
 }
 
+
+// ══════════════════════════════════════════════════════════════
+//  Daily Duty Roster — dated staff duty assignments (Lunch,
+//  Toilet Cleanliness, Tea Break, Assembly, Dinner, etc.), distinct
+//  from DailyTaskChecklist (a housemaster's own fixed self-check
+//  list) and from Hostel.jsx's ScheduleTab (a recurring weekly
+//  routine template). This is a specific date, named staff assigned
+//  to time slots, plus a shared instructions block — closer to a
+//  printed daily duty notice than a checklist.
+// ══════════════════════════════════════════════════════════════
+const emptyDutyRow = { time: '', duty: '', assigned_to: '' }
+const emptyDutyRoster = {
+  date: today_str(),
+  duties: [{ ...emptyDutyRow }],
+  instructions: '',
+}
+
+function DutyRosterPanel({ currentUser }) {
+  const isAdmin = isAdminRole(currentUser?.role)
+  const [viewDate, setViewDate] = useState(today_str())
+  const [roster, setRoster] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState(emptyDutyRoster)
+
+  const load = async (date) => {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('hostel_duty_rosters')
+      .select('*')
+      .eq('date', date)
+      .maybeSingle()
+    if (error) console.error('hostel_duty_rosters fetch error (has the table been created?):', error)
+    setRoster(data || null)
+    setLoading(false)
+    setEditing(false)
+  }
+  useEffect(() => { load(viewDate) }, [viewDate])
+
+  const startEdit = () => {
+    setForm(roster
+      ? { date: roster.date, duties: roster.duties?.length ? roster.duties : [{ ...emptyDutyRow }], instructions: roster.instructions || '' }
+      : { ...emptyDutyRoster, date: viewDate }
+    )
+    setEditing(true)
+  }
+
+  const updateDutyRow = (i, field, val) => {
+    setForm(f => {
+      const duties = [...f.duties]
+      duties[i] = { ...duties[i], [field]: val }
+      return { ...f, duties }
+    })
+  }
+  const addDutyRow = () => setForm(f => ({ ...f, duties: [...f.duties, { ...emptyDutyRow }] }))
+  const removeDutyRow = (i) => setForm(f => ({ ...f, duties: f.duties.filter((_, idx) => idx !== i) }))
+
+  const handleSave = async (e) => {
+    e.preventDefault()
+    if (!isAdmin) { alert('Only admins can create or edit the duty roster.'); return }
+    setSaving(true)
+    const cleanDuties = form.duties
+      .map(d => ({ time: d.time.trim(), duty: d.duty.trim(), assigned_to: d.assigned_to.trim() }))
+      .filter(d => d.duty || d.assigned_to)
+    const payload = {
+      date: form.date,
+      duties: cleanDuties,
+      instructions: form.instructions,
+      updated_by: currentUser?.name || null,
+    }
+    const { error } = await supabase
+      .from('hostel_duty_rosters')
+      .upsert([payload], { onConflict: 'date' })
+    if (error) alert('Error: ' + error.message)
+    else { setEditing(false); load(form.date); if (form.date !== viewDate) setViewDate(form.date) }
+    setSaving(false)
+  }
+
+  const handleDelete = async () => {
+    if (!isAdmin || !roster) return
+    if (!window.confirm(`Delete the duty roster for ${roster.date}?`)) return
+    await supabase.from('hostel_duty_rosters').delete().eq('date', roster.date)
+    load(viewDate)
+  }
+
+  const dateLabel = (dstr) => {
+    try {
+      return new Date(dstr + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })
+    } catch { return dstr }
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <label style={{ ...lbl, marginBottom: 0 }}>Date</label>
+          <input type="date" value={viewDate} onChange={e => setViewDate(e.target.value)} style={{ ...inp, width: 'auto' }} />
+        </div>
+        {isAdmin && !editing && (
+          <button onClick={startEdit} style={btn()}>
+            {roster ? '✏️ Edit Roster' : '➕ Create Roster'}
+          </button>
+        )}
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 48, color: '#64748b' }}>⏳ Loading...</div>
+      ) : editing ? (
+        <form onSubmit={handleSave} style={{ background: 'white', borderRadius: 12, padding: 22, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
+          <div style={{ marginBottom: 16 }}>
+            <label style={lbl}>Date *</label>
+            <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required style={{ ...inp, maxWidth: 220 }} />
+          </div>
+
+          <label style={lbl}>Duty / Responsibility Rows</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+            {form.duties.map((d, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                <input value={d.time} onChange={e => updateDutyRow(i, 'time', e.target.value)} placeholder="Time (e.g. 6:00 pm, Lunch, Dinner)" style={{ ...inp, flex: '1 1 160px' }} />
+                <input value={d.duty} onChange={e => updateDutyRow(i, 'duty', e.target.value)} placeholder="Duty / Responsibility" style={{ ...inp, flex: '2 1 220px' }} />
+                <input value={d.assigned_to} onChange={e => updateDutyRow(i, 'assigned_to', e.target.value)} placeholder="Assigned To" style={{ ...inp, flex: '2 1 220px' }} />
+                <button type="button" onClick={() => removeDutyRow(i)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 8, padding: '10px 14px', cursor: 'pointer', fontWeight: 700 }}>✕</button>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={addDutyRow} style={{ ...btn('#eff6ff', '#1e3a5f'), marginBottom: 20 }}>➕ Add Row</button>
+
+          <div style={{ marginBottom: 20 }}>
+            <label style={lbl}>Important Instructions</label>
+            <textarea value={form.instructions} onChange={e => setForm(f => ({ ...f, instructions: e.target.value }))} rows={4} placeholder="One instruction per line..." style={{ ...inp, resize: 'vertical' }} />
+          </div>
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a5f')}>{saving ? '⏳ Saving...' : '✅ Save Roster'}</button>
+            <button type="button" onClick={() => setEditing(false)} style={btn('#f1f5f9', '#374151')}>Cancel</button>
+          </div>
+        </form>
+      ) : !roster ? (
+        <div style={{ textAlign: 'center', padding: 48, color: '#94a3b8', background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
+          No duty roster has been published for {dateLabel(viewDate)}.
+        </div>
+      ) : (
+        <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'hidden' }}>
+          <div style={{ background: '#1e3a5f', padding: '16px 22px' }}>
+            <div style={{ color: 'white', fontWeight: 800, fontSize: 16 }}>📋 Daily Duty List</div>
+            <div style={{ color: 'rgba(255,255,255,.75)', fontSize: 13, marginTop: 2 }}>{dateLabel(roster.date)}</div>
+          </div>
+
+          <div style={{ overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 500 }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                  {['Time', 'Duty / Responsibility', 'Assigned To'].map(h => (
+                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 700, color: '#374151', fontSize: 12 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(roster.duties || []).map((d, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '11px 16px', fontWeight: 700, color: '#1e3a5f' }}>{d.time || '—'}</td>
+                    <td style={{ padding: '11px 16px', color: '#1e293b' }}>{d.duty || '—'}</td>
+                    <td style={{ padding: '11px 16px', color: '#374151' }}>{d.assigned_to || '—'}</td>
+                  </tr>
+                ))}
+                {(!roster.duties || roster.duties.length === 0) && (
+                  <tr><td colSpan={3} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>No duty rows added</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {roster.instructions && (
+            <div style={{ padding: '18px 22px', borderTop: '1px solid #f1f5f9', background: '#fffbeb' }}>
+              <div style={{ fontWeight: 700, color: '#92400e', fontSize: 13, marginBottom: 8 }}>⚠️ IMPORTANT INSTRUCTIONS</div>
+              <ul style={{ margin: 0, paddingLeft: 20, color: '#78350f', fontSize: 13, lineHeight: 1.7 }}>
+                {roster.instructions.split('\n').filter(l => l.trim()).map((line, i) => (
+                  <li key={i}>{line.replace(/^\*\s*/, '').trim()}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {isAdmin && (
+            <div style={{ padding: '14px 22px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 10 }}>
+              <button onClick={handleDelete} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>🗑 Delete Roster</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function HousemasterActivitiesTab({ staffProfiles, currentUser }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const isHM = (currentUser?.role || '').toLowerCase() === 'house master'
   const [activeView, setActiveView] = useState('checklist') // 'checklist' | 'log' | 'doubt'
   const [records,    setRecords]    = useState([])
@@ -1153,6 +1349,7 @@ export function HousemasterActivitiesTab({ staffProfiles, currentUser }) {
 
   const VIEW_TABS = [
     { id: 'checklist', label: '✅ Daily Checklist' },
+    { id: 'duty',      label: '📋 Duty Roster' },
     { id: 'students',  label: '🏠 House Students' },
     { id: 'log',       label: '📋 Activity Log' },
   ]
@@ -1176,6 +1373,11 @@ export function HousemasterActivitiesTab({ staffProfiles, currentUser }) {
       {/* ── Daily Checklist View ── */}
       {activeView === 'checklist' && (
         <DailyTaskChecklist staffProfiles={staffProfiles} houses={houses} />
+      )}
+
+      {/* ── Duty Roster View ── */}
+      {activeView === 'duty' && (
+        <DutyRosterPanel currentUser={currentUser} />
       )}
 
       {/* ── House Students View ── */}
