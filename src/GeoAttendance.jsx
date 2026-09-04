@@ -3107,10 +3107,21 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
               const staffMap = {}
               monthLogs.forEach(l => {
                 const key = l.staff_profiles?.name || String(l.staff_id)
-                if (!staffMap[key]) staffMap[key] = { name: key, designation: l.staff_profiles?.designation, total: 0, present: 0, late: 0, earlyOut: 0, absent: 0, flagged: 0, totalLateMin: 0, sessionLost: 0 }
+                if (!staffMap[key]) staffMap[key] = { name: key, designation: l.staff_profiles?.designation, total: 0, present: 0, late: 0, halfDay: 0, earlyOut: 0, absent: 0, flagged: 0, totalLateMin: 0, sessionLost: 0 }
                 staffMap[key].total++
                 if (l.status === 'Present')  staffMap[key].present++
                 if (l.status === 'Late')     { staffMap[key].late++; staffMap[key].totalLateMin += l.late_minutes || 0 }
+                // BUGFIX: 'Half Day' is a real status the check-in flow
+                // assigns (see the three-band lateness rule around the
+                // p_status handling above: 0-10min late stays Present,
+                // 10-20min is Late, past 20min is Half Day) but this
+                // summary had no bucket for it at all — a Half Day day
+                // still counted toward `total` but matched none of the
+                // `if` branches, so it silently vanished from every
+                // column below (Present/Late/EarlyOut/Absent/Flagged all
+                // stayed at their prior count) while still inflating the
+                // denominator used for the attendance rate.
+                if (l.status === 'Half Day') { staffMap[key].halfDay++; staffMap[key].totalLateMin += l.late_minutes || 0 }
                 if (l.status === 'EarlyOut') staffMap[key].earlyOut++
                 if (l.status === 'Absent')   staffMap[key].absent++
                 if (l.status === 'Flagged')  staffMap[key].flagged++
@@ -3124,16 +3135,17 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
       <div style={{ padding: '14px 16px', fontWeight: 700, color: COLOR.ink, borderBottom: `1px solid ${COLOR.rule}` }}>Staff Summary — {monthFilter}</div>
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                      <thead><tr>{['Staff','Total','Present','Late','Late Min','Early Out','Absent','Flagged','Rate'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                      <thead><tr>{['Staff','Total','Present','Late','Half Day','Late Min','Early Out','Absent','Flagged','Rate'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
                       <tbody>
                         {rows.map(r => {
-                          const rate = r.total > 0 ? Math.round((r.present / r.total) * 100) : 0
+                          const rate = r.total > 0 ? Math.round(((r.present + r.halfDay) / r.total) * 100) : 0
                           return (
                             <tr key={r.name} style={{ borderBottom: `1px solid ${COLOR.rule}` }}>
                               <td style={td}><div style={{ fontWeight: 600 }}>{r.name}</div><div style={{ fontSize: 11, color: COLOR.slate }}>{r.designation}</div></td>
                               <td style={td}>{r.total}</td>
                               <td style={{ ...td, color: COLOR.sageDeep, fontWeight: 700 }}>{r.present}</td>
                               <td style={{ ...td, color: COLOR.warn, fontWeight: 700 }}>{r.late}</td>
+                              <td style={{ ...td, color: COLOR.warn, fontWeight: 700 }}>{r.halfDay}</td>
                               <td style={{ ...td, color: r.totalLateMin > 0 ? COLOR.warn : COLOR.slate, fontWeight: 600 }}>{r.totalLateMin > 0 ? `${r.totalLateMin}m` : '—'}</td>
                               <td style={{ ...td, color: COLOR.danger, fontWeight: 700 }}>{r.earlyOut}</td>
                               <td style={{ ...td, color: COLOR.danger, fontWeight: 700 }}>{r.absent}</td>

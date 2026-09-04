@@ -375,6 +375,7 @@ function SalarySetupModal({ staffMember, onClose, onSaved, showToast }) {
     seniority_allowance:staffMember.seniority_allowance||0,
     loyalty_bonus:staffMember.loyalty_bonus||0,
     role_bonus:staffMember.role_bonus||0,
+    hra:staffMember.hra||0,
   })
   const [saving, setSaving] = useState(false)
   const [activeAdvances, setActiveAdvances] = useState(null) // null = loading, [] = none, else rows
@@ -404,6 +405,7 @@ function SalarySetupModal({ staffMember, onClose, onSaved, showToast }) {
   }
   const fields = [
     { key:'basic_salary',        label:'Basic Salary',        icon:'💰', color:'#0C447C', desc:'Fixed monthly base pay' },
+    { key:'hra',                 label:'HRA',                 icon:'🏠', color:'#0891b2', desc:'House rent allowance' },
     { key:'seniority_allowance', label:'Seniority Allowance', icon:'⭐', color:'#7c3aed', desc:'Based on years of service' },
     { key:'loyalty_bonus',       label:'Loyalty Bonus',       icon:'🎖️', color:'#b45309', desc:'Long-term retention reward' },
     { key:'role_bonus',          label:'Role Bonus',          icon:'🏅', color:'#16a34a', desc:'Position-specific incentive' },
@@ -1402,7 +1404,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
               const sc         = scores[item.id]
               const computed   = sc ? calcScores(sc) : null
               const totalScore = computed ? computed.total : null
-              const gross      = (Number(item.basic_salary)||0) + (Number(item.seniority_allowance)||0) + (Number(item.loyalty_bonus)||0) + (Number(item.role_bonus)||0)
+              const gross      = (Number(item.basic_salary)||0) + (Number(item.seniority_allowance)||0) + (Number(item.loyalty_bonus)||0) + (Number(item.role_bonus)||0) + (Number(item.hra)||0)
               const tm         = staffTaskMap[item.name] || { total:0, done:0, overdue:0 }
               const initials   = item.name?.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase() || '??'
               const hue        = (item.name?.charCodeAt(0) || 0) % 360

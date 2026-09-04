@@ -40,6 +40,15 @@ const MARK_META = {
   'Half Day':{ label: 'HD', color: '#ca8a04', bg: '#fef9c3' },
   Absent:    { label: 'AB', color: '#dc2626', bg: '#fee2e2' },
   Leave:     { label: 'L',  color: '#2563eb', bg: '#dbeafe' },
+  // Geo-attendance-derived statuses this manual P/HD/AB/L system has no
+  // button for — without an entry here, a Late or Early Out day rendered
+  // as an unstyled blank dot, visually identical to "not marked at all"
+  // (see BUGFIX above: byStaffDate no longer masks these as Present, so
+  // they need their own visible mark instead of silently vanishing).
+  Late:      { label: 'LT', color: '#b45309', bg: '#fef3c7' },
+  'Early Out': { label: 'EO', color: '#7c3aed', bg: '#ede9fe' },
+  EarlyOut:  { label: 'EO', color: '#7c3aed', bg: '#ede9fe' },
+  Flagged:   { label: '⚑',  color: '#7c3aed', bg: '#ede9fe' },
 }
 
 export function AttendanceSummaryView({ isAdmin, staffId, staffList, showToast, onNavigate, currentUsername }) {
@@ -94,13 +103,14 @@ function MyAttendanceHistory({ staffId }) {
   }, [geoRows, markRows])
 
   const summary = useMemo(() => {
-    const counts = { Present: 0, Absent: 0, 'Half Day': 0, Leave: 0 }
+    const counts = { Present: 0, Absent: 0, 'Half Day': 0, Leave: 0, Late: 0, 'Early Out': 0 }
     let fineMinutes = 0
     for (const d of days) {
       // BUGFIX: use the geo row's real status instead of hardcoding
       // 'Present' whenever a geo row exists (see StaffMarkRow fix below —
       // same underlying bug, occurs three times in this file).
-      const status = d.mark?.status || d.geo?.status || null
+      let status = d.mark?.status || d.geo?.status || null
+      if (status === 'EarlyOut') status = 'Early Out'
       if (status) counts[status] = (counts[status] || 0) + 1
       if (d.geo) fineMinutes += d.geo.late_minutes || 0
     }
@@ -147,6 +157,8 @@ function MyAttendanceHistory({ staffId }) {
               { label: 'Absent', value: summary.Absent, color: '#dc2626' },
               { label: 'Half day', value: summary['Half Day'], color: '#ca8a04' },
               { label: 'Leave', value: summary.Leave, color: '#2563eb' },
+              { label: 'Late', value: summary.Late, color: '#b45309' },
+              { label: 'Early Out', value: summary['Early Out'], color: '#7c3aed' },
               { label: 'Fine (min)', value: summary.fineMinutes, color: '#b45309' },
             ].map(c => (
               <div key={c.label} style={{ background: 'white', borderRadius: 10, padding: 12, boxShadow: '0 2px 6px rgba(0,0,0,.05)' }}>
@@ -447,7 +459,9 @@ function AdminDateRangeReport({ staffList, search, setSearch }) {
     const m = {}
     for (const r of geoRows) {
       m[r.staff_id] = m[r.staff_id] || {}
-      m[r.staff_id][r.date] = { status: 'Present', late_minutes: r.late_minutes || 0 }
+      // BUGFIX: use the geo row's real status instead of hardcoding 'Present'
+      // for every geo check-in (same fix as MyAttendanceHistory/StaffMarkRow).
+      m[r.staff_id][r.date] = { status: r.status || 'Present', late_minutes: r.late_minutes || 0 }
     }
     for (const r of markRows) {
       m[r.staff_id] = m[r.staff_id] || {}
@@ -459,11 +473,15 @@ function AdminDateRangeReport({ staffList, search, setSearch }) {
   const staffSummary = useMemo(() => {
     return staffList.map(s => {
       const days = byStaffDate[s.id] || {}
-      const counts = { Present: 0, Absent: 0, 'Half Day': 0, Leave: 0, notMarked: 0 }
+      const counts = { Present: 0, Absent: 0, 'Half Day': 0, Leave: 0, Late: 0, 'Early Out': 0, notMarked: 0 }
       let fineMinutes = 0
       for (const date of dateList) {
         const d = days[date]
-        if (d) { counts[d.status] = (counts[d.status] || 0) + 1; fineMinutes += d.late_minutes || 0 }
+        if (d) {
+          const key = (d.status === 'EarlyOut') ? 'Early Out' : d.status
+          counts[key] = (counts[key] || 0) + 1
+          fineMinutes += d.late_minutes || 0
+        }
         else counts.notMarked++
       }
       return { staff: s, days, counts, fineMinutes }
@@ -515,6 +533,8 @@ function AdminDateRangeReport({ staffList, search, setSearch }) {
                 <th style={{ ...S.th, textAlign: 'center' }}>AB</th>
                 <th style={{ ...S.th, textAlign: 'center' }}>HD</th>
                 <th style={{ ...S.th, textAlign: 'center' }}>L</th>
+                <th style={{ ...S.th, textAlign: 'center' }}>LT</th>
+                <th style={{ ...S.th, textAlign: 'center' }}>EO</th>
                 <th style={{ ...S.th, textAlign: 'center' }}>Fine (min)</th>
               </tr>
             </thead>
@@ -540,11 +560,13 @@ function AdminDateRangeReport({ staffList, search, setSearch }) {
                   <td style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: '#dc2626' }}>{r.counts.Absent}</td>
                   <td style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: '#ca8a04' }}>{r.counts['Half Day']}</td>
                   <td style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: '#2563eb' }}>{r.counts.Leave}</td>
+                  <td style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: '#b45309' }}>{r.counts.Late || '—'}</td>
+                  <td style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>{r.counts['Early Out'] || '—'}</td>
                   <td style={{ ...S.td, textAlign: 'center', fontWeight: 700, color: '#b45309' }}>{r.fineMinutes || '—'}</td>
                 </tr>
               ))}
               {!staffSummary.length && (
-                <tr><td colSpan={dateList.length + 6} style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>No staff found.</td></tr>
+                <tr><td colSpan={dateList.length + 8} style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>No staff found.</td></tr>
               )}
             </tbody>
           </table>
@@ -740,8 +762,10 @@ function AttendanceReportGenerator({ staffList }) {
     const m = {}
     for (const r of geoRows) {
       m[r.staff_id] = m[r.staff_id] || {}
+      let status = r.status || (r.check_in_time ? (r.check_out_time ? 'Present' : 'Half Day') : null)
+      if (status === 'EarlyOut') status = 'Early Out'
       m[r.staff_id][r.date] = {
-        status: r.status || (r.check_in_time ? (r.check_out_time ? 'Present' : 'Half Day') : null),
+        status,
         late_minutes: r.late_minutes || 0,
         check_in_time: r.check_in_time,
         check_out_time: r.check_out_time,
@@ -758,7 +782,7 @@ function AttendanceReportGenerator({ staffList }) {
     const targets = scope === 'all' ? staffList : staffList.filter(s => String(s.id) === String(scope))
     return targets.map(s => {
       const days = byStaffDate[s.id] || {}
-      const counts = { Present: 0, Absent: 0, 'Half Day': 0, Leave: 0, Late: 0, notMarked: 0 }
+      const counts = { Present: 0, Absent: 0, 'Half Day': 0, Leave: 0, Late: 0, 'Early Out': 0, notMarked: 0 }
       let lateMinutes = 0
       for (const [, d] of Object.entries(days)) {
         if (d.status && counts[d.status] !== undefined) counts[d.status]++
@@ -773,7 +797,7 @@ function AttendanceReportGenerator({ staffList }) {
   }, [staffList, byStaffDate, fromDate, toDate, scope])
 
   const exportCsv = () => {
-    const headers = ['Staff', 'Present', 'Absent', 'Half Day', 'Leave', 'Late (days)', 'Late (total minutes)', 'Not marked']
+    const headers = ['Staff', 'Present', 'Absent', 'Half Day', 'Leave', 'Late (days)', 'Early Out (days)', 'Late (total minutes)', 'Not marked']
     const rowsArr = staffSummary.map(r => [
       r.staff.name || '',
       r.counts.Present || 0,
@@ -781,6 +805,7 @@ function AttendanceReportGenerator({ staffList }) {
       r.counts['Half Day'] || 0,
       r.counts.Leave || 0,
       r.counts.Late || 0,
+      r.counts['Early Out'] || 0,
       r.lateMinutes || 0,
       r.counts.notMarked || 0,
     ])
@@ -825,7 +850,7 @@ function AttendanceReportGenerator({ staffList }) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {['Staff', 'Present', 'Absent', 'Half Day', 'Leave', 'Late', 'Late min', 'Not marked'].map(h => (
+                {['Staff', 'Present', 'Absent', 'Half Day', 'Leave', 'Late', 'Early Out', 'Late min', 'Not marked'].map(h => (
                   <th key={h} style={{ ...S.th, border: '1px solid #e2e8f0' }}>{h}</th>
                 ))}
               </tr>
@@ -839,6 +864,7 @@ function AttendanceReportGenerator({ staffList }) {
                   <td style={{ ...S.td, border: '1px solid #e2e8f0' }}>{r.counts['Half Day'] || 0}</td>
                   <td style={{ ...S.td, border: '1px solid #e2e8f0' }}>{r.counts.Leave || 0}</td>
                   <td style={{ ...S.td, border: '1px solid #e2e8f0' }}>{r.counts.Late || 0}</td>
+                  <td style={{ ...S.td, border: '1px solid #e2e8f0' }}>{r.counts['Early Out'] || 0}</td>
                   <td style={{ ...S.td, border: '1px solid #e2e8f0' }}>{r.lateMinutes || 0}</td>
                   <td style={{ ...S.td, border: '1px solid #e2e8f0' }}>{r.counts.notMarked || 0}</td>
                 </tr>
@@ -898,7 +924,7 @@ function AttendanceReportGenerator({ staffList }) {
             <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>
               <thead>
                 <tr>
-                  {['Staff', 'Present', 'Absent', 'Half Day', 'Leave', 'Late', 'Late min', 'Not marked'].map(h => <th key={h} style={S.th}>{h}</th>)}
+                  {['Staff', 'Present', 'Absent', 'Half Day', 'Leave', 'Late', 'Early Out', 'Late min', 'Not marked'].map(h => <th key={h} style={S.th}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -910,11 +936,12 @@ function AttendanceReportGenerator({ staffList }) {
                     <td style={S.td}>{r.counts['Half Day'] || 0}</td>
                     <td style={S.td}>{r.counts.Leave || 0}</td>
                     <td style={S.td}>{r.counts.Late || 0}</td>
+                    <td style={S.td}>{r.counts['Early Out'] || 0}</td>
                     <td style={S.td}>{r.lateMinutes || 0}</td>
                     <td style={S.td}>{r.counts.notMarked || 0}</td>
                   </tr>
                 ))}
-                {!staffSummary.length && <tr><td colSpan="8" style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>No staff found.</td></tr>}
+                {!staffSummary.length && <tr><td colSpan="9" style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>No staff found.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -941,7 +968,13 @@ export function ReportsView({ isAdmin, staffList }) {
       const { data } = await supabase.from('staff_advances').select('amount, repaid_amount, issued_month, status, staff_profiles(name)').eq('issued_month', month)
       setRows((data || []).map(r => ({ name: r.staff_profiles?.name, amount: r.amount, repaid: r.repaid_amount, status: r.status })))
     } else if (key === 'fines') {
-      const { data } = await supabase.from('staff_geo_attendance').select('staff_id, late_minutes, staff_profiles(name)').gte('date', `${month}-01`).lte('date', `${month}-31`).gt('late_minutes', 0)
+      // BUGFIX: hardcoded `${month}-31` as the end of the range — invalid
+      // for any 28/29/30-day month, same bug already fixed in
+      // PayrollView/DashboardView/LateFinesView/TimeCard/CashBookView.
+      const [y, m2] = month.split('-').map(Number)
+      const lastDay = new Date(y, m2, 0).getDate()
+      const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`
+      const { data } = await supabase.from('staff_geo_attendance').select('staff_id, late_minutes, staff_profiles(name)').gte('date', `${month}-01`).lte('date', monthEnd).gt('late_minutes', 0)
       const byStaff = {}
       for (const r of data || []) {
         const id = r.staff_id
@@ -1265,7 +1298,7 @@ export function RegularizationView({ staffId, isAdmin, showToast, currentUsernam
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {requests.map(r => {
-            const meta = statusMeta[r.status]
+            const meta = statusMeta[r.status] || { label: r.status || 'Unknown', color: '#64748b', bg: '#f1f5f9' }
             return (
               <div key={r.id} style={S.card}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>

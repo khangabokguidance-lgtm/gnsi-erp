@@ -18,7 +18,7 @@ import SettingsView from './SettingsView'
 import AdvancedSettingsPanel from './AdvancedSettingsPanel'
 import PremiumToggleCard from './PremiumToggleCard'
 import AdminControlCenter from './AdminControlCenter'
-import Salary, { SlipModal, buildSlipHTML as buildSalarySlipHTML, printSlip as printSalarySlip } from './Salary'
+import { SlipModal, buildSlipHTML as buildSalarySlipHTML, printSlip as printSalarySlip } from './Salary'
 import { tabHasSettings } from './premiumSettings'
 import { COLOR, FONT, RADIUS, SHADOW, ledger, Seal, injectLedgerGlobalStyles } from './ledgerTheme.jsx'
 
@@ -120,11 +120,20 @@ function TimeCard({ staffId, isAdmin, staffList }) {
 
   const fetchRows = useCallback(async () => {
     setLoading(true)
+    // BUGFIX: this used to hardcode `${month}-31` as the end of the range —
+    // an invalid/wrong date for any 28/29/30-day month (Feb, Apr, Jun, Sep,
+    // Nov), same bug already fixed elsewhere in this file (see PayrollView/
+    // DashboardView fetchAll). Compute the real last day of the month
+    // instead, so short months don't silently return an empty or truncated
+    // time card.
+    const [y, m] = month.split('-').map(Number)
+    const lastDay = new Date(y, m, 0).getDate()
+    const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`
     let q = supabase
       .from('staff_geo_attendance')
       .select('id, staff_id, date, shift_label, check_in_time, check_out_time, server_check_in_time, server_check_out_time, late_minutes, status, staff_profiles(name)')
       .gte('date', `${month}-01`)
-      .lte('date', `${month}-31`)
+      .lte('date', monthEnd)
       .order('date', { ascending: false })
     if (!isAdmin) q = q.eq('staff_id', staffId)
     else if (staffFilter !== 'all') q = q.eq('staff_id', staffFilter)
@@ -479,6 +488,7 @@ const STATUS_COLORS = {
   'Half Day': '#0369A1',
   Absent:   PAY.red,
   EarlyOut: '#7C3AED',
+  'Early Out': '#7C3AED', // space-variant alias — some data/status strings use 'Early Out', others 'EarlyOut'
   Flagged:  '#7C3AED',
 }
 
@@ -710,10 +720,10 @@ function EmptyChart({ text }) {
 function StackedTrendChart({ days }) {
   if (!days.length) return <EmptyChart text="No attendance data yet this month." />
   const W = 640, H = 200, PAD_L = 32, PAD_B = 24, PAD_T = 8
-  const maxTotal = Math.max(1, ...days.map(d => d.Present + d.Late + d['Half Day'] + d.Absent))
+  const maxTotal = Math.max(1, ...days.map(d => d.Present + d.Late + d['Half Day'] + d.Absent + (d['Early Out'] || 0)))
   const barW = (W - PAD_L - 8) / days.length
   const yScale = (v) => (v / maxTotal) * (H - PAD_T - PAD_B)
-  const statuses = ['Present', 'Late', 'Half Day', 'Absent']
+  const statuses = ['Present', 'Late', 'Half Day', 'Absent', 'Early Out']
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
       <line x1={PAD_L} y1={H - PAD_B} x2={W} y2={H - PAD_B} stroke={PAY.divider} strokeWidth="1" />
@@ -914,36 +924,43 @@ function DashboardView({ staffList }) {
   const dayBuckets = useMemo(() => {
     const map = {}
     for (const r of monthRows) {
-      if (!map[r.date]) map[r.date] = { date: r.date, Present: 0, Late: 0, 'Half Day': 0, Absent: 0 }
+      if (!map[r.date]) map[r.date] = { date: r.date, Present: 0, Late: 0, 'Half Day': 0, Absent: 0, 'Early Out': 0 }
       const bucket = map[r.date]
       if (r.status === 'Present') bucket.Present++
       else if (r.status === 'Late') bucket.Late++
       else if (r.status === 'Half Day') bucket['Half Day']++
       else if (r.status === 'Absent') bucket.Absent++
-      // Flagged/EarlyOut intentionally excluded from these buckets — same
-      // convention as attendance_summary_for_range/sync_attendance_salary_feed.
+      else if (r.status === 'Early Out' || r.status === 'EarlyOut') bucket['Early Out']++
+      // Flagged intentionally excluded from these buckets — same convention
+      // as attendance_summary_for_range/sync_attendance_salary_feed. Early
+      // Out is now tracked here to match PayrollView's perDay, which counts
+      // it as its own deducted category rather than silently dropping it.
     }
     return Object.values(map).sort((a, b) => a.date.localeCompare(b.date))
   }, [monthRows])
 
   // Chart 2 data: today's breakdown.
   const todaySegments = useMemo(() => {
-    const counts = { Present: 0, Late: 0, 'Half Day': 0, Absent: 0, Flagged: 0 }
-    for (const r of todayRows) if (counts[r.status] !== undefined) counts[r.status]++
+    const counts = { Present: 0, Late: 0, 'Half Day': 0, Absent: 0, 'Early Out': 0, Flagged: 0 }
+    for (const r of todayRows) {
+      if (r.status === 'Early Out' || r.status === 'EarlyOut') counts['Early Out']++
+      else if (counts[r.status] !== undefined) counts[r.status]++
+    }
     return [
       { label: 'Present', value: counts.Present, color: STATUS_COLORS.Present },
       { label: 'Late', value: counts.Late, color: STATUS_COLORS.Late },
       { label: 'Half Day', value: counts['Half Day'], color: STATUS_COLORS['Half Day'] },
       { label: 'Absent', value: counts.Absent, color: STATUS_COLORS.Absent },
+      { label: 'Early Out', value: counts['Early Out'], color: STATUS_COLORS.EarlyOut },
       { label: 'Flagged', value: counts.Flagged, color: STATUS_COLORS.Flagged },
     ]
   }, [todayRows])
 
-  // Chart 4 data: top late/half-day staff this month, ranked.
+  // Chart 4 data: top late/half-day/early-out staff this month, ranked.
   const topLateStaff = useMemo(() => {
     const counts = {}
     for (const r of monthRows) {
-      if (r.status === 'Late' || r.status === 'Half Day') {
+      if (r.status === 'Late' || r.status === 'Half Day' || r.status === 'Early Out' || r.status === 'EarlyOut') {
         counts[r.staff_id] = (counts[r.staff_id] || 0) + 1
       }
     }
@@ -953,25 +970,36 @@ function DashboardView({ staffList }) {
       .slice(0, 8)
   }, [monthRows, staffNameById])
 
-  // Chart 5 data: payroll deduction breakdown this month, using the active rule.
+  // Chart 5 data: payroll deduction breakdown this month, using the active
+  // rule. Includes Early Out, matching PayrollView's perDay/rows calc, which
+  // also charges early_out_rate per Early Out day — omitting it here would
+  // understate the true total shown in PayrollView.
   const deductionBreakdown = useMemo(() => {
     if (!rules) return []
-    const counts = { Late: 0, 'Half Day': 0, Absent: 0 }
-    for (const r of monthRows) if (counts[r.status] !== undefined) counts[r.status]++
+    const counts = { Late: 0, 'Half Day': 0, Absent: 0, 'Early Out': 0 }
+    for (const r of monthRows) {
+      if (r.status === 'Early Out' || r.status === 'EarlyOut') counts['Early Out']++
+      else if (counts[r.status] !== undefined) counts[r.status]++
+    }
     return [
       { label: 'Late', value: counts.Late * Number(rules.late_rate || 0), color: STATUS_COLORS.Late },
       { label: 'Half Day', value: counts['Half Day'] * Number(rules.half_day_rate || 0), color: STATUS_COLORS['Half Day'] },
       { label: 'Absent', value: counts.Absent * Number(rules.absent_rate || 0), color: STATUS_COLORS.Absent },
+      { label: 'Early Out', value: counts['Early Out'] * Number(rules.early_out_rate || 0), color: STATUS_COLORS.EarlyOut },
     ]
   }, [monthRows, rules])
 
-  // Chart 6 data: attendance rate (% Present or Late, i.e. showed up) by staff.
+  // Chart 6 data: attendance rate (% Present, Late, Half Day, or Early Out —
+  // i.e. showed up at all that day, regardless of lateness/early exit) by
+  // staff. Early Out now included in the numerator: those staff did show
+  // up, they just left early, so excluding them understated their rate
+  // relative to someone who was simply marked Present.
   const attendanceRate = useMemo(() => {
     const byStaff = {}
     for (const r of monthRows) {
       if (!byStaff[r.staff_id]) byStaff[r.staff_id] = { total: 0, present: 0 }
       byStaff[r.staff_id].total++
-      if (r.status === 'Present' || r.status === 'Late' || r.status === 'Half Day') byStaff[r.staff_id].present++
+      if (r.status === 'Present' || r.status === 'Late' || r.status === 'Half Day' || r.status === 'Early Out' || r.status === 'EarlyOut') byStaff[r.staff_id].present++
     }
     return Object.entries(byStaff)
       .map(([id, v]) => ({ name: staffNameById[id] || `#${id}`, rate: v.total > 0 ? Math.round((v.present / v.total) * 100) : 0 }))
@@ -992,7 +1020,7 @@ function DashboardView({ staffList }) {
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
-        <DashCard title="Attendance trend this month" subtitle="Present · Late · Half Day · Absent, by day">
+        <DashCard title="Attendance trend this month" subtitle="Present · Late · Half Day · Absent · Early Out, by day">
           <StackedTrendChart days={dayBuckets} />
         </DashCard>
         <DashCard title="Today's status breakdown" subtitle="All staff, right now">
@@ -1001,13 +1029,13 @@ function DashboardView({ staffList }) {
         <DashCard title="Late arrivals trend" subtitle="Late + Half Day check-ins by day this month">
           <DailyLateBarChart days={dayBuckets} />
         </DashCard>
-        <DashCard title="Top late staff this month" subtitle="Ranked by Late + Half Day days">
+        <DashCard title="Top late staff this month" subtitle="Ranked by Late + Half Day + Early Out days">
           <TopLateStaffChart rows={topLateStaff} />
         </DashCard>
-        <DashCard title="Payroll deductions this month" subtitle="Estimated from the active deduction rule">
+        <DashCard title="Payroll deductions this month" subtitle="Late, Half Day, Absent &amp; Early Out, from the active deduction rule">
           <DeductionBreakdownChart items={deductionBreakdown} />
         </DashCard>
-        <DashCard title="Attendance rate by staff" subtitle="% of days present or late (not absent), this month">
+        <DashCard title="Attendance rate by staff" subtitle="% of days staff showed up (Present, Late, Half Day or Early Out) this month">
           <AttendanceRateChart rows={attendanceRate} />
         </DashCard>
       </div>
@@ -1022,7 +1050,7 @@ function DashboardView({ staffList }) {
 // still generated and saved in Salary.jsx (Auto-Generate Payroll), so there
 // remains exactly one source of truth for what staff actually get paid.
 
-const gross = (s) => (Number(s.basic_salary)||0) + (Number(s.seniority_allowance)||0) + (Number(s.loyalty_bonus)||0) + (Number(s.role_bonus)||0)
+const gross = (s) => (Number(s.basic_salary)||0) + (Number(s.seniority_allowance)||0) + (Number(s.loyalty_bonus)||0) + (Number(s.role_bonus)||0) + (Number(s.hra)||0)
 
 // PayrollView's own report export — a CSV of exactly what's on screen for
 // the selected month/staff filter, including any admin adjustment already
@@ -1030,11 +1058,12 @@ const gross = (s) => (Number(s.basic_salary)||0) + (Number(s.seniority_allowance
 // register rows across a date range rather than this live single-month
 // preview.
 function exportPayrollPreviewCSV(rows, month) {
-  const headers = ['Staff','Designation','Present','Late Days','Half Day','Absent','Early Out','Late Ded.','Half Day Ded.','Absent Ded.','Early Ded.','Admin Adj.','Advance','Gross','Est. Net']
+  const headers = ['Staff','Designation','Present','Late Days','Half Day','Absent','Early Out','Late Ded.','Half Day Ded.','Absent Ded.','Early Ded.','Admin Adj.','Advance','Overtime Pay','Arrears','Reimbursement','Custom Ded.','ESI','TDS','Gross','Est. Net']
   const body = rows.map(r => [
     r.staff.name, r.staff.designation || r.staff.department || '',
     r.d.present, r.d.lateDays, r.d.halfDay, r.d.absent, r.d.earlyOut,
     r.lateDed, r.halfDayDed, r.absentDed, r.earlyDed, r.adminDed, r.advDed,
+    r.overtimePay, r.arrears, r.reimbursement, r.customDed, r.esiDed, r.tdsDed,
     r.gross, r.net,
   ])
   const csv = [headers, ...body].map(row => row.map(v => `"${v}"`).join(',')).join('\n')
@@ -1045,7 +1074,7 @@ function exportPayrollPreviewCSV(rows, month) {
 }
 
 
-function PayrollView({ staffId, isAdmin, staffList }) {
+function PayrollView({ staffId, isAdmin, staffList, showToast, currentUsername }) {
   const [month, setMonth] = useState(currentMonth())
   const [staffFilter, setStaffFilter] = useState(isAdmin ? 'all' : String(staffId))
   const [rules, setRules] = useState(null)
@@ -1062,7 +1091,14 @@ function PayrollView({ staffId, isAdmin, staffList }) {
   // so the created row is internally consistent rather than a partial one
   // that Salary.jsx would later have to reconcile.
   const [adjustingId, setAdjustingId] = useState(null)
-  const [adjustForm, setAdjustForm] = useState({ amount: '', note: '' })
+  const [adjustForm, setAdjustForm] = useState({
+    amount: '', note: '',
+    // Batch 1 — variable monthly earnings/deductions, edited alongside the
+    // existing admin adjustment amount/note in the same panel.
+    overtimeHours: '', overtimeRate: '', arrears: '', arrearsNote: '',
+    reimbursement: '', reimbursementNote: '', customDed: '', customDedNote: '',
+    esiDed: '', tdsDed: '',
+  })
   const [savingAdjust, setSavingAdjust] = useState(false)
   const [expandedId, setExpandedId] = useState(null) // which staff card is expanded to show its breakdown
   const [existingSalaryRows, setExistingSalaryRows] = useState({}) // staff_id -> existing salary row for `month`, if any
@@ -1081,6 +1117,24 @@ function PayrollView({ staffId, isAdmin, staffList }) {
   const [lastMonthTotals, setLastMonthTotals] = useState(null)
   // #6 mark as paid, #7 payment mode — editable per row
   const [paymentModeDraft, setPaymentModeDraft] = useState({}) // staff_id -> mode being edited, before save
+  // Issue advance — same staff_advances insert shape as AdvancesView's
+  // handleAddAdvance, given a second entry point right from Payroll so an
+  // admin doesn't have to leave this screen to issue one.
+  const [showAdvanceForm, setShowAdvanceForm] = useState(false)
+  const [advanceForm, setAdvanceForm] = useState({ staff_id: '', amount: '', reason: '', issued_month: currentMonth(), repay_months: 1 })
+  const [submittingAdvance, setSubmittingAdvance] = useState(false)
+  // Batch 2 — approval workflow, lock, audit trail, revision history, undo.
+  // approval_status/locked live in `salary` (added by batch2_schema.sql) as
+  // columns SEPARATE from the existing status ('Unpaid'/'Paid'), so none of
+  // the pre-existing status checks above change meaning.
+  const [workflowBusy, setWorkflowBusy] = useState(null) // staff_id currently mid-action, for per-row spinners
+  // History viewer — audit log + revision snapshots for one staff/month,
+  // opened from a row via "🕘 History". Fetched on demand rather than
+  // upfront for every row, since most rows are never inspected.
+  const [historyStaff, setHistoryStaff] = useState(null) // { id, name } or null
+  const [historyLog, setHistoryLog] = useState([])
+  const [historyRevisions, setHistoryRevisions] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(false)
 
   const fetchExistingSalary = useCallback(async () => {
     const { data } = await supabase.from('salary').select('*').eq('month', month)
@@ -1137,7 +1191,7 @@ function PayrollView({ staffId, isAdmin, staffList }) {
     if (!isAdmin) attQ = attQ.eq('staff_id', staffId)
     else if (staffFilter !== 'all') attQ = attQ.eq('staff_id', staffFilter)
 
-    let staffQ = supabase.from('staff_profiles').select('id, name, designation, department, basic_salary, seniority_allowance, loyalty_bonus, role_bonus, status')
+    let staffQ = supabase.from('staff_profiles').select('id, name, designation, department, basic_salary, seniority_allowance, loyalty_bonus, role_bonus, hra, status')
     if (!isAdmin) staffQ = staffQ.eq('id', staffId)
     else if (staffFilter !== 'all') staffQ = staffQ.eq('id', staffFilter)
     // BUGFIX: this had no active/inactive filter at all when browsing "all"
@@ -1180,6 +1234,32 @@ function PayrollView({ staffId, isAdmin, staffList }) {
 
   useEffect(() => { fetchRules() }, [fetchRules])
   useEffect(() => { fetchAll() }, [fetchAll])
+
+  const submitAdvance = async () => {
+    if (!advanceForm.staff_id) { showToast?.('Select a staff member', 'err'); return }
+    if (!advanceForm.amount || Number(advanceForm.amount) <= 0) { showToast?.('Enter a valid amount', 'err'); return }
+    setSubmittingAdvance(true)
+    // Same insert shape as AdvancesView/Salary.jsx's handleAddAdvance —
+    // single source of truth stays staff_advances, this is just another
+    // entry point for it, right from Payroll.
+    const { error } = await supabase.from('staff_advances').insert([{
+      staff_id: Number(advanceForm.staff_id),
+      amount: Number(advanceForm.amount),
+      reason: advanceForm.reason || null,
+      issued_month: advanceForm.issued_month,
+      repay_months: Number(advanceForm.repay_months) || 1,
+      repaid_amount: 0,
+      status: 'Active',
+    }])
+    if (error) showToast?.('Could not issue advance: ' + error.message, 'err')
+    else {
+      showToast?.('Advance issued', 'ok')
+      setAdvanceForm({ staff_id: '', amount: '', reason: '', issued_month: currentMonth(), repay_months: 1 })
+      setShowAdvanceForm(false)
+      fetchAll() // refresh advMap so the deduction shows immediately if issued for this month
+    }
+    setSubmittingAdvance(false)
+  }
 
   const perDay = useMemo(() => {
     const map = {}
@@ -1224,9 +1304,20 @@ function PayrollView({ staffId, isAdmin, staffList }) {
       // otherwise saving an adjustment and reloading would show a net
       // figure that silently ignores what was just stored.
       const adminDed = Number(existingSalaryRows[s.id]?.admin_deduction || 0)
+      // Batch 1 — variable monthly earnings/deductions, same fold-in
+      // pattern as adminDed: these live only on the saved salary row
+      // (there's nothing to compute from attendance), so read whatever
+      // was last saved and default to 0 until an admin sets them.
+      const existingForRow = existingSalaryRows[s.id]
+      const overtimePay = Number(existingForRow?.overtime_pay || 0)
+      const arrears = Number(existingForRow?.arrears || 0)
+      const reimbursement = Number(existingForRow?.reimbursement || 0)
+      const customDed = Number(existingForRow?.custom_deduction || 0)
+      const esiDed = Number(existingForRow?.esi_deduction || 0)
+      const tdsDed = Number(existingForRow?.tds_deduction || 0)
       const g = gross(s)
-      const totalDed = lateDed + absentDed + earlyDed + halfDayDed + advDed + adminDed
-      const net = g - totalDed
+      const totalDed = lateDed + absentDed + earlyDed + halfDayDed + advDed + adminDed + customDed + esiDed + tdsDed
+      const net = g + overtimePay + arrears + reimbursement - totalDed
       // Catches NULL/undefined AND an explicit 0 — a real staff.basic_salary
       // of exactly 0 is indistinguishable on this dashboard from "not set
       // yet" (confirmed real cases: two active staff both showed
@@ -1242,7 +1333,7 @@ function PayrollView({ staffId, isAdmin, staffList }) {
       // deduction applied — indistinguishable on screen from someone who
       // was perfectly present unless flagged.
       const noAttendanceThisMonth = !perDay[s.id]
-      return { staff: s, d, lateDed, absentDed, earlyDed, halfDayDed, advDed, adminDed, gross: g, totalDed, net, missingBasicSalary, noAttendanceThisMonth }
+      return { staff: s, d, lateDed, absentDed, earlyDed, halfDayDed, advDed, adminDed, overtimePay, arrears, reimbursement, customDed, esiDed, tdsDed, gross: g, totalDed, net, missingBasicSalary, noAttendanceThisMonth }
     }).sort((a, b) => (a.staff.name || '').localeCompare(b.staff.name || ''))
   }, [staffFull, perDay, advMap, rules, existingSalaryRows])
 
@@ -1293,6 +1384,137 @@ function PayrollView({ staffId, isAdmin, staffList }) {
   // a single batch query, so a partial failure is easy to see and doesn't
   // silently corrupt the rest — matches the same pattern used elsewhere
   // in this codebase, e.g. saveBulkShift in GeoAttendance.jsx).
+  // ── Batch 2 helpers — audit log + revision snapshot ──────────────────────
+  // Generic: called from every write path below (adjust, bulk adjust, mark
+  // paid/unpaid, submit/approve/reject, undo). Never blocks the caller's
+  // main action on failure — an audit-log write failing shouldn't stop
+  // payroll from working, so errors here are logged, not thrown.
+  const writeAudit = async (action, { entityId = null, staffId: sid = null, changedFields = null, note = null } = {}) => {
+    try {
+      await supabase.from('payroll_audit_log').insert([{
+        entity_type: 'salary', entity_id: entityId, staff_id: sid, month,
+        action, changed_fields: changedFields, performed_by: currentUsername || null, note,
+      }])
+    } catch (e) { console.error('payroll_audit_log write failed:', e) }
+  }
+
+  // Snapshots the row AS IT CURRENTLY EXISTS in `existingSalaryRows` (i.e.
+  // before whatever change is about to be applied) into salary_revisions.
+  // Called immediately before any upsert that changes a saved row, so
+  // "undo" always has something to restore to.
+  const snapshotRevision = async (staffIdForRow, reason) => {
+    const existing = existingSalaryRows[staffIdForRow]
+    if (!existing?.id) return // nothing saved yet — no prior state to snapshot
+    try {
+      await supabase.from('salary_revisions').insert([{
+        salary_id: existing.id, staff_id: staffIdForRow, month,
+        snapshot: existing, revised_by: currentUsername || null, reason,
+      }])
+    } catch (e) { console.error('salary_revisions write failed:', e) }
+  }
+
+  const isLocked = (staffIdForRow) => !!existingSalaryRows[staffIdForRow]?.locked
+
+  // Submit a row for approval — Draft/Rejected → Submitted. Blocked once
+  // locked (a locked row has already been paid and approved; resubmitting
+  // it makes no sense without first undoing the payment).
+  const submitForApproval = async (row) => {
+    const existing = existingSalaryRows[row.staff.id]
+    if (!existing?.id) { showToast?.('Save this row first (add or edit an adjustment) before submitting.', 'err'); return }
+    if (existing.locked) { showToast?.('This row is locked and already paid.', 'err'); return }
+    setWorkflowBusy(row.staff.id)
+    const { error } = await supabase.from('salary').update({
+      approval_status: 'Submitted', submitted_at: new Date().toISOString(), submitted_by: currentUsername || null,
+    }).eq('id', existing.id)
+    setWorkflowBusy(null)
+    if (error) { showToast?.('Could not submit: ' + error.message, 'err'); return }
+    await writeAudit('submitted', { entityId: existing.id, staffId: row.staff.id })
+    showToast?.('Submitted for approval', 'ok')
+    await fetchExistingSalary()
+  }
+
+  // Approve — Submitted → Approved. Only a real admin account reaches this
+  // button (gated in the JSX below), but the write itself is a normal
+  // client-side update — same trust model as the rest of this screen's
+  // admin-only actions (adjust, mark paid), not a server-enforced RPC.
+  const approveRow = async (row) => {
+    const existing = existingSalaryRows[row.staff.id]
+    if (!existing?.id) return
+    setWorkflowBusy(row.staff.id)
+    const { error } = await supabase.from('salary').update({
+      approval_status: 'Approved', approved_at: new Date().toISOString(), approved_by: currentUsername || null, rejected_reason: null,
+    }).eq('id', existing.id)
+    setWorkflowBusy(null)
+    if (error) { showToast?.('Could not approve: ' + error.message, 'err'); return }
+    await writeAudit('approved', { entityId: existing.id, staffId: row.staff.id })
+    showToast?.('Approved', 'ok')
+    await fetchExistingSalary()
+  }
+
+  const rejectRow = async (row) => {
+    const existing = existingSalaryRows[row.staff.id]
+    if (!existing?.id) return
+    const reason = window.prompt('Reason for rejecting this payroll row?') || ''
+    setWorkflowBusy(row.staff.id)
+    const { error } = await supabase.from('salary').update({
+      approval_status: 'Rejected', rejected_reason: reason || null,
+    }).eq('id', existing.id)
+    setWorkflowBusy(null)
+    if (error) { showToast?.('Could not reject: ' + error.message, 'err'); return }
+    await writeAudit('rejected', { entityId: existing.id, staffId: row.staff.id, note: reason })
+    showToast?.('Rejected', 'warn')
+    await fetchExistingSalary()
+  }
+
+  // Undo "Marked Paid" — restores the row from its last salary_revisions
+  // snapshot (taken right before the Mark Paid write), then unlocks and
+  // reverts approval_status to Approved (not Draft — the underlying figures
+  // were still approved; only the payment itself is being reversed).
+  const undoMarkPaid = async (row) => {
+    const existing = existingSalaryRows[row.staff.id]
+    if (!existing?.id) return
+    if (!window.confirm(`Undo "Marked Paid" for ${row.staff.name}? This restores the figures from just before payment and unlocks the row for editing.`)) return
+    setWorkflowBusy(row.staff.id)
+    const { data: revs, error: revErr } = await supabase
+      .from('salary_revisions').select('*').eq('salary_id', existing.id).order('revised_at', { ascending: false }).limit(1)
+    if (revErr || !revs?.length) {
+      setWorkflowBusy(null)
+      showToast?.('No prior snapshot found to restore — cannot undo safely.', 'err')
+      return
+    }
+    const snap = revs[0].snapshot
+    const restored = {
+      ...snap,
+      status: 'Unpaid', locked: false, locked_at: null,
+      approval_status: snap.approval_status === 'Approved' ? 'Approved' : (existing.approval_status || 'Draft'),
+    }
+    delete restored.id // upsert by staff_id+month; don't fight the row's own primary key
+    const { error } = await supabase.from('salary').upsert([restored], { onConflict: 'staff_id,month' })
+    setWorkflowBusy(null)
+    if (error) { showToast?.('Could not undo: ' + error.message, 'err'); return }
+    await writeAudit('undo_paid', { entityId: existing.id, staffId: row.staff.id, note: 'Restored from pre-payment snapshot' })
+    showToast?.('Payment undone — row restored and unlocked', 'ok')
+    await fetchExistingSalary()
+  }
+
+  // Loads audit log + revision snapshots for one staff/month, on demand
+  // when the History panel is opened. Both queries scope to this staff and
+  // month so opening history for one person never pulls the whole
+  // institute's log.
+  const openHistory = async (staff) => {
+    setHistoryStaff({ id: staff.id, name: staff.name })
+    setHistoryLoading(true)
+    const [{ data: log, error: logErr }, { data: revs, error: revErr }] = await Promise.all([
+      supabase.from('payroll_audit_log').select('*').eq('entity_type', 'salary').eq('staff_id', staff.id).eq('month', month).order('performed_at', { ascending: false }),
+      supabase.from('salary_revisions').select('*').eq('staff_id', staff.id).eq('month', month).order('revised_at', { ascending: false }),
+    ])
+    if (logErr) console.error('audit log fetch failed:', logErr)
+    if (revErr) console.error('revisions fetch failed:', revErr)
+    setHistoryLog(log || [])
+    setHistoryRevisions(revs || [])
+    setHistoryLoading(false)
+  }
+
   const saveBulkAdjust = async () => {
     setSavingBulk(true)
     const amount = Number(bulkForm.amount) || 0
@@ -1300,7 +1522,9 @@ function PayrollView({ staffId, isAdmin, staffList }) {
     const failed = []
     for (const row of rows.filter(r => selectedIds.has(r.staff.id))) {
       const existing = existingSalaryRows[row.staff.id]
-      const baseDed = row.lateDed + row.absentDed + row.earlyDed + row.halfDayDed + row.advDed
+      if (existing?.locked) { failed.push({ name: row.staff.name, message: 'locked (already paid)' }); continue }
+      await snapshotRevision(row.staff.id, 'Bulk adjustment')
+      const baseDed = row.lateDed + row.absentDed + row.earlyDed + row.halfDayDed + row.advDed + row.customDed + row.esiDed + row.tdsDed
       const perfAdj = Number(existing?.performance_adjustment || 0)
       const totDed = baseDed + amount + (perfAdj < 0 ? -perfAdj : 0)
       const payload = {
@@ -1309,20 +1533,34 @@ function PayrollView({ staffId, isAdmin, staffList }) {
         seniority_allowance: row.staff.seniority_allowance || 0,
         loyalty_bonus: row.staff.loyalty_bonus || 0,
         role_bonus: row.staff.role_bonus || 0,
+        hra: row.staff.hra || 0,
         allowance: (row.staff.seniority_allowance || 0) + (row.staff.loyalty_bonus || 0) + (row.staff.role_bonus || 0),
         advance_deduction: row.advDed,
         late_deduction: row.lateDed + row.halfDayDed,
         admin_deduction: amount,
         pf_deduction: existing?.pf_deduction || 0,
+        // Batch 1 fields: not touched by bulk adjustment, so carried over
+        // from whatever was last saved rather than reset to 0.
+        overtime_hours: existing?.overtime_hours || 0,
+        overtime_rate: existing?.overtime_rate || 0,
+        overtime_pay: row.overtimePay,
+        arrears: row.arrears,
+        arrears_note: existing?.arrears_note || null,
+        reimbursement: row.reimbursement,
+        reimbursement_note: existing?.reimbursement_note || null,
+        custom_deduction: row.customDed,
+        custom_deduction_note: existing?.custom_deduction_note || null,
+        esi_deduction: row.esiDed,
+        tds_deduction: row.tdsDed,
         performance_adjustment: perfAdj,
         deduction: totDed,
-        net_salary: row.gross + (perfAdj > 0 ? perfAdj : 0) - totDed,
+        net_salary: row.gross + row.overtimePay + row.arrears + row.reimbursement + (perfAdj > 0 ? perfAdj : 0) - totDed,
         status: existing?.status || 'Unpaid',
         payment_mode: existing?.payment_mode || 'Cash',
       }
       const { error } = await supabase.from('salary').upsert([payload], { onConflict: 'staff_id,month' })
       if (error) failed.push({ name: row.staff.name, message: error.message })
-      else successCount++
+      else { successCount++; await writeAudit('updated', { staffId: row.staff.id, note: 'Bulk adjustment' }) }
     }
     setSavingBulk(false)
     setBulkAdjusting(false)
@@ -1337,8 +1575,17 @@ function PayrollView({ staffId, isAdmin, staffList }) {
   // (or Salary.jsx) has already created; never invents a payment record
   // with no underlying salary row, since the upsert below always sends
   // the full current computed figures alongside the status change.
+  // Batch 2: marking Paid now requires the row be Approved first, and
+  // locks it immediately after — further edits must go through
+  // "Undo payment" (undoMarkPaid) rather than a plain "Mark Unpaid" toggle,
+  // since a locked/paid row's numbers shouldn't silently drift.
   const setPaidStatus = async (row, status) => {
     const existing = existingSalaryRows[row.staff.id]
+    if (existing?.locked) { showToast?.('This row is locked — use "Undo payment" instead.', 'err'); return }
+    if (status === 'Paid' && (existing?.approval_status || 'Draft') !== 'Approved') {
+      showToast?.('This row must be Approved before it can be marked Paid.', 'err'); return
+    }
+    if (status === 'Paid') await snapshotRevision(row.staff.id, 'Before marking Paid')
     const perfAdj = Number(existing?.performance_adjustment || 0)
     const mode = paymentModeDraft[row.staff.id] || existing?.payment_mode || 'Cash'
     const payload = {
@@ -1347,20 +1594,35 @@ function PayrollView({ staffId, isAdmin, staffList }) {
       seniority_allowance: row.staff.seniority_allowance || 0,
       loyalty_bonus: row.staff.loyalty_bonus || 0,
       role_bonus: row.staff.role_bonus || 0,
+      hra: row.staff.hra || 0,
       allowance: (row.staff.seniority_allowance || 0) + (row.staff.loyalty_bonus || 0) + (row.staff.role_bonus || 0),
       advance_deduction: row.advDed,
       late_deduction: row.lateDed + row.halfDayDed,
       admin_deduction: row.adminDed,
       pf_deduction: existing?.pf_deduction || 0,
+      overtime_hours: existing?.overtime_hours || 0,
+      overtime_rate: existing?.overtime_rate || 0,
+      overtime_pay: row.overtimePay,
+      arrears: row.arrears,
+      arrears_note: existing?.arrears_note || null,
+      reimbursement: row.reimbursement,
+      reimbursement_note: existing?.reimbursement_note || null,
+      custom_deduction: row.customDed,
+      custom_deduction_note: existing?.custom_deduction_note || null,
+      esi_deduction: row.esiDed,
+      tds_deduction: row.tdsDed,
       performance_adjustment: perfAdj,
       deduction: row.totalDed,
       net_salary: row.net,
       status,
       payment_mode: mode,
       paid_at: status === 'Paid' ? new Date().toISOString() : (existing?.paid_at || null),
+      locked: status === 'Paid' ? true : (existing?.locked || false),
+      locked_at: status === 'Paid' ? new Date().toISOString() : (existing?.locked_at || null),
     }
     const { error } = await supabase.from('salary').upsert([payload], { onConflict: 'staff_id,month' })
-    if (error) { alert('Could not update status: ' + error.message); return }
+    if (error) { showToast?.('Could not update status: ' + error.message, 'err'); return }
+    await writeAudit(status === 'Paid' ? 'paid' : 'unpaid', { entityId: existing?.id, staffId: row.staff.id })
     await fetchExistingSalary()
   }
 
@@ -1377,6 +1639,8 @@ function PayrollView({ staffId, isAdmin, staffList }) {
         advance_deduction: r.advDed, late_deduction: r.lateDed + r.halfDayDed,
         admin_deduction: r.adminDed, pf_deduction: existing?.pf_deduction || 0,
         performance_adjustment: existing?.performance_adjustment || 0,
+        overtime_pay: r.overtimePay, arrears: r.arrears, reimbursement: r.reimbursement,
+        custom_deduction: r.customDed, esi_deduction: r.esiDed, tds_deduction: r.tdsDed,
       }
       return `<div style="page-break-after: always;">${buildSalarySlipHTML(r.staff, ded, month, 'office')}</div>`
     }).join('')
@@ -1388,13 +1652,32 @@ function PayrollView({ staffId, isAdmin, staffList }) {
 
   const startAdjust = (row) => {
     setAdjustingId(row.staff.id)
-    setAdjustForm({ amount: String(existingSalaryRows[row.staff.id]?.admin_deduction || ''), note: '' })
+    const existing = existingSalaryRows[row.staff.id]
+    setAdjustForm({
+      amount: String(existing?.admin_deduction || ''), note: '',
+      overtimeHours: String(existing?.overtime_hours || ''), overtimeRate: String(existing?.overtime_rate || ''),
+      arrears: String(existing?.arrears || ''), arrearsNote: existing?.arrears_note || '',
+      reimbursement: String(existing?.reimbursement || ''), reimbursementNote: existing?.reimbursement_note || '',
+      customDed: String(existing?.custom_deduction || ''), customDedNote: existing?.custom_deduction_note || '',
+      esiDed: String(existing?.esi_deduction || ''), tdsDed: String(existing?.tds_deduction || ''),
+    })
   }
 
   const saveAdjust = async (row) => {
-    setSavingAdjust(true)
-    const amount = Number(adjustForm.amount) || 0
     const existing = existingSalaryRows[row.staff.id]
+    if (existing?.locked) { showToast?.('This row is locked (already paid) — undo the payment first to edit.', 'err'); return }
+    setSavingAdjust(true)
+    await snapshotRevision(row.staff.id, 'Adjustment edit')
+    const amount = Number(adjustForm.amount) || 0
+    // Batch 1 fields from the same panel.
+    const overtimeHours = Number(adjustForm.overtimeHours) || 0
+    const overtimeRate = Number(adjustForm.overtimeRate) || 0
+    const overtimePay = overtimeHours * overtimeRate
+    const arrears = Number(adjustForm.arrears) || 0
+    const reimbursement = Number(adjustForm.reimbursement) || 0
+    const customDed = Number(adjustForm.customDed) || 0
+    const esiDed = Number(adjustForm.esiDed) || 0
+    const tdsDed = Number(adjustForm.tdsDed) || 0
     // Recompute using this row's OWN already-correct late/absent/early/
     // half-day deductions plus the new admin_deduction, rather than
     // trusting any stale value from `existing` — this view's live
@@ -1402,7 +1685,7 @@ function PayrollView({ staffId, isAdmin, staffList }) {
     // when a salary row already exists (e.g. it was created by an
     // earlier partial save here, before more of the month's attendance
     // had come in).
-    const baseDed = row.lateDed + row.absentDed + row.earlyDed + row.halfDayDed + row.advDed
+    const baseDed = row.lateDed + row.absentDed + row.earlyDed + row.halfDayDed + row.advDed + customDed + esiDed + tdsDed
     const perfAdj = Number(existing?.performance_adjustment || 0)
     const totDed = baseDed + amount + (perfAdj < 0 ? -perfAdj : 0)
     const payload = {
@@ -1411,20 +1694,33 @@ function PayrollView({ staffId, isAdmin, staffList }) {
       seniority_allowance: row.staff.seniority_allowance || 0,
       loyalty_bonus: row.staff.loyalty_bonus || 0,
       role_bonus: row.staff.role_bonus || 0,
+      hra: row.staff.hra || 0,
       allowance: (row.staff.seniority_allowance || 0) + (row.staff.loyalty_bonus || 0) + (row.staff.role_bonus || 0),
       advance_deduction: row.advDed,
       late_deduction: row.lateDed + row.halfDayDed, // Salary.jsx has no separate half-day column — folded into late_deduction so nothing is silently dropped
       admin_deduction: amount,
       pf_deduction: existing?.pf_deduction || 0,
+      overtime_hours: overtimeHours,
+      overtime_rate: overtimeRate,
+      overtime_pay: overtimePay,
+      arrears,
+      arrears_note: adjustForm.arrearsNote || null,
+      reimbursement,
+      reimbursement_note: adjustForm.reimbursementNote || null,
+      custom_deduction: customDed,
+      custom_deduction_note: adjustForm.customDedNote || null,
+      esi_deduction: esiDed,
+      tds_deduction: tdsDed,
       performance_adjustment: perfAdj,
       deduction: totDed,
-      net_salary: row.gross + (perfAdj > 0 ? perfAdj : 0) - totDed,
+      net_salary: row.gross + overtimePay + arrears + reimbursement + (perfAdj > 0 ? perfAdj : 0) - totDed,
       status: existing?.status || 'Unpaid',
       payment_mode: existing?.payment_mode || 'Cash',
     }
     const { error } = await supabase.from('salary').upsert([payload], { onConflict: 'staff_id,month' })
     setSavingAdjust(false)
     if (error) { alert('Could not save adjustment: ' + error.message); return }
+    await writeAudit('updated', { entityId: existing?.id, staffId: row.staff.id, note: 'Admin adjustment' })
     setAdjustingId(null)
     await fetchExistingSalary()
   }
@@ -1471,6 +1767,10 @@ function PayrollView({ staffId, isAdmin, staffList }) {
             <button onClick={exportAllSlips}
               style={{ padding: '9px 14px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, fontFamily: FONT.body, fontSize: 12, fontWeight: 600, color: PAY.textSecondary, cursor: 'pointer' }}>
               🖨️ Print all payslips
+            </button>
+            <button onClick={() => setShowAdvanceForm(true)}
+              style={{ padding: '9px 14px', borderRadius: PAY.radiusSm, border: 'none', background: PAY.blue, fontFamily: FONT.body, fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>
+              + Issue advance
             </button>
           </>
         )}
@@ -1557,6 +1857,39 @@ function PayrollView({ staffId, isAdmin, staffList }) {
         </div>
       )}
 
+      {showAdvanceForm && (
+        <div style={{ background: PAY.card, border: `1px solid ${PAY.blue}33`, borderRadius: PAY.radius, padding: 14, marginBottom: 14 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: PAY.textPrimary, marginBottom: 8 }}>Issue new advance</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            <select value={advanceForm.staff_id} onChange={e => setAdvanceForm(f => ({ ...f, staff_id: e.target.value }))}
+              style={{ flex: '1 1 180px', padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }}>
+              <option value="">Select staff…</option>
+              {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <input type="number" value={advanceForm.amount} onChange={e => setAdvanceForm(f => ({ ...f, amount: e.target.value }))}
+              placeholder="Amount (₹)" style={{ flex: '1 1 120px', padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            <input type="month" value={advanceForm.issued_month} onChange={e => setAdvanceForm(f => ({ ...f, issued_month: e.target.value }))}
+              style={{ flex: '1 1 140px', padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+            <input type="number" min="1" value={advanceForm.repay_months} onChange={e => setAdvanceForm(f => ({ ...f, repay_months: e.target.value }))}
+              placeholder="Repay over (months)" style={{ flex: '1 1 140px', padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+          </div>
+          <input type="text" value={advanceForm.reason} onChange={e => setAdvanceForm(f => ({ ...f, reason: e.target.value }))}
+            placeholder="Reason (optional)" style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body, marginBottom: 10 }} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={submitAdvance} disabled={submittingAdvance}
+              style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: PAY.blue, color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>
+              {submittingAdvance ? '⏳ Issuing…' : 'Issue advance'}
+            </button>
+            <button onClick={() => setShowAdvanceForm(false)}
+              style={{ padding: '9px 16px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, color: PAY.textSecondary, fontWeight: 600, fontSize: 12.5, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {bulkAdjusting && (
         <div style={{ background: PAY.card, border: `1px solid ${PAY.blue}33`, borderRadius: PAY.radius, padding: 14, marginBottom: 14 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: PAY.textPrimary, marginBottom: 8 }}>Bulk adjustment for {selectedIds.size} staff</div>
@@ -1594,6 +1927,8 @@ function PayrollView({ staffId, isAdmin, staffList }) {
             const isSelected = selectedIds.has(r.staff.id)
             const existing = existingSalaryRows[r.staff.id]
             const isPaid = existing?.status === 'Paid'
+            const approvalStatus = existing?.approval_status || 'Draft'
+            const rowLocked = !!existing?.locked
             const flags = []
             if (r.d.lateDays > 0) flags.push({ label: `${r.d.lateDays} late`, color: PAY.amber, bg: PAY.amberBg })
             if (r.d.halfDay > 0) flags.push({ label: `${r.d.halfDay} half day`, color: '#0369A1', bg: '#EFF8FF' })
@@ -1624,6 +1959,14 @@ function PayrollView({ staffId, isAdmin, staffList }) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <div style={{ fontWeight: 700, fontSize: 14, color: PAY.textPrimary, fontFamily: FONT.body, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.staff.name}</div>
                         {isPaid && <span style={{ fontSize: 9, fontWeight: 800, color: PAY.green, background: PAY.greenBg, padding: '1px 6px', borderRadius: 999, flexShrink: 0 }}>PAID</span>}
+                        {rowLocked && <span style={{ fontSize: 9, fontWeight: 800, color: PAY.textMuted, background: PAY.bg, padding: '1px 6px', borderRadius: 999, flexShrink: 0 }}>🔒 LOCKED</span>}
+                        {!isPaid && existing?.id && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 999, flexShrink: 0,
+                            color: approvalStatus === 'Approved' ? PAY.green : approvalStatus === 'Submitted' ? PAY.amber : approvalStatus === 'Rejected' ? PAY.red : PAY.textMuted,
+                            background: approvalStatus === 'Approved' ? PAY.greenBg : approvalStatus === 'Submitted' ? PAY.amberBg : approvalStatus === 'Rejected' ? PAY.redBg : PAY.bg,
+                          }}>{approvalStatus.toUpperCase()}</span>
+                        )}
                       </div>
                       <div style={{ fontSize: 11, color: PAY.textMuted, marginTop: 1 }}>{r.staff.designation || r.staff.department || ''}</div>
                       {flags.length > 0 && (
@@ -1664,12 +2007,25 @@ function PayrollView({ staffId, isAdmin, staffList }) {
 
                     <div style={{ marginTop: 14 }}>
                       {[
+                        ['Overtime pay', r.overtimePay],
+                        ['Arrears', r.arrears],
+                        ['Reimbursement', r.reimbursement],
+                      ].filter(([, v]) => v).map(([label, v]) => (
+                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 12.5 }}>
+                          <span style={{ color: PAY.textSecondary }}>{label}</span>
+                          <span style={{ color: PAY.green, fontWeight: 600 }}>+{fmtRupee(v)}</span>
+                        </div>
+                      ))}
+                      {[
                         ['Late deduction', r.lateDed],
                         ['Half day deduction', r.halfDayDed],
                         ['Absent deduction', r.absentDed],
                         ['Early-out deduction', r.earlyDed],
                         ['Admin adjustment', r.adminDed],
                         ['Advance repayment', r.advDed],
+                        ['Custom deduction', r.customDed],
+                        ['ESI', r.esiDed],
+                        ['TDS', r.tdsDed],
                       ].filter(([, v]) => v).map(([label, v]) => (
                         <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 12.5 }}>
                           <span style={{ color: PAY.textSecondary }}>{label}</span>
@@ -1689,9 +2045,10 @@ function PayrollView({ staffId, isAdmin, staffList }) {
                     {isAdmin && (
                       <div style={{ marginTop: 12 }}>
                         {!isAdjusting ? (
-                          <button onClick={() => startAdjust(r)}
-                            style={{ width: '100%', padding: '10px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.blue}33`, background: PAY.blueBg, color: PAY.blue, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: FONT.body }}>
-                            {r.adminDed ? '✏️ Edit adjustment' : '+ Add adjustment'}
+                          <button onClick={() => startAdjust(r)} disabled={rowLocked}
+                            title={rowLocked ? 'Locked — undo payment to edit' : ''}
+                            style={{ width: '100%', padding: '10px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.blue}33`, background: rowLocked ? PAY.bg : PAY.blueBg, color: rowLocked ? PAY.textMuted : PAY.blue, fontWeight: 700, fontSize: 12.5, cursor: rowLocked ? 'not-allowed' : 'pointer', fontFamily: FONT.body }}>
+                            {rowLocked ? '🔒 Locked' : (r.adminDed ? '✏️ Edit adjustment' : '+ Add adjustment')}
                           </button>
                         ) : (
                           <div style={{ background: PAY.bg, borderRadius: PAY.radiusSm, padding: 12 }}>
@@ -1704,7 +2061,59 @@ function PayrollView({ staffId, isAdmin, staffList }) {
                             <input type="text" value={adjustForm.note}
                               onChange={e => setAdjustForm(f => ({ ...f, note: e.target.value }))}
                               placeholder="Reason (e.g. bonus, correction, fine)"
-                              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body, boxSizing: 'border-box', marginBottom: 8 }} />
+                              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body, boxSizing: 'border-box', marginBottom: 10 }} />
+
+                            {/* Batch 1 — variable monthly earnings/deductions */}
+                            <div style={{ fontSize: 10.5, fontWeight: 800, color: PAY.textMuted, textTransform: 'uppercase', letterSpacing: .4, marginBottom: 6 }}>Overtime</div>
+                            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                              <input type="number" value={adjustForm.overtimeHours}
+                                onChange={e => setAdjustForm(f => ({ ...f, overtimeHours: e.target.value }))}
+                                placeholder="Hours" style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+                              <input type="number" value={adjustForm.overtimeRate}
+                                onChange={e => setAdjustForm(f => ({ ...f, overtimeRate: e.target.value }))}
+                                placeholder="Rate ₹/hr" style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+                            </div>
+
+                            <div style={{ fontSize: 10.5, fontWeight: 800, color: PAY.textMuted, textTransform: 'uppercase', letterSpacing: .4, marginBottom: 6 }}>Arrears</div>
+                            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                              <input type="number" value={adjustForm.arrears}
+                                onChange={e => setAdjustForm(f => ({ ...f, arrears: e.target.value }))}
+                                placeholder="Amount (₹)" style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+                              <input type="text" value={adjustForm.arrearsNote}
+                                onChange={e => setAdjustForm(f => ({ ...f, arrearsNote: e.target.value }))}
+                                placeholder="Reason" style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+                            </div>
+
+                            <div style={{ fontSize: 10.5, fontWeight: 800, color: PAY.textMuted, textTransform: 'uppercase', letterSpacing: .4, marginBottom: 6 }}>Reimbursement</div>
+                            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                              <input type="number" value={adjustForm.reimbursement}
+                                onChange={e => setAdjustForm(f => ({ ...f, reimbursement: e.target.value }))}
+                                placeholder="Amount (₹)" style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+                              <input type="text" value={adjustForm.reimbursementNote}
+                                onChange={e => setAdjustForm(f => ({ ...f, reimbursementNote: e.target.value }))}
+                                placeholder="e.g. travel, phone" style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+                            </div>
+
+                            <div style={{ fontSize: 10.5, fontWeight: 800, color: PAY.textMuted, textTransform: 'uppercase', letterSpacing: .4, marginBottom: 6 }}>Custom deduction</div>
+                            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                              <input type="number" value={adjustForm.customDed}
+                                onChange={e => setAdjustForm(f => ({ ...f, customDed: e.target.value }))}
+                                placeholder="Amount (₹)" style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+                              <input type="text" value={adjustForm.customDedNote}
+                                onChange={e => setAdjustForm(f => ({ ...f, customDedNote: e.target.value }))}
+                                placeholder="e.g. uniform, damages" style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+                            </div>
+
+                            <div style={{ fontSize: 10.5, fontWeight: 800, color: PAY.textMuted, textTransform: 'uppercase', letterSpacing: .4, marginBottom: 6 }}>Statutory</div>
+                            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                              <input type="number" value={adjustForm.esiDed}
+                                onChange={e => setAdjustForm(f => ({ ...f, esiDed: e.target.value }))}
+                                placeholder="ESI (₹)" style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+                              <input type="number" value={adjustForm.tdsDed}
+                                onChange={e => setAdjustForm(f => ({ ...f, tdsDed: e.target.value }))}
+                                placeholder="TDS (₹)" style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${PAY.cardBorder}`, fontSize: 13, fontFamily: FONT.body }} />
+                            </div>
+
                             <div style={{ fontSize: 10.5, color: PAY.textMuted, marginBottom: 10 }}>
                               Writes directly to the payroll register for {month}. Positive deducts; negative adds a bonus.
                             </div>
@@ -1723,31 +2132,73 @@ function PayrollView({ staffId, isAdmin, staffList }) {
                       </div>
                     )}
 
+                    {/* Batch 2 — approval workflow: Draft → Submitted → Approved/Rejected.
+                        Shown only while the row isn't paid/locked yet; once paid, the row
+                        is locked and only "Undo payment" can reopen it. */}
+                    {isAdmin && !rowLocked && (
+                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${PAY.divider}`, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                        {approvalStatus === 'Rejected' && existing?.rejected_reason && (
+                          <div style={{ width: '100%', fontSize: 11, color: PAY.red, background: PAY.redBg, borderRadius: PAY.radiusSm, padding: '6px 10px' }}>
+                            Rejected: {existing.rejected_reason}
+                          </div>
+                        )}
+                        {(approvalStatus === 'Draft' || approvalStatus === 'Rejected') && (
+                          <button onClick={() => submitForApproval(r)} disabled={workflowBusy === r.staff.id}
+                            style={{ padding: '8px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.blue}44`, background: PAY.blueBg, color: PAY.blue, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+                            {workflowBusy === r.staff.id ? '⏳' : '↥ Submit for approval'}
+                          </button>
+                        )}
+                        {approvalStatus === 'Submitted' && (
+                          <>
+                            <button onClick={() => approveRow(r)} disabled={workflowBusy === r.staff.id}
+                              style={{ padding: '8px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.green}44`, background: PAY.greenBg, color: PAY.green, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+                              {workflowBusy === r.staff.id ? '⏳' : '✓ Approve'}
+                            </button>
+                            <button onClick={() => rejectRow(r)} disabled={workflowBusy === r.staff.id}
+                              style={{ padding: '8px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.red}44`, background: PAY.redBg, color: PAY.red, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+                              ✕ Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+
                     {/* #4 payslip, #6 mark as paid, #7 payment mode */}
                     <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${PAY.divider}`, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                      <button onClick={() => setSlipStaff({ ...r.staff, _dedOverride: { advance_deduction: r.advDed, late_deduction: r.lateDed + r.halfDayDed, admin_deduction: r.adminDed, pf_deduction: existing?.pf_deduction || 0, performance_adjustment: existing?.performance_adjustment || 0 }, _monthOverride: month })}
+                      <button onClick={() => setSlipStaff({ ...r.staff, _dedOverride: { advance_deduction: r.advDed, late_deduction: r.lateDed + r.halfDayDed, admin_deduction: r.adminDed, pf_deduction: existing?.pf_deduction || 0, performance_adjustment: existing?.performance_adjustment || 0, overtime_pay: r.overtimePay, arrears: r.arrears, reimbursement: r.reimbursement, custom_deduction: r.customDed, esi_deduction: r.esiDed, tds_deduction: r.tdsDed }, _monthOverride: month })}
                         style={{ padding: '8px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, color: PAY.textSecondary, fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
                         📄 Payslip
                       </button>
-                      <select value={paymentModeDraft[r.staff.id] ?? existing?.payment_mode ?? 'Cash'}
-                        onChange={e => setPaymentModeDraft(prev => ({ ...prev, [r.staff.id]: e.target.value }))}
-                        style={{ padding: '8px 10px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, fontSize: 11.5, fontFamily: FONT.body, color: PAY.textSecondary }}>
-                        {['Cash', 'Bank Transfer', 'UPI', 'Cheque'].map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
+                      {isAdmin && (
+                        <button onClick={() => openHistory(r.staff)}
+                          style={{ padding: '8px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, background: PAY.card, color: PAY.textSecondary, fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
+                          🕘 History
+                        </button>
+                      )}
+                      {!rowLocked && (
+                        <select value={paymentModeDraft[r.staff.id] ?? existing?.payment_mode ?? 'Cash'}
+                          onChange={e => setPaymentModeDraft(prev => ({ ...prev, [r.staff.id]: e.target.value }))}
+                          style={{ padding: '8px 10px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.cardBorder}`, fontSize: 11.5, fontFamily: FONT.body, color: PAY.textSecondary }}>
+                          {['Cash', 'Bank Transfer', 'UPI', 'Cheque'].map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      )}
                       {isPaid ? (
-                        <button onClick={() => setPaidStatus(r, 'Unpaid')}
+                        <button onClick={() => undoMarkPaid(r)} disabled={workflowBusy === r.staff.id}
                           style={{ padding: '8px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.amber}44`, background: PAY.amberBg, color: PAY.amber, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
-                          Mark Unpaid
+                          {workflowBusy === r.staff.id ? '⏳' : '↺ Undo payment'}
                         </button>
                       ) : (
-                        <button onClick={() => setPaidStatus(r, 'Paid')}
-                          style={{ padding: '8px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.green}44`, background: PAY.greenBg, color: PAY.green, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+                        <button onClick={() => setPaidStatus(r, 'Paid')} disabled={approvalStatus !== 'Approved'}
+                          title={approvalStatus !== 'Approved' ? 'Approve this row first' : ''}
+                          style={{ padding: '8px 12px', borderRadius: PAY.radiusSm, border: `1px solid ${PAY.green}44`, background: approvalStatus === 'Approved' ? PAY.greenBg : PAY.bg, color: approvalStatus === 'Approved' ? PAY.green : PAY.textMuted, fontSize: 11.5, fontWeight: 700, cursor: approvalStatus === 'Approved' ? 'pointer' : 'not-allowed' }}>
                           ✓ Mark Paid
                         </button>
                       )}
                     </div>
                     <div style={{ fontSize: 10, color: PAY.textMuted, marginTop: 6 }}>
-                      Marking Paid records this exact figure directly — it does not replace running the actual register in Payroll → Salary if you also track payments there.
+                      {rowLocked
+                        ? 'This row is locked — use "Undo payment" to make further changes.'
+                        : 'Marking Paid requires the row to be Approved first, and locks it against further edits.'}
                     </div>
                   </div>
                 )}
@@ -1759,6 +2210,91 @@ function PayrollView({ staffId, isAdmin, staffList }) {
 
       {/* #4/#6 payslip modal — reuses Salary.jsx's SlipModal exactly */}
       {slipStaff && <SlipModal s={slipStaff} ded={slipStaff._dedOverride} month={slipStaff._monthOverride} onClose={() => setSlipStaff(null)} />}
+
+      {/* Batch 2 — history viewer: audit log + revision snapshots for one
+          staff/month, opened via the "🕘 History" button on each row. */}
+      {historyStaff && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+          onClick={() => setHistoryStaff(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: PAY.card, borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 520, maxHeight: '85vh', overflowY: 'auto', padding: 18, boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: PAY.textPrimary, fontFamily: FONT.body }}>{historyStaff.name}</div>
+                <div style={{ fontSize: 11.5, color: PAY.textMuted }}>Payroll history — {month}</div>
+              </div>
+              <button onClick={() => setHistoryStaff(null)} style={{ border: 'none', background: 'none', fontSize: 20, color: PAY.textMuted, cursor: 'pointer', lineHeight: 1 }}>×</button>
+            </div>
+
+            {historyLoading ? (
+              <p style={{ color: PAY.textMuted, textAlign: 'center', padding: 24, fontFamily: FONT.body }}>Loading…</p>
+            ) : (
+              <>
+                <div style={{ fontSize: 11.5, fontWeight: 800, color: PAY.textSecondary, textTransform: 'uppercase', letterSpacing: .4, marginBottom: 8 }}>Activity log</div>
+                {historyLog.length === 0 ? (
+                  <div style={{ fontSize: 12.5, color: PAY.textMuted, marginBottom: 18 }}>No recorded actions for this month yet.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
+                    {historyLog.map(entry => {
+                      const actionMeta = {
+                        created: { label: 'Created', color: PAY.blue, bg: PAY.blueBg },
+                        updated: { label: 'Updated', color: PAY.blue, bg: PAY.blueBg },
+                        submitted: { label: 'Submitted', color: PAY.amber, bg: PAY.amberBg },
+                        approved: { label: 'Approved', color: PAY.green, bg: PAY.greenBg },
+                        rejected: { label: 'Rejected', color: PAY.red, bg: PAY.redBg },
+                        paid: { label: 'Marked Paid', color: PAY.green, bg: PAY.greenBg },
+                        unpaid: { label: 'Marked Unpaid', color: PAY.amber, bg: PAY.amberBg },
+                        undo_paid: { label: 'Payment undone', color: PAY.amber, bg: PAY.amberBg },
+                      }[entry.action] || { label: entry.action, color: PAY.textMuted, bg: PAY.bg }
+                      return (
+                        <div key={entry.id} style={{ background: PAY.bg, borderRadius: PAY.radiusSm, padding: '10px 12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: actionMeta.color, background: actionMeta.bg, padding: '2px 8px', borderRadius: 999 }}>{actionMeta.label}</span>
+                            <span style={{ fontSize: 10.5, color: PAY.textMuted }}>{new Date(entry.performed_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                          <div style={{ fontSize: 11.5, color: PAY.textSecondary, marginTop: 4 }}>
+                            {entry.performed_by ? `by ${entry.performed_by}` : 'by unknown user'}
+                            {entry.note ? ` — ${entry.note}` : ''}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                <div style={{ fontSize: 11.5, fontWeight: 800, color: PAY.textSecondary, textTransform: 'uppercase', letterSpacing: .4, marginBottom: 8 }}>Saved snapshots</div>
+                {historyRevisions.length === 0 ? (
+                  <div style={{ fontSize: 12.5, color: PAY.textMuted }}>No prior versions saved for this month.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {historyRevisions.map(rev => (
+                      <div key={rev.id} style={{ background: PAY.bg, borderRadius: PAY.radiusSm, padding: '10px 12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 11.5, fontWeight: 700, color: PAY.textPrimary }}>{rev.reason || 'Snapshot'}</span>
+                          <span style={{ fontSize: 10.5, color: PAY.textMuted }}>{new Date(rev.revised_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: PAY.textMuted, marginTop: 2 }}>{rev.revised_by ? `by ${rev.revised_by}` : 'by unknown user'}</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 4, marginTop: 8 }}>
+                          {[
+                            ['Net salary', rev.snapshot?.net_salary],
+                            ['Total deduction', rev.snapshot?.deduction],
+                            ['Admin adj.', rev.snapshot?.admin_deduction],
+                            ['Status', rev.snapshot?.status],
+                          ].map(([label, val]) => (
+                            <div key={label} style={{ fontSize: 11 }}>
+                              <span style={{ color: PAY.textMuted }}>{label}: </span>
+                              <span style={{ color: PAY.textSecondary, fontWeight: 600 }}>{typeof val === 'number' ? fmtRupee(val) : (val || '—')}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -2133,6 +2669,13 @@ function RolePermissionsSetup({ staffList, currentAdminId, showToast }) {
   const handleSave = async () => {
     if (!selectedStaffId) return
     setSaving(true)
+    // Snapshot the previous grants before touching anything, so a failed
+    // insert (after the delete has already committed) can attempt to
+    // restore them rather than silently leaving this staff member with
+    // zero permissions — delete-then-insert isn't transactional here, so
+    // a network drop between the two calls used to strip all their access
+    // with only a generic error toast and no recovery.
+    const previousGrants = [...grants]
     try {
       // Replace this staff member's grants wholesale: delete then re-insert
       // the checked set, so unticking a box actually revokes it.
@@ -2152,12 +2695,25 @@ function RolePermissionsSetup({ staffList, currentAdminId, showToast }) {
           granted_at: new Date().toISOString(),
         }))
         const { error: insErr } = await supabase.from('staff_module_permissions').insert(rows)
-        if (insErr) throw insErr
+        if (insErr) {
+          // Delete already committed — attempt to restore the previous
+          // grants immediately rather than leaving the staff member with
+          // none. This restore can itself fail (e.g. same network issue),
+          // so still surface the original error either way.
+          if (previousGrants.length > 0) {
+            await supabase.from('staff_module_permissions').insert(previousGrants.map(key => ({
+              staff_id: selectedStaffId, module: 'face_attendance', permission_key: key,
+              granted_by: currentAdminId || null, granted_at: new Date().toISOString(),
+            }))).catch(() => {})
+          }
+          throw insErr
+        }
       }
       showToast?.('✅ Permissions updated', 'ok')
       fetchAllGrants()
     } catch (err) {
-      showToast?.('Failed to save permissions: ' + err.message, 'err')
+      showToast?.('Failed to save permissions: ' + err.message + ' — please re-check this staff member\'s access before assuming it saved.', 'err')
+      fetchGrantsFor(selectedStaffId) // re-sync UI with whatever actually ended up in the DB
     } finally {
       setSaving(false)
     }
@@ -2287,11 +2843,17 @@ function CashBookView() {
 
   const fetchRows = useCallback(async () => {
     setLoading(true)
+    // BUGFIX: same `${month}-31` hardcoding bug already fixed in
+    // PayrollView/DashboardView/LateFinesView/TimeCard — invalid for any
+    // 28/29/30-day month, silently returning wrong/empty results.
+    const [y, m] = month.split('-').map(Number)
+    const lastDay = new Date(y, m, 0).getDate()
+    const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`
     const { data, error } = await supabase
       .from('accounts')
       .select('*')
       .gte('entry_date', `${month}-01`)
-      .lte('entry_date', `${month}-31`)
+      .lte('entry_date', monthEnd)
       .order('entry_date', { ascending: false })
     if (!error) setRows(data || [])
     setLoading(false)
@@ -2623,7 +3185,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
     { key: 'timecard', icon: '🕐', label: 'Time card' },
     { key: 'advances', icon: '💵', label: 'Advances' },
     { key: 'fines',    icon: '⏰', label: 'Late fines' },
-    { key: 'payroll',  icon: '💰', label: 'Payroll' }, // admins get the full Salary.jsx suite here (register, advances, history, reports, rules); non-admin staff see their own live preview only
+    { key: 'payroll',  icon: '💰', label: 'Payroll' }, // everyone sees the read-only PayrollView list/preview; the full Salary.jsx suite is no longer wired into this tab
     { key: 'regularization', icon: '🛠️', label: 'Correct attendance' },
     { key: 'reports',  icon: '📊', label: 'Reports' },
     { key: 'broadcast', icon: '📣', label: 'Broadcast messages' },
@@ -2900,8 +3462,7 @@ export default function FaceAttendance({ currentUser, isAdmin, staff = [], logge
           {tab === 'timecard' && <TimeCard staffId={staffId} isAdmin={isAdmin} staffList={staff} />}
           {tab === 'advances' && <AdvancesView staffId={staffId} isAdmin={isAdmin || hasPerm('manage_advances')} staffList={staff} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />}
           {tab === 'fines'    && <LateFinesView staffId={staffId} isAdmin={isAdmin || hasPerm('view_fines')} staffList={staff} />}
-          {tab === 'payroll' && isAdmin && <Salary />}
-          {tab === 'payroll' && !isAdmin && <PayrollView staffId={staffId} isAdmin={isAdmin || hasPerm('view_payroll')} staffList={staff} />}
+          {tab === 'payroll' && <PayrollView staffId={staffId} isAdmin={isAdmin || hasPerm('view_payroll')} staffList={staff} showToast={showToast} currentUsername={currentUser?.username} />}
           {tab === 'regularization' && <RegularizationView staffId={staffId} isAdmin={isAdmin} showToast={showToast} currentUsername={currentUser?.username} />}
           {tab === 'reports'  && (hasPerm('view_reports') ? <ReportsView isAdmin={isAdmin} staffList={staff} /> : <NoAccessCard />)}
           {tab === 'broadcast' && <BroadcastView isAdmin={isAdmin} currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />}

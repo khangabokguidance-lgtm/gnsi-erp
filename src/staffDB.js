@@ -281,7 +281,7 @@ export const staffDB = {
     return data?.[0]
   },
 
-  async updateSalary(id, { basic_salary, seniority_allowance, loyalty_bonus, role_bonus }) {
+  async updateSalary(id, { basic_salary, seniority_allowance, loyalty_bonus, role_bonus, hra }) {
     const { data, error } = await supabase
       .from('staff_profiles')
       .update({
@@ -289,6 +289,7 @@ export const staffDB = {
         seniority_allowance: Number(seniority_allowance) || 0,
         loyalty_bonus:       Number(loyalty_bonus)       || 0,
         role_bonus:          Number(role_bonus)          || 0,
+        hra:                 Number(hra)                 || 0,
       })
       .eq('id', id)
       .select()

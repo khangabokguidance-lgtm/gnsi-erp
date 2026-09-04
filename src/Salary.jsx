@@ -8,7 +8,7 @@ const fmt       = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN'
 const cm        = () => new Date().toISOString().slice(0, 7)
 const fmtMonth  = (m) => { if (!m) return ''; const [y, mo] = m.split('-'); return new Date(y, parseInt(mo) - 1).toLocaleString('default', { month: 'long', year: 'numeric' }) }
 const fmtDate   = (d) => { if (!d) return '-'; return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }
-const gross     = (s) => (Number(s.basic_salary)||0) + (Number(s.seniority_allowance)||0) + (Number(s.loyalty_bonus)||0) + (Number(s.role_bonus)||0)
+const gross     = (s) => (Number(s.basic_salary)||0) + (Number(s.seniority_allowance)||0) + (Number(s.loyalty_bonus)||0) + (Number(s.role_bonus)||0) + (Number(s.hra)||0)
 
 // Translates a staff_monthly_scores.level into a signed ₹ adjustment using
 // admin-configured rates. Bonuses are positive (added to net), the
@@ -71,7 +71,11 @@ function injectPrintCSS() {
 function buildSlipHTML(s, ded, month, copy) {
   const g=gross(s), adv=Number(ded?.advance_deduction||0), lat=Number(ded?.late_deduction||0), adm=Number(ded?.admin_deduction||0), pf=Number(ded?.pf_deduction||0)
   const perfAdj=Number(ded?.performance_adjustment||0), perfBonus=perfAdj>0?perfAdj:0, perfPenalty=perfAdj<0?-perfAdj:0
-  const totDed=adv+lat+adm+pf+perfPenalty, net=g+perfBonus-totDed
+  // Batch 1 — variable monthly earnings/deductions, alongside the existing
+  // fixed components above.
+  const ot=Number(ded?.overtime_pay||0), arr=Number(ded?.arrears||0), reimb=Number(ded?.reimbursement||0)
+  const custom=Number(ded?.custom_deduction||0), esi=Number(ded?.esi_deduction||0), tds=Number(ded?.tds_deduction||0)
+  const totDed=adv+lat+adm+pf+perfPenalty+custom+esi+tds, net=g+perfBonus+ot+arr+reimb-totDed
   const ini=(s.name||'').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase()
   const isOff=copy==='office', ctag=isOff?'OFFICE COPY':'STAFF COPY', cbg=isOff?'#FCEBEB':'#E6F1FB', cclr=isOff?'#6B1A1A':'#0C447C'
   const mo=fmtMonth(month), genDate=new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})
@@ -109,14 +113,18 @@ function buildSlipHTML(s, ded, month, copy) {
       </tr></thead>
       <tbody>
         ${erow('Basic Pay',s.basic_salary,'Advance',adv,false)}
-        ${erow('Seniority Allow.',s.seniority_allowance,'Late / Absent',lat,false)}
-        ${erow('Loyalty Bonus',s.loyalty_bonus,'Admin Deduction',adm,true)}
-        ${erow('Role Bonus',s.role_bonus,'PF Deduction',pf,false)}
+        ${erow('HRA',s.hra,'Late / Absent',lat,false)}
+        ${erow('Seniority Allow.',s.seniority_allowance,'Admin Deduction',adm,true)}
+        ${erow('Loyalty Bonus',s.loyalty_bonus,'PF Deduction',pf,false)}
+        ${erow('Role Bonus',s.role_bonus,'ESI Deduction',esi,false)}
+        ${erow(ot?'Overtime Pay':'',ot||null,'TDS Deduction',tds,false)}
+        ${erow(arr?'Arrears':'',arr||null,'Custom Deduction',custom,true)}
+        ${erow(reimb?'Reimbursement':'',reimb||null,'',null,false)}
         ${perfBonus>0?erow('Performance Bonus',perfBonus,'',null,false):(perfPenalty>0?erow('',null,'Performance Penalty',perfPenalty,true):'')}
       </tbody>
     </table>
     <table style="width:100%;border-collapse:collapse;border-top:1px solid #C5D8F5"><tr>
-      <td style="background:#E6F1FB;padding:10px 12px;text-align:center;width:33%"><div style="font-size:10px;color:#185FA5;font-weight:700">GROSS EARNINGS</div><div style="font-size:20px;font-weight:700;color:#0C447C">${fmt(g+perfBonus)}</div></td>
+      <td style="background:#E6F1FB;padding:10px 12px;text-align:center;width:33%"><div style="font-size:10px;color:#185FA5;font-weight:700">GROSS EARNINGS</div><div style="font-size:20px;font-weight:700;color:#0C447C">${fmt(g+perfBonus+ot+arr+reimb)}</div></td>
       <td style="background:#FCEBEB;padding:10px 12px;text-align:center;width:33%;border:1px solid #FCEAEA"><div style="font-size:10px;color:#A32D2D;font-weight:700">TOTAL DEDUCTIONS</div><div style="font-size:20px;font-weight:700;color:#A32D2D">${fmt(totDed)}</div></td>
       <td style="background:#EAF3DE;padding:10px 12px;text-align:center;width:34%;border:1.5px solid #1B3A6B"><div style="font-size:10px;color:#1B3A6B;font-weight:700">NET SALARY PAYABLE</div><div style="font-size:20px;font-weight:700;color:#27500A">${fmt(net)}</div></td>
     </tr></table>
@@ -163,14 +171,16 @@ function printRegister(tableRef) {
 // ─── Export to CSV ────────────────────────────────────────────────────────────
 
 function exportToCSV(staffList, dedMap, month) {
-  const headers = ['S.N.','Name','Designation','Basic','Seniority','Loyalty','Role Bonus','Gross','Advance Ded','Late Ded','Admin Ded','PF Ded','Performance Adj.','Total Ded','Net Salary','Payment Mode','Status']
+  const headers = ['S.N.','Name','Designation','Basic','HRA','Seniority','Loyalty','Role Bonus','Gross','Advance Ded','Late Ded','Admin Ded','PF Ded','ESI Ded','TDS Ded','Custom Ded','Overtime Pay','Arrears','Reimbursement','Performance Adj.','Total Ded','Net Salary','Payment Mode','Status']
   const rows = staffList.map((s,i) => {
     const d = dedMap[s.id]||{}
     const g = gross(s)
     const perfAdj = Number(d.performance_adjustment||0)
-    const totDed = (d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)
-    const net = g+(perfAdj>0?perfAdj:0)-totDed
-    return [i+1, s.name, s.designation||s.department||'', s.basic_salary||0, s.seniority_allowance||0, s.loyalty_bonus||0, s.role_bonus||0, g, d.advance_deduction||0, d.late_deduction||0, d.admin_deduction||0, d.pf_deduction||0, perfAdj, totDed, net, d.payment_mode||'', d.status||'Unpaid']
+    const ot = Number(d.overtime_hours||0)*Number(d.overtime_rate||0), arr = Number(d.arrears||0), reimb = Number(d.reimbursement||0)
+    const custom = Number(d.custom_deduction||0), esi = Number(d.esi_deduction||0), tds = Number(d.tds_deduction||0)
+    const totDed = (d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)+custom+esi+tds
+    const net = g+ot+arr+reimb+(perfAdj>0?perfAdj:0)-totDed
+    return [i+1, s.name, s.designation||s.department||'', s.basic_salary||0, s.hra||0, s.seniority_allowance||0, s.loyalty_bonus||0, s.role_bonus||0, g, d.advance_deduction||0, d.late_deduction||0, d.admin_deduction||0, d.pf_deduction||0, esi, tds, custom, ot, arr, reimb, perfAdj, totDed, net, d.payment_mode||'', d.status||'Unpaid']
   })
   const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
   const blob = new Blob([csv], { type:'text/csv' })
@@ -203,19 +213,23 @@ function reportRowNet(r) {
   // net_salary is stored, but recompute defensively in case of legacy rows
   if (r.net_salary != null) return Number(r.net_salary) || 0
   const perfAdj = Number(r.performance_adjustment || 0)
-  const totDed = (Number(r.advance_deduction)||0)+(Number(r.late_deduction)||0)+(Number(r.admin_deduction)||0)+(Number(r.pf_deduction)||0)+(perfAdj<0?-perfAdj:0)
-  const g = (Number(r.basic_salary)||0)+(Number(r.seniority_allowance)||0)+(Number(r.loyalty_bonus)||0)+(Number(r.role_bonus)||0)
-  return g + (perfAdj>0?perfAdj:0) - totDed
+  const ot = Number(r.overtime_pay||0), arr = Number(r.arrears||0), reimb = Number(r.reimbursement||0)
+  const custom = Number(r.custom_deduction||0), esi = Number(r.esi_deduction||0), tds = Number(r.tds_deduction||0)
+  const totDed = (Number(r.advance_deduction)||0)+(Number(r.late_deduction)||0)+(Number(r.admin_deduction)||0)+(Number(r.pf_deduction)||0)+(perfAdj<0?-perfAdj:0)+custom+esi+tds
+  const g = (Number(r.basic_salary)||0)+(Number(r.seniority_allowance)||0)+(Number(r.loyalty_bonus)||0)+(Number(r.role_bonus)||0)+(Number(r.hra)||0)
+  return g + ot + arr + reimb + (perfAdj>0?perfAdj:0) - totDed
 }
 
 function exportReportCSV(rows, staffMap, label) {
-  const headers = ['Month','Staff','Designation','Basic','Gross Adj.','Advance Ded','Late Ded','Admin Ded','PF Ded','Perf. Adj.','Net Salary','Status','Payment Mode','Paid At']
+  const headers = ['Month','Staff','Designation','Basic','HRA','Gross Adj.','Advance Ded','Late Ded','Admin Ded','PF Ded','ESI Ded','TDS Ded','Custom Ded','Overtime Pay','Arrears','Reimbursement','Perf. Adj.','Net Salary','Status','Payment Mode','Paid At']
   const body = rows.map(r => {
     const st = staffMap[r.staff_id] || {}
     return [
       fmtMonth(r.month), st.name || `#${r.staff_id}`, st.designation || st.department || '',
-      r.basic_salary || 0, (r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0),
+      r.basic_salary || 0, r.hra || 0, (r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0),
       r.advance_deduction || 0, r.late_deduction || 0, r.admin_deduction || 0, r.pf_deduction || 0,
+      r.esi_deduction || 0, r.tds_deduction || 0, r.custom_deduction || 0,
+      r.overtime_pay || 0, r.arrears || 0, r.reimbursement || 0,
       r.performance_adjustment || 0, reportRowNet(r), r.status || 'Unpaid', r.payment_mode || '',
       r.paid_at ? fmtDate(r.paid_at) : ''
     ]
@@ -676,8 +690,11 @@ function MobileStaffCard({ s, i, d, dedMap, setDed, setSlipStaff, bulkMode, isSe
   const [expanded, setExpanded] = useState(false)
   const g = gross(s)
   const perfAdj = Number(d.performance_adjustment||0)
-  const td = (d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)
-  const net = g+(perfAdj>0?perfAdj:0) - td
+  const ot = Number(d.overtime_hours||0) * Number(d.overtime_rate||0)
+  const arr = Number(d.arrears||0), reimb = Number(d.reimbursement||0)
+  const custom = Number(d.custom_deduction||0), esi = Number(d.esi_deduction||0), tds = Number(d.tds_deduction||0)
+  const td = (d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)+custom+esi+tds
+  const net = g+ot+arr+reimb+(perfAdj>0?perfAdj:0) - td
 
   return (
     <div style={{ background: isPaid ? '#f0fdf4' : 'white', border: `1px solid ${isPaid ? '#bbf7d0' : '#e2e8f0'}`, borderRadius:'10px', marginBottom:'8px', overflow:'hidden', borderLeft: `4px solid ${isPaid ? '#16a34a' : '#1e3a5f'}` }}>
@@ -709,6 +726,7 @@ function MobileStaffCard({ s, i, d, dedMap, setDed, setSlipStaff, bulkMode, isSe
             {[
               { label:'Basic', value: fmt(s.basic_salary) },
               { label:'Gross', value: fmt(g), highlight: true },
+              { label:'HRA', value: s.hra ? fmt(s.hra) : '—' },
               { label:'Seniority', value: s.seniority_allowance ? fmt(s.seniority_allowance) : '—' },
               { label:'Loyalty', value: s.loyalty_bonus ? fmt(s.loyalty_bonus) : '—' },
             ].map(item => (
@@ -719,6 +737,27 @@ function MobileStaffCard({ s, i, d, dedMap, setDed, setSlipStaff, bulkMode, isSe
             ))}
           </div>
 
+          {/* Batch 1 — overtime, arrears, reimbursement (earnings additions) */}
+          <div style={{ fontSize:'11px', fontWeight:'700', color:'#185FA5', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.5px' }}>Overtime / Arrears / Reimbursement</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'10px' }}>
+            <div>
+              <label style={{ ...S.lbl, fontSize:'11px', marginBottom:'3px' }}>OT Hours</label>
+              <input type="number" min="0" value={d.overtime_hours||0} onChange={e=>setDed(s.id,'overtime_hours',e.target.value)} style={{ ...S.inpSm, textAlign:'right' }} />
+            </div>
+            <div>
+              <label style={{ ...S.lbl, fontSize:'11px', marginBottom:'3px' }}>OT Rate ₹/hr</label>
+              <input type="number" min="0" value={d.overtime_rate||0} onChange={e=>setDed(s.id,'overtime_rate',e.target.value)} style={{ ...S.inpSm, textAlign:'right' }} />
+            </div>
+            <div>
+              <label style={{ ...S.lbl, fontSize:'11px', marginBottom:'3px' }}>Arrears (₹)</label>
+              <input type="number" min="0" value={d.arrears||0} onChange={e=>setDed(s.id,'arrears',e.target.value)} style={{ ...S.inpSm, textAlign:'right' }} />
+            </div>
+            <div>
+              <label style={{ ...S.lbl, fontSize:'11px', marginBottom:'3px' }}>Reimbursement (₹)</label>
+              <input type="number" min="0" value={d.reimbursement||0} onChange={e=>setDed(s.id,'reimbursement',e.target.value)} style={{ ...S.inpSm, textAlign:'right' }} />
+            </div>
+          </div>
+
           {/* Deduction inputs */}
           <div style={{ fontSize:'11px', fontWeight:'700', color:'#7B1F1F', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.5px' }}>Deductions</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'10px' }}>
@@ -727,6 +766,9 @@ function MobileStaffCard({ s, i, d, dedMap, setDed, setSlipStaff, bulkMode, isSe
               { field:'late_deduction', label:'Late / Absent', bg:'#fff' },
               { field:'admin_deduction', label:'Admin', bg:'#FFFBEB' },
               { field:'pf_deduction', label:'PF', bg:'#f5f3ff' },
+              { field:'esi_deduction', label:'ESI', bg:'#f5f3ff' },
+              { field:'tds_deduction', label:'TDS', bg:'#f5f3ff' },
+              { field:'custom_deduction', label:'Custom', bg:'#FFFBEB' },
             ].map(({ field, label, bg }) => (
               <div key={field}>
                 <label style={{ ...S.lbl, fontSize:'11px', marginBottom:'3px' }}>{label}</label>
@@ -849,8 +891,8 @@ function AnnualSummary({ staff, salaryRows, isMobile }) {
   )
 
   const totals = useMemo(() => ({
-    gross:  staffRows.reduce((a,r)=>a+(r.basic_salary||0)+(r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0),0),
-    ded:    staffRows.reduce((a,r)=>a+(r.advance_deduction||0)+(r.late_deduction||0)+(r.admin_deduction||0)+(r.pf_deduction||0),0),
+    gross:  staffRows.reduce((a,r)=>a+(r.basic_salary||0)+(r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0)+(r.hra||0)+(r.overtime_pay||0)+(r.arrears||0)+(r.reimbursement||0),0),
+    ded:    staffRows.reduce((a,r)=>a+(r.advance_deduction||0)+(r.late_deduction||0)+(r.admin_deduction||0)+(r.pf_deduction||0)+(r.esi_deduction||0)+(r.tds_deduction||0)+(r.custom_deduction||0),0),
     net:    staffRows.reduce((a,r)=>a+(r.net_salary||0),0),
     paid:   staffRows.filter(r=>r.status==='Paid').reduce((a,r)=>a+(r.net_salary||0),0),
     months: new Set(staffRows.map(r=>r.month)).size,
@@ -860,9 +902,9 @@ function AnnualSummary({ staff, salaryRows, isMobile }) {
     const map = {}
     staffRows.forEach(r => {
       if(!map[r.month]) map[r.month]={gross:0,net:0,ded:0,paid:0,count:0}
-      const g=(r.basic_salary||0)+(r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0)
+      const g=(r.basic_salary||0)+(r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0)+(r.hra||0)+(r.overtime_pay||0)+(r.arrears||0)+(r.reimbursement||0)
       map[r.month].gross+=g; map[r.month].net+=r.net_salary||0
-      map[r.month].ded+=(r.advance_deduction||0)+(r.late_deduction||0)+(r.admin_deduction||0)
+      map[r.month].ded+=(r.advance_deduction||0)+(r.late_deduction||0)+(r.admin_deduction||0)+(r.esi_deduction||0)+(r.tds_deduction||0)+(r.custom_deduction||0)
       if(r.status==='Paid') map[r.month].paid+=r.net_salary||0
       map[r.month].count++
     })
@@ -1144,14 +1186,18 @@ useEffect(() => { fetchScores(regMonth) }, [regMonth, fetchScores])
   }, [staff, roleFilter, search])
 
   const regTotals = useMemo(() => {
-    let tG=0,tA=0,tL=0,tAd=0,tPf=0,tPerf=0,tN=0
+    let tG=0,tA=0,tL=0,tAd=0,tPf=0,tPerf=0,tN=0,tOt=0,tArr=0,tReimb=0,tCustom=0,tEsi=0,tTds=0
     filteredStaff.forEach(s => {
       const g=gross(s), d=dedMap[s.id]||{}
       const perfAdj=Number(d.performance_adjustment||0)
-      const td=(d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)
-      tG+=g; tA+=d.advance_deduction||0; tL+=d.late_deduction||0; tAd+=d.admin_deduction||0; tPf+=d.pf_deduction||0; tPerf+=perfAdj; tN+=g+(perfAdj>0?perfAdj:0)-td
+      const ot=(Number(d.overtime_hours||0))*(Number(d.overtime_rate||0)), arr=Number(d.arrears||0), reimb=Number(d.reimbursement||0)
+      const custom=Number(d.custom_deduction||0), esi=Number(d.esi_deduction||0), tds=Number(d.tds_deduction||0)
+      const td=(d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)+custom+esi+tds
+      tG+=g; tA+=d.advance_deduction||0; tL+=d.late_deduction||0; tAd+=d.admin_deduction||0; tPf+=d.pf_deduction||0; tPerf+=perfAdj
+      tOt+=ot; tArr+=arr; tReimb+=reimb; tCustom+=custom; tEsi+=esi; tTds+=tds
+      tN+=g+ot+arr+reimb+(perfAdj>0?perfAdj:0)-td
     })
-    return { tG,tA,tL,tAd,tPf,tPerf,tD:tA+tL+tAd+tPf+(tPerf<0?-tPerf:0),tN }
+    return { tG,tA,tL,tAd,tPf,tPerf,tOt,tArr,tReimb,tCustom,tEsi,tTds,tD:tA+tL+tAd+tPf+(tPerf<0?-tPerf:0)+tCustom+tEsi+tTds,tN }
   }, [filteredStaff, dedMap])
 
   const historyData = useMemo(() => {
@@ -1189,6 +1235,17 @@ useEffect(() => {
         performance_adjustment: r.performance_adjustment || 0,
         payment_mode:      r.payment_mode      || 'Cash',
         status:            r.status            || 'Unpaid',
+        // Batch 1 fields
+        overtime_hours:    r.overtime_hours    || 0,
+        overtime_rate:     r.overtime_rate     || 0,
+        arrears:           r.arrears           || 0,
+        arrears_note:      r.arrears_note      || '',
+        reimbursement:     r.reimbursement     || 0,
+        reimbursement_note: r.reimbursement_note || '',
+        custom_deduction:  r.custom_deduction  || 0,
+        custom_deduction_note: r.custom_deduction_note || '',
+        esi_deduction:     r.esi_deduction     || 0,
+        tds_deduction:     r.tds_deduction     || 0,
       }
     })
 
@@ -1252,12 +1309,15 @@ const HALFDAY_RATE = Number(dedRules.half_day_rate)
 
   // ── Handlers ──
 
+  const DED_DEFAULT = { advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,performance_adjustment:0,payment_mode:'Cash',status:'Unpaid',overtime_hours:0,overtime_rate:0,arrears:0,arrears_note:'',reimbursement:0,reimbursement_note:'',custom_deduction:0,custom_deduction_note:'',esi_deduction:0,tds_deduction:0 }
+  const DED_TEXT_FIELDS = new Set(['payment_mode', 'status', 'arrears_note', 'reimbursement_note', 'custom_deduction_note'])
+
   const setDed = useCallback((staffId, field, value) => {
-    setDedMap(prev => ({ ...prev, [staffId]: { ...(prev[staffId]||{advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,performance_adjustment:0,payment_mode:'Cash',status:'Unpaid'}), [field]: field==='payment_mode'?value:(field==='performance_adjustment'?(parseInt(value)||0):Math.max(0,parseInt(value)||0)) } }))
+    setDedMap(prev => ({ ...prev, [staffId]: { ...(prev[staffId]||DED_DEFAULT), [field]: DED_TEXT_FIELDS.has(field) ? value : (field==='performance_adjustment'?(parseInt(value)||0):Math.max(0,parseInt(value)||0)) } }))
   }, [])
 
   const resetDeductions = useCallback(() => {
-    setDedMap(prev => { const m={...prev}; filteredStaff.forEach(s=>{m[s.id]={advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,performance_adjustment:0,payment_mode:'Cash',status:'Unpaid'}}); return m })
+    setDedMap(prev => { const m={...prev}; filteredStaff.forEach(s=>{m[s.id]={...DED_DEFAULT}}); return m })
   }, [filteredStaff])
 
   // ── Auto Payroll — rebuild dedMap purely from live FaceAttendance data ──
@@ -1319,6 +1379,19 @@ const HALFDAY_RATE = Number(dedRules.half_day_rate)
           performance_adjustment: autoPerfAdj,
           payment_mode:      dedMap[s.id]?.payment_mode || 'Cash',
           status:            'Unpaid',
+          // Batch 1 fields: manual-only, same as admin/pf deduction above —
+          // auto payroll doesn't derive these from attendance, so preserve
+          // whatever was already entered rather than resetting to 0.
+          overtime_hours: dedMap[s.id]?.overtime_hours || 0,
+          overtime_rate: dedMap[s.id]?.overtime_rate || 0,
+          arrears: dedMap[s.id]?.arrears || 0,
+          arrears_note: dedMap[s.id]?.arrears_note || '',
+          reimbursement: dedMap[s.id]?.reimbursement || 0,
+          reimbursement_note: dedMap[s.id]?.reimbursement_note || '',
+          custom_deduction: dedMap[s.id]?.custom_deduction || 0,
+          custom_deduction_note: dedMap[s.id]?.custom_deduction_note || '',
+          esi_deduction: dedMap[s.id]?.esi_deduction || 0,
+          tds_deduction: dedMap[s.id]?.tds_deduction || 0,
           _geo:              geo || null,
         }
       })
@@ -1331,8 +1404,11 @@ const HALFDAY_RATE = Number(dedRules.half_day_rate)
         const d = newMap[s.id]
         const perfAdj = Number(d.performance_adjustment || 0)
         const g = gross(s)
-        const totDed = (d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)
-        return { staff_id:s.id, month:regMonth, basic_salary:s.basic_salary||0, seniority_allowance:s.seniority_allowance||0, loyalty_bonus:s.loyalty_bonus||0, role_bonus:s.role_bonus||0, allowance:(s.seniority_allowance||0)+(s.loyalty_bonus||0)+(s.role_bonus||0), advance_deduction:d.advance_deduction||0, late_deduction:d.late_deduction||0, admin_deduction:d.admin_deduction||0, pf_deduction:d.pf_deduction||0, performance_adjustment:perfAdj, deduction:totDed, net_salary:g+(perfAdj>0?perfAdj:0)-totDed, status:'Unpaid', payment_mode:d.payment_mode||'Cash' }
+        const ot = Number(d.overtime_hours||0) * Number(d.overtime_rate||0)
+        const arr = Number(d.arrears||0), reimb = Number(d.reimbursement||0)
+        const custom = Number(d.custom_deduction||0), esi = Number(d.esi_deduction||0), tds = Number(d.tds_deduction||0)
+        const totDed = (d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)+custom+esi+tds
+        return { staff_id:s.id, month:regMonth, basic_salary:s.basic_salary||0, seniority_allowance:s.seniority_allowance||0, loyalty_bonus:s.loyalty_bonus||0, role_bonus:s.role_bonus||0, hra:s.hra||0, allowance:(s.seniority_allowance||0)+(s.loyalty_bonus||0)+(s.role_bonus||0), advance_deduction:d.advance_deduction||0, late_deduction:d.late_deduction||0, admin_deduction:d.admin_deduction||0, pf_deduction:d.pf_deduction||0, overtime_hours:d.overtime_hours||0, overtime_rate:d.overtime_rate||0, overtime_pay:ot, arrears:arr, arrears_note:d.arrears_note||null, reimbursement:reimb, reimbursement_note:d.reimbursement_note||null, custom_deduction:custom, custom_deduction_note:d.custom_deduction_note||null, esi_deduction:esi, tds_deduction:tds, performance_adjustment:perfAdj, deduction:totDed, net_salary:g+ot+arr+reimb+(perfAdj>0?perfAdj:0)-totDed, status:'Unpaid', payment_mode:d.payment_mode||'Cash' }
       })
       const { error } = await supabase.from('salary').upsert(rows, { onConflict: 'staff_id,month' })
       if (error) throw error
@@ -1341,9 +1417,12 @@ const HALFDAY_RATE = Number(dedRules.half_day_rate)
       targetStaff.forEach(s => {
         const d = newMap[s.id]
         const perfAdj = Number(d.performance_adjustment || 0)
+        const ot = Number(d.overtime_hours||0) * Number(d.overtime_rate||0)
+        const arr = Number(d.arrears||0), reimb = Number(d.reimbursement||0)
+        const custom = Number(d.custom_deduction||0), esi = Number(d.esi_deduction||0), tds = Number(d.tds_deduction||0)
         EventBus.emit(GNSI_EVENTS.SALARY_SAVED, {
           staffId: s.id, month: regMonth,
-          netSalary: gross(s) + (perfAdj>0?perfAdj:0) - ((d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)),
+          netSalary: gross(s) + ot + arr + reimb + (perfAdj>0?perfAdj:0) - ((d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)+custom+esi+tds),
           status: 'Unpaid',
         })
       })
@@ -1364,10 +1443,12 @@ const HALFDAY_RATE = Number(dedRules.half_day_rate)
     setSaving(true)
     try {
       const rows = filteredStaff.map(s => {
-        const d=dedMap[s.id]||{advance_deduction:0,late_deduction:0,admin_deduction:0,pf_deduction:0,performance_adjustment:0,payment_mode:'Cash',status:'Unpaid'}
+        const d=dedMap[s.id]||DED_DEFAULT
         const perfAdj=Number(d.performance_adjustment||0)
-        const g=gross(s), totDed=(d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)
-        return { staff_id:s.id, month:regMonth, basic_salary:s.basic_salary||0, seniority_allowance:s.seniority_allowance||0, loyalty_bonus:s.loyalty_bonus||0, role_bonus:s.role_bonus||0, allowance:(s.seniority_allowance||0)+(s.loyalty_bonus||0)+(s.role_bonus||0), advance_deduction:d.advance_deduction||0, late_deduction:d.late_deduction||0, admin_deduction:d.admin_deduction||0, pf_deduction:d.pf_deduction||0, performance_adjustment:perfAdj, deduction:totDed, net_salary:g+(perfAdj>0?perfAdj:0)-totDed, status:d.status||'Unpaid', payment_mode:d.payment_mode||'Cash' }
+        const ot=Number(d.overtime_hours||0)*Number(d.overtime_rate||0), arr=Number(d.arrears||0), reimb=Number(d.reimbursement||0)
+        const custom=Number(d.custom_deduction||0), esi=Number(d.esi_deduction||0), tds=Number(d.tds_deduction||0)
+        const g=gross(s), totDed=(d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)+custom+esi+tds
+        return { staff_id:s.id, month:regMonth, basic_salary:s.basic_salary||0, seniority_allowance:s.seniority_allowance||0, loyalty_bonus:s.loyalty_bonus||0, role_bonus:s.role_bonus||0, hra:s.hra||0, allowance:(s.seniority_allowance||0)+(s.loyalty_bonus||0)+(s.role_bonus||0), advance_deduction:d.advance_deduction||0, late_deduction:d.late_deduction||0, admin_deduction:d.admin_deduction||0, pf_deduction:d.pf_deduction||0, overtime_hours:d.overtime_hours||0, overtime_rate:d.overtime_rate||0, overtime_pay:ot, arrears:arr, arrears_note:d.arrears_note||null, reimbursement:reimb, reimbursement_note:d.reimbursement_note||null, custom_deduction:custom, custom_deduction_note:d.custom_deduction_note||null, esi_deduction:esi, tds_deduction:tds, performance_adjustment:perfAdj, deduction:totDed, net_salary:g+ot+arr+reimb+(perfAdj>0?perfAdj:0)-totDed, status:d.status||'Unpaid', payment_mode:d.payment_mode||'Cash' }
       })
       const { error } = await supabase.from('salary').upsert(rows,{onConflict:'staff_id,month'})
       if (error) throw error
@@ -1390,10 +1471,12 @@ const HALFDAY_RATE = Number(dedRules.half_day_rate)
       for (const s of filteredStaff) {
         const d = dedMap[s.id] || {};
         const perfAdj = Number(d.performance_adjustment||0)
+        const ot=Number(d.overtime_hours||0)*Number(d.overtime_rate||0), arr=Number(d.arrears||0), reimb=Number(d.reimbursement||0)
+        const custom=Number(d.custom_deduction||0), esi=Number(d.esi_deduction||0), tds=Number(d.tds_deduction||0)
         EventBus.emit(GNSI_EVENTS.SALARY_SAVED, { 
           staffId: s.id, 
           month: regMonth,
-          netSalary: gross(s) + (perfAdj>0?perfAdj:0) - ((d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)),
+          netSalary: gross(s) + ot + arr + reimb + (perfAdj>0?perfAdj:0) - ((d.advance_deduction||0)+(d.late_deduction||0)+(d.admin_deduction||0)+(d.pf_deduction||0)+(perfAdj<0?-perfAdj:0)+custom+esi+tds),
           status: d.status || 'Unpaid'
         });
       }
@@ -1715,11 +1798,14 @@ const handleDeleteAdvance = useCallback(async (id) => {
                 gap: 20
               }}>
                 {filteredStaff.map((s, i) => {
-                  const d = dedMap[s.id] || { advance_deduction: 0, late_deduction: 0, admin_deduction: 0, pf_deduction: 0, performance_adjustment: 0, payment_mode: 'Cash', status: 'Unpaid' }
+                  const d = dedMap[s.id] || DED_DEFAULT
                   const g = gross(s)
                   const perfAdj = Number(d.performance_adjustment || 0)
-                  const td = (d.advance_deduction || 0) + (d.late_deduction || 0) + (d.admin_deduction || 0) + (d.pf_deduction || 0) + (perfAdj < 0 ? -perfAdj : 0)
-                  const net = g + (perfAdj > 0 ? perfAdj : 0) - td
+                  const ot = Number(d.overtime_hours||0) * Number(d.overtime_rate||0)
+                  const arr = Number(d.arrears||0), reimb = Number(d.reimbursement||0)
+                  const custom = Number(d.custom_deduction||0), esi = Number(d.esi_deduction||0), tds = Number(d.tds_deduction||0)
+                  const td = (d.advance_deduction || 0) + (d.late_deduction || 0) + (d.admin_deduction || 0) + (d.pf_deduction || 0) + (perfAdj < 0 ? -perfAdj : 0) + custom + esi + tds
+                  const net = g + ot + arr + reimb + (perfAdj > 0 ? perfAdj : 0) - td
                   const isPaid = d.status === 'Paid'
                   const initials = (s.name || '').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
                   const hue = (s.name?.charCodeAt(0) || 0) % 360
@@ -1840,6 +1926,10 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
     <div style={{ fontSize: 13, color: '#0C447C', fontWeight: 700 }}>{fmt(g)}</div>
   </div>
   <div>
+    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>HRA</div>
+    <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>{s.hra ? fmt(s.hra) : '—'}</div>
+  </div>
+  <div>
     <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Seniority</div>
     <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>{s.seniority_allowance ? fmt(s.seniority_allowance) : '—'}</div>
   </div>
@@ -1879,6 +1969,29 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
   )
 })()}
 
+                      {/* Overtime / Arrears / Reimbursement Section */}
+                      <div style={{ background: '#EEF4FF', borderRadius: 10, padding: '12px 14px', border: '1px solid #C5D8F5' }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#185FA5', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Overtime / Arrears / Reimbursement</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          <div>
+                            <label style={{ ...S.lbl, fontSize: 11, marginBottom: 3 }}>OT Hours</label>
+                            <input type="number" min="0" value={d.overtime_hours || 0} onChange={e => setDed(s.id, 'overtime_hours', e.target.value)} style={{ ...S.inpSm, textAlign: 'right' }} />
+                          </div>
+                          <div>
+                            <label style={{ ...S.lbl, fontSize: 11, marginBottom: 3 }}>OT Rate ₹/hr</label>
+                            <input type="number" min="0" value={d.overtime_rate || 0} onChange={e => setDed(s.id, 'overtime_rate', e.target.value)} style={{ ...S.inpSm, textAlign: 'right' }} />
+                          </div>
+                          <div>
+                            <label style={{ ...S.lbl, fontSize: 11, marginBottom: 3 }}>Arrears (₹)</label>
+                            <input type="number" min="0" value={d.arrears || 0} onChange={e => setDed(s.id, 'arrears', e.target.value)} style={{ ...S.inpSm, textAlign: 'right' }} />
+                          </div>
+                          <div>
+                            <label style={{ ...S.lbl, fontSize: 11, marginBottom: 3 }}>Reimbursement (₹)</label>
+                            <input type="number" min="0" value={d.reimbursement || 0} onChange={e => setDed(s.id, 'reimbursement', e.target.value)} style={{ ...S.inpSm, textAlign: 'right' }} />
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Deductions Section */}
                       <div style={{ background: '#fafbfc', borderRadius: 10, padding: '12px 14px', border: '1px solid #f1f5f9' }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: '#7B1F1F', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Deductions</div>
@@ -1888,6 +2001,9 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
                             { field: 'late_deduction', label: 'Late / Absent', bg: '#fff' },
                             { field: 'admin_deduction', label: 'Admin', bg: '#FFFBEB' },
                             { field: 'pf_deduction', label: 'PF', bg: '#f5f3ff' },
+                            { field: 'esi_deduction', label: 'ESI', bg: '#f5f3ff' },
+                            { field: 'tds_deduction', label: 'TDS', bg: '#f5f3ff' },
+                            { field: 'custom_deduction', label: 'Custom', bg: '#FFFBEB' },
                           ].map(({ field, label, bg }) => (
                             <div key={field}>
                               <label style={{ ...S.lbl, fontSize: 11, marginBottom: 3 }}>{label}</label>
@@ -2224,9 +2340,9 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
                 <div>
                   {historyData.map(r => {
                     const s=staff.find(x=>String(x.id)===String(r.staff_id))
-                    const g=(r.basic_salary||0)+(r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0)
-                    const dedR={ advance_deduction:r.advance_deduction, late_deduction:r.late_deduction, admin_deduction:r.admin_deduction, pf_deduction:r.pf_deduction, performance_adjustment:r.performance_adjustment, payment_mode:r.payment_mode }
-                    const sForSlip=s?{...s,basic_salary:r.basic_salary,seniority_allowance:r.seniority_allowance,loyalty_bonus:r.loyalty_bonus,role_bonus:r.role_bonus,_dedOverride:dedR,_monthOverride:r.month}:null
+                    const g=(r.basic_salary||0)+(r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0)+(r.hra||0)
+                    const dedR={ advance_deduction:r.advance_deduction, late_deduction:r.late_deduction, admin_deduction:r.admin_deduction, pf_deduction:r.pf_deduction, performance_adjustment:r.performance_adjustment, payment_mode:r.payment_mode, overtime_pay:r.overtime_pay, arrears:r.arrears, reimbursement:r.reimbursement, custom_deduction:r.custom_deduction, esi_deduction:r.esi_deduction, tds_deduction:r.tds_deduction }
+                    const sForSlip=s?{...s,basic_salary:r.basic_salary,seniority_allowance:r.seniority_allowance,loyalty_bonus:r.loyalty_bonus,role_bonus:r.role_bonus,hra:r.hra,_dedOverride:dedR,_monthOverride:r.month}:null
                     const isCmp=compareMonth&&r.month===compareMonth
                     return (
                       <div key={r.id} style={{ ...S.cardMob, border:`1px solid ${isCmp?'#f59e0b':'#e2e8f0'}`, background: isCmp ? '#fefce8' : 'white', borderLeft:`4px solid ${r.status==='Paid'?'#16a34a':'#dc2626'}` }}>
@@ -2266,9 +2382,9 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
                     <tbody>
                       {historyData.map(r => {
                         const s=staff.find(x=>String(x.id)===String(r.staff_id))
-                        const g=(r.basic_salary||0)+(r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0)
-                        const dedR={ advance_deduction:r.advance_deduction, late_deduction:r.late_deduction, admin_deduction:r.admin_deduction, pf_deduction:r.pf_deduction, performance_adjustment:r.performance_adjustment, payment_mode:r.payment_mode }
-                        const sForSlip=s?{...s,basic_salary:r.basic_salary,seniority_allowance:r.seniority_allowance,loyalty_bonus:r.loyalty_bonus,role_bonus:r.role_bonus,_dedOverride:dedR,_monthOverride:r.month}:null
+                        const g=(r.basic_salary||0)+(r.seniority_allowance||0)+(r.loyalty_bonus||0)+(r.role_bonus||0)+(r.hra||0)
+                        const dedR={ advance_deduction:r.advance_deduction, late_deduction:r.late_deduction, admin_deduction:r.admin_deduction, pf_deduction:r.pf_deduction, performance_adjustment:r.performance_adjustment, payment_mode:r.payment_mode, overtime_pay:r.overtime_pay, arrears:r.arrears, reimbursement:r.reimbursement, custom_deduction:r.custom_deduction, esi_deduction:r.esi_deduction, tds_deduction:r.tds_deduction }
+                        const sForSlip=s?{...s,basic_salary:r.basic_salary,seniority_allowance:r.seniority_allowance,loyalty_bonus:r.loyalty_bonus,role_bonus:r.role_bonus,hra:r.hra,_dedOverride:dedR,_monthOverride:r.month}:null
                         const isCmp=compareMonth&&r.month===compareMonth
                         return (
                           <tr key={r.id} style={{ borderBottom:'1px solid #f1f5f9', background:isCmp?'#fefce8':'white' }}>
