@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import { getActiveStudents } from './studentQueries'
 import { useState, useEffect, useMemo } from 'react'
 import { PersonalAccountantButton } from './personalAccountant'
+import { isAdminRole } from './roles'
 import {
   fmt, today, gccStr, rcptNo,
   collectFee, deleteLegacyFeeRecord,
@@ -2886,7 +2887,13 @@ export default function Fees() {
       return {}
     }
   }, [])
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  // Was: (currentUser?.role || '').toLowerCase() === 'admin' — matched
+  // only the exact lowercase string 'admin', so roles like
+  // 'Administrator' or 'Co-Admin' (the app's actual admin role values,
+  // per App.jsx's ADMIN_ROLES) silently fell through to the non-admin
+  // view here even for real admins. Now uses the same shared
+  // isAdminRole() helper every other module checks against.
+  const isAdmin = isAdminRole(currentUser?.role)
   const [fees,                setFees]         = useState([])
   const [students,            setStudents]      = useState([])
   const [admissions,          setAdmissions]    = useState([])

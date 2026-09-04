@@ -50,12 +50,18 @@ import Awards             from './Awards'
 import FaceAttendance     from './FaceAttendance'
 import Student360         from './Student360'
 import { useMismatchAutoScan } from './mismatchScanner'
+import { ADMIN_ROLES, isAdminRole } from './roles'
 
 // ─────────────────────────────────────────────────────────────
 //  FIX 1: Unified admin role check — consistent everywhere
 // ─────────────────────────────────────────────────────────────
-export const ADMIN_ROLES = ['Admin', 'Administrator', 'Co-Admin']
-export const isAdminRole = (role) => ADMIN_ROLES.includes(role)
+// Moved to roles.js (no dependencies of its own) to avoid a circular
+// import now that module screens App.jsx renders (e.g. Fees.jsx) also
+// need isAdminRole — imported above alongside the other top-level
+// imports, and re-exported here so any existing `import { isAdminRole }
+// from './App'` elsewhere in the codebase keeps working unchanged; new
+// imports should prefer './roles' directly.
+export { ADMIN_ROLES, isAdminRole }
 
 // Roles that manage Face Attendance for other staff (coverage, approvals,
 // enrollment) without necessarily having their own linked staff_profile_id —
