@@ -71,6 +71,13 @@ export function todayIsoIST() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
 }
 
+// Current calendar month as 'YYYY-MM', used as the default range for any
+// tab that doesn't let the user pick a month explicitly.
+export function currentMonth() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 // ─── the shared hook ────────────────────────────────────────────────────────
 
 const DEFAULT_SELECT = 'id, staff_id, date, shift_label, status, late_minutes, check_in_time, check_out_time, server_check_in_time, server_check_out_time'

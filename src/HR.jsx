@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 import TeacherAttendance from './TeacherAttendance'
+import { useAttendanceRange, classifyRows, currentMonth } from './attendanceData'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -204,6 +205,66 @@ function StaffAvatar({ name, size = 36 }) {
       color: 'white', fontWeight: '700', fontSize: size * 0.42, flexShrink: 0,
     }}>
       {name?.[0]?.toUpperCase()}
+    </div>
+  )
+}
+
+
+// ─── Attendance summary — shared with Face Attendance module ────────────────
+// Pulls the same staff_geo_attendance data (via attendanceData.js's shared
+// hook/classifier) that FaceAttendance.jsx's Dashboard/TimeCard/Payroll tabs
+// use, so HR sees the same numbers rather than a separately-derived guess.
+// Read-only: nothing here writes attendance data, editing still happens via
+// Face Attendance / GeoAttendance check-in.
+
+function StaffAttendanceSummary({ staffId, staffName }) {
+  const [month, setMonth] = useState(currentMonth())
+  const { rows, loading, error } = useAttendanceRange({
+    month, isAdmin: true, staffFilter: String(staffId),
+    select: 'staff_id, date, status, late_minutes',
+  })
+  const { totals } = useMemo(() => classifyRows(rows), [rows])
+  const totalDays = rows.length
+  const presentLike = totals.Present + totals.Late + totals['Half Day'] + totals['Early Out']
+  const rate = totalDays > 0 ? Math.round((presentLike / totalDays) * 100) : null
+
+  if (!staffId) return null
+
+  return (
+    <div style={{ ...styles.card, backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e3a5f' }}>
+          🧾 Attendance — {staffName}
+        </div>
+        <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+          style={{ ...styles.input, width: 'auto', padding: '6px 10px', fontSize: '12px' }} />
+      </div>
+      {loading ? (
+        <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>Loading attendance…</p>
+      ) : error ? (
+        <p style={{ margin: 0, fontSize: '12px', color: '#dc2626' }}>⚠️ Could not load attendance: {error}</p>
+      ) : totalDays === 0 ? (
+        <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>No attendance recorded this month.</p>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '8px' }}>
+          {[
+            { label: 'Present', value: totals.Present, color: '#16a34a' },
+            { label: 'Late', value: totals.Late, color: '#ca8a04' },
+            { label: 'Half Day', value: totals['Half Day'], color: '#d97706' },
+            { label: 'Absent', value: totals.Absent, color: '#dc2626' },
+            { label: 'Early Out', value: totals['Early Out'], color: '#ca8a04' },
+          ].map(x => (
+            <div key={x.label} style={{ textAlign: 'center', backgroundColor: 'white', borderRadius: '8px', padding: '8px 4px' }}>
+              <div style={{ fontSize: '16px', fontWeight: '700', color: x.color }}>{x.value}</div>
+              <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '600' }}>{x.label}</div>
+            </div>
+          ))}
+          <div style={{ textAlign: 'center', backgroundColor: 'white', borderRadius: '8px', padding: '8px 4px' }}>
+            <div style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f' }}>{rate}%</div>
+            <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '600' }}>Attendance rate</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -755,6 +816,12 @@ function WarningLetterGenerator({ staff, records }) {
           </select>
         </div>
       </div>
+
+      {s && (
+        <div style={{ marginBottom: '14px' }}>
+          <StaffAttendanceSummary staffId={s.id} staffName={s.name} />
+        </div>
+      )}
 
       <button onClick={generate} disabled={!selectedStaff || !selectedTemplate} style={styles.btn(!!(selectedStaff && selectedTemplate))}>
         ✍️ Generate Letter
