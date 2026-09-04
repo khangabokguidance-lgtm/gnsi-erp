@@ -16,6 +16,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
 import { useStudyMaterialsByChapter, useMaterialCountsByChapter, normalizeToQBank } from './StudyMaterialBridge'
 import { EventBus, GNSI_EVENTS } from './EventBus'
+import { isAdminRole } from './roles'
 
 // ── BMEI04 font (base64, embedded once per file load) — needed because
 // browsers can't render this legacy encoding without the font that maps
@@ -3522,16 +3523,24 @@ function TabStats({ questions, refetch, showToast, isAdmin, onNavigate }) {
 // Patches: { onNavigate, initialFilter } props + NAVIGATE_TO EventBus listener
 // ══════════════════════════════════════════════════════════════════════════════
 export default function QuestionBank({ currentUser, perms, onNavigate, initialFilter: initialFilterProp }) {
-  // Confirmed via SQL against portal_users.role — full list: Receptionist,
-  // Teacher, Accountant, Superintendent, House Master, admin, Computer
-  // Staffs. "admin" is lowercase (not "Administrator"/"Teaching + Admin" —
-  // those were earlier incorrect guesses). Question Bank access is
-  // admin + Computer Staffs only.
+  // BUGFIX: this used to check roleLower === 'admin' (exact lowercase
+  // match only) based on a one-off SQL check against portal_users.role
+  // that a prior pass here concluded meant "admin" was the only real
+  // admin value and "Administrator" was an incorrect guess. That was
+  // wrong — it's the same stale-role-string bug fixed elsewhere in this
+  // app (Fees.jsx, Hostel.jsx): a real Administrator account (role
+  // "Administrator", the value App.jsx's own login path sets) was being
+  // shown "Question Bank is restricted" despite being a full admin. Now
+  // uses the shared isAdminRole() from roles.js, the single source of
+  // truth for admin roles (ADMIN_ROLES = ['Admin','Administrator',
+  // 'Co-Admin']) that every other module already checks against.
   const roleLower = (currentUser?.role || '').toLowerCase()
-  const isAdmin = roleLower === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   // Question Bank is restricted to admin + Computer Staffs — every other
   // role (Teacher, Receptionist, Accountant, Superintendent, House Master)
-  // gets no access at all, not even read-only viewing.
+  // gets no access at all, not even read-only viewing. "Computer Staffs"
+  // itself isn't an admin role, so it still needs its own explicit,
+  // case-insensitive check here.
   const isStaffAllowed = isAdmin || roleLower === 'computer staffs'
 
   const [tab,           setTab]           = useState('bank')
