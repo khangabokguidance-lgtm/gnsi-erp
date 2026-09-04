@@ -21,6 +21,7 @@ import AdminControlCenter from './AdminControlCenter'
 import { SlipModal, buildSlipHTML as buildSalarySlipHTML, printSlip as printSalarySlip } from './Salary'
 import { tabHasSettings } from './premiumSettings'
 import { COLOR, FONT, RADIUS, SHADOW, ledger, Seal, injectLedgerGlobalStyles } from './ledgerTheme.jsx'
+import { useAttendanceRange, useAttendanceToday, classifyRows, computeDeductions, monthEnd, isPresentLike, normalizeStatus, STATUS_KEYS } from './attendanceData'
 
 const S = {
   page:  ledger.page,
@@ -114,35 +115,16 @@ function useToast() {
 
 function TimeCard({ staffId, isAdmin, staffList }) {
   const [month, setMonth] = useState(currentMonth())
-  const [rows, setRows]   = useState([])
-  const [loading, setLoading] = useState(true)
   const [staffFilter, setStaffFilter] = useState(isAdmin ? 'all' : String(staffId))
 
-  const fetchRows = useCallback(async () => {
-    setLoading(true)
-    // BUGFIX: this used to hardcode `${month}-31` as the end of the range —
-    // an invalid/wrong date for any 28/29/30-day month (Feb, Apr, Jun, Sep,
-    // Nov), same bug already fixed elsewhere in this file (see PayrollView/
-    // DashboardView fetchAll). Compute the real last day of the month
-    // instead, so short months don't silently return an empty or truncated
-    // time card.
-    const [y, m] = month.split('-').map(Number)
-    const lastDay = new Date(y, m, 0).getDate()
-    const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`
-    let q = supabase
-      .from('staff_geo_attendance')
-      .select('id, staff_id, date, shift_label, check_in_time, check_out_time, server_check_in_time, server_check_out_time, late_minutes, status, staff_profiles(name)')
-      .gte('date', `${month}-01`)
-      .lte('date', monthEnd)
-      .order('date', { ascending: false })
-    if (!isAdmin) q = q.eq('staff_id', staffId)
-    else if (staffFilter !== 'all') q = q.eq('staff_id', staffFilter)
-    const { data, error } = await q
-    if (!error) setRows(data || [])
-    setLoading(false)
-  }, [month, isAdmin, staffId, staffFilter])
-
-  useEffect(() => { fetchRows() }, [fetchRows])
+  // Shared fetch: same staff_geo_attendance source, month-range logic, and
+  // admin/staffFilter scoping as DashboardView and PayrollView — see
+  // attendanceData.js for why this used to be a separate query per tab.
+  const { rows: rawRows, loading } = useAttendanceRange({
+    month, isAdmin, staffId, staffFilter,
+    select: 'id, staff_id, date, shift_label, check_in_time, check_out_time, server_check_in_time, server_check_out_time, late_minutes, status, staff_profiles(name)',
+  })
+  const rows = useMemo(() => [...rawRows].sort((a, b) => b.date.localeCompare(a.date)), [rawRows])
 
   const totalHours = useMemo(() => {
     return rows.reduce((sum, r) => {
@@ -367,55 +349,30 @@ function AdvancesView({ staffId, isAdmin, staffList, currentAdminId, showToast }
 function LateFinesView({ staffId, isAdmin, staffList }) {
   const [rules, setRules] = useState(null)
   const [month, setMonth] = useState(currentMonth())
-  const [rows, setRows]   = useState([])
-  const [loading, setLoading] = useState(true)
   const [staffFilter, setStaffFilter] = useState(isAdmin ? 'all' : String(staffId))
-  const [fetchError, setFetchError] = useState(null)
 
   const fetchRules = useCallback(async () => {
     const { data } = await supabase.from('salary_deduction_rules').select('*').eq('is_active', true).order('created_at', { ascending: false }).limit(1).maybeSingle()
     setRules(data || null)
   }, [])
-
-  const fetchLateRows = useCallback(async () => {
-    setLoading(true)
-    // BUGFIX: this hardcoded `${month}-31` as the end of the range —
-    // invalid for any 28/29/30-day month (identical bug to the one fixed
-    // in PayrollView). For September this silently broke the query and
-    // the screen showed "0 late days" even with real Late/Half Day rows
-    // on file. Compute the real last day of the month instead.
-    const [y, m] = month.split('-').map(Number)
-    const lastDay = new Date(y, m, 0).getDate()
-    const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`
-
-    let q = supabase
-      .from('staff_geo_attendance')
-      .select('id, staff_id, date, shift_label, late_minutes, status, staff_profiles(name)')
-      .gte('date', `${month}-01`)
-      .lte('date', monthEnd)
-      // Filter to status = 'Late' specifically, not just late_minutes > 0
-      // — under the three-band lateness rule, a Half Day row also carries
-      // a positive late_minutes, and Half Day already has its own
-      // separate deduction (half_day_rate) elsewhere. Including it here
-      // too would double-charge the same day under both rules.
-      .eq('status', 'Late')
-      .order('date', { ascending: false })
-    if (!isAdmin) q = q.eq('staff_id', staffId)
-    else if (staffFilter !== 'all') q = q.eq('staff_id', staffFilter)
-    const { data, error } = await q
-    if (error) {
-      console.error('LateFinesView fetchLateRows error:', error)
-      setFetchError(error.message)
-      setRows([])
-    } else {
-      setFetchError(null)
-      setRows(data || [])
-    }
-    setLoading(false)
-  }, [month, isAdmin, staffId, staffFilter])
-
   useEffect(() => { fetchRules() }, [fetchRules])
-  useEffect(() => { fetchLateRows() }, [fetchLateRows])
+
+  // Shared attendance fetch — same source as TimeCard/DashboardView/
+  // PayrollView. Filtering to status='Late' now happens client-side on the
+  // shared rows instead of a separate staff_geo_attendance query, so this
+  // view can never again drift out of sync with the others on date-range
+  // math (this file previously carried its own now-removed `${month}-31`
+  // fix, duplicated from PayrollView's).
+  const { rows: allRows, loading, error: fetchError } = useAttendanceRange({
+    month, isAdmin, staffId, staffFilter,
+    select: 'id, staff_id, date, shift_label, late_minutes, status, staff_profiles(name)',
+  })
+  // Filter to status = 'Late' specifically, not just late_minutes > 0 — under
+  // the three-band lateness rule, a Half Day row also carries a positive
+  // late_minutes, and Half Day already has its own separate deduction
+  // (half_day_rate) elsewhere. Including it here too would double-charge
+  // the same day under both rules.
+  const rows = useMemo(() => allRows.filter(r => r.status === 'Late').sort((a, b) => b.date.localeCompare(a.date)), [allRows])
 
   const totalLateInstances = rows.length
   const totalLateMinutes = rows.reduce((s, r) => s + (r.late_minutes || 0), 0)
@@ -885,101 +842,72 @@ function AttendanceRateChart({ rows }) {
 
 function DashboardView({ staffList }) {
   const [month] = useState(currentMonth())
-  const [monthRows, setMonthRows] = useState([])
-  const [todayRows, setTodayRows] = useState([])
+
+  // Shared fetches: same staff_geo_attendance source as TimeCard and
+  // PayrollView (attendanceData.js), so a fix to date-range or status
+  // handling there applies here automatically instead of drifting again.
+  const { rows: monthRows, loading: monthLoading, error: monthError } = useAttendanceRange({ month, isAdmin: true, select: 'staff_id, date, status, late_minutes' })
+  const { rows: todayRows, loading: todayLoading, error: todayError } = useAttendanceToday()
   const [rules, setRules] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(null)
+  const [rulesLoading, setRulesLoading] = useState(true)
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true)
-    const [y, m] = month.split('-').map(Number)
-    const lastDay = new Date(y, m, 0).getDate()
-    const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`
-    const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+  useEffect(() => {
+    let cancelled = false
+    setRulesLoading(true)
+    supabase.from('salary_deduction_rules').select('*').eq('is_active', true).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => { if (!cancelled) { setRules(data || null); setRulesLoading(false) } })
+    return () => { cancelled = true }
+  }, [])
 
-    const [monthRes, todayRes, rulesRes] = await Promise.all([
-      supabase.from('staff_geo_attendance').select('staff_id, date, status, late_minutes').gte('date', `${month}-01`).lte('date', monthEnd),
-      supabase.from('staff_geo_attendance').select('staff_id, status').eq('date', todayIso),
-      supabase.from('salary_deduction_rules').select('*').eq('is_active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
-    ])
-    const firstError = monthRes.error || todayRes.error
-    if (firstError) {
-      console.error('DashboardView fetchAll error:', firstError)
-      setFetchError(firstError.message)
-    } else {
-      setFetchError(null)
-    }
-    setMonthRows(monthRes.data || [])
-    setTodayRows(todayRes.data || [])
-    setRules(rulesRes.data || null)
-    setLoading(false)
-  }, [month])
-
-  useEffect(() => { fetchAll() }, [fetchAll])
+  const loading = monthLoading || todayLoading || rulesLoading
+  const fetchError = monthError || todayError
 
   const staffNameById = useMemo(() => Object.fromEntries(staffList.map(s => [s.id, s.name])), [staffList])
 
+  // Single shared classification pass — see attendanceData.js's classifyRows
+  // for why every status is checked independently rather than via
+  // if/else-if/else (that chain previously miscounted Half Day/Flagged days
+  // as "Present" with zero deduction).
+  const { byDate: monthByDate, byStaff: monthByStaff, totals: todayTotals } = useMemo(() => classifyRows(monthRows), [monthRows])
+  const { totals: todayCounts } = useMemo(() => classifyRows(todayRows), [todayRows])
+
   // Chart 1 + 3 data: per-day status counts across the month.
   const dayBuckets = useMemo(() => {
-    const map = {}
-    for (const r of monthRows) {
-      if (!map[r.date]) map[r.date] = { date: r.date, Present: 0, Late: 0, 'Half Day': 0, Absent: 0, 'Early Out': 0 }
-      const bucket = map[r.date]
-      if (r.status === 'Present') bucket.Present++
-      else if (r.status === 'Late') bucket.Late++
-      else if (r.status === 'Half Day') bucket['Half Day']++
-      else if (r.status === 'Absent') bucket.Absent++
-      else if (r.status === 'Early Out' || r.status === 'EarlyOut') bucket['Early Out']++
-      // Flagged intentionally excluded from these buckets — same convention
-      // as attendance_summary_for_range/sync_attendance_salary_feed. Early
-      // Out is now tracked here to match PayrollView's perDay, which counts
-      // it as its own deducted category rather than silently dropping it.
-    }
-    return Object.values(map).sort((a, b) => a.date.localeCompare(b.date))
-  }, [monthRows])
+    return Object.entries(monthByDate)
+      .map(([date, counts]) => ({ date, ...counts }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+  }, [monthByDate])
 
   // Chart 2 data: today's breakdown.
-  const todaySegments = useMemo(() => {
-    const counts = { Present: 0, Late: 0, 'Half Day': 0, Absent: 0, 'Early Out': 0, Flagged: 0 }
-    for (const r of todayRows) {
-      if (r.status === 'Early Out' || r.status === 'EarlyOut') counts['Early Out']++
-      else if (counts[r.status] !== undefined) counts[r.status]++
-    }
-    return [
-      { label: 'Present', value: counts.Present, color: STATUS_COLORS.Present },
-      { label: 'Late', value: counts.Late, color: STATUS_COLORS.Late },
-      { label: 'Half Day', value: counts['Half Day'], color: STATUS_COLORS['Half Day'] },
-      { label: 'Absent', value: counts.Absent, color: STATUS_COLORS.Absent },
-      { label: 'Early Out', value: counts['Early Out'], color: STATUS_COLORS.EarlyOut },
-      { label: 'Flagged', value: counts.Flagged, color: STATUS_COLORS.Flagged },
-    ]
-  }, [todayRows])
+  const todaySegments = useMemo(() => ([
+    { label: 'Present', value: todayCounts.Present, color: STATUS_COLORS.Present },
+    { label: 'Late', value: todayCounts.Late, color: STATUS_COLORS.Late },
+    { label: 'Half Day', value: todayCounts['Half Day'], color: STATUS_COLORS['Half Day'] },
+    { label: 'Absent', value: todayCounts.Absent, color: STATUS_COLORS.Absent },
+    { label: 'Early Out', value: todayCounts['Early Out'], color: STATUS_COLORS.EarlyOut },
+    { label: 'Flagged', value: todayCounts.Flagged, color: STATUS_COLORS.Flagged },
+  ]), [todayCounts])
 
   // Chart 4 data: top late/half-day/early-out staff this month, ranked.
   const topLateStaff = useMemo(() => {
-    const counts = {}
-    for (const r of monthRows) {
-      if (r.status === 'Late' || r.status === 'Half Day' || r.status === 'Early Out' || r.status === 'EarlyOut') {
-        counts[r.staff_id] = (counts[r.staff_id] || 0) + 1
-      }
-    }
-    return Object.entries(counts)
-      .map(([id, count]) => ({ name: staffNameById[id] || `#${id}`, count }))
+    return Object.entries(monthByStaff)
+      .map(([id, b]) => ({ name: staffNameById[id] || `#${id}`, count: b.Late + b['Half Day'] + b['Early Out'] }))
+      .filter(r => r.count > 0)
       .sort((a, b) => b.count - a.count)
       .slice(0, 8)
-  }, [monthRows, staffNameById])
+  }, [monthByStaff, staffNameById])
 
   // Chart 5 data: payroll deduction breakdown this month, using the active
-  // rule. Includes Early Out, matching PayrollView's perDay/rows calc, which
-  // also charges early_out_rate per Early Out day — omitting it here would
-  // understate the true total shown in PayrollView.
+  // rule and the same computeDeductions() PayrollView uses, so the two
+  // screens can never disagree on the formula.
   const deductionBreakdown = useMemo(() => {
     if (!rules) return []
     const counts = { Late: 0, 'Half Day': 0, Absent: 0, 'Early Out': 0 }
-    for (const r of monthRows) {
-      if (r.status === 'Early Out' || r.status === 'EarlyOut') counts['Early Out']++
-      else if (counts[r.status] !== undefined) counts[r.status]++
+    for (const b of Object.values(monthByStaff)) {
+      counts.Late += b.lateDays
+      counts['Half Day'] += b['Half Day']
+      counts.Absent += b.Absent
+      counts['Early Out'] += b['Early Out']
     }
     return [
       { label: 'Late', value: counts.Late * Number(rules.late_rate || 0), color: STATUS_COLORS.Late },
@@ -987,24 +915,17 @@ function DashboardView({ staffList }) {
       { label: 'Absent', value: counts.Absent * Number(rules.absent_rate || 0), color: STATUS_COLORS.Absent },
       { label: 'Early Out', value: counts['Early Out'] * Number(rules.early_out_rate || 0), color: STATUS_COLORS.EarlyOut },
     ]
-  }, [monthRows, rules])
+  }, [monthByStaff, rules])
 
   // Chart 6 data: attendance rate (% Present, Late, Half Day, or Early Out —
-  // i.e. showed up at all that day, regardless of lateness/early exit) by
-  // staff. Early Out now included in the numerator: those staff did show
-  // up, they just left early, so excluding them understated their rate
-  // relative to someone who was simply marked Present.
+  // i.e. showed up at all that day) by staff, using the shared
+  // presentLikeDays/totalDays counters from classifyRows so this always
+  // matches TimeCard's and PayrollView's idea of "showed up".
   const attendanceRate = useMemo(() => {
-    const byStaff = {}
-    for (const r of monthRows) {
-      if (!byStaff[r.staff_id]) byStaff[r.staff_id] = { total: 0, present: 0 }
-      byStaff[r.staff_id].total++
-      if (r.status === 'Present' || r.status === 'Late' || r.status === 'Half Day' || r.status === 'Early Out' || r.status === 'EarlyOut') byStaff[r.staff_id].present++
-    }
-    return Object.entries(byStaff)
-      .map(([id, v]) => ({ name: staffNameById[id] || `#${id}`, rate: v.total > 0 ? Math.round((v.present / v.total) * 100) : 0 }))
+    return Object.entries(monthByStaff)
+      .map(([id, b]) => ({ name: staffNameById[id] || `#${id}`, rate: b.totalDays > 0 ? Math.round((b.presentLikeDays / b.totalDays) * 100) : 0 }))
       .sort((a, b) => b.rate - a.rate)
-  }, [monthRows, staffNameById])
+  }, [monthByStaff, staffNameById])
 
   if (loading) {
     return <div style={{ background: PAY.bg, margin: '-18px -16px 0', padding: '18px 16px 28px', minHeight: 'calc(100vh - 140px)' }}>
@@ -1078,11 +999,21 @@ function PayrollView({ staffId, isAdmin, staffList, showToast, currentUsername }
   const [month, setMonth] = useState(currentMonth())
   const [staffFilter, setStaffFilter] = useState(isAdmin ? 'all' : String(staffId))
   const [rules, setRules] = useState(null)
-  const [attRows, setAttRows] = useState([])
   const [staffFull, setStaffFull] = useState([])
   const [advMap, setAdvMap] = useState({})
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState(null)
+
+  // Shared attendance fetch — same source, month-range, and staff scoping as
+  // TimeCard/DashboardView (attendanceData.js). staffFull/advMap/rules are
+  // still fetched below since they're not attendance data.
+  // refetch is exposed but unused here: nothing in PayrollView writes to
+  // staff_geo_attendance directly (mutations here only touch `salary` and
+  // `staff_advances`), so there's never a reason to force a re-fetch of it
+  // from this view.
+  const { rows: attRows, loading: attLoading, error: attError } = useAttendanceRange({
+    month, isAdmin, staffId, staffFilter, select: 'staff_id, date, late_minutes, status',
+  })
   // Inline admin-deduction adjustment — writes directly into the salary
   // table (creating the row for this staff/month if it doesn't exist yet)
   // rather than waiting for Salary.jsx to generate the register first.
@@ -1169,27 +1100,6 @@ function PayrollView({ staffId, isAdmin, staffList, showToast, currentUsername }
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
-    const staffIds = isAdmin ? null : [staffId]
-
-    // BUGFIX: this used to hardcode `${month}-31` as the end of the
-    // range — an invalid date for any 28/29/30-day month (April, June,
-    // September, November, February). Whether Postgres rejected that
-    // literal outright or coerced it unpredictably, the net effect was a
-    // query that could silently return nothing for exactly the months
-    // this bug affects — which is why "Present" showed 0 for staff who
-    // really did check in during September. Compute the real last day of
-    // the month instead.
-    const [y, m] = month.split('-').map(Number)
-    const lastDay = new Date(y, m, 0).getDate() // day 0 of next month = last day of this month
-    const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`
-
-    let attQ = supabase
-      .from('staff_geo_attendance')
-      .select('staff_id, date, late_minutes, status')
-      .gte('date', `${month}-01`)
-      .lte('date', monthEnd)
-    if (!isAdmin) attQ = attQ.eq('staff_id', staffId)
-    else if (staffFilter !== 'all') attQ = attQ.eq('staff_id', staffFilter)
 
     let staffQ = supabase.from('staff_profiles').select('id, name, designation, department, basic_salary, seniority_allowance, loyalty_bonus, role_bonus, hra, status')
     if (!isAdmin) staffQ = staffQ.eq('id', staffId)
@@ -1207,20 +1117,20 @@ function PayrollView({ staffId, isAdmin, staffList, showToast, currentUsername }
     if (!isAdmin) advQ = advQ.eq('staff_id', staffId)
     else if (staffFilter !== 'all') advQ = advQ.eq('staff_id', staffFilter)
 
-    // BUGFIX: errors from all three queries used to be destructured away
-    // and never checked — a failed attendance query silently rendered as
-    // "no attendance this month" (Present: 0 everywhere) with no
-    // indication anything had gone wrong. Now surfaced as a visible error
-    // state instead of a quietly-wrong table.
-    const [attRes, staffRes, advRes] = await Promise.all([attQ, staffQ, advQ])
-    const firstError = attRes.error || staffRes.error || advRes.error
+    // BUGFIX: errors used to be destructured away and never checked — a
+    // failed query silently rendered as "no attendance this month"
+    // (Present: 0 everywhere) with no indication anything had gone wrong.
+    // Now surfaced as a visible error state. Attendance itself is fetched
+    // by the shared useAttendanceRange hook above; its own error is merged
+    // in below.
+    const [staffRes, advRes] = await Promise.all([staffQ, advQ])
+    const firstError = staffRes.error || advRes.error
     if (firstError) {
       console.error('PayrollView fetchAll error:', firstError)
       setFetchError(firstError.message)
     } else {
       setFetchError(null)
     }
-    setAttRows(attRes.data || [])
     setStaffFull(staffRes.data || [])
     const am = {}
     ;(advRes.data || []).forEach(a => {
@@ -1234,6 +1144,12 @@ function PayrollView({ staffId, isAdmin, staffList, showToast, currentUsername }
 
   useEffect(() => { fetchRules() }, [fetchRules])
   useEffect(() => { fetchAll() }, [fetchAll])
+
+  // Merge in the shared attendance hook's own loading/error so both this
+  // view's local fetch (staff/advances) and the shared attendance fetch
+  // gate the same spinner/error banner.
+  const combinedLoading = loading || attLoading
+  const combinedFetchError = fetchError || attError
 
   const submitAdvance = async () => {
     if (!advanceForm.staff_id) { showToast?.('Select a staff member', 'err'); return }
@@ -1261,32 +1177,20 @@ function PayrollView({ staffId, isAdmin, staffList, showToast, currentUsername }
     setSubmittingAdvance(false)
   }
 
+  // Shared classifier — same byStaff bucketing as DashboardView, so the two
+  // screens can never again independently drift on which status counts as
+  // what (see attendanceData.js for the bug history this replaced).
+  const { byStaff: perDayShared } = useMemo(() => classifyRows(attRows), [attRows])
   const perDay = useMemo(() => {
     const map = {}
-    attRows.forEach(r => {
-      if (!map[r.staff_id]) map[r.staff_id] = { lateMin: 0, lateDays: 0, absent: 0, earlyOut: 0, halfDay: 0, present: 0 }
-      const m = map[r.staff_id]
-      m.lateMin += r.late_minutes || 0
-      if ((r.late_minutes || 0) > 0) m.lateDays++ // flat per-day count — any minutes late counts as one late day
-      // BUGFIX: this used to be if/else-if/else, so any status other than
-      // exactly 'Absent' or 'Early Out'/'EarlyOut' fell into the final
-      // else and got counted as "present" — silently absorbing Late,
-      // Half Day, and Flagged days into the present count with zero
-      // deduction for them. Each status is now checked independently so
-      // Half Day gets its own count/deduction, and none of the others get
-      // miscounted as present just because they didn't match the first
-      // two branches.
-      if (r.status === 'Absent') m.absent++
-      else if (r.status === 'Early Out' || r.status === 'EarlyOut') m.earlyOut++
-      else if (r.status === 'Half Day') m.halfDay++
-      else if (r.status === 'Present' || r.status === 'Late') m.present++
-      // Flagged or any other status: not counted in any bucket here —
-      // matches attendance_summary_for_range/sync_attendance_salary_feed,
-      // which also leave Flagged out of present/absent/late/half-day/early
-      // counts until an admin resolves it.
-    })
+    for (const [id, b] of Object.entries(perDayShared)) {
+      map[id] = {
+        lateMin: b.lateMinutes, lateDays: b.lateDays,
+        absent: b.Absent, earlyOut: b['Early Out'], halfDay: b['Half Day'], present: b.Present + b.Late,
+      }
+    }
     return map
-  }, [attRows])
+  }, [perDayShared])
 
   const rows = useMemo(() => {
     const LATE = Number(rules?.late_rate || 0)
@@ -1731,9 +1635,9 @@ function PayrollView({ staffId, isAdmin, staffList, showToast, currentUsername }
         Live estimate from daily attendance — a preview. Staff are actually paid via the register Salary.jsx saves (its Auto-Generate Payroll uses these same daily rates).
       </div>
 
-      {fetchError && (
+      {combinedFetchError && (
         <div style={{ background: PAY.redBg, border: `1px solid ${PAY.red}33`, borderRadius: PAY.radiusSm, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: PAY.red }}>
-          ⚠️ Could not load attendance data: {fetchError}
+          ⚠️ Could not load attendance data: {combinedFetchError}
         </div>
       )}
 
@@ -1913,7 +1817,7 @@ function PayrollView({ staffId, isAdmin, staffList, showToast, currentUsername }
         </div>
       )}
 
-      {loading ? (
+      {combinedLoading ? (
         <p style={{ color: PAY.textMuted, textAlign: 'center', padding: 24, fontFamily: FONT.body }}>Loading…</p>
       ) : rows.length === 0 ? (
         <div style={{ background: PAY.card, border: `1px solid ${PAY.cardBorder}`, borderRadius: PAY.radius, padding: 32, textAlign: 'center', color: PAY.textMuted, fontFamily: FONT.body }}>
@@ -2843,17 +2747,15 @@ function CashBookView() {
 
   const fetchRows = useCallback(async () => {
     setLoading(true)
-    // BUGFIX: same `${month}-31` hardcoding bug already fixed in
-    // PayrollView/DashboardView/LateFinesView/TimeCard — invalid for any
-    // 28/29/30-day month, silently returning wrong/empty results.
-    const [y, m] = month.split('-').map(Number)
-    const lastDay = new Date(y, m, 0).getDate()
-    const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`
+    // Same real-last-day-of-month math as attendanceData.js's monthEnd() —
+    // used here directly since this reads `accounts`, not
+    // staff_geo_attendance, so it isn't a useAttendanceRange consumer, but
+    // it shares the same date-range helper to avoid re-deriving it.
     const { data, error } = await supabase
       .from('accounts')
       .select('*')
       .gte('entry_date', `${month}-01`)
-      .lte('entry_date', monthEnd)
+      .lte('entry_date', monthEnd(month))
       .order('entry_date', { ascending: false })
     if (!error) setRows(data || [])
     setLoading(false)
