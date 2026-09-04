@@ -1112,7 +1112,7 @@ function StudentSearch({ students, onSelect, placeholder }) {
 
 // ─── Tab: Fee Dashboard ───────────────────────────────────────────────────────
 
-function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_course_fees, liveRows, onCollect }) {
+function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_course_fees, liveRows, onCollect, isAdmin }) {
   const w       = useWindowWidth()
   const isMobile= w < 640
   const is2Col  = w >= 640 && w < 900
@@ -1368,13 +1368,21 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* ── Top stat cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)', gap: 14 }}>
-        {[{ icon: '💰', label: 'Total Collected', value: `₹${n(totalCollected)}`, color: '#1e3a5f', bg: '#eff6ff', sub: `${students.length} students` },
+      {/* Non-admin users see a trimmed set — just This Month and Today's Fee
+          Collection — since Total Collected, Today's Total Income (Accounts-
+          wide), and the No-Payment-Yet flag are admin-level financial
+          visibility, not something every staff member logging a payment
+          needs to see. */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : (isAdmin ? 'repeat(5, 1fr)' : 'repeat(2, 1fr)'), gap: 14 }}>
+        {[
+          ...(isAdmin ? [{ icon: '💰', label: 'Total Collected', value: `₹${n(totalCollected)}`, color: '#1e3a5f', bg: '#eff6ff', sub: `${students.length} students` }] : []),
           { icon: '📅', label: 'This Month', value: `₹${n(thisMonthTotal)}`, color: '#059669', bg: '#f0fdf4',
             sub: monthChange !== null ? `${monthChange >= 0 ? '▲' : '▼'} ${Math.abs(monthChange)}% vs last month` : 'First month data' },
           { icon: '🌅', label: "Today's Fee Collection", value: `₹${n(todayTotal)}`, color: '#7c3aed', bg: '#f5f3ff', sub: todayStr + ' · fee payments only' },
-          { icon: '📊', label: "Today's Total Income", value: todayAccountsIncome === null ? '…' : `₹${n(todayAccountsIncome)}`, color: '#0e7490', bg: '#ecfeff', sub: todayStr + ' · all income (Accounts)' },
-          { icon: '⚠️', label: 'No Payment Yet', value: zeroPayment.length, color: '#dc2626', bg: '#fef2f2', sub: 'students with ₹0 paid' },
+          ...(isAdmin ? [
+            { icon: '📊', label: "Today's Total Income", value: todayAccountsIncome === null ? '…' : `₹${n(todayAccountsIncome)}`, color: '#0e7490', bg: '#ecfeff', sub: todayStr + ' · all income (Accounts)' },
+            { icon: '⚠️', label: 'No Payment Yet', value: zeroPayment.length, color: '#dc2626', bg: '#fef2f2', sub: 'students with ₹0 paid' },
+          ] : []),
         ].map(c => (
           <div key={c.label} style={{ background: c.bg, borderRadius: 12, padding: '16px 18px', borderLeft: `4px solid ${c.color}`, boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
             <div style={{ fontSize: 24, marginBottom: 6 }}>{c.icon}</div>
@@ -1385,7 +1393,8 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         ))}
       </div>
 
-      {/* ── Second row cards ── */}
+      {/* ── Second row cards — admin only ── */}
+      {isAdmin && (
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 14 }}>
         {[{ icon: '🎓', label: 'Admission Fees', value: `₹${n(admTotal)}`, color: '#4f46e5', bg: '#eef2ff' },
           { icon: '📅', label: 'Flat Fees', value: `₹${n(flatTotal)}`, color: '#059669', bg: '#f0fdf4' },
@@ -1400,6 +1409,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
           </div>
         ))}
       </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: 20 }}>
 
@@ -3149,6 +3159,7 @@ export default function Fees() {
           adm_course_fees={activeAdmCourseFees}
           liveRows={liveRows}
           onCollect={s => { setPresetCollectStudent(s); setTab('payment') }}
+          isAdmin={isAdmin}
         />
       )}
 
