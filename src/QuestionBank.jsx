@@ -101,7 +101,7 @@ const COURSES = {
         'Tense Forms','Kinds of Nouns','Kinds of Pronouns','Correct Spelling',
         'Ordering of Words in Sentence','Sentence Formation','Antonyms','Synonyms',
         'Adjectives','Interjection','Idioms and Phrases','Collective Nouns',
-        'Number','Gender','Adverbs','Rhyming Words',
+        'Number','Gender','Adverbs','Rhyming Words','Conjunction',
       ],
       'General Knowledge': [
         'Scientific Devices','Icons and Symbols of India','Major Religions of India',
@@ -345,6 +345,7 @@ const SUBSECTION_KEYWORDS = {
     'Types of Sentences':     ['sentence','declarative','interrogative','exclamatory','imperative'],
     'Singular & Plural':      ['singular','plural','one','many'],
     'Number & Gender':        ['gender','masculine','feminine','neuter','common'],
+    'Conjunction':            ['conjunction','although','because','unless','whether','so that'],
   },
   'General Knowledge': {
     'Defence Awareness':      ['defence','army','navy','air force','military','sainik','soldier','weapon','rank'],
