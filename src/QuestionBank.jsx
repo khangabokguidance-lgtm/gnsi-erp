@@ -29,6 +29,14 @@ import { isAdminRole } from './roles'
 // required.
 import { BMEI04_BASE64 } from './bmei04_font_base64'
 
+// BMEI04 keystroke <-> Unicode Meetei Mayek conversion table, verified
+// against real GNSI documents (see Eeyek converter tool / QuestionBank
+// Additions README for how each key was confirmed). Used by the Mayek
+// Tool tab below — separate from the auto-detect-on-paste system above,
+// which stores raw BMEI04 text as-is and renders it with the embedded
+// BMEI04 font rather than converting it.
+import { romanToMeetei, meeteiToRoman, getAllCharacters } from './meetei_mayek'
+
 function BmeiFontFace() {
   return (
     <style>{`
@@ -2537,6 +2545,141 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers, ti
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// TAB: MAYEK TOOL — manual BMEI04 keystroke <-> Unicode Meetei Mayek converter
+// ══════════════════════════════════════════════════════════════════════════════
+// Separate from the auto-detect-on-paste system in parseQuestions() above
+// (which tags a whole question row 'bmei04' and renders it live with the
+// embedded BMEI04 font). This tab is for manually typing or checking a
+// word or line, and for converting one already-saved BMEI04 row to
+// permanent Unicode (after which it renders with Noto Sans Meetei Mayek
+// like any other Unicode row, and no longer needs the embedded font).
+function TabTranslit({ questions, refetch, showToast }) {
+  const [mode, setMode] = useState('toMayek')
+  const [input, setInput] = useState('')
+  const [output, setOutput] = useState('')
+  const [showPicker, setShowPicker] = useState(false)
+
+  const convert = useCallback(() => {
+    setOutput(mode === 'toMayek' ? romanToMeetei(input) : meeteiToRoman(input))
+  }, [input, mode])
+  useEffect(() => { convert() }, [convert])
+
+  const handleCopy = async () => {
+    if (!output) return
+    try { await navigator.clipboard.writeText(output); showToast('Copied', C.green) }
+    catch { showToast('Copy failed', C.rose) }
+  }
+
+  const handleSaveToBank = async () => {
+    if (mode !== 'toMayek' || !output.trim()) {
+      showToast('Switch to Roman to Mayek mode first', C.amber); return
+    }
+    const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    const needle = norm(input).slice(0, 40)
+    const candidates = (questions || []).filter(q =>
+      q.question_mayek_font === 'bmei04' &&
+      q.question_mayek &&
+      norm(q.question_mayek).includes(needle)
+    )
+    if (!candidates.length) { showToast('No matching BMEI04 question found', C.amber); return }
+    if (candidates.length > 1) { showToast(candidates.length + ' matches - edit manually', C.amber); return }
+    const { error } = await supabase
+      .from('qbank_questions')
+      .update({ question_mayek: output, question_mayek_font: 'unicode' })
+      .eq('id', candidates[0].id)
+    if (error) { showToast('Update failed: ' + error.message, C.rose); return }
+    showToast('Converted BMEI04 to Unicode', C.green)
+    refetch && refetch()
+  }
+
+  const allChars = useMemo(() => getAllCharacters(), [])
+
+  return (
+    <div style={cardS}>
+      <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:4 }}>
+        Mayek Tool - Meetei Mayek Transliterator
+      </div>
+      <div style={{ fontSize:12, color:C.slate, marginBottom:16 }}>
+        Offline BMEI04 keystroke conversion, verified against real GNSI documents. No API, no model, instant.
+      </div>
+
+      <div style={{ display:'flex', gap:6, marginBottom:14, padding:4, background:'#f1f5f9', borderRadius:9, width:'fit-content' }}>
+        {[{ k:'toMayek', label:'Roman - Meetei Mayek' }, { k:'toRoman', label:'Meetei Mayek - Roman' }].map(({ k, label }) => (
+          <button key={k} onClick={() => { setMode(k); setInput(''); setOutput('') }}
+            style={{ padding:'8px 16px', borderRadius:7, border:'none', fontSize:12, fontWeight:700,
+              cursor:'pointer', fontFamily:'inherit',
+              background: mode === k ? C.navy : 'transparent',
+              color: mode === k ? '#fff' : C.slate }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+        <div>
+          <label style={lS}>{mode === 'toMayek' ? 'BMEI04 Keystrokes' : 'Meetei Mayek Input'}</label>
+          <textarea value={input} onChange={e => setInput(e.target.value)} rows={8}
+            style={{ width:'100%', padding:'8px 11px', borderRadius:7, border:'1px solid '+C.border,
+              fontSize:13, fontFamily:'monospace', resize:'vertical', boxSizing:'border-box' }}
+            placeholder={mode === 'toMayek' ? 'BMEI04 keystrokes, e.g. AepL (apple), mnipur (Manipur)' : 'Meetei Mayek text'} />
+        </div>
+        <div>
+          <label style={lS}>{mode === 'toMayek' ? 'Meetei Mayek Output' : 'BMEI04 Keystrokes'}</label>
+          <div style={{ minHeight:180, padding:'10px 12px', borderRadius:7,
+            background:'#f8fafc', border:'1px solid '+C.border,
+            fontFamily: mode === 'toMayek' ? 'Noto Sans Meetei Mayek, monospace' : 'monospace',
+            fontSize: mode === 'toMayek' ? 20 : 13, lineHeight:1.8,
+            whiteSpace:'pre-wrap', wordWrap:'break-word' }}>
+            {output || <span style={{ color:'#94a3b8', fontSize:12, fontFamily:'inherit' }}>Output will appear here...</span>}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display:'flex', gap:8, marginTop:14, flexWrap:'wrap' }}>
+        <button onClick={handleCopy} style={btn(C.navy)}>Copy Output</button>
+        <button onClick={() => { setInput(''); setOutput('') }} style={btn(C.slate)}>Clear</button>
+        <button onClick={() => setShowPicker(v => !v)} style={btn(C.teal)}>
+          {showPicker ? 'Hide' : 'Show'} Character Picker
+        </button>
+        {mode === 'toMayek' && (
+          <button onClick={handleSaveToBank} style={btn(C.green)}>
+            Save to Matching BMEI04 Question
+          </button>
+        )}
+      </div>
+
+      {showPicker && (
+        <div style={{ marginTop:14, paddingTop:14, borderTop:'1px solid '+C.border }}>
+          <div style={{ fontSize:11, fontWeight:700, color:'#0891b2', marginBottom:8,
+            textTransform:'uppercase', letterSpacing:'.05em' }}>
+            Click a character to insert its BMEI04 key
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(58px, 1fr))', gap:6 }}>
+            {allChars.map(({ key, char, name }) => (
+              <div key={key} title={name + ' (' + key + ')'} onClick={() => setInput(v => v + key)}
+                style={{ padding:'6px 4px', borderRadius:7, textAlign:'center', cursor:'pointer',
+                  background:'#f8fafc', border:'1px solid '+C.border }}>
+                <div style={{ fontSize:18, lineHeight:1.3, fontFamily:'Noto Sans Meetei Mayek, sans-serif' }}>{char}</div>
+                <div style={{ fontSize:9, color:C.slate, marginTop:2 }}>{name}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginTop:14, padding:'10px 14px', borderRadius:8, background:'#f0f9ff',
+        border:'1px solid #bae6fd', fontSize:11, color:'#0369a1', lineHeight:1.6 }}>
+        This reproduces BMEI04's actual keystrokes, not a generic phonetic scheme.
+        Capital letters are mostly the Lonsum (word-final) form of the same consonant &mdash;
+        type the capital yourself where a syllable ends (e.g. <code>boL</code> for &ldquo;ball&rdquo;).
+        Lowercase <code>a</code> is the Atap vowel sign (&ldquo;aa&rdquo;), not the vowel letter &mdash; that's capital <code>A</code>.
+        The Save button converts a BMEI04-encoded question_mayek to real Unicode.
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // TAB 4: CREATE PAPER (unchanged)
 // ══════════════════════════════════════════════════════════════════════════════
 function TabPaper({ questions, showToast }) {
@@ -3645,6 +3788,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
     { key:'bank',    icon:'📚', label:'Question Bank', count: questions.length },
     { key:'manual',  icon:'✏️', label:'Manual Add',    count: null },
     { key:'bulk',    icon:'📤', label:'Bulk Paste',    count: null },
+    { key:'translit',icon:'🔤', label:'Mayek Tool',    count: null },
     { key:'paper',   icon:'📄', label:'Create Paper',  count: null,  adminOnly: true },
     { key:'test',    icon:'📝', label:'Online Test',   count: null,  adminOnly: true },
     { key:'smartppt',icon:'🎬', label:'Smart PPT',     count: null,  adminOnly: true },
@@ -3690,6 +3834,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
       {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} initialFilter={initialFilter} isAdmin={isAdmin} onNavigate={onNavigate} />}
       {tab === 'manual' && <TabManualAdd questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'bulk'   && <TabBulkPaste questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
+      {tab === 'translit' && <TabTranslit questions={questions} refetch={refetch} showToast={showToast} />}
       {isAdmin && tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'smartppt' && <TabSmartPPT questions={questions} showToast={showToast} />}
