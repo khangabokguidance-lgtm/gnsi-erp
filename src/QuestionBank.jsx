@@ -36,6 +36,7 @@ import { BMEI04_BASE64 } from './bmei04_font_base64'
 // which stores raw BMEI04 text as-is and renders it with the embedded
 // BMEI04 font rather than converting it.
 import { romanToMeetei, meeteiToRoman, getAllCharacters } from './meetei_mayek'
+import { translateText, saveDictionaryEntry, deleteDictionaryEntry, bulkImportEntries, searchDictionary } from './mayekDictionary'
 
 function BmeiFontFace() {
   return (
@@ -2680,6 +2681,345 @@ function TabTranslit({ questions, refetch, showToast }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// TAB: DICTIONARY — English to Meetei Mayek, dictionary-backed (words + sentences)
+// ══════════════════════════════════════════════════════════════════════════════
+// Separate from TabTranslit above (which converts BMEI04 keystrokes <-> Unicode
+// for text you already have in one script or the other). This tab goes from
+// real English words/sentences to Meetei Mayek, using a Supabase table
+// (mayek_dictionary) that grows as entries are added — never machine-translated,
+// so a missing word is shown as [?word?] rather than guessed.
+function TabDictionary({ showToast, currentStaffId }) {
+  const [subView, setSubView] = useState('translate') // translate | add | bulk | browse
+
+  return (
+    <div style={cardS}>
+      <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:4 }}>
+        Dictionary - English to Meetei Mayek
+      </div>
+      <div style={{ fontSize:12, color:C.slate, marginBottom:16 }}>
+        Dictionary lookup for known words/sentences, with BMEI04 keystrokes. Unknown words are flagged, never guessed.
+      </div>
+
+      <div style={{ display:'flex', gap:6, marginBottom:16, padding:4, background:'#f1f5f9', borderRadius:9, width:'fit-content', flexWrap:'wrap' }}>
+        {[{ k:'translate', label:'Translate' }, { k:'add', label:'Add Entry' }, { k:'bulk', label:'Bulk Import' }, { k:'browse', label:'Browse / Edit' }].map(({ k, label }) => (
+          <button key={k} onClick={() => setSubView(k)}
+            style={{ padding:'8px 16px', borderRadius:7, border:'none', fontSize:12, fontWeight:700,
+              cursor:'pointer', fontFamily:'inherit',
+              background: subView === k ? C.navy : 'transparent',
+              color: subView === k ? '#fff' : C.slate }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {subView === 'translate' && <DictTranslatePanel showToast={showToast} />}
+      {subView === 'add' && <DictAddEntryPanel showToast={showToast} currentStaffId={currentStaffId} />}
+      {subView === 'bulk' && <DictBulkImportPanel showToast={showToast} currentStaffId={currentStaffId} />}
+      {subView === 'browse' && <DictBrowsePanel showToast={showToast} />}
+    </div>
+  )
+}
+
+function DictTranslatePanel({ showToast }) {
+  const [input, setInput] = useState('')
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const handleTranslate = async () => {
+    if (!input.trim()) return
+    setLoading(true)
+    try {
+      const r = await translateText(input)
+      setResult(r)
+    } catch (err) {
+      showToast('Translation failed: ' + err.message, C.rose)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCopy = async () => {
+    if (!result?.mayek) return
+    try { await navigator.clipboard.writeText(result.mayek); showToast('Copied', C.green) }
+    catch { showToast('Copy failed', C.rose) }
+  }
+
+  return (
+    <div>
+      <label style={lS}>English Text</label>
+      <textarea value={input} onChange={e => setInput(e.target.value)} rows={4}
+        placeholder="Type an English word or sentence..."
+        style={{ width:'100%', padding:'8px 11px', borderRadius:7, border:'1px solid '+C.border,
+          fontSize:13, fontFamily:'monospace', resize:'vertical', boxSizing:'border-box' }} />
+      <button onClick={handleTranslate} disabled={loading} style={{ ...btn(C.navy), marginTop:10 }}>
+        {loading ? 'Translating...' : 'Translate'}
+      </button>
+
+      {result && (
+        <div style={{ marginTop:18 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+            <label style={lS}>Meetei Mayek Output</label>
+            {result.matchedSentence && (
+              <span style={{ fontSize:11, fontWeight:700, color:C.green }}>Exact sentence match</span>
+            )}
+          </div>
+          <div style={{ minHeight:60, padding:'10px 12px', borderRadius:7, background:'#f8fafc',
+            border:'1px solid '+C.border, fontFamily:'Noto Sans Meetei Mayek, monospace', fontSize:20,
+            lineHeight:1.8, whiteSpace:'pre-wrap', wordWrap:'break-word' }}>
+            {result.mayek || <span style={{ color:'#94a3b8', fontSize:12, fontFamily:'inherit' }}>No output</span>}
+          </div>
+          <button onClick={handleCopy} style={{ ...btn(C.slate), marginTop:10 }}>Copy Mayek Text</button>
+
+          <div style={{ marginTop:10, fontSize:12, color:C.slate }}>
+            Coverage: {Math.round(result.coverage * 100)}% of words matched
+          </div>
+
+          {result.missingWords.length > 0 && (
+            <div style={{ marginTop:10, padding:12, background:'#fffbeb', borderRadius:8, border:'1px solid #fde68a' }}>
+              <div style={{ fontWeight:700, fontSize:12, color:'#92400e', marginBottom:6 }}>
+                Not in dictionary yet ({result.missingWords.length}):
+              </div>
+              <div style={{ fontSize:13, color:'#78350f' }}>{result.missingWords.join(', ')}</div>
+              <div style={{ fontSize:11, color:'#92400e', marginTop:6 }}>
+                Add these under "Add Entry" to improve future translations.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DictAddEntryPanel({ showToast, currentStaffId }) {
+  const [entryType, setEntryType] = useState('word')
+  const [english, setEnglish] = useState('')
+  const [bmei04, setBmei04] = useState('')
+  const [category, setCategory] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const preview = useMemo(() => { try { return romanToMeetei(bmei04) } catch { return '' } }, [bmei04])
+
+  const handleSave = async () => {
+    if (!english.trim() || !bmei04.trim()) {
+      showToast('English and BMEI04 keystrokes are both required', C.amber); return
+    }
+    setSaving(true)
+    try {
+      await saveDictionaryEntry({
+        entryType, english, bmei04,
+        category: category.trim() || null,
+        createdBy: currentStaffId || null,
+      })
+      showToast('Saved to dictionary', C.green)
+      setEnglish(''); setBmei04('')
+    } catch (err) {
+      showToast('Save failed: ' + err.message, C.rose)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:6, marginBottom:14 }}>
+        {['word', 'sentence'].map(t => (
+          <button key={t} onClick={() => setEntryType(t)}
+            style={{ padding:'6px 14px', borderRadius:7, border:'none', cursor:'pointer', fontSize:12,
+              fontWeight:700, fontFamily:'inherit',
+              background: entryType === t ? C.navy : '#f1f5f9',
+              color: entryType === t ? '#fff' : C.slate }}>
+            {t === 'word' ? 'Single Word' : 'Full Sentence'}
+          </button>
+        ))}
+      </div>
+
+      <label style={lS}>English {entryType === 'word' ? 'Word' : 'Sentence'}</label>
+      <input value={english} onChange={e => setEnglish(e.target.value)}
+        placeholder={entryType === 'word' ? 'e.g. apple' : 'e.g. find the value of x'} style={iS} />
+
+      <label style={{ ...lS, marginTop:12 }}>BMEI04 Keystrokes</label>
+      <input value={bmei04} onChange={e => setBmei04(e.target.value)}
+        placeholder="Type using BMEI04 keyboard layout" style={{ ...iS, fontFamily:'monospace' }} />
+
+      <label style={{ ...lS, marginTop:12 }}>Category (optional)</label>
+      <input value={category} onChange={e => setCategory(e.target.value)}
+        placeholder="e.g. math, general, grammar" style={iS} />
+
+      {bmei04.trim() && (
+        <div style={{ marginTop:12 }}>
+          <label style={lS}>Preview</label>
+          <div style={{ padding:'10px 12px', borderRadius:7, background:'#f8fafc', border:'1px solid '+C.border,
+            fontFamily:'Noto Sans Meetei Mayek, monospace', fontSize:20 }}>
+            {preview}
+          </div>
+        </div>
+      )}
+
+      <button onClick={handleSave} disabled={saving} style={{ ...btn(C.green), marginTop:14 }}>
+        {saving ? 'Saving...' : 'Save to Dictionary'}
+      </button>
+    </div>
+  )
+}
+
+function DictBulkImportPanel({ showToast, currentStaffId }) {
+  const [csvText, setCsvText] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [result, setResult] = useState(null)
+
+  const handleImport = async () => {
+    if (!csvText.trim()) return
+    setImporting(true); setResult(null)
+    try {
+      const lines = csvText.trim().split('\n')
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
+      const rows = lines.slice(1).map(line => {
+        const cells = line.split(',')
+        const row = {}
+        headers.forEach((h, i) => { row[h] = (cells[i] || '').trim() })
+        return row
+      })
+      const res = await bulkImportEntries(rows, { defaultSource:'bulk_import', createdBy: currentStaffId || null })
+      setResult(res)
+      showToast(`Imported ${res.inserted} entries`, C.green)
+    } catch (err) {
+      showToast('Import failed: ' + err.message, C.rose)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize:12, color:C.slate, marginBottom:10 }}>
+        Paste CSV with columns: <code>entry_type,english,bmei04,category</code> (entry_type and category are optional —
+        entry_type auto-detects as "sentence" if the English text has more than one word). Rows with a blank
+        bmei04 are skipped, so a wordlist CSV with empty bmei04 cells is safe to re-import as you fill it in.
+      </div>
+      <textarea value={csvText} onChange={e => setCsvText(e.target.value)} rows={9}
+        placeholder={'entry_type,english,bmei04,category\nword,apple,AepL,general\nsentence,find the value of x,...,math'}
+        style={{ width:'100%', padding:'8px 11px', borderRadius:7, border:'1px solid '+C.border,
+          fontSize:12, fontFamily:'monospace', resize:'vertical', boxSizing:'border-box' }} />
+      <button onClick={handleImport} disabled={importing} style={{ ...btn(C.navy), marginTop:10 }}>
+        {importing ? 'Importing...' : 'Import CSV'}
+      </button>
+
+      {result && (
+        <div style={{ marginTop:14 }}>
+          <div style={{ fontWeight:700, color:C.green }}>{result.inserted} entries saved</div>
+          {result.failed.length > 0 && (
+            <div style={{ marginTop:10, padding:12, background:'#fef2f2', borderRadius:8, border:'1px solid #fecaca' }}>
+              <div style={{ fontWeight:700, fontSize:12, color:'#991b1b', marginBottom:6 }}>
+                {result.failed.length} rows failed{result.failed.length > 20 ? ' (showing first 20)' : ''}:
+              </div>
+              {result.failed.slice(0, 20).map((f, i) => (
+                <div key={i} style={{ fontSize:11, color:'#7f1d1d' }}>{f.row.english || '(blank)'} — {f.error}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DictBrowsePanel({ showToast }) {
+  const [query, setQuery] = useState('')
+  const [entryType, setEntryType] = useState(null)
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [editingId, setEditingId] = useState(null)
+  const [editBmei04, setEditBmei04] = useState('')
+
+  const runSearch = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await searchDictionary({ query, entryType })
+      setRows(data)
+    } catch (err) {
+      showToast('Search failed: ' + err.message, C.rose)
+    } finally {
+      setLoading(false)
+    }
+  }, [query, entryType])
+
+  useEffect(() => { runSearch() }, [runSearch])
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this dictionary entry?')) return
+    try { await deleteDictionaryEntry(id); showToast('Deleted', C.rose); runSearch() }
+    catch (err) { showToast('Delete failed: ' + err.message, C.rose) }
+  }
+
+  const handleEditSave = async (row) => {
+    try {
+      await saveDictionaryEntry({ entryType: row.entry_type, english: row.english, bmei04: editBmei04, category: row.category, source: row.source })
+      showToast('Updated', C.green); setEditingId(null); runSearch()
+    } catch (err) { showToast('Update failed: ' + err.message, C.rose) }
+  }
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap' }}>
+        <input value={query} onChange={e => setQuery(e.target.value)}
+          placeholder="Search English word/sentence..." style={{ ...iS, flex:1, minWidth:200 }} />
+        {[[null, 'All'], ['word', 'Words'], ['sentence', 'Sentences']].map(([val, label]) => (
+          <button key={label} onClick={() => setEntryType(val)}
+            style={{ padding:'8px 14px', borderRadius:7, border:'none', cursor:'pointer', fontSize:12,
+              fontWeight:700, fontFamily:'inherit',
+              background: entryType === val ? C.navy : '#f1f5f9',
+              color: entryType === val ? '#fff' : C.slate }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ color:C.slate, fontSize:13 }}>Loading...</div>
+      ) : rows.length === 0 ? (
+        <div style={{ color:C.slate, fontSize:13 }}>No entries found.</div>
+      ) : (
+        <div style={{ maxHeight:500, overflowY:'auto' }}>
+          {rows.map(row => (
+            <div key={row.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+              padding:'10px 12px', borderBottom:'1px solid '+C.border, gap:10 }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontWeight:700, fontSize:13, color:C.navy }}>
+                  {row.english}
+                  <span style={{ marginLeft:8, fontSize:10, fontWeight:700, color:C.slate, textTransform:'uppercase' }}>
+                    {row.entry_type}
+                  </span>
+                </div>
+                {editingId === row.id ? (
+                  <input value={editBmei04} onChange={e => setEditBmei04(e.target.value)}
+                    style={{ ...iS, marginTop:4, fontFamily:'monospace', fontSize:12 }} />
+                ) : (
+                  <div style={{ fontSize:18, marginTop:2, fontFamily:'Noto Sans Meetei Mayek, sans-serif' }}>{row.mayek_unicode}</div>
+                )}
+              </div>
+              <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                {editingId === row.id ? (
+                  <>
+                    <button onClick={() => handleEditSave(row)} style={btnSm(C.green)}>Save</button>
+                    <button onClick={() => setEditingId(null)} style={btnSm(C.slate)}>Cancel</button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => { setEditingId(row.id); setEditBmei04(row.bmei04) }} style={btnSm(C.teal)}>Edit</button>
+                    <button onClick={() => handleDelete(row.id)} style={btnSm(C.rose)}>Delete</button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // TAB 4: CREATE PAPER (unchanged)
 // ══════════════════════════════════════════════════════════════════════════════
 function TabPaper({ questions, showToast }) {
@@ -3789,6 +4129,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
     { key:'manual',  icon:'✏️', label:'Manual Add',    count: null },
     { key:'bulk',    icon:'📤', label:'Bulk Paste',    count: null },
     { key:'translit',icon:'🔤', label:'Mayek Tool',    count: null },
+    { key:'dictionary',icon:'📖', label:'Dictionary',  count: null },
     { key:'paper',   icon:'📄', label:'Create Paper',  count: null,  adminOnly: true },
     { key:'test',    icon:'📝', label:'Online Test',   count: null,  adminOnly: true },
     { key:'smartppt',icon:'🎬', label:'Smart PPT',     count: null,  adminOnly: true },
@@ -3835,6 +4176,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
       {tab === 'manual' && <TabManualAdd questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'bulk'   && <TabBulkPaste questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'translit' && <TabTranslit questions={questions} refetch={refetch} showToast={showToast} />}
+      {tab === 'dictionary' && <TabDictionary showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} />}
       {isAdmin && tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'smartppt' && <TabSmartPPT questions={questions} showToast={showToast} />}
