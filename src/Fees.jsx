@@ -1728,6 +1728,89 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
       {/* ── Month-wise Dues grid ── */}
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
+        {(() => {
+          // ✦ Shared renderer for one month's defaulter list — used by both
+          // the expanded (all months stacked) and collapsed (single month)
+          // views below, which previously duplicated the same row markup
+          // twice. Splits defaulters into two grouped sections — "Partial
+          // Payments" (paid > 0) and "No Payment" (paid = 0) — each with
+          // its own subtotal, instead of one flat list where a student who
+          // paid ₹4,000 of ₹5,000 looked identical in structure to one who
+          // paid nothing. Within each row, Paid and Due are now separate
+          // labeled fields rather than one "paid ₹X of ₹Y" sentence, so the
+          // two numbers can be scanned independently at a glance.
+          const renderDefaulterRow = (x) => (
+            <div key={x.student.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #f8fafc' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  {x.student.name}
+                  {x.paid > 0 && (
+                    <span style={{ fontSize: 8.5, fontWeight: 800, color: '#b45309', background: '#fffbeb', padding: '1px 6px', borderRadius: 4, border: '1px solid #fde68a', letterSpacing: '.03em' }}>
+                      PARTIAL
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
+                  GCC-{x.student.gcc_no} · {x.student.course || '—'} · {x.student.hostel_type || '—'}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+                {/* Paid and Due as two distinct labeled fields, side by side,
+                    instead of one combined sentence. */}
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 8.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.04em' }}>Paid</div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: x.paid > 0 ? '#b45309' : '#94a3b8' }}>₹{n(x.paid)}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 8.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.04em' }}>Due</div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#dc2626' }}>₹{n(x.due)}</div>
+                </div>
+                <button onClick={() => onCollect(x.student)}
+                  style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, border: 'none', background: '#dc2626', color: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  Collect
+                </button>
+              </div>
+            </div>
+          )
+
+          const renderDefaulterList = (defaulters) => {
+            if (defaulters.length === 0) {
+              return <div style={{ padding: '16px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>🎉 No dues for this month</div>
+            }
+            const partial = defaulters.filter(x => x.paid > 0)
+            const noPayment = defaulters.filter(x => x.paid === 0)
+            const partialSubtotal = partial.reduce((s, x) => s + x.due, 0)
+            const noPaymentSubtotal = noPayment.reduce((s, x) => s + x.due, 0)
+            return (
+              <>
+                {partial.length > 0 && (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 14px', background: '#fffbeb', borderBottom: '1px solid #fde68a' }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 800, color: '#b45309', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                        Partial Payments · {partial.length}
+                      </span>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: '#b45309' }}>₹{n(partialSubtotal)} due</span>
+                    </div>
+                    {partial.map(renderDefaulterRow)}
+                  </div>
+                )}
+                {noPayment.length > 0 && (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 14px', background: '#fef2f2', borderBottom: '1px solid #fca5a5' }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 800, color: '#991B1B', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                        No Payment · {noPayment.length}
+                      </span>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: '#991B1B' }}>₹{n(noPaymentSubtotal)} due</span>
+                    </div>
+                    {noPayment.map(renderDefaulterRow)}
+                  </div>
+                )}
+              </>
+            )
+          }
+
+          return (
+            <>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', gap: 8 }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f' }}>🗓️ Month-wise Dues (Flat + Course Fee)</div>
@@ -1794,26 +1877,8 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                     ₹{n(md.dueTotal)} outstanding
                   </div>
                 </div>
-                <div style={{ borderRadius: 8, border: '1px solid #f1f5f9' }}>
-                  {md.defaulters.length === 0 ? (
-                    <div style={{ padding: '16px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>🎉 No dues for this month</div>
-                  ) : md.defaulters.map(x => (
-                    <div key={x.student.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', borderBottom: '1px solid #f8fafc' }}>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{x.student.name}</div>
-                        <div style={{ fontSize: 10, color: '#94a3b8' }}>
-                          GCC-{x.student.gcc_no} · {x.student.course || '—'} · {x.student.hostel_type || '—'} · paid ₹{n(x.paid)} of ₹{n(x.expected)}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 12, fontWeight: 800, color: '#dc2626' }}>₹{n(x.due)}</span>
-                        <button onClick={() => onCollect(x.student)}
-                          style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#dc2626', color: 'white', cursor: 'pointer' }}>
-                          Collect
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                <div style={{ borderRadius: 8, border: '1px solid #f1f5f9', overflow: 'hidden' }}>
+                  {renderDefaulterList(md.defaulters)}
                 </div>
               </div>
             ))}
@@ -1828,29 +1893,14 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                 ₹{n(selectedDues.dueTotal)} outstanding
               </div>
             </div>
-            <div style={{ maxHeight: 220, overflowY: 'auto', borderRadius: 8, border: '1px solid #f1f5f9' }}>
-              {selectedDues.defaulters.length === 0 ? (
-                <div style={{ padding: '16px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>🎉 No dues for this month</div>
-              ) : selectedDues.defaulters.map(x => (
-                <div key={x.student.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', borderBottom: '1px solid #f8fafc' }}>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{x.student.name}</div>
-                    <div style={{ fontSize: 10, color: '#94a3b8' }}>
-                      GCC-{x.student.gcc_no} · {x.student.course || '—'} · {x.student.hostel_type || '—'} · paid ₹{n(x.paid)} of ₹{n(x.expected)}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: '#dc2626' }}>₹{n(x.due)}</span>
-                    <button onClick={() => onCollect(x.student)}
-                      style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#dc2626', color: 'white', cursor: 'pointer' }}>
-                      Collect
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div style={{ maxHeight: 320, overflowY: 'auto', borderRadius: 8, border: '1px solid #f1f5f9' }}>
+              {renderDefaulterList(selectedDues.defaulters)}
             </div>
           </div>
         )}
+            </>
+          )
+        })()}
       </div>
 
       {/* ── Course-wise breakdown ── */}
