@@ -36,7 +36,11 @@ import { BMEI04_BASE64 } from './bmei04_font_base64'
 // which stores raw BMEI04 text as-is and renders it with the embedded
 // BMEI04 font rather than converting it.
 import { romanToMeetei, meeteiToRoman, getAllCharacters } from './meetei_mayek'
-import { translateText, saveDictionaryEntry, deleteDictionaryEntry, bulkImportEntries, searchDictionary } from './mayekDictionary'
+import {
+  translateText, saveDictionaryEntry, deleteDictionaryEntry, bulkImportEntries, searchDictionary,
+  seedWordlist, getUnfilledEntries, getNeedsReviewEntries, findCoverageGaps,
+  COMMON_QUESTION_PHRASES, getPhraseTemplateStatus,
+} from './mayekDictionary'
 
 function BmeiFontFace() {
   return (
@@ -2688,8 +2692,8 @@ function TabTranslit({ questions, refetch, showToast }) {
 // real English words/sentences to Meetei Mayek, using a Supabase table
 // (mayek_dictionary) that grows as entries are added — never machine-translated,
 // so a missing word is shown as [?word?] rather than guessed.
-function TabDictionary({ showToast, currentStaffId }) {
-  const [subView, setSubView] = useState('translate') // translate | add | bulk | browse
+function TabDictionary({ showToast, currentStaffId, questions }) {
+  const [subView, setSubView] = useState('translate') // translate | add | bulk | wordlist | coverage | browse
 
   return (
     <div style={cardS}>
@@ -2701,7 +2705,14 @@ function TabDictionary({ showToast, currentStaffId }) {
       </div>
 
       <div style={{ display:'flex', gap:6, marginBottom:16, padding:4, background:'#f1f5f9', borderRadius:9, width:'fit-content', flexWrap:'wrap' }}>
-        {[{ k:'translate', label:'Translate' }, { k:'add', label:'Add Entry' }, { k:'bulk', label:'Bulk Import' }, { k:'browse', label:'Browse / Edit' }].map(({ k, label }) => (
+        {[
+          { k:'translate', label:'Translate' },
+          { k:'add', label:'Add Entry' },
+          { k:'bulk', label:'Bulk Import (CSV)' },
+          { k:'wordlist', label:'Seed Wordlist' },
+          { k:'coverage', label:'Coverage' },
+          { k:'browse', label:'Browse / Edit' },
+        ].map(({ k, label }) => (
           <button key={k} onClick={() => setSubView(k)}
             style={{ padding:'8px 16px', borderRadius:7, border:'none', fontSize:12, fontWeight:700,
               cursor:'pointer', fontFamily:'inherit',
@@ -2715,7 +2726,279 @@ function TabDictionary({ showToast, currentStaffId }) {
       {subView === 'translate' && <DictTranslatePanel showToast={showToast} />}
       {subView === 'add' && <DictAddEntryPanel showToast={showToast} currentStaffId={currentStaffId} />}
       {subView === 'bulk' && <DictBulkImportPanel showToast={showToast} currentStaffId={currentStaffId} />}
+      {subView === 'wordlist' && <DictSeedWordlistPanel showToast={showToast} currentStaffId={currentStaffId} />}
+      {subView === 'coverage' && <DictCoveragePanel showToast={showToast} questions={questions} currentStaffId={currentStaffId} />}
       {subView === 'browse' && <DictBrowsePanel showToast={showToast} />}
+    </div>
+  )
+}
+
+// ── SEED WORDLIST ────────────────────────────────────────────────────────────
+// Fast dictionary-growth path: paste a raw wordlist (textbook glossary, exam
+// vocab sheet — one word per line, or comma/tab separated), no BMEI04 typing
+// needed up front. Creates blank-bmei04 placeholder rows so the words show
+// up in the Coverage "Unfilled" queue and can be typed in later, in bulk or
+// one at a time, instead of ad hoc as questions happen to need them.
+function DictSeedWordlistPanel({ showToast, currentStaffId }) {
+  const [text, setText] = useState('')
+  const [category, setCategory] = useState('')
+  const [seeding, setSeeding] = useState(false)
+  const [result, setResult] = useState(null)
+
+  const handleSeed = async () => {
+    if (!text.trim()) return
+    setSeeding(true); setResult(null)
+    try {
+      const res = await seedWordlist(text, { category: category.trim() || null, createdBy: currentStaffId || null })
+      setResult(res)
+      showToast(`Seeded ${res.seeded} new words`, C.green)
+      if (res.seeded) setText('')
+    } catch (err) {
+      showToast('Seed failed: ' + err.message, C.rose)
+    } finally {
+      setSeeding(false)
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize:12, color:C.slate, marginBottom:10 }}>
+        Paste a wordlist — one word per line (or comma/tab separated). Each new word is added to the
+        dictionary with its BMEI04 keystrokes left blank, so it appears in the <strong>Coverage → Unfilled</strong>{' '}
+        queue ready to be typed in. Words already in the dictionary (filled or not) are skipped automatically.
+      </div>
+      <textarea value={text} onChange={e => setText(e.target.value)} rows={10}
+        placeholder={'apple\nball\ncat\ndog\n... or: apple, ball, cat, dog'}
+        style={{ width:'100%', padding:'8px 11px', borderRadius:7, border:'1px solid '+C.border,
+          fontSize:13, fontFamily:'monospace', resize:'vertical', boxSizing:'border-box' }} />
+      <label style={{ ...lS, marginTop:12 }}>Category (optional, applies to all seeded words)</label>
+      <input value={category} onChange={e => setCategory(e.target.value)}
+        placeholder="e.g. math, general, grammar" style={iS} />
+      <button onClick={handleSeed} disabled={seeding} style={{ ...btn(C.navy), marginTop:12 }}>
+        {seeding ? 'Seeding...' : 'Seed Wordlist'}
+      </button>
+
+      {result && (
+        <div style={{ marginTop:14, fontSize:13 }}>
+          <div style={{ fontWeight:700, color:C.green }}>{result.seeded} new words added (blank BMEI04)</div>
+          {result.skippedExisting > 0 && (
+            <div style={{ color:C.slate, marginTop:4 }}>{result.skippedExisting} already existed — skipped</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── COVERAGE ─────────────────────────────────────────────────────────────────
+// Three linked views on the same question: how much of what students will
+// actually see is real, verified Meetei Mayek right now, and what's the most
+// useful next thing to fill in.
+//   1. Gap scan — every distinct word across the live question bank
+//      (question text + all four options), split into: has no dictionary
+//      entry at all / has a blank placeholder / has a flagged translation /
+//      fully covered.
+//   2. Unfilled queue — dictionary rows with blank bmei04 (seeded via
+//      Seed Wordlist, or any other blank-bmei04 row) needing keystrokes typed in.
+//   3. Needs Review queue — rows WITH a translation that got flagged during
+//      save (an unresolved word-initial vowel case — see meetei_mayek.js) so
+//      a human can confirm or correct it, plus the phrase-template checklist
+//      for recurring full-sentence phrasings (see COMMON_QUESTION_PHRASES).
+function DictCoveragePanel({ showToast, questions, currentStaffId }) {
+  const [scanning, setScanning] = useState(false)
+  const [gaps, setGaps] = useState(null)
+  const [unfilled, setUnfilled] = useState([])
+  const [needsReview, setNeedsReview] = useState([])
+  const [phrases, setPhrases] = useState([])
+  const [loadingQueues, setLoadingQueues] = useState(true)
+  const [fillDrafts, setFillDrafts] = useState({}) // id -> bmei04 text being typed
+
+  const loadQueues = useCallback(async () => {
+    setLoadingQueues(true)
+    try {
+      const [uf, nr, ph] = await Promise.all([
+        getUnfilledEntries(), getNeedsReviewEntries(), getPhraseTemplateStatus(),
+      ])
+      setUnfilled(uf); setNeedsReview(nr); setPhrases(ph)
+    } catch (err) {
+      showToast('Failed to load queues: ' + err.message, C.rose)
+    } finally {
+      setLoadingQueues(false)
+    }
+  }, [])
+
+  useEffect(() => { loadQueues() }, [loadQueues])
+
+  const runScan = async () => {
+    setScanning(true)
+    try {
+      const texts = []
+      for (const q of (questions || [])) {
+        if (q.question) texts.push(q.question)
+        for (const k of ['option_a', 'option_b', 'option_c', 'option_d']) if (q[k]) texts.push(q[k])
+      }
+      const res = await findCoverageGaps(texts)
+      setGaps(res)
+    } catch (err) {
+      showToast('Scan failed: ' + err.message, C.rose)
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  const handleFillSave = async (row) => {
+    const bmei04 = (fillDrafts[row.id] || '').trim()
+    if (!bmei04) { showToast('Type BMEI04 keystrokes first', C.amber); return }
+    try {
+      await saveDictionaryEntry({
+        entryType: row.entry_type, english: row.english, bmei04,
+        category: row.category, source: row.source, createdBy: currentStaffId || null,
+      })
+      showToast('Saved', C.green)
+      setFillDrafts(d => { const n = { ...d }; delete n[row.id]; return n })
+      loadQueues()
+    } catch (err) {
+      showToast('Save failed: ' + err.message, C.rose)
+    }
+  }
+
+  const pct = (n, total) => total ? Math.round((n / total) * 100) : 0
+
+  return (
+    <div>
+      {/* ── Gap scan ── */}
+      <div style={{ marginBottom:22 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.navy }}>Question Bank Coverage Scan</div>
+          <button onClick={runScan} disabled={scanning} style={btnSm(C.navy)}>
+            {scanning ? 'Scanning...' : 'Run Scan'}
+          </button>
+        </div>
+        <div style={{ fontSize:11, color:C.slate, marginBottom:10 }}>
+          Scans every question + option currently loaded ({(questions || []).length} questions) for distinct
+          English words and checks each against the dictionary.
+        </div>
+
+        {gaps && (
+          <div>
+            <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:10 }}>
+              {[
+                { label:'Covered', n: gaps.coveredCount, color: C.green },
+                { label:'Missing entirely', n: gaps.missing.length, color: C.rose },
+                { label:'Unfilled (blank BMEI04)', n: gaps.unfilled.length, color: C.amber },
+                { label:'Needs review', n: gaps.needsReview.length, color: '#991b1b' },
+              ].map(s => (
+                <div key={s.label} style={{ flex:'1 1 140px', padding:'10px 12px', borderRadius:8,
+                  background:'#f8fafc', border:'1px solid '+C.border }}>
+                  <div style={{ fontSize:20, fontWeight:800, color: s.color }}>{s.n}</div>
+                  <div style={{ fontSize:11, color:C.slate, marginTop:2 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize:12, color:C.slate, marginBottom:10 }}>
+              {gaps.totalDistinctWords} distinct words found · {pct(gaps.coveredCount, gaps.totalDistinctWords)}% fully covered
+            </div>
+            {gaps.missing.length > 0 && (
+              <div style={{ padding:12, background:'#fef2f2', borderRadius:8, border:'1px solid #fecaca', marginBottom:10 }}>
+                <div style={{ fontWeight:700, fontSize:12, color:'#991b1b', marginBottom:6 }}>
+                  Not in dictionary at all ({gaps.missing.length}):
+                </div>
+                <div style={{ fontSize:12, color:'#7f1d1d', maxHeight:120, overflowY:'auto' }}>
+                  {gaps.missing.join(', ')}
+                </div>
+                <div style={{ fontSize:11, color:'#991b1b', marginTop:8 }}>
+                  Copy these into <strong>Seed Wordlist</strong> to queue them for translation.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Unfilled queue ── */}
+      <div style={{ marginBottom:22, paddingTop:16, borderTop:'1px solid '+C.border }}>
+        <div style={{ fontSize:13, fontWeight:700, color:C.navy, marginBottom:8 }}>
+          Unfilled Entries ({unfilled.length}) — need BMEI04 keystrokes
+        </div>
+        {loadingQueues ? (
+          <div style={{ fontSize:12, color:C.slate }}>Loading...</div>
+        ) : unfilled.length === 0 ? (
+          <div style={{ fontSize:12, color:C.slate }}>Nothing pending — every dictionary entry has keystrokes filled in.</div>
+        ) : (
+          <div style={{ maxHeight:320, overflowY:'auto' }}>
+            {unfilled.map(row => (
+              <div key={row.id} style={{ display:'flex', gap:8, alignItems:'center', padding:'8px 10px',
+                borderBottom:'1px solid '+C.border }}>
+                <div style={{ width:140, flexShrink:0, fontWeight:700, fontSize:13, color:C.navy }}>{row.english}</div>
+                <input value={fillDrafts[row.id] || ''} onChange={e => setFillDrafts(d => ({ ...d, [row.id]: e.target.value }))}
+                  placeholder="Type BMEI04 keystrokes..." style={{ ...iS, flex:1, fontFamily:'monospace', fontSize:12 }} />
+                <div style={{ minWidth:60, fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:18 }}>
+                  {fillDrafts[row.id] ? romanToMeetei(fillDrafts[row.id]) : ''}
+                </div>
+                <button onClick={() => handleFillSave(row)} style={btnSm(C.green)}>Save</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Needs review queue ── */}
+      <div style={{ marginBottom:22, paddingTop:16, borderTop:'1px solid '+C.border }}>
+        <div style={{ fontSize:13, fontWeight:700, color:C.navy, marginBottom:8 }}>
+          Needs Review ({needsReview.length}) — flagged during entry
+        </div>
+        {loadingQueues ? (
+          <div style={{ fontSize:12, color:C.slate }}>Loading...</div>
+        ) : needsReview.length === 0 ? (
+          <div style={{ fontSize:12, color:C.slate }}>Nothing flagged.</div>
+        ) : (
+          <div style={{ maxHeight:320, overflowY:'auto' }}>
+            {needsReview.map(row => (
+              <div key={row.id} style={{ padding:'8px 10px', borderBottom:'1px solid '+C.border }}>
+                <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                  <div style={{ fontWeight:700, fontSize:13, color:C.navy, width:140, flexShrink:0 }}>{row.english}</div>
+                  <div style={{ fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:18 }}>{row.mayek_unicode}</div>
+                  <div style={{ fontFamily:'monospace', fontSize:11, color:C.slate }}>{row.bmei04}</div>
+                </div>
+                <div style={{ fontSize:11, color:'#991b1b', marginTop:4 }}>
+                  This word started with a vowel sign that had no consonant to attach to — a word-initial
+                  vowel case the transliterator can only guess at for 'a' and 'u'. Check the BMEI04 spelling
+                  and re-save under Browse/Edit once confirmed.
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Phrase template checklist ── */}
+      <div style={{ paddingTop:16, borderTop:'1px solid '+C.border }}>
+        <div style={{ fontSize:13, fontWeight:700, color:C.navy, marginBottom:6 }}>
+          Common Phrase Templates ({phrases.filter(p => p.done).length}/{phrases.length} verified)
+        </div>
+        <div style={{ fontSize:11, color:C.slate, marginBottom:10 }}>
+          Recurring full-sentence phrasings from the question bank. Word-by-word lookup gets English word
+          order wrong for a real Meetei sentence — these need a one-time review by a fluent speaker/teacher
+          as a whole sentence, saved as a <strong>sentence</strong>-type entry under "Add Entry". Nothing here
+          is auto-translated.
+        </div>
+        <div>
+          {phrases.map(p => (
+            <div key={p.norm} style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+              padding:'7px 10px', borderBottom:'1px solid '+C.border, gap:10 }}>
+              <div style={{ fontSize:13, color:C.navy }}>{p.phrase}</div>
+              {p.done ? (
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:16 }}>{p.mayek_unicode}</span>
+                  <span style={{ fontSize:10, fontWeight:700, color:C.green }}>VERIFIED</span>
+                </div>
+              ) : (
+                <span style={{ fontSize:10, fontWeight:700, color:C.amber }}>NOT YET REVIEWED</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -2782,6 +3065,19 @@ function DictTranslatePanel({ showToast }) {
               <div style={{ fontSize:13, color:'#78350f' }}>{result.missingWords.join(', ')}</div>
               <div style={{ fontSize:11, color:'#92400e', marginTop:6 }}>
                 Add these under "Add Entry" to improve future translations.
+              </div>
+            </div>
+          )}
+
+          {result.reviewWords && result.reviewWords.length > 0 && (
+            <div style={{ marginTop:10, padding:12, background:'#fef2f2', borderRadius:8, border:'1px solid #fecaca' }}>
+              <div style={{ fontWeight:700, fontSize:12, color:'#991b1b', marginBottom:6 }}>
+                ⚠ Unverified spelling ({result.reviewWords.length}):
+              </div>
+              <div style={{ fontSize:13, color:'#7f1d1d' }}>{result.reviewWords.join(', ')}</div>
+              <div style={{ fontSize:11, color:'#991b1b', marginTop:6 }}>
+                These words are in the dictionary but were flagged during entry (a word-initial vowel
+                the transliterator couldn't safely resolve on its own). Check them under "Coverage" → Needs Review.
               </div>
             </div>
           )}
@@ -4201,7 +4497,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
       {tab === 'manual' && <TabManualAdd questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'bulk'   && <TabBulkPaste questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'translit' && <TabTranslit questions={questions} refetch={refetch} showToast={showToast} />}
-      {tab === 'dictionary' && <TabDictionary showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} />}
+      {tab === 'dictionary' && <TabDictionary showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} questions={questions} />}
       {isAdmin && tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'smartppt' && <TabSmartPPT questions={questions} showToast={showToast} />}

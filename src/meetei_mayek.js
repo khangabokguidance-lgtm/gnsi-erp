@@ -51,25 +51,85 @@ for (const [key, char] of Object.entries(MAPPING)) {
   if (!(char in _REVERSE)) _REVERSE[char] = key
 }
 
+// Vowel-sign (matra) keys. In this abugida, these attach to a PRECEDING
+// consonant letter within the same syllable — they have no valid meaning
+// as the first character of a word/syllable, since there is nothing for
+// them to attach to. A word/syllable boundary is: start of string, or
+// right after any non-letter (space, punctuation, digit).
+const VOWEL_SIGN_KEYS = new Set(['a', 'e', 'E', 'i', 'o', 'O', 'u', 'x'])
+
+// Word-initial substitution for vowel-sign keys that DO have a matching
+// independent vowel letter in this 42-key table. Only 'a' (-> ATIYA, key
+// A) and 'u' (-> UN, key U) have one; e/i/o/x do not, so those get flagged
+// instead of guessed (see romanToMeetei below).
+const WORD_INITIAL_SUBSTITUTE = { a: 'A', u: 'U' }
+
 /**
  * Convert BMEI04 keystrokes (plain English letters, exactly as you'd type
  * them with the Bmei04 font selected in Word) into Unicode Meetei Mayek.
  * Anything not in the table (digits, spaces, other punctuation) passes
  * through unchanged. Unrecognised letters are wrapped as [?x?] rather than
  * silently dropped or guessed.
+ *
+ * Enforces one abugida rule that plain keystroke-literal conversion
+ * otherwise violates: a vowel-sign key (a,e,E,i,o,O,u,x) cannot legally
+ * start a word/syllable — it needs a preceding consonant to attach to.
+ * When one appears at a word boundary this function:
+ *   - substitutes the independent vowel letter instead, for 'a' and 'u'
+ *     (the only two with a real independent form in this table) — this is
+ *     a correct BMEI04-equivalent form, not a guess;
+ *   - otherwise (e, E, i, o, O, x) leaves it as [?x?], because no correct
+ *     standalone form exists in this scheme to substitute, and guessing
+ *     one would be exactly the silent-guess behaviour this module exists
+ *     to avoid.
+ *
+ * Returns a plain string, same as before, for every existing call site.
+ * Pass a third argument to also get the list of corrections/flags made:
+ *
+ *   const { text, warnings } = romanToMeetei(bmei04, {}, true)
+ *
+ * warnings is [] when nothing needed fixing/flagging.
  */
-export function romanToMeetei(text) {
+export function romanToMeetei(text, options = {}, withWarnings = false) {
   const out = []
+  const warnings = []
+  let atWordStart = true
+
   for (const ch of text) {
-    if (/[A-Za-z]/.test(ch) || ch === '.' || ch === '_' || ch === '|') {
-      if (ch in MAPPING) out.push(MAPPING[ch])
-      else if (/[A-Za-z]/.test(ch)) out.push(`[?${ch}?]`)
-      else out.push(ch)
+    const isLetter = /[A-Za-z]/.test(ch)
+
+    if (isLetter || ch === '.' || ch === '_' || ch === '|') {
+      if (isLetter && VOWEL_SIGN_KEYS.has(ch) && atWordStart) {
+        const sub = WORD_INITIAL_SUBSTITUTE[ch]
+        if (sub) {
+          out.push(MAPPING[sub])
+          warnings.push({
+            original: ch, substituted: sub, charIndex: out.length - 1,
+            reason: `Word-initial vowel sign '${ch}' has no consonant to attach to; used independent vowel letter '${sub}' instead.`,
+          })
+        } else {
+          out.push(`[?${ch}?]`)
+          warnings.push({
+            original: ch, substituted: null, charIndex: out.length - 1,
+            reason: `Word-initial vowel sign '${ch}' has no consonant to attach to, and this table has no independent vowel letter for it. Needs a human decision.`,
+          })
+        }
+      } else if (ch in MAPPING) {
+        out.push(MAPPING[ch])
+      } else if (isLetter) {
+        out.push(`[?${ch}?]`)
+      } else {
+        out.push(ch)
+      }
+      atWordStart = false
     } else {
       out.push(ch)
+      atWordStart = true
     }
   }
-  return out.join('')
+
+  const joined = out.join('')
+  return withWarnings ? { text: joined, warnings } : joined
 }
 
 /**
