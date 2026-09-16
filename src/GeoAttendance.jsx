@@ -1479,9 +1479,18 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
   }, [monthFilter, selectedStaff])
 
   const fetchAdvances = useCallback(async () => {
-    const { data } = await supabase.from('staff_advances').select('*').order('created_at', { ascending: false })
+    // Only ever used in this file for the logged-in staff member's own
+    // advances (My Advances tab) — was previously pulling every staff_advances
+    // row in the whole institute on every mount with no filter or limit.
+    // FaceAttendance.jsx's own AdvancesView already handles the admin
+    // all-staff view separately and scopes its own query correctly.
+    if (!currentStaff?.id) { setAdvances([]); return }
+    const { data } = await supabase.from('staff_advances')
+      .select('*')
+      .eq('staff_id', currentStaff.id)
+      .order('created_at', { ascending: false })
     setAdvances(data || [])
-  }, [])
+  }, [currentStaff?.id])
 
   const fetchTrailForLog = useCallback(async (logId) => {
     const { data } = await supabase.from('attendance_location_trail').select('*')
