@@ -3692,16 +3692,24 @@ export default function Fees() {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5,1fr)', gap: 16, marginBottom: 24 }}>
             {[
-              { label: 'Total students',  value: students.length,  color: '#1e3a5f', bg: '#eff6ff', icon: '👨‍🎓' },
-              { label: 'Total collected', value: `₹${n(liveTtl)}`, color: '#16a34a', bg: '#dcfce7', icon: '✅' },
-              { label: 'Fees pending',    value: liveP,            color: '#dc2626', bg: '#fee2e2', icon: '⚠️' },
-              { label: 'Underpaid (hostel)', value: liveUnderpaid, color: '#c2410c', bg: '#ffedd5', icon: '🏠' },
-              { label: 'Fully paid',      value: liveP2,           color: '#7c3aed', bg: '#f5f3ff', icon: '🎉' },
+              // Clicking a card sets afStatus to the matching liveStatus value —
+              // the search/filter row and table right below already filter on
+              // afStatus, so this reuses that existing mechanism instead of
+              // building a separate drilldown view. "Total students" and
+              // "Total collected" have no single matching status, so they
+              // just reset the filter to show everyone.
+              { label: 'Total students',  value: students.length,  color: '#1e3a5f', bg: '#eff6ff', icon: '👨‍🎓', status: 'All' },
+              { label: 'Total collected', value: `₹${n(liveTtl)}`, color: '#16a34a', bg: '#dcfce7', icon: '✅', status: 'All' },
+              { label: 'Fees pending',    value: liveP,            color: '#dc2626', bg: '#fee2e2', icon: '⚠️', status: 'Pending' },
+              { label: 'Underpaid (hostel)', value: liveUnderpaid, color: '#c2410c', bg: '#ffedd5', icon: '🏠', status: 'Underpaid' },
+              { label: 'Fully paid',      value: liveP2,           color: '#7c3aed', bg: '#f5f3ff', icon: '🎉', status: 'Paid' },
             ].map(c => (
-              <div key={c.label} style={{ backgroundColor: c.bg, borderRadius: 12, padding: 18, boxShadow: '0 2px 8px rgba(0,0,0,.06)', borderLeft: `4px solid ${c.color}` }}>
+              <div key={c.label} onClick={() => setAfStatus(c.status)}
+                style={{ backgroundColor: c.bg, borderRadius: 12, padding: 18, boxShadow: '0 2px 8px rgba(0,0,0,.06)', borderLeft: `4px solid ${c.color}`, cursor: 'pointer', outline: afStatus === c.status ? `2px solid ${c.color}` : 'none' }}>
                 <div style={{ fontSize: 22, marginBottom: 6 }}>{c.icon}</div>
                 <p style={{ fontSize: 13, color: c.color, fontWeight: 600, margin: 0 }}>{c.label}</p>
                 <h2 style={{ fontSize: 22, fontWeight: 'bold', color: c.color, margin: '4px 0 0' }}>{c.value}</h2>
+                <p style={{ fontSize: 10, color: c.color, opacity: .65, margin: '4px 0 0' }}>tap to filter below</p>
               </div>
             ))}
           </div>
