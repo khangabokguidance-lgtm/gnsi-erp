@@ -359,23 +359,40 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   }, [gcc])
 
   // ── Load paid flat months ─────────────────────────────────────────────────
+  // ✦ Also fetches `amount` (not just month/year) so we can look up what
+  // this student actually paid in a given prior month — used below to show
+  // "last month you collected ₹X for this student" before this month's
+  // payment is recorded, and to flag when this month's amount is
+  // meaningfully different from last month's for the same student/fee type.
+  const [flatPaidAmounts, setFlatPaidAmounts] = useState({}) // key: "month_year" -> amount
   useEffect(() => {
     if (!gcc) return
     setLoadingPaid(true)
-    supabase.from('adm_flat_fees').select('month, year').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false)
+    supabase.from('adm_flat_fees').select('month, year, amount').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false)
       .then(({ data }) => {
-        if (data) setPaidMonths(data.map(r => `${r.month}_${r.year}`))
+        if (data) {
+          setPaidMonths(data.map(r => `${r.month}_${r.year}`))
+          const amtMap = {}
+          data.forEach(r => { amtMap[`${r.month}_${r.year}`] = Number(r.amount) || 0 })
+          setFlatPaidAmounts(amtMap)
+        }
         setLoadingPaid(false)
       })
   }, [gcc])
 
   // ── Load paid course months ───────────────────────────────────────────────
+  const [coursePaidAmounts, setCoursePaidAmounts] = useState({}) // key: "month_year" -> amount
   useEffect(() => {
     if (!gcc) return
     setLoadingCourse(true)
-    supabase.from('adm_course_fees').select('for_month, year').eq('adm_app_id', gcc).eq('reverted', false)
+    supabase.from('adm_course_fees').select('for_month, year, amount_paid').eq('adm_app_id', gcc).eq('reverted', false)
       .then(({ data }) => {
-        if (data) setPaidCourseMonths(data.map(r => `${r.for_month}_${r.year}`))
+        if (data) {
+          setPaidCourseMonths(data.map(r => `${r.for_month}_${r.year}`))
+          const amtMap = {}
+          data.forEach(r => { amtMap[`${r.for_month}_${r.year}`] = Number(r.amount_paid) || 0 })
+          setCoursePaidAmounts(amtMap)
+        }
         setLoadingCourse(false)
       })
   }, [gcc])
@@ -383,6 +400,47 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const isAdmItemPaid     = label => paidAdmItems.includes(label)
   const isMonthPaid       = fee   => paidMonths.includes(`${fee.month}_${fee.year}`)
   const isCourseMonthPaid = ()    => paidCourseMonths.includes(`${courseMonth}_${courseYear}`)
+
+  // ✦ Previous-month lookup — walks one step back through MONTHS_LIST's
+  // academic order (April→March, same order buildAdvanceMonthRun already
+  // uses elsewhere in this file) from a given month/year, and returns what
+  // THIS student paid for that prior month, if anything. Returns null when
+  // there's no record for the prior month at all (nothing to compare
+  // against, not a shortfall) — callers must check for null before treating
+  // 0 as "paid nothing last month" vs "no data for last month".
+  const getPrevMonthAmount = (monthName, year, amountMap) => {
+    const idx = MONTHS_LIST.indexOf(monthName)
+    if (idx === -1) return null
+    const prevIdx = (idx - 1 + MONTHS_LIST.length) % MONTHS_LIST.length
+    // Stepping back from April (idx 0) to March (idx 11) moves to the
+    // PREVIOUS calendar year — mirrors buildAdvanceMonthRun's forward
+    // logic in reverse.
+    const prevYear = idx === 0 ? year - 1 : year
+    const key = `${MONTHS_LIST[prevIdx]}_${prevYear}`
+    const amount = amountMap[key]
+    return amount === undefined ? null : { month: MONTHS_LIST[prevIdx], year: prevYear, amount }
+  }
+
+  // ✦ Flat-fee specific previous-period lookup. Flat fee only has TWO
+  // named months per session (February, March — see FLAT_FEE_MONTHS in
+  // feeEngine.js), not a continuous monthly sequence, so "previous month"
+  // via MONTHS_LIST's general walk-back (used for course fee above) would
+  // land on January — a month flat fee never has data for, making that
+  // comparison meaningless. For flat fee, the useful comparison is the
+  // SAME named month in the PRIOR year (Feb 2026 vs Feb 2025), since
+  // that's the actual repeating cycle this fee follows.
+  const getPrevYearSameMonthAmount = (monthName, year, amountMap) => {
+    const key = `${monthName}_${year - 1}`
+    const amount = amountMap[key]
+    return amount === undefined ? null : { month: monthName, year: year - 1, amount }
+  }
+
+  // Threshold for flagging "this month's amount looks meaningfully
+  // different from last month's for this same student/fee type" — a
+  // percentage rather than a fixed rupee figure, since flat fee and course
+  // fee operate at very different rupee scales and a single fixed number
+  // would either be noisy for one or useless for the other.
+  const MONTH_OVER_MONTH_FLAG_PCT = 20
 
   const admTotal  = FEE_ITEMS.filter(f => selected[f.id] && !isAdmItemPaid(f.label)).reduce((s, f) => s + (Number(customAmts[f.id]) || f.amount), 0)
 
@@ -469,23 +527,44 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const isStudentActive = studentStatus === 'Active'
   const inactiveStatusMsg = `This student's status is "${studentStatus}", not Active. Fee collection is disabled — reactivate the student in Students first if this is a mistake.`
 
-  // ── Advance payment authorization ───────────────────────────────────────
-  // Collecting for a month that hasn't started yet is normally the "staff
-  // picked the wrong month" bug the future_month_tag anomaly check in
-  // Fees.jsx exists to catch. A genuine advance payment is the same action
-  // taken deliberately — so it must be distinguishable at write-time, not
-  // discovered later as an anomaly. Non-admins can never do this at all;
-  // admins can, but only after entering a PIN at the moment of collection,
-  // and the resulting row is permanently tagged (is_advance / 
-  // advance_authorized_by) so it never gets confused with the mistake this
-  // was built to catch, in the ledger, receipts, or anywhere else it shows.
-  const ADVANCE_PIN = '2468' // TODO: move to an env var / admin-settings table once one exists
-  const [advancePinOpen,  setAdvancePinOpen]  = useState(false)
-  const [advancePinValue, setAdvancePinValue] = useState('')
-  const [advancePinError, setAdvancePinError] = useState('')
-  const [advancePinFor,   setAdvancePinFor]   = useState(null) // 'flat' | 'course' — which save to resume after auth
+  // ── Admin authorization gate ────────────────────────────────────────────
+  // Covers TWO things that both require a logged-in admin to actively
+  // confirm at the moment of collection, not just a dropdown reason typed
+  // by whichever staff member is at the counter:
+  //   1. Advance payment for a month that hasn't started yet.
+  //   2. A rate deviation (flat or course fee edited away from the
+  //      standard rate by more than its discrepancy threshold) — this is
+  //      new: previously a staff member could enter any amount and save
+  //      as long as they picked a reason from a dropdown, with NO admin
+  //      involvement in the decision at all. A staff member deciding
+  //      unilaterally that a student owes less than the configured rate
+  //      is exactly the "manipulate fee" risk this gate exists to close.
+  //
+  // ✦ Security note: a hardcoded shared PIN ('2468') previously gated this
+  // — a single secret embedded in client-side JS that any staff member
+  // could read directly from devtools/bundled source, making the whole
+  // gate cosmetic rather than a real control. There is no server-side
+  // check in this codebase (no Supabase RPC/edge function) to verify a
+  // PIN unbypassably from the client, so a client-only PIN can never be
+  // made fully tamper-proof without adding that server-side piece.
+  // Given that constraint, this now requires the CURRENTLY LOGGED-IN
+  // admin to re-type their own username to confirm — tying authorization
+  // to who is actually signed in (currentUser, which the surrounding app
+  // already trusts for isAdmin) rather than a separate guessable secret
+  // every staff member effectively shares. It is still a client-side
+  // check and does not replace a real backend authorization system, but
+  // it removes the specific "one shared magic number" weakness and ties
+  // every authorization to a specific admin identity that then appears in
+  // the audit trail (advance_authorized_by / underpaymentAuthorizedBy).
+  const adminUsername = (currentUser?.userName || currentUser?.name || '').trim()
+  const [adminConfirmOpen,   setAdminConfirmOpen]   = useState(false)
+  const [adminConfirmValue,  setAdminConfirmValue]  = useState('')
+  const [adminConfirmError, setAdminConfirmError]   = useState('')
+  const [adminConfirmFor,   setAdminConfirmFor]     = useState(null) // 'flat-advance' | 'course-advance' | 'flat-rate' | 'course-rate'
   const [flatAdvanceAuthorized,   setFlatAdvanceAuthorized]   = useState(false)
   const [courseAdvanceAuthorized, setCourseAdvanceAuthorized] = useState(false)
+  const [flatRateAuthorized,      setFlatRateAuthorized]      = useState(false)
+  const [courseRateAuthorized,    setCourseRateAuthorized]    = useState(false)
 
   // A fee-period month/year counts as "future" if its 1st falls after today —
   // matches the future_month_tag anomaly check in Fees.jsx exactly, so a
@@ -522,17 +601,24 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     return run
   }
 
-  const openAdvancePin = (forWhich) => {
-    setAdvancePinFor(forWhich)
-    setAdvancePinValue('')
-    setAdvancePinError('')
-    setAdvancePinOpen(true)
+  const openAdminConfirm = (forWhich) => {
+    if (!isAdmin) { alert('Only an admin can authorize this. Please ask an admin to log in and confirm.'); return }
+    setAdminConfirmFor(forWhich)
+    setAdminConfirmValue('')
+    setAdminConfirmError('')
+    setAdminConfirmOpen(true)
   }
-  const confirmAdvancePin = () => {
-    if (advancePinValue !== ADVANCE_PIN) { setAdvancePinError('Incorrect PIN.'); return }
-    if (advancePinFor === 'flat') setFlatAdvanceAuthorized(true)
-    if (advancePinFor === 'course') setCourseAdvanceAuthorized(true)
-    setAdvancePinOpen(false)
+  const confirmAdminAuth = () => {
+    if (!adminUsername) { setAdminConfirmError('No admin username on this session — please log in again.'); return }
+    if (adminConfirmValue.trim().toLowerCase() !== adminUsername.toLowerCase()) {
+      setAdminConfirmError('That does not match the logged-in admin username.')
+      return
+    }
+    if (adminConfirmFor === 'flat-advance')  setFlatAdvanceAuthorized(true)
+    if (adminConfirmFor === 'course-advance') setCourseAdvanceAuthorized(true)
+    if (adminConfirmFor === 'flat-rate')     setFlatRateAuthorized(true)
+    if (adminConfirmFor === 'course-rate')   setCourseRateAuthorized(true)
+    setAdminConfirmOpen(false)
   }
 
   // ── UNIFIED save — all fee types go through collectFee (feeEngine) ────────────────
@@ -579,7 +665,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     if (!unpaid.length) return alert('Select at least one unpaid month.')
     const hasFutureMonth = unpaid.some(f => isFutureFeeMonth(f.month, f.year))
     if (hasFutureMonth && !isAdmin) return alert('One or more selected months haven\'t started yet. Only an admin can authorize collecting an advance payment.')
-    if (hasFutureMonth && !flatAdvanceAuthorized) return alert('One or more selected months haven\'t started yet. Click "Authorize advance payment (PIN)" above first.')
+    if (hasFutureMonth && !flatAdvanceAuthorized) return alert('One or more selected months haven\'t started yet. Click "Authorize advance payment (admin)" above first.')
     // Any selected month underpaid past the threshold must have a reason
     // picked from the dropdown before saving — same guard as course fee,
     // applied per-month since each selected month can be underpaid
@@ -592,6 +678,15 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         `(₹${missingReason.amount.toLocaleString('en-IN')}/month). Please select a reason before saving.`
       )
     }
+    // ✦ Rate deviation requires admin authorization, not just a reason —
+    // a staff member picking a reason from a dropdown was previously
+    // sufficient to save any amount at all, with no admin involved in the
+    // decision. This blocks the save until an admin has re-confirmed
+    // their identity for THIS specific deviation (see openAdminConfirm).
+    const hasUnauthorizedRateChange = unpaid.some(f => flatNeedsReasonFor(f)) && !flatRateAuthorized
+    if (hasUnauthorizedRateChange) {
+      return alert('One or more selected months are priced away from the standard rate. An admin must authorize this before saving — click "Authorize rate deviation (admin)" above.')
+    }
     setSaving(true); setError(null)
     try {
       const rNo = rcptNo()
@@ -602,13 +697,16 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         const reason = needsReason ? flatUnderpaymentReasons[f.id] : null
         // Fold the reason into the note so it's visible on the ledger/
         // receipt itself, not just this modal's local state (mirrors the
-        // course-fee courseNote pattern).
+        // course-fee courseNote pattern). Also records WHICH admin
+        // authorized the deviation, same as advanceAuthorizedBy below —
+        // so the audit trail shows who approved it, not just that a
+        // reason was picked.
         const note = needsReason
-          ? `Rate ${flatGapFor(f) < 0 ? 'shortfall' : 'override'}: ₹${f.amount.toLocaleString('en-IN')} standard → ₹${amt.toLocaleString('en-IN')} — ${reason}`
+          ? `Rate ${flatGapFor(f) < 0 ? 'shortfall' : 'override'}: ₹${f.amount.toLocaleString('en-IN')} standard → ₹${amt.toLocaleString('en-IN')} — ${reason} — authorized by ${adminUsername || 'admin'}`
           : undefined
         return {
           kind: 'flat', month: f.month, year: f.year, amount: amt,
-          isAdvance, advanceAuthorizedBy: isAdvance ? (currentUser?.userName || currentUser?.name || 'Admin') : null,
+          isAdvance, advanceAuthorizedBy: isAdvance ? (adminUsername || 'Admin') : null,
           standardAmount: f.amount,
           underpaymentAmount: needsReason && flatGapFor(f) < 0 ? Math.abs(flatGapFor(f)) : 0,
           underpaymentReason: reason,
@@ -629,6 +727,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       setFlatAmtOverrides({})
       setFlatUnderpaymentReasons({})
       setFlatAdvanceAuthorized(false)
+      setFlatRateAuthorized(false)
       onSaved?.()
     } catch (err) { setError(err.message || 'Failed to save.') }
     finally { setSaving(false) }
@@ -657,35 +756,42 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         `(e.g. approved scholarship, partial payment, sibling discount) before saving.`
       )
     }
+    // ✦ Rate deviation requires admin authorization — same reasoning as
+    // the flat-fee tab; a reason alone is not sufficient for a staff
+    // member to unilaterally charge a different amount.
+    if (courseAmtNeedsReason && !courseRateAuthorized) {
+      return alert('This amount is priced away from the standard rate. An admin must authorize this before saving — click "Authorize rate deviation (admin)" above.')
+    }
 
     // ✦ Advance months — build the run of consecutive months starting at
     // the selected one, drop any already paid (checked client-side via
     // paidCourseMonths; collectFee's checkCourseFeeExists guards each one
-    // again server-side regardless), and require advance-PIN authorization
+    // again server-side regardless), and require admin authorization
     // if ANY month in the run hasn't started yet — same rule as a single
     // month, just checked across the whole run at once so staff aren't
     // authorized for "this month" and then silently also charge next
-    // year's March without a fresh PIN.
+    // year's March without fresh authorization.
     const run = buildAdvanceMonthRun(courseMonth, courseYear, advanceMonthCount)
     const unpaidRun = run.filter(m => !paidCourseMonths.includes(`${m.month}_${m.year}`))
     if (!unpaidRun.length) { setError(`Course fee for all ${run.length > 1 ? 'selected months' : `${courseMonth} ${courseYear}`} already recorded.`); return }
     const anyAdvance = unpaidRun.some(m => isFutureFeeMonth(m.month, m.year))
     if (anyAdvance && !isAdmin) return alert('One or more months in this run haven\'t started yet. Only an admin can authorize collecting an advance payment.')
-    if (anyAdvance && !courseAdvanceAuthorized) return alert('One or more months in this run haven\'t started yet. Click "Authorize advance payment (PIN)" above first.')
+    if (anyAdvance && !courseAdvanceAuthorized) return alert('One or more months in this run haven\'t started yet. Click "Authorize advance payment (admin)" above first.')
     setSaving(true); setError(null)
     try {
       const rNo = rcptNo()
       // When the amount diverges from the standard rate, fold the reason into
       // the note so it's visible on the ledger/receipt itself — not just
       // sitting in this modal's local state, gone the moment it closes.
+      // Also records WHICH admin authorized it, same as advanceAuthorizedBy.
       const courseNote = courseAmtNeedsReason
-        ? `Rate override: ₹${feeRates.courseFee.toLocaleString('en-IN')} standard → ₹${amt.toLocaleString('en-IN')} — ${courseAmtReason.trim()}`
+        ? `Rate override: ₹${feeRates.courseFee.toLocaleString('en-IN')} standard → ₹${amt.toLocaleString('en-IN')} — ${courseAmtReason.trim()} — authorized by ${adminUsername || 'admin'}`
         : undefined
       const items = unpaidRun.map(m => {
         const isAdvance = isFutureFeeMonth(m.month, m.year)
         return {
           kind: 'course', course: course || '', subtype: batch || '', month: m.month, year: m.year,
-          amount: amt, note: courseNote, isAdvance, advanceAuthorizedBy: isAdvance ? (currentUser?.userName || currentUser?.name || 'Admin') : null,
+          amount: amt, note: courseNote, isAdvance, advanceAuthorizedBy: isAdvance ? (adminUsername || 'Admin') : null,
           standardAmount: feeRates.courseFee,
           underpaymentAmount: courseAmtNeedsReason && courseAmtGap < 0 ? Math.abs(courseAmtGap) : 0,
           underpaymentReason: courseAmtNeedsReason ? courseAmtReason.trim() : null,
@@ -708,6 +814,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         total,
       })
       setCourseAdvanceAuthorized(false)
+      setCourseRateAuthorized(false)
       setCourseAmtReason('')
       setAdvanceMonthCount(1)
       onSaved?.()
@@ -1043,7 +1150,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                             type="number" min="0"
                             value={flatAmtOverrides[fee.id] ?? fee.amount}
                             onClick={e => e.stopPropagation()}
-                            onChange={e => setFlatAmtOverrides(p => ({ ...p, [fee.id]: e.target.value }))}
+                            onChange={e => { setFlatAmtOverrides(p => ({ ...p, [fee.id]: e.target.value })); setFlatRateAuthorized(false) }}
                             style={{ ...inp, width:100, textAlign:'right', fontWeight:800, fontSize:14, color: needsReason ? C.red : (hasOverride ? C.violet : C.emerald), borderColor: needsReason ? '#fca5a5' : C.slate[200] }}
                           />
                         ) : (
@@ -1066,17 +1173,61 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                         <div style={{ background:'#fef2f2', border:'1.5px solid #fca5a5', borderRadius:10, padding:'10px 14px', marginTop:6 }}>
                           <div style={{ fontSize:12, fontWeight:700, color:'#991B1B', marginBottom:6 }}>
                             ⚠️ {fee.month} {fee.year} is ₹{Math.abs(gap).toLocaleString('en-IN')} {gap < 0 ? 'below' : 'above'} the
-                            standard flat fee (₹{fee.amount.toLocaleString('en-IN')}/month). A reason is required to save.
+                            standard flat fee (₹{fee.amount.toLocaleString('en-IN')}/month). A reason AND admin authorization are required to save.
                           </div>
                           <select
                             value={flatUnderpaymentReasons[fee.id] || ''}
-                            onChange={e => setFlatUnderpaymentReasons(p => ({ ...p, [fee.id]: e.target.value }))}
-                            style={{ ...inp, borderColor:'#fca5a5' }}>
+                            onChange={e => { setFlatUnderpaymentReasons(p => ({ ...p, [fee.id]: e.target.value })); setFlatRateAuthorized(false) }}
+                            style={{ ...inp, borderColor:'#fca5a5', marginBottom:8 }}>
                             <option value="">Select a reason…</option>
                             {FLAT_FEE_UNDERPAYMENT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
                           </select>
+                          {/* ✦ Admin authorization for the rate deviation itself —
+                              previously a staff member could pick a reason and
+                              save with no admin involvement at all. This mirrors
+                              the advance-payment authorize pattern: any staff can
+                              select the reason, but only a logged-in admin can
+                              confirm the deviation is approved. */}
+                          {flatRateAuthorized ? (
+                            <div style={{ fontSize:11, fontWeight:700, color:'#0369a1', background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:7, padding:'6px 10px' }}>
+                              ✅ Rate deviation authorized by {adminUsername || 'admin'}
+                            </div>
+                          ) : isAdmin ? (
+                            <button type="button" onClick={() => openAdminConfirm('flat-rate')}
+                              style={{ fontSize:11, fontWeight:700, padding:'6px 12px', borderRadius:7, border:'none', background:'#991B1B', color:'white', cursor:'pointer' }}>
+                              🔒 Authorize rate deviation (admin)
+                            </button>
+                          ) : (
+                            <div style={{ fontSize:11, color:'#991B1B', fontWeight:600 }}>Only an admin can authorize this rate. Ask an admin to log in and confirm.</div>
+                          )}
                         </div>
                       )}
+                      {/* ✦ Previous year, same named month, for THIS student —
+                          shown before the row's amount is saved. Flat fee
+                          only runs Feb/Mar per session (see FLAT_FEE_MONTHS
+                          in feeEngine.js), so "previous month" for flat fee
+                          means the same month name one year earlier
+                          (Feb 2026 vs Feb 2025), not a literal prior
+                          calendar month — see getPrevYearSameMonthAmount. */}
+                      {selected && !loadingPaid && (() => {
+                        const prev = getPrevYearSameMonthAmount(fee.month, fee.year, flatPaidAmounts)
+                        if (!prev) return null
+                        const current = flatAmtFor(fee)
+                        const diffPct = prev.amount > 0 ? Math.abs((current - prev.amount) / prev.amount) * 100 : 0
+                        const flagged = current > 0 && diffPct >= MONTH_OVER_MONTH_FLAG_PCT
+                        return (
+                          <div style={{ background: flagged ? '#fffbeb' : '#f8fafc', border: `1.5px solid ${flagged ? '#fde68a' : '#e2e8f0'}`, borderRadius: 8, padding: '8px 12px', marginTop: 6 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: flagged ? '#b45309' : C.slate[500] }}>
+                              {flagged ? '⚠️' : '📊'} {prev.month} {prev.year} collected for this student: <b>₹{prev.amount.toLocaleString('en-IN')}</b>
+                            </div>
+                            {flagged && (
+                              <div style={{ fontSize: 10.5, color: '#92400e', marginTop: 2 }}>
+                                This amount (₹{current.toLocaleString('en-IN')}) is {Math.round(diffPct)}% {current > prev.amount ? 'higher' : 'lower'} than {prev.month} {prev.year} for the same student. Double-check before saving.
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                   )
                 })}
@@ -1092,9 +1243,9 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                       ⛔ One or more selected months haven't started yet. This is an advance payment.
                     </div>
                     {isAdmin ? (
-                      <button type="button" onClick={() => openAdvancePin('flat')}
+                      <button type="button" onClick={() => openAdminConfirm('flat-advance')}
                         style={{ fontSize:12, fontWeight:700, padding:'6px 14px', borderRadius:7, border:'none', background:'#991B1B', color:'white', cursor:'pointer' }}>
-                        🔒 Authorize advance payment (PIN)
+                        🔒 Authorize advance payment (admin)
                       </button>
                     ) : (
                       <div style={{ fontSize:12, color:'#991B1B' }}>Only an admin can authorize an advance payment.</div>
@@ -1135,19 +1286,19 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                 </div>
                 <div>
                   <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>For month</label>
-                  <select value={courseMonth} onChange={e => { setCourseMonth(e.target.value); setCourseAdvanceAuthorized(false) }} style={inp}>
+                  <select value={courseMonth} onChange={e => { setCourseMonth(e.target.value); setCourseAdvanceAuthorized(false); setCourseRateAuthorized(false) }} style={inp}>
                     {MONTHS_LIST.map(m => <option key={m}>{m}</option>)}
                   </select>
                 </div>
                 <div>
                   <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>Year</label>
-                  <select value={courseYear} onChange={e => { setCourseYear(Number(e.target.value)); setCourseAdvanceAuthorized(false) }} style={inp}>
+                  <select value={courseYear} onChange={e => { setCourseYear(Number(e.target.value)); setCourseAdvanceAuthorized(false); setCourseRateAuthorized(false) }} style={inp}>
                     {[CURRENT_YEAR-1, CURRENT_YEAR, CURRENT_YEAR+1].map(y => <option key={y}>{y}</option>)}
                   </select>
                 </div>
                 <div style={{ gridColumn:'1/-1' }}>
                   <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>Amount (₹) — auto-filled, editable</label>
-                  <input type="number" min="0" value={courseAmt} onChange={e => setCourseAmt(e.target.value)} style={{ ...inp, fontWeight:700, color:C.violet }} />
+                  <input type="number" min="0" value={courseAmt} onChange={e => { setCourseAmt(e.target.value); setCourseRateAuthorized(false) }} style={{ ...inp, fontWeight:700, color:C.violet }} />
                 </div>
                 {/* ✦ Advance months — pays this many consecutive months
                     starting at "For month"/"Year" above in one save, instead
@@ -1157,7 +1308,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                   <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>
                     Advance — pay how many months starting from {courseMonth} {courseYear}?
                   </label>
-                  <select value={advanceMonthCount} onChange={e => { setAdvanceMonthCount(Number(e.target.value)); setCourseAdvanceAuthorized(false) }} style={inp}>
+                  <select value={advanceMonthCount} onChange={e => { setAdvanceMonthCount(Number(e.target.value)); setCourseAdvanceAuthorized(false); setCourseRateAuthorized(false) }} style={inp}>
                     {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => <option key={n} value={n}>{n} month{n > 1 ? 's' : ''}{n > 1 ? ` (through ${buildAdvanceMonthRun(courseMonth, courseYear, n).slice(-1)[0].month} ${buildAdvanceMonthRun(courseMonth, courseYear, n).slice(-1)[0].year})` : ''}</option>)}
                   </select>
                   {advanceMonthCount > 1 && (
@@ -1171,15 +1322,31 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                 <div style={{ background:'#fef2f2', border:'1.5px solid #fca5a5', borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
                   <div style={{ fontSize:13, fontWeight:700, color:'#991B1B', marginBottom:8 }}>
                     ⚠️ This is ₹{Math.abs(courseAmtGap).toLocaleString('en-IN')} {courseAmtGap < 0 ? 'below' : 'above'} the
-                    standard course fee (₹{feeRates.courseFee.toLocaleString('en-IN')}/month). A reason is required to save.
+                    standard course fee (₹{feeRates.courseFee.toLocaleString('en-IN')}/month). A reason AND admin authorization are required to save.
                   </div>
                   <input
                     type="text"
                     placeholder="e.g. Approved scholarship, sibling discount, partial payment — installment 1 of 2"
                     value={courseAmtReason}
-                    onChange={e => setCourseAmtReason(e.target.value)}
-                    style={{ ...inp, borderColor:'#fca5a5' }}
+                    onChange={e => { setCourseAmtReason(e.target.value); setCourseRateAuthorized(false) }}
+                    style={{ ...inp, borderColor:'#fca5a5', marginBottom:8 }}
                   />
+                  {/* ✦ Admin authorization for the rate deviation — same
+                      reasoning as the flat-fee tab above: a reason alone
+                      previously let any staff member unilaterally decide a
+                      student pays less than the configured rate. */}
+                  {courseRateAuthorized ? (
+                    <div style={{ fontSize:11, fontWeight:700, color:'#0369a1', background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:7, padding:'6px 10px' }}>
+                      ✅ Rate deviation authorized by {adminUsername || 'admin'}
+                    </div>
+                  ) : isAdmin ? (
+                    <button type="button" onClick={() => openAdminConfirm('course-rate')}
+                      style={{ fontSize:11, fontWeight:700, padding:'6px 12px', borderRadius:7, border:'none', background:'#991B1B', color:'white', cursor:'pointer' }}>
+                      🔒 Authorize rate deviation (admin)
+                    </button>
+                  ) : (
+                    <div style={{ fontSize:11, color:'#991B1B', fontWeight:600 }}>Only an admin can authorize this rate. Ask an admin to log in and confirm.</div>
+                  )}
                 </div>
               )}
               {loadingCourse ? (
@@ -1206,6 +1373,38 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                   </div>
                 ) : null
               })()}
+              {/* ✦ Previous month's collected amount for THIS student — shown
+                  before any amount is entered/confirmed for the current
+                  month, so staff can see at a glance what was actually
+                  collected last time before recording this one. Flags (in
+                  amber) when the two differ by more than
+                  MONTH_OVER_MONTH_FLAG_PCT, since a big swing for the SAME
+                  student in the SAME fee type is worth a second look before
+                  saving — could be a genuine change (new discount, rate
+                  update) or a keying mistake. Shows nothing when there's no
+                  record for the prior month at all (new admission, or this
+                  is their first course-fee month), since "no data" isn't a
+                  discrepancy to flag.
+              */}
+              {!loadingCourse && !courseMonthPaid && (() => {
+                const prev = getPrevMonthAmount(courseMonth, courseYear, coursePaidAmounts)
+                if (!prev) return null
+                const current = Number(courseAmt) || 0
+                const diffPct = prev.amount > 0 ? Math.abs((current - prev.amount) / prev.amount) * 100 : 0
+                const flagged = current > 0 && diffPct >= MONTH_OVER_MONTH_FLAG_PCT
+                return (
+                  <div style={{ background: flagged ? '#fffbeb' : '#f8fafc', border: `1.5px solid ${flagged ? '#fde68a' : '#e2e8f0'}`, borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: flagged ? '#b45309' : C.slate[500] }}>
+                      {flagged ? '⚠️' : '📊'} Last month ({prev.month} {prev.year}) collected for this student: <b>₹{prev.amount.toLocaleString('en-IN')}</b>
+                    </div>
+                    {flagged && (
+                      <div style={{ fontSize: 11, color: '#92400e', marginTop: 3 }}>
+                        This month's amount (₹{current.toLocaleString('en-IN')}) is {Math.round(diffPct)}% {current > prev.amount ? 'higher' : 'lower'} than last month for the same student. Double-check before saving.
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
               {!courseMonthPaid && isFutureFeeMonth(courseMonth, courseYear) && (
                 courseAdvanceAuthorized ? (
                   <div style={{ background:'#f0f9ff', border:'1.5px solid #7dd3fc', borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
@@ -1217,9 +1416,9 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                       ⛔ {courseMonth} {courseYear} hasn't started yet. This is an advance payment.
                     </div>
                     {isAdmin ? (
-                      <button type="button" onClick={() => openAdvancePin('course')}
+                      <button type="button" onClick={() => openAdminConfirm('course-advance')}
                         style={{ fontSize:12, fontWeight:700, padding:'6px 14px', borderRadius:7, border:'none', background:'#991B1B', color:'white', cursor:'pointer' }}>
-                        🔒 Authorize advance payment (PIN)
+                        🔒 Authorize advance payment (admin)
                       </button>
                     ) : (
                       <div style={{ fontSize:12, color:'#991B1B' }}>Only an admin can authorize an advance payment.</div>
@@ -1307,7 +1506,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           // the single selected courseMonth/courseYear — with
           // advanceMonthCount > 1, a later month in the run could be future
           // even when the first one isn't, and the button needs to block/
-          // prompt for PIN authorization based on the run as a whole, same
+          // prompt for authorization based on the run as a whole, same
           // as saveCourse itself checks.
           const courseRun = buildAdvanceMonthRun(courseMonth, courseYear, advanceMonthCount)
           const courseRunUnpaid = courseRun.filter(m => !paidCourseMonths.includes(`${m.month}_${m.year}`))
@@ -1320,15 +1519,24 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           // directly (not just the alert() inside saveFlat) — same
           // discoverability as every other blocking condition here.
           const flatReasonMissing = flatFees.some(f => flatSel[f.id] && !isMonthPaid(f) && flatNeedsReasonFor(f) && !flatUnderpaymentReasons[f.id])
+          // ✦ Rate deviation blocked pending admin authorization — mirrors
+          // the future-month advance check above, applied to the "amount
+          // differs from standard rate" case instead of "month hasn't
+          // started yet". Reason picked but not yet admin-authorized still
+          // blocks the button.
+          const flatRateBlocked = flatFees.some(f => flatSel[f.id] && !isMonthPaid(f) && flatNeedsReasonFor(f)) && !flatRateAuthorized
+          const courseRateBlocked = courseAmtNeedsReason && !courseRateAuthorized
           const blocked = saving || !admissionDate || upiMissingRef
-            || (tab==='flat' && (allFlatPaid || flatFutureBlocked || flatReasonMissing)) || (tab==='admission' && (allAdmPaid||isRepeater))
-            || (tab==='course' && (courseAllPaidInRun || courseFutureBlocked)) || ratesLoading
+            || (tab==='flat' && (allFlatPaid || flatFutureBlocked || flatReasonMissing || flatRateBlocked)) || (tab==='admission' && (allAdmPaid||isRepeater))
+            || (tab==='course' && (courseAllPaidInRun || courseFutureBlocked || courseRateBlocked)) || ratesLoading
           const label = saving ? '⏳ Saving…'
             : !admissionDate ? '⚠️ Set Admission Date First'
             : upiMissingRef ? '⚠️ Enter UPI Txn / UTR No.'
             : (tab==='course' && courseFutureBlocked) ? '⛔ Authorize Advance First'
+            : (tab==='course' && courseRateBlocked) ? '⛔ Authorize Rate Deviation First'
             : (tab==='flat' && flatFutureBlocked) ? '⛔ Authorize Advance First'
             : (tab==='flat' && flatReasonMissing) ? '⚠️ Select Underpayment Reason'
+            : (tab==='flat' && flatRateBlocked) ? '⛔ Authorize Rate Deviation First'
             : (tab==='course' && advanceMonthCount > 1) ? `🖨️ Record ${courseRunUnpaid.length} Month${courseRunUnpaid.length !== 1 ? 's' : ''} & Print Receipt`
             : ratesLoading ? '⏳ Loading…'
             : '🖨️ Record & Print Receipt'
@@ -1349,31 +1557,40 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         })()}
       </div>
 
-      {/* Advance-payment PIN dialog — separate confirm step required at the
+      {/* Admin confirmation dialog — separate confirm step required at the
           moment of collection, only reachable by admins (the button that
-          opens this is itself gated on isAdmin above). */}
-      {advancePinOpen && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(15,17,26,.55)', zIndex:1000000, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={() => setAdvancePinOpen(false)}>
-          <div style={{ width:'min(340px,90vw)', background:'white', borderRadius:16, boxShadow:'0 24px 60px rgba(0,0,0,.3)', padding:'22px 24px' }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize:15, fontWeight:800, color:C.slate[900], marginBottom:4 }}>🔒 Authorize Advance Payment</div>
-            <div style={{ fontSize:12, color:C.slate[500], marginBottom:16 }}>Enter the admin PIN to confirm this payment is intentionally for a future month.</div>
+          opens this is itself gated on isAdmin above, and openAdminConfirm
+          re-checks isAdmin defensively). Requires re-typing the currently
+          logged-in admin's own username rather than a shared PIN — see the
+          comment above the state declarations for why. */}
+      {adminConfirmOpen && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(15,17,26,.55)', zIndex:1000000, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={() => setAdminConfirmOpen(false)}>
+          <div style={{ width:'min(360px,90vw)', background:'white', borderRadius:16, boxShadow:'0 24px 60px rgba(0,0,0,.3)', padding:'22px 24px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize:15, fontWeight:800, color:C.slate[900], marginBottom:4 }}>
+              🔒 {adminConfirmFor?.endsWith('-rate') ? 'Authorize Rate Deviation' : 'Authorize Advance Payment'}
+            </div>
+            <div style={{ fontSize:12, color:C.slate[500], marginBottom:16 }}>
+              {adminConfirmFor?.endsWith('-rate')
+                ? 'This amount is different from the standard configured rate. Confirm your admin identity to approve this deviation.'
+                : 'Confirm your admin identity to approve collecting this future month now.'}
+              {' '}Logged in as <b>{adminUsername || '—'}</b> — type it below to confirm.
+            </div>
             <input
-              type="password"
-              inputMode="numeric"
+              type="text"
               autoFocus
-              value={advancePinValue}
-              onChange={e => { setAdvancePinValue(e.target.value); setAdvancePinError('') }}
-              onKeyDown={e => e.key === 'Enter' && confirmAdvancePin()}
-              placeholder="Admin PIN"
-              style={{ ...inp, textAlign:'center', letterSpacing:'.3em', fontWeight:700, marginBottom:8 }}
+              value={adminConfirmValue}
+              onChange={e => { setAdminConfirmValue(e.target.value); setAdminConfirmError('') }}
+              onKeyDown={e => e.key === 'Enter' && confirmAdminAuth()}
+              placeholder="Re-type your admin username"
+              style={{ ...inp, textAlign:'center', fontWeight:700, marginBottom:8 }}
             />
-            {advancePinError && <div style={{ fontSize:12, color:C.red, fontWeight:600, marginBottom:8 }}>{advancePinError}</div>}
+            {adminConfirmError && <div style={{ fontSize:12, color:C.red, fontWeight:600, marginBottom:8 }}>{adminConfirmError}</div>}
             <div style={{ display:'flex', gap:8, marginTop:12 }}>
-              <button type="button" onClick={() => setAdvancePinOpen(false)}
+              <button type="button" onClick={() => setAdminConfirmOpen(false)}
                 style={{ flex:1, padding:'9px 0', borderRadius:9, border:`1px solid ${C.slate[200]}`, background:'white', fontSize:13, fontWeight:600, cursor:'pointer', color:C.slate[500] }}>
                 Cancel
               </button>
-              <button type="button" onClick={confirmAdvancePin}
+              <button type="button" onClick={confirmAdminAuth}
                 style={{ flex:1, padding:'9px 0', borderRadius:9, border:'none', background:'#991B1B', color:'white', fontSize:13, fontWeight:700, cursor:'pointer' }}>
                 Confirm
               </button>

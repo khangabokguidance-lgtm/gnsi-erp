@@ -1415,7 +1415,7 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     if (!confirm('Delete this question?')) return
     const { error } = await supabase.from('qbank_questions').delete().eq('id', id)
     if (error) showToast('Delete failed: ' + error.message, C.rose)
-    else { showToast('Deleted ✓', C.rose); refetch() }
+    else { showToast('Deleted ✓', C.rose); refetch(true) }
   }
 
   const handleBulkDelete = async () => {
@@ -1427,14 +1427,14 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     downloadQuestionsBackup(rowsToDelete, `bulk_${selected.size}`)
     const { error } = await supabase.from('qbank_questions').delete().in('id', [...selected])
     if (error) showToast('Bulk delete failed', C.rose)
-    else { showToast(`${selected.size} questions deleted (backup downloaded)`, C.rose); setSelected(new Set()); refetch() }
+    else { showToast(`${selected.size} questions deleted (backup downloaded)`, C.rose); setSelected(new Set()); refetch(true) }
   }
 
   const handleEditSave = async (updatedQ) => {
     const { id, _id, _qNum, _subsectionHint, _needsDiagram, ...payload } = updatedQ
     const { error } = await supabase.from('qbank_questions').update(payload).eq('id', id)
     if (error) showToast('Update failed: ' + error.message, C.rose)
-    else { showToast('Updated ✓', C.green); setEditQ(null); refetch() }
+    else { showToast('Updated ✓', C.green); setEditQ(null); refetch(true) }
   }
 
   return (
@@ -1803,7 +1803,7 @@ function TabManualAdd({ questions, refetch, showToast, onNavigate }) {
     showToast(`✅ ${rows.length} question(s) saved!`, C.green)
     // ── PATCH: notify StudyMaterial badge to refresh ──
     EventBus.emit(GNSI_EVENTS.QUESTION_SAVED, { subject: refSubject, chapter: refChapter, count: rows.length })
-    setRows([emptyRow()]); refetch()
+    setRows([emptyRow()]); refetch(true)
     setSaving(false)
   }
 
@@ -2016,7 +2016,7 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
     )
     // ── PATCH: notify StudyMaterial badge to refresh ──
     EventBus.emit(GNSI_EVENTS.QUESTION_SAVED, { subject: bulkSubject, chapter: bulkChapter, count: savedCount })
-    setExtracted([]); setRawText(''); setAnswerKeyText(''); setStep(1); setDupeActions({}); refetch()
+    setExtracted([]); setRawText(''); setAnswerKeyText(''); setStep(1); setDupeActions({}); refetch(true)
     setSaving(false)
   }
 
@@ -2590,7 +2590,7 @@ function TabTranslit({ questions, refetch, showToast }) {
       .eq('id', candidates[0].id)
     if (error) { showToast('Update failed: ' + error.message, C.rose); return }
     showToast('Converted BMEI04 to Unicode', C.green)
-    refetch && refetch()
+    refetch && refetch(true)
   }
 
   const allChars = useMemo(() => getAllCharacters(), [])
@@ -4006,6 +4006,17 @@ function TabStats({ questions, refetch, showToast, isAdmin, onNavigate }) {
 // MAIN COMPONENT
 // Patches: { onNavigate, initialFilter } props + NAVIGATE_TO EventBus listener
 // ══════════════════════════════════════════════════════════════════════════════
+
+// Module-level cache for the full qbank_questions table. QuestionBank.jsx
+// used to re-fetch and re-paginate through all ~10,500+ rows every single
+// time the component mounted (switching tabs away and back, navigating from
+// another module, etc.), which was the single largest source of Supabase
+// PostgREST egress in the whole app. Cached here across mounts within the
+// same browser session; refetch(force=true) (called after saves/imports/
+// deletes) bypasses the cache so writes are always reflected immediately.
+let _qbankCache = null       // { data, fetchedAt } | null
+const QBANK_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+
 export default function QuestionBank({ currentUser, perms, onNavigate, initialFilter: initialFilterProp }) {
   // BUGFIX: this used to check roleLower === 'admin' (exact lowercase
   // match only) based on a one-off SQL check against portal_users.role
@@ -4039,10 +4050,20 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
     setTimeout(() => setToast(null), 3500)
   }
 
-  const refetch = useCallback(async () => {
+  const refetch = useCallback(async (force = false) => {
     // Skip the query entirely for non-staff — no data should ever leave
     // Supabase for a role that isn't permitted to see it.
     if (!isStaffAllowed) { setLoading(false); return }
+
+    // Serve from the module-level cache when it's fresh and the caller
+    // isn't explicitly forcing a reload (saves/imports/deletes pass
+    // force=true so writes are never masked by a stale cache).
+    if (!force && _qbankCache && (Date.now() - _qbankCache.fetchedAt) < QBANK_CACHE_TTL_MS) {
+      setQuestions(_qbankCache.data)
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     const PAGE_SIZE = 1000
     let all = []
@@ -4071,8 +4092,12 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
       }
     }
 
-    if (hadError) showToast('Failed to load questions', C.rose)
-    else setQuestions(all)
+    if (hadError) {
+      showToast('Failed to load questions', C.rose)
+    } else {
+      _qbankCache = { data: all, fetchedAt: Date.now() }
+      setQuestions(all)
+    }
     setLoading(false)
   }, [isStaffAllowed])
 

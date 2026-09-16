@@ -76,6 +76,41 @@ const monthKey = (d) => d ? d.slice(0,7) : ''
 // PHASE 1 FIX: getToday() helper used for reactive today state
 const getToday = () => new Date().toLocaleDateString('en-CA')
 
+// BUGFIX (audit): single shared rule for "does this entry represent money
+// that has actually moved". A Pending/unconfirmed entry hasn't been
+// received or paid yet, so it must never count toward a real total. This
+// was previously re-implemented inline as `(e.status||'Confirmed')==='Confirmed'`
+// in some memos (Analytics charts, Transactions-tab header cards, Daily
+// register, Daily Expenditure tab, savingsTracker) but was missing entirely
+// from others (Report Generator, P&L modal by default, the Weekly PA
+// report, the "All Entries" export, the Budget tracker) — so a Pending
+// entry could be silently included in a printed/exported report or a
+// budget's "spent so far" figure while correctly excluded from the
+// on-screen dashboard right next to it. Every total-producing memo in this
+// file now goes through this one function so there is exactly one place
+// that rule lives.
+//
+// LOOPHOLE CLOSED: the original version was `(e.status||'Confirmed')==='Confirmed'`
+// — this fails OPEN for anything that isn't the literal string 'Confirmed':
+// null/undefined/'' all defaulted to counting as confirmed (intentional,
+// for legacy rows predating the status column), but so would any OTHER
+// unrecognized value nobody anticipated. The UI's <select> only ever
+// writes 'Confirmed' or 'Pending' (STATUS_OPTIONS), but that constraint
+// doesn't reach a direct DB edit, a future migration, or another tool
+// touching this same table — a row landing with status:'Cancelled' or
+// status:'Void' would previously have been silently treated as REAL money
+// (fails open) rather than excluded (fails closed), which is backwards for
+// a financial total: an unrecognized status should never count as
+// confirmed by default. Now explicit: null/undefined/'' (truly absent,
+// the legacy-row case) still means Confirmed; every other value must
+// match STATUS_OPTIONS, and anything outside that known set is treated as
+// NOT confirmed rather than silently passed through as real money.
+const isConfirmed = (e) => {
+  const s = e.status
+  if (s === null || s === undefined || s === '') return true // legacy rows predating the status column
+  return s === 'Confirmed'
+}
+
 // PHASE 6 FIX: timezone-safe weekday label for a 'YYYY-MM-DD' string.
 // new Date('YYYY-MM-DD') parses as UTC midnight, so formatting it back in a
 // timezone behind UTC (or any browser not set to IST) can print the wrong
@@ -1521,6 +1556,7 @@ function Accounts({role,userId}){
 
   const reportEntries = useMemo(()=>{
     const list = entries.filter(item=>{
+      if(!isConfirmed(item))return false
       if(rptType!=='All'&&item.type!==rptType)return false
       if(rptCategory!=='All'&&item.category!==rptCategory)return false
       if(rptMode!=='All'&&item.payment_mode!==rptMode)return false
@@ -1572,14 +1608,14 @@ function Accounts({role,userId}){
   // (search, date range, type, etc.) and reuses the same PDF/DOCX/Excel
   // generators as the main Reports tab, just fed the complete entries list.
   const allEntriesTotals = useMemo(()=>{
-    const income  = entries.filter(e=>e.type==='Income').reduce((s,e)=>s+Number(e.amount),0)
-    const expense = entries.filter(e=>e.type==='Expense').reduce((s,e)=>s+Number(e.amount),0)
-    return { income, expense, net: income-expense, count: entries.length }
+    const income  = entries.filter(e=>isConfirmed(e)&&e.type==='Income').reduce((s,e)=>s+Number(e.amount),0)
+    const expense = entries.filter(e=>isConfirmed(e)&&e.type==='Expense').reduce((s,e)=>s+Number(e.amount),0)
+    return { income, expense, net: income-expense, count: entries.filter(isConfirmed).length }
   },[entries])
 
   const allEntriesByCategory = useMemo(()=>{
     const map={}
-    entries.forEach(e=>{
+    entries.filter(isConfirmed).forEach(e=>{
       const k=e.category||'Other'
       if(!map[k])map[k]={category:k,type:e.type,total:0,count:0}
       map[k].total+=Number(e.amount);map[k].count+=1
@@ -1588,7 +1624,7 @@ function Accounts({role,userId}){
   },[entries])
 
   const sortedAllEntries = useMemo(
-    ()=>[...entries].sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0),
+    ()=>entries.filter(isConfirmed).sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0),
     [entries]
   )
 
@@ -1631,7 +1667,7 @@ function Accounts({role,userId}){
 
   const weeklyEntries = useMemo(()=>{
     return entries
-      .filter(e=>e.entry_date>=weeklyRange.from&&e.entry_date<=weeklyRange.to)
+      .filter(e=>isConfirmed(e)&&e.entry_date>=weeklyRange.from&&e.entry_date<=weeklyRange.to)
       .sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0)
   },[entries,weeklyRange])
 
@@ -1877,8 +1913,16 @@ function Accounts({role,userId}){
   const totalPages   = Math.max(1,Math.ceil(filteredEntries.length/pageSize))
   const pagedEntries = filteredEntries.slice((page-1)*pageSize,page*pageSize)
 
-  const filteredIncome  = filteredEntries.filter(e=>e.type==='Income'&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
-  const filteredExpense = filteredEntries.filter(e=>e.type==='Expense'&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
+  // BUGFIX (audit): these six lines still used the raw inline
+  // `(e.status||'Confirmed')==='Confirmed'` check rather than the shared
+  // isConfirmed() helper — harmless while the two were equivalent, but
+  // isConfirmed() was just hardened to fail CLOSED for any unrecognized
+  // status value (not just null/undefined/''), and these six lines would
+  // have silently drifted back out of sync with that stricter rule if left
+  // as their own copy. Routed through the one shared helper so this can't
+  // happen again.
+  const filteredIncome  = filteredEntries.filter(e=>isConfirmed(e)&&e.type==='Income').reduce((s,e)=>s+Number(e.amount),0)
+  const filteredExpense = filteredEntries.filter(e=>isConfirmed(e)&&e.type==='Expense').reduce((s,e)=>s+Number(e.amount),0)
   const filteredNet     = filteredIncome-filteredExpense
   const pendingCount    = entries.filter(e=>e.status==='Pending').length
   // BUGFIX: these previously summed ALL entries regardless of status, while
@@ -1889,13 +1933,28 @@ function Accounts({role,userId}){
   // silently dropped out. Confirmed is the only status that represents
   // money that has actually moved, so these headline totals now match that
   // same "Confirmed only" rule everywhere, filtered or not.
-  const totalIncome     = entries.filter(e=>e.type==='Income'&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
-  const totalExpense    = entries.filter(e=>e.type==='Expense'&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
-  const todayIncome     = entries.filter(e=>e.type==='Income'&&e.entry_date===today&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
-  const todayExpense    = entries.filter(e=>e.type==='Expense'&&e.entry_date===today&&(e.status||'Confirmed')==='Confirmed').reduce((s,e)=>s+Number(e.amount),0)
+  const totalIncome     = entries.filter(e=>isConfirmed(e)&&e.type==='Income').reduce((s,e)=>s+Number(e.amount),0)
+  const totalExpense    = entries.filter(e=>isConfirmed(e)&&e.type==='Expense').reduce((s,e)=>s+Number(e.amount),0)
+  const todayIncome     = entries.filter(e=>isConfirmed(e)&&e.type==='Income'&&e.entry_date===today).reduce((s,e)=>s+Number(e.amount),0)
+  const todayExpense    = entries.filter(e=>isConfirmed(e)&&e.type==='Expense'&&e.entry_date===today).reduce((s,e)=>s+Number(e.amount),0)
   const todayNet        = todayIncome-todayExpense
   const todayCount      = entries.filter(e=>e.entry_date===today).length
   const isFiltered      = dateFrom||dateTo||typeFilter!=='All'||modeFilter!=='All'||statusFilter!=='All'||acctFilter!=='All'||search
+
+  // BUGFIX (audit): surfaces any entry whose status is neither 'Confirmed',
+  // 'Pending', nor empty/null (the only values the UI's own <select> can
+  // ever write — see STATUS_OPTIONS). isConfirmed() now treats any such
+  // value as NOT confirmed (fails closed) rather than silently counting it
+  // as real money, which is the safe default for a total — but "safe
+  // default" still means that entry is invisibly missing from every report
+  // until someone notices. This surfaces it instead of leaving it silent:
+  // a row can only get an unrecognized status via a direct DB edit, a
+  // migration, or another tool touching this table, so seeing this banner
+  // at all is itself a signal something outside this UI touched the data.
+  const unrecognizedStatusEntries = useMemo(
+    ()=>entries.filter(e=>e.status!=null&&e.status!==''&&!STATUS_OPTIONS.includes(e.status)),
+    [entries]
+  )
 
   const monthlyData=useMemo(()=>{
     const map={}
@@ -1973,7 +2032,7 @@ function Accounts({role,userId}){
     if(!thisWk||!lastWk)return[]
     const sumByCatWeek=(wk)=>{
       const map={}
-      entries.filter(e=>e.type==='Expense'&&e.entry_date&&weekKey(e.entry_date)===wk)
+      entries.filter(e=>isConfirmed(e)&&e.type==='Expense'&&e.entry_date&&weekKey(e.entry_date)===wk)
         .forEach(e=>{map[e.category]=(map[e.category]||0)+Number(e.amount)})
       return map
     }
@@ -1989,7 +2048,15 @@ function Accounts({role,userId}){
   },[entries,weeklyTrend,isAdmin])
 
   const plData=useMemo(()=>{
-    const passesAdv=(e)=>(plAccountType==='All'||e.account_type===plAccountType)&&(plPaymentMode==='All'||e.payment_mode===plPaymentMode)&&(plStatus==='All'||e.status===plStatus)
+    // BUGFIX (audit): plStatus==='All' previously meant "every status,
+    // including Pending" — so the P&L's default view (nobody has touched
+    // this filter) counted uncleared money as real income/expense. The
+    // admin can still explicitly select "Pending" here to review what's
+    // uncleared, or "Confirmed" to match every other report in this file —
+    // but the 'All' default now means "all CONFIRMED entries" rather than
+    // literally all statuses, consistent with how 'All' behaves nowhere
+    // else in this codebase actually meaning "including unconfirmed money".
+    const passesAdv=(e)=>(plAccountType==='All'||e.account_type===plAccountType)&&(plPaymentMode==='All'||e.payment_mode===plPaymentMode)&&(plStatus==='All'?isConfirmed(e):e.status===plStatus)
     let thisM,prevM
     if(plRangeMode==='range'&&plDateFrom&&plDateTo){
       thisM=entries.filter(e=>e.entry_date>=plDateFrom&&e.entry_date<=plDateTo&&passesAdv(e))
@@ -2008,6 +2075,17 @@ function Accounts({role,userId}){
     const thisInc=sumBy(thisM,'Income'),thisExp=sumBy(thisM,'Expense'),prevInc=sumBy(prevM,'Income'),prevExp=sumBy(prevM,'Expense')
     return{thisInc,thisExp,prevInc,prevExp,totalThisInc:Object.values(thisInc).reduce((s,v)=>s+v,0),totalThisExp:Object.values(thisExp).reduce((s,v)=>s+v,0),totalPrevInc:Object.values(prevInc).reduce((s,v)=>s+v,0),totalPrevExp:Object.values(prevExp).reduce((s,v)=>s+v,0),thisMEntries:thisM}
   },[entries,plMonth,plRangeMode,plDateFrom,plDateTo,plAccountType,plPaymentMode,plStatus])
+
+  // BUGFIX (audit): plManualIncome was never cleared when the P&L period
+  // changed — type a manual cash-book figure while viewing September, flip
+  // to August, and the Manual Ledger Reconciliation banner silently
+  // compared the stale September number against August's system total,
+  // with nothing on screen indicating the figure was stale. Resets to
+  // empty on any change to which period is being viewed, so a leftover
+  // manual figure can never be compared against the wrong month/range.
+  useEffect(()=>{
+    setPlManualIncome('')
+  },[plMonth,plRangeMode,plDateFrom,plDateTo])
 
   // ── Date-wise breakdown for the P&L modal — one row per date with income
   // total and expense total (NOT combined into categories), for the exact
@@ -2035,7 +2113,7 @@ function Accounts({role,userId}){
   const thisMonth=today.slice(0,7)
   const monthlyExpenses=useMemo(()=>{
     const map={}
-    entries.filter(e=>e.type==='Expense'&&monthKey(e.entry_date)===thisMonth).forEach(e=>{map[e.category]=(map[e.category]||0)+Number(e.amount)})
+    entries.filter(e=>isConfirmed(e)&&e.type==='Expense'&&monthKey(e.entry_date)===thisMonth).forEach(e=>{map[e.category]=(map[e.category]||0)+Number(e.amount)})
     return map
   },[entries,thisMonth])
 
@@ -2045,7 +2123,7 @@ function Accounts({role,userId}){
   const monthlyExpensesByCategory=useMemo(()=>{
     const map={}
     entries
-      .filter(e=>e.type==='Expense'&&monthKey(e.entry_date)===thisMonth)
+      .filter(e=>isConfirmed(e)&&e.type==='Expense'&&monthKey(e.entry_date)===thisMonth)
       .forEach(e=>{
         const k=e.category||'Other'
         if(!map[k])map[k]=[]
@@ -2145,6 +2223,21 @@ function Accounts({role,userId}){
       detail:'Uncleared transactions waiting on confirmation.',
       tab:'transactions',
     })
+    // BUGFIX (audit): a status value outside 'Confirmed'/'Pending' can only
+    // reach this table via a direct DB edit, a migration, or another tool
+    // — never through this UI's own <select>, which only ever writes one
+    // of those two. isConfirmed() now treats any such row as NOT confirmed
+    // (excluded from every total, the safe default) rather than silently
+    // counting it as real money — but "excluded from totals" is itself
+    // invisible unless it's surfaced somewhere, so this alert is that
+    // surface: high severity, since it means this table has data outside
+    // what the UI believes is possible.
+    if(unrecognizedStatusEntries.length>0)items.push({
+      severity:'high',icon:'❗',
+      title:`${unrecognizedStatusEntries.length} entr${unrecognizedStatusEntries.length>1?'ies have':'y has'} an unrecognized status`,
+      detail:`Status values other than "Confirmed"/"Pending" found (e.g. id ${unrecognizedStatusEntries[0].id}: "${unrecognizedStatusEntries[0].status}"). These are excluded from every total until fixed — check for a direct database edit outside this app.`,
+      tab:'transactions',
+    })
     if(fraudSummary.freqAnomalies?.length>0)items.push({
       severity:'low',icon:'🔁',
       title:`${fraudSummary.freqAnomalies.length} repeated-entry pattern${fraudSummary.freqAnomalies.length>1?'s':''} this month`,
@@ -2153,7 +2246,7 @@ function Accounts({role,userId}){
     })
     const order={high:0,medium:1,low:2}
     return items.sort((a,b)=>order[a.severity]-order[b.severity])
-  },[isAdmin,pendingSuperintendentCount,fraudSummary,recentDeletesToday,overBudgetCategories,pendingCount,fmt])
+  },[isAdmin,pendingSuperintendentCount,fraudSummary,recentDeletesToday,overBudgetCategories,pendingCount,unrecognizedStatusEntries,fmt])
 
   const dailyGroups=useMemo(()=>groupByDate(dailyFilteredEntries,getDailyDate),[dailyFilteredEntries,getDailyDate])
   const dailyTotalAmt=dailyFilteredEntries.reduce((s,e)=>s+Number(e.amount),0)

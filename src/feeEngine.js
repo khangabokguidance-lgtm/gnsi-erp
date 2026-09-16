@@ -41,6 +41,7 @@ export const TABLES = {
   accounts:           'accounts',
   feeStructures:      'fee_structures',
   studentFeeOverrides:'student_fee_overrides',   // ← NEW
+  feeActionRequests:  'fee_action_requests',      // ← NEW — dual-control revert/delete queue
 }
 
 export const INVOICE_STATUS = {
@@ -663,6 +664,230 @@ export const revertFeeCollection = async ({
       }).eq('id', row.id)
     }
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8b-2. DUAL-CONTROL REVERT/DELETE — requires a SECOND, DIFFERENT admin
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// revertFeeCollection/deleteLegacyFeeRecord above still exist and still do
+// the actual soft-revert/delete work — they are now called ONLY from
+// approveFeeActionRequest below, never directly from the UI for a live
+// collection row. This is what makes it dual-control rather than a second
+// coat of paint on the same single-admin action: the admin who requests a
+// revert cannot also be the admin whose approval executes it.
+//
+// Flow: requestFeeActionRequest (any admin) → row sits as status='pending'
+// in fee_action_requests, fully visible to every admin → a DIFFERENT admin
+// calls approveFeeActionRequest, which re-checks requested_by !== approved_by
+// server-side (never trust a client-side check alone for this) and only
+// then performs the real revert/delete. rejectFeeActionRequest closes a
+// request without executing anything, and is NOT restricted to a different
+// admin, since rejecting is a safe no-op, not a destructive action.
+//
+// Single-admin fallback: if the whole system currently has exactly one
+// admin account, requiring a second admin would mean NO revert or delete
+// could ever happen — a worse failure mode than the control it's meant to
+// provide (a stuck, un-correctable mistake in the books). In that specific
+// case, and ONLY that case, the requesting admin may self-approve — but the
+// approval is stamped self_approved=true and carries a stronger explicit
+// confirmation requirement enforced by the caller (see FeeCollectionModal/
+// Fees.jsx), so a self-approval is never silently indistinguishable from a
+// real dual-control approval in the audit trail.
+
+// Any staff/admin can call this to file a request — filing is not itself
+// the destructive act, so it doesn't need dual control. What DOES need it
+// is the approval step below.
+export const requestFeeActionRequest = async ({
+  actionType, table, id, reason, requestedBy, requestedById = null,
+}) => {
+  if (!['revert', 'delete'].includes(actionType)) throw new Error('requestFeeActionRequest: actionType must be "revert" or "delete"')
+  if (!table || !id) throw new Error('requestFeeActionRequest: table and id are required')
+  if (!reason || !reason.trim()) throw new Error('requestFeeActionRequest: a reason is required')
+
+  // Snapshot the row now, at request time — so the approving admin sees
+  // exactly what they're being asked to revert/delete without needing to
+  // separately look it up, and so the record survives even if the
+  // underlying row is edited between request and approval.
+  let originalRow = null
+  try {
+    const { data } = await supabase.from(table).select('*').eq('id', id).maybeSingle()
+    originalRow = data || null
+  } catch (e) { console.warn('requestFeeActionRequest: could not snapshot row', e) }
+
+  const requestedAt = new Date().toISOString()
+  const { data: inserted, error } = await supabase.from(TABLES.feeActionRequests).insert({
+    action_type: actionType, table_name: table, record_id: id,
+    reason: reason.trim(), requested_by: requestedBy || 'Admin',
+    requested_by_id: requestedById || requestedBy || null,
+    status: 'pending', requested_at: requestedAt,
+    snapshot: originalRow ? JSON.stringify(originalRow) : null,
+  }).select().maybeSingle()
+  if (error) throw new Error('Could not file the request: ' + error.message)
+
+  try {
+    await supabase.from('audit_log').insert({
+      action: 'fee_action_requested', changed_by: requestedById || requestedBy || 'Admin', target_id: id,
+      old_values: JSON.stringify({
+        action_type: actionType, table, reason: reason.trim(),
+        gcc: originalRow?.adm_app_id ?? null, student_name: originalRow?.student_name ?? null,
+        amount: originalRow?.amount ?? originalRow?.amount_paid ?? null,
+        request_id: inserted?.id ?? null, staff_id: requestedById || requestedBy,
+      }),
+      created_at: requestedAt,
+    })
+  } catch (e) { console.warn('Audit log failed for fee_action_requested', e) }
+
+  return inserted
+}
+
+// How many DISTINCT admin identities exist, for the single-admin fallback
+// check. Callers pass the full list of admin identifiers they already have
+// (e.g. from a users/staff table or a fixed config) rather than this
+// function querying one itself, since this codebase has no dedicated admin
+// roster table visible to feeEngine.js — the caller (Fees.jsx) already
+// knows the current user's role from its own auth/session state.
+export const isSingleAdminSystem = (allAdminIds = []) => {
+  const distinct = new Set((allAdminIds || []).filter(Boolean))
+  return distinct.size <= 1
+}
+
+// Approves a pending request and PERFORMS the actual revert/delete.
+// approverId MUST differ from the request's requested_by_id unless
+// isSelfApproveAllowed is explicitly true (the single-admin fallback,
+// decided by the caller via isSingleAdminSystem — never decided here,
+// since this function has no visibility into how many admins exist).
+// Derives the accounts-ledger source_ref/source_type for a collection row,
+// the same way every direct-revert call site used to compute it inline
+// before dual control existed. Centralized here so approveFeeActionRequest
+// can resolve it itself from the request's own snapshot — callers filing a
+// request no longer need to know or duplicate this mapping (previously
+// every UI call site re-derived it by hand, which is exactly the kind of
+// duplicated logic that drifts and breaks silently).
+const deriveAccountSource = (tableName, row) => {
+  if (!row) return { accountSourceRef: null, accountSourceType: null }
+  if (tableName === TABLES.admFeeCollections) {
+    if (row.fee_type === 'admission') return { accountSourceRef: sourceRef.admission(row.adm_app_id), accountSourceType: 'adm_fee' }
+    if (row.fee_type === 'advance') return { accountSourceRef: row.id, accountSourceType: 'advance_fee' }
+    if (row.fee_type === 'item') {
+      const label = row.description === 'Prospectus' ? 'prospectus' : (row.description || '').replace(/^Dress Kit — /, '')
+      return { accountSourceRef: sourceRef.admItem(row.adm_app_id, label), accountSourceType: 'adm_fee' }
+    }
+    return { accountSourceRef: null, accountSourceType: null }
+  }
+  if (tableName === TABLES.admFlatFees) {
+    return { accountSourceRef: sourceRef.flatFee(row.adm_app_id, row.month, row.year), accountSourceType: 'flat_fee' }
+  }
+  if (tableName === TABLES.admCourseFees) {
+    return { accountSourceRef: sourceRef.courseFee(row.adm_app_id, row.for_month, row.year), accountSourceType: 'course_fee' }
+  }
+  return { accountSourceRef: null, accountSourceType: null }
+}
+
+export const approveFeeActionRequest = async ({
+  requestId, approvedBy, approvedById = null,
+  isSelfApproveAllowed = false,
+}) => {
+  if (!requestId) throw new Error('approveFeeActionRequest: requestId is required')
+
+  const { data: reqRow, error: fetchErr } = await supabase
+    .from(TABLES.feeActionRequests).select('*').eq('id', requestId).maybeSingle()
+  if (fetchErr) throw new Error('Could not load the request: ' + fetchErr.message)
+  if (!reqRow) throw new Error('Request not found.')
+  if (reqRow.status !== 'pending') throw new Error(`This request is already ${reqRow.status}.`)
+
+  // ✦ THE dual-control check. Server-side (well, here, at the function
+  // that actually performs the destructive action) rather than only in
+  // the UI — a UI-only check is trivially bypassed by anyone calling this
+  // function directly, which defeats the entire point of dual control.
+  const requesterId = reqRow.requested_by_id || reqRow.requested_by
+  const approverIdResolved = approvedById || approvedBy
+  const isSelfApproval = requesterId && approverIdResolved && String(requesterId) === String(approverIdResolved)
+  if (isSelfApproval && !isSelfApproveAllowed) {
+    throw new Error('This request must be approved by a DIFFERENT admin than the one who requested it.')
+  }
+
+  const approvedAt = new Date().toISOString()
+
+  // ✦ Re-fetch the CURRENT row rather than trusting the request-time
+  // snapshot for the accounts-ledger derivation — the snapshot is for
+  // display/audit purposes (what the approving admin sees), but deriving
+  // source_ref/source_type from stale data could point at the wrong
+  // ledger entry if the row changed between request and approval. Falls
+  // back to the snapshot only if the live row is somehow gone by now.
+  let liveRow = null
+  try {
+    const { data } = await supabase.from(reqRow.table_name).select('*').eq('id', reqRow.record_id).maybeSingle()
+    liveRow = data
+  } catch (e) { console.warn('approveFeeActionRequest: could not re-fetch live row, falling back to snapshot', e) }
+  if (!liveRow && reqRow.snapshot) {
+    try { liveRow = JSON.parse(reqRow.snapshot) } catch (e) {}
+  }
+  const { accountSourceRef, accountSourceType } = deriveAccountSource(reqRow.table_name, liveRow)
+
+  // Perform the actual action using the existing, already-audited
+  // functions — dual control is a gate IN FRONT of them, not a
+  // reimplementation of what they do.
+  if (reqRow.action_type === 'revert') {
+    await revertFeeCollection({
+      table: reqRow.table_name, id: reqRow.record_id,
+      accountSourceRef, accountSourceType,
+      revertedBy: approvedBy, staffId: approverIdResolved,
+      reason: reqRow.reason,
+    })
+  } else if (reqRow.action_type === 'delete') {
+    await deleteLegacyFeeRecord(reqRow.record_id, approvedBy, approverIdResolved)
+  }
+
+  const { error: updateErr } = await supabase.from(TABLES.feeActionRequests).update({
+    status: 'approved', approved_by: approvedBy, approved_by_id: approverIdResolved,
+    approved_at: approvedAt, self_approved: !!isSelfApproval,
+  }).eq('id', requestId)
+  if (updateErr) console.warn('approveFeeActionRequest: request row update failed after action succeeded', updateErr)
+
+  try {
+    await supabase.from('audit_log').insert({
+      action: 'fee_action_approved', changed_by: approverIdResolved, target_id: reqRow.record_id,
+      old_values: JSON.stringify({
+        request_id: requestId, action_type: reqRow.action_type, table: reqRow.table_name,
+        requested_by: reqRow.requested_by, approved_by: approvedBy,
+        self_approved: !!isSelfApproval, staff_id: approverIdResolved,
+      }),
+      created_at: approvedAt,
+    })
+  } catch (e) { console.warn('Audit log failed for fee_action_approved', e) }
+
+  return { ...reqRow, status: 'approved', self_approved: !!isSelfApproval }
+}
+
+// Rejecting is a safe no-op (nothing is reverted/deleted), so it does NOT
+// require a different admin — the requester's own manager, or the
+// requester themselves reconsidering, can close it out either way.
+export const rejectFeeActionRequest = async ({ requestId, rejectedBy, rejectedById = null, rejectionReason = '' }) => {
+  if (!requestId) throw new Error('rejectFeeActionRequest: requestId is required')
+  const rejectedAt = new Date().toISOString()
+  const { data: reqRow, error: fetchErr } = await supabase
+    .from(TABLES.feeActionRequests).select('*').eq('id', requestId).maybeSingle()
+  if (fetchErr) throw new Error('Could not load the request: ' + fetchErr.message)
+  if (!reqRow) throw new Error('Request not found.')
+  if (reqRow.status !== 'pending') throw new Error(`This request is already ${reqRow.status}.`)
+
+  const { error } = await supabase.from(TABLES.feeActionRequests).update({
+    status: 'rejected', rejected_by: rejectedBy, rejected_by_id: rejectedById || rejectedBy,
+    rejected_at: rejectedAt, rejection_reason: rejectionReason || null,
+  }).eq('id', requestId)
+  if (error) throw new Error('Could not reject the request: ' + error.message)
+
+  try {
+    await supabase.from('audit_log').insert({
+      action: 'fee_action_rejected', changed_by: rejectedById || rejectedBy, target_id: reqRow.record_id,
+      old_values: JSON.stringify({
+        request_id: requestId, action_type: reqRow.action_type, table: reqRow.table_name,
+        requested_by: reqRow.requested_by, rejected_by: rejectedBy, rejection_reason: rejectionReason,
+      }),
+      created_at: rejectedAt,
+    })
+  } catch (e) { console.warn('Audit log failed for fee_action_rejected', e) }
 }
 
 // ─── Correct a mistakenly-entered payment date (admin) ───────────────────────
