@@ -1394,6 +1394,9 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   // fee payments) — sourced from the same `accounts` ledger Accounts.jsx reads,
   // so this always matches Accounts' "Today's Income" card exactly.
   const [todayAccountsIncome, setTodayAccountsIncome] = useState(null)
+  // Underpaid card — toggles the inline drilldown list below the top stat
+  // cards, same collapse/expand pattern as Month-wise Dues' Expand All.
+  const [showUnderpaid, setShowUnderpaid] = useState(false)
   // Month-wise Dues card — which month is drilled into, and whether every
   // month is expanded inline. Declared up-front with the other hooks (not
   // inline further down next to the derived `monthwiseDues` value) so hook
@@ -1458,6 +1461,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const admOnlyPaid     = liveRows.filter(s => paidAdmGccs.has(gccStr(s.gcc_no)) && !paidFlatGccs.has(gccStr(s.gcc_no)) && !paidCrsfGccs.has(gccStr(s.gcc_no)))
   const repeaters       = liveRows.filter(s => s.is_repeater && s.grandTotal === 0)
   const fullyPaid       = liveRows.filter(s => paidFlatGccs.has(gccStr(s.gcc_no)) && paidCrsfGccs.has(gccStr(s.gcc_no)))
+  // Underpaid — same liveStatus computed at the top-level Fees component
+  // (dues engine's totalDue > 0 while grandTotal > 0), just filtered and
+  // sorted here for this screen's own drilldown list.
+  const underpaidStudents = liveRows.filter(s => s.liveStatus === 'Underpaid').sort((a, b) => (b.totalDue || 0) - (a.totalDue || 0))
 
   // This month defaulters — paid no course fee this month
   const paidThisMonthCrsf = new Set(adm_course_fees.filter(r => !r.reverted && r.for_month === thisMonth && String(r.year) === thisYearStr).map(r => gccStr(r.adm_app_id)))
@@ -1641,7 +1648,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
           wide), and the No-Payment-Yet flag are admin-level financial
           visibility, not something every staff member logging a payment
           needs to see. */}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : (isAdmin ? 'repeat(5, 1fr)' : 'repeat(2, 1fr)'), gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : (isAdmin ? 'repeat(6, 1fr)' : 'repeat(2, 1fr)'), gap: 14 }}>
         {[
           ...(isAdmin ? [{ icon: '💰', label: 'Total Collected', value: `₹${n(totalCollected)}`, color: '#1e3a5f', bg: '#eff6ff', sub: `${students.length} students` }] : []),
           { icon: '📅', label: 'This Month', value: `₹${n(thisMonthTotal)}`, color: '#059669', bg: '#f0fdf4',
@@ -1650,16 +1657,63 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
           ...(isAdmin ? [
             { icon: '📊', label: "Today's Total Income", value: todayAccountsIncome === null ? '…' : `₹${n(todayAccountsIncome)}`, color: '#0e7490', bg: '#ecfeff', sub: todayStr + ' · all income (Accounts)' },
             { icon: '⚠️', label: 'No Payment Yet', value: zeroPayment.length, color: '#dc2626', bg: '#fef2f2', sub: 'students with ₹0 paid' },
+            // Clickable — toggles the drilldown list below. Only this card
+            // (and only for admins) gets an onClick; the rest stay static.
+            { icon: '🟠', label: 'Underpaid Students', value: underpaidStudents.length, color: '#c2410c', bg: '#ffedd5', sub: 'tap to see who', onClick: () => setShowUnderpaid(v => !v) },
           ] : []),
         ].map(c => (
-          <div key={c.label} style={{ background: c.bg, borderRadius: 12, padding: '16px 18px', borderLeft: `4px solid ${c.color}`, boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+          <div key={c.label} onClick={c.onClick}
+            style={{ background: c.bg, borderRadius: 12, padding: '16px 18px', borderLeft: `4px solid ${c.color}`, boxShadow: '0 2px 8px rgba(0,0,0,.06)', cursor: c.onClick ? 'pointer' : 'default', outline: c.onClick && showUnderpaid ? `2px solid ${c.color}` : 'none' }}>
             <div style={{ fontSize: 24, marginBottom: 6 }}>{c.icon}</div>
             <div style={{ fontSize: 12, color: c.color, fontWeight: 600, marginBottom: 4 }}>{c.label}</div>
             <div style={{ fontSize: 22, fontWeight: 900, color: c.color }}>{c.value}</div>
-            <div style={{ fontSize: 11, color: c.color, opacity: .7, marginTop: 4 }}>{c.sub}</div>
+            <div style={{ fontSize: 11, color: c.color, opacity: .7, marginTop: 4 }}>{c.sub}{c.onClick ? (showUnderpaid ? ' ▲' : ' ▼') : ''}</div>
           </div>
         ))}
       </div>
+
+      {/* ── Underpaid Students drilldown — toggled by the stat card above ── */}
+      {isAdmin && showUnderpaid && (
+        <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fdba74', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
+          <div style={{ background: '#ffedd5', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #fdba74' }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#c2410c' }}>🟠 Underpaid Students — paid something, but still short vs. what they actually owe</div>
+            <span style={{ fontSize: 11, fontWeight: 800, background: '#c2410c', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{underpaidStudents.length}</span>
+          </div>
+          <div style={{ maxHeight: 340, overflowY: 'auto' }}>
+            {underpaidStudents.length === 0
+              ? <div style={{ padding: '16px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>🎉 No underpaid students right now</div>
+              : underpaidStudents.map(s => (
+                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fff7ed' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{s.name}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8' }}>GCC-{s.gcc_no} · {s.course || '—'} · {s.hostel_type || '—'}</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 8.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.04em' }}>Paid</div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#b45309' }}>₹{n(s.grandTotal)}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 8.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.04em' }}>Short By</div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#dc2626' }}>₹{n(s.totalDue)}</div>
+                    </div>
+                    <button onClick={() => onCollect(s)}
+                      style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, border: 'none', background: '#c2410c', color: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      Collect
+                    </button>
+                    {onFix && (
+                      <button onClick={() => onFix(s)}
+                        style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, border: '1px solid #1e3a5f', background: 'white', color: '#1e3a5f', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Fix
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      )}
 
       {/* ── Second row cards — admin only ── */}
       {isAdmin && (
