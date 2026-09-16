@@ -514,8 +514,33 @@ export default function FeeSetup({ userRole }) {
       const key = rowKey(sessionYear, row.course, row.batch, row.hostel_type)
       updates[key] = { flat_fee: row.flat_fee, course_fee: row.course_fee, admission_fee: row.admission_fee, id: null, dirty: true }
     })
+    // ✦ Fix: previously only overwrote keys present in the previous
+    // session's data. Any course/batch/hostel combo that exists in the
+    // CURRENT session's structure (all COURSE_STRUCTURE combos are
+    // pre-populated by loadStructures, even ones with no saved row yet)
+    // but had no matching row in prevSession was left completely untouched
+    // — silently, with no way for the admin to tell "this combo wasn't in
+    // last year's data" apart from "this combo just happens to match".
+    // A newly added batch/hostel combo added after prevSession was
+    // configured would look copied when it wasn't. Now surfaces exactly
+    // which combos had nothing to copy from, so the admin can fill those
+    // in manually with full awareness rather than assuming the copy was
+    // complete.
+    const allKeys = COURSES.flatMap(c => COURSE_STRUCTURE[c].flatMap(b => HOSTEL_TYPES.map(h => rowKey(sessionYear, c, b, h))))
+    const missingKeys = allKeys.filter(k => !updates[k])
     setStructures(prev => ({ ...prev, ...updates }))
     setSaved(false)
+    if (missingKeys.length) {
+      const missingLabels = missingKeys.map(k => {
+        const [, course, batch, hostel] = k.split('__')
+        return `${course} / ${batch} / ${hostel}`
+      })
+      alert(
+        `Copied ${Object.keys(updates).length} combo(s) from ${prevSession}. ` +
+        `${missingKeys.length} combo(s) had no matching row in ${prevSession} and were left unchanged:\n\n` +
+        missingLabels.join('\n')
+      )
+    }
   }
 
   const dirtyCount  = Object.values(structures).filter(v => v.dirty).length

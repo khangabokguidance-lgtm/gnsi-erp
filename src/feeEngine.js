@@ -138,9 +138,27 @@ export const rcptNo = (prefix = 'INV') => {
 // 4. FEE RATE HELPERS  — DB-fetched (fee_structures + student_fee_overrides)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** In-memory caches — both cleared on save */
-const _rateCache     = {}   // key = session__course__batch__hostel
-const _overrideCache = {}   // key = gcc__session
+/**
+ * In-memory caches — both cleared on save via clearFeeRateCache().
+ *
+ * ✦ Fix: clearFeeRateCache() only runs in the SAME browser tab/session that
+ * made the edit (FeeSetup.jsx and FeeCollectionModal's override editor both
+ * call it after their own writes). If a second admin has Fees.jsx or
+ * FeeCollectionModal already open in another tab/device when the first
+ * admin edits fee_structures or a student override, the second admin's
+ * client keeps serving whatever it already cached — potentially for the
+ * rest of their session — with no way to know it's stale. There's no
+ * cross-client invalidation channel here (would need realtime/pub-sub), so
+ * as a bounded mitigation each cache entry now carries a fetch timestamp
+ * and is treated as expired after RATE_CACHE_TTL_MS, forcing a fresh fetch
+ * periodically even without an explicit clear. This doesn't make stale
+ * reads impossible, only bounds how long they can persist.
+ */
+const RATE_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+const _rateCache     = {}   // key = session__course__batch__hostel -> { ...rates, _cachedAt }
+const _overrideCache = {}   // key = gcc__session -> { value, _cachedAt }
+
+const _isFresh = (cachedAt) => typeof cachedAt === 'number' && (Date.now() - cachedAt) < RATE_CACHE_TTL_MS
 
 /** Clear both caches (call after saving fee_structures or student_fee_overrides) */
 export const clearFeeRateCache = () => {
@@ -157,7 +175,8 @@ export const clearFeeRateCache = () => {
 export const getStudentFlatFeeOverride = async (gccNo, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`) => {
   sessionYear = normalizeSessionYear(sessionYear)
   const key = `${gccNo}__${sessionYear}`
-  if (_overrideCache[key] !== undefined) return _overrideCache[key]
+  const cached = _overrideCache[key]
+  if (cached !== undefined && _isFresh(cached._cachedAt)) return cached.value
 
   const { data } = await supabase
     .from(TABLES.studentFeeOverrides)
@@ -167,7 +186,7 @@ export const getStudentFlatFeeOverride = async (gccNo, sessionYear = `${CURRENT_
     .maybeSingle()
 
   const result = data ?? null
-  _overrideCache[key] = result
+  _overrideCache[key] = { value: result, _cachedAt: Date.now() }
   return result
 }
 
@@ -226,8 +245,9 @@ export const getFeeRates = async (
   sessionYear = normalizeSessionYear(sessionYear)
   const structKey = `${sessionYear}__${course}__${batch}__${hostelType}`
 
-  // Fetch structural rates (cached)
-  if (!_rateCache[structKey]) {
+  // Fetch structural rates (cached, subject to RATE_CACHE_TTL_MS — see cache
+  // declaration above for why this isn't a permanent cache)
+  if (!_rateCache[structKey] || !_isFresh(_rateCache[structKey]._cachedAt)) {
     let { data } = await supabase
       .from(TABLES.feeStructures)
       .select('flat_fee, course_fee, admission_fee')
@@ -282,10 +302,14 @@ export const getFeeRates = async (
       admissionFee: data?.admission_fee ?? ADM_FEE_BASE,
       usingFallbackRates,
       usedBatchlessFallback,
+      _cachedAt: Date.now(),
     }
   }
 
-  const rates = { ..._rateCache[structKey] }
+  // Strip the internal cache-bookkeeping field before returning — callers
+  // that spread/serialize this object (e.g. into React state, JSON, or a
+  // fee_structures upsert) shouldn't see or persist it.
+  const { _cachedAt, ...rates } = _rateCache[structKey]
 
   // ✦ Apply per-student flat fee override if gcc supplied
   if (gccNo) {
@@ -329,6 +353,22 @@ export const FLAT_FEE_MONTHS = ['February', 'March']
 export const isFlatFeeMonth   = (month) => FLAT_FEE_MONTHS.includes(month)
 export const isCourseFeeMonth = (month) => !FLAT_FEE_MONTHS.includes(month)
 
+// ✦ Single source of truth for "which calendar year does this named fee
+// month belong to, given the session runs April→March." Previously this
+// exact rule (if the month's calendar position falls after today's, it
+// belongs to last calendar year) was independently re-implemented in
+// getFlatFees below AND in feeDues.js's courseFeeDueMonths — two copies of
+// the same formula that could silently drift apart if this logic ever
+// changed (e.g. a different session start date). Both now call this.
+export const resolveFeeMonthYear = (monthName, referenceDate = new Date()) => {
+  const currentCalYear  = referenceDate.getFullYear()
+  const currentCalMonth = referenceDate.getMonth() + 1
+  let year = currentCalYear
+  const calMonth = new Date(`${monthName} 1, ${year}`).getMonth() + 1
+  if (calMonth > currentCalMonth) year = currentCalYear - 1
+  return year
+}
+
 /**
  * Async — returns ONLY flat fee months (Feb & Mar) for the session.
  * Respects per-student override when gccNo is supplied.
@@ -343,16 +383,10 @@ export const isCourseFeeMonth = (month) => !FLAT_FEE_MONTHS.includes(month)
  */
 export const getFlatFees = async (hostelType, course, batch, sessionYear = `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`, gccNo = null, admissionDate = null) => {
   const amount = await getFlatFeeAmt(hostelType, course, batch, sessionYear, gccNo)
-  const now = new Date()
-  const currentCalYear  = now.getFullYear()
-  const currentCalMonth = now.getMonth() + 1
   const admDate = admissionDate ? new Date(admissionDate) : null
 
   return FLAT_FEE_MONTHS.map(month => {
-    let year = currentCalYear
-    const d  = new Date(`${month} 1, ${year}`)
-    const calMonth = d.getMonth() + 1
-    if (calMonth > currentCalMonth) year = currentCalYear - 1
+    const year = resolveFeeMonthYear(month)
     return {
       id: `flat_${month.slice(0, 3).toLowerCase()}_${year}`,
       month, year, amount, hostelType,
@@ -553,9 +587,17 @@ export const mirrorToFeeInvoice = async ({
 // corrected here.
 export const revertFeeCollection = async ({
   table, id, accountSourceRef = null, accountSourceType = null,
-  revertedBy = 'Admin', reason = '',
+  revertedBy = 'Admin', staffId = null, reason = '',
 }) => {
   if (!table || !id) throw new Error('revertFeeCollection: table and id are required')
+
+  // ✦ staff_id + explicit timestamp on this action, same as collectFee.
+  // revertedBy is a display name (kept for backward compatibility with the
+  // reverted_by column and existing UI); resolvedStaffId is the stable
+  // identifier to attribute the action to, falling back to revertedBy when
+  // no separate id is supplied.
+  const resolvedStaffId = staffId || revertedBy || 'Unknown'
+  const revertedAt = new Date().toISOString()
 
   // Fetch the row BEFORE updating it, so the audit log can carry the real
   // amount/mode/gcc/student_name of what's being reverted — without this,
@@ -573,7 +615,7 @@ export const revertFeeCollection = async ({
 
   const updates = {
     reverted: true,
-    reverted_at: new Date().toISOString(),
+    reverted_at: revertedAt,
     reverted_by: revertedBy,
     revert_reason: reason || null,
   }
@@ -583,6 +625,29 @@ export const revertFeeCollection = async ({
 
   const { error } = await supabase.from(table).update(updates).eq('id', id)
   if (error) throw error
+
+  // ✦ Fix: previously this audit_log write only ran INSIDE the
+  // `if (accountSourceRef && accountSourceType)` block below — a revert
+  // call made without those two params (they're optional) logged NOTHING
+  // to audit_log at all, so the revert itself (not just its accounts-side
+  // cleanup) could go completely unrecorded in the Activity Log. Logging
+  // the revert action now always happens, independent of whether there's
+  // a matching accounts row to also soft-delete.
+  try {
+    await supabase.from('audit_log').insert({
+      action: 'fee_revert', changed_by: resolvedStaffId, target_id: id,
+      old_values: JSON.stringify({
+        table, source_ref: accountSourceRef, source_type: accountSourceType, revert_reason: reason,
+        gcc: originalRow?.adm_app_id ?? null,
+        student_name: originalRow?.student_name ?? null,
+        amount: originalRow?.amount ?? originalRow?.amount_paid ?? null,
+        pay_mode: originalRow?.pay_mode ?? null,
+        receipt_no: originalRow?.receipt_no ?? null,
+        staff_id: resolvedStaffId, reverted_at: revertedAt,
+      }),
+      created_at: revertedAt,
+    })
+  } catch (e) { console.warn('Audit log failed during revert', e) }
 
   if (accountSourceRef && accountSourceType) {
     // Soft-delete the accounts ledger row so it is recoverable and auditable
@@ -594,21 +659,8 @@ export const revertFeeCollection = async ({
       await supabase.from(TABLES.accounts).update({
         is_soft_deleted: true,
         deleted_by: revertedBy,
-        deleted_at: new Date().toISOString(),
+        deleted_at: revertedAt,
       }).eq('id', row.id)
-      try {
-        await supabase.from('audit_log').insert({
-          action: 'fee_revert', changed_by: revertedBy, target_id: row.id,
-          old_values: JSON.stringify({
-            source_ref: accountSourceRef, source_type: accountSourceType, revert_reason: reason,
-            gcc: originalRow?.adm_app_id ?? null,
-            amount: originalRow?.amount ?? originalRow?.amount_paid ?? null,
-            pay_mode: originalRow?.pay_mode ?? null,
-            receipt_no: originalRow?.receipt_no ?? null,
-          }),
-          created_at: new Date().toISOString(),
-        })
-      } catch (e) { console.warn('Audit log failed during revert', e) }
     }
   }
 }
@@ -628,7 +680,7 @@ export const revertFeeCollection = async ({
 // items[] shapes:
 //   { kind: 'admission', amount }
 //   { kind: 'item',      label, amount }          <- dress/prospectus
-//   { kind: 'flat',      month, year, amount, isAdvance?, advanceAuthorizedBy? }
+//   { kind: 'flat',      month, year, amount, isAdvance?, advanceAuthorizedBy?, standardAmount?, underpaymentAmount?, underpaymentReason?, note? }
 //   { kind: 'course',    course, subtype, month, year, amount, isAdvance?, advanceAuthorizedBy? }
 //   { kind: 'advance',   label, amount }
 //
@@ -673,7 +725,7 @@ export const revertFeeCollection = async ({
 export const collectFee = async ({
   gcc, studentName, admNo = '--', className = '', course = '',
   hostelType = 'Day Scholar', payDate, payMode = 'Cash',
-  txnRef = null, collectedBy = 'Admin',
+  txnRef = null, collectedBy = 'Admin', staffId = null,
   studentId = null, receiptNo, items = [],
 }) => {
   if (!gcc)       throw new Error('collectFee: gcc is required')
@@ -681,8 +733,43 @@ export const collectFee = async ({
   if (!receiptNo) throw new Error('collectFee: receiptNo is required')
   if (!items.length) throw new Error('collectFee: at least one item is required')
 
+  // ✦ staff_id + collected_at on every write: previously the only staff
+  // attribution on a collection row was `collected_by`, a free-text name
+  // string with no stable identifier and no explicit write timestamp
+  // separate from the fee-period pay_date (which staff can backdate). Every
+  // collection-table row below now also carries staff_id (falls back to
+  // collectedBy when no separate id is supplied — callers should pass the
+  // logged-in user's stable id/username here once available) and
+  // collected_at (the real wall-clock moment the write happened, always
+  // "now", independent of payDate). Every audit_log entry this function
+  // and revertFeeCollection/correctFeeCollectionDate write carries the same
+  // two fields for the same reason — attribution and correctness should
+  // not depend on parsing a display name out of a note field.
+  const resolvedStaffId = staffId || collectedBy || 'Unknown'
+  const collectedAt = new Date().toISOString()
+  const staffFields = { staff_id: resolvedStaffId, collected_at: collectedAt }
+
   const noRevert = { reverted: false, reverted_at: null, reverted_by: null, revert_reason: null }
   const admItems = [], flatItems = [], crsfItems = [], sections = [], skipped = []
+
+  // ✦ Admin-visible audit trail for every successful collection — not just
+  // reverts/corrections/deletes/underpayments. Previously collectFee wrote
+  // NO audit_log entry at all for a normal payment; the Activity Log tab's
+  // UI already had a 'fee_collection' action type wired up (meta/label/
+  // column extraction all exist for it), but nothing ever produced that
+  // action, so it silently never appeared. Logged per-item (not once per
+  // collectFee call) so each row/receipt line has its own auditable entry
+  // with its own target_id matching the actual collection-table row.
+  // Best-effort: a logging failure must never block the payment itself.
+  const logCollectionAudit = async (targetId, values) => {
+    try {
+      await supabase.from('audit_log').insert({
+        action: 'fee_collection', changed_by: resolvedStaffId, target_id: targetId,
+        new_values: JSON.stringify({ ...values, staff_id: resolvedStaffId, collected_at: collectedAt }),
+        created_at: collectedAt,
+      })
+    } catch (e) { console.warn('Audit log failed for fee_collection', e) }
+  }
 
   // Runs an upsertAccount call; if it throws, deletes the collection-table
   // row just written (by table+id) so nothing is left half-saved, then
@@ -717,7 +804,7 @@ export const collectFee = async ({
         txn_ref: txnRef || null, description: 'Admission Fee',
         receipt_no: receiptNo, student_name: studentName,
         adm_no: admNo, class_name: className || null, collected_by: collectedBy,
-        ...noRevert,
+        ...staffFields, ...noRevert,
       }, { onConflict: 'id' })
       if (error) throw new Error('Admission fee save failed: ' + error.message)
       await upsertAccountOrRollback({
@@ -726,6 +813,7 @@ export const collectFee = async ({
         note: `${studentName} · Admission Fee · ${receiptNo}`,
         source_ref: sourceRef.admission(gcc), source_type: 'adm_fee',
       }, TABLES.admFeeCollections, rowId)
+      await logCollectionAudit(rowId, { gcc, student_name: studentName, receipt_no: receiptNo, pay_mode: payMode, table: TABLES.admFeeCollections, items: [{ label: 'Admission Fee', amount: item.amount }], total: item.amount })
       admItems.push({ label: 'Admission Fee', amount: item.amount })
     }
 
@@ -745,7 +833,7 @@ export const collectFee = async ({
         txn_ref: txnRef || null, description: lbl,
         receipt_no: receiptNo, student_name: studentName,
         adm_no: admNo, class_name: className || null, collected_by: collectedBy,
-        ...noRevert,
+        ...staffFields, ...noRevert,
       }, { onConflict: 'id' })
       if (error) throw new Error(`Item (${lbl}) save failed: ` + error.message)
       await upsertAccountOrRollback({
@@ -754,6 +842,7 @@ export const collectFee = async ({
         note: `${studentName} · ${lbl} · ${receiptNo}`,
         source_ref: sRef, source_type: 'adm_fee',
       }, TABLES.admFeeCollections, rowId)
+      await logCollectionAudit(rowId, { gcc, student_name: studentName, receipt_no: receiptNo, pay_mode: payMode, table: TABLES.admFeeCollections, items: [{ label: lbl, amount: item.amount }], total: item.amount })
       admItems.push({ label: lbl, amount: item.amount })
     }
 
@@ -773,20 +862,52 @@ export const collectFee = async ({
         pay_date: payDate, pay_mode: payMode, txn_ref: txnRef || null,
         receipt_no: receiptNo, student_name: studentName, adm_no: admNo,
         is_advance: !!item.isAdvance, advance_authorized_by: item.isAdvance ? (item.advanceAuthorizedBy || null) : null,
-        ...noRevert,
+        // Underpayment note (set by FeeCollectionModal when the collected
+        // amount was edited below the configured flat-fee rate by more than
+        // its discrepancy threshold, with a reason selected from the
+        // required dropdown). Mirrors the course-fee override_note pattern
+        // so a below-standard flat fee payment is explained on the row
+        // itself, not just discoverable later by cross-referencing
+        // fee_structures/student_fee_overrides.
+        ...(item.note ? { underpayment_note: item.note } : {}),
+        ...staffFields, ...noRevert,
       }, { onConflict: 'id' })
       if (error) throw new Error(`Flat fee ${item.month} save failed: ` + error.message)
       await upsertAccountOrRollback({
         entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Hostel',
         amount: item.amount, payment_mode: payMode,
-        note: `${studentName} · ${item.month} ${item.year} Flat Fee [${hostelType}] · ${receiptNo}`,
+        note: item.note
+          ? `${studentName} · ${item.month} ${item.year} Flat Fee [${hostelType}] · ${receiptNo} · ${item.note}`
+          : `${studentName} · ${item.month} ${item.year} Flat Fee [${hostelType}] · ${receiptNo}`,
         source_ref: sRef, source_type: 'flat_fee',
       }, TABLES.admFlatFees, flatId)
       await mirrorToFeeInvoice({
         gcc, studentId, studentName, course, hostelType, className,
         feeType: 'Monthly Flat Fee', amount: item.amount, payDate, invoiceMonth,
       })
-      flatItems.push({ label: `${item.month} ${item.year} [${hostelType}]${item.isAdvance ? ' · ADVANCE (authorized)' : ''}`, amount: item.amount })
+      await logCollectionAudit(flatId, { gcc, student_name: studentName, receipt_no: receiptNo, pay_mode: payMode, table: TABLES.admFlatFees, month: item.month, year: item.year, hostel_type: hostelType, items: [{ label: `${item.month} ${item.year}`, amount: item.amount }], total: item.amount })
+      // ✦ Admin-visible underpayment warning — logged to audit_log so it
+      // shows up wherever the Activity Log tab reads from (same table
+      // revertFeeCollection and deleteLegacyFeeRecord already write to),
+      // in addition to the inline warning banner FeeCollectionModal shows
+      // at collection time. Best-effort: a logging failure must never
+      // block the payment itself from being recorded.
+      if (item.underpaymentAmount > 0) {
+        try {
+          await supabase.from('audit_log').insert({
+            action: 'flat_fee_underpayment', changed_by: resolvedStaffId, target_id: flatId,
+            old_values: JSON.stringify({
+              gcc, student_name: studentName, month: item.month, year: item.year,
+              hostel_type: hostelType, standard_amount: item.standardAmount ?? null,
+              collected_amount: item.amount, shortfall: item.underpaymentAmount,
+              reason: item.underpaymentReason || null, receipt_no: receiptNo,
+              staff_id: resolvedStaffId, collected_at: collectedAt,
+            }),
+            created_at: collectedAt,
+          })
+        } catch (e) { console.warn('Audit log failed for flat fee underpayment', e) }
+      }
+      flatItems.push({ label: `${item.month} ${item.year} [${hostelType}]${item.isAdvance ? ' · ADVANCE (authorized)' : ''}${item.underpaymentAmount > 0 ? ' · UNDERPAID' : ''}`, amount: item.amount })
     }
 
     // 4. COURSE FEE
@@ -813,7 +934,7 @@ export const collectFee = async ({
         // amount was collected, instead of the shortfall only being
         // discoverable later by cross-referencing fee_structures.
         ...(item.note ? { override_note: item.note } : {}),
-        ...noRevert,
+        ...staffFields, ...noRevert,
       }, { onConflict: 'id' })
       if (error) throw new Error(`Course fee ${item.month} save failed: ` + error.message)
       await upsertAccountOrRollback({
@@ -828,7 +949,29 @@ export const collectFee = async ({
         gcc, studentId, studentName, course: crs, hostelType, className,
         feeType: 'Course Fee', amount: item.amount, payDate, invoiceMonth,
       })
-      crsfItems.push({ label: `${crs}${sub ? ' · ' + sub : ''} — ${item.month}${item.isAdvance ? ' · ADVANCE (authorized)' : ''}`, amount: item.amount })
+      await logCollectionAudit(recId, { gcc, student_name: studentName, receipt_no: receiptNo, pay_mode: payMode, table: TABLES.admCourseFees, month: item.month, year: yr, course: crs, subtype: sub, items: [{ label: `${crs}${sub ? ' ' + sub : ''} — ${item.month}`, amount: item.amount }], total: item.amount })
+      // Same admin-visible warning pattern as flat fee, for a course-fee
+      // amount edited below the standard rate past the discrepancy
+      // threshold (courseAmtNeedsReason in FeeCollectionModal). Previously
+      // this discrepancy only lived in the row's own override_note — no
+      // separate flagged audit_log entry existed for it the way flat fee
+      // now has, so it never surfaced in a dedicated warnings view either.
+      if (item.underpaymentAmount > 0) {
+        try {
+          await supabase.from('audit_log').insert({
+            action: 'course_fee_underpayment', changed_by: resolvedStaffId, target_id: recId,
+            old_values: JSON.stringify({
+              gcc, student_name: studentName, month: item.month, year: yr,
+              course: crs, subtype: sub, standard_amount: item.standardAmount ?? null,
+              collected_amount: item.amount, shortfall: item.underpaymentAmount,
+              reason: item.underpaymentReason || null, receipt_no: receiptNo,
+              staff_id: resolvedStaffId, collected_at: collectedAt,
+            }),
+            created_at: collectedAt,
+          })
+        } catch (e) { console.warn('Audit log failed for course fee underpayment', e) }
+      }
+      crsfItems.push({ label: `${crs}${sub ? ' · ' + sub : ''} — ${item.month}${item.isAdvance ? ' · ADVANCE (authorized)' : ''}${item.underpaymentAmount > 0 ? ' · UNDERPAID' : ''}`, amount: item.amount })
     }
 
     // 5. ADVANCE
@@ -841,7 +984,7 @@ export const collectFee = async ({
         description: 'Advance — ' + (item.label || ''),
         receipt_no: receiptNo, student_name: studentName,
         adm_no: admNo, class_name: className || null, collected_by: collectedBy,
-        ...noRevert,
+        ...staffFields, ...noRevert,
       }, { onConflict: 'id' })
       if (error) throw new Error('Advance fee save failed: ' + error.message)
       await upsertAccountOrRollback({
@@ -850,6 +993,7 @@ export const collectFee = async ({
         note: `${studentName} · Advance (${item.label || ''}) · ${receiptNo}`,
         source_ref: advId, source_type: 'advance_fee',
       }, TABLES.admFeeCollections, advId)
+      await logCollectionAudit(advId, { gcc, student_name: studentName, receipt_no: receiptNo, pay_mode: payMode, table: TABLES.admFeeCollections, items: [{ label: item.label || 'Advance', amount: item.amount }], total: item.amount })
       sections.push({ title: 'Advance', color: '#b45309',
         items: [{ label: item.label || 'Advance', amount: item.amount }],
         subtotal: item.amount })
@@ -868,16 +1012,18 @@ export const collectFee = async ({
 // deleteLegacyFeeRecord — admin hard-delete for the legacy `fees` table only.
 // Live tables (adm_fee_collections / adm_flat_fees / adm_course_fees) are
 // always soft-reverted via revertFeeCollection so there is always an audit trail.
-export const deleteLegacyFeeRecord = async (id, role = 'admin') => {
+export const deleteLegacyFeeRecord = async (id, role = 'admin', staffId = null) => {
   if (!id) throw new Error('deleteLegacyFeeRecord: id is required')
   const { data: original } = await supabase.from('fees').select('*').eq('id', id).maybeSingle()
   const { error } = await supabase.from('fees').delete().eq('id', id)
   if (error) throw new Error('Delete failed: ' + error.message)
+  const resolvedStaffId = staffId || role || 'Unknown'
+  const deletedAt = new Date().toISOString()
   try {
     await supabase.from('audit_log').insert({
-      action: 'legacy_fee_delete', changed_by: role, target_id: id,
-      old_values: original ? JSON.stringify(original) : null,
-      created_at: new Date().toISOString(),
+      action: 'legacy_fee_delete', changed_by: resolvedStaffId, target_id: id,
+      old_values: original ? JSON.stringify({ ...original, staff_id: resolvedStaffId, deleted_at: deletedAt }) : JSON.stringify({ staff_id: resolvedStaffId, deleted_at: deletedAt }),
+      created_at: deletedAt,
     })
   } catch (e) { console.warn('Audit log failed', e) }
 }
@@ -885,8 +1031,21 @@ export const deleteLegacyFeeRecord = async (id, role = 'admin') => {
 // amount/mode/anything else — date-only correction.
 export const correctFeeCollectionDate = async ({
   table, id, newDate, accountSourceRef = null, accountSourceType = null,
+  correctedBy = 'Admin', staffId = null,
 }) => {
   if (!table || !id || !newDate) throw new Error('correctFeeCollectionDate: table, id and newDate are required')
+
+  const resolvedStaffId = staffId || correctedBy || 'Unknown'
+  const correctedAt = new Date().toISOString()
+
+  // Fetch the old date BEFORE updating, so the audit entry shows the actual
+  // before → after change rather than just the new value.
+  let oldDate = null
+  try {
+    const { data } = await supabase.from(table).select('pay_date, adm_app_id, student_name, receipt_no').eq('id', id).maybeSingle()
+    oldDate = data?.pay_date ?? null
+    var oldRow = data || null
+  } catch (e) { console.warn('correctFeeCollectionDate: could not fetch original row for audit log', e) }
 
   const { error } = await supabase.from(table).update({ pay_date: newDate }).eq('id', id)
   if (error) throw error
@@ -897,6 +1056,20 @@ export const correctFeeCollectionDate = async ({
       .eq('source_ref', accountSourceRef)
       .eq('source_type', accountSourceType)
   }
+
+  // ✦ Fix: this function previously wrote NO audit_log entry at all — the
+  // Activity Log UI already had a 'fee_date_correction' action wired up
+  // (activityActionMeta/activityLine both handle it), but nothing ever
+  // produced it, so date corrections were invisible in the audit trail
+  // despite silently changing a payment's recorded date.
+  try {
+    await supabase.from('audit_log').insert({
+      action: 'fee_date_correction', changed_by: resolvedStaffId, target_id: id,
+      old_values: JSON.stringify({ table, pay_date: oldDate, gcc: oldRow?.adm_app_id ?? null, student_name: oldRow?.student_name ?? null, receipt_no: oldRow?.receipt_no ?? null }),
+      new_values: JSON.stringify({ table, pay_date: newDate, staff_id: resolvedStaffId, corrected_at: correctedAt }),
+      created_at: correctedAt,
+    })
+  } catch (e) { console.warn('Audit log failed during date correction', e) }
 }
 
 export const getStudentFeeSummary = async (studentId, sessionYear) => {

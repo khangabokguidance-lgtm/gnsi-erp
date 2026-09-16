@@ -86,6 +86,22 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   }
 
   const gcc    = gccStr(validGcc(app?.gcc) ?? validGcc(app?.gcc_no) ?? validGcc(student?.gcc_no) ?? '')
+
+  // ✦ Safe numeric form of gcc for .eq('gcc_no', ...) queries against the
+  // students table (gcc_no is an integer column there). `gcc` is already
+  // guarded against literal "undefined"/"null" strings by validGcc above,
+  // so parseInt(gcc) should always be numeric in practice — but several
+  // call sites below (`toggleRepeater`, `saveAdmissionDate`, the repeater/
+  // admission-date load effect) called parseInt(gcc) directly with no
+  // check on the result. If gcc were ever a non-numeric string despite
+  // validGcc, parseInt would silently return NaN and the .eq() would match
+  // zero rows rather than surfacing an error — a query that looks like it
+  // ran but quietly touches nothing. This centralizes the parse and the
+  // NaN guard so every call site fails loudly instead.
+  const gccNumeric = (() => {
+    const n = parseInt(gcc, 10)
+    return Number.isNaN(n) ? null : n
+  })()
   const name   = app?.name       ?? app?.applicant_name ?? student?.name       ?? ''
   const course = app?.course     ?? student?.course     ?? ''
   const batch  = app?.cls        ?? app?.batch          ?? student?.batch      ?? ''
@@ -138,7 +154,19 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const [overrideSaving,  setOverrideSaving]  = useState(false)
   const [overrideFeedback,setOverrideFeedback]= useState(null)    // { type, msg }
 
-  // Load rates + check override whenever hostelType / course / batch changes
+  // Load rates + check override whenever hostelType / course / batch /
+  // sessionYear / gcc changes.
+  //
+  // ✦ Fix: sessionYear and gcc were read inside this effect but NOT listed
+  // in its dependency array. Both are derived from the `app`/`student`
+  // props (sessionYear from app?.session ?? student?.session; gcc via the
+  // validGcc fallback chain), so if this modal instance is ever reused for
+  // a different student without a full remount — e.g. gcc resolving late
+  // once student loads asynchronously, or app/student props swapping while
+  // the modal stays open — the effect would silently keep serving rates
+  // fetched for the PREVIOUS student/session, since a stale closure means
+  // React never saw a reason to re-run it. Same fix applied to the flat
+  // fee list effect below.
   useEffect(() => {
     setRatesLoading(true)
     getFeeRates(sessionYear, course, batch, hostelType, gcc || null)
@@ -146,6 +174,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         setFeeRates(rates)
         setCourseAmt(rates.courseFee)
         setCourseAmtReason('') // fresh rate load — clear any stale reason from a previous month/course
+        setAdvanceMonthCount(1) // fresh rate load — don't carry a multi-month run over to a different rate context
         setHasOverride(!!rates.flatFeeOverride)
         if (rates.flatFeeOverride) {
           setOverrideAmt(String(rates.flatFeeOverride.flat_fee_override))
@@ -153,14 +182,23 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         }
       })
       .finally(() => setRatesLoading(false))
-  }, [hostelType, course, batch])
+  }, [hostelType, course, batch, sessionYear, gcc])
 
   // Load flat fee list (pass gcc so override is respected in amounts, and
   // admissionDate so months before the student actually joined are excluded)
   useEffect(() => {
     getFlatFees(hostelType, course, batch, sessionYear, gcc || null, admissionDate || null)
-      .then(setFlatFees)
-  }, [hostelType, course, batch, hasOverride, admissionDate])  // re-run when override or admission date changes
+      .then(fees => {
+        setFlatFees(fees)
+        // Fresh rate load — clear any per-month amount overrides/reasons
+        // entered against the PREVIOUS hostel/course/batch's rate. Without
+        // this, switching hostel type after editing an amount could leave
+        // a stale override number sitting against a now-different standard
+        // rate, silently changing whether it counts as an underpayment.
+        setFlatAmtOverrides({})
+        setFlatUnderpaymentReasons({})
+      })
+  }, [hostelType, course, batch, sessionYear, gcc, hasOverride, admissionDate])  // re-run when override or admission date changes
 
   const [tab,         setTab]         = useState('admission')
   const [saving,      setSaving]      = useState(false)
@@ -176,6 +214,14 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   // editable (not locked) in case session data is ever missing or a
   // different staff member genuinely collected the payment in person.
   const [collectedBy, setCollectedBy] = useState(currentUser?.userName || currentUser?.name || '')
+  // ✦ Stable staff identifier for audit trail attribution, separate from
+  // `collectedBy` (which stays a free-text, editable display name field —
+  // see the comment above). staffId is the logged-in session's own
+  // username/name, NOT re-derived from the possibly-edited collectedBy
+  // field, so the audit trail always records who was actually logged in
+  // even if the editable "Collected By" text was changed to note a
+  // different staff member physically handling the transaction.
+  const staffId = currentUser?.userName || currentUser?.name || null
 
   // Admission tab
   const [selected,     setSelected]     = useState({})
@@ -187,6 +233,30 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const [flatSel,     setFlatSel]     = useState({})
   const [paidMonths,  setPaidMonths]  = useState([])
   const [loadingPaid, setLoadingPaid] = useState(false)
+  // ✦ Per-month editable amount override. Previously the flat-fee amount
+  // was fixed to fee.amount (the configured rate) with no way to enter a
+  // lower figure — any actual underpayment (partial cash handed over,
+  // approved concession, etc.) either got recorded at the full rate
+  // (overstating what was actually collected) or wasn't recorded at all
+  // until the shortfall was noticed later. Keyed by fee.id so each
+  // selected month can carry its own edited amount independently.
+  const [flatAmtOverrides, setFlatAmtOverrides] = useState({})
+  // Same discrepancy-guard pattern as course fee: an edit below the
+  // standard rate by more than this threshold requires a reason before
+  // saving, and is recorded (on the row + as an audit_log warning) rather
+  // than silently accepted.
+  const FLAT_FEE_DISCREPANCY_THRESHOLD = 500
+  // Fixed reason list (not free text) so underpayment reasons stay
+  // consistent and reportable — an admin scanning the Activity Log can
+  // filter/group by reason instead of parsing arbitrary staff phrasing.
+  const FLAT_FEE_UNDERPAYMENT_REASONS = [
+    'Approved scholarship',
+    'Sibling discount',
+    'Partial payment — balance due later',
+    'Financial hardship (admin approved)',
+    'Other (specify in receipt note)',
+  ]
+  const [flatUnderpaymentReasons, setFlatUnderpaymentReasons] = useState({}) // keyed by fee.id
 
   // Course fee tab
   const [courseMonth,      setCourseMonth]      = useState(MONTHS_LIST[new Date().getMonth()])
@@ -194,6 +264,16 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const [courseAmt,        setCourseAmt]         = useState(0)
   const [paidCourseMonths, setPaidCourseMonths] = useState([])
   const [loadingCourse,    setLoadingCourse]    = useState(false)
+  // ✦ Advance months — lets staff pay several consecutive course-fee months
+  // starting at the selected month/year in one go, instead of repeating the
+  // whole save flow N times. 1 means "just the selected month" (existing
+  // behavior, unchanged). Any value above 1 pays that many consecutive
+  // MONTHS_LIST months forward from the selected one, skipping any that
+  // are already paid (server-side checkCourseFeeExists still guards each
+  // one individually inside collectFee, same as a single-month save).
+  // Advance-PIN authorization is still required for any month among the
+  // selected run that hasn't started yet, same rule as a single month.
+  const [advanceMonthCount, setAdvanceMonthCount] = useState(1)
   // Discrepancy guard: when staff edit the auto-filled course fee away from
   // the configured rate, collectFee had no way of knowing whether that was
   // an approved discount or a mistake/shortfall — it just silently recorded
@@ -230,11 +310,11 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
 
   // ── Load repeater flag + admission date ─────────────────────────────────
   useEffect(() => {
-    if (!gcc) return
+    if (gccNumeric === null) return
     supabase
       .from('students')
       .select('is_repeater, admission_date')
-      .eq('gcc_no', parseInt(gcc))
+      .eq('gcc_no', gccNumeric)
       .maybeSingle()
       .then(({ data }) => {
         if (data) {
@@ -242,15 +322,16 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           setAdmissionDate(data.admission_date || '')
         }
       })
-  }, [gcc])
+  }, [gccNumeric])
 
   const toggleRepeater = async () => {
+    if (gccNumeric === null) { alert('Student GCC number is missing or invalid. Please close this modal and reopen it.'); return }
     const newVal = !isRepeater
     setRepeaterSaving(true)
     await supabase
       .from('students')
       .update({ is_repeater: newVal })
-      .eq('gcc_no', parseInt(gcc))
+      .eq('gcc_no', gccNumeric)
     setIsRepeater(newVal)
     setRepeaterSaving(false)
   }
@@ -260,12 +341,12 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   // whichever is filled first "wins" and the other just confirms it.
   const saveAdmissionDate = async (val) => {
     setAdmissionDate(val)
-    if (!gcc || !val) return
+    if (gccNumeric === null || !val) return
     setAdmDateSaving(true)
     await supabase
       .from('students')
       .update({ admission_date: val })
-      .eq('gcc_no', parseInt(gcc))
+      .eq('gcc_no', gccNumeric)
     setAdmDateSaving(false)
   }
 
@@ -304,7 +385,18 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const isCourseMonthPaid = ()    => paidCourseMonths.includes(`${courseMonth}_${courseYear}`)
 
   const admTotal  = FEE_ITEMS.filter(f => selected[f.id] && !isAdmItemPaid(f.label)).reduce((s, f) => s + (Number(customAmts[f.id]) || f.amount), 0)
-  const flatTotal = flatFees.filter(f => flatSel[f.id] && !isMonthPaid(f)).reduce((s, f) => s + f.amount, 0)
+
+  // ✦ Effective amount for a flat-fee month: the standard rate (f.amount),
+  // unless staff have entered an override in flatAmtOverrides for that
+  // specific fee.id — mirrors how customAmts works for admission items.
+  const flatAmtFor = f => {
+    const override = flatAmtOverrides[f.id]
+    return override === undefined || override === '' ? f.amount : Number(override)
+  }
+  const flatGapFor = f => flatAmtFor(f) - f.amount
+  const flatNeedsReasonFor = f => Math.abs(flatGapFor(f)) >= FLAT_FEE_DISCREPANCY_THRESHOLD
+
+  const flatTotal = flatFees.filter(f => flatSel[f.id] && !isMonthPaid(f)).reduce((s, f) => s + flatAmtFor(f), 0)
 
   // How far the (possibly hand-edited) course fee amount sits from the
   // configured rate for this course/batch/hostel combo. Only meaningful
@@ -317,16 +409,17 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const saveOverrideInline = async () => {
     const amt = parseFloat(overrideAmt)
     if (isNaN(amt) || amt < 0) { setOverrideFeedback({ type: 'err', msg: 'Enter a valid amount.' }); return }
+    if (gccNumeric === null) { setOverrideFeedback({ type: 'err', msg: 'Student GCC number is missing or invalid.' }); return }
     setOverrideSaving(true)
     try {
-      await saveStudentFlatFeeOverride(parseInt(gcc), sessionYear, amt, overrideReason, 'admin')
+      await saveStudentFlatFeeOverride(gccNumeric, sessionYear, amt, overrideReason, 'admin')
       clearFeeRateCache()
       // Reload rates with override applied
-      const rates = await getFeeRates(sessionYear, course, batch, hostelType, parseInt(gcc))
+      const rates = await getFeeRates(sessionYear, course, batch, hostelType, gccNumeric)
       setFeeRates(rates)
       setHasOverride(true)
       // Reload flat fee list with new amount
-      const updated = await getFlatFees(hostelType, course, batch, sessionYear, parseInt(gcc), admissionDate || null)
+      const updated = await getFlatFees(hostelType, course, batch, sessionYear, gccNumeric, admissionDate || null)
       setFlatFees(updated)
       setOverrideMode(false)
       setOverrideFeedback({ type: 'ok', msg: `Flat fee set to ₹${amt.toLocaleString('en-IN')}/month for ${sessionYear}.` })
@@ -338,10 +431,11 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   // ── Remove override inline ────────────────────────────────────────────────
   const removeOverrideInline = async () => {
     if (!isAdmin) { alert('Only admin can remove fee overrides.'); return }
+    if (gccNumeric === null) { setOverrideFeedback({ type: 'err', msg: 'Student GCC number is missing or invalid.' }); return }
     if (!window.confirm('Remove override? This student will revert to the standard flat fee rate.')) return
     setOverrideSaving(true)
     try {
-      await saveStudentFlatFeeOverride(parseInt(gcc), sessionYear, null)
+      await saveStudentFlatFeeOverride(gccNumeric, sessionYear, null)
       clearFeeRateCache()
       const rates = await getFeeRates(sessionYear, course, batch, hostelType, null)
       setFeeRates(rates)
@@ -405,6 +499,29 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     return monthDate > todayFirst
   }
 
+  // ✦ Builds the list of consecutive (month, year) pairs for a bulk advance
+  // course-fee payment, starting at the currently selected courseMonth/
+  // courseYear and walking forward `count` months through MONTHS_LIST's
+  // academic order (April→March), rolling the calendar year forward
+  // whenever the list wraps past March back to April — matching how
+  // feeEngine.js's own session-year logic treats the April-start cycle
+  // elsewhere in this app.
+  const buildAdvanceMonthRun = (startMonth, startYear, count) => {
+    const startIdx = MONTHS_LIST.indexOf(startMonth)
+    if (startIdx === -1 || count < 1) return [{ month: startMonth, year: startYear }]
+    const run = []
+    for (let i = 0; i < count; i++) {
+      const idx = (startIdx + i) % MONTHS_LIST.length
+      // Every full lap through MONTHS_LIST (12 months) advances the
+      // calendar year by 1 — but MONTHS_LIST is April-first, so the
+      // rollover from "March" (index 11) back to "April" (index 0) is
+      // where the calendar year actually increments, not the array wrap.
+      const yearOffset = Math.floor((startIdx + i) / MONTHS_LIST.length)
+      run.push({ month: MONTHS_LIST[idx], year: startYear + yearOffset })
+    }
+    return run
+  }
+
   const openAdvancePin = (forWhich) => {
     setAdvancePinFor(forWhich)
     setAdvancePinValue('')
@@ -440,7 +557,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
-        collectedBy: collectedBy || null, receiptNo: rNo, items,
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items,
       })
       if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
@@ -463,24 +580,54 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     const hasFutureMonth = unpaid.some(f => isFutureFeeMonth(f.month, f.year))
     if (hasFutureMonth && !isAdmin) return alert('One or more selected months haven\'t started yet. Only an admin can authorize collecting an advance payment.')
     if (hasFutureMonth && !flatAdvanceAuthorized) return alert('One or more selected months haven\'t started yet. Click "Authorize advance payment (PIN)" above first.')
+    // Any selected month underpaid past the threshold must have a reason
+    // picked from the dropdown before saving — same guard as course fee,
+    // applied per-month since each selected month can be underpaid
+    // independently.
+    const missingReason = unpaid.find(f => flatNeedsReasonFor(f) && !flatUnderpaymentReasons[f.id])
+    if (missingReason) {
+      return alert(
+        `${missingReason.month} ${missingReason.year} is ₹${Math.abs(flatGapFor(missingReason)).toLocaleString('en-IN')} ` +
+        `${flatGapFor(missingReason) < 0 ? 'below' : 'above'} the standard flat fee ` +
+        `(₹${missingReason.amount.toLocaleString('en-IN')}/month). Please select a reason before saving.`
+      )
+    }
     setSaving(true); setError(null)
     try {
       const rNo = rcptNo()
       const items = unpaid.map(f => {
         const isAdvance = isFutureFeeMonth(f.month, f.year)
-        return { kind: 'flat', month: f.month, year: f.year, amount: f.amount, isAdvance, advanceAuthorizedBy: isAdvance ? (currentUser?.userName || currentUser?.name || 'Admin') : null }
+        const amt = flatAmtFor(f)
+        const needsReason = flatNeedsReasonFor(f)
+        const reason = needsReason ? flatUnderpaymentReasons[f.id] : null
+        // Fold the reason into the note so it's visible on the ledger/
+        // receipt itself, not just this modal's local state (mirrors the
+        // course-fee courseNote pattern).
+        const note = needsReason
+          ? `Rate ${flatGapFor(f) < 0 ? 'shortfall' : 'override'}: ₹${f.amount.toLocaleString('en-IN')} standard → ₹${amt.toLocaleString('en-IN')} — ${reason}`
+          : undefined
+        return {
+          kind: 'flat', month: f.month, year: f.year, amount: amt,
+          isAdvance, advanceAuthorizedBy: isAdvance ? (currentUser?.userName || currentUser?.name || 'Admin') : null,
+          standardAmount: f.amount,
+          underpaymentAmount: needsReason && flatGapFor(f) < 0 ? Math.abs(flatGapFor(f)) : 0,
+          underpaymentReason: reason,
+          note,
+        }
       })
       const { sections, total, skipped } = await collectFee({
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
-        collectedBy: collectedBy || null, receiptNo: rNo, items,
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items,
       })
       if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
       setSaved({ rcpt: rNo, items: unpaid.map(i => `${i.month} ${i.year}`).join(', '), total })
       setPaidMonths(p => [...new Set([...p, ...unpaid.map(i => `${i.month}_${i.year}`)])])
       setFlatSel({})
+      setFlatAmtOverrides({})
+      setFlatUnderpaymentReasons({})
       setFlatAdvanceAuthorized(false)
       onSaved?.()
     } catch (err) { setError(err.message || 'Failed to save.') }
@@ -499,7 +646,9 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     // no reason recorded — block the save rather than silently posting an
     // unexplained shortfall (or overcharge) to the ledger. This is the
     // fix for entries like "Sainik Champion ₹1,500" against a ₹6,000
-    // configured rate showing up with no discount/reason on file.
+    // configured rate showing up with no discount/reason on file. Applies
+    // per-month to every month in the run, since the amount is the same
+    // across all of them (no per-month editing in the advance flow).
     if (courseAmtNeedsReason && !courseAmtReason.trim()) {
       return alert(
         `This amount is ₹${Math.abs(courseAmtGap).toLocaleString('en-IN')} ` +
@@ -508,10 +657,21 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         `(e.g. approved scholarship, partial payment, sibling discount) before saving.`
       )
     }
-    if (isCourseMonthPaid()) { setError(`Course fee for ${courseMonth} ${courseYear} is already recorded.`); return }
-    const isAdvance = isFutureFeeMonth(courseMonth, courseYear)
-    if (isAdvance && !isAdmin) return alert(`${courseMonth} ${courseYear} hasn't started yet. Only an admin can authorize collecting an advance payment.`)
-    if (isAdvance && !courseAdvanceAuthorized) return alert(`${courseMonth} ${courseYear} hasn't started yet. Click "Authorize advance payment (PIN)" above first.`)
+
+    // ✦ Advance months — build the run of consecutive months starting at
+    // the selected one, drop any already paid (checked client-side via
+    // paidCourseMonths; collectFee's checkCourseFeeExists guards each one
+    // again server-side regardless), and require advance-PIN authorization
+    // if ANY month in the run hasn't started yet — same rule as a single
+    // month, just checked across the whole run at once so staff aren't
+    // authorized for "this month" and then silently also charge next
+    // year's March without a fresh PIN.
+    const run = buildAdvanceMonthRun(courseMonth, courseYear, advanceMonthCount)
+    const unpaidRun = run.filter(m => !paidCourseMonths.includes(`${m.month}_${m.year}`))
+    if (!unpaidRun.length) { setError(`Course fee for all ${run.length > 1 ? 'selected months' : `${courseMonth} ${courseYear}`} already recorded.`); return }
+    const anyAdvance = unpaidRun.some(m => isFutureFeeMonth(m.month, m.year))
+    if (anyAdvance && !isAdmin) return alert('One or more months in this run haven\'t started yet. Only an admin can authorize collecting an advance payment.')
+    if (anyAdvance && !courseAdvanceAuthorized) return alert('One or more months in this run haven\'t started yet. Click "Authorize advance payment (PIN)" above first.')
     setSaving(true); setError(null)
     try {
       const rNo = rcptNo()
@@ -521,18 +681,35 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       const courseNote = courseAmtNeedsReason
         ? `Rate override: ₹${feeRates.courseFee.toLocaleString('en-IN')} standard → ₹${amt.toLocaleString('en-IN')} — ${courseAmtReason.trim()}`
         : undefined
-      const { sections, total } = await collectFee({
+      const items = unpaidRun.map(m => {
+        const isAdvance = isFutureFeeMonth(m.month, m.year)
+        return {
+          kind: 'course', course: course || '', subtype: batch || '', month: m.month, year: m.year,
+          amount: amt, note: courseNote, isAdvance, advanceAuthorizedBy: isAdvance ? (currentUser?.userName || currentUser?.name || 'Admin') : null,
+          standardAmount: feeRates.courseFee,
+          underpaymentAmount: courseAmtNeedsReason && courseAmtGap < 0 ? Math.abs(courseAmtGap) : 0,
+          underpaymentReason: courseAmtNeedsReason ? courseAmtReason.trim() : null,
+        }
+      })
+      const { sections, total, skipped } = await collectFee({
         gcc, studentName: name, admNo: admNo || '--',
         className: batch || '', course: course || '',
         hostelType, payDate, payMode, txnRef: txnRef || null,
-        collectedBy: collectedBy || null, receiptNo: rNo,
-        items: [{ kind: 'course', course: course || '', subtype: batch || '', month: courseMonth, year: courseYear, amount: amt, note: courseNote, isAdvance, advanceAuthorizedBy: isAdvance ? (currentUser?.userName || currentUser?.name || 'Admin') : null }],
+        collectedBy: collectedBy || null, staffId, receiptNo: rNo, items,
       })
-      printReceipt({ ...commonReceiptFields(rNo), sections, total })
-      setPaidCourseMonths(p => [...new Set([...p, `${courseMonth}_${courseYear}`])])
-      setSaved({ rcpt: rNo, items: `${course} · ${batch} · ${courseMonth} ${courseYear}`, total: amt })
+      if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
+      if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
+      setPaidCourseMonths(p => [...new Set([...p, ...unpaidRun.map(m => `${m.month}_${m.year}`)])])
+      setSaved({
+        rcpt: rNo,
+        items: unpaidRun.length > 1
+          ? `${course} · ${batch} · ${unpaidRun.map(m => `${m.month} ${m.year}`).join(', ')}`
+          : `${course} · ${batch} · ${courseMonth} ${courseYear}`,
+        total,
+      })
       setCourseAdvanceAuthorized(false)
       setCourseAmtReason('')
+      setAdvanceMonthCount(1)
       onSaved?.()
     } catch (err) { setError(err.message || 'Failed to save.') }
     finally { setSaving(false) }
@@ -840,21 +1017,64 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                 {flatFees.map(fee => {
                   const paid = isMonthPaid(fee)
                   const future = !paid && isFutureFeeMonth(fee.month, fee.year)
+                  const selected = !paid && flatSel[fee.id]
+                  const needsReason = selected && flatNeedsReasonFor(fee)
+                  const gap = flatGapFor(fee)
                   return (
-                    <div key={fee.id} onClick={() => !paid && setFlatSel(p => ({ ...p, [fee.id]: !p[fee.id] }))}
-                      style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', borderRadius:10, cursor:paid?'default':'pointer', border:`1.5px solid ${paid?'#6ee7b7':flatSel[fee.id]?C.emerald:C.slate[200]}`, background:paid?'#f0fdf4':flatSel[fee.id]?'#ecfdf5':'white', opacity:paid?.75:1, transition:'all .15s' }}>
-                      <div style={{ fontSize:20 }}>📅</div>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontWeight:700, fontSize:13, color:C.slate[900], display:'flex', alignItems:'center', gap:6 }}>
-                          {fee.month} {fee.year}
-                          {future && <span style={{ fontSize:9, fontWeight:800, color:'#991B1B', background:'#fef2f2', padding:'1px 6px', borderRadius:4, border:'1px solid #fca5a5' }}>ADVANCE</span>}
+                    <div key={fee.id}>
+                      <div onClick={() => !paid && setFlatSel(p => ({ ...p, [fee.id]: !p[fee.id] }))}
+                        style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', borderRadius:10, cursor:paid?'default':'pointer', border:`1.5px solid ${paid?'#6ee7b7':needsReason?'#fca5a5':selected?C.emerald:C.slate[200]}`, background:paid?'#f0fdf4':selected?'#ecfdf5':'white', opacity:paid?.75:1, transition:'all .15s' }}>
+                        <div style={{ fontSize:20 }}>📅</div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontWeight:700, fontSize:13, color:C.slate[900], display:'flex', alignItems:'center', gap:6 }}>
+                            {fee.month} {fee.year}
+                            {future && <span style={{ fontSize:9, fontWeight:800, color:'#991B1B', background:'#fef2f2', padding:'1px 6px', borderRadius:4, border:'1px solid #fca5a5' }}>ADVANCE</span>}
+                            {needsReason && <span style={{ fontSize:9, fontWeight:800, color:'#991B1B', background:'#fef2f2', padding:'1px 6px', borderRadius:4, border:'1px solid #fca5a5' }}>{gap < 0 ? 'UNDERPAID' : 'ABOVE RATE'}</span>}
+                          </div>
+                          <div style={{ fontSize:11, color:paid?C.emerald:C.slate[400] }}>{paid ? 'Already paid' : `${hostelType} rate`}</div>
                         </div>
-                        <div style={{ fontSize:11, color:paid?C.emerald:C.slate[400] }}>{paid ? 'Already paid' : `${hostelType} rate`}</div>
+                        {/* ✦ Editable amount — was a fixed <span> showing fee.amount
+                            with no way to enter a different figure. Only editable
+                            once the month is selected (matches the admission tab's
+                            pattern of showing the input alongside the checkbox
+                            state) and paid months stay display-only. */}
+                        {selected ? (
+                          <input
+                            type="number" min="0"
+                            value={flatAmtOverrides[fee.id] ?? fee.amount}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => setFlatAmtOverrides(p => ({ ...p, [fee.id]: e.target.value }))}
+                            style={{ ...inp, width:100, textAlign:'right', fontWeight:800, fontSize:14, color: needsReason ? C.red : (hasOverride ? C.violet : C.emerald), borderColor: needsReason ? '#fca5a5' : C.slate[200] }}
+                          />
+                        ) : (
+                          <span style={{ fontSize:15, fontWeight:800, color: hasOverride ? C.violet : C.emerald }}>{fmt(fee.amount)}</span>
+                        )}
+                        {paid ? <PaidBadge /> : (
+                          <div style={{ width:20, height:20, borderRadius:5, flexShrink:0, border:`2px solid ${selected?C.emerald:C.slate[300]}`, background:selected?C.emerald:'white', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                            {selected && <span style={{ color:'white', fontSize:11, fontWeight:900 }}>✓</span>}
+                          </div>
+                        )}
                       </div>
-                      <span style={{ fontSize:15, fontWeight:800, color: hasOverride ? C.violet : C.emerald }}>{fmt(fee.amount)}</span>
-                      {paid ? <PaidBadge /> : (
-                        <div style={{ width:20, height:20, borderRadius:5, flexShrink:0, border:`2px solid ${flatSel[fee.id]?C.emerald:C.slate[300]}`, background:flatSel[fee.id]?C.emerald:'white', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                          {flatSel[fee.id] && <span style={{ color:'white', fontSize:11, fontWeight:900 }}>✓</span>}
+                      {/* ✦ Underpayment/overpayment warning + required reason
+                          dropdown — shown inline the moment the edited amount
+                          crosses FLAT_FEE_DISCREPANCY_THRESHOLD away from the
+                          standard rate, so the collector sees and explains the
+                          gap at the point of collection rather than it only
+                          surfacing later in a ledger audit. Saving is blocked
+                          (see saveFlat) until a reason is picked. */}
+                      {needsReason && (
+                        <div style={{ background:'#fef2f2', border:'1.5px solid #fca5a5', borderRadius:10, padding:'10px 14px', marginTop:6 }}>
+                          <div style={{ fontSize:12, fontWeight:700, color:'#991B1B', marginBottom:6 }}>
+                            ⚠️ {fee.month} {fee.year} is ₹{Math.abs(gap).toLocaleString('en-IN')} {gap < 0 ? 'below' : 'above'} the
+                            standard flat fee (₹{fee.amount.toLocaleString('en-IN')}/month). A reason is required to save.
+                          </div>
+                          <select
+                            value={flatUnderpaymentReasons[fee.id] || ''}
+                            onChange={e => setFlatUnderpaymentReasons(p => ({ ...p, [fee.id]: e.target.value }))}
+                            style={{ ...inp, borderColor:'#fca5a5' }}>
+                            <option value="">Select a reason…</option>
+                            {FLAT_FEE_UNDERPAYMENT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                          </select>
                         </div>
                       )}
                     </div>
@@ -927,7 +1147,24 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                 </div>
                 <div style={{ gridColumn:'1/-1' }}>
                   <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>Amount (₹) — auto-filled, editable</label>
-                  <input type="number" value={courseAmt} onChange={e => setCourseAmt(e.target.value)} style={{ ...inp, fontWeight:700, color:C.violet }} />
+                  <input type="number" min="0" value={courseAmt} onChange={e => setCourseAmt(e.target.value)} style={{ ...inp, fontWeight:700, color:C.violet }} />
+                </div>
+                {/* ✦ Advance months — pays this many consecutive months
+                    starting at "For month"/"Year" above in one save, instead
+                    of repeating the whole flow per month. 1 = just the
+                    selected month (unchanged default behavior). */}
+                <div style={{ gridColumn:'1/-1' }}>
+                  <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>
+                    Advance — pay how many months starting from {courseMonth} {courseYear}?
+                  </label>
+                  <select value={advanceMonthCount} onChange={e => { setAdvanceMonthCount(Number(e.target.value)); setCourseAdvanceAuthorized(false) }} style={inp}>
+                    {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => <option key={n} value={n}>{n} month{n > 1 ? 's' : ''}{n > 1 ? ` (through ${buildAdvanceMonthRun(courseMonth, courseYear, n).slice(-1)[0].month} ${buildAdvanceMonthRun(courseMonth, courseYear, n).slice(-1)[0].year})` : ''}</option>)}
+                  </select>
+                  {advanceMonthCount > 1 && (
+                    <div style={{ fontSize:11, color:C.slate[400], marginTop:4 }}>
+                      Will attempt: {buildAdvanceMonthRun(courseMonth, courseYear, advanceMonthCount).map(m => `${m.month} ${m.year}`).join(', ')} — already-paid months are skipped automatically.
+                    </div>
+                  )}
                 </div>
               </div>
               {courseAmtNeedsReason && (
@@ -956,6 +1193,19 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                   <div style={{ fontSize:13, fontWeight:700, color:C.amber }}>⚠️ Not yet paid — {courseMonth} {courseYear}</div>
                 </div>
               )}
+              {/* ✦ This banner above only ever describes the FIRST selected
+                  month — with advanceMonthCount > 1, clarify what the save
+                  button will actually do across the whole run, since some
+                  months in it may already be paid and get silently skipped. */}
+              {advanceMonthCount > 1 && !loadingCourse && (() => {
+                const run = buildAdvanceMonthRun(courseMonth, courseYear, advanceMonthCount)
+                const alreadyPaidInRun = run.filter(m => paidCourseMonths.includes(`${m.month}_${m.year}`))
+                return alreadyPaidInRun.length > 0 ? (
+                  <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:10, padding:'10px 14px', marginBottom:16, fontSize:12, color:'#1d4ed8' }}>
+                    ℹ️ {alreadyPaidInRun.length} of {run.length} selected months already paid and will be skipped: {alreadyPaidInRun.map(m => `${m.month} ${m.year}`).join(', ')}
+                  </div>
+                ) : null
+              })()}
               {!courseMonthPaid && isFutureFeeMonth(courseMonth, courseYear) && (
                 courseAdvanceAuthorized ? (
                   <div style={{ background:'#f0f9ff', border:'1.5px solid #7dd3fc', borderRadius:10, padding:'12px 16px', marginBottom:16 }}>
@@ -1053,17 +1303,33 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
         {/* Footer */}
         {(() => {
           const upiMissingRef = payMode === 'UPI' && !txnRef.trim()
-          const courseFuture = !courseMonthPaid && isFutureFeeMonth(courseMonth, courseYear)
+          // ✦ Checks the WHOLE advance run (buildAdvanceMonthRun), not just
+          // the single selected courseMonth/courseYear — with
+          // advanceMonthCount > 1, a later month in the run could be future
+          // even when the first one isn't, and the button needs to block/
+          // prompt for PIN authorization based on the run as a whole, same
+          // as saveCourse itself checks.
+          const courseRun = buildAdvanceMonthRun(courseMonth, courseYear, advanceMonthCount)
+          const courseRunUnpaid = courseRun.filter(m => !paidCourseMonths.includes(`${m.month}_${m.year}`))
+          const courseAllPaidInRun = courseRunUnpaid.length === 0
+          const courseFuture = courseRunUnpaid.some(m => isFutureFeeMonth(m.month, m.year))
           const courseFutureBlocked = courseFuture && (!isAdmin || !courseAdvanceAuthorized)
           const flatFutureBlocked = flatFees.some(f => flatSel[f.id] && !isMonthPaid(f) && isFutureFeeMonth(f.month, f.year)) && (!isAdmin || !flatAdvanceAuthorized)
+          // ✦ A selected flat-fee month that's underpaid/overpaid past the
+          // threshold but has no reason picked yet blocks the save button
+          // directly (not just the alert() inside saveFlat) — same
+          // discoverability as every other blocking condition here.
+          const flatReasonMissing = flatFees.some(f => flatSel[f.id] && !isMonthPaid(f) && flatNeedsReasonFor(f) && !flatUnderpaymentReasons[f.id])
           const blocked = saving || !admissionDate || upiMissingRef
-            || (tab==='flat' && (allFlatPaid || flatFutureBlocked)) || (tab==='admission' && (allAdmPaid||isRepeater))
-            || (tab==='course' && (courseMonthPaid || courseFutureBlocked)) || ratesLoading
+            || (tab==='flat' && (allFlatPaid || flatFutureBlocked || flatReasonMissing)) || (tab==='admission' && (allAdmPaid||isRepeater))
+            || (tab==='course' && (courseAllPaidInRun || courseFutureBlocked)) || ratesLoading
           const label = saving ? '⏳ Saving…'
             : !admissionDate ? '⚠️ Set Admission Date First'
             : upiMissingRef ? '⚠️ Enter UPI Txn / UTR No.'
             : (tab==='course' && courseFutureBlocked) ? '⛔ Authorize Advance First'
             : (tab==='flat' && flatFutureBlocked) ? '⛔ Authorize Advance First'
+            : (tab==='flat' && flatReasonMissing) ? '⚠️ Select Underpayment Reason'
+            : (tab==='course' && advanceMonthCount > 1) ? `🖨️ Record ${courseRunUnpaid.length} Month${courseRunUnpaid.length !== 1 ? 's' : ''} & Print Receipt`
             : ratesLoading ? '⏳ Loading…'
             : '🖨️ Record & Print Receipt'
           return (

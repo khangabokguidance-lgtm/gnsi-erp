@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { getActiveStudents } from './studentQueries'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { PersonalAccountantButton } from './personalAccountant'
 import { isAdminRole } from './roles'
 import {
@@ -14,6 +14,7 @@ import {
   COURSE_RATES, FLAT_RATES,
   PAY_MODES, MONTHS_LIST, CURRENT_YEAR,
 } from './feeEngine'
+import { getDuesForStudents, getStudentDues } from './feeDues'
 
 // ── Razorpay config ─────────────────────────────────────────────────────────
 // Public key only — safe to ship to the browser. The secret key lives ONLY
@@ -320,12 +321,16 @@ const FIELD_LABELS={
   id:'Record ID', adm_app_id:'GCC No.', gcc_no:'GCC No.', gcc:'GCC No.',
   amount:'Amount', amount_paid:'Amount Paid', total:'Total',
   pay_date:'Payment Date', pay_mode:'Payment Mode', txn_ref:'Txn Reference',
-  receipt_no:'Receipt No.', collected_by:'Collected By',
+  receipt_no:'Receipt No.', collected_by:'Collected By', staff_id:'Staff ID',
+  collected_at:'Collected At', reverted_at:'Reverted At', corrected_at:'Corrected At',
+  deleted_at:'Deleted At',
   month:'Month', for_month:'For Month', year:'Year',
   course:'Course', subtype:'Subtype', hostel_type:'Hostel Type', class_name:'Class',
   fee_type:'Fee Type', description:'Description', table:'Table', items:'Items',
   student_name:'Student Name', adm_no:'Admission No.',
-  reverted:'Reverted', reverted_by:'Reverted By', reverted_at:'Reverted At', revert_reason:'Revert Reason',
+  reverted:'Reverted', reverted_by:'Reverted By', revert_reason:'Revert Reason',
+  standard_amount:'Standard Amount', collected_amount:'Collected Amount',
+  shortfall:'Shortfall', reason:'Reason',
   created_at:'Created At', updated_at:'Updated At',
 }
 function AnomalyRecordRow({record,borderColor}){
@@ -364,6 +369,8 @@ function activityActionMeta(action) {
   if (action === 'fee_revert') return { label: 'Revert', color: '#dc2626', bg: '#fef2f2', icon: '↩️' }
   if (action === 'fee_date_correction') return { label: 'Date Correction', color: '#b45309', bg: '#fffbeb', icon: '📅' }
   if (action === 'legacy_fee_delete') return { label: 'Legacy Delete', color: '#7c3aed', bg: '#f5f3ff', icon: '🗑️' }
+  if (action === 'flat_fee_underpayment') return { label: 'Flat Fee Underpaid', color: '#991B1B', bg: '#fef2f2', icon: '⚠️' }
+  if (action === 'course_fee_underpayment') return { label: 'Course Fee Underpaid', color: '#991B1B', bg: '#fef2f2', icon: '⚠️' }
   return { label: action || 'Unknown', color: '#64748b', bg: '#f8fafc', icon: '•' }
 }
 
@@ -376,14 +383,18 @@ function activityLine(entry) {
     const itemsDesc = (newV.items || []).map(i => `${i.label} ₹${Number(i.amount || 0).toLocaleString('en-IN')}`).join(', ')
     return `${newV.student_name || 'GCC-' + newV.gcc} · ${itemsDesc || '—'} · Total ₹${Number(newV.total || 0).toLocaleString('en-IN')} · ${newV.pay_mode || '—'}${newV.txn_ref ? ' (' + newV.txn_ref + ')' : ''} · Receipt ${newV.receipt_no || '—'}`
   }
-  if (entry.action === 'fee_revert' && newV) {
-    return `${newV.table || 'record'} #${entry.target_id} reverted${newV.revert_reason ? ' — ' + newV.revert_reason : ''}`
+  if (entry.action === 'fee_revert' && oldV) {
+    return `${oldV.table || 'record'} #${entry.target_id} reverted${oldV.revert_reason ? ' — ' + oldV.revert_reason : ''}`
   }
   if (entry.action === 'fee_date_correction' && oldV && newV) {
     return `${newV.table || 'record'} #${entry.target_id} · date changed ${oldV.pay_date || '—'} → ${newV.pay_date || '—'}`
   }
   if (entry.action === 'legacy_fee_delete') {
     return `Legacy fee record #${entry.target_id} deleted`
+  }
+  if ((entry.action === 'flat_fee_underpayment' || entry.action === 'course_fee_underpayment') && oldV) {
+    const feeLabel = entry.action === 'flat_fee_underpayment' ? 'Flat fee' : 'Course fee'
+    return `${oldV.student_name || 'GCC-' + oldV.gcc} · ${feeLabel} ${oldV.month || ''} ${oldV.year || ''} · ₹${Number(oldV.collected_amount || 0).toLocaleString('en-IN')} collected vs ₹${Number(oldV.standard_amount || 0).toLocaleString('en-IN')} standard · shortfall ₹${Number(oldV.shortfall || 0).toLocaleString('en-IN')}${oldV.reason ? ' — ' + oldV.reason : ''}`
   }
   return `#${entry.target_id}`
 }
@@ -429,9 +440,16 @@ function activityColumns(entry, students = []) {
   return {
     gcc:      gcc ?? '—',
     student:  v.student_name ?? student?.name ?? '—',
-    amount:   v.total ?? v.amount ?? v.amount_paid ?? null,
+    amount:   v.total ?? v.amount ?? v.amount_paid ?? v.collected_amount ?? null,
     mode:     v.pay_mode ?? '—',
     receipt:  receiptOrDesc ?? '—',
+    // ✦ staff_id — the stable identifier (falls back to changed_by, the
+    // free-text name column already on every audit_log row) rather than
+    // re-parsing it out of old_values/new_values on every entry, since
+    // staff_id is now written directly onto the audit_log row's payload
+    // (and changed_by itself now always carries it too — see collectFee/
+    // revertFeeCollection/correctFeeCollectionDate/deleteLegacyFeeRecord).
+    staffId:  v.staff_id ?? entry.changed_by ?? '—',
   }
 }
 
@@ -489,7 +507,7 @@ function ActivityLogTab({ students, isAdmin, currentUser }) {
     setLoading(true)
     supabase.from('audit_log')
       .select('*')
-      .in('action', ['fee_collection', 'fee_revert', 'fee_date_correction', 'legacy_fee_delete'])
+      .in('action', ['fee_collection', 'fee_revert', 'fee_date_correction', 'legacy_fee_delete', 'flat_fee_underpayment', 'course_fee_underpayment'])
       .order('created_at', { ascending: false })
       .limit(1000)
       .then(({ data, error }) => {
@@ -601,6 +619,150 @@ function ActivityLogTab({ students, isAdmin, currentUser }) {
               )
             })}
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Audit Warnings Tab (admin only) ───────────────────────────────────────────
+// Focused view of just the underpayment warnings (flat_fee_underpayment,
+// course_fee_underpayment) — separate from the general Activity Log, which
+// mixes every action type together. This exists specifically so an admin
+// reviewing "who collected less than the standard rate, and why" doesn't
+// have to filter the full activity feed down every time; it's the direct
+// admin-only surface for the warnings collectFee already writes to
+// audit_log at collection time (see feeEngine.js).
+function AuditWarningsTab({ students, isAdmin }) {
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [reasonFilter, setReasonFilter] = useState('ALL')
+  const [staffFilter, setStaffFilter] = useState('ALL')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    if (!isAdmin) return
+    setLoading(true)
+    supabase.from('audit_log')
+      .select('*')
+      .in('action', ['flat_fee_underpayment', 'course_fee_underpayment'])
+      .order('created_at', { ascending: false })
+      .limit(1000)
+      .then(({ data, error }) => {
+        if (!error) setEntries(data || [])
+        setLoading(false)
+      })
+  }, [isAdmin])
+
+  if (!isAdmin) {
+    return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>🔒 Admin only</div>
+  }
+
+  const parsed = entries.map(e => {
+    let v = {}
+    try { v = e.old_values ? JSON.parse(e.old_values) : {} } catch (err) {}
+    return { ...e, v }
+  })
+
+  const reasons = [...new Set(parsed.map(e => e.v.reason).filter(Boolean))].sort()
+  const staffNames = [...new Set(parsed.map(e => e.v.staff_id || e.changed_by).filter(Boolean))].sort()
+
+  const filtered = parsed.filter(e => {
+    if (reasonFilter !== 'ALL' && e.v.reason !== reasonFilter) return false
+    const staffId = e.v.staff_id || e.changed_by
+    if (staffFilter !== 'ALL' && staffId !== staffFilter) return false
+    const d = (e.created_at || '').slice(0, 10)
+    if (dateFrom && d < dateFrom) return false
+    if (dateTo && d > dateTo) return false
+    if (search) {
+      const q = search.toLowerCase()
+      const hay = `${e.v.gcc || ''} ${e.v.student_name || ''} ${e.v.receipt_no || ''} ${staffId || ''}`.toLowerCase()
+      if (!hay.includes(q)) return false
+    }
+    return true
+  })
+
+  const totalShortfall = filtered.reduce((s, e) => s + Number(e.v.shortfall || 0), 0)
+
+  return (
+    <div>
+      <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 12, padding: '14px 18px', marginBottom: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#991B1B' }}>⚠️ Underpayment Warnings</div>
+          <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 2 }}>Every flat/course fee payment collected below the standard rate, with the reason on record</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 20, fontWeight: 900, color: '#991B1B' }}>₹{Number(totalShortfall).toLocaleString('en-IN')}</div>
+          <div style={{ fontSize: 11, color: '#b91c1c' }}>total shortfall · {filtered.length} entr{filtered.length === 1 ? 'y' : 'ies'}</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18, alignItems: 'flex-end' }}>
+        <div>
+          <label style={{ ...lbl, fontSize: 11 }}>Reason</label>
+          <select value={reasonFilter} onChange={e => setReasonFilter(e.target.value)} style={{ ...inp, width: 220 }}>
+            <option value="ALL">All reasons</option>
+            {reasons.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ ...lbl, fontSize: 11 }}>Staff</label>
+          <select value={staffFilter} onChange={e => setStaffFilter(e.target.value)} style={{ ...inp, width: 160 }}>
+            <option value="ALL">All staff</option>
+            {staffNames.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ ...lbl, fontSize: 11 }}>From</label>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ ...inp, width: 150 }} />
+        </div>
+        <div>
+          <label style={{ ...lbl, fontSize: 11 }}>To</label>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ ...inp, width: 150 }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <label style={{ ...lbl, fontSize: 11 }}>Search</label>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Student, GCC, receipt no…" style={inp} />
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 48, color: '#64748b' }}>⏳ Loading…</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}>No underpayment warnings for the current filters</div>
+      ) : (
+        <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: '#1e3a5f' }}>
+                {['Type', 'GCC', 'Student', 'Period', 'Standard', 'Collected', 'Shortfall', 'Reason', 'Staff', 'Time'].map(h => (
+                  <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 11 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(e => {
+                const v = e.v
+                const feeLabel = e.action === 'flat_fee_underpayment' ? 'Flat Fee' : 'Course Fee'
+                return (
+                  <tr key={e.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '9px 12px' }}><span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: '#fef2f2', color: '#991B1B' }}>{feeLabel}</span></td>
+                    <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a5f', fontWeight: 700 }}>{v.gcc ? `GCC-${v.gcc}` : '—'}</td>
+                    <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>{v.student_name || '—'}</td>
+                    <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 12 }}>{v.month || ''} {v.year || ''}</td>
+                    <td style={{ padding: '9px 12px', color: '#475569' }}>₹{Number(v.standard_amount || 0).toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '9px 12px', color: '#475569' }}>₹{Number(v.collected_amount || 0).toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '9px 12px', fontWeight: 800, color: '#dc2626' }}>₹{Number(v.shortfall || 0).toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '9px 12px', color: '#475569', fontSize: 12, maxWidth: 220 }}>{v.reason || '—'}</td>
+                    <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 11 }}>{v.staff_id || e.changed_by || 'Unknown'}</td>
+                    <td style={{ padding: '9px 12px', color: '#94a3b8', fontSize: 11, whiteSpace: 'nowrap' }}>{new Date(e.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -792,6 +954,31 @@ function StudentActivityLog({ gcc, timelineIds }) {
 function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fees,isAdmin,currentUser,onRefresh,onCollect}){
   const n=v=>Number(v||0).toLocaleString('en-IN'),gcc=gccStr(student.gcc_no)
   const [tab,setTab]=useState('history'),[toast,setToast]=useState(null),[saving,setSaving]=useState(false)
+  // ✦ Full ledger — payments (existing "history" timeline below) plus what's
+  // still due, computed via the real per-month dues engine (getStudentDues
+  // in feeDues.js: admission/flat/course, DB rates + overrides +
+  // admission-date exclusions — see feeDues.js for the full logic). Fetched
+  // lazily on first opening the Dues tab for this student rather than
+  // eagerly for every card render, since it needs 2-3 async calls
+  // (getFeeRates, getFlatFees, plus the three collection-table reads
+  // already available here — but getStudentDues re-fetches all of it
+  // fresh per call rather than reusing the props already loaded, since
+  // it's a self-contained function designed to work from just a student
+  // record).
+  const [dues,setDues]=useState(null)
+  const [duesLoading,setDuesLoading]=useState(false)
+  const [duesError,setDuesError]=useState(null)
+  useEffect(()=>{
+    if(tab!=='dues')return
+    let cancelled=false
+    setDuesLoading(true);setDuesError(null)
+    getStudentDues(student)
+      .then(d=>{if(!cancelled)setDues(d)})
+      .catch(e=>{if(!cancelled)setDuesError(e.message||'Failed to compute dues.')})
+      .finally(()=>{if(!cancelled)setDuesLoading(false)})
+    return ()=>{cancelled=true}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[tab,gcc])
   const showToast=(msg,color='#16a34a')=>{setToast({msg,color});setTimeout(()=>setToast(null),3500)}
   const myAdm=adm_fee_collections.filter(r=>gccStr(r.adm_app_id)===gcc&&!r.reverted)
   const myFlat=adm_flat_fees.filter(r=>gccStr(r.adm_app_id)===gcc&&r.paid)
@@ -814,7 +1001,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
       if(row._table==='adm_fee_collections'){aType=row.fee_type==='advance'?'advance_fee':'adm_fee';if(row.fee_type==='admission')aRef=sourceRef.admission(gcc);else if(row.fee_type==='advance')aRef=row.id;else if(row.fee_type==='item')aRef=sourceRef.admItem(gcc,row.description==='Prospectus'?'prospectus':(row.description||'').replace(/^Dress Kit — /,''))}
       else if(row._table==='adm_flat_fees'){aType='flat_fee';aRef=sourceRef.flatFee(gcc,row.month,row.year)}
       else if(row._table==='adm_course_fees'){aType='course_fee';aRef=sourceRef.courseFee(gcc,row.for_month,row.year)}
-      await revertFeeCollection({table:row._table,id:row.id,accountSourceRef:aRef,accountSourceType:aType,revertedBy:currentUser?.userName||currentUser?.name||'Admin',reason})
+      await revertFeeCollection({table:row._table,id:row.id,accountSourceRef:aRef,accountSourceType:aType,revertedBy:currentUser?.userName||currentUser?.name||'Admin',staffId:currentUser?.userName||currentUser?.name||null,reason})
       showToast(`↩️ Reverted: ${row._desc}`,'#dc2626');onRefresh()
     }catch(err){showToast('Revert failed: '+err.message,'#dc2626')}
     setSaving(false)
@@ -829,7 +1016,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
       if(row._table==='adm_flat_fees'){aType='flat_fee';aRef=sourceRef.flatFee(gcc,row.month,row.year)}
       if(row._table==='adm_course_fees'){aType='course_fee';aRef=sourceRef.courseFee(gcc,row.for_month,row.year)}
       if(row._table==='adm_fee_collections'){aType=row.fee_type==='advance'?'advance_fee':'adm_fee';aRef=row.fee_type==='admission'?sourceRef.admission(gcc):row.fee_type==='advance'?row.id:null}
-      await correctFeeCollectionDate({table:row._table,id:row.id,newDate,accountSourceRef:aRef,accountSourceType:aType,correctedBy:currentUser?.userName||currentUser?.name||'Admin'})
+      await correctFeeCollectionDate({table:row._table,id:row.id,newDate,accountSourceRef:aRef,accountSourceType:aType,correctedBy:currentUser?.userName||currentUser?.name||'Admin',staffId:currentUser?.userName||currentUser?.name||null})
       showToast(`📅 Date corrected to ${newDate}`,'#1e3a5f');onRefresh()
     }catch(err){showToast('Date fix failed: '+err.message,'#dc2626')}
     setSaving(false)
@@ -852,7 +1039,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
         </div>
       </div>
       <div style={{display:'flex',borderBottom:'2px solid #f1f5f9',background:'#f8fafc'}}>
-        {[{id:'history',l:'📋 Fee History'},{id:'activity',l:isAdmin?'🕒 Activity Log':'🔒 Admin Only'},{id:'revert',l:isAdmin?'↩️ Revert / Fix (Admin)':'🔒 Admin Only'}].map(t=>(<button key={t.id} onClick={()=>isAdmin||t.id==='history'?setTab(t.id):null} style={{padding:'10px 18px',border:'none',borderBottom:tab===t.id?'2px solid #1e3a5f':'2px solid transparent',background:'none',cursor:isAdmin||t.id==='history'?'pointer':'not-allowed',fontSize:12,fontWeight:tab===t.id?800:500,color:tab===t.id?'#1e3a5f':isAdmin||t.id==='history'?'#64748b':'#cbd5e1',marginBottom:-2}}>{t.l}</button>))}
+        {[{id:'history',l:'📋 Fee History'},{id:'dues',l:'📌 Dues'},{id:'activity',l:isAdmin?'🕒 Activity Log':'🔒 Admin Only'},{id:'revert',l:isAdmin?'↩️ Revert / Fix (Admin)':'🔒 Admin Only'}].map(t=>(<button key={t.id} onClick={()=>isAdmin||t.id==='history'||t.id==='dues'?setTab(t.id):null} style={{padding:'10px 18px',border:'none',borderBottom:tab===t.id?'2px solid #1e3a5f':'2px solid transparent',background:'none',cursor:isAdmin||t.id==='history'||t.id==='dues'?'pointer':'not-allowed',fontSize:12,fontWeight:tab===t.id?800:500,color:tab===t.id?'#1e3a5f':isAdmin||t.id==='history'||t.id==='dues'?'#64748b':'#cbd5e1',marginBottom:-2}}>{t.l}</button>))}
       </div>
       {tab==='history'&&(
         <div style={{padding:'0 0 4px'}}>
@@ -866,6 +1053,73 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
             </div>
           )}
           <div style={{padding:'12px 16px',borderTop:'1px solid #f1f5f9'}}><button onClick={()=>onCollect(student)} style={{width:'100%',padding:'10px',borderRadius:8,background:'linear-gradient(135deg,#1e3a5f,#3730a3)',color:'white',border:'none',fontSize:13,fontWeight:800,cursor:'pointer'}}>💳 Collect Fee for {student.name.split(' ')[0]}</button></div>
+        </div>
+      )}
+      {tab==='dues'&&(
+        <div style={{padding:'0 0 4px'}}>
+          {duesLoading?(
+            <div style={{padding:40,textAlign:'center',color:'#94a3b8'}}>⏳ Computing dues…</div>
+          ):duesError?(
+            <div style={{padding:'16px 20px'}}>
+              <div style={{background:'#fef2f2',border:'1.5px solid #fca5a5',borderRadius:10,padding:'12px 16px',fontSize:12,color:'#991B1B',fontWeight:600}}>❌ {duesError}</div>
+            </div>
+          ):!dues?(
+            <div style={{padding:40,textAlign:'center',color:'#94a3b8'}}>No dues data.</div>
+          ):(
+            <div>
+              {dues.failedSources.length>0&&(
+                <div style={{margin:'12px 16px 0',background:'#fffbeb',border:'1.5px solid #fde68a',borderRadius:10,padding:'10px 14px',fontSize:11,color:'#92400e',fontWeight:600}}>
+                  ⚠️ {dues.failedSources.join(', ')} could not be checked — figures below are a LOWER BOUND, not exact.
+                </div>
+              )}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,padding:'14px 16px'}}>
+                {[
+                  {l:'Admission Due',v:dues.admission.due,i:'🎓',c:dues.admission.due>0?'#dc2626':'#16a34a'},
+                  {l:'Flat Fee Due',v:dues.flatFee.due,i:'📅',c:dues.flatFee.due>0?'#dc2626':'#16a34a'},
+                  {l:'Course Fee Due',v:dues.courseFee.due,i:'📚',c:dues.courseFee.due>0?'#dc2626':'#16a34a'},
+                  {l:'Total Due',v:dues.totalDue,i:'💰',c:dues.totalDue>0?'#dc2626':'#16a34a'},
+                ].map(c=>(<div key={c.l} style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:10,padding:'10px 12px',textAlign:'center'}}><div style={{fontSize:10,color:'#64748b'}}>{c.i} {c.l}</div><div style={{fontSize:15,fontWeight:900,marginTop:3,color:c.c}}>₹{n(c.v)}</div></div>))}
+              </div>
+              {dues.monthsOverdue>0&&(
+                <div style={{margin:'0 16px 12px',background:'#fef2f2',border:'1.5px solid #fca5a5',borderRadius:10,padding:'10px 14px',fontSize:12,fontWeight:700,color:'#991B1B'}}>
+                  ⚠️ {dues.monthsOverdue} month{dues.monthsOverdue>1?'s':''} overdue across flat + course fee
+                </div>
+              )}
+              <div style={{padding:'0 16px 16px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}}>📅 Flat Fee — Feb/Mar</div>
+                  {dues.flatFee.items.length===0?(<div style={{fontSize:12,color:'#94a3b8'}}>No flat-fee months due yet.</div>):(
+                    <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                      {dues.flatFee.items.map(i=>(
+                        <div key={`${i.month}-${i.year}`} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 10px',borderRadius:7,background:i.paid?'#f0fdf4':'#fef2f2',border:`1px solid ${i.paid?'#bbf7d0':'#fca5a5'}`}}>
+                          <span style={{fontSize:12,fontWeight:600,color:'#1e293b'}}>{i.month} {i.year}</span>
+                          <span style={{fontSize:12,fontWeight:800,color:i.paid?'#16a34a':'#dc2626'}}>{i.paid?`✓ ₹${n(i.expected)}`:`₹${n(i.expected)} due`}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}}>📚 Course Fee — by month</div>
+                  {dues.courseFee.items.length===0?(<div style={{fontSize:12,color:'#94a3b8'}}>No course-fee months due yet.</div>):(
+                    <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:280,overflowY:'auto'}}>
+                      {dues.courseFee.items.map(i=>(
+                        <div key={`${i.month}-${i.year}`} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 10px',borderRadius:7,background:i.paid?'#f0fdf4':'#fef2f2',border:`1px solid ${i.paid?'#bbf7d0':'#fca5a5'}`}}>
+                          <span style={{fontSize:12,fontWeight:600,color:'#1e293b'}}>{i.month} {i.year}</span>
+                          <span style={{fontSize:12,fontWeight:800,color:i.paid?'#16a34a':'#dc2626'}}>{i.paid?`✓ ₹${n(i.expected)}`:`₹${n(i.expected)} due`}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {dues.totalDue>0&&(
+                <div style={{padding:'0 16px 16px'}}>
+                  <button onClick={()=>onCollect(student)} style={{width:'100%',padding:'10px',borderRadius:8,background:'linear-gradient(135deg,#991B1B,#dc2626)',color:'white',border:'none',fontSize:13,fontWeight:800,cursor:'pointer'}}>💳 Collect Outstanding Dues for {student.name.split(' ')[0]}</button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
       {tab==='activity'&&isAdmin&&(
@@ -1990,7 +2244,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     try {
       await revertFeeCollection({
         table, id, accountSourceRef, accountSourceType,
-        revertedBy: currentUser?.name || 'Admin', reason,
+        revertedBy: currentUser?.name || 'Admin', staffId: currentUser?.userName || currentUser?.name || null, reason,
       })
       showToast(`↩️ Reverted: ${label}`, '#dc2626')
       onRefresh()
@@ -2033,7 +2287,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) { showToast('Invalid date — use YYYY-MM-DD', '#dc2626'); return }
     setSaving(true)
     try {
-      await correctFeeCollectionDate({ table, id, newDate, accountSourceRef, accountSourceType, correctedBy: currentUser?.userName || currentUser?.name || 'Admin' })
+      await correctFeeCollectionDate({ table, id, newDate, accountSourceRef, accountSourceType, correctedBy: currentUser?.userName || currentUser?.name || 'Admin', staffId: currentUser?.userName || currentUser?.name || null })
       showToast(`📅 Date corrected to ${newDate}`, '#1e3a5f')
       onRefresh()
     } catch (err) {
@@ -2901,6 +3155,13 @@ export default function Fees() {
   const [adm_flat_fees,       setAdmFlatFees]   = useState([])
   const [adm_course_fees,     setAdmCourseFees] = useState([])
   const [loading,             setLoading]       = useState(true)
+  // ✦ Real per-student dues (admission/flat/course, month-by-month, DB rates,
+  // admission-date aware — see feeDues.js). Keyed by gcc_no string. Computed
+  // async in a separate effect below (getStudentDues hits Supabase per
+  // student for rates/overrides), so liveRows falls back to the old sync
+  // expectedFlat heuristic until this fills in — never blocks initial render.
+  const [duesByGcc,           setDuesByGcc]     = useState({})
+  const [duesLoading,         setDuesLoading]   = useState(false)
   const [saving,              setSaving]        = useState(false)
   const [showForm,            setShowForm]      = useState(false)
   const [search,              setSearch]        = useState('')
@@ -2938,6 +3199,85 @@ export default function Fees() {
 
   useEffect(() => { loadAll() }, [])
 
+  // Students table's real status values (from Students.jsx STATUSES):
+  // 'Active', 'Inactive', 'Passed Out', 'Withdrawn', 'Dropout'. Only 'Active'
+  // is an ongoing fee-paying student — the other four all mean "no longer
+  // enrolled" for different reasons (paused, graduated, left voluntarily,
+  // dropped out) and must not appear in any fee dashboard, dues grid,
+  // defaulter list, or export. Checking FOR 'Active' rather than excluding
+  // 'Dropout' alone so any additional status value added later defaults to
+  // excluded rather than silently leaking into fee totals. Students with a
+  // missing/blank status are treated as active (matches the `status:'Active'`
+  // default used everywhere students are created).
+  // liveRows is the single source every downstream view reads from, so
+  // filtering here excludes non-active students everywhere at once.
+  const activeStudents = useMemo(() => students.filter(s => !s.status || s.status === 'Active'), [students])
+
+  // ✦ Real dues pass — runs once students are loaded, and again whenever the
+  // roster or any collection table changes (a payment was just recorded, a
+  // student was added, etc). Deliberately separate from the loadAll fetch
+  // effect: getStudentDues needs `students` to already be in state (it reads
+  // hostel_type/course/batch/admission_date per student), and re-running it
+  // only on data changes — not on every render — avoids refetching rates for
+  // every student on each keystroke in unrelated filters/search.
+  //
+  // ✦ Fix: previously ANY change to any of the three collection tables
+  // recomputed dues for the ENTIRE active roster — getDuesForStudents does
+  // 5 async calls per student (2 to feeEngine for rates, 3 direct
+  // Supabase reads), batched 8 at a time, so a single payment recorded for
+  // one student re-fetched rates/dues for every other student too. For a
+  // large roster this is a lot of redundant round-trips triggered by one
+  // row changing.
+  //
+  // Now only recomputes dues for students whose GCC appears in the diff of
+  // the three collection tables since the last pass (a payment was
+  // recorded/reverted/corrected for them), plus any active student who has
+  // no entry in duesByGcc yet (first load, or a newly added/reactivated
+  // student). Comparing raw row arrays by reference across renders isn't
+  // reliable (loadAll always returns new array instances), so this diffs
+  // GCC *sets* extracted from each table instead — a table's set only
+  // changes when a row is actually added/removed/reverted for some GCC,
+  // not on every unrelated re-render.
+  const collectFeeGccSet = (rows, gccField) => new Set((rows || []).map(r => gccStr(r[gccField])))
+  const admGccSet   = useMemo(() => collectFeeGccSet(adm_fee_collections, 'adm_app_id'), [adm_fee_collections])
+  const flatGccSet  = useMemo(() => collectFeeGccSet(adm_flat_fees, 'adm_app_id'), [adm_flat_fees])
+  const crsfGccSet  = useMemo(() => collectFeeGccSet(adm_course_fees, 'adm_app_id'), [adm_course_fees])
+
+  const prevGccSetsRef = useRef({ adm: new Set(), flat: new Set(), crsf: new Set() })
+
+  useEffect(() => {
+    let cancelled = false
+    if (activeStudents.length === 0) { setDuesByGcc({}); return }
+
+    const prev = prevGccSetsRef.current
+    const changedGccs = new Set()
+    for (const gcc of new Set([...admGccSet, ...prev.adm]))   if (admGccSet.has(gcc)  !== prev.adm.has(gcc))  changedGccs.add(gcc)
+    for (const gcc of new Set([...flatGccSet, ...prev.flat])) if (flatGccSet.has(gcc) !== prev.flat.has(gcc)) changedGccs.add(gcc)
+    for (const gcc of new Set([...crsfGccSet, ...prev.crsf])) if (crsfGccSet.has(gcc) !== prev.crsf.has(gcc)) changedGccs.add(gcc)
+    prevGccSetsRef.current = { adm: admGccSet, flat: flatGccSet, crsf: crsfGccSet }
+
+    const studentsNeedingDues = activeStudents.filter(s => {
+      const gcc = gccStr(s.gcc_no)
+      return changedGccs.has(gcc) || duesByGcc[gcc] === undefined
+    })
+    if (studentsNeedingDues.length === 0) return
+
+    setDuesLoading(true)
+    getDuesForStudents(studentsNeedingDues, getSessionYear())
+      .then(results => {
+        if (cancelled) return
+        setDuesByGcc(prevMap => {
+          const next = { ...prevMap }
+          for (const { student, dues } of results) next[gccStr(student.gcc_no)] = dues
+          return next
+        })
+      })
+      .catch(e => console.error('Fees.jsx: getDuesForStudents failed —', e.message))
+      .finally(() => { if (!cancelled) setDuesLoading(false) })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStudents, admGccSet, flatGccSet, crsfGccSet])
+
   const getLiveFees = s => {
     const gcc = gccStr(s.gcc_no)
     const admTotal   = adm_fee_collections.filter(c => gccStr(c.adm_app_id) === gcc && !c.reverted).reduce((a, c) => a + (Number(c.amount_paid) || 0), 0)
@@ -2971,14 +3311,6 @@ export default function Fees() {
   // enrolled" for different reasons (paused, graduated, left voluntarily,
   // dropped out) and must not appear in any fee dashboard, dues grid,
   // defaulter list, or export. Checking FOR 'Active' rather than excluding
-  // 'Dropout' alone so any additional status value added later defaults to
-  // excluded rather than silently leaking into fee totals. Students with a
-  // missing/blank status are treated as active (matches the `status:'Active'`
-  // default used everywhere students are created).
-  // liveRows is the single source every downstream view reads from, so
-  // filtering here excludes non-active students everywhere at once.
-  const activeStudents = useMemo(() => students.filter(s => !s.status || s.status === 'Active'), [students])
-
   // Same status-scoped filtering applied to the raw collection tables — used
   // wherever a component sums these tables directly (FeeDashboardTab's
   // header stats, monthly trend, month-wise dues; ReportsExportTab) instead
@@ -2991,18 +3323,46 @@ export default function Fees() {
   const activeAdmFlatFees       = useMemo(() => adm_flat_fees.filter(r => activeGccSet.has(gccStr(r.adm_app_id))), [adm_flat_fees, activeGccSet])
   const activeAdmCourseFees     = useMemo(() => adm_course_fees.filter(r => activeGccSet.has(gccStr(r.adm_app_id))), [adm_course_fees, activeGccSet])
 
+  // ✦ liveStatus now derives from the real per-month dues engine
+  // (getStudentDues, via duesByGcc) instead of the old single expectedFlat
+  // benchmark. That old check only ever compared against the flat-fee rate,
+  // so a student who'd paid enough to clear ONE month's flat fee could show
+  // Paid/Partial despite owing 8+ unpaid course-fee months — course fee
+  // dues were never actually checked. The dues engine checks admission,
+  // every flat-fee month, and every course-fee month individually (DB
+  // rates + overrides + admission-date exclusions), so `totalDue > 0` now
+  // means "genuinely owes something," full stop.
+  //
+  // Falls back to the previous sync heuristic (expectedFlat vs grandTotal)
+  // only for the brief window before the async dues effect above has
+  // populated duesByGcc for a given student — e.g. right after initial
+  // load, or right after a student is newly added — so the grid never
+  // shows a blank/broken status while dues are still being fetched.
   const liveRows = useMemo(() => activeStudents.map(s => {
     const live   = getLiveFees(s)
     const admRec = getAdmRec(s)
     const expectedFlat = getFlatFeeAmtSync(s.hostel_type || 'Day Scholar', s.course || '')
-    const status = live.grandTotal === 0
-      ? 'Pending'
-      : expectedFlat > 0 && live.grandTotal < expectedFlat
-        ? 'Underpaid'
-        : (admRec?.status === 'Enrolled' ? 'Paid' : 'Partial')
-    return { ...s, ...live, admRec, expectedFlat, liveStatus: status }
+    const dues = duesByGcc[gccStr(s.gcc_no)]
+
+    let status
+    if (dues) {
+      status = dues.totalDue === 0
+        ? (admRec?.status === 'Enrolled' ? 'Paid' : 'Partial')
+        : live.grandTotal === 0
+          ? 'Pending'
+          : 'Underpaid'
+    } else {
+      // Fallback heuristic — see comment above.
+      status = live.grandTotal === 0
+        ? 'Pending'
+        : expectedFlat > 0 && live.grandTotal < expectedFlat
+          ? 'Underpaid'
+          : (admRec?.status === 'Enrolled' ? 'Paid' : 'Partial')
+    }
+
+    return { ...s, ...live, admRec, expectedFlat, dues, totalDue: dues?.totalDue ?? null, liveStatus: status }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [activeStudents, admissions, adm_fee_collections, adm_flat_fees, adm_course_fees])
+  }), [activeStudents, admissions, adm_fee_collections, adm_flat_fees, adm_course_fees, duesByGcc])
 
 
   const liveTtl = liveRows.reduce((a, s) => a + s.grandTotal, 0)
@@ -3026,7 +3386,7 @@ export default function Fees() {
   const handleDelete  = async id => {
     if (!isAdmin) { alert('Only admin can delete records.'); return }
     if (!window.confirm('Permanently delete this legacy fee record? This cannot be undone.')) return
-    try { await deleteLegacyFeeRecord(id, currentUser?.role || 'admin'); loadAll() }
+    try { await deleteLegacyFeeRecord(id, currentUser?.role || 'admin', currentUser?.userName || currentUser?.name || null); loadAll() }
     catch (err) { alert('Delete failed: ' + err.message) }
   }
 
@@ -3050,6 +3410,7 @@ export default function Fees() {
     { id: 'reports',   label: '📤 Reports & Export' },
     ...(isAdmin ? [{ id: 'anomaly', label: '🔍 Anomaly Monitor' }] : []),
     ...(isAdmin ? [{ id: 'activity', label: '🕒 Activity Log' }] : []),
+    ...(isAdmin ? [{ id: 'warnings', label: '⚠️ Audit Warnings' }] : []),
   ]
 
   // ── Advanced filter state (shared across live + admin tabs) ──────────────
@@ -3578,6 +3939,9 @@ export default function Fees() {
       )}
       {tab === 'activity' && (
         <ActivityLogTab students={students} isAdmin={isAdmin} currentUser={currentUser} />
+      )}
+      {tab === 'warnings' && (
+        <AuditWarningsTab students={students} isAdmin={isAdmin} />
       )}
     </div>
   )

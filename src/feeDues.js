@@ -17,7 +17,7 @@
 import { supabase } from './supabase'
 import {
   getFeeRates, getFlatFees, isCourseFeeMonth, isPreAdmissionMonth,
-  MONTHS_LIST, getSessionYear, ADM_FEE_BASE,
+  MONTHS_LIST, getSessionYear, ADM_FEE_BASE, resolveFeeMonthYear,
 } from './feeEngine'
 
 // Course fee has no auto-generated month list the way flat fee does (staff
@@ -29,16 +29,13 @@ import {
 // on what counts as "before admission."
 function courseFeeDueMonths(admissionDate) {
   const now = new Date()
-  const currentCalYear = now.getFullYear()
-  const currentCalMonth = now.getMonth() + 1 // 1-12
 
   return MONTHS_LIST.filter(isCourseFeeMonth).map(month => {
-    let year = currentCalYear
-    const calMonth = new Date(`${month} 1, ${year}`).getMonth() + 1
     // Session runs April→March; Jan/Feb/Mar-named months belong to the
-    // following calendar year relative to an April start. Same logic
-    // getFlatFees uses for its own year resolution.
-    if (calMonth > currentCalMonth) year = currentCalYear - 1
+    // following calendar year relative to an April start. Shared with
+    // getFlatFees' own year resolution via resolveFeeMonthYear so the two
+    // can't drift apart.
+    const year = resolveFeeMonthYear(month, now)
     return { month, year }
   }).filter(({ month, year }) => {
     // Only months that have actually started/passed count as "due" —
@@ -80,25 +77,63 @@ export async function getStudentDues(student, sessionYear = getSessionYear()) {
     return { data: null, error: e, _failed: true }
   })
 
-  const [rates, flatFeeMonths, admFeeRows, flatFeeRows, courseFeeRows] = await Promise.all([
-    getFeeRates(sessionYear, student.course, student.batch, student.hostel_type, gcc),
-    getFlatFees(student.hostel_type, student.course, student.batch, sessionYear, gcc, student.admission_date),
-    wrap(supabase.from('adm_fee_collections').select('amount_paid').eq('adm_app_id', gcc).eq('reverted', false), 'adm_fee_collections'),
+  // ✦ getFeeRates/getFlatFees are wrapped the same way as the three raw
+  // Supabase calls below. Previously they weren't — if either threw (e.g.
+  // a dropped connection while resolving a fee_structures row or a student
+  // override), the whole Promise.all rejected, and getDuesForStudents'
+  // per-student try/catch would then drop this student from the batch
+  // entirely (returns null, filtered out of the results) with NO signal
+  // to the caller — worse than the three collection-table queries, which
+  // degrade to a flagged zero-rows result instead of vanishing the student.
+  // On failure here, rates/flatFeeMonths fall back to safe empty defaults
+  // (0 rates, no flat-fee months) and the failure is recorded in
+  // failedSources just like the other three sources, so a rate-fetch
+  // blip under-reports dues for one student instead of hiding them.
+  const wrapRates = (p, label) => Promise.resolve(p).catch(e => {
+    console.error(`getStudentDues(${gcc}): ${label} query failed —`, e.message)
+    return { _failed: true }
+  })
+
+  const [ratesResult, flatFeeMonthsResult, admFeeRows, flatFeeRows, courseFeeRows] = await Promise.all([
+    wrapRates(getFeeRates(sessionYear, student.course, student.batch, student.hostel_type, gcc), 'fee_rates'),
+    wrapRates(getFlatFees(student.hostel_type, student.course, student.batch, sessionYear, gcc, student.admission_date), 'flat_fee_months'),
+    wrap(supabase.from('adm_fee_collections').select('amount_paid, description, fee_type').eq('adm_app_id', gcc).eq('reverted', false), 'adm_fee_collections'),
     wrap(supabase.from('adm_flat_fees').select('month,year,amount').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false), 'adm_flat_fees'),
     wrap(supabase.from('adm_course_fees').select('for_month,year,amount_paid').eq('adm_app_id', gcc).eq('reverted', false), 'adm_course_fees'),
   ])
 
+  const rates = ratesResult._failed ? { flatFee: 0, courseFee: 0, admissionFee: 0 } : ratesResult
+  const flatFeeMonths = flatFeeMonthsResult._failed ? [] : flatFeeMonthsResult
+
   const failedSources = [
+    ratesResult._failed && 'fee_rates',
+    flatFeeMonthsResult._failed && 'flat_fee_months',
     admFeeRows._failed && 'admission_fee',
     flatFeeRows._failed && 'flat_fee',
     courseFeeRows._failed && 'course_fee',
   ].filter(Boolean)
 
   // Admission fee — one-time, ADM_FEE_BASE (or fee_structures override via
-  // rates.admissionFee). Paid if ANY adm_fee_collections row exists.
-  const admissionPaid = (admFeeRows.data || []).length > 0
+  // rates.admissionFee).
+  //
+  // ✦ Fix: previously "paid" meant ANY adm_fee_collections row existed for
+  // this student, with no amount check — a ₹1 token payment (or a partial
+  // installment) against a ₹6000 admission fee marked the entire fee as
+  // fully paid, silently hiding a real ₹5999 shortfall from every dues
+  // view. Now sums actual amount_paid across admission-fee rows specifically
+  // (not dress/prospectus/advance items, which also live in
+  // adm_fee_collections) and compares against the expected amount.
+  //
+  // adm_fee_collections holds admission/item/advance rows together (see
+  // collectFee in feeEngine.js), so this filters to just the admission-kind
+  // rows — identified by fee_type === 'admission', with description ===
+  // 'Admission Fee' as a fallback for any legacy row written before
+  // fee_type existed on this table.
+  const admissionRows = (admFeeRows.data || []).filter(r => r.description === 'Admission Fee' || r.fee_type === 'admission')
+  const admissionPaidAmount = admissionRows.reduce((s, r) => s + Number(r.amount_paid || 0), 0)
   const admissionExpected = rates.admissionFee ?? ADM_FEE_BASE
-  const admissionDue = admissionPaid ? 0 : admissionExpected
+  const admissionPaid = admissionPaidAmount >= admissionExpected && admissionExpected > 0
+  const admissionDue = Math.max(0, admissionExpected - admissionPaidAmount)
 
   // Flat fee — check each Feb/Mar month getFlatFees says this student owes
   // against what's actually been paid for that exact month/year.
@@ -129,18 +164,18 @@ export async function getStudentDues(student, sessionYear = getSessionYear()) {
   return {
     gcc, sessionYear,
     rates,
-    admission: { expected: admissionExpected, paid: admissionPaid, due: admissionDue },
+    admission: { expected: admissionExpected, paid: admissionPaid, paidAmount: admissionPaidAmount, due: admissionDue },
     flatFee: { items: flatFeeItems, due: flatFeeDue },
     courseFee: { items: courseFeeItems, due: courseFeeDue },
     totalPaid,
     totalDue,
     monthsOverdue: courseFeeItems.filter(i => !i.paid).length + flatFeeItems.filter(i => !i.paid).length,
-    // Non-empty when one or more of the three fee-source queries above
-    // failed (e.g. a dropped connection) and fell back to treating that
-    // source as zero rows rather than throwing. Callers should treat
-    // totalDue/totalPaid as a LOWER BOUND, not exact, when this is
-    // non-empty — surfacing that beats silently showing a wrong number
-    // as if it were reliable.
+    // Non-empty when one or more of the five fee-source queries above
+    // failed (e.g. a dropped connection) and fell back to a safe default
+    // (zero rows / zero rates / no months) rather than throwing. Callers
+    // should treat totalDue/totalPaid as a LOWER BOUND, not exact, when
+    // this is non-empty — surfacing that beats silently showing a wrong
+    // number as if it were reliable.
     failedSources,
   }
 }
