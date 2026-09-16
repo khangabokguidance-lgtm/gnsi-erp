@@ -1527,6 +1527,65 @@ export const promoteToStudent = async (admission) => {
 // 12. PRINT RECEIPT
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Converts a rupee amount to words, Indian numbering (lakh/crore), e.g.
+// 5500 -> "Five Thousand Five Hundred Rupees Only". Used on the receipt so
+// it reads like a real bank/institutional receipt rather than just a number.
+function _amountToWords(num) {
+  num = Math.round(Number(num) || 0)
+  if (num === 0) return 'Zero Rupees Only'
+  const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten',
+    'Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen']
+  const tens = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety']
+  const twoDigits = n => n < 20 ? ones[n] : tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '')
+  const threeDigits = n => (n >= 100 ? ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + twoDigits(n % 100) : '') : twoDigits(n))
+  const crore = Math.floor(num / 10000000); num %= 10000000
+  const lakh = Math.floor(num / 100000); num %= 100000
+  const thousand = Math.floor(num / 1000); num %= 1000
+  const hundred = num
+  const parts = []
+  if (crore) parts.push(threeDigits(crore) + ' Crore')
+  if (lakh) parts.push(threeDigits(lakh) + ' Lakh')
+  if (thousand) parts.push(threeDigits(thousand) + ' Thousand')
+  if (hundred) parts.push(threeDigits(hundred))
+  return parts.join(' ') + ' Rupees Only'
+}
+
+// Shared letterhead block used by the receipt and the two scholarship
+// documents below, so every printed document from the portal reads as one
+// consistent, professionally-branded series rather than three separate looks.
+// docType: the badge label (e.g. "OFFICIAL FEE RECEIPT"); accentColor tints
+// the badge/watermark per document type while the crest and layout stay fixed.
+function _letterhead({ docType, docNo, accentColor = '#1e3a5f', docDate }) {
+  return `
+    <div style="position:relative;border-bottom:3px solid ${accentColor};padding-bottom:16px;margin-bottom:18px;">
+      <div style="display:flex;align-items:flex-start;gap:16px;">
+        <div style="width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#1e3a5f,#3730a3);color:white;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;flex-shrink:0;box-shadow:0 2px 8px rgba(30,58,95,.35);letter-spacing:.3px;">${INSTITUTE.short}</div>
+        <div style="flex:1;padding-top:1px;min-width:0;">
+          <div style="font-size:16.5px;font-weight:900;color:#1e3a5f;line-height:1.25;">${INSTITUTE.name}</div>
+          <div style="font-size:9.5px;color:#b45309;font-weight:700;text-transform:uppercase;letter-spacing:.7px;margin-top:3px;">Premier Coaching for NVS &middot; Sainik School &middot; RMS</div>
+          <div style="font-size:10.5px;color:#64748b;margin-top:3px;">${INSTITUTE.address}${INSTITUTE.phone ? ' &middot; ' + INSTITUTE.phone : ''}</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-top:14px;background:${accentColor}0d;border:1px solid ${accentColor}33;border-radius:7px;padding:9px 12px;">
+        <div style="font-size:10.5px;font-weight:900;color:${accentColor};text-transform:uppercase;letter-spacing:.6px;line-height:1.35;">${docType}</div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:10.5px;font-weight:800;color:${accentColor};font-family:monospace;white-space:nowrap;">${docNo}</div>
+          ${docDate ? `<div style="font-size:9.5px;color:#64748b;margin-top:1px;white-space:nowrap;">${docDate}</div>` : ''}
+        </div>
+      </div>
+    </div>`
+}
+
+// Shared footer: verification note + institute strap-line, consistent
+// across every printed document.
+function _letterfoot(note) {
+  return `
+    <div style="margin-top:22px;padding-top:10px;border-top:1px dashed #cbd5e1;text-align:center;">
+      <div style="font-size:9.5px;color:#94a3b8;line-height:1.5;">${note}</div>
+      <div style="font-size:9px;color:#b45309;font-weight:700;margin-top:4px;letter-spacing:.3px;">${INSTITUTE.name} &middot; Estd. 2016 &middot; ${INSTITUTE.address}</div>
+    </div>`
+}
+
 export const buildReceiptHTML = ({
   receipt_no, pay_date, pay_mode, txn_ref, collected_by,
   student_name, adm_no, gcc_no, class_name, course, hostel_type,
@@ -1537,36 +1596,78 @@ export const buildReceiptHTML = ({
     ...sections,
     ...(items.length > 0 ? [{ title: '', color: '#1e3a5f', items, subtotal: items.reduce((s, i) => s + (Number(i.amount) || 0), 0) }] : []),
   ]
-  const sectionHtml = allSections.map(sec => `
-    <div style="margin-bottom:14px;">
-      ${sec.title ? `<div style="background:${sec.color}18;border-left:3px solid ${sec.color};padding:6px 10px;font-weight:700;font-size:13px;color:${sec.color};margin-bottom:6px;">${sec.title}</div>` : ''}
-      ${sec.items.map(it => `<div style="display:flex;justify-content:space-between;padding:4px 10px;font-size:12px;color:#334155;"><span>${it.label}</span><span style="font-weight:600;">${fmtAmt(it.amount)}</span></div>`).join('')}
-      ${allSections.length > 1 ? `<div style="display:flex;justify-content:space-between;padding:5px 10px;font-size:12px;font-weight:700;border-top:1px solid #e2e8f0;margin-top:4px;color:${sec.color||'#1e3a5f'}"><span>Subtotal</span><span>${fmtAmt(sec.subtotal)}</span></div>` : ''}
-    </div>`).join('')
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:system-ui,sans-serif;padding:24px;max-width:480px;margin:auto;color:#0f172a;}@media print{body{padding:0}}</style></head><body>
-    <div style="text-align:center;margin-bottom:18px;border-bottom:2px solid #1e3a5f;padding-bottom:14px;">
-      <div style="font-size:18px;font-weight:800;color:#1e3a5f;">${INSTITUTE.name}</div>
-      <div style="font-size:12px;color:#64748b;margin-top:3px;">${INSTITUTE.address}</div>
-      <div style="font-size:20px;font-weight:900;color:#4f46e5;margin-top:8px;letter-spacing:1px;">FEE RECEIPT</div>
-      <div style="font-size:12px;color:#64748b;margin-top:2px;">${receipt_no}</div>
+
+  const sectionRows = allSections.map(sec => `
+    ${sec.title ? `<tr><td colspan="2" style="padding:9px 14px 5px;font-size:10.5px;font-weight:800;color:${sec.color || '#1e3a5f'};text-transform:uppercase;letter-spacing:.4px;border-top:1px solid #e2e8f0;">${sec.title}</td></tr>` : ''}
+    ${sec.items.map(it => `<tr><td style="padding:5px 14px;font-size:12.5px;color:#334155;">${it.label}</td><td style="padding:5px 14px;font-size:12.5px;font-weight:700;color:#1e3a5f;text-align:right;">${fmtAmt(it.amount)}</td></tr>`).join('')}
+    ${allSections.length > 1 ? `<tr><td style="padding:5px 14px 10px;font-size:11.5px;font-weight:700;color:${sec.color || '#1e3a5f'};border-bottom:1px solid #e2e8f0;">Subtotal</td><td style="padding:5px 14px 10px;font-size:11.5px;font-weight:800;color:${sec.color || '#1e3a5f'};text-align:right;border-bottom:1px solid #e2e8f0;">${fmtAmt(sec.subtotal)}</td></tr>` : ''}
+  `).join('')
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Fee Receipt ${receipt_no}</title><style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#0f172a;background:white}
+    @page{size:A5;margin:10mm}
+    table{width:100%;border-collapse:collapse}
+    @media screen{
+      body{background:#e2e8f0;padding:24px}
+      .page{background:white;padding:22px 24px;box-shadow:0 4px 24px rgba(0,0,0,.14);max-width:420px;margin:0 auto;border-radius:10px;position:relative;overflow:hidden}
+      .pbtn{position:fixed;top:16px;right:16px;background:#1e3a5f;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}
+      .cbtn{position:fixed;top:16px;right:170px;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}
+    }
+    @media print{.np{display:none!important}}
+    .wm{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%) rotate(-28deg);font-size:64px;font-weight:900;color:#1e3a5f;opacity:.045;letter-spacing:4px;white-space:nowrap;pointer-events:none;z-index:0}
+    .content{position:relative;z-index:1}
+  </style></head><body>
+    <button class="pbtn np" onclick="window.print()">Print / Save PDF</button>
+    <button class="cbtn np" onclick="window.close()">Close</button>
+    <div class="page">
+      <div class="wm">${INSTITUTE.short}</div>
+      <div class="content">
+        ${_letterhead({ docType: 'Official Fee Receipt', docNo: receipt_no, accentColor: '#1e3a5f', docDate: pay_date })}
+
+        <table style="margin-bottom:2px;">
+          <tr><td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;width:26%;">Student</td><td style="padding:4px 0;font-size:13px;font-weight:800;color:#0f172a;" colspan="3">${student_name}</td></tr>
+          <tr>
+            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Adm. No.</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${adm_no || '—'}</td>
+            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">GCC No.</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${gcc_no || '—'}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Class</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${class_name || '—'}</td>
+            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Course</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${course || '—'}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Hostel</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${hostel_type || '—'}</td>
+            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Pay Mode</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${pay_mode}${txn_ref ? ' &middot; ' + txn_ref : ''}</td>
+          </tr>
+        </table>
+
+        <div style="margin:14px 0 4px;font-size:10px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.5px;border-left:3px solid #1e3a5f;padding:2px 8px;background:#f8fafc;">Fee Particulars</div>
+        <table style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
+          <tbody>${sectionRows}</tbody>
+        </table>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#1e3a5f,#3730a3);color:white;padding:13px 16px;border-radius:8px;font-size:16px;font-weight:900;margin-top:12px;">
+          <span style="letter-spacing:.4px;">TOTAL PAID</span><span>${fmtAmt(total)}</span>
+        </div>
+        <div style="font-size:10.5px;color:#64748b;font-style:italic;margin-top:6px;padding:0 2px;">${_amountToWords(total)}</div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:34px;">
+          <div style="text-align:center;">
+            <div style="border-top:1.3px solid #1e3a5f;width:88%;margin:0 auto 4px;"></div>
+            <div style="font-size:10.5px;font-weight:700;color:#1e3a5f;">${collected_by || 'GNSI Office'}</div>
+            <div style="font-size:9px;color:#64748b;">Received By</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="border-top:1.3px solid #1e3a5f;width:88%;margin:0 auto 4px;"></div>
+            <div style="font-size:10.5px;font-weight:700;color:#1e3a5f;">Authorised Signatory</div>
+            <div style="font-size:9px;color:#64748b;">${INSTITUTE.short}</div>
+          </div>
+        </div>
+
+        ${_letterfoot('This is a computer-generated receipt and is valid without a physical signature or seal.<br/>Please retain this receipt for your records &middot; Disputes must be reported within 7 days.')}
+      </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px;background:#f8fafc;border-radius:8px;padding:10px 12px;font-size:12px;">
-      <div><span style="color:#94a3b8;">Student</span><br/><strong>${student_name}</strong></div>
-      <div><span style="color:#94a3b8;">Adm. No.</span><br/><strong>${adm_no}</strong></div>
-      <div><span style="color:#94a3b8;">GCC No.</span><br/><strong>${gcc_no || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Class</span><br/><strong>${class_name || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Course</span><br/><strong>${course || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Hostel Type</span><br/><strong>${hostel_type || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Date</span><br/><strong>${pay_date}</strong></div>
-      <div><span style="color:#94a3b8;">Mode</span><br/><strong>${pay_mode}${txn_ref ? ' · ' + txn_ref : ''}</strong></div>
-      ${collected_by ? `<div><span style="color:#94a3b8;">Collected By</span><br/><strong>${collected_by}</strong></div>` : ''}
-    </div>
-    ${sectionHtml}
-    <div style="display:flex;justify-content:space-between;background:linear-gradient(135deg,#1e3a5f,#3730a3);color:white;padding:12px 14px;border-radius:8px;font-size:16px;font-weight:900;margin-top:8px;">
-      <span>GRAND TOTAL</span><span>${fmtAmt(total)}</span>
-    </div>
-    <div style="margin-top:24px;text-align:center;font-size:10px;color:#94a3b8;">This is a computer-generated receipt. No signature required.<br/>${INSTITUTE.short} · ${INSTITUTE.address}</div>
-    </body></html>`
+  </body></html>`
 }
 
 export const printReceipt = ({
@@ -1596,39 +1697,61 @@ const _fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-IN', { day: '
 
 function buildScholarshipRequestFormHTML({ ref_no, type, amount, reason, student_name, gcc_no, course, batch, hostel_type, requested_by, requested_at }) {
   const typeLabel = type === 'scholarship' ? 'Scholarship' : 'Fee Waiver'
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:system-ui,sans-serif;padding:24px;max-width:560px;margin:auto;color:#0f172a;}@media print{body{padding:0}}</style></head><body>
-    <div style="text-align:center;margin-bottom:18px;border-bottom:2px solid #1e3a5f;padding-bottom:14px;">
-      <div style="font-size:18px;font-weight:800;color:#1e3a5f;">${INSTITUTE.name}</div>
-      <div style="font-size:12px;color:#64748b;margin-top:3px;">${INSTITUTE.address}</div>
-      <div style="font-size:20px;font-weight:900;color:#059669;margin-top:8px;letter-spacing:1px;">${typeLabel.toUpperCase()} REQUEST FORM</div>
-      <div style="font-size:12px;color:#64748b;margin-top:2px;">${ref_no}</div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px;background:#f8fafc;border-radius:8px;padding:10px 12px;font-size:12px;">
-      <div><span style="color:#94a3b8;">Student</span><br/><strong>${student_name}</strong></div>
-      <div><span style="color:#94a3b8;">GCC No.</span><br/><strong>${gcc_no || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Course</span><br/><strong>${course || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Batch</span><br/><strong>${batch || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Hostel Type</span><br/><strong>${hostel_type || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Request Date</span><br/><strong>${_fmtDate(requested_at)}</strong></div>
-    </div>
-    <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:12px 14px;margin-bottom:16px;">
-      <div style="font-size:11px;color:#065f46;text-transform:uppercase;font-weight:700;letter-spacing:.5px;">${typeLabel} Requested</div>
-      <div style="font-size:22px;font-weight:900;color:#059669;margin-top:4px;">₹${Number(amount || 0).toLocaleString('en-IN')} / month</div>
-    </div>
-    <div style="margin-bottom:20px;">
-      <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:.5px;margin-bottom:4px;">Reason</div>
-      <div style="font-size:13px;line-height:1.6;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;min-height:44px;">${reason || '—'}</div>
-    </div>
-    <div style="font-size:11px;color:#94a3b8;margin-bottom:24px;">Requested by: <strong style="color:#334155;">${requested_by || 'Staff'}</strong></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:40px;">
-      <div style="text-align:center;">
-        <div style="border-top:1px solid #334155;padding-top:6px;font-size:11px;color:#64748b;">Requesting Staff Signature</div>
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#0f172a;background:white}
+    @page{size:A5;margin:10mm}
+    @media screen{body{background:#e2e8f0;padding:24px}.page{background:white;padding:22px 24px;box-shadow:0 4px 24px rgba(0,0,0,.14);max-width:460px;margin:0 auto;border-radius:10px;position:relative;overflow:hidden}
+      .pbtn{position:fixed;top:16px;right:16px;background:#1e3a5f;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}
+      .cbtn{position:fixed;top:16px;right:170px;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}}
+    @media print{.np{display:none!important}}
+    .wm{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%) rotate(-28deg);font-size:56px;font-weight:900;color:#059669;opacity:.045;letter-spacing:4px;white-space:nowrap;pointer-events:none;z-index:0}
+    .content{position:relative;z-index:1}
+  </style></head><body>
+    <button class="pbtn np" onclick="window.print()">Print / Save PDF</button>
+    <button class="cbtn np" onclick="window.close()">Close</button>
+    <div class="page">
+      <div class="wm">DRAFT</div>
+      <div class="content">
+        ${_letterhead({ docType: `${typeLabel} Request Form`, docNo: ref_no, accentColor: '#059669', docDate: _fmtDate(requested_at) })}
+
+        <table style="width:100%;margin-bottom:14px;">
+          <tr><td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;width:26%;">Student</td><td style="padding:4px 0;font-size:13px;font-weight:800;color:#0f172a;" colspan="3">${student_name}</td></tr>
+          <tr>
+            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">GCC No.</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${gcc_no || '—'}</td>
+            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Course</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${course || '—'}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Batch</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${batch || '—'}</td>
+            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Hostel</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${hostel_type || '—'}</td>
+          </tr>
+        </table>
+
+        <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:13px 15px;margin-bottom:16px;">
+          <div style="font-size:10px;color:#065f46;text-transform:uppercase;font-weight:800;letter-spacing:.5px;">${typeLabel} Requested</div>
+          <div style="font-size:22px;font-weight:900;color:#059669;margin-top:4px;">₹${Number(amount || 0).toLocaleString('en-IN')} <span style="font-size:12px;font-weight:700;">/ month</span></div>
+        </div>
+
+        <div style="margin-bottom:20px;">
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;font-weight:800;letter-spacing:.5px;margin-bottom:5px;">Reason for Request</div>
+          <div style="font-size:12.5px;line-height:1.6;border:1px solid #e2e8f0;border-radius:8px;padding:11px 13px;min-height:48px;color:#334155;">${reason || '—'}</div>
+        </div>
+        <div style="font-size:10.5px;color:#94a3b8;margin-bottom:8px;">Requested by: <strong style="color:#334155;">${requested_by || 'Staff'}</strong></div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:38px;">
+          <div style="text-align:center;">
+            <div style="border-top:1.3px solid #334155;width:88%;margin:0 auto 4px;"></div>
+            <div style="font-size:9.5px;color:#64748b;">Requesting Staff Signature</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="border-top:1.3px solid #334155;width:88%;margin:0 auto 4px;"></div>
+            <div style="font-size:9.5px;color:#64748b;">Parent / Guardian Signature</div>
+          </div>
+        </div>
+
+        ${_letterfoot('This request is pending administrative approval and does not take effect on the fee account until approved.')}
       </div>
-      <div style="text-align:center;">
-        <div style="border-top:1px solid #334155;padding-top:6px;font-size:11px;color:#64748b;">Parent / Guardian Signature</div>
-      </div>
     </div>
-    <div style="margin-top:24px;text-align:center;font-size:10px;color:#94a3b8;">This request is pending admin approval and does not take effect until approved.<br/>${INSTITUTE.short} · ${INSTITUTE.address}</div>
     </body></html>`
 }
 
@@ -1650,42 +1773,65 @@ export const printScholarshipRequestForm = (record, student) => {
 
 function buildScholarshipCertificateHTML({ ref_no, type, amount, reason, student_name, gcc_no, course, batch, hostel_type, requested_by, requested_at, approved_by, approved_at }) {
   const typeLabel = type === 'scholarship' ? 'Scholarship' : 'Fee Waiver'
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:system-ui,sans-serif;padding:24px;max-width:560px;margin:auto;color:#0f172a;}@media print{body{padding:0}}</style></head><body>
-    <div style="text-align:center;margin-bottom:18px;border-bottom:3px double #1e3a5f;padding-bottom:14px;">
-      <div style="font-size:18px;font-weight:800;color:#1e3a5f;">${INSTITUTE.name}</div>
-      <div style="font-size:12px;color:#64748b;margin-top:3px;">${INSTITUTE.address}</div>
-      <div style="font-size:20px;font-weight:900;color:#1e3a5f;margin-top:8px;letter-spacing:1px;">${typeLabel.toUpperCase()} APPROVAL CERTIFICATE</div>
-      <div style="font-size:12px;color:#64748b;margin-top:2px;">${ref_no}</div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px;background:#f8fafc;border-radius:8px;padding:10px 12px;font-size:12px;">
-      <div><span style="color:#94a3b8;">Student</span><br/><strong>${student_name}</strong></div>
-      <div><span style="color:#94a3b8;">GCC No.</span><br/><strong>${gcc_no || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Course</span><br/><strong>${course || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Batch</span><br/><strong>${batch || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Hostel Type</span><br/><strong>${hostel_type || '—'}</strong></div>
-      <div><span style="color:#94a3b8;">Requested</span><br/><strong>${_fmtDate(requested_at)}</strong></div>
-    </div>
-    <div style="background:linear-gradient(135deg,#1e3a5f,#3730a3);color:white;border-radius:8px;padding:14px 16px;margin-bottom:16px;">
-      <div style="font-size:11px;opacity:.8;text-transform:uppercase;font-weight:700;letter-spacing:.5px;">${typeLabel} Approved</div>
-      <div style="font-size:24px;font-weight:900;margin-top:4px;">₹${Number(amount || 0).toLocaleString('en-IN')} / month</div>
-    </div>
-    <div style="margin-bottom:20px;">
-      <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;font-weight:700;letter-spacing:.5px;margin-bottom:4px;">Reason</div>
-      <div style="font-size:13px;line-height:1.6;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;">${reason || '—'}</div>
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;margin-bottom:24px;">
-      <span>Requested by: <strong style="color:#334155;">${requested_by || 'Staff'}</strong></span>
-      <span>Approved: <strong style="color:#334155;">${_fmtDate(approved_at)}</strong></span>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:48px;">
-      <div style="text-align:center;">
-        <div style="border-top:1px solid #334155;padding-top:6px;font-size:11px;color:#64748b;">${approved_by || 'Administrator'}<br/>Approving Administrator</div>
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#0f172a;background:white}
+    @page{size:A5;margin:10mm}
+    @media screen{body{background:#e2e8f0;padding:24px}.page{background:white;padding:22px 24px;box-shadow:0 4px 24px rgba(0,0,0,.14);max-width:460px;margin:0 auto;border-radius:10px;position:relative;overflow:hidden}
+      .pbtn{position:fixed;top:16px;right:16px;background:#1e3a5f;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}
+      .cbtn{position:fixed;top:16px;right:170px;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}}
+    @media print{.np{display:none!important}}
+    .wm{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%) rotate(-28deg);font-size:56px;font-weight:900;color:#1e3a5f;opacity:.045;letter-spacing:4px;white-space:nowrap;pointer-events:none;z-index:0}
+    .content{position:relative;z-index:1}
+  </style></head><body>
+    <button class="pbtn np" onclick="window.print()">Print / Save PDF</button>
+    <button class="cbtn np" onclick="window.close()">Close</button>
+    <div class="page">
+      <div class="wm">APPROVED</div>
+      <div class="content">
+        ${_letterhead({ docType: `${typeLabel} Approval Certificate`, docNo: ref_no, accentColor: '#1e3a5f', docDate: _fmtDate(approved_at) })}
+
+        <table style="width:100%;margin-bottom:14px;">
+          <tr><td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;width:26%;">Student</td><td style="padding:4px 0;font-size:13px;font-weight:800;color:#0f172a;" colspan="3">${student_name}</td></tr>
+          <tr>
+            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">GCC No.</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${gcc_no || '—'}</td>
+            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Course</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${course || '—'}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Batch</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${batch || '—'}</td>
+            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Hostel</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${hostel_type || '—'}</td>
+          </tr>
+        </table>
+
+        <div style="background:linear-gradient(135deg,#1e3a5f,#3730a3);color:white;border-radius:8px;padding:15px 17px;margin-bottom:16px;">
+          <div style="font-size:10px;opacity:.85;text-transform:uppercase;font-weight:800;letter-spacing:.5px;">${typeLabel} Approved</div>
+          <div style="font-size:24px;font-weight:900;margin-top:4px;">₹${Number(amount || 0).toLocaleString('en-IN')} <span style="font-size:13px;font-weight:700;">/ month</span></div>
+        </div>
+
+        <div style="margin-bottom:18px;">
+          <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;font-weight:800;letter-spacing:.5px;margin-bottom:5px;">Reason</div>
+          <div style="font-size:12.5px;line-height:1.6;border:1px solid #e2e8f0;border-radius:8px;padding:11px 13px;color:#334155;">${reason || '—'}</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10.5px;color:#94a3b8;margin-bottom:8px;">
+          <span>Requested by: <strong style="color:#334155;">${requested_by || 'Staff'}</strong></span>
+          <span>Requested: <strong style="color:#334155;">${_fmtDate(requested_at)}</strong></span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:44px;">
+          <div style="text-align:center;">
+            <div style="border-top:1.3px solid #334155;width:88%;margin:0 auto 4px;"></div>
+            <div style="font-size:10.5px;font-weight:700;color:#1e3a5f;">${approved_by || 'Administrator'}</div>
+            <div style="font-size:9px;color:#64748b;">Approving Administrator</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="border-top:1.3px solid #334155;width:88%;margin:0 auto 4px;"></div>
+            <div style="font-size:9.5px;color:#64748b;">Institutional Seal</div>
+          </div>
+        </div>
+
+        ${_letterfoot(`This certificate confirms the ${typeLabel.toLowerCase()} is now in effect on the student's fee account.`)}
       </div>
-      <div style="text-align:center;">
-        <div style="border-top:1px solid #334155;padding-top:6px;font-size:11px;color:#64748b;">Institutional Seal</div>
-      </div>
     </div>
-    <div style="margin-top:24px;text-align:center;font-size:10px;color:#94a3b8;">This certificate confirms the ${typeLabel.toLowerCase()} is now in effect on the student's fee account.<br/>${INSTITUTE.short} · ${INSTITUTE.address}</div>
     </body></html>`
 }
 

@@ -73,7 +73,71 @@ function HostelBadge({ type }) {
   )
 }
 
+// ── PAYMENT SUCCESS TOAST ────────────────────────────────────────────────────
+// A GPay-style transient confirmation: a green circle draws itself in, a
+// checkmark strokes in after it, the amount scales up, then the whole thing
+// fades out on its own. Auto-dismisses after ~2.6s; the parent just sets
+// `toast` to null (or a new value) — this component owns no state itself.
+function PaymentSuccessToast({ toast, onDone }) {
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(onDone, 2600)
+    return () => clearTimeout(t)
+  }, [toast, onDone])
+
+  if (!toast) return null
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(15,17,26,.55)', backdropFilter: 'blur(3px)',
+        animation: 'gnsiToastBgFade .35s ease-out',
+      }}
+      onClick={onDone}
+    >
+      <div
+        style={{
+          background: 'white', borderRadius: 20, padding: '36px 40px 30px',
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          boxShadow: '0 24px 60px rgba(0,0,0,.28)', minWidth: 260,
+          animation: 'gnsiToastPop .45s cubic-bezier(.22,1.4,.36,1)',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <svg width="84" height="84" viewBox="0 0 84 84" style={{ marginBottom: 14 }}>
+          <circle
+            cx="42" cy="42" r="38" fill="none" stroke="#059669" strokeWidth="5"
+            strokeLinecap="round" strokeDasharray="239" strokeDashoffset="239"
+            style={{ animation: 'gnsiCircleDraw .5s ease-out .1s forwards', transform: 'rotate(-90deg)', transformOrigin: '42px 42px' }}
+          />
+          <path
+            d="M25 43 L37 55 L60 30" fill="none" stroke="#059669" strokeWidth="5"
+            strokeLinecap="round" strokeLinejoin="round" strokeDasharray="50" strokeDashoffset="50"
+            style={{ animation: 'gnsiCheckDraw .35s ease-out .45s forwards' }}
+          />
+        </svg>
+        <div style={{ fontSize: 15, fontWeight: 800, color: '#065f46', letterSpacing: .2 }}>Payment Successful</div>
+        <div style={{ fontSize: 26, fontWeight: 900, color: '#0f172a', marginTop: 6 }}>₹{fmt(toast.amount)}</div>
+        {toast.label && (
+          <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6, textAlign: 'center', maxWidth: 220, lineHeight: 1.5 }}>
+            {toast.label}
+          </div>
+        )}
+      </div>
+      <style>{`
+        @keyframes gnsiToastBgFade { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes gnsiToastPop { 0% { opacity: 0; transform: scale(.85) } 100% { opacity: 1; transform: scale(1) } }
+        @keyframes gnsiCircleDraw { to { stroke-dashoffset: 0 } }
+        @keyframes gnsiCheckDraw { to { stroke-dashoffset: 0 } }
+      `}</style>
+    </div>
+  )
+}
+
 export default function FeeCollectionModal({ app, student, onClose, onSaved, isAdmin = false, currentUser = null }) {
+
 
   // Guards against upstream bugs that stringify a missing value, e.g. `${obj.gcc_no}`
   // when gcc_no is JS `undefined` — this produces the literal text "undefined", which
@@ -204,6 +268,11 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState(null)
   const [saved,       setSaved]       = useState(null)
+  // GPay-style transient success toast — separate from `saved` (the
+  // persistent detail card left in the modal body). This is the animated
+  // checkmark overlay shown the instant a payment completes; it auto-dismisses
+  // on its own and carries no state the rest of the component depends on.
+  const [paymentToast, setPaymentToast] = useState(null) // { amount, label } | null
   const [payMode,     setPayMode]     = useState('Cash')
   const [txnRef,      setTxnRef]      = useState('')
   const [payDate,     setPayDate]     = useState(today())
@@ -648,6 +717,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
       setSaved({ rcpt: rNo, items: admFeeItems.map(i => i.label).join(', '), total })
+      if (total > 0) setPaymentToast({ amount: total, label: admFeeItems.map(i => i.label).join(', ') })
       setPaidAdmItems(p => [...new Set([...p, ...admFeeItems.map(i => i.label)])])
       setSelected({})
       onSaved?.()
@@ -722,6 +792,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
       setSaved({ rcpt: rNo, items: unpaid.map(i => `${i.month} ${i.year}`).join(', '), total })
+      if (total > 0) setPaymentToast({ amount: total, label: unpaid.map(i => `${i.month} ${i.year}`).join(', ') })
       setPaidMonths(p => [...new Set([...p, ...unpaid.map(i => `${i.month}_${i.year}`)])])
       setFlatSel({})
       setFlatAmtOverrides({})
@@ -806,13 +877,11 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       if (skipped?.length) setError(`Already collected, skipped: ${skipped.join(', ')}`)
       if (sections.length) printReceipt({ ...commonReceiptFields(rNo), sections, total })
       setPaidCourseMonths(p => [...new Set([...p, ...unpaidRun.map(m => `${m.month}_${m.year}`)])])
-      setSaved({
-        rcpt: rNo,
-        items: unpaidRun.length > 1
-          ? `${course} · ${batch} · ${unpaidRun.map(m => `${m.month} ${m.year}`).join(', ')}`
-          : `${course} · ${batch} · ${courseMonth} ${courseYear}`,
-        total,
-      })
+      const courseLabel = unpaidRun.length > 1
+        ? `${course} · ${batch} · ${unpaidRun.map(m => `${m.month} ${m.year}`).join(', ')}`
+        : `${course} · ${batch} · ${courseMonth} ${courseYear}`
+      setSaved({ rcpt: rNo, items: courseLabel, total })
+      if (total > 0) setPaymentToast({ amount: total, label: courseLabel })
       setCourseAdvanceAuthorized(false)
       setCourseRateAuthorized(false)
       setCourseAmtReason('')
@@ -838,6 +907,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const flatPaidCount   = flatFees.filter(f => isMonthPaid(f)).length
 
   return createPortal(
+    <>
     <div style={{ position:'fixed', inset:0, background:'rgba(15,17,26,.75)', zIndex:999999, display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(6px)' }} onClick={handleClose}>
       <div style={{ width:'min(560px,96vw)', background:'white', borderRadius:18, boxShadow:'0 32px 80px rgba(0,0,0,.25)', overflow:'hidden', display:'flex', flexDirection:'column', maxHeight:'92vh' }} onClick={e => e.stopPropagation()}>
         <div style={{ height:4, background:`linear-gradient(90deg,${C.navy},${C.indigo},${C.violet})` }} />
@@ -1598,7 +1668,9 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           </div>
         </div>
       )}
-    </div>,
+    </div>
+    <PaymentSuccessToast toast={paymentToast} onDone={() => setPaymentToast(null)} />
+    </>,
     document.body
   )
 }
