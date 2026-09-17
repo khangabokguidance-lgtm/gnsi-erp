@@ -89,7 +89,7 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
   const [payAmount, setPayAmount] = useState('')
   const [paying, setPaying] = useState(false)
   const [payError, setPayError] = useState('')
-  const [razorpayReady, setRazorpayReady] = useState(null) // null = unknown, true/false once checked
+  const [razorpayReady, setRazorpayReady] = useState(null) // null = try Razorpay if configured; false = known broken, use UPI/bank
 
   const reset = useCallback(() => {
     setStep('lookup'); setGcc(''); setPhone(''); setLoading(false); setErrorMsg('')
@@ -99,16 +99,7 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
   useEffect(() => {
     if (!isOpen) return
     document.body.style.overflow = 'hidden'
-    // Probe once per open whether the Razorpay backend is actually reachable,
-    // so we can silently fall back to UPI/bank instead of showing a button
-    // that will just fail. A HEAD/OPTIONS-style probe avoids creating a real
-    // order just to check availability.
-    if (!RAZORPAY_KEY_ID) { setRazorpayReady(false); return }
-    let cancelled = false
-    fetch(RAZORPAY_CREATE_ORDER_URL, { method: 'OPTIONS' })
-      .then((res) => { if (!cancelled) setRazorpayReady(res.status < 500) })
-      .catch(() => { if (!cancelled) setRazorpayReady(false) })
-    return () => { cancelled = true; document.body.style.overflow = '' }
+    return () => { document.body.style.overflow = '' }
   }, [isOpen])
 
   useEffect(() => { if (!isOpen) reset() }, [isOpen, reset])
@@ -205,7 +196,15 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
           session_year: SESSION_YEAR,
         }),
       })
-      if (!orderRes.ok) throw new Error('Could not start payment. Please try again shortly.')
+      if (!orderRes.ok) {
+        // Backend isn't there yet (or errored) — fall back to UPI/bank for
+        // the rest of this session instead of dead-ending on a retry loop.
+        console.error('Razorpay create-order failed:', orderRes.status)
+        setRazorpayReady(false)
+        setPaying(false)
+        setPayError('Online card/UPI checkout isn\'t available right now — use the UPI/bank details below instead.')
+        return
+      }
       const order = await orderRes.json()
 
       const rzp = new window.Razorpay({
@@ -251,7 +250,10 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
     } catch (err) {
       console.error('Razorpay flow failed:', err)
       setPaying(false)
-      setPayError(err.message || 'Something went wrong starting the payment.')
+      // Network-level failure (endpoint missing, CORS, DNS, etc.) — same
+      // graceful fallback as an explicit non-OK response above.
+      setRazorpayReady(false)
+      setPayError('Online card/UPI checkout isn\'t available right now — use the UPI/bank details below instead.')
     }
   }
 
@@ -370,7 +372,7 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
                     </div>
                   )}
 
-                  {razorpayReady ? (
+                  {razorpayReady !== false && RAZORPAY_KEY_ID ? (
                     <button
                       onClick={payWithRazorpay}
                       disabled={paying}
