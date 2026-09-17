@@ -224,6 +224,7 @@ const MobileRecordCard = ({ children, accentColor = MD.color.primary, onClick })
 const TABS = [
   { id: 'schedule', label: '🗓️ Schedule' },
   { id: 'house', label: '🏛️ Houses' },
+  { id: 'housecontrib', label: '💰 Contributions' },
   { id: 'housemaster', label: '🧑‍🏫 HM' },
   { id: 'hmactivities', label: '📋 Activities' },
   { id: 'adminmonitor', label: '🖥️ Monitor' },
@@ -8552,6 +8553,511 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 
 // ══════════════════════════════════════════════════════════════
 //  TAB 7 — Housemasters
+// ═══════════════════════════════════════════════════════════════════════════
+//  HOUSE CONTRIBUTION TAB — student money-contribution tracker per house
+// ═══════════════════════════════════════════════════════════════════════════
+// Tracks money collected from students per house (e.g. exam contribution),
+// who collected it, and whether/when it has been submitted onward to the
+// admin office/accounts. Prints an A4 house record sheet per house — a
+// formal ledger page (not a landscape data table like generateTableReportPDF)
+// showing every student's contribution, totals, and a submission
+// acknowledgement block for signatures.
+//
+// New table required: house_contributions
+//   id, house, student_id, student_name, gcc_no, class_name,
+//   amount, purpose, collected_by, collected_date,
+//   status ('Collected' | 'Submitted'), submitted_to, submitted_date,
+//   remarks, created_at
+//
+// Suggested migration:
+//   create table house_contributions (
+//     id bigint generated always as identity primary key,
+//     house text not null,
+//     student_id bigint references students(id),
+//     student_name text not null,
+//     gcc_no text,
+//     class_name text,
+//     amount numeric(10,2) not null default 0,
+//     purpose text not null default 'Exam Contribution',
+//     collected_by text,
+//     collected_date date not null default current_date,
+//     status text not null default 'Collected' check (status in ('Collected','Submitted')),
+//     submitted_to text,
+//     submitted_date date,
+//     remarks text,
+//     created_at timestamptz not null default now()
+//   );
+
+const CONTRIB_PURPOSES = ['Exam Contribution', 'Mess Fund', 'Event/Trip', 'Other']
+const DEFAULT_SUBMITTED_TO = 'Admin Office / Accounts'
+
+const emptyContribution = {
+  house: '', student_id: null, student_name: '', gcc_no: '', class_name: '',
+  amount: '', purpose: 'Exam Contribution', collected_by: '', collected_date: today(),
+  remarks: '',
+}
+
+function HouseContributionTab({ students: propStudents, currentUser }) {
+  const mobile = useMobileView()
+  const isAdmin = isAdminRole(currentUser?.role)
+  const [houses, setHouses] = useState([])
+  const [students, setStudents] = useState(propStudents || [])
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [activeHouse, setActiveHouse] = useState(null)
+  const [showForm, setShowForm] = useState(false)
+  const [editRec, setEditRec] = useState(null)
+  const [form, setForm] = useState(emptyContribution)
+  const [studentSearch, setStudentSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('All') // All | Collected | Submitted
+  const [toast, setToast] = useState(null)
+  const [submitModal, setSubmitModal] = useState(null) // { house } | null
+  const [submitTo, setSubmitTo] = useState(DEFAULT_SUBMITTED_TO)
+  const [submitDate, setSubmitDate] = useState(today())
+
+  const showToast = (msg, color = '#16a34a') => {
+    setToast({ msg, color }); setTimeout(() => setToast(null), 3000)
+  }
+
+  const load = async () => {
+    setLoading(true)
+    const [{ data: h }, { data: rec, error }] = await Promise.all([
+      supabase.from('houses').select('name').order('name'),
+      supabase.from('house_contributions').select('*').order('collected_date', { ascending: false }),
+    ])
+    if (error) console.error('house_contributions fetch error:', error)
+    setHouses(h || [])
+    setRecords(rec || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+  useEffect(() => { if (propStudents?.length) setStudents(propStudents) }, [propStudents])
+
+  const activeStudents = useMemo(() => students.filter(s => s.status !== 'Dropout' && s.status !== 'Inactive'), [students])
+
+  const houseStudents = (houseName) => activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
+
+  // ── Per-house summary: collected total, submitted total, balance in hand ──
+  const houseSummary = (houseName) => {
+    const recs = records.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName))
+    const collected = recs.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+    const submitted = recs.filter(r => r.status === 'Submitted').reduce((s, r) => s + (Number(r.amount) || 0), 0)
+    const pending = collected - submitted
+    return { count: recs.length, collected, submitted, pending, recs }
+  }
+
+  const openAddForm = (houseName) => {
+    setEditRec(null)
+    setForm({ ...emptyContribution, house: houseName, collected_by: currentUser?.name || '' })
+    setStudentSearch('')
+    setShowForm(true)
+  }
+  const openEditForm = (rec) => {
+    setEditRec(rec)
+    setForm({
+      house: rec.house, student_id: rec.student_id, student_name: rec.student_name,
+      gcc_no: rec.gcc_no || '', class_name: rec.class_name || '',
+      amount: rec.amount, purpose: rec.purpose || 'Exam Contribution',
+      collected_by: rec.collected_by || '', collected_date: rec.collected_date || today(),
+      remarks: rec.remarks || '',
+    })
+    setShowForm(true)
+  }
+
+  const pickStudent = (s) => {
+    setForm(f => ({ ...f, student_id: s.id, student_name: s.name, gcc_no: s.gcc_no, class_name: s.class_name }))
+    setStudentSearch('')
+  }
+
+  const handleSave = async (e) => {
+    e.preventDefault()
+    if (!form.student_name.trim()) { alert('Select a student.'); return }
+    const amt = Number(form.amount)
+    if (!Number.isFinite(amt) || amt <= 0) { alert('Enter a valid amount.'); return }
+    setSaving(true)
+    const payload = {
+      house: form.house, student_id: form.student_id, student_name: form.student_name.trim(),
+      gcc_no: form.gcc_no || null, class_name: form.class_name || null,
+      amount: amt, purpose: form.purpose, collected_by: form.collected_by || currentUser?.name || null,
+      collected_date: form.collected_date, remarks: form.remarks || null,
+    }
+    const { error } = editRec
+      ? await supabase.from('house_contributions').update(payload).eq('id', editRec.id)
+      : await supabase.from('house_contributions').insert([{ ...payload, status: 'Collected' }])
+    setSaving(false)
+    if (error) { alert('Error: ' + error.message); return }
+    setShowForm(false); setEditRec(null); setForm(emptyContribution)
+    showToast(editRec ? '✅ Entry updated' : '✅ Contribution recorded')
+    load()
+  }
+
+  const handleDelete = async (id) => {
+    if (!isAdmin) { alert('Only admins can delete entries.'); return }
+    if (!window.confirm('Delete this contribution entry?')) return
+    await supabase.from('house_contributions').delete().eq('id', id)
+    showToast('🗑 Entry deleted', '#dc2626')
+    load()
+  }
+
+  // ── Mark a whole house's un-submitted entries as submitted in one go ──
+  const handleConfirmSubmit = async () => {
+    if (!submitModal) return
+    const { house } = submitModal
+    const { collected: collectedIds } = houseSummary(house)
+    const unsubmittedIds = records
+      .filter(r => normalizeHouse(r.house) === normalizeHouse(house) && r.status !== 'Submitted')
+      .map(r => r.id)
+    if (!unsubmittedIds.length) { setSubmitModal(null); return }
+    setSaving(true)
+    const { error } = await supabase.from('house_contributions')
+      .update({ status: 'Submitted', submitted_to: submitTo.trim() || DEFAULT_SUBMITTED_TO, submitted_date: submitDate })
+      .in('id', unsubmittedIds)
+    setSaving(false)
+    if (error) { alert('Error: ' + error.message); return }
+    setSubmitModal(null)
+    showToast(`✅ ${unsubmittedIds.length} entr${unsubmittedIds.length === 1 ? 'y' : 'ies'} marked submitted`)
+    load()
+  }
+
+  // ── A4 house record sheet — formal ledger print, not a landscape table ──
+  const printHouseRecord = (houseName) => {
+    const { recs, collected, submitted, pending } = houseSummary(houseName)
+    const w = window.open('', '_blank')
+    if (!w) return
+    const navy = `rgb(${REPORT_NAVY.join(',')})`
+    const gold = `rgb(${REPORT_GOLD.join(',')})`
+    const grey = `rgb(${REPORT_GREY.join(',')})`
+    const rows = recs.map((r, i) => `
+      <tr style="background:${i % 2 === 1 ? '#f4f6f9' : 'white'}">
+        <td>${i + 1}</td>
+        <td>${r.student_name}</td>
+        <td>${r.gcc_no || '—'}</td>
+        <td>${r.class_name || '—'}</td>
+        <td>${r.purpose || '—'}</td>
+        <td style="text-align:right">₹${Number(r.amount).toLocaleString('en-IN')}</td>
+        <td>${r.collected_date || '—'}</td>
+        <td>${r.status}</td>
+      </tr>
+    `).join('')
+    w.document.write(`
+      <html><head><title>House Record — ${houseName}</title>
+      <style>
+        @page { size: A4; margin: 14mm; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Georgia', 'Times New Roman', serif; color: #1e293b; margin: 0; }
+        .hd { text-align: center; border-bottom: 3px double ${gold}; padding-bottom: 10px; margin-bottom: 16px; }
+        .hd h1 { margin: 0; font-size: 19px; color: ${navy}; letter-spacing: .02em; }
+        .hd p { margin: 3px 0 0; font-size: 11px; color: ${grey}; }
+        .title { text-align: center; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: ${gold}; margin: 10px 0 16px; }
+        .meta { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 14px; }
+        .meta div span:first-child { color: ${grey}; margin-right: 6px; }
+        .meta div span:last-child { font-weight: 700; }
+        table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: 16px; }
+        th { background: ${navy}; color: white; padding: 7px 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .03em; }
+        td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+        .summary { display: flex; gap: 12px; margin-bottom: 20px; }
+        .sbox { flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; text-align: center; }
+        .sbox .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: ${grey}; }
+        .sbox .val { font-size: 18px; font-weight: 700; margin-top: 3px; }
+        .sign { display: flex; justify-content: space-between; margin-top: 50px; font-size: 11.5px; }
+        .sign div { text-align: center; width: 170px; }
+        .sign div span { display: block; border-top: 1px solid #444; padding-top: 5px; margin-top: 40px; }
+        .np { text-align: center; margin-bottom: 16px; }
+        .np button { padding: 9px 22px; border: none; border-radius: 6px; cursor: pointer; font-weight: 700; margin: 0 4px; }
+        .print-btn { background: ${navy}; color: white; }
+        .close-btn { background: #e5e7eb; color: #374151; }
+        @media print { .np { display: none; } }
+      </style></head><body>
+        <div class="np">
+          <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
+          <button class="close-btn" onclick="window.close()">✕ Close</button>
+        </div>
+        <div class="hd">
+          <h1>Guidance Navodaya &amp; Sainik Institute</h1>
+          <p>Khangabok, Thoubal District, Manipur</p>
+        </div>
+        <div class="title">House Contribution Record — ${houseName}</div>
+        <div class="meta">
+          <div><span>House:</span><span>${houseName}</span></div>
+          <div><span>Students:</span><span>${houseStudents(houseName).length}</span></div>
+          <div><span>Generated:</span><span>${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>
+        </div>
+        <table>
+          <thead><tr><th>#</th><th>Student Name</th><th>GCC No.</th><th>Class</th><th>Purpose</th><th style="text-align:right">Amount</th><th>Date</th><th>Status</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">No contributions recorded</td></tr>'}</tbody>
+        </table>
+        <div class="summary">
+          <div class="sbox"><div class="lbl">Total Collected</div><div class="val">₹${collected.toLocaleString('en-IN')}</div></div>
+          <div class="sbox"><div class="lbl">Submitted</div><div class="val" style="color:#16a34a">₹${submitted.toLocaleString('en-IN')}</div></div>
+          <div class="sbox"><div class="lbl">Balance in Hand</div><div class="val" style="color:${pending > 0 ? '#dc2626' : '#16a34a'}">₹${pending.toLocaleString('en-IN')}</div></div>
+        </div>
+        <div class="sign">
+          <div><span>Housemaster</span></div>
+          <div><span>Received by (${DEFAULT_SUBMITTED_TO})</span></div>
+          <div><span>Superintendent</span></div>
+        </div>
+      </body></html>
+    `)
+    w.document.close()
+    w.print()
+  }
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '60px', color: MD.color.onSurfaceVariant }}>⏳ Loading contribution records…</div>
+  }
+
+  // ── House list view ──────────────────────────────────────────────────────
+  if (!activeHouse) {
+    return (
+      <div>
+        {toast && (
+          <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 1000, background: toast.color, color: 'white', padding: '10px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, boxShadow: MD.elevation[3] }}>
+            {toast.msg}
+          </div>
+        )}
+        <div style={{ ...(mobile ? mobileCard : card), marginBottom: 16 }}>
+          <h2 style={{ ...MD.type.title, margin: '0 0 4px' }}>💰 House Contributions</h2>
+          <p style={{ ...MD.type.body, color: MD.color.onSurfaceVariant, margin: 0 }}>
+            Track exam-contribution money collected per house and confirm submission to {DEFAULT_SUBMITTED_TO}.
+          </p>
+        </div>
+        <div style={mobile ? { display: 'grid', gap: 12 } : grid2}>
+          {houses.map(h => {
+            const { count, collected, submitted, pending } = houseSummary(h.name)
+            return (
+              <div key={h.name} style={{ ...card, cursor: 'pointer' }} onClick={() => setActiveHouse(h.name)}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                  <h3 style={{ ...MD.type.title, margin: 0 }}>{h.name}</h3>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: MD.color.onSurfaceVariant }}>{count} entr{count === 1 ? 'y' : 'ies'}</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.04em', color: MD.color.onSurfaceVariant }}>Collected</div>
+                    <div style={{ fontSize: 17, fontWeight: 800 }}>₹{collected.toLocaleString('en-IN')}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.04em', color: MD.color.onSurfaceVariant }}>Balance in Hand</div>
+                    <div style={{ fontSize: 17, fontWeight: 800, color: pending > 0 ? MD.color.error : MD.color.success }}>₹{pending.toLocaleString('en-IN')}</div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+          {!houses.length && (
+            <div style={{ ...card, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No houses configured yet — set them up in the Houses tab first.</div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Single-house detail view ─────────────────────────────────────────────
+  const { recs, collected, submitted, pending } = houseSummary(activeHouse)
+  const visibleRecs = statusFilter === 'All' ? recs : recs.filter(r => r.status === statusFilter)
+  const matchingStudents = studentSearch.trim().length >= 2
+    ? houseStudents(activeHouse).filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase()) || String(s.gcc_no || '').includes(studentSearch)).slice(0, 8)
+    : []
+
+  return (
+    <div>
+      {toast && (
+        <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 1000, background: toast.color, color: 'white', padding: '10px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, boxShadow: MD.elevation[3] }}>
+          {toast.msg}
+        </div>
+      )}
+
+      <button onClick={() => setActiveHouse(null)} style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 14px', fontSize: 13, marginBottom: 14 }}>
+        ← All Houses
+      </button>
+
+      <div style={{ ...(mobile ? mobileCard : card), marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ ...MD.type.title, margin: '0 0 4px' }}>{activeHouse}</h2>
+          <p style={{ ...MD.type.body, color: MD.color.onSurfaceVariant, margin: 0, fontSize: 13 }}>
+            {recs.length} contribution{recs.length === 1 ? '' : 's'} recorded
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={() => printHouseRecord(activeHouse)} style={btn('#f1f5f9', '#374151')}>🖨️ Print A4 Record</button>
+          {pending > 0 && (
+            <button onClick={() => { setSubmitModal({ house: activeHouse }); setSubmitTo(DEFAULT_SUBMITTED_TO); setSubmitDate(today()) }} style={btn(MD.color.success)}>
+              ✅ Mark Submitted (₹{pending.toLocaleString('en-IN')})
+            </button>
+          )}
+          <button onClick={() => openAddForm(activeHouse)} style={btn()}>+ Add Contribution</button>
+        </div>
+      </div>
+
+      <div style={mobile ? mobileStatGrid : statGrid(150)}>
+        <StatCard icon="💰" label="Total Collected" value={`₹${collected.toLocaleString('en-IN')}`} color={MD.color.primary} bg={MD.color.primaryContainer} />
+        <StatCard icon="✅" label="Submitted" value={`₹${submitted.toLocaleString('en-IN')}`} color={MD.color.success} bg={MD.color.successContainer} />
+        <StatCard icon="⏳" label="Balance in Hand" value={`₹${pending.toLocaleString('en-IN')}`} color={pending > 0 ? MD.color.error : MD.color.success} bg={pending > 0 ? MD.color.errorContainer : MD.color.successContainer} />
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        {['All', 'Collected', 'Submitted'].map(s => (
+          <button key={s} onClick={() => setStatusFilter(s)} style={{
+            ...btn(statusFilter === s ? MD.color.primary : '#f1f5f9', statusFilter === s ? 'white' : '#374151'),
+            padding: '7px 14px', fontSize: 12,
+          }}>{s}</button>
+        ))}
+      </div>
+
+      {mobile ? (
+        <MobileCardList>
+          {visibleRecs.map(r => (
+            <MobileRecordCard key={r.id} accentColor={r.status === 'Submitted' ? MD.color.success : MD.color.secondary}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <strong style={{ fontSize: 14 }}>{r.student_name}</strong>
+                <span style={{ fontWeight: 800, color: MD.color.primary }}>₹{Number(r.amount).toLocaleString('en-IN')}</span>
+              </div>
+              <div style={{ fontSize: 12, color: MD.color.onSurfaceVariant }}>{r.purpose} · {r.collected_date}</div>
+              <div style={{ fontSize: 11, marginTop: 6, fontWeight: 700, color: r.status === 'Submitted' ? MD.color.success : MD.color.secondary }}>{r.status}</div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button onClick={() => openEditForm(r)} style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 12px', fontSize: 11 }}>Edit</button>
+                {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ ...btn(MD.color.errorContainer, MD.color.error), padding: '6px 12px', fontSize: 11 }}>Delete</button>}
+              </div>
+            </MobileRecordCard>
+          ))}
+          {!visibleRecs.length && <div style={{ ...card, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No entries</div>}
+        </MobileCardList>
+      ) : (
+        <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: MD.color.primary, color: 'white' }}>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Student</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>GCC No.</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Purpose</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right' }}>Amount</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Date</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Status</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRecs.map((r, i) => (
+                <tr key={r.id} style={{ background: i % 2 === 1 ? MD.color.surfaceVariant : 'white', borderBottom: `1px solid ${MD.color.outlineVariant}` }}>
+                  <td style={{ padding: '9px 12px', fontWeight: 600 }}>{r.student_name}</td>
+                  <td style={{ padding: '9px 12px' }}>{r.gcc_no || '—'}</td>
+                  <td style={{ padding: '9px 12px' }}>{r.purpose}</td>
+                  <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700 }}>₹{Number(r.amount).toLocaleString('en-IN')}</td>
+                  <td style={{ padding: '9px 12px' }}>{r.collected_date}</td>
+                  <td style={{ padding: '9px 12px' }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: r.status === 'Submitted' ? MD.color.successContainer : MD.color.secondaryContainer, color: r.status === 'Submitted' ? MD.color.success : MD.color.onSecondaryContainer }}>
+                      {r.status}
+                    </span>
+                  </td>
+                  <td style={{ padding: '9px 12px', display: 'flex', gap: 6 }}>
+                    <button onClick={() => openEditForm(r)} style={{ ...btn('#f1f5f9', '#374151'), padding: '5px 10px', fontSize: 11 }}>Edit</button>
+                    {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ ...btn(MD.color.errorContainer, MD.color.error), padding: '5px 10px', fontSize: 11 }}>Del</button>}
+                  </td>
+                </tr>
+              ))}
+              {!visibleRecs.length && (
+                <tr><td colSpan={7} style={{ padding: 30, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No entries</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── Add/Edit contribution modal ── */}
+      {showForm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowForm(false)}>
+          <form onSubmit={handleSave} onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: MD.radius.sheet, padding: 22, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ ...MD.type.title, margin: '0 0 16px' }}>{editRec ? 'Edit Contribution' : 'Add Contribution'} — {activeHouse}</h3>
+
+            {!editRec && (
+              <div style={{ marginBottom: 14, position: 'relative' }}>
+                <label style={lbl}>Student</label>
+                {form.student_id ? (
+                  <div style={{ ...inp, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{form.student_name} {form.gcc_no ? `(GCC ${form.gcc_no})` : ''}</span>
+                    <button type="button" onClick={() => setForm(f => ({ ...f, student_id: null, student_name: '', gcc_no: '', class_name: '' }))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: MD.color.error, fontWeight: 700 }}>✕</button>
+                  </div>
+                ) : (
+                  <>
+                    <input style={inp} placeholder="Type student name or GCC No..." value={studentSearch} onChange={e => setStudentSearch(e.target.value)} />
+                    {matchingStudents.length > 0 && (
+                      <div style={{ position: 'absolute', zIndex: 10, background: 'white', border: `1px solid ${MD.color.outline}`, borderRadius: MD.radius.field, marginTop: 4, width: '100%', maxHeight: 200, overflowY: 'auto', boxShadow: MD.elevation[3] }}>
+                        {matchingStudents.map(s => (
+                          <div key={s.id} onClick={() => pickStudent(s)} style={{ padding: '9px 12px', cursor: 'pointer', borderBottom: `1px solid ${MD.color.outlineVariant}` }}>
+                            <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+                            <div style={{ fontSize: 11, color: MD.color.onSurfaceVariant }}>GCC {s.gcc_no} · {s.class_name}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Purpose</label>
+              <select style={inp} value={form.purpose} onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))}>
+                {CONTRIB_PURPOSES.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+              <div>
+                <label style={lbl}>Amount (₹)</label>
+                <input type="number" min="1" style={inp} value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required />
+              </div>
+              <div>
+                <label style={lbl}>Date Collected</label>
+                <input type="date" style={inp} value={form.collected_date} onChange={e => setForm(f => ({ ...f, collected_date: e.target.value }))} required />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Collected By</label>
+              <input style={inp} value={form.collected_by} onChange={e => setForm(f => ({ ...f, collected_by: e.target.value }))} placeholder="Housemaster name" />
+            </div>
+
+            <div style={{ marginBottom: 18 }}>
+              <label style={lbl}>Remarks (optional)</label>
+              <input style={inp} value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" onClick={() => setShowForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
+              <button type="submit" disabled={saving} style={{ ...btn(), flex: 1 }}>{saving ? 'Saving…' : editRec ? 'Save Changes' : 'Add Entry'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── Mark-submitted confirmation modal ── */}
+      {submitModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setSubmitModal(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: MD.radius.sheet, padding: 22, width: '100%', maxWidth: 400 }}>
+            <h3 style={{ ...MD.type.title, margin: '0 0 10px' }}>Confirm Submission</h3>
+            <p style={{ ...MD.type.body, color: MD.color.onSurfaceVariant, marginBottom: 16 }}>
+              Mark ₹{pending.toLocaleString('en-IN')} from {submitModal.house} as submitted. This updates every un-submitted entry in this house.
+            </p>
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Submitted To</label>
+              <input style={inp} value={submitTo} onChange={e => setSubmitTo(e.target.value)} />
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <label style={lbl}>Submission Date</label>
+              <input type="date" style={inp} value={submitDate} onChange={e => setSubmitDate(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setSubmitModal(null)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
+              <button onClick={handleConfirmSubmit} disabled={saving} style={{ ...btn(MD.color.success), flex: 1 }}>{saving ? 'Saving…' : 'Confirm'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ══════════════════════════════════════════════════════════════
 const emptyHM = {
   name: '', house: '', gender: '', phone: '', email: '', designation: '',
@@ -9180,7 +9686,7 @@ function Hostel() {
   const initialParams = useMemo(() => {
     try { return new URLSearchParams(window.location.search) } catch { return null }
   }, [])
-  const VALID_TABS = ['allotments','schedule','nightduty','discipline','superintendentdash','sickbay','house','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
+  const VALID_TABS = ['allotments','schedule','nightduty','discipline','superintendentdash','sickbay','house','housecontrib','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
   const [activeTab, setActiveTab] = useState(() => {
     const t = initialParams?.get('tab')
     return t && VALID_TABS.includes(t) ? t : 'hmdashboard'
@@ -9294,6 +9800,7 @@ function Hostel() {
     superintendentdash: <SuperintendentDashboard students={students} currentUser={currentUser} />,
     sickbay: <SickbayTab students={students} autoOpenForm={autoOpenForm?.tabId === 'sickbay' ? autoOpenForm : null} currentUser={currentUser} />,
     house: <HouseTab students={students} currentUser={currentUser} houseColorMap={houseColorMap} />,
+    housecontrib: <HouseContributionTab students={students} currentUser={currentUser} />,
     housemaster: <HousemasterTab currentUser={currentUser} />,
     kitchen: <KitchenTab currentUser={currentUser} />,
     hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} />,
