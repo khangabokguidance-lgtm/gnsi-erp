@@ -903,15 +903,55 @@ export default function ParentsPortal({ isOpen, onClose }) {
     }
   }, []);
 
+  // Builds the single most relevant unpaid due to send as one payment
+  // link — the real endpoint (create-payment-link.js) requires `gcc` and
+  // `amount`, and its `notes.kind`/`for_month`/`year` are what webhook.js
+  // reads to know which fee-table row to mark paid once payment succeeds,
+  // so this can't just send the total: it has to target one concrete due.
+  // Priority: admission fee (one-time, usually the first thing owed) →
+  // earliest unpaid flat-fee month → earliest unpaid course-fee month.
+  const pickNextDue = (dues) => {
+    if (dues.admission && !dues.admission.paid && dues.admission.due > 0) {
+      return { kind: 'admission', amount: dues.admission.due };
+    }
+    const unpaidFlat = (dues.flatFee?.items || []).filter(i => !i.paid).sort((a, b) => a.year - b.year);
+    if (unpaidFlat.length) {
+      const i = unpaidFlat[0];
+      return { kind: 'flat', amount: i.expected, for_month: i.month, year: i.year };
+    }
+    const unpaidCourse = (dues.courseFee?.items || []).filter(i => !i.paid).sort((a, b) => a.year - b.year);
+    if (unpaidCourse.length) {
+      const i = unpaidCourse[0];
+      return { kind: 'course', amount: i.expected, for_month: i.month, year: i.year };
+    }
+    return null;
+  };
+
   const handlePayNow = async () => {
-    if (!student) return;
+    if (!student || fees.status !== 'ready') return;
+    const nextDue = pickNextDue(fees.data);
+    if (!nextDue) {
+      alert('No specific due found to pay online right now. Please contact the office.');
+      return;
+    }
     try {
       const res = await fetch('/api/razorpay/create-payment-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ student_id: student.id, gcc_no: student.gcc_no, name: student.name }),
+        body: JSON.stringify({
+          gcc: student.gcc_no,
+          amount: nextDue.amount,
+          studentName: student.name,
+          kind: nextDue.kind,
+          for_month: nextDue.for_month,
+          year: nextDue.year,
+          course: student.course,
+        }),
       });
       const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.error || `Request failed (${res.status})`);
+      }
       if (json?.short_url) {
         window.open(json.short_url, '_blank');
       } else {
@@ -1249,7 +1289,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
               />
             )}
             {activeTab === 'fees' && (
-              <FeesTab state={fees} onPayNow={handlePayNow} />
+              <FeesTab state={fees} onPayNow={handlePayNow} nextDue={fees.status === 'ready' ? pickNextDue(fees.data) : null} />
             )}
             {activeTab === 'homework' && (
               <HomeworkTab state={homework} />
@@ -1512,7 +1552,7 @@ function ReportCardTab({ examTypes, selectedType, onTypeChange, dates, selectedD
 // for flat/course fee, a list of individual month items), plus totalPaid/
 // totalDue/monthsOverdue and a failedSources array flagging any fee source
 // that errored during the lookup (dues are a LOWER BOUND when non-empty).
-function FeesTab({ state, onPayNow }) {
+function FeesTab({ state, onPayNow, nextDue }) {
   return (
     <div className="pp-sec active">
       <div className="pp-card">
@@ -1547,9 +1587,9 @@ function FeesTab({ state, onPayNow }) {
                 </p>
               )}
 
-              {(state.data.totalDue ?? 0) > 0 && (
+              {nextDue && (
                 <button className="pp-lbtn fee-pay-btn" onClick={onPayNow}>
-                  💳 Pay Now Online
+                  💳 Pay {nextDue.kind === 'admission' ? 'Admission Fee' : `${nextDue.kind === 'flat' ? 'Flat' : 'Course'} Fee — ${nextDue.for_month} ${nextDue.year}`} (₹{nextDue.amount}) Online
                 </button>
               )}
 
