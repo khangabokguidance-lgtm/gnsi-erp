@@ -8952,7 +8952,7 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
   }
 
   // ── Single-house detail view ─────────────────────────────────────────────
-  const { recs, itemRecs, count, collected, submitted, unsubmittedTotal, pending, itemGivenCount, itemTotalCount } = houseSummary(activeHouse)
+  const { recs, itemRecs, count, collected, submitted, unsubmittedTotal, itemGivenCount, itemTotalCount } = houseSummary(activeHouse)
   const allHouseRecs = [...recs, ...itemRecs].sort((a, b) => (b.collected_date || '').localeCompare(a.collected_date || ''))
   const visibleRecs = statusFilter === 'All' ? allHouseRecs
     : statusFilter === 'Items' ? itemRecs
@@ -8994,10 +8994,7 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
       <div style={mobile ? mobileStatGrid : statGrid(150)}>
         <StatCard icon="💰" label="Total Collected" value={`₹${collected.toLocaleString('en-IN')}`} color={MD.color.primary} bg={MD.color.primaryContainer} />
         <StatCard icon="✅" label="Submitted" value={`₹${submitted.toLocaleString('en-IN')}`} color={MD.color.success} bg={MD.color.successContainer} />
-        <StatCard icon="⏳" label="Balance in Hand" value={`₹${pending.toLocaleString('en-IN')}`} color={pending < 0 ? MD.color.error : MD.color.success} bg={pending < 0 ? MD.color.errorContainer : MD.color.successContainer} />
-        {itemTotalCount > 0 && (
-          <StatCard icon="📄" label="A4 Packets Given" value={`${itemGivenCount} / ${itemTotalCount}`} color={itemGivenCount === itemTotalCount ? MD.color.success : MD.color.error} bg={itemGivenCount === itemTotalCount ? MD.color.successContainer : MD.color.errorContainer} />
-        )}
+        <StatCard icon="📄" label="A4 Bundle Collected" value={`${itemGivenCount} / ${itemTotalCount}`} color={itemTotalCount > 0 && itemGivenCount === itemTotalCount ? MD.color.success : MD.color.secondary} bg={itemTotalCount > 0 && itemGivenCount === itemTotalCount ? MD.color.successContainer : MD.color.secondaryContainer} />
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
