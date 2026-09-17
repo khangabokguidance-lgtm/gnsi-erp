@@ -76,6 +76,18 @@ export default async function handler(req, res) {
 
       if (!notes.gcc) {
         console.error('razorpay webhook: payment_link.paid with no gcc in notes', entity?.id)
+        try {
+          await supabase.from('webhook_failures').insert([{
+            provider: 'razorpay',
+            event,
+            error_message: 'payment_link.paid received with no gcc in notes — payment was made but cannot be matched to a student',
+            payload,
+            created_at: new Date().toISOString(),
+            resolved: false,
+          }])
+        } catch (logErr) {
+          console.error('razorpay webhook: could not record no-gcc failure row either:', logErr)
+        }
         return res.status(200).json({ received: true, skipped: 'no gcc in notes' })
       }
 
@@ -156,10 +168,30 @@ export default async function handler(req, res) {
     return res.status(200).json({ received: true })
   } catch (err) {
     console.error('razorpay webhook processing error:', err)
+    // Best-effort: also write the failure to a table you can actually see
+    // in your own app, instead of only a Vercel log line someone has to
+    // remember to go check. If this insert itself fails (Supabase down,
+    // wrong schema, etc.), swallow that too — this is a diagnostic aid,
+    // never something that should crash or change the response we give
+    // Razorpay below.
+    try {
+      await supabase.from('webhook_failures').insert([{
+        provider: 'razorpay',
+        event: event || null,
+        error_message: err?.message || String(err),
+        payload: payload || null,
+        created_at: new Date().toISOString(),
+        resolved: false,
+      }])
+    } catch (logErr) {
+      console.error('razorpay webhook: could not record failure row either:', logErr)
+    }
     // Return 200 anyway once you've logged it, or Razorpay will keep
     // retrying a payload that fails for a non-transient reason (e.g. a
-    // schema mismatch) indefinitely. Prefer alerting yourself out-of-band
-    // (Sentry, a Slack webhook, etc.) over relying on webhook retries.
+    // schema mismatch) indefinitely. The webhook_failures row above is
+    // what makes that safe — check Fees.jsx (or wherever this table is
+    // surfaced) periodically, or against Razorpay's own Payments list, so
+    // a failed write is caught even though Razorpay itself won't retry.
     return res.status(200).json({ received: true, error: 'processing failed, logged' })
   }
 }
