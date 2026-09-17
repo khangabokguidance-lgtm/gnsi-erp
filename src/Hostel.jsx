@@ -8773,6 +8773,8 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
     e.preventDefault()
     const amt = Number(commonForm.amount)
     if (!Number.isFinite(amt) || amt <= 0) { alert('Enter a valid amount.'); return }
+    const commonCategory = (commonForm.category || '').trim()
+    if (!commonCategory) { alert('Enter a category name.'); return }
     // Warn (not block) if this would push the pooled collection into a
     // negative net figure — mirrors the same-spirit caution in the House
     // Expense Tracker tab (wouldGoNegative there).
@@ -8782,7 +8784,7 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
     }
     setSaving(true)
     const payload = {
-      category: commonForm.category, description: commonForm.description || null,
+      category: commonCategory, description: commonForm.description || null,
       amount: amt, paid_to: commonForm.paid_to || null, paid_date: commonForm.paid_date,
       paid_by: commonForm.paid_by || currentUser?.name || null, receipt_no: commonForm.receipt_no || null,
       remarks: commonForm.remarks || null,
@@ -9121,12 +9123,12 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
             <form onSubmit={handleSaveCommon} onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: MD.radius.sheet, padding: 22, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto' }}>
               <h3 style={{ ...MD.type.title, margin: '0 0 16px' }}>{editCommonRec ? 'Edit Common Expense' : 'Add Common Expense'}</h3>
 
-              <div style={{ marginBottom: 14 }}>
-                <label style={lbl}>Category</label>
-                <select style={inp} value={commonForm.category} onChange={e => setCommonForm(f => ({ ...f, category: e.target.value }))}>
-                  {COMMON_EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
+              <CategoryField
+                value={commonForm.category}
+                options={COMMON_EXPENSE_CATEGORIES}
+                onChange={v => setCommonForm(f => ({ ...f, category: v }))}
+                placeholder="e.g. Water Tanker, Gas Refill"
+              />
 
               <div style={{ marginBottom: 14 }}>
                 <label style={lbl}>Description</label>
@@ -9476,6 +9478,151 @@ const emptyExpense = {
   paid_to: '', paid_date: today(), paid_by: '', receipt_no: '', remarks: '',
 }
 
+// ── MANUAL (free-typed) CATEGORIES ────────────────────────────────────────
+// The category dropdowns were closed lists, so any spend that didn't fit a
+// preset had to be filed under "Other" with its real name buried in the
+// description — which made the category column useless for grouping. This
+// sentinel switches the select into a free-text box; the typed string is
+// stored in `category` exactly like a preset one. No migration needed —
+// category is already a plain text column in house_expenses and
+// common_expenses. Reopening a record whose category isn't in the preset
+// list drops straight back into custom mode, so an edit can't silently
+// reset a manual category to the first preset.
+const CUSTOM_CAT = '__custom__'
+
+function CategoryField({ value, options, onChange, placeholder = 'e.g. Sports Kit, Water Tanker' }) {
+  // Each expense modal is conditionally rendered ({showForm && ...}), so this
+  // mounts fresh on every open — a lazy initialiser is enough to detect an
+  // existing custom value without a syncing effect.
+  const [custom, setCustom] = useState(() => !!value && !options.includes(value))
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={lbl}>Category</label>
+      <select
+        style={inp}
+        value={custom ? CUSTOM_CAT : value}
+        onChange={e => {
+          if (e.target.value === CUSTOM_CAT) { setCustom(true); onChange('') }
+          else { setCustom(false); onChange(e.target.value) }
+        }}
+      >
+        {options.map(c => <option key={c} value={c}>{c}</option>)}
+        <option value={CUSTOM_CAT}>+ Custom category...</option>
+      </select>
+      {custom && (
+        <input
+          style={{ ...inp, marginTop: 8 }}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          maxLength={60}
+          autoFocus
+          required
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Shared save path for house_expenses ───────────────────────────────────
+// Used by both the House Expenses tab and the Money Dashboard's manual-entry
+// button, so the two entry points can't drift apart on validation or on the
+// negative-balance warning. Returns { ok } | { cancelled } | { error }.
+async function persistHouseExpense({ form, editRec, currentUser, netBalance }) {
+  const amt = Number(form.amount)
+  if (!Number.isFinite(amt) || amt <= 0) return { error: 'Enter a valid amount.' }
+  const category = (form.category || '').trim()
+  if (!category) return { error: 'Enter a category name.' }
+  if (!form.house) return { error: 'Select a house for this expense.' }
+  // Warn (not block) if this expense would push the house into a negative
+  // balance — the housemaster may be spending ahead of a submission being
+  // reversed/adjusted, or the data may just be behind, so this is a caution
+  // rather than a hard rule.
+  const wouldGoNegative = !editRec && (netBalance - amt) < 0
+  if (wouldGoNegative && !window.confirm(`This expense exceeds ${form.house}'s current balance in hand (₹${netBalance.toLocaleString('en-IN')}). Record it anyway?`)) {
+    return { cancelled: true }
+  }
+  const payload = {
+    house: form.house, category, description: form.description || null,
+    amount: amt, paid_to: form.paid_to || null, paid_date: form.paid_date,
+    paid_by: form.paid_by || currentUser?.name || null, receipt_no: form.receipt_no || null,
+    remarks: form.remarks || null,
+  }
+  const { error } = editRec
+    ? await supabase.from('house_expenses').update(payload).eq('id', editRec.id)
+    : await supabase.from('house_expenses').insert([payload])
+  if (error) return { error: error.message }
+  return { ok: true }
+}
+
+// ── Reusable Add/Edit expense sheet ───────────────────────────────────────
+// `houses` is passed only from the Money Dashboard, where the entry isn't
+// scoped to a house you've already drilled into and so has to be picked.
+function ExpenseFormModal({ title, form, setForm, houses, onSubmit, onCancel, saving, submitLabel }) {
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onCancel}>
+      <form onSubmit={onSubmit} onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: MD.radius.sheet, padding: 22, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto' }}>
+        <h3 style={{ ...MD.type.title, margin: '0 0 16px' }}>{title}</h3>
+
+        {houses && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={lbl}>House</label>
+            <select style={inp} value={form.house} onChange={e => set('house', e.target.value)} required>
+              <option value="">— Select house —</option>
+              {houses.map(h => <option key={h.name} value={h.name}>{h.name}</option>)}
+            </select>
+          </div>
+        )}
+
+        <CategoryField value={form.category} options={EXPENSE_CATEGORIES} onChange={v => set('category', v)} />
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>Description</label>
+          <input style={inp} value={form.description} onChange={e => set('description', e.target.value)} placeholder="e.g. AISSEE exam fee for 12 students" />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div>
+            <label style={lbl}>Amount (₹)</label>
+            <input type="number" min="1" style={inp} value={form.amount} onChange={e => set('amount', e.target.value)} required />
+          </div>
+          <div>
+            <label style={lbl}>Date Paid</label>
+            <input type="date" style={inp} value={form.paid_date} onChange={e => set('paid_date', e.target.value)} required />
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div>
+            <label style={lbl}>Paid To</label>
+            <input style={inp} value={form.paid_to} onChange={e => set('paid_to', e.target.value)} placeholder="Vendor / office / person" />
+          </div>
+          <div>
+            <label style={lbl}>Receipt No. (optional)</label>
+            <input style={inp} value={form.receipt_no} onChange={e => set('receipt_no', e.target.value)} />
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>Paid By</label>
+          <input style={inp} value={form.paid_by} onChange={e => set('paid_by', e.target.value)} placeholder="Housemaster name" />
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <label style={lbl}>Remarks (optional)</label>
+          <input style={inp} value={form.remarks} onChange={e => set('remarks', e.target.value)} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="button" onClick={onCancel} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
+          <button type="submit" disabled={saving} style={{ ...btn(), flex: 1 }}>{saving ? 'Saving...' : (submitLabel || 'Add Entry')}</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 // Shared by HouseExpenseTab and MoneyDashboardTab — one house's full money
 // picture: collected/submitted/pending from contributions, spent from
 // expenses, and the real net balance in hand (pending contributions minus
@@ -9552,27 +9699,10 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
 
   const handleSave = async (e) => {
     e.preventDefault()
-    const amt = Number(form.amount)
-    if (!Number.isFinite(amt) || amt <= 0) { alert('Enter a valid amount.'); return }
     const { netBalance } = houseMoney(form.house)
-    // Warn (not block) if this expense would push the house into a
-    // negative balance — the housemaster may be spending ahead of a
-    // submission being reversed/adjusted, or the data may just be behind,
-    // so this is a caution rather than a hard rule.
-    const wouldGoNegative = !editRec && (netBalance - amt) < 0
-    if (wouldGoNegative && !window.confirm(`This expense exceeds ${form.house}'s current balance in hand (₹${netBalance.toLocaleString('en-IN')}). Record it anyway?`)) {
-      return
-    }
-    const payload = {
-      house: form.house, category: form.category, description: form.description || null,
-      amount: amt, paid_to: form.paid_to || null, paid_date: form.paid_date,
-      paid_by: form.paid_by || currentUser?.name || null, receipt_no: form.receipt_no || null,
-      remarks: form.remarks || null,
-    }
-    const { error } = editRec
-      ? await supabase.from('house_expenses').update(payload).eq('id', editRec.id)
-      : await supabase.from('house_expenses').insert([payload])
-    if (error) { alert('Error: ' + error.message); return }
+    const res = await persistHouseExpense({ form, editRec, currentUser, netBalance })
+    if (res.cancelled) return
+    if (res.error) { alert(res.error); return }
     setShowForm(false); setEditRec(null); setForm(emptyExpense)
     showToast(editRec ? '✅ Expense updated' : '✅ Expense recorded')
     load()
@@ -9720,60 +9850,14 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
       )}
 
       {showForm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowForm(false)}>
-          <form onSubmit={handleSave} onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: MD.radius.sheet, padding: 22, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{ ...MD.type.title, margin: '0 0 16px' }}>{editRec ? 'Edit Expense' : 'Add Expense'} — {activeHouse}</h3>
-
-            <div style={{ marginBottom: 14 }}>
-              <label style={lbl}>Category</label>
-              <select style={inp} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-
-            <div style={{ marginBottom: 14 }}>
-              <label style={lbl}>Description</label>
-              <input style={inp} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="e.g. AISSEE exam fee for 12 students" />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-              <div>
-                <label style={lbl}>Amount (₹)</label>
-                <input type="number" min="1" style={inp} value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required />
-              </div>
-              <div>
-                <label style={lbl}>Date Paid</label>
-                <input type="date" style={inp} value={form.paid_date} onChange={e => setForm(f => ({ ...f, paid_date: e.target.value }))} required />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-              <div>
-                <label style={lbl}>Paid To</label>
-                <input style={inp} value={form.paid_to} onChange={e => setForm(f => ({ ...f, paid_to: e.target.value }))} placeholder="Vendor / office / person" />
-              </div>
-              <div>
-                <label style={lbl}>Receipt No. (optional)</label>
-                <input style={inp} value={form.receipt_no} onChange={e => setForm(f => ({ ...f, receipt_no: e.target.value }))} />
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 14 }}>
-              <label style={lbl}>Paid By</label>
-              <input style={inp} value={form.paid_by} onChange={e => setForm(f => ({ ...f, paid_by: e.target.value }))} placeholder="Housemaster name" />
-            </div>
-
-            <div style={{ marginBottom: 18 }}>
-              <label style={lbl}>Remarks (optional)</label>
-              <input style={inp} value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} />
-            </div>
-
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button type="button" onClick={() => setShowForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
-              <button type="submit" style={{ ...btn(), flex: 1 }}>{editRec ? 'Save Changes' : 'Add Entry'}</button>
-            </div>
-          </form>
-        </div>
+        <ExpenseFormModal
+          title={`${editRec ? 'Edit Expense' : 'Add Expense'} — ${activeHouse}`}
+          form={form}
+          setForm={setForm}
+          onSubmit={handleSave}
+          onCancel={() => setShowForm(false)}
+          submitLabel={editRec ? 'Save Changes' : 'Add Entry'}
+        />
       )}
     </div>
   )
@@ -9784,8 +9868,40 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
 // ═══════════════════════════════════════════════════════════════════════════
 function MoneyDashboardTab({ currentUser }) {
   const mobile = useMobileView()
-  const { houses, contributions, expenses, loading, houseMoney } = useHouseMoneyData()
+  const { houses, contributions, expenses, loading, load, houseMoney } = useHouseMoneyData()
   const [expandedHouse, setExpandedHouse] = useState(null)
+  // ── Manual expense entry ────────────────────────────────────────────────
+  // This dashboard was read-only, so recording a one-off spend from here
+  // meant leaving for the House Expenses tab and drilling into the right
+  // house first. Writes to the same house_expenses table through the same
+  // validation (persistHouseExpense); the only difference is that the house
+  // has to be chosen in the form, since this view isn't scoped to one.
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState(emptyExpense)
+  const [saving, setSaving] = useState(false)
+  const [toast, setToast] = useState(null)
+
+  const showToast = (msg, color = '#16a34a') => {
+    setToast({ msg, color }); setTimeout(() => setToast(null), 3000)
+  }
+
+  const openAddForm = (houseName = '') => {
+    setForm({ ...emptyExpense, house: houseName, paid_by: currentUser?.name || '' })
+    setShowForm(true)
+  }
+
+  const handleSave = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    const { netBalance } = houseMoney(form.house)
+    const res = await persistHouseExpense({ form, editRec: null, currentUser, netBalance })
+    setSaving(false)
+    if (res.cancelled) return
+    if (res.error) { alert(res.error); return }
+    setShowForm(false); setForm(emptyExpense)
+    showToast('✅ Expense recorded')
+    load()
+  }
 
   if (loading) {
     return <div style={{ textAlign: 'center', padding: '60px', color: MD.color.onSurfaceVariant }}>⏳ Loading money dashboard…</div>
@@ -9809,11 +9925,20 @@ function MoneyDashboardTab({ currentUser }) {
 
   return (
     <div>
-      <div style={{ ...(mobile ? mobileCard : card), marginBottom: 16 }}>
-        <h2 style={{ ...MD.type.title, margin: '0 0 4px' }}>📊 Money Dashboard</h2>
-        <p style={{ ...MD.type.body, color: MD.color.onSurfaceVariant, margin: 0 }}>
-          Contributions collected, submitted, and spent across every house.
-        </p>
+      {toast && (
+        <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 1000, background: toast.color, color: 'white', padding: '10px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, boxShadow: MD.elevation[3] }}>
+          {toast.msg}
+        </div>
+      )}
+
+      <div style={{ ...(mobile ? mobileCard : card), marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ ...MD.type.title, margin: '0 0 4px' }}>📊 Money Dashboard</h2>
+          <p style={{ ...MD.type.body, color: MD.color.onSurfaceVariant, margin: 0 }}>
+            Contributions collected, submitted, and spent across every house.
+          </p>
+        </div>
+        <button onClick={() => openAddForm()} style={{ ...btn(), opacity: houses.length ? 1 : 0.5 }} disabled={!houses.length}>+ Add Expense</button>
       </div>
 
       <div style={mobile ? mobileStatGrid : statGrid(150)}>
@@ -9866,6 +9991,12 @@ function MoneyDashboardTab({ currentUser }) {
                     </div>
                   ))}
                   {!m.expenseRecs.length && <div style={{ fontSize: 12, color: MD.color.onSurfaceVariant }}>None yet</div>}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openAddForm(h.name) }}
+                    style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 12px', fontSize: 11, marginTop: 10 }}
+                  >
+                    + Add expense to {h.name}
+                  </button>
                 </div>
               )}
             </div>
@@ -9892,6 +10023,19 @@ function MoneyDashboardTab({ currentUser }) {
           <div style={{ padding: 30, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No activity yet</div>
         )}
       </div>
+
+      {showForm && (
+        <ExpenseFormModal
+          title="Add Expense"
+          form={form}
+          setForm={setForm}
+          houses={houses}
+          onSubmit={handleSave}
+          onCancel={() => setShowForm(false)}
+          saving={saving}
+          submitLabel="Add Entry"
+        />
+      )}
     </div>
   )
 }
