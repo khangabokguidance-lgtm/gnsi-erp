@@ -227,6 +227,8 @@ const TABS = [
   { id: 'housecontrib', label: '💰 Contributions' },
   { id: 'houseexpense', label: '🧾 Expenses' },
   { id: 'moneydash', label: '📊 Money Dashboard' },
+  { id: 'a4stock', label: '📄 A4 Stock' },
+  { id: 'studymaterial', label: '📚 Study Material' },
   { id: 'housemaster', label: '🧑‍🏫 HM' },
   { id: 'hmactivities', label: '📋 Activities' },
   { id: 'adminmonitor', label: '🖥️ Monitor' },
@@ -262,7 +264,7 @@ const TAB_GROUPS = [
   { label: 'Money', ids: ['housecontrib', 'houseexpense', 'moneydash'] },
   { label: 'Houses & Discipline', ids: ['house', 'housemaster', 'discipline', 'superintendentdash'] },
   { label: 'Daily Operations', ids: ['schedule', 'attendance', 'hmrollreport', 'nightduty', 'allotments', 'transfer', 'kitchen', 'sickbay', 'maintenance'] },
-  { label: 'Academics & Activities', ids: ['hmactivities', 'classtimetable', 'doubtsession', 'journal'] },
+  { label: 'Academics & Activities', ids: ['hmactivities', 'classtimetable', 'doubtsession', 'journal', 'a4stock', 'studymaterial'] },
   { label: 'Monitoring & Reports', ids: ['adminmonitor', 'hmdashboard', 'leave', 'neglectreport', 'commandcentre'] },
 ]
 
@@ -9643,6 +9645,645 @@ function MoneyDashboardTab({ currentUser }) {
   )
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  A4 STOCK DASHBOARD + STUDY MATERIAL DELIVERY TRACKER
+// ═══════════════════════════════════════════════════════════════════════════
+// A4 STOCK: "Collected" comes automatically from house_contributions rows
+// where purpose = 'A4 Packet' and item_status = 'Given' (1 packet per such
+// row — those entries never carry a quantity, see HouseContributionTab).
+// "Used" comes from two places, both landing in the same a4_stock_usage
+// table: (1) manual entries logged directly on this tab (e.g. packets used
+// for a general print run with no single material name), and (2) study
+// material deliveries below, which auto-log their own usage row so
+// delivering material always deducts stock — staff never has to remember
+// to log usage twice.
+//
+// UNITS: 500 sheets = 1 packet (A4_SHEETS_PER_PACKET). Every usage amount
+// is stored internally in SHEETS (the finer unit, so a packet entry always
+// converts cleanly to a whole number of sheets; the reverse isn't
+// guaranteed). Entry forms let staff type in Packets OR Sheets via a unit
+// toggle; the dashboard always displays both.
+//
+// New tables required: a4_stock_usage, study_material_deliveries
+//
+// Suggested migration:
+//   create table a4_stock_usage (
+//     id bigint generated always as identity primary key,
+//     sheets_used integer not null check (sheets_used > 0),
+//     reason text not null default 'Printing',
+//     used_date date not null default current_date,
+//     logged_by text,
+//     remarks text,
+//     study_material_delivery_id bigint, -- set only for auto-logged rows from a delivery; null for manual entries
+//     created_at timestamptz not null default now()
+//   );
+//
+//   create table study_material_deliveries (
+//     id bigint generated always as identity primary key,
+//     material_name text not null,
+//     material_type text not null default 'Question Paper',
+//     house text,                 -- optional: whole-house delivery
+//     student_id bigint references students(id),  -- optional: single-student delivery
+//     student_name text,          -- denormalized snapshot, same convention as house_contributions
+//     recipient_count integer not null default 1, -- how many students this copy run covered
+//     sheets_per_copy integer not null default 1,
+//     total_sheets_used integer not null default 0, -- recipient_count * sheets_per_copy, stored for fast dashboard reads
+//     status text not null default 'Given' check (status in ('Given','Pending')),
+//     delivered_by text,
+//     delivered_date date not null default current_date,
+//     remarks text,
+//     created_at timestamptz not null default now()
+//   );
+
+const A4_SHEETS_PER_PACKET = 500
+
+const MATERIAL_TYPES = ['Question Paper', 'Workbook', 'Study Guide', 'Notes', 'Answer Sheet', 'Other']
+
+const emptyUsage = {
+  amount: '', unit: 'packet', reason: 'Printing', used_date: today(), logged_by: '', remarks: '',
+}
+
+const emptyDelivery = {
+  material_name: '', material_type: 'Question Paper', deliverTo: 'house', house: '', student_id: null,
+  student_name: '', gcc_no: '', class_name: '', recipient_count: '1', sheets_per_copy: '1',
+  status: 'Given', delivered_by: '', delivered_date: today(), remarks: '',
+}
+
+function sheetsToPackets(sheets) {
+  return Math.round((sheets / A4_SHEETS_PER_PACKET) * 100) / 100
+}
+function unitAmountToSheets(amount, unit) {
+  const n = Number(amount) || 0
+  return unit === 'packet' ? Math.round(n * A4_SHEETS_PER_PACKET) : Math.round(n)
+}
+
+// Shared by both tabs below — the full A4 stock picture: collected (from
+// A4 Packet contributions, given only), used (manual entries + auto-logged
+// delivery usage combined), and remaining.
+function useA4Stock() {
+  const [contributions, setContributions] = useState([])
+  const [usage, setUsage] = useState([])
+  const [deliveries, setDeliveries] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const load = async () => {
+    setLoading(true)
+    const [{ data: contrib, error: e1 }, { data: use, error: e2 }, { data: deliv, error: e3 }] = await Promise.all([
+      supabase.from('house_contributions').select('id, house, purpose, item_status, collected_date').eq('purpose', 'A4 Packet'),
+      supabase.from('a4_stock_usage').select('*').order('used_date', { ascending: false }),
+      supabase.from('study_material_deliveries').select('*').order('delivered_date', { ascending: false }),
+    ])
+    if (e1) console.error('house_contributions (A4) fetch error:', e1)
+    if (e2) console.error('a4_stock_usage fetch error:', e2)
+    if (e3) console.error('study_material_deliveries fetch error:', e3)
+    setContributions(contrib || [])
+    setUsage(use || [])
+    setDeliveries(deliv || [])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const packetsCollected = contributions.filter(c => c.item_status === 'Given').length
+  const sheetsCollected = packetsCollected * A4_SHEETS_PER_PACKET
+  const sheetsUsed = usage.reduce((s, u) => s + (Number(u.sheets_used) || 0), 0)
+  const sheetsRemaining = sheetsCollected - sheetsUsed
+  const packetsUsed = sheetsToPackets(sheetsUsed)
+  const packetsRemaining = sheetsToPackets(sheetsRemaining)
+
+  return {
+    contributions, usage, deliveries, loading, load,
+    packetsCollected, sheetsCollected, sheetsUsed, packetsUsed, sheetsRemaining, packetsRemaining,
+  }
+}
+
+function A4StockDashboardTab({ currentUser }) {
+  const mobile = useMobileView()
+  const isAdmin = isAdminRole(currentUser?.role)
+  const stock = useA4Stock()
+  const { usage, deliveries, loading, load } = stock
+  const [showUsageForm, setShowUsageForm] = useState(false)
+  const [form, setForm] = useState(emptyUsage)
+  const [toast, setToast] = useState(null)
+
+  const showToast = (msg, color = '#16a34a') => {
+    setToast({ msg, color }); setTimeout(() => setToast(null), 3000)
+  }
+
+  const openUsageForm = () => {
+    setForm({ ...emptyUsage, logged_by: currentUser?.name || '' })
+    setShowUsageForm(true)
+  }
+
+  const handleSaveUsage = async (e) => {
+    e.preventDefault()
+    const sheets = unitAmountToSheets(form.amount, form.unit)
+    if (!sheets || sheets <= 0) { alert('Enter a valid amount.'); return }
+    if (sheets > stock.sheetsRemaining) {
+      const proceed = window.confirm(`Only ${stock.packetsRemaining} packets (${stock.sheetsRemaining} sheets) remain in stock. Log this usage anyway?`)
+      if (!proceed) return
+    }
+    const { error } = await supabase.from('a4_stock_usage').insert([{
+      sheets_used: sheets, reason: form.reason, used_date: form.used_date,
+      logged_by: form.logged_by || currentUser?.name || null, remarks: form.remarks || null,
+    }])
+    if (error) { alert('Error: ' + error.message); return }
+    setShowUsageForm(false); setForm(emptyUsage)
+    showToast('✅ Usage logged')
+    load()
+  }
+
+  const handleDeleteUsage = async (id) => {
+    if (!isAdmin) { alert('Only admins can delete entries.'); return }
+    if (!window.confirm('Delete this usage entry?')) return
+    await supabase.from('a4_stock_usage').delete().eq('id', id)
+    showToast('🗑 Entry deleted', '#dc2626')
+    load()
+  }
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '60px', color: MD.color.onSurfaceVariant }}>⏳ Loading A4 stock…</div>
+  }
+
+  // Manual usage entries and auto-logged delivery usage are shown together
+  // in one combined, dated log — a delivery-sourced row is tagged so it's
+  // still traceable back to the material it was for.
+  const combinedLog = [
+    ...usage.filter(u => !u.study_material_delivery_id).map(u => ({ ...u, source: 'manual' })),
+    ...usage.filter(u => u.study_material_delivery_id).map(u => {
+      const d = deliveries.find(dd => dd.id === u.study_material_delivery_id)
+      return { ...u, source: 'delivery', label: d ? `${d.material_name} (${d.recipient_count} copies)` : 'Study material delivery' }
+    }),
+  ].sort((a, b) => (b.used_date || '').localeCompare(a.used_date || ''))
+
+  return (
+    <div>
+      {toast && (
+        <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 1000, background: toast.color, color: 'white', padding: '10px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, boxShadow: MD.elevation[3] }}>
+          {toast.msg}
+        </div>
+      )}
+
+      <div style={{ ...(mobile ? mobileCard : card), marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ ...MD.type.title, margin: '0 0 4px' }}>📄 A4 Stock Dashboard</h2>
+          <p style={{ ...MD.type.body, color: MD.color.onSurfaceVariant, margin: 0, fontSize: 13 }}>
+            Collected packets come from house A4 Packet contributions ({A4_SHEETS_PER_PACKET} sheets = 1 packet). Deliveries below deduct automatically.
+          </p>
+        </div>
+        <button onClick={openUsageForm} style={btn()}>+ Log Usage</button>
+      </div>
+
+      <div style={mobile ? { display: 'grid', gap: 10 } : grid2}>
+        <div style={card}>
+          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.04em', color: MD.color.onSurfaceVariant, marginBottom: 4 }}>Collected</div>
+          <div style={{ fontSize: 24, fontWeight: 800 }}>{stock.packetsCollected} packets</div>
+          <div style={{ fontSize: 12, color: MD.color.onSurfaceVariant }}>{stock.sheetsCollected.toLocaleString('en-IN')} sheets</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.04em', color: MD.color.onSurfaceVariant, marginBottom: 4 }}>Used</div>
+          <div style={{ fontSize: 24, fontWeight: 800 }}>{stock.packetsUsed} packets</div>
+          <div style={{ fontSize: 12, color: MD.color.onSurfaceVariant }}>{stock.sheetsUsed.toLocaleString('en-IN')} sheets</div>
+        </div>
+        <div style={{ ...card, gridColumn: mobile ? 'auto' : '1 / -1' }}>
+          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.04em', color: MD.color.onSurfaceVariant, marginBottom: 4 }}>Remaining Stock</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: stock.sheetsRemaining < 0 ? MD.color.error : MD.color.success }}>{stock.packetsRemaining} packets</div>
+          <div style={{ fontSize: 12, color: MD.color.onSurfaceVariant }}>{stock.sheetsRemaining.toLocaleString('en-IN')} sheets</div>
+          {stock.sheetsRemaining < 0 && (
+            <div style={{ fontSize: 12, color: MD.color.error, marginTop: 6, fontWeight: 700 }}>⚠️ Usage exceeds collected stock</div>
+          )}
+        </div>
+      </div>
+
+      <h3 style={{ ...MD.type.title, margin: '20px 0 10px' }}>Usage Log</h3>
+      <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+        {combinedLog.length ? combinedLog.map((u, i) => (
+          <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: i < combinedLog.length - 1 ? `1px solid ${MD.color.outlineVariant}` : 'none' }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{u.source === 'delivery' ? u.label : u.reason}</div>
+              <div style={{ fontSize: 11, color: MD.color.onSurfaceVariant }}>
+                {u.used_date} {u.logged_by ? `· ${u.logged_by}` : ''} {u.source === 'delivery' ? '· from Study Material Tracker' : ''}
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontWeight: 800 }}>{sheetsToPackets(u.sheets_used)} pkt</div>
+                <div style={{ fontSize: 11, color: MD.color.onSurfaceVariant }}>{u.sheets_used} sheets</div>
+              </div>
+              {u.source === 'manual' && isAdmin && (
+                <button onClick={() => handleDeleteUsage(u.id)} style={{ ...btn(MD.color.errorContainer, MD.color.error), padding: '5px 10px', fontSize: 11 }}>Del</button>
+              )}
+            </div>
+          </div>
+        )) : (
+          <div style={{ padding: 30, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No usage logged yet</div>
+        )}
+      </div>
+
+      {showUsageForm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowUsageForm(false)}>
+          <form onSubmit={handleSaveUsage} onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: MD.radius.sheet, padding: 22, width: '100%', maxWidth: 420, maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ ...MD.type.title, margin: '0 0 16px' }}>Log A4 Usage</h3>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Amount</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input type="number" min="0.01" step="any" style={{ ...inp, flex: 1 }} value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required />
+                <select style={{ ...inp, width: 110 }} value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
+                  <option value="packet">Packets</option>
+                  <option value="sheet">Sheets</option>
+                </select>
+              </div>
+              {form.amount && (
+                <div style={{ fontSize: 11, color: MD.color.onSurfaceVariant, marginTop: 4 }}>
+                  = {unitAmountToSheets(form.amount, form.unit)} sheets ({sheetsToPackets(unitAmountToSheets(form.amount, form.unit))} packets)
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Reason</label>
+              <input style={inp} value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} placeholder="e.g. General printing, photocopy machine refill" />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+              <div>
+                <label style={lbl}>Date</label>
+                <input type="date" style={inp} value={form.used_date} onChange={e => setForm(f => ({ ...f, used_date: e.target.value }))} required />
+              </div>
+              <div>
+                <label style={lbl}>Logged By</label>
+                <input style={inp} value={form.logged_by} onChange={e => setForm(f => ({ ...f, logged_by: e.target.value }))} />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 18 }}>
+              <label style={lbl}>Remarks (optional)</label>
+              <input style={inp} value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" onClick={() => setShowUsageForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
+              <button type="submit" style={{ ...btn(), flex: 1 }}>Log Usage</button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  STUDY MATERIAL DELIVERY TRACKER
+// ═══════════════════════════════════════════════════════════════════════════
+// Logs physical printed materials (question papers, workbooks, guides)
+// handed to students — either a whole house or one specific student.
+// Every delivery auto-logs a matching a4_stock_usage row (recipient_count
+// × sheets_per_copy), so the A4 Stock Dashboard's "Used" figure includes
+// deliveries without staff needing to log usage twice. Deleting a
+// delivery also deletes its matching usage row, so stock isn't left
+// permanently overstated after a correction.
+function StudyMaterialTab({ students: propStudents, currentUser }) {
+  const mobile = useMobileView()
+  const isAdmin = isAdminRole(currentUser?.role)
+  const [houses, setHouses] = useState([])
+  const [students, setStudents] = useState(propStudents || [])
+  const stock = useA4Stock()
+  const { deliveries, loading: stockLoading, load: reloadStock } = stock
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState(emptyDelivery)
+  const [studentSearch, setStudentSearch] = useState('')
+  const [studentDropdownOpen, setStudentDropdownOpen] = useState(false)
+  const [statusFilter, setStatusFilter] = useState('All')
+  const [toast, setToast] = useState(null)
+  const [housesLoading, setHousesLoading] = useState(true)
+
+  const showToast = (msg, color = '#16a34a') => {
+    setToast({ msg, color }); setTimeout(() => setToast(null), 3000)
+  }
+
+  useEffect(() => {
+    supabase.from('houses').select('name').order('name').then(({ data }) => {
+      setHouses(data || [])
+      setHousesLoading(false)
+    })
+  }, [])
+  useEffect(() => { if (propStudents?.length) setStudents(propStudents) }, [propStudents])
+
+  const activeStudents = useMemo(() => students.filter(s => s.status !== 'Dropout' && s.status !== 'Inactive'), [students])
+  const matchingStudents = useMemo(() => {
+    const pool = studentSearch.trim()
+      ? activeStudents.filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase()) || String(s.gcc_no || '').includes(studentSearch))
+      : activeStudents
+    return [...pool].sort((a, b) => (a.name || '').localeCompare(b.name || '')).slice(0, 50)
+  }, [activeStudents, studentSearch])
+
+  const openAddForm = () => {
+    setForm({ ...emptyDelivery, delivered_by: currentUser?.name || '' })
+    setStudentSearch('')
+    setStudentDropdownOpen(false)
+    setShowForm(true)
+  }
+
+  const pickStudent = (s) => {
+    setForm(f => ({ ...f, student_id: s.id, student_name: s.name, gcc_no: s.gcc_no, class_name: s.class_name }))
+    setStudentSearch('')
+  }
+
+  const handleSave = async (e) => {
+    e.preventDefault()
+    if (!form.material_name.trim()) { alert('Enter the material name.'); return }
+    if (form.deliverTo === 'house' && !form.house) { alert('Select a house.'); return }
+    if (form.deliverTo === 'student' && !form.student_id) { alert('Select a student.'); return }
+    const recipientCount = form.deliverTo === 'house' ? Number(form.recipient_count) : 1
+    const sheetsPerCopy = Number(form.sheets_per_copy)
+    if (!Number.isFinite(recipientCount) || recipientCount <= 0) { alert('Enter a valid recipient count.'); return }
+    if (!Number.isFinite(sheetsPerCopy) || sheetsPerCopy <= 0) { alert('Enter a valid sheets-per-copy.'); return }
+    const totalSheets = recipientCount * sheetsPerCopy
+
+    if (form.status === 'Given' && totalSheets > stock.sheetsRemaining) {
+      const proceed = window.confirm(`This delivery needs ${totalSheets} sheets, but only ${stock.sheetsRemaining} remain in stock. Record it anyway?`)
+      if (!proceed) return
+    }
+
+    const payload = {
+      material_name: form.material_name.trim(), material_type: form.material_type,
+      house: form.deliverTo === 'house' ? form.house : null,
+      student_id: form.deliverTo === 'student' ? form.student_id : null,
+      student_name: form.deliverTo === 'student' ? form.student_name : null,
+      recipient_count: recipientCount, sheets_per_copy: sheetsPerCopy, total_sheets_used: totalSheets,
+      status: form.status, delivered_by: form.delivered_by || currentUser?.name || null,
+      delivered_date: form.delivered_date, remarks: form.remarks || null,
+    }
+    const { data: inserted, error } = await supabase.from('study_material_deliveries').insert([payload]).select().single()
+    if (error) { alert('Error: ' + error.message); return }
+
+    // Auto-log matching stock usage ONLY when actually given — a Pending
+    // delivery hasn't consumed any sheets yet, so logging usage for it
+    // would understate remaining stock before the material is even handed
+    // out. Marking it Given later would need a separate usage entry (not
+    // wired here — this tracker doesn't yet support editing a delivery's
+    // status after creation).
+    if (form.status === 'Given' && inserted) {
+      const { error: usageError } = await supabase.from('a4_stock_usage').insert([{
+        sheets_used: totalSheets, reason: `Study material: ${form.material_name.trim()}`,
+        used_date: form.delivered_date, logged_by: form.delivered_by || currentUser?.name || null,
+        study_material_delivery_id: inserted.id,
+      }])
+      if (usageError) console.error('Auto stock-usage log failed:', usageError)
+    }
+
+    setShowForm(false); setForm(emptyDelivery)
+    showToast('✅ Delivery recorded')
+    reloadStock()
+  }
+
+  const handleDelete = async (rec) => {
+    if (!isAdmin) { alert('Only admins can delete entries.'); return }
+    if (!window.confirm('Delete this delivery record? Its matching A4 usage entry (if any) will also be removed.')) return
+    await supabase.from('a4_stock_usage').delete().eq('study_material_delivery_id', rec.id)
+    await supabase.from('study_material_deliveries').delete().eq('id', rec.id)
+    showToast('🗑 Delivery deleted', '#dc2626')
+    reloadStock()
+  }
+
+  const handleMarkGiven = async (rec) => {
+    const totalSheets = rec.total_sheets_used || (rec.recipient_count * rec.sheets_per_copy)
+    if (totalSheets > stock.sheetsRemaining) {
+      const proceed = window.confirm(`This needs ${totalSheets} sheets, but only ${stock.sheetsRemaining} remain in stock. Mark as given anyway?`)
+      if (!proceed) return
+    }
+    const { error } = await supabase.from('study_material_deliveries').update({ status: 'Given' }).eq('id', rec.id)
+    if (error) { alert('Error: ' + error.message); return }
+    const { error: usageError } = await supabase.from('a4_stock_usage').insert([{
+      sheets_used: totalSheets, reason: `Study material: ${rec.material_name}`,
+      used_date: today(), logged_by: currentUser?.name || null, study_material_delivery_id: rec.id,
+    }])
+    if (usageError) console.error('Auto stock-usage log failed:', usageError)
+    showToast('✅ Marked as given')
+    reloadStock()
+  }
+
+  if (stockLoading || housesLoading) {
+    return <div style={{ textAlign: 'center', padding: '60px', color: MD.color.onSurfaceVariant }}>⏳ Loading study material records…</div>
+  }
+
+  const visibleDeliveries = statusFilter === 'All' ? deliveries : deliveries.filter(d => d.status === statusFilter)
+
+  return (
+    <div>
+      {toast && (
+        <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 1000, background: toast.color, color: 'white', padding: '10px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, boxShadow: MD.elevation[3] }}>
+          {toast.msg}
+        </div>
+      )}
+
+      <div style={{ ...(mobile ? mobileCard : card), marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ ...MD.type.title, margin: '0 0 4px' }}>📚 Study Material Tracker</h2>
+          <p style={{ ...MD.type.body, color: MD.color.onSurfaceVariant, margin: 0, fontSize: 13 }}>
+            {deliveries.length} deliver{deliveries.length === 1 ? 'y' : 'ies'} — printed materials given to students, deducted from A4 stock automatically
+          </p>
+        </div>
+        <button onClick={openAddForm} style={btn()}>+ Log Delivery</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        {['All', 'Given', 'Pending'].map(s => (
+          <button key={s} onClick={() => setStatusFilter(s)} style={{
+            ...btn(statusFilter === s ? MD.color.primary : '#f1f5f9', statusFilter === s ? 'white' : '#374151'),
+            padding: '7px 14px', fontSize: 12,
+          }}>{s}</button>
+        ))}
+      </div>
+
+      {mobile ? (
+        <MobileCardList>
+          {visibleDeliveries.map(d => (
+            <MobileRecordCard key={d.id} accentColor={d.status === 'Given' ? MD.color.success : MD.color.secondary}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <strong style={{ fontSize: 14 }}>{d.material_name}</strong>
+                <span style={{ fontSize: 11, fontWeight: 700, color: d.status === 'Given' ? MD.color.success : MD.color.secondary }}>{d.status}</span>
+              </div>
+              <div style={{ fontSize: 12, color: MD.color.onSurfaceVariant }}>{d.material_type} · {d.house || d.student_name || '—'}</div>
+              <div style={{ fontSize: 11, marginTop: 4, color: MD.color.onSurfaceVariant }}>{d.recipient_count} copies × {d.sheets_per_copy} sheets = {d.total_sheets_used} sheets · {d.delivered_date}</div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                {d.status === 'Pending' && <button onClick={() => handleMarkGiven(d)} style={{ ...btn(MD.color.success), padding: '6px 12px', fontSize: 11 }}>Mark Given</button>}
+                {isAdmin && <button onClick={() => handleDelete(d)} style={{ ...btn(MD.color.errorContainer, MD.color.error), padding: '6px 12px', fontSize: 11 }}>Delete</button>}
+              </div>
+            </MobileRecordCard>
+          ))}
+          {!visibleDeliveries.length && <div style={{ ...card, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No deliveries recorded</div>}
+        </MobileCardList>
+      ) : (
+        <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: MD.color.primary, color: 'white' }}>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Material</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Type</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Given To</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right' }}>Copies</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right' }}>Sheets Used</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Date</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Status</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleDeliveries.map((d, i) => (
+                <tr key={d.id} style={{ background: i % 2 === 1 ? MD.color.surfaceVariant : 'white', borderBottom: `1px solid ${MD.color.outlineVariant}` }}>
+                  <td style={{ padding: '9px 12px', fontWeight: 600 }}>{d.material_name}</td>
+                  <td style={{ padding: '9px 12px' }}>{d.material_type}</td>
+                  <td style={{ padding: '9px 12px' }}>{d.house || d.student_name || '—'}</td>
+                  <td style={{ padding: '9px 12px', textAlign: 'right' }}>{d.recipient_count}</td>
+                  <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700 }}>{d.total_sheets_used}</td>
+                  <td style={{ padding: '9px 12px' }}>{d.delivered_date}</td>
+                  <td style={{ padding: '9px 12px' }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: d.status === 'Given' ? MD.color.successContainer : MD.color.secondaryContainer, color: d.status === 'Given' ? MD.color.success : MD.color.onSecondaryContainer }}>
+                      {d.status}
+                    </span>
+                  </td>
+                  <td style={{ padding: '9px 12px', display: 'flex', gap: 6 }}>
+                    {d.status === 'Pending' && <button onClick={() => handleMarkGiven(d)} style={{ ...btn(MD.color.success), padding: '5px 10px', fontSize: 11 }}>Given</button>}
+                    {isAdmin && <button onClick={() => handleDelete(d)} style={{ ...btn(MD.color.errorContainer, MD.color.error), padding: '5px 10px', fontSize: 11 }}>Del</button>}
+                  </td>
+                </tr>
+              ))}
+              {!visibleDeliveries.length && (
+                <tr><td colSpan={8} style={{ padding: 30, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No deliveries recorded</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showForm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowForm(false)}>
+          <form onSubmit={handleSave} onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: MD.radius.sheet, padding: 22, width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ ...MD.type.title, margin: '0 0 16px' }}>Log Study Material Delivery</h3>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Material Name</label>
+              <input style={inp} value={form.material_name} onChange={e => setForm(f => ({ ...f, material_name: e.target.value }))} placeholder="e.g. JNVST Mock Test 3" required />
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Material Type</label>
+              <select style={inp} value={form.material_type} onChange={e => setForm(f => ({ ...f, material_type: e.target.value }))}>
+                {MATERIAL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Deliver To</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[{ id: 'house', label: 'Whole House' }, { id: 'student', label: 'One Student' }].map(opt => (
+                  <button key={opt.id} type="button" onClick={() => setForm(f => ({ ...f, deliverTo: opt.id }))} style={{
+                    ...btn(form.deliverTo === opt.id ? MD.color.primary : '#f1f5f9', form.deliverTo === opt.id ? 'white' : '#374151'),
+                    flex: 1, padding: '9px 0', fontSize: 12,
+                  }}>{opt.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {form.deliverTo === 'house' ? (
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>House</label>
+                <select style={inp} value={form.house} onChange={e => setForm(f => ({ ...f, house: e.target.value }))} required>
+                  <option value="">Select house…</option>
+                  {houses.map(h => <option key={h.name} value={h.name}>{h.name}</option>)}
+                </select>
+              </div>
+            ) : (
+              <div style={{ marginBottom: 14, position: 'relative' }}>
+                <label style={lbl}>Student</label>
+                {form.student_id ? (
+                  <div style={{ ...inp, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{form.student_name} {form.gcc_no ? `(GCC ${form.gcc_no})` : ''}</span>
+                    <button type="button" onClick={() => setForm(f => ({ ...f, student_id: null, student_name: '', gcc_no: '', class_name: '' }))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: MD.color.error, fontWeight: 700 }}>✕</button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      style={inp}
+                      placeholder="Type student name or GCC No... (or pick from list)"
+                      value={studentSearch}
+                      onChange={e => setStudentSearch(e.target.value)}
+                      onFocus={() => setStudentDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setStudentDropdownOpen(false), 150)}
+                    />
+                    {studentDropdownOpen && matchingStudents.length > 0 && (
+                      <div style={{ position: 'absolute', zIndex: 10, background: 'white', border: `1px solid ${MD.color.outline}`, borderRadius: MD.radius.field, marginTop: 4, width: '100%', maxHeight: 200, overflowY: 'auto', boxShadow: MD.elevation[3] }}>
+                        {matchingStudents.map(s => (
+                          <div key={s.id} onMouseDown={() => { pickStudent(s); setStudentDropdownOpen(false) }} style={{ padding: '9px 12px', cursor: 'pointer', borderBottom: `1px solid ${MD.color.outlineVariant}` }}>
+                            <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+                            <div style={{ fontSize: 11, color: MD.color.onSurfaceVariant }}>GCC {s.gcc_no} · {s.class_name}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: form.deliverTo === 'house' ? '1fr 1fr' : '1fr', gap: 12, marginBottom: 14 }}>
+              {form.deliverTo === 'house' && (
+                <div>
+                  <label style={lbl}>Number of Students</label>
+                  <input type="number" min="1" style={inp} value={form.recipient_count} onChange={e => setForm(f => ({ ...f, recipient_count: e.target.value }))} required />
+                </div>
+              )}
+              <div>
+                <label style={lbl}>Sheets per Copy</label>
+                <input type="number" min="1" style={inp} value={form.sheets_per_copy} onChange={e => setForm(f => ({ ...f, sheets_per_copy: e.target.value }))} required />
+              </div>
+            </div>
+
+            <div style={{ fontSize: 12, color: MD.color.onSurfaceVariant, marginBottom: 14 }}>
+              Total sheets: <strong>{(Number(form.deliverTo === 'house' ? form.recipient_count : 1) || 0) * (Number(form.sheets_per_copy) || 0)}</strong>
+              {' '}({sheetsToPackets((Number(form.deliverTo === 'house' ? form.recipient_count : 1) || 0) * (Number(form.sheets_per_copy) || 0))} packets)
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Status</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['Given', 'Pending'].map(st => (
+                  <button key={st} type="button" onClick={() => setForm(f => ({ ...f, status: st }))} style={{
+                    ...btn(form.status === st ? (st === 'Given' ? MD.color.success : MD.color.secondary) : '#f1f5f9', form.status === st ? 'white' : '#374151'),
+                    flex: 1, padding: '9px 0', fontSize: 12,
+                  }}>{st}</button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+              <div>
+                <label style={lbl}>Date</label>
+                <input type="date" style={inp} value={form.delivered_date} onChange={e => setForm(f => ({ ...f, delivered_date: e.target.value }))} required />
+              </div>
+              <div>
+                <label style={lbl}>Delivered By</label>
+                <input style={inp} value={form.delivered_by} onChange={e => setForm(f => ({ ...f, delivered_by: e.target.value }))} />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 18 }}>
+              <label style={lbl}>Remarks (optional)</label>
+              <input style={inp} value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" onClick={() => setShowForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
+              <button type="submit" style={{ ...btn(), flex: 1 }}>Log Delivery</button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const emptyHM = {
   name: '', house: '', gender: '', phone: '', email: '', designation: '',
   assigned_date: today(), status: 'Active', remarks: '',
@@ -10287,7 +10928,7 @@ function Hostel() {
   const initialParams = useMemo(() => {
     try { return new URLSearchParams(window.location.search) } catch { return null }
   }, [])
-  const VALID_TABS = ['allotments','schedule','nightduty','discipline','superintendentdash','sickbay','house','housecontrib','houseexpense','moneydash','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
+  const VALID_TABS = ['allotments','schedule','nightduty','discipline','superintendentdash','sickbay','house','housecontrib','houseexpense','moneydash','a4stock','studymaterial','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
   const [activeTab, setActiveTab] = useState(() => {
     const t = initialParams?.get('tab')
     return t && VALID_TABS.includes(t) ? t : 'hmdashboard'
@@ -10404,6 +11045,8 @@ function Hostel() {
     housecontrib: <HouseContributionTab students={students} currentUser={currentUser} />,
     houseexpense: <HouseExpenseTab currentUser={currentUser} />,
     moneydash: <MoneyDashboardTab currentUser={currentUser} />,
+    a4stock: <A4StockDashboardTab currentUser={currentUser} />,
+    studymaterial: <StudyMaterialTab students={students} currentUser={currentUser} />,
     housemaster: <HousemasterTab currentUser={currentUser} />,
     kitchen: <KitchenTab currentUser={currentUser} />,
     hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} />,
