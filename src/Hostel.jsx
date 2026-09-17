@@ -8637,7 +8637,6 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
   const [houses, setHouses] = useState([])
   const [students, setStudents] = useState(propStudents || [])
   const [records, setRecords] = useState([])
-  const [expenseRecords, setExpenseRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [activeHouse, setActiveHouse] = useState(null)
@@ -8658,24 +8657,19 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
 
   const load = async () => {
     setLoading(true)
-    // Also reads house_expenses (added alongside the Expense Tracker tab)
-    // so "Balance in Hand" here subtracts money already spent, not just
-    // money not-yet-submitted — otherwise this figure would overstate what
-    // a house actually has left once any expense exists. The Money
-    // Dashboard tab computes the same combined figure via
-    // useHouseMoneyData(); kept as a parallel fetch here rather than
-    // sharing that hook since this tab also needs `students` for the
-    // contributor picker, which useHouseMoneyData doesn't load.
-    const [{ data: h }, { data: rec, error }, { data: exp, error: expError }] = await Promise.all([
+    // Expenses are now spent from a combined institute-wide pool, not
+    // charged against any one house (see the Expense Tracker tab) — so
+    // this tab no longer reads house_expenses at all. "Balance in Hand"
+    // per house below is purely the contribution side (collected minus
+    // submitted); institute-wide spending is tracked separately on the
+    // Expense Tracker / Money Dashboard tabs, not deducted here.
+    const [{ data: h }, { data: rec, error }] = await Promise.all([
       supabase.from('houses').select('name').order('name'),
       supabase.from('house_contributions').select('*').order('collected_date', { ascending: false }),
-      supabase.from('house_expenses').select('house, amount'),
     ])
     if (error) console.error('house_contributions fetch error:', error)
-    if (expError) console.error('house_expenses fetch error:', expError)
     setHouses(h || [])
     setRecords(rec || [])
-    setExpenseRecords(exp || [])
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -8698,16 +8692,14 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
   )
 
   // ── Per-house summary ──────────────────────────────────────────────────
-  // Two distinct money figures, kept separate on purpose:
-  //  - unsubmittedTotal: collected minus submitted (money contributions
-  //    only — item rows are excluded entirely from every money figure
-  //    here). This is what "Mark Submitted" actually acts on — it marks
-  //    every still-Collected MONEY contribution row as Submitted, so the
-  //    button must show and act on the SAME number.
-  //  - pending ("Balance in Hand"): unsubmittedTotal minus money already
-  //    spent (see the Expense Tracker tab) — the real cash position, shown
-  //    on the house cards, but NOT what gets marked submitted, since an
-  //    expense already paid isn't money waiting to be submitted anywhere.
+  // "pending" ("Balance in Hand") is now simply unsubmittedTotal — money
+  // collected but not yet submitted upstream. Expenses are spent from a
+  // combined institute-wide pool (Expense Tracker tab), not from any one
+  // house's contributions, so nothing here is reduced by spending anymore.
+  // unsubmittedTotal and pending are numerically identical now but kept as
+  // two names since "Mark Submitted" acts on unsubmittedTotal specifically
+  // (money contributions only, excluding item rows) and other call sites
+  // already read `pending` as the balance-in-hand label.
   // itemRecs/itemGivenCount/itemTotalCount cover item-type contributions
   // (currently just A4 Packet) — given/not-given only, no amount, never
   // mixed into the money totals above.
@@ -8718,10 +8710,9 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
     const collected = recs.reduce((s, r) => s + (Number(r.amount) || 0), 0)
     const submitted = recs.filter(r => r.status === 'Submitted').reduce((s, r) => s + (Number(r.amount) || 0), 0)
     const unsubmittedTotal = collected - submitted
-    const spent = expenseRecords.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName)).reduce((s, r) => s + (Number(r.amount) || 0), 0)
-    const pending = unsubmittedTotal - spent
+    const pending = unsubmittedTotal
     const itemGivenCount = itemRecs.filter(r => r.item_status === 'Given').length
-    return { count: allRecs.length, collected, submitted, spent, unsubmittedTotal, pending, recs, itemRecs, itemGivenCount, itemTotalCount: itemRecs.length }
+    return { count: allRecs.length, collected, submitted, unsubmittedTotal, pending, recs, itemRecs, itemGivenCount, itemTotalCount: itemRecs.length }
   }
 
   const openAddForm = (houseName) => {
@@ -8961,7 +8952,7 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
   }
 
   // ── Single-house detail view ─────────────────────────────────────────────
-  const { recs, itemRecs, count, collected, submitted, spent, unsubmittedTotal, pending, itemGivenCount, itemTotalCount } = houseSummary(activeHouse)
+  const { recs, itemRecs, count, collected, submitted, unsubmittedTotal, pending, itemGivenCount, itemTotalCount } = houseSummary(activeHouse)
   const allHouseRecs = [...recs, ...itemRecs].sort((a, b) => (b.collected_date || '').localeCompare(a.collected_date || ''))
   const visibleRecs = statusFilter === 'All' ? allHouseRecs
     : statusFilter === 'Items' ? itemRecs
@@ -9003,7 +8994,6 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
       <div style={mobile ? mobileStatGrid : statGrid(150)}>
         <StatCard icon="💰" label="Total Collected" value={`₹${collected.toLocaleString('en-IN')}`} color={MD.color.primary} bg={MD.color.primaryContainer} />
         <StatCard icon="✅" label="Submitted" value={`₹${submitted.toLocaleString('en-IN')}`} color={MD.color.success} bg={MD.color.successContainer} />
-        <StatCard icon="🧾" label="Spent" value={`₹${spent.toLocaleString('en-IN')}`} color={MD.color.secondary} bg={MD.color.secondaryContainer} />
         <StatCard icon="⏳" label="Balance in Hand" value={`₹${pending.toLocaleString('en-IN')}`} color={pending < 0 ? MD.color.error : MD.color.success} bg={pending < 0 ? MD.color.errorContainer : MD.color.successContainer} />
         {itemTotalCount > 0 && (
           <StatCard icon="📄" label="A4 Packets Given" value={`${itemGivenCount} / ${itemTotalCount}`} color={itemGivenCount === itemTotalCount ? MD.color.success : MD.color.error} bg={itemGivenCount === itemTotalCount ? MD.color.successContainer : MD.color.errorContainer} />
@@ -9226,22 +9216,33 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  HOUSE EXPENSE TAB — spending FROM collected house contribution money
+//  EXPENSE TRACKER TAB — spending FROM the combined contribution pool
 // ═══════════════════════════════════════════════════════════════════════════
-// Tracks money spent out of a house's contribution fund (e.g. exam fees paid
-// on behalf of students, using money already collected via the
-// Contributions tab). Deliberately separate from house_contributions rather
-// than a signed +/- amount on one table, so "money in" and "money out" each
-// keep their own approval/receipt fields without overloading one schema.
+// Tracks money spent from ALL houses' contributions pooled together — not
+// tied to any single house. An expense here (e.g. exam fees paid for
+// students institute-wide) draws down the institute-wide total, not any
+// one house's individual balance. Per-house money still lives entirely in
+// house_contributions (see HouseContributionTab) — this tab is the other
+// half: one flat list of expenses with no house grouping, no house-list
+// click-through.
+//
+// Kept as its own table (not folded into house_contributions as negative
+// amounts) so "money in" and "money out" each keep their own fields
+// (receipt no., paid-to, etc.) without overloading one schema.
+//
+// `house` on this table is kept NULLABLE for backward compatibility with
+// any rows created before this tab became institute-wide (the earlier
+// per-house version wrote a house on every row) — the UI no longer sets
+// or filters on it. New rows are written with house: null.
 //
 // New table required: house_expenses
-//   id, house, category, description, amount, paid_to, paid_date,
-//   paid_by, receipt_no, remarks, created_at
+//   id, house (nullable, legacy only), category, description, amount,
+//   paid_to, paid_date, paid_by, receipt_no, remarks, created_at
 //
 // Suggested migration:
 //   create table house_expenses (
 //     id bigint generated always as identity primary key,
-//     house text not null,
+//     house text, -- nullable; legacy per-house rows only, unused going forward
 //     category text not null default 'Exam Fees',
 //     description text,
 //     amount numeric(10,2) not null default 0,
@@ -9252,18 +9253,26 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
 //     remarks text,
 //     created_at timestamptz not null default now()
 //   );
+//
+// If house_expenses already exists with `house` as NOT NULL from the
+// earlier per-house version, relax it:
+//   alter table house_expenses alter column house drop not null;
 
 const EXPENSE_CATEGORIES = ['Exam Fees', 'Mess/Food', 'Repairs & Maintenance', 'Event/Trip', 'Stationery', 'Other']
 
 const emptyExpense = {
-  house: '', category: 'Exam Fees', description: '', amount: '',
+  category: 'Exam Fees', description: '', amount: '',
   paid_to: '', paid_date: today(), paid_by: '', receipt_no: '', remarks: '',
 }
 
-// Shared by HouseExpenseTab and MoneyDashboardTab — one house's full money
-// picture: collected/submitted/pending from contributions, spent from
-// expenses, and the real net balance in hand (pending contributions minus
-// what's actually been spent), not just the contribution-side balance.
+// Shared by HouseExpenseTab and MoneyDashboardTab.
+//  - houseMoney(houseName): a single house's contribution-side picture
+//    (collected/submitted/pendingSubmission) — expenses are deliberately
+//    NOT subtracted here anymore, since spending is institute-wide now,
+//    not attributable to any one house's contributions.
+//  - poolTotals(): the institute-wide picture — total collected across
+//    every house, total spent from the combined pool, and the real net
+//    balance actually in hand across the whole institute.
 function useHouseMoneyData() {
   const [houses, setHouses] = useState([])
   const [contributions, setContributions] = useState([])
@@ -9286,30 +9295,36 @@ function useHouseMoneyData() {
   }
   useEffect(() => { load() }, [])
 
+  // Per-house contribution picture only — no expense deduction. A house's
+  // own "balance in hand" (in HouseContributionTab) now means "collected
+  // minus submitted", full stop; institute-wide spending is tracked
+  // separately via poolTotals() below, not charged against any one house.
   const houseMoney = (houseName) => {
     const contribRecs = contributions.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName))
-    const expenseRecs = expenses.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName))
     const collected = contribRecs.reduce((s, r) => s + (Number(r.amount) || 0), 0)
     const submitted = contribRecs.filter(r => r.status === 'Submitted').reduce((s, r) => s + (Number(r.amount) || 0), 0)
     const pendingSubmission = collected - submitted
-    const spent = expenseRecs.reduce((s, r) => s + (Number(r.amount) || 0), 0)
-    // Net in hand: money collected but not yet submitted upstream, minus
-    // whatever has already been spent from the house fund. This is the
-    // figure that answers "how much of this house's cash is actually
-    // accounted for in hand right now" — separate from pendingSubmission,
-    // which is purely the contribution side.
-    const netBalance = pendingSubmission - spent
-    return { contribRecs, expenseRecs, collected, submitted, pendingSubmission, spent, netBalance }
+    return { contribRecs, collected, submitted, pendingSubmission }
   }
 
-  return { houses, contributions, expenses, loading, load, houseMoney }
+  // Institute-wide pool: every house's contributions combined, minus every
+  // expense (none of which belong to a specific house anymore).
+  const poolTotals = () => {
+    const collected = contributions.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+    const submitted = contributions.filter(r => r.status === 'Submitted').reduce((s, r) => s + (Number(r.amount) || 0), 0)
+    const pendingSubmission = collected - submitted
+    const spent = expenses.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+    const netBalance = pendingSubmission - spent
+    return { collected, submitted, pendingSubmission, spent, netBalance }
+  }
+
+  return { houses, contributions, expenses, loading, load, houseMoney, poolTotals }
 }
 
-function HouseExpenseTab({ students: propStudents, currentUser }) {
+function HouseExpenseTab({ currentUser }) {
   const mobile = useMobileView()
   const isAdmin = isAdminRole(currentUser?.role)
-  const { houses, expenses, loading, load, houseMoney } = useHouseMoneyData()
-  const [activeHouse, setActiveHouse] = useState(null)
+  const { expenses, loading, load, poolTotals } = useHouseMoneyData()
   const [showForm, setShowForm] = useState(false)
   const [editRec, setEditRec] = useState(null)
   const [form, setForm] = useState(emptyExpense)
@@ -9319,15 +9334,15 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
     setToast({ msg, color }); setTimeout(() => setToast(null), 3000)
   }
 
-  const openAddForm = (houseName) => {
+  const openAddForm = () => {
     setEditRec(null)
-    setForm({ ...emptyExpense, house: houseName, paid_by: currentUser?.name || '' })
+    setForm({ ...emptyExpense, paid_by: currentUser?.name || '' })
     setShowForm(true)
   }
   const openEditForm = (rec) => {
     setEditRec(rec)
     setForm({
-      house: rec.house, category: rec.category || 'Exam Fees', description: rec.description || '',
+      category: rec.category || 'Exam Fees', description: rec.description || '',
       amount: rec.amount, paid_to: rec.paid_to || '', paid_date: rec.paid_date || today(),
       paid_by: rec.paid_by || '', receipt_no: rec.receipt_no || '', remarks: rec.remarks || '',
     })
@@ -9338,17 +9353,16 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
     e.preventDefault()
     const amt = Number(form.amount)
     if (!Number.isFinite(amt) || amt <= 0) { alert('Enter a valid amount.'); return }
-    const { netBalance } = houseMoney(form.house)
-    // Warn (not block) if this expense would push the house into a
-    // negative balance — the housemaster may be spending ahead of a
-    // submission being reversed/adjusted, or the data may just be behind,
-    // so this is a caution rather than a hard rule.
+    const { netBalance } = poolTotals()
+    // Warn (not block) if this expense would push the COMBINED pool
+    // negative — spending ahead of a submission being reversed/adjusted,
+    // or the data may just be behind, so this is a caution, not a rule.
     const wouldGoNegative = !editRec && (netBalance - amt) < 0
-    if (wouldGoNegative && !window.confirm(`This expense exceeds ${form.house}'s current balance in hand (₹${netBalance.toLocaleString('en-IN')}). Record it anyway?`)) {
+    if (wouldGoNegative && !window.confirm(`This expense exceeds the institute's current combined balance in hand (₹${netBalance.toLocaleString('en-IN')}). Record it anyway?`)) {
       return
     }
     const payload = {
-      house: form.house, category: form.category, description: form.description || null,
+      house: null, category: form.category, description: form.description || null,
       amount: amt, paid_to: form.paid_to || null, paid_date: form.paid_date,
       paid_by: form.paid_by || currentUser?.name || null, receipt_no: form.receipt_no || null,
       remarks: form.remarks || null,
@@ -9374,52 +9388,7 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
     return <div style={{ textAlign: 'center', padding: '60px', color: MD.color.onSurfaceVariant }}>⏳ Loading expense records…</div>
   }
 
-  if (!activeHouse) {
-    return (
-      <div>
-        {toast && (
-          <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 1000, background: toast.color, color: 'white', padding: '10px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, boxShadow: MD.elevation[3] }}>
-            {toast.msg}
-          </div>
-        )}
-        <div style={{ ...(mobile ? mobileCard : card), marginBottom: 16 }}>
-          <h2 style={{ ...MD.type.title, margin: '0 0 4px' }}>🧾 House Expenses</h2>
-          <p style={{ ...MD.type.body, color: MD.color.onSurfaceVariant, margin: 0 }}>
-            Track money spent from each house's collected contribution fund (exam fees, mess, repairs, etc.).
-          </p>
-        </div>
-        <div style={mobile ? { display: 'grid', gap: 12 } : grid2}>
-          {houses.map(h => {
-            const { spent, netBalance } = houseMoney(h.name)
-            const houseExpenseCount = expenses.filter(r => normalizeHouse(r.house) === normalizeHouse(h.name)).length
-            return (
-              <div key={h.name} style={{ ...card, cursor: 'pointer' }} onClick={() => setActiveHouse(h.name)}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                  <h3 style={{ ...MD.type.title, margin: 0 }}>{h.name}</h3>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: MD.color.onSurfaceVariant }}>{houseExpenseCount} entr{houseExpenseCount === 1 ? 'y' : 'ies'}</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <div>
-                    <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.04em', color: MD.color.onSurfaceVariant }}>Total Spent</div>
-                    <div style={{ fontSize: 17, fontWeight: 800 }}>₹{spent.toLocaleString('en-IN')}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.04em', color: MD.color.onSurfaceVariant }}>Balance in Hand</div>
-                    <div style={{ fontSize: 17, fontWeight: 800, color: netBalance < 0 ? MD.color.error : MD.color.success }}>₹{netBalance.toLocaleString('en-IN')}</div>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-          {!houses.length && (
-            <div style={{ ...card, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No houses configured yet — set them up in the Houses tab first.</div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  const { expenseRecs, spent, netBalance } = houseMoney(activeHouse)
+  const { spent, netBalance } = poolTotals()
 
   return (
     <div>
@@ -9429,28 +9398,24 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
         </div>
       )}
 
-      <button onClick={() => setActiveHouse(null)} style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 14px', fontSize: 13, marginBottom: 14 }}>
-        ← All Houses
-      </button>
-
       <div style={{ ...(mobile ? mobileCard : card), marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h2 style={{ ...MD.type.title, margin: '0 0 4px' }}>{activeHouse}</h2>
+          <h2 style={{ ...MD.type.title, margin: '0 0 4px' }}>🧾 Expense Tracker</h2>
           <p style={{ ...MD.type.body, color: MD.color.onSurfaceVariant, margin: 0, fontSize: 13 }}>
-            {expenseRecs.length} expense{expenseRecs.length === 1 ? '' : 's'} recorded
+            {expenses.length} expense{expenses.length === 1 ? '' : 's'} — spent from all houses' combined contribution pool
           </p>
         </div>
-        <button onClick={() => openAddForm(activeHouse)} style={btn()}>+ Add Expense</button>
+        <button onClick={openAddForm} style={btn()}>+ Add Expense</button>
       </div>
 
       <div style={mobile ? mobileStatGrid : statGrid(150)}>
         <StatCard icon="🧾" label="Total Spent" value={`₹${spent.toLocaleString('en-IN')}`} color={MD.color.primary} bg={MD.color.primaryContainer} />
-        <StatCard icon={netBalance < 0 ? '⚠️' : '💵'} label="Balance in Hand" value={`₹${netBalance.toLocaleString('en-IN')}`} color={netBalance < 0 ? MD.color.error : MD.color.success} bg={netBalance < 0 ? MD.color.errorContainer : MD.color.successContainer} />
+        <StatCard icon={netBalance < 0 ? '⚠️' : '💵'} label="Combined Balance in Hand" value={`₹${netBalance.toLocaleString('en-IN')}`} color={netBalance < 0 ? MD.color.error : MD.color.success} bg={netBalance < 0 ? MD.color.errorContainer : MD.color.successContainer} />
       </div>
 
       {mobile ? (
         <MobileCardList>
-          {expenseRecs.map(r => (
+          {expenses.map(r => (
             <MobileRecordCard key={r.id} accentColor={MD.color.secondary}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <strong style={{ fontSize: 14 }}>{r.category}</strong>
@@ -9464,7 +9429,7 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
               </div>
             </MobileRecordCard>
           ))}
-          {!expenseRecs.length && <div style={{ ...card, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No expenses recorded</div>}
+          {!expenses.length && <div style={{ ...card, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No expenses recorded</div>}
         </MobileCardList>
       ) : (
         <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
@@ -9481,7 +9446,7 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
               </tr>
             </thead>
             <tbody>
-              {expenseRecs.map((r, i) => (
+              {expenses.map((r, i) => (
                 <tr key={r.id} style={{ background: i % 2 === 1 ? MD.color.surfaceVariant : 'white', borderBottom: `1px solid ${MD.color.outlineVariant}` }}>
                   <td style={{ padding: '9px 12px', fontWeight: 600 }}>{r.category}</td>
                   <td style={{ padding: '9px 12px' }}>{r.description || '—'}</td>
@@ -9495,7 +9460,7 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
                   </td>
                 </tr>
               ))}
-              {!expenseRecs.length && (
+              {!expenses.length && (
                 <tr><td colSpan={7} style={{ padding: 30, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No expenses recorded</td></tr>
               )}
             </tbody>
@@ -9506,7 +9471,7 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
       {showForm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowForm(false)}>
           <form onSubmit={handleSave} onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: MD.radius.sheet, padding: 22, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{ ...MD.type.title, margin: '0 0 16px' }}>{editRec ? 'Edit Expense' : 'Add Expense'} — {activeHouse}</h3>
+            <h3 style={{ ...MD.type.title, margin: '0 0 16px' }}>{editRec ? 'Edit Expense' : 'Add Expense'}</h3>
 
             <div style={{ marginBottom: 14 }}>
               <label style={lbl}>Category</label>
@@ -9544,7 +9509,7 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
 
             <div style={{ marginBottom: 14 }}>
               <label style={lbl}>Paid By</label>
-              <input style={inp} value={form.paid_by} onChange={e => setForm(f => ({ ...f, paid_by: e.target.value }))} placeholder="Housemaster name" />
+              <input style={inp} value={form.paid_by} onChange={e => setForm(f => ({ ...f, paid_by: e.target.value }))} placeholder="Name" />
             </div>
 
             <div style={{ marginBottom: 18 }}>
@@ -9564,31 +9529,29 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  MONEY DASHBOARD TAB — all-houses contributions + expenses + net balance
+//  MONEY DASHBOARD TAB — per-house contributions + institute-wide expenses
 // ═══════════════════════════════════════════════════════════════════════════
 function MoneyDashboardTab({ currentUser }) {
   const mobile = useMobileView()
-  const { houses, contributions, expenses, loading, houseMoney } = useHouseMoneyData()
+  const { houses, contributions, expenses, loading, houseMoney, poolTotals } = useHouseMoneyData()
   const [expandedHouse, setExpandedHouse] = useState(null)
 
   if (loading) {
     return <div style={{ textAlign: 'center', padding: '60px', color: MD.color.onSurfaceVariant }}>⏳ Loading money dashboard…</div>
   }
 
-  // ── School-wide totals across every house ──
-  const grand = houses.reduce((acc, h) => {
-    const m = houseMoney(h.name)
-    acc.collected += m.collected
-    acc.submitted += m.submitted
-    acc.spent += m.spent
-    acc.netBalance += m.netBalance
-    return acc
-  }, { collected: 0, submitted: 0, spent: 0, netBalance: 0 })
+  // Institute-wide totals: contributions summed directly across every
+  // house (not per-house-then-added, though the result is the same) and
+  // expenses from the one combined pool — see poolTotals() in
+  // useHouseMoneyData for why expenses are no longer split per house.
+  const grand = poolTotals()
 
-  // ── Recent activity feed — contributions + expenses merged, newest first ──
+  // ── Recent activity feed — contributions (per house) + expenses (pool),
+  // merged, newest first. Expense rows show no house since they're no
+  // longer tied to one.
   const activity = [
     ...contributions.map(r => ({ type: 'in', date: r.collected_date, label: `${r.student_name} — ${r.purpose}`, house: r.house, amount: Number(r.amount) || 0 })),
-    ...expenses.map(r => ({ type: 'out', date: r.paid_date, label: `${r.category}${r.description ? ' — ' + r.description : ''}`, house: r.house, amount: Number(r.amount) || 0 })),
+    ...expenses.map(r => ({ type: 'out', date: r.paid_date, label: `${r.category}${r.description ? ' — ' + r.description : ''}`, house: null, amount: Number(r.amount) || 0 })),
   ].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 20)
 
   return (
@@ -9596,18 +9559,18 @@ function MoneyDashboardTab({ currentUser }) {
       <div style={{ ...(mobile ? mobileCard : card), marginBottom: 16 }}>
         <h2 style={{ ...MD.type.title, margin: '0 0 4px' }}>📊 Money Dashboard</h2>
         <p style={{ ...MD.type.body, color: MD.color.onSurfaceVariant, margin: 0 }}>
-          Contributions collected, submitted, and spent across every house.
+          Contributions collected and submitted per house; expenses spent from the combined institute-wide pool.
         </p>
       </div>
 
       <div style={mobile ? mobileStatGrid : statGrid(150)}>
         <StatCard icon="💰" label="Total Collected" value={`₹${grand.collected.toLocaleString('en-IN')}`} color={MD.color.primary} bg={MD.color.primaryContainer} />
         <StatCard icon="✅" label="Submitted" value={`₹${grand.submitted.toLocaleString('en-IN')}`} color={MD.color.success} bg={MD.color.successContainer} />
-        <StatCard icon="🧾" label="Total Spent" value={`₹${grand.spent.toLocaleString('en-IN')}`} color={MD.color.secondary} bg={MD.color.secondaryContainer} />
-        <StatCard icon={grand.netBalance < 0 ? '⚠️' : '💵'} label="Net Balance (All Houses)" value={`₹${grand.netBalance.toLocaleString('en-IN')}`} color={grand.netBalance < 0 ? MD.color.error : MD.color.success} bg={grand.netBalance < 0 ? MD.color.errorContainer : MD.color.successContainer} />
+        <StatCard icon="🧾" label="Total Spent (Pool)" value={`₹${grand.spent.toLocaleString('en-IN')}`} color={MD.color.secondary} bg={MD.color.secondaryContainer} />
+        <StatCard icon={grand.netBalance < 0 ? '⚠️' : '💵'} label="Combined Net Balance" value={`₹${grand.netBalance.toLocaleString('en-IN')}`} color={grand.netBalance < 0 ? MD.color.error : MD.color.success} bg={grand.netBalance < 0 ? MD.color.errorContainer : MD.color.successContainer} />
       </div>
 
-      <h3 style={{ ...MD.type.title, margin: '20px 0 10px' }}>By House</h3>
+      <h3 style={{ ...MD.type.title, margin: '20px 0 10px' }}>Contributions by House</h3>
       <div style={mobile ? { display: 'grid', gap: 10 } : grid2}>
         {houses.map(h => {
           const m = houseMoney(h.name)
@@ -9618,18 +9581,14 @@ function MoneyDashboardTab({ currentUser }) {
                 <h3 style={{ ...MD.type.title, margin: 0 }}>{h.name}</h3>
                 <span style={{ fontSize: 13, color: MD.color.onSurfaceVariant }}>{isOpen ? '▲' : '▼'}</span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
                 <div>
                   <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.04em', color: MD.color.onSurfaceVariant }}>Collected</div>
                   <div style={{ fontSize: 15, fontWeight: 800 }}>₹{m.collected.toLocaleString('en-IN')}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.04em', color: MD.color.onSurfaceVariant }}>Spent</div>
-                  <div style={{ fontSize: 15, fontWeight: 800 }}>₹{m.spent.toLocaleString('en-IN')}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.04em', color: MD.color.onSurfaceVariant }}>Net Balance</div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: m.netBalance < 0 ? MD.color.error : MD.color.success }}>₹{m.netBalance.toLocaleString('en-IN')}</div>
+                  <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.04em', color: MD.color.onSurfaceVariant }}>Pending Submission</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: m.pendingSubmission < 0 ? MD.color.error : MD.color.success }}>₹{m.pendingSubmission.toLocaleString('en-IN')}</div>
                 </div>
               </div>
               {isOpen && (
@@ -9642,14 +9601,6 @@ function MoneyDashboardTab({ currentUser }) {
                     </div>
                   ))}
                   {!m.contribRecs.length && <div style={{ fontSize: 12, color: MD.color.onSurfaceVariant }}>None yet</div>}
-                  <div style={{ fontSize: 11, fontWeight: 700, color: MD.color.onSurfaceVariant, margin: '12px 0 8px', textTransform: 'uppercase', letterSpacing: '.04em' }}>Recent Expenses</div>
-                  {m.expenseRecs.slice(0, 5).map(r => (
-                    <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, padding: '4px 0' }}>
-                      <span>{r.category}{r.description ? ` — ${r.description}` : ''}</span>
-                      <span style={{ fontWeight: 700 }}>₹{Number(r.amount).toLocaleString('en-IN')}</span>
-                    </div>
-                  ))}
-                  {!m.expenseRecs.length && <div style={{ fontSize: 12, color: MD.color.onSurfaceVariant }}>None yet</div>}
                 </div>
               )}
             </div>
@@ -9660,13 +9611,28 @@ function MoneyDashboardTab({ currentUser }) {
         )}
       </div>
 
-      <h3 style={{ ...MD.type.title, margin: '20px 0 10px' }}>Recent Activity (All Houses)</h3>
+      <h3 style={{ ...MD.type.title, margin: '20px 0 10px' }}>Recent Expenses (Combined Pool)</h3>
+      <div style={{ ...card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
+        {expenses.length ? expenses.slice(0, 10).map((r, i) => (
+          <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: i < Math.min(expenses.length, 10) - 1 ? `1px solid ${MD.color.outlineVariant}` : 'none' }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{r.category}{r.description ? ` — ${r.description}` : ''}</div>
+              <div style={{ fontSize: 11, color: MD.color.onSurfaceVariant }}>{r.paid_date}</div>
+            </div>
+            <div style={{ fontWeight: 800, color: MD.color.error }}>−₹{Number(r.amount).toLocaleString('en-IN')}</div>
+          </div>
+        )) : (
+          <div style={{ padding: 30, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No expenses yet</div>
+        )}
+      </div>
+
+      <h3 style={{ ...MD.type.title, margin: '20px 0 10px' }}>Recent Activity (All Houses + Pool)</h3>
       <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
         {activity.length ? activity.map((a, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: i < activity.length - 1 ? `1px solid ${MD.color.outlineVariant}` : 'none' }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{a.label}</div>
-              <div style={{ fontSize: 11, color: MD.color.onSurfaceVariant }}>{a.house} · {a.date}</div>
+              <div style={{ fontSize: 11, color: MD.color.onSurfaceVariant }}>{a.house || 'Combined Pool'} · {a.date}</div>
             </div>
             <div style={{ fontWeight: 800, color: a.type === 'in' ? MD.color.success : MD.color.error }}>
               {a.type === 'in' ? '+' : '−'}₹{a.amount.toLocaleString('en-IN')}
@@ -9680,7 +9646,6 @@ function MoneyDashboardTab({ currentUser }) {
   )
 }
 
-// ══════════════════════════════════════════════════════════════
 const emptyHM = {
   name: '', house: '', gender: '', phone: '', email: '', designation: '',
   assigned_date: today(), status: 'Active', remarks: '',
@@ -10440,7 +10405,7 @@ function Hostel() {
     sickbay: <SickbayTab students={students} autoOpenForm={autoOpenForm?.tabId === 'sickbay' ? autoOpenForm : null} currentUser={currentUser} />,
     house: <HouseTab students={students} currentUser={currentUser} houseColorMap={houseColorMap} />,
     housecontrib: <HouseContributionTab students={students} currentUser={currentUser} />,
-    houseexpense: <HouseExpenseTab students={students} currentUser={currentUser} />,
+    houseexpense: <HouseExpenseTab currentUser={currentUser} />,
     moneydash: <MoneyDashboardTab currentUser={currentUser} />,
     housemaster: <HousemasterTab currentUser={currentUser} />,
     kitchen: <KitchenTab currentUser={currentUser} />,
