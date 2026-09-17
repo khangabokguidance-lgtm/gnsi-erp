@@ -8639,6 +8639,18 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
 
   const houseStudents = (houseName) => activeStudents.filter(s => normalizeHouse(s.house) === normalizeHouse(houseName))
 
+  // Full house roster by default (sorted, capped for a manageable dropdown
+  // length), narrowed by name or GCC No. as the user types — no minimum
+  // character count, so the list is visible and usable immediately on
+  // focus instead of appearing empty until you type 2+ characters.
+  // Computed unconditionally (before either early return below) since
+  // hooks can't be called conditionally — this returns an empty array
+  // harmlessly when activeHouse is still null (house-list view).
+  const houseRoster = useMemo(
+    () => activeHouse ? [...houseStudents(activeHouse)].sort((a, b) => (a.name || '').localeCompare(b.name || '')) : [],
+    [students, activeHouse]
+  )
+
   // ── Per-house summary: collected total, submitted total, balance in hand ──
   const houseSummary = (houseName) => {
     const recs = records.filter(r => normalizeHouse(r.house) === normalizeHouse(houseName))
@@ -8857,14 +8869,6 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
   // ── Single-house detail view ─────────────────────────────────────────────
   const { recs, collected, submitted, pending } = houseSummary(activeHouse)
   const visibleRecs = statusFilter === 'All' ? recs : recs.filter(r => r.status === statusFilter)
-  // Full house roster by default (sorted, capped for a manageable dropdown
-  // length), narrowed by name or GCC No. as the user types — no minimum
-  // character count, so the list is visible and usable immediately on
-  // focus instead of appearing empty until you type 2+ characters.
-  const houseRoster = useMemo(
-    () => [...houseStudents(activeHouse)].sort((a, b) => (a.name || '').localeCompare(b.name || '')),
-    [students, activeHouse]
-  )
   const matchingStudents = studentSearch.trim()
     ? houseRoster.filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase()) || String(s.gcc_no || '').includes(studentSearch)).slice(0, 50)
     : houseRoster.slice(0, 50)
