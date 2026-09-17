@@ -227,7 +227,6 @@ const TABS = [
   { id: 'housecontrib', label: '💰 Contributions' },
   { id: 'houseexpense', label: '🧾 Expenses' },
   { id: 'moneydash', label: '📊 Money Dashboard' },
-  { id: 'materials', label: '📚 Materials & A4' },
   { id: 'housemaster', label: '🧑‍🏫 HM' },
   { id: 'hmactivities', label: '📋 Activities' },
   { id: 'adminmonitor', label: '🖥️ Monitor' },
@@ -4190,7 +4189,6 @@ function HMRollCallReportTab() {
   const [studentsByHouse, setStudentsByHouse] = useState({}) // house → count of active students
   const [records, setRecords] = useState([]) // attendance_records in range
   const [expandedHouse, setExpandedHouse] = useState(null)
-  const a4 = useA4StockSummary()
   const mobile = useMobileView()
 
   const { startStr, endStr, dayList } = useMemo(() => {
@@ -4841,7 +4839,6 @@ function HMPerformanceRanking() {
   const [loading, setLoading] = useState(true)
   const [rankings, setRankings] = useState([])
   const [expandedHouse, setExpandedHouse] = useState(null)
-  const a4 = useA4StockSummary()
 
   useEffect(() => {
     const load = async () => {
@@ -8578,7 +8575,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 //
 // New table required: house_contributions
 //   id, house, student_id, student_name, gcc_no, class_name,
-//   amount, purpose, item_name, item_status, collected_by, collected_date,
+//   amount, purpose, item_status, collected_by, collected_date,
 //   status ('Collected' | 'Submitted'), submitted_to, submitted_date,
 //   remarks, created_at
 //
@@ -8604,50 +8601,17 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 //
 // If house_contributions already exists from before item contributions were
 // added, just run:
-//   alter table house_contributions add column item_name text;
 //   alter table house_contributions add column item_status text
 //     check (item_status in ('Given','Not Given'));
 
-const CONTRIB_PURPOSES = ['Exam Contribution', 'Mess Fund', 'Event/Trip', 'A4 Packet', 'Student Item', 'Other']
-// Every contribution row is now monetary. Physical material delivery is tracked
-// separately in Study Materials, so an item can have its own name + amount per student.
-const CONTRIB_ITEM_PURPOSES = []
+const CONTRIB_PURPOSES = ['Exam Contribution', 'Mess Fund', 'Event/Trip', 'A4 Packet', 'Other']
+const CONTRIB_ITEM_PURPOSES = ['A4 Packet'] // tracked as given/not-given, never money
 const isItemPurpose = (purpose) => CONTRIB_ITEM_PURPOSES.includes(purpose)
 const DEFAULT_SUBMITTED_TO = 'Admin Office / Accounts'
 
-// ── COMMON EXPENSES — spending shared across every house, deducted from the
-// grand total collected (all houses combined) rather than any one house's
-// balance. Distinct from house_expenses (HOUSE EXPENSE TAB below), which is
-// always tied to a single house. Lives in the Contributions tab because it's
-// spent directly against the pooled collection figure shown there, not
-// against a per-house fund.
-//
-// New table required: common_expenses
-//   id, category, description, amount, paid_to, paid_date, paid_by,
-//   receipt_no, remarks, created_at
-//
-// Suggested migration:
-//   create table common_expenses (
-//     id bigint generated always as identity primary key,
-//     category text not null default 'Other',
-//     description text,
-//     amount numeric(10,2) not null default 0,
-//     paid_to text,
-//     paid_date date not null default current_date,
-//     paid_by text,
-//     receipt_no text,
-//     remarks text,
-//     created_at timestamptz not null default now()
-//   );
-const COMMON_EXPENSE_CATEGORIES = ['Mess/Food', 'Generator Fuel', 'Common Repairs', 'Function/Event', 'Staff Welfare', 'Stationery', 'Other']
-const emptyCommonExpense = {
-  category: 'Other', description: '', amount: '',
-  paid_to: '', paid_date: today(), paid_by: '', receipt_no: '', remarks: '',
-}
-
 const emptyContribution = {
   house: '', student_id: null, student_name: '', gcc_no: '', class_name: '',
-  amount: '', purpose: 'Exam Contribution', item_name: '', item_status: 'Given', collected_by: '', collected_date: today(),
+  amount: '', purpose: 'Exam Contribution', item_status: 'Given', collected_by: '', collected_date: today(),
   remarks: '',
 }
 
@@ -8658,7 +8622,6 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
   const [students, setStudents] = useState(propStudents || [])
   const [records, setRecords] = useState([])
   const [expenseRecords, setExpenseRecords] = useState([])
-  const [commonExpenses, setCommonExpenses] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [activeHouse, setActiveHouse] = useState(null)
@@ -8672,10 +8635,6 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
   const [submitModal, setSubmitModal] = useState(null) // { house } | null
   const [submitTo, setSubmitTo] = useState(DEFAULT_SUBMITTED_TO)
   const [submitDate, setSubmitDate] = useState(today())
-  const [showCommonForm, setShowCommonForm] = useState(false)
-  const [editCommonRec, setEditCommonRec] = useState(null)
-  const [commonForm, setCommonForm] = useState(emptyCommonExpense)
-  const [showCommonList, setShowCommonList] = useState(false)
 
   const showToast = (msg, color = '#16a34a') => {
     setToast({ msg, color }); setTimeout(() => setToast(null), 3000)
@@ -8691,19 +8650,16 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
     // useHouseMoneyData(); kept as a parallel fetch here rather than
     // sharing that hook since this tab also needs `students` for the
     // contributor picker, which useHouseMoneyData doesn't load.
-    const [{ data: h }, { data: rec, error }, { data: exp, error: expError }, { data: commonExp, error: commonError }] = await Promise.all([
+    const [{ data: h }, { data: rec, error }, { data: exp, error: expError }] = await Promise.all([
       supabase.from('houses').select('name').order('name'),
       supabase.from('house_contributions').select('*').order('collected_date', { ascending: false }),
       supabase.from('house_expenses').select('house, amount'),
-      supabase.from('common_expenses').select('*').order('paid_date', { ascending: false }),
     ])
     if (error) console.error('house_contributions fetch error:', error)
     if (expError) console.error('house_expenses fetch error:', expError)
-    if (commonError) console.error('common_expenses fetch error:', commonError)
     setHouses(h || [])
     setRecords(rec || [])
     setExpenseRecords(exp || [])
-    setCommonExpenses(commonExp || [])
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -8752,67 +8708,6 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
     return { count: allRecs.length, collected, submitted, spent, unsubmittedTotal, pending, recs, itemRecs, itemGivenCount, itemTotalCount: itemRecs.length }
   }
 
-  // ── Grand totals across every house (money contributions only, item rows
-  // like A4 Packet excluded — same rule as houseSummary) — this is the
-  // pooled "total collected by the staffs" figure that common expenses are
-  // deducted from below, independent of any single house's own balance.
-  const grandCollected = records.filter(r => !isItemPurpose(r.purpose)).reduce((s, r) => s + (Number(r.amount) || 0), 0)
-  const totalCommonExpenses = commonExpenses.reduce((s, r) => s + (Number(r.amount) || 0), 0)
-  const netAfterCommon = grandCollected - totalCommonExpenses
-
-  const openAddCommonForm = () => {
-    setEditCommonRec(null)
-    setCommonForm({ ...emptyCommonExpense, paid_by: currentUser?.name || '' })
-    setShowCommonForm(true)
-  }
-  const openEditCommonForm = (rec) => {
-    setEditCommonRec(rec)
-    setCommonForm({
-      category: rec.category || 'Other', description: rec.description || '',
-      amount: rec.amount, paid_to: rec.paid_to || '', paid_date: rec.paid_date || today(),
-      paid_by: rec.paid_by || '', receipt_no: rec.receipt_no || '', remarks: rec.remarks || '',
-    })
-    setShowCommonForm(true)
-  }
-
-  const handleSaveCommon = async (e) => {
-    e.preventDefault()
-    const amt = Number(commonForm.amount)
-    if (!Number.isFinite(amt) || amt <= 0) { alert('Enter a valid amount.'); return }
-    const commonCategory = (commonForm.category || '').trim()
-    if (!commonCategory) { alert('Enter a category name.'); return }
-    // Warn (not block) if this would push the pooled collection into a
-    // negative net figure — mirrors the same-spirit caution in the House
-    // Expense Tracker tab (wouldGoNegative there).
-    const wouldGoNegative = !editCommonRec && (netAfterCommon - amt) < 0
-    if (wouldGoNegative && !window.confirm(`This exceeds the current net collected across all houses (₹${netAfterCommon.toLocaleString('en-IN')}). Record it anyway?`)) {
-      return
-    }
-    setSaving(true)
-    const payload = {
-      category: commonCategory, description: commonForm.description || null,
-      amount: amt, paid_to: commonForm.paid_to || null, paid_date: commonForm.paid_date,
-      paid_by: commonForm.paid_by || currentUser?.name || null, receipt_no: commonForm.receipt_no || null,
-      remarks: commonForm.remarks || null,
-    }
-    const { error } = editCommonRec
-      ? await supabase.from('common_expenses').update(payload).eq('id', editCommonRec.id)
-      : await supabase.from('common_expenses').insert([payload])
-    setSaving(false)
-    if (error) { alert('Error: ' + error.message); return }
-    setShowCommonForm(false); setEditCommonRec(null); setCommonForm(emptyCommonExpense)
-    showToast(editCommonRec ? '✅ Common expense updated' : '✅ Common expense recorded')
-    load()
-  }
-
-  const handleDeleteCommon = async (id) => {
-    if (!isAdmin) { alert('Only admins can delete entries.'); return }
-    if (!window.confirm('Delete this common expense entry?')) return
-    await supabase.from('common_expenses').delete().eq('id', id)
-    showToast('🗑 Entry deleted', '#dc2626')
-    load()
-  }
-
   const openAddForm = (houseName) => {
     setEditRec(null)
     setForm({ ...emptyContribution, house: houseName, collected_by: currentUser?.name || '' })
@@ -8826,7 +8721,6 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
       house: rec.house, student_id: rec.student_id, student_name: rec.student_name,
       gcc_no: rec.gcc_no || '', class_name: rec.class_name || '',
       amount: rec.amount, purpose: rec.purpose || 'Exam Contribution',
-      item_name: rec.item_name || '',
       item_status: rec.item_status || 'Given',
       collected_by: rec.collected_by || '', collected_date: rec.collected_date || today(),
       remarks: rec.remarks || '',
@@ -8852,7 +8746,7 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
     const payload = {
       house: form.house, student_id: form.student_id, student_name: form.student_name.trim(),
       gcc_no: form.gcc_no || null, class_name: form.class_name || null,
-      amount: amt, purpose: form.purpose, item_name: form.item_name?.trim() || null,
+      amount: amt, purpose: form.purpose,
       item_status: itemMode ? form.item_status : null,
       collected_by: form.collected_by || currentUser?.name || null,
       collected_date: form.collected_date, remarks: form.remarks || null,
@@ -9014,83 +8908,6 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
             Track money and item contributions (exam fees, A4 packets, etc.) collected per house and confirm money submission to {DEFAULT_SUBMITTED_TO}.
           </p>
         </div>
-
-        {/* ── Common Expenses — spent against the pooled total collected across
-            every house, not against any single house's balance ── */}
-        <div style={{ ...(mobile ? mobileCard : card), marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
-            <div>
-              <h3 style={{ ...MD.type.title, margin: '0 0 4px' }}>🧾 Common Expenses</h3>
-              <p style={{ ...MD.type.body, color: MD.color.onSurfaceVariant, margin: 0, fontSize: 13 }}>
-                Shared spending deducted from the total collected across all houses.
-              </p>
-            </div>
-            <button onClick={openAddCommonForm} style={btn()}>+ Add Common Expense</button>
-          </div>
-          <div style={mobile ? mobileStatGrid : statGrid(150)}>
-            <StatCard icon="💰" label="Total Collected (All Houses)" value={`₹${grandCollected.toLocaleString('en-IN')}`} color={MD.color.primary} bg={MD.color.primaryContainer} />
-            <StatCard icon="🧾" label="Common Expenses" value={`₹${totalCommonExpenses.toLocaleString('en-IN')}`} color={MD.color.secondary} bg={MD.color.secondaryContainer} />
-            <StatCard icon={netAfterCommon < 0 ? '⚠️' : '💵'} label="Net After Common Expenses" value={`₹${netAfterCommon.toLocaleString('en-IN')}`} color={netAfterCommon < 0 ? MD.color.error : MD.color.success} bg={netAfterCommon < 0 ? MD.color.errorContainer : MD.color.successContainer} />
-          </div>
-          {commonExpenses.length > 0 && (
-            <div style={{ marginTop: 14 }}>
-              <button onClick={() => setShowCommonList(v => !v)} style={{ ...btn('#f1f5f9', '#374151'), padding: '7px 14px', fontSize: 12 }}>
-                {showCommonList ? '▲ Hide entries' : `▼ Show ${commonExpenses.length} entr${commonExpenses.length === 1 ? 'y' : 'ies'}`}
-              </button>
-              {showCommonList && (
-                mobile ? (
-                  <MobileCardList style={{ marginTop: 10 }}>
-                    {commonExpenses.map(r => (
-                      <MobileRecordCard key={r.id} accentColor={MD.color.secondary}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                          <strong style={{ fontSize: 14 }}>{r.category}</strong>
-                          <span style={{ fontWeight: 800, color: MD.color.primary }}>₹{Number(r.amount).toLocaleString('en-IN')}</span>
-                        </div>
-                        <div style={{ fontSize: 12, color: MD.color.onSurfaceVariant }}>{r.description || '—'}</div>
-                        <div style={{ fontSize: 11, marginTop: 4, color: MD.color.onSurfaceVariant }}>Paid to {r.paid_to || '—'} · {r.paid_date}</div>
-                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                          <button onClick={() => openEditCommonForm(r)} style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 12px', fontSize: 11 }}>Edit</button>
-                          {isAdmin && <button onClick={() => handleDeleteCommon(r.id)} style={{ ...btn(MD.color.errorContainer, MD.color.error), padding: '6px 12px', fontSize: 11 }}>Delete</button>}
-                        </div>
-                      </MobileRecordCard>
-                    ))}
-                  </MobileCardList>
-                ) : (
-                  <div style={{ marginTop: 10, border: `1px solid ${MD.color.outlineVariant}`, borderRadius: MD.radius.card, overflow: 'hidden' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                      <thead>
-                        <tr style={{ background: MD.color.primary, color: 'white' }}>
-                          <th style={{ padding: '10px 12px', textAlign: 'left' }}>Category</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'left' }}>Description</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'left' }}>Paid To</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'right' }}>Amount</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'left' }}>Date</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'left' }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {commonExpenses.map((r, i) => (
-                          <tr key={r.id} style={{ background: i % 2 === 1 ? MD.color.surfaceVariant : 'white', borderBottom: `1px solid ${MD.color.outlineVariant}` }}>
-                            <td style={{ padding: '9px 12px', fontWeight: 600 }}>{r.category}</td>
-                            <td style={{ padding: '9px 12px' }}>{r.description || '—'}</td>
-                            <td style={{ padding: '9px 12px' }}>{r.paid_to || '—'}</td>
-                            <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700 }}>₹{Number(r.amount).toLocaleString('en-IN')}</td>
-                            <td style={{ padding: '9px 12px' }}>{r.paid_date}</td>
-                            <td style={{ padding: '9px 12px', display: 'flex', gap: 6 }}>
-                              <button onClick={() => openEditCommonForm(r)} style={{ ...btn('#f1f5f9', '#374151'), padding: '5px 10px', fontSize: 11 }}>Edit</button>
-                              {isAdmin && <button onClick={() => handleDeleteCommon(r.id)} style={{ ...btn(MD.color.errorContainer, MD.color.error), padding: '5px 10px', fontSize: 11 }}>Del</button>}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              )}
-            </div>
-          )}
-        </div>
-
         <div style={mobile ? { display: 'grid', gap: 12 } : grid2}>
           {houses.map(h => {
             const { count, collected, pending, itemGivenCount, itemTotalCount } = houseSummary(h.name)
@@ -9123,64 +8940,6 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
             <div style={{ ...card, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No houses configured yet — set them up in the Houses tab first.</div>
           )}
         </div>
-
-        {/* ── Add/Edit common expense modal ── */}
-        {showCommonForm && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowCommonForm(false)}>
-            <form onSubmit={handleSaveCommon} onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: MD.radius.sheet, padding: 22, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto' }}>
-              <h3 style={{ ...MD.type.title, margin: '0 0 16px' }}>{editCommonRec ? 'Edit Common Expense' : 'Add Common Expense'}</h3>
-
-              <CategoryField
-                value={commonForm.category}
-                options={COMMON_EXPENSE_CATEGORIES}
-                onChange={v => setCommonForm(f => ({ ...f, category: v }))}
-                placeholder="e.g. Water Tanker, Gas Refill"
-              />
-
-              <div style={{ marginBottom: 14 }}>
-                <label style={lbl}>Description</label>
-                <input style={inp} value={commonForm.description} onChange={e => setCommonForm(f => ({ ...f, description: e.target.value }))} placeholder="e.g. Diesel for generator, all houses" />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-                <div>
-                  <label style={lbl}>Amount (₹)</label>
-                  <input type="number" min="1" style={inp} value={commonForm.amount} onChange={e => setCommonForm(f => ({ ...f, amount: e.target.value }))} required />
-                </div>
-                <div>
-                  <label style={lbl}>Date Paid</label>
-                  <input type="date" style={inp} value={commonForm.paid_date} onChange={e => setCommonForm(f => ({ ...f, paid_date: e.target.value }))} required />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-                <div>
-                  <label style={lbl}>Paid To</label>
-                  <input style={inp} value={commonForm.paid_to} onChange={e => setCommonForm(f => ({ ...f, paid_to: e.target.value }))} placeholder="Vendor / office / person" />
-                </div>
-                <div>
-                  <label style={lbl}>Receipt No. (optional)</label>
-                  <input style={inp} value={commonForm.receipt_no} onChange={e => setCommonForm(f => ({ ...f, receipt_no: e.target.value }))} />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 14 }}>
-                <label style={lbl}>Paid By</label>
-                <input style={inp} value={commonForm.paid_by} onChange={e => setCommonForm(f => ({ ...f, paid_by: e.target.value }))} placeholder="Staff name" />
-              </div>
-
-              <div style={{ marginBottom: 18 }}>
-                <label style={lbl}>Remarks (optional)</label>
-                <input style={inp} value={commonForm.remarks} onChange={e => setCommonForm(f => ({ ...f, remarks: e.target.value }))} />
-              </div>
-
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button type="button" onClick={() => setShowCommonForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
-                <button type="submit" disabled={saving} style={{ ...btn(), flex: 1 }}>{saving ? 'Saving…' : editCommonRec ? 'Save Changes' : 'Add Entry'}</button>
-              </div>
-            </form>
-          </div>
-        )}
       </div>
     )
   }
@@ -9367,13 +9126,6 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
               </select>
             </div>
 
-            {(form.purpose === 'Student Item' || form.purpose === 'A4 Packet') && (
-              <div style={{ marginBottom: 14 }}>
-                <label style={lbl}>Item / Material Name</label>
-                <input style={inp} value={form.item_name || ''} onChange={e => setForm(f => ({ ...f, item_name: e.target.value }))} placeholder="e.g. Study Book, A4 Printing Packet, Worksheet" />
-              </div>
-            )}
-
             {isItemPurpose(form.purpose) ? (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
                 <div>
@@ -9492,151 +9244,6 @@ const emptyExpense = {
   paid_to: '', paid_date: today(), paid_by: '', receipt_no: '', remarks: '',
 }
 
-// ── MANUAL (free-typed) CATEGORIES ────────────────────────────────────────
-// The category dropdowns were closed lists, so any spend that didn't fit a
-// preset had to be filed under "Other" with its real name buried in the
-// description — which made the category column useless for grouping. This
-// sentinel switches the select into a free-text box; the typed string is
-// stored in `category` exactly like a preset one. No migration needed —
-// category is already a plain text column in house_expenses and
-// common_expenses. Reopening a record whose category isn't in the preset
-// list drops straight back into custom mode, so an edit can't silently
-// reset a manual category to the first preset.
-const CUSTOM_CAT = '__custom__'
-
-function CategoryField({ value, options, onChange, placeholder = 'e.g. Sports Kit, Water Tanker' }) {
-  // Each expense modal is conditionally rendered ({showForm && ...}), so this
-  // mounts fresh on every open — a lazy initialiser is enough to detect an
-  // existing custom value without a syncing effect.
-  const [custom, setCustom] = useState(() => !!value && !options.includes(value))
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <label style={lbl}>Category</label>
-      <select
-        style={inp}
-        value={custom ? CUSTOM_CAT : value}
-        onChange={e => {
-          if (e.target.value === CUSTOM_CAT) { setCustom(true); onChange('') }
-          else { setCustom(false); onChange(e.target.value) }
-        }}
-      >
-        {options.map(c => <option key={c} value={c}>{c}</option>)}
-        <option value={CUSTOM_CAT}>+ Custom category...</option>
-      </select>
-      {custom && (
-        <input
-          style={{ ...inp, marginTop: 8 }}
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          placeholder={placeholder}
-          maxLength={60}
-          autoFocus
-          required
-        />
-      )}
-    </div>
-  )
-}
-
-// ── Shared save path for house_expenses ───────────────────────────────────
-// Used by both the House Expenses tab and the Money Dashboard's manual-entry
-// button, so the two entry points can't drift apart on validation or on the
-// negative-balance warning. Returns { ok } | { cancelled } | { error }.
-async function persistHouseExpense({ form, editRec, currentUser, netBalance }) {
-  const amt = Number(form.amount)
-  if (!Number.isFinite(amt) || amt <= 0) return { error: 'Enter a valid amount.' }
-  const category = (form.category || '').trim()
-  if (!category) return { error: 'Enter a category name.' }
-  if (!form.house) return { error: 'Select a house for this expense.' }
-  // Warn (not block) if this expense would push the house into a negative
-  // balance — the housemaster may be spending ahead of a submission being
-  // reversed/adjusted, or the data may just be behind, so this is a caution
-  // rather than a hard rule.
-  const wouldGoNegative = !editRec && (netBalance - amt) < 0
-  if (wouldGoNegative && !window.confirm(`This expense exceeds ${form.house}'s current balance in hand (₹${netBalance.toLocaleString('en-IN')}). Record it anyway?`)) {
-    return { cancelled: true }
-  }
-  const payload = {
-    house: form.house, category, description: form.description || null,
-    amount: amt, paid_to: form.paid_to || null, paid_date: form.paid_date,
-    paid_by: form.paid_by || currentUser?.name || null, receipt_no: form.receipt_no || null,
-    remarks: form.remarks || null,
-  }
-  const { error } = editRec
-    ? await supabase.from('house_expenses').update(payload).eq('id', editRec.id)
-    : await supabase.from('house_expenses').insert([payload])
-  if (error) return { error: error.message }
-  return { ok: true }
-}
-
-// ── Reusable Add/Edit expense sheet ───────────────────────────────────────
-// `houses` is passed only from the Money Dashboard, where the entry isn't
-// scoped to a house you've already drilled into and so has to be picked.
-function ExpenseFormModal({ title, form, setForm, houses, onSubmit, onCancel, saving, submitLabel }) {
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onCancel}>
-      <form onSubmit={onSubmit} onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: MD.radius.sheet, padding: 22, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto' }}>
-        <h3 style={{ ...MD.type.title, margin: '0 0 16px' }}>{title}</h3>
-
-        {houses && (
-          <div style={{ marginBottom: 14 }}>
-            <label style={lbl}>House</label>
-            <select style={inp} value={form.house} onChange={e => set('house', e.target.value)} required>
-              <option value="">— Select house —</option>
-              {houses.map(h => <option key={h.name} value={h.name}>{h.name}</option>)}
-            </select>
-          </div>
-        )}
-
-        <CategoryField value={form.category} options={EXPENSE_CATEGORIES} onChange={v => set('category', v)} />
-
-        <div style={{ marginBottom: 14 }}>
-          <label style={lbl}>Description</label>
-          <input style={inp} value={form.description} onChange={e => set('description', e.target.value)} placeholder="e.g. AISSEE exam fee for 12 students" />
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-          <div>
-            <label style={lbl}>Amount (₹)</label>
-            <input type="number" min="1" style={inp} value={form.amount} onChange={e => set('amount', e.target.value)} required />
-          </div>
-          <div>
-            <label style={lbl}>Date Paid</label>
-            <input type="date" style={inp} value={form.paid_date} onChange={e => set('paid_date', e.target.value)} required />
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-          <div>
-            <label style={lbl}>Paid To</label>
-            <input style={inp} value={form.paid_to} onChange={e => set('paid_to', e.target.value)} placeholder="Vendor / office / person" />
-          </div>
-          <div>
-            <label style={lbl}>Receipt No. (optional)</label>
-            <input style={inp} value={form.receipt_no} onChange={e => set('receipt_no', e.target.value)} />
-          </div>
-        </div>
-
-        <div style={{ marginBottom: 14 }}>
-          <label style={lbl}>Paid By</label>
-          <input style={inp} value={form.paid_by} onChange={e => set('paid_by', e.target.value)} placeholder="Housemaster name" />
-        </div>
-
-        <div style={{ marginBottom: 18 }}>
-          <label style={lbl}>Remarks (optional)</label>
-          <input style={inp} value={form.remarks} onChange={e => set('remarks', e.target.value)} />
-        </div>
-
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button type="button" onClick={onCancel} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
-          <button type="submit" disabled={saving} style={{ ...btn(), flex: 1 }}>{saving ? 'Saving...' : (submitLabel || 'Add Entry')}</button>
-        </div>
-      </form>
-    </div>
-  )
-}
-
 // Shared by HouseExpenseTab and MoneyDashboardTab — one house's full money
 // picture: collected/submitted/pending from contributions, spent from
 // expenses, and the real net balance in hand (pending contributions minus
@@ -9713,10 +9320,27 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
 
   const handleSave = async (e) => {
     e.preventDefault()
+    const amt = Number(form.amount)
+    if (!Number.isFinite(amt) || amt <= 0) { alert('Enter a valid amount.'); return }
     const { netBalance } = houseMoney(form.house)
-    const res = await persistHouseExpense({ form, editRec, currentUser, netBalance })
-    if (res.cancelled) return
-    if (res.error) { alert(res.error); return }
+    // Warn (not block) if this expense would push the house into a
+    // negative balance — the housemaster may be spending ahead of a
+    // submission being reversed/adjusted, or the data may just be behind,
+    // so this is a caution rather than a hard rule.
+    const wouldGoNegative = !editRec && (netBalance - amt) < 0
+    if (wouldGoNegative && !window.confirm(`This expense exceeds ${form.house}'s current balance in hand (₹${netBalance.toLocaleString('en-IN')}). Record it anyway?`)) {
+      return
+    }
+    const payload = {
+      house: form.house, category: form.category, description: form.description || null,
+      amount: amt, paid_to: form.paid_to || null, paid_date: form.paid_date,
+      paid_by: form.paid_by || currentUser?.name || null, receipt_no: form.receipt_no || null,
+      remarks: form.remarks || null,
+    }
+    const { error } = editRec
+      ? await supabase.from('house_expenses').update(payload).eq('id', editRec.id)
+      : await supabase.from('house_expenses').insert([payload])
+    if (error) { alert('Error: ' + error.message); return }
     setShowForm(false); setEditRec(null); setForm(emptyExpense)
     showToast(editRec ? '✅ Expense updated' : '✅ Expense recorded')
     load()
@@ -9864,165 +9488,72 @@ function HouseExpenseTab({ students: propStudents, currentUser }) {
       )}
 
       {showForm && (
-        <ExpenseFormModal
-          title={`${editRec ? 'Edit Expense' : 'Add Expense'} — ${activeHouse}`}
-          form={form}
-          setForm={setForm}
-          onSubmit={handleSave}
-          onCancel={() => setShowForm(false)}
-          submitLabel={editRec ? 'Save Changes' : 'Add Entry'}
-        />
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowForm(false)}>
+          <form onSubmit={handleSave} onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: MD.radius.sheet, padding: 22, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ ...MD.type.title, margin: '0 0 16px' }}>{editRec ? 'Edit Expense' : 'Add Expense'} — {activeHouse}</h3>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Category</label>
+              <select style={inp} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
+                {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Description</label>
+              <input style={inp} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="e.g. AISSEE exam fee for 12 students" />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+              <div>
+                <label style={lbl}>Amount (₹)</label>
+                <input type="number" min="1" style={inp} value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required />
+              </div>
+              <div>
+                <label style={lbl}>Date Paid</label>
+                <input type="date" style={inp} value={form.paid_date} onChange={e => setForm(f => ({ ...f, paid_date: e.target.value }))} required />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+              <div>
+                <label style={lbl}>Paid To</label>
+                <input style={inp} value={form.paid_to} onChange={e => setForm(f => ({ ...f, paid_to: e.target.value }))} placeholder="Vendor / office / person" />
+              </div>
+              <div>
+                <label style={lbl}>Receipt No. (optional)</label>
+                <input style={inp} value={form.receipt_no} onChange={e => setForm(f => ({ ...f, receipt_no: e.target.value }))} />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Paid By</label>
+              <input style={inp} value={form.paid_by} onChange={e => setForm(f => ({ ...f, paid_by: e.target.value }))} placeholder="Housemaster name" />
+            </div>
+
+            <div style={{ marginBottom: 18 }}>
+              <label style={lbl}>Remarks (optional)</label>
+              <input style={inp} value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" onClick={() => setShowForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
+              <button type="submit" style={{ ...btn(), flex: 1 }}>{editRec ? 'Save Changes' : 'Add Entry'}</button>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   )
 }
 
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  STUDY MATERIAL + A4 STOCK TRACKER
-// ═══════════════════════════════════════════════════════════════════════════
-// Required tables:
-// create table if not exists a4_stock_transactions (
-//   id bigint generated always as identity primary key,
-//   transaction_type text not null check (transaction_type in ('Purchase','Opening','Print','Adjustment')),
-//   bundles numeric(10,2) not null default 0,
-//   packets numeric(10,2) not null default 0,
-//   printed_packets numeric(10,2) not null default 0,
-//   notes text, transaction_date date not null default current_date,
-//   created_by text, created_at timestamptz not null default now()
-// );
-// create table if not exists study_material_deliveries (
-//   id bigint generated always as identity primary key,
-//   student_id text, student_name text not null, gcc_no text, class_name text,
-//   material_name text not null, quantity numeric(10,2) not null default 1,
-//   status text not null default 'Pending' check (status in ('Pending','Given','Delivered')),
-//   given_date date, delivered_date date, given_by text, delivered_by text,
-//   remarks text, created_at timestamptz not null default now()
-// );
-
-function StudyMaterialTrackerTab({ students: propStudents, currentUser }) {
-  const mobile = useMobileView()
-  const isAdmin = isAdminRole(currentUser?.role)
-  const [students, setStudents] = useState(propStudents || [])
-  const [rows, setRows] = useState([])
-  const [stock, setStock] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState(null)
-  const [showForm, setShowForm] = useState(false)
-  const [editRec, setEditRec] = useState(null)
-  const [search, setSearch] = useState('')
-  const [studentOpen, setStudentOpen] = useState(false)
-  const [form, setForm] = useState({student_id:'',student_name:'',gcc_no:'',class_name:'',material_name:'',quantity:1,status:'Pending',given_date:'',delivered_date:'',given_by:'',delivered_by:'',remarks:''})
-  const [showStockForm, setShowStockForm] = useState(false)
-  const [stockForm, setStockForm] = useState({transaction_type:'Purchase',bundles:'',packets:'',printed_packets:'',transaction_date:today(),notes:'',created_by:''})
-
-  useEffect(() => { if (propStudents?.length) setStudents(propStudents) }, [propStudents])
-  const activeStudents = useMemo(() => students.filter(s => s.status !== 'Dropout' && s.status !== 'Inactive'), [students])
-  const matches = useMemo(() => { const q=search.trim().toLowerCase(); if(!q)return activeStudents.slice(0,8); return activeStudents.filter(s => (s.name||'').toLowerCase().includes(q)||String(s.gcc_no||'').includes(q)||(getStudentClass(s)||'').toLowerCase().includes(q)).slice(0,8) }, [search,activeStudents])
-  const showToast = (msg,color='#16a34a') => { setToast({msg,color}); setTimeout(()=>setToast(null),3000) }
-  const load = async () => {
-    setLoading(true)
-    const [{data:d,error:e1},{data:st,error:e2}] = await Promise.all([
-      supabase.from('study_material_deliveries').select('*').order('created_at',{ascending:false}),
-      supabase.from('a4_stock_transactions').select('*').order('transaction_date',{ascending:false})
-    ])
-    if(e1) console.error('study_material_deliveries fetch error:',e1)
-    if(e2) console.error('a4_stock_transactions fetch error:',e2)
-    setRows(d||[]); setStock(st||[]); setLoading(false)
-  }
-  useEffect(()=>{load()},[])
-  const stockTotals = useMemo(()=>{
-    let bundles=0,packets=0,printed=0
-    stock.forEach(r=>{ const t=r.transaction_type; if(t==='Purchase'||t==='Opening'){bundles+=Number(r.bundles)||0;packets+=Number(r.packets)||0} else if(t==='Print'){printed+=Number(r.printed_packets)||0;packets-=Number(r.printed_packets)||0} else {packets+=Number(r.packets)||0;bundles+=Number(r.bundles)||0} })
-    return {bundles,packets,printed}
-  },[stock])
-  const pick=(s)=>{setForm(f=>({...f,student_id:String(s.id),student_name:s.name||'',gcc_no:s.gcc_no||'',class_name:getStudentClass(s)||s.class_name||''}));setSearch('');setStudentOpen(false)}
-  const openAdd=()=>{setEditRec(null);setForm({student_id:'',student_name:'',gcc_no:'',class_name:'',material_name:'',quantity:1,status:'Pending',given_date:'',delivered_date:'',given_by:currentUser?.name||'',delivered_by:'',remarks:''});setShowForm(true)}
-  const openEdit=(r)=>{setEditRec(r);setForm({...r,quantity:r.quantity||1});setShowForm(true)}
-  const save=async(e)=>{e.preventDefault(); if(!form.student_name.trim()||!form.material_name.trim()){alert('Select a student and enter material name.');return} setSaving(true); const payload={student_id:form.student_id||null,student_name:form.student_name.trim(),gcc_no:form.gcc_no||null,class_name:form.class_name||null,material_name:form.material_name.trim(),quantity:Number(form.quantity)||1,status:form.status,given_date:form.given_date||null,delivered_date:form.delivered_date||null,given_by:form.given_by||currentUser?.name||null,delivered_by:form.delivered_by||null,remarks:form.remarks||null}; const res=editRec?await supabase.from('study_material_deliveries').update(payload).eq('id',editRec.id):await supabase.from('study_material_deliveries').insert([payload]); setSaving(false); if(res.error){alert('Error: '+res.error.message);return} setShowForm(false);showToast(editRec?'✅ Material record updated':'✅ Material record added');load()}
-  const del=async(id)=>{if(!isAdmin){alert('Only admins can delete records.');return}if(!confirm('Delete this material record?'))return;await supabase.from('study_material_deliveries').delete().eq('id',id);showToast('Record deleted','#dc2626');load()}
-  const saveStock=async(e)=>{e.preventDefault();const payload={transaction_type:stockForm.transaction_type,bundles:Number(stockForm.bundles)||0,packets:Number(stockForm.packets)||0,printed_packets:Number(stockForm.printed_packets)||0,transaction_date:stockForm.transaction_date,notes:stockForm.notes||null,created_by:stockForm.created_by||currentUser?.name||null}; if(stockForm.transaction_type==='Print' && (Number(stockForm.printed_packets)||0)>stockTotals.packets){alert('Printed packets cannot exceed current A4 packet stock.');return} setSaving(true);const {error}=await supabase.from('a4_stock_transactions').insert([payload]);setSaving(false);if(error){alert('Error: '+error.message);return}setShowStockForm(false);showToast('✅ A4 stock updated');load()}
-  if(loading)return <div style={{padding:50,textAlign:'center',color:MD.color.onSurfaceVariant}}>⏳ Loading materials…</div>
-  const pending=rows.filter(r=>r.status==='Pending').length, given=rows.filter(r=>r.status==='Given').length, delivered=rows.filter(r=>r.status==='Delivered').length
-  return <div>
-    {toast&&<div style={{position:'fixed',top:20,right:20,zIndex:2000,background:toast.color,color:'white',padding:'10px 18px',borderRadius:8,fontWeight:700}}>{toast.msg}</div>}
-    <div style={{...card,marginBottom:16}}><div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}><div><h2 style={{...MD.type.title,margin:0}}>📚 Study Material & A4 Stock</h2><p style={{...MD.type.body,color:MD.color.onSurfaceVariant,margin:'5px 0 0'}}>Track material given/delivered to every student and A4 stock after printing.</p></div><div style={{display:'flex',gap:8}}><button onClick={openAdd} style={btn()}>+ Material</button><button onClick={()=>setShowStockForm(true)} style={btn('#f1f5f9','#374151')}>+ A4 Stock / Print</button></div></div></div>
-    <div style={mobile?mobileStatGrid:statGrid(145)}>
-      <StatCard icon="📦" label="A4 Bundles" value={stockTotals.bundles.toLocaleString('en-IN')} color={MD.color.primary} bg={MD.color.primaryContainer}/>
-      <StatCard icon="📄" label="A4 Packets in Stock" value={stockTotals.packets.toLocaleString('en-IN')} color={MD.color.success} bg={MD.color.successContainer}/>
-      <StatCard icon="🖨️" label="Printed Packets" value={stockTotals.printed.toLocaleString('en-IN')} color={MD.color.secondary} bg={MD.color.secondaryContainer}/>
-      <StatCard icon="⏳" label="Pending Delivery" value={pending} color={MD.color.error} bg={MD.color.errorContainer}/>
-      <StatCard icon="🎁" label="Given" value={given} color={MD.color.primary} bg={MD.color.primaryContainer}/>
-      <StatCard icon="✅" label="Delivered" value={delivered} color={MD.color.success} bg={MD.color.successContainer}/>
-    </div>
-    <div style={{...card,marginBottom:16}}><input style={inp} placeholder="Search student or material…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
-    {mobile?<MobileCardList>{rows.filter(r=>{const q=search.toLowerCase();return !q||(r.student_name||'').toLowerCase().includes(q)||(r.material_name||'').toLowerCase().includes(q)}).map(r=><MobileRecordCard key={r.id} accentColor={r.status==='Delivered'?MD.color.success:MD.color.secondary}><div style={{display:'flex',justifyContent:'space-between'}}><strong>{r.student_name}</strong><span style={statusStyle(r.status)}>{r.status}</span></div><div style={{fontSize:12,color:MD.color.onSurfaceVariant,marginTop:5}}>{r.material_name} · Qty {r.quantity}</div><div style={{fontSize:11,color:MD.color.onSurfaceVariant,marginTop:4}}>GCC {r.gcc_no||'—'} · Given {r.given_date||'—'} · Delivered {r.delivered_date||'—'}</div><div style={{display:'flex',gap:8,marginTop:8}}><button onClick={()=>openEdit(r)} style={{...btn('#f1f5f9','#374151'),padding:'6px 12px',fontSize:11}}>Edit</button>{isAdmin&&<button onClick={()=>del(r.id)} style={{...btn(MD.color.errorContainer,MD.color.error),padding:'6px 12px',fontSize:11}}>Delete</button>}</div></MobileRecordCard>)}</MobileCardList>:<div style={{...card,padding:0,overflow:'hidden'}}><table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}><thead><tr style={{background:MD.color.primary,color:'white'}}>{['Student','GCC','Class','Material','Qty','Status','Given','Delivered','Actions'].map(x=><th key={x} style={{padding:'10px 8px',textAlign:'left'}}>{x}</th>)}</tr></thead><tbody>{rows.filter(r=>{const q=search.toLowerCase();return !q||(r.student_name||'').toLowerCase().includes(q)||(r.material_name||'').toLowerCase().includes(q)}).map((r,i)=><tr key={r.id} style={{background:i%2?'#f8fafc':'white'}}><td style={{padding:8,fontWeight:600}}>{r.student_name}</td><td style={{padding:8}}>{r.gcc_no||'—'}</td><td style={{padding:8}}>{r.class_name||'—'}</td><td style={{padding:8}}>{r.material_name}</td><td style={{padding:8}}>{r.quantity}</td><td style={{padding:8}}><span style={statusStyle(r.status)}>{r.status}</span></td><td style={{padding:8}}>{r.given_date||'—'}</td><td style={{padding:8}}>{r.delivered_date||'—'}</td><td style={{padding:8}}><button onClick={()=>openEdit(r)} style={{...btn('#f1f5f9','#374151'),padding:'5px 9px',fontSize:11}}>Edit</button>{isAdmin&&<button onClick={()=>del(r.id)} style={{...btn(MD.color.errorContainer,MD.color.error),padding:'5px 9px',fontSize:11,marginLeft:5}}>Del</button>}</td></tr>)}</tbody></table></div>}
-    {showForm&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}><form onSubmit={save} style={{background:'white',borderRadius:MD.radius.sheet,padding:22,width:'100%',maxWidth:520,maxHeight:'90vh',overflowY:'auto'}}><h3 style={{...MD.type.title,margin:'0 0 16px'}}>{editRec?'Edit Material':'Add Study Material'}</h3><label style={lbl}>Student</label>{form.student_name?<div style={{...inp,display:'flex',justifyContent:'space-between',marginBottom:12}}><span>{form.student_name} · GCC {form.gcc_no||'—'}</span><button type="button" onClick={()=>setForm(f=>({...f,student_id:'',student_name:'',gcc_no:'',class_name:''}))} style={{border:0,background:'none',color:MD.color.error}}>✕</button></div>:<div style={{position:'relative',marginBottom:12}}><input style={inp} value={search} onChange={e=>{setSearch(e.target.value);setStudentOpen(true)}} onFocus={()=>setStudentOpen(true)} placeholder="Search student…"/>{studentOpen&&matches.map(s=><div key={s.id} onMouseDown={()=>pick(s)} style={{padding:'10px 12px',background:'white',border:'1px solid #ddd',cursor:'pointer'}}><b>{s.name}</b><div style={{fontSize:11,color:'#64748b'}}>GCC {s.gcc_no||'—'} · {getStudentClass(s)||'—'}</div></div>)}</div>}<label style={lbl}>Material Name</label><input required style={{...inp,marginBottom:12}} value={form.material_name} onChange={e=>setForm(f=>({...f,material_name:e.target.value}))} placeholder="e.g. Mathematics Book"/><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}><div><label style={lbl}>Quantity</label><input type="number" min="1" style={inp} value={form.quantity} onChange={e=>setForm(f=>({...f,quantity:e.target.value}))}/></div><div><label style={lbl}>Status</label><select style={inp} value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))}><option>Pending</option><option>Given</option><option>Delivered</option></select></div></div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginTop:12}}><div><label style={lbl}>Given Date</label><input type="date" style={inp} value={form.given_date||''} onChange={e=>setForm(f=>({...f,given_date:e.target.value}))}/></div><div><label style={lbl}>Delivered Date</label><input type="date" style={inp} value={form.delivered_date||''} onChange={e=>setForm(f=>({...f,delivered_date:e.target.value}))}/></div></div><div style={{marginTop:12}}><label style={lbl}>Remarks</label><input style={inp} value={form.remarks||''} onChange={e=>setForm(f=>({...f,remarks:e.target.value}))}/></div><div style={{display:'flex',gap:10,marginTop:18}}><button type="button" onClick={()=>setShowForm(false)} style={{...btn('#f1f5f9','#374151'),flex:1}}>Cancel</button><button disabled={saving} style={{...btn(),flex:1}}>{saving?'Saving…':'Save'}</button></div></form></div>}
-    {showStockForm&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}><form onSubmit={saveStock} style={{background:'white',borderRadius:MD.radius.sheet,padding:22,width:'100%',maxWidth:440}}><h3 style={{...MD.type.title,margin:'0 0 16px'}}>📄 A4 Stock / Printing</h3><label style={lbl}>Transaction</label><select style={{...inp,marginBottom:12}} value={stockForm.transaction_type} onChange={e=>setStockForm(f=>({...f,transaction_type:e.target.value}))}><option>Purchase</option><option>Opening</option><option>Print</option><option>Adjustment</option></select>{stockForm.transaction_type==='Print'?<div><label style={lbl}>Packets Used for Printing</label><input type="number" min="1" style={inp} value={stockForm.printed_packets} onChange={e=>setStockForm(f=>({...f,printed_packets:e.target.value}))}/></div>:<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}><div><label style={lbl}>Bundles</label><input type="number" min="0" style={inp} value={stockForm.bundles} onChange={e=>setStockForm(f=>({...f,bundles:e.target.value}))}/></div><div><label style={lbl}>Packets</label><input type="number" min="0" style={inp} value={stockForm.packets} onChange={e=>setStockForm(f=>({...f,packets:e.target.value}))}/></div></div>}<label style={{...lbl,marginTop:12}}>Date</label><input type="date" style={inp} value={stockForm.transaction_date} onChange={e=>setStockForm(f=>({...f,transaction_date:e.target.value}))}/><label style={{...lbl,marginTop:12}}>Notes</label><input style={inp} value={stockForm.notes} onChange={e=>setStockForm(f=>({...f,notes:e.target.value}))}/><div style={{display:'flex',gap:10,marginTop:18}}><button type="button" onClick={()=>setShowStockForm(false)} style={{...btn('#f1f5f9','#374151'),flex:1}}>Cancel</button><button disabled={saving} style={{...btn(),flex:1}}>{saving?'Saving…':'Record'}</button></div></form></div>}
-  </div>
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 //  MONEY DASHBOARD TAB — all-houses contributions + expenses + net balance
 // ═══════════════════════════════════════════════════════════════════════════
-function useA4StockSummary() {
-  const [stock, setStock] = useState([])
-  const [loading, setLoading] = useState(true)
-  const load = async () => {
-    const { data, error } = await supabase.from('a4_stock_transactions').select('*').order('transaction_date', { ascending: false })
-    if (error) console.error('a4_stock_transactions fetch error:', error)
-    setStock(data || []); setLoading(false)
-  }
-  useEffect(() => { load() }, [])
-  return useMemo(() => {
-    let bundles=0, packets=0, printed=0
-    stock.forEach(r => {
-      if (r.transaction_type === 'Purchase' || r.transaction_type === 'Opening') { bundles += Number(r.bundles)||0; packets += Number(r.packets)||0 }
-      else if (r.transaction_type === 'Print') { printed += Number(r.printed_packets)||0; packets -= Number(r.printed_packets)||0 }
-      else { bundles += Number(r.bundles)||0; packets += Number(r.packets)||0 }
-    })
-    return { bundles, packets: Math.max(0, packets), printed }
-  }, [stock])
-}
-
-function MoneyDashboardTab({ currentUser, students }) {
+function MoneyDashboardTab({ currentUser }) {
   const mobile = useMobileView()
-  const { houses, contributions, expenses, loading, load, houseMoney } = useHouseMoneyData()
+  const { houses, contributions, expenses, loading, houseMoney } = useHouseMoneyData()
   const [expandedHouse, setExpandedHouse] = useState(null)
-  const a4 = useA4StockSummary()
-  // ── Manual expense entry ────────────────────────────────────────────────
-  // This dashboard was read-only, so recording a one-off spend from here
-  // meant leaving for the House Expenses tab and drilling into the right
-  // house first. Writes to the same house_expenses table through the same
-  // validation (persistHouseExpense); the only difference is that the house
-  // has to be chosen in the form, since this view isn't scoped to one.
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState(emptyExpense)
-  const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState(null)
-
-  const showToast = (msg, color = '#16a34a') => {
-    setToast({ msg, color }); setTimeout(() => setToast(null), 3000)
-  }
-
-  const openAddForm = (houseName = '') => {
-    setForm({ ...emptyExpense, house: houseName, paid_by: currentUser?.name || '' })
-    setShowForm(true)
-  }
-
-  const handleSave = async (e) => {
-    e.preventDefault()
-    setSaving(true)
-    const { netBalance } = houseMoney(form.house)
-    const res = await persistHouseExpense({ form, editRec: null, currentUser, netBalance })
-    setSaving(false)
-    if (res.cancelled) return
-    if (res.error) { alert(res.error); return }
-    setShowForm(false); setForm(emptyExpense)
-    showToast('✅ Expense recorded')
-    load()
-  }
 
   if (loading) {
     return <div style={{ textAlign: 'center', padding: '60px', color: MD.color.onSurfaceVariant }}>⏳ Loading money dashboard…</div>
@@ -10046,30 +9577,18 @@ function MoneyDashboardTab({ currentUser, students }) {
 
   return (
     <div>
-      {toast && (
-        <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 1000, background: toast.color, color: 'white', padding: '10px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, boxShadow: MD.elevation[3] }}>
-          {toast.msg}
-        </div>
-      )}
-
-      <div style={{ ...(mobile ? mobileCard : card), marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <h2 style={{ ...MD.type.title, margin: '0 0 4px' }}>📊 Money Dashboard</h2>
-          <p style={{ ...MD.type.body, color: MD.color.onSurfaceVariant, margin: 0 }}>
-            Contributions collected, submitted, and spent across every house.
-          </p>
-        </div>
-        <button onClick={() => openAddForm()} style={{ ...btn(), opacity: houses.length ? 1 : 0.5 }} disabled={!houses.length}>+ Add Expense</button>
+      <div style={{ ...(mobile ? mobileCard : card), marginBottom: 16 }}>
+        <h2 style={{ ...MD.type.title, margin: '0 0 4px' }}>📊 Money Dashboard</h2>
+        <p style={{ ...MD.type.body, color: MD.color.onSurfaceVariant, margin: 0 }}>
+          Contributions collected, submitted, and spent across every house.
+        </p>
       </div>
 
       <div style={mobile ? mobileStatGrid : statGrid(150)}>
         <StatCard icon="💰" label="Total Collected" value={`₹${grand.collected.toLocaleString('en-IN')}`} color={MD.color.primary} bg={MD.color.primaryContainer} />
-        <StatCard icon="🧾" label="Total Used / Spent" value={`₹${grand.spent.toLocaleString('en-IN')}`} color={MD.color.secondary} bg={MD.color.secondaryContainer} />
-        <StatCard icon="💵" label="Net Balance" value={`₹${grand.netBalance.toLocaleString('en-IN')}`} color={grand.netBalance < 0 ? MD.color.error : MD.color.success} bg={grand.netBalance < 0 ? MD.color.errorContainer : MD.color.successContainer} />
-        <StatCard icon="📄" label="A4 Packets in Stock" value={a4.packets.toLocaleString('en-IN')} color={MD.color.success} bg={MD.color.successContainer} />
-        <StatCard icon="📦" label="A4 Bundles" value={a4.bundles.toLocaleString('en-IN')} color={MD.color.primary} bg={MD.color.primaryContainer} />
-        <StatCard icon="🖨️" label="Packets Used for Printing" value={a4.printed.toLocaleString('en-IN')} color={MD.color.secondary} bg={MD.color.secondaryContainer} />
         <StatCard icon="✅" label="Submitted" value={`₹${grand.submitted.toLocaleString('en-IN')}`} color={MD.color.success} bg={MD.color.successContainer} />
+        <StatCard icon="🧾" label="Total Spent" value={`₹${grand.spent.toLocaleString('en-IN')}`} color={MD.color.secondary} bg={MD.color.secondaryContainer} />
+        <StatCard icon={grand.netBalance < 0 ? '⚠️' : '💵'} label="Net Balance (All Houses)" value={`₹${grand.netBalance.toLocaleString('en-IN')}`} color={grand.netBalance < 0 ? MD.color.error : MD.color.success} bg={grand.netBalance < 0 ? MD.color.errorContainer : MD.color.successContainer} />
       </div>
 
       <h3 style={{ ...MD.type.title, margin: '20px 0 10px' }}>By House</h3>
@@ -10115,12 +9634,6 @@ function MoneyDashboardTab({ currentUser, students }) {
                     </div>
                   ))}
                   {!m.expenseRecs.length && <div style={{ fontSize: 12, color: MD.color.onSurfaceVariant }}>None yet</div>}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); openAddForm(h.name) }}
-                    style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 12px', fontSize: 11, marginTop: 10 }}
-                  >
-                    + Add expense to {h.name}
-                  </button>
                 </div>
               )}
             </div>
@@ -10147,19 +9660,6 @@ function MoneyDashboardTab({ currentUser, students }) {
           <div style={{ padding: 30, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No activity yet</div>
         )}
       </div>
-
-      {showForm && (
-        <ExpenseFormModal
-          title="Add Expense"
-          form={form}
-          setForm={setForm}
-          houses={houses}
-          onSubmit={handleSave}
-          onCancel={() => setShowForm(false)}
-          saving={saving}
-          submitLabel="Add Entry"
-        />
-      )}
     </div>
   )
 }
@@ -10792,7 +10292,7 @@ function Hostel() {
   const initialParams = useMemo(() => {
     try { return new URLSearchParams(window.location.search) } catch { return null }
   }, [])
-  const VALID_TABS = ['allotments','schedule','nightduty','discipline','superintendentdash','sickbay','house','housecontrib','houseexpense','moneydash','materials','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
+  const VALID_TABS = ['allotments','schedule','nightduty','discipline','superintendentdash','sickbay','house','housecontrib','houseexpense','moneydash','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
   const [activeTab, setActiveTab] = useState(() => {
     const t = initialParams?.get('tab')
     return t && VALID_TABS.includes(t) ? t : 'hmdashboard'
@@ -10908,8 +10408,7 @@ function Hostel() {
     house: <HouseTab students={students} currentUser={currentUser} houseColorMap={houseColorMap} />,
     housecontrib: <HouseContributionTab students={students} currentUser={currentUser} />,
     houseexpense: <HouseExpenseTab students={students} currentUser={currentUser} />,
-    moneydash: <MoneyDashboardTab currentUser={currentUser} students={students} />,
-    materials: <StudyMaterialTrackerTab students={students} currentUser={currentUser} />,
+    moneydash: <MoneyDashboardTab currentUser={currentUser} />,
     housemaster: <HousemasterTab currentUser={currentUser} />,
     kitchen: <KitchenTab currentUser={currentUser} />,
     hmactivities: <HousemasterActivitiesTab staffProfiles={staffProfiles} currentUser={currentUser} />,
