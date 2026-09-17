@@ -8610,6 +8610,7 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
   const [editRec, setEditRec] = useState(null)
   const [form, setForm] = useState(emptyContribution)
   const [studentSearch, setStudentSearch] = useState('')
+  const [studentDropdownOpen, setStudentDropdownOpen] = useState(false)
   const [statusFilter, setStatusFilter] = useState('All') // All | Collected | Submitted
   const [toast, setToast] = useState(null)
   const [submitModal, setSubmitModal] = useState(null) // { house } | null
@@ -8651,6 +8652,7 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
     setEditRec(null)
     setForm({ ...emptyContribution, house: houseName, collected_by: currentUser?.name || '' })
     setStudentSearch('')
+    setStudentDropdownOpen(false)
     setShowForm(true)
   }
   const openEditForm = (rec) => {
@@ -8855,9 +8857,17 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
   // ── Single-house detail view ─────────────────────────────────────────────
   const { recs, collected, submitted, pending } = houseSummary(activeHouse)
   const visibleRecs = statusFilter === 'All' ? recs : recs.filter(r => r.status === statusFilter)
-  const matchingStudents = studentSearch.trim().length >= 2
-    ? houseStudents(activeHouse).filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase()) || String(s.gcc_no || '').includes(studentSearch)).slice(0, 8)
-    : []
+  // Full house roster by default (sorted, capped for a manageable dropdown
+  // length), narrowed by name or GCC No. as the user types — no minimum
+  // character count, so the list is visible and usable immediately on
+  // focus instead of appearing empty until you type 2+ characters.
+  const houseRoster = useMemo(
+    () => [...houseStudents(activeHouse)].sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+    [students, activeHouse]
+  )
+  const matchingStudents = studentSearch.trim()
+    ? houseRoster.filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase()) || String(s.gcc_no || '').includes(studentSearch)).slice(0, 50)
+    : houseRoster.slice(0, 50)
 
   return (
     <div>
@@ -8979,11 +8989,18 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
                   </div>
                 ) : (
                   <>
-                    <input style={inp} placeholder="Type student name or GCC No..." value={studentSearch} onChange={e => setStudentSearch(e.target.value)} />
-                    {matchingStudents.length > 0 && (
+                    <input
+                      style={inp}
+                      placeholder="Type student name or GCC No... (or pick from list)"
+                      value={studentSearch}
+                      onChange={e => setStudentSearch(e.target.value)}
+                      onFocus={() => setStudentDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setStudentDropdownOpen(false), 150)}
+                    />
+                    {studentDropdownOpen && matchingStudents.length > 0 && (
                       <div style={{ position: 'absolute', zIndex: 10, background: 'white', border: `1px solid ${MD.color.outline}`, borderRadius: MD.radius.field, marginTop: 4, width: '100%', maxHeight: 200, overflowY: 'auto', boxShadow: MD.elevation[3] }}>
                         {matchingStudents.map(s => (
-                          <div key={s.id} onClick={() => pickStudent(s)} style={{ padding: '9px 12px', cursor: 'pointer', borderBottom: `1px solid ${MD.color.outlineVariant}` }}>
+                          <div key={s.id} onMouseDown={() => { pickStudent(s); setStudentDropdownOpen(false) }} style={{ padding: '9px 12px', cursor: 'pointer', borderBottom: `1px solid ${MD.color.outlineVariant}` }}>
                             <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
                             <div style={{ fontSize: 11, color: MD.color.onSurfaceVariant }}>GCC {s.gcc_no} · {s.class_name}</div>
                           </div>
