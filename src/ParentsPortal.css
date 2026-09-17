@@ -100,3 +100,116 @@
 .rc-select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(140,111,46,.1)}
 .spin{width:16px;height:16px;border:2px solid rgba(140,111,46,.28);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* ── Additions for new Parents Portal features ──────────────────────────── */
+/* Append this block to the end of your existing ParentsPortal.css.
+   Uses the same navy/gold "Ledger & Crest" palette variables already
+   defined elsewhere (--goldL etc.) with safe fallback hex values. */
+
+.pp-install-banner {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .8rem; padding: .6rem 1rem; background: #8C6F2E; color: #080F1E;
+  font-size: .82rem; font-weight: 600; flex-wrap: wrap;
+}
+.pp-install-btn, .pp-install-dismiss {
+  border: none; border-radius: 4px; padding: .4rem .9rem; cursor: pointer;
+  font-weight: 700; font-size: .78rem;
+}
+.pp-install-btn { background: #080F1E; color: #F7F3E9; }
+.pp-install-dismiss { background: transparent; color: #080F1E; }
+
+.pp-child-switch {
+  background: rgba(247,243,233,.08); color: #F7F3E9; border: 1px solid rgba(247,243,233,.2);
+  border-radius: 4px; padding: .35rem .6rem; font-size: .8rem; cursor: pointer;
+}
+
+.pp-export-btn {
+  margin-left: auto; background: transparent; border: 1px solid var(--goldL, #8C6F2E);
+  color: var(--goldL, #8C6F2E); padding: .5rem 1rem; border-radius: 6px;
+  cursor: pointer; font-size: .78rem; font-weight: 700; white-space: nowrap;
+}
+.pp-export-btn:disabled { opacity: .5; cursor: default; }
+
+/* Dashboard home */
+.pp-dash-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: .8rem;
+}
+.pp-dash-card {
+  background: rgba(247,243,233,.04); border: 1px solid rgba(247,243,233,.1);
+  border-radius: 10px; padding: 1rem .8rem; text-align: center; cursor: pointer;
+  transition: transform .15s, border-color .15s;
+}
+.pp-dash-card:hover { transform: translateY(-2px); border-color: var(--goldL, #8C6F2E); }
+.pp-dash-icon { font-size: 1.6rem; margin-bottom: .3rem; }
+.pp-dash-val { font-size: 1.3rem; font-weight: 800; color: #F7F3E9; }
+.pp-dash-lbl { font-size: .7rem; opacity: .65; margin-top: .2rem; text-transform: uppercase; letter-spacing: .04em; }
+
+/* Push-notification prompt card (on Dashboard tab) */
+.pp-push-card { margin-top: 1rem; }
+.pp-push-body {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: .6rem;
+}
+.pp-push-desc { margin: .2rem 0 0; font-size: .8rem; opacity: .75; }
+.pp-push-btn { width: auto; padding: .6rem 1.2rem; }
+
+/* Fees */
+.fee-sum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+.fee-sum-box { background: rgba(247,243,233,.04); border-radius: 8px; padding: 1rem; text-align: center; }
+.fee-sum-lbl { font-size: .7rem; opacity: .6; text-transform: uppercase; letter-spacing: .04em; }
+.fee-sum-val { font-size: 1.5rem; font-weight: 800; margin-top: .3rem; }
+
+.fee-warn-banner {
+  background: rgba(186,117,23,.12); border: 1px solid rgba(186,117,23,.3);
+  border-radius: 8px; padding: .6rem .8rem; margin-bottom: .8rem;
+  font-size: .75rem; color: #BA7517;
+}
+.fee-overdue-note { font-size: .75rem; color: #A32D2D; margin-top: .6rem; }
+.fee-pay-btn { margin-top: 1rem; }
+
+.fee-breakdown-list { margin-top: 1.2rem; display: grid; gap: .6rem; }
+.fee-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: .6rem .8rem; background: rgba(247,243,233,.04); border-radius: 8px;
+}
+.fee-row-stacked { flex-direction: column; align-items: stretch; }
+.fee-row-top { display: flex; justify-content: space-between; align-items: center; }
+.fee-row-label { font-weight: 700; font-size: .85rem; }
+.fee-row-detail { font-size: .7rem; opacity: .65; }
+.fee-row-status { font-weight: 800; }
+.fee-row-unpaid { font-size: .7rem; opacity: .7; margin-top: .3rem; }
+
+.fee-positive { color: #0F6E56; }
+.fee-negative { color: #A32D2D; }
+
+.fee-history-section { margin-top: 1.2rem; }
+.fee-history-title { margin-bottom: .6rem; }
+
+/* Homework list */
+.hw-list { display: flex; flex-direction: column; gap: .5rem; }
+.hw-item {
+  display: flex; align-items: center; gap: .8rem; padding: .7rem .9rem;
+  background: rgba(247,243,233,.04); border-radius: 8px; text-decoration: none;
+  color: inherit; transition: background .15s;
+}
+.hw-item:hover { background: rgba(247,243,233,.08); }
+.hw-icon { font-size: 1.3rem; }
+.hw-info { flex: 1; }
+.hw-title { font-weight: 700; font-size: .88rem; }
+.hw-meta { font-size: .72rem; opacity: .6; }
+.hw-dl { font-size: 1rem; opacity: .7; }
+
+/* Timetable */
+.tt-day-block { margin-bottom: 1rem; }
+.tt-day-title { font-size: .85rem; margin-bottom: .4rem; }
+
+/* Messages */
+.msg-thread { display: flex; flex-direction: column; gap: .5rem; max-height: 340px; overflow-y: auto; margin-bottom: .8rem; }
+.msg-bubble { max-width: 75%; padding: .55rem .8rem; border-radius: 10px; font-size: .85rem; }
+.msg-me { align-self: flex-end; background: var(--goldL, #8C6F2E); color: #080F1E; }
+.msg-them { align-self: flex-start; background: rgba(247,243,233,.08); }
+.msg-body { font-size: .85rem; line-height: 1.4; }
+.msg-meta { font-size: .65rem; opacity: .6; margin-top: .2rem; }
+.msg-composer { display: flex; gap: .5rem; }
+.msg-composer .pp-fi { flex: 1; margin-bottom: 0; }
+.msg-send-btn { width: auto; padding: .6rem 1.4rem; }
