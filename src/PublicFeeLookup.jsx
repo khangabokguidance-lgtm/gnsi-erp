@@ -404,35 +404,51 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
                 </div>
               )}
 
-              {!linkFailed ? (
+              {/* UPI/bank shown as the primary, always-available option — it's
+                  a direct bank transfer with no payment-gateway fee at all
+                  (UPI P2M has been zero-MDR by NPCI mandate since 2020),
+                  unlike the Razorpay Payment Link path below, which currently
+                  carries a convenience fee + GST on top for the payer. */}
+              <div style={{ background: C.cream, border: `1px solid ${C.border}`, borderRadius: 4, padding: '1rem', marginBottom: '.9rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '.6rem' }}>
+                  <div style={{ fontWeight: 700, color: C.navy, fontSize: '.92rem' }}>Pay via UPI (no extra charges)</div>
+                  <span style={{ fontSize: '.62rem', fontWeight: 700, textTransform: 'uppercase', color: C.green, background: '#E4F5EC', padding: '.15rem .5rem', borderRadius: 999 }}>Recommended</span>
+                </div>
+                {upi?.upi_id ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '.7rem', marginBottom: '.6rem', flexWrap: 'wrap' }}>
+                    {upi.upi_qr_url && <img src={upi.upi_qr_url} alt="UPI QR" style={{ width: 72, height: 72, background: '#fff', borderRadius: 4, padding: 4, flexShrink: 0 }} onError={(e) => { e.target.style.display = 'none' }} />}
+                    <div>
+                      <div style={{ fontSize: '.68rem', textTransform: 'uppercase', color: C.mist, fontWeight: 700 }}>UPI ID</div>
+                      <div style={{ fontFamily: 'monospace', fontWeight: 700, color: C.navy }}>{upi.upi_id}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <p style={{ color: C.mist, fontSize: '.85rem', marginBottom: '.5rem' }}>Contact the institute for UPI / bank details.</p>
+                )}
+                <p style={{ color: C.mist, fontSize: '.78rem', lineHeight: 1.6 }}>
+                  Mention <strong>GCC-{student.gcc_no}</strong> as the payment reference, then WhatsApp your screenshot to{' '}
+                  <a href={`https://wa.me/918974298074?text=${encodeURIComponent(`Hello GNSI, I have paid the fee for GCC-${student.gcc_no} (${student.name}). Sending screenshot.`)}`} target="_blank" rel="noreferrer" style={{ color: C.green, fontWeight: 600 }}>
+                    +91 89742 98074
+                  </a>{' '}for confirmation.
+                </p>
+              </div>
+
+              {/* Card/netbanking via Razorpay Payment Link — secondary, and
+                  labeled clearly so a payer understands the small fee only
+                  applies to this option, not the UPI one above. */}
+              {!linkFailed && (
                 <button
                   onClick={payViaRazorpayLink}
                   disabled={paying}
-                  style={{ width: '100%', padding: '.9rem', background: C.gold, color: C.navy, border: 'none', borderRadius: 4, fontWeight: 700, fontSize: '1rem', cursor: paying ? 'not-allowed' : 'pointer', opacity: paying ? .6 : 1, marginBottom: '.7rem' }}
+                  style={{ width: '100%', padding: '.8rem', background: 'transparent', border: `1px solid ${C.border}`, color: C.navy, borderRadius: 4, fontWeight: 600, fontSize: '.92rem', cursor: paying ? 'not-allowed' : 'pointer', opacity: paying ? .6 : 1, marginBottom: '.4rem' }}
                 >
-                  {paying ? 'Creating payment link…' : `Pay ${fmt(Number(payAmount) || 0)} Online →`}
+                  {paying ? 'Creating payment link…' : `Or pay ${fmt(Number(payAmount) || 0)} by Card / Netbanking →`}
                 </button>
-              ) : (
-                <div style={{ background: C.cream, border: `1px solid ${C.border}`, borderRadius: 4, padding: '1rem', marginBottom: '.9rem' }}>
-                  <div style={{ fontWeight: 700, color: C.navy, fontSize: '.92rem', marginBottom: '.6rem' }}>Pay via UPI or Bank Transfer</div>
-                  {upi?.upi_id ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '.7rem', marginBottom: '.6rem', flexWrap: 'wrap' }}>
-                      {upi.upi_qr_url && <img src={upi.upi_qr_url} alt="UPI QR" style={{ width: 72, height: 72, background: '#fff', borderRadius: 4, padding: 4, flexShrink: 0 }} onError={(e) => { e.target.style.display = 'none' }} />}
-                      <div>
-                        <div style={{ fontSize: '.68rem', textTransform: 'uppercase', color: C.mist, fontWeight: 700 }}>UPI ID</div>
-                        <div style={{ fontFamily: 'monospace', fontWeight: 700, color: C.navy }}>{upi.upi_id}</div>
-                      </div>
-                    </div>
-                  ) : (
-                    <p style={{ color: C.mist, fontSize: '.85rem', marginBottom: '.5rem' }}>Contact the institute for UPI / bank details.</p>
-                  )}
-                  <p style={{ color: C.mist, fontSize: '.78rem', lineHeight: 1.6 }}>
-                    Mention <strong>GCC-{student.gcc_no}</strong> as the payment reference, then WhatsApp your screenshot to{' '}
-                    <a href={`https://wa.me/918974298074?text=${encodeURIComponent(`Hello GNSI, I have paid the fee for GCC-${student.gcc_no} (${student.name}). Sending screenshot.`)}`} target="_blank" rel="noreferrer" style={{ color: C.green, fontWeight: 600 }}>
-                      +91 89742 98074
-                    </a>{' '}for confirmation.
-                  </p>
-                </div>
+              )}
+              {!linkFailed && (
+                <p style={{ color: C.mist, fontSize: '.7rem', textAlign: 'center', marginBottom: '.9rem' }}>
+                  A small convenience fee + GST applies to card/netbanking payments.
+                </p>
               )}
 
               <button
