@@ -8609,6 +8609,36 @@ const CONTRIB_ITEM_PURPOSES = ['A4 Packet'] // tracked as given/not-given, never
 const isItemPurpose = (purpose) => CONTRIB_ITEM_PURPOSES.includes(purpose)
 const DEFAULT_SUBMITTED_TO = 'Admin Office / Accounts'
 
+// ── COMMON EXPENSES — spending shared across every house, deducted from the
+// grand total collected (all houses combined) rather than any one house's
+// balance. Distinct from house_expenses (HOUSE EXPENSE TAB below), which is
+// always tied to a single house. Lives in the Contributions tab because it's
+// spent directly against the pooled collection figure shown there, not
+// against a per-house fund.
+//
+// New table required: common_expenses
+//   id, category, description, amount, paid_to, paid_date, paid_by,
+//   receipt_no, remarks, created_at
+//
+// Suggested migration:
+//   create table common_expenses (
+//     id bigint generated always as identity primary key,
+//     category text not null default 'Other',
+//     description text,
+//     amount numeric(10,2) not null default 0,
+//     paid_to text,
+//     paid_date date not null default current_date,
+//     paid_by text,
+//     receipt_no text,
+//     remarks text,
+//     created_at timestamptz not null default now()
+//   );
+const COMMON_EXPENSE_CATEGORIES = ['Mess/Food', 'Generator Fuel', 'Common Repairs', 'Function/Event', 'Staff Welfare', 'Stationery', 'Other']
+const emptyCommonExpense = {
+  category: 'Other', description: '', amount: '',
+  paid_to: '', paid_date: today(), paid_by: '', receipt_no: '', remarks: '',
+}
+
 const emptyContribution = {
   house: '', student_id: null, student_name: '', gcc_no: '', class_name: '',
   amount: '', purpose: 'Exam Contribution', item_status: 'Given', collected_by: '', collected_date: today(),
@@ -8622,6 +8652,7 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
   const [students, setStudents] = useState(propStudents || [])
   const [records, setRecords] = useState([])
   const [expenseRecords, setExpenseRecords] = useState([])
+  const [commonExpenses, setCommonExpenses] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [activeHouse, setActiveHouse] = useState(null)
@@ -8635,6 +8666,10 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
   const [submitModal, setSubmitModal] = useState(null) // { house } | null
   const [submitTo, setSubmitTo] = useState(DEFAULT_SUBMITTED_TO)
   const [submitDate, setSubmitDate] = useState(today())
+  const [showCommonForm, setShowCommonForm] = useState(false)
+  const [editCommonRec, setEditCommonRec] = useState(null)
+  const [commonForm, setCommonForm] = useState(emptyCommonExpense)
+  const [showCommonList, setShowCommonList] = useState(false)
 
   const showToast = (msg, color = '#16a34a') => {
     setToast({ msg, color }); setTimeout(() => setToast(null), 3000)
@@ -8650,16 +8685,19 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
     // useHouseMoneyData(); kept as a parallel fetch here rather than
     // sharing that hook since this tab also needs `students` for the
     // contributor picker, which useHouseMoneyData doesn't load.
-    const [{ data: h }, { data: rec, error }, { data: exp, error: expError }] = await Promise.all([
+    const [{ data: h }, { data: rec, error }, { data: exp, error: expError }, { data: commonExp, error: commonError }] = await Promise.all([
       supabase.from('houses').select('name').order('name'),
       supabase.from('house_contributions').select('*').order('collected_date', { ascending: false }),
       supabase.from('house_expenses').select('house, amount'),
+      supabase.from('common_expenses').select('*').order('paid_date', { ascending: false }),
     ])
     if (error) console.error('house_contributions fetch error:', error)
     if (expError) console.error('house_expenses fetch error:', expError)
+    if (commonError) console.error('common_expenses fetch error:', commonError)
     setHouses(h || [])
     setRecords(rec || [])
     setExpenseRecords(exp || [])
+    setCommonExpenses(commonExp || [])
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -8706,6 +8744,65 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
     const pending = unsubmittedTotal - spent
     const itemGivenCount = itemRecs.filter(r => r.item_status === 'Given').length
     return { count: allRecs.length, collected, submitted, spent, unsubmittedTotal, pending, recs, itemRecs, itemGivenCount, itemTotalCount: itemRecs.length }
+  }
+
+  // ── Grand totals across every house (money contributions only, item rows
+  // like A4 Packet excluded — same rule as houseSummary) — this is the
+  // pooled "total collected by the staffs" figure that common expenses are
+  // deducted from below, independent of any single house's own balance.
+  const grandCollected = records.filter(r => !isItemPurpose(r.purpose)).reduce((s, r) => s + (Number(r.amount) || 0), 0)
+  const totalCommonExpenses = commonExpenses.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+  const netAfterCommon = grandCollected - totalCommonExpenses
+
+  const openAddCommonForm = () => {
+    setEditCommonRec(null)
+    setCommonForm({ ...emptyCommonExpense, paid_by: currentUser?.name || '' })
+    setShowCommonForm(true)
+  }
+  const openEditCommonForm = (rec) => {
+    setEditCommonRec(rec)
+    setCommonForm({
+      category: rec.category || 'Other', description: rec.description || '',
+      amount: rec.amount, paid_to: rec.paid_to || '', paid_date: rec.paid_date || today(),
+      paid_by: rec.paid_by || '', receipt_no: rec.receipt_no || '', remarks: rec.remarks || '',
+    })
+    setShowCommonForm(true)
+  }
+
+  const handleSaveCommon = async (e) => {
+    e.preventDefault()
+    const amt = Number(commonForm.amount)
+    if (!Number.isFinite(amt) || amt <= 0) { alert('Enter a valid amount.'); return }
+    // Warn (not block) if this would push the pooled collection into a
+    // negative net figure — mirrors the same-spirit caution in the House
+    // Expense Tracker tab (wouldGoNegative there).
+    const wouldGoNegative = !editCommonRec && (netAfterCommon - amt) < 0
+    if (wouldGoNegative && !window.confirm(`This exceeds the current net collected across all houses (₹${netAfterCommon.toLocaleString('en-IN')}). Record it anyway?`)) {
+      return
+    }
+    setSaving(true)
+    const payload = {
+      category: commonForm.category, description: commonForm.description || null,
+      amount: amt, paid_to: commonForm.paid_to || null, paid_date: commonForm.paid_date,
+      paid_by: commonForm.paid_by || currentUser?.name || null, receipt_no: commonForm.receipt_no || null,
+      remarks: commonForm.remarks || null,
+    }
+    const { error } = editCommonRec
+      ? await supabase.from('common_expenses').update(payload).eq('id', editCommonRec.id)
+      : await supabase.from('common_expenses').insert([payload])
+    setSaving(false)
+    if (error) { alert('Error: ' + error.message); return }
+    setShowCommonForm(false); setEditCommonRec(null); setCommonForm(emptyCommonExpense)
+    showToast(editCommonRec ? '✅ Common expense updated' : '✅ Common expense recorded')
+    load()
+  }
+
+  const handleDeleteCommon = async (id) => {
+    if (!isAdmin) { alert('Only admins can delete entries.'); return }
+    if (!window.confirm('Delete this common expense entry?')) return
+    await supabase.from('common_expenses').delete().eq('id', id)
+    showToast('🗑 Entry deleted', '#dc2626')
+    load()
   }
 
   const openAddForm = (houseName) => {
@@ -8908,6 +9005,83 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
             Track money and item contributions (exam fees, A4 packets, etc.) collected per house and confirm money submission to {DEFAULT_SUBMITTED_TO}.
           </p>
         </div>
+
+        {/* ── Common Expenses — spent against the pooled total collected across
+            every house, not against any single house's balance ── */}
+        <div style={{ ...(mobile ? mobileCard : card), marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+            <div>
+              <h3 style={{ ...MD.type.title, margin: '0 0 4px' }}>🧾 Common Expenses</h3>
+              <p style={{ ...MD.type.body, color: MD.color.onSurfaceVariant, margin: 0, fontSize: 13 }}>
+                Shared spending deducted from the total collected across all houses.
+              </p>
+            </div>
+            <button onClick={openAddCommonForm} style={btn()}>+ Add Common Expense</button>
+          </div>
+          <div style={mobile ? mobileStatGrid : statGrid(150)}>
+            <StatCard icon="💰" label="Total Collected (All Houses)" value={`₹${grandCollected.toLocaleString('en-IN')}`} color={MD.color.primary} bg={MD.color.primaryContainer} />
+            <StatCard icon="🧾" label="Common Expenses" value={`₹${totalCommonExpenses.toLocaleString('en-IN')}`} color={MD.color.secondary} bg={MD.color.secondaryContainer} />
+            <StatCard icon={netAfterCommon < 0 ? '⚠️' : '💵'} label="Net After Common Expenses" value={`₹${netAfterCommon.toLocaleString('en-IN')}`} color={netAfterCommon < 0 ? MD.color.error : MD.color.success} bg={netAfterCommon < 0 ? MD.color.errorContainer : MD.color.successContainer} />
+          </div>
+          {commonExpenses.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <button onClick={() => setShowCommonList(v => !v)} style={{ ...btn('#f1f5f9', '#374151'), padding: '7px 14px', fontSize: 12 }}>
+                {showCommonList ? '▲ Hide entries' : `▼ Show ${commonExpenses.length} entr${commonExpenses.length === 1 ? 'y' : 'ies'}`}
+              </button>
+              {showCommonList && (
+                mobile ? (
+                  <MobileCardList style={{ marginTop: 10 }}>
+                    {commonExpenses.map(r => (
+                      <MobileRecordCard key={r.id} accentColor={MD.color.secondary}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                          <strong style={{ fontSize: 14 }}>{r.category}</strong>
+                          <span style={{ fontWeight: 800, color: MD.color.primary }}>₹{Number(r.amount).toLocaleString('en-IN')}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: MD.color.onSurfaceVariant }}>{r.description || '—'}</div>
+                        <div style={{ fontSize: 11, marginTop: 4, color: MD.color.onSurfaceVariant }}>Paid to {r.paid_to || '—'} · {r.paid_date}</div>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                          <button onClick={() => openEditCommonForm(r)} style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 12px', fontSize: 11 }}>Edit</button>
+                          {isAdmin && <button onClick={() => handleDeleteCommon(r.id)} style={{ ...btn(MD.color.errorContainer, MD.color.error), padding: '6px 12px', fontSize: 11 }}>Delete</button>}
+                        </div>
+                      </MobileRecordCard>
+                    ))}
+                  </MobileCardList>
+                ) : (
+                  <div style={{ marginTop: 10, border: `1px solid ${MD.color.outlineVariant}`, borderRadius: MD.radius.card, overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: MD.color.primary, color: 'white' }}>
+                          <th style={{ padding: '10px 12px', textAlign: 'left' }}>Category</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'left' }}>Description</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'left' }}>Paid To</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'right' }}>Amount</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'left' }}>Date</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'left' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {commonExpenses.map((r, i) => (
+                          <tr key={r.id} style={{ background: i % 2 === 1 ? MD.color.surfaceVariant : 'white', borderBottom: `1px solid ${MD.color.outlineVariant}` }}>
+                            <td style={{ padding: '9px 12px', fontWeight: 600 }}>{r.category}</td>
+                            <td style={{ padding: '9px 12px' }}>{r.description || '—'}</td>
+                            <td style={{ padding: '9px 12px' }}>{r.paid_to || '—'}</td>
+                            <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700 }}>₹{Number(r.amount).toLocaleString('en-IN')}</td>
+                            <td style={{ padding: '9px 12px' }}>{r.paid_date}</td>
+                            <td style={{ padding: '9px 12px', display: 'flex', gap: 6 }}>
+                              <button onClick={() => openEditCommonForm(r)} style={{ ...btn('#f1f5f9', '#374151'), padding: '5px 10px', fontSize: 11 }}>Edit</button>
+                              {isAdmin && <button onClick={() => handleDeleteCommon(r.id)} style={{ ...btn(MD.color.errorContainer, MD.color.error), padding: '5px 10px', fontSize: 11 }}>Del</button>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              )}
+            </div>
+          )}
+        </div>
+
         <div style={mobile ? { display: 'grid', gap: 12 } : grid2}>
           {houses.map(h => {
             const { count, collected, pending, itemGivenCount, itemTotalCount } = houseSummary(h.name)
@@ -8940,6 +9114,64 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
             <div style={{ ...card, textAlign: 'center', color: MD.color.onSurfaceVariant }}>No houses configured yet — set them up in the Houses tab first.</div>
           )}
         </div>
+
+        {/* ── Add/Edit common expense modal ── */}
+        {showCommonForm && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setShowCommonForm(false)}>
+            <form onSubmit={handleSaveCommon} onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: MD.radius.sheet, padding: 22, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto' }}>
+              <h3 style={{ ...MD.type.title, margin: '0 0 16px' }}>{editCommonRec ? 'Edit Common Expense' : 'Add Common Expense'}</h3>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Category</label>
+                <select style={inp} value={commonForm.category} onChange={e => setCommonForm(f => ({ ...f, category: e.target.value }))}>
+                  {COMMON_EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Description</label>
+                <input style={inp} value={commonForm.description} onChange={e => setCommonForm(f => ({ ...f, description: e.target.value }))} placeholder="e.g. Diesel for generator, all houses" />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                <div>
+                  <label style={lbl}>Amount (₹)</label>
+                  <input type="number" min="1" style={inp} value={commonForm.amount} onChange={e => setCommonForm(f => ({ ...f, amount: e.target.value }))} required />
+                </div>
+                <div>
+                  <label style={lbl}>Date Paid</label>
+                  <input type="date" style={inp} value={commonForm.paid_date} onChange={e => setCommonForm(f => ({ ...f, paid_date: e.target.value }))} required />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                <div>
+                  <label style={lbl}>Paid To</label>
+                  <input style={inp} value={commonForm.paid_to} onChange={e => setCommonForm(f => ({ ...f, paid_to: e.target.value }))} placeholder="Vendor / office / person" />
+                </div>
+                <div>
+                  <label style={lbl}>Receipt No. (optional)</label>
+                  <input style={inp} value={commonForm.receipt_no} onChange={e => setCommonForm(f => ({ ...f, receipt_no: e.target.value }))} />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Paid By</label>
+                <input style={inp} value={commonForm.paid_by} onChange={e => setCommonForm(f => ({ ...f, paid_by: e.target.value }))} placeholder="Staff name" />
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <label style={lbl}>Remarks (optional)</label>
+                <input style={inp} value={commonForm.remarks} onChange={e => setCommonForm(f => ({ ...f, remarks: e.target.value }))} />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="button" onClick={() => setShowCommonForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
+                <button type="submit" disabled={saving} style={{ ...btn(), flex: 1 }}>{saving ? 'Saving…' : editCommonRec ? 'Save Changes' : 'Add Entry'}</button>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
     )
   }
