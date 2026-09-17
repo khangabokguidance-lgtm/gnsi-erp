@@ -108,12 +108,15 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
     try {
       const { data, error } = await supabase
         .from('students')
-        .select('id, name, gcc_no, class_name, batch, course, hostel_type, guardian_phone, father_phone, mother_phone, parent_phone, guardian_mobile, mobile, phone')
+        .select('*')
         .eq('gcc_no', cleanGcc)
         .limit(1)
         .maybeSingle()
 
-      if (error) throw error
+      if (error) {
+        console.error('Public fee lookup — students query failed:', error)
+        throw error
+      }
       if (!data) { setErrorMsg('No student found with that GCC / Student ID. Please check the number or contact the institute.'); setLoading(false); return }
 
       // Light verification: if a phone was entered, it must match one of the
@@ -129,14 +132,26 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
         }
       }
 
-      const feeSummary = await getStudentFeeSummary(data.id, SESSION_YEAR)
+      let feeSummary
+      try {
+        feeSummary = await getStudentFeeSummary(data.id, SESSION_YEAR)
+      } catch (feeErr) {
+        console.error('Public fee lookup — fee summary query failed:', feeErr)
+        // Student was found fine — only the fee-summary read failed (often an
+        // RLS policy on fee_invoices/fee_payments blocking anonymous reads).
+        // Show the student with a zeroed summary rather than a dead end, and
+        // surface the real reason so it's fixable on the backend.
+        feeSummary = { invoices: [], payment_history: [], total_expected: 0, total_paid: 0, total_due: 0 }
+        setErrorMsg(`We found your record, but couldn't load payment details right now${feeErr?.message ? ` (${feeErr.message})` : ''}. Please contact the institute to confirm your dues.`)
+      }
       setStudent(data)
       setSummary(feeSummary)
       setPayAmount(feeSummary.total_due > 0 ? String(feeSummary.total_due) : '')
       setStep('summary')
     } catch (err) {
       console.error('Public fee lookup failed:', err)
-      setErrorMsg('Something went wrong looking up your record. Please try again or contact the institute.')
+      const hint = err?.message ? ` (${err.message})` : ''
+      setErrorMsg(`Something went wrong looking up your record${hint}. Please try again or contact the institute.`)
     } finally {
       setLoading(false)
     }
