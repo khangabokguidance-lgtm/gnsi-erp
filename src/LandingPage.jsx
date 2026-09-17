@@ -7,6 +7,7 @@ import {
 } from './websiteApi';
 import { supabase } from './supabase';
 import ParentsPortal from './ParentsPortal';
+import PublicFeeLookup from './PublicFeeLookup';
 
 // TODO: consider moving to Supabase storage for consistency with other site assets
 const FOUNDER_PHOTO_URL = "https://i.postimg.cc/Vsd7VXZ7/DSC05195.jpg";
@@ -21,6 +22,8 @@ export default function LandingPage({ onLogin }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { catIdx, itemIdx }
   const [isPortalOpen, setIsPortalOpen] = useState(false);
+  const [isFeeOpen, setIsFeeOpen] = useState(false);
+  const [feePaymentInfo, setFeePaymentInfo] = useState({ upi_id: '', upi_qr_url: '' });
 
   const defaultGalleryData = [
     {
@@ -757,6 +760,7 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
   if (!upiBox && !bankBox) return;
   try {
     const stats = await getStats();
+    setFeePaymentInfo({ upi_id: stats.upi_id || '', upi_qr_url: stats.upi_qr_url || '' });
 
     if (upiBox && (stats.upi_id || stats.upi_qr_url)) {
       upiBox.innerHTML = `
@@ -1318,8 +1322,8 @@ window.submitGrievance = async () => {
           </a>
         </li>
         <li>
-          <a
-            href="#fee-payment"
+          <button
+            onClick={() => setIsFeeOpen(true)}
             className="nav-fee"
             style={{
               fontFamily: 'Inter,sans-serif',
@@ -1329,11 +1333,13 @@ window.submitGrievance = async () => {
               textTransform: "uppercase",
               display: "inline-block",
               padding: ".4rem 1rem",
-              color: "#fff"
+              color: "#fff",
+              border: "none",
+              cursor: "pointer"
             }}
           >
             Pay Fee →
-          </a>
+          </button>
         </li>
         <li>
           <button
@@ -1417,9 +1423,9 @@ window.submitGrievance = async () => {
       </button>
     </div>
     <div className="mob-menu-bottom">
-      <a href="#fee-payment" onClick={closeMobile} className="mmb-fee">
+      <button onClick={() => { setIsFeeOpen(true); closeMobile(); }} className="mmb-fee">
         💳 Pay Fee
-      </a>
+      </button>
       <a href="#enquiry" onClick={closeMobile} className="mmb-apply">
         Apply Now →
       </a>
@@ -1492,13 +1498,13 @@ window.submitGrievance = async () => {
           >
             🎯 Book Free Demo Class
           </button>
-          <a
-            href="#fee-payment"
+          <button
+            onClick={() => setIsFeeOpen(true)}
             className="btn-fee btn"
             style={{ padding: ".6rem 1.2rem" }}
           >
             💳 Pay Fee Online
-          </a>
+          </button>
         </div>
         <div className="stats-bar">
           <div className="stat-item">
@@ -4338,12 +4344,20 @@ window.submitGrievance = async () => {
         </div>
         <button
           className="pay-btn"
-          onClick={() => window.open('https://wa.me/918974298074?text=Hello%20GNSI%2C%20I%20would%20like%20to%20pay%20fees%20online.%20Please%20share%20UPI%20and%20bank%20details.', '_blank')}
+          onClick={() => setIsFeeOpen(true)}
         >
-          💳 Pay Fee via WhatsApp →
+          💳 Look Up My Fee &amp; Pay Online →
         </button>
         <p className="pay-note">
-          Instant acknowledgement · Receipt issued within 24 hours
+          Or WhatsApp your screenshot to{' '}
+          <a
+            href="https://wa.me/918974298074?text=Hello%20GNSI%2C%20I%20would%20like%20to%20pay%20fees%20online.%20Please%20share%20UPI%20and%20bank%20details."
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: '#fff', textDecoration: 'underline' }}
+          >
+            +91 89742 98074
+          </a>{' '}· Receipt issued within 24 hours
         </p>
       </div>
     </div>
@@ -4873,9 +4887,9 @@ window.submitGrievance = async () => {
       <button onClick={() => setIsPortalOpen(true)} className="btn btn-grn">
         Parents Portal →
       </button>
-      <a href="#fee-payment" className="btn btn-fee">
+      <button onClick={() => setIsFeeOpen(true)} className="btn btn-fee">
         💳 Pay Fee →
-      </a>
+      </button>
       <a
         href="https://wa.me/918974298074"
         className="btn btn-wa"
@@ -4980,9 +4994,12 @@ window.submitGrievance = async () => {
         >
           WhatsApp
         </a>
-        <a href="#fee-payment" style={{ color: "var(--goldL)" }}>
+        <button
+          onClick={() => setIsFeeOpen(true)}
+          style={{ color: "var(--goldL)", background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer", display: "block", marginBottom: ".6rem", textAlign: "left" }}
+        >
           💳 Pay Fee Online
-        </a>
+        </button>
         <a href="#enquiry">Admission Enquiry</a>
         <a
           href="#"
@@ -5031,5 +5048,6 @@ window.submitGrievance = async () => {
     </svg>
   </a>
   <ParentsPortal isOpen={isPortalOpen} onClose={() => setIsPortalOpen(false)} />
+  <PublicFeeLookup isOpen={isFeeOpen} onClose={() => setIsFeeOpen(false)} upi={feePaymentInfo} />
 </>  );
 }
