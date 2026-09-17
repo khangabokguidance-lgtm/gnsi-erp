@@ -250,6 +250,22 @@ const TABS = [
   { id: 'commandcentre', label: '🚨 Command Centre' },
 ]
 
+// ── Groups TABS by related feature area for the hamburger menu below.
+// Purely a display grouping (section headers + order) — TABS itself, tab
+// ids, VALID_TABS, and tabContent are all unchanged, so this can't affect
+// routing, only how the menu is organized. Every tab id must appear in
+// exactly one group; TAB_GROUPS is validated against TABS at the bottom
+// of this file (see the console.assert near the Hostel() component) so a
+// future tab added to TABS but forgotten here fails loudly in dev rather
+// than silently vanishing from the menu.
+const TAB_GROUPS = [
+  { label: 'Money', ids: ['housecontrib', 'houseexpense', 'moneydash'] },
+  { label: 'Houses & Discipline', ids: ['house', 'housemaster', 'discipline', 'superintendentdash'] },
+  { label: 'Daily Operations', ids: ['schedule', 'attendance', 'hmrollreport', 'nightduty', 'allotments', 'transfer', 'kitchen', 'sickbay', 'maintenance'] },
+  { label: 'Academics & Activities', ids: ['hmactivities', 'classtimetable', 'doubtsession', 'journal'] },
+  { label: 'Monitoring & Reports', ids: ['adminmonitor', 'hmdashboard', 'leave', 'neglectreport', 'commandcentre'] },
+]
+
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -10266,6 +10282,23 @@ function NeglectReportTab({ currentUser }) {
   )
 }
 
+// Dev-time safety net: every tab id in TABS must appear in exactly one
+// TAB_GROUPS group, and TAB_GROUPS must not reference an id that isn't in
+// TABS — otherwise a tab could silently disappear from (or duplicate in)
+// the grouped hamburger menu without any visible error. Runs once at
+// module load; a no-op in production builds where console.assert is
+// typically stripped/ignored, but catches the mistake immediately in dev.
+if (typeof console !== 'undefined' && console.assert) {
+  const allTabIds = TABS.map(t => t.id)
+  const groupedIds = TAB_GROUPS.flatMap(g => g.ids)
+  const missingFromGroups = allTabIds.filter(id => !groupedIds.includes(id))
+  const unknownInGroups = groupedIds.filter(id => !allTabIds.includes(id))
+  const duplicatedInGroups = groupedIds.filter((id, i) => groupedIds.indexOf(id) !== i)
+  console.assert(missingFromGroups.length === 0, 'TAB_GROUPS is missing tab id(s):', missingFromGroups)
+  console.assert(unknownInGroups.length === 0, 'TAB_GROUPS references unknown tab id(s):', unknownInGroups)
+  console.assert(duplicatedInGroups.length === 0, 'TAB_GROUPS has duplicate tab id(s):', duplicatedInGroups)
+}
+
 function Hostel() {
   // Loads Fraunces (display/headings) and Inter (body) from Google Fonts
   // once, on first mount — FONT_DISPLAY/FONT_BODY above already fall back
@@ -10485,17 +10518,34 @@ function Hostel() {
                     background: 'white', borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,0.25)',
                     padding: 8,
                   }}>
-                    {TABS.map(t => (
-                      <button key={t.id} onClick={() => { changeTab(t.id); setMenuOpen(false) }} style={{
-                        width: '100%', textAlign: 'left', padding: '10px 12px', borderRadius: 8,
-                        border: 'none', cursor: 'pointer', fontFamily: FONT_BODY, fontSize: 13,
-                        background: activeTab === t.id ? MD.color.primary + '14' : 'none',
-                        color: activeTab === t.id ? MD.color.primary : '#1e293b',
-                        fontWeight: activeTab === t.id ? 700 : 500,
-                        display: 'block', marginBottom: 2,
-                      }}>
-                        {t.label}
-                      </button>
+                    {TAB_GROUPS.map((group, gi) => (
+                      <div key={group.label}>
+                        <div style={{
+                          padding: '8px 12px 4px', fontSize: 10.5, fontWeight: 800,
+                          textTransform: 'uppercase', letterSpacing: '.06em',
+                          color: MD.color.onSurfaceVariant, marginTop: gi === 0 ? 0 : 6,
+                          borderTop: gi === 0 ? 'none' : `1px solid ${MD.color.outlineVariant}`,
+                          paddingTop: gi === 0 ? 4 : 10,
+                        }}>
+                          {group.label}
+                        </div>
+                        {group.ids.map(id => {
+                          const t = TABS.find(tab => tab.id === id)
+                          if (!t) return null
+                          return (
+                            <button key={t.id} onClick={() => { changeTab(t.id); setMenuOpen(false) }} style={{
+                              width: '100%', textAlign: 'left', padding: '10px 12px', borderRadius: 8,
+                              border: 'none', cursor: 'pointer', fontFamily: FONT_BODY, fontSize: 13,
+                              background: activeTab === t.id ? MD.color.primary + '14' : 'none',
+                              color: activeTab === t.id ? MD.color.primary : '#1e293b',
+                              fontWeight: activeTab === t.id ? 700 : 500,
+                              display: 'block', marginBottom: 2,
+                            }}>
+                              {t.label}
+                            </button>
+                          )
+                        })}
+                      </div>
                     ))}
                   </div>
                 </>
