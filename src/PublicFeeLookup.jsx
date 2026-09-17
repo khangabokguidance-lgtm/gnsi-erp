@@ -6,17 +6,32 @@
 // visitor has no auth and no currentUser, so letting the browser write a
 // "fee paid" record directly would let anyone mark any student as paid.
 //
+// IMPORTANT — table choice: GNSI's real fee ledger lives in three tables —
+// adm_fee_collections (admission/dress/prospectus), adm_flat_fees (monthly
+// flat fee), adm_course_fees (monthly course fee) — keyed by adm_app_id
+// (the GCC number, stored as text). This mirrors exactly what
+// StudentFeeCard in Fees.jsx does (myAdm/myFlat/myCrsf), NOT the generic
+// fee_invoices/fee_payments tables — those appear unused by this school's
+// actual data, which is why an earlier version of this file (built against
+// getStudentFeeSummary) always showed ₹0.
+//
+// This file shows "Total Paid" reliably (a straight sum of real payment
+// rows). It intentionally does NOT show a computed "Amount Due" — the true
+// due amount depends on getStudentDues()'s full month-by-month rate engine
+// (rates, overrides, admission-date exclusions) in feeDues.js, which this
+// component doesn't have access to. Rather than guess and risk showing a
+// wrong due amount, the parent enters the amount they intend to pay.
+//
 // Flow:
 //   1. Parent enters GCC number (+ optional phone as a light check).
-//   2. We look up the student and their real fee summary via the SAME
-//      read-only helper Fees.jsx uses internally (getStudentFeeSummary),
-//      so the numbers shown here are never out of sync with the ledger.
+//   2. We look up the student and sum their real payment rows across the
+//      three tables above — read-only, same shape Fees.jsx already uses.
 //   3. If Razorpay is configured (VITE_RAZORPAY_KEY_ID +
 //      /api/razorpay/create-order + /api/razorpay/verify all respond),
 //      the parent pays by card/UPI/netbanking through Razorpay Checkout.
-//      The actual fee_payments / adm_fee_collections row is written by
-//      YOUR BACKEND webhook after verifying the signature server-side —
-//      never by this component.
+//      The actual adm_fee_collections row is written by YOUR BACKEND
+//      webhook after verifying the signature server-side — never by this
+//      component.
 //   4. If Razorpay isn't configured yet, this falls back to the existing
 //      UPI ID / QR / bank-transfer block (same as before), so the button
 //      is never broken while the backend is being finished.
@@ -30,7 +45,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
-import { getStudentFeeSummary, gccStr, fmt, CURRENT_YEAR } from './feeEngine'
+import { gccStr, fmt, CURRENT_YEAR } from './feeEngine'
 
 const RAZORPAY_KEY_ID = import.meta.env?.VITE_RAZORPAY_KEY_ID || ''
 const RAZORPAY_CREATE_ORDER_URL = import.meta.env?.VITE_RAZORPAY_CREATE_ORDER_URL || '/api/razorpay/create-order'
@@ -134,19 +149,34 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
 
       let feeSummary
       try {
-        feeSummary = await getStudentFeeSummary(data.id, SESSION_YEAR)
+        const gcc = gccStr(data.gcc_no)
+        const [admRes, flatRes, crsfRes] = await Promise.all([
+          supabase.from('adm_fee_collections').select('amount_paid, reverted').eq('adm_app_id', gcc),
+          supabase.from('adm_flat_fees').select('amount, paid').eq('adm_app_id', gcc),
+          supabase.from('adm_course_fees').select('amount_paid, reverted').eq('adm_app_id', gcc),
+        ])
+        if (admRes.error) throw admRes.error
+        if (flatRes.error) throw flatRes.error
+        if (crsfRes.error) throw crsfRes.error
+
+        const admTotal = (admRes.data || []).filter((r) => !r.reverted).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+        const flatTotal = (flatRes.data || []).filter((r) => r.paid).reduce((s, r) => s + (Number(r.amount) || 0), 0)
+        const crsfTotal = (crsfRes.data || []).filter((r) => !r.reverted).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+        const totalPaid = admTotal + flatTotal + crsfTotal
+
+        feeSummary = { total_paid: totalPaid, admTotal, flatTotal, crsfTotal }
       } catch (feeErr) {
-        console.error('Public fee lookup — fee summary query failed:', feeErr)
-        // Student was found fine — only the fee-summary read failed (often an
-        // RLS policy on fee_invoices/fee_payments blocking anonymous reads).
-        // Show the student with a zeroed summary rather than a dead end, and
-        // surface the real reason so it's fixable on the backend.
-        feeSummary = { invoices: [], payment_history: [], total_expected: 0, total_paid: 0, total_due: 0 }
-        setErrorMsg(`We found your record, but couldn't load payment details right now${feeErr?.message ? ` (${feeErr.message})` : ''}. Please contact the institute to confirm your dues.`)
+        console.error('Public fee lookup — fee totals query failed:', feeErr)
+        // Student was found fine — only the payment-totals read failed
+        // (often an RLS policy blocking anonymous reads on these tables).
+        // Show the student anyway rather than a dead end, and surface the
+        // real reason so it's fixable on the backend.
+        feeSummary = { total_paid: null }
+        setErrorMsg(`We found your record, but couldn't load payment history right now${feeErr?.message ? ` (${feeErr.message})` : ''}. You can still make a payment below — please mention the amount to the institute for confirmation.`)
       }
       setStudent(data)
       setSummary(feeSummary)
-      setPayAmount(feeSummary.total_due > 0 ? String(feeSummary.total_due) : '')
+      setPayAmount('')
       setStep('summary')
     } catch (err) {
       console.error('Public fee lookup failed:', err)
@@ -310,21 +340,18 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: '.6rem', marginBottom: '1.2rem' }}>
-                <div style={{ flex: 1, background: '#E4F5EC', borderRadius: 4, padding: '.7rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: C.green }}>₹{fmt(summary.total_paid)}</div>
-                  <div style={{ fontSize: '.68rem', fontWeight: 700, color: C.green, textTransform: 'uppercase' }}>Paid So Far</div>
-                </div>
-                <div style={{ flex: 1, background: summary.total_due > 0 ? '#FDF3E7' : '#E4F5EC', borderRadius: 4, padding: '.7rem', textAlign: 'center' }}>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: summary.total_due > 0 ? C.gold : C.green }}>₹{fmt(summary.total_due)}</div>
-                  <div style={{ fontSize: '.68rem', fontWeight: 700, color: summary.total_due > 0 ? '#8C6A1E' : C.green, textTransform: 'uppercase' }}>
-                    {summary.total_due > 0 ? 'Currently Due' : 'Fully Paid'}
-                  </div>
-                </div>
+              <div style={{ background: summary.total_paid == null ? C.cream : '#E4F5EC', borderRadius: 4, padding: '1rem', textAlign: 'center', marginBottom: '1.2rem' }}>
+                {summary.total_paid == null ? (
+                  <div style={{ color: C.mist, fontSize: '.9rem' }}>Payment history unavailable right now</div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: '1.35rem', fontWeight: 800, color: C.green }}>{fmt(summary.total_paid)}</div>
+                    <div style={{ fontSize: '.68rem', fontWeight: 700, color: C.green, textTransform: 'uppercase' }}>Total Paid To Date</div>
+                  </>
+                )}
               </div>
 
-              {summary.total_due > 0 && (
-                <>
+              <>
                   <label style={{ display: 'block', fontWeight: 600, fontSize: '.78rem', textTransform: 'uppercase', letterSpacing: '.02em', color: C.slate, marginBottom: '.4rem' }}>
                     Amount to Pay (₹)
                   </label>
@@ -333,6 +360,7 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
                     min="1"
                     value={payAmount}
                     onChange={(e) => setPayAmount(e.target.value)}
+                    placeholder="Enter amount"
                     style={{ width: '100%', padding: '11px 14px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: '1rem', marginBottom: '1rem', outline: 'none' }}
                   />
 
@@ -348,7 +376,7 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
                       disabled={paying}
                       style={{ width: '100%', padding: '.9rem', background: C.gold, color: C.navy, border: 'none', borderRadius: 4, fontWeight: 700, fontSize: '1rem', cursor: paying ? 'not-allowed' : 'pointer', opacity: paying ? .6 : 1, marginBottom: '.7rem' }}
                     >
-                      {paying ? 'Opening secure checkout…' : `Pay ₹${fmt(Number(payAmount) || 0)} via Razorpay →`}
+                      {paying ? 'Opening secure checkout…' : `Pay ${fmt(Number(payAmount) || 0)} via Razorpay →`}
                     </button>
                   ) : (
                     <div style={{ background: C.cream, border: `1px solid ${C.border}`, borderRadius: 4, padding: '1rem', marginBottom: '.9rem' }}>
@@ -373,7 +401,6 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
                     </div>
                   )}
                 </>
-              )}
 
               <button
                 onClick={() => setStep('lookup')}
