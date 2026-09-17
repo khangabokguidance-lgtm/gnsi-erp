@@ -294,12 +294,38 @@ const initialTabState = { status: 'idle', data: null, error: null };
  * state — no getElementById/innerHTML (except the isolated print overlay,
  * which is a deliberate exception for print-window HTML).
  */
+// Same fallback-name problem Fees.jsx's getParentPhone already documents:
+// the real guardian/parent contact column isn't standardized across this
+// schema's history. Rather than guessing one name (which breaks login
+// outright if wrong — Supabase errors the whole query on an unknown
+// column, not just that field), probe each candidate individually against
+// one known student id and cache whichever one actually exists. Probing
+// against a real id (not a blind .select().limit(1)) means an empty
+// table still resolves correctly instead of every column looking "absent".
+let _guardianColumnCache; // undefined = not yet probed, null = none found, string = resolved column
+const GUARDIAN_COLUMN_CANDIDATES = [
+  'guardian_phone', 'father_phone', 'mother_phone', 'parent_phone',
+  'guardian_mobile', 'mobile', 'phone', 'contact_no', 'contact_number',
+];
+async function resolveGuardianColumn(sampleStudentId) {
+  if (_guardianColumnCache !== undefined) return _guardianColumnCache;
+  for (const col of GUARDIAN_COLUMN_CANDIDATES) {
+    try {
+      const { error } = await supabase.from('students').select(col).eq('id', sampleStudentId).maybeSingle();
+      if (!error) { _guardianColumnCache = col; return col; }
+    } catch (_) { /* try next candidate */ }
+  }
+  _guardianColumnCache = null;
+  return null;
+}
+
 export default function ParentsPortal({ isOpen, onClose }) {
   // Multi-child support: `siblings` holds every student matched to the same
   // GCC/name login family (same admission phone or same last name + hostel
-  // is NOT reliable, so we key siblings off a shared `parent_phone` /
-  // `guardian_contact` column if present on `students`; falls back to just
-  // the single logged-in student when no such column/match exists).
+  // is NOT reliable, so we key siblings off whichever guardian/parent
+  // contact column resolveGuardianColumn() finds actually exists on this
+  // schema); falls back to just the single logged-in student when no
+  // such column exists or the resolved column has no value for them.
   const [siblings, setSiblings] = useState([]);
   const [student, setStudent] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
@@ -387,10 +413,19 @@ export default function ParentsPortal({ isOpen, onClose }) {
       const timeout = (ms) => new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), ms));
 
+      // Base columns only — NOT any guardian/parent contact column. Which
+      // of those actually exist on this schema is unconfirmed (Fees.jsx's
+      // getParentPhone tries 8 different possible names — guardian_phone,
+      // father_phone, mother_phone, parent_phone, guardian_mobile, mobile,
+      // phone, contact_no/contact_number — because the real schema is
+      // inconsistent), and a plain .select() errors out the ENTIRE query
+      // if even one named column doesn't exist, not just that field.
+      // resolveGuardianColumn() (below) probes for a working column
+      // separately, once, after this login query has already succeeded.
       const { data, error } = await Promise.race([
         supabase
           .from('students')
-          .select('id, name, course, class_name, batch, hostel_type, status, admission_no, gcc_no, guardian_contact, photo_url')
+          .select('id, name, course, class_name, batch, hostel_type, status, admission_no, gcc_no, photo_url')
           .eq('gcc_no', gccNo)
           .single(),
         timeout(15000),
@@ -411,21 +446,26 @@ export default function ParentsPortal({ isOpen, onClose }) {
       loadAttendance(data.id);
       loadAlertsSummary(data.id);
 
-      // Multi-child: look up siblings sharing the same guardian contact,
-      // if that column exists and is populated. Fails silently (single-
-      // child view) if the column is absent on this schema.
-      if (data.guardian_contact) {
-        try {
+      // Multi-child: look up siblings sharing the same guardian contact.
+      // The real column name isn't known — resolveGuardianColumn() probes
+      // a short candidate list one at a time (a query for a nonexistent
+      // column errors, but only that one probe, not the login above) and
+      // remembers whichever one worked so later logins in this session
+      // don't re-probe. If none of the candidates exist, this quietly
+      // falls back to a single-child view rather than erroring.
+      try {
+        const col = await resolveGuardianColumn(data.id);
+        if (col && data[col]) {
           const { data: sibs } = await supabase
             .from('students')
-            .select('id, name, course, class_name, batch, hostel_type, status, admission_no, gcc_no, guardian_contact, photo_url')
-            .eq('guardian_contact', data.guardian_contact);
+            .select(`id, name, course, class_name, batch, hostel_type, status, admission_no, gcc_no, photo_url, ${col}`)
+            .eq(col, data[col]);
           if (sibs && sibs.length > 1) setSiblings(sibs);
           else setSiblings([data]);
-        } catch (_) {
+        } else {
           setSiblings([data]);
         }
-      } else {
+      } catch (_) {
         setSiblings([data]);
       }
     } catch (e) {
