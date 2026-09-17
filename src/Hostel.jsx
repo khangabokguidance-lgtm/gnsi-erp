@@ -261,10 +261,10 @@ const TABS = [
 // future tab added to TABS but forgotten here fails loudly in dev rather
 // than silently vanishing from the menu.
 const TAB_GROUPS = [
-  { label: 'Money', ids: ['housecontrib', 'houseexpense', 'moneydash'] },
+  { label: 'Money', ids: ['housecontrib', 'houseexpense', 'moneydash', 'a4stock', 'studymaterial'] },
   { label: 'Houses & Discipline', ids: ['house', 'housemaster', 'discipline', 'superintendentdash'] },
   { label: 'Daily Operations', ids: ['schedule', 'attendance', 'hmrollreport', 'nightduty', 'allotments', 'transfer', 'kitchen', 'sickbay', 'maintenance'] },
-  { label: 'Academics & Activities', ids: ['hmactivities', 'classtimetable', 'doubtsession', 'journal', 'a4stock', 'studymaterial'] },
+  { label: 'Academics & Activities', ids: ['hmactivities', 'classtimetable', 'doubtsession', 'journal'] },
   { label: 'Monitoring & Reports', ids: ['adminmonitor', 'hmdashboard', 'leave', 'neglectreport', 'commandcentre'] },
 ]
 
@@ -3172,13 +3172,62 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               }
               .hr-compliance-pop-anim { display: inline-block; animation: hr-compliance-pop 0.55s ease-out; }
               .hr-compliance-glow-anim { animation: hr-compliance-glow 1.4s ease-out 2; }
+
+              /* ── Pay-success-style roll call completion animation ──
+                 Circle scales in, checkmark stroke draws itself in behind
+                 it (stroke-dashoffset trick), then two soft rings pulse
+                 outward once, then the text underneath fades/slides up. */
+              @keyframes rc-circle-in {
+                0% { transform: scale(0); opacity: 0; }
+                60% { transform: scale(1.08); opacity: 1; }
+                100% { transform: scale(1); opacity: 1; }
+              }
+              @keyframes rc-check-draw {
+                to { stroke-dashoffset: 0; }
+              }
+              @keyframes rc-ring-pulse {
+                0% { transform: scale(0.9); opacity: 0.6; }
+                100% { transform: scale(1.9); opacity: 0; }
+              }
+              @keyframes rc-text-in {
+                0% { transform: translateY(10px); opacity: 0; }
+                100% { transform: translateY(0); opacity: 1; }
+              }
+              .rc-success-wrap { position: relative; width: 96px; height: 96px; margin: 0 auto 18px; }
+              .rc-success-ring {
+                position: absolute; inset: 0; border-radius: 50%;
+                border: 3px solid #16a34a; animation: rc-ring-pulse 1.1s ease-out 1 both;
+              }
+              .rc-success-ring.delay { animation-delay: 0.18s; }
+              .rc-success-circle {
+                position: relative; width: 96px; height: 96px; border-radius: 50%;
+                background: linear-gradient(135deg, #22c55e, #16a34a);
+                display: flex; align-items: center; justify-content: center;
+                animation: rc-circle-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+                box-shadow: 0 8px 20px rgba(22,163,74,0.35);
+              }
+              .rc-success-check {
+                stroke-dasharray: 48; stroke-dashoffset: 48;
+                animation: rc-check-draw 0.4s ease-out 0.35s forwards;
+              }
+              .rc-success-text { animation: rc-text-in 0.4s ease-out 0.5s both; }
             `}</style>
-            <div style={{ fontSize: '64px', marginBottom: '16px' }}>🎉</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#1e293b', marginBottom: '8px' }}>
-              {selectedHouse} Roll Call Complete!
+            <div className="rc-success-wrap">
+              <div className="rc-success-ring" />
+              <div className="rc-success-ring delay" />
+              <div className="rc-success-circle">
+                <svg width="44" height="44" viewBox="0 0 24 24" fill="none">
+                  <path className="rc-success-check" d="M5 13l4 4L19 7" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
             </div>
-            <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px' }}>
-              {marked} of {total} students marked
+            <div className="rc-success-text">
+              <div style={{ fontSize: '22px', fontWeight: '800', color: '#1e293b', marginBottom: '8px' }}>
+                {selectedHouse} Roll Call Complete!
+              </div>
+              <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px' }}>
+                {marked} of {total} students marked
+              </div>
             </div>
 
             {/* Mandatory deadline badge — Morning 7:00 AM / Night 8:00 PM,
