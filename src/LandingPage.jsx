@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   getActiveNotices, getRankers, getGallery, getVideos, getYouTubeThumb, getYouTubeEmbed,
   getPublishedPosts, getFeaturedReviews, getPapers, getActiveBanners, getFaculty,
@@ -29,7 +29,8 @@ export default function LandingPage({ onLogin }) {
   const [isPortalOpen, setIsPortalOpen] = useState(false);
   const [isFeeOpen, setIsFeeOpen] = useState(false);
   const [feePaymentInfo, setFeePaymentInfo] = useState({ upi_id: '', upi_qr_url: '' });
-  const [activeTab, setActiveTab] = useState('courses');
+  const [activeTab, setActiveTab] = useState('home');
+  const tabContentRef = useRef(null);
 
   const defaultGalleryData = [
     {
@@ -210,11 +211,51 @@ export default function LandingPage({ onLogin }) {
   // scrolls to it once that tab's content has rendered.
   const goToTab = (id, scrollToId) => {
     setActiveTab(id);
+    try {
+      if (id === 'home') {
+        window.history.pushState({ tab: 'home' }, '', '#home');
+      } else {
+        window.history.pushState({ tab: id }, '', '#' + id);
+      }
+    } catch (e) { /* history API unavailable — ignore */ }
     setTimeout(() => {
       const targetEl = document.getElementById(scrollToId || id);
       if (targetEl) targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
   };
+
+  // Browser/phone back button: pop back through tab history and land on
+  // Home rather than leaving the site. If the popped state carries a tab
+  // id, show that tab; otherwise (e.g. the very first history entry) fall
+  // back to Home.
+  useEffect(() => {
+    const onPopState = (e) => {
+      const tab = e.state && e.state.tab ? e.state.tab : 'home';
+      setActiveTab(tab);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Outside-click auto-close: when on any tab other than Home, a click that
+  // lands outside the tabbed content region (and outside the tab strip,
+  // nav and mobile menu, which have their own interactive elements) sends
+  // the user back to Home. Clicks inside a section, or on the tab strip
+  // itself, never trigger this.
+  useEffect(() => {
+    if (activeTab === 'home') return;
+    const handleOutsideTabClick = (e) => {
+      if (tabContentRef.current && tabContentRef.current.contains(e.target)) return;
+      if (e.target.closest('.tab-nav-strip')) return;
+      if (e.target.closest('.hero')) return;
+      if (e.target.closest('nav')) return;
+      if (e.target.closest('.mob-menu')) return;
+      if (e.target.closest('.lb-overlay')) return;
+      goToTab('home');
+    };
+    document.addEventListener('click', handleOutsideTabClick);
+    return () => document.removeEventListener('click', handleOutsideTabClick);
+  }, [activeTab]);
 
   // Nav-menu links point at in-page hashes (e.g. "#enquiry", "#contact").
   // "#contact" is a sub-element inside the "enquiry" tab, not a tab of its
@@ -227,6 +268,7 @@ export default function LandingPage({ onLogin }) {
   };
 
   const tabList = [
+    { id: 'home', label: 'Home' },
     { id: 'courses', label: 'Courses' },
     { id: 'rankers', label: 'Toppers' },
     { id: 'results', label: 'Results' },
@@ -1325,6 +1367,13 @@ window.submitGrievance = async () => {
       </button>
     </div>
     <div className="mob-menu-scroll">
+      <a
+        href="#home"
+        onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('home'); }}
+        className="mob-cat-link-flat"
+      >
+        🏠 Home
+      </a>
       {navCategories.map((cat, idx) => (
         cat.links.length === 1 ? (
           <a
@@ -1643,6 +1692,130 @@ window.submitGrievance = async () => {
       ))}
     </div>
   </div>
+  {/* TAB CONTENT WRAPPER — used by the outside-click auto-close handler */}
+  <div ref={tabContentRef}>
+  {activeTab !== 'home' && (
+    <div className="container" style={{ padding: '1rem 0 0' }}>
+      <button
+        type="button"
+        onClick={() => goToTab('home')}
+        className="btn btn-out"
+        style={{ fontSize: '.8rem', padding: '.5rem 1rem' }}
+      >
+        ← Back to Home
+      </button>
+    </div>
+  )}
+  {/* HOME */}
+  {activeTab === 'home' && (
+  <section className="pad-alt" id="home">
+    <div className="container">
+      <div className="eyebrow reveal">Welcome to GNSI</div>
+      <h2 className="st reveal">Gallery</h2>
+      <div className="rule reveal">
+        <div className="rule-line" />
+        <div className="rule-d" />
+        <div className="rule-line" />
+      </div>
+      {galleryData.slice(0, 1).map((cat, catIdx) => (
+        <div className="gcat-block reveal" key={cat.title}>
+          <div className="gcat-grid2">
+            {cat.items.slice(0, 6).map((item, itemIdx) => (
+              <div
+                className="gph2"
+                data-icon={item.icon}
+                key={item.img || `home-${cat.title}-${itemIdx}`}
+              >
+                {item.img && (
+                  <img
+                    src={item.img}
+                    alt={item.label || cat.title}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                )}
+                {item.label && <div className="gph-lbl">{item.label}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div style={{ marginTop: '1.2rem' }} className="reveal">
+        <a
+          href="#gallery"
+          onClick={(e) => { e.preventDefault(); goToTab('gallery'); }}
+          className="btn btn-out"
+        >
+          View Full Gallery →
+        </a>
+      </div>
+    </div>
+    <div className="container" style={{ marginTop: '2.5rem' }}>
+      <div className="eyebrow reveal">Our Pride</div>
+      <h2 className="st reveal">Toppers 2025–26</h2>
+      <div className="rule reveal">
+        <div className="rule-line" />
+        <div className="rule-d" />
+        <div className="rule-line" />
+      </div>
+      <div className="ranker-grid">
+        <div className="ranker-card reveal-scale">
+          <div className="ranker-badge">AIR Rank</div>
+          <div className="rc-rank">01</div>
+          <div className="ranker-photo">L</div>
+          <div className="rc-shade" />
+          <div className="rc-edge" />
+          <div className="rc-cap">
+            <h4>GNSI Student</h4>
+            <div className="ranker-school">Sainik School Tilaiya</div>
+            <div className="ranker-batch">Batch 2025–26</div>
+          </div>
+        </div>
+        <div className="ranker-card reveal-scale">
+          <div className="rc-rank">02</div>
+          <div className="ranker-photo">K</div>
+          <div className="rc-shade" />
+          <div className="rc-edge" />
+          <div className="rc-cap">
+            <h4>GNSI Student</h4>
+            <div className="ranker-school">NVS Jawahar Navodaya</div>
+            <div className="ranker-batch">Batch 2025–26</div>
+          </div>
+        </div>
+        <div className="ranker-card reveal-scale">
+          <div className="rc-rank">03</div>
+          <div className="ranker-photo">R</div>
+          <div className="rc-shade" />
+          <div className="rc-edge" />
+          <div className="rc-cap">
+            <h4>GNSI Student</h4>
+            <div className="ranker-school">Sainik School Imphal</div>
+            <div className="ranker-batch">Batch 2025–26</div>
+          </div>
+        </div>
+        <div className="ranker-card reveal-scale">
+          <div className="rc-rank">04</div>
+          <div className="ranker-photo">M</div>
+          <div className="rc-shade" />
+          <div className="rc-edge" />
+          <div className="rc-cap">
+            <h4>GNSI Student</h4>
+            <div className="ranker-school">NVS Class 6</div>
+            <div className="ranker-batch">Batch 2025–26</div>
+          </div>
+        </div>
+      </div>
+      <div style={{ marginTop: '1.2rem' }} className="reveal">
+        <a
+          href="#rankers"
+          onClick={(e) => { e.preventDefault(); goToTab('rankers'); }}
+          className="btn btn-out"
+        >
+          View All Toppers →
+        </a>
+      </div>
+    </div>
+  </section>
+  )}
   {/* COURSES */}
   {activeTab === 'courses' && (
   <section className="pad-alt" id="courses">
@@ -4910,6 +5083,7 @@ window.submitGrievance = async () => {
     </div>
   </section>
   )}
+  </div>
   {/* CTA */}
   <div className="cta-block">
     <h2>Begin the Journey</h2>
