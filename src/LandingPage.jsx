@@ -26,7 +26,7 @@ const TEN_YEARS_BANNER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v
 // path inside it) whenever there's a new poster to feature; upload to the
 // same gnsi-public bucket, "posters" folder, following the pattern of
 // TEN_YEARS_BANNER_URL above.
-const RESULT_POSTER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/posters/gnsi-result-poster.png";
+const RESULT_POSTER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-result-poster.png";
 
 export default function LandingPage({ onLogin }) {
   // ═══ DROPDOWN NAVIGATION — categories & subsections ═══
