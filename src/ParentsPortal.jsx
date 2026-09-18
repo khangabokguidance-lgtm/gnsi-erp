@@ -1143,119 +1143,109 @@ export default function ParentsPortal({ isOpen, onClose }) {
   };
   if (!isOpen) return null;
 
-  // LandingPage.jsx injects ~90KB of landing-page-only CSS via a JSX
-  // <style dangerouslySetInnerHTML> tag (html{font-size:clamp(...)}, plus
-  // resets on *, body, a, img, h1-h5). Because that tag is rendered as part
-  // of LandingPage's own output, it lands in the DOM after Tailwind's
-  // compiled stylesheet and wins cascade ties against Tailwind's base layer
-  // for every element in this portal, since ParentsPortal mounts as
-  // LandingPage's child.
-  //
-  // Fix: reset only the SPECIFIC properties that stylesheet clobbers
-  // (font-size, line-height, margin, text-decoration, box-sizing) back to
-  // browser defaults, scoped to #ppOverlay so it can't leak out onto the
-  // rest of the landing page. Deliberately NOT `all: revert` — that would
-  // have equal-or-higher specificity than Tailwind's own utility classes
-  // (an ID selector beats a bare class selector) and would wipe out every
-  // Tailwind utility too. Each Tailwind class Claude added below sets its
-  // own explicit value for whichever property it touches, so it simply
-  // wins normally wherever it's applied; only elements Claude did NOT put
-  // an explicit Tailwind class on fall back to this safe baseline instead
-  // of LandingPage's clamp()-based sizing.
+  // ── Accounts-module design language ──────────────────────────────────────
+  // Matches Accounts.jsx: light background (#f8fafc), white rounded cards
+  // with a soft shadow, navy (#1e3a5f) as the primary accent, colored
+  // left-border stat cards, and inline styles (no Tailwind) — same
+  // conventions Accounts.jsx uses throughout, so the two modules look like
+  // one product instead of two different UI kits bolted together.
+  const NAVY = '#1e3a5f';
+  const BG = '#f8fafc';
+
   return (
     <>
       <style>{`
-        #ppOverlay, #ppOverlay * {
-          font-size: revert;
-          line-height: revert;
-          margin: revert;
-          text-decoration: revert;
-          box-sizing: border-box;
-        }
+        @keyframes pp-spin { to { transform: rotate(360deg); } }
+        #ppOverlay .no-scrollbar::-webkit-scrollbar { display: none; }
+        #ppOverlay .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
       <div
-        className="fixed inset-0 z-[1000] bg-slate-950 flex items-stretch overflow-y-auto text-base font-sans antialiased"
+        style={{
+          position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: BG,
+          display: 'flex', alignItems: 'stretch', overflowY: 'auto',
+          fontFamily: 'inherit', fontSize: 14, color: '#1e293b',
+        }}
         id="ppOverlay"
       >
       {!student ? (
-        <div className="relative flex-1 flex items-center justify-center px-4 py-10 bg-[radial-gradient(circle_at_20%_-10%,rgba(212,175,55,.12),transparent_45%),radial-gradient(circle_at_90%_110%,rgba(30,58,138,.35),transparent_50%)]" id="ppLoginWrap">
+        <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 16px', background: 'linear-gradient(135deg,#eef2f9 0%,#f8fafc 60%)' }} id="ppLoginWrap">
           <button
-            className="absolute top-5 right-5 h-10 w-10 rounded-full bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center justify-center text-lg"
             onClick={onClose}
+            style={{ position: 'absolute', top: 20, right: 20, height: 40, width: 40, borderRadius: '50%', backgroundColor: 'white', border: '1px solid #e2e8f0', color: '#64748b', cursor: 'pointer', fontSize: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
             ✕
           </button>
-          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-[0_30px_90px_-20px_rgba(0,0,0,.6)] p-8">
-            <div className="text-center mb-7">
+          <div style={{ width: '100%', maxWidth: 400, borderRadius: 16, backgroundColor: 'white', boxShadow: '0 10px 40px -10px rgba(15,23,42,.15)', padding: 32, borderTop: `4px solid ${NAVY}` }}>
+            <div style={{ textAlign: 'center', marginBottom: 26 }}>
               <img
                 src={EMBLEM_URL}
                 alt="GNSI"
-                className="h-[70px] w-[70px] object-contain mx-auto mb-3 drop-shadow-[0_0_20px_rgba(212,175,55,.25)]"
+                style={{ height: 64, width: 64, objectFit: 'contain', margin: '0 auto 12px' }}
                 onError={(e) => { e.target.style.display = 'none'; }}
               />
-              <h2 className="text-xl font-bold text-white tracking-tight">Parents Portal</h2>
-              <p className="text-xs text-slate-400 mt-1 tracking-wide">GNSI · Khangabok, Manipur</p>
+              <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, margin: 0 }}>Parents Portal</h2>
+              <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>GNSI · Khangabok, Manipur</p>
             </div>
             {loginError && (
-              <div className="mb-4 rounded-xl border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+              <div style={{ marginBottom: 16, borderRadius: 10, border: '1px solid #fecaca', backgroundColor: '#fef2f2', padding: '12px 16px', fontSize: 13, color: '#b91c1c' }}>
                 {loginError}
               </div>
             )}
-            <label className="block text-[11px] font-semibold uppercase tracking-[.15em] text-slate-400 mb-1.5">GCC No.</label>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#64748b', marginBottom: 6 }}>GCC No.</label>
             <input
               type="text"
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-slate-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/20 transition mb-4"
+              style={{ width: '100%', borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', padding: '12px 14px', color: '#1e293b', outline: 'none', marginBottom: 16, fontSize: 14, boxSizing: 'border-box' }}
               placeholder="e.g. 1107"
               value={loginGcc}
               onChange={(e) => setLoginGcc(e.target.value)}
             />
-            <label className="block text-[11px] font-semibold uppercase tracking-[.15em] text-slate-400 mb-1.5">Student Name</label>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#64748b', marginBottom: 6 }}>Student Name</label>
             <input
               type="text"
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-slate-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/20 transition mb-6"
+              style={{ width: '100%', borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', padding: '12px 14px', color: '#1e293b', outline: 'none', marginBottom: 22, fontSize: 14, boxSizing: 'border-box' }}
               placeholder="Full name as registered"
               value={loginName}
               onChange={(e) => setLoginName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
             />
             <button
-              className="w-full rounded-xl bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 font-bold py-3.5 shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 hover:brightness-105 active:scale-[.99] transition disabled:opacity-50 disabled:pointer-events-none"
+              style={{ width: '100%', borderRadius: 10, backgroundColor: NAVY, color: 'white', fontWeight: 700, padding: '13px 0', border: 'none', cursor: loginBusy ? 'not-allowed' : 'pointer', fontSize: 14, opacity: loginBusy ? 0.6 : 1, boxShadow: '0 2px 8px rgba(30,58,95,0.25)' }}
               disabled={loginBusy}
               onClick={handleLogin}
             >
               {loginBusy ? 'Checking…' : 'Login to Parents Portal →'}
             </button>
-            <p className="text-center text-xs text-slate-400 mt-5 tracking-wide">
+            <p style={{ textAlign: 'center', fontSize: 12, color: '#64748b', marginTop: 18 }}>
               Contact institute if you need help:{" "}
-              <a href="tel:+918974298074" className="text-amber-300 hover:text-amber-200 font-medium">
+              <a href="tel:+918974298074" style={{ color: NAVY, fontWeight: 600, textDecoration: 'none' }}>
                 +91 89742 98074
               </a>
             </p>
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col min-h-screen bg-slate-950" id="ppShell">
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: BG }} id="ppShell">
           {showInstallBanner && (
-            <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 px-4 py-2.5 text-sm font-medium">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, backgroundColor: NAVY, color: 'white', padding: '10px 16px', fontSize: 13, fontWeight: 600, flexWrap: 'wrap' }}>
               <span>📲 Install this portal as an app for quick access</span>
-              <div className="flex items-center gap-2 shrink-0">
-                <button onClick={handleInstallClick} className="rounded-lg bg-slate-900 text-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-800 transition">Install</button>
-                <button onClick={() => setShowInstallBanner(false)} className="h-7 w-7 rounded-lg hover:bg-black/10 flex items-center justify-center transition">✕</button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                <button onClick={handleInstallClick} style={{ borderRadius: 8, backgroundColor: 'white', color: NAVY, border: 'none', padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Install</button>
+                <button onClick={() => setShowInstallBanner(false)} style={{ height: 28, width: 28, borderRadius: 8, background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
               </div>
             </div>
           )}
-          <div className="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-white/10 bg-slate-950/90 backdrop-blur-xl px-5 py-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <img src={EMBLEM_URL} alt="GNSI" className="h-9 w-9 object-contain shrink-0" onError={(e) => { e.target.style.display = "none"; }} />
-              <div className="min-w-0">
-                <h3 className="text-sm font-bold text-white truncate">{student.name || 'Student'}</h3>
-                <p className="text-[11px] text-slate-400 tracking-wide">GNSI Parents Portal</p>
+          <div style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: '12px 20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+              <img src={EMBLEM_URL} alt="GNSI" style={{ height: 36, width: 36, objectFit: 'contain', flexShrink: 0 }} onError={(e) => { e.target.style.display = "none"; }} />
+              <div style={{ minWidth: 0 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 800, color: NAVY, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name || 'Student'}</h3>
+                <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>GNSI Parents Portal</p>
               </div>
             </div>
-            <div className="flex items-center gap-2.5 shrink-0">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
               {siblings.length > 1 && (
                 <select
-                  className="rounded-lg border border-white/10 bg-white/5 text-white text-xs px-2.5 py-2 outline-none focus:border-amber-400/60"
+                  style={{ borderRadius: 8, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#1e293b', fontSize: 12, padding: '7px 10px', outline: 'none' }}
                   value={student.id}
                   onChange={(e) => {
                     const chosen = siblings.find(s => String(s.id) === e.target.value);
@@ -1263,55 +1253,56 @@ export default function ParentsPortal({ isOpen, onClose }) {
                   }}
                 >
                   {siblings.map(s => (
-                    <option key={s.id} value={s.id} className="bg-slate-900">{s.name}</option>
+                    <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
               )}
               <button
-                className="rounded-lg border border-white/10 text-slate-300 hover:text-white hover:border-white/25 px-3 py-2 text-xs font-semibold transition"
+                style={{ borderRadius: 8, border: '1px solid #e2e8f0', color: '#64748b', backgroundColor: 'white', padding: '8px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                 onClick={() => { handleLogout(); onClose(); }}
               >
                 Logout ✕
               </button>
             </div>
           </div>
-          <div className="sticky top-[57px] z-10 flex gap-1.5 overflow-x-auto no-scrollbar border-b border-white/10 bg-slate-950/95 backdrop-blur-xl px-4 py-2.5">
+          <div style={{ position: 'sticky', top: 60, zIndex: 10, display: 'flex', gap: 6, overflowX: 'auto', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: '10px 16px' }} className="no-scrollbar">
             {TABS.map(t => (
               <button
                 key={t.id}
-                className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold tracking-wide whitespace-nowrap transition ${
-                  activeTab === t.id
-                    ? 'bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 shadow-md shadow-amber-500/20'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
                 onClick={() => handleTabClick(t.id)}
+                style={{
+                  flexShrink: 0, borderRadius: 999, padding: '7px 14px', fontSize: 12, fontWeight: 700,
+                  letterSpacing: '.02em', whiteSpace: 'nowrap', border: 'none', cursor: 'pointer', transition: 'all .15s',
+                  backgroundColor: activeTab === t.id ? NAVY : '#f1f5f9',
+                  color: activeTab === t.id ? 'white' : '#64748b',
+                }}
               >
                 {t.label}
               </button>
             ))}
           </div>
-          <div className="flex-1 px-4 py-5 sm:px-6 lg:px-8 max-w-5xl w-full mx-auto">
-            <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 mb-5">
-              <div className="h-14 w-14 shrink-0 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-lg font-bold text-slate-900 overflow-hidden ring-2 ring-amber-400/30">
+          <div style={{ flex: 1, padding: '20px 16px', maxWidth: 960, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, borderRadius: 12, backgroundColor: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', padding: 16, marginBottom: 20, borderLeft: `4px solid ${NAVY}` }}>
+              <div style={{ height: 56, width: 56, flexShrink: 0, borderRadius: '50%', backgroundColor: '#eef2f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 800, color: NAVY, overflow: 'hidden', border: `2px solid ${NAVY}` }}>
                 {student.photo_url
-                  ? <img src={student.photo_url} alt="" className="h-full w-full object-cover rounded-full" />
+                  ? <img src={student.photo_url} alt="" style={{ height: '100%', width: '100%', objectFit: 'cover', borderRadius: '50%' }} />
                   : ((student.name || 'S')[0] || 'S').toUpperCase()}
               </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-base font-bold text-white truncate">{student.name || 'Student'}</h3>
-                <p className="text-xs text-slate-400 mt-0.5 truncate">{[student.course, student.class_name, student.batch].filter(Boolean).join(' · ')}</p>
-                <div className="flex gap-1.5 mt-2">
-                  <span className="rounded-full bg-white/5 border border-white/10 px-2.5 py-0.5 text-[10px] font-semibold text-slate-300">{student.hostel_type || '—'}</span>
-                  <span className="rounded-full bg-emerald-400/10 border border-emerald-400/20 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-300">{student.status || 'Active'}</span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1e293b', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name || 'Student'}</h3>
+                <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[student.course, student.class_name, student.batch].filter(Boolean).join(' · ')}</p>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  <span style={{ borderRadius: 999, backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', padding: '2px 10px', fontSize: 10, fontWeight: 700, color: '#64748b' }}>{student.hostel_type || '—'}</span>
+                  <span style={{ borderRadius: 999, backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', padding: '2px 10px', fontSize: 10, fontWeight: 700, color: '#16a34a' }}>{student.status || 'Active'}</span>
                 </div>
               </div>
               <button
-                className="shrink-0 rounded-xl border border-amber-400/30 bg-amber-400/10 hover:bg-amber-400/15 text-amber-300 px-3.5 py-2.5 text-xs font-semibold transition disabled:opacity-50"
+                style={{ flexShrink: 0, borderRadius: 10, border: `1px solid ${NAVY}`, backgroundColor: '#eef2f9', color: NAVY, padding: '10px 14px', fontSize: 12, fontWeight: 700, cursor: exportBusy ? 'not-allowed' : 'pointer', opacity: exportBusy ? 0.6 : 1 }}
                 onClick={exportProgressReport}
                 disabled={exportBusy}
                 title="Download full progress report as PDF"
               >
-                {exportBusy ? '⏳' : '⬇️'} <span className="hidden sm:inline">Export Report</span>
+                {exportBusy ? '⏳' : '⬇️'} <span>Export Report</span>
               </button>
             </div>
 
@@ -1379,11 +1370,16 @@ export default function ParentsPortal({ isOpen, onClose }) {
   );
 }
 // ── TAB COMPONENTS ────────────────────────────────────────────────────────────
+// All styled to match Accounts.jsx: white cards, navy #1e3a5f accents,
+// colored left-border stat tiles, light backgrounds instead of dark
+// glassmorphism.
+
+const NAVY = '#1e3a5f';
 
 function Loading() {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-10 text-slate-400 text-sm">
-      <div className="h-6 w-6 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin" />
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 40, color: '#94a3b8', fontSize: 13 }}>
+      <div style={{ height: 24, width: 24, borderRadius: '50%', border: `3px solid #e2e8f0`, borderTopColor: NAVY, animation: 'pp-spin .8s linear infinite' }} />
       Loading…
     </div>
   );
@@ -1391,38 +1387,38 @@ function Loading() {
 
 function Empty({ icon, text }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-      <div className="text-3xl opacity-70">{icon}</div>
-      <p className="text-sm text-slate-400">{text}</p>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 40, textAlign: 'center' }}>
+      <div style={{ fontSize: 30, opacity: 0.7 }}>{icon}</div>
+      <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>{text}</p>
     </div>
   );
 }
 
-// Shared premium card shell used by every tab.
+// Shared card shell, matching Accounts.jsx's white/shadow/rounded convention.
 function Card({ title, right, children }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] shadow-[0_10px_40px_-15px_rgba(0,0,0,.4)] overflow-hidden mb-4">
+    <div style={{ borderRadius: 12, border: '1px solid #e2e8f0', backgroundColor: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden', marginBottom: 16 }}>
       {title && (
-        <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3.5">
-          <div className="text-sm font-bold text-white tracking-tight">{title}</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderBottom: '1px solid #e2e8f0', padding: '14px 18px' }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: NAVY }}>{title}</div>
           {right}
         </div>
       )}
-      <div className="p-5">{children}</div>
+      <div style={{ padding: 18 }}>{children}</div>
     </div>
   );
 }
 
 function PremiumTable({ head, children }) {
   return (
-    <div className="overflow-x-auto -mx-1">
-      <table className="w-full text-sm border-collapse">
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
         <thead>
-          <tr className="text-left text-[10px] uppercase tracking-[.12em] text-slate-400 border-b border-white/10">
-            {head.map((h, i) => <th key={i} className="px-3 py-2.5 font-semibold">{h}</th>)}
+          <tr style={{ textAlign: 'left', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', color: '#94a3b8', borderBottom: '1px solid #e2e8f0' }}>
+            {head.map((h, i) => <th key={i} style={{ padding: '10px 12px', fontWeight: 700 }}>{h}</th>)}
           </tr>
         </thead>
-        <tbody className="divide-y divide-white/5">{children}</tbody>
+        <tbody>{children}</tbody>
       </table>
     </div>
   );
@@ -1434,40 +1430,43 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
   const feeBalance = fees.status === 'ready' ? fees.data.totalDue : undefined;
 
   const tiles = [
-    { id: 'att', icon: '📊', val: attPct !== null ? `${attPct}%` : '—', lbl: 'Attendance this month' },
-    { id: 'fees', icon: '💳', val: feeBalance !== undefined && feeBalance !== null ? `₹${feeBalance}` : '—', lbl: 'Fee balance due' },
-    { id: 'alerts', icon: '🔔', val: alertCount !== null ? alertCount : '—', lbl: 'Absences (30 days)' },
-    { id: 'notices', icon: '📣', val: 'View', lbl: 'Notice board' },
-    { id: 'homework', icon: '📚', val: 'View', lbl: 'Homework & material' },
-    { id: 'timetable', icon: '🗓️', val: 'View', lbl: 'Class timetable' },
+    { id: 'att', icon: '📊', val: attPct !== null ? `${attPct}%` : '—', lbl: 'Attendance this month', color: '#1e3a5f' },
+    { id: 'fees', icon: '💳', val: feeBalance !== undefined && feeBalance !== null ? `₹${feeBalance}` : '—', lbl: 'Fee balance due', color: '#dc2626' },
+    { id: 'alerts', icon: '🔔', val: alertCount !== null ? alertCount : '—', lbl: 'Absences (30 days)', color: '#f59e0b' },
+    { id: 'notices', icon: '📣', val: 'View', lbl: 'Notice board', color: '#7c3aed' },
+    { id: 'homework', icon: '📚', val: 'View', lbl: 'Homework & material', color: '#0891b2' },
+    { id: 'timetable', icon: '🗓️', val: 'View', lbl: 'Class timetable', color: '#16a34a' },
   ];
 
   return (
     <div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
         {tiles.map(t => (
           <button
             key={t.id}
             onClick={() => onGoTab(t.id)}
-            className="group text-left rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] hover:border-amber-400/30 p-4 transition shadow-[0_8px_30px_-12px_rgba(0,0,0,.4)]"
+            style={{
+              textAlign: 'left', borderRadius: 12, border: '1px solid #e2e8f0', backgroundColor: 'white',
+              padding: 16, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${t.color}`,
+            }}
           >
-            <div className="text-xl mb-2 group-hover:scale-110 transition-transform inline-block">{t.icon}</div>
-            <div className="text-xl font-extrabold text-white tracking-tight">{t.val}</div>
-            <div className="text-[11px] text-slate-400 mt-1 font-medium">{t.lbl}</div>
+            <div style={{ fontSize: 20, marginBottom: 8 }}>{t.icon}</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: t.color }}>{t.val}</div>
+            <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontWeight: 600 }}>{t.lbl}</div>
           </button>
         ))}
       </div>
 
       {pushStatus !== 'subscribed' && (
-        <div className="rounded-2xl border border-amber-400/20 bg-gradient-to-r from-amber-400/[0.08] to-transparent p-4 flex items-center justify-between gap-4 flex-wrap">
+        <div style={{ borderRadius: 12, border: '1px solid #dbeafe', backgroundColor: '#eff6ff', padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
           <div>
-            <strong className="text-sm font-bold text-white">Turn on notifications</strong>
-            <p className="text-xs text-slate-400 mt-1">
+            <strong style={{ fontSize: 13, fontWeight: 800, color: NAVY }}>Turn on notifications</strong>
+            <p style={{ fontSize: 12, color: '#64748b', marginTop: 4, marginBottom: 0 }}>
               Get notified instantly about new notices, absences and exam results.
             </p>
           </div>
           <button
-            className="shrink-0 rounded-xl bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 font-bold px-4 py-2.5 text-xs shadow-lg shadow-amber-500/20 hover:brightness-105 transition disabled:opacity-60"
+            style={{ flexShrink: 0, borderRadius: 8, backgroundColor: NAVY, color: 'white', fontWeight: 700, padding: '10px 16px', fontSize: 12, border: 'none', cursor: (pushStatus === 'unsupported' || pushStatus === 'denied') ? 'not-allowed' : 'pointer', opacity: (pushStatus === 'unsupported' || pushStatus === 'denied') ? 0.6 : 1 }}
             onClick={onEnablePush}
             disabled={pushStatus === 'unsupported' || pushStatus === 'denied'}
           >
@@ -1481,11 +1480,11 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
 
 function Pill({ tone, children }) {
   const tones = {
-    hi: 'bg-emerald-400/10 text-emerald-300 border-emerald-400/20',
-    mi: 'bg-amber-400/10 text-amber-300 border-amber-400/20',
-    lo: 'bg-rose-400/10 text-rose-300 border-rose-400/20',
+    hi: { backgroundColor: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0' },
+    mi: { backgroundColor: '#fef3c7', color: '#d97706', border: '1px solid #fde68a' },
+    lo: { backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' },
   };
-  return <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${tones[tone]}`}>{children}</span>;
+  return <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 700, ...tones[tone] }}>{children}</span>;
 }
 
 function AttendanceTab({ state }) {
@@ -1504,41 +1503,41 @@ function AttendanceTab({ state }) {
     <div>
       <Card
         title="This Month's Attendance"
-        right={<span className="text-[10px] uppercase tracking-[.12em] text-slate-500 font-semibold">{monthLabel}</span>}
+        right={<span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', color: '#94a3b8', fontWeight: 700 }}>{monthLabel}</span>}
       >
-        <div className="grid grid-cols-7 gap-1.5 mb-5">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, marginBottom: 20 }}>
           {Array.from({ length: daysInMonth }, (_, i) => {
             const d = i + 1;
             const dd = String(d).padStart(2, '0');
             const st = byDate[dd];
-            const cls = st === 'Present'
-              ? 'bg-emerald-400/15 text-emerald-300 border-emerald-400/25'
+            const style = st === 'Present'
+              ? { backgroundColor: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0' }
               : st === 'Absent'
-              ? 'bg-rose-400/15 text-rose-300 border-rose-400/25'
-              : 'bg-white/[0.03] text-slate-500 border-white/5';
+              ? { backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' }
+              : { backgroundColor: '#f8fafc', color: '#94a3b8', border: '1px solid #e2e8f0' };
             return (
               <div
                 key={d}
                 title={`${y}-${m}-${dd}`}
-                className={`aspect-square rounded-lg border flex items-center justify-center text-xs font-semibold ${cls}`}
+                style={{ aspectRatio: '1', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, ...style }}
               >
                 {d}
               </div>
             );
           })}
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-3 text-center">
-            <strong className="block text-lg font-extrabold text-emerald-300">{present}</strong>
-            <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Present</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          <div style={{ borderRadius: 10, border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', padding: 12, textAlign: 'center' }}>
+            <strong style={{ display: 'block', fontSize: 18, fontWeight: 800, color: '#16a34a' }}>{present}</strong>
+            <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: '#64748b', fontWeight: 700 }}>Present</span>
           </div>
-          <div className="rounded-xl border border-rose-400/20 bg-rose-400/[0.06] p-3 text-center">
-            <strong className="block text-lg font-extrabold text-rose-300">{absent}</strong>
-            <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Absent</span>
+          <div style={{ borderRadius: 10, border: '1px solid #fecaca', backgroundColor: '#fef2f2', padding: 12, textAlign: 'center' }}>
+            <strong style={{ display: 'block', fontSize: 18, fontWeight: 800, color: '#dc2626' }}>{absent}</strong>
+            <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: '#64748b', fontWeight: 700 }}>Absent</span>
           </div>
-          <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-3 text-center">
-            <strong className="block text-lg font-extrabold text-amber-300">{pct}%</strong>
-            <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Rate</span>
+          <div style={{ borderRadius: 10, border: '1px solid #fde68a', backgroundColor: '#fffbeb', padding: 12, textAlign: 'center' }}>
+            <strong style={{ display: 'block', fontSize: 18, fontWeight: 800, color: '#d97706' }}>{pct}%</strong>
+            <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: '#64748b', fontWeight: 700 }}>Rate</span>
           </div>
         </div>
       </Card>
@@ -1546,9 +1545,9 @@ function AttendanceTab({ state }) {
         {last10.length ? (
           <PremiumTable head={['Date', 'Status']}>
             {last10.map((r, i) => (
-              <tr key={i} className="hover:bg-white/[0.02]">
-                <td className="px-3 py-2.5 text-slate-300">{r.date}</td>
-                <td className="px-3 py-2.5"><Pill tone={r.status === 'Present' ? 'hi' : 'lo'}>{r.status}</Pill></td>
+              <tr key={i} style={{ borderTop: i ? '1px solid #f1f5f9' : 'none' }}>
+                <td style={{ padding: '10px 12px', color: '#475569' }}>{r.date}</td>
+                <td style={{ padding: '10px 12px' }}><Pill tone={r.status === 'Present' ? 'hi' : 'lo'}>{r.status}</Pill></td>
               </tr>
             ))}
           </PremiumTable>
@@ -1574,11 +1573,11 @@ function ExamsTab({ state }) {
               const tone = r.pct === null ? 'mi' : r.pct >= 75 ? 'hi' : r.pct >= 50 ? 'mi' : 'lo';
               const marksStr = r.hasMarks ? (r.total !== null ? `${r.marks_obtained}/${r.total}` : r.marks_obtained) : 'Not graded';
               return (
-                <tr key={i} className="hover:bg-white/[0.02]">
-                  <td className="px-3 py-2.5 text-slate-300">{r.examName}</td>
-                  <td className="px-3 py-2.5 text-slate-300">{r.subject || '—'}</td>
-                  <td className="px-3 py-2.5"><Pill tone={tone}>{marksStr}</Pill></td>
-                  <td className="px-3 py-2.5 text-slate-400">{r.exam_date ? r.exam_date.slice(0, 10) : '—'}</td>
+                <tr key={i} style={{ borderTop: i ? '1px solid #f1f5f9' : 'none' }}>
+                  <td style={{ padding: '10px 12px', color: '#475569' }}>{r.examName}</td>
+                  <td style={{ padding: '10px 12px', color: '#475569' }}>{r.subject || '—'}</td>
+                  <td style={{ padding: '10px 12px' }}><Pill tone={tone}>{marksStr}</Pill></td>
+                  <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{r.exam_date ? r.exam_date.slice(0, 10) : '—'}</td>
                 </tr>
               );
             })}
@@ -1591,34 +1590,34 @@ function ExamsTab({ state }) {
 
 function ReportCardTab({ examTypes, selectedType, onTypeChange, dates, selectedDate, onDateChange, onPrint, printBusy }) {
   const canPrint = selectedType && selectedDate && !printBusy;
-  const selectCls = "w-full rounded-xl border border-white/10 bg-white/5 text-white text-sm px-3.5 py-2.5 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/20 transition";
+  const selectStyle = { width: '100%', borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#1e293b', fontSize: 13, padding: '10px 14px', outline: 'none', boxSizing: 'border-box' };
   return (
     <Card title="Report Card">
-      <div className="grid sm:grid-cols-2 gap-4 mb-4">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-[.12em] text-slate-400 mb-1.5">Exam</label>
-          <select className={selectCls} value={selectedType} onChange={(e) => onTypeChange(e.target.value)}>
-            <option value="" className="bg-slate-900">
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Exam</label>
+          <select style={selectStyle} value={selectedType} onChange={(e) => onTypeChange(e.target.value)}>
+            <option value="">
               {examTypes.status === 'loading' ? 'Loading…' : examTypes.status === 'empty' ? '— No exams recorded —' : examTypes.status === 'error' ? '— Error loading exams —' : 'Select exam…'}
             </option>
-            {examTypes.options.map(t => <option key={t.id} value={t.id} className="bg-slate-900">{t.name}</option>)}
+            {examTypes.options.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-[.12em] text-slate-400 mb-1.5">Date</label>
-          <select className={selectCls} value={selectedDate} onChange={(e) => onDateChange(e.target.value)}>
-            <option value="" className="bg-slate-900">
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Date</label>
+          <select style={selectStyle} value={selectedDate} onChange={(e) => onDateChange(e.target.value)}>
+            <option value="">
               {dates.status === 'loading' ? 'Loading…' : dates.status === 'empty' ? '— No dates —' : dates.status === 'error' ? '— Error —' : '—'}
             </option>
-            {dates.options.map(d => <option key={d} value={d} className="bg-slate-900">{d}</option>)}
+            {dates.options.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
       </div>
-      <p className="text-xs text-slate-400 mb-5 leading-relaxed">
+      <p style={{ fontSize: 12, color: '#64748b', marginBottom: 18, lineHeight: 1.6 }}>
         Pick an exam and date, then view or print an official report card showing subject-wise marks, grade and class rank.
       </p>
       <button
-        className="rounded-xl bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 font-bold px-5 py-3 text-sm shadow-lg shadow-amber-500/20 hover:brightness-105 active:scale-[.99] transition disabled:opacity-50 disabled:pointer-events-none"
+        style={{ borderRadius: 10, backgroundColor: NAVY, color: 'white', fontWeight: 700, padding: '12px 20px', fontSize: 13, border: 'none', cursor: canPrint ? 'pointer' : 'not-allowed', opacity: canPrint ? 1 : 0.5 }}
         onClick={onPrint}
         disabled={!canPrint}
       >
@@ -1629,11 +1628,6 @@ function ReportCardTab({ examTypes, selectedType, onTypeChange, dates, selectedD
 }
 
 // ── FEATURE 1: FEE DUES TAB ──────────────────────────────────────────────────
-// Reads the real getStudentDues() shape from feeDues.js: separate
-// admission/flatFee/courseFee breakdowns (each with its own due amount and,
-// for flat/course fee, a list of individual month items), plus totalPaid/
-// totalDue/monthsOverdue and a failedSources array flagging any fee source
-// that errored during the lookup (dues are a LOWER BOUND when non-empty).
 function FeesTab({ state, onPayNow, nextDue }) {
   return (
     <Card title="Fee Summary">
@@ -1642,40 +1636,40 @@ function FeesTab({ state, onPayNow, nextDue }) {
       {state.status === 'ready' && (
         <>
           {state.data.failedSources?.length > 0 && (
-            <div className="mb-4 rounded-xl border border-amber-400/25 bg-amber-400/[0.08] px-4 py-3 text-xs text-amber-200 leading-relaxed">
+            <div style={{ marginBottom: 16, borderRadius: 10, border: '1px solid #fde68a', backgroundColor: '#fffbeb', padding: '12px 16px', fontSize: 12, color: '#92400e', lineHeight: 1.6 }}>
               ⚠️ Some fee data could not be loaded just now. The figures below may understate what's actually due — please refresh, or contact the office to confirm the exact balance.
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4 text-center">
-              <div className="text-[10px] uppercase tracking-[.12em] text-slate-400 font-semibold mb-1">Total Paid</div>
-              <div className="text-xl font-extrabold text-emerald-300">₹{state.data.totalPaid ?? 0}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+            <div style={{ borderRadius: 10, border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', padding: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', fontWeight: 700, marginBottom: 4 }}>Total Paid</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#16a34a' }}>₹{state.data.totalPaid ?? 0}</div>
             </div>
-            <div className={`rounded-xl border p-4 text-center ${(state.data.totalDue ?? 0) > 0 ? 'border-rose-400/20 bg-rose-400/[0.06]' : 'border-emerald-400/20 bg-emerald-400/[0.06]'}`}>
-              <div className="text-[10px] uppercase tracking-[.12em] text-slate-400 font-semibold mb-1">Total Due</div>
-              <div className={`text-xl font-extrabold ${(state.data.totalDue ?? 0) > 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
+            <div style={{ borderRadius: 10, border: `1px solid ${(state.data.totalDue ?? 0) > 0 ? '#fecaca' : '#bbf7d0'}`, backgroundColor: (state.data.totalDue ?? 0) > 0 ? '#fef2f2' : '#f0fdf4', padding: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', fontWeight: 700, marginBottom: 4 }}>Total Due</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: (state.data.totalDue ?? 0) > 0 ? '#dc2626' : '#16a34a' }}>
                 ₹{state.data.totalDue ?? 0}
               </div>
             </div>
           </div>
 
           {state.data.monthsOverdue > 0 && (
-            <p className="text-xs text-amber-300 mb-4 font-medium">
+            <p style={{ fontSize: 12, color: '#d97706', marginBottom: 16, fontWeight: 600 }}>
               {state.data.monthsOverdue} month{state.data.monthsOverdue === 1 ? '' : 's'} overdue across flat/course fee.
             </p>
           )}
 
           {nextDue && (
             <button
-              className="w-full rounded-xl bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 font-bold px-5 py-3 text-sm shadow-lg shadow-amber-500/20 hover:brightness-105 active:scale-[.99] transition mb-5"
+              style={{ width: '100%', borderRadius: 10, backgroundColor: NAVY, color: 'white', fontWeight: 700, padding: '12px 20px', fontSize: 13, border: 'none', cursor: 'pointer', marginBottom: 20 }}
               onClick={onPayNow}
             >
               💳 Pay {nextDue.kind === 'admission' ? 'Admission Fee' : `${nextDue.kind === 'flat' ? 'Flat' : 'Course'} Fee — ${nextDue.for_month} ${nextDue.year}`} (₹{nextDue.amount}) Online
             </button>
           )}
 
-          <div className="space-y-2.5 mb-6">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
             <FeeBreakdownRow
               label="Admission Fee"
               paid={state.data.admission?.paid}
@@ -1687,15 +1681,15 @@ function FeesTab({ state, onPayNow, nextDue }) {
           </div>
 
           <div>
-            <div className="text-sm font-bold text-white mb-3">Payment History</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: NAVY, marginBottom: 12 }}>Payment History</div>
             {(state.data.history || []).length ? (
               <PremiumTable head={['Date', 'Type', 'Mode', 'Amount']}>
                 {(state.data.history || []).map((r, i) => (
-                  <tr key={i} className="hover:bg-white/[0.02]">
-                    <td className="px-3 py-2.5 text-slate-400">{(r.date || '').slice(0, 10) || '—'}</td>
-                    <td className="px-3 py-2.5 text-slate-300">{r.type || '—'}</td>
-                    <td className="px-3 py-2.5 text-slate-400">{r.mode || '—'}</td>
-                    <td className="px-3 py-2.5 font-semibold text-white">₹{r.amount ?? 0}</td>
+                  <tr key={i} style={{ borderTop: i ? '1px solid #f1f5f9' : 'none' }}>
+                    <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{(r.date || '').slice(0, 10) || '—'}</td>
+                    <td style={{ padding: '10px 12px', color: '#475569' }}>{r.type || '—'}</td>
+                    <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{r.mode || '—'}</td>
+                    <td style={{ padding: '10px 12px', fontWeight: 700, color: '#1e293b' }}>₹{r.amount ?? 0}</td>
                   </tr>
                 ))}
               </PremiumTable>
@@ -1712,12 +1706,12 @@ function FeesTab({ state, onPayNow, nextDue }) {
 function FeeBreakdownRow({ label, paid, due, detail }) {
   const negative = !paid && due > 0;
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: '12px 16px' }}>
       <div>
-        <div className="text-sm font-semibold text-white">{label}</div>
-        <div className="text-xs text-slate-400 mt-0.5">{detail}</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{label}</div>
+        <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{detail}</div>
       </div>
-      <div className={`text-sm font-bold shrink-0 ${negative ? 'text-rose-300' : 'text-emerald-300'}`}>
+      <div style={{ fontSize: 13, fontWeight: 800, flexShrink: 0, color: negative ? '#dc2626' : '#16a34a' }}>
         {paid ? '✓ Paid' : due > 0 ? `₹${due} due` : '—'}
       </div>
     </div>
@@ -1729,15 +1723,15 @@ function FeeMonthsBreakdown({ label, items, due }) {
   const unpaid = list.filter(i => !i.paid);
   const negative = (due ?? 0) > 0;
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-white">{label}</div>
-        <div className={`text-sm font-bold shrink-0 ${negative ? 'text-rose-300' : 'text-emerald-300'}`}>
+    <div style={{ borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: '12px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{label}</div>
+        <div style={{ fontSize: 13, fontWeight: 800, flexShrink: 0, color: negative ? '#dc2626' : '#16a34a' }}>
           {negative ? `₹${due} due` : '✓ Up to date'}
         </div>
       </div>
       {unpaid.length > 0 && (
-        <div className="text-xs text-slate-400 mt-1.5">
+        <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
           Unpaid: {unpaid.map(i => `${i.month} ${i.year}`).join(', ')}
         </div>
       )}
@@ -1755,21 +1749,21 @@ function HomeworkTab({ state }) {
         state.data.length === 0 ? (
           <Empty icon="📚" text="No study material posted yet" />
         ) : (
-          <div className="space-y-2">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {state.data.map((h) => (
               <a
                 key={h.id}
                 href={h.file_url}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] hover:border-amber-400/25 px-4 py-3 transition"
+                style={{ display: 'flex', alignItems: 'center', gap: 12, borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: '12px 16px', textDecoration: 'none', color: 'inherit' }}
               >
-                <div className="text-xl shrink-0">{h.material_type === 'video' ? '🎬' : '📄'}</div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-white truncate">{h.title || h.chapter || 'Study Material'}</div>
-                  <div className="text-xs text-slate-400 mt-0.5 truncate">{[h.subject, h.chapter].filter(Boolean).join(' · ')}</div>
+                <div style={{ fontSize: 20, flexShrink: 0 }}>{h.material_type === 'video' ? '🎬' : '📄'}</div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.title || h.chapter || 'Study Material'}</div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[h.subject, h.chapter].filter(Boolean).join(' · ')}</div>
                 </div>
-                <div className="text-amber-300 shrink-0">⬇️</div>
+                <div style={{ color: NAVY, flexShrink: 0 }}>⬇️</div>
               </a>
             ))}
           </div>
@@ -1790,20 +1784,20 @@ function TimetableTab({ state }) {
         state.data.length === 0 ? (
           <Empty icon="🗓️" text="Timetable not published yet" />
         ) : (
-          <div className="space-y-5">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             {DAY_ORDER.map((day) => {
               const rows = state.data.filter(r => r.day_of_week === day);
               if (!rows.length) return null;
               return (
                 <div key={day}>
-                  <div className="text-xs font-bold uppercase tracking-[.12em] text-amber-300 mb-2">{day}</div>
+                  <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', color: NAVY, marginBottom: 8 }}>{day}</div>
                   <PremiumTable head={['Period', 'Subject', 'Teacher', 'Time']}>
                     {rows.map((r, i) => (
-                      <tr key={i} className="hover:bg-white/[0.02]">
-                        <td className="px-3 py-2.5 text-slate-400">{r.period}</td>
-                        <td className="px-3 py-2.5 font-semibold text-white">{r.subject}</td>
-                        <td className="px-3 py-2.5 text-slate-300">{r.teacher_name || '—'}</td>
-                        <td className="px-3 py-2.5 text-slate-400">{r.start_time ? `${r.start_time}–${r.end_time}` : '—'}</td>
+                      <tr key={i} style={{ borderTop: i ? '1px solid #f1f5f9' : 'none' }}>
+                        <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{r.period}</td>
+                        <td style={{ padding: '10px 12px', fontWeight: 700, color: '#1e293b' }}>{r.subject}</td>
+                        <td style={{ padding: '10px 12px', color: '#475569' }}>{r.teacher_name || '—'}</td>
+                        <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{r.start_time ? `${r.start_time}–${r.end_time}` : '—'}</td>
                       </tr>
                     ))}
                   </PremiumTable>
@@ -1827,15 +1821,15 @@ function NoticesTab({ state }) {
         state.data.length === 0 ? (
           <Empty icon="📣" text="No notices" />
         ) : (
-          <div className="space-y-3">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {state.data.map((n, i) => (
-              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4" key={i}>
-                <div className="flex items-center justify-between gap-2 mb-1.5">
+              <div style={{ borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: 16 }} key={i}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
                   <Pill tone={priTone[n.priority] || 'hi'}>{n.priority || 'Low'}</Pill>
-                  <span className="text-[11px] text-slate-500">{n.notice_date || ''}</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>{n.notice_date || ''}</span>
                 </div>
-                <div className="text-sm font-bold text-white">{n.title}</div>
-                <div className="text-xs text-slate-400 mt-1 leading-relaxed">{n.body || ''}</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#1e293b' }}>{n.title}</div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, lineHeight: 1.6 }}>{n.body || ''}</div>
               </div>
             ))}
           </div>
@@ -1855,14 +1849,14 @@ function LeaveTab({ state }) {
         state.data.length === 0 ? (
           <Empty icon="🏨" text="No leave history" />
         ) : (
-          <div className="space-y-3">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {state.data.map((r, i) => (
-              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4" key={i}>
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <span className="text-sm font-semibold text-white">{r.from_date} → {r.to_date}</span>
+              <div style={{ borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: 16 }} key={i}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{r.from_date} → {r.to_date}</span>
                   <Pill tone={stTone[r.status] || 'mi'}>{r.status || 'pending'}</Pill>
                 </div>
-                <div className="text-xs text-slate-400">{r.reason || '—'}</div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>{r.reason || '—'}</div>
               </div>
             ))}
           </div>
@@ -1876,7 +1870,7 @@ function LeaveTab({ state }) {
 function MessagesTab({ state, draft, onDraftChange, onSend, sending }) {
   return (
     <Card title="Message Class Teacher">
-      <div className="space-y-2.5 max-h-[420px] overflow-y-auto mb-4 pr-1">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 420, overflowY: 'auto', marginBottom: 16, paddingRight: 4 }}>
         {(state.status === 'loading' || state.status === 'idle') && <Loading />}
         {state.status === 'error' && <Empty icon="💬" text={state.error} />}
         {state.status === 'ready' && (
@@ -1886,10 +1880,17 @@ function MessagesTab({ state, draft, onDraftChange, onSend, sending }) {
             state.data.map((m) => {
               const mine = m.sender === 'parent';
               return (
-                <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${mine ? 'bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 rounded-br-sm' : 'bg-white/[0.06] text-white border border-white/10 rounded-bl-sm'}`}>
-                    <div className="text-sm">{m.body}</div>
-                    <div className={`text-[10px] mt-1 font-medium ${mine ? 'text-slate-900/60' : 'text-slate-400'}`}>
+                <div key={m.id} style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
+                  <div style={{
+                    maxWidth: '80%', borderRadius: 14, padding: '10px 16px',
+                    backgroundColor: mine ? NAVY : '#f1f5f9',
+                    color: mine ? 'white' : '#1e293b',
+                    border: mine ? 'none' : '1px solid #e2e8f0',
+                    borderBottomRightRadius: mine ? 4 : 14,
+                    borderBottomLeftRadius: mine ? 14 : 4,
+                  }}>
+                    <div style={{ fontSize: 13 }}>{m.body}</div>
+                    <div style={{ fontSize: 10, marginTop: 4, fontWeight: 600, opacity: mine ? 0.75 : 0.6 }}>
                       {mine ? 'You' : 'Teacher'} · {(m.created_at || '').slice(0, 16).replace('T', ' ')}
                     </div>
                   </div>
@@ -1899,17 +1900,17 @@ function MessagesTab({ state, draft, onDraftChange, onSend, sending }) {
           )
         )}
       </div>
-      <div className="flex gap-2">
+      <div style={{ display: 'flex', gap: 8 }}>
         <input
           type="text"
-          className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-slate-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/20 transition"
+          style={{ flex: 1, borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', padding: '12px 16px', fontSize: 13, color: '#1e293b', outline: 'none' }}
           placeholder="Type a message…"
           value={draft}
           onChange={(e) => onDraftChange(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !sending) onSend(); }}
         />
         <button
-          className="rounded-xl bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 font-bold px-5 py-3 text-sm shadow-lg shadow-amber-500/20 hover:brightness-105 transition disabled:opacity-50 disabled:pointer-events-none"
+          style={{ borderRadius: 10, backgroundColor: NAVY, color: 'white', fontWeight: 700, padding: '12px 20px', fontSize: 13, border: 'none', cursor: (sending || !draft.trim()) ? 'not-allowed' : 'pointer', opacity: (sending || !draft.trim()) ? 0.5 : 1 }}
           onClick={onSend}
           disabled={sending || !draft.trim()}
         >
@@ -1929,14 +1930,18 @@ function AlertsTab({ state }) {
         state.data.length === 0 ? (
           <Empty icon="✅" text="No alerts — all good!" />
         ) : (
-          <div className="space-y-2.5">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {state.data.map((a, i) => (
               <div
                 key={i}
-                className={`rounded-xl border px-4 py-3 flex items-center justify-between gap-3 ${a.type === 'exam' ? 'border-rose-400/20 bg-rose-400/[0.06]' : 'border-amber-400/20 bg-amber-400/[0.06]'}`}
+                style={{
+                  borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                  border: `1px solid ${a.type === 'exam' ? '#fecaca' : '#fde68a'}`,
+                  backgroundColor: a.type === 'exam' ? '#fef2f2' : '#fffbeb',
+                }}
               >
-                <div className="text-sm text-white">{a.msg}</div>
-                <div className="text-[11px] text-slate-400 shrink-0">{a.date ? a.date.slice(0, 10) : ''}</div>
+                <div style={{ fontSize: 13, color: '#1e293b' }}>{a.msg}</div>
+                <div style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{a.date ? a.date.slice(0, 10) : ''}</div>
               </div>
             ))}
           </div>
