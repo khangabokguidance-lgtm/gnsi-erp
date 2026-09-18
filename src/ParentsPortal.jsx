@@ -1,10 +1,24 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from './supabase';
-// Redesigned to a premium Tailwind CSS UI — the legacy ParentsPortal.css
-// stylesheet is no longer used; every visual class below is a Tailwind
-// utility class instead of a pp-* / custom class name.
+// Redesigned to match Accounts.jsx's design language — white cards, navy
+// #1e3a5f accents, inline styles (no Tailwind). The legacy ParentsPortal.css
+// stylesheet is no longer used.
 
 const EMBLEM_URL = "https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/gnsi-emblem.png";
+
+// ── responsive hook ───────────────────────────────────────────────────────
+// Same pattern Accounts.jsx uses (useWindowWidth): drives real breakpoint
+// behavior (stacking grids, smaller padding/fonts) rather than just letting
+// fixed-fraction grids flex proportionally forever.
+function useWindowWidth() {
+  const [width, setWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
+  useEffect(() => {
+    const handler = () => setWidth(window.innerWidth);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+  return width;
+}
 
 // ── VAPID / PUSH ──────────────────────────────────────────────────────────
 // Reuses the same push infrastructure already built for staff
@@ -334,6 +348,9 @@ async function resolveGuardianColumn(sampleStudentId) {
 }
 
 export default function ParentsPortal({ isOpen, onClose }) {
+  const windowWidth = useWindowWidth();
+  const isMobile = windowWidth < 640;
+
   // Multi-child support: `siblings` holds every student matched to the same
   // GCC/name login family (same admission phone or same last name + hostel
   // is NOT reliable, so we key siblings off whichever guardian/parent
@@ -1092,24 +1109,41 @@ export default function ParentsPortal({ isOpen, onClose }) {
         @keyframes pp-spin { to { transform: rotate(360deg); } }
         #ppOverlay .no-scrollbar::-webkit-scrollbar { display: none; }
         #ppOverlay .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        /* The host page (guidancekhangabok.in) has its own global CSS —
+           this overlay mounts as a child of that page's DOM, so without an
+           explicit reset here every element inherits whatever box-sizing/
+           width rules the host page's stylesheet happens to set. Most of
+           this file's inline styles pair padding with width:100% or a
+           percentage width, which only stays inside its container under
+           border-box sizing — under the browser's default content-box (or
+           whatever the host page overrides it to), that padding adds on
+           top of the width and pushes content past the viewport edge,
+           which is exactly the horizontal overflow/no-mobile-layout bug.
+           The !important is deliberate: this must win over the host
+           page's rules, not just Tailwind's (which is no longer used here). */
+        #ppOverlay, #ppOverlay *, #ppOverlay *::before, #ppOverlay *::after {
+          box-sizing: border-box !important;
+        }
+        #ppOverlay { max-width: 100vw; overflow-x: hidden; }
+        #ppOverlay img { max-width: 100%; }
       `}</style>
       <div
         style={{
           position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: BG,
-          display: 'flex', alignItems: 'stretch', overflowY: 'auto',
-          fontFamily: 'inherit', fontSize: 14, color: '#1e293b',
+          display: 'flex', alignItems: 'stretch', overflowY: 'auto', overflowX: 'hidden',
+          fontFamily: 'inherit', fontSize: 14, color: '#1e293b', width: '100%', maxWidth: '100vw',
         }}
         id="ppOverlay"
       >
       {!student ? (
-        <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 16px', background: 'linear-gradient(135deg,#eef2f9 0%,#f8fafc 60%)' }} id="ppLoginWrap">
+        <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? '56px 12px 24px' : '40px 16px', background: 'linear-gradient(135deg,#eef2f9 0%,#f8fafc 60%)' }} id="ppLoginWrap">
           <button
             onClick={onClose}
-            style={{ position: 'absolute', top: 20, right: 20, height: 40, width: 40, borderRadius: '50%', backgroundColor: 'white', border: '1px solid #e2e8f0', color: '#64748b', cursor: 'pointer', fontSize: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ position: 'absolute', top: isMobile ? 12 : 20, right: isMobile ? 12 : 20, height: 40, width: 40, borderRadius: '50%', backgroundColor: 'white', border: '1px solid #e2e8f0', color: '#64748b', cursor: 'pointer', fontSize: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
             ✕
           </button>
-          <div style={{ width: '100%', maxWidth: 400, borderRadius: 16, backgroundColor: 'white', boxShadow: '0 10px 40px -10px rgba(15,23,42,.15)', padding: 32, borderTop: `4px solid ${NAVY}` }}>
+          <div style={{ width: '100%', maxWidth: 400, borderRadius: 16, backgroundColor: 'white', boxShadow: '0 10px 40px -10px rgba(15,23,42,.15)', padding: isMobile ? '24px 20px' : 32, borderTop: `4px solid ${NAVY}` }}>
             <div style={{ textAlign: 'center', marginBottom: 26 }}>
               <img
                 src={EMBLEM_URL}
@@ -1168,18 +1202,18 @@ export default function ParentsPortal({ isOpen, onClose }) {
               </div>
             </div>
           )}
-          <div style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: '12px 20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              <img src={EMBLEM_URL} alt="GNSI" style={{ height: 36, width: 36, objectFit: 'contain', flexShrink: 0 }} onError={(e) => { e.target.style.display = "none"; }} />
+          <div style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: isMobile ? 8 : 16, borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: isMobile ? '10px 12px' : '12px 20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, minWidth: 0 }}>
+              <img src={EMBLEM_URL} alt="GNSI" style={{ height: isMobile ? 30 : 36, width: isMobile ? 30 : 36, objectFit: 'contain', flexShrink: 0 }} onError={(e) => { e.target.style.display = "none"; }} />
               <div style={{ minWidth: 0 }}>
-                <h3 style={{ fontSize: 14, fontWeight: 800, color: NAVY, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name || 'Student'}</h3>
-                <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>GNSI Parents Portal</p>
+                <h3 style={{ fontSize: isMobile ? 13 : 14, fontWeight: 800, color: NAVY, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name || 'Student'}</h3>
+                {!isMobile && <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>GNSI Parents Portal</p>}
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, flexShrink: 0 }}>
               {siblings.length > 1 && (
                 <select
-                  style={{ borderRadius: 8, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#1e293b', fontSize: 12, padding: '7px 10px', outline: 'none' }}
+                  style={{ borderRadius: 8, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#1e293b', fontSize: isMobile ? 11 : 12, padding: isMobile ? '6px 6px' : '7px 10px', outline: 'none', maxWidth: isMobile ? 90 : 'none' }}
                   value={student.id}
                   onChange={(e) => {
                     const chosen = siblings.find(s => String(s.id) === e.target.value);
@@ -1192,20 +1226,20 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 </select>
               )}
               <button
-                style={{ borderRadius: 8, border: '1px solid #e2e8f0', color: '#64748b', backgroundColor: 'white', padding: '8px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                style={{ borderRadius: 8, border: '1px solid #e2e8f0', color: '#64748b', backgroundColor: 'white', padding: isMobile ? '7px 9px' : '8px 12px', fontSize: isMobile ? 11 : 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
                 onClick={() => { handleLogout(); onClose(); }}
               >
-                Logout ✕
+                {isMobile ? '✕' : 'Logout ✕'}
               </button>
             </div>
           </div>
-          <div style={{ position: 'sticky', top: 60, zIndex: 10, display: 'flex', gap: 6, overflowX: 'auto', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: '10px 16px' }} className="no-scrollbar">
+          <div style={{ position: 'sticky', top: isMobile ? 50 : 60, zIndex: 10, display: 'flex', gap: 6, overflowX: 'auto', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: isMobile ? '8px 10px' : '10px 16px' }} className="no-scrollbar">
             {TABS.map(t => (
               <button
                 key={t.id}
                 onClick={() => handleTabClick(t.id)}
                 style={{
-                  flexShrink: 0, borderRadius: 999, padding: '7px 14px', fontSize: 12, fontWeight: 700,
+                  flexShrink: 0, borderRadius: 999, padding: isMobile ? '6px 11px' : '7px 14px', fontSize: isMobile ? 11 : 12, fontWeight: 700,
                   letterSpacing: '.02em', whiteSpace: 'nowrap', border: 'none', cursor: 'pointer', transition: 'all .15s',
                   backgroundColor: activeTab === t.id ? NAVY : '#f1f5f9',
                   color: activeTab === t.id ? 'white' : '#64748b',
@@ -1215,23 +1249,32 @@ export default function ParentsPortal({ isOpen, onClose }) {
               </button>
             ))}
           </div>
-          <div style={{ flex: 1, padding: '20px 16px', maxWidth: 960, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, borderRadius: 12, backgroundColor: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', padding: 16, marginBottom: 20, borderLeft: `4px solid ${NAVY}` }}>
-              <div style={{ height: 56, width: 56, flexShrink: 0, borderRadius: '50%', backgroundColor: '#eef2f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 800, color: NAVY, overflow: 'hidden', border: `2px solid ${NAVY}` }}>
+          <div style={{ flex: 1, padding: isMobile ? '14px 10px' : '20px 16px', maxWidth: 960, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+            <div style={{
+              display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', flexWrap: isMobile ? 'wrap' : 'nowrap',
+              gap: isMobile ? 12 : 16, borderRadius: 12, backgroundColor: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+              padding: isMobile ? 14 : 16, marginBottom: isMobile ? 14 : 20, borderLeft: `4px solid ${NAVY}`,
+            }}>
+              <div style={{ height: isMobile ? 46 : 56, width: isMobile ? 46 : 56, flexShrink: 0, borderRadius: '50%', backgroundColor: '#eef2f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 15 : 18, fontWeight: 800, color: NAVY, overflow: 'hidden', border: `2px solid ${NAVY}` }}>
                 {student.photo_url
                   ? <img src={student.photo_url} alt="" style={{ height: '100%', width: '100%', objectFit: 'cover', borderRadius: '50%' }} />
                   : ((student.name || 'S')[0] || 'S').toUpperCase()}
               </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1e293b', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name || 'Student'}</h3>
-                <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[student.course, student.class_name, student.batch].filter(Boolean).join(' · ')}</p>
-                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                <h3 style={{ fontSize: isMobile ? 14 : 16, fontWeight: 800, color: '#1e293b', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name || 'Student'}</h3>
+                <p style={{ fontSize: isMobile ? 11 : 12, color: '#64748b', margin: '2px 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[student.course, student.class_name, student.batch].filter(Boolean).join(' · ')}</p>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                   <span style={{ borderRadius: 999, backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', padding: '2px 10px', fontSize: 10, fontWeight: 700, color: '#64748b' }}>{student.hostel_type || '—'}</span>
                   <span style={{ borderRadius: 999, backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', padding: '2px 10px', fontSize: 10, fontWeight: 700, color: '#16a34a' }}>{student.status || 'Active'}</span>
                 </div>
               </div>
               <button
-                style={{ flexShrink: 0, borderRadius: 10, border: `1px solid ${NAVY}`, backgroundColor: '#eef2f9', color: NAVY, padding: '10px 14px', fontSize: 12, fontWeight: 700, cursor: exportBusy ? 'not-allowed' : 'pointer', opacity: exportBusy ? 0.6 : 1 }}
+                style={{
+                  flexShrink: 0, borderRadius: 10, border: `1px solid ${NAVY}`, backgroundColor: '#eef2f9', color: NAVY,
+                  padding: isMobile ? '9px 12px' : '10px 14px', fontSize: isMobile ? 11 : 12, fontWeight: 700,
+                  cursor: exportBusy ? 'not-allowed' : 'pointer', opacity: exportBusy ? 0.6 : 1,
+                  width: isMobile ? '100%' : 'auto', textAlign: 'center',
+                }}
                 onClick={exportProgressReport}
                 disabled={exportBusy}
                 title="Download full progress report as PDF"
@@ -1249,10 +1292,11 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 pushStatus={pushStatus}
                 onEnablePush={enablePush}
                 onGoTab={handleTabClick}
+                isMobile={isMobile}
               />
             )}
             {activeTab === 'att' && (
-              <AttendanceTab state={attendance} />
+              <AttendanceTab state={attendance} isMobile={isMobile} />
             )}
             {activeTab === 'exams' && (
               <ExamsTab state={exams} />
@@ -1267,10 +1311,11 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 onDateChange={setRcSelectedDate}
                 onPrint={handlePrintReportCard}
                 printBusy={rcPrintBusy}
+                isMobile={isMobile}
               />
             )}
             {activeTab === 'fees' && (
-              <FeesTab state={fees} onPayNow={handlePayNow} nextDue={fees.status === 'ready' ? pickNextDue(fees.data) : null} />
+              <FeesTab state={fees} onPayNow={handlePayNow} nextDue={fees.status === 'ready' ? pickNextDue(fees.data) : null} isMobile={isMobile} />
             )}
             {activeTab === 'leave' && (
               <LeaveTab state={leave} />
@@ -1281,6 +1326,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 studentName={student.name}
                 done={grievanceDone}
                 onSubmitted={() => setGrievanceDone(true)}
+                isMobile={isMobile}
               />
             )}
             {activeTab === 'alerts' && (
@@ -1320,15 +1366,19 @@ function Empty({ icon, text }) {
 
 // Shared card shell, matching Accounts.jsx's white/shadow/rounded convention.
 function Card({ title, right, children }) {
+  // Self-contained responsive check (rather than threading isMobile through
+  // every single call site) — Card is used by nearly every tab, and its
+  // only mobile need is tighter padding.
+  const isMobile = useWindowWidth() < 640;
   return (
     <div style={{ borderRadius: 12, border: '1px solid #e2e8f0', backgroundColor: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden', marginBottom: 16 }}>
       {title && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderBottom: '1px solid #e2e8f0', padding: '14px 18px' }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: NAVY }}>{title}</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderBottom: '1px solid #e2e8f0', padding: isMobile ? '12px 14px' : '14px 18px', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: isMobile ? 13 : 14, fontWeight: 800, color: NAVY }}>{title}</div>
           {right}
         </div>
       )}
-      <div style={{ padding: 18 }}>{children}</div>
+      <div style={{ padding: isMobile ? 14 : 18 }}>{children}</div>
     </div>
   );
 }
@@ -1349,7 +1399,7 @@ function PremiumTable({ head, children }) {
 }
 
 // ── FEATURE 10: DASHBOARD HOME (single glanceable summary) ──────────────────
-function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEnablePush, onGoTab }) {
+function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEnablePush, onGoTab, isMobile }) {
   const attPct = attendance.status === 'ready' ? attendance.data.pct : null;
   const feeBalance = fees.status === 'ready' ? fees.data.totalDue : undefined;
 
@@ -1364,14 +1414,14 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? 130 : 140}px, 1fr))`, gap: isMobile ? 8 : 12, marginBottom: 16 }}>
         {tiles.map(t => (
           <button
             key={t.id}
             onClick={() => onGoTab(t.id)}
             style={{
               textAlign: 'left', borderRadius: 12, border: '1px solid #e2e8f0', backgroundColor: 'white',
-              padding: 16, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${t.color}`,
+              padding: isMobile ? 12 : 16, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${t.color}`,
             }}
           >
             <div style={{ fontSize: 20, marginBottom: 8 }}>{t.icon}</div>
@@ -1411,7 +1461,7 @@ function Pill({ tone, children }) {
   return <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 700, ...tones[tone] }}>{children}</span>;
 }
 
-function AttendanceTab({ state }) {
+function AttendanceTab({ state, isMobile }) {
   if (state.status === 'loading' || state.status === 'idle') {
     return <Card><Loading /></Card>;
   }
@@ -1429,7 +1479,7 @@ function AttendanceTab({ state }) {
         title="This Month's Attendance"
         right={<span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', color: '#94a3b8', fontWeight: 700 }}>{monthLabel}</span>}
       >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: isMobile ? 4 : 6, marginBottom: isMobile ? 16 : 20 }}>
           {Array.from({ length: daysInMonth }, (_, i) => {
             const d = i + 1;
             const dd = String(d).padStart(2, '0');
@@ -1447,24 +1497,24 @@ function AttendanceTab({ state }) {
               <div
                 key={d}
                 title={`${y}-${m}-${dd}`}
-                style={{ aspectRatio: '1', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, ...style }}
+                style={{ aspectRatio: '1', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 10 : 12, fontWeight: 700, ...style }}
               >
                 {d}
               </div>
             );
           })}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-          <div style={{ borderRadius: 10, border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', padding: 12, textAlign: 'center' }}>
-            <strong style={{ display: 'block', fontSize: 18, fontWeight: 800, color: '#16a34a' }}>{present}</strong>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: isMobile ? 8 : 12 }}>
+          <div style={{ borderRadius: 10, border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', padding: isMobile ? 10 : 12, textAlign: 'center' }}>
+            <strong style={{ display: 'block', fontSize: isMobile ? 16 : 18, fontWeight: 800, color: '#16a34a' }}>{present}</strong>
             <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: '#64748b', fontWeight: 700 }}>Present</span>
           </div>
-          <div style={{ borderRadius: 10, border: '1px solid #fecaca', backgroundColor: '#fef2f2', padding: 12, textAlign: 'center' }}>
-            <strong style={{ display: 'block', fontSize: 18, fontWeight: 800, color: '#dc2626' }}>{absent}</strong>
+          <div style={{ borderRadius: 10, border: '1px solid #fecaca', backgroundColor: '#fef2f2', padding: isMobile ? 10 : 12, textAlign: 'center' }}>
+            <strong style={{ display: 'block', fontSize: isMobile ? 16 : 18, fontWeight: 800, color: '#dc2626' }}>{absent}</strong>
             <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: '#64748b', fontWeight: 700 }}>Absent</span>
           </div>
-          <div style={{ borderRadius: 10, border: '1px solid #fde68a', backgroundColor: '#fffbeb', padding: 12, textAlign: 'center' }}>
-            <strong style={{ display: 'block', fontSize: 18, fontWeight: 800, color: '#d97706' }}>{pct}%</strong>
+          <div style={{ borderRadius: 10, border: '1px solid #fde68a', backgroundColor: '#fffbeb', padding: isMobile ? 10 : 12, textAlign: 'center' }}>
+            <strong style={{ display: 'block', fontSize: isMobile ? 16 : 18, fontWeight: 800, color: '#d97706' }}>{pct}%</strong>
             <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: '#64748b', fontWeight: 700 }}>Rate</span>
           </div>
         </div>
@@ -1516,12 +1566,12 @@ function ExamsTab({ state }) {
   );
 }
 
-function ReportCardTab({ examTypes, selectedType, onTypeChange, dates, selectedDate, onDateChange, onPrint, printBusy }) {
+function ReportCardTab({ examTypes, selectedType, onTypeChange, dates, selectedDate, onDateChange, onPrint, printBusy, isMobile }) {
   const canPrint = selectedType && selectedDate && !printBusy;
   const selectStyle = { width: '100%', borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#1e293b', fontSize: 13, padding: '10px 14px', outline: 'none', boxSizing: 'border-box' };
   return (
     <Card title="Report Card">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 16 }}>
         <div>
           <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Exam</label>
           <select style={selectStyle} value={selectedType} onChange={(e) => onTypeChange(e.target.value)}>
@@ -1556,7 +1606,7 @@ function ReportCardTab({ examTypes, selectedType, onTypeChange, dates, selectedD
 }
 
 // ── FEATURE 1: FEE DUES TAB ──────────────────────────────────────────────────
-function FeesTab({ state, onPayNow, nextDue }) {
+function FeesTab({ state, onPayNow, nextDue, isMobile }) {
   return (
     <Card title="Fee Summary">
       {(state.status === 'loading' || state.status === 'idle') && <Loading />}
@@ -1569,14 +1619,14 @@ function FeesTab({ state, onPayNow, nextDue }) {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-            <div style={{ borderRadius: 10, border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', padding: 16, textAlign: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isMobile ? 8 : 12, marginBottom: 16 }}>
+            <div style={{ borderRadius: 10, border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', padding: isMobile ? 12 : 16, textAlign: 'center' }}>
               <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', fontWeight: 700, marginBottom: 4 }}>Total Paid</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#16a34a' }}>₹{state.data.totalPaid ?? 0}</div>
+              <div style={{ fontSize: isMobile ? 17 : 20, fontWeight: 800, color: '#16a34a' }}>₹{state.data.totalPaid ?? 0}</div>
             </div>
-            <div style={{ borderRadius: 10, border: `1px solid ${(state.data.totalDue ?? 0) > 0 ? '#fecaca' : '#bbf7d0'}`, backgroundColor: (state.data.totalDue ?? 0) > 0 ? '#fef2f2' : '#f0fdf4', padding: 16, textAlign: 'center' }}>
+            <div style={{ borderRadius: 10, border: `1px solid ${(state.data.totalDue ?? 0) > 0 ? '#fecaca' : '#bbf7d0'}`, backgroundColor: (state.data.totalDue ?? 0) > 0 ? '#fef2f2' : '#f0fdf4', padding: isMobile ? 12 : 16, textAlign: 'center' }}>
               <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', fontWeight: 700, marginBottom: 4 }}>Total Due</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: (state.data.totalDue ?? 0) > 0 ? '#dc2626' : '#16a34a' }}>
+              <div style={{ fontSize: isMobile ? 17 : 20, fontWeight: 800, color: (state.data.totalDue ?? 0) > 0 ? '#dc2626' : '#16a34a' }}>
                 ₹{state.data.totalDue ?? 0}
               </div>
             </div>
@@ -1713,7 +1763,7 @@ const GRIEVANCE_CATEGORIES = [
   'Other',
 ];
 
-function GrievanceTab({ studentId, studentName, done, onSubmitted }) {
+function GrievanceTab({ studentId, studentName, done, onSubmitted, isMobile }) {
   const [category, setCategory] = useState('Academic Weakness');
   const [description, setDescription] = useState('');
   const [name, setName] = useState('');
@@ -1790,7 +1840,7 @@ function GrievanceTab({ studentId, studentName, done, onSubmitted }) {
           style={{ ...inputStyle, marginBottom: 14, resize: 'vertical' }}
         />
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginBottom: 18 }}>
           <div>
             <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Your Name</label>
             <input required value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
