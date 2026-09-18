@@ -162,52 +162,72 @@ async function compressImage(file, { maxDim = 1920, quality = 0.85 } = {}) {
 // the resulting public URL once done, same as if they'd typed/pasted
 // that URL themselves. label/folder/value/onChange are the only required
 // props; the rest (preview size/shape) has sane defaults.
-function ImageUploadField({ label, folder, value, onChange, round=false, previewSize=80 }) {
+//
+// allowMultiple (optional): when true, the file picker accepts multiple
+// files at once. Every picked file is compressed + uploaded, but this
+// field still only holds ONE url (the record has a single photo column),
+// so after a multi-pick the staff member sees thumbnails of everything
+// that uploaded and taps the one they want as the record's photo — the
+// rest are already safely in storage if needed again later.
+function ImageUploadField({ label, folder, value, onChange, round=false, previewSize=80, allowMultiple=false }) {
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState("Uploading…");
   const [err, setErr] = useState("");
+  const [choices, setChoices] = useState([]); // urls from a multi-pick, awaiting selection
   const inputRef = useRef(null);
 
   const pick = () => inputRef.current?.click();
 
-  const handleFile = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-picking the same file later
-    if (!file) return;
-    if (!file.type?.startsWith("image/")) {
-      setErr("Please choose an image file.");
-      return;
-    }
-    // Hard ceiling — a safety net for a huge file compression couldn't
-    // shrink (e.g. an already-compressed 20MB TIFF-in-JPEG-clothing), not
-    // the everyday limit. Ordinary phone photos are compressed above and
-    // never get near this.
-    if (file.size > 30 * 1024 * 1024) {
-      setErr("Image is larger than 30MB — please use a smaller file.");
-      return;
-    }
-    setErr("");
-    setBusy(true);
-
+  const uploadOne = async (file) => {
+    if (!file.type?.startsWith("image/")) return { url: null, error: new Error("Not an image file") };
+    if (file.size > 30 * 1024 * 1024) return { url: null, error: new Error("Larger than 30MB") };
     setBusyLabel(file.size > 1.5 * 1024 * 1024 ? "Compressing…" : "Uploading…");
     const toUpload = await compressImage(file);
     setBusyLabel("Uploading…");
+    return uploadWebsiteImage(toUpload, folder);
+  };
 
-    const { url, error } = await uploadWebsiteImage(toUpload, folder);
-    setBusy(false);
-    if (error || !url) {
-      setErr("Upload failed: " + (error?.message || "unknown error"));
-      toast("Image upload failed", "error");
+  const handleFile = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ""; // allow re-picking the same file(s) later
+    if (!files.length) return;
+    setErr("");
+    setBusy(true);
+
+    if (files.length === 1) {
+      const { url, error } = await uploadOne(files[0]);
+      setBusy(false);
+      if (error || !url) {
+        setErr("Upload failed: " + (error?.message || "unknown error"));
+        toast("Image upload failed", "error");
+        return;
+      }
+      onChange(url);
+      toast("Photo uploaded ✓");
       return;
     }
-    onChange(url);
-    toast("Photo uploaded ✓");
+
+    // Multiple files picked: upload all, then let the user choose one.
+    const uploaded = [];
+    let failCount = 0;
+    for (const file of files) {
+      const { url, error } = await uploadOne(file);
+      if (url) uploaded.push(url); else failCount++;
+    }
+    setBusy(false);
+    if (uploaded.length) {
+      setChoices(uploaded);
+      toast(`${uploaded.length} photo${uploaded.length>1?"s":""} uploaded ✓ — pick one below`);
+    }
+    if (failCount) setErr(`${failCount} file${failCount>1?"s":""} failed to upload.`);
   };
+
+  const choose = (url) => { onChange(url); setChoices([]); toast("Photo selected ✓"); };
 
   return (
     <div style={{ marginBottom: "1rem" }}>
       {label && <label style={s.lbl}>{label}</label>}
-      <input ref={inputRef} type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
+      <input ref={inputRef} type="file" accept="image/*" multiple={allowMultiple} onChange={handleFile} style={{ display: "none" }} />
       <div style={{ display: "flex", gap: ".9rem", alignItems: "center", flexWrap: "wrap" }}>
         {value ? (
           <img
@@ -230,13 +250,33 @@ function ImageUploadField({ label, folder, value, onChange, round=false, preview
         <div style={{ display: "flex", flexDirection: "column", gap: ".4rem" }}>
           <div style={{ display: "flex", gap: ".5rem" }}>
             <button type="button" style={{ ...s.btnG, opacity: busy ? .6 : 1 }} onClick={pick} disabled={busy}>
-              {busy ? <span style={{display:"flex",alignItems:"center",gap:".4rem"}}><Spin/>{busyLabel}</span> : (value ? "Replace Photo" : "Upload Photo")}
+              {busy ? <span style={{display:"flex",alignItems:"center",gap:".4rem"}}><Spin/>{busyLabel}</span> : (value ? "Replace Photo" : (allowMultiple ? "Upload Photo(s)" : "Upload Photo"))}
             </button>
             {value && !busy && <button type="button" style={s.btnR} onClick={() => onChange("")}>Remove</button>}
           </div>
           {err && <span style={{ color: "#dc2626", fontSize: ".72rem", fontFamily:"inherit" }}>{err}</span>}
         </div>
       </div>
+      {choices.length > 0 && (
+        <div style={{ marginTop: ".7rem" }}>
+          <div style={{ fontSize: ".72rem", color: "#64748b", marginBottom: ".4rem" }}>Choose which photo to use:</div>
+          <div style={{ display: "flex", gap: ".5rem", flexWrap: "wrap" }}>
+            {choices.map((url, i) => (
+              <img
+                key={url+i}
+                src={url}
+                alt={`option ${i+1}`}
+                onClick={() => choose(url)}
+                style={{
+                  width: "64px", height: "64px", objectFit: "cover", cursor: "pointer",
+                  borderRadius: round ? "50%" : "4px", border: `2px solid ${url===value?C.gold:"#e2e8f0"}`,
+                  flexShrink: 0, transition: ".15s",
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -509,7 +549,7 @@ function RankersSection() {
             <div><label style={s.lbl}>Batch / Year</label><input style={s.inp} placeholder="e.g. Batch 2025–26" value={form.batch} onChange={e=>setForm(f=>({...f,batch:e.target.value}))}/></div>
             <div><label style={s.lbl}>Rank / Achievement (optional)</label><input style={s.inp} placeholder="e.g. AIR 1 or District Topper" value={form.rank} onChange={e=>setForm(f=>({...f,rank:e.target.value}))}/></div>
           </div>
-          <ImageUploadField label="Student Photo" folder="rankers" round previewSize={70} value={form.photo_url} onChange={url=>setForm(f=>({...f,photo_url:url}))}/>
+          <ImageUploadField label="Student Photo" folder="rankers" round previewSize={70} allowMultiple value={form.photo_url} onChange={url=>setForm(f=>({...f,photo_url:url}))}/>
           <div style={s.g2}>
             <div><label style={s.lbl}>Sort Order</label><input type="number" style={s.inp} value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:+e.target.value}))}/></div>
           </div>
@@ -552,6 +592,10 @@ function GallerySection() {
   const [form,setForm]=useState({image_url:"",caption:"",category:"Campus",sort_order:0});
   const [saving,setSave]=useState(false);
   const [hint,setHint]=useState(false);
+  const [bulkCat,setBulkCat]=useState("Campus");
+  const [bulkBusy,setBulkBusy]=useState(false);
+  const [bulkProgress,setBulkProgress]=useState({done:0,total:0});
+  const bulkInputRef=useRef(null);
   const CATS=["Campus","Classroom","Hostel","Events","Sports","Alumni","Results","Rankers"];
 
   const load_=useCallback(async()=>{
@@ -571,6 +615,34 @@ function GallerySection() {
   const del=async id=>{if(!confirm("Remove image?"))return;await deleteGalleryImage(id);toast("Removed");load_();};
   const updateCaption=async(id,caption)=>{await updateGalleryCaption(id,caption);toast("Caption updated ✓");};
 
+  // Bulk add: pick several photos at once, each becomes its own gallery
+  // row (same category for all, no caption — captions can be filled in
+  // per-image afterwards in the grid below).
+  const bulkPick=()=>bulkInputRef.current?.click();
+  const handleBulkFiles=async(e)=>{
+    const files=Array.from(e.target.files||[]);
+    e.target.value="";
+    if(!files.length)return;
+    setBulkBusy(true);
+    setBulkProgress({done:0,total:files.length});
+    let okCount=0,failCount=0;
+    for(const file of files){
+      if(!file.type?.startsWith("image/")||file.size>30*1024*1024){
+        failCount++;setBulkProgress(p=>({...p,done:p.done+1}));continue;
+      }
+      const toUpload=await compressImage(file);
+      const{url,error}=await uploadWebsiteImage(toUpload,"gallery");
+      if(url&&!error){
+        const{error:saveErr}=await addGalleryImage({image_url:url,caption:"",category:bulkCat,sort_order:rows.length+okCount});
+        if(!saveErr)okCount++;else failCount++;
+      }else failCount++;
+      setBulkProgress(p=>({...p,done:p.done+1}));
+    }
+    setBulkBusy(false);
+    toast(`${okCount} photo${okCount!==1?"s":""} added${failCount?`, ${failCount} failed`:""} ✓`,failCount&&!okCount?"error":"success");
+    load_();
+  };
+
   return (
     <div>
       <div style={{...s.card,borderColor:"rgba(148,163,184,.3)"}}>
@@ -588,8 +660,29 @@ function GallerySection() {
         </div>}
       </div>
 
+      <div style={{...s.card,borderLeft:`4px solid ${C.gold}`}}>
+        <div style={s.cardHd}><span style={s.cardTit}>📚 Bulk Upload (multiple photos at once)</span></div>
+        <div style={s.cardBdy}>
+          <input ref={bulkInputRef} type="file" accept="image/*" multiple onChange={handleBulkFiles} style={{display:"none"}}/>
+          <div style={s.g2}>
+            <div>
+              <label style={s.lbl}>Category (applies to all)</label>
+              <select style={s.sel} value={bulkCat} onChange={e=>setBulkCat(e.target.value)}>{CATS.map(c=><option key={c}>{c}</option>)}</select>
+            </div>
+            <div style={{display:"flex",alignItems:"flex-end"}}>
+              <button style={{...s.btnG,opacity:bulkBusy?.6:1,width:"100%"}} onClick={bulkPick} disabled={bulkBusy}>
+                {bulkBusy
+                  ? <span style={{display:"flex",alignItems:"center",justifyContent:"center",gap:".4rem"}}><Spin/>Uploading {bulkProgress.done}/{bulkProgress.total}…</span>
+                  : "Select Multiple Photos →"}
+              </button>
+            </div>
+          </div>
+          <div style={{fontSize:".72rem",color:"#64748b",marginTop:"-.4rem"}}>Select several photos at once — each is compressed, uploaded, and added as its own gallery entry with the category above. Add captions per photo afterwards in the grid below.</div>
+        </div>
+      </div>
+
       <div style={s.card}>
-        <div style={s.cardHd}><span style={s.cardTit}>➕ Add Gallery Image</span></div>
+        <div style={s.cardHd}><span style={s.cardTit}>➕ Add Single Gallery Image</span></div>
         <div style={s.cardBdy}>
           <ImageUploadField label="Photo *" folder="gallery" previewSize={140} value={form.image_url} onChange={url=>setForm(f=>({...f,image_url:url}))}/>
           <div style={s.g2}>
@@ -875,7 +968,7 @@ function BlogSection() {
               <div><label style={s.lbl}>Date</label><input type="date" style={s.inp} value={form.published_date} onChange={e=>setForm(f=>({...f,published_date:e.target.value}))}/></div>
             </div>
           </div>
-          <ImageUploadField label="Cover Image (optional)" folder="blog" previewSize={140} value={form.image_url} onChange={url=>setForm(f=>({...f,image_url:url}))}/>
+          <ImageUploadField label="Cover Image (optional)" folder="blog" previewSize={140} allowMultiple value={form.image_url} onChange={url=>setForm(f=>({...f,image_url:url}))}/>
           <label style={s.lbl}>Body *</label>
           <textarea style={{...s.ta,minHeight:"140px"}} placeholder="Write the full article or news post here…" value={form.body} onChange={e=>setForm(f=>({...f,body:e.target.value}))} rows={6}/>
           <div style={{display:"flex",gap:".8rem",alignItems:"center"}}>
@@ -1155,7 +1248,7 @@ function BannersSection() {
           </div>
           <label style={s.lbl}>Subtitle</label>
           <input style={s.inp} placeholder="e.g. NVS Jawahar Navodaya · Sainik School · RMS · Across Manipur" value={form.subtitle} onChange={e=>setForm(f=>({...f,subtitle:e.target.value}))}/>
-          <ImageUploadField label="Background Image" folder="banners" previewSize={140} value={form.image_url} onChange={url=>setForm(f=>({...f,image_url:url}))}/>
+          <ImageUploadField label="Background Image" folder="banners" previewSize={140} allowMultiple value={form.image_url} onChange={url=>setForm(f=>({...f,image_url:url}))}/>
           <div style={{display:"flex",gap:".8rem",alignItems:"center"}}>
             <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Banner":"Add Banner →"}</button>
             <label style={{display:"flex",alignItems:"center",gap:".4rem",cursor:"pointer",fontFamily:"inherit",fontSize:".75rem",color:"rgba(71,85,105,.5)"}}>
@@ -1230,7 +1323,7 @@ function FacultySection() {
             <div><label style={s.lbl}>Subject / Department</label><input style={s.inp} placeholder="e.g. Mathematics · Strategic Leadership" value={form.subject} onChange={e=>setForm(f=>({...f,subject:e.target.value}))}/></div>
             <div><label style={s.lbl}>Experience</label><input style={s.inp} placeholder="e.g. 10+ Years · Est. GNSI 2016" value={form.experience} onChange={e=>setForm(f=>({...f,experience:e.target.value}))}/></div>
           </div>
-          <ImageUploadField label="Photo" folder="faculty" round previewSize={80} value={form.photo_url} onChange={url=>setForm(f=>({...f,photo_url:url}))}/>
+          <ImageUploadField label="Photo" folder="faculty" round previewSize={80} allowMultiple value={form.photo_url} onChange={url=>setForm(f=>({...f,photo_url:url}))}/>
           <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Faculty":"Add to Website →"}</button>
         </div>
       </div>
