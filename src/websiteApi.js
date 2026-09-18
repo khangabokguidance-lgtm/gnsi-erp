@@ -6,6 +6,37 @@
 
 import { supabase } from './supabase';
 
+// ─── IMAGE UPLOAD (Supabase Storage, gnsi-public bucket) ──────────────────
+// Uploads a File straight from a WebsiteTab <input type="file"> into the
+// public gnsi-public bucket and returns its public URL — the same URL
+// shape every photo_url/image_url column on the site already expects, so
+// callers can drop this straight into setForm({..., photo_url: url}).
+// Folder is one of the existing conventional subfolders (rankers/gallery/
+// faculty/banners/blog/…) so uploads land next to what's already there.
+export async function uploadWebsiteImage(file, folder = 'misc') {
+  if (!file) return { url: null, error: new Error('No file provided') };
+
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const safeStem = (file.name.replace(/\.[^.]+$/, '') || 'image')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .slice(0, 40) || 'image';
+  const path = `${folder}/${safeStem}-${Date.now()}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('gnsi-public')
+    .upload(path, file, { cacheControl: '3600', upsert: false, contentType: file.type || undefined });
+
+  if (uploadError) {
+    console.error('uploadWebsiteImage failed:', uploadError.message);
+    return { url: null, error: uploadError };
+  }
+
+  const { data } = supabase.storage.from('gnsi-public').getPublicUrl(path);
+  return { url: data?.publicUrl || null, error: null };
+}
+
 // ─── SETTINGS (website_settings) ────────────────────────────────────────────
 export async function getSettings() {
   const { data, error } = await supabase.from('website_settings').select('key,value');

@@ -19,7 +19,7 @@
 //  ⑯ Important Dates Timeline (website_timeline)
 // ============================================================
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   getAllEnquiries, markEnquiryReplied, deleteEnquiry,
   getAllNotices, saveNotice, archiveNotice, deleteNotice,
@@ -36,6 +36,7 @@ import {
   getAllTestimonials, saveTestimonial, toggleTestimonialFeatured, deleteTestimonial,
   getExamCalendar, saveExamCalendarRow, deleteExamCalendarRow,
   getTimeline, saveTimelineItem, deleteTimelineItem,
+  uploadWebsiteImage,
 } from './websiteApi';
 
 // ── colours ─────────────────────────────────────────────────
@@ -105,6 +106,82 @@ const s = {
 
 // Spin component
 const Spin = () => <div style={{width:"16px",height:"16px",border:"2px solid rgba(184,146,42,.28)",borderTopColor:C.gold,borderRadius:"50%",animation:"spin .8s linear infinite",flexShrink:0}} />;
+
+// ── ImageUploadField ───────────────────────────────────────────
+// Drop-in replacement for the old "paste a Supabase URL" text input.
+// Lets staff pick a photo straight from their device — uploads it to the
+// gnsi-public bucket under `folder` via uploadWebsiteImage() and calls
+// onChange(url) with the resulting public URL once done, same as if they'd
+// typed/pasted that URL themselves. label/folder/value/onChange are the
+// only required props; the rest (preview size/shape) has sane defaults.
+function ImageUploadField({ label, folder, value, onChange, round=false, previewSize=80 }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const inputRef = useRef(null);
+
+  const pick = () => inputRef.current?.click();
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file later
+    if (!file) return;
+    if (!file.type?.startsWith("image/")) {
+      setErr("Please choose an image file.");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setErr("Image is larger than 8MB — please use a smaller file.");
+      return;
+    }
+    setErr("");
+    setBusy(true);
+    const { url, error } = await uploadWebsiteImage(file, folder);
+    setBusy(false);
+    if (error || !url) {
+      setErr("Upload failed: " + (error?.message || "unknown error"));
+      toast("Image upload failed", "error");
+      return;
+    }
+    onChange(url);
+    toast("Photo uploaded ✓");
+  };
+
+  return (
+    <div style={{ marginBottom: "1rem" }}>
+      {label && <label style={s.lbl}>{label}</label>}
+      <input ref={inputRef} type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
+      <div style={{ display: "flex", gap: ".9rem", alignItems: "center", flexWrap: "wrap" }}>
+        {value ? (
+          <img
+            src={value}
+            alt="preview"
+            style={{
+              width: `${previewSize}px`, height: `${previewSize}px`, objectFit: "cover",
+              borderRadius: round ? "50%" : "4px", border: `2px solid ${C.gold}`, flexShrink: 0,
+            }}
+            onError={(e) => { e.target.style.display = "none"; }}
+          />
+        ) : (
+          <div style={{
+            width: `${previewSize}px`, height: `${previewSize}px`, borderRadius: round ? "50%" : "4px",
+            background: "rgba(255,255,255,.05)", border: "1px dashed rgba(184,146,42,.35)",
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.3rem",
+            color: "rgba(248,243,232,.25)", flexShrink: 0,
+          }}>🖼️</div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: ".4rem" }}>
+          <div style={{ display: "flex", gap: ".5rem" }}>
+            <button type="button" style={{ ...s.btnG, opacity: busy ? .6 : 1 }} onClick={pick} disabled={busy}>
+              {busy ? <span style={{display:"flex",alignItems:"center",gap:".4rem"}}><Spin/>Uploading…</span> : (value ? "Replace Photo" : "Upload Photo")}
+            </button>
+            {value && !busy && <button type="button" style={s.btnR} onClick={() => onChange("")}>Remove</button>}
+          </div>
+          {err && <span style={{ color: "#f87171", fontSize: ".72rem", fontFamily: "'Rajdhani',sans-serif" }}>{err}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ════════════════════════════════════════════════════════════
 //  ① ENQUIRIES INBOX
@@ -374,9 +451,7 @@ function RankersSection() {
             <div><label style={s.lbl}>Batch / Year</label><input style={s.inp} placeholder="e.g. Batch 2025–26" value={form.batch} onChange={e=>setForm(f=>({...f,batch:e.target.value}))}/></div>
             <div><label style={s.lbl}>Rank / Achievement (optional)</label><input style={s.inp} placeholder="e.g. AIR 1 or District Topper" value={form.rank} onChange={e=>setForm(f=>({...f,rank:e.target.value}))}/></div>
           </div>
-          <label style={s.lbl}>Photo URL (from Supabase Storage)</label>
-          <input style={s.inp} placeholder="https://…supabase…/gnsi-public/rankers/student.jpg" value={form.photo_url} onChange={e=>setForm(f=>({...f,photo_url:e.target.value}))}/>
-          {form.photo_url&&<img src={form.photo_url} alt="preview" style={{width:"70px",height:"70px",objectFit:"cover",borderRadius:"50%",border:`2px solid ${C.gold}`,marginBottom:"1rem"}} onError={e=>e.target.style.display="none"}/>}
+          <ImageUploadField label="Student Photo" folder="rankers" round previewSize={70} value={form.photo_url} onChange={url=>setForm(f=>({...f,photo_url:url}))}/>
           <div style={s.g2}>
             <div><label style={s.lbl}>Sort Order</label><input type="number" style={s.inp} value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:+e.target.value}))}/></div>
           </div>
@@ -458,9 +533,7 @@ function GallerySection() {
       <div style={s.card}>
         <div style={s.cardHd}><span style={s.cardTit}>➕ Add Gallery Image</span></div>
         <div style={s.cardBdy}>
-          <label style={s.lbl}>Image URL *</label>
-          <input style={s.inp} placeholder="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/gallery/photo.jpg" value={form.image_url} onChange={e=>setForm(f=>({...f,image_url:e.target.value}))}/>
-          {form.image_url&&<img src={form.image_url} alt="preview" style={{width:"100%",maxHeight:"180px",objectFit:"cover",marginBottom:"1rem",border:"1px solid rgba(184,146,42,.2)"}} onError={e=>e.target.style.display="none"}/>}
+          <ImageUploadField label="Photo *" folder="gallery" previewSize={140} value={form.image_url} onChange={url=>setForm(f=>({...f,image_url:url}))}/>
           <div style={s.g2}>
             <div><label style={s.lbl}>Caption</label><input style={s.inp} placeholder="e.g. Morning Assembly" value={form.caption} onChange={e=>setForm(f=>({...f,caption:e.target.value}))}/></div>
             <div><label style={s.lbl}>Category</label><select style={s.sel} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>{CATS.map(c=><option key={c}>{c}</option>)}</select></div>
@@ -744,9 +817,7 @@ function BlogSection() {
               <div><label style={s.lbl}>Date</label><input type="date" style={s.inp} value={form.published_date} onChange={e=>setForm(f=>({...f,published_date:e.target.value}))}/></div>
             </div>
           </div>
-          <label style={s.lbl}>Cover Image URL (optional)</label>
-          <input style={s.inp} placeholder="https://…supabase…/blog-cover.jpg" value={form.image_url} onChange={e=>setForm(f=>({...f,image_url:e.target.value}))}/>
-          {form.image_url&&<img src={form.image_url} alt="preview" style={{width:"100%",maxHeight:"140px",objectFit:"cover",marginBottom:"1rem",border:"1px solid rgba(184,146,42,.2)"}} onError={e=>e.target.style.display="none"}/>}
+          <ImageUploadField label="Cover Image (optional)" folder="blog" previewSize={140} value={form.image_url} onChange={url=>setForm(f=>({...f,image_url:url}))}/>
           <label style={s.lbl}>Body *</label>
           <textarea style={{...s.ta,minHeight:"140px"}} placeholder="Write the full article or news post here…" value={form.body} onChange={e=>setForm(f=>({...f,body:e.target.value}))} rows={6}/>
           <div style={{display:"flex",gap:".8rem",alignItems:"center"}}>
@@ -1026,9 +1097,7 @@ function BannersSection() {
           </div>
           <label style={s.lbl}>Subtitle</label>
           <input style={s.inp} placeholder="e.g. NVS Jawahar Navodaya · Sainik School · RMS · Across Manipur" value={form.subtitle} onChange={e=>setForm(f=>({...f,subtitle:e.target.value}))}/>
-          <label style={s.lbl}>Background Image URL</label>
-          <input style={s.inp} placeholder="https://…/gnsi-public/banners/result-2025.jpg" value={form.image_url} onChange={e=>setForm(f=>({...f,image_url:e.target.value}))}/>
-          {form.image_url&&<img src={form.image_url} alt="preview" style={{width:"100%",maxHeight:"140px",objectFit:"cover",marginBottom:"1rem",border:"1px solid rgba(184,146,42,.2)"}} onError={e=>e.target.style.display="none"}/>}
+          <ImageUploadField label="Background Image" folder="banners" previewSize={140} value={form.image_url} onChange={url=>setForm(f=>({...f,image_url:url}))}/>
           <div style={{display:"flex",gap:".8rem",alignItems:"center"}}>
             <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Banner":"Add Banner →"}</button>
             <label style={{display:"flex",alignItems:"center",gap:".4rem",cursor:"pointer",fontFamily:"'Rajdhani',sans-serif",fontSize:".75rem",color:"rgba(248,243,232,.5)"}}>
@@ -1103,9 +1172,7 @@ function FacultySection() {
             <div><label style={s.lbl}>Subject / Department</label><input style={s.inp} placeholder="e.g. Mathematics · Strategic Leadership" value={form.subject} onChange={e=>setForm(f=>({...f,subject:e.target.value}))}/></div>
             <div><label style={s.lbl}>Experience</label><input style={s.inp} placeholder="e.g. 10+ Years · Est. GNSI 2016" value={form.experience} onChange={e=>setForm(f=>({...f,experience:e.target.value}))}/></div>
           </div>
-          <label style={s.lbl}>Photo URL (Supabase Storage → gnsi-public/faculty/)</label>
-          <input style={s.inp} placeholder="https://…supabase…/gnsi-public/faculty/name.jpg" value={form.photo_url} onChange={e=>setForm(f=>({...f,photo_url:e.target.value}))}/>
-          {form.photo_url&&<img src={form.photo_url} alt="preview" style={{width:"80px",height:"80px",objectFit:"cover",borderRadius:"50%",border:`2px solid ${C.gold}`,marginBottom:"1rem"}} onError={e=>e.target.style.display="none"}/>}
+          <ImageUploadField label="Photo" folder="faculty" round previewSize={80} value={form.photo_url} onChange={url=>setForm(f=>({...f,photo_url:url}))}/>
           <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Faculty":"Add to Website →"}</button>
         </div>
       </div>
