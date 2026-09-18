@@ -1143,8 +1143,40 @@ export default function ParentsPortal({ isOpen, onClose }) {
   };
   if (!isOpen) return null;
 
+  // LandingPage.jsx injects ~90KB of landing-page-only CSS via a JSX
+  // <style dangerouslySetInnerHTML> tag (html{font-size:clamp(...)}, plus
+  // resets on *, body, a, img, h1-h5). Because that tag is rendered as part
+  // of LandingPage's own output, it lands in the DOM after Tailwind's
+  // compiled stylesheet and wins cascade ties against Tailwind's base layer
+  // for every element in this portal, since ParentsPortal mounts as
+  // LandingPage's child.
+  //
+  // Fix: reset only the SPECIFIC properties that stylesheet clobbers
+  // (font-size, line-height, margin, text-decoration, box-sizing) back to
+  // browser defaults, scoped to #ppOverlay so it can't leak out onto the
+  // rest of the landing page. Deliberately NOT `all: revert` — that would
+  // have equal-or-higher specificity than Tailwind's own utility classes
+  // (an ID selector beats a bare class selector) and would wipe out every
+  // Tailwind utility too. Each Tailwind class Claude added below sets its
+  // own explicit value for whichever property it touches, so it simply
+  // wins normally wherever it's applied; only elements Claude did NOT put
+  // an explicit Tailwind class on fall back to this safe baseline instead
+  // of LandingPage's clamp()-based sizing.
   return (
-    <div className="fixed inset-0 z-[1000] bg-slate-950 flex items-stretch overflow-y-auto" id="ppOverlay">
+    <>
+      <style>{`
+        #ppOverlay, #ppOverlay * {
+          font-size: revert;
+          line-height: revert;
+          margin: revert;
+          text-decoration: revert;
+          box-sizing: border-box;
+        }
+      `}</style>
+      <div
+        className="fixed inset-0 z-[1000] bg-slate-950 flex items-stretch overflow-y-auto text-base font-sans antialiased"
+        id="ppOverlay"
+      >
       {!student ? (
         <div className="relative flex-1 flex items-center justify-center px-4 py-10 bg-[radial-gradient(circle_at_20%_-10%,rgba(212,175,55,.12),transparent_45%),radial-gradient(circle_at_90%_110%,rgba(30,58,138,.35),transparent_50%)]" id="ppLoginWrap">
           <button
@@ -1342,7 +1374,8 @@ export default function ParentsPortal({ isOpen, onClose }) {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 // ── TAB COMPONENTS ────────────────────────────────────────────────────────────
