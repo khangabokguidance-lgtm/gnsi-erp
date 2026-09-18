@@ -223,7 +223,7 @@ export default function LandingPage({ onLogin }) {
   useEffect(() => {
     if (expandedCat === null) return;
     const handleOutsideClick = (e) => {
-      if (!e.target.closest('.nav-cat')) setExpandedCat(null);
+      if (!e.target.closest('.nav-cat') && !e.target.closest('.mob-cat')) setExpandedCat(null);
     };
     document.addEventListener('click', handleOutsideClick);
     return () => document.removeEventListener('click', handleOutsideClick);
