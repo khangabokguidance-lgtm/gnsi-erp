@@ -314,6 +314,18 @@ const TABS = [
   { id: 'alerts',     label: '🔔 Alerts' },
 ];
 
+// Mobile-only bottom nav: 4 icons fit a thumb-reach bar (matches Android/iOS
+// tab-bar convention). Everything else lives behind "More", opened as a
+// slide-up sheet — same pattern most native apps use once tabs outgrow the
+// bar. Desktop keeps the full horizontal-scroll strip (TABS) unchanged.
+const BOTTOM_NAV_TABS = [
+  { id: 'home',  label: 'Home',   icon: '🏠' },
+  { id: 'att',   label: 'Attend', icon: '📊' },
+  { id: 'fees',  label: 'Fees',   icon: '💳' },
+  { id: 'alerts', label: 'Alerts', icon: '🔔' },
+];
+const MORE_TABS = TABS.filter(t => !BOTTOM_NAV_TABS.some(b => b.id === t.id));
+
 const initialTabState = { status: 'idle', data: null, error: null };
 /**
  * ParentsPortal — student login + attendance/exams/report-card/fees/leave/
@@ -360,6 +372,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
   const [siblings, setSiblings] = useState([]);
   const [student, setStudent] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const [loginGcc, setLoginGcc] = useState('');
   const [loginName, setLoginName] = useState('');
@@ -518,6 +531,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
   const handleTabClick = (id) => {
     setActiveTab(id);
+    setMoreOpen(false);
     if (!student) return;
     if (id === 'att' && attendance.status === 'idle') loadAttendance(student.id);
     if (id === 'exams' && exams.status === 'idle') loadExams(student.id);
@@ -1143,7 +1157,14 @@ export default function ParentsPortal({ isOpen, onClose }) {
           >
             ✕
           </button>
-          <div style={{ width: '100%', maxWidth: 400, borderRadius: 16, backgroundColor: 'white', boxShadow: '0 10px 40px -10px rgba(15,23,42,.15)', padding: isMobile ? '24px 20px' : 32, borderTop: `4px solid ${NAVY}` }}>
+          <div style={{
+            width: '100%', maxWidth: 400,
+            borderRadius: isMobile ? 28 : 16,
+            backgroundColor: 'white',
+            boxShadow: isMobile ? '0 2px 10px rgba(30,58,95,0.12)' : '0 10px 40px -10px rgba(15,23,42,.15)',
+            padding: isMobile ? '28px 22px' : 32,
+            borderTop: isMobile ? 'none' : `4px solid ${NAVY}`,
+          }}>
             <div style={{ textAlign: 'center', marginBottom: 26 }}>
               <img
                 src={EMBLEM_URL}
@@ -1155,14 +1176,20 @@ export default function ParentsPortal({ isOpen, onClose }) {
               <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>GNSI · Khangabok, Manipur</p>
             </div>
             {loginError && (
-              <div style={{ marginBottom: 16, borderRadius: 10, border: '1px solid #fecaca', backgroundColor: '#fef2f2', padding: '12px 16px', fontSize: 13, color: '#b91c1c' }}>
+              <div style={{ marginBottom: 16, borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #fecaca', backgroundColor: isMobile ? '#fdeaea' : '#fef2f2', padding: '12px 16px', fontSize: 13, color: '#b91c1c' }}>
                 {loginError}
               </div>
             )}
             <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#64748b', marginBottom: 6 }}>GCC No.</label>
             <input
               type="text"
-              style={{ width: '100%', borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', padding: '12px 14px', color: '#1e293b', outline: 'none', marginBottom: 16, fontSize: 14, boxSizing: 'border-box' }}
+              style={{
+                width: '100%', borderRadius: isMobile ? 16 : 10,
+                border: isMobile ? 'none' : '1px solid #cbd5e1',
+                backgroundColor: isMobile ? '#eef1f7' : '#f8fafc',
+                padding: isMobile ? '14px 16px' : '12px 14px',
+                color: '#1e293b', outline: 'none', marginBottom: 16, fontSize: 14, boxSizing: 'border-box',
+              }}
               placeholder="e.g. 1107"
               value={loginGcc}
               onChange={(e) => setLoginGcc(e.target.value)}
@@ -1170,14 +1197,25 @@ export default function ParentsPortal({ isOpen, onClose }) {
             <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#64748b', marginBottom: 6 }}>Student Name</label>
             <input
               type="text"
-              style={{ width: '100%', borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', padding: '12px 14px', color: '#1e293b', outline: 'none', marginBottom: 22, fontSize: 14, boxSizing: 'border-box' }}
+              style={{
+                width: '100%', borderRadius: isMobile ? 16 : 10,
+                border: isMobile ? 'none' : '1px solid #cbd5e1',
+                backgroundColor: isMobile ? '#eef1f7' : '#f8fafc',
+                padding: isMobile ? '14px 16px' : '12px 14px',
+                color: '#1e293b', outline: 'none', marginBottom: 22, fontSize: 14, boxSizing: 'border-box',
+              }}
               placeholder="Full name as registered"
               value={loginName}
               onChange={(e) => setLoginName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
             />
             <button
-              style={{ width: '100%', borderRadius: 10, backgroundColor: NAVY, color: 'white', fontWeight: 700, padding: '13px 0', border: 'none', cursor: loginBusy ? 'not-allowed' : 'pointer', fontSize: 14, opacity: loginBusy ? 0.6 : 1, boxShadow: '0 2px 8px rgba(30,58,95,0.25)' }}
+              style={{
+                width: '100%', borderRadius: isMobile ? 999 : 10, backgroundColor: NAVY, color: 'white', fontWeight: 700,
+                padding: isMobile ? '15px 0' : '13px 0', border: 'none', cursor: loginBusy ? 'not-allowed' : 'pointer',
+                fontSize: 14, opacity: loginBusy ? 0.6 : 1,
+                boxShadow: isMobile ? '0 3px 8px rgba(30,58,95,0.3)' : '0 2px 8px rgba(30,58,95,0.25)',
+              }}
               disabled={loginBusy}
               onClick={handleLogin}
             >
@@ -1213,7 +1251,12 @@ export default function ParentsPortal({ isOpen, onClose }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, flexShrink: 0 }}>
               {siblings.length > 1 && (
                 <select
-                  style={{ borderRadius: 8, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#1e293b', fontSize: isMobile ? 11 : 12, padding: isMobile ? '6px 6px' : '7px 10px', outline: 'none', maxWidth: isMobile ? 90 : 'none' }}
+                  style={{
+                    borderRadius: isMobile ? 999 : 8,
+                    border: isMobile ? 'none' : '1px solid #cbd5e1',
+                    backgroundColor: isMobile ? '#eef1f7' : '#f8fafc',
+                    color: '#1e293b', fontSize: isMobile ? 11 : 12, padding: isMobile ? '7px 10px' : '7px 10px', outline: 'none', maxWidth: isMobile ? 90 : 'none',
+                  }}
                   value={student.id}
                   onChange={(e) => {
                     const chosen = siblings.find(s => String(s.id) === e.target.value);
@@ -1226,36 +1269,48 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 </select>
               )}
               <button
-                style={{ borderRadius: 8, border: '1px solid #e2e8f0', color: '#64748b', backgroundColor: 'white', padding: isMobile ? '7px 9px' : '8px 12px', fontSize: isMobile ? 11 : 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                style={{
+                  borderRadius: isMobile ? 999 : 8,
+                  border: isMobile ? 'none' : '1px solid #e2e8f0',
+                  color: isMobile ? NAVY : '#64748b',
+                  backgroundColor: isMobile ? '#eef1f7' : 'white',
+                  padding: isMobile ? '8px 10px' : '8px 12px', fontSize: isMobile ? 13 : 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                }}
                 onClick={() => { handleLogout(); onClose(); }}
               >
                 {isMobile ? '✕' : 'Logout ✕'}
               </button>
             </div>
           </div>
-          <div style={{ position: 'sticky', top: isMobile ? 50 : 60, zIndex: 10, display: 'flex', gap: 6, overflowX: 'auto', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: isMobile ? '8px 10px' : '10px 16px' }} className="no-scrollbar">
-            {TABS.map(t => (
-              <button
-                key={t.id}
-                onClick={() => handleTabClick(t.id)}
-                style={{
-                  flexShrink: 0, borderRadius: 999, padding: isMobile ? '6px 11px' : '7px 14px', fontSize: isMobile ? 11 : 12, fontWeight: 700,
-                  letterSpacing: '.02em', whiteSpace: 'nowrap', border: 'none', cursor: 'pointer', transition: 'all .15s',
-                  backgroundColor: activeTab === t.id ? NAVY : '#f1f5f9',
-                  color: activeTab === t.id ? 'white' : '#64748b',
-                }}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <div style={{ flex: 1, padding: isMobile ? '14px 10px' : '20px 16px', maxWidth: 960, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
-            <div style={{
-              display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', flexWrap: isMobile ? 'wrap' : 'nowrap',
-              gap: isMobile ? 12 : 16, borderRadius: 12, backgroundColor: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-              padding: isMobile ? 14 : 16, marginBottom: isMobile ? 14 : 20, borderLeft: `4px solid ${NAVY}`,
+          {!isMobile && (
+            <div style={{ position: 'sticky', top: 60, zIndex: 10, display: 'flex', gap: 6, overflowX: 'auto', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: '10px 16px' }} className="no-scrollbar">
+              {TABS.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => handleTabClick(t.id)}
+                  style={{
+                    flexShrink: 0, borderRadius: 999, padding: '7px 14px', fontSize: 12, fontWeight: 700,
+                    letterSpacing: '.02em', whiteSpace: 'nowrap', border: 'none', cursor: 'pointer', transition: 'all .15s',
+                    backgroundColor: activeTab === t.id ? NAVY : '#f1f5f9',
+                    color: activeTab === t.id ? 'white' : '#64748b',
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <div style={{ flex: 1, padding: isMobile ? '14px 10px' : '20px 16px', paddingBottom: isMobile ? 78 : 20, maxWidth: 960, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+            <div style={isMobile ? {
+              display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap',
+              gap: 12, borderRadius: 24, backgroundColor: 'white', boxShadow: '0 1px 3px rgba(30,58,95,0.10), 0 1px 2px rgba(30,58,95,0.06)',
+              padding: 16, marginBottom: 14,
+            } : {
+              display: 'flex', alignItems: 'center', flexWrap: 'nowrap',
+              gap: 16, borderRadius: 12, backgroundColor: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+              padding: 16, marginBottom: 20, borderLeft: `4px solid ${NAVY}`,
             }}>
-              <div style={{ height: isMobile ? 46 : 56, width: isMobile ? 46 : 56, flexShrink: 0, borderRadius: '50%', backgroundColor: '#eef2f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 15 : 18, fontWeight: 800, color: NAVY, overflow: 'hidden', border: `2px solid ${NAVY}` }}>
+              <div style={{ height: isMobile ? 46 : 56, width: isMobile ? 46 : 56, flexShrink: 0, borderRadius: '50%', backgroundColor: '#eef2f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 15 : 18, fontWeight: 800, color: NAVY, overflow: 'hidden', border: isMobile ? 'none' : `2px solid ${NAVY}` }}>
                 {student.photo_url
                   ? <img src={student.photo_url} alt="" style={{ height: '100%', width: '100%', objectFit: 'cover', borderRadius: '50%' }} />
                   : ((student.name || 'S')[0] || 'S').toUpperCase()}
@@ -1264,14 +1319,17 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 <h3 style={{ fontSize: isMobile ? 14 : 16, fontWeight: 800, color: '#1e293b', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name || 'Student'}</h3>
                 <p style={{ fontSize: isMobile ? 11 : 12, color: '#64748b', margin: '2px 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[student.course, student.class_name, student.batch].filter(Boolean).join(' · ')}</p>
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                  <span style={{ borderRadius: 999, backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', padding: '2px 10px', fontSize: 10, fontWeight: 700, color: '#64748b' }}>{student.hostel_type || '—'}</span>
-                  <span style={{ borderRadius: 999, backgroundColor: '#dcfce7', border: '1px solid #bbf7d0', padding: '2px 10px', fontSize: 10, fontWeight: 700, color: '#16a34a' }}>{student.status || 'Active'}</span>
+                  <span style={{ borderRadius: 999, backgroundColor: isMobile ? '#eef1f7' : '#f1f5f9', border: isMobile ? 'none' : '1px solid #e2e8f0', padding: '3px 10px', fontSize: 10, fontWeight: 700, color: '#64748b' }}>{student.hostel_type || '—'}</span>
+                  <span style={{ borderRadius: 999, backgroundColor: isMobile ? '#d9f2e3' : '#dcfce7', border: isMobile ? 'none' : '1px solid #bbf7d0', padding: '3px 10px', fontSize: 10, fontWeight: 700, color: '#16a34a' }}>{student.status || 'Active'}</span>
                 </div>
               </div>
               <button
                 style={{
-                  flexShrink: 0, borderRadius: 10, border: `1px solid ${NAVY}`, backgroundColor: '#eef2f9', color: NAVY,
-                  padding: isMobile ? '9px 12px' : '10px 14px', fontSize: isMobile ? 11 : 12, fontWeight: 700,
+                  flexShrink: 0,
+                  borderRadius: isMobile ? 999 : 10,
+                  border: isMobile ? 'none' : `1px solid ${NAVY}`,
+                  backgroundColor: '#eef2f9', color: NAVY,
+                  padding: isMobile ? '11px 14px' : '10px 14px', fontSize: isMobile ? 12 : 12, fontWeight: 700,
                   cursor: exportBusy ? 'not-allowed' : 'pointer', opacity: exportBusy ? 0.6 : 1,
                   width: isMobile ? '100%' : 'auto', textAlign: 'center',
                 }}
@@ -1333,6 +1391,85 @@ export default function ParentsPortal({ isOpen, onClose }) {
               <AlertsTab state={alerts} />
             )}
           </div>
+
+          {isMobile && (
+            <>
+              {/* Fixed bottom nav — native-app tab bar. Fits 4 primary
+                  destinations plus a "More" button that opens the rest as a
+                  slide-up sheet, the standard pattern once tabs outgrow a
+                  bottom bar (5 slots total, thumb-reachable). */}
+              <div
+                style={{
+                  position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 30,
+                  display: 'flex', backgroundColor: 'white', borderTop: '1px solid #e2e8f0',
+                  boxShadow: '0 -2px 10px rgba(0,0,0,0.06)',
+                  paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+                }}
+              >
+                {BOTTOM_NAV_TABS.map(t => {
+                  const active = activeTab === t.id && !moreOpen;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => handleTabClick(t.id)}
+                      style={{
+                        flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                        gap: 2, padding: '8px 4px 6px', border: 'none', background: 'none', cursor: 'pointer',
+                        color: active ? NAVY : '#94a3b8',
+                      }}
+                    >
+                      <span style={{ fontSize: 19, lineHeight: 1 }}>{t.icon}</span>
+                      <span style={{ fontSize: 10, fontWeight: active ? 800 : 600 }}>{t.label}</span>
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => setMoreOpen(true)}
+                  style={{
+                    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    gap: 2, padding: '8px 4px 6px', border: 'none', background: 'none', cursor: 'pointer',
+                    color: moreOpen || MORE_TABS.some(t => t.id === activeTab) ? NAVY : '#94a3b8',
+                  }}
+                >
+                  <span style={{ fontSize: 19, lineHeight: 1 }}>☰</span>
+                  <span style={{ fontSize: 10, fontWeight: (moreOpen || MORE_TABS.some(t => t.id === activeTab)) ? 800 : 600 }}>More</span>
+                </button>
+              </div>
+
+              {/* "More" drawer — slide-up sheet, dismissible by tapping the
+                  scrim or an item. Kept mounted only while open. */}
+              {moreOpen && (
+                <div
+                  style={{ position: 'fixed', inset: 0, zIndex: 40, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'flex-end' }}
+                  onClick={() => setMoreOpen(false)}
+                >
+                  <div
+                    style={{
+                      width: '100%', backgroundColor: 'white', borderTopLeftRadius: 16, borderTopRightRadius: 16,
+                      padding: '10px 10px calc(10px + env(safe-area-inset-bottom, 0px))', boxShadow: '0 -4px 20px rgba(0,0,0,0.15)',
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div style={{ width: 36, height: 4, borderRadius: 999, backgroundColor: '#e2e8f0', margin: '2px auto 10px' }} />
+                    {MORE_TABS.map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => handleTabClick(t.id)}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
+                          borderRadius: 10, border: 'none', padding: '13px 12px', fontSize: 14, fontWeight: 700,
+                          backgroundColor: activeTab === t.id ? '#eef2f9' : 'transparent',
+                          color: activeTab === t.id ? NAVY : '#334155', cursor: 'pointer',
+                        }}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
       </div>
@@ -1345,6 +1482,28 @@ export default function ParentsPortal({ isOpen, onClose }) {
 // glassmorphism.
 
 const NAVY = '#1e3a5f';
+
+// ── Material Design 3 tokens (mobile only) ───────────────────────────────
+// NAVY stays the M3 "primary" so the brand colour doesn't change — only the
+// shapes, surfaces and elevation shift to Android's current style. Desktop
+// keeps the original flatter web-card look (Card/Pill/etc. branch on
+// isMobile), since M3 is specifically an Android convention, not a web one.
+const M3 = {
+  radiusLg: 20,      // cards / sheets
+  radiusMd: 16,      // tonal buttons, tiles
+  radiusSm: 12,      // inputs, pills
+  radiusFull: 999,   // chips
+  primary: NAVY,
+  primaryContainer: '#dbe4f5',   // tonal fill behind primary content
+  onPrimaryContainer: NAVY,
+  surface: '#ffffff',
+  surfaceContainer: '#f4f6fb',   // low-emphasis tonal surface (M3 "surface container")
+  outline: '#dde2ee',
+  // M3 elevation is a soft, colour-tinted shadow rather than a hard drop
+  // shadow — level 1 (resting cards) and level 3 (sheets/menus over content).
+  elevation1: '0 1px 3px rgba(30,58,95,0.10), 0 1px 2px rgba(30,58,95,0.06)',
+  elevation3: '0 4px 12px rgba(30,58,95,0.14), 0 2px 6px rgba(30,58,95,0.08)',
+};
 
 function Loading() {
   return (
@@ -1371,14 +1530,25 @@ function Card({ title, right, children }) {
   // only mobile need is tighter padding.
   const isMobile = useWindowWidth() < 640;
   return (
-    <div style={{ borderRadius: 12, border: '1px solid #e2e8f0', backgroundColor: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', overflow: 'hidden', marginBottom: 16 }}>
+    <div style={{
+      borderRadius: isMobile ? M3.radiusLg : 12,
+      border: isMobile ? 'none' : '1px solid #e2e8f0',
+      backgroundColor: isMobile ? M3.surface : 'white',
+      boxShadow: isMobile ? M3.elevation1 : '0 2px 8px rgba(0,0,0,0.06)',
+      overflow: 'hidden', marginBottom: isMobile ? 12 : 16,
+    }}>
       {title && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderBottom: '1px solid #e2e8f0', padding: isMobile ? '12px 14px' : '14px 18px', flexWrap: 'wrap' }}>
-          <div style={{ fontSize: isMobile ? 13 : 14, fontWeight: 800, color: NAVY }}>{title}</div>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+          borderBottom: isMobile ? 'none' : '1px solid #e2e8f0',
+          backgroundColor: isMobile ? M3.surfaceContainer : 'transparent',
+          padding: isMobile ? '14px 16px' : '14px 18px',
+        }}>
+          <div style={{ fontSize: isMobile ? 14 : 14, fontWeight: 700, letterSpacing: isMobile ? 0 : undefined, color: NAVY }}>{title}</div>
           {right}
         </div>
       )}
-      <div style={{ padding: isMobile ? 14 : 18 }}>{children}</div>
+      <div style={{ padding: isMobile ? 16 : 18 }}>{children}</div>
     </div>
   );
 }
@@ -1414,17 +1584,29 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? 130 : 140}px, 1fr))`, gap: isMobile ? 8 : 12, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? 130 : 140}px, 1fr))`, gap: isMobile ? 10 : 12, marginBottom: 16 }}>
         {tiles.map(t => (
           <button
             key={t.id}
             onClick={() => onGoTab(t.id)}
-            style={{
+            style={isMobile ? {
+              textAlign: 'left', borderRadius: M3.radiusMd, border: 'none', backgroundColor: M3.surface,
+              padding: 14, cursor: 'pointer', boxShadow: M3.elevation1,
+            } : {
               textAlign: 'left', borderRadius: 12, border: '1px solid #e2e8f0', backgroundColor: 'white',
-              padding: isMobile ? 12 : 16, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${t.color}`,
+              padding: 16, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${t.color}`,
             }}
           >
-            <div style={{ fontSize: 20, marginBottom: 8 }}>{t.icon}</div>
+            {isMobile ? (
+              <div style={{
+                height: 34, width: 34, borderRadius: M3.radiusSm, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 16, marginBottom: 10, backgroundColor: `${t.color}1a`,
+              }}>
+                {t.icon}
+              </div>
+            ) : (
+              <div style={{ fontSize: 20, marginBottom: 8 }}>{t.icon}</div>
+            )}
             <div style={{ fontSize: 20, fontWeight: 800, color: t.color }}>{t.val}</div>
             <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontWeight: 600 }}>{t.lbl}</div>
           </button>
@@ -1432,15 +1614,27 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
       </div>
 
       {pushStatus !== 'subscribed' && (
-        <div style={{ borderRadius: 12, border: '1px solid #dbeafe', backgroundColor: '#eff6ff', padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+        <div style={isMobile ? {
+          borderRadius: M3.radiusMd, border: 'none', backgroundColor: M3.primaryContainer,
+          padding: 16, display: 'flex', flexDirection: 'column', gap: 12,
+        } : {
+          borderRadius: 12, border: '1px solid #dbeafe', backgroundColor: '#eff6ff', padding: 16,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap',
+        }}>
           <div>
-            <strong style={{ fontSize: 13, fontWeight: 800, color: NAVY }}>Turn on notifications</strong>
-            <p style={{ fontSize: 12, color: '#64748b', marginTop: 4, marginBottom: 0 }}>
+            <strong style={{ fontSize: 13, fontWeight: 800, color: M3.onPrimaryContainer }}>Turn on notifications</strong>
+            <p style={{ fontSize: 12, color: isMobile ? '#3d5372' : '#64748b', marginTop: 4, marginBottom: 0 }}>
               Get notified instantly about new notices, absences and exam results.
             </p>
           </div>
           <button
-            style={{ flexShrink: 0, borderRadius: 8, backgroundColor: NAVY, color: 'white', fontWeight: 700, padding: '10px 16px', fontSize: 12, border: 'none', cursor: (pushStatus === 'unsupported' || pushStatus === 'denied') ? 'not-allowed' : 'pointer', opacity: (pushStatus === 'unsupported' || pushStatus === 'denied') ? 0.6 : 1 }}
+            style={{
+              flexShrink: 0, borderRadius: isMobile ? M3.radiusFull : 8, backgroundColor: NAVY, color: 'white', fontWeight: 700,
+              padding: isMobile ? '11px 18px' : '10px 16px', fontSize: 12, border: 'none',
+              width: isMobile ? '100%' : 'auto',
+              cursor: (pushStatus === 'unsupported' || pushStatus === 'denied') ? 'not-allowed' : 'pointer',
+              opacity: (pushStatus === 'unsupported' || pushStatus === 'denied') ? 0.6 : 1,
+            }}
             onClick={onEnablePush}
             disabled={pushStatus === 'unsupported' || pushStatus === 'denied'}
           >
@@ -1505,15 +1699,15 @@ function AttendanceTab({ state, isMobile }) {
           })}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: isMobile ? 8 : 12 }}>
-          <div style={{ borderRadius: 10, border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', padding: isMobile ? 10 : 12, textAlign: 'center' }}>
+          <div style={{ borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #bbf7d0', backgroundColor: isMobile ? '#e3f6e9' : '#f0fdf4', padding: isMobile ? 10 : 12, textAlign: 'center' }}>
             <strong style={{ display: 'block', fontSize: isMobile ? 16 : 18, fontWeight: 800, color: '#16a34a' }}>{present}</strong>
             <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: '#64748b', fontWeight: 700 }}>Present</span>
           </div>
-          <div style={{ borderRadius: 10, border: '1px solid #fecaca', backgroundColor: '#fef2f2', padding: isMobile ? 10 : 12, textAlign: 'center' }}>
+          <div style={{ borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #fecaca', backgroundColor: isMobile ? '#fbe4e4' : '#fef2f2', padding: isMobile ? 10 : 12, textAlign: 'center' }}>
             <strong style={{ display: 'block', fontSize: isMobile ? 16 : 18, fontWeight: 800, color: '#dc2626' }}>{absent}</strong>
             <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: '#64748b', fontWeight: 700 }}>Absent</span>
           </div>
-          <div style={{ borderRadius: 10, border: '1px solid #fde68a', backgroundColor: '#fffbeb', padding: isMobile ? 10 : 12, textAlign: 'center' }}>
+          <div style={{ borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #fde68a', backgroundColor: isMobile ? '#fdf1da' : '#fffbeb', padding: isMobile ? 10 : 12, textAlign: 'center' }}>
             <strong style={{ display: 'block', fontSize: isMobile ? 16 : 18, fontWeight: 800, color: '#d97706' }}>{pct}%</strong>
             <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: '#64748b', fontWeight: 700 }}>Rate</span>
           </div>
@@ -1568,7 +1762,9 @@ function ExamsTab({ state }) {
 
 function ReportCardTab({ examTypes, selectedType, onTypeChange, dates, selectedDate, onDateChange, onPrint, printBusy, isMobile }) {
   const canPrint = selectedType && selectedDate && !printBusy;
-  const selectStyle = { width: '100%', borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#1e293b', fontSize: 13, padding: '10px 14px', outline: 'none', boxSizing: 'border-box' };
+  const selectStyle = isMobile
+    ? { width: '100%', borderRadius: 16, border: 'none', backgroundColor: '#eef1f7', color: '#1e293b', fontSize: 13, padding: '12px 14px', outline: 'none', boxSizing: 'border-box' }
+    : { width: '100%', borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#1e293b', fontSize: 13, padding: '10px 14px', outline: 'none', boxSizing: 'border-box' };
   return (
     <Card title="Report Card">
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 16 }}>
@@ -1595,7 +1791,12 @@ function ReportCardTab({ examTypes, selectedType, onTypeChange, dates, selectedD
         Pick an exam and date, then view or print an official report card showing subject-wise marks, grade and class rank.
       </p>
       <button
-        style={{ borderRadius: 10, backgroundColor: NAVY, color: 'white', fontWeight: 700, padding: '12px 20px', fontSize: 13, border: 'none', cursor: canPrint ? 'pointer' : 'not-allowed', opacity: canPrint ? 1 : 0.5 }}
+        style={{
+          borderRadius: isMobile ? 999 : 10, backgroundColor: NAVY, color: 'white', fontWeight: 700,
+          padding: isMobile ? '13px 20px' : '12px 20px', fontSize: 13, border: 'none',
+          width: isMobile ? '100%' : 'auto',
+          cursor: canPrint ? 'pointer' : 'not-allowed', opacity: canPrint ? 1 : 0.5,
+        }}
         onClick={onPrint}
         disabled={!canPrint}
       >
@@ -1620,11 +1821,18 @@ function FeesTab({ state, onPayNow, nextDue, isMobile }) {
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isMobile ? 8 : 12, marginBottom: 16 }}>
-            <div style={{ borderRadius: 10, border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', padding: isMobile ? 12 : 16, textAlign: 'center' }}>
+            <div style={{ borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #bbf7d0', backgroundColor: isMobile ? '#e3f6e9' : '#f0fdf4', padding: isMobile ? 12 : 16, textAlign: 'center' }}>
               <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', fontWeight: 700, marginBottom: 4 }}>Total Paid</div>
               <div style={{ fontSize: isMobile ? 17 : 20, fontWeight: 800, color: '#16a34a' }}>₹{state.data.totalPaid ?? 0}</div>
             </div>
-            <div style={{ borderRadius: 10, border: `1px solid ${(state.data.totalDue ?? 0) > 0 ? '#fecaca' : '#bbf7d0'}`, backgroundColor: (state.data.totalDue ?? 0) > 0 ? '#fef2f2' : '#f0fdf4', padding: isMobile ? 12 : 16, textAlign: 'center' }}>
+            <div style={{
+              borderRadius: isMobile ? 16 : 10,
+              border: isMobile ? 'none' : `1px solid ${(state.data.totalDue ?? 0) > 0 ? '#fecaca' : '#bbf7d0'}`,
+              backgroundColor: isMobile
+                ? ((state.data.totalDue ?? 0) > 0 ? '#fbe4e4' : '#e3f6e9')
+                : ((state.data.totalDue ?? 0) > 0 ? '#fef2f2' : '#f0fdf4'),
+              padding: isMobile ? 12 : 16, textAlign: 'center',
+            }}>
               <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', fontWeight: 700, marginBottom: 4 }}>Total Due</div>
               <div style={{ fontSize: isMobile ? 17 : 20, fontWeight: 800, color: (state.data.totalDue ?? 0) > 0 ? '#dc2626' : '#16a34a' }}>
                 ₹{state.data.totalDue ?? 0}
@@ -1640,7 +1848,10 @@ function FeesTab({ state, onPayNow, nextDue, isMobile }) {
 
           {nextDue && (
             <button
-              style={{ width: '100%', borderRadius: 10, backgroundColor: NAVY, color: 'white', fontWeight: 700, padding: '12px 20px', fontSize: 13, border: 'none', cursor: 'pointer', marginBottom: 20 }}
+              style={{
+                width: '100%', borderRadius: isMobile ? 999 : 10, backgroundColor: NAVY, color: 'white', fontWeight: 700,
+                padding: isMobile ? '13px 20px' : '12px 20px', fontSize: 13, border: 'none', cursor: 'pointer', marginBottom: 20,
+              }}
               onClick={onPayNow}
             >
               💳 Pay {nextDue.kind === 'admission' ? 'Admission Fee' : `${nextDue.kind === 'flat' ? 'Flat' : 'Course'} Fee — ${nextDue.for_month} ${nextDue.year}`} (₹{nextDue.amount}) Online
@@ -1682,9 +1893,16 @@ function FeesTab({ state, onPayNow, nextDue, isMobile }) {
 }
 
 function FeeBreakdownRow({ label, paid, due, detail }) {
+  const isMobile = useWindowWidth() < 640;
   const negative = !paid && due > 0;
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: '12px 16px' }}>
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+      borderRadius: isMobile ? 16 : 10,
+      border: isMobile ? 'none' : '1px solid #e2e8f0',
+      backgroundColor: isMobile ? M3.surfaceContainer : '#f8fafc',
+      padding: '12px 16px',
+    }}>
       <div>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{label}</div>
         <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{detail}</div>
@@ -1697,11 +1915,17 @@ function FeeBreakdownRow({ label, paid, due, detail }) {
 }
 
 function FeeMonthsBreakdown({ label, items, due }) {
+  const isMobile = useWindowWidth() < 640;
   const list = items || [];
   const unpaid = list.filter(i => !i.paid);
   const negative = (due ?? 0) > 0;
   return (
-    <div style={{ borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: '12px 16px' }}>
+    <div style={{
+      borderRadius: isMobile ? 16 : 10,
+      border: isMobile ? 'none' : '1px solid #e2e8f0',
+      backgroundColor: isMobile ? M3.surfaceContainer : '#f8fafc',
+      padding: '12px 16px',
+    }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{label}</div>
         <div style={{ fontSize: 13, fontWeight: 800, flexShrink: 0, color: negative ? '#dc2626' : '#16a34a' }}>
@@ -1718,6 +1942,7 @@ function FeeMonthsBreakdown({ label, items, due }) {
 }
 
 function LeaveTab({ state }) {
+  const isMobile = useWindowWidth() < 640;
   // Hostel.jsx's real leave_records statuses are capitalized (Approved,
   // Pending, Rejected) — not the lowercase guesses this used to key off.
   const stTone = { Approved: 'hi', Rejected: 'lo', Pending: 'mi' };
@@ -1731,7 +1956,12 @@ function LeaveTab({ state }) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {state.data.map((r, i) => (
-              <div style={{ borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: 16 }} key={i}>
+              <div style={{
+                borderRadius: isMobile ? 16 : 10,
+                border: isMobile ? 'none' : '1px solid #e2e8f0',
+                backgroundColor: isMobile ? M3.surfaceContainer : '#f8fafc',
+                padding: 16,
+              }} key={i}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{r.from_date} → {r.to_date}</span>
                   <Pill tone={stTone[r.status] || 'mi'}>{r.status || 'Pending'}</Pill>
@@ -1812,7 +2042,9 @@ function GrievanceTab({ studentId, studentName, done, onSubmitted, isMobile }) {
     );
   }
 
-  const inputStyle = { width: '100%', borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', padding: '11px 14px', fontSize: 13, color: '#1e293b', outline: 'none', boxSizing: 'border-box' };
+  const inputStyle = isMobile
+    ? { width: '100%', borderRadius: 16, border: 'none', backgroundColor: '#eef1f7', padding: '13px 14px', fontSize: 13, color: '#1e293b', outline: 'none', boxSizing: 'border-box' }
+    : { width: '100%', borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', padding: '11px 14px', fontSize: 13, color: '#1e293b', outline: 'none', boxSizing: 'border-box' };
 
   return (
     <Card title="Raise a Concern">
@@ -1820,7 +2052,7 @@ function GrievanceTab({ studentId, studentName, done, onSubmitted, isMobile }) {
         {studentName ? `Regarding: ${studentName}` : "Tell us what's on your mind — we take every concern seriously."}
       </p>
       {error && (
-        <div style={{ marginBottom: 16, borderRadius: 10, border: '1px solid #fecaca', backgroundColor: '#fef2f2', padding: '12px 16px', fontSize: 13, color: '#b91c1c' }}>
+        <div style={{ marginBottom: 16, borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #fecaca', backgroundColor: isMobile ? '#fbe4e4' : '#fef2f2', padding: '12px 16px', fontSize: 13, color: '#b91c1c' }}>
           {error}
         </div>
       )}
@@ -1854,7 +2086,11 @@ function GrievanceTab({ studentId, studentName, done, onSubmitted, isMobile }) {
         <button
           type="submit"
           disabled={submitting}
-          style={{ width: '100%', borderRadius: 10, backgroundColor: NAVY, color: 'white', fontWeight: 700, padding: '13px 0', border: 'none', fontSize: 14, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+          style={{
+            width: '100%', borderRadius: isMobile ? 999 : 10, backgroundColor: NAVY, color: 'white', fontWeight: 700,
+            padding: isMobile ? '15px 0' : '13px 0', border: 'none', fontSize: 14,
+            cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1,
+          }}
         >
           {submitting ? 'Submitting…' : 'Submit Concern'}
         </button>
@@ -1864,6 +2100,7 @@ function GrievanceTab({ studentId, studentName, done, onSubmitted, isMobile }) {
 }
 
 function AlertsTab({ state }) {
+  const isMobile = useWindowWidth() < 640;
   return (
     <Card title="Recent Alerts">
       {(state.status === 'loading' || state.status === 'idle') && <Loading />}
@@ -1877,9 +2114,11 @@ function AlertsTab({ state }) {
               <div
                 key={i}
                 style={{
-                  borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-                  border: `1px solid ${a.type === 'exam' ? '#fecaca' : '#fde68a'}`,
-                  backgroundColor: a.type === 'exam' ? '#fef2f2' : '#fffbeb',
+                  borderRadius: isMobile ? 16 : 10, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                  border: isMobile ? 'none' : `1px solid ${a.type === 'exam' ? '#fecaca' : '#fde68a'}`,
+                  backgroundColor: isMobile
+                    ? (a.type === 'exam' ? '#fbe4e4' : '#fdf1da')
+                    : (a.type === 'exam' ? '#fef2f2' : '#fffbeb'),
                 }}
               >
                 <div style={{ fontSize: 13, color: '#1e293b' }}>{a.msg}</div>
