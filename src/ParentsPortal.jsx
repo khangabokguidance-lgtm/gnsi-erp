@@ -1300,7 +1300,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
               ))}
             </div>
           )}
-          <div style={{ flex: 1, padding: isMobile ? '14px 10px' : '28px 16px', paddingBottom: isMobile ? 78 : 20, maxWidth: 960, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+          <div style={{ flex: 1, position: 'relative', zIndex: 1, padding: isMobile ? '14px 10px' : '28px 16px', paddingBottom: isMobile ? 78 : 20, maxWidth: 960, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
             <div style={isMobile ? {
               display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap',
               gap: 12, borderRadius: 24, backgroundColor: 'white', boxShadow: '0 1px 3px rgba(30,58,95,0.10), 0 1px 2px rgba(30,58,95,0.06)',
@@ -1553,13 +1553,16 @@ function Card({ title, right, children }) {
   );
 }
 
-function PremiumTable({ head, children }) {
+// `align` is optional — an array of 'left'/'right'/'center' matching `head`,
+// used when a column (e.g. a numeric/marks column) reads better right- or
+// center-aligned than the default left.
+function PremiumTable({ head, align, children }) {
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ textAlign: 'left', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', color: '#94a3b8', borderBottom: '1px solid #e2e8f0' }}>
-            {head.map((h, i) => <th key={i} style={{ padding: '10px 12px', fontWeight: 700 }}>{h}</th>)}
+            {head.map((h, i) => <th key={i} style={{ padding: '10px 12px', fontWeight: 700, textAlign: align?.[i] || 'left' }}>{h}</th>)}
           </tr>
         </thead>
         <tbody>{children}</tbody>
@@ -1731,32 +1734,56 @@ function AttendanceTab({ state, isMobile }) {
   );
 }
 
+// Groups flat exam-mark rows by exam (name + date) so each exam gets its
+// own compact subject/marks table instead of repeating the exam name on
+// every row — the repeated long names (e.g. "1st Monthly Test of
+// September") were what forced the old single-table layout to wrap onto
+// several lines per row on narrow screens.
+function groupExamRows(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    const key = `${r.examName}__${r.exam_date || ''}`;
+    if (!groups.has(key)) groups.set(key, { examName: r.examName, exam_date: r.exam_date, rows: [] });
+    groups.get(key).rows.push(r);
+  }
+  return [...groups.values()];
+}
+
 function ExamsTab({ state }) {
+  const isMobile = useWindowWidth() < 640;
+  const groups = state.status === 'ready' ? groupExamRows(state.data) : [];
+
   return (
-    <Card title="Exam Results">
-      {(state.status === 'loading' || state.status === 'idle') && <Loading />}
-      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+    <div>
+      {(state.status === 'loading' || state.status === 'idle') && <Card title="Exam Results"><Loading /></Card>}
+      {state.status === 'error' && <Card title="Exam Results"><Empty icon="⚠️" text={state.error} /></Card>}
       {state.status === 'ready' && (
-        state.data.length === 0 ? (
-          <Empty icon="📝" text="No results yet" />
+        groups.length === 0 ? (
+          <Card title="Exam Results"><Empty icon="📝" text="No results yet" /></Card>
         ) : (
-          <PremiumTable head={['Exam', 'Subject', 'Marks', 'Date']}>
-            {state.data.map((r, i) => {
-              const tone = r.pct === null ? 'mi' : r.pct >= 75 ? 'hi' : r.pct >= 50 ? 'mi' : 'lo';
-              const marksStr = r.hasMarks ? (r.total !== null ? `${r.marks_obtained}/${r.total}` : r.marks_obtained) : 'Not graded';
-              return (
-                <tr key={i} style={{ borderTop: i ? '1px solid #f1f5f9' : 'none' }}>
-                  <td style={{ padding: '10px 12px', color: '#475569' }}>{r.examName}</td>
-                  <td style={{ padding: '10px 12px', color: '#475569' }}>{r.subject || '—'}</td>
-                  <td style={{ padding: '10px 12px' }}><Pill tone={tone}>{marksStr}</Pill></td>
-                  <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{r.exam_date ? r.exam_date.slice(0, 10) : '—'}</td>
-                </tr>
-              );
-            })}
-          </PremiumTable>
+          groups.map((g, gi) => (
+            <Card
+              key={gi}
+              title={g.examName}
+              right={<span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#94a3b8', fontWeight: 700 }}>{g.exam_date ? g.exam_date.slice(0, 10) : '—'}</span>}
+            >
+              <PremiumTable head={['Subject', 'Marks']} align={['left', 'right']}>
+                {g.rows.map((r, i) => {
+                  const tone = r.pct === null ? 'mi' : r.pct >= 75 ? 'hi' : r.pct >= 50 ? 'mi' : 'lo';
+                  const marksStr = r.hasMarks ? (r.total !== null ? `${r.marks_obtained}/${r.total}` : r.marks_obtained) : 'Not graded';
+                  return (
+                    <tr key={i} style={{ borderTop: i ? '1px solid #f1f5f9' : 'none' }}>
+                      <td style={{ padding: isMobile ? '10px 8px' : '10px 12px', color: '#475569', fontWeight: 600 }}>{r.subject || '—'}</td>
+                      <td style={{ padding: isMobile ? '10px 8px' : '10px 12px', textAlign: 'right' }}><Pill tone={tone}>{marksStr}</Pill></td>
+                    </tr>
+                  );
+                })}
+              </PremiumTable>
+            </Card>
+          ))
         )
       )}
-    </Card>
+    </div>
   );
 }
 
