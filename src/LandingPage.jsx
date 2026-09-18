@@ -35,7 +35,20 @@ export default function LandingPage({ onLogin }) {
   const [expandedCat, setExpandedCat] = useState(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { catIdx, itemIdx }
-  const [isPortalOpen, setIsPortalOpen] = useState(false);
+  // Opens straight to Parents Portal when the page is loaded with
+  // ?portal=1 or #portal in the URL — used by the mobile app shell so it
+  // can deep-link directly into the portal instead of landing on the
+  // homepage and requiring an extra tap. Read once at mount; the button
+  // clicks elsewhere on the page still work exactly as before.
+  const [isPortalOpen, setIsPortalOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('portal') === '1' || window.location.hash === '#portal';
+    } catch (_) {
+      return false;
+    }
+  });
   const [isFeeOpen, setIsFeeOpen] = useState(false);
   const [feePaymentInfo, setFeePaymentInfo] = useState({ upi_id: '', upi_qr_url: '' });
   const [activeTab, setActiveTab] = useState('home');
