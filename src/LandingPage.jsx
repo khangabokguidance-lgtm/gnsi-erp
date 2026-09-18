@@ -276,18 +276,42 @@ export default function LandingPage({ onLogin }) {
   const closeMobile = () => { setMobileOpen(false); setExpandedCat(null); };
 
   // ═══ TABBED SECTIONS ═══
+  // isPopRef guards against re-pushing history when we're the ones
+  // reacting to a popstate (back/forward) event — without this, every
+  // Back press would immediately push a new forward entry right back on
+  // top, and the user would need to press Back twice to actually move.
+  const isPopRef = useRef(false);
+
+  // Baseline the very first history entry as an explicit {tab:'home'}
+  // state (replacing the default null-state entry Vite/the browser
+  // starts with). Without this, the first tab the user ever visits pushes
+  // {tab:'home'} isn't there to pop back to — Back from that first tab
+  // lands on a null-state entry, which onPopState below already treats as
+  // 'home', but the SECOND Back press from Home then has to leave the
+  // page entirely (nothing left to pop), which reads as "Back does
+  // nothing" if the user expected another in-page step.
+  useEffect(() => {
+    try {
+      window.history.replaceState({ tab: 'home' }, '', window.location.hash || '#home');
+    } catch (e) { /* history API unavailable — ignore */ }
+  }, []);
+
   // Switches the visible content section and, if a specific in-page
   // element id is given (e.g. the #contact block inside "enquiry"),
   // scrolls to it once that tab's content has rendered.
   const goToTab = (id, scrollToId) => {
-    setActiveTab(id);
-    try {
-      if (id === 'home') {
-        window.history.pushState({ tab: 'home' }, '', '#home');
-      } else {
-        window.history.pushState({ tab: id }, '', '#' + id);
+    setActiveTab((prev) => {
+      // Only touch history when the tab is actually changing, and never
+      // push a new entry while we're mid-way through handling a
+      // popstate (back/forward) — that would immediately cancel out the
+      // Back press the user just made.
+      if (prev !== id && !isPopRef.current) {
+        try {
+          window.history.pushState({ tab: id }, '', '#' + id);
+        } catch (e) { /* history API unavailable — ignore */ }
       }
-    } catch (e) { /* history API unavailable — ignore */ }
+      return id;
+    });
     setTimeout(() => {
       const targetEl = document.getElementById(scrollToId || id);
       if (targetEl) targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -300,8 +324,13 @@ export default function LandingPage({ onLogin }) {
   // back to Home.
   useEffect(() => {
     const onPopState = (e) => {
+      isPopRef.current = true;
       const tab = e.state && e.state.tab ? e.state.tab : 'home';
       setActiveTab(tab);
+      // Release the guard on the next tick, after this render (and any
+      // effects it triggers) has settled, so a later real goToTab() call
+      // can push history normally again.
+      setTimeout(() => { isPopRef.current = false; }, 0);
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
