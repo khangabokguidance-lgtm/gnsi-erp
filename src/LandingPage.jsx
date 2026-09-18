@@ -282,19 +282,15 @@ export default function LandingPage({ onLogin }) {
   // top, and the user would need to press Back twice to actually move.
   const isPopRef = useRef(false);
 
-  // Baseline the very first history entry as an explicit {tab:'home'}
-  // state (replacing the default null-state entry Vite/the browser
-  // starts with). Without this, the first tab the user ever visits pushes
-  // {tab:'home'} isn't there to pop back to — Back from that first tab
-  // lands on a null-state entry, which onPopState below already treats as
-  // 'home', but the SECOND Back press from Home then has to leave the
-  // page entirely (nothing left to pop), which reads as "Back does
-  // nothing" if the user expected another in-page step.
-  useEffect(() => {
-    try {
-      window.history.replaceState({ tab: 'home' }, '', window.location.hash || '#home');
-    } catch (e) { /* history API unavailable — ignore */ }
-  }, []);
+  // NOTE: we deliberately do NOT replaceState() the initial history entry
+  // on load. That entry represents "how the user arrived here" — a
+  // Google result, a WhatsApp link, a bookmark — and rewriting it (even
+  // just to attach {tab:'home'} state) risks the browser treating it as
+  // an in-page navigation rather than the real referrer, which can leave
+  // Back unable to exit the site at all (confirmed in the wild, worse
+  // than the smaller issue this was meant to fix). onPopState below
+  // already treats a null/missing e.state as 'home', so the first entry
+  // needs no special handling — leave it exactly as the browser made it.
 
   // Switches the visible content section and, if a specific in-page
   // element id is given (e.g. the #contact block inside "enquiry"),
