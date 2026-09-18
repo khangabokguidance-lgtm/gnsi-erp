@@ -12,9 +12,11 @@ import PublicFeeLookup from './PublicFeeLookup';
 // TODO: consider moving to Supabase storage for consistency with other site assets
 const FOUNDER_PHOTO_URL = "https://i.postimg.cc/Vsd7VXZ7/DSC05195.jpg";
 
-// Upload gnsi-emblem-transparent.png to the gnsi-public Supabase storage bucket,
-// then point this at the real path.
-const EMBLEM_URL = "https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/gnsi-emblem.png";
+// GNSI logo/emblem (crest + "GNSI" wordmark + tagline, square format) —
+// used in the nav bar, favicon, and header. Lives in the gnsi-public
+// bucket's "emblem" folder (same bucket as TEN_YEARS_BANNER_URL/
+// RESULT_POSTER_URL below).
+const EMBLEM_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/emblem/gnsi-emblem-new.png";
 
 // 10-Years celebration banner — replaces the old rotating result-banner
 // slider below with a single static photo. Lives in the gnsi-public
@@ -1345,10 +1347,8 @@ window.submitGrievance = async () => {
   />
   <meta name="theme-color" content="#0A0A0A" />
   <link rel="canonical" href="https://guidancekhangabok.in" />
-  <link
-    rel="icon"
-    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230B1F3A'/><text y='.9em' font-size='60' x='50%' text-anchor='middle' fill='%23B8922A' font-family='Georgia'>G</text></svg>"
-  />
+  <link rel="icon" type="image/png" href={EMBLEM_URL} />
+  <link rel="apple-touch-icon" href={EMBLEM_URL} />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
   <link
