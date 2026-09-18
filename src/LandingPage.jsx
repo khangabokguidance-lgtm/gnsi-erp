@@ -39,6 +39,26 @@ export default function LandingPage({ onLogin }) {
   const [activeTab, setActiveTab] = useState('home');
   const tabContentRef = useRef(null);
 
+  // ═══ ADMIT CARD / RESULT PORTAL (public, fee-gated, real data) ═══
+  // examTypes: live list pulled from the real `exam_types` table so the
+  // "Select Exam" dropdowns always match whatever exams actually exist in
+  // the exam module (Exams.jsx / ParentsPortal), instead of a hardcoded
+  // guess list that can silently drift out of sync.
+  const [portalExamTypes, setPortalExamTypes] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.from('exam_types').select('id, name').order('name', { ascending: true });
+        if (!cancelled) setPortalExamTypes(data || []);
+      } catch (e) {
+        console.error('Failed to load exam types:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // ═══ RESULT POSTER POPUP ═══
   // 'hidden' → nothing shown yet (first 10s of the visit)
   // 'popup'  → full popup shown (auto-appears at 10s)
@@ -1059,39 +1079,191 @@ window.submitGrievance = async () => {
       }
     };
 
-    
-    // Form submissions (mock) 
-    window.fetchAdmitCard = () => {
+
+    // ── Admit Card: real lookup, fee-gated ──────────────────────────────────
+    // Looks the student up by GCC No. (roll/ID field) in the real `students`
+    // table, checks real outstanding dues via feeDues.js (same engine the
+    // Parents Portal uses), and only reveals admit-card details once fees
+    // are fully cleared — otherwise shows the amount due instead.
+    window.fetchAdmitCard = async () => {
       const res = document.getElementById('acResult');
       const data = document.getElementById('acData');
-      const roll = document.getElementById('acRoll')?.value || '—';
-      const exam = document.getElementById('acExam')?.value || '—';
-      if (res && data) {
-        res.classList.add('show', 'ok');
-        data.innerHTML = '<div class="portal-row"><span>Student</span><strong>GNSI Student</strong></div>' +
-          '<div class="portal-row"><span>Roll No</span><strong>' + roll + '</strong></div>' +
-          '<div class="portal-row"><span>Exam</span><strong>' + exam + '</strong></div>' +
-          '<div class="portal-row"><span>Date</span><strong>This Sunday</strong></div>' +
-          '<div class="portal-row"><span>Time</span><strong>10:00 AM</strong></div>' +
-          '<div class="portal-row"><span>Venue</span><strong>GNSI Campus, Khangabok</strong></div>';
+      const printBtn = document.querySelector('#acResult .admit-download');
+      const gcc = document.getElementById('acRoll')?.value?.trim() || '';
+      const examTypeId = document.getElementById('acExam')?.value || '';
+      if (!res || !data) return;
+
+      if (!gcc || !examTypeId) {
+        res.classList.remove('ok'); res.classList.add('err');
+        res.classList.add('show');
+        data.innerHTML = '<p style="color:#B91C1C;font-weight:600">Please enter your GCC No. and select an exam.</p>';
+        if (printBtn) printBtn.style.display = 'none';
+        return;
+      }
+
+      res.classList.remove('show', 'ok', 'err');
+      data.innerHTML = '<p>Checking your record…</p>';
+      res.classList.add('show');
+
+      try {
+        const { data: stu, error } = await supabase
+          .from('students')
+          .select('id, name, course, class_name, batch, status, admission_no, gcc_no, admission_date')
+          .eq('gcc_no', gcc)
+          .maybeSingle();
+
+        if (error || !stu) {
+          res.classList.remove('ok'); res.classList.add('err');
+          data.innerHTML = '<p style="color:#B91C1C;font-weight:600">GCC No. not found. Please check and try again, or contact the office.</p>';
+          if (printBtn) printBtn.style.display = 'none';
+          return;
+        }
+
+        // Real fee-due engine — same source of truth as the Parents Portal's
+        // Fee Dues tab. If it can't be loaded, fail closed (don't hand out
+        // an admit card we can't actually confirm is fee-cleared).
+        let dues = null;
+        try {
+          const feeMod = await import('./feeDues.js');
+          dues = await feeMod.getStudentDues(stu);
+        } catch (e) {
+          console.error('Fee check failed:', e);
+        }
+
+        const totalDue = Number(dues?.totalDue ?? NaN);
+        const feesClear = dues && !Number.isNaN(totalDue) && totalDue <= 0;
+        // dues.failedSources is non-empty when one of the underlying fee
+        // queries dropped (network blip) and getStudentDues fell back to a
+        // safe default for just that source — totalDue is then only a
+        // LOWER bound, not exact. Don't tell a student they owe a specific
+        // (possibly wrong) amount in that case; ask them to retry instead.
+        const uncertain = dues && dues.failedSources && dues.failedSources.length > 0;
+
+        if (!feesClear) {
+          res.classList.remove('ok'); res.classList.add('err');
+          let message;
+          if (!dues) {
+            message = "🔒 We couldn't verify your fee status right now. Please try again in a moment, or contact the office.";
+          } else if (uncertain) {
+            message = '🔒 Admit card locked — we couldn\'t fully verify your fee status. Please try again shortly or contact the office.';
+          } else {
+            const dueText = totalDue > 0 ? '₹' + totalDue.toLocaleString('en-IN') + ' due' : 'outstanding dues';
+            message = '🔒 Admit card locked — ' + dueText + '. Please clear fees to download your admit card.';
+          }
+          data.innerHTML = '<div class="portal-row"><span>Student</span><strong>' + stu.name + '</strong></div>' +
+            '<p style="color:#B91C1C;font-weight:600;margin-top:.6rem">' + message + '</p>' +
+            (dues && !uncertain ? '<button type="button" class="admit-download" style="margin-top:.6rem" onclick="window.__openFeeLookup && window.__openFeeLookup()">Pay Fees Now</button>' : '');
+          if (printBtn) printBtn.style.display = 'none';
+          return;
+        }
+
+        // Fees clear — confirm the student has a scheduled sitting for this
+        // exam (exam_schedule, same table Exams.jsx/report cards use).
+        const course = stu.class_name || stu.batch || stu.course || '';
+        const { data: sched } = await supabase
+          .from('exam_schedule')
+          .select('id, subject, exam_date, exam_time, venue')
+          .eq('exam_type_id', examTypeId)
+          .eq('course', course)
+          .order('exam_date', { ascending: true });
+
+        const examName = (portalExamTypes.find(t => String(t.id) === String(examTypeId)) || {}).name || 'Selected Exam';
+
+        if (!sched || !sched.length) {
+          res.classList.remove('ok'); res.classList.add('err');
+          data.innerHTML = '<div class="portal-row"><span>Student</span><strong>' + stu.name + '</strong></div>' +
+            '<p style="margin-top:.6rem">No schedule has been published yet for <strong>' + examName + '</strong>. Please check back closer to the exam date.</p>';
+          if (printBtn) printBtn.style.display = 'none';
+          return;
+        }
+
+        const first = sched[0];
+        res.classList.remove('err'); res.classList.add('ok');
+        data.innerHTML = '<div class="portal-row"><span>Student</span><strong>' + stu.name + '</strong></div>' +
+          '<div class="portal-row"><span>GCC No.</span><strong>' + (stu.gcc_no || '—') + '</strong></div>' +
+          '<div class="portal-row"><span>Exam</span><strong>' + examName + '</strong></div>' +
+          '<div class="portal-row"><span>Date</span><strong>' + (first.exam_date || 'TBA') + '</strong></div>' +
+          '<div class="portal-row"><span>Time</span><strong>' + (first.exam_time || 'TBA') + '</strong></div>' +
+          '<div class="portal-row"><span>Venue</span><strong>' + (first.venue || 'GNSI Campus, Khangabok') + '</strong></div>';
+        if (printBtn) printBtn.style.display = '';
+      } catch (e) {
+        console.error('Admit card lookup failed:', e);
+        res.classList.remove('ok'); res.classList.add('err');
+        data.innerHTML = '<p style="color:#B91C1C;font-weight:600">Something went wrong. Please try again.</p>';
+        if (printBtn) printBtn.style.display = 'none';
       }
     };
-    window.fetchResult = () => {
+
+    // ── Result Checker: real lookup against exam_marks ──────────────────────
+    window.fetchResult = async () => {
       const res = document.getElementById('rcResult');
       const data = document.getElementById('rcData');
-      const roll = document.getElementById('rcRoll')?.value || '—';
-      if (res && data) {
-        res.classList.add('show', 'ok');
-        data.innerHTML = '<div class="portal-row"><span>Student</span><strong>GNSI Student</strong></div>' +
-          '<div class="portal-row"><span>Roll No</span><strong>' + roll + '</strong></div>' +
-          '<div class="portal-row"><span>Total Marks</span><strong>87 / 100</strong></div>' +
-          '<div class="portal-row"><span>Rank</span><strong>5th</strong></div>' +
-          '<div class="portal-row"><span>Status</span><strong style="color:#4AE382">Passed</strong></div>';
+      const gcc = document.getElementById('rcRoll')?.value?.trim() || '';
+      const examTypeId = document.getElementById('rcExam')?.value || '';
+      if (!res || !data) return;
+
+      if (!gcc || !examTypeId) {
+        res.classList.remove('ok'); res.classList.add('err');
+        res.classList.add('show');
+        data.innerHTML = '<p style="color:#B91C1C;font-weight:600">Please enter your GCC No. and select an exam.</p>';
+        return;
+      }
+
+      res.classList.remove('show', 'ok', 'err');
+      data.innerHTML = '<p>Fetching your result…</p>';
+      res.classList.add('show');
+
+      try {
+        const { data: stu, error } = await supabase
+          .from('students')
+          .select('id, name, gcc_no')
+          .eq('gcc_no', gcc)
+          .maybeSingle();
+
+        if (error || !stu) {
+          res.classList.remove('ok'); res.classList.add('err');
+          data.innerHTML = '<p style="color:#B91C1C;font-weight:600">GCC No. not found. Please check and try again.</p>';
+          return;
+        }
+
+        const { data: marks } = await supabase
+          .from('exam_marks')
+          .select('subject, marks_obtained, total_marks, exam_date')
+          .eq('student_id', stu.id)
+          .eq('exam_type_id', examTypeId);
+
+        const examName = (portalExamTypes.find(t => String(t.id) === String(examTypeId)) || {}).name || 'Selected Exam';
+
+        if (!marks || !marks.length) {
+          res.classList.remove('ok'); res.classList.add('err');
+          data.innerHTML = '<div class="portal-row"><span>Student</span><strong>' + stu.name + '</strong></div>' +
+            '<p style="margin-top:.6rem">Result not declared yet for <strong>' + examName + '</strong>.</p>';
+          return;
+        }
+
+        const obtained = marks.reduce((sum, r) => sum + (Number(r.marks_obtained) || 0), 0);
+        const total = marks.reduce((sum, r) => sum + (Number(r.total_marks) || 0), 0);
+        const pct = total > 0 ? Math.round((obtained / total) * 100) : null;
+        const passed = pct === null ? null : pct >= 33;
+
+        res.classList.remove('err'); res.classList.add('ok');
+        data.innerHTML = '<div class="portal-row"><span>Student</span><strong>' + stu.name + '</strong></div>' +
+          '<div class="portal-row"><span>Exam</span><strong>' + examName + '</strong></div>' +
+          '<div class="portal-row"><span>Total Marks</span><strong>' + obtained + ' / ' + total + '</strong></div>' +
+          (passed !== null
+            ? '<div class="portal-row"><span>Status</span><strong style="color:' + (passed ? '#16A34A' : '#B91C1C') + '">' + (passed ? 'Passed' : 'Not Cleared') + '</strong></div>'
+            : '');
+      } catch (e) {
+        console.error('Result lookup failed:', e);
+        res.classList.remove('ok'); res.classList.add('err');
+        data.innerHTML = '<p style="color:#B91C1C;font-weight:600">Something went wrong. Please try again.</p>';
       }
     };
+
     window.printAdmitCard = () => {
       window.print();
     };
+    window.__openFeeLookup = () => setIsFeeOpen(true);
 
     return () => {
       clearInterval(rbAuto);
@@ -4677,13 +4849,13 @@ window.submitGrievance = async () => {
               marginBottom: ".38rem"
             }}
           >
-            <span data-en="">Student Roll Number / ID</span>
-            <span data-hi="">छात्र रोल नंबर / आईडी</span>
+            <span data-en="">GCC No. (Student ID)</span>
+            <span data-hi="">जीसीसी नंबर (छात्र आईडी)</span>
           </label>
           <input
             className="portal-input"
             id="acRoll"
-            placeholder="e.g. GNSI-2024-001"
+            placeholder="e.g. GCC-2024-001"
           />
           <label
             style={{
@@ -4702,17 +4874,16 @@ window.submitGrievance = async () => {
           </label>
           <select className="portal-select" id="acExam">
             <option value="">-- Select Exam --</option>
-            <option>Sunday Mock Test</option>
-            <option>Scholarship Test</option>
-            <option>NVS Practice Test</option>
-            <option>Sainik School Practice Test</option>
+            {portalExamTypes.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
           </select>
           <button className="portal-btn" onClick={() => window.fetchAdmitCard()}>
             🪪 <span data-en="">Download Admit Card</span>
             <span data-hi="">प्रवेश पत्र डाउनलोड करें</span>
           </button>
           <div className="portal-result" id="acResult">
-            <h4>✓ Admit Card Found</h4>
+            <h4>Admit Card Status</h4>
             <div id="acData" />
             <button className="admit-download" onClick={() => window.printAdmitCard()}>
               🖨 Print / Download Admit Card
@@ -4746,13 +4917,13 @@ window.submitGrievance = async () => {
               marginBottom: ".38rem"
             }}
           >
-            <span data-en="">Student Roll Number / ID</span>
-            <span data-hi="">छात्र रोल नंबर / आईडी</span>
+            <span data-en="">GCC No. (Student ID)</span>
+            <span data-hi="">जीसीसी नंबर (छात्र आईडी)</span>
           </label>
           <input
             className="portal-input"
             id="rcRoll"
-            placeholder="e.g. GNSI-2024-001"
+            placeholder="e.g. GCC-2024-001"
           />
           <label
             style={{
@@ -4766,10 +4937,15 @@ window.submitGrievance = async () => {
               marginBottom: ".38rem"
             }}
           >
-            <span data-en="">Date of Birth</span>
-            <span data-hi="">जन्म तिथि</span>
+            <span data-en="">Select Exam</span>
+            <span data-hi="">परीक्षा चुनें</span>
           </label>
-          <input type="date" className="portal-input" id="rcDob" />
+          <select className="portal-select" id="rcExam">
+            <option value="">-- Select Exam --</option>
+            {portalExamTypes.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
           <button
             className="portal-btn"
             style={{ background: "var(--navy3)" }}
@@ -4779,7 +4955,7 @@ window.submitGrievance = async () => {
             <span data-hi="">मेरा परिणाम देखें</span>
           </button>
           <div className="portal-result" id="rcResult">
-            <h4>📊 Result Found</h4>
+            <h4>Result Status</h4>
             <div id="rcData" />
           </div>
         </div>
