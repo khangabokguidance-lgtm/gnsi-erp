@@ -282,27 +282,31 @@ function isStudentAbsentForExam(studentId, subjects, marksMap) {
   return values.every(v => Number(v) === 0);
 }
 
+// Homework, Timetable, Notices and Message Teacher are disabled below —
+// they queried tables (study_materials, timetables, notices,
+// parent_messages) that don't exist anywhere in the real schema (checked
+// against every admin-side module: Hostel.jsx, Exams.jsx, Students.jsx,
+// Accounts.jsx, etc.). Re-enable each by adding it back here once its
+// table is actually created — see the matching commented-out tab state /
+// load function / render block below for what to restore.
 const TABS = [
   { id: 'home',       label: '🏠 Dashboard' },
   { id: 'att',        label: '📊 Attendance' },
   { id: 'exams',      label: '📝 Exam Scores' },
   { id: 'reportcard', label: '🧾 Report Card' },
   { id: 'fees',       label: '💳 Fee Dues' },
-  { id: 'homework',   label: '📚 Homework' },
-  { id: 'timetable',  label: '🗓️ Timetable' },
-  { id: 'notices',    label: '📣 Notices' },
   { id: 'leave',      label: '🏨 Hostel Leave' },
-  { id: 'messages',   label: '💬 Message Teacher' },
+  { id: 'grievance',  label: '📮 Raise a Concern' },
   { id: 'alerts',     label: '🔔 Alerts' },
 ];
 
 const initialTabState = { status: 'idle', data: null, error: null };
 /**
- * ParentsPortal — student login + attendance/exams/report-card/fees/homework/
- * timetable/notices/leave/messages/alerts dashboard. Talks directly to
- * Supabase; has no dependency on websiteApi.js. All data lives in React
- * state — no getElementById/innerHTML (except the isolated print overlay,
- * which is a deliberate exception for print-window HTML).
+ * ParentsPortal — student login + attendance/exams/report-card/fees/leave/
+ * grievance/alerts dashboard. Talks directly to Supabase; has no dependency
+ * on websiteApi.js. All data lives in React state — no getElementById/
+ * innerHTML (except the isolated print overlay, which is a deliberate
+ * exception for print-window HTML).
  */
 // Same fallback-name problem Fees.jsx's getParentPhone already documents:
 // the real guardian/parent contact column isn't standardized across this
@@ -347,15 +351,13 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
   const [attendance, setAttendance] = useState(initialTabState);
   const [exams, setExams] = useState(initialTabState);
-  const [notices, setNotices] = useState(initialTabState);
   const [leave, setLeave] = useState(initialTabState);
   const [alerts, setAlerts] = useState(initialTabState);
   const [fees, setFees] = useState(initialTabState);
-  const [homework, setHomework] = useState(initialTabState);
-  const [timetable, setTimetable] = useState(initialTabState);
-  const [messages, setMessages] = useState(initialTabState);
-  const [messageDraft, setMessageDraft] = useState('');
-  const [messageSending, setMessageSending] = useState(false);
+  // Homework, Timetable, Notices, Message Teacher — disabled, see the TABS
+  // comment above for why. State/load functions/render blocks removed
+  // along with the tabs so there's no dead code pretending to work.
+  const [grievanceDone, setGrievanceDone] = useState(false);
 
   const [rcExamTypes, setRcExamTypes] = useState({ status: 'idle', options: [] });
   const [rcSelectedType, setRcSelectedType] = useState('');
@@ -374,13 +376,10 @@ export default function ParentsPortal({ isOpen, onClose }) {
     setActiveTab('home');
     setAttendance(initialTabState);
     setExams(initialTabState);
-    setNotices(initialTabState);
     setLeave(initialTabState);
     setAlerts(initialTabState);
     setFees(initialTabState);
-    setHomework(initialTabState);
-    setTimetable(initialTabState);
-    setMessages(initialTabState);
+    setGrievanceDone(false);
     setRcExamTypes({ status: 'idle', options: [] });
     setRcSelectedType('');
     setRcDates({ status: 'idle', options: [] });
@@ -506,13 +505,9 @@ export default function ParentsPortal({ isOpen, onClose }) {
     if (id === 'att' && attendance.status === 'idle') loadAttendance(student.id);
     if (id === 'exams' && exams.status === 'idle') loadExams(student.id);
     if (id === 'reportcard' && rcExamTypes.status === 'idle') loadReportCardExamTypes(student.id);
-    if (id === 'notices' && notices.status === 'idle') loadNotices();
     if (id === 'leave' && leave.status === 'idle') loadLeave(student.id);
     if (id === 'alerts' && alerts.status === 'idle') loadAlerts(student.id);
     if (id === 'fees' && fees.status === 'idle') loadFees(student);
-    if (id === 'homework' && homework.status === 'idle') loadHomework(student);
-    if (id === 'timetable' && timetable.status === 'idle') loadTimetable(student);
-    if (id === 'messages' && messages.status === 'idle') loadMessages(student.id);
   };
 
   // ── TAB: ATTENDANCE ──────────────────────────────────────────────────────
@@ -529,15 +524,32 @@ export default function ParentsPortal({ isOpen, onClose }) {
     const monthLabel = now.toLocaleString('default', { month: 'long', year: 'numeric' });
 
     try {
+      // Real table is attendance_records (Hostel.jsx), not "attendance" —
+      // roll call runs twice a day (session: 'morning' | 'evening'), so a
+      // student can have up to two rows for the same date. Collapse to one
+      // status per day for the calendar/summary: Present if marked Present
+      // in either session that day, else the "worst" status present
+      // (Absent worse than Late/Sick/On Leave, which are worse than
+      // nothing-marked). This keeps the existing Present/Absent/% UI
+      // meaningful without silently double-counting days.
       const { data } = await supabase
-        .from('attendance')
-        .select('date, status')
+        .from('attendance_records')
+        .select('date, status, session')
         .eq('student_id', studentId)
         .gte('date', from)
         .lte('date', to)
         .order('date', { ascending: true });
 
-      const rows = data || [];
+      const STATUS_RANK = { 'Present': 0, 'Late': 1, 'Sick': 2, 'On Leave': 2, 'Absent': 3 };
+      const byDay = new Map();
+      (data || []).forEach(r => {
+        const existing = byDay.get(r.date);
+        if (!existing || (STATUS_RANK[r.status] ?? 0) > (STATUS_RANK[existing.status] ?? 0)) {
+          byDay.set(r.date, r);
+        }
+      });
+      const rows = [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
+
       const present = rows.filter(r => r.status === 'Present').length;
       const absent = rows.filter(r => r.status === 'Absent').length;
       const pct = rows.length ? Math.round((present / rows.length) * 100) : 0;
@@ -752,35 +764,24 @@ export default function ParentsPortal({ isOpen, onClose }) {
     }
   };
 
-  // ── TAB: NOTICES ─────────────────────────────────────────────────────────
-
-  const loadNotices = useCallback(async () => {
-    setNotices({ status: 'loading', data: null, error: null });
-    try {
-      const { data } = await supabase
-        .from('notices')
-        .select('title, body, priority, notice_date')
-        .eq('is_archived', false)
-        .order('notice_date', { ascending: false })
-        .limit(15);
-
-      setNotices({ status: 'ready', data: data || [], error: null });
-    } catch (e) {
-      console.error('Notices load failed:', e);
-      setNotices({ status: 'error', data: null, error: 'Failed to load notices' });
-    }
-  }, []);
-
   // ── TAB: HOSTEL LEAVE ────────────────────────────────────────────────────
 
   const loadLeave = useCallback(async (studentId) => {
     setLeave({ status: 'loading', data: null, error: null });
     try {
+      // Real table is leave_records (Hostel.jsx), not "leave_requests" —
+      // also carries leave_type and approval_level, which the admin side
+      // uses to track multi-level (HM → Superintendent) sign-off.
+      // select('*') rather than naming every column: Hostel.jsx's own
+      // queries only confirm id/student_id/student_name/leave_type/
+      // from_date/to_date/approval_level/status — `reason` and
+      // `created_at` are likely present but unconfirmed, and naming a
+      // column that doesn't exist errors out the whole query.
       const { data } = await supabase
-        .from('leave_requests')
-        .select('from_date, to_date, reason, status, created_at')
+        .from('leave_records')
+        .select('*')
         .eq('student_id', studentId)
-        .order('created_at', { ascending: false })
+        .order('from_date', { ascending: false })
         .limit(20);
 
       setLeave({ status: 'ready', data: data || [], error: null });
@@ -797,7 +798,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
     try {
       const [attRes, examRes] = await Promise.all([
         supabase
-          .from('attendance')
+          .from('attendance_records')
           .select('date, status')
           .eq('student_id', studentId)
           .eq('status', 'Absent')
@@ -819,7 +820,12 @@ export default function ParentsPortal({ isOpen, onClose }) {
       const typeMap = Object.fromEntries((types || []).map(t => [t.id, t.name]));
 
       const items = [];
+      // attendance_records has up to 2 rows/day (morning + evening roll
+      // call) — dedupe by date so a full-day absence doesn't show twice.
+      const seenAbsentDates = new Set();
       (attRes.data || []).forEach(r => {
+        if (seenAbsentDates.has(r.date)) return;
+        seenAbsentDates.add(r.date);
         items.push({ type: 'att', msg: `Absent on ${r.date}`, date: r.date });
       });
       examRows.forEach(r => {
@@ -844,8 +850,12 @@ export default function ParentsPortal({ isOpen, onClose }) {
   const [homeAlertCount, setHomeAlertCount] = useState(null);
   const loadAlertsSummary = useCallback(async (studentId) => {
     try {
+      // Note: attendance_records can have 2 rows/day (morning+evening), so
+      // this count is "absent roll-call marks in 30 days", not distinct
+      // days — an acceptable approximation for a home-screen badge; the
+      // Alerts tab itself dedupes by date for the detailed list above.
       const { count } = await supabase
-        .from('attendance')
+        .from('attendance_records')
         .select('id', { count: 'exact', head: true })
         .eq('student_id', studentId)
         .eq('status', 'Absent')
@@ -974,87 +984,11 @@ export default function ParentsPortal({ isOpen, onClose }) {
   };
 
 
-  // ── FEATURE 2: HOMEWORK / STUDY MATERIAL TAB ─────────────────────────────
-  // Reads from the existing `study_materials` table (file_url, chapter,
-  // subject, course, material_type) — same table StudyMaterial.jsx writes
-  // to — filtered to the logged-in student's course.
-  const loadHomework = useCallback(async (stu) => {
-    setHomework({ status: 'loading', data: null, error: null });
-    try {
-      const course = (stu.course || '').toLowerCase();
-      const { data } = await supabase
-        .from('study_materials')
-        .select('id, file_url, chapter, subject, course, material_type, created_at, title')
-        .ilike('course', course)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      setHomework({ status: 'ready', data: data || [], error: null });
-    } catch (e) {
-      console.error('Homework load failed:', e);
-      setHomework({ status: 'error', data: null, error: 'Failed to load homework / study material' });
-    }
-  }, []);
-
-  // ── FEATURE 3: TIMETABLE TAB ──────────────────────────────────────────────
-  // Reads from the `timetables` table Timetable.jsx already writes to,
-  // scoped to the student's batch/class.
-  const loadTimetable = useCallback(async (stu) => {
-    setTimetable({ status: 'loading', data: null, error: null });
-    try {
-      const { data } = await supabase
-        .from('timetables')
-        .select('day_of_week, period, subject, teacher_name, start_time, end_time')
-        .eq('batch', stu.batch || stu.class_name)
-        .order('day_of_week', { ascending: true })
-        .order('period', { ascending: true });
-
-      setTimetable({ status: 'ready', data: data || [], error: null });
-    } catch (e) {
-      console.error('Timetable load failed:', e);
-      setTimetable({ status: 'error', data: null, error: 'Failed to load timetable' });
-    }
-  }, []);
-
-  // ── FEATURE 7: MESSAGE CLASS TEACHER ─────────────────────────────────────
-  // Simple threaded messages table (parent_messages) keyed by student_id.
-  // Staff-side reply UI would live in the main portal (not built here);
-  // this is the parent-facing read/send half.
-  const loadMessages = useCallback(async (studentId) => {
-    setMessages({ status: 'loading', data: null, error: null });
-    try {
-      const { data } = await supabase
-        .from('parent_messages')
-        .select('id, sender, body, created_at')
-        .eq('student_id', studentId)
-        .order('created_at', { ascending: true })
-        .limit(100);
-
-      setMessages({ status: 'ready', data: data || [], error: null });
-    } catch (e) {
-      console.error('Messages load failed:', e);
-      setMessages({ status: 'error', data: null, error: 'Messaging is not set up yet. Please contact the office directly.' });
-    }
-  }, []);
-
-  const sendMessage = async () => {
-    const body = messageDraft.trim();
-    if (!body || !student) return;
-    setMessageSending(true);
-    try {
-      const { error } = await supabase
-        .from('parent_messages')
-        .insert({ student_id: student.id, sender: 'parent', body });
-      if (error) throw error;
-      setMessageDraft('');
-      loadMessages(student.id);
-    } catch (e) {
-      console.error('Send message failed:', e);
-      alert('Could not send message: ' + (e?.message || 'unknown error'));
-    } finally {
-      setMessageSending(false);
-    }
-  };
+  // Homework/Study Material, Timetable and Message Teacher tabs removed —
+  // their tables (study_materials, timetables, parent_messages) don't
+  // exist anywhere in the real schema. Re-add once those tables are
+  // created; the original query shapes are preserved in the migration
+  // notes given alongside this file.
 
   // ── FEATURE 5: PUSH NOTIFICATIONS ─────────────────────────────────────────
   const enablePush = async () => {
@@ -1096,7 +1030,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
     setExportBusy(true);
     try {
       const [{ data: attRows }, { data: markRows }, feesSnapshot] = await Promise.all([
-        supabase.from('attendance').select('date, status').eq('student_id', student.id).order('date', { ascending: false }).limit(60),
+        supabase.from('attendance_records').select('date, status').eq('student_id', student.id).order('date', { ascending: false }).limit(60),
         supabase.from('exam_marks').select('subject, marks_obtained, total_marks, exam_date').eq('student_id', student.id).order('exam_date', { ascending: false }).limit(30),
         fees.status === 'ready' ? Promise.resolve(fees.data) : Promise.resolve(null),
       ]);
@@ -1338,25 +1272,15 @@ export default function ParentsPortal({ isOpen, onClose }) {
             {activeTab === 'fees' && (
               <FeesTab state={fees} onPayNow={handlePayNow} nextDue={fees.status === 'ready' ? pickNextDue(fees.data) : null} />
             )}
-            {activeTab === 'homework' && (
-              <HomeworkTab state={homework} />
-            )}
-            {activeTab === 'timetable' && (
-              <TimetableTab state={timetable} />
-            )}
-            {activeTab === 'notices' && (
-              <NoticesTab state={notices} />
-            )}
             {activeTab === 'leave' && (
               <LeaveTab state={leave} />
             )}
-            {activeTab === 'messages' && (
-              <MessagesTab
-                state={messages}
-                draft={messageDraft}
-                onDraftChange={setMessageDraft}
-                onSend={sendMessage}
-                sending={messageSending}
+            {activeTab === 'grievance' && (
+              <GrievanceTab
+                studentId={student.id}
+                studentName={student.name}
+                done={grievanceDone}
+                onSubmitted={() => setGrievanceDone(true)}
               />
             )}
             {activeTab === 'alerts' && (
@@ -1433,9 +1357,9 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
     { id: 'att', icon: '📊', val: attPct !== null ? `${attPct}%` : '—', lbl: 'Attendance this month', color: '#1e3a5f' },
     { id: 'fees', icon: '💳', val: feeBalance !== undefined && feeBalance !== null ? `₹${feeBalance}` : '—', lbl: 'Fee balance due', color: '#dc2626' },
     { id: 'alerts', icon: '🔔', val: alertCount !== null ? alertCount : '—', lbl: 'Absences (30 days)', color: '#f59e0b' },
-    { id: 'notices', icon: '📣', val: 'View', lbl: 'Notice board', color: '#7c3aed' },
-    { id: 'homework', icon: '📚', val: 'View', lbl: 'Homework & material', color: '#0891b2' },
-    { id: 'timetable', icon: '🗓️', val: 'View', lbl: 'Class timetable', color: '#16a34a' },
+    { id: 'leave', icon: '🏨', val: 'View', lbl: 'Hostel leave history', color: '#0891b2' },
+    { id: 'grievance', icon: '📮', val: 'View', lbl: 'Raise a concern', color: '#7c3aed' },
+    { id: 'exams', icon: '📝', val: 'View', lbl: 'Exam scores', color: '#16a34a' },
   ];
 
   return (
@@ -1514,6 +1438,10 @@ function AttendanceTab({ state }) {
               ? { backgroundColor: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0' }
               : st === 'Absent'
               ? { backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' }
+              : st === 'Late' || st === 'Sick'
+              ? { backgroundColor: '#fffbeb', color: '#d97706', border: '1px solid #fde68a' }
+              : st === 'On Leave'
+              ? { backgroundColor: '#dbeafe', color: '#1d4ed8', border: '1px solid #bfdbfe' }
               : { backgroundColor: '#f8fafc', color: '#94a3b8', border: '1px solid #e2e8f0' };
             return (
               <div
@@ -1547,7 +1475,7 @@ function AttendanceTab({ state }) {
             {last10.map((r, i) => (
               <tr key={i} style={{ borderTop: i ? '1px solid #f1f5f9' : 'none' }}>
                 <td style={{ padding: '10px 12px', color: '#475569' }}>{r.date}</td>
-                <td style={{ padding: '10px 12px' }}><Pill tone={r.status === 'Present' ? 'hi' : 'lo'}>{r.status}</Pill></td>
+                <td style={{ padding: '10px 12px' }}><Pill tone={r.status === 'Present' ? 'hi' : r.status === 'Absent' ? 'lo' : 'mi'}>{r.status}</Pill></td>
               </tr>
             ))}
           </PremiumTable>
@@ -1739,108 +1667,10 @@ function FeeMonthsBreakdown({ label, items, due }) {
   );
 }
 
-// ── FEATURE 2: HOMEWORK / STUDY MATERIAL TAB ────────────────────────────────
-function HomeworkTab({ state }) {
-  return (
-    <Card title="Homework & Study Material">
-      {(state.status === 'loading' || state.status === 'idle') && <Loading />}
-      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
-      {state.status === 'ready' && (
-        state.data.length === 0 ? (
-          <Empty icon="📚" text="No study material posted yet" />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {state.data.map((h) => (
-              <a
-                key={h.id}
-                href={h.file_url}
-                target="_blank"
-                rel="noreferrer"
-                style={{ display: 'flex', alignItems: 'center', gap: 12, borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: '12px 16px', textDecoration: 'none', color: 'inherit' }}
-              >
-                <div style={{ fontSize: 20, flexShrink: 0 }}>{h.material_type === 'video' ? '🎬' : '📄'}</div>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.title || h.chapter || 'Study Material'}</div>
-                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[h.subject, h.chapter].filter(Boolean).join(' · ')}</div>
-                </div>
-                <div style={{ color: NAVY, flexShrink: 0 }}>⬇️</div>
-              </a>
-            ))}
-          </div>
-        )
-      )}
-    </Card>
-  );
-}
-
-// ── FEATURE 3: TIMETABLE TAB ─────────────────────────────────────────────────
-const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-function TimetableTab({ state }) {
-  return (
-    <Card title="Weekly Timetable">
-      {(state.status === 'loading' || state.status === 'idle') && <Loading />}
-      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
-      {state.status === 'ready' && (
-        state.data.length === 0 ? (
-          <Empty icon="🗓️" text="Timetable not published yet" />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            {DAY_ORDER.map((day) => {
-              const rows = state.data.filter(r => r.day_of_week === day);
-              if (!rows.length) return null;
-              return (
-                <div key={day}>
-                  <div style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', color: NAVY, marginBottom: 8 }}>{day}</div>
-                  <PremiumTable head={['Period', 'Subject', 'Teacher', 'Time']}>
-                    {rows.map((r, i) => (
-                      <tr key={i} style={{ borderTop: i ? '1px solid #f1f5f9' : 'none' }}>
-                        <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{r.period}</td>
-                        <td style={{ padding: '10px 12px', fontWeight: 700, color: '#1e293b' }}>{r.subject}</td>
-                        <td style={{ padding: '10px 12px', color: '#475569' }}>{r.teacher_name || '—'}</td>
-                        <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{r.start_time ? `${r.start_time}–${r.end_time}` : '—'}</td>
-                      </tr>
-                    ))}
-                  </PremiumTable>
-                </div>
-              );
-            })}
-          </div>
-        )
-      )}
-    </Card>
-  );
-}
-
-function NoticesTab({ state }) {
-  const priTone = { High: 'lo', Medium: 'mi', Low: 'hi' };
-  return (
-    <Card title="Official Notices">
-      {(state.status === 'loading' || state.status === 'idle') && <Loading />}
-      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
-      {state.status === 'ready' && (
-        state.data.length === 0 ? (
-          <Empty icon="📣" text="No notices" />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {state.data.map((n, i) => (
-              <div style={{ borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: 16 }} key={i}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-                  <Pill tone={priTone[n.priority] || 'hi'}>{n.priority || 'Low'}</Pill>
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>{n.notice_date || ''}</span>
-                </div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: '#1e293b' }}>{n.title}</div>
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, lineHeight: 1.6 }}>{n.body || ''}</div>
-              </div>
-            ))}
-          </div>
-        )
-      )}
-    </Card>
-  );
-}
-
 function LeaveTab({ state }) {
-  const stTone = { approved: 'hi', rejected: 'lo', pending: 'mi' };
+  // Hostel.jsx's real leave_records statuses are capitalized (Approved,
+  // Pending, Rejected) — not the lowercase guesses this used to key off.
+  const stTone = { Approved: 'hi', Rejected: 'lo', Pending: 'mi' };
   return (
     <Card title="Hostel Leave History">
       {(state.status === 'loading' || state.status === 'idle') && <Loading />}
@@ -1854,8 +1684,11 @@ function LeaveTab({ state }) {
               <div style={{ borderRadius: 10, border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: 16 }} key={i}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{r.from_date} → {r.to_date}</span>
-                  <Pill tone={stTone[r.status] || 'mi'}>{r.status || 'pending'}</Pill>
+                  <Pill tone={stTone[r.status] || 'mi'}>{r.status || 'Pending'}</Pill>
                 </div>
+                {r.leave_type && (
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>{r.leave_type}</div>
+                )}
                 <div style={{ fontSize: 12, color: '#64748b' }}>{r.reason || '—'}</div>
               </div>
             ))}
@@ -1866,57 +1699,116 @@ function LeaveTab({ state }) {
   );
 }
 
-// ── FEATURE 7: MESSAGE TEACHER TAB ───────────────────────────────────────────
-function MessagesTab({ state, draft, onDraftChange, onSend, sending }) {
+// ── RAISE A CONCERN (Grievance) TAB ──────────────────────────────────────────
+// Wired to the real `grievances` table (confirmed via the admin-side
+// Grievances.jsx: student_id, teacher_id, subject, category, description,
+// source, filed_by_name, filed_by_contact, status). Source is tagged
+// 'parent_portal' so staff can triage it separately from admin-logged ones.
+const GRIEVANCE_CATEGORIES = [
+  'Academic Weakness',
+  'Behavioral',
+  'Communication',
+  'Attendance Handling',
+  'Discipline',
+  'Other',
+];
+
+function GrievanceTab({ studentId, studentName, done, onSubmitted }) {
+  const [category, setCategory] = useState('Academic Weakness');
+  const [description, setDescription] = useState('');
+  const [name, setName] = useState('');
+  const [contact, setContact] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!description.trim()) { setError('Please describe your concern.'); return; }
+    if (!name.trim()) { setError('Please enter your name.'); return; }
+    setSubmitting(true);
+    setError('');
+    try {
+      const { error: insertError } = await supabase.from('grievances').insert({
+        student_id: studentId || null,
+        subject: category,
+        category,
+        description: description.trim(),
+        source: 'parent_portal',
+        filed_by_name: name.trim(),
+        filed_by_contact: contact.trim() || null,
+        status: 'Open',
+      });
+      if (insertError) throw insertError;
+      onSubmitted?.();
+    } catch (err) {
+      console.error('Parent grievance submit error:', err);
+      setError('Something went wrong. Please try again or contact the office directly.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (done) {
+    return (
+      <Card>
+        <div style={{ textAlign: 'center', padding: '16px 0' }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>✓</div>
+          <h3 style={{ margin: '0 0 6px', color: NAVY, fontSize: 16 }}>Your concern has been recorded</h3>
+          <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>
+            A staff member will review this and follow up with you shortly.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+  const inputStyle = { width: '100%', borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', padding: '11px 14px', fontSize: 13, color: '#1e293b', outline: 'none', boxSizing: 'border-box' };
+
   return (
-    <Card title="Message Class Teacher">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 420, overflowY: 'auto', marginBottom: 16, paddingRight: 4 }}>
-        {(state.status === 'loading' || state.status === 'idle') && <Loading />}
-        {state.status === 'error' && <Empty icon="💬" text={state.error} />}
-        {state.status === 'ready' && (
-          state.data.length === 0 ? (
-            <Empty icon="💬" text="No messages yet — say hello!" />
-          ) : (
-            state.data.map((m) => {
-              const mine = m.sender === 'parent';
-              return (
-                <div key={m.id} style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-                  <div style={{
-                    maxWidth: '80%', borderRadius: 14, padding: '10px 16px',
-                    backgroundColor: mine ? NAVY : '#f1f5f9',
-                    color: mine ? 'white' : '#1e293b',
-                    border: mine ? 'none' : '1px solid #e2e8f0',
-                    borderBottomRightRadius: mine ? 4 : 14,
-                    borderBottomLeftRadius: mine ? 14 : 4,
-                  }}>
-                    <div style={{ fontSize: 13 }}>{m.body}</div>
-                    <div style={{ fontSize: 10, marginTop: 4, fontWeight: 600, opacity: mine ? 0.75 : 0.6 }}>
-                      {mine ? 'You' : 'Teacher'} · {(m.created_at || '').slice(0, 16).replace('T', ' ')}
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )
-        )}
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <input
-          type="text"
-          style={{ flex: 1, borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', padding: '12px 16px', fontSize: 13, color: '#1e293b', outline: 'none' }}
-          placeholder="Type a message…"
-          value={draft}
-          onChange={(e) => onDraftChange(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !sending) onSend(); }}
+    <Card title="Raise a Concern">
+      <p style={{ fontSize: 12, color: '#64748b', marginTop: 0, marginBottom: 18 }}>
+        {studentName ? `Regarding: ${studentName}` : "Tell us what's on your mind — we take every concern seriously."}
+      </p>
+      {error && (
+        <div style={{ marginBottom: 16, borderRadius: 10, border: '1px solid #fecaca', backgroundColor: '#fef2f2', padding: '12px 16px', fontSize: 13, color: '#b91c1c' }}>
+          {error}
+        </div>
+      )}
+      <form onSubmit={handleSubmit}>
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Category</label>
+        <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }}>
+          {GRIEVANCE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Describe your concern</label>
+        <textarea
+          rows={4}
+          required
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="e.g. My daughter seems to be struggling with Mathematics and I'd like to understand what support is available…"
+          style={{ ...inputStyle, marginBottom: 14, resize: 'vertical' }}
         />
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Your Name</label>
+            <input required value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Phone / Email (optional)</label>
+            <input value={contact} onChange={(e) => setContact(e.target.value)} style={inputStyle} />
+          </div>
+        </div>
+
         <button
-          style={{ borderRadius: 10, backgroundColor: NAVY, color: 'white', fontWeight: 700, padding: '12px 20px', fontSize: 13, border: 'none', cursor: (sending || !draft.trim()) ? 'not-allowed' : 'pointer', opacity: (sending || !draft.trim()) ? 0.5 : 1 }}
-          onClick={onSend}
-          disabled={sending || !draft.trim()}
+          type="submit"
+          disabled={submitting}
+          style={{ width: '100%', borderRadius: 10, backgroundColor: NAVY, color: 'white', fontWeight: 700, padding: '13px 0', border: 'none', fontSize: 14, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
         >
-          {sending ? '…' : 'Send'}
+          {submitting ? 'Submitting…' : 'Submit Concern'}
         </button>
-      </div>
+      </form>
     </Card>
   );
 }
