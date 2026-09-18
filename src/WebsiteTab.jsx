@@ -107,15 +107,62 @@ const s = {
 // Spin component
 const Spin = () => <div style={{width:"16px",height:"16px",border:"2px solid rgba(184,146,42,.28)",borderTopColor:C.gold,borderRadius:"50%",animation:"spin .8s linear infinite",flexShrink:0}} />;
 
+// Resizes/re-encodes an image File in the browser before upload, via
+// Canvas — no extra dependency needed. Downscales so the longer edge is
+// at most maxDim (1920px covers anything the site actually displays —
+// gallery/banner images render nowhere near full camera resolution) and
+// re-encodes as JPEG at the given quality. Phone camera photos are
+// routinely 10–20MB at ~4000px+ on the long edge; this typically gets
+// them under 1–2MB with no visible quality loss at web display sizes.
+// Falls back to the original file untouched if anything goes wrong
+// (unsupported format, canvas/security error, etc.) rather than blocking
+// the upload — compression is a nice-to-have, not a requirement.
+async function compressImage(file, { maxDim = 1920, quality = 0.85 } = {}) {
+  // Skip already-tiny files and formats Canvas can't safely re-encode
+  // (SVG has no pixel raster; GIF would lose animation).
+  if (file.size <= 1.5 * 1024 * 1024) return file;
+  if (/svg|gif/i.test(file.type)) return file;
+
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    const w = Math.round(bitmap.width * scale);
+    const h = Math.round(bitmap.height * scale);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (!blob) return file;
+
+    // Only use the compressed version if it's actually smaller — a
+    // already-efficient small JPEG can occasionally re-encode larger.
+    if (blob.size >= file.size) return file;
+
+    const newName = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    return new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() });
+  } catch (e) {
+    console.error('compressImage failed, using original file:', e);
+    return file;
+  }
+}
+
 // ── ImageUploadField ───────────────────────────────────────────
 // Drop-in replacement for the old "paste a Supabase URL" text input.
-// Lets staff pick a photo straight from their device — uploads it to the
-// gnsi-public bucket under `folder` via uploadWebsiteImage() and calls
-// onChange(url) with the resulting public URL once done, same as if they'd
-// typed/pasted that URL themselves. label/folder/value/onChange are the
-// only required props; the rest (preview size/shape) has sane defaults.
+// Lets staff pick a photo straight from their device — compresses it
+// client-side (see compressImage above) so a 15MB phone photo doesn't
+// need to be shrunk by hand first, uploads it to the gnsi-public bucket
+// under `folder` via uploadWebsiteImage(), and calls onChange(url) with
+// the resulting public URL once done, same as if they'd typed/pasted
+// that URL themselves. label/folder/value/onChange are the only required
+// props; the rest (preview size/shape) has sane defaults.
 function ImageUploadField({ label, folder, value, onChange, round=false, previewSize=80 }) {
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState("Uploading…");
   const [err, setErr] = useState("");
   const inputRef = useRef(null);
 
@@ -129,13 +176,22 @@ function ImageUploadField({ label, folder, value, onChange, round=false, preview
       setErr("Please choose an image file.");
       return;
     }
-    if (file.size > 8 * 1024 * 1024) {
-      setErr("Image is larger than 8MB — please use a smaller file.");
+    // Hard ceiling — a safety net for a huge file compression couldn't
+    // shrink (e.g. an already-compressed 20MB TIFF-in-JPEG-clothing), not
+    // the everyday limit. Ordinary phone photos are compressed above and
+    // never get near this.
+    if (file.size > 30 * 1024 * 1024) {
+      setErr("Image is larger than 30MB — please use a smaller file.");
       return;
     }
     setErr("");
     setBusy(true);
-    const { url, error } = await uploadWebsiteImage(file, folder);
+
+    setBusyLabel(file.size > 1.5 * 1024 * 1024 ? "Compressing…" : "Uploading…");
+    const toUpload = await compressImage(file);
+    setBusyLabel("Uploading…");
+
+    const { url, error } = await uploadWebsiteImage(toUpload, folder);
     setBusy(false);
     if (error || !url) {
       setErr("Upload failed: " + (error?.message || "unknown error"));
@@ -172,7 +228,7 @@ function ImageUploadField({ label, folder, value, onChange, round=false, preview
         <div style={{ display: "flex", flexDirection: "column", gap: ".4rem" }}>
           <div style={{ display: "flex", gap: ".5rem" }}>
             <button type="button" style={{ ...s.btnG, opacity: busy ? .6 : 1 }} onClick={pick} disabled={busy}>
-              {busy ? <span style={{display:"flex",alignItems:"center",gap:".4rem"}}><Spin/>Uploading…</span> : (value ? "Replace Photo" : "Upload Photo")}
+              {busy ? <span style={{display:"flex",alignItems:"center",gap:".4rem"}}><Spin/>{busyLabel}</span> : (value ? "Replace Photo" : "Upload Photo")}
             </button>
             {value && !busy && <button type="button" style={s.btnR} onClick={() => onChange("")}>Remove</button>}
           </div>
