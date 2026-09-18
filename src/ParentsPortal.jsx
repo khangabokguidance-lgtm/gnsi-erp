@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from './supabase';
-import './ParentsPortal.css';
+// Redesigned to a premium Tailwind CSS UI — the legacy ParentsPortal.css
+// stylesheet is no longer used; every visual class below is a Tailwind
+// utility class instead of a pp-* / custom class name.
 
 const EMBLEM_URL = "https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/gnsi-emblem.png";
 
@@ -64,67 +66,75 @@ function getCourseMax(course) {
   return Object.values(maxMap).reduce((s, v) => s + v, 0) || 100;
 }
 
-// ─── REPORT_CARD_CSS — identical to Exams.jsx's constant of the same name ───
+// ─── REPORT_CARD_CSS — premium Tailwind-inspired redesign of the printed
+// report card. This intentionally diverges from Exams.jsx's staff-side
+// version (per explicit request): a parent-printed card will no longer be
+// byte-identical to a staff-printed one.
 const REPORT_CARD_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 @page{margin:0.7cm;size:A4;}
-body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-.no-print{text-align:center;margin-bottom:16px;display:flex;gap:10px;justify-content:center;}
-.no-print button{padding:10px 28px;border:none;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;}
-.btn-print{background:#0f2d5e;color:white;}.btn-close{background:#e5e7eb;color:#374151;}
+body{font-family:'Inter',ui-sans-serif,system-ui,sans-serif;background:#0f172a;padding:32px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.no-print{text-align:center;margin-bottom:20px;display:flex;gap:12px;justify-content:center;}
+.no-print button{padding:12px 28px;border:none;border-radius:12px;cursor:pointer;font-family:'Inter',sans-serif;font-size:14px;font-weight:600;transition:opacity .15s;}
+.no-print button:hover{opacity:.9;}
+.btn-print{background:#d4af37;color:#0f172a;}.btn-close{background:rgba(255,255,255,.08);color:#f8fafc;border:1px solid rgba(255,255,255,.15)!important;}
 .page-break{page-break-after:always;height:0;overflow:hidden;}
-.card{width:720px;margin:0 auto 24px;background:#F0F4FF;border-radius:3px;box-shadow:0 12px 48px rgba(0,0,0,0.22),0 0 0 1px #B8C9E8;position:relative;overflow:hidden;}
-.top-strip{height:5px;background:linear-gradient(90deg,#0f2d5e 0%,#1a4d8a 30%,#B8860B 60%,#f0c040 80%,#1a4d8a 100%);}
-.header{background:linear-gradient(150deg,#071a3e 0%,#0f2d5e 45%,#133a7a 100%);padding:22px 32px 18px;display:flex;align-items:center;gap:16px;}
-.logo-ring{width:64px;height:64px;border-radius:50%;border:2px solid #D4A017;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.logo-text{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:white;}
+.card{width:760px;margin:0 auto 28px;background:#ffffff;border-radius:24px;box-shadow:0 25px 70px -15px rgba(0,0,0,.45),0 0 0 1px rgba(15,23,42,.06);position:relative;overflow:hidden;}
+.top-strip{height:6px;background:linear-gradient(90deg,#0f172a 0%,#1e3a8a 30%,#d4af37 60%,#f4d878 80%,#1e3a8a 100%);}
+.header{background:linear-gradient(135deg,#0b1120 0%,#0f172a 50%,#152238 100%);padding:32px 40px 24px;display:flex;align-items:center;gap:20px;position:relative;}
+.header::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 85% -20%,rgba(212,175,55,.18),transparent 60%);pointer-events:none;}
+.logo-ring{width:72px;height:72px;border-radius:9999px;border:2px solid #d4af37;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 4px rgba(212,175,55,.12);}
+.logo-text{font-family:'Inter',sans-serif;font-size:15px;font-weight:800;color:#fff;letter-spacing:.05em;}
 .header-center{flex:1;text-align:center;}
-.eyebrow{font-size:9px;letter-spacing:4px;text-transform:uppercase;color:#cbd5e1;margin-bottom:5px;font-weight:600;}
-.inst-name{font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:white;margin-bottom:3px;}
-.inst-addr{font-size:11px;color:#cbd5e1;}
-.doc-badge{text-align:center;flex-shrink:0;}
-.doc-badge-title{font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:white;letter-spacing:2px;line-height:1.2;}
-.doc-badge-sub{font-size:10px;color:#cbd5e1;margin-top:3px;font-weight:600;}
-.exam-result-bar{background:#0f2d5e;padding:10px 24px;display:flex;justify-content:space-between;align-items:center;}
-.exam-info{display:flex;gap:20px;flex-wrap:wrap;}
+.eyebrow{font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;font-weight:600;}
+.inst-name{font-family:'Inter',sans-serif;font-size:22px;font-weight:800;color:#fff;margin-bottom:4px;letter-spacing:-.01em;}
+.inst-addr{font-size:12px;color:#94a3b8;}
+.doc-badge{text-align:center;flex-shrink:0;background:rgba(212,175,55,.12);border:1px solid rgba(212,175,55,.4);border-radius:14px;padding:8px 16px;}
+.doc-badge-title{font-family:'Inter',sans-serif;font-size:13px;font-weight:800;color:#f4d878;letter-spacing:.15em;line-height:1.3;}
+.doc-badge-sub{font-size:10px;color:#cbd5e1;margin-top:4px;font-weight:600;}
+.exam-result-bar{background:#111c34;padding:14px 40px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(255,255,255,.06);}
+.exam-info{display:flex;gap:28px;flex-wrap:wrap;}
 .exam-info-item{display:flex;flex-direction:column;}
-.exam-info-label{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:#e0e7ff;margin-bottom:2px;font-weight:700;}
-.exam-info-value{font-size:13px;font-weight:600;color:#ffffff;}
-.result-pill-bar{display:flex;align-items:center;gap:8px;}
-.student-section{padding:14px 24px 10px;}
-.section-title{font-family:'Cormorant Garamond',serif;font-size:13px;font-weight:600;color:#0f2d5e;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;}
-.student-table{width:100%;border-collapse:collapse;font-size:13px;}
-.student-table td{padding:7px 10px;border:1px solid #BFDBFE;}
-.student-table .lbl{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#1a4d8a;font-weight:600;background:#EFF6FF;width:120px;}
-.student-table .val{font-weight:600;color:#0A1628;}
-.student-table .val.big{font-family:'Playfair Display',serif;font-size:16px;color:#0f2d5e;}
-.score-grid{display:grid;grid-template-columns:repeat(5,1fr);background:#0f2d5e;margin:0 16px 0;border-radius:6px;overflow:hidden;}
-.score-cell{text-align:center;padding:12px 8px;border-right:1px solid rgba(255,255,255,0.2);}
+.exam-info-label{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:#93a5c9;margin-bottom:3px;font-weight:700;}
+.exam-info-value{font-size:14px;font-weight:700;color:#ffffff;}
+.result-pill-bar{display:flex;align-items:center;gap:10px;}
+.student-section{padding:24px 40px 8px;}
+.section-title{font-family:'Inter',sans-serif;font-size:11px;font-weight:800;color:#0f172a;letter-spacing:.2em;text-transform:uppercase;margin-bottom:12px;}
+.student-table{width:100%;border-collapse:separate;border-spacing:0 6px;font-size:13px;}
+.student-table td{padding:10px 14px;background:#f8fafc;}
+.student-table tr td:first-child{border-radius:10px 0 0 10px;}
+.student-table tr td:last-child{border-radius:0 10px 10px 0;}
+.student-table .lbl{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#64748b;font-weight:700;background:#eef2f9;width:130px;}
+.student-table .val{font-weight:700;color:#0f172a;}
+.student-table .val.big{font-family:'Inter',sans-serif;font-size:17px;color:#0f172a;letter-spacing:-.01em;}
+.score-grid{display:grid;grid-template-columns:repeat(5,1fr);background:linear-gradient(135deg,#0f172a,#182b4d);margin:16px 40px 0;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px -10px rgba(15,23,42,.4);}
+.score-cell{text-align:center;padding:16px 8px;border-right:1px solid rgba(255,255,255,.08);}
 .score-cell:last-child{border-right:none;}
-.score-lbl{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:#e0e7ff;margin-bottom:4px;font-weight:700;}
-.score-val{font-family:'Playfair Display',serif;font-size:22px;font-weight:600;color:#ffffff;line-height:1;}
-.score-val.gold{color:#fbbf24;}
-.score-sub{font-size:10px;color:#d0d9ff;margin-top:2px;font-weight:500;}
-.marks-section{padding:14px 24px;}
-.marks-table{width:100%;border-collapse:collapse;font-size:12.5px;border:1px solid #BFDBFE;border-radius:6px;overflow:hidden;}
-.marks-table thead tr{background:#DBEAFE;}
-.marks-table thead th{padding:8px 10px;text-align:center;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:#1e3a6e;font-weight:700;border-bottom:2px solid #93C5FD;}
-.marks-table tbody td{padding:9px 10px;text-align:center;border-bottom:1px solid #EFF6FF;}
-.marks-table tfoot tr{background:#DBEAFE;}
-.marks-table tfoot td{padding:10px;border-top:2px solid #93C5FD;text-align:center;font-weight:700;}
-.remark-box{margin:0 24px 14px;padding:12px 16px;background:white;border:1px solid #BFDBFE;border-left:4px solid #1a4d8a;border-radius:4px;}
-.remark-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#1a4d8a;font-weight:700;margin-bottom:5px;}
-.remark-text{font-family:'Cormorant Garamond',serif;font-size:14px;font-style:italic;color:#1e3a6e;line-height:1.6;}
-.sig-section{display:flex;align-items:flex-end;justify-content:space-between;padding:14px 24px 18px;background:white;border-top:1px solid #BFDBFE;gap:16px;}
+.score-lbl{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#93a5c9;margin-bottom:6px;font-weight:700;}
+.score-val{font-family:'Inter',sans-serif;font-size:24px;font-weight:800;color:#ffffff;line-height:1;}
+.score-val.gold{color:#f4d878;}
+.score-sub{font-size:10px;color:#93a5c9;margin-top:4px;font-weight:600;}
+.marks-section{padding:20px 40px;}
+.marks-table{width:100%;border-collapse:collapse;font-size:12.5px;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;}
+.marks-table thead tr{background:#0f172a;}
+.marks-table thead th{padding:11px 12px;text-align:center;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#cbd5e1;font-weight:700;}
+.marks-table tbody tr:nth-child(even){background:#f8fafc;}
+.marks-table tbody td{padding:11px 12px;text-align:center;border-bottom:1px solid #f1f5f9;}
+.marks-table tfoot tr{background:#eef2f9;}
+.marks-table tfoot td{padding:12px;border-top:2px solid #cbd5e1;text-align:center;font-weight:800;}
+.remark-box{margin:0 40px 18px;padding:16px 20px;background:#fdfaf1;border:1px solid #f0e4bd;border-left:4px solid #d4af37;border-radius:14px;}
+.remark-label{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:#a17e1f;font-weight:800;margin-bottom:6px;}
+.remark-text{font-family:'Inter',sans-serif;font-size:14px;font-style:italic;color:#453a15;line-height:1.65;}
+.sig-section{display:flex;align-items:flex-end;justify-content:space-between;padding:18px 40px 26px;background:#fff;border-top:1px solid #e2e8f0;gap:20px;}
 .sig-block{text-align:center;flex:1;}
-.sig-space{height:40px;}
-.sig-label{border-top:1.5px solid #1C1A16;padding-top:5px;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:#1e3a6e;font-weight:600;margin:0 10px;}
+.sig-space{height:44px;}
+.sig-label{border-top:1.5px solid #cbd5e1;padding-top:6px;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#475569;font-weight:700;margin:0 10px;}
 .seal-block{flex:0 0 90px;display:flex;flex-direction:column;align-items:center;}
 .seal{width:90px;height:90px;display:flex;align-items:center;justify-content:center;}
 .seal img{width:90px;height:90px;object-fit:contain;}
-.footer-strip{background:linear-gradient(90deg,#071a3e,#0f2d5e,#071a3e);padding:8px 32px;}
-.footer-text{font-size:10px;color:#cbd5e1;text-align:center;font-weight:500;}
-.bottom-strip{height:4px;background:linear-gradient(90deg,#1a4d8a,#60A5FA,#1a4d8a);}
+.footer-strip{background:linear-gradient(90deg,#0b1120,#0f172a,#0b1120);padding:12px 40px;}
+.footer-text{font-size:10px;color:#94a3b8;text-align:center;font-weight:500;letter-spacing:.03em;}
+.bottom-strip{height:5px;background:linear-gradient(90deg,#1e3a8a,#d4af37,#1e3a8a);}
 @media print{body{background:white;padding:0;}.no-print{display:none!important;}.card{box-shadow:none;border-radius:0;width:100%;margin:0;}}
 `;
 
@@ -727,9 +737,9 @@ export default function ParentsPortal({ isOpen, onClose }) {
       }
       overlay.innerHTML = `
         <style>${REPORT_CARD_CSS}</style>
-        <div class="no-print" style="position:sticky;top:0;z-index:2;background:#080F1E;padding:.8rem 1.2rem;display:flex;gap:.6rem;justify-content:flex-end;box-shadow:0 2px 10px rgba(0,0,0,.2);">
-          <button onclick="window.print()" style="padding:.6rem 1.2rem;background:#8C6F2E;color:#080F1E;border:none;font-weight:700;cursor:pointer;border-radius:4px;">🖨️ Print / Save as PDF</button>
-          <button onclick="document.getElementById('rcPrintOverlay').remove();document.body.style.overflow='';" style="padding:.6rem 1.2rem;background:transparent;color:#F7F3E9;border:1px solid #8C6F2E;cursor:pointer;border-radius:4px;">✕ Close</button>
+        <div class="no-print" style="position:sticky;top:0;z-index:2;background:rgba(15,23,42,.92);backdrop-filter:blur(8px);padding:1rem 1.4rem;display:flex;gap:.7rem;justify-content:flex-end;box-shadow:0 4px 20px rgba(0,0,0,.25);">
+          <button class="btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+          <button class="btn-close" onclick="document.getElementById('rcPrintOverlay').remove();document.body.style.overflow='';">✕ Close</button>
         </div>
         ${html}
       `;
@@ -1134,84 +1144,86 @@ export default function ParentsPortal({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   return (
-    <div className="pp-overlay open" id="ppOverlay">
+    <div className="fixed inset-0 z-[1000] bg-slate-950 flex items-stretch overflow-y-auto" id="ppOverlay">
       {!student ? (
-        <div className="pp-login-wrap" id="ppLoginWrap">
-          <button className="pp-close" onClick={onClose}>
+        <div className="relative flex-1 flex items-center justify-center px-4 py-10 bg-[radial-gradient(circle_at_20%_-10%,rgba(212,175,55,.12),transparent_45%),radial-gradient(circle_at_90%_110%,rgba(30,58,138,.35),transparent_50%)]" id="ppLoginWrap">
+          <button
+            className="absolute top-5 right-5 h-10 w-10 rounded-full bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center justify-center text-lg"
+            onClick={onClose}
+          >
             ✕
           </button>
-          <div className="pp-box">
-            <div className="pp-logo">
+          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-[0_30px_90px_-20px_rgba(0,0,0,.6)] p-8">
+            <div className="text-center mb-7">
               <img
                 src={EMBLEM_URL}
                 alt="GNSI"
-                style={{ height: 70, width: 70, objectFit: "contain", margin: "0 auto .8rem", display: "block" }}
+                className="h-[70px] w-[70px] object-contain mx-auto mb-3 drop-shadow-[0_0_20px_rgba(212,175,55,.25)]"
                 onError={(e) => { e.target.style.display = 'none'; }}
               />
-              <h2>Parents Portal</h2>
-              <p>GNSI · Khangabok, Manipur</p>
+              <h2 className="text-xl font-bold text-white tracking-tight">Parents Portal</h2>
+              <p className="text-xs text-slate-400 mt-1 tracking-wide">GNSI · Khangabok, Manipur</p>
             </div>
-            {loginError && <div className="pp-err" style={{ display: 'block' }}>{loginError}</div>}
-            <label className="pp-fl">GCC No.</label>
+            {loginError && (
+              <div className="mb-4 rounded-xl border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+                {loginError}
+              </div>
+            )}
+            <label className="block text-[11px] font-semibold uppercase tracking-[.15em] text-slate-400 mb-1.5">GCC No.</label>
             <input
               type="text"
-              className="pp-fi"
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-slate-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/20 transition mb-4"
               placeholder="e.g. 1107"
               value={loginGcc}
               onChange={(e) => setLoginGcc(e.target.value)}
             />
-            <label className="pp-fl">Student Name</label>
+            <label className="block text-[11px] font-semibold uppercase tracking-[.15em] text-slate-400 mb-1.5">Student Name</label>
             <input
               type="text"
-              className="pp-fi"
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-slate-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/20 transition mb-6"
               placeholder="Full name as registered"
               value={loginName}
               onChange={(e) => setLoginName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
             />
-            <button className="pp-lbtn" disabled={loginBusy} onClick={handleLogin}>
+            <button
+              className="w-full rounded-xl bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 font-bold py-3.5 shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 hover:brightness-105 active:scale-[.99] transition disabled:opacity-50 disabled:pointer-events-none"
+              disabled={loginBusy}
+              onClick={handleLogin}
+            >
               {loginBusy ? 'Checking…' : 'Login to Parents Portal →'}
             </button>
-            <p
-              style={{
-                color: "rgba(247,243,233,.85)",
-                fontSize: ".7rem",
-                fontFamily: '"Rajdhani",sans-serif',
-                letterSpacing: ".05em",
-                textAlign: "center",
-                marginTop: "1rem"
-              }}
-            >
+            <p className="text-center text-xs text-slate-400 mt-5 tracking-wide">
               Contact institute if you need help:{" "}
-              <a href="tel:+918974298074" style={{ color: "var(--goldL)" }}>
+              <a href="tel:+918974298074" className="text-amber-300 hover:text-amber-200 font-medium">
                 +91 89742 98074
               </a>
             </p>
           </div>
         </div>
       ) : (
-        <div className="pp-shell show" id="ppShell">
+        <div className="flex-1 flex flex-col min-h-screen bg-slate-950" id="ppShell">
           {showInstallBanner && (
-            <div className="pp-install-banner">
+            <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 px-4 py-2.5 text-sm font-medium">
               <span>📲 Install this portal as an app for quick access</span>
-              <div>
-                <button onClick={handleInstallClick} className="pp-install-btn">Install</button>
-                <button onClick={() => setShowInstallBanner(false)} className="pp-install-dismiss">✕</button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={handleInstallClick} className="rounded-lg bg-slate-900 text-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-800 transition">Install</button>
+                <button onClick={() => setShowInstallBanner(false)} className="h-7 w-7 rounded-lg hover:bg-black/10 flex items-center justify-center transition">✕</button>
               </div>
             </div>
           )}
-          <div className="pp-topbar">
-            <div className="pp-topbar-l">
-              <img src={EMBLEM_URL} alt="GNSI" style={{ height: 36, width: 36, objectFit: "contain" }} onError={(e) => { e.target.style.display = "none"; }} />
-              <div>
-                <h3>{student.name || 'Student'}</h3>
-                <p>GNSI Parents Portal</p>
+          <div className="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-white/10 bg-slate-950/90 backdrop-blur-xl px-5 py-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <img src={EMBLEM_URL} alt="GNSI" className="h-9 w-9 object-contain shrink-0" onError={(e) => { e.target.style.display = "none"; }} />
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-white truncate">{student.name || 'Student'}</h3>
+                <p className="text-[11px] text-slate-400 tracking-wide">GNSI Parents Portal</p>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '.6rem' }}>
+            <div className="flex items-center gap-2.5 shrink-0">
               {siblings.length > 1 && (
                 <select
-                  className="pp-child-switch"
+                  className="rounded-lg border border-white/10 bg-white/5 text-white text-xs px-2.5 py-2 outline-none focus:border-amber-400/60"
                   value={student.id}
                   onChange={(e) => {
                     const chosen = siblings.find(s => String(s.id) === e.target.value);
@@ -1219,43 +1231,55 @@ export default function ParentsPortal({ isOpen, onClose }) {
                   }}
                 >
                   {siblings.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
+                    <option key={s.id} value={s.id} className="bg-slate-900">{s.name}</option>
                   ))}
                 </select>
               )}
-              <button className="pp-lout" onClick={() => { handleLogout(); onClose(); }}>
+              <button
+                className="rounded-lg border border-white/10 text-slate-300 hover:text-white hover:border-white/25 px-3 py-2 text-xs font-semibold transition"
+                onClick={() => { handleLogout(); onClose(); }}
+              >
                 Logout ✕
               </button>
             </div>
           </div>
-          <div className="pp-tabs">
+          <div className="sticky top-[57px] z-10 flex gap-1.5 overflow-x-auto no-scrollbar border-b border-white/10 bg-slate-950/95 backdrop-blur-xl px-4 py-2.5">
             {TABS.map(t => (
               <button
                 key={t.id}
-                className={`pp-tab${activeTab === t.id ? ' active' : ''}`}
+                className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold tracking-wide whitespace-nowrap transition ${
+                  activeTab === t.id
+                    ? 'bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 shadow-md shadow-amber-500/20'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
                 onClick={() => handleTabClick(t.id)}
               >
                 {t.label}
               </button>
             ))}
           </div>
-          <div className="pp-content">
-            <div className="stu-hdr">
-              <div className="stu-av">
+          <div className="flex-1 px-4 py-5 sm:px-6 lg:px-8 max-w-5xl w-full mx-auto">
+            <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 mb-5">
+              <div className="h-14 w-14 shrink-0 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-lg font-bold text-slate-900 overflow-hidden ring-2 ring-amber-400/30">
                 {student.photo_url
-                  ? <img src={student.photo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                  ? <img src={student.photo_url} alt="" className="h-full w-full object-cover rounded-full" />
                   : ((student.name || 'S')[0] || 'S').toUpperCase()}
               </div>
-              <div className="stu-info">
-                <h3>{student.name || 'Student'}</h3>
-                <p>{[student.course, student.class_name, student.batch].filter(Boolean).join(' · ')}</p>
-                <div className="stu-badges">
-                  <span className="stu-badge">{student.hostel_type || '—'}</span>
-                  <span className="stu-badge">{student.status || 'Active'}</span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-bold text-white truncate">{student.name || 'Student'}</h3>
+                <p className="text-xs text-slate-400 mt-0.5 truncate">{[student.course, student.class_name, student.batch].filter(Boolean).join(' · ')}</p>
+                <div className="flex gap-1.5 mt-2">
+                  <span className="rounded-full bg-white/5 border border-white/10 px-2.5 py-0.5 text-[10px] font-semibold text-slate-300">{student.hostel_type || '—'}</span>
+                  <span className="rounded-full bg-emerald-400/10 border border-emerald-400/20 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-300">{student.status || 'Active'}</span>
                 </div>
               </div>
-              <button className="pp-export-btn" onClick={exportProgressReport} disabled={exportBusy} title="Download full progress report as PDF">
-                {exportBusy ? '⏳' : '⬇️'} Export Report
+              <button
+                className="shrink-0 rounded-xl border border-amber-400/30 bg-amber-400/10 hover:bg-amber-400/15 text-amber-300 px-3.5 py-2.5 text-xs font-semibold transition disabled:opacity-50"
+                onClick={exportProgressReport}
+                disabled={exportBusy}
+                title="Download full progress report as PDF"
+              >
+                {exportBusy ? '⏳' : '⬇️'} <span className="hidden sm:inline">Export Report</span>
               </button>
             </div>
 
@@ -1325,8 +1349,8 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
 function Loading() {
   return (
-    <div className="pp-loading">
-      <div className="spin" />
+    <div className="flex flex-col items-center justify-center gap-3 py-10 text-slate-400 text-sm">
+      <div className="h-6 w-6 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin" />
       Loading…
     </div>
   );
@@ -1334,9 +1358,39 @@ function Loading() {
 
 function Empty({ icon, text }) {
   return (
-    <div className="pp-empty">
-      <div className="pp-empty-icon">{icon}</div>
-      <p>{text}</p>
+    <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+      <div className="text-3xl opacity-70">{icon}</div>
+      <p className="text-sm text-slate-400">{text}</p>
+    </div>
+  );
+}
+
+// Shared premium card shell used by every tab.
+function Card({ title, right, children }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.03] shadow-[0_10px_40px_-15px_rgba(0,0,0,.4)] overflow-hidden mb-4">
+      {title && (
+        <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3.5">
+          <div className="text-sm font-bold text-white tracking-tight">{title}</div>
+          {right}
+        </div>
+      )}
+      <div className="p-5">{children}</div>
+    </div>
+  );
+}
+
+function PremiumTable({ head, children }) {
+  return (
+    <div className="overflow-x-auto -mx-1">
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="text-left text-[10px] uppercase tracking-[.12em] text-slate-400 border-b border-white/10">
+            {head.map((h, i) => <th key={i} className="px-3 py-2.5 font-semibold">{h}</th>)}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-white/5">{children}</tbody>
+      </table>
     </div>
   );
 }
@@ -1346,74 +1400,67 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
   const attPct = attendance.status === 'ready' ? attendance.data.pct : null;
   const feeBalance = fees.status === 'ready' ? fees.data.totalDue : undefined;
 
+  const tiles = [
+    { id: 'att', icon: '📊', val: attPct !== null ? `${attPct}%` : '—', lbl: 'Attendance this month' },
+    { id: 'fees', icon: '💳', val: feeBalance !== undefined && feeBalance !== null ? `₹${feeBalance}` : '—', lbl: 'Fee balance due' },
+    { id: 'alerts', icon: '🔔', val: alertCount !== null ? alertCount : '—', lbl: 'Absences (30 days)' },
+    { id: 'notices', icon: '📣', val: 'View', lbl: 'Notice board' },
+    { id: 'homework', icon: '📚', val: 'View', lbl: 'Homework & material' },
+    { id: 'timetable', icon: '🗓️', val: 'View', lbl: 'Class timetable' },
+  ];
+
   return (
-    <div className="pp-sec active">
-      <div className="pp-dash-grid">
-        <div className="pp-dash-card" onClick={() => onGoTab('att')}>
-          <div className="pp-dash-icon">📊</div>
-          <div className="pp-dash-val">{attPct !== null ? `${attPct}%` : '—'}</div>
-          <div className="pp-dash-lbl">Attendance this month</div>
-        </div>
-        <div className="pp-dash-card" onClick={() => onGoTab('fees')}>
-          <div className="pp-dash-icon">💳</div>
-          <div className="pp-dash-val">{feeBalance !== undefined && feeBalance !== null ? `₹${feeBalance}` : '—'}</div>
-          <div className="pp-dash-lbl">Fee balance due</div>
-        </div>
-        <div className="pp-dash-card" onClick={() => onGoTab('alerts')}>
-          <div className="pp-dash-icon">🔔</div>
-          <div className="pp-dash-val">{alertCount !== null ? alertCount : '—'}</div>
-          <div className="pp-dash-lbl">Absences (30 days)</div>
-        </div>
-        <div className="pp-dash-card" onClick={() => onGoTab('notices')}>
-          <div className="pp-dash-icon">📣</div>
-          <div className="pp-dash-val">View</div>
-          <div className="pp-dash-lbl">Notice board</div>
-        </div>
-        <div className="pp-dash-card" onClick={() => onGoTab('homework')}>
-          <div className="pp-dash-icon">📚</div>
-          <div className="pp-dash-val">View</div>
-          <div className="pp-dash-lbl">Homework & material</div>
-        </div>
-        <div className="pp-dash-card" onClick={() => onGoTab('timetable')}>
-          <div className="pp-dash-icon">🗓️</div>
-          <div className="pp-dash-val">View</div>
-          <div className="pp-dash-lbl">Class timetable</div>
-        </div>
+    <div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+        {tiles.map(t => (
+          <button
+            key={t.id}
+            onClick={() => onGoTab(t.id)}
+            className="group text-left rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] hover:border-amber-400/30 p-4 transition shadow-[0_8px_30px_-12px_rgba(0,0,0,.4)]"
+          >
+            <div className="text-xl mb-2 group-hover:scale-110 transition-transform inline-block">{t.icon}</div>
+            <div className="text-xl font-extrabold text-white tracking-tight">{t.val}</div>
+            <div className="text-[11px] text-slate-400 mt-1 font-medium">{t.lbl}</div>
+          </button>
+        ))}
       </div>
 
       {pushStatus !== 'subscribed' && (
-        <div className="pp-card pp-push-card">
-          <div className="pp-card-body pp-push-body">
-            <div>
-              <strong>Turn on notifications</strong>
-              <p className="pp-push-desc">
-                Get notified instantly about new notices, absences and exam results.
-              </p>
-            </div>
-            <button className="pp-lbtn pp-push-btn" onClick={onEnablePush}>
-              {pushStatus === 'unsupported' ? 'Not supported on this browser' : pushStatus === 'denied' ? 'Permission denied — check browser settings' : 'Enable'}
-            </button>
+        <div className="rounded-2xl border border-amber-400/20 bg-gradient-to-r from-amber-400/[0.08] to-transparent p-4 flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <strong className="text-sm font-bold text-white">Turn on notifications</strong>
+            <p className="text-xs text-slate-400 mt-1">
+              Get notified instantly about new notices, absences and exam results.
+            </p>
           </div>
+          <button
+            className="shrink-0 rounded-xl bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 font-bold px-4 py-2.5 text-xs shadow-lg shadow-amber-500/20 hover:brightness-105 transition disabled:opacity-60"
+            onClick={onEnablePush}
+            disabled={pushStatus === 'unsupported' || pushStatus === 'denied'}
+          >
+            {pushStatus === 'unsupported' ? 'Not supported on this browser' : pushStatus === 'denied' ? 'Permission denied — check browser settings' : 'Enable'}
+          </button>
         </div>
       )}
     </div>
   );
 }
 
+function Pill({ tone, children }) {
+  const tones = {
+    hi: 'bg-emerald-400/10 text-emerald-300 border-emerald-400/20',
+    mi: 'bg-amber-400/10 text-amber-300 border-amber-400/20',
+    lo: 'bg-rose-400/10 text-rose-300 border-rose-400/20',
+  };
+  return <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${tones[tone]}`}>{children}</span>;
+}
+
 function AttendanceTab({ state }) {
   if (state.status === 'loading' || state.status === 'idle') {
-    return (
-      <div className="pp-sec active">
-        <div className="pp-card"><div className="pp-card-body"><Loading /></div></div>
-      </div>
-    );
+    return <Card><Loading /></Card>;
   }
   if (state.status === 'error') {
-    return (
-      <div className="pp-sec active">
-        <div className="pp-card"><div className="pp-card-body"><Empty icon="⚠️" text={state.error} /></div></div>
-      </div>
-    );
+    return <Card><Empty icon="⚠️" text={state.error} /></Card>;
   }
 
   const { rows, monthLabel, daysInMonth, y, m, present, absent, pct } = state.data;
@@ -1421,128 +1468,130 @@ function AttendanceTab({ state }) {
   const last10 = rows.slice(-10).reverse();
 
   return (
-    <div className="pp-sec active">
-      <div className="pp-card">
-        <div className="pp-card-hd">
-          <div className="pp-card-title">This Month's Attendance</div>
-          <div style={{ color: "rgba(247,243,233,.28)", fontSize: ".68rem", fontFamily: '"Rajdhani",sans-serif', letterSpacing: ".06em", textTransform: "uppercase" }}>
-            {monthLabel}
+    <div>
+      <Card
+        title="This Month's Attendance"
+        right={<span className="text-[10px] uppercase tracking-[.12em] text-slate-500 font-semibold">{monthLabel}</span>}
+      >
+        <div className="grid grid-cols-7 gap-1.5 mb-5">
+          {Array.from({ length: daysInMonth }, (_, i) => {
+            const d = i + 1;
+            const dd = String(d).padStart(2, '0');
+            const st = byDate[dd];
+            const cls = st === 'Present'
+              ? 'bg-emerald-400/15 text-emerald-300 border-emerald-400/25'
+              : st === 'Absent'
+              ? 'bg-rose-400/15 text-rose-300 border-rose-400/25'
+              : 'bg-white/[0.03] text-slate-500 border-white/5';
+            return (
+              <div
+                key={d}
+                title={`${y}-${m}-${dd}`}
+                className={`aspect-square rounded-lg border flex items-center justify-center text-xs font-semibold ${cls}`}
+              >
+                {d}
+              </div>
+            );
+          })}
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-3 text-center">
+            <strong className="block text-lg font-extrabold text-emerald-300">{present}</strong>
+            <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Present</span>
+          </div>
+          <div className="rounded-xl border border-rose-400/20 bg-rose-400/[0.06] p-3 text-center">
+            <strong className="block text-lg font-extrabold text-rose-300">{absent}</strong>
+            <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Absent</span>
+          </div>
+          <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-3 text-center">
+            <strong className="block text-lg font-extrabold text-amber-300">{pct}%</strong>
+            <span className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Rate</span>
           </div>
         </div>
-        <div className="pp-card-body">
-          <div className="att-grid">
-            {Array.from({ length: daysInMonth }, (_, i) => {
-              const d = i + 1;
-              const dd = String(d).padStart(2, '0');
-              const st = byDate[dd];
-              const cls = st === 'Present' ? 'att-p' : st === 'Absent' ? 'att-a' : 'att-h';
-              return <div key={d} className={`att-day ${cls}`} title={`${y}-${m}-${dd}`}>{d}</div>;
-            })}
-          </div>
-          <div className="att-sum">
-            <div className="att-si p"><strong>{present}</strong><span>Present</span></div>
-            <div className="att-si a"><strong>{absent}</strong><span>Absent</span></div>
-            <div className="att-si pct"><strong>{pct}%</strong><span>Rate</span></div>
-          </div>
-        </div>
-      </div>
-      <div className="pp-card">
-        <div className="pp-card-hd"><div className="pp-card-title">Last 10 Days</div></div>
-        <div className="pp-card-body">
-          {last10.length ? (
-            <table className="pp-table">
-              <thead><tr><th>Date</th><th>Status</th></tr></thead>
-              <tbody>
-                {last10.map((r, i) => (
-                  <tr key={i}>
-                    <td>{r.date}</td>
-                    <td><span className={r.status === 'Present' ? 'sc-hi' : 'sc-lo'}>{r.status}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <Empty icon="📅" text="No recent records" />
-          )}
-        </div>
-      </div>
+      </Card>
+      <Card title="Last 10 Days">
+        {last10.length ? (
+          <PremiumTable head={['Date', 'Status']}>
+            {last10.map((r, i) => (
+              <tr key={i} className="hover:bg-white/[0.02]">
+                <td className="px-3 py-2.5 text-slate-300">{r.date}</td>
+                <td className="px-3 py-2.5"><Pill tone={r.status === 'Present' ? 'hi' : 'lo'}>{r.status}</Pill></td>
+              </tr>
+            ))}
+          </PremiumTable>
+        ) : (
+          <Empty icon="📅" text="No recent records" />
+        )}
+      </Card>
     </div>
   );
 }
 
 function ExamsTab({ state }) {
   return (
-    <div className="pp-sec active">
-      <div className="pp-card">
-        <div className="pp-card-hd"><div className="pp-card-title">Exam Results</div></div>
-        <div className="pp-card-body">
-          {(state.status === 'loading' || state.status === 'idle') && <Loading />}
-          {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
-          {state.status === 'ready' && (
-            state.data.length === 0 ? (
-              <Empty icon="📝" text="No results yet" />
-            ) : (
-              <table className="pp-table">
-                <thead><tr><th>Exam</th><th>Subject</th><th>Marks</th><th>Date</th></tr></thead>
-                <tbody>
-                  {state.data.map((r, i) => {
-                    const badge = r.pct === null ? 'sc-mi' : r.pct >= 75 ? 'sc-hi' : r.pct >= 50 ? 'sc-mi' : 'sc-lo';
-                    const marksStr = r.hasMarks ? (r.total !== null ? `${r.marks_obtained}/${r.total}` : r.marks_obtained) : 'Not graded';
-                    return (
-                      <tr key={i}>
-                        <td>{r.examName}</td>
-                        <td>{r.subject || '—'}</td>
-                        <td><span className={badge}>{marksStr}</span></td>
-                        <td>{r.exam_date ? r.exam_date.slice(0, 10) : '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )
-          )}
-        </div>
-      </div>
-    </div>
+    <Card title="Exam Results">
+      {(state.status === 'loading' || state.status === 'idle') && <Loading />}
+      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+      {state.status === 'ready' && (
+        state.data.length === 0 ? (
+          <Empty icon="📝" text="No results yet" />
+        ) : (
+          <PremiumTable head={['Exam', 'Subject', 'Marks', 'Date']}>
+            {state.data.map((r, i) => {
+              const tone = r.pct === null ? 'mi' : r.pct >= 75 ? 'hi' : r.pct >= 50 ? 'mi' : 'lo';
+              const marksStr = r.hasMarks ? (r.total !== null ? `${r.marks_obtained}/${r.total}` : r.marks_obtained) : 'Not graded';
+              return (
+                <tr key={i} className="hover:bg-white/[0.02]">
+                  <td className="px-3 py-2.5 text-slate-300">{r.examName}</td>
+                  <td className="px-3 py-2.5 text-slate-300">{r.subject || '—'}</td>
+                  <td className="px-3 py-2.5"><Pill tone={tone}>{marksStr}</Pill></td>
+                  <td className="px-3 py-2.5 text-slate-400">{r.exam_date ? r.exam_date.slice(0, 10) : '—'}</td>
+                </tr>
+              );
+            })}
+          </PremiumTable>
+        )
+      )}
+    </Card>
   );
 }
 
 function ReportCardTab({ examTypes, selectedType, onTypeChange, dates, selectedDate, onDateChange, onPrint, printBusy }) {
   const canPrint = selectedType && selectedDate && !printBusy;
+  const selectCls = "w-full rounded-xl border border-white/10 bg-white/5 text-white text-sm px-3.5 py-2.5 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/20 transition";
   return (
-    <div className="pp-sec active">
-      <div className="pp-card">
-        <div className="pp-card-hd"><div className="pp-card-title">Report Card</div></div>
-        <div className="pp-card-body">
-          <div className="rc-row">
-            <div className="rc-col">
-              <label>Exam</label>
-              <select className="rc-select" value={selectedType} onChange={(e) => onTypeChange(e.target.value)}>
-                <option value="">
-                  {examTypes.status === 'loading' ? 'Loading…' : examTypes.status === 'empty' ? '— No exams recorded —' : examTypes.status === 'error' ? '— Error loading exams —' : 'Select exam…'}
-                </option>
-                {examTypes.options.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
-            <div className="rc-col">
-              <label>Date</label>
-              <select className="rc-select" value={selectedDate} onChange={(e) => onDateChange(e.target.value)}>
-                <option value="">
-                  {dates.status === 'loading' ? 'Loading…' : dates.status === 'empty' ? '— No dates —' : dates.status === 'error' ? '— Error —' : '—'}
-                </option>
-                {dates.options.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </div>
-          </div>
-          <p style={{ color: "rgba(247,243,233,.6)", fontSize: ".78rem", fontFamily: "'Rajdhani',sans-serif", letterSpacing: ".03em", marginBottom: "1rem" }}>
-            Pick an exam and date, then view or print an official report card showing subject-wise marks, grade and class rank.
-          </p>
-          <button className="pp-lbtn" onClick={onPrint} disabled={!canPrint}>
-            {printBusy ? '⏳ Preparing…' : '🖨️ View / Print Report Card'}
-          </button>
+    <Card title="Report Card">
+      <div className="grid sm:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label className="block text-[11px] font-semibold uppercase tracking-[.12em] text-slate-400 mb-1.5">Exam</label>
+          <select className={selectCls} value={selectedType} onChange={(e) => onTypeChange(e.target.value)}>
+            <option value="" className="bg-slate-900">
+              {examTypes.status === 'loading' ? 'Loading…' : examTypes.status === 'empty' ? '— No exams recorded —' : examTypes.status === 'error' ? '— Error loading exams —' : 'Select exam…'}
+            </option>
+            {examTypes.options.map(t => <option key={t.id} value={t.id} className="bg-slate-900">{t.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold uppercase tracking-[.12em] text-slate-400 mb-1.5">Date</label>
+          <select className={selectCls} value={selectedDate} onChange={(e) => onDateChange(e.target.value)}>
+            <option value="" className="bg-slate-900">
+              {dates.status === 'loading' ? 'Loading…' : dates.status === 'empty' ? '— No dates —' : dates.status === 'error' ? '— Error —' : '—'}
+            </option>
+            {dates.options.map(d => <option key={d} value={d} className="bg-slate-900">{d}</option>)}
+          </select>
         </div>
       </div>
-    </div>
+      <p className="text-xs text-slate-400 mb-5 leading-relaxed">
+        Pick an exam and date, then view or print an official report card showing subject-wise marks, grade and class rank.
+      </p>
+      <button
+        className="rounded-xl bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 font-bold px-5 py-3 text-sm shadow-lg shadow-amber-500/20 hover:brightness-105 active:scale-[.99] transition disabled:opacity-50 disabled:pointer-events-none"
+        onClick={onPrint}
+        disabled={!canPrint}
+      >
+        {printBusy ? '⏳ Preparing…' : '🖨️ View / Print Report Card'}
+      </button>
+    </Card>
   );
 }
 
@@ -1554,92 +1603,88 @@ function ReportCardTab({ examTypes, selectedType, onTypeChange, dates, selectedD
 // that errored during the lookup (dues are a LOWER BOUND when non-empty).
 function FeesTab({ state, onPayNow, nextDue }) {
   return (
-    <div className="pp-sec active">
-      <div className="pp-card">
-        <div className="pp-card-hd"><div className="pp-card-title">Fee Summary</div></div>
-        <div className="pp-card-body">
-          {(state.status === 'loading' || state.status === 'idle') && <Loading />}
-          {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
-          {state.status === 'ready' && (
-            <>
-              {state.data.failedSources?.length > 0 && (
-                <div className="fee-warn-banner">
-                  ⚠️ Some fee data could not be loaded just now. The figures below may understate what's actually due — please refresh, or contact the office to confirm the exact balance.
-                </div>
-              )}
-
-              <div className="fee-sum-grid">
-                <div className="fee-sum-box">
-                  <div className="fee-sum-lbl">Total Paid</div>
-                  <div className="fee-sum-val fee-positive">₹{state.data.totalPaid ?? 0}</div>
-                </div>
-                <div className="fee-sum-box">
-                  <div className="fee-sum-lbl">Total Due</div>
-                  <div className={`fee-sum-val ${(state.data.totalDue ?? 0) > 0 ? 'fee-negative' : 'fee-positive'}`}>
-                    ₹{state.data.totalDue ?? 0}
-                  </div>
-                </div>
-              </div>
-
-              {state.data.monthsOverdue > 0 && (
-                <p className="fee-overdue-note">
-                  {state.data.monthsOverdue} month{state.data.monthsOverdue === 1 ? '' : 's'} overdue across flat/course fee.
-                </p>
-              )}
-
-              {nextDue && (
-                <button className="pp-lbtn fee-pay-btn" onClick={onPayNow}>
-                  💳 Pay {nextDue.kind === 'admission' ? 'Admission Fee' : `${nextDue.kind === 'flat' ? 'Flat' : 'Course'} Fee — ${nextDue.for_month} ${nextDue.year}`} (₹{nextDue.amount}) Online
-                </button>
-              )}
-
-              <div className="fee-breakdown-list">
-                <FeeBreakdownRow
-                  label="Admission Fee"
-                  paid={state.data.admission?.paid}
-                  due={state.data.admission?.due}
-                  detail={state.data.admission?.paid ? 'Fully paid' : `₹${state.data.admission?.paidAmount ?? 0} of ₹${state.data.admission?.expected ?? 0} paid`}
-                />
-                <FeeMonthsBreakdown label="Hostel Flat Fee" items={state.data.flatFee?.items} due={state.data.flatFee?.due} />
-                <FeeMonthsBreakdown label="Course Fee" items={state.data.courseFee?.items} due={state.data.courseFee?.due} />
-              </div>
-
-              <div className="fee-history-section">
-                <div className="pp-card-title fee-history-title">Payment History</div>
-                {(state.data.history || []).length ? (
-                  <table className="pp-table">
-                    <thead><tr><th>Date</th><th>Type</th><th>Mode</th><th>Amount</th></tr></thead>
-                    <tbody>
-                      {(state.data.history || []).map((r, i) => (
-                        <tr key={i}>
-                          <td>{(r.date || '').slice(0, 10) || '—'}</td>
-                          <td>{r.type || '—'}</td>
-                          <td>{r.mode || '—'}</td>
-                          <td>₹{r.amount ?? 0}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <Empty icon="🧾" text="No payment history yet" />
-                )}
-              </div>
-            </>
+    <Card title="Fee Summary">
+      {(state.status === 'loading' || state.status === 'idle') && <Loading />}
+      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+      {state.status === 'ready' && (
+        <>
+          {state.data.failedSources?.length > 0 && (
+            <div className="mb-4 rounded-xl border border-amber-400/25 bg-amber-400/[0.08] px-4 py-3 text-xs text-amber-200 leading-relaxed">
+              ⚠️ Some fee data could not be loaded just now. The figures below may understate what's actually due — please refresh, or contact the office to confirm the exact balance.
+            </div>
           )}
-        </div>
-      </div>
-    </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4 text-center">
+              <div className="text-[10px] uppercase tracking-[.12em] text-slate-400 font-semibold mb-1">Total Paid</div>
+              <div className="text-xl font-extrabold text-emerald-300">₹{state.data.totalPaid ?? 0}</div>
+            </div>
+            <div className={`rounded-xl border p-4 text-center ${(state.data.totalDue ?? 0) > 0 ? 'border-rose-400/20 bg-rose-400/[0.06]' : 'border-emerald-400/20 bg-emerald-400/[0.06]'}`}>
+              <div className="text-[10px] uppercase tracking-[.12em] text-slate-400 font-semibold mb-1">Total Due</div>
+              <div className={`text-xl font-extrabold ${(state.data.totalDue ?? 0) > 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
+                ₹{state.data.totalDue ?? 0}
+              </div>
+            </div>
+          </div>
+
+          {state.data.monthsOverdue > 0 && (
+            <p className="text-xs text-amber-300 mb-4 font-medium">
+              {state.data.monthsOverdue} month{state.data.monthsOverdue === 1 ? '' : 's'} overdue across flat/course fee.
+            </p>
+          )}
+
+          {nextDue && (
+            <button
+              className="w-full rounded-xl bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 font-bold px-5 py-3 text-sm shadow-lg shadow-amber-500/20 hover:brightness-105 active:scale-[.99] transition mb-5"
+              onClick={onPayNow}
+            >
+              💳 Pay {nextDue.kind === 'admission' ? 'Admission Fee' : `${nextDue.kind === 'flat' ? 'Flat' : 'Course'} Fee — ${nextDue.for_month} ${nextDue.year}`} (₹{nextDue.amount}) Online
+            </button>
+          )}
+
+          <div className="space-y-2.5 mb-6">
+            <FeeBreakdownRow
+              label="Admission Fee"
+              paid={state.data.admission?.paid}
+              due={state.data.admission?.due}
+              detail={state.data.admission?.paid ? 'Fully paid' : `₹${state.data.admission?.paidAmount ?? 0} of ₹${state.data.admission?.expected ?? 0} paid`}
+            />
+            <FeeMonthsBreakdown label="Hostel Flat Fee" items={state.data.flatFee?.items} due={state.data.flatFee?.due} />
+            <FeeMonthsBreakdown label="Course Fee" items={state.data.courseFee?.items} due={state.data.courseFee?.due} />
+          </div>
+
+          <div>
+            <div className="text-sm font-bold text-white mb-3">Payment History</div>
+            {(state.data.history || []).length ? (
+              <PremiumTable head={['Date', 'Type', 'Mode', 'Amount']}>
+                {(state.data.history || []).map((r, i) => (
+                  <tr key={i} className="hover:bg-white/[0.02]">
+                    <td className="px-3 py-2.5 text-slate-400">{(r.date || '').slice(0, 10) || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-300">{r.type || '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-400">{r.mode || '—'}</td>
+                    <td className="px-3 py-2.5 font-semibold text-white">₹{r.amount ?? 0}</td>
+                  </tr>
+                ))}
+              </PremiumTable>
+            ) : (
+              <Empty icon="🧾" text="No payment history yet" />
+            )}
+          </div>
+        </>
+      )}
+    </Card>
   );
 }
 
 function FeeBreakdownRow({ label, paid, due, detail }) {
+  const negative = !paid && due > 0;
   return (
-    <div className="fee-row">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
       <div>
-        <div className="fee-row-label">{label}</div>
-        <div className="fee-row-detail">{detail}</div>
+        <div className="text-sm font-semibold text-white">{label}</div>
+        <div className="text-xs text-slate-400 mt-0.5">{detail}</div>
       </div>
-      <div className={`fee-row-status ${paid ? 'fee-positive' : due > 0 ? 'fee-negative' : 'fee-positive'}`}>
+      <div className={`text-sm font-bold shrink-0 ${negative ? 'text-rose-300' : 'text-emerald-300'}`}>
         {paid ? '✓ Paid' : due > 0 ? `₹${due} due` : '—'}
       </div>
     </div>
@@ -1649,16 +1694,17 @@ function FeeBreakdownRow({ label, paid, due, detail }) {
 function FeeMonthsBreakdown({ label, items, due }) {
   const list = items || [];
   const unpaid = list.filter(i => !i.paid);
+  const negative = (due ?? 0) > 0;
   return (
-    <div className="fee-row fee-row-stacked">
-      <div className="fee-row-top">
-        <div className="fee-row-label">{label}</div>
-        <div className={`fee-row-status ${(due ?? 0) > 0 ? 'fee-negative' : 'fee-positive'}`}>
-          {(due ?? 0) > 0 ? `₹${due} due` : '✓ Up to date'}
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-semibold text-white">{label}</div>
+        <div className={`text-sm font-bold shrink-0 ${negative ? 'text-rose-300' : 'text-emerald-300'}`}>
+          {negative ? `₹${due} due` : '✓ Up to date'}
         </div>
       </div>
       {unpaid.length > 0 && (
-        <div className="fee-row-unpaid">
+        <div className="text-xs text-slate-400 mt-1.5">
           Unpaid: {unpaid.map(i => `${i.month} ${i.year}`).join(', ')}
         </div>
       )}
@@ -1669,33 +1715,34 @@ function FeeMonthsBreakdown({ label, items, due }) {
 // ── FEATURE 2: HOMEWORK / STUDY MATERIAL TAB ────────────────────────────────
 function HomeworkTab({ state }) {
   return (
-    <div className="pp-sec active">
-      <div className="pp-card">
-        <div className="pp-card-hd"><div className="pp-card-title">Homework & Study Material</div></div>
-        <div className="pp-card-body">
-          {(state.status === 'loading' || state.status === 'idle') && <Loading />}
-          {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
-          {state.status === 'ready' && (
-            state.data.length === 0 ? (
-              <Empty icon="📚" text="No study material posted yet" />
-            ) : (
-              <div className="hw-list">
-                {state.data.map((h) => (
-                  <a key={h.id} href={h.file_url} target="_blank" rel="noreferrer" className="hw-item">
-                    <div className="hw-icon">{h.material_type === 'video' ? '🎬' : '📄'}</div>
-                    <div className="hw-info">
-                      <div className="hw-title">{h.title || h.chapter || 'Study Material'}</div>
-                      <div className="hw-meta">{[h.subject, h.chapter].filter(Boolean).join(' · ')}</div>
-                    </div>
-                    <div className="hw-dl">⬇️</div>
-                  </a>
-                ))}
-              </div>
-            )
-          )}
-        </div>
-      </div>
-    </div>
+    <Card title="Homework & Study Material">
+      {(state.status === 'loading' || state.status === 'idle') && <Loading />}
+      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+      {state.status === 'ready' && (
+        state.data.length === 0 ? (
+          <Empty icon="📚" text="No study material posted yet" />
+        ) : (
+          <div className="space-y-2">
+            {state.data.map((h) => (
+              <a
+                key={h.id}
+                href={h.file_url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] hover:border-amber-400/25 px-4 py-3 transition"
+              >
+                <div className="text-xl shrink-0">{h.material_type === 'video' ? '🎬' : '📄'}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-white truncate">{h.title || h.chapter || 'Study Material'}</div>
+                  <div className="text-xs text-slate-400 mt-0.5 truncate">{[h.subject, h.chapter].filter(Boolean).join(' · ')}</div>
+                </div>
+                <div className="text-amber-300 shrink-0">⬇️</div>
+              </a>
+            ))}
+          </div>
+        )
+      )}
+    </Card>
   );
 }
 
@@ -1703,173 +1750,165 @@ function HomeworkTab({ state }) {
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 function TimetableTab({ state }) {
   return (
-    <div className="pp-sec active">
-      <div className="pp-card">
-        <div className="pp-card-hd"><div className="pp-card-title">Weekly Timetable</div></div>
-        <div className="pp-card-body">
-          {(state.status === 'loading' || state.status === 'idle') && <Loading />}
-          {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
-          {state.status === 'ready' && (
-            state.data.length === 0 ? (
-              <Empty icon="🗓️" text="Timetable not published yet" />
-            ) : (
-              DAY_ORDER.map((day) => {
-                const rows = state.data.filter(r => r.day_of_week === day);
-                if (!rows.length) return null;
-                return (
-                  <div key={day} className="tt-day-block">
-                    <div className="pp-card-title tt-day-title">{day}</div>
-                    <table className="pp-table">
-                      <thead><tr><th>Period</th><th>Subject</th><th>Teacher</th><th>Time</th></tr></thead>
-                      <tbody>
-                        {rows.map((r, i) => (
-                          <tr key={i}>
-                            <td>{r.period}</td>
-                            <td>{r.subject}</td>
-                            <td>{r.teacher_name || '—'}</td>
-                            <td>{r.start_time ? `${r.start_time}–${r.end_time}` : '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })
-            )
-          )}
-        </div>
-      </div>
-    </div>
+    <Card title="Weekly Timetable">
+      {(state.status === 'loading' || state.status === 'idle') && <Loading />}
+      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+      {state.status === 'ready' && (
+        state.data.length === 0 ? (
+          <Empty icon="🗓️" text="Timetable not published yet" />
+        ) : (
+          <div className="space-y-5">
+            {DAY_ORDER.map((day) => {
+              const rows = state.data.filter(r => r.day_of_week === day);
+              if (!rows.length) return null;
+              return (
+                <div key={day}>
+                  <div className="text-xs font-bold uppercase tracking-[.12em] text-amber-300 mb-2">{day}</div>
+                  <PremiumTable head={['Period', 'Subject', 'Teacher', 'Time']}>
+                    {rows.map((r, i) => (
+                      <tr key={i} className="hover:bg-white/[0.02]">
+                        <td className="px-3 py-2.5 text-slate-400">{r.period}</td>
+                        <td className="px-3 py-2.5 font-semibold text-white">{r.subject}</td>
+                        <td className="px-3 py-2.5 text-slate-300">{r.teacher_name || '—'}</td>
+                        <td className="px-3 py-2.5 text-slate-400">{r.start_time ? `${r.start_time}–${r.end_time}` : '—'}</td>
+                      </tr>
+                    ))}
+                  </PremiumTable>
+                </div>
+              );
+            })}
+          </div>
+        )
+      )}
+    </Card>
   );
 }
 
 function NoticesTab({ state }) {
+  const priTone = { High: 'lo', Medium: 'mi', Low: 'hi' };
   return (
-    <div className="pp-sec active">
-      <div className="pp-card">
-        <div className="pp-card-hd"><div className="pp-card-title">Official Notices</div></div>
-        <div className="pp-card-body">
-          {(state.status === 'loading' || state.status === 'idle') && <Loading />}
-          {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
-          {state.status === 'ready' && (
-            state.data.length === 0 ? (
-              <Empty icon="📣" text="No notices" />
-            ) : (
-              state.data.map((n, i) => {
-                const priCls = n.priority === 'High' ? 'pri-h' : n.priority === 'Medium' ? 'pri-m' : 'pri-l';
-                return (
-                  <div className="pp-ni" key={i}>
-                    <span className={`pp-npri ${priCls}`}>{n.priority || 'Low'}</span>
-                    <div className="pp-ntitle">{n.title}</div>
-                    <div className="pp-nbody">{n.body || ''}</div>
-                    <div className="pp-ndate">{n.notice_date || ''}</div>
-                  </div>
-                );
-              })
-            )
-          )}
-        </div>
-      </div>
-    </div>
+    <Card title="Official Notices">
+      {(state.status === 'loading' || state.status === 'idle') && <Loading />}
+      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+      {state.status === 'ready' && (
+        state.data.length === 0 ? (
+          <Empty icon="📣" text="No notices" />
+        ) : (
+          <div className="space-y-3">
+            {state.data.map((n, i) => (
+              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4" key={i}>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <Pill tone={priTone[n.priority] || 'hi'}>{n.priority || 'Low'}</Pill>
+                  <span className="text-[11px] text-slate-500">{n.notice_date || ''}</span>
+                </div>
+                <div className="text-sm font-bold text-white">{n.title}</div>
+                <div className="text-xs text-slate-400 mt-1 leading-relaxed">{n.body || ''}</div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </Card>
   );
 }
 
 function LeaveTab({ state }) {
+  const stTone = { approved: 'hi', rejected: 'lo', pending: 'mi' };
   return (
-    <div className="pp-sec active">
-      <div className="pp-card">
-        <div className="pp-card-hd"><div className="pp-card-title">Hostel Leave History</div></div>
-        <div className="pp-card-body">
-          {(state.status === 'loading' || state.status === 'idle') && <Loading />}
-          {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
-          {state.status === 'ready' && (
-            state.data.length === 0 ? (
-              <Empty icon="🏨" text="No leave history" />
-            ) : (
-              state.data.map((r, i) => {
-                const stCls = r.status === 'approved' ? 'ls-ap' : r.status === 'rejected' ? 'ls-re' : 'ls-pe';
-                return (
-                  <div className="leave-item" key={i}>
-                    <div className="leave-hd">
-                      <span>{r.from_date} → {r.to_date}</span>
-                      <span className={`ls ${stCls}`}>{r.status || 'pending'}</span>
-                    </div>
-                    <div className="leave-rsn">{r.reason || '—'}</div>
-                  </div>
-                );
-              })
-            )
-          )}
-        </div>
-      </div>
-    </div>
+    <Card title="Hostel Leave History">
+      {(state.status === 'loading' || state.status === 'idle') && <Loading />}
+      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+      {state.status === 'ready' && (
+        state.data.length === 0 ? (
+          <Empty icon="🏨" text="No leave history" />
+        ) : (
+          <div className="space-y-3">
+            {state.data.map((r, i) => (
+              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4" key={i}>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span className="text-sm font-semibold text-white">{r.from_date} → {r.to_date}</span>
+                  <Pill tone={stTone[r.status] || 'mi'}>{r.status || 'pending'}</Pill>
+                </div>
+                <div className="text-xs text-slate-400">{r.reason || '—'}</div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </Card>
   );
 }
 
 // ── FEATURE 7: MESSAGE TEACHER TAB ───────────────────────────────────────────
 function MessagesTab({ state, draft, onDraftChange, onSend, sending }) {
   return (
-    <div className="pp-sec active">
-      <div className="pp-card">
-        <div className="pp-card-hd"><div className="pp-card-title">Message Class Teacher</div></div>
-        <div className="pp-card-body">
-          <div className="msg-thread">
-            {(state.status === 'loading' || state.status === 'idle') && <Loading />}
-            {state.status === 'error' && <Empty icon="💬" text={state.error} />}
-            {state.status === 'ready' && (
-              state.data.length === 0 ? (
-                <Empty icon="💬" text="No messages yet — say hello!" />
-              ) : (
-                state.data.map((m) => (
-                  <div key={m.id} className={`msg-bubble ${m.sender === 'parent' ? 'msg-me' : 'msg-them'}`}>
-                    <div className="msg-body">{m.body}</div>
-                    <div className="msg-meta">{m.sender === 'parent' ? 'You' : 'Teacher'} · {(m.created_at || '').slice(0, 16).replace('T', ' ')}</div>
+    <Card title="Message Class Teacher">
+      <div className="space-y-2.5 max-h-[420px] overflow-y-auto mb-4 pr-1">
+        {(state.status === 'loading' || state.status === 'idle') && <Loading />}
+        {state.status === 'error' && <Empty icon="💬" text={state.error} />}
+        {state.status === 'ready' && (
+          state.data.length === 0 ? (
+            <Empty icon="💬" text="No messages yet — say hello!" />
+          ) : (
+            state.data.map((m) => {
+              const mine = m.sender === 'parent';
+              return (
+                <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${mine ? 'bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 rounded-br-sm' : 'bg-white/[0.06] text-white border border-white/10 rounded-bl-sm'}`}>
+                    <div className="text-sm">{m.body}</div>
+                    <div className={`text-[10px] mt-1 font-medium ${mine ? 'text-slate-900/60' : 'text-slate-400'}`}>
+                      {mine ? 'You' : 'Teacher'} · {(m.created_at || '').slice(0, 16).replace('T', ' ')}
+                    </div>
                   </div>
-                ))
-              )
-            )}
-          </div>
-          <div className="msg-composer">
-            <input
-              type="text"
-              className="pp-fi"
-              placeholder="Type a message…"
-              value={draft}
-              onChange={(e) => onDraftChange(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !sending) onSend(); }}
-            />
-            <button className="pp-lbtn msg-send-btn" onClick={onSend} disabled={sending || !draft.trim()}>
-              {sending ? '…' : 'Send'}
-            </button>
-          </div>
-        </div>
+                </div>
+              );
+            })
+          )
+        )}
       </div>
-    </div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-slate-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/20 transition"
+          placeholder="Type a message…"
+          value={draft}
+          onChange={(e) => onDraftChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !sending) onSend(); }}
+        />
+        <button
+          className="rounded-xl bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 font-bold px-5 py-3 text-sm shadow-lg shadow-amber-500/20 hover:brightness-105 transition disabled:opacity-50 disabled:pointer-events-none"
+          onClick={onSend}
+          disabled={sending || !draft.trim()}
+        >
+          {sending ? '…' : 'Send'}
+        </button>
+      </div>
+    </Card>
   );
 }
 
 function AlertsTab({ state }) {
   return (
-    <div className="pp-sec active">
-      <div className="pp-card">
-        <div className="pp-card-hd"><div className="pp-card-title">Recent Alerts</div></div>
-        <div className="pp-card-body">
-          {(state.status === 'loading' || state.status === 'idle') && <Loading />}
-          {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
-          {state.status === 'ready' && (
-            state.data.length === 0 ? (
-              <Empty icon="✅" text="No alerts — all good!" />
-            ) : (
-              state.data.map((a, i) => (
-                <div className={`alert-item ${a.type}`} key={i}>
-                  <div className="alert-msg">{a.msg}</div>
-                  <div className="alert-meta">{a.date ? a.date.slice(0, 10) : ''}</div>
-                </div>
-              ))
-            )
-          )}
-        </div>
-      </div>
-    </div>
+    <Card title="Recent Alerts">
+      {(state.status === 'loading' || state.status === 'idle') && <Loading />}
+      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+      {state.status === 'ready' && (
+        state.data.length === 0 ? (
+          <Empty icon="✅" text="No alerts — all good!" />
+        ) : (
+          <div className="space-y-2.5">
+            {state.data.map((a, i) => (
+              <div
+                key={i}
+                className={`rounded-xl border px-4 py-3 flex items-center justify-between gap-3 ${a.type === 'exam' ? 'border-rose-400/20 bg-rose-400/[0.06]' : 'border-amber-400/20 bg-amber-400/[0.06]'}`}
+              >
+                <div className="text-sm text-white">{a.msg}</div>
+                <div className="text-[11px] text-slate-400 shrink-0">{a.date ? a.date.slice(0, 10) : ''}</div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </Card>
   );
 }
