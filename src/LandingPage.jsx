@@ -19,7 +19,7 @@ const EMBLEM_URL = "https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/p
 // 10-Years celebration banner — replaces the old rotating result-banner
 // slider below with a single static photo. Lives in the gnsi-public
 // bucket's existing "banners" folder (same bucket as EMBLEM_URL above).
-const TEN_YEARS_BANNER_URL = "https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-10-years-banner.png";
+const TEN_YEARS_BANNER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-10-years-banner.png";
 
 export default function LandingPage({ onLogin }) {
   // ═══ DROPDOWN NAVIGATION — categories & subsections ═══
