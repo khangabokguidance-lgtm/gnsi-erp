@@ -17,10 +17,9 @@ const FOUNDER_PHOTO_URL = "https://i.postimg.cc/Vsd7VXZ7/DSC05195.jpg";
 const EMBLEM_URL = "https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/gnsi-emblem.png";
 
 // 10-Years celebration banner — replaces the old rotating result-banner
-// slider below with a single static photo. Upload the banner image to the
-// gnsi-public Supabase storage bucket (same bucket as EMBLEM_URL above)
-// and point this at the real path.
-const TEN_YEARS_BANNER_URL = "https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/gnsi-10-years-banner.png";
+// slider below with a single static photo. Lives in the gnsi-public
+// bucket's existing "banners" folder (same bucket as EMBLEM_URL above).
+const TEN_YEARS_BANNER_URL = "https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-10-years-banner.png";
 
 export default function LandingPage({ onLogin }) {
   // ═══ DROPDOWN NAVIGATION — categories & subsections ═══
