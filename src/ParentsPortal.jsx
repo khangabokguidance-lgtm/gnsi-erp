@@ -1283,7 +1283,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
             </div>
           </div>
           {!isMobile && (
-            <div style={{ position: 'sticky', top: 60, zIndex: 10, display: 'flex', gap: 6, overflowX: 'auto', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: '10px 16px' }} className="no-scrollbar">
+            <div style={{ position: 'sticky', top: 60, zIndex: 10, display: 'flex', gap: 6, overflowX: 'auto', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: '12px 16px' }} className="no-scrollbar">
               {TABS.map(t => (
                 <button
                   key={t.id}
@@ -1300,7 +1300,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
               ))}
             </div>
           )}
-          <div style={{ flex: 1, padding: isMobile ? '14px 10px' : '20px 16px', paddingBottom: isMobile ? 78 : 20, maxWidth: 960, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+          <div style={{ flex: 1, padding: isMobile ? '14px 10px' : '28px 16px', paddingBottom: isMobile ? 78 : 20, maxWidth: 960, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
             <div style={isMobile ? {
               display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap',
               gap: 12, borderRadius: 24, backgroundColor: 'white', boxShadow: '0 1px 3px rgba(30,58,95,0.10), 0 1px 2px rgba(30,58,95,0.06)',
