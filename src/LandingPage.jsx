@@ -29,6 +29,10 @@ const TEN_YEARS_BANNER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v
 // same gnsi-public bucket, "posters" folder, following the pattern of
 // TEN_YEARS_BANNER_URL above.
 const RESULT_POSTER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-result-poster.png";
+// GNSI Parents Portal Android app (Capacitor-wrapped, opens straight to
+// the portal login via ?portal=1). Hosted in its own "app" Supabase
+// storage bucket (public), separate from gnsi-public which holds images.
+const ANDROID_APP_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/app/gnsi-parents-app.apk";
 
 export default function LandingPage({ onLogin }) {
   // ═══ DROPDOWN NAVIGATION — categories & subsections ═══
@@ -1590,6 +1594,22 @@ window.submitGrievance = async () => {
         >
           Pay Fee →
         </button>
+        <a
+          href={ANDROID_APP_URL}
+          download=""
+          className="nav-btn"
+          style={{
+            fontFamily: 'Inter,sans-serif',
+            fontWeight: 700,
+            fontSize: ".72rem",
+            letterSpacing: ".07em",
+            textTransform: "uppercase",
+            borderRadius: 10,
+            display: "inline-block"
+          }}
+        >
+          📱 Get App →
+        </a>
         <button
           onClick={onLogin}
           className="nav-btn"
@@ -1678,6 +1698,14 @@ window.submitGrievance = async () => {
         className="mob-par"
       >
         Parents Portal →
+      </a>
+      <a
+        href={ANDROID_APP_URL}
+        download=""
+        className="mob-par"
+        onClick={closeMobile}
+      >
+        📱 Get Android App →
       </a>
       <button
         onClick={() => { onLogin(); closeMobile(); }}
@@ -1790,6 +1818,13 @@ window.submitGrievance = async () => {
           <button onClick={() => setIsPortalOpen(true)} className="btn-demo">
             Parents Portal →
           </button>
+          <a
+            href={ANDROID_APP_URL}
+            download=""
+            className="btn-brochure"
+          >
+            📱 Get Android App
+          </a>
           <a
             href="https://wa.me/918974298074?text=Hello%2C+I+am+enquiring+about+GNSI+admissions"
             className="btn-brochure"
@@ -5559,6 +5594,13 @@ window.submitGrievance = async () => {
           style={{ color: "#4AE382" }}
         >
           Parents Portal
+        </a>
+        <a
+          href={ANDROID_APP_URL}
+          download=""
+          style={{ color: "#4AE382" }}
+        >
+          📱 Download Android App
         </a>
         <button
           onClick={onLogin}
