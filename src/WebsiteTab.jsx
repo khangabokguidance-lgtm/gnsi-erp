@@ -41,11 +41,13 @@ import {
 
 // ── colours ─────────────────────────────────────────────────
 const C = {
-  navy:"#0B1F3A", navy2:"#0F2A4E", navy3:"#153561",
-  gold:"#B8922A", goldL:"#D4AE50", goldLL:"#EDD180",
-  cream:"#F8F3E8", slate:"#3D4F6B", mist:"#7A8FA8",
-  red:"#8B1A1A", green:"#1A5C2A",
+  navy:"#1e3a5f", navy2:"#f8fafc", navy3:"#e2e8f0",
+  gold:"#1e3a5f", goldL:"#2c5282", goldLL:"#1e3a5f",
+  cream:"#1e293b", slate:"#64748b", mist:"#94a3b8",
+  red:"#dc2626", green:"#16a34a",
 };
+// Category accent palette, matching Accounts.jsx's card-border convention
+const CHART_COLORS = ['#1e3a5f','#16a34a','#dc2626','#f59e0b','#7c3aed','#0891b2','#be185d','#047857'];
 
 // ── sub-tabs ────────────────────────────────────────────────
 const SUB_TABS = [
@@ -71,41 +73,41 @@ const fmt = d => d ? new Date(d).toLocaleDateString("en-IN",{day:"2-digit",month
 const toast = (msg, type="success") => {
   const el = document.createElement("div");
   el.textContent = msg;
-  el.style.cssText = `position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;padding:.75rem 1.4rem;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:.85rem;letter-spacing:.06em;border-left:4px solid ${type==="success"?"#4AE382":"#f87171"};background:${C.navy2};color:${type==="success"?"#4AE382":"#f87171"};box-shadow:0 4px 20px rgba(0,0,0,.4);transition:.3s`;
+  el.style.cssText = `position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;padding:.75rem 1.4rem;font-family:inherit;font-weight:600;font-size:.85rem;letter-spacing:0;border-radius:8px;border-left:4px solid ${type==="success"?"#16a34a":"#dc2626"};background:#ffffff;color:${type==="success"?"#166534":"#991b1b"};box-shadow:0 4px 16px rgba(0,0,0,.08);transition:.3s`;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 3200);
 };
 
 // ── shared styles ────────────────────────────────────────────
 const s = {
-  wrap:    { padding:"1.5rem", fontFamily:"'Source Sans 3',sans-serif", background:C.navy, minHeight:"100vh", color:"#F8F3E8" },
-  subNav:  { display:"flex", gap:".35rem", marginBottom:"1.5rem", borderBottom:`1px solid rgba(184,146,42,.15)`, paddingBottom:"1rem", flexWrap:"wrap" },
-  subBtn:  a => ({ background:a?C.gold:"transparent", color:a?C.navy:"rgba(248,243,232,.5)", border:`1px solid ${a?C.gold:"rgba(184,146,42,.2)"}`, padding:".38rem .85rem", fontFamily:"'Rajdhani',sans-serif", fontWeight:700, fontSize:".7rem", letterSpacing:".1em", textTransform:"uppercase", cursor:"pointer", transition:".2s", display:"flex", alignItems:"center", gap:".35rem" }),
-  card:    { background:"rgba(21,53,97,.4)", border:"1px solid rgba(184,146,42,.18)", marginBottom:"1rem" },
-  cardHd:  { padding:".8rem 1.1rem", borderBottom:"1px solid rgba(184,146,42,.1)", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:".5rem" },
-  cardTit: { fontFamily:"'Rajdhani',sans-serif", fontWeight:700, fontSize:".72rem", letterSpacing:".15em", textTransform:"uppercase", color:C.goldL },
-  cardBdy: { padding:"1rem 1.1rem" },
-  row:     { display:"flex", justifyContent:"space-between", alignItems:"center", padding:".6rem 0", borderBottom:"1px solid rgba(184,146,42,.07)", fontSize:".85rem" },
-  lbl:     { display:"block", fontFamily:"'Rajdhani',sans-serif", fontWeight:700, fontSize:".66rem", letterSpacing:".14em", textTransform:"uppercase", color:"rgba(248,243,232,.45)", marginBottom:".35rem" },
-  inp:     { width:"100%", padding:"10px 14px", background:"rgba(255,255,255,.05)", border:"1px solid rgba(184,146,42,.22)", color:"#F8F3E8", fontSize:".88rem", fontFamily:"'Source Sans 3',sans-serif", outline:"none", marginBottom:"1rem", transition:".2s", boxSizing:"border-box" },
-  ta:      { width:"100%", padding:"10px 14px", background:"rgba(255,255,255,.05)", border:"1px solid rgba(184,146,42,.22)", color:"#F8F3E8", fontSize:".88rem", fontFamily:"'Source Sans 3',sans-serif", outline:"none", marginBottom:"1rem", resize:"vertical", minHeight:"80px", boxSizing:"border-box" },
-  sel:     { width:"100%", padding:"10px 14px", background:C.navy2, border:"1px solid rgba(184,146,42,.22)", color:"#F8F3E8", fontSize:".88rem", fontFamily:"'Source Sans 3',sans-serif", outline:"none", marginBottom:"1rem", boxSizing:"border-box" },
-  btnG:    { background:C.gold, color:C.navy, border:"none", padding:".52rem 1.2rem", fontFamily:"'Rajdhani',sans-serif", fontWeight:700, fontSize:".75rem", letterSpacing:".1em", textTransform:"uppercase", cursor:"pointer", transition:".2s" },
-  btnR:    { background:"rgba(139,26,26,.4)", color:"#f87171", border:"1px solid rgba(139,26,26,.4)", padding:".4rem .8rem", fontFamily:"'Rajdhani',sans-serif", fontWeight:700, fontSize:".68rem", letterSpacing:".08em", textTransform:"uppercase", cursor:"pointer" },
-  btnGrn:  { background:"rgba(26,92,42,.4)", color:"#4AE382", border:"1px solid rgba(26,92,42,.4)", padding:".4rem .8rem", fontFamily:"'Rajdhani',sans-serif", fontWeight:700, fontSize:".68rem", letterSpacing:".08em", textTransform:"uppercase", cursor:"pointer" },
-  btnN:    { background:"rgba(21,53,97,.6)", color:C.goldL, border:"1px solid rgba(184,146,42,.22)", padding:".4rem .8rem", fontFamily:"'Rajdhani',sans-serif", fontWeight:700, fontSize:".68rem", letterSpacing:".08em", textTransform:"uppercase", cursor:"pointer" },
+  wrap:    { padding:"1.5rem", fontFamily:"inherit", background:"#f8fafc", minHeight:"100vh", color:"#1e293b" },
+  subNav:  { display:"flex", gap:"8px", marginBottom:"20px", flexWrap:"wrap" },
+  subBtn:  a => ({ background:a?"#1e3a5f":"#ffffff", color:a?"#ffffff":"#1e3a5f", border:`1px solid ${a?"#1e3a5f":"#e2e8f0"}`, borderRadius:"8px", padding:"8px 16px", fontFamily:"inherit", fontWeight:600, fontSize:".85rem", letterSpacing:"0", textTransform:"none", cursor:"pointer", transition:".2s", display:"flex", alignItems:"center", gap:".4rem", boxShadow:a?"0 2px 6px rgba(30,58,95,.25)":"0 1px 3px rgba(0,0,0,.08)" }),
+  card:    { background:"#ffffff", border:"1px solid #e2e8f0", borderRadius:"12px", boxShadow:"0 2px 8px rgba(0,0,0,.08)", marginBottom:"1rem" },
+  cardHd:  { padding:"14px 18px", borderBottom:"1px solid #f1f5f9", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:".5rem" },
+  cardTit: { fontFamily:"inherit", fontWeight:700, fontSize:".95rem", letterSpacing:"0", textTransform:"none", color:"#1e3a5f" },
+  cardBdy: { padding:"18px" },
+  row:     { display:"flex", justifyContent:"space-between", alignItems:"center", padding:".6rem 0", borderBottom:"1px solid #f1f5f9", fontSize:".85rem" },
+  lbl:     { display:"block", fontFamily:"inherit", fontWeight:600, fontSize:".78rem", letterSpacing:"0", textTransform:"none", color:"#475569", marginBottom:".35rem" },
+  inp:     { width:"100%", padding:"10px 14px", background:"#ffffff", border:"1px solid #cbd5e1", borderRadius:"8px", color:"#1e293b", fontSize:".9rem", fontFamily:"inherit", outline:"none", marginBottom:"1rem", transition:".2s", boxSizing:"border-box" },
+  ta:      { width:"100%", padding:"10px 14px", background:"#ffffff", border:"1px solid #cbd5e1", borderRadius:"8px", color:"#1e293b", fontSize:".9rem", fontFamily:"inherit", outline:"none", marginBottom:"1rem", resize:"vertical", minHeight:"80px", boxSizing:"border-box" },
+  sel:     { width:"100%", padding:"10px 14px", background:"#ffffff", border:"1px solid #cbd5e1", borderRadius:"8px", color:"#1e293b", fontSize:".9rem", fontFamily:"inherit", outline:"none", marginBottom:"1rem", boxSizing:"border-box" },
+  btnG:    { background:"#1e3a5f", color:"#ffffff", border:"none", borderRadius:"8px", padding:"10px 20px", fontFamily:"inherit", fontWeight:600, fontSize:".85rem", letterSpacing:"0", textTransform:"none", cursor:"pointer", transition:".2s" },
+  btnR:    { background:"#fee2e2", color:"#dc2626", border:"1px solid #fecaca", borderRadius:"8px", padding:"7px 14px", fontFamily:"inherit", fontWeight:600, fontSize:".8rem", letterSpacing:"0", textTransform:"none", cursor:"pointer" },
+  btnGrn:  { background:"#dcfce7", color:"#16a34a", border:"1px solid #bbf7d0", borderRadius:"8px", padding:"7px 14px", fontFamily:"inherit", fontWeight:600, fontSize:".8rem", letterSpacing:"0", textTransform:"none", cursor:"pointer" },
+  btnN:    { background:"#f1f5f9", color:"#1e3a5f", border:"1px solid #e2e8f0", borderRadius:"8px", padding:"7px 14px", fontFamily:"inherit", fontWeight:600, fontSize:".8rem", letterSpacing:"0", textTransform:"none", cursor:"pointer" },
   g2:      { display:"grid", gridTemplateColumns:"1fr 1fr", gap:"1rem" },
   g3:      { display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:".8rem" },
-  stat:    { background:"rgba(11,31,58,.5)", padding:"1rem", textAlign:"center" },
-  statN:   { display:"block", fontFamily:"'EB Garamond',serif", fontSize:"1.8rem", color:C.goldLL, lineHeight:1, marginBottom:".2rem" },
-  statL:   { fontSize:".62rem", fontFamily:"'Rajdhani',sans-serif", letterSpacing:".08em", textTransform:"uppercase", color:"rgba(248,243,232,.3)" },
-  badge:   c => ({ display:"inline-block", padding:".18rem .55rem", fontFamily:"'Rajdhani',sans-serif", fontWeight:700, fontSize:".6rem", letterSpacing:".1em", textTransform:"uppercase", background:c==="High"?"rgba(139,26,26,.3)":c==="Low"?"rgba(61,79,107,.3)":"rgba(184,146,42,.2)", color:c==="High"?"#f87171":c==="Low"?C.mist:C.goldLL, border:`1px solid ${c==="High"?"rgba(139,26,26,.4)":c==="Low"?"rgba(61,79,107,.4)":"rgba(184,146,42,.3)"}` }),
-  loading: { display:"flex", alignItems:"center", justifyContent:"center", padding:"3rem", gap:".6rem", color:"rgba(248,243,232,.28)", fontFamily:"'Rajdhani',sans-serif", letterSpacing:".1em", textTransform:"uppercase", fontSize:".78rem" },
-  empty:   { textAlign:"center", padding:"2.5rem", color:"rgba(248,243,232,.25)", fontFamily:"'Rajdhani',sans-serif", letterSpacing:".1em", textTransform:"uppercase", fontSize:".75rem" },
+  stat:    { background:"#f8fafc", borderRadius:"10px", padding:"1rem", textAlign:"center" },
+  statN:   { display:"block", fontFamily:"inherit", fontSize:"1.8rem", fontWeight:700, color:"#1e3a5f", lineHeight:1, marginBottom:".2rem" },
+  statL:   { fontSize:".72rem", fontFamily:"inherit", letterSpacing:"0", textTransform:"none", color:"#64748b" },
+  badge:   c => ({ display:"inline-block", padding:".22rem .6rem", fontFamily:"inherit", fontWeight:600, fontSize:".68rem", letterSpacing:"0", textTransform:"none", borderRadius:"6px", background:c==="High"?"#fee2e2":c==="Low"?"#f1f5f9":"#fef3c7", color:c==="High"?"#dc2626":c==="Low"?"#64748b":"#b45309", border:`1px solid ${c==="High"?"#fecaca":c==="Low"?"#e2e8f0":"#fde68a"}` }),
+  loading: { display:"flex", alignItems:"center", justifyContent:"center", padding:"3rem", gap:".6rem", color:"#94a3b8", fontFamily:"inherit", letterSpacing:"0", textTransform:"none", fontSize:".85rem" },
+  empty:   { textAlign:"center", padding:"2.5rem", color:"#94a3b8", fontFamily:"inherit", letterSpacing:"0", textTransform:"none", fontSize:".85rem" },
 };
 
 // Spin component
-const Spin = () => <div style={{width:"16px",height:"16px",border:"2px solid rgba(184,146,42,.28)",borderTopColor:C.gold,borderRadius:"50%",animation:"spin .8s linear infinite",flexShrink:0}} />;
+const Spin = () => <div style={{width:"16px",height:"16px",border:"2px solid #e2e8f0",borderTopColor:"#1e3a5f",borderRadius:"50%",animation:"spin .8s linear infinite",flexShrink:0}} />;
 
 // Resizes/re-encodes an image File in the browser before upload, via
 // Canvas — no extra dependency needed. Downscales so the longer edge is
@@ -220,9 +222,9 @@ function ImageUploadField({ label, folder, value, onChange, round=false, preview
         ) : (
           <div style={{
             width: `${previewSize}px`, height: `${previewSize}px`, borderRadius: round ? "50%" : "4px",
-            background: "rgba(255,255,255,.05)", border: "1px dashed rgba(184,146,42,.35)",
+            background: "#ffffff", border: "1px dashed rgba(148,163,184,.35)",
             display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.3rem",
-            color: "rgba(248,243,232,.25)", flexShrink: 0,
+            color: "rgba(71,85,105,.25)", flexShrink: 0,
           }}>🖼️</div>
         )}
         <div style={{ display: "flex", flexDirection: "column", gap: ".4rem" }}>
@@ -232,7 +234,7 @@ function ImageUploadField({ label, folder, value, onChange, round=false, preview
             </button>
             {value && !busy && <button type="button" style={s.btnR} onClick={() => onChange("")}>Remove</button>}
           </div>
-          {err && <span style={{ color: "#f87171", fontSize: ".72rem", fontFamily: "'Rajdhani',sans-serif" }}>{err}</span>}
+          {err && <span style={{ color: "#dc2626", fontSize: ".72rem", fontFamily:"inherit" }}>{err}</span>}
         </div>
       </div>
     </div>
@@ -294,7 +296,7 @@ function EnquiriesSection() {
   return (
     <div>
       <div style={{...s.g3,gridTemplateColumns:"repeat(5,1fr)",marginBottom:"1.2rem"}}>
-        {[["Total",stats.total,C.goldLL],["Today",stats.today,"#4AE382"],["This Week",stats.week,C.goldL],["Unread",stats.unread,"#f87171"],["Grievances",stats.grievances,"#E87A3A"]].map(([l,v,c])=>(
+        {[["Total",stats.total,C.goldLL],["Today",stats.today,"#16a34a"],["This Week",stats.week,C.goldL],["Unread",stats.unread,"#dc2626"],["Grievances",stats.grievances,"#ea580c"]].map(([l,v,c])=>(
           <div key={l} style={s.stat}><strong style={{...s.statN,color:c}}>{v}</strong><span style={s.statL}>{l}</span></div>
         ))}
       </div>
@@ -313,25 +315,25 @@ function EnquiriesSection() {
 
       {load?<div style={s.loading}><Spin/>Loading enquiries…</div>:!filtered.length?<div style={s.empty}>No enquiries found</div>:(
         <div style={s.card}>
-          <div style={s.cardHd}><span style={s.cardTit}>Enquiries ({filtered.length})</span><span style={{color:"rgba(248,243,232,.3)",fontSize:".72rem",fontFamily:"'Rajdhani',sans-serif"}}>Click row to view details</span></div>
+          <div style={s.cardHd}><span style={s.cardTit}>Enquiries ({filtered.length})</span><span style={{color:"rgba(71,85,105,.3)",fontSize:".72rem",fontFamily:"inherit"}}>Click row to view details</span></div>
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:".83rem"}}>
               <thead>
                 <tr>{["Date","Student","Parent","Phone","Course","Type","Status",""].map(h=>(
-                  <th key={h} style={{background:"rgba(11,31,58,.6)",padding:".6rem .9rem",textAlign:"left",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,fontSize:".64rem",letterSpacing:".12em",textTransform:"uppercase",color:C.goldL,borderBottom:"1px solid rgba(184,146,42,.12)",whiteSpace:"nowrap"}}>{h}</th>
+                  <th key={h} style={{background:"rgba(226,232,240,.6)",padding:".6rem .9rem",textAlign:"left",fontFamily:"inherit",fontWeight:700,fontSize:".64rem",letterSpacing:"0",textTransform:"none",color:C.goldL,borderBottom:"1px solid rgba(148,163,184,.12)",whiteSpace:"nowrap"}}>{h}</th>
                 ))}</tr>
               </thead>
               <tbody>
                 {filtered.map(r=>(
-                  <tr key={r.id} style={{cursor:"pointer",background:r.replied?"transparent":"rgba(184,146,42,.03)"}} onClick={()=>setOpen(r)}>
-                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(184,146,42,.06)",color:"rgba(248,243,232,.45)",fontSize:".72rem",fontFamily:"'Rajdhani',sans-serif",whiteSpace:"nowrap"}}>{fmt(r.created_at)}</td>
-                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(184,146,42,.06)",color:r.replied?"rgba(248,243,232,.65)":"#F8F3E8",fontWeight:r.replied?400:600}}>{r.student_name||"—"}</td>
-                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(184,146,42,.06)",color:"rgba(248,243,232,.55)"}}>{r.parent_name||"—"}</td>
-                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(184,146,42,.06)",color:C.goldL}}><a href={`tel:${r.phone}`} style={{color:C.goldL}} onClick={e=>e.stopPropagation()}>{r.phone||"—"}</a></td>
-                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(184,146,42,.06)",color:"rgba(248,243,232,.6)",fontSize:".78rem",maxWidth:"180px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.course||"—"}</td>
-                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(184,146,42,.06)"}}><span style={{...s.badge(r.course?.startsWith("GRIEVANCE")?"High":"Medium"),fontSize:".58rem"}}>{r.course?.startsWith("GRIEVANCE")?"Grievance":"Admission"}</span></td>
-                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(184,146,42,.06)"}}><span style={{...s.badge(r.replied?"Low":"High"),fontSize:".58rem"}}>{r.replied?"Replied":"New"}</span></td>
-                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(184,146,42,.06)"}} onClick={e=>e.stopPropagation()}>
+                  <tr key={r.id} style={{cursor:"pointer",background:r.replied?"transparent":"rgba(148,163,184,.03)"}} onClick={()=>setOpen(r)}>
+                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(148,163,184,.06)",color:"rgba(71,85,105,.45)",fontSize:".72rem",fontFamily:"inherit",whiteSpace:"nowrap"}}>{fmt(r.created_at)}</td>
+                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(148,163,184,.06)",color:r.replied?"rgba(71,85,105,.65)":"#1e293b",fontWeight:r.replied?400:600}}>{r.student_name||"—"}</td>
+                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(148,163,184,.06)",color:"rgba(71,85,105,.55)"}}>{r.parent_name||"—"}</td>
+                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(148,163,184,.06)",color:C.goldL}}><a href={`tel:${r.phone}`} style={{color:C.goldL}} onClick={e=>e.stopPropagation()}>{r.phone||"—"}</a></td>
+                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(148,163,184,.06)",color:"rgba(71,85,105,.6)",fontSize:".78rem",maxWidth:"180px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.course||"—"}</td>
+                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(148,163,184,.06)"}}><span style={{...s.badge(r.course?.startsWith("GRIEVANCE")?"High":"Medium"),fontSize:".58rem"}}>{r.course?.startsWith("GRIEVANCE")?"Grievance":"Admission"}</span></td>
+                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(148,163,184,.06)"}}><span style={{...s.badge(r.replied?"Low":"High"),fontSize:".58rem"}}>{r.replied?"Replied":"New"}</span></td>
+                    <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(148,163,184,.06)"}} onClick={e=>e.stopPropagation()}>
                       <a href={`https://wa.me/${(r.phone||"").replace(/\D/g,"")}?text=Hello%20${encodeURIComponent(r.parent_name||"")}%2C%20GNSI%20Khangabok.%20Regarding%20enquiry%20for%20${encodeURIComponent(r.student_name||"your%20child")}.`} target="_blank" rel="noopener noreferrer" style={{...s.btnGrn,fontSize:".6rem",padding:".28rem .55rem",textDecoration:"none",display:"inline-block"}}>WA</a>
                     </td>
                   </tr>
@@ -343,21 +345,21 @@ function EnquiriesSection() {
       )}
 
       {open&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(11,31,58,.92)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem",overflowY:"auto"}} onClick={()=>setOpen(null)}>
-          <div style={{background:C.navy2,border:`1px solid rgba(184,146,42,.3)`,padding:"1.8rem",width:"100%",maxWidth:"520px"}} onClick={e=>e.stopPropagation()}>
+        <div style={{position:"fixed",inset:0,background:"rgba(226,232,240,.92)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem",overflowY:"auto"}} onClick={()=>setOpen(null)}>
+          <div style={{background:C.navy2,border:`1px solid rgba(148,163,184,.3)`,padding:"1.8rem",width:"100%",maxWidth:"520px"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}>
-              <h3 style={{fontFamily:"'EB Garamond',serif",color:"#F8F3E8",fontSize:"1.3rem"}}>{open.course?.startsWith("GRIEVANCE")?"🔴 Grievance":"📬 Enquiry"} Details</h3>
-              <button onClick={()=>setOpen(null)} style={{background:"none",border:"none",color:"rgba(248,243,232,.4)",cursor:"pointer",fontSize:"1.2rem"}}>✕</button>
+              <h3 style={{fontFamily:"inherit",color:"#1e293b",fontSize:"1.3rem"}}>{open.course?.startsWith("GRIEVANCE")?"🔴 Grievance":"📬 Enquiry"} Details</h3>
+              <button onClick={()=>setOpen(null)} style={{background:"none",border:"none",color:"rgba(71,85,105,.4)",cursor:"pointer",fontSize:"1.2rem"}}>✕</button>
             </div>
             {open.course?.startsWith("GRIEVANCE")&&(
-              <div style={{padding:".6rem .9rem",background:"rgba(139,26,26,.2)",border:"1px solid rgba(139,26,26,.3)",marginBottom:"1rem",fontFamily:"'Rajdhani',sans-serif",fontSize:".78rem",color:"#f87171",letterSpacing:".06em"}}>
+              <div style={{padding:".6rem .9rem",background:"rgba(220,38,38,.2)",border:"1px solid rgba(220,38,38,.3)",marginBottom:"1rem",fontFamily:"inherit",fontSize:".78rem",color:"#dc2626",letterSpacing:"0"}}>
                 ⚠ GRIEVANCE — Requires response within 48 hours · Ticket: {open.message?.match(/GNSI-GRV-\d+/)?.[0]||"—"}
               </div>
             )}
             {[["Student Name",open.student_name],["Parent / Guardian",open.parent_name],["Phone",open.phone],["Class / Age",open.class_grade],["Course / Type",open.course],["Submitted",fmt(open.created_at)],open.replied_at&&["Replied At",fmt(open.replied_at)]].filter(Boolean).map(([l,v])=>(
-              <div key={l} style={s.row}><span style={{color:"rgba(248,243,232,.38)",fontFamily:"'Rajdhani',sans-serif",fontSize:".72rem",letterSpacing:".08em",textTransform:"uppercase"}}>{l}</span><strong style={{color:"#F8F3E8",fontSize:".85rem"}}>{v||"—"}</strong></div>
+              <div key={l} style={s.row}><span style={{color:"rgba(71,85,105,.38)",fontFamily:"inherit",fontSize:".72rem",letterSpacing:"0",textTransform:"none"}}>{l}</span><strong style={{color:"#1e293b",fontSize:".85rem"}}>{v||"—"}</strong></div>
             ))}
-            {open.message&&<div style={{marginTop:"1rem",padding:".9rem",background:"rgba(11,31,58,.5)",border:"1px solid rgba(184,146,42,.12)"}}><div style={{...s.lbl,marginBottom:".5rem"}}>Message</div><p style={{color:"rgba(248,243,232,.65)",fontSize:".85rem",lineHeight:1.7}}>{open.message}</p></div>}
+            {open.message&&<div style={{marginTop:"1rem",padding:".9rem",background:"rgba(226,232,240,.5)",border:"1px solid rgba(148,163,184,.12)"}}><div style={{...s.lbl,marginBottom:".5rem"}}>Message</div><p style={{color:"rgba(71,85,105,.65)",fontSize:".85rem",lineHeight:1.7}}>{open.message}</p></div>}
             <div style={{display:"flex",gap:".6rem",marginTop:"1.3rem",flexWrap:"wrap"}}>
               <a href={`https://wa.me/${(open.phone||"").replace(/\D/g,"")}?text=Hello%20${encodeURIComponent(open.parent_name||"")}%2C%20GNSI%20Khangabok.%20We%20received%20your%20enquiry%20for%20${encodeURIComponent(open.student_name||"your%20child")}.%20Please%20contact%20us%20at%20%2B91%2089742%2098074.`} target="_blank" rel="noopener noreferrer" style={{...s.btnGrn,textDecoration:"none",display:"inline-block"}}>📱 WhatsApp</a>
               <a href={`tel:${open.phone}`} style={{...s.btnG,textDecoration:"none",display:"inline-block"}}>📞 Call</a>
@@ -418,7 +420,7 @@ function NoticesSection() {
           <label style={s.lbl}>Body *</label>
           <textarea style={s.ta} placeholder="Notice text shown on the public website…" value={form.body} onChange={e=>setForm(f=>({...f,body:e.target.value}))} rows={4}/>
           <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Publishing…":editing?"Update Notice":"Publish to Website →"}</button>
-          <p style={{color:"rgba(248,243,232,.28)",fontSize:".72rem",fontFamily:"'Rajdhani',sans-serif",marginTop:".5rem"}}>High priority → red border on website · Top 3 active notices shown on homepage</p>
+          <p style={{color:"rgba(71,85,105,.28)",fontSize:".72rem",fontFamily:"inherit",marginTop:".5rem"}}>High priority → red border on website · Top 3 active notices shown on homepage</p>
         </div>
       </div>
       {load?<div style={s.loading}><Spin/>Loading…</div>:rows.map(n=>(
@@ -426,7 +428,7 @@ function NoticesSection() {
           <div style={s.cardHd}>
             <div style={{display:"flex",alignItems:"center",gap:".7rem",flexWrap:"wrap"}}>
               <span style={s.badge(n.priority)}>{n.priority||"Medium"}</span>
-              <span style={{color:"#F8F3E8",fontFamily:"'EB Garamond',serif",fontSize:"1rem"}}>{n.title}</span>
+              <span style={{color:"#1e293b",fontFamily:"inherit",fontSize:"1rem"}}>{n.title}</span>
               {n.is_archived&&<span style={{...s.badge("Low"),fontSize:".55rem"}}>Archived</span>}
             </div>
             <div style={{display:"flex",gap:".4rem"}}>
@@ -436,8 +438,8 @@ function NoticesSection() {
             </div>
           </div>
           <div style={{padding:".7rem 1.1rem"}}>
-            <p style={{color:"rgba(248,243,232,.55)",fontSize:".83rem",lineHeight:1.7,marginBottom:".4rem"}}>{n.body?.slice(0,180)}{n.body?.length>180?"…":""}</p>
-            <span style={{color:"rgba(248,243,232,.28)",fontSize:".68rem",fontFamily:"'Rajdhani',sans-serif",letterSpacing:".06em",textTransform:"uppercase"}}>{fmt(n.notice_date||n.created_at)}</span>
+            <p style={{color:"rgba(71,85,105,.55)",fontSize:".83rem",lineHeight:1.7,marginBottom:".4rem"}}>{n.body?.slice(0,180)}{n.body?.length>180?"…":""}</p>
+            <span style={{color:"rgba(71,85,105,.28)",fontSize:".68rem",fontFamily:"inherit",letterSpacing:"0",textTransform:"none"}}>{fmt(n.notice_date||n.created_at)}</span>
           </div>
         </div>
       ))}
@@ -488,10 +490,10 @@ function RankersSection() {
 
   return (
     <div>
-      <div style={{...s.card,borderColor:"rgba(184,146,42,.3)",marginBottom:"1rem"}}>
+      <div style={{...s.card,borderColor:"rgba(148,163,184,.3)",marginBottom:"1rem"}}>
         <div style={s.cardHd}><span style={s.cardTit}>📋 Setup — Create Table First</span></div>
         <div style={s.cardBdy}>
-          <pre style={{background:"rgba(0,0,0,.3)",padding:".8rem",fontSize:".72rem",color:"#4AE382",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
+          <pre style={{background:"#0f172a",padding:".8rem",borderRadius:"8px",fontSize:".72rem",color:"#4ade80",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
           <button style={{...s.btnG,fontSize:".72rem"}} onClick={()=>{navigator.clipboard.writeText(SQL);toast("SQL copied ✓");}}>📋 Copy SQL</button>
         </div>
       </div>
@@ -522,14 +524,14 @@ function RankersSection() {
               <div style={{padding:"1rem",textAlign:"center"}}>
                 {r.photo_url
                   ?<img src={r.photo_url} alt={r.name} style={{width:"64px",height:"64px",borderRadius:"50%",objectFit:"cover",border:`2px solid ${C.gold}`,margin:"0 auto .7rem"}} onError={e=>e.target.style.display="none"}/>
-                  :<div style={{width:"64px",height:"64px",borderRadius:"50%",background:C.navy,border:`2px solid ${C.gold}`,margin:"0 auto .7rem",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'EB Garamond',serif",fontSize:"1.3rem",color:C.goldL}}>{(r.name||"S")[0]}</div>
+                  :<div style={{width:"64px",height:"64px",borderRadius:"50%",background:C.navy,border:`2px solid ${C.gold}`,margin:"0 auto .7rem",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"inherit",fontWeight:700,fontSize:"1.3rem",color:"#ffffff"}}>{(r.name||"S")[0]}</div>
                 }
-                {r.rank&&<div style={{background:"rgba(184,146,42,.2)",color:C.goldLL,fontFamily:"'Rajdhani',sans-serif",fontWeight:700,fontSize:".6rem",letterSpacing:".1em",textTransform:"uppercase",padding:".15rem .5rem",marginBottom:".4rem",display:"inline-block"}}>{r.rank}</div>}
-                <div style={{color:"#F8F3E8",fontFamily:"'EB Garamond',serif",fontSize:".97rem",marginBottom:".2rem"}}>{r.name}</div>
-                <div style={{color:C.goldL,fontFamily:"'Rajdhani',sans-serif",fontSize:".68rem",letterSpacing:".08em",textTransform:"uppercase",marginBottom:".15rem"}}>{r.school}</div>
-                <div style={{color:"rgba(248,243,232,.35)",fontFamily:"'Rajdhani',sans-serif",fontSize:".65rem"}}>{r.batch}</div>
+                {r.rank&&<div style={{background:"rgba(148,163,184,.2)",color:C.goldLL,fontFamily:"inherit",fontWeight:700,fontSize:".6rem",letterSpacing:"0",textTransform:"none",padding:".15rem .5rem",marginBottom:".4rem",display:"inline-block"}}>{r.rank}</div>}
+                <div style={{color:"#1e293b",fontFamily:"inherit",fontSize:".97rem",marginBottom:".2rem"}}>{r.name}</div>
+                <div style={{color:C.goldL,fontFamily:"inherit",fontSize:".68rem",letterSpacing:"0",textTransform:"none",marginBottom:".15rem"}}>{r.school}</div>
+                <div style={{color:"rgba(71,85,105,.35)",fontFamily:"inherit",fontSize:".65rem"}}>{r.batch}</div>
               </div>
-              <div style={{padding:".5rem",borderTop:"1px solid rgba(184,146,42,.1)",display:"flex",gap:".4rem",justifyContent:"center"}}>
+              <div style={{padding:".5rem",borderTop:"1px solid rgba(148,163,184,.1)",display:"flex",gap:".4rem",justifyContent:"center"}}>
                 <button style={s.btnG} onClick={()=>startEdit(r)}>Edit</button>
                 <button style={s.btnR} onClick={()=>del(r.id)}>Remove</button>
               </div>
@@ -571,16 +573,16 @@ function GallerySection() {
 
   return (
     <div>
-      <div style={{...s.card,borderColor:"rgba(184,146,42,.3)"}}>
+      <div style={{...s.card,borderColor:"rgba(148,163,184,.3)"}}>
         <div style={{...s.cardHd,cursor:"pointer"}} onClick={()=>setHint(!hint)}>
           <span style={s.cardTit}>📤 How to Upload Photos to Supabase</span>
-          <span style={{color:C.goldL,fontSize:".75rem",fontFamily:"'Rajdhani',sans-serif"}}>{hint?"Hide ▲":"Show ▼"}</span>
+          <span style={{color:C.goldL,fontSize:".75rem",fontFamily:"inherit"}}>{hint?"Hide ▲":"Show ▼"}</span>
         </div>
         {hint&&<div style={s.cardBdy}>
           {[["1","Supabase Dashboard","supabase.com → your project → Storage → Buckets"],["2","Create bucket","New Bucket → name: gnsi-public → enable Public access → Create"],["3","Upload photos","Open gnsi-public bucket → Upload → drag & drop photos (campus, rankers, faculty, results)"],["4","Get URL","Click any uploaded file → Copy URL → paste below"],["5","Folder structure (recommended)","gnsi-public/gallery/ · /rankers/ · /faculty/ · /results/ · /banners/ · /papers/"]].map(([n,t,d])=>(
             <div key={n} style={{display:"flex",gap:"1rem",marginBottom:".8rem",alignItems:"flex-start"}}>
-              <div style={{width:"26px",height:"26px",background:C.gold,color:C.navy,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,fontSize:".75rem",flexShrink:0}}>{n}</div>
-              <div><div style={{color:"#F8F3E8",fontWeight:600,fontSize:".85rem",marginBottom:".15rem"}}>{t}</div><div style={{color:"rgba(248,243,232,.45)",fontSize:".8rem"}}>{d}</div></div>
+              <div style={{width:"26px",height:"26px",background:C.gold,color:C.navy,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"inherit",fontWeight:700,fontSize:".75rem",flexShrink:0}}>{n}</div>
+              <div><div style={{color:"#1e293b",fontWeight:600,fontSize:".85rem",marginBottom:".15rem"}}>{t}</div><div style={{color:"rgba(71,85,105,.45)",fontSize:".8rem"}}>{d}</div></div>
             </div>
           ))}
         </div>}
@@ -601,12 +603,12 @@ function GallerySection() {
       {load?<div style={s.loading}><Spin/>Loading gallery…</div>:!rows.length?<div style={s.empty}>No gallery images yet</div>:(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:".8rem"}}>
           {rows.map(img=>(
-            <div key={img.id} style={{background:"rgba(21,53,97,.4)",border:"1px solid rgba(184,146,42,.15)",overflow:"hidden"}}>
+            <div key={img.id} style={{background:"rgba(226,232,240,.4)",border:"1px solid rgba(148,163,184,.15)",overflow:"hidden"}}>
               <img src={img.image_url} alt={img.caption} style={{width:"100%",aspectRatio:"4/3",objectFit:"cover",display:"block"}} onError={e=>e.target.style.display="none"}/>
               <div style={{padding:".7rem"}}>
                 <input defaultValue={img.caption} onBlur={e=>{if(e.target.value!==img.caption)updateCaption(img.id,e.target.value)}} style={{...s.inp,marginBottom:".5rem",fontSize:".78rem",padding:"6px 10px"}} placeholder="Caption…"/>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={{color:"rgba(248,243,232,.3)",fontSize:".62rem",fontFamily:"'Rajdhani',sans-serif",letterSpacing:".06em",textTransform:"uppercase"}}>{img.category}</span>
+                  <span style={{color:"rgba(71,85,105,.3)",fontSize:".62rem",fontFamily:"inherit",letterSpacing:"0",textTransform:"none"}}>{img.category}</span>
                   <button style={s.btnR} onClick={()=>del(img.id)}>Remove</button>
                 </div>
               </div>
@@ -662,10 +664,10 @@ function EventsSection() {
 
   return (
     <div>
-      <div style={{...s.card,borderColor:"rgba(184,146,42,.3)",marginBottom:"1rem"}}>
+      <div style={{...s.card,borderColor:"rgba(148,163,184,.3)",marginBottom:"1rem"}}>
         <div style={s.cardHd}><span style={s.cardTit}>📋 Setup — Create Table First</span></div>
         <div style={s.cardBdy}>
-          <pre style={{background:"rgba(0,0,0,.3)",padding:".8rem",fontSize:".72rem",color:"#4AE382",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
+          <pre style={{background:"#0f172a",padding:".8rem",borderRadius:"8px",fontSize:".72rem",color:"#4ade80",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
           <button style={{...s.btnG,fontSize:".72rem"}} onClick={()=>{navigator.clipboard.writeText(SQL);toast("SQL copied ✓");}}>📋 Copy SQL</button>
         </div>
       </div>
@@ -690,7 +692,7 @@ function EventsSection() {
             </div>
           </div>
           <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Event":"Add Event →"}</button>
-          <p style={{color:"rgba(248,243,232,.28)",fontSize:".72rem",fontFamily:"'Rajdhani',sans-serif",marginTop:".5rem"}}>Past events remain in the list but won't show on the homepage automatically — delete or mark inactive once they've passed.</p>
+          <p style={{color:"rgba(71,85,105,.28)",fontSize:".72rem",fontFamily:"inherit",marginTop:".5rem"}}>Past events remain in the list but won't show on the homepage automatically — delete or mark inactive once they've passed.</p>
         </div>
       </div>
 
@@ -701,8 +703,8 @@ function EventsSection() {
             <div key={ev.id} style={{...s.card,opacity:(!ev.is_active||isPast)?.55:1}}>
               <div style={s.cardHd}>
                 <div style={{display:"flex",alignItems:"center",gap:".7rem",flexWrap:"wrap"}}>
-                  <span style={{color:C.goldLL,fontFamily:"'EB Garamond',serif",fontSize:"1.1rem",minWidth:"3.5rem"}}>{fmt(ev.event_date)}</span>
-                  <span style={{color:"#F8F3E8",fontFamily:"'EB Garamond',serif",fontSize:"1rem"}}>{ev.title}</span>
+                  <span style={{color:C.goldLL,fontFamily:"inherit",fontSize:"1.1rem",minWidth:"3.5rem"}}>{fmt(ev.event_date)}</span>
+                  <span style={{color:"#1e293b",fontFamily:"inherit",fontSize:"1rem"}}>{ev.title}</span>
                   {!ev.is_active&&<span style={{...s.badge("Low"),fontSize:".55rem"}}>Hidden</span>}
                   {isPast&&<span style={{...s.badge("Medium"),fontSize:".55rem"}}>Past</span>}
                 </div>
@@ -712,7 +714,7 @@ function EventsSection() {
                   <button style={s.btnR} onClick={()=>del(ev.id)}>Delete</button>
                 </div>
               </div>
-              {ev.description&&<div style={{padding:".7rem 1.1rem"}}><p style={{color:"rgba(248,243,232,.55)",fontSize:".83rem",lineHeight:1.7}}>{ev.description}</p></div>}
+              {ev.description&&<div style={{padding:".7rem 1.1rem"}}><p style={{color:"rgba(71,85,105,.55)",fontSize:".83rem",lineHeight:1.7}}>{ev.description}</p></div>}
             </div>
           );
         })
@@ -767,10 +769,10 @@ function VideosSection() {
 
   return (
     <div>
-      <div style={{...s.card,borderColor:"rgba(184,146,42,.3)",marginBottom:"1rem"}}>
+      <div style={{...s.card,borderColor:"rgba(148,163,184,.3)",marginBottom:"1rem"}}>
         <div style={s.cardHd}><span style={s.cardTit}>📋 Setup SQL</span></div>
         <div style={s.cardBdy}>
-          <pre style={{background:"rgba(0,0,0,.3)",padding:".8rem",fontSize:".72rem",color:"#4AE382",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
+          <pre style={{background:"#0f172a",padding:".8rem",borderRadius:"8px",fontSize:".72rem",color:"#4ade80",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
           <button style={{...s.btnG,fontSize:".72rem"}} onClick={()=>{navigator.clipboard.writeText(SQL);toast("SQL copied ✓");}}>📋 Copy SQL</button>
         </div>
       </div>
@@ -781,7 +783,7 @@ function VideosSection() {
           <input style={s.inp} placeholder="e.g. Morning Assembly & PT Session" value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}/>
           <label style={s.lbl}>YouTube URL</label>
           <input style={s.inp} placeholder="https://www.youtube.com/watch?v=XXXXXXXXXX" value={form.youtube_url} onChange={e=>setForm(f=>({...f,youtube_url:e.target.value}))}/>
-          {thumb&&<img src={thumb} alt="thumb" style={{width:"200px",height:"112px",objectFit:"cover",marginBottom:"1rem",border:"1px solid rgba(184,146,42,.2)"}} onError={e=>e.target.style.display="none"}/>}
+          {thumb&&<img src={thumb} alt="thumb" style={{width:"200px",height:"112px",objectFit:"cover",marginBottom:"1rem",border:"1px solid rgba(148,163,184,.2)"}} onError={e=>e.target.style.display="none"}/>}
           <div style={s.g2}>
             <div><label style={s.lbl}>Category</label><select style={s.sel} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>{["Campus","Results","Classes","Hostel","Events","PT"].map(c=><option key={c}>{c}</option>)}</select></div>
             <div><label style={s.lbl}>Sort Order</label><input type="number" style={s.inp} value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:+e.target.value}))}/></div>
@@ -796,10 +798,10 @@ function VideosSection() {
           {rows.map(v=>{const t=v.youtube_url?getThumb(v.youtube_url):null;return(
             <div key={v.id} style={{...s.card,marginBottom:0}}>
               {t&&<img src={t} alt={v.title} style={{width:"100%",aspectRatio:"16/9",objectFit:"cover",display:"block"}} onError={e=>e.target.style.display="none"}/>}
-              {!t&&<div style={{width:"100%",aspectRatio:"16/9",background:"rgba(11,31,58,.5)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"2rem"}}>▶</div>}
+              {!t&&<div style={{width:"100%",aspectRatio:"16/9",background:"rgba(226,232,240,.5)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"2rem"}}>▶</div>}
               <div style={{padding:".8rem"}}>
-                <div style={{color:"#F8F3E8",fontSize:".88rem",marginBottom:".25rem"}}>{v.title}</div>
-                <div style={{color:"rgba(248,243,232,.35)",fontFamily:"'Rajdhani',sans-serif",fontSize:".68rem",letterSpacing:".06em",textTransform:"uppercase",marginBottom:".5rem"}}>{v.category} · {v.description}</div>
+                <div style={{color:"#1e293b",fontSize:".88rem",marginBottom:".25rem"}}>{v.title}</div>
+                <div style={{color:"rgba(71,85,105,.35)",fontFamily:"inherit",fontSize:".68rem",letterSpacing:"0",textTransform:"none",marginBottom:".5rem"}}>{v.category} · {v.description}</div>
                 <div style={{display:"flex",gap:".4rem"}}>
                   <button style={s.btnG} onClick={()=>startEdit(v)}>Edit</button>
                   <button style={s.btnR} onClick={()=>del(v.id)}>Remove</button>
@@ -856,10 +858,10 @@ function BlogSection() {
 
   return (
     <div>
-      <div style={{...s.card,borderColor:"rgba(184,146,42,.3)",marginBottom:"1rem"}}>
+      <div style={{...s.card,borderColor:"rgba(148,163,184,.3)",marginBottom:"1rem"}}>
         <div style={s.cardHd}><span style={s.cardTit}>📋 Setup SQL</span></div>
         <div style={s.cardBdy}>
-          <pre style={{background:"rgba(0,0,0,.3)",padding:".8rem",fontSize:".72rem",color:"#4AE382",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
+          <pre style={{background:"#0f172a",padding:".8rem",borderRadius:"8px",fontSize:".72rem",color:"#4ade80",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
           <button style={{...s.btnG,fontSize:".72rem"}} onClick={()=>{navigator.clipboard.writeText(SQL);toast("SQL copied ✓");}}>📋 Copy SQL</button>
         </div>
       </div>
@@ -878,7 +880,7 @@ function BlogSection() {
           <textarea style={{...s.ta,minHeight:"140px"}} placeholder="Write the full article or news post here…" value={form.body} onChange={e=>setForm(f=>({...f,body:e.target.value}))} rows={6}/>
           <div style={{display:"flex",gap:".8rem",alignItems:"center"}}>
             <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Post":"Publish Post →"}</button>
-            <label style={{display:"flex",alignItems:"center",gap:".4rem",cursor:"pointer",fontFamily:"'Rajdhani',sans-serif",fontSize:".75rem",color:"rgba(248,243,232,.5)"}}>
+            <label style={{display:"flex",alignItems:"center",gap:".4rem",cursor:"pointer",fontFamily:"inherit",fontSize:".75rem",color:"rgba(71,85,105,.5)"}}>
               <input type="checkbox" checked={form.is_published} onChange={e=>setForm(f=>({...f,is_published:e.target.checked}))}/> Publish immediately
             </label>
           </div>
@@ -889,7 +891,7 @@ function BlogSection() {
           <div style={s.cardHd}>
             <div style={{display:"flex",alignItems:"center",gap:".7rem",flexWrap:"wrap"}}>
               <span style={{...s.badge("Medium"),fontSize:".58rem"}}>{p.category}</span>
-              <span style={{color:"#F8F3E8",fontFamily:"'EB Garamond',serif",fontSize:"1rem"}}>{p.title}</span>
+              <span style={{color:"#1e293b",fontFamily:"inherit",fontSize:"1rem"}}>{p.title}</span>
               {!p.is_published&&<span style={{...s.badge("Low"),fontSize:".55rem"}}>Draft</span>}
             </div>
             <div style={{display:"flex",gap:".4rem"}}>
@@ -899,8 +901,8 @@ function BlogSection() {
             </div>
           </div>
           <div style={{padding:".7rem 1.1rem"}}>
-            <p style={{color:"rgba(248,243,232,.55)",fontSize:".83rem",lineHeight:1.7,marginBottom:".4rem"}}>{p.body?.slice(0,160)}{p.body?.length>160?"…":""}</p>
-            <span style={{color:"rgba(248,243,232,.28)",fontSize:".68rem",fontFamily:"'Rajdhani',sans-serif",letterSpacing:".06em",textTransform:"uppercase"}}>{fmt(p.published_date)}</span>
+            <p style={{color:"rgba(71,85,105,.55)",fontSize:".83rem",lineHeight:1.7,marginBottom:".4rem"}}>{p.body?.slice(0,160)}{p.body?.length>160?"…":""}</p>
+            <span style={{color:"rgba(71,85,105,.28)",fontSize:".68rem",fontFamily:"inherit",letterSpacing:"0",textTransform:"none"}}>{fmt(p.published_date)}</span>
           </div>
         </div>
       ))}
@@ -950,10 +952,10 @@ function ReviewsSection() {
 
   return (
     <div>
-      <div style={{...s.card,borderColor:"rgba(184,146,42,.3)",marginBottom:"1rem"}}>
+      <div style={{...s.card,borderColor:"rgba(148,163,184,.3)",marginBottom:"1rem"}}>
         <div style={s.cardHd}><span style={s.cardTit}>📋 Setup SQL</span></div>
         <div style={s.cardBdy}>
-          <pre style={{background:"rgba(0,0,0,.3)",padding:".8rem",fontSize:".72rem",color:"#4AE382",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
+          <pre style={{background:"#0f172a",padding:".8rem",borderRadius:"8px",fontSize:".72rem",color:"#4ade80",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
           <button style={{...s.btnG,fontSize:".72rem"}} onClick={()=>{navigator.clipboard.writeText(SQL);toast("SQL copied ✓");}}>📋 Copy SQL</button>
         </div>
       </div>
@@ -971,7 +973,7 @@ function ReviewsSection() {
           <textarea style={s.ta} placeholder="The review text shown on the public website…" value={form.review_text} onChange={e=>setForm(f=>({...f,review_text:e.target.value}))} rows={3}/>
           <div style={{display:"flex",gap:".8rem",alignItems:"center"}}>
             <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Review":"Add to Website →"}</button>
-            <label style={{display:"flex",alignItems:"center",gap:".4rem",cursor:"pointer",fontFamily:"'Rajdhani',sans-serif",fontSize:".75rem",color:"rgba(248,243,232,.5)"}}>
+            <label style={{display:"flex",alignItems:"center",gap:".4rem",cursor:"pointer",fontFamily:"inherit",fontSize:".75rem",color:"rgba(71,85,105,.5)"}}>
               <input type="checkbox" checked={form.is_featured} onChange={e=>setForm(f=>({...f,is_featured:e.target.checked}))}/> Show on website
             </label>
           </div>
@@ -982,8 +984,8 @@ function ReviewsSection() {
           <div style={s.cardHd}>
             <div style={{display:"flex",alignItems:"center",gap:".7rem",flexWrap:"wrap"}}>
               <span style={{color:C.gold,fontSize:".9rem"}}>{"★".repeat(r.rating||5)}</span>
-              <span style={{color:"#F8F3E8",fontSize:".9rem"}}>{r.reviewer_name}</span>
-              <span style={{color:"rgba(248,243,232,.3)",fontFamily:"'Rajdhani',sans-serif",fontSize:".68rem"}}>{fmt(r.review_date)}</span>
+              <span style={{color:"#1e293b",fontSize:".9rem"}}>{r.reviewer_name}</span>
+              <span style={{color:"rgba(71,85,105,.3)",fontFamily:"inherit",fontSize:".68rem"}}>{fmt(r.review_date)}</span>
               {!r.is_featured&&<span style={{...s.badge("Low"),fontSize:".55rem"}}>Hidden</span>}
             </div>
             <div style={{display:"flex",gap:".4rem"}}>
@@ -993,7 +995,7 @@ function ReviewsSection() {
             </div>
           </div>
           <div style={{padding:".7rem 1.1rem"}}>
-            <p style={{color:"rgba(248,243,232,.6)",fontSize:".83rem",lineHeight:1.7,fontStyle:"italic"}}>"{r.review_text?.slice(0,200)}{r.review_text?.length>200?"…":""}"</p>
+            <p style={{color:"rgba(71,85,105,.6)",fontSize:".83rem",lineHeight:1.7,fontStyle:"italic"}}>"{r.review_text?.slice(0,200)}{r.review_text?.length>200?"…":""}"</p>
           </div>
         </div>
       ))}
@@ -1045,12 +1047,12 @@ function PapersSection() {
 
   return (
     <div>
-      <div style={{...s.card,borderColor:"rgba(184,146,42,.3)",marginBottom:"1rem"}}>
+      <div style={{...s.card,borderColor:"rgba(148,163,184,.3)",marginBottom:"1rem"}}>
         <div style={s.cardHd}><span style={s.cardTit}>📋 Setup SQL + Upload Instructions</span></div>
         <div style={s.cardBdy}>
-          <pre style={{background:"rgba(0,0,0,.3)",padding:".8rem",fontSize:".72rem",color:"#4AE382",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
+          <pre style={{background:"#0f172a",padding:".8rem",borderRadius:"8px",fontSize:".72rem",color:"#4ade80",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
           <button style={{...s.btnG,fontSize:".72rem",marginBottom:"1rem"}} onClick={()=>{navigator.clipboard.writeText(SQL);toast("SQL copied ✓");}}>📋 Copy SQL</button>
-          <p style={{color:"rgba(248,243,232,.45)",fontSize:".82rem",lineHeight:1.7}}>📂 Upload PDFs to Supabase Storage: <strong style={{color:C.goldL}}>gnsi-public/papers/</strong> → e.g. <code style={{color:"#4AE382"}}>nvs-class6-2025.pdf</code>, <code style={{color:"#4AE382"}}>sainik-class6-2024.pdf</code></p>
+          <p style={{color:"rgba(71,85,105,.45)",fontSize:".82rem",lineHeight:1.7}}>📂 Upload PDFs to Supabase Storage: <strong style={{color:C.goldL}}>gnsi-public/papers/</strong> → e.g. <code style={{color:"#16a34a"}}>nvs-class6-2025.pdf</code>, <code style={{color:"#16a34a"}}>sainik-class6-2024.pdf</code></p>
         </div>
       </div>
       <div style={s.card}>
@@ -1075,14 +1077,14 @@ function PapersSection() {
           <div style={s.cardHd}><span style={s.cardTit}>{exam} Papers ({papers.length})</span></div>
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:".83rem"}}>
-              <thead><tr>{["Title","Class","Year","PDF Link",""].map(h=><th key={h} style={{background:"rgba(11,31,58,.6)",padding:".55rem .9rem",textAlign:"left",fontFamily:"'Rajdhani',sans-serif",fontWeight:700,fontSize:".64rem",letterSpacing:".12em",textTransform:"uppercase",color:C.goldL,borderBottom:"1px solid rgba(184,146,42,.12)"}}>{h}</th>)}</tr></thead>
+              <thead><tr>{["Title","Class","Year","PDF Link",""].map(h=><th key={h} style={{background:"rgba(226,232,240,.6)",padding:".55rem .9rem",textAlign:"left",fontFamily:"inherit",fontWeight:700,fontSize:".64rem",letterSpacing:"0",textTransform:"none",color:C.goldL,borderBottom:"1px solid rgba(148,163,184,.12)"}}>{h}</th>)}</tr></thead>
               <tbody>{papers.map(p=>(
                 <tr key={p.id}>
-                  <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(184,146,42,.06)",color:"rgba(248,243,232,.82)"}}>{p.title}</td>
-                  <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(184,146,42,.06)",color:"rgba(248,243,232,.5)",fontSize:".78rem"}}>{p.class_level}</td>
-                  <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(184,146,42,.06)",color:C.goldL,fontFamily:"'Rajdhani',sans-serif",fontWeight:600}}>{p.year}</td>
-                  <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(184,146,42,.06)"}}>{p.pdf_url?<a href={p.pdf_url} target="_blank" rel="noopener noreferrer" style={{color:"#4AE382",fontFamily:"'Rajdhani',sans-serif",fontSize:".72rem"}}>⬇ Download</a>:<span style={{color:"rgba(248,243,232,.25)",fontSize:".72rem"}}>No URL set</span>}</td>
-                  <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(184,146,42,.06)"}}><div style={{display:"flex",gap:".4rem"}}><button style={s.btnG} onClick={()=>startEdit(p)}>Edit</button><button style={s.btnR} onClick={()=>del(p.id)}>Del</button></div></td>
+                  <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(148,163,184,.06)",color:"rgba(71,85,105,.82)"}}>{p.title}</td>
+                  <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(148,163,184,.06)",color:"rgba(71,85,105,.5)",fontSize:".78rem"}}>{p.class_level}</td>
+                  <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(148,163,184,.06)",color:C.goldL,fontFamily:"inherit",fontWeight:600}}>{p.year}</td>
+                  <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(148,163,184,.06)"}}>{p.pdf_url?<a href={p.pdf_url} target="_blank" rel="noopener noreferrer" style={{color:"#16a34a",fontFamily:"inherit",fontSize:".72rem"}}>⬇ Download</a>:<span style={{color:"rgba(71,85,105,.25)",fontSize:".72rem"}}>No URL set</span>}</td>
+                  <td style={{padding:".55rem .9rem",borderBottom:"1px solid rgba(148,163,184,.06)"}}><div style={{display:"flex",gap:".4rem"}}><button style={s.btnG} onClick={()=>startEdit(p)}>Edit</button><button style={s.btnR} onClick={()=>del(p.id)}>Del</button></div></td>
                 </tr>
               ))}</tbody>
             </table>
@@ -1136,12 +1138,12 @@ function BannersSection() {
 
   return (
     <div>
-      <div style={{...s.card,borderColor:"rgba(184,146,42,.3)",marginBottom:"1rem"}}>
+      <div style={{...s.card,borderColor:"rgba(148,163,184,.3)",marginBottom:"1rem"}}>
         <div style={s.cardHd}><span style={s.cardTit}>📋 Setup SQL</span></div>
         <div style={s.cardBdy}>
-          <pre style={{background:"rgba(0,0,0,.3)",padding:".8rem",fontSize:".72rem",color:"#4AE382",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
+          <pre style={{background:"#0f172a",padding:".8rem",borderRadius:"8px",fontSize:".72rem",color:"#4ade80",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
           <button style={{...s.btnG,fontSize:".72rem"}} onClick={()=>{navigator.clipboard.writeText(SQL);toast("SQL copied ✓");}}>📋 Copy SQL</button>
-          <p style={{color:"rgba(248,243,232,.45)",fontSize:".82rem",lineHeight:1.7,marginTop:".7rem"}}>📸 Upload celebration/result photos to <strong style={{color:C.goldL}}>gnsi-public/banners/</strong> in Supabase Storage. Recommended size: 1200×400px landscape.</p>
+          <p style={{color:"rgba(71,85,105,.45)",fontSize:".82rem",lineHeight:1.7,marginTop:".7rem"}}>📸 Upload celebration/result photos to <strong style={{color:C.goldL}}>gnsi-public/banners/</strong> in Supabase Storage. Recommended size: 1200×400px landscape.</p>
         </div>
       </div>
       <div style={s.card}>
@@ -1156,7 +1158,7 @@ function BannersSection() {
           <ImageUploadField label="Background Image" folder="banners" previewSize={140} value={form.image_url} onChange={url=>setForm(f=>({...f,image_url:url}))}/>
           <div style={{display:"flex",gap:".8rem",alignItems:"center"}}>
             <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Banner":"Add Banner →"}</button>
-            <label style={{display:"flex",alignItems:"center",gap:".4rem",cursor:"pointer",fontFamily:"'Rajdhani',sans-serif",fontSize:".75rem",color:"rgba(248,243,232,.5)"}}>
+            <label style={{display:"flex",alignItems:"center",gap:".4rem",cursor:"pointer",fontFamily:"inherit",fontSize:".75rem",color:"rgba(71,85,105,.5)"}}>
               <input type="checkbox" checked={form.is_active} onChange={e=>setForm(f=>({...f,is_active:e.target.checked}))}/> Active on website
             </label>
           </div>
@@ -1167,8 +1169,8 @@ function BannersSection() {
           <div style={s.cardHd}>
             <div style={{display:"flex",alignItems:"center",gap:".7rem",flexWrap:"wrap"}}>
               {!b.is_active&&<span style={{...s.badge("Low"),fontSize:".55rem"}}>Hidden</span>}
-              <span style={{color:C.goldL,fontFamily:"'Rajdhani',sans-serif",fontSize:".72rem"}}>{b.year_label}</span>
-              <span style={{color:"#F8F3E8",fontFamily:"'EB Garamond',serif",fontSize:"1rem"}}>{b.title}</span>
+              <span style={{color:C.goldL,fontFamily:"inherit",fontSize:".72rem"}}>{b.year_label}</span>
+              <span style={{color:"#1e293b",fontFamily:"inherit",fontSize:"1rem"}}>{b.title}</span>
             </div>
             <div style={{display:"flex",gap:".4rem"}}>
               <button style={s.btnG} onClick={()=>startEdit(b)}>Edit</button>
@@ -1178,7 +1180,7 @@ function BannersSection() {
           </div>
           {b.image_url&&<div style={{height:"100px",overflow:"hidden"}}><img src={b.image_url} alt={b.title} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.6}} onError={e=>e.target.style.display="none"}/></div>}
           <div style={{padding:".6rem 1.1rem"}}>
-            <p style={{color:"rgba(248,243,232,.45)",fontSize:".82rem"}}>{b.subtitle}</p>
+            <p style={{color:"rgba(71,85,105,.45)",fontSize:".82rem"}}>{b.subtitle}</p>
           </div>
         </div>
       ))}
@@ -1238,13 +1240,13 @@ function FacultySection() {
             <div key={f.id} style={{...s.card,marginBottom:0}}>
               <div style={{padding:"1.1rem",textAlign:"center"}}>
                 {f.photo_url?<img src={f.photo_url} alt={f.name} style={{width:"70px",height:"70px",borderRadius:"50%",objectFit:"cover",border:`2px solid ${C.gold}`,margin:"0 auto .8rem"}} onError={e=>e.target.style.display="none"}/>
-                :<div style={{width:"70px",height:"70px",borderRadius:"50%",background:C.navy,border:`2px solid ${C.gold}`,margin:"0 auto .8rem",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'EB Garamond',serif",fontSize:"1.5rem",color:C.goldL}}>{(f.name||"F").split(" ").map(w=>w[0]).join("").slice(0,2)}</div>}
-                <div style={{color:"#F8F3E8",fontFamily:"'EB Garamond',serif",fontSize:"1rem",marginBottom:".2rem"}}>{f.name}</div>
-                <div style={{color:C.goldL,fontSize:".72rem",fontFamily:"'Rajdhani',sans-serif",letterSpacing:".08em",textTransform:"uppercase",marginBottom:".2rem"}}>{f.role}</div>
-                {f.subject&&<div style={{color:"rgba(248,243,232,.45)",fontSize:".78rem",marginBottom:".15rem"}}>{f.subject}</div>}
-                {f.experience&&<div style={{color:"rgba(248,243,232,.28)",fontSize:".68rem",fontFamily:"'Rajdhani',sans-serif"}}>{f.experience}</div>}
+                :<div style={{width:"70px",height:"70px",borderRadius:"50%",background:C.navy,border:`2px solid ${C.gold}`,margin:"0 auto .8rem",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"inherit",fontWeight:700,fontSize:"1.5rem",color:"#ffffff"}}>{(f.name||"F").split(" ").map(w=>w[0]).join("").slice(0,2)}</div>}
+                <div style={{color:"#1e293b",fontFamily:"inherit",fontSize:"1rem",marginBottom:".2rem"}}>{f.name}</div>
+                <div style={{color:C.goldL,fontSize:".72rem",fontFamily:"inherit",letterSpacing:"0",textTransform:"none",marginBottom:".2rem"}}>{f.role}</div>
+                {f.subject&&<div style={{color:"rgba(71,85,105,.45)",fontSize:".78rem",marginBottom:".15rem"}}>{f.subject}</div>}
+                {f.experience&&<div style={{color:"rgba(71,85,105,.28)",fontSize:".68rem",fontFamily:"inherit"}}>{f.experience}</div>}
               </div>
-              <div style={{padding:".6rem",borderTop:"1px solid rgba(184,146,42,.1)",display:"flex",gap:".5rem",justifyContent:"center"}}>
+              <div style={{padding:".6rem",borderTop:"1px solid rgba(148,163,184,.1)",display:"flex",gap:".5rem",justifyContent:"center"}}>
                 <button style={s.btnG} onClick={()=>startEdit(f)}>Edit</button>
                 <button style={s.btnR} onClick={()=>del(f.id)}>Remove</button>
               </div>
@@ -1308,10 +1310,10 @@ function TestimonialsSection() {
         rows.map(t=>(
           <div key={t.id} style={s.card}>
             <div style={s.cardBdy}>
-              <p style={{color:"#F8F3E8",fontStyle:"italic",lineHeight:1.7,marginBottom:".6rem"}}>&ldquo;{t.quote}&rdquo;</p>
+              <p style={{color:"#1e293b",fontStyle:"italic",lineHeight:1.7,marginBottom:".6rem"}}>&ldquo;{t.quote}&rdquo;</p>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:".5rem"}}>
                 <div>
-                  <span style={{color:C.goldL,fontFamily:"'Rajdhani',sans-serif",fontWeight:700,fontSize:".78rem",letterSpacing:".06em",textTransform:"uppercase"}}>{t.attribution}</span>
+                  <span style={{color:C.goldL,fontFamily:"inherit",fontWeight:700,fontSize:".78rem",letterSpacing:"0",textTransform:"none"}}>{t.attribution}</span>
                   <span style={{color:C.gold,marginLeft:".6rem"}}>{"★".repeat(t.rating||5)}</span>
                 </div>
                 <div style={{display:"flex",gap:".5rem"}}>
@@ -1405,21 +1407,21 @@ function ExamCalendarSection() {
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:".82rem"}}>
               <thead>
-                <tr style={{borderBottom:"1px solid rgba(184,146,42,.2)"}}>
+                <tr style={{borderBottom:"1px solid rgba(148,163,184,.2)"}}>
                   {["Exam","Type","Opens","Closes","Exam Date","Result","Status",""].map(h=>(
-                    <th key={h} style={{textAlign:"left",padding:".6rem .7rem",color:C.goldL,fontFamily:"'Rajdhani',sans-serif",fontWeight:700,fontSize:".68rem",letterSpacing:".08em",textTransform:"uppercase"}}>{h}</th>
+                    <th key={h} style={{textAlign:"left",padding:".6rem .7rem",color:C.goldL,fontFamily:"inherit",fontWeight:700,fontSize:".68rem",letterSpacing:"0",textTransform:"none"}}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {rows.map(r=>(
-                  <tr key={r.id} style={{borderBottom:"1px solid rgba(184,146,42,.07)"}}>
-                    <td style={{padding:".6rem .7rem",color:"#F8F3E8"}}>{r.exam_name}{r.sub_label&&<div style={{color:C.mist,fontSize:".72rem"}}>{r.sub_label}</div>}</td>
+                  <tr key={r.id} style={{borderBottom:"1px solid rgba(148,163,184,.07)"}}>
+                    <td style={{padding:".6rem .7rem",color:"#1e293b"}}>{r.exam_name}{r.sub_label&&<div style={{color:C.mist,fontSize:".72rem"}}>{r.sub_label}</div>}</td>
                     <td style={{padding:".6rem .7rem"}}><span style={s.badge()}>{r.exam_type}</span></td>
-                    <td style={{padding:".6rem .7rem",color:"rgba(248,243,232,.6)"}}>{r.application_opens}</td>
-                    <td style={{padding:".6rem .7rem",color:"rgba(248,243,232,.6)"}}>{r.application_closes}</td>
-                    <td style={{padding:".6rem .7rem",color:"#F8F3E8",fontWeight:700}}>{r.exam_date}</td>
-                    <td style={{padding:".6rem .7rem",color:"rgba(248,243,232,.6)"}}>{r.result_date}</td>
+                    <td style={{padding:".6rem .7rem",color:"rgba(71,85,105,.6)"}}>{r.application_opens}</td>
+                    <td style={{padding:".6rem .7rem",color:"rgba(71,85,105,.6)"}}>{r.application_closes}</td>
+                    <td style={{padding:".6rem .7rem",color:"#1e293b",fontWeight:700}}>{r.exam_date}</td>
+                    <td style={{padding:".6rem .7rem",color:"rgba(71,85,105,.6)"}}>{r.result_date}</td>
                     <td style={{padding:".6rem .7rem"}}>{r.status}</td>
                     <td style={{padding:".6rem .7rem",display:"flex",gap:".4rem"}}>
                       <button style={s.btnG} onClick={()=>startEdit(r)}>Edit</button>
@@ -1494,8 +1496,8 @@ function TimelineSection() {
         rows.map(t=>(
           <div key={t.id} style={s.row}>
             <div>
-              <strong style={{color:"#F8F3E8"}}>{fmt(t.event_date)}</strong> — {t.title}
-              {t.description&&<div style={{color:"rgba(248,243,232,.45)",fontSize:".8rem",marginTop:".2rem"}}>{t.description}</div>}
+              <strong style={{color:"#1e293b"}}>{fmt(t.event_date)}</strong> — {t.title}
+              {t.description&&<div style={{color:"rgba(71,85,105,.45)",fontSize:".8rem",marginTop:".2rem"}}>{t.description}</div>}
               <span style={s.badge(t.status==="done"?"Low":t.status==="open"?"High":undefined)}>{t.status}</span>
             </div>
             <div style={{display:"flex",gap:".4rem"}}>
@@ -1598,11 +1600,11 @@ CREATE TABLE IF NOT EXISTS website_timeline (id bigserial primary key, title tex
   return (
     <div>
       {/* Master SQL block */}
-      <div style={{...s.card,borderColor:"rgba(184,146,42,.35)",marginBottom:"1rem"}}>
+      <div style={{...s.card,borderColor:"rgba(148,163,184,.35)",marginBottom:"1rem"}}>
         <div style={s.cardHd}><span style={s.cardTit}>🗄️ All Required Tables — Copy & Run in Supabase</span></div>
         <div style={s.cardBdy}>
-          <p style={{color:"rgba(248,243,232,.45)",fontSize:".82rem",lineHeight:1.7,marginBottom:".8rem"}}>Run this SQL once in your Supabase SQL Editor (Dashboard → SQL Editor → New Query → Paste → Run):</p>
-          <pre style={{background:"rgba(0,0,0,.35)",padding:".9rem",fontSize:".7rem",color:"#4AE382",overflowX:"auto",lineHeight:1.7,whiteSpace:"pre-wrap",marginBottom:".8rem"}}>{ALL_SQL}</pre>
+          <p style={{color:"rgba(71,85,105,.45)",fontSize:".82rem",lineHeight:1.7,marginBottom:".8rem"}}>Run this SQL once in your Supabase SQL Editor (Dashboard → SQL Editor → New Query → Paste → Run):</p>
+          <pre style={{background:"#0f172a",padding:".9rem",borderRadius:"8px",fontSize:".7rem",color:"#4ade80",overflowX:"auto",lineHeight:1.7,whiteSpace:"pre-wrap",marginBottom:".8rem"}}>{ALL_SQL}</pre>
           <button style={{...s.btnG,fontSize:".75rem"}} onClick={()=>{navigator.clipboard.writeText(ALL_SQL);toast("All SQL copied to clipboard ✓");}}>📋 Copy All SQL</button>
         </div>
       </div>
@@ -1627,7 +1629,7 @@ CREATE TABLE IF NOT EXISTS website_timeline (id bigserial primary key, title tex
                         <img
                           src={cfg[key]}
                           alt="UPI QR preview"
-                          style={{width:120,height:120,objectFit:"contain",background:"#fff",border:"1px solid rgba(184,146,42,.3)",padding:"6px"}}
+                          style={{width:120,height:120,objectFit:"contain",background:"#fff",border:"1px solid rgba(148,163,184,.3)",padding:"6px"}}
                           onError={e=>{e.target.style.display="none";}}
                         />
                       </div>
@@ -1672,11 +1674,11 @@ export default function WebsiteTab() {
   };
 
   return(
-    <div style={{...s.wrap,background:C.navy,minHeight:"100vh"}}>
+    <div style={{...s.wrap,background:"#f8fafc",minHeight:"100vh"}}>
       {/* Header */}
-      <div style={{marginBottom:"1.4rem",paddingBottom:"1rem",borderBottom:"1px solid rgba(184,146,42,.15)"}}>
-        <h2 style={{fontFamily:"'EB Garamond',serif",color:"#F8F3E8",fontSize:"1.6rem",marginBottom:".3rem"}}>🌐 Website Manager</h2>
-        <p style={{color:"rgba(248,243,232,.35)",fontFamily:"'Rajdhani',sans-serif",fontSize:".75rem",letterSpacing:".08em",textTransform:"uppercase"}}>
+      <div style={{marginBottom:"1.4rem",paddingBottom:"1rem",borderBottom:"1px solid #e2e8f0"}}>
+        <h2 style={{fontFamily:"inherit",color:"#1e3a5f",fontSize:"1.6rem",fontWeight:700,marginBottom:".3rem"}}>🌐 Website Manager</h2>
+        <p style={{color:"rgba(71,85,105,.35)",fontFamily:"inherit",fontSize:".75rem",letterSpacing:"0",textTransform:"none"}}>
           guidancekhangabok.in — {SUB_TABS.length} management sections · All data syncs live to landing page
         </p>
       </div>
