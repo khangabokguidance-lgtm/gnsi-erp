@@ -1413,6 +1413,7 @@ function SettingsSection() {
     {key:"years_of_excellence",    label:"Years of Excellence",      type:"text",    ph:"10+",                group:"Homepage Stats"},
     {key:"selection_rate",         label:"Selection Rate",           type:"text",    ph:"95%",                group:"Homepage Stats"},
     {key:"selected_current_year",  label:"Selected Last Batch",      type:"text",    ph:"66",                 group:"Homepage Stats"},
+    {key:"selected_current_year_label", label:"Selected Last Batch Label", type:"text", ph:"Selected 2025–26",  group:"Homepage Stats"},
     // Social
     {key:"social_facebook",     label:"Facebook URL",                type:"text",    ph:"https://facebook.com/gnsikhangabok",   group:"Social Media"},
     {key:"social_youtube",      label:"YouTube URL",                 type:"text",    ph:"https://youtube.com/@gnsikhangabok",   group:"Social Media"},
