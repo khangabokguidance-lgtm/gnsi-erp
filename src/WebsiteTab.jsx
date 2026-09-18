@@ -1408,11 +1408,11 @@ function SettingsSection() {
     {key:"ifsc_code",           label:"IFSC Code",                   type:"text",    ph:"SBIN0XXXXXX",        group:"Fee Payment"},
     {key:"branch_name",         label:"Branch Name",                 type:"text",    ph:"Thoubal Branch",     group:"Fee Payment"},
     // Stats
-    {key:"stat_students",       label:"Students Trained",            type:"text",    ph:"500+",               group:"Homepage Stats"},
-    {key:"stat_officers",       label:"Officers Produced",           type:"text",    ph:"200+",               group:"Homepage Stats"},
-    {key:"stat_years",          label:"Years of Excellence",         type:"text",    ph:"10+",                group:"Homepage Stats"},
-    {key:"stat_rate",           label:"Selection Rate",              type:"text",    ph:"95%",                group:"Homepage Stats"},
-    {key:"stat_selected",       label:"Selected Last Batch",         type:"text",    ph:"66",                 group:"Homepage Stats"},
+    {key:"students_trained",       label:"Students Trained",         type:"text",    ph:"500+",               group:"Homepage Stats"},
+    {key:"students_selected",      label:"Students Selected",        type:"text",    ph:"200+",               group:"Homepage Stats"},
+    {key:"years_of_excellence",    label:"Years of Excellence",      type:"text",    ph:"10+",                group:"Homepage Stats"},
+    {key:"selection_rate",         label:"Selection Rate",           type:"text",    ph:"95%",                group:"Homepage Stats"},
+    {key:"selected_current_year",  label:"Selected Last Batch",      type:"text",    ph:"66",                 group:"Homepage Stats"},
     // Social
     {key:"social_facebook",     label:"Facebook URL",                type:"text",    ph:"https://facebook.com/gnsikhangabok",   group:"Social Media"},
     {key:"social_youtube",      label:"YouTube URL",                 type:"text",    ph:"https://youtube.com/@gnsikhangabok",   group:"Social Media"},

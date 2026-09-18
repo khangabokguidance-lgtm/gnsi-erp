@@ -460,7 +460,7 @@ export async function deleteEvent(id) {
 const STATS_DEFAULTS = {
   selection_rate: '95%',
   years_of_excellence: '10+',
-  officers_produced: '200+',
+  students_selected: '200+',
   students_trained: '500+',
   selected_current_year: '66',
   selected_current_year_label: 'Selected 2025–26',

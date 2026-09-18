@@ -644,13 +644,13 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
 
     setCountUp('stat-selection-rate', stats.selection_rate);
     setCountUp('stat-years', stats.years_of_excellence);
-    setCountUp('stat-officers', stats.officers_produced);
+    setCountUp('stat-officers', stats.students_selected);
     setCountUp('stat-trained', stats.students_trained);
 
     setCountUp('ribbon-years', stats.years_of_excellence);
     setCountUp('ribbon-trained', stats.students_trained);
     setCountUp('ribbon-selection-rate', stats.selection_rate);
-    setCountUp('ribbon-officers', stats.officers_produced);
+    setCountUp('ribbon-officers', stats.students_selected);
     setCountUp('ribbon-selected-year', stats.selected_current_year);
     setText('ribbon-selected-year-label', stats.selected_current_year_label);
 
@@ -1001,7 +1001,7 @@ window.submitGrievance = async () => {
   </title>
   <meta
     name="description"
-    content="GNSI is Manipur's premier residential coaching institute for Navodaya Vidyalaya (NVS), Sainik School and RMS entrance exams. 95% selection rate, 200+ officers produced. Khangabok, Thoubal District."
+    content="GNSI is Manipur's premier residential coaching institute for Navodaya Vidyalaya (NVS), Sainik School and RMS entrance exams. 95% selection rate, 200+ students selected. Khangabok, Thoubal District."
   />
   <meta
     name="keywords"
@@ -1015,7 +1015,7 @@ window.submitGrievance = async () => {
   />
   <meta
     property="og:description"
-    content="Manipur's premier coaching for NVS, Sainik School & RMS. 95% selection rate. 200+ officers produced. Admissions open 2026–27."
+    content="Manipur's premier coaching for NVS, Sainik School & RMS. 95% selection rate. 200+ students selected. Admissions open 2026–27."
   />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://guidancekhangabok.in" />
@@ -1378,7 +1378,7 @@ window.submitGrievance = async () => {
           <div />
           <div />
         </div>
-        <div className="hero-eyebrow">Est. 2016 · 200+ Officers Produced</div>
+        <div className="hero-eyebrow">Est. 2016 · 200+ Students Selected</div>
         <h1>
           <em>
             <span data-en="">Forge Discipline.</span>
@@ -1393,13 +1393,13 @@ window.submitGrievance = async () => {
           <span data-en="">
             Guidance Navodaya &amp; Sainik Institute — Manipur's premier
             residential coaching centre for NVS, Sainik School, and RMS entrance
-            examinations. Over <strong>200 commissioned officers</strong> shaped
-            in a decade of service to the nation.
+            examinations. Over <strong>200 successful students</strong> selected
+            into Navodaya and Sainik School in a decade of dedicated coaching.
           </span>
           <span data-hi="">
             गाइडेंस नवोदय और सैनिक इंस्टीट्यूट — मणिपुर का प्रमुख आवासीय कोचिंग
             केंद्र NVS, सैनिक स्कूल और RMS प्रवेश परीक्षाओं के लिए। एक दशक में{" "}
-            <strong>200+ कमीशंड अधिकारी</strong> तैयार किए।
+            <strong>200+ सफल विद्यार्थी</strong> नवोदय और सैनिक स्कूल में चयनित हुए।
           </span>
         </p>
         <div className="hero-btns">
@@ -1464,7 +1464,7 @@ window.submitGrievance = async () => {
                 200+
               </span>
             </strong>
-            <span>Officers</span>
+            <span>Students Selected</span>
           </div>
           <div className="stat-item">
             <strong>
@@ -1562,7 +1562,7 @@ window.submitGrievance = async () => {
             200+
           </span>
         </strong>
-        <span>Officers Produced</span>
+        <span>Students Selected</span>
       </div>
       <div className="ribbon-stat reveal">
         <strong>
@@ -1848,8 +1848,8 @@ window.submitGrievance = async () => {
           <div className="result-body">
             <h3>Consistent Growth</h3>
             <p>
-              Consistent placement improvement year on year. Graduates serving
-              in NDA and commissioned as officers.
+              Consistent placement improvement year on year. Students
+              continuing to excel at Navodaya and Sainik School.
             </p>
           </div>
         </div>
@@ -2057,7 +2057,7 @@ window.submitGrievance = async () => {
     <div className="container about-grid">
       <div className="about-text">
         <div className="eyebrow reveal">About the Institute</div>
-        <h2 className="st reveal">A Decade of Shaping Officers</h2>
+        <h2 className="st reveal">A Decade of Shaping Successful Students</h2>
         <div className="rule reveal">
           <div className="rule-line" />
           <div className="rule-d" />
@@ -2228,7 +2228,7 @@ window.submitGrievance = async () => {
           GNSI was established in 2016 with a simple conviction: students from
           Manipur deserve the same calibre of preparation as those in metro
           cities. In a decade, we have grown from a single classroom to a full
-          residential campus — producing over 200 officers and achievers.
+          residential campus — producing over 200 successful students and achievers.
         </p>
         <p
           style={{
@@ -4796,8 +4796,8 @@ window.submitGrievance = async () => {
     <h2>Begin the Journey</h2>
     <p>
       Join a disciplined, technology-enabled academic environment built to
-      prepare students for elite school entrance success. Over 200 officers
-      produced — yours could be the next name on that roll.
+      prepare students for elite school entrance success. Over 200 students
+      selected — yours could be the next name on that roll.
     </p>
     <div
       style={{
