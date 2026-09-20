@@ -10,7 +10,15 @@ import {
   printReceipt, sourceRef,
   getFlatFees, getFeeRates, getFlatFeeAmtSync,
   saveStudentFlatFeeOverride, clearFeeRateCache,
-  revertFeeCollection, correctFeeCollectionDate,
+  correctFeeCollectionDate,
+  // ✦ Dual-control revert/delete — these already existed in feeEngine.js
+  // (a full request → different-admin-approves flow with a documented
+  // single-admin self-approve fallback) but Fees.jsx never called them,
+  // calling revertFeeCollection directly instead. That meant any one admin
+  // account could instantly revert/undo a real money entry with only a
+  // client-side isAdmin check in front of it. Now used by fileFeeActionRequest
+  // below and the Pending Approvals tab.
+  requestFeeActionRequest, approveFeeActionRequest, rejectFeeActionRequest,
   COURSE_RATES, FLAT_RATES,
   PAY_MODES, MONTHS_LIST, CURRENT_YEAR,
 } from './feeEngine'
@@ -28,6 +36,38 @@ const RAZORPAY_KEY_ID = import.meta.env?.VITE_RAZORPAY_KEY_ID || ''
 // server-side before the browser is trusted to record a "paid" collection.
 const RAZORPAY_CREATE_ORDER_URL = import.meta.env?.VITE_RAZORPAY_CREATE_ORDER_URL || '/api/razorpay/create-order'
 const RAZORPAY_VERIFY_URL       = import.meta.env?.VITE_RAZORPAY_VERIFY_URL       || '/api/razorpay/verify'
+
+// ── Dual-control revert/delete ───────────────────────────────────────────────
+// Files a fee_action_requests row instead of reverting/deleting immediately,
+// so a SECOND, DIFFERENT admin must approve it before the money entry is
+// actually touched — see feeEngine.js's requestFeeActionRequest/
+// approveFeeActionRequest for the full design (dual control, snapshotted at
+// request time, re-verified server-side at approval time, never trusting a
+// client-side check alone).
+//
+// Single-admin fallback: if the institute currently has 0 or 1 admin
+// accounts, requiring a second admin would mean NO revert could ever
+// happen — a stuck, un-correctable mistake in the books is worse than the
+// control dual-approval is meant to provide. In that case ONLY, this
+// self-approves immediately via feeEngine's documented isSelfApproveAllowed
+// path, which stamps the approval self_approved=true in the audit trail so
+// it's never silently indistinguishable from a real second-admin approval.
+async function fileFeeActionRequest({ actionType, table, id, reason, currentUser, adminCount }) {
+  const who = currentUser?.userName || currentUser?.name || 'Admin'
+  const req = await requestFeeActionRequest({ actionType, table, id, reason, requestedBy: who, requestedById: who })
+  // isSingleAdminSystem just checks "≤1 distinct id" — adminCount is already
+  // that count (from a live staff_profiles roster fetch), so this is
+  // equivalent to isSingleAdminSystem(<that many distinct admin ids>)
+  // without needing to fabricate a placeholder id array. adminCount is
+  // null while its fetch hasn't resolved yet — treated as "unknown", which
+  // must default to REQUIRING dual control (the safer failure mode), never
+  // to self-approving just because the count hasn't loaded.
+  if (adminCount != null && adminCount <= 1) {
+    await approveFeeActionRequest({ requestId: req.id, approvedBy: who, approvedById: who, isSelfApproveAllowed: true })
+    return { selfApproved: true, request: req }
+  }
+  return { selfApproved: false, request: req }
+}
 
 // Lazily injects the Razorpay Checkout script once per page load and
 // resolves when it's ready. Safe to call from multiple components/renders —
@@ -769,6 +809,160 @@ function AuditWarningsTab({ students, isAdmin }) {
   )
 }
 
+// ✦ Dual-control approval queue. Any admin can file a revert/delete request
+// (see fileFeeActionRequest above), but it only takes effect once a
+// DIFFERENT admin approves it here — approveFeeActionRequest re-checks that
+// server-side too, so this UI-level block on self-approval is defense in
+// depth, not the only guard. Rejecting needs no such restriction.
+function PendingApprovalsTab({ isAdmin, currentUser, adminCount, onRefresh }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState(null)
+  const [toast, setToast] = useState(null)
+  const showToast = (msg, color = '#1e3a5f') => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
+
+  const myId = currentUser?.userName || currentUser?.name || 'Admin'
+
+  const load = () => {
+    setLoading(true)
+    supabase.from('fee_action_requests')
+      .select('*')
+      .eq('status', 'pending')
+      .order('requested_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) { console.error('PendingApprovalsTab: load failed', error.message); setLoading(false); return }
+        setRows(data || [])
+        setLoading(false)
+      })
+  }
+
+  useEffect(() => {
+    if (!isAdmin) return
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin])
+
+  if (!isAdmin) {
+    return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>🔒 Admin only</div>
+  }
+
+  const parsed = rows.map(r => {
+    let snap = {}
+    try { snap = r.snapshot ? JSON.parse(r.snapshot) : {} } catch (e) {}
+    return { ...r, snap }
+  })
+
+  const doApprove = async (row) => {
+    const requesterId = row.requested_by_id || row.requested_by
+    const isSelf = requesterId && String(requesterId) === String(myId)
+    const isSelfApproveAllowed = adminCount != null && adminCount <= 1
+    if (isSelf && !isSelfApproveAllowed) {
+      showToast('You filed this request — a different admin must approve it.', '#dc2626')
+      return
+    }
+    if (!window.confirm(`Approve this ${row.action_type} of "${row.snap?.student_name || row.record_id}"?\n\nReason on file: ${row.reason}\n\nThis will actually ${row.action_type} the entry.`)) return
+    setBusyId(row.id)
+    try {
+      const result = await approveFeeActionRequest({ requestId: row.id, approvedBy: myId, approvedById: myId, isSelfApproveAllowed })
+      showToast(result.self_approved ? '✅ Approved (self-approved — single admin on file)' : '✅ Approved and applied.', '#16a34a')
+      load()
+      onRefresh && onRefresh()
+    } catch (err) {
+      showToast('Approval failed: ' + err.message, '#dc2626')
+    }
+    setBusyId(null)
+  }
+
+  const doReject = async (row) => {
+    const reason = window.prompt(`Reject this ${row.action_type} request for "${row.snap?.student_name || row.record_id}"?\n\nRejection reason (optional):`)
+    if (reason === null) return
+    setBusyId(row.id)
+    try {
+      await rejectFeeActionRequest({ requestId: row.id, rejectedBy: myId, rejectedById: myId, rejectionReason: reason })
+      showToast('🚫 Request rejected.', '#64748b')
+      load()
+    } catch (err) {
+      showToast('Reject failed: ' + err.message, '#dc2626')
+    }
+    setBusyId(null)
+  }
+
+  return (
+    <div>
+      {toast && (
+        <div style={{ position: 'fixed', top: 20, right: 20, background: toast.color, color: 'white', padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, zIndex: 9999, boxShadow: '0 4px 16px rgba(0,0,0,.2)' }}>
+          {toast.msg}
+        </div>
+      )}
+      <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: 12, padding: '14px 18px', marginBottom: 18 }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f' }}>🔏 Pending Approvals</div>
+        <div style={{ fontSize: 12, color: '#1e40af', marginTop: 2 }}>Revert/delete requests filed by any admin, waiting for a different admin to approve or reject. {adminCount === 1 ? 'Only one admin account exists, so requests self-approve automatically when filed.' : ''}</div>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 48, color: '#64748b' }}>⏳ Loading…</div>
+      ) : parsed.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}>No pending requests</div>
+      ) : (
+        <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: '#1e3a5f' }}>
+                {['Type', 'Student / Record', 'Amount', 'Reason', 'Requested By', 'Requested At', ''].map(h => (
+                  <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 11 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {parsed.map(r => {
+                const requesterId = r.requested_by_id || r.requested_by
+                const isSelf = requesterId && String(requesterId) === String(myId)
+                const amt = r.snap?.amount ?? r.snap?.amount_paid ?? null
+                return (
+                  <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '9px 12px' }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: r.action_type === 'delete' ? '#fef2f2' : '#fff7ed', color: r.action_type === 'delete' ? '#991B1B' : '#9a3412' }}>
+                        {r.action_type === 'delete' ? 'Delete' : 'Revert'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>
+                      {r.snap?.student_name || '—'}
+                      <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>{r.table_name} · {r.record_id}</div>
+                    </td>
+                    <td style={{ padding: '9px 12px', color: '#475569' }}>{amt != null ? `₹${Number(amt).toLocaleString('en-IN')}` : '—'}</td>
+                    <td style={{ padding: '9px 12px', color: '#475569', fontSize: 12, maxWidth: 220 }}>{r.reason}</td>
+                    <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 11 }}>
+                      {r.requested_by}{isSelf && <span style={{ color: '#dc2626', fontWeight: 700 }}> (you)</span>}
+                    </td>
+                    <td style={{ padding: '9px 12px', color: '#94a3b8', fontSize: 11, whiteSpace: 'nowrap' }}>{new Date(r.requested_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</td>
+                    <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                      <button
+                        disabled={busyId === r.id || (isSelf && !(adminCount != null && adminCount <= 1))}
+                        onClick={() => doApprove(r)}
+                        title={isSelf && !(adminCount != null && adminCount <= 1) ? 'A different admin must approve this' : ''}
+                        style={{ marginRight: 6, padding: '5px 12px', borderRadius: 6, border: 'none', background: (isSelf && !(adminCount != null && adminCount <= 1)) ? '#e2e8f0' : '#16a34a', color: (isSelf && !(adminCount != null && adminCount <= 1)) ? '#94a3b8' : 'white', fontWeight: 700, fontSize: 12, cursor: (isSelf && !(adminCount != null && adminCount <= 1)) ? 'not-allowed' : 'pointer' }}
+                      >
+                        ✅ Approve
+                      </button>
+                      <button
+                        disabled={busyId === r.id}
+                        onClick={() => doReject(r)}
+                        style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #cbd5e1', background: 'white', color: '#475569', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+                      >
+                        🚫 Reject
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AnomalyMonitor({adm_fee_collections,adm_flat_fees,adm_course_fees,students,liveRows,isAdmin,currentUser}){
   const [open,setOpen]=useState(null),[sevFilter,setSevFilter]=useState('ALL'),[catFilter,setCatFilter]=useState('ALL')
   const flags=useMemo(()=>runAnomalyEngine({adm_fee_collections,adm_flat_fees,adm_course_fees,students,liveRows}),[adm_fee_collections,adm_flat_fees,adm_course_fees,students,liveRows])
@@ -951,7 +1145,7 @@ function StudentActivityLog({ gcc, timelineIds }) {
   )
 }
 
-function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fees,isAdmin,currentUser,onRefresh,onCollect,initialTab}){
+function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fees,isAdmin,currentUser,onRefresh,onCollect,initialTab,adminCount}){
   const n=v=>Number(v||0).toLocaleString('en-IN'),gcc=gccStr(student.gcc_no)
   // initialTab lets a caller (e.g. the Month-wise Dues "Fix" button) land the
   // card directly on the admin-only Revert/Fix tab for this student instead
@@ -972,6 +1166,13 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
   const [dues,setDues]=useState(null)
   const [duesLoading,setDuesLoading]=useState(false)
   const [duesError,setDuesError]=useState(null)
+  // ✦ Bug fix: was keyed on [tab,gcc] only, so a payment collected, reverted,
+  // or date-corrected for this student while the Dues tab was already open
+  // (e.g. via another tab of the same card, or the Revert/Fix buttons on the
+  // History tab) never refetched — staff kept seeing stale dues until they
+  // switched tabs or reopened the card. adm_fee_collections/adm_flat_fees/
+  // adm_course_fees are the props onRefresh() causes to update, so depending
+  // on them too refetches dues whenever the underlying records actually change.
   useEffect(()=>{
     if(tab!=='dues')return
     let cancelled=false
@@ -982,7 +1183,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
       .finally(()=>{if(!cancelled)setDuesLoading(false)})
     return ()=>{cancelled=true}
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[tab,gcc])
+  },[tab,gcc,adm_fee_collections,adm_flat_fees,adm_course_fees])
   const showToast=(msg,color='#16a34a')=>{setToast({msg,color});setTimeout(()=>setToast(null),3500)}
   const myAdm=adm_fee_collections.filter(r=>gccStr(r.adm_app_id)===gcc&&!r.reverted)
   const myFlat=adm_flat_fees.filter(r=>gccStr(r.adm_app_id)===gcc&&r.paid)
@@ -996,18 +1197,24 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
     ...myFlat.map(r=>({...r,_type:'Flat Fee',_amt:r.amount||0,_desc:`${r.month} ${r.year}${r.is_advance?' (ADVANCE)':''}`,_date:r.pay_date,_table:'adm_flat_fees'})),
     ...myCrsf.map(r=>({...r,_type:'Course Fee',_amt:Number(r.amount_paid)||0,_desc:`${r.course} — ${r.for_month} ${r.year}${r.is_advance?' (ADVANCE)':''}`,_date:r.pay_date,_table:'adm_course_fees'}))
   ].sort((a,b)=>(b._date||'').localeCompare(a._date||''))
+  // ✦ Dual-control: was calling revertFeeCollection directly, so any single
+  // admin could instantly revert a real money entry with only this
+  // component's own isAdmin check in front of it. Now files a request via
+  // fileFeeActionRequest, which requires a DIFFERENT admin to approve it
+  // (Pending Approvals tab) unless this institute currently has only one
+  // admin account, in which case it self-approves immediately (feeEngine's
+  // documented single-admin fallback) — see fileFeeActionRequest above.
   const doRevert=async(row)=>{
     if(!isAdmin)return
-    const reason=window.prompt(`Revert "${row._desc}" (₹${n(row._amt)})?\n\nThis removes the entry from books so it can be re-collected.\nReason (optional):`)
-    if(reason===null)return;setSaving(true)
+    const reason=window.prompt(`Revert "${row._desc}" (₹${n(row._amt)})?\n\nThis files a revert request — a DIFFERENT admin must approve it before the entry is actually removed from the books (unless you're the only admin).\nReason (required):`)
+    if(reason===null)return
+    if(!reason.trim()){showToast('A reason is required to revert.','#dc2626');return}
+    setSaving(true)
     try{
-      let aRef=null,aType=null
-      if(row._table==='adm_fee_collections'){aType=row.fee_type==='advance'?'advance_fee':'adm_fee';if(row.fee_type==='admission')aRef=sourceRef.admission(gcc);else if(row.fee_type==='advance')aRef=row.id;else if(row.fee_type==='item')aRef=sourceRef.admItem(gcc,row.description==='Prospectus'?'prospectus':(row.description||'').replace(/^Dress Kit — /,''))}
-      else if(row._table==='adm_flat_fees'){aType='flat_fee';aRef=sourceRef.flatFee(gcc,row.month,row.year)}
-      else if(row._table==='adm_course_fees'){aType='course_fee';aRef=sourceRef.courseFee(gcc,row.for_month,row.year)}
-      await revertFeeCollection({table:row._table,id:row.id,accountSourceRef:aRef,accountSourceType:aType,revertedBy:currentUser?.userName||currentUser?.name||'Admin',staffId:currentUser?.userName||currentUser?.name||null,reason})
-      showToast(`↩️ Reverted: ${row._desc}`,'#dc2626');onRefresh()
-    }catch(err){showToast('Revert failed: '+err.message,'#dc2626')}
+      const result=await fileFeeActionRequest({actionType:'revert',table:row._table,id:row.id,reason,currentUser,adminCount})
+      showToast(result.selfApproved?`↩️ Reverted: ${row._desc}`:'📝 Revert requested — waiting for another admin to approve.',result.selfApproved?'#dc2626':'#1e3a5f')
+      onRefresh()
+    }catch(err){showToast('Revert request failed: '+err.message,'#dc2626')}
     setSaving(false)
   }
   const doFixDate=async(row)=>{
@@ -1147,7 +1354,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
 }
 
 // ── Student Ledger Tab ────────────────────────────────────────────────────────
-function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows,isAdmin,currentUser,onRefresh,onCollect,initialSelected,initialCardTab}){
+function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows,isAdmin,currentUser,onRefresh,onCollect,initialSelected,initialCardTab,adminCount}){
   const [search,setSearch]=useState(''),[courseF,setCourseF]=useState('All'),[hostelF,setHostelF]=useState('All'),[statusF,setStatusF]=useState('All'),[selected,setSelected]=useState(null)
   // Land directly on a specific student (and their Revert/Fix tab) when
   // navigated here from elsewhere — e.g. the Month-wise Dues "Fix" button —
@@ -1190,7 +1397,7 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
       </div>
       <div style={{flex:1,minWidth:300}}>
         {!selected?(<div style={{background:'white',border:'2px dashed #e2e8f0',borderRadius:14,padding:60,textAlign:'center',color:'#94a3b8'}}><div style={{fontSize:48,marginBottom:12}}>👈</div><div style={{fontWeight:700,fontSize:15,color:'#64748b'}}>Select a student</div><div style={{fontSize:12,marginTop:6}}>Click any student on the left to view their full fee history and manage records.</div></div>):(
-          <StudentFeeCard student={selected} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} onRefresh={onRefresh} onCollect={onCollect} initialTab={selected?.id===initialSelected?.id?initialCardTab:undefined}/>
+          <StudentFeeCard student={selected} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} onRefresh={onRefresh} onCollect={onCollect} initialTab={selected?.id===initialSelected?.id?initialCardTab:undefined} adminCount={adminCount}/>
         )}
       </div>
     </div>
@@ -2199,7 +2406,7 @@ function buildWaLink(phone, message) {
 
 // ─── Tab: Fee Payment ─────────────────────────────────────────────────────────
 
-function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fees, adm_course_fees, onRefresh, isAdmin, currentUser, presetStudent, onPresetConsumed }) {
+function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fees, adm_course_fees, onRefresh, isAdmin, currentUser, presetStudent, onPresetConsumed, adminCount }) {
   const w        = useWindowWidth()
   const isMobile = w < 768
   const [step,    setStep]    = useState('select')
@@ -2376,20 +2583,25 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   }
 
   // ── Admin-only revert ───────────────────────────────────────────────────
-  const doRevert = async ({ table, id, label, accountSourceRef = null, accountSourceType = null }) => {
+  // ✦ Dual-control: was calling revertFeeCollection directly (only gated by
+  // this component's own isAdmin check). Now files a request that a
+  // DIFFERENT admin must approve (Pending Approvals tab), self-approving
+  // immediately only when this institute has just one admin account — see
+  // fileFeeActionRequest above. accountSourceRef/accountSourceType are no
+  // longer needed here: approveFeeActionRequest derives them itself from
+  // the live row at approval time.
+  const doRevert = async ({ table, id, label }) => {
     if (!isAdmin) return
-    const reason = window.prompt(`Revert "${label}"?\n\nThis removes it from the books and lets it be re-collected. Reason (optional):`)
+    const reason = window.prompt(`Revert "${label}"?\n\nThis files a revert request — a DIFFERENT admin must approve it before it's actually removed from the books (unless you're the only admin). Reason (required):`)
     if (reason === null) return // cancelled
+    if (!reason.trim()) { showToast('A reason is required to revert.', '#dc2626'); return }
     setSaving(true)
     try {
-      await revertFeeCollection({
-        table, id, accountSourceRef, accountSourceType,
-        revertedBy: currentUser?.name || 'Admin', staffId: currentUser?.userName || currentUser?.name || null, reason,
-      })
-      showToast(`↩️ Reverted: ${label}`, '#dc2626')
+      const result = await fileFeeActionRequest({ actionType: 'revert', table, id, reason, currentUser, adminCount })
+      showToast(result.selfApproved ? `↩️ Reverted: ${label}` : '📝 Revert requested — waiting for another admin to approve.', result.selfApproved ? '#dc2626' : '#1e3a5f')
       onRefresh()
     } catch (err) {
-      showToast('Revert failed: ' + err.message, '#dc2626')
+      showToast('Revert request failed: ' + err.message, '#dc2626')
     }
     setSaving(false)
   }
@@ -2399,8 +2611,14 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     doRevert({ table: 'adm_fee_collections', id: c.id, label: `${c.description || 'Fee'} — ₹${Number(c.amount_paid || 0).toLocaleString('en-IN')}`, accountSourceRef: ref, accountSourceType: type })
   }
 
-  const handleRevertFlat = (month) => {
-    const r = myFlatRecs.find(r => r.month === month)
+  // ✦ Bug fix: was matching on `month` alone (e.g. "January"), so a student
+  // with a paid flat fee for the same calendar month in two different years
+  // (a repeater, or one who has been at GNSI across a session boundary)
+  // could have the WRONG year's record reverted/date-corrected — .find()
+  // silently returns whichever one happens to come first in myFlatRecs,
+  // which is not scoped by year. Now requires an exact month+year match.
+  const handleRevertFlat = (month, year) => {
+    const r = myFlatRecs.find(r => r.month === month && String(r.year) === String(year))
     if (!r) return
     doRevert({ table: 'adm_flat_fees', id: r.id, label: `${r.month} ${r.year} flat fee — ₹${Number(r.amount || 0).toLocaleString('en-IN')}`, accountSourceRef: sourceRef.flatFee(gcc, r.month, r.year), accountSourceType: 'flat_fee' })
   }
@@ -2441,8 +2659,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     handleFixDate({ table: 'adm_fee_collections', id: c.id, accountSourceRef: ref, accountSourceType: type, currentDate: c.pay_date, label: c.description || 'Fee' })
   }
 
-  const handleFixFlatDate = (month) => {
-    const r = myFlatRecs.find(r => r.month === month)
+  const handleFixFlatDate = (month, year) => {
+    const r = myFlatRecs.find(r => r.month === month && String(r.year) === String(year))
     if (!r) return
     handleFixDate({ table: 'adm_flat_fees', id: r.id, accountSourceRef: sourceRef.flatFee(gcc, r.month, r.year), accountSourceType: 'flat_fee', currentDate: r.pay_date, label: `${r.month} ${r.year} flat fee` })
   }
@@ -2469,7 +2687,16 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     crsfRows.forEach(r => {
       const amt = Number(r.amount) || 0
       if (amt > 0 && r.for_month) {
-        items.push({ kind: 'course', month: r.for_month, year: CURRENT_YEAR, course: r.course, subtype: r.subtype, amount: amt })
+        // ✦ Bug fix: was hardcoded to CURRENT_YEAR (evaluated once at module
+        // load) instead of the year of the payment actually being recorded.
+        // A backdated entry, or one collected in the last/first days of a
+        // year near the Jan boundary, got filed under the wrong year in
+        // adm_course_fees — silently mis-tagging that student's course fee
+        // history and any per-year report/export built from it. Derive the
+        // year from payDate (the date field the staff member is entering)
+        // instead.
+        const payYear = (payDate && /^\d{4}-/.test(payDate)) ? Number(payDate.slice(0, 4)) : CURRENT_YEAR
+        items.push({ kind: 'course', month: r.for_month, year: payYear, course: r.course, subtype: r.subtype, amount: amt })
       }
     })
     if (advThis > 0) items.push({ kind: 'advance', label: advFor, amount: advThis })
@@ -3050,11 +3277,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                         </span>
                         {paid && isAdmin && (
                           <span style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
-                            <button type="button" onClick={(e) => { e.preventDefault(); handleFixFlatDate(ff.month) }} title={`Fix date (currently ${myFlatRecs.find(r => r.month === ff.month)?.pay_date || '—'})`}
+                            <button type="button" onClick={(e) => { e.preventDefault(); handleFixFlatDate(ff.month, ff.year) }} title={`Fix date (currently ${myFlatRecs.find(r => r.month === ff.month && String(r.year) === String(ff.year))?.pay_date || '—'})`}
                               style={{ background: '#f1f5f9', color: '#334155', border: 'none', borderRadius: 5, padding: '2px 8px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
                               Fix date
                             </button>
-                            <button type="button" onClick={(e) => { e.preventDefault(); handleRevertFlat(ff.month) }} title="Revert this month (admin)"
+                            <button type="button" onClick={(e) => { e.preventDefault(); handleRevertFlat(ff.month, ff.year) }} title="Revert this month (admin)"
                               style={{ background: '#fef2f2', color: '#dc2626', border: 'none', borderRadius: 5, padding: '2px 8px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>
                               Revert
                             </button>
@@ -3322,6 +3549,41 @@ export default function Fees() {
   const [presetFixStudent, setPresetFixStudent] = useState(null)
   const [form,                setForm]          = useState({ gcc_no: '', name: '', class_name: '', course: '', amount: '', paid: '0' })
 
+  // ✦ Dual-control revert/delete needs to know how many DISTINCT admin
+  // accounts exist, to decide whether a revert request needs a second
+  // admin's approval or can self-approve (feeEngine.js's documented
+  // single-admin fallback — see fileFeeActionRequest above). This app has
+  // no dedicated "admin roster" table exposed here, so this counts
+  // staff_profiles rows whose role is an admin role — the same signal
+  // isAdminRole() itself is checked against everywhere else in the app.
+  // null while loading — fileFeeActionRequest treats null as "unknown" and
+  // defaults to requiring dual control rather than self-approving.
+  const [adminCount, setAdminCount] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('staff_profiles').select('id, role').then(({ data, error }) => {
+      if (cancelled) return
+      if (error) { console.error('Fees: could not load admin roster for dual-control check —', error.message); return }
+      setAdminCount((data || []).filter(s => isAdminRole(s.role)).length)
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  // Badge count for the Pending Approvals tab — a lightweight head-count
+  // query, refreshed whenever the tab changes (e.g. after approving/rejecting
+  // there and switching away) so the nav badge doesn't go stale.
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0)
+  useEffect(() => {
+    if (!isAdmin) return
+    let cancelled = false
+    supabase.from('fee_action_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending').then(({ count, error }) => {
+      if (cancelled) return
+      if (error) { console.error('Fees: could not load pending-approval count —', error.message); return }
+      setPendingApprovalCount(count || 0)
+    })
+    return () => { cancelled = true }
+  }, [isAdmin, tab])
+
   const loadAll = async () => {
     setLoading(true)
     // ✦ Routed through studentQueries.js — was fully unfiltered (included
@@ -3557,10 +3819,16 @@ export default function Fees() {
     { id: 'live',      label: '📊 Live Summary' },
     { id: 'ledger',    label: '📒 Student Ledger' },
     { id: 'admin',     label: '🛡️ Admin View' },
-    { id: 'reports',   label: '📤 Reports & Export' },
+    // ✦ Security fix: this tab exposes every student's full fee/payment
+    // history (GCC, amounts, payment mode, Collected By) with a one-click
+    // export, but had no role gate at all — any logged-in staff account,
+    // not just admin/accounts, could open and export it. Restricted the
+    // same way anomaly/activity/warnings already are below.
+    ...(isAdmin ? [{ id: 'reports', label: '📤 Reports & Export' }] : []),
     ...(isAdmin ? [{ id: 'anomaly', label: '🔍 Anomaly Monitor' }] : []),
     ...(isAdmin ? [{ id: 'activity', label: '🕒 Activity Log' }] : []),
     ...(isAdmin ? [{ id: 'warnings', label: '⚠️ Audit Warnings' }] : []),
+    ...(isAdmin ? [{ id: 'pendingApprovals', label: pendingApprovalCount ? `🔏 Pending Approvals (${pendingApprovalCount})` : '🔏 Pending Approvals' }] : []),
   ]
 
   // ── Advanced filter state (shared across live + admin tabs) ──────────────
@@ -3692,6 +3960,7 @@ export default function Fees() {
           isAdmin={isAdmin} currentUser={currentUser}
           presetStudent={presetCollectStudent}
           onPresetConsumed={() => setPresetCollectStudent(null)}
+          adminCount={adminCount}
         />
       )}
 
@@ -4074,17 +4343,25 @@ export default function Fees() {
           onCollect={s => { setTab('payment') }}
           initialSelected={presetFixStudent}
           initialCardTab={presetFixStudent ? 'revert' : undefined}
+          adminCount={adminCount}
         />
       )}
 
       {tab === 'reports' && (
-        <ReportsExportTab
-          students={activeStudents}
-          adm_fee_collections={activeAdmFeeCollections}
-          adm_flat_fees={activeAdmFlatFees}
-          adm_course_fees={activeAdmCourseFees}
-          liveRows={liveRows}
-        />
+        isAdmin ? (
+          <ReportsExportTab
+            students={activeStudents}
+            adm_fee_collections={activeAdmFeeCollections}
+            adm_flat_fees={activeAdmFlatFees}
+            adm_course_fees={activeAdmCourseFees}
+            liveRows={liveRows}
+          />
+        ) : (
+          <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 12, padding: 24, color: '#991B1B', textAlign: 'center' }}>
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>🔒 Admin access required</div>
+            <div style={{ fontSize: 13 }}>Reports & Export contains every student's fee history and is restricted to admin accounts.</div>
+          </div>
+        )
       )}
 
       {tab === 'anomaly' && (
@@ -4103,6 +4380,9 @@ export default function Fees() {
       )}
       {tab === 'warnings' && (
         <AuditWarningsTab students={students} isAdmin={isAdmin} />
+      )}
+      {tab === 'pendingApprovals' && (
+        <PendingApprovalsTab isAdmin={isAdmin} currentUser={currentUser} adminCount={adminCount} onRefresh={loadAll} />
       )}
     </div>
   )
