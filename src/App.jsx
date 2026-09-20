@@ -34,6 +34,8 @@ import Timetable          from './Timetable'
 import FeeSetup           from './FeeSetup'
 import Kitchen            from './Kitchen.jsx'
 import Entrance           from './Entrance'
+import Store              from './Store'
+import StorePublic        from './StorePublic'
 import { LOGO_BASE64 }    from './logo'
 import { crossModuleSync } from './CrossModuleSync'
 import LandingPage        from './LandingPage'
@@ -135,6 +137,7 @@ const ALL_GROUPS = [
       { id: 'social',    label: 'Social',    icon: '📣' },
       { id: 'connect',   label: 'Connect',   icon: '🔗' },
       { id: 'website',   label: 'Website Manager', icon: '🌐' },
+      { id: 'store',     label: 'Store',     icon: '🏬' },
     ],
   },
   {
@@ -604,8 +607,22 @@ export default function App() {
     // Presentation API for cast-receiver. Everything else still defaults
     // to 'dashboard' and is reached via in-app setActive(...) calls only.
     const path = window.location.pathname.replace(/^\/+|\/+$/g, '')
-    const publicPages = ['student-leave', 'verify', 'cast-receiver']
-    return publicPages.includes(path) ? path : 'dashboard'
+    const publicPages = ['student-leave', 'verify', 'cast-receiver', 'store']
+    // 'store' is deliberately both the public storefront route (cold load,
+    // no session) and the staff-side nav item id (POS module, logged in).
+    // Only take the public branch on a genuine cold load with no session —
+    // once logged in, 'store' in `active` always means the staff module,
+    // handled via moduleMap below, never StorePublic.
+    if (publicPages.includes(path)) {
+      if (path === 'store') {
+        try {
+          const s = localStorage.getItem('gnsi_session')
+          if (s && JSON.parse(s).expiry > Date.now()) return 'dashboard'
+        } catch {}
+      }
+      return path
+    }
+    return 'dashboard'
   })
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => LS.get('gnsi_sidebar_collapsed', false))
   const [showLogin,        setShowLogin]        = useState(false)
@@ -703,6 +720,10 @@ export default function App() {
   if (active === 'student-leave') return <StudentSelfService />
   if (active === 'verify')        return <GatePassVerifyPage />
   if (active === 'cast-receiver') return <CastReceiver />
+  // Public storefront — only reachable here when there's no session yet
+  // (see the cold-load check above); once logged in, 'store' always means
+  // the staff POS module below, never this page.
+  if (active === 'store' && !currentUser) return <StorePublic />
 
   if (!currentUser) {
     if (showLogin) return <Login onLogin={(user) => { setShowLogin(false); handleLogin(user) }} onLoginFailed={recordLoginAttempt} loginLock={checkLoginLock()} />
@@ -764,6 +785,7 @@ export default function App() {
     feesetup:          isAdmin ? <FeeSetup userRole={currentUser.role} perms={perms('feesetup')} /> : <AccessDenied />,
     kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}           />,
     entrance:          <Entrance          currentUser={currentUser} perms={perms('entrance')}          />,
+    store:             <Store             currentUser={currentUser} perms={perms('store')}             />,
     // FIX: invitation now uses permission system, not hardcoded Manager bypass
     invitation:        canAccess('invitation') ? <InvitationGenerator currentUser={currentUser} /> : <AccessDenied />,
     admin:             isAdmin ? <AdminPage currentUser={currentUser} onLogout={handleLogout} allStaff={sharedStaff} /> : <AccessDenied />,
