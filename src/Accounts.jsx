@@ -28,6 +28,28 @@ const STATUS_OPTIONS     = ['Confirmed', 'Pending']
 const PAGE_SIZES         = [25, 50, 100]
 const RECEIPT_BUCKET     = 'account-receipts'
 
+// ── Expenditure v2: multi-level category ────────────────────────────────
+// Built-in starter sub-categories per top-level expense category. Purely a
+// convenience list for the dropdown — a sub-category is free text under the
+// hood (same "type your own" pattern as the existing custom-category
+// feature), so this never blocks an entry, it just seeds sensible options.
+const EXPENSE_SUBCATEGORIES = {
+  Maintenance : ['Plumbing', 'Electrical', 'Carpentry', 'Painting', 'Cleaning', 'General Repair'],
+  Transport   : ['Fuel', 'Vehicle Repair', 'Bus Hire', 'Driver Payment'],
+  Electricity : ['Main Building', 'Hostel', 'Generator/Diesel'],
+  Stationery  : ['Office Supplies', 'Printing', 'Books & Study Material'],
+  Event       : ['Decoration', 'Refreshment', 'Prizes & Certificates', 'Guest Honorarium'],
+  Salary      : ['Teaching Staff', 'Non-Teaching Staff', 'Bonus/Incentive'],
+}
+
+// ── Expenditure v2: approval workflow defaults ──────────────────────────
+// Mirrors expenditure_approval_settings in the DB migration — used as a
+// fallback only until that row loads (or if the table doesn't exist yet
+// because the migration hasn't been run), so the feature degrades to
+// "nothing needs approval" rather than erroring if the table is missing.
+const DEFAULT_APPROVAL_THRESHOLD = 10000
+const DEFAULT_LOWER_TRUST_ROLES  = ['superintendent']
+
 // ── institute info (letterhead used by the Report Generator) ───────────────
 // Edit these once — every generated PDF / DOCX / Excel report reads from here.
 const INSTITUTE_INFO = {
@@ -55,6 +77,8 @@ const emptyRow = {
   payment_date : new Date().toLocaleDateString('en-CA'), // actual date money was received (Income only)
   type         : 'Income',
   category     : '',
+  sub_category : '',   // Expenditure v2: optional finer-grained category, Expense only
+  vendor_id    : '',   // Expenditure v2: optional linked vendor/payee, Expense only
   amount       : '',
   payment_mode : 'Cash',
   account_type : 'Cash A/c',
@@ -234,7 +258,18 @@ function Accounts({role,userId}){
   // access — edit/delete/budgets/income stay restricted to canWrite/canAddIncome.
   // Superintendent is edit-only (see canEditExpenditure below) — explicitly
   // excluded here so they cannot add new entries, only edit existing ones.
-  const canAddEntry  = (canWrite||!isAdmin) || isSuperintendent
+  //
+  // LOOPHOLE CLOSED: this was previously `(canWrite||!isAdmin) || isSuperintendent`.
+  // `!isAdmin` is true for a Superintendent too (their role is 'superintendent',
+  // not 'admin'), so the `canWrite||!isAdmin` term alone already evaluated to
+  // true for them — the trailing `||isSuperintendent` was redundant and the
+  // exclusion the comment describes never actually happened. A Superintendent
+  // got the "➕ Add Expenditure" button and could insert brand-new entries,
+  // directly contradicting "edit-only" and letting them add un-reviewed
+  // expenditure that (unlike edits) isn't auto-flagged for admin verification
+  // anywhere in handleSubmit's insert path. Superintendent is now explicitly
+  // excluded so the only way they can touch this table is through an edit.
+  const canAddEntry  = !isSuperintendent && (canWrite||!isAdmin)
 
   // responsive
   const windowWidth  = useWindowWidth()
@@ -379,6 +414,31 @@ function Accounts({role,userId}){
   const [rptExpandedDate,setRptExpandedDate]= useState(null)   // which date is expanded in datewise view
   const [generatingReport, setGeneratingReport] = useState('') // '' | 'pdf' | 'docx' | 'excel'
 
+  // ── Expenditure v2: vendor/payee tracking ────────────────────────────────
+  const [vendors,       setVendors]       = useState([])
+  const [vendorsLoaded, setVendorsLoaded] = useState(false)
+  const [expVendorFilter, setExpVendorFilter] = useState('All')   // Daily Expenditure tab filter
+  const [vendorDrilldown, setVendorDrilldown] = useState(null)    // vendor id currently showing its spend-history panel, or null
+
+  // ── Expenditure v2: multi-level category ─────────────────────────────────
+  const [expSubCategory, setExpSubCategory] = useState('All')     // Daily Expenditure tab filter
+  const [customSubCats, setCustomSubCats] = useState(()=>{
+    try{return JSON.parse(localStorage.getItem('acc_custom_subcategories')||'{}')}catch{return {}}
+  }) // { [category]: string[] } — user-added sub-categories, merged with EXPENSE_SUBCATEGORIES
+
+  // ── Expenditure v2: approval workflow ────────────────────────────────────
+  const [approvalSettings, setApprovalSettings] = useState({threshold_amount:DEFAULT_APPROVAL_THRESHOLD, lower_trust_roles:DEFAULT_LOWER_TRUST_ROLES})
+  const [pendingApprovals, setPendingApprovals] = useState([])   // rows from expenditure_approvals, status='pending', joined with their accounts row
+  const [approvalHistory,  setApprovalHistory]  = useState([])   // today's approved/rejected decisions, for the "approval list for the day"
+  const [approvalsLoaded,  setApprovalsLoaded]  = useState(false)
+  const [approvalBusyId,   setApprovalBusyId]   = useState(null)
+  const [showApprovalQueue, setShowApprovalQueue] = useState(false) // collapsed/expanded state of the always-visible header widget
+  const [editThreshold, setEditThreshold] = useState(false)
+  const [thresholdDraft, setThresholdDraft] = useState('')
+
+  // ── Expenditure v2: monitoring (spend-velocity, per-staff, audit trail) ──
+  const [expAuditLog, setExpAuditLog] = useState([])   // audit_log rows filtered to expenditure-only actions, for the dedicated audit viewer
+
   // ── fetch ─────────────────────────────────────────────────────────────
   // PHASE 3 FIX: fraud flags fetched from DB, not computed client-side
   const fetchEntries = useCallback(async()=>{
@@ -484,10 +544,82 @@ function Accounts({role,userId}){
     setLoadingFinancials(false)
   },[isAdmin])
 
+  // ── Expenditure v2: vendors ──────────────────────────────────────────────
+  const fetchVendors = useCallback(async()=>{
+    const {data,error}=await supabase.from('vendors').select('*').eq('is_active',true).order('name')
+    // Table may not exist yet if the migration hasn't been run — fail quiet,
+    // same "degrade gracefully" approach as fetchBudgets above, since vendor
+    // tracking is additive and shouldn't block the rest of the module.
+    if(!error)setVendors(data||[])
+    else console.warn('Vendors not loaded (has the expenditure v2 migration been run?):',error.message)
+    setVendorsLoaded(true)
+  },[])
+
+  // ── Expenditure v2: approval settings (threshold + lower-trust roles) ───
+  const fetchApprovalSettings = useCallback(async()=>{
+    const {data,error}=await supabase.from('expenditure_approval_settings').select('*').eq('id',1).maybeSingle()
+    if(!error&&data){
+      setApprovalSettings({threshold_amount:Number(data.threshold_amount)||DEFAULT_APPROVAL_THRESHOLD,lower_trust_roles:data.lower_trust_roles||DEFAULT_LOWER_TRUST_ROLES})
+      setThresholdDraft(String(data.threshold_amount??DEFAULT_APPROVAL_THRESHOLD))
+    }else{
+      setThresholdDraft(String(DEFAULT_APPROVAL_THRESHOLD))
+    }
+  },[])
+
+  // ── Expenditure v2: pending approval queue (everyone can see the count;
+  // only admin/canWrite sees the entries themselves — see render gating) ──
+  const fetchPendingApprovals = useCallback(async()=>{
+    const {data,error}=await supabase.from('expenditure_approvals').select('*,accounts:entry_id(*)').eq('status','pending').order('requested_at',{ascending:false})
+    if(!error)setPendingApprovals(data||[])
+    else console.warn('Pending approvals not loaded (has the expenditure v2 migration been run?):',error.message)
+    setApprovalsLoaded(true)
+  },[])
+
+  // "approval list for the day" — every approve/reject DECIDED today,
+  // regardless of when it was originally requested, so admin can see what
+  // was actioned today at a glance.
+  const fetchApprovalHistoryToday = useCallback(async(todayStr)=>{
+    if(!isAdmin)return
+    const startOfDay=`${todayStr}T00:00:00`,endOfDay=`${todayStr}T23:59:59.999`
+    const {data,error}=await supabase.from('expenditure_approvals').select('*,accounts:entry_id(*)')
+      .neq('status','pending').gte('decided_at',startOfDay).lte('decided_at',endOfDay)
+      .order('decided_at',{ascending:false})
+    if(!error)setApprovalHistory(data||[])
+    else console.warn('Approval history not loaded:',error.message)
+  },[isAdmin])
+
+  // ── Expenditure v2: dedicated audit trail (expenditure-only slice of
+  // audit_log — separate view from the general Activity Timeline) ────────
+  const fetchExpAuditLog = useCallback(async()=>{
+    if(!isAdmin)return
+    const {data,error}=await supabase.from('audit_log').select('*')
+      .in('action',['insert','update','delete','restore','permanent_delete'])
+      .order('created_at',{ascending:false}).limit(500)
+    if(error){console.warn('Expenditure audit log failed:',error.message);return}
+    // Filter to expenditure-only entries client-side: old_values/new_values
+    // are JSON strings on this table and there's no indexed "type" column
+    // to filter by in SQL without a schema change to audit_log itself,
+    // which existing code elsewhere already treats as a generic log for
+    // several tables (accounts, budgets, fee actions, etc.) — narrowing
+    // here keeps this migration additive-only.
+    const expenditureOnly=(data||[]).filter(log=>{
+      try{
+        const nv=log.new_values?JSON.parse(log.new_values):null
+        const ov=log.old_values?JSON.parse(log.old_values):null
+        return (nv&&nv.type==='Expense')||(ov&&ov.type==='Expense')
+      }catch{return false}
+    })
+    setExpAuditLog(expenditureOnly)
+  },[isAdmin])
+
   useEffect(()=>{
-    fetchEntries();fetchBudgets();fetchStaff()
-    if(isAdmin){fetchDeletedRows();fetchAuditLog();fetchExportLog();fetchFinancials();fetchSuperintendentFlags()}
-  },[fetchEntries,fetchBudgets,fetchStaff,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,fetchSuperintendentFlags,isAdmin])
+    fetchEntries();fetchBudgets();fetchStaff();fetchVendors();fetchApprovalSettings();fetchPendingApprovals()
+    if(isAdmin){fetchDeletedRows();fetchAuditLog();fetchExportLog();fetchFinancials();fetchSuperintendentFlags();fetchExpAuditLog()}
+  },[fetchEntries,fetchBudgets,fetchStaff,fetchVendors,fetchApprovalSettings,fetchPendingApprovals,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,fetchSuperintendentFlags,fetchExpAuditLog,isAdmin])
+
+  useEffect(()=>{
+    if(isAdmin)fetchApprovalHistoryToday(today)
+  },[isAdmin,today,fetchApprovalHistoryToday])
 
   // Voucher Head / person pickers should only show real people — system rows
   // (e.g. "Admin", test/placeholder entries) are flagged is_system=true in the
@@ -578,6 +710,7 @@ function Accounts({role,userId}){
   const clearExpQuick=()=>{setExpDateFrom('');setExpDateTo('');setExpQuick('')}
   const resetExpFilters=()=>{
     setExpSearch('');setExpAcctFilter('All');setExpModeFilter('All');setExpCategory('All')
+    setExpSubCategory('All');setExpVendorFilter('All')
     setExpDateFrom('');setExpDateTo('');setExpQuick('')
   }
 
@@ -592,6 +725,7 @@ function Accounts({role,userId}){
     setEditEntry(item)
     setRows([{
       entry_date:item.entry_date,payment_date:item.payment_date||item.entry_date,type:item.type,category:item.category,
+      sub_category:item.sub_category||'',vendor_id:item.vendor_id||'',
       amount:String(item.amount),payment_mode:item.payment_mode,
       account_type:item.account_type||'Cash A/c',
       voucher_head:item.voucher_head||'',
@@ -606,6 +740,7 @@ function Accounts({role,userId}){
     setEditEntry(null)
     setRows([{
       entry_date:today,payment_date:today,type:item.type,category:item.category,
+      sub_category:item.sub_category||'',vendor_id:item.vendor_id||'',
       amount:String(item.amount),payment_mode:item.payment_mode,
       account_type:item.account_type||'Cash A/c',
       voucher_head:item.voucher_head||'',
@@ -659,6 +794,7 @@ function Accounts({role,userId}){
       const r=rows[0],receiptUrl=await uploadReceipt(editEntry.id)
       const payload={
         entry_date:r.entry_date,payment_date:r.payment_date||r.entry_date,type:r.type,category:r.category,
+        sub_category:r.sub_category||null,vendor_id:r.vendor_id||null,
         amount:Number(r.amount)||0,payment_mode:r.payment_mode,
         account_type:r.account_type,voucher_head:r.voucher_head,
         note:r.note,is_recurring:r.is_recurring,status:r.status,
@@ -695,11 +831,36 @@ function Accounts({role,userId}){
       // insert time, every recurring row would insert with
       // recurring_period = null and the constraint would never catch a
       // real duplicate (NULL never equals NULL in a uniqueness check).
-      const payloads=rows.filter(r=>canAddIncome||r.type==='Expense').map(r=>({
+      //
+      // ── Expenditure v2: approval gate ──────────────────────────────────
+      // An Expense row needs admin approval before it counts as real money
+      // when EITHER: (a) it's from a "lower-trust" submitter — anyone who
+      // isn't admin/accounts/manager, i.e. Superintendent or general staff
+      // (canWrite already means exactly "admin/accounts/manager", so
+      // !canWrite captures both in one check) — OR (b) its amount is at or
+      // above the admin-configured threshold, regardless of who entered it.
+      // A gated row is inserted immediately as status='Pending' (reusing
+      // the existing Pending status, so every total/report/budget/register
+      // that already excludes Pending via isConfirmed() correctly excludes
+      // it with zero further changes) plus a matching expenditure_approvals
+      // row for the queue. Income is never gated — only admin can add
+      // Income at all (canAddIncome), which is already the highest trust
+      // level in this app.
+      const rowMeta=rows.filter(r=>canAddIncome||r.type==='Expense').map(r=>{
+        const amt=Number(r.amount)||0
+        const isExpense=r.type==='Expense'
+        const overThreshold=amt>=(Number(approvalSettings.threshold_amount)||DEFAULT_APPROVAL_THRESHOLD)
+        const lowerTrust=!canWrite
+        const needsApproval=isExpense&&(lowerTrust||overThreshold)
+        const approvalReason=lowerTrust&&overThreshold?'both':(lowerTrust?'role':(overThreshold?'threshold':null))
+        return{r,amt,needsApproval,approvalReason}
+      })
+      const payloads=rowMeta.map(({r,amt,needsApproval})=>({
         entry_date:r.entry_date,payment_date:r.payment_date||r.entry_date,type:r.type,category:r.category,
-        amount:Number(r.amount)||0,payment_mode:r.payment_mode,
+        sub_category:r.sub_category||null,vendor_id:r.vendor_id||null,
+        amount:amt,payment_mode:r.payment_mode,
         account_type:r.account_type,voucher_head:r.voucher_head,
-        note:r.note,is_recurring:r.is_recurring,status:r.status,added_by:enteredByName,
+        note:r.note,is_recurring:r.is_recurring,status:needsApproval?'Pending':r.status,added_by:enteredByName,
         recurring_period: r.is_recurring ? (r.entry_date||'').slice(0,7) : null,
       }))
       const{data:inserted,error}=await supabase.from('accounts').insert(payloads).select()
@@ -724,8 +885,28 @@ function Accounts({role,userId}){
           )
         }
         for(const ins of(inserted||[]))await writeAuditLog({action:'insert',role:enteredByName,targetId:ins.id,newValues:ins})
+        // File an expenditure_approvals row for every gated row, matched
+        // positionally to rowMeta — Supabase/Postgres returns RETURNING
+        // rows in insert order for a plain multi-row VALUES insert (this
+        // file already relies on that same assumption via inserted[0]
+        // above), so index i of `inserted` corresponds to index i of `rowMeta`.
+        let anyGated=false
+        for(let i=0;i<(inserted||[]).length;i++){
+          const meta=rowMeta[i]
+          if(!meta?.needsApproval)continue
+          anyGated=true
+          const{error:apErr}=await supabase.from('expenditure_approvals').insert({
+            entry_id:inserted[i].id,requested_by:enteredByName,requested_by_id:String(currentStaff?.id||userId||''),
+            reason:meta.approvalReason,amount:meta.amt,
+          })
+          if(apErr)console.warn('Could not file approval request (has the expenditure v2 migration been run?):',apErr.message)
+        }
+        if(anyGated){
+          fetchPendingApprovals()
+          alert(`Saved. ${rowMeta.filter(m=>m.needsApproval).length} of ${inserted?.length||0} entr${rowMeta.filter(m=>m.needsApproval).length===1?'y is':'ies are'} pending admin approval before counting as confirmed.`)
+        }
         setShowForm(false);setReceiptFile(null);setRows([{...emptyRow}])
-        if(inserted?.[0])setReceiptMemoEntry({...inserted[0],receipt_url:rows[0].receipt_url||inserted[0].receipt_url})
+        if(inserted?.[0]&&!rowMeta[0]?.needsApproval)setReceiptMemoEntry({...inserted[0],receipt_url:rows[0].receipt_url||inserted[0].receipt_url})
         fetchEntries()
       }
     }
@@ -801,8 +982,67 @@ function Accounts({role,userId}){
     setSelected(new Set());fetchEntries();fetchDeletedRows()
   }
 
+  // ── Expenditure v2: approval queue actions ───────────────────────────────
+  // Admin-only. Approving flips the underlying accounts row to Confirmed (so
+  // it now counts in every total/report) and marks the request approved;
+  // rejecting leaves the accounts row as-is (still Pending, still excluded
+  // from every total via isConfirmed()) so a rejected entry never silently
+  // vanishes — it stays visible and editable, just permanently non-counting
+  // unless someone corrects and resubmits it.
+  const approveExpenditure=async(req)=>{
+    if(!isAdmin)return
+    if(!window.confirm(`Approve this ${fmt(req.amount)} expenditure?\n\nRequested by: ${req.requested_by}\nReason for approval gate: ${req.reason==='both'?'role + amount threshold':req.reason==='role'?'submitter role':'amount threshold'}`))return
+    setApprovalBusyId(req.id)
+    const ok=await mutateAccountsTable(
+      ()=>supabase.from('accounts').update({status:'Confirmed'}).eq('id',req.entry_id),
+      {errorContext:'Approve expenditure'}
+    )
+    if(ok){
+      const decidedAt=new Date().toISOString()
+      await supabase.from('expenditure_approvals').update({status:'approved',decided_by:role,decided_by_id:String(currentStaff?.id||userId||''),decided_at:decidedAt}).eq('id',req.id)
+      await writeAuditLog({action:'expenditure_approved',role,targetId:req.entry_id,oldValues:{status:'Pending'},newValues:{status:'Confirmed',amount:req.amount}})
+      fetchPendingApprovals();fetchEntries();fetchApprovalHistoryToday(today)
+    }
+    setApprovalBusyId(null)
+  }
+
+  const rejectExpenditure=async(req)=>{
+    if(!isAdmin)return
+    const note=window.prompt('Reason for rejecting this expenditure (optional, recorded for the record):','')
+    if(note===null)return
+    setApprovalBusyId(req.id)
+    const decidedAt=new Date().toISOString()
+    const{error}=await supabase.from('expenditure_approvals').update({status:'rejected',decided_by:role,decided_by_id:String(currentStaff?.id||userId||''),decided_at:decidedAt,decision_note:note||null}).eq('id',req.id)
+    if(error){alert('Reject failed: '+error.message)}
+    else{
+      await writeAuditLog({action:'expenditure_rejected',role,targetId:req.entry_id,newValues:{amount:req.amount,note}})
+      fetchPendingApprovals();fetchApprovalHistoryToday(today)
+    }
+    setApprovalBusyId(null)
+  }
+
+  // ── Expenditure v2: admin-editable approval threshold ───────────────────
+  const saveApprovalThreshold=async()=>{
+    const amt=Number(thresholdDraft)
+    if(!(amt>=0)){alert('Enter a valid amount.');return}
+    const editedAt=new Date().toISOString()
+    const{error}=await supabase.from('expenditure_approval_settings').upsert({id:1,threshold_amount:amt,lower_trust_roles:approvalSettings.lower_trust_roles,edited_by:role,edited_at:editedAt})
+    if(error){alert('Could not save threshold (has the expenditure v2 migration been run?): '+error.message);return}
+    setApprovalSettings(prev=>({...prev,threshold_amount:amt}))
+    setEditThreshold(false)
+  }
+
   const toggleSelect=(id)=>setSelected(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n})
-  const toggleSelectAll=()=>selected.size===pagedEntries.length?setSelected(new Set()):setSelected(new Set(pagedEntries.map(e=>e.id)))
+  // BUGFIX: this used to compare selected.size===pagedEntries.length to
+  // decide "is the current page fully selected". That only checked the
+  // COUNT, not which ids — e.g. select all 25 rows on page 1, then flip to
+  // page 2 (also a full 25-row page with completely different ids): the
+  // sizes still matched, so clicking "select all" here immediately CLEARED
+  // the selection instead of selecting page 2, because it looked like page
+  // 2 was already "fully selected" when none of its rows were. Now checks
+  // that every row actually on the current page is present in `selected`.
+  const isPageFullySelected = pagedEntries.length>0 && pagedEntries.every(e=>selected.has(e.id))
+  const toggleSelectAll=()=>isPageFullySelected?setSelected(new Set()):setSelected(new Set(pagedEntries.map(e=>e.id)))
 
   const updateRow=(i,key,val)=>setRows(prev=>prev.map((r,idx)=>{
     if(idx!==i)return r
@@ -836,6 +1076,35 @@ function Accounts({role,userId}){
     updateRow(i,'voucher_head',name)
   }
 
+  // ── Expenditure v2: sub-category (built-in + user-added, per top-level category) ──
+  const subCategoryOptionsFor=useCallback((category)=>{
+    const builtin=EXPENSE_SUBCATEGORIES[category]||[]
+    const custom=customSubCats[category]||[]
+    return [...new Set([...builtin,...custom])]
+  },[customSubCats])
+
+  const addCustomSubCategory=(i,category)=>{
+    const name=window.prompt(`New sub-category under "${category}":`)?.trim()
+    if(!name)return
+    const existing=subCategoryOptionsFor(category).find(c=>c.toLowerCase()===name.toLowerCase())
+    if(existing){updateRow(i,'sub_category',existing);return}
+    const next={...customSubCats,[category]:[...(customSubCats[category]||[]),name]}
+    setCustomSubCats(next)
+    localStorage.setItem('acc_custom_subcategories',JSON.stringify(next))
+    updateRow(i,'sub_category',name)
+  }
+
+  // ── Expenditure v2: vendor/payee ──────────────────────────────────────────
+  const addNewVendor=async(i)=>{
+    const name=window.prompt('New vendor/payee name:')?.trim()
+    if(!name)return
+    const existing=vendors.find(v=>v.name?.toLowerCase()===name.toLowerCase())
+    if(existing){updateRow(i,'vendor_id',existing.id);return}
+    const{data,error}=await supabase.from('vendors').insert({name,created_by:currentStaff?.name||role}).select()
+    if(error){alert('Could not add vendor (has the expenditure v2 migration been run?): '+error.message);return}
+    if(data?.[0]){setVendors(prev=>[...prev,data[0]].sort((a,b)=>a.name.localeCompare(b.name)));updateRow(i,'vendor_id',data[0].id)}
+  }
+
   // PHASE 1 FIX: budget save confirmation to prevent silent overwrite
   const saveBudgets=async()=>{
     if(!window.confirm('Save budget changes? This will overwrite any edits made by other admins.'))return
@@ -848,10 +1117,23 @@ function Accounts({role,userId}){
     setEditBudgets(false)
   }
 
+  // BUGFIX: exportCSV and exportDailyCSV below used to join raw fields with
+  // a bare `,` and no quoting/escaping. Any free-text field (note,
+  // voucher_head, category) containing a comma — e.g. "Stationery, ink &
+  // paper" — silently shifted every column after it out of alignment for
+  // that row in the exported file, with no error or warning. A field
+  // containing a double-quote had the same problem the other way (an
+  // unescaped `"` inside an unquoted field is technically fine for a bare
+  // comma-join, but breaks the moment the value is later opened in Excel/
+  // Sheets, which still tries to interpret quote characters). Both exports
+  // below now go through the same quote-and-escape rule already used
+  // correctly by exportExpenditureCSV, so a comma or quote in a note can
+  // never corrupt neighboring columns.
+  const csvCell=(v)=>`"${String(v??'').replace(/"/g,'""')}"`
   const exportCSV=async()=>{
     const header=['Date','Type','Category','Amount','Mode','Account','Voucher Head','Status','Note']
     const rows_=filteredEntries.map(e=>[e.entry_date,e.type,e.category,e.amount,e.payment_mode,e.account_type||'Cash A/c',e.voucher_head||'',e.status||'Confirmed',e.note||''])
-    const csv=[header,...rows_].map(r=>r.join(',')).join('\n')
+    const csv=[header,...rows_].map(r=>r.map(csvCell).join(',')).join('\n')
     const blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob)
     const a=Object.assign(document.createElement('a'),{href:url,download:'accounts.csv'})
     a.click();URL.revokeObjectURL(url)
@@ -871,7 +1153,7 @@ function Accounts({role,userId}){
     const rows_=filtered.map((e,i)=>dailyIsIncome
       ? [i+1,e.payment_date||e.entry_date,e.entry_date,e.voucher_head||'',e.account_type||'Cash A/c',e.note||e.category,e.payment_mode,e.amount]
       : [i+1,e.entry_date,e.voucher_head||'',e.account_type||'Cash A/c',e.note||e.category,e.payment_mode,e.amount])
-    const csv=[header,...rows_].map(r=>r.join(',')).join('\n')
+    const csv=[header,...rows_].map(r=>r.map(csvCell).join(',')).join('\n')
     const blob=new Blob([csv],{type:'text/csv'}),url=URL.createObjectURL(blob)
     const a=Object.assign(document.createElement('a'),{href:url,download:`daily-${dailyTypeFilter.toLowerCase()}.csv`})
     a.click();URL.revokeObjectURL(url)
@@ -1780,16 +2062,18 @@ function Accounts({role,userId}){
       if(item.type!=='Expense')return false
       if((item.status||'Confirmed')!=='Confirmed')return false
       if(expCategory!=='All'&&item.category!==expCategory)return false
+      if(expSubCategory!=='All'&&(item.sub_category||'')!==expSubCategory)return false
+      if(expVendorFilter!=='All'&&(item.vendor_id||'')!==expVendorFilter)return false
       if(expAcctFilter!=='All'&&(item.account_type||'Cash A/c')!==expAcctFilter)return false
       if(expModeFilter!=='All'&&item.payment_mode!==expModeFilter)return false
       if(expDateFrom&&item.entry_date<expDateFrom)return false
       if(expDateTo&&item.entry_date>expDateTo)return false
       const q=expSearch.toLowerCase()
       if(!q)return true
-      return(item.category||'').toLowerCase().includes(q)||(item.note||'').toLowerCase().includes(q)||(item.voucher_head||'').toLowerCase().includes(q)
+      return(item.category||'').toLowerCase().includes(q)||(item.sub_category||'').toLowerCase().includes(q)||(item.note||'').toLowerCase().includes(q)||(item.voucher_head||'').toLowerCase().includes(q)
     })
     return [...list].sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0)
-  },[entries,expCategory,expAcctFilter,expModeFilter,expDateFrom,expDateTo,expSearch])
+  },[entries,expCategory,expSubCategory,expVendorFilter,expAcctFilter,expModeFilter,expDateFrom,expDateTo,expSearch])
 
   const expenditureGroups = useMemo(()=>groupByDate(expenditureFilteredEntries),[expenditureFilteredEntries])
 
@@ -1814,12 +2098,33 @@ function Accounts({role,userId}){
   const expenditureFilterSummary = useMemo(()=>{
     const parts=['Type: Expense']
     if(expCategory!=='All')parts.push(`Category: ${expCategory}`)
+    if(expSubCategory!=='All')parts.push(`Sub-category: ${expSubCategory}`)
+    if(expVendorFilter!=='All')parts.push(`Vendor: ${vendors.find(v=>v.id===expVendorFilter)?.name||expVendorFilter}`)
     if(expModeFilter!=='All')parts.push(`Mode: ${expModeFilter}`)
     if(expAcctFilter!=='All')parts.push(`Account: ${expAcctFilter}`)
     if(expSearch)parts.push(`Search: "${expSearch}"`)
     parts.push(`Period: ${expDateFrom||'Beginning'} to ${expDateTo||'Present'}`)
     return parts.join('   •   ')
-  },[expCategory,expModeFilter,expAcctFilter,expSearch,expDateFrom,expDateTo])
+  },[expCategory,expSubCategory,expVendorFilter,vendors,expModeFilter,expAcctFilter,expSearch,expDateFrom,expDateTo])
+
+  // ── Expenditure v2: per-vendor spend history — powers the vendor
+  // drilldown panel and lets admin see which outside parties are getting
+  // paid the most, over time, regardless of the current table filters
+  // (uses ALL confirmed expense entries, not expenditureFilteredEntries).
+  const vendorSpendSummary = useMemo(()=>{
+    const map={}
+    entries.filter(e=>e.type==='Expense'&&isConfirmed(e)&&e.vendor_id).forEach(e=>{
+      if(!map[e.vendor_id])map[e.vendor_id]={vendor_id:e.vendor_id,total:0,count:0,lastDate:null,entries:[]}
+      map[e.vendor_id].total+=Number(e.amount);map[e.vendor_id].count+=1
+      if(!map[e.vendor_id].lastDate||e.entry_date>map[e.vendor_id].lastDate)map[e.vendor_id].lastDate=e.entry_date
+      map[e.vendor_id].entries.push(e)
+    })
+    return Object.values(map).map(v=>({
+      ...v,
+      vendorName:vendors.find(x=>x.id===v.vendor_id)?.name||'Unknown vendor',
+      entries:v.entries.sort((a,b)=>b.entry_date<a.entry_date?-1:b.entry_date>a.entry_date?1:0),
+    })).sort((a,b)=>b.total-a.total)
+  },[entries,vendors])
 
   // ── dedicated Daily Expenditure tab: CSV export + print register ─────────
   const exportExpenditureCSV=()=>{
@@ -2117,6 +2422,91 @@ function Accounts({role,userId}){
     return map
   },[entries,thisMonth])
 
+  // ── Expenditure v2: per-staff expenditure dashboard (admin only) ────────
+  // Who is entering how much, how often, and in which categories — surfaces
+  // a staff member who suddenly starts logging much more than usual.
+  const perStaffExpenditure = useMemo(()=>{
+    if(!isAdmin)return[]
+    const map={}
+    entries.filter(e=>e.type==='Expense'&&isConfirmed(e)).forEach(e=>{
+      const k=e.added_by||e.edited_by||'Unknown'
+      if(!map[k])map[k]={staff:k,total:0,count:0,byCategory:{},thisMonthTotal:0,lastMonthTotal:0}
+      map[k].total+=Number(e.amount);map[k].count+=1
+      map[k].byCategory[e.category||'Other']=(map[k].byCategory[e.category||'Other']||0)+Number(e.amount)
+      const mk=monthKey(e.entry_date)
+      if(mk===thisMonth)map[k].thisMonthTotal+=Number(e.amount)
+    })
+    // last full calendar month, for a simple month-over-month comparison per staff
+    const [ty,tm]=thisMonth.split('-').map(Number)
+    const lm=new Date(ty,tm-2,1),lastMonthKey=`${lm.getFullYear()}-${String(lm.getMonth()+1).padStart(2,'0')}`
+    entries.filter(e=>e.type==='Expense'&&isConfirmed(e)&&monthKey(e.entry_date)===lastMonthKey).forEach(e=>{
+      const k=e.added_by||e.edited_by||'Unknown'
+      if(!map[k])map[k]={staff:k,total:0,count:0,byCategory:{},thisMonthTotal:0,lastMonthTotal:0}
+      map[k].lastMonthTotal+=Number(e.amount)
+    })
+    return Object.values(map).map(s=>({
+      ...s,
+      topCategory:Object.entries(s.byCategory).sort((a,b)=>b[1]-a[1])[0]?.[0]||'—',
+      momChange: s.lastMonthTotal>0 ? ((s.thisMonthTotal-s.lastMonthTotal)/s.lastMonthTotal)*100 : (s.thisMonthTotal>0?100:0),
+    })).sort((a,b)=>b.total-a.total)
+  },[entries,isAdmin,thisMonth])
+
+  // ── Expenditure v2: spend-velocity alerts (admin only) ──────────────────
+  // Beyond the existing fixed budget-limit alerts: flags a category OR
+  // voucher head whose spend rate THIS week/month is unusually high
+  // relative to its OWN trailing average — catches a sudden spike even in
+  // a category with no budget limit set at all, or one whose limit is set
+  // so high a spike wouldn't trip it.
+  const spendVelocityAlerts = useMemo(()=>{
+    if(!isAdmin)return[]
+    const expenseEntries=entries.filter(e=>e.type==='Expense'&&isConfirmed(e)&&e.entry_date)
+    const alerts=[]
+    // by category: compare this month's spend to the trailing-3-month average of the PRIOR 3 months
+    const byCatMonth={}
+    expenseEntries.forEach(e=>{
+      const mk=monthKey(e.entry_date),cat=e.category||'Other'
+      if(!byCatMonth[cat])byCatMonth[cat]={}
+      byCatMonth[cat][mk]=(byCatMonth[cat][mk]||0)+Number(e.amount)
+    })
+    const [ty2,tm2]=thisMonth.split('-').map(Number)
+    const priorMonths=[1,2,3].map(n=>{const d=new Date(ty2,tm2-1-n,1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`})
+    Object.entries(byCatMonth).forEach(([cat,months])=>{
+      const thisVal=months[thisMonth]||0
+      const priorVals=priorMonths.map(m=>months[m]||0)
+      const priorAvg=priorVals.reduce((s,v)=>s+v,0)/priorVals.length
+      if(priorAvg>=500&&thisVal>priorAvg*2){ // needs a meaningful baseline to avoid noise on brand-new categories
+        alerts.push({
+          scope:'category',label:cat,current:thisVal,baseline:priorAvg,
+          pctOver:((thisVal-priorAvg)/priorAvg)*100,
+        })
+      }
+    })
+    // by voucher head: same idea, using entry total this week vs trailing-4-week
+    // average total, since a voucher head "spending 3x more than usual" is a
+    // signal even in a category with no budget limit at all
+    const byHeadWeek={}
+    expenseEntries.forEach(e=>{
+      const head=e.voucher_head||'Unassigned',wk=weekKey(e.entry_date)
+      if(!byHeadWeek[head])byHeadWeek[head]={}
+      if(!byHeadWeek[head][wk])byHeadWeek[head][wk]={total:0,count:0}
+      byHeadWeek[head][wk].total+=Number(e.amount);byHeadWeek[head][wk].count+=1
+    })
+    const thisWk=weekKey(today)
+    Object.entries(byHeadWeek).forEach(([head,weeks])=>{
+      const weekKeys=Object.keys(weeks).filter(w=>w!==thisWk).sort().slice(-4)
+      if(weekKeys.length<2)return // not enough history to call anything a spike
+      const thisWeekTotal=weeks[thisWk]?.total||0
+      const avgWeekTotal=weekKeys.reduce((s,w)=>s+weeks[w].total,0)/weekKeys.length
+      if(avgWeekTotal>=300&&thisWeekTotal>avgWeekTotal*2){
+        alerts.push({
+          scope:'voucher_head',label:head,current:thisWeekTotal,baseline:avgWeekTotal,
+          pctOver:((thisWeekTotal-avgWeekTotal)/avgWeekTotal)*100,
+        })
+      }
+    })
+    return alerts.sort((a,b)=>b.pctOver-a.pctOver)
+  },[entries,isAdmin,thisMonth,today,weekKey])
+
   // ── Budget drilldown: "where it was spent" — this month's individual
   // expense entries, grouped by category, newest first. Powers the
   // expandable entry list under each budget category card.
@@ -2187,6 +2577,18 @@ function Accounts({role,userId}){
   const digestItems=useMemo(()=>{
     if(!isAdmin)return[]
     const items=[]
+    if(pendingApprovals.length>0)items.push({
+      severity:'high',icon:'🔏',
+      title:`${pendingApprovals.length} expenditure entr${pendingApprovals.length>1?'ies':'y'} awaiting your approval`,
+      detail:'Flagged by amount threshold or submitter role — not yet counted in any total until approved.',
+      tab:'approvals',
+    })
+    if(spendVelocityAlerts.length>0)items.push({
+      severity:'medium',icon:'📈',
+      title:`${spendVelocityAlerts.length} spend-velocity alert${spendVelocityAlerts.length>1?'s':''}`,
+      detail:`${spendVelocityAlerts[0].label} is running ${Math.round(spendVelocityAlerts[0].pctOver)}% above its own recent average.`,
+      tab:'expenditure',
+    })
     if(pendingSuperintendentCount>0)items.push({
       severity:'high',icon:'🛡️',
       title:`${pendingSuperintendentCount} Superintendent edit${pendingSuperintendentCount>1?'s':''} awaiting verification`,
@@ -2246,7 +2648,7 @@ function Accounts({role,userId}){
     })
     const order={high:0,medium:1,low:2}
     return items.sort((a,b)=>order[a.severity]-order[b.severity])
-  },[isAdmin,pendingSuperintendentCount,fraudSummary,recentDeletesToday,overBudgetCategories,pendingCount,unrecognizedStatusEntries,fmt])
+  },[isAdmin,pendingSuperintendentCount,fraudSummary,recentDeletesToday,overBudgetCategories,pendingCount,unrecognizedStatusEntries,fmt,pendingApprovals,spendVelocityAlerts])
 
   const dailyGroups=useMemo(()=>groupByDate(dailyFilteredEntries,getDailyDate),[dailyFilteredEntries,getDailyDate])
   const dailyTotalAmt=dailyFilteredEntries.reduce((s,e)=>s+Number(e.amount),0)
@@ -2299,6 +2701,44 @@ function Accounts({role,userId}){
         {canAddEntry&&<button onClick={()=>(showForm&&!editEntry)?setShowForm(false):openAdd()} style={{backgroundColor:'#1e3a5f',color:'white',border:'none',borderRadius:8,padding: isMobile ? '8px 12px' : '10px 20px',fontWeight:600,cursor:'pointer',fontSize: isMobile ? 12 : 14, flex: isMobile ? '1' : 'none'}}>{showForm&&!editEntry?'✖ Cancel':canAddIncome?'➕ Add':'➕ Add Expenditure'}</button>}
       </div>
     </div>
+
+    {/* ── Expenditure v2: always-visible pending-approval widget (admin only) ──
+        Deliberately NOT gated behind a tab — the whole point is that a pending
+        approval is never just sitting quietly somewhere unnoticed. */}
+    {isAdmin&&pendingApprovals.length>0&&(
+      <div style={{backgroundColor:'#fffbeb',border:'1.5px solid #fde68a',borderRadius:12,padding:'12px 18px',marginBottom:20,cursor:'pointer'}} onClick={()=>setShowApprovalQueue(s=>!s)}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <span style={{fontSize:20}}>🔏</span>
+            <div>
+              <p style={{margin:0,fontSize:13,fontWeight:800,color:'#92400e'}}>{pendingApprovals.length} expenditure entr{pendingApprovals.length>1?'ies':'y'} awaiting your approval</p>
+              <p style={{margin:'2px 0 0',fontSize:11,color:'#b45309'}}>Total pending: {fmt(pendingApprovals.reduce((s,r)=>s+Number(r.amount),0))} — not counted in any total until approved</p>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <button onClick={(e)=>{e.stopPropagation();setActiveTab('approvals')}} style={{backgroundColor:'#92400e',color:'white',border:'none',borderRadius:8,padding:'7px 14px',fontWeight:700,cursor:'pointer',fontSize:12}}>Review Queue →</button>
+            <span style={{fontSize:12,color:'#92400e'}}>{showApprovalQueue?'▲':'▼'}</span>
+          </div>
+        </div>
+        {showApprovalQueue&&(
+          <div style={{marginTop:12,borderTop:'1px solid #fde68a',paddingTop:10,display:'flex',flexDirection:'column',gap:6}} onClick={e=>e.stopPropagation()}>
+            {pendingApprovals.slice(0,5).map(req=>(
+              <div key={req.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,backgroundColor:'white',borderRadius:8,padding:'8px 12px',fontSize:12}}>
+                <div style={{minWidth:0}}>
+                  <strong style={{color:'#1e293b'}}>{fmt(req.amount)}</strong> — {req.accounts?.category||'—'}{req.accounts?.note?` · ${req.accounts.note}`:''}
+                  <div style={{fontSize:11,color:'#94a3b8'}}>by {req.requested_by} · {req.reason==='both'?'role + amount':req.reason==='role'?'role':'amount'}</div>
+                </div>
+                <div style={{display:'flex',gap:6,flexShrink:0}}>
+                  <button disabled={approvalBusyId===req.id} onClick={()=>approveExpenditure(req)} style={{...smallBtn('#f0fdf4','#16a34a'),fontSize:11}}>✓ Approve</button>
+                  <button disabled={approvalBusyId===req.id} onClick={()=>rejectExpenditure(req)} style={{...smallBtn('#fee2e2','#dc2626'),fontSize:11}}>✗ Reject</button>
+                </div>
+              </div>
+            ))}
+            {pendingApprovals.length>5&&<button onClick={()=>setActiveTab('approvals')} style={{background:'none',border:'none',color:'#92400e',fontWeight:700,fontSize:12,cursor:'pointer',padding:'4px 0'}}>+{pendingApprovals.length-5} more — view full queue →</button>}
+          </div>
+        )}
+      </div>
+    )}
 
     {/* ── stat cards (hidden by default — toggled via "Show Summary" button) ── */}
     {showStatCards&&(
@@ -2360,7 +2800,40 @@ function Accounts({role,userId}){
                     {row.type==='Expense'&&<option value="__add_new__">+ Add New Category…</option>}
                   </select>
                 </div>
-                <div><label style={lStyle}>Amount <span style={{color:'#dc2626'}}>*</span></label><input type="number" min="0.01" step="0.01" placeholder="0" value={row.amount} onChange={e=>updateRow(i,'amount',e.target.value)} required style={iStyle}/></div>
+                {row.type==='Expense'&&(
+                  <div><label style={lStyle}>Sub-category <span style={{fontWeight:400,color:'#94a3b8'}}>(optional)</span></label>
+                    <select value={row.sub_category||''} onChange={e=>{
+                      if(e.target.value==='__add_new_sub__'){addCustomSubCategory(i,row.category);return}
+                      updateRow(i,'sub_category',e.target.value)
+                    }} disabled={!row.category} style={{...iStyle,backgroundColor:!row.category?'#f8fafc':'white'}}>
+                      <option value="">{row.category?'None':'Select a category first'}</option>
+                      {subCategoryOptionsFor(row.category).map(c=><option key={c}>{c}</option>)}
+                      {row.category&&<option value="__add_new_sub__">+ Add New Sub-category…</option>}
+                    </select>
+                  </div>
+                )}
+                {row.type==='Expense'&&(
+                  <div><label style={lStyle}>Vendor / Payee <span style={{fontWeight:400,color:'#94a3b8'}}>(optional)</span></label>
+                    <select value={row.vendor_id||''} onChange={e=>{
+                      if(e.target.value==='__add_vendor__'){addNewVendor(i);return}
+                      updateRow(i,'vendor_id',e.target.value)
+                    }} style={iStyle}>
+                      <option value="">None</option>
+                      {vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+                      <option value="__add_vendor__">+ Add New Vendor…</option>
+                    </select>
+                  </div>
+                )}
+                <div><label style={lStyle}>Amount <span style={{color:'#dc2626'}}>*</span></label><input type="number" min="0.01" step="0.01" placeholder="0" value={row.amount} onChange={e=>updateRow(i,'amount',e.target.value)} required style={iStyle}/>
+                  {row.type==='Expense'&&(()=>{
+                    const amt=Number(row.amount)||0
+                    const overThreshold=amt>=(Number(approvalSettings.threshold_amount)||DEFAULT_APPROVAL_THRESHOLD)
+                    const lowerTrust=!canWrite
+                    return (amt>0&&(overThreshold||lowerTrust))?(
+                      <p style={{fontSize:11,color:'#b45309',margin:'5px 0 0',fontWeight:600}}>⚠ Will need admin approval before it counts as confirmed{overThreshold?` (≥ ${fmt(approvalSettings.threshold_amount)} threshold)`:' (your role always requires approval)'}.</p>
+                    ):null
+                  })()}
+                </div>
                 <div><label style={lStyle}>Payment Mode <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.payment_mode} onChange={e=>updateRow(i,'payment_mode',e.target.value)} required style={iStyle}>
                     <option value="">Select</option>
@@ -2422,6 +2895,12 @@ function Accounts({role,userId}){
         ['expenditure','💵 Expenditure'],
         ['reports','📑 Reports'],
         ...(isAdmin?[['fraud',digestItems.length>0?`📌 For Admin (${digestItems.length})`:'📌 For Admin']]:[] ),
+        // Expenditure v2: approval queue is admin-only to ACT on, but the
+        // pending count itself is meaningful to canWrite roles too (they can
+        // see their own team's requests move through review) — restricted to
+        // isAdmin here since only admin can actually approve/reject.
+        ...(isAdmin?[['approvals',pendingApprovals.length>0?`🔏 Approvals (${pendingApprovals.length})`:'🔏 Approvals']]:[] ),
+        ...(isAdmin?[['staffspend','🧑‍💼 Staff Spend']]:[] ),
         ...(isAdmin?[['savings','💹 Savings Tracker']]:[] ),
         // PHASE 4: Balance Sheet tab (admin only)
         ...(isAdmin?[['balancesheet','📒 Balance Sheet']]:[] ),
@@ -2591,7 +3070,9 @@ function Accounts({role,userId}){
           {/* ── filters (shared by the table below and the report export above) ── */}
           <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr 1fr' : isTablet ? 'repeat(3,1fr)' : 'repeat(6,1fr)',gap:12}}>
             <input placeholder="🔍 Search…" value={expSearch} onChange={e=>setExpSearch(e.target.value)} style={{...iStyle, gridColumn: isMobile ? 'span 2' : 'auto'}}/>
-            <select value={expCategory} onChange={e=>setExpCategory(e.target.value)} style={iStyle}><option value="All">All Categories</option>{expenseCategoryOptions.map(c=><option key={c}>{c}</option>)}</select>
+            <select value={expCategory} onChange={e=>{setExpCategory(e.target.value);setExpSubCategory('All')}} style={iStyle}><option value="All">All Categories</option>{expenseCategoryOptions.map(c=><option key={c}>{c}</option>)}</select>
+            <select value={expSubCategory} onChange={e=>setExpSubCategory(e.target.value)} disabled={expCategory==='All'} style={{...iStyle,backgroundColor:expCategory==='All'?'#f8fafc':'white'}}><option value="All">All Sub-categories</option>{expCategory!=='All'&&subCategoryOptionsFor(expCategory).map(c=><option key={c}>{c}</option>)}</select>
+            <select value={expVendorFilter} onChange={e=>setExpVendorFilter(e.target.value)} style={iStyle}><option value="All">All Vendors</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select>
             <select value={expAcctFilter} onChange={e=>setExpAcctFilter(e.target.value)} style={iStyle}><option value="All">All Accounts</option>{ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}</select>
             <select value={expModeFilter} onChange={e=>setExpModeFilter(e.target.value)} style={iStyle}><option value="All">All Modes</option>{PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}</select>
             <input type="date" value={expDateFrom} onChange={e=>{setExpDateFrom(e.target.value);setExpQuick('')}} title="Entry date from" style={iStyle}/>
@@ -2602,10 +3083,44 @@ function Accounts({role,userId}){
             {[['today','Today'],['week','Week'],['month','Month'],['lastmonth','Last Mo.'],['year','Year']].map(([k,l])=>(
               <button key={k} style={{padding: isMobile?'5px 10px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,backgroundColor:expQuick===k?'#7f1d1d':'#f1f5f9',color:expQuick===k?'white':'#64748b'}} onClick={()=>expQuick===k?clearExpQuick():applyExpQuick(k)}>{l}</button>
             ))}
-            {(expSearch||expAcctFilter!=='All'||expModeFilter!=='All'||expCategory!=='All'||expDateFrom||expDateTo)&&
+            {(expSearch||expAcctFilter!=='All'||expModeFilter!=='All'||expCategory!=='All'||expSubCategory!=='All'||expVendorFilter!=='All'||expDateFrom||expDateTo)&&
               <button onClick={resetExpFilters} style={{...smallBtn('#fee2e2','#dc2626'),padding:'5px 12px',fontSize:12}}>✖ Reset</button>}
           </div>
         </div>
+
+        {/* ── Expenditure v2: vendor spend summary + drilldown ── */}
+        {vendorSpendSummary.length>0&&(
+          <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
+            <h3 style={{...chartTitle,fontSize:15,marginBottom:12}}>🏷️ Vendor / Payee Spend</h3>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {vendorSpendSummary.map(v=>{
+                const expanded=vendorDrilldown===v.vendor_id
+                return (
+                  <div key={v.vendor_id} style={{border:'1px solid #f1f5f9',borderRadius:8}}>
+                    <div onClick={()=>setVendorDrilldown(expanded?null:v.vendor_id)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',cursor:'pointer'}}>
+                      <div>
+                        <strong style={{color:'#1e293b'}}>{expanded?'▾':'▸'} {v.vendorName}</strong>
+                        <span style={{fontSize:11,color:'#94a3b8',marginLeft:8}}>{v.count} payment{v.count===1?'':'s'} · last on {v.lastDate}</span>
+                      </div>
+                      <strong style={{color:'#7f1d1d'}}>{fmt(v.total)}</strong>
+                    </div>
+                    {expanded&&(
+                      <div style={{padding:'0 14px 12px',borderTop:'1px solid #f8fafc'}}>
+                        {v.entries.slice(0,10).map(e=>(
+                          <div key={e.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',fontSize:12,borderBottom:'1px solid #f8fafc'}}>
+                            <span style={{color:'#64748b'}}>{e.entry_date} · {e.category}{e.note?` — ${e.note}`:''}</span>
+                            <strong style={{color:'#dc2626'}}>{fmt(e.amount)}</strong>
+                          </div>
+                        ))}
+                        {v.entries.length>10&&<p style={{fontSize:11,color:'#94a3b8',margin:'6px 0 0'}}>+{v.entries.length-10} more payment(s)</p>}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* ── separate daily expenditure table ── */}
         {expenditureGroups.length===0?<div style={{textAlign:'center',padding:48,color:'#94a3b8',backgroundColor:'white',borderRadius:12}}>No expenditure entries found for this date range.</div>:(
@@ -3282,28 +3797,210 @@ function Accounts({role,userId}){
     )}
     {/* ══ TAB: TIMELINE ══ */}
     {activeTab==='timeline'&&isAdmin&&(
-      <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
-        <h3 style={{fontSize:16,fontWeight:700,color:'#1e3a5f',marginBottom:16}}>🕐 Activity Timeline</h3>
-        {auditLog.length===0
-          ? <p style={{color:'#94a3b8',textAlign:'center',padding:32}}>No activity recorded yet.</p>
-          : auditLog.map((log,i)=>{
-              const actionColor={insert:'#16a34a',update:'#f59e0b',delete:'#dc2626',restore:'#7c3aed',bulk_delete:'#dc2626',budget_edit:'#0891b2'}[log.action]||'#64748b'
-              const actionIcon={insert:'➕',update:'✏️',delete:'🗑',restore:'↩️',bulk_delete:'🗑',budget_edit:'💰'}[log.action]||'•'
-              return(
-                <div key={i} style={{display:'flex',gap:14,paddingBottom:16,borderBottom:'1px solid #f1f5f9',marginBottom:16}}>
-                  <div style={{width:36,height:36,borderRadius:'50%',backgroundColor:actionColor+'20',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>{actionIcon}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:4}}>
-                      <span style={{fontWeight:700,fontSize:13,color:'#1e293b',textTransform:'capitalize'}}>{log.action.replace('_',' ')}</span>
-                      <span style={{fontSize:11,color:'#94a3b8'}}>{log.created_at?new Date(log.created_at).toLocaleString('en-IN'):''}</span>
+      <div>
+        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',marginBottom:20}}>
+          <h3 style={{fontSize:16,fontWeight:700,color:'#1e3a5f',marginBottom:16}}>🕐 Activity Timeline</h3>
+          {auditLog.length===0
+            ? <p style={{color:'#94a3b8',textAlign:'center',padding:32}}>No activity recorded yet.</p>
+            : auditLog.map((log,i)=>{
+                const actionColor={insert:'#16a34a',update:'#f59e0b',delete:'#dc2626',restore:'#7c3aed',bulk_delete:'#dc2626',budget_edit:'#0891b2',expenditure_approved:'#16a34a',expenditure_rejected:'#dc2626'}[log.action]||'#64748b'
+                const actionIcon={insert:'➕',update:'✏️',delete:'🗑',restore:'↩️',bulk_delete:'🗑',budget_edit:'💰',expenditure_approved:'✅',expenditure_rejected:'🚫'}[log.action]||'•'
+                return(
+                  <div key={i} style={{display:'flex',gap:14,paddingBottom:16,borderBottom:'1px solid #f1f5f9',marginBottom:16}}>
+                    <div style={{width:36,height:36,borderRadius:'50%',backgroundColor:actionColor+'20',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>{actionIcon}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:4}}>
+                        <span style={{fontWeight:700,fontSize:13,color:'#1e293b',textTransform:'capitalize'}}>{log.action.replace(/_/g,' ')}</span>
+                        <span style={{fontSize:11,color:'#94a3b8'}}>{log.created_at?new Date(log.created_at).toLocaleString('en-IN'):''}</span>
+                      </div>
+                      <div style={{fontSize:12,color:'#64748b',marginTop:2}}>By <strong style={{color:actionColor}}>{log.changed_by||'system'}</strong>{log.target_id?` · ID: ${log.target_id}`:''}</div>
+                      {log.new_values&&<div style={{fontSize:11,color:'#94a3b8',marginTop:4,fontFamily:'monospace',background:'#f8fafc',padding:'4px 8px',borderRadius:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{log.new_values}</div>}
                     </div>
-                    <div style={{fontSize:12,color:'#64748b',marginTop:2}}>By <strong style={{color:actionColor}}>{log.changed_by||'system'}</strong>{log.target_id?` · ID: ${log.target_id}`:''}</div>
-                    {log.new_values&&<div style={{fontSize:11,color:'#94a3b8',marginTop:4,fontFamily:'monospace',background:'#f8fafc',padding:'4px 8px',borderRadius:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{log.new_values}</div>}
                   </div>
+                )
+              })
+          }
+        </div>
+
+        {/* ── Expenditure v2: dedicated audit trail viewer ──────────────────
+            Same audit_log source as the Timeline above, but filtered to
+            Expense-only entries and rendered as an explicit before/after
+            diff (old_values vs new_values) instead of a flat activity feed —
+            for someone specifically reviewing expenditure history rather
+            than scanning everything the whole portal logs. */}
+        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6,flexWrap:'wrap',gap:8}}>
+            <h3 style={{fontSize:16,fontWeight:700,color:'#7f1d1d',margin:0}}>💵 Expenditure Audit Trail</h3>
+            <button onClick={fetchExpAuditLog} style={{...smallBtn('#fef2f2','#7f1d1d'),fontSize:12}}>↻ Refresh</button>
+          </div>
+          <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 16px'}}>Every insert/edit/delete/restore touching an Expense entry, with a before/after diff for edits.</p>
+          {expAuditLog.length===0?<p style={{color:'#94a3b8',textAlign:'center',padding:24}}>No expenditure edits/deletes recorded yet.</p>:(
+            expAuditLog.map((log,i)=>{
+              let ov=null,nv=null
+              try{ov=log.old_values?JSON.parse(log.old_values):null}catch{}
+              try{nv=log.new_values?JSON.parse(log.new_values):null}catch{}
+              const changedFields=(ov&&nv)?Object.keys(nv).filter(k=>['amount','category','sub_category','note','voucher_head','payment_mode','account_type','status','entry_date'].includes(k)&&String(ov[k]??'')!==String(nv[k]??'')):[]
+              return(
+                <div key={i} style={{borderBottom:'1px solid #fef2f2',paddingBottom:14,marginBottom:14}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:4}}>
+                    <span style={{fontWeight:700,fontSize:13,color:'#7f1d1d',textTransform:'capitalize'}}>{log.action.replace(/_/g,' ')}</span>
+                    <span style={{fontSize:11,color:'#94a3b8'}}>{log.created_at?new Date(log.created_at).toLocaleString('en-IN'):''}</span>
+                  </div>
+                  <div style={{fontSize:12,color:'#64748b',margin:'2px 0 6px'}}>By <strong>{log.changed_by||'system'}</strong> · ID: {log.target_id}</div>
+                  {changedFields.length>0?(
+                    <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                      {changedFields.map(f=>(
+                        <div key={f} style={{fontSize:12,display:'flex',gap:8,alignItems:'center'}}>
+                          <span style={{fontWeight:600,color:'#374151',minWidth:90}}>{f}:</span>
+                          <span style={{color:'#dc2626',textDecoration:'line-through'}}>{f==='amount'?fmt(ov[f]):String(ov[f]??'—')}</span>
+                          <span>→</span>
+                          <span style={{color:'#16a34a',fontWeight:600}}>{f==='amount'?fmt(nv[f]):String(nv[f]??'—')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ):(nv&&<div style={{fontSize:12,color:'#64748b'}}>{nv.category} — {fmt(nv.amount)}{nv.note?` · ${nv.note}`:''}</div>)}
                 </div>
               )
             })
-        }
+          )}
+        </div>
+      </div>
+    )}
+
+    {/* ══ TAB: EXPENDITURE APPROVALS (admin only) ══
+        Pending queue + "approval list for the day" (everything decided today). ══ */}
+    {activeTab==='approvals'&&isAdmin&&(
+      <div>
+        <div style={{backgroundColor:'#92400e',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+          <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>🔏 Expenditure Approvals</h2>
+          <p style={{fontSize:12,color:'rgba(255,255,255,0.7)',margin:'4px 0 0'}}>Entries flagged for approval by amount threshold or submitter role — pending queue and today's decisions.</p>
+        </div>
+
+        {/* ── admin-editable threshold ── */}
+        <div style={{...chartCard,marginBottom:20,borderLeft:'4px solid #92400e'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
+            <div>
+              <h3 style={{...chartTitle,fontSize:15,margin:0}}>Approval Threshold</h3>
+              <p style={{fontSize:12,color:'#94a3b8',margin:'4px 0 0'}}>Any Expense entry at or above this amount needs approval, regardless of who enters it. Superintendent and general staff entries always need approval, regardless of amount.</p>
+            </div>
+            {!editThreshold?(
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                <span style={{fontSize:20,fontWeight:800,color:'#92400e'}}>{fmt(approvalSettings.threshold_amount)}</span>
+                <button onClick={()=>{setEditThreshold(true);setThresholdDraft(String(approvalSettings.threshold_amount))}} style={{...smallBtn('#fffbeb','#92400e')}}>✏️ Edit</button>
+              </div>
+            ):(
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <input type="number" min="0" value={thresholdDraft} onChange={e=>setThresholdDraft(e.target.value)} style={{...iStyle,width:140}}/>
+                <button onClick={saveApprovalThreshold} style={{...smallBtn('#f0fdf4','#16a34a')}}>✅ Save</button>
+                <button onClick={()=>setEditThreshold(false)} style={{...smallBtn('#f1f5f9','#64748b')}}>Cancel</button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── pending queue ── */}
+        <div style={{...chartCard,marginBottom:20,borderLeft:'4px solid #d97706',overflowX:'auto'}}>
+          <h3 style={{...chartTitle,color:'#d97706'}}>⏳ Pending Queue ({pendingApprovals.length})</h3>
+          {pendingApprovals.length===0?<p style={{color:'#94a3b8',fontSize:14}}>Nothing waiting on approval.</p>:(
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+              <thead><tr style={{backgroundColor:'#fffbeb'}}>{['Requested','Amount','Category','Note','Requested By','Reason','Actions'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#92400e',fontSize:12,borderBottom:'1px solid #fde68a'}}>{h}</th>)}</tr></thead>
+              <tbody>{pendingApprovals.map(req=>(
+                <tr key={req.id} style={{borderBottom:'1px solid #fffbeb'}}>
+                  <td style={tdS}>{req.requested_at?new Date(req.requested_at).toLocaleString('en-IN'):''}</td>
+                  <td style={{...tdS,fontWeight:700,color:'#dc2626'}}>{fmt(req.amount)}</td>
+                  <td style={tdS}>{req.accounts?.category||'—'}{req.accounts?.sub_category?` / ${req.accounts.sub_category}`:''}</td>
+                  <td style={{...tdS,maxWidth:220}}>{req.accounts?.note||'—'}</td>
+                  <td style={tdS}><strong>{req.requested_by}</strong></td>
+                  <td style={tdS}><span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#fef3c7',color:'#92400e'}}>{req.reason==='both'?'role + amount':req.reason==='role'?'role':'amount'}</span></td>
+                  <td style={tdS}>
+                    <div style={{display:'flex',gap:6}}>
+                      <button disabled={approvalBusyId===req.id} onClick={()=>approveExpenditure(req)} style={smallBtn('#f0fdf4','#16a34a')}>✓ Approve</button>
+                      <button disabled={approvalBusyId===req.id} onClick={()=>rejectExpenditure(req)} style={smallBtn('#fee2e2','#dc2626')}>✗ Reject</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table>
+          )}
+        </div>
+
+        {/* ── "approval list for the day": everything DECIDED today ── */}
+        <div style={{...chartCard,borderLeft:'4px solid #1e3a5f',overflowX:'auto'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4,flexWrap:'wrap',gap:8}}>
+            <h3 style={{...chartTitle,margin:0}}>📅 Today's Approval List — {new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</h3>
+            <button onClick={()=>fetchApprovalHistoryToday(today)} style={{...smallBtn('#eff6ff','#1e3a5f'),fontSize:12}}>↻ Refresh</button>
+          </div>
+          <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 14px'}}>Every expenditure approval decision made today, approved or rejected — regardless of when it was originally submitted.</p>
+          {approvalHistory.length===0?<p style={{color:'#94a3b8',fontSize:14}}>No approval decisions made today yet.</p>:(
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+              <thead><tr style={{backgroundColor:'#f8fafc'}}>{['Decided At','Decision','Amount','Category','Requested By','Decided By','Note'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
+              <tbody>{approvalHistory.map(h=>(
+                <tr key={h.id} style={{borderBottom:'1px solid #f1f5f9'}}>
+                  <td style={tdS}>{h.decided_at?new Date(h.decided_at).toLocaleString('en-IN'):''}</td>
+                  <td style={tdS}><span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:h.status==='approved'?'#dcfce7':'#fee2e2',color:h.status==='approved'?'#16a34a':'#dc2626'}}>{h.status==='approved'?'✓ Approved':'✗ Rejected'}</span></td>
+                  <td style={{...tdS,fontWeight:600}}>{fmt(h.amount)}</td>
+                  <td style={tdS}>{h.accounts?.category||'—'}</td>
+                  <td style={tdS}>{h.requested_by}</td>
+                  <td style={tdS}><strong>{h.decided_by}</strong></td>
+                  <td style={{...tdS,maxWidth:200}}>{h.decision_note||'—'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    )}
+
+    {/* ══ TAB: PER-STAFF EXPENDITURE DASHBOARD (admin only) ══ */}
+    {activeTab==='staffspend'&&isAdmin&&(
+      <div>
+        <div style={{backgroundColor:'#1e3a5f',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+          <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>🧑‍💼 Per-Staff Expenditure Dashboard</h2>
+          <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Who is entering how much, how often, and where — helps spot a sudden change in someone's entry pattern.</p>
+        </div>
+
+        {spendVelocityAlerts.length>0&&(
+          <div style={{...chartCard,marginBottom:20,borderLeft:'4px solid #dc2626'}}>
+            <h3 style={{...chartTitle,color:'#dc2626'}}>📈 Spend-Velocity Alerts</h3>
+            <p style={{fontSize:12,color:'#94a3b8',margin:'-8px 0 12px'}}>A category or voucher head running well above its own recent average — independent of any fixed budget limit.</p>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {spendVelocityAlerts.map((a,i)=>(
+                <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',backgroundColor:'#fef2f2',borderRadius:8,padding:'10px 14px'}}>
+                  <div>
+                    <strong style={{color:'#1e293b'}}>{a.label}</strong>
+                    <span style={{fontSize:11,color:'#94a3b8',marginLeft:8}}>{a.scope==='category'?'category · this month vs prior 3-month avg':'voucher head · this week vs prior 4-week avg'}</span>
+                  </div>
+                  <div style={{textAlign:'right'}}>
+                    <div style={{fontWeight:800,color:'#dc2626'}}>{fmt(a.current)} <span style={{fontSize:11,fontWeight:600}}>vs avg {fmt(a.baseline)}</span></div>
+                    <div style={{fontSize:11,color:'#dc2626',fontWeight:700}}>+{Math.round(a.pctOver)}%</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{...chartCard,overflowX:'auto'}}>
+          <h3 style={chartTitle}>By Staff Member</h3>
+          {perStaffExpenditure.length===0?<p style={{color:'#94a3b8',fontSize:14}}>No expenditure entries yet.</p>:(
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+              <thead><tr style={{backgroundColor:'#f8fafc'}}>{['Staff','Total (All Time)','Entries','This Month','Last Month','Change','Top Category'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
+              <tbody>{perStaffExpenditure.map(s=>{
+                const spiking=s.momChange>50&&s.thisMonthTotal>1000
+                return(
+                <tr key={s.staff} style={{borderBottom:'1px solid #f1f5f9',backgroundColor:spiking?'#fff7ed':'transparent'}}>
+                  <td style={{...tdS,fontWeight:700,color:'#1e293b'}}>{s.staff}{spiking&&<span style={{marginLeft:6,fontSize:11,color:'#c2410c'}}>⚠ spiking</span>}</td>
+                  <td style={{...tdS,fontWeight:600}}>{fmt(s.total)}</td>
+                  <td style={tdS}>{s.count}</td>
+                  <td style={tdS}>{fmt(s.thisMonthTotal)}</td>
+                  <td style={tdS}>{fmt(s.lastMonthTotal)}</td>
+                  <td style={{...tdS,fontWeight:700,color:s.momChange>0?'#dc2626':'#16a34a'}}>{s.momChange>=0?'+':''}{s.momChange.toFixed(0)}%</td>
+                  <td style={tdS}>{s.topCategory}</td>
+                </tr>
+              )})}</tbody>
+            </table>
+          )}
+        </div>
       </div>
     )}
 
