@@ -79,6 +79,7 @@ const emptyRow = {
   category     : '',
   sub_category : '',   // Expenditure v2: optional finer-grained category, Expense only
   vendor_id    : '',   // Expenditure v2: optional linked vendor/payee, Expense only
+  payer_id     : '',   // Accounts v3: optional linked payer/source, Income only
   amount       : '',
   payment_mode : 'Cash',
   account_type : 'Cash A/c',
@@ -323,8 +324,32 @@ function Accounts({role,userId}){
   })
   const expenseCategoryOptions = useMemo(()=>{
     const base=EXPENSE_CATEGORIES.filter(c=>c!=='Other')
-    return [...base,...customExpCats.filter(c=>!base.includes(c)),'Other']
-  },[customExpCats])
+    // Pull in every category that has ever actually been used on an Expense
+    // entry (e.g. typed in by a staff member before this list existed, or
+    // added on a different device so it never made it into this browser's
+    // localStorage custom-category list) — not just the hardcoded list and
+    // this browser's own saved custom categories.
+    const fromEntries = entries.filter(e=>e.type==='Expense'&&e.category).map(e=>e.category)
+    const merged = [...base, ...customExpCats, ...fromEntries].filter(c=>c&&c!=='Other')
+    const deduped = [...new Set(merged)].sort((a,b)=>a.localeCompare(b))
+    return [...deduped,'Other']
+  },[customExpCats,entries])
+
+  // ── All-expense category summary (built straight off actual entries) ────
+  // Every distinct expense category ever used, with total spent, entry
+  // count, and last-used date — independent of the fixed EXPENSE_CATEGORIES
+  // list or any budget being set, so a category shows up here even if it
+  // was only ever typed in as a one-off custom category.
+  const allExpenseCategorySummary = useMemo(()=>{
+    const map={}
+    entries.filter(e=>e.type==='Expense'&&isConfirmed(e)).forEach(e=>{
+      const cat=e.category||'Uncategorized'
+      if(!map[cat])map[cat]={category:cat,total:0,count:0,lastDate:null}
+      map[cat].total+=Number(e.amount);map[cat].count+=1
+      if(!map[cat].lastDate||e.entry_date>map[cat].lastDate)map[cat].lastDate=e.entry_date
+    })
+    return Object.values(map).sort((a,b)=>b.total-a.total)
+  },[entries])
 
   // filters
   const [search,       setSearch]       = useState('')
@@ -421,6 +446,9 @@ function Accounts({role,userId}){
   const [rptDateFrom,    setRptDateFrom]    = useState('')
   const [rptDateTo,      setRptDateTo]      = useState('')
   const [rptQuick,       setRptQuick]       = useState('')
+
+  // ── Accounts v3: one-click monthly report (pick any past month) ─────────
+  const [monthlyRptMonth, setMonthlyRptMonth] = useState(()=>getToday().slice(0,7))
   const [rptViewMode,    setRptViewMode]    = useState('list') // 'list' | 'datewise'
   const [rptExpandedDate,setRptExpandedDate]= useState(null)   // which date is expanded in datewise view
   const [generatingReport, setGeneratingReport] = useState('') // '' | 'pdf' | 'docx' | 'excel'
@@ -428,8 +456,29 @@ function Accounts({role,userId}){
   // ── Expenditure v2: vendor/payee tracking ────────────────────────────────
   const [vendors,       setVendors]       = useState([])
   const [vendorsLoaded, setVendorsLoaded] = useState(false)
+
+  // ── Accounts v3: payers / income sources ─────────────────────────────────
+  const [payers,       setPayers]       = useState([])
+  const [expPayerFilter, setExpPayerFilter] = useState('All') // reused naming convention; filters the Income-side daily view if added later
+  const [payerDrilldown, setPayerDrilldown] = useState(null)
+  const [incTargets,   setIncTargets]   = useState([])   // rows from income_targets for the current view
+  const [editIncTarget, setEditIncTarget] = useState(null) // category currently being edited, or null
+  const [incTargetDraft, setIncTargetDraft] = useState('')
+  const [catAllIncDrilldown, setCatAllIncDrilldown] = useState(null)
+
+  // ── Accounts v3: cash flow & forecasting ─────────────────────────────────
+  const [recurringTemplates, setRecurringTemplates] = useState([])
+  const [showAddRecurringTpl, setShowAddRecurringTpl] = useState(false)
+  const [newRecurringTpl, setNewRecurringTpl] = useState({type:'Expense',category:'',label:'',expected_amount:'',day_of_month:''})
+
+  // ── Accounts v3: reconciliation & closing ────────────────────────────────
+  const [monthLocks, setMonthLocks] = useState([])
+  const [reconAcctType, setReconAcctType] = useState('Cash A/c')
+  const [reconBusyId, setReconBusyId] = useState(null)
+  const [openingBalances, setOpeningBalances] = useState([])
   const [expVendorFilter, setExpVendorFilter] = useState('All')   // Daily Expenditure tab filter
   const [vendorDrilldown, setVendorDrilldown] = useState(null)    // vendor id currently showing its spend-history panel, or null
+  const [catAllDrilldown, setCatAllDrilldown] = useState(null)    // category name currently showing its all-expense drilldown, or null
 
   // ── Expenditure v2: multi-level category ─────────────────────────────────
   const [expSubCategory, setExpSubCategory] = useState('All')     // Daily Expenditure tab filter
@@ -623,10 +672,60 @@ function Accounts({role,userId}){
     setExpAuditLog(expenditureOnly)
   },[isAdmin])
 
+  // ── Accounts v3: payers ────────────────────────────────────────────────
+  const fetchPayers = useCallback(async()=>{
+    const {data,error}=await supabase.from('payers').select('*').eq('is_active',true).order('name')
+    // Table may not exist yet if the v3 migration hasn't been run — fail
+    // quiet, same "degrade gracefully" approach used for vendors/budgets.
+    if(!error)setPayers(data||[])
+    else console.warn('Payers not loaded (has the accounts v3 migration been run?):',error.message)
+  },[])
+
+  // ── Accounts v3: income collection targets for the current month ────────
+  const fetchIncTargets = useCallback(async(monthStr)=>{
+    const {data,error}=await supabase.from('income_targets').select('*').eq('month',monthStr)
+    if(!error)setIncTargets(data||[])
+    else console.warn('Income targets not loaded (has the accounts v3 migration been run?):',error.message)
+  },[])
+
+  // ── Accounts v3: recurring templates (forecast side only — see table
+  // comment in the migration; these never write to `accounts` directly) ──
+  const fetchRecurringTemplates = useCallback(async()=>{
+    const {data,error}=await supabase.from('recurring_templates').select('*').eq('is_active',true).order('day_of_month',{ascending:true,nullsFirst:false})
+    if(!error)setRecurringTemplates(data||[])
+    else console.warn('Recurring templates not loaded (has the accounts v3 migration been run?):',error.message)
+  },[])
+
+  // ── Accounts v3: month locks + opening-balance records ──────────────────
+  const fetchMonthLocks = useCallback(async()=>{
+    const {data,error}=await supabase.from('month_locks').select('*').eq('is_locked',true)
+    if(!error)setMonthLocks(data||[])
+    else console.warn('Month locks not loaded (has the accounts v3 migration been run?):',error.message)
+  },[])
+  const fetchOpeningBalances = useCallback(async()=>{
+    if(!isAdmin)return
+    const {data,error}=await supabase.from('month_opening_balances').select('*').order('month',{ascending:false}).limit(24)
+    if(!error)setOpeningBalances(data||[])
+    else console.warn('Opening balances not loaded (has the accounts v3 migration been run?):',error.message)
+  },[isAdmin])
+
   useEffect(()=>{
-    fetchEntries();fetchBudgets();fetchStaff();fetchVendors();fetchApprovalSettings();fetchPendingApprovals()
-    if(isAdmin){fetchDeletedRows();fetchAuditLog();fetchExportLog();fetchFinancials();fetchSuperintendentFlags();fetchExpAuditLog()}
-  },[fetchEntries,fetchBudgets,fetchStaff,fetchVendors,fetchApprovalSettings,fetchPendingApprovals,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,fetchSuperintendentFlags,fetchExpAuditLog,isAdmin])
+    fetchEntries();fetchBudgets();fetchStaff();fetchVendors();fetchApprovalSettings();fetchPendingApprovals();fetchPayers();fetchRecurringTemplates();fetchMonthLocks()
+    if(isAdmin){fetchDeletedRows();fetchAuditLog();fetchExportLog();fetchFinancials();fetchSuperintendentFlags();fetchExpAuditLog();fetchOpeningBalances()}
+  },[fetchEntries,fetchBudgets,fetchStaff,fetchVendors,fetchApprovalSettings,fetchPendingApprovals,fetchPayers,fetchRecurringTemplates,fetchMonthLocks,fetchDeletedRows,fetchAuditLog,fetchExportLog,fetchFinancials,fetchSuperintendentFlags,fetchExpAuditLog,fetchOpeningBalances,isAdmin])
+
+  useEffect(()=>{
+    fetchIncTargets(today.slice(0,7))
+  },[today,fetchIncTargets])
+
+  // ── Accounts v3: is a given (account_type, date) inside a locked month? ──
+  // Admin can still act on locked months (that's how a month gets reopened
+  // or corrected); everyone else is blocked. Pure lookup — no network call.
+  const isMonthLocked = useCallback((accountType,dateStr)=>{
+    if(isAdmin)return false
+    const mk=monthKey(dateStr)
+    return monthLocks.some(l=>l.account_type===accountType&&l.month===mk)
+  },[isAdmin,monthLocks])
 
   useEffect(()=>{
     if(isAdmin)fetchApprovalHistoryToday(today)
@@ -736,7 +835,7 @@ function Accounts({role,userId}){
     setEditEntry(item)
     setRows([{
       entry_date:item.entry_date,payment_date:item.payment_date||item.entry_date,type:item.type,category:item.category,
-      sub_category:item.sub_category||'',vendor_id:item.vendor_id||'',
+      sub_category:item.sub_category||'',vendor_id:item.vendor_id||'',payer_id:item.payer_id||'',
       amount:String(item.amount),payment_mode:item.payment_mode,
       account_type:item.account_type||'Cash A/c',
       voucher_head:item.voucher_head||'',
@@ -751,7 +850,7 @@ function Accounts({role,userId}){
     setEditEntry(null)
     setRows([{
       entry_date:today,payment_date:today,type:item.type,category:item.category,
-      sub_category:item.sub_category||'',vendor_id:item.vendor_id||'',
+      sub_category:item.sub_category||'',vendor_id:item.vendor_id||'',payer_id:item.payer_id||'',
       amount:String(item.amount),payment_mode:item.payment_mode,
       account_type:item.account_type||'Cash A/c',
       voucher_head:item.voucher_head||'',
@@ -790,6 +889,16 @@ function Accounts({role,userId}){
       alert('Transaction date cannot be in the future. Please check the date entered.')
       return
     }
+    // Accounts v3: month-end close/lock — a non-admin can't add/edit an
+    // entry dated inside a month that's already been closed for that
+    // account type. Admin is exempt (that's how a month gets corrected or
+    // reopened). Checked here rather than only at insert time so an edit
+    // that MOVES an entry INTO a locked month is caught too.
+    const lockedRow=rows.find(r=>isMonthLocked(r.account_type,r.entry_date))
+    if(lockedRow){
+      alert(`${monthKey(lockedRow.entry_date)} is closed for ${lockedRow.account_type}. Ask an admin to reopen that month before adding or editing entries in it.`)
+      return
+    }
     setSaving(true)
     const enteredByName = currentStaff?.name || role
     if(editEntry){
@@ -805,7 +914,7 @@ function Accounts({role,userId}){
       const r=rows[0],receiptUrl=await uploadReceipt(editEntry.id)
       const payload={
         entry_date:r.entry_date,payment_date:r.payment_date||r.entry_date,type:r.type,category:r.category,
-        sub_category:r.sub_category||null,vendor_id:r.vendor_id||null,
+        sub_category:r.sub_category||null,vendor_id:r.vendor_id||null,payer_id:r.payer_id||null,
         amount:Number(r.amount)||0,payment_mode:r.payment_mode,
         account_type:r.account_type,voucher_head:r.voucher_head,
         note:r.note,is_recurring:r.is_recurring,status:r.status,
@@ -868,7 +977,7 @@ function Accounts({role,userId}){
       })
       const payloads=rowMeta.map(({r,amt,needsApproval})=>({
         entry_date:r.entry_date,payment_date:r.payment_date||r.entry_date,type:r.type,category:r.category,
-        sub_category:r.sub_category||null,vendor_id:r.vendor_id||null,
+        sub_category:r.sub_category||null,vendor_id:r.vendor_id||null,payer_id:r.payer_id||null,
         amount:amt,payment_mode:r.payment_mode,
         account_type:r.account_type,voucher_head:r.voucher_head,
         note:r.note,is_recurring:r.is_recurring,status:needsApproval?'Pending':r.status,added_by:enteredByName,
@@ -1104,6 +1213,96 @@ function Accounts({role,userId}){
     const{data,error}=await supabase.from('vendors').insert({name,created_by:currentStaff?.name||role}).select()
     if(error){alert('Could not add vendor (has the expenditure v2 migration been run?): '+error.message);return}
     if(data?.[0]){setVendors(prev=>[...prev,data[0]].sort((a,b)=>a.name.localeCompare(b.name)));updateRow(i,'vendor_id',data[0].id)}
+  }
+
+  // ── Accounts v3: payers / income sources (mirrors addNewVendor) ─────────
+  const addNewPayer=async(i)=>{
+    const name=window.prompt('New payer/source name:')?.trim()
+    if(!name)return
+    const existing=payers.find(p=>p.name?.toLowerCase()===name.toLowerCase())
+    if(existing){updateRow(i,'payer_id',existing.id);return}
+    const{data,error}=await supabase.from('payers').insert({name,created_by:currentStaff?.name||role}).select()
+    if(error){alert('Could not add payer (has the accounts v3 migration been run?): '+error.message);return}
+    if(data?.[0]){setPayers(prev=>[...prev,data[0]].sort((a,b)=>a.name.localeCompare(b.name)));updateRow(i,'payer_id',data[0].id)}
+  }
+
+  // ── Accounts v3: save an income collection target for a category/month ──
+  const saveIncTarget=async(category,amount)=>{
+    const monthStr=today.slice(0,7)
+    const amt=Number(amount)||0
+    const{error}=await supabase.from('income_targets').upsert({category,month:monthStr,target_amount:amt,set_by:currentStaff?.name||role,set_at:new Date().toISOString()},{onConflict:'category,month'})
+    if(error){alert('Could not save income target (has the accounts v3 migration been run?): '+error.message);return}
+    setIncTargets(prev=>{
+      const others=prev.filter(t=>t.category!==category)
+      return [...others,{category,month:monthStr,target_amount:amt}]
+    })
+    setEditIncTarget(null)
+  }
+
+  // ── Accounts v3: recurring templates CRUD (forecast side only) ──────────
+  const addRecurringTemplate=async()=>{
+    const t=newRecurringTpl
+    if(!t.category||!t.label.trim()||!(Number(t.expected_amount)>0)){alert('Category, label, and an expected amount greater than 0 are required.');return}
+    const payload={
+      type:t.type,category:t.category,label:t.label.trim(),
+      expected_amount:Number(t.expected_amount),
+      day_of_month:t.day_of_month?Number(t.day_of_month):null,
+      created_by:currentStaff?.name||role,
+    }
+    const{data,error}=await supabase.from('recurring_templates').insert(payload).select()
+    if(error){alert('Could not add recurring item (has the accounts v3 migration been run?): '+error.message);return}
+    if(data?.[0])setRecurringTemplates(prev=>[...prev,data[0]].sort((a,b)=>(a.day_of_month||99)-(b.day_of_month||99)))
+    setNewRecurringTpl({type:'Expense',category:'',label:'',expected_amount:'',day_of_month:''})
+    setShowAddRecurringTpl(false)
+  }
+  const removeRecurringTemplate=async(id)=>{
+    if(!window.confirm('Remove this recurring forecast item? It will no longer appear in the forecast list.'))return
+    const{error}=await supabase.from('recurring_templates').update({is_active:false}).eq('id',id)
+    if(error){alert('Could not remove: '+error.message);return}
+    setRecurringTemplates(prev=>prev.filter(r=>r.id!==id))
+  }
+
+  // ── Accounts v3: bank reconciliation ─────────────────────────────────────
+  const toggleReconciled=async(entry)=>{
+    if(!isAdmin){alert('Only admin can mark entries reconciled.');return}
+    setReconBusyId(entry.id)
+    const nextVal=!entry.reconciled
+    const{error}=await supabase.from('accounts').update({
+      reconciled:nextVal,
+      reconciled_by:nextVal?(currentStaff?.name||role):null,
+      reconciled_at:nextVal?new Date().toISOString():null,
+    }).eq('id',entry.id)
+    setReconBusyId(null)
+    if(error){alert('Could not update reconciliation status (has the accounts v3 migration been run?): '+error.message);return}
+    fetchEntries()
+  }
+
+  // ── Accounts v3: month-end close / lock ──────────────────────────────────
+  const closeMonth=async(accountType,monthStr)=>{
+    if(!isAdmin)return
+    if(!window.confirm(`Close ${monthStr} for ${accountType}? Non-admin staff won't be able to add or edit entries dated in this month until it's reopened.`))return
+    const{error}=await supabase.from('month_locks').upsert({
+      account_type:accountType,month:monthStr,is_locked:true,
+      closed_by:currentStaff?.name||role,closed_at:new Date().toISOString(),
+      reopened_by:null,reopened_at:null,
+    },{onConflict:'account_type,month'})
+    if(error){alert('Could not close month (has the accounts v3 migration been run?): '+error.message);return}
+    fetchMonthLocks()
+    // Record the closing balance snapshot at the moment of closing, so a
+    // later month's opening balance can be checked against it.
+    const monthEntries=entries.filter(e=>e.account_type===accountType&&isConfirmed(e)&&monthKey(e.entry_date)<=monthStr)
+    const closingBalance=monthEntries.reduce((s,e)=>s+(e.type==='Income'?Number(e.amount):-Number(e.amount)),0)
+    const priorMonthEntries=entries.filter(e=>e.account_type===accountType&&isConfirmed(e)&&monthKey(e.entry_date)<monthStr)
+    const openingBalance=priorMonthEntries.reduce((s,e)=>s+(e.type==='Income'?Number(e.amount):-Number(e.amount)),0)
+    await supabase.from('month_opening_balances').upsert({account_type:accountType,month:monthStr,opening_balance:openingBalance,closing_balance:closingBalance},{onConflict:'account_type,month'})
+    fetchOpeningBalances()
+  }
+  const reopenMonth=async(accountType,monthStr)=>{
+    if(!isAdmin)return
+    if(!window.confirm(`Reopen ${monthStr} for ${accountType}? Staff will be able to add/edit entries in this month again.`))return
+    const{error}=await supabase.from('month_locks').update({is_locked:false,reopened_by:currentStaff?.name||role,reopened_at:new Date().toISOString()}).eq('account_type',accountType).eq('month',monthStr)
+    if(error){alert('Could not reopen month: '+error.message);return}
+    fetchMonthLocks()
   }
 
   // PHASE 1 FIX: budget save confirmation to prevent silent overwrite
@@ -2038,6 +2237,49 @@ function Accounts({role,userId}){
     w.document.close();w.print()
   }
 
+  // ── Accounts v3: one-click Monthly Report — pick any past month ─────────
+  // Same idea as the Weekly Report above (always all types/categories/
+  // accounts, no filter fiddling) but for a chosen 'YYYY-MM' month instead
+  // of a fixed last-7-days window, so admin can pull last month's (or any
+  // earlier month's) summary in one click without manually setting the
+  // Reports tab's date range each time.
+  const monthlyRptEntries = useMemo(()=>{
+    return entries
+      .filter(e=>isConfirmed(e)&&monthKey(e.entry_date)===monthlyRptMonth)
+      .sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0)
+  },[entries,monthlyRptMonth])
+
+  const monthlyRptTotals = useMemo(()=>{
+    const income  = monthlyRptEntries.filter(e=>e.type==='Income').reduce((s,e)=>s+Number(e.amount),0)
+    const expense = monthlyRptEntries.filter(e=>e.type==='Expense').reduce((s,e)=>s+Number(e.amount),0)
+    return { income, expense, net: income-expense, count: monthlyRptEntries.length }
+  },[monthlyRptEntries])
+
+  const monthlyRptByCategory = useMemo(()=>{
+    const map={}
+    monthlyRptEntries.forEach(e=>{
+      const k=e.category||'Other'
+      if(!map[k])map[k]={category:k,type:e.type,total:0,count:0}
+      map[k].total+=Number(e.amount);map[k].count+=1
+    })
+    return Object.values(map).sort((a,b)=>b.total-a.total)
+  },[monthlyRptEntries])
+
+  const monthlyRptLabel = useMemo(()=>new Date(monthlyRptMonth+'-01').toLocaleDateString('en-IN',{month:'long',year:'numeric'}),[monthlyRptMonth])
+  const monthlyRptFilterSummary = useMemo(()=>`Monthly Report — ${monthlyRptLabel} (all types, categories, accounts)`,[monthlyRptLabel])
+
+  const generateMonthlyReport=(format)=>{
+    const opts={
+      entries:monthlyRptEntries,totals:monthlyRptTotals,byCategory:monthlyRptByCategory,
+      title:`Monthly Report — ${monthlyRptLabel}`,filterSummary:monthlyRptFilterSummary,
+      logLabel:`Report (${format}): Monthly Report (${monthlyRptLabel})`,
+      dateFrom:`${monthlyRptMonth}-01`,dateTo:monthlyRptMonth,
+    }
+    if(format==='PDF')generateReportPDF(opts)
+    else if(format==='DOCX')generateReportDOCX(opts)
+    else generateReportExcel(opts)
+  }
+
   const reportFilterSummary = useMemo(()=>{
     const parts=[`Type: ${rptType}`]
     if(rptCategory!=='All')parts.push(`Category: ${rptCategory}`)
@@ -2126,6 +2368,40 @@ function Accounts({role,userId}){
       entries:v.entries.sort((a,b)=>b.entry_date<a.entry_date?-1:b.entry_date>a.entry_date?1:0),
     })).sort((a,b)=>b.total-a.total)
   },[entries,vendors])
+
+  // ── Accounts v3: per-payer income summary (mirrors vendorSpendSummary) ──
+  const payerSpendSummary = useMemo(()=>{
+    const map={}
+    entries.filter(e=>e.type==='Income'&&isConfirmed(e)&&e.payer_id).forEach(e=>{
+      if(!map[e.payer_id])map[e.payer_id]={payer_id:e.payer_id,total:0,count:0,lastDate:null,entries:[]}
+      map[e.payer_id].total+=Number(e.amount);map[e.payer_id].count+=1
+      if(!map[e.payer_id].lastDate||e.entry_date>map[e.payer_id].lastDate)map[e.payer_id].lastDate=e.entry_date
+      map[e.payer_id].entries.push(e)
+    })
+    return Object.values(map).map(p=>({
+      ...p,
+      payerName:payers.find(x=>x.id===p.payer_id)?.name||'Unknown payer',
+      entries:p.entries.sort((a,b)=>b.entry_date<a.entry_date?-1:b.entry_date>a.entry_date?1:0),
+    })).sort((a,b)=>b.total-a.total)
+  },[entries,payers])
+
+  // ── Accounts v3: all-income category summary (mirrors
+  // allExpenseCategorySummary) + collection target vs actual for this month ──
+  const allIncomeCategorySummary = useMemo(()=>{
+    const map={}
+    entries.filter(e=>e.type==='Income'&&isConfirmed(e)).forEach(e=>{
+      const cat=e.category||'Uncategorized'
+      if(!map[cat])map[cat]={category:cat,total:0,count:0,lastDate:null}
+      map[cat].total+=Number(e.amount);map[cat].count+=1
+      if(!map[cat].lastDate||e.entry_date>map[cat].lastDate)map[cat].lastDate=e.entry_date
+    })
+    const thisMonthStr=today.slice(0,7)
+    return Object.values(map).map(c=>{
+      const monthTotal=entries.filter(e=>e.type==='Income'&&isConfirmed(e)&&(e.category||'Uncategorized')===c.category&&monthKey(e.entry_date)===thisMonthStr).reduce((s,e)=>s+Number(e.amount),0)
+      const target=incTargets.find(t=>t.category===c.category)?.target_amount||0
+      return {...c,monthTotal,target,pctOfTarget:target>0?(monthTotal/target)*100:null}
+    }).sort((a,b)=>b.total-a.total)
+  },[entries,today,incTargets])
 
   // ── dedicated Daily Expenditure tab: CSV export + print register ─────────
   const exportExpenditureCSV=()=>{
@@ -2438,6 +2714,139 @@ function Accounts({role,userId}){
     entries.filter(e=>isConfirmed(e)&&e.type==='Expense'&&monthKey(e.entry_date)===thisMonth).forEach(e=>{map[e.category]=(map[e.category]||0)+Number(e.amount)})
     return map
   },[entries,thisMonth])
+
+  // ── Accounts v3: cash flow & forecasting (admin only) ────────────────────
+  // Three independent pieces, all derived from the same confirmed-entries
+  // data plus the recurring_templates table — none of them ever write to
+  // `accounts`, they only project/estimate:
+  //   1. monthEndProjection — where the cash balance is headed by month end,
+  //      given what's already confirmed this month plus what's still
+  //      expected (recurring templates not yet logged this month).
+  //   2. recurringForecast — which recurring templates are still
+  //      outstanding this month (expected but no matching entry logged
+  //      yet), so nothing gets forgotten.
+  //   3. trendProjection — a simple next-month estimate for income and
+  //      expense, based on the trailing 3-6 months' average.
+  const recurringForecast = useMemo(()=>{
+    if(!isAdmin||recurringTemplates.length===0)return[]
+    const thisMonthEntries=entries.filter(e=>isConfirmed(e)&&monthKey(e.entry_date)===thisMonth)
+    return recurringTemplates.map(t=>{
+      // "Logged already" = any confirmed entry this month of the same
+      // type+category whose amount is at least close to what's expected —
+      // a template isn't linked 1:1 to a specific entry, so this is a
+      // best-effort match rather than a hard foreign key.
+      const matched=thisMonthEntries.filter(e=>e.type===t.type&&e.category===t.category)
+      const loggedTotal=matched.reduce((s,e)=>s+Number(e.amount),0)
+      const outstanding=Math.max(t.expected_amount-loggedTotal,0)
+      return {...t,loggedTotal,outstanding,isLogged:loggedTotal>=t.expected_amount}
+    }).sort((a,b)=>(a.day_of_month||99)-(b.day_of_month||99))
+  },[isAdmin,recurringTemplates,entries,thisMonth])
+
+  const monthEndProjection = useMemo(()=>{
+    if(!isAdmin)return null
+    const thisMonthEntries=entries.filter(e=>isConfirmed(e)&&monthKey(e.entry_date)===thisMonth)
+    const incomeSoFar=thisMonthEntries.filter(e=>e.type==='Income').reduce((s,e)=>s+Number(e.amount),0)
+    const expenseSoFar=thisMonthEntries.filter(e=>e.type==='Expense').reduce((s,e)=>s+Number(e.amount),0)
+    const outstandingIncome=recurringForecast.filter(t=>t.type==='Income').reduce((s,t)=>s+t.outstanding,0)
+    const outstandingExpense=recurringForecast.filter(t=>t.type==='Expense').reduce((s,t)=>s+t.outstanding,0)
+    return {
+      incomeSoFar,expenseSoFar,netSoFar:incomeSoFar-expenseSoFar,
+      outstandingIncome,outstandingExpense,
+      projectedIncome:incomeSoFar+outstandingIncome,
+      projectedExpense:expenseSoFar+outstandingExpense,
+      projectedNet:(incomeSoFar+outstandingIncome)-(expenseSoFar+outstandingExpense),
+    }
+  },[isAdmin,entries,thisMonth,recurringForecast])
+
+  const trendProjection = useMemo(()=>{
+    if(!isAdmin)return null
+    // Trailing months, most recent first, EXCLUDING the current (still
+    // in-progress) month — a partial current month would understate the
+    // trend average.
+    const [ty,tm]=thisMonth.split('-').map(Number)
+    const trailing=[1,2,3,4,5,6].map(n=>{
+      const d=new Date(ty,tm-1-n,1)
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+    })
+    const monthlyTotals=trailing.map(mk=>{
+      const monthEntries=entries.filter(e=>isConfirmed(e)&&monthKey(e.entry_date)===mk)
+      return {
+        month:mk,
+        income:monthEntries.filter(e=>e.type==='Income').reduce((s,e)=>s+Number(e.amount),0),
+        expense:monthEntries.filter(e=>e.type==='Expense').reduce((s,e)=>s+Number(e.amount),0),
+      }
+    }).filter(m=>m.income>0||m.expense>0) // skip months with no data at all (e.g. before the portal was in use)
+    if(monthlyTotals.length===0)return null
+    const usedMonths=monthlyTotals.slice(0,Math.min(6,monthlyTotals.length))
+    const avgIncome=usedMonths.reduce((s,m)=>s+m.income,0)/usedMonths.length
+    const avgExpense=usedMonths.reduce((s,m)=>s+m.expense,0)/usedMonths.length
+    const nextMonthDate=new Date(ty,tm,1) // JS Date month is 0-indexed, so tm (1-indexed "this month") lands on next month
+    const nextMonthLabel=nextMonthDate.toLocaleDateString('en-IN',{month:'long',year:'numeric'})
+    return {
+      monthsUsed:usedMonths.length,avgIncome,avgExpense,avgNet:avgIncome-avgExpense,
+      nextMonthLabel,projectedIncome:avgIncome,projectedExpense:avgExpense,projectedNet:avgIncome-avgExpense,
+    }
+  },[isAdmin,entries,thisMonth])
+
+  // ── Accounts v3: reconciliation & closing (admin only) ───────────────────
+  const reconSummaryByAccount = useMemo(()=>{
+    if(!isAdmin)return[]
+    return ACCOUNT_TYPES.map(acct=>{
+      const acctEntries=entries.filter(e=>e.account_type===acct&&isConfirmed(e))
+      const unreconciled=acctEntries.filter(e=>!e.reconciled)
+      const unreconciledBalance=unreconciled.reduce((s,e)=>s+(e.type==='Income'?Number(e.amount):-Number(e.amount)),0)
+      return {account_type:acct,totalCount:acctEntries.length,unreconciledCount:unreconciled.length,unreconciledBalance}
+    })
+  },[isAdmin,entries])
+
+  // list of entries for the currently-selected reconciliation account/month,
+  // newest first — powers the checklist in the Reconciliation tab
+  const reconEntries = useMemo(()=>{
+    if(!isAdmin)return[]
+    return entries.filter(e=>e.account_type===reconAcctType&&isConfirmed(e)&&monthKey(e.entry_date)===thisMonth)
+      .sort((a,b)=>b.entry_date<a.entry_date?-1:b.entry_date>a.entry_date?1:0)
+  },[isAdmin,entries,reconAcctType,thisMonth])
+
+  // Every account type × the last 12 months, each flagged locked/open, so
+  // admin can close/reopen from one place rather than hunting for a month.
+  const monthLockGrid = useMemo(()=>{
+    if(!isAdmin)return[]
+    const [ty,tm]=thisMonth.split('-').map(Number)
+    const months=[0,1,2,3,4,5,6,7,8,9,10,11].map(n=>{
+      const d=new Date(ty,tm-1-n,1)
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+    })
+    return ACCOUNT_TYPES.map(acct=>({
+      account_type:acct,
+      months:months.map(m=>({month:m,isLocked:monthLocks.some(l=>l.account_type===acct&&l.month===m)})),
+    }))
+  },[isAdmin,thisMonth,monthLocks])
+
+  // Opening-balance carry-forward check: for every recorded month, does its
+  // opening balance actually match the PRIOR recorded month's closing
+  // balance? A mismatch means something changed history after that prior
+  // month was closed (a backdated edit, a deleted/restored entry, etc.).
+  const openingBalanceChecks = useMemo(()=>{
+    if(!isAdmin)return[]
+    const byAccount={}
+    openingBalances.forEach(b=>{
+      if(!byAccount[b.account_type])byAccount[b.account_type]=[]
+      byAccount[b.account_type].push(b)
+    })
+    const results=[]
+    Object.entries(byAccount).forEach(([acct,rows])=>{
+      const sorted=[...rows].sort((a,b)=>a.month<b.month?-1:1)
+      for(let i=1;i<sorted.length;i++){
+        const prior=sorted[i-1],cur=sorted[i]
+        const expectedOpening=prior.closing_balance
+        const drift=Number(cur.opening_balance)-Number(expectedOpening)
+        if(Math.abs(drift)>0.5){ // ignore sub-rupee floating point noise
+          results.push({account_type:acct,month:cur.month,priorMonth:prior.month,expectedOpening,actualOpening:cur.opening_balance,drift})
+        }
+      }
+    })
+    return results
+  },[isAdmin,openingBalances])
 
   // ── Expenditure v2: per-staff expenditure dashboard (admin only) ────────
   // Who is entering how much, how often, and in which categories — surfaces
@@ -2841,6 +3250,18 @@ function Accounts({role,userId}){
                     </select>
                   </div>
                 )}
+                {row.type==='Income'&&(
+                  <div><label style={lStyle}>Payer / Source <span style={{fontWeight:400,color:'#94a3b8'}}>(optional)</span></label>
+                    <select value={row.payer_id||''} onChange={e=>{
+                      if(e.target.value==='__add_payer__'){addNewPayer(i);return}
+                      updateRow(i,'payer_id',e.target.value)
+                    }} style={iStyle}>
+                      <option value="">None</option>
+                      {payers.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                      <option value="__add_payer__">+ Add New Payer…</option>
+                    </select>
+                  </div>
+                )}
                 <div><label style={lStyle}>Amount <span style={{color:'#dc2626'}}>*</span></label><input type="number" min="0.01" step="0.01" placeholder="0" value={row.amount} onChange={e=>updateRow(i,'amount',e.target.value)} required style={iStyle}/>
                   {row.type==='Expense'&&(()=>{
                     const amt=Number(row.amount)||0
@@ -2919,6 +3340,8 @@ function Accounts({role,userId}){
         ...(isAdmin?[['approvals',pendingApprovals.length>0?`🔏 Approvals (${pendingApprovals.length})`:'🔏 Approvals']]:[] ),
         ...(isAdmin?[['staffspend','🧑‍💼 Staff Spend']]:[] ),
         ...(isAdmin?[['savings','💹 Savings Tracker']]:[] ),
+        ...(isAdmin?[['forecast','📈 Forecast']]:[] ),
+        ...(isAdmin?[['reconciliation','🔒 Reconciliation']]:[] ),
         // PHASE 4: Balance Sheet tab (admin only)
         ...(isAdmin?[['balancesheet','📒 Balance Sheet']]:[] ),
         // Course-wise fee collection + automated anomaly detection for the
@@ -3105,6 +3528,82 @@ function Accounts({role,userId}){
           </div>
         </div>
 
+        {/* ── All expense categories, built from every actual expense entry ── */}
+        {allExpenseCategorySummary.length>0&&(()=>{
+          const catIcons={Salary:'💼',Electricity:'💡',Stationery:'📎',Maintenance:'🔧',Transport:'🚌',Event:'🎉',Uncategorized:'❔'}
+          const grandTotal=allExpenseCategorySummary.reduce((s,c)=>s+c.total,0)
+          const topCat=allExpenseCategorySummary[0]
+          return(
+          <div style={{...chartCard,marginBottom:20}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems: isMobile?'flex-start':'center',flexDirection: isMobile?'column':'row',gap:10,marginBottom:18}}>
+              <div>
+                <h3 style={{...chartTitle,marginBottom:3}}>📂 All Expense Categories</h3>
+                <p style={{fontSize:12,color:'#94a3b8',margin:0}}>Every category ever used across your expense entries, ranked by total spend</p>
+              </div>
+              <div style={{display:'flex',gap: isMobile?10:18,flexWrap:'wrap'}}>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Categories</div>
+                  <div style={{fontSize:18,fontWeight:800,color:'#1e3a5f'}}>{allExpenseCategorySummary.length}</div>
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Spend</div>
+                  <div style={{fontSize:18,fontWeight:800,color:'#7f1d1d'}}>{fmt(grandTotal)}</div>
+                </div>
+                {topCat&&<div style={{textAlign:'right'}}>
+                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Top Category</div>
+                  <div style={{fontSize:14,fontWeight:800,color:'#1e3a5f'}}>{catIcons[topCat.category]||'🏷️'} {topCat.category}</div>
+                </div>}
+              </div>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'repeat(auto-fill,minmax(260px,1fr))',gap:12}}>
+              {allExpenseCategorySummary.map((c,idx)=>{
+                const expanded=catAllDrilldown===c.category
+                const pct=grandTotal>0?(c.total/grandTotal)*100:0
+                const color=CHART_COLORS[idx%CHART_COLORS.length]
+                const catEntries=expanded?entries.filter(e=>e.type==='Expense'&&isConfirmed(e)&&(e.category||'Uncategorized')===c.category).sort((a,b)=>b.entry_date<a.entry_date?-1:b.entry_date>a.entry_date?1:0):[]
+                return (
+                  <div key={c.category} style={{border:'1px solid #f1f5f9',borderRadius:10,overflow:'hidden',backgroundColor:expanded?'#fafbfc':'white',transition:'background-color 0.2s ease',gridColumn: expanded&&!isMobile?'1 / -1':undefined}}>
+                    <div onClick={()=>setCatAllDrilldown(expanded?null:c.category)} style={{padding:'14px 16px',cursor:'pointer'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+                        <div style={{display:'flex',alignItems:'center',gap:9,minWidth:0}}>
+                          <span style={{fontSize:20,width:34,height:34,borderRadius:9,backgroundColor:`${color}1a`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcons[c.category]||'🏷️'}</span>
+                          <div style={{minWidth:0}}>
+                            <div style={{fontWeight:700,color:'#1e293b',fontSize:14,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{c.category}</div>
+                            <div style={{fontSize:11,color:'#94a3b8'}}>{c.count} entr{c.count===1?'y':'ies'} · last {c.lastDate}</div>
+                          </div>
+                        </div>
+                        <span style={{fontSize:14,color:'#cbd5e1',flexShrink:0,marginLeft:6}}>{expanded?'▾':'▸'}</span>
+                      </div>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
+                        <strong style={{fontSize:17,fontWeight:800,color:'#1e3a5f'}}>{fmt(c.total)}</strong>
+                        <span style={{fontSize:11,fontWeight:700,color:'#94a3b8'}}>{pct.toFixed(1)}% of total</span>
+                      </div>
+                      <div style={{height:6,borderRadius:999,backgroundColor:'#f1f5f9',overflow:'hidden'}}>
+                        <div style={{height:'100%',width:`${Math.max(pct,2)}%`,borderRadius:999,backgroundColor:color,transition:'width 0.3s ease'}}/>
+                      </div>
+                    </div>
+                    {expanded&&(
+                      <div style={{padding:'0 16px 14px',borderTop:'1px solid #f1f5f9',marginTop:2}}>
+                        <div style={{display:'flex',flexDirection:'column',gap:0,marginTop:10}}>
+                          {catEntries.slice(0,10).map(e=>(
+                            <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',fontSize:12,borderBottom:'1px solid #f8fafc'}}>
+                              <span style={{color:'#64748b'}}>{e.entry_date}{e.sub_category?` · ${e.sub_category}`:''}{e.voucher_head?` · ${e.voucher_head}`:''}{e.note?` — ${e.note}`:''}</span>
+                              <strong style={{color:'#dc2626',flexShrink:0,marginLeft:8}}>{fmt(e.amount)}</strong>
+                            </div>
+                          ))}
+                          {catEntries.length>10&&<p style={{fontSize:11,color:'#94a3b8',margin:'8px 0 0'}}>+{catEntries.length-10} more entr{catEntries.length-10===1?'y':'ies'}</p>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          )
+        })()}
+
         {/* ── Expenditure v2: vendor spend summary + drilldown ── */}
         {vendorSpendSummary.length>0&&(
           <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
@@ -3172,6 +3671,36 @@ function Accounts({role,userId}){
         <div style={{backgroundColor:'#831843',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📑 Professional Report Generator</h2>
           <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Build a filtered financial report and export it as a letterheaded PDF, Word (DOCX), or Excel file — ready to print and sign.</p>
+        </div>
+
+        {/* ── Accounts v3: one-click Monthly Report — pick any past month ── */}
+        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',borderLeft:'4px solid #0c4a6e'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexWrap:'wrap',gap:10}}>
+            <div>
+              <h3 style={{...chartTitle,fontSize:15,margin:0}}>🗓️ Monthly Report — pick any month</h3>
+              <p style={{fontSize:12,color:'#94a3b8',margin:'4px 0 0'}}>{monthlyRptLabel} · {monthlyRptTotals.count} entries · no filters needed, one click</p>
+            </div>
+            <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
+              <input type="month" value={monthlyRptMonth} max={today.slice(0,7)} onChange={e=>setMonthlyRptMonth(e.target.value)} style={{...iStyle,width:'auto'}}/>
+              <button onClick={()=>generateMonthlyReport('PDF')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='pdf'?'#94a3b8':'#dc2626',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='pdf'?'⏳ Generating…':'📄 PDF'}</button>
+              <button onClick={()=>generateMonthlyReport('DOCX')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='docx'?'#94a3b8':'#1d4ed8',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='docx'?'⏳ Generating…':'📝 DOCX'}</button>
+              <button onClick={()=>generateMonthlyReport('Excel')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='excel'?'#94a3b8':'#16a34a',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='excel'?'⏳ Generating…':'📊 Excel'}</button>
+            </div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginTop:8}}>
+            <div style={{backgroundColor:'#dcfce7',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid #16a34a'}}>
+              <p style={{fontSize:11,color:'#16a34a',fontWeight:600,margin:'0 0 2px'}}>Income</p>
+              <p style={{fontSize:16,fontWeight:800,color:'#16a34a',margin:0}}>{fmt(monthlyRptTotals.income)}</p>
+            </div>
+            <div style={{backgroundColor:'#fee2e2',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid #dc2626'}}>
+              <p style={{fontSize:11,color:'#dc2626',fontWeight:600,margin:'0 0 2px'}}>Expense</p>
+              <p style={{fontSize:16,fontWeight:800,color:'#dc2626',margin:0}}>{fmt(monthlyRptTotals.expense)}</p>
+            </div>
+            <div style={{backgroundColor:'#eff6ff',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid #1e3a5f'}}>
+              <p style={{fontSize:11,color:'#1e3a5f',fontWeight:600,margin:'0 0 2px'}}>Net</p>
+              <p style={{fontSize:16,fontWeight:800,color:'#1e3a5f',margin:0}}>{fmt(monthlyRptTotals.net)}</p>
+            </div>
+          </div>
         </div>
 
         {/* ── Weekly Report for Admin's PA — one-click, always last 7 days ── */}
@@ -3605,6 +4134,165 @@ function Accounts({role,userId}){
     )}
 
     {/* ══ TAB: SAVINGS TRACKER (admin only) ══ */}
+    {activeTab==='forecast'&&isAdmin&&(
+      <div>
+        <div style={{backgroundColor:'#0c4a6e',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+          <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📈 Cash Flow & Forecast</h2>
+          <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Where this month is headed, what recurring items are still outstanding, and a trend-based estimate for next month.</p>
+        </div>
+
+        {/* ── month-end balance projection ── */}
+        {monthEndProjection&&(
+          <div style={{...chartCard,marginBottom:20}}>
+            <h3 style={{...chartTitle,fontSize:15}}>🎯 Month-End Projection — {new Date(thisMonth+'-01').toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</h3>
+            <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr 1fr':'repeat(3,1fr)',gap: isMobile?10:14,marginBottom:16}}>
+              <StatCard label="Confirmed So Far" value={monthEndProjection.netSoFar} color={monthEndProjection.netSoFar>=0?'#16a34a':'#dc2626'} bg={monthEndProjection.netSoFar>=0?'#dcfce7':'#fee2e2'} icon="✅" sub={`${fmt(monthEndProjection.incomeSoFar)} in · ${fmt(monthEndProjection.expenseSoFar)} out`}/>
+              <StatCard label="Still Outstanding" value={monthEndProjection.outstandingIncome-monthEndProjection.outstandingExpense} color="#f59e0b" bg="#fffbeb" icon="⏳" sub={`${fmt(monthEndProjection.outstandingIncome)} in · ${fmt(monthEndProjection.outstandingExpense)} out`}/>
+              <StatCard label="Projected Month-End" value={monthEndProjection.projectedNet} color={monthEndProjection.projectedNet>=0?'#16a34a':'#dc2626'} bg={monthEndProjection.projectedNet>=0?'#dcfce7':'#fee2e2'} icon="🎯" sub={`${fmt(monthEndProjection.projectedIncome)} in · ${fmt(monthEndProjection.projectedExpense)} out`}/>
+            </div>
+            <p style={{fontSize:11,color:'#94a3b8',margin:0}}>"Still Outstanding" is drawn from recurring items below that haven't been fully logged yet this month — set these up so the projection reflects reality.</p>
+          </div>
+        )}
+
+        {/* ── recurring items forecast ── */}
+        <div style={{...chartCard,marginBottom:20}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,flexWrap:'wrap',gap:8}}>
+            <h3 style={{...chartTitle,fontSize:15,marginBottom:0}}>🔁 Recurring Items — This Month</h3>
+            <button onClick={()=>setShowAddRecurringTpl(v=>!v)} style={{...smallBtn('#eff6ff','#1e3a5f'),fontSize:12}}>{showAddRecurringTpl?'✖ Cancel':'+ Add Recurring Item'}</button>
+          </div>
+
+          {showAddRecurringTpl&&(
+            <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'1fr 1fr 1fr 1fr auto',gap:8,marginBottom:16,padding:12,backgroundColor:'#f8fafc',borderRadius:8}}>
+              <select value={newRecurringTpl.type} onChange={e=>setNewRecurringTpl(p=>({...p,type:e.target.value,category:''}))} style={iStyle}>
+                <option value="Expense">Expense</option>
+                <option value="Income">Income</option>
+              </select>
+              <select value={newRecurringTpl.category} onChange={e=>setNewRecurringTpl(p=>({...p,category:e.target.value}))} style={iStyle}>
+                <option value="">Category…</option>
+                {(newRecurringTpl.type==='Income'?INCOME_CATEGORIES:expenseCategoryOptions).map(c=><option key={c}>{c}</option>)}
+              </select>
+              <input type="text" placeholder="Label (e.g. Staff Salary)" value={newRecurringTpl.label} onChange={e=>setNewRecurringTpl(p=>({...p,label:e.target.value}))} style={iStyle}/>
+              <input type="number" min="0" placeholder="Expected ₹" value={newRecurringTpl.expected_amount} onChange={e=>setNewRecurringTpl(p=>({...p,expected_amount:e.target.value}))} style={iStyle}/>
+              <button onClick={addRecurringTemplate} style={{...smallBtn('#dcfce7','#16a34a'),padding:'10px 16px'}}>Add</button>
+            </div>
+          )}
+
+          {recurringForecast.length===0?(
+            <p style={{color:'#94a3b8',textAlign:'center',padding:24,fontSize:13}}>No recurring items set up yet. Add rent, salary, or standing donations here so the month-end projection knows what's still expected.</p>
+          ):(
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {recurringForecast.map(t=>(
+                <div key={t.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',border:'1px solid #f1f5f9',borderRadius:8}}>
+                  <div>
+                    <strong style={{color:'#1e293b',fontSize:13}}>{t.label}</strong>
+                    <span style={{fontSize:11,color:'#94a3b8',marginLeft:8}}>{t.type} · {t.category}{t.day_of_month?` · around day ${t.day_of_month}`:''}</span>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:10}}>
+                    {t.isLogged?(
+                      <span style={{padding:'3px 9px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#dcfce7',color:'#16a34a'}}>✔ Logged {fmt(t.loggedTotal)}</span>
+                    ):(
+                      <span style={{padding:'3px 9px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#fffbeb',color:'#b45309'}}>⏳ {fmt(t.outstanding)} outstanding</span>
+                    )}
+                    <button onClick={()=>removeRecurringTemplate(t.id)} style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:13}}>✖</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── trend-based next-month projection ── */}
+        {trendProjection&&(
+          <div style={{...chartCard,marginBottom:20}}>
+            <h3 style={{...chartTitle,fontSize:15}}>📊 Trend Projection — {trendProjection.nextMonthLabel}</h3>
+            <p style={{fontSize:11,color:'#94a3b8',margin:'0 0 14px'}}>Based on the average of the last {trendProjection.monthsUsed} month{trendProjection.monthsUsed===1?'':'s'} with recorded activity.</p>
+            <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr 1fr':'repeat(3,1fr)',gap: isMobile?10:14}}>
+              <StatCard label="Projected Income" value={trendProjection.projectedIncome} color="#16a34a" bg="#dcfce7" icon="💰"/>
+              <StatCard label="Projected Expense" value={trendProjection.projectedExpense} color="#dc2626" bg="#fee2e2" icon="💸"/>
+              <StatCard label="Projected Net" value={trendProjection.projectedNet} color={trendProjection.projectedNet>=0?'#16a34a':'#dc2626'} bg={trendProjection.projectedNet>=0?'#dcfce7':'#fee2e2'} icon="📈"/>
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+
+    {activeTab==='reconciliation'&&isAdmin&&(
+      <div>
+        <div style={{backgroundColor:'#374151',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+          <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>🔒 Reconciliation & Closing</h2>
+          <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Match entries against your bank statement, close a month once it's settled, and check for backdated changes to closed history.</p>
+        </div>
+
+        {/* ── unreconciled balance per account type ── */}
+        <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr 1fr' : `repeat(${ACCOUNT_TYPES.length},1fr)`,gap: isMobile ? 10 : 14,marginBottom:24}}>
+          {reconSummaryByAccount.map(r=>(
+            <StatCard key={r.account_type} label={`${r.account_type} — Unreconciled`} value={r.unreconciledBalance} color={r.unreconciledCount>0?'#b45309':'#16a34a'} bg={r.unreconciledCount>0?'#fffbeb':'#dcfce7'} icon={r.unreconciledCount>0?'⏳':'✔'} sub={`${r.unreconciledCount} of ${r.totalCount} entries`}/>
+          ))}
+        </div>
+
+        {/* ── per-entry reconciliation checklist for this month ── */}
+        <div style={{...chartCard,marginBottom:20}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,flexWrap:'wrap',gap:8}}>
+            <h3 style={{...chartTitle,fontSize:15,marginBottom:0}}>🏦 Bank Reconciliation — {new Date(thisMonth+'-01').toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</h3>
+            <select value={reconAcctType} onChange={e=>setReconAcctType(e.target.value)} style={{...iStyle,width:'auto'}}>
+              {ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}
+            </select>
+          </div>
+          {reconEntries.length===0?(
+            <p style={{color:'#94a3b8',textAlign:'center',padding:24,fontSize:13}}>No confirmed entries for {reconAcctType} this month.</p>
+          ):(
+            <div style={{display:'flex',flexDirection:'column',gap:0,maxHeight:420,overflowY:'auto'}}>
+              {reconEntries.map(e=>(
+                <label key={e.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 4px',borderBottom:'1px solid #f8fafc',cursor:reconBusyId===e.id?'wait':'pointer',opacity:reconBusyId===e.id?0.6:1}}>
+                  <input type="checkbox" checked={!!e.reconciled} disabled={reconBusyId===e.id} onChange={()=>toggleReconciled(e)}/>
+                  <span style={{fontSize:12,color:'#64748b',minWidth:80}}>{e.entry_date}</span>
+                  <span style={{fontSize:12,color:'#1e293b',flex:1,minWidth:0,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{e.category}{e.note?` — ${e.note}`:''}</span>
+                  <strong style={{fontSize:13,color:e.type==='Income'?'#16a34a':'#dc2626',flexShrink:0}}>{e.type==='Income'?'+':'−'}{fmt(e.amount)}</strong>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── month-end close / lock ── */}
+        <div style={{...chartCard,marginBottom:20}}>
+          <h3 style={{...chartTitle,fontSize:15}}>📅 Month-End Close</h3>
+          <p style={{fontSize:11,color:'#94a3b8',margin:'0 0 14px'}}>Closing a month blocks non-admin staff from adding or editing entries dated in it. You can always reopen it here.</p>
+          {monthLockGrid.map(g=>(
+            <div key={g.account_type} style={{marginBottom:16}}>
+              <div style={{fontSize:12,fontWeight:700,color:'#374151',marginBottom:8}}>{g.account_type}</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                {g.months.map(m=>(
+                  <button key={m.month} onClick={()=>m.isLocked?reopenMonth(g.account_type,m.month):closeMonth(g.account_type,m.month)}
+                    style={{padding:'6px 12px',borderRadius:999,border:'1px solid',borderColor:m.isLocked?'#fecaca':'#e2e8f0',backgroundColor:m.isLocked?'#fef2f2':'#f8fafc',color:m.isLocked?'#b91c1c':'#64748b',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                    {m.isLocked?'🔒':'🔓'} {m.month}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── opening-balance carry-forward check ── */}
+        <div style={chartCard}>
+          <h3 style={{...chartTitle,fontSize:15}}>🔍 Opening Balance Carry-Forward Check</h3>
+          {openingBalanceChecks.length===0?(
+            <p style={{color:'#16a34a',fontSize:13,padding:'8px 0'}}>✔ No mismatches found — every checked month's opening balance matches the prior month's closing balance.</p>
+          ):(
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {openingBalanceChecks.map((c,i)=>(
+                <div key={i} style={{padding:'10px 14px',border:'1px solid #fecaca',backgroundColor:'#fef2f2',borderRadius:8}}>
+                  <strong style={{color:'#b91c1c',fontSize:13}}>⚠ {c.account_type} — {c.month}</strong>
+                  <p style={{fontSize:12,color:'#7f1d1d',margin:'4px 0 0'}}>Opening balance is {fmt(c.actualOpening)}, but {c.priorMonth}'s closing balance was {fmt(c.expectedOpening)} — a difference of {fmt(Math.abs(c.drift))}. This usually means an entry in {c.priorMonth} or earlier was added, edited, or deleted after that month was closed.</p>
+                </div>
+              ))}
+            </div>
+          )}
+          <p style={{fontSize:11,color:'#94a3b8',margin:'12px 0 0'}}>This check only compares months that have been closed at least once (closing a month records its balance snapshot above).</p>
+        </div>
+      </div>
+    )}
+
     {activeTab==='savings'&&isAdmin&&(
       <div>
         <div style={{backgroundColor:'#064e3b',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
@@ -3810,7 +4498,148 @@ function Accounts({role,userId}){
       <AuditMonitor entries={entries} isMobile={isMobile}/>
     )}
     {activeTab==='income'&&(
-      <IncomeAnalysis entries={entries} today={today} isMobile={isMobile}/>
+      <div>
+        <IncomeAnalysis entries={entries} today={today} isMobile={isMobile}/>
+
+        {/* ── Accounts v3: income collection targets vs actual + all
+            income categories, built from every actual income entry
+            (mirrors the expense "All Expense Categories" panel) ── */}
+        {allIncomeCategorySummary.length>0&&(()=>{
+          const catIcons={Admission:'🎓',Fees:'💳',Hostel:'🏠',Advance:'⏩',Donation:'🎁',Registration:'📝',Uncategorized:'❔'}
+          const grandTotal=allIncomeCategorySummary.reduce((s,c)=>s+c.total,0)
+          const topCat=allIncomeCategorySummary[0]
+          return(
+          <div style={{...chartCard,marginTop:20,marginBottom:20}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems: isMobile?'flex-start':'center',flexDirection: isMobile?'column':'row',gap:10,marginBottom:18}}>
+              <div>
+                <h3 style={{...chartTitle,marginBottom:3}}>📂 All Income Categories</h3>
+                <p style={{fontSize:12,color:'#94a3b8',margin:0}}>Every category ever used across your income entries, with this month's collection target</p>
+              </div>
+              <div style={{display:'flex',gap: isMobile?10:18,flexWrap:'wrap'}}>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Categories</div>
+                  <div style={{fontSize:18,fontWeight:800,color:'#1e3a5f'}}>{allIncomeCategorySummary.length}</div>
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Collected</div>
+                  <div style={{fontSize:18,fontWeight:800,color:'#047857'}}>{fmt(grandTotal)}</div>
+                </div>
+                {topCat&&<div style={{textAlign:'right'}}>
+                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Top Category</div>
+                  <div style={{fontSize:14,fontWeight:800,color:'#1e3a5f'}}>{catIcons[topCat.category]||'🏷️'} {topCat.category}</div>
+                </div>}
+              </div>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'repeat(auto-fill,minmax(270px,1fr))',gap:12}}>
+              {allIncomeCategorySummary.map((c,idx)=>{
+                const expanded=catAllIncDrilldown===c.category
+                const pct=grandTotal>0?(c.total/grandTotal)*100:0
+                const color=CHART_COLORS[idx%CHART_COLORS.length]
+                const catEntries=expanded?entries.filter(e=>e.type==='Income'&&isConfirmed(e)&&(e.category||'Uncategorized')===c.category).sort((a,b)=>b.entry_date<a.entry_date?-1:b.entry_date>a.entry_date?1:0):[]
+                const editingTarget=editIncTarget===c.category
+                return (
+                  <div key={c.category} style={{border:'1px solid #f1f5f9',borderRadius:10,overflow:'hidden',backgroundColor:expanded?'#fafbfc':'white',transition:'background-color 0.2s ease',gridColumn: expanded&&!isMobile?'1 / -1':undefined}}>
+                    <div style={{padding:'14px 16px'}}>
+                      <div onClick={()=>setCatAllIncDrilldown(expanded?null:c.category)} style={{cursor:'pointer'}}>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+                          <div style={{display:'flex',alignItems:'center',gap:9,minWidth:0}}>
+                            <span style={{fontSize:20,width:34,height:34,borderRadius:9,backgroundColor:`${color}1a`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcons[c.category]||'🏷️'}</span>
+                            <div style={{minWidth:0}}>
+                              <div style={{fontWeight:700,color:'#1e293b',fontSize:14,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{c.category}</div>
+                              <div style={{fontSize:11,color:'#94a3b8'}}>{c.count} entr{c.count===1?'y':'ies'} · last {c.lastDate}</div>
+                            </div>
+                          </div>
+                          <span style={{fontSize:14,color:'#cbd5e1',flexShrink:0,marginLeft:6}}>{expanded?'▾':'▸'}</span>
+                        </div>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
+                          <strong style={{fontSize:17,fontWeight:800,color:'#1e3a5f'}}>{fmt(c.total)}</strong>
+                          <span style={{fontSize:11,fontWeight:700,color:'#94a3b8'}}>{pct.toFixed(1)}% of total</span>
+                        </div>
+                        <div style={{height:6,borderRadius:999,backgroundColor:'#f1f5f9',overflow:'hidden'}}>
+                          <div style={{height:'100%',width:`${Math.max(pct,2)}%`,borderRadius:999,backgroundColor:color,transition:'width 0.3s ease'}}/>
+                        </div>
+                      </div>
+
+                      {/* ── collection target vs actual, this month ── */}
+                      <div style={{marginTop:12,paddingTop:10,borderTop:'1px dashed #f1f5f9'}} onClick={e=>e.stopPropagation()}>
+                        {editingTarget?(
+                          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                            <input type="number" min="0" step="1" autoFocus value={incTargetDraft} onChange={e=>setIncTargetDraft(e.target.value)} placeholder="Target ₹" style={{...iStyle,padding:'6px 9px',fontSize:12}}/>
+                            <button onClick={()=>saveIncTarget(c.category,incTargetDraft)} style={{...smallBtn('#dcfce7','#16a34a'),fontSize:11}}>✔</button>
+                            <button onClick={()=>setEditIncTarget(null)} style={{...smallBtn('#f1f5f9','#64748b'),fontSize:11}}>✖</button>
+                          </div>
+                        ):c.target>0?(
+                          <div>
+                            <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'#64748b',marginBottom:4}}>
+                              <span>This month: {fmt(c.monthTotal)} of {fmt(c.target)} target</span>
+                              <button onClick={()=>{setEditIncTarget(c.category);setIncTargetDraft(String(c.target))}} style={{background:'none',border:'none',color:'#0891b2',fontSize:11,fontWeight:700,cursor:'pointer',padding:0}}>Edit</button>
+                            </div>
+                            <div style={{height:5,borderRadius:999,backgroundColor:'#f1f5f9',overflow:'hidden'}}>
+                              <div style={{height:'100%',width:`${Math.min(c.pctOfTarget||0,100)}%`,borderRadius:999,backgroundColor:(c.pctOfTarget||0)>=100?'#16a34a':(c.pctOfTarget||0)>=60?'#f59e0b':'#dc2626',transition:'width 0.3s ease'}}/>
+                            </div>
+                          </div>
+                        ):(
+                          <button onClick={()=>{setEditIncTarget(c.category);setIncTargetDraft('')}} style={{background:'none',border:'none',color:'#0891b2',fontSize:11,fontWeight:700,cursor:'pointer',padding:0}}>+ Set this month's target</button>
+                        )}
+                      </div>
+                    </div>
+                    {expanded&&(
+                      <div style={{padding:'0 16px 14px',borderTop:'1px solid #f1f5f9',marginTop:2}}>
+                        <div style={{display:'flex',flexDirection:'column',gap:0,marginTop:10}}>
+                          {catEntries.slice(0,10).map(e=>(
+                            <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',fontSize:12,borderBottom:'1px solid #f8fafc'}}>
+                              <span style={{color:'#64748b'}}>{e.entry_date}{e.note?` — ${e.note}`:''}</span>
+                              <strong style={{color:'#16a34a',flexShrink:0,marginLeft:8}}>{fmt(e.amount)}</strong>
+                            </div>
+                          ))}
+                          {catEntries.length>10&&<p style={{fontSize:11,color:'#94a3b8',margin:'8px 0 0'}}>+{catEntries.length-10} more entr{catEntries.length-10===1?'y':'ies'}</p>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          )
+        })()}
+
+        {/* ── Accounts v3: payer / source spend summary + drilldown
+            (mirrors the expenditure Vendor/Payee Spend panel) ── */}
+        {payerSpendSummary.length>0&&(
+          <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
+            <h3 style={{...chartTitle,fontSize:15,marginBottom:12}}>🧑‍🤝‍🧑 Payer / Source Collection</h3>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {payerSpendSummary.map(p=>{
+                const expanded=payerDrilldown===p.payer_id
+                return (
+                  <div key={p.payer_id} style={{border:'1px solid #f1f5f9',borderRadius:8}}>
+                    <div onClick={()=>setPayerDrilldown(expanded?null:p.payer_id)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',cursor:'pointer'}}>
+                      <div>
+                        <strong style={{color:'#1e293b'}}>{expanded?'▾':'▸'} {p.payerName}</strong>
+                        <span style={{fontSize:11,color:'#94a3b8',marginLeft:8}}>{p.count} payment{p.count===1?'':'s'} · last on {p.lastDate}</span>
+                      </div>
+                      <strong style={{color:'#047857'}}>{fmt(p.total)}</strong>
+                    </div>
+                    {expanded&&(
+                      <div style={{padding:'0 14px 12px',borderTop:'1px solid #f8fafc'}}>
+                        {p.entries.slice(0,10).map(e=>(
+                          <div key={e.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',fontSize:12,borderBottom:'1px solid #f8fafc'}}>
+                            <span style={{color:'#64748b'}}>{e.entry_date} · {e.category}{e.note?` — ${e.note}`:''}</span>
+                            <strong style={{color:'#16a34a'}}>{fmt(e.amount)}</strong>
+                          </div>
+                        ))}
+                        {p.entries.length>10&&<p style={{fontSize:11,color:'#94a3b8',margin:'6px 0 0'}}>+{p.entries.length-10} more payment(s)</p>}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
     )}
     {/* ══ TAB: TIMELINE ══ */}
     {activeTab==='timeline'&&isAdmin&&(
