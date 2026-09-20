@@ -479,6 +479,16 @@ function Accounts({role,userId}){
   const [expVendorFilter, setExpVendorFilter] = useState('All')   // Daily Expenditure tab filter
   const [vendorDrilldown, setVendorDrilldown] = useState(null)    // vendor id currently showing its spend-history panel, or null
   const [catAllDrilldown, setCatAllDrilldown] = useState(null)    // category name currently showing its all-expense drilldown, or null
+  // Drilldown lists (vendor/payer/category expanded views) show only the 10
+  // most recent entries by default with a "+N more — Show all" link; keys
+  // here are e.g. 'vendor:<id>', 'payer:<id>', 'expcat:<category>',
+  // 'inccat:<category>' — any key present shows its full list uncapped.
+  const [showAllDrilldown, setShowAllDrilldown] = useState(()=>new Set())
+  const toggleShowAllDrilldown=(key)=>setShowAllDrilldown(prev=>{
+    const next=new Set(prev)
+    next.has(key)?next.delete(key):next.add(key)
+    return next
+  })
 
   // ── Expenditure v2: multi-level category ─────────────────────────────────
   const [expSubCategory, setExpSubCategory] = useState('All')     // Daily Expenditure tab filter
@@ -3586,13 +3596,17 @@ function Accounts({role,userId}){
                     {expanded&&(
                       <div style={{padding:'0 16px 14px',borderTop:'1px solid #f1f5f9',marginTop:2}}>
                         <div style={{display:'flex',flexDirection:'column',gap:0,marginTop:10}}>
-                          {catEntries.slice(0,10).map(e=>(
+                          {(showAllDrilldown.has(`expcat:${c.category}`)?catEntries:catEntries.slice(0,10)).map(e=>(
                             <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',fontSize:12,borderBottom:'1px solid #f8fafc'}}>
                               <span style={{color:'#64748b'}}>{e.entry_date}{e.sub_category?` · ${e.sub_category}`:''}{e.voucher_head?` · ${e.voucher_head}`:''}{e.note?` — ${e.note}`:''}</span>
                               <strong style={{color:'#dc2626',flexShrink:0,marginLeft:8}}>{fmt(e.amount)}</strong>
                             </div>
                           ))}
-                          {catEntries.length>10&&<p style={{fontSize:11,color:'#94a3b8',margin:'8px 0 0'}}>+{catEntries.length-10} more entr{catEntries.length-10===1?'y':'ies'}</p>}
+                          {catEntries.length>10&&(
+                            <button onClick={()=>toggleShowAllDrilldown(`expcat:${c.category}`)} style={{background:'none',border:'none',color:'#0891b2',fontSize:11,fontWeight:700,cursor:'pointer',padding:'8px 0 0',textAlign:'left'}}>
+                              {showAllDrilldown.has(`expcat:${c.category}`)?'Show less':`+${catEntries.length-10} more entr${catEntries.length-10===1?'y':'ies'} — Show all`}
+                            </button>
+                          )}
                         </div>
                       </div>
                     )}
@@ -3622,13 +3636,17 @@ function Accounts({role,userId}){
                     </div>
                     {expanded&&(
                       <div style={{padding:'0 14px 12px',borderTop:'1px solid #f8fafc'}}>
-                        {v.entries.slice(0,10).map(e=>(
+                        {(showAllDrilldown.has(`vendor:${v.vendor_id}`)?v.entries:v.entries.slice(0,10)).map(e=>(
                           <div key={e.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',fontSize:12,borderBottom:'1px solid #f8fafc'}}>
                             <span style={{color:'#64748b'}}>{e.entry_date} · {e.category}{e.note?` — ${e.note}`:''}</span>
                             <strong style={{color:'#dc2626'}}>{fmt(e.amount)}</strong>
                           </div>
                         ))}
-                        {v.entries.length>10&&<p style={{fontSize:11,color:'#94a3b8',margin:'6px 0 0'}}>+{v.entries.length-10} more payment(s)</p>}
+                        {v.entries.length>10&&(
+                          <button onClick={()=>toggleShowAllDrilldown(`vendor:${v.vendor_id}`)} style={{background:'none',border:'none',color:'#0891b2',fontSize:11,fontWeight:700,cursor:'pointer',padding:'6px 0 0',textAlign:'left'}}>
+                            {showAllDrilldown.has(`vendor:${v.vendor_id}`)?'Show less':`+${v.entries.length-10} more payment(s) — Show all`}
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -4587,13 +4605,17 @@ function Accounts({role,userId}){
                     {expanded&&(
                       <div style={{padding:'0 16px 14px',borderTop:'1px solid #f1f5f9',marginTop:2}}>
                         <div style={{display:'flex',flexDirection:'column',gap:0,marginTop:10}}>
-                          {catEntries.slice(0,10).map(e=>(
+                          {(showAllDrilldown.has(`inccat:${c.category}`)?catEntries:catEntries.slice(0,10)).map(e=>(
                             <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',fontSize:12,borderBottom:'1px solid #f8fafc'}}>
                               <span style={{color:'#64748b'}}>{e.entry_date}{e.note?` — ${e.note}`:''}</span>
                               <strong style={{color:'#16a34a',flexShrink:0,marginLeft:8}}>{fmt(e.amount)}</strong>
                             </div>
                           ))}
-                          {catEntries.length>10&&<p style={{fontSize:11,color:'#94a3b8',margin:'8px 0 0'}}>+{catEntries.length-10} more entr{catEntries.length-10===1?'y':'ies'}</p>}
+                          {catEntries.length>10&&(
+                            <button onClick={()=>toggleShowAllDrilldown(`inccat:${c.category}`)} style={{background:'none',border:'none',color:'#0891b2',fontSize:11,fontWeight:700,cursor:'pointer',padding:'8px 0 0',textAlign:'left'}}>
+                              {showAllDrilldown.has(`inccat:${c.category}`)?'Show less':`+${catEntries.length-10} more entr${catEntries.length-10===1?'y':'ies'} — Show all`}
+                            </button>
+                          )}
                         </div>
                       </div>
                     )}
@@ -4624,13 +4646,17 @@ function Accounts({role,userId}){
                     </div>
                     {expanded&&(
                       <div style={{padding:'0 14px 12px',borderTop:'1px solid #f8fafc'}}>
-                        {p.entries.slice(0,10).map(e=>(
+                        {(showAllDrilldown.has(`payer:${p.payer_id}`)?p.entries:p.entries.slice(0,10)).map(e=>(
                           <div key={e.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',fontSize:12,borderBottom:'1px solid #f8fafc'}}>
                             <span style={{color:'#64748b'}}>{e.entry_date} · {e.category}{e.note?` — ${e.note}`:''}</span>
                             <strong style={{color:'#16a34a'}}>{fmt(e.amount)}</strong>
                           </div>
                         ))}
-                        {p.entries.length>10&&<p style={{fontSize:11,color:'#94a3b8',margin:'6px 0 0'}}>+{p.entries.length-10} more payment(s)</p>}
+                        {p.entries.length>10&&(
+                          <button onClick={()=>toggleShowAllDrilldown(`payer:${p.payer_id}`)} style={{background:'none',border:'none',color:'#0891b2',fontSize:11,fontWeight:700,cursor:'pointer',padding:'6px 0 0',textAlign:'left'}}>
+                            {showAllDrilldown.has(`payer:${p.payer_id}`)?'Show less':`+${p.entries.length-10} more payment(s) — Show all`}
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
