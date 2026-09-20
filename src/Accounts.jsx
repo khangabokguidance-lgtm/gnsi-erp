@@ -4058,26 +4058,93 @@ function Accounts({role,userId}){
           {!editBudgets?canWrite&&<button onClick={()=>{setEditBudgets(true);setBudgetDraft(budgets)}} style={{backgroundColor:'#1e3a5f',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>✏️ Edit Budgets</button>
           :<div style={{display:'flex',gap:10,flexWrap:'wrap'}}><button onClick={saveBudgets} style={{backgroundColor:'#16a34a',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>✅ Save</button><button onClick={()=>setEditBudgets(false)} style={{backgroundColor:'#f1f5f9',color:'#64748b',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>Cancel</button></div>}
         </div>
+        {(()=>{
+          const totalSpent=EXPENSE_CATEGORIES.reduce((s,cat)=>s+(monthlyExpenses[cat]||0),0)
+          const totalLimit=EXPENSE_CATEGORIES.reduce((s,cat)=>s+(Number(budgets[cat])||0),0)
+          return(
+          <div style={{...chartCard,marginBottom:20}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems: isMobile?'flex-start':'center',flexDirection: isMobile?'column':'row',gap:10,marginBottom:4}}>
+              <div>
+                <h3 style={{...chartTitle,marginBottom:3}}>💰 Monthly Budgets</h3>
+                <p style={{fontSize:12,color:'#94a3b8',margin:0}}>Spend limits per expense category, with month-over-month comparison and full transaction detail</p>
+              </div>
+              <div style={{display:'flex',gap: isMobile?10:18,flexWrap:'wrap'}}>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Spent</div>
+                  <div style={{fontSize:18,fontWeight:800,color:'#7f1d1d'}}>{fmt(totalSpent)}</div>
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Budgeted</div>
+                  <div style={{fontSize:18,fontWeight:800,color:'#1e3a5f'}}>{totalLimit>0?fmt(totalLimit):'—'}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          )
+        })()}
         <div style={{display:'grid',gridTemplateColumns:budgetGridCols,gap:16,marginBottom:28}}>
-          {EXPENSE_CATEGORIES.map(cat=>{const limit=Number(budgets[cat])||0,spent=monthlyExpenses[cat]||0,pct=limit>0?Math.min((spent/limit)*100,100):0,over=limit>0&&spent>limit,barColor=over?'#dc2626':pct>75?'#f59e0b':'#16a34a';const catEntries=monthlyExpensesByCategory[cat]||[];const isExpanded=expandedBudgetCat===cat;return(
-            <div key={cat} style={{backgroundColor:'white',borderRadius:12,padding:18,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',borderLeft:`4px solid ${over?'#dc2626':'#e2e8f0'}`}}>
-              <div style={{display:'flex',justifyContent:'space-between',marginBottom:10}}><span style={{fontWeight:600,color:'#1e293b'}}>{cat}</span>{over&&<span style={{fontSize:12,color:'#dc2626',fontWeight:600}}>⚠️ Over!</span>}</div>
-              {editBudgets&&canWrite&&<input type="number" min="0" value={budgetDraft[cat]||''} placeholder="Set budget limit" onChange={e=>setBudgetDraft({...budgetDraft,[cat]:e.target.value})} style={{...iStyle,marginBottom:10}}/>}
-              <div style={{display:'flex',justifyContent:'space-between',fontSize:13,color:'#64748b',marginBottom:6}}><span>Spent: <strong style={{color:over?'#dc2626':'#1e293b'}}>{fmt(spent)}</strong></span><span>Limit: <strong>{limit>0?fmt(limit):'Not set'}</strong></span></div>
-              {limit>0&&<><div style={{backgroundColor:'#f1f5f9',borderRadius:999,height:8,overflow:'hidden'}}><div style={{width:`${pct}%`,height:'100%',backgroundColor:barColor,borderRadius:999,transition:'width .4s'}}/></div><div style={{fontSize:11,color:'#94a3b8',marginTop:4}}>{pct.toFixed(0)}% used</div></>}
-              <button onClick={()=>setExpandedBudgetCat(isExpanded?null:cat)} style={{marginTop:12,width:'100%',backgroundColor:isExpanded?'#eff6ff':'#f8fafc',color:'#1e3a5f',border:'1px solid #e2e8f0',borderRadius:8,padding:'7px 10px',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                {isExpanded?'▲ Hide entries':`▼ Where it was spent (${catEntries.length})`}
+          {EXPENSE_CATEGORIES.map((cat,idx)=>{
+            const catIcons={Salary:'💼',Electricity:'💡',Stationery:'📎',Maintenance:'🔧',Transport:'🚌',Event:'🎉',Other:'🏷️'}
+            const limit=Number(budgets[cat])||0,spent=monthlyExpenses[cat]||0,pct=limit>0?Math.min((spent/limit)*100,100):0,over=limit>0&&spent>limit,barColor=over?'#dc2626':pct>75?'#f59e0b':'#16a34a'
+            const catEntries=monthlyExpensesByCategory[cat]||[]
+            const isExpanded=expandedBudgetCat===cat
+            const prevSpent=plData?.prevExp?.[cat]||0
+            const momDiff=spent-prevSpent
+            const momPct=prevSpent>0?((momDiff/prevSpent)*100):(spent>0?100:0)
+            const avgEntry=catEntries.length>0?spent/catEntries.length:0
+            const accent=CHART_COLORS[idx%CHART_COLORS.length]
+            return(
+            <div key={cat} style={{backgroundColor:'white',borderRadius:12,padding:20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',border:'1px solid #f1f5f9',borderTop:`3px solid ${over?'#dc2626':accent}`}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:14}}>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <span style={{fontSize:20,width:38,height:38,borderRadius:10,backgroundColor:`${accent}1a`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcons[cat]||'🏷️'}</span>
+                  <div>
+                    <div style={{fontWeight:700,color:'#1e293b',fontSize:15}}>{cat}</div>
+                    <div style={{fontSize:11,color:'#94a3b8'}}>{catEntries.length} entr{catEntries.length===1?'y':'ies'} this month{avgEntry>0?` · avg ${fmt(avgEntry)}`:''}</div>
+                  </div>
+                </div>
+                {over&&<span style={{fontSize:11,fontWeight:800,color:'#dc2626',backgroundColor:'#fee2e2',padding:'3px 9px',borderRadius:999,flexShrink:0}}>⚠ OVER</span>}
+              </div>
+
+              {editBudgets&&canWrite&&<input type="number" min="0" value={budgetDraft[cat]||''} placeholder="Set budget limit" onChange={e=>setBudgetDraft({...budgetDraft,[cat]:e.target.value})} style={{...iStyle,marginBottom:12}}/>}
+
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:8}}>
+                <div>
+                  <span style={{fontSize:20,fontWeight:800,color:over?'#dc2626':'#1e293b'}}>{fmt(spent)}</span>
+                  <span style={{fontSize:12,color:'#94a3b8',marginLeft:6}}>of {limit>0?fmt(limit):'no limit set'}</span>
+                </div>
+                {momPct!==0&&(
+                  <span style={{fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:2,color:momDiff>=0?'#dc2626':'#16a34a'}}>
+                    {momDiff>=0?'▲':'▼'} {Math.abs(momPct).toFixed(0)}% vs last month
+                  </span>
+                )}
+              </div>
+
+              {limit>0?(
+                <>
+                  <div style={{backgroundColor:'#f1f5f9',borderRadius:999,height:8,overflow:'hidden'}}><div style={{width:`${pct}%`,height:'100%',backgroundColor:barColor,borderRadius:999,transition:'width .4s'}}/></div>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'#94a3b8',marginTop:5}}>
+                    <span>{pct.toFixed(0)}% used</span>
+                    <span>{over?`${fmt(spent-limit)} over budget`:`${fmt(limit-spent)} remaining`}</span>
+                  </div>
+                </>
+              ):(
+                <div style={{fontSize:11,color:'#cbd5e1',fontStyle:'italic',padding:'4px 0'}}>No budget limit set for this category</div>
+              )}
+
+              <button onClick={()=>setExpandedBudgetCat(isExpanded?null:cat)} style={{marginTop:14,width:'100%',backgroundColor:isExpanded?'#eff6ff':'#f8fafc',color:'#1e3a5f',border:'1px solid #e2e8f0',borderRadius:8,padding:'8px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                {isExpanded?'▲ Hide transactions':`▼ Where it was spent (${catEntries.length})`}
               </button>
               {isExpanded&&(
-                <div style={{marginTop:10,maxHeight:220,overflowY:'auto',borderTop:'1px solid #f1f5f9',paddingTop:8}}>
+                <div style={{marginTop:10,maxHeight:260,overflowY:'auto',borderTop:'1px solid #f1f5f9',paddingTop:8}}>
                   {catEntries.length===0?(
-                    <p style={{fontSize:12,color:'#94a3b8',textAlign:'center',padding:'8px 0'}}>No expense entries for {cat} this month.</p>
+                    <p style={{fontSize:12,color:'#94a3b8',textAlign:'center',padding:'12px 0'}}>No expense entries for {cat} this month.</p>
                   ):(
                     catEntries.map(e=>(
-                      <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,padding:'7px 0',borderBottom:'1px solid #f8fafc'}}>
+                      <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,padding:'8px 0',borderBottom:'1px solid #f8fafc'}}>
                         <div style={{minWidth:0}}>
                           <p style={{margin:0,fontSize:12.5,fontWeight:600,color:'#1e293b',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{e.note||e.voucher_head||'—'}</p>
-                          <p style={{margin:'2px 0 0',fontSize:11,color:'#94a3b8'}}>{e.entry_date} · {e.payment_mode}{e.account_type?` · ${e.account_type}`:''}</p>
+                          <p style={{margin:'2px 0 0',fontSize:11,color:'#94a3b8'}}>{e.entry_date} · {e.payment_mode}{e.account_type?` · ${e.account_type}`:''}{e.sub_category?` · ${e.sub_category}`:''}</p>
                         </div>
                         <span style={{fontSize:12.5,fontWeight:700,color:'#dc2626',flexShrink:0}}>{fmt(e.amount)}</span>
                       </div>
