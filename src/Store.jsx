@@ -872,6 +872,8 @@ function ReportsTab({ products, categories, refreshKey }) {
   const [to, setTo] = useState(todayStr())
   const [sales, setSales] = useState([])
   const [dues, setDues] = useState([])
+  const [bestSellers, setBestSellers] = useState([])
+  const [ratings, setRatings] = useState({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -880,7 +882,9 @@ function ReportsTab({ products, categories, refreshKey }) {
     Promise.all([
       supabase.from('store_sales').select('*, store_sale_items(*)').gte('sale_date', from).lte('sale_date', to).neq('status', 'void').limit(5000),
       supabase.from('store_sales').select('id,bill_no,customer_name,gcc_no,due_amount,sale_date').eq('status', 'due').order('sale_date'),
-    ]).then(([a, b]) => { if (!cancelled) { setSales(a.data || []); setDues(b.data || []); setLoading(false) } })
+      supabase.from('store_best_sellers').select('*').limit(10),
+      supabase.from('store_product_ratings').select('*'),
+    ]).then(([a, b, c, d]) => { if (!cancelled) { setSales(a.data || []); setDues(b.data || []); setBestSellers(c.data || []); setRatings(Object.fromEntries((d.data || []).map(r => [r.product_id, r]))); setLoading(false) } })
     return () => { cancelled = true }
   }, [from, to, refreshKey])
 
@@ -924,6 +928,8 @@ function ReportsTab({ products, categories, refreshKey }) {
             <Box title="📂 By category">{Object.keys(byCat).length ? Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => <Row key={k} l={k} r={`₹${n(v)}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales</div>}</Box>
             <Box title="💳 Collected by mode">{Object.keys(byMode).length ? Object.entries(byMode).map(([k, v]) => <Row key={k} l={k} r={`₹${n(v)}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No payments</div>}</Box>
             <Box title={`⚠️ Low / out of stock (${low.length})`}><div style={{ maxHeight: 240, overflowY: 'auto' }}>{low.length ? low.map(p => <Row key={p.id} l={`${p.name}${p.size ? ' — ' + p.size : ''}`} r={p.stock <= 0 ? 'OUT' : `${p.stock} left`} c={p.stock <= 0 ? '#dc2626' : '#d97706'} />) : <div style={{ color: '#16a34a', fontSize: 12 }}>All stocked ✓</div>}</div></Box>
+            <Box title="🔥 Best sellers (last 30 days)"><div style={{ maxHeight: 240, overflowY: 'auto' }}>{bestSellers.length ? bestSellers.map(b => <Row key={b.product_id} l={`${b.name}${b.size ? ' — ' + b.size : ''}`} r={`×${b.qty_sold_30d}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales in the last 30 days</div>}</div></Box>
+            <Box title="⭐ Product ratings"><div style={{ maxHeight: 240, overflowY: 'auto' }}>{Object.keys(ratings).length ? products.filter(p => ratings[p.id]).sort((a, b) => ratings[b.id].review_count - ratings[a.id].review_count).map(p => <Row key={p.id} l={`${p.name}${p.size ? ' — ' + p.size : ''}`} r={`${ratings[p.id].avg_rating}★ (${ratings[p.id].review_count})`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No reviews yet</div>}</div></Box>
             <Box title={`🧾 Student dues (${dues.length})`}><div style={{ maxHeight: 240, overflowY: 'auto' }}>{dues.length ? dues.map(d => <Row key={d.id} l={`${d.customer_name || '—'} · GCC-${d.gcc_no} · ${d.bill_no}`} r={`₹${n(d.due_amount)}`} c="#dc2626" />) : <div style={{ color: '#16a34a', fontSize: 12 }}>No outstanding dues ✓</div>}</div></Box>
           </div>
         </>
@@ -1182,6 +1188,8 @@ export default function Store() {
 
   const onSaleDone = useCallback(() => { reload(); setRefreshKey(k => k + 1) }, [reload])
 
+  const lowStockCount = useMemo(() => products.filter(p => p.active && p.stock <= (p.reorder_level ?? 5)).length, [products])
+
   const TABS = [
     { id: 'pos', label: '🛒 Counter POS' },
     { id: 'products', label: '📦 Products & Stock' },
@@ -1198,6 +1206,21 @@ export default function Store() {
         <h1 style={{ fontSize: 26, fontWeight: 'bold', color: NAVY, margin: 0 }}>🏬 GNSI Store</h1>
         <p style={{ color: '#64748b', fontSize: 14, margin: '4px 0 0' }}>Uniforms · Books · Hostel items — counter billing, stock, online orders</p>
       </div>
+
+      {!loading && !loadError && (newOrders > 0 || lowStockCount > 0) && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+          {newOrders > 0 && (
+            <button onClick={() => setTab('orders')} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 14px', borderRadius: 9, border: '1.5px solid #93c5fd', background: '#eff6ff', color: '#1d4ed8', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+              🔔 {newOrders} new online order{newOrders > 1 ? 's' : ''} to confirm
+            </button>
+          )}
+          {lowStockCount > 0 && (
+            <button onClick={() => setTab('reports')} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 14px', borderRadius: 9, border: '1.5px solid #fca5a5', background: '#fef2f2', color: '#b91c1c', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+              ⚠️ {lowStockCount} item{lowStockCount > 1 ? 's' : ''} low or out of stock
+            </button>
+          )}
+        </div>
+      )}
 
       <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: 22, overflowX: 'auto' }}>
         {TABS.map(t => (

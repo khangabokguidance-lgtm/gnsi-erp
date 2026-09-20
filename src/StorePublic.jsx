@@ -10,6 +10,13 @@ import { supabase } from './supabase'
 const NAVY = '#1e3a5f'
 const n = v => Number(v || 0).toLocaleString('en-IN')
 const inp = { width: '100%', padding: '11px 13px', borderRadius: 9, border: '1px solid #d1d5db', fontSize: 14, outline: 'none', boxSizing: 'border-box', background: 'white' }
+const WISHLIST_KEY = 'gnsi_store_wishlist'
+const stars = r => '★★★★★☆☆☆☆☆'.slice(5 - Math.round(r || 0), 10 - Math.round(r || 0))
+
+const loadWishlist = () => {
+  try { return new Set(JSON.parse(localStorage.getItem(WISHLIST_KEY) || '[]')) } catch { return new Set() }
+}
+const saveWishlist = set => { try { localStorage.setItem(WISHLIST_KEY, JSON.stringify([...set])) } catch {} }
 
 export default function StorePublic() {
   const [items, setItems] = useState([])
@@ -26,6 +33,11 @@ export default function StorePublic() {
   const [promoCode, setPromoCode] = useState('')
   const [promoResult, setPromoResult] = useState(null) // { valid, amount_off, reason, code }
   const [checkingPromo, setCheckingPromo] = useState(false)
+  const [ratings, setRatings] = useState({}) // { [product_id]: { review_count, avg_rating } }
+  const [wishlist, setWishlist] = useState(loadWishlist)
+  const [showWishlist, setShowWishlist] = useState(false)
+  const [detail, setDetail] = useState(null) // product being viewed in detail/review modal
+  const [showTrack, setShowTrack] = useState(false)
 
   useEffect(() => {
     supabase.from('store_public_catalog').select('*').order('name').then(({ data, error }) => {
@@ -33,16 +45,34 @@ export default function StorePublic() {
       else setItems(data || [])
       setLoading(false)
     })
+    supabase.from('store_product_ratings').select('*').then(({ data }) => {
+      if (data) setRatings(Object.fromEntries(data.map(r => [r.product_id, r])))
+    })
   }, [])
+
+  const toggleWishlist = id => {
+    setWishlist(w => {
+      const x = new Set(w)
+      x.has(id) ? x.delete(id) : x.add(id)
+      saveWishlist(x)
+      return x
+    })
+  }
 
   const categories = useMemo(() => ['All', ...Array.from(new Set(items.map(i => i.category).filter(Boolean)))], [items])
   const byId = useMemo(() => new Map(items.map(i => [i.id, i])), [items])
 
   const shown = items.filter(i => {
+    if (showWishlist) return wishlist.has(i.id)
     if (cat !== 'All' && i.category !== cat) return false
     const s = q.trim().toLowerCase()
     return !s || [i.name, i.size, i.category].some(v => (v || '').toLowerCase().includes(s))
   })
+
+  const related = useMemo(() => {
+    if (!detail) return []
+    return items.filter(i => i.id !== detail.id && i.category === detail.category).slice(0, 6)
+  }, [detail, items])
 
   const lines = Object.entries(cart).map(([id, qty]) => ({ p: byId.get(Number(id)), qty })).filter(l => l.p)
   const count = lines.reduce((a, l) => a + l.qty, 0)
@@ -90,6 +120,14 @@ export default function StorePublic() {
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', opacity: .75 }}>GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE</div>
           <h1 style={{ margin: '4px 0 2px', fontSize: 26, fontWeight: 900 }}>GNSI Store</h1>
           <div style={{ fontSize: 13, opacity: .85 }}>Uniforms · Books &amp; stationery · Hostel essentials — order online, pay &amp; collect at the institute.</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button onClick={() => setShowWishlist(w => !w)} style={{ padding: '7px 13px', borderRadius: 8, border: '1.5px solid rgba(255,255,255,.4)', background: showWishlist ? 'white' : 'transparent', color: showWishlist ? NAVY : 'white', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+              ♥ Wishlist{wishlist.size > 0 ? ` (${wishlist.size})` : ''}
+            </button>
+            <button onClick={() => setShowTrack(true)} style={{ padding: '7px 13px', borderRadius: 8, border: '1.5px solid rgba(255,255,255,.4)', background: 'transparent', color: 'white', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+              📦 Track my order
+            </button>
+          </div>
         </div>
       </header>
 
@@ -104,31 +142,45 @@ export default function StorePublic() {
           </div>
         )}
 
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Search products…" style={{ ...inp, marginBottom: 12 }} />
-        <div style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 6, marginBottom: 12 }}>
-          {categories.map(c => (
-            <button key={c} onClick={() => setCat(c)}
-              style={{ flexShrink: 0, padding: '7px 15px', borderRadius: 99, border: `1.5px solid ${cat === c ? NAVY : '#e2e8f0'}`, background: cat === c ? NAVY : 'white', color: cat === c ? 'white' : '#475569', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{c}</button>
-          ))}
-        </div>
+        {showWishlist ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: NAVY }}>♥ Your wishlist</div>
+            <button onClick={() => setShowWishlist(false)} style={{ padding: '7px 13px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>← Back to store</button>
+          </div>
+        ) : (
+          <>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Search products…" style={{ ...inp, marginBottom: 12 }} />
+            <div style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 6, marginBottom: 12 }}>
+              {categories.map(c => (
+                <button key={c} onClick={() => setCat(c)}
+                  style={{ flexShrink: 0, padding: '7px 15px', borderRadius: 99, border: `1.5px solid ${cat === c ? NAVY : '#e2e8f0'}`, background: cat === c ? NAVY : 'white', color: cat === c ? 'white' : '#475569', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{c}</button>
+              ))}
+            </div>
+          </>
+        )}
 
         {loading ? <div style={{ textAlign: 'center', padding: 48, color: '#64748b' }}>Loading…</div>
           : error ? <div style={{ textAlign: 'center', padding: 48, color: '#b91c1c' }}>The store is not available right now. Please try again later.</div>
-          : shown.length === 0 ? <div style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}>No products found</div>
+          : shown.length === 0 ? <div style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}>{showWishlist ? 'Nothing saved yet — tap ♡ on a product to add it here.' : 'No products found'}</div>
           : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(165px,1fr))', gap: 12 }}>
               {shown.map(p => {
                 const qty = cart[p.id] || 0
                 const strikePrice = p.on_sale ? p.mrp_price : p.mrp
+                const rate = ratings[p.id]
                 return (
                   <div key={p.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', opacity: p.in_stock ? 1 : .55, position: 'relative' }}>
                     {p.on_sale && <span style={{ position: 'absolute', top: 8, left: 8, zIndex: 1, fontSize: 10, fontWeight: 800, color: 'white', background: '#dc2626', padding: '3px 8px', borderRadius: 6 }}>SALE</span>}
-                    <div style={{ height: 120, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36 }}>
+                    <button onClick={() => toggleWishlist(p.id)} title="Save for later" style={{ position: 'absolute', top: 6, right: 6, zIndex: 1, width: 28, height: 28, borderRadius: 99, border: 'none', background: 'rgba(255,255,255,.9)', fontSize: 15, cursor: 'pointer', color: wishlist.has(p.id) ? '#dc2626' : '#94a3b8' }}>
+                      {wishlist.has(p.id) ? '♥' : '♡'}
+                    </button>
+                    <div onClick={() => setDetail(p)} style={{ height: 120, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, cursor: 'pointer' }}>
                       {p.image_url ? <img src={p.image_url} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" /> : '📦'}
                     </div>
                     <div style={{ padding: 11, flex: 1, display: 'flex', flexDirection: 'column' }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', lineHeight: 1.3 }}>{p.name}</div>
+                      <div onClick={() => setDetail(p)} style={{ fontSize: 13.5, fontWeight: 700, color: '#0f172a', lineHeight: 1.3, cursor: 'pointer' }}>{p.name}</div>
                       {p.size && <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>Size: {p.size}</div>}
+                      {rate && <div style={{ fontSize: 11, color: '#d97706', marginTop: 3 }}>{stars(rate.avg_rating)} <span style={{ color: '#94a3b8' }}>({rate.review_count})</span></div>}
                       {p.description && <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 3, lineHeight: 1.3 }}>{p.description}</div>}
                       <div style={{ marginTop: 'auto', paddingTop: 8 }}>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
@@ -218,6 +270,198 @@ export default function StorePublic() {
           </div>
         </div>
       )}
+
+      {detail && (
+        <ProductDetail product={detail} related={related} ratings={ratings}
+          onClose={() => setDetail(null)}
+          onAdd={p => { setQty(p, (cart[p.id] || 0) + 1); }}
+          onOpenRelated={p => setDetail(p)}
+          refreshRatings={() => supabase.from('store_product_ratings').select('*').then(({ data }) => { if (data) setRatings(Object.fromEntries(data.map(r => [r.product_id, r]))) })}
+        />
+      )}
+
+      {showTrack && <TrackOrderModal onClose={() => setShowTrack(false)} />}
+    </div>
+  )
+}
+
+// ── Product detail: reviews, ratings, related products ──────────────────────
+function ProductDetail({ product, related, ratings, onClose, onAdd, onOpenRelated, refreshRatings }) {
+  const [reviews, setReviews] = useState([])
+  const [loadingReviews, setLoadingReviews] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [rf, setRf] = useState({ customer_name: '', phone: '', gcc_no: '', rating: 5, comment: '' })
+  const [submitting, setSubmitting] = useState(false)
+  const [err, setErr] = useState('')
+  const [ok, setOk] = useState(false)
+  const rate = ratings[product.id]
+
+  useEffect(() => {
+    setLoadingReviews(true)
+    supabase.from('store_reviews').select('*').eq('product_id', product.id).eq('approved', true)
+      .order('created_at', { ascending: false }).then(({ data }) => { setReviews(data || []); setLoadingReviews(false) })
+  }, [product.id])
+
+  const submitReview = async () => {
+    setErr(''); setOk(false)
+    if (!rf.customer_name.trim()) { setErr('Please enter your name.'); return }
+    if (!rf.phone.trim() && !rf.gcc_no.trim()) { setErr('Enter the phone number or GCC No. used on your order.'); return }
+    setSubmitting(true)
+    const { data, error } = await supabase.rpc('store_submit_review', { p: {
+      product_id: product.id, rating: rf.rating, customer_name: rf.customer_name,
+      phone: rf.phone, gcc_no: rf.gcc_no, comment: rf.comment,
+    } })
+    setSubmitting(false)
+    if (error) { setErr(error.message); return }
+    setOk(true); setShowForm(false); setRf({ customer_name: '', phone: '', gcc_no: '', rating: 5, comment: '' })
+    supabase.from('store_reviews').select('*').eq('product_id', product.id).eq('approved', true)
+      .order('created_at', { ascending: false }).then(({ data }) => setReviews(data || []))
+    refreshRatings()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={onClose}>
+      <div style={{ background: 'white', width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto', borderRadius: '16px 16px 0 0', padding: 18 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: NAVY }}>{product.name}</div>
+            {product.size && <div style={{ fontSize: 12, color: '#64748b' }}>Size: {product.size}</div>}
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b' }}>×</button>
+        </div>
+
+        <div style={{ height: 140, background: '#f1f5f9', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, marginBottom: 10 }}>
+          {product.image_url ? <img src={product.image_url} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} /> : '📦'}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+          <span style={{ fontSize: 19, fontWeight: 900, color: product.on_sale ? '#dc2626' : NAVY }}>₹{n(product.price)}</span>
+          {product.on_sale && <span style={{ fontSize: 13, color: '#94a3b8', textDecoration: 'line-through' }}>₹{n(product.mrp_price)}</span>}
+        </div>
+        {rate ? <div style={{ fontSize: 13, color: '#d97706', marginBottom: 8 }}>{stars(rate.avg_rating)} {rate.avg_rating} <span style={{ color: '#94a3b8' }}>({rate.review_count} review{rate.review_count > 1 ? 's' : ''})</span></div>
+          : <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 8 }}>No reviews yet</div>}
+        {product.description && <div style={{ fontSize: 13, color: '#475569', marginBottom: 10, lineHeight: 1.4 }}>{product.description}</div>}
+
+        {product.in_stock ? (
+          <button onClick={() => onAdd(product)} style={{ width: '100%', padding: '11px 0', borderRadius: 9, border: 'none', background: NAVY, color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 14 }}>Add to cart</button>
+        ) : <div style={{ fontSize: 13, fontWeight: 700, color: '#dc2626', marginBottom: 14 }}>Out of stock</div>}
+
+        <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 12, marginBottom: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Reviews</div>
+            <button onClick={() => setShowForm(s => !s)} style={{ padding: '6px 12px', borderRadius: 7, border: `1.5px solid ${NAVY}`, background: 'white', color: NAVY, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Write a review</button>
+          </div>
+
+          {ok && <div style={{ background: '#f0fdf4', border: '1px solid #86efac', color: '#166534', borderRadius: 8, padding: '8px 10px', fontSize: 12.5, marginBottom: 10 }}>Thanks — your review has been posted.</div>}
+
+          {showForm && (
+            <div style={{ background: '#f8fafc', borderRadius: 10, padding: 12, marginBottom: 12, display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {[1, 2, 3, 4, 5].map(v => (
+                  <button key={v} onClick={() => setRf(f => ({ ...f, rating: v }))} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: v <= rf.rating ? '#d97706' : '#e2e8f0', padding: 0 }}>★</button>
+                ))}
+              </div>
+              <input value={rf.customer_name} onChange={e => setRf(f => ({ ...f, customer_name: e.target.value }))} placeholder="Your name *" style={inp} />
+              <input value={rf.phone} onChange={e => setRf(f => ({ ...f, phone: e.target.value }))} placeholder="Phone used on order" inputMode="tel" style={inp} />
+              <input value={rf.gcc_no} onChange={e => setRf(f => ({ ...f, gcc_no: e.target.value }))} placeholder="or Student GCC No." style={inp} />
+              <textarea value={rf.comment} onChange={e => setRf(f => ({ ...f, comment: e.target.value }))} placeholder="Your review (optional)" rows={2} style={{ ...inp, resize: 'vertical' }} />
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>We verify against a completed order/purchase before posting — enter the phone or GCC No. used on it.</div>
+              {err && <div style={{ fontSize: 12, color: '#b91c1c' }}>{err}</div>}
+              <button onClick={submitReview} disabled={submitting} style={{ padding: '9px 0', borderRadius: 8, border: 'none', background: submitting ? '#94a3b8' : NAVY, color: 'white', fontSize: 13, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer' }}>{submitting ? 'Submitting…' : 'Submit review'}</button>
+            </div>
+          )}
+
+          {loadingReviews ? <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Loading reviews…</div>
+            : reviews.length === 0 ? <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Be the first to review this product.</div>
+            : reviews.map(r => (
+              <div key={r.id} style={{ borderBottom: '1px solid #f1f5f9', padding: '8px 0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700 }}>{r.customer_name}</span>
+                  <span style={{ fontSize: 12, color: '#d97706' }}>{stars(r.rating)}</span>
+                </div>
+                {r.comment && <div style={{ fontSize: 12.5, color: '#475569', marginTop: 3 }}>{r.comment}</div>}
+              </div>
+            ))}
+        </div>
+
+        {related.length > 0 && (
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>You may also like</div>
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+              {related.map(p => (
+                <div key={p.id} onClick={() => onOpenRelated(p)} style={{ flexShrink: 0, width: 110, cursor: 'pointer' }}>
+                  <div style={{ height: 80, background: '#f1f5f9', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
+                    {p.image_url ? <img src={p.image_url} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} /> : '📦'}
+                  </div>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, marginTop: 4, lineHeight: 1.25 }}>{p.name}</div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: NAVY }}>₹{n(p.price)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Track my order: lookup by phone (+ optional order no.) ─────────────────
+function TrackOrderModal({ onClose }) {
+  const [phone, setPhone] = useState('')
+  const [orderNo, setOrderNo] = useState('')
+  const [orders, setOrders] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+
+  const STATUS_LABEL = { new: 'Order received', confirmed: 'Confirmed', ready: 'Ready for pickup', delivered: 'Delivered / collected', cancelled: 'Cancelled' }
+  const STATUS_COLOR = { new: '#2563eb', confirmed: '#7c3aed', ready: '#d97706', delivered: '#16a34a', cancelled: '#dc2626' }
+
+  const lookup = async () => {
+    setErr(''); setOrders(null)
+    if (phone.replace(/\D/g, '').length < 10) { setErr('Enter the 10-digit phone number used on your order.'); return }
+    setLoading(true)
+    const { data, error } = await supabase.rpc('store_lookup_orders', { p_phone: phone, p_order_no: orderNo || null })
+    setLoading(false)
+    if (error) { setErr(error.message); return }
+    setOrders(data || [])
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={onClose}>
+      <div style={{ background: 'white', width: '100%', maxWidth: 520, maxHeight: '92vh', overflowY: 'auto', borderRadius: '16px 16px 0 0', padding: 18 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: NAVY }}>📦 Track my order</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b' }}>×</button>
+        </div>
+
+        <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+          <input value={phone} onChange={e => setPhone(e.target.value)} onKeyDown={e => e.key === 'Enter' && lookup()} placeholder="Phone number used on the order *" inputMode="tel" style={inp} />
+          <input value={orderNo} onChange={e => setOrderNo(e.target.value)} onKeyDown={e => e.key === 'Enter' && lookup()} placeholder="Order number (optional)" style={inp} />
+          <button onClick={lookup} disabled={loading} style={{ padding: '10px 0', borderRadius: 9, border: 'none', background: loading ? '#94a3b8' : NAVY, color: 'white', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>{loading ? 'Looking up…' : 'Find my orders'}</button>
+        </div>
+
+        {err && <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', color: '#b91c1c', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginBottom: 10 }}>{err}</div>}
+
+        {orders && orders.length === 0 && <div style={{ textAlign: 'center', padding: 24, color: '#94a3b8', fontSize: 13 }}>No orders found for that phone number.</div>}
+
+        {orders && orders.map(o => (
+          <div key={o.id} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 12, marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 13.5, fontWeight: 800, color: NAVY }}>{o.order_no}</span>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: STATUS_COLOR[o.status] || '#475569', background: (STATUS_COLOR[o.status] || '#475569') + '1a', padding: '3px 9px', borderRadius: 99 }}>
+                {STATUS_LABEL[o.status] || o.status}
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{new Date(o.created_at).toLocaleString('en-IN')}</div>
+            {Array.isArray(o.items) && (
+              <div style={{ fontSize: 12.5, color: '#475569', marginTop: 6 }}>
+                {o.items.map((it, idx) => <div key={idx}>{it.name || it.qty + ' item'}{it.qty ? ` × ${it.qty}` : ''}</div>)}
+              </div>
+            )}
+            {o.total != null && <div style={{ fontSize: 13, fontWeight: 800, color: NAVY, marginTop: 6 }}>Total ₹{n(o.total)}</div>}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
