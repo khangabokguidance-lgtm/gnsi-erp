@@ -3611,6 +3611,57 @@ export default function Fees() {
 
   useEffect(() => { loadAll() }, [])
 
+  // ── Backfill: bulk-fill blank "Collected By" on existing rows ───────────
+  // Forward-going, handleSave/handleRazorpayCollect already require
+  // Collected By before a payment can be saved, so this only affects rows
+  // recorded before that check existed (or a legacy/manually-inserted
+  // row). Admin picks one name and it's applied to every currently-blank
+  // row across all three fee tables in one go — Ref/txn_ref is left alone
+  // since there's no safe default to backfill it with (a fabricated
+  // reference number would be worse than leaving it blank).
+  const [showBackfillPanel, setShowBackfillPanel] = useState(false)
+  const [backfillName, setBackfillName] = useState(currentUser?.userName || currentUser?.name || '')
+  const [backfillBusy, setBackfillBusy] = useState(false)
+
+  const blankCollectedByCount = useMemo(() => {
+    const isBlank = v => !v || !String(v).trim()
+    return adm_flat_fees.filter(r => isBlank(r.collected_by)).length
+      + adm_course_fees.filter(r => isBlank(r.collected_by)).length
+      + adm_fee_collections.filter(r => isBlank(r.collected_by)).length
+  }, [adm_flat_fees, adm_course_fees, adm_fee_collections])
+
+  const backfillMissingCollectedBy = async () => {
+    const name = backfillName.trim()
+    if (!name) { alert('Enter a name to fill in first.'); return }
+    if (blankCollectedByCount === 0) return
+    if (!window.confirm(`Set "Collected By" to "${name}" on ${blankCollectedByCount} existing record(s) that are currently blank? This only fills in missing values — it never overwrites a record that already has a name on it.`)) return
+    setBackfillBusy(true)
+    try {
+      const isBlank = v => !v || !String(v).trim()
+      const tables = [
+        ['adm_flat_fees', adm_flat_fees],
+        ['adm_course_fees', adm_course_fees],
+        ['adm_fee_collections', adm_fee_collections],
+      ]
+      let updated = 0
+      const failures = []
+      for (const [table, rows] of tables) {
+        const ids = rows.filter(r => isBlank(r.collected_by)).map(r => r.id)
+        if (ids.length === 0) continue
+        const { error } = await supabase.from(table).update({ collected_by: name }).in('id', ids)
+        if (error) { failures.push(`${table}: ${error.message}`); continue }
+        updated += ids.length
+      }
+      if (failures.length) alert('Some tables failed to update:\n' + failures.join('\n'))
+      if (updated > 0) alert(`✅ Filled "Collected By" on ${updated} record(s).`)
+      setShowBackfillPanel(false)
+      loadAll()
+    } catch (err) {
+      alert('Backfill failed: ' + err.message)
+    }
+    setBackfillBusy(false)
+  }
+
   // Students table's real status values (from Students.jsx STATUSES):
   // 'Active', 'Inactive', 'Passed Out', 'Withdrawn', 'Dropout'. Only 'Active'
   // is an ongoing fee-paying student — the other four all mean "no longer
@@ -4152,6 +4203,29 @@ export default function Fees() {
           </div>
 
           {/* ── Today's transactions table (default, no date filter) ── */}
+          {isAdmin && blankCollectedByCount > 0 && (
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px', marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                <div>
+                  <strong style={{ color: '#92400e', fontSize: 13 }}>⚠ {blankCollectedByCount} record{blankCollectedByCount === 1 ? '' : 's'} missing "Collected By"</strong>
+                  <p style={{ margin: '2px 0 0', fontSize: 12, color: '#b45309' }}>These predate the required-field check — fill them in with a name below.</p>
+                </div>
+                <button onClick={() => setShowBackfillPanel(v => !v)} style={{ background: showBackfillPanel ? '#fef3c7' : 'white', color: '#92400e', border: '1px solid #fde68a', borderRadius: 8, padding: '7px 14px', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                  {showBackfillPanel ? '✖ Cancel' : '✏️ Fill Up Blank'}
+                </button>
+              </div>
+              {showBackfillPanel && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
+                  <input type="text" placeholder="Name to fill in" value={backfillName} onChange={e => setBackfillName(e.target.value)}
+                    style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid #fde68a', fontSize: 13, minWidth: 220 }} />
+                  <button onClick={backfillMissingCollectedBy} disabled={backfillBusy} style={{ background: '#16a34a', color: 'white', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 700, fontSize: 13, cursor: backfillBusy ? 'not-allowed' : 'pointer' }}>
+                    {backfillBusy ? '⏳ Filling…' : `✅ Fill ${blankCollectedByCount} record(s)`}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {!afDateFrom && !afDateTo ? (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
