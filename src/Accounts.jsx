@@ -239,6 +239,17 @@ function SeverityBadge({severity}){
   return <span style={{padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:700,backgroundColor:s.bg,color:s.color}}>{s.label}</span>
 }
 
+// ── shared style helpers (module scope, declared before the component so
+// they can never be affected by build-tool scope-hoisting/minification
+// reordering relative to where Accounts() is defined) ──────────────────────
+const iStyle     = {width:'100%',padding:'11px 14px',borderRadius:8,border:'1px solid #e5e7eb',fontSize:13,backgroundColor:'white',boxSizing:'border-box',transition:'all 0.2s cubic-bezier(0.4,0,0.2,1)'}
+const lStyle     = {display:'block',fontSize:12,fontWeight:700,color:'#374151',marginBottom:7,letterSpacing:'0.2px',textTransform:'capitalize'}
+const tdS        = {padding:'13px 14px',color:'#64748b',fontSize:'13px',fontWeight:500}
+const chartCard  = {backgroundColor:'white',borderRadius:14,padding:24,boxShadow:'0 4px 16px rgba(0,0,0,0.08)',border:'1px solid #f3f4f6',transition:'all 0.3s cubic-bezier(0.4,0,0.2,1)'}
+const chartTitle = {fontSize:17,fontWeight:800,color:'#1e3a5f',marginBottom:20,marginTop:0,letterSpacing:'-0.4px'}
+const smallBtn   = (bg,color)=>({backgroundColor:bg,color,border:'none',borderRadius:6,padding:'6px 11px',fontSize:12,fontWeight:700,cursor:'pointer',transition:'all 0.25s ease',boxShadow:'0 2px 4px rgba(0,0,0,0.05)'})
+const pgBtn      = (disabled)=>({padding:'7px 13px',borderRadius:7,border:'1px solid #e5e7eb',cursor:disabled?'not-allowed':'pointer',fontSize:13,fontWeight:600,backgroundColor:'#f8fafc',color:disabled?'#cbd5e1':'#64748b',transition:'all 0.2s ease',boxShadow:'0 1px 2px rgba(0,0,0,0.04)'})
+
 // ══════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════
@@ -4189,13 +4200,5 @@ function Accounts({role,userId}){
   </div>
   )
 }
-
-const iStyle    = {width:'100%',padding:'11px 14px',borderRadius:8,border:'1px solid #e5e7eb',fontSize:13,backgroundColor:'white',boxSizing:'border-box',transition:'all 0.2s cubic-bezier(0.4,0,0.2,1)'}
-const lStyle    = {display:'block',fontSize:12,fontWeight:700,color:'#374151',marginBottom:7,letterSpacing:'0.2px',textTransform:'capitalize'}
-const tdS       = {padding:'13px 14px',color:'#64748b',fontSize:'13px',fontWeight:500}
-const chartCard  = {backgroundColor:'white',borderRadius:14,padding:24,boxShadow:'0 4px 16px rgba(0,0,0,0.08)',border:'1px solid #f3f4f6',transition:'all 0.3s cubic-bezier(0.4,0,0.2,1)'}
-const chartTitle = {fontSize:17,fontWeight:800,color:'#1e3a5f',marginBottom:20,marginTop:0,letterSpacing:'-0.4px'}
-const smallBtn   = (bg,color)=>({backgroundColor:bg,color,border:'none',borderRadius:6,padding:'6px 11px',fontSize:12,fontWeight:700,cursor:'pointer',transition:'all 0.25s ease',boxShadow:'0 2px 4px rgba(0,0,0,0.05)'})
-const pgBtn      = (disabled)=>({padding:'7px 13px',borderRadius:7,border:'1px solid #e5e7eb',cursor:disabled?'not-allowed':'pointer',fontSize:13,fontWeight:600,backgroundColor:'#f8fafc',color:disabled?'#cbd5e1':'#64748b',transition:'all 0.2s ease',boxShadow:'0 1px 2px rgba(0,0,0,0.04)'})
 
 export default Accounts
