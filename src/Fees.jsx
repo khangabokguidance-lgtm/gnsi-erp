@@ -3209,6 +3209,13 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: isMobile ? 'static' : 'sticky', top: 20 }}>
           <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
             <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', marginBottom: 14 }}>Payment details</div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '11px 13px', marginBottom: 14 }}>
+              <div style={{ fontSize: 18, lineHeight: 1 }}>⚠️</div>
+              <div style={{ fontSize: 12.2, color: '#991B1B', lineHeight: 1.5 }}>
+                <div style={{ fontWeight: 800, marginBottom: 2 }}>Use only the institute's official QR code / bank account for fee collection.</div>
+                Accepting parent fee payments into a personal UPI, bank, or wallet account is <b>strictly prohibited and illegal</b>. Any staff found doing this will face strict disciplinary action.
+              </div>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
               <div><label style={lbl}>Payment mode</label>
                 <select value={payMode} onChange={e => setPayMode(e.target.value)} style={inp}>
