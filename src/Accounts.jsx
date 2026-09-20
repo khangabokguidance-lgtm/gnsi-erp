@@ -1044,16 +1044,6 @@ function Accounts({role,userId}){
   }
 
   const toggleSelect=(id)=>setSelected(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n})
-  // BUGFIX: this used to compare selected.size===pagedEntries.length to
-  // decide "is the current page fully selected". That only checked the
-  // COUNT, not which ids — e.g. select all 25 rows on page 1, then flip to
-  // page 2 (also a full 25-row page with completely different ids): the
-  // sizes still matched, so clicking "select all" here immediately CLEARED
-  // the selection instead of selecting page 2, because it looked like page
-  // 2 was already "fully selected" when none of its rows were. Now checks
-  // that every row actually on the current page is present in `selected`.
-  const isPageFullySelected = pagedEntries.length>0 && pagedEntries.every(e=>selected.has(e.id))
-  const toggleSelectAll=()=>isPageFullySelected?setSelected(new Set()):setSelected(new Set(pagedEntries.map(e=>e.id)))
 
   const updateRow=(i,key,val)=>setRows(prev=>prev.map((r,idx)=>{
     if(idx!==i)return r
@@ -2228,6 +2218,22 @@ function Accounts({role,userId}){
 
   const totalPages   = Math.max(1,Math.ceil(filteredEntries.length/pageSize))
   const pagedEntries = filteredEntries.slice((page-1)*pageSize,page*pageSize)
+
+  // BUGFIX: this used to compare selected.size===pagedEntries.length to
+  // decide "is the current page fully selected". That only checked the
+  // COUNT, not which ids — e.g. select all 25 rows on page 1, then flip to
+  // page 2 (also a full 25-row page with completely different ids): the
+  // sizes still matched, so clicking "select all" here immediately CLEARED
+  // the selection instead of selecting page 2, because it looked like page
+  // 2 was already "fully selected" when none of its rows were. Now checks
+  // that every row actually on the current page is present in `selected`.
+  // (Moved here from just after toggleSelect() — it was declared ~1000
+  // lines before pagedEntries existed, which threw "Cannot access
+  // 'pagedEntries' before initialization" at runtime once the file grew
+  // large enough for the production minifier's variable-name mangling to
+  // surface it as the cryptic single-letter TDZ error.)
+  const isPageFullySelected = pagedEntries.length>0 && pagedEntries.every(e=>selected.has(e.id))
+  const toggleSelectAll=()=>isPageFullySelected?setSelected(new Set()):setSelected(new Set(pagedEntries.map(e=>e.id)))
 
   // BUGFIX (audit): these six lines still used the raw inline
   // `(e.status||'Confirmed')==='Confirmed'` check rather than the shared
