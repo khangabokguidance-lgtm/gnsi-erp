@@ -3646,11 +3646,21 @@ export default function Fees() {
       let updated = 0
       const failures = []
       for (const [table, rows] of tables) {
-        const ids = rows.filter(r => isBlank(r.collected_by)).map(r => r.id)
+        const ids = rows.filter(r => isBlank(r.collected_by) && r.id !== null && r.id !== undefined && String(r.id).trim() !== '').map(r => r.id)
         if (ids.length === 0) continue
-        const { error } = await supabase.from(table).update({ collected_by: name }).in('id', ids)
-        if (error) { failures.push(`${table}: ${error.message}`); continue }
-        updated += ids.length
+        // Update in chunks — a single request with a very large `.in(...)` list
+        // can be rejected by PostgREST/the proxy (400 Bad Request) once the
+        // resulting URL gets too long, especially on tables with text ids.
+        const chunkSize = 50
+        for (let i = 0; i < ids.length; i += chunkSize) {
+          const chunk = ids.slice(i, i + chunkSize)
+          const { error } = await supabase.from(table).update({ collected_by: name }).in('id', chunk)
+          if (error) {
+            failures.push(`${table}: ${error.message || error.details || error.hint || JSON.stringify(error)}`)
+            continue
+          }
+          updated += chunk.length
+        }
       }
       if (failures.length) alert('Some tables failed to update:\n' + failures.join('\n'))
       if (updated > 0) alert(`✅ Filled "Collected By" on ${updated} record(s).`)
