@@ -34,6 +34,7 @@ import Timetable          from './Timetable'
 import FeeSetup           from './FeeSetup'
 import Kitchen            from './Kitchen.jsx'
 import Entrance           from './Entrance'
+import ConstructionMaintenance from './ConstructionMaintenance'
 import Store              from './Store'
 import StorePublic        from './StorePublic'
 import { LOGO_BASE64 }    from './logo'
@@ -99,6 +100,7 @@ const ALL_GROUPS = [
       { id: 'studentfeeledger', label: 'Student Fee Ledger', icon: '📒' },
       // FIX: feesetup now visible in nav (was hidden but reachable)
       { id: 'feesetup',         label: 'Fee Setup',          icon: '⚙️' },
+      { id: 'construction',     label: 'Construction & Maintenance', icon: '🏗️' },
     ],
   },
   {
@@ -783,6 +785,7 @@ export default function App() {
     timetable:         <Timetable         currentUser={currentUser} perms={perms('timetable')}         />,
     // FIX: feesetup now admin-only explicitly (was hidden but reachable)
     feesetup:          isAdmin ? <FeeSetup userRole={currentUser.role} perms={perms('feesetup')} /> : <AccessDenied />,
+    construction:      <ConstructionMaintenance />,
     kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}           />,
     entrance:          <Entrance          currentUser={currentUser} perms={perms('entrance')}          />,
     store:             <Store             currentUser={currentUser} perms={perms('store')}             />,
