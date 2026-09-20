@@ -3938,31 +3938,112 @@ function Accounts({role,userId}){
           <div style={chartCard}><h3 style={chartTitle}>Top Categories</h3><ResponsiveContainer width="100%" height={isMobile?200:250}><PieChart><Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={isMobile?70:90} label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>{categoryData.map((_,idx)=><Cell key={idx} fill={CHART_COLORS[idx%CHART_COLORS.length]}/>)}</Pie><Tooltip formatter={v=>fmt(v)}/></PieChart></ResponsiveContainer></div>
           <div style={chartCard}><h3 style={chartTitle}>Payment Mode</h3><ResponsiveContainer width="100%" height={isMobile?200:250}><PieChart><Pie data={modeData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={isMobile?70:90} label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>{modeData.map((_,idx)=><Cell key={idx} fill={CHART_COLORS[(idx+4)%CHART_COLORS.length]}/>)}</Pie><Tooltip formatter={v=>fmt(v)}/></PieChart></ResponsiveContainer></div>
         </div>
-        <div style={{...chartCard,marginBottom:20,overflowX:'auto'}}>
-          <h3 style={chartTitle}>Category P&L — This Month vs Last Month</h3>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize: isMobile ? 12 : 13}}>
-            <thead><tr style={{backgroundColor:'#f8fafc'}}>{['Category','Type','This Month','Last Month','Change','Variance'].map(h=><th key={h} style={{padding:'10px 14px',textAlign:'left',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
-            <tbody>
-              {[...INCOME_CATEGORIES.map(cat=>({cat,type:'Income',thisVal:plData.thisInc[cat]||0,prevVal:plData.prevInc[cat]||0})),...EXPENSE_CATEGORIES.map(cat=>({cat,type:'Expense',thisVal:plData.thisExp[cat]||0,prevVal:plData.prevExp[cat]||0}))].filter(r=>r.thisVal>0||r.prevVal>0).map(({cat,type,thisVal,prevVal})=>{
-                const diff=thisVal-prevVal,pct=prevVal>0?((diff/prevVal)*100).toFixed(1):'—'
-                return(<tr key={`${type}-${cat}`} style={{borderBottom:'1px solid #f1f5f9'}}>
-                  <td style={{...tdS,fontWeight:500,color:'#1e293b'}}>{cat}</td>
-                  <td style={tdS}><span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:type==='Income'?'#dcfce7':'#fee2e2',color:type==='Income'?'#16a34a':'#dc2626'}}>{type}</span></td>
-                  <td style={{...tdS,fontWeight:600,color:type==='Income'?'#16a34a':'#dc2626'}}>{fmt(thisVal)}</td>
-                  <td style={tdS}>{fmt(prevVal)}</td>
-                  <td style={{...tdS,fontWeight:600,color:diff>=0?'#16a34a':'#dc2626'}}>{diff>=0?'+':''}{fmt(diff)}</td>
-                  <td style={{...tdS,color:diff>=0?'#16a34a':'#dc2626'}}>{pct!=='—'?`${diff>=0?'+':''}${pct}%`:'—'}</td>
-                </tr>)
-              })}
-              <tr style={{backgroundColor:'#f8fafc',fontWeight:700}}>
-                <td style={{...tdS,color:'#1e293b',fontWeight:700}} colSpan={2}>Net</td>
-                <td style={{...tdS,color:plData.totalThisInc-plData.totalThisExp>=0?'#16a34a':'#dc2626',fontWeight:700}}>{fmt(plData.totalThisInc-plData.totalThisExp)}</td>
-                <td style={{...tdS,fontWeight:700}}>{fmt(plData.totalPrevInc-plData.totalPrevExp)}</td>
-                <td colSpan={2}/>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        {(()=>{
+          const thisMonthLabel=new Date(`${today.slice(0,7)}-01`).toLocaleDateString('en-IN',{month:'long',year:'numeric'})
+          const lastMonthDate=(()=>{const [y,m]=today.slice(0,7).split('-').map(Number);return new Date(y,m-2,1)})()
+          const lastMonthLabel=lastMonthDate.toLocaleDateString('en-IN',{month:'long',year:'numeric'})
+          const rows=[...INCOME_CATEGORIES.map(cat=>({cat,type:'Income',thisVal:plData.thisInc[cat]||0,prevVal:plData.prevInc[cat]||0})),...EXPENSE_CATEGORIES.map(cat=>({cat,type:'Expense',thisVal:plData.thisExp[cat]||0,prevVal:plData.prevExp[cat]||0}))].filter(r=>r.thisVal>0||r.prevVal>0)
+          const incomeRows=rows.filter(r=>r.type==='Income').sort((a,b)=>b.thisVal-a.thisVal)
+          const expenseRows=rows.filter(r=>r.type==='Expense').sort((a,b)=>b.thisVal-a.thisVal)
+          const netThis=plData.totalThisInc-plData.totalThisExp,netPrev=plData.totalPrevInc-plData.totalPrevExp
+          const netDiff=netThis-netPrev,netPct=netPrev!==0?((netDiff/Math.abs(netPrev))*100):null
+          const marginThis=plData.totalThisInc>0?(netThis/plData.totalThisInc)*100:0
+          const marginPrev=plData.totalPrevInc>0?(netPrev/plData.totalPrevInc)*100:0
+          const maxVal=Math.max(...rows.map(r=>Math.max(r.thisVal,r.prevVal)),1)
+
+          const Section=({label,sectionRows,totalThis,totalPrev,accent,icon})=>(
+            <div style={{marginBottom:22}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10,paddingBottom:8,borderBottom:`2px solid ${accent}22`}}>
+                <span style={{fontSize:15}}>{icon}</span>
+                <h4 style={{fontSize:13,fontWeight:800,color:accent,margin:0,textTransform:'uppercase',letterSpacing:'0.4px'}}>{label}</h4>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:2}}>
+                {sectionRows.map(({cat,thisVal,prevVal})=>{
+                  const diff=thisVal-prevVal
+                  const pct=prevVal>0?((diff/prevVal)*100):(thisVal>0?100:0)
+                  const hasHistory=prevVal>0||thisVal>0
+                  const trendUp=diff>0,trendFlat=diff===0
+                  // For expense categories a rise is unfavorable (shown red); for income a rise is favorable (green) — flip the color logic by section.
+                  const favorable=label==='Income'?diff>=0:diff<=0
+                  return(
+                    <div key={cat} style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'1.4fr 100px 100px 90px 70px',gap: isMobile?6:14,alignItems:'center',padding:'9px 10px',borderRadius:8,transition:'background-color 0.15s ease'}}>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:600,color:'#1e293b',marginBottom:4}}>{cat}</div>
+                        <div style={{height:4,borderRadius:999,backgroundColor:'#f1f5f9',overflow:'hidden',maxWidth:220}}>
+                          <div style={{height:'100%',width:`${Math.max((thisVal/maxVal)*100,thisVal>0?2:0)}%`,borderRadius:999,backgroundColor:accent,transition:'width 0.3s ease'}}/>
+                        </div>
+                      </div>
+                      <div style={{textAlign: isMobile?'left':'right',fontSize:13,fontWeight:700,color:accent}}>{fmt(thisVal)}</div>
+                      <div style={{textAlign: isMobile?'left':'right',fontSize:12,color:'#94a3b8'}}>{fmt(prevVal)}</div>
+                      <div style={{textAlign: isMobile?'left':'right',fontSize:12,fontWeight:700,color:hasHistory?(favorable?'#16a34a':'#dc2626'):'#94a3b8'}}>{diff>=0?'+':''}{fmt(diff)}</div>
+                      <div style={{display:'flex',alignItems:'center',gap:3,justifyContent: isMobile?'flex-start':'flex-end',fontSize:12,fontWeight:800,color:!hasHistory||prevVal===0?'#94a3b8':(favorable?'#16a34a':'#dc2626')}}>
+                        {prevVal>0&&!trendFlat&&(trendUp?'▲':'▼')}
+                        {prevVal>0?`${Math.abs(pct).toFixed(1)}%`:'—'}
+                      </div>
+                    </div>
+                  )
+                })}
+                <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'1.4fr 100px 100px 90px 70px',gap: isMobile?6:14,alignItems:'center',padding:'10px',marginTop:4,backgroundColor:`${accent}0d`,borderRadius:8}}>
+                  <div style={{fontSize:12,fontWeight:800,color:accent,textTransform:'uppercase',letterSpacing:'0.3px'}}>Total {label}</div>
+                  <div style={{textAlign: isMobile?'left':'right',fontSize:14,fontWeight:800,color:accent}}>{fmt(totalThis)}</div>
+                  <div style={{textAlign: isMobile?'left':'right',fontSize:12,fontWeight:700,color:'#64748b'}}>{fmt(totalPrev)}</div>
+                  <div style={{textAlign: isMobile?'left':'right',fontSize:12,fontWeight:800,color:(label==='Income'?totalThis>=totalPrev:totalThis<=totalPrev)?'#16a34a':'#dc2626'}}>{totalThis-totalPrev>=0?'+':''}{fmt(totalThis-totalPrev)}</div>
+                  <div/>
+                </div>
+              </div>
+            </div>
+          )
+
+          return(
+          <div style={{...chartCard,marginBottom:20}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems: isMobile?'flex-start':'center',flexDirection: isMobile?'column':'row',gap:10,marginBottom:6}}>
+              <div>
+                <h3 style={{...chartTitle,marginBottom:3}}>📑 Profit &amp; Loss Statement</h3>
+                <p style={{fontSize:12,color:'#94a3b8',margin:0}}>{thisMonthLabel} vs {lastMonthLabel} — by category</p>
+              </div>
+              <div style={{display:'flex',gap:8}}>
+                <span style={{padding:'4px 12px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#eff6ff',color:'#1e3a5f'}}>{thisMonthLabel}</span>
+                <span style={{padding:'4px 12px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#f8fafc',color:'#94a3b8'}}>{lastMonthLabel}</span>
+              </div>
+            </div>
+
+            {!isMobile&&(
+              <div style={{display:'grid',gridTemplateColumns:'1.4fr 100px 100px 90px 70px',gap:14,padding:'14px 10px 8px',fontSize:11,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.3px',borderBottom:'1px solid #f1f5f9',marginBottom:8}}>
+                <div>Category</div>
+                <div style={{textAlign:'right'}}>This Month</div>
+                <div style={{textAlign:'right'}}>Last Month</div>
+                <div style={{textAlign:'right'}}>Change</div>
+                <div style={{textAlign:'right'}}>Variance</div>
+              </div>
+            )}
+
+            <Section label="Income" sectionRows={incomeRows} totalThis={plData.totalThisInc} totalPrev={plData.totalPrevInc} accent="#16a34a" icon="💰"/>
+            <Section label="Expense" sectionRows={expenseRows} totalThis={plData.totalThisExp} totalPrev={plData.totalPrevExp} accent="#dc2626" icon="💸"/>
+
+            {/* ── Net result — headline card ── */}
+            <div style={{marginTop:8,padding: isMobile?16:20,borderRadius:12,background:netThis>=0?'linear-gradient(135deg,#0f3d2e,#16653f)':'linear-gradient(135deg,#5c1414,#7f1d1d)',color:'white'}}>
+              <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr 1fr':'repeat(4,1fr)',gap: isMobile?14:20}}>
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.65)',textTransform:'uppercase',letterSpacing:'0.4px',marginBottom:4}}>Net — {thisMonthLabel}</div>
+                  <div style={{fontSize: isMobile?18:22,fontWeight:800}}>{fmt(netThis)}</div>
+                </div>
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.65)',textTransform:'uppercase',letterSpacing:'0.4px',marginBottom:4}}>Net — {lastMonthLabel}</div>
+                  <div style={{fontSize: isMobile?18:22,fontWeight:800,color:'rgba(255,255,255,0.85)'}}>{fmt(netPrev)}</div>
+                </div>
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.65)',textTransform:'uppercase',letterSpacing:'0.4px',marginBottom:4}}>Change</div>
+                  <div style={{fontSize: isMobile?18:22,fontWeight:800}}>{netDiff>=0?'+':''}{fmt(netDiff)}{netPct!==null&&<span style={{fontSize:13,fontWeight:700,marginLeft:6,opacity:0.85}}>({netDiff>=0?'+':''}{netPct.toFixed(1)}%)</span>}</div>
+                </div>
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.65)',textTransform:'uppercase',letterSpacing:'0.4px',marginBottom:4}}>Net Margin</div>
+                  <div style={{fontSize: isMobile?18:22,fontWeight:800}}>{marginThis.toFixed(1)}%<span style={{fontSize:13,fontWeight:700,marginLeft:6,opacity:0.75}}>(was {marginPrev.toFixed(1)}%)</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          )
+        })()}
       </div>
     )}
 
