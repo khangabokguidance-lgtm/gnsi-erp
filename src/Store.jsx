@@ -21,6 +21,19 @@ const n = v => Number(v || 0).toLocaleString('en-IN')
 const todayStr = () => new Date().toLocaleDateString('en-CA')
 const esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
+// A product's effective (sale, if active) price — mirrors store_effective_price() in SQL,
+// which is what actually gets charged; this is only for display before checkout.
+const effPrice = p => {
+  const now = Date.now()
+  const starts = p.sale_starts ? new Date(p.sale_starts).getTime() : null
+  const ends = p.sale_ends ? new Date(p.sale_ends).getTime() : null
+  if (p.sale_price != null && Number(p.sale_price) >= 0 && Number(p.sale_price) < Number(p.price)
+      && (starts === null || now >= starts) && (ends === null || now <= ends)) return Number(p.sale_price)
+  return Number(p.price)
+}
+const LOYALTY_POINT_VALUE = 1   // ₹ per point on redemption — mirrors store_loyalty_point_value()
+const LOYALTY_EARN_RATE = 100   // ₹ paid per point earned — mirrors store_loyalty_earn_rate()
+
 const inp = { width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'white' }
 const lbl = { display: 'block', fontSize: 11, fontWeight: 700, color: '#475569', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.03em' }
 const card = { background: 'white', border: '1px solid #e2e8f0', borderRadius: 12 }
@@ -112,6 +125,11 @@ function POSTab({ products, categories, students, isAdmin, currentUser, onSaleDo
   const [paidAmt, setPaidAmt] = useState('')
   const [collectedBy, setCollectedBy] = useState(currentUser?.userName || currentUser?.name || '')
   const [saving, setSaving] = useState(false)
+  const [promoCode, setPromoCode] = useState('')
+  const [promoResult, setPromoResult] = useState(null) // { valid, amount_off, reason }
+  const [checkingPromo, setCheckingPromo] = useState(false)
+  const [loyaltyBalance, setLoyaltyBalance] = useState(null)
+  const [redeemPts, setRedeemPts] = useState('')
 
   const byId = useMemo(() => new Map(products.map(p => [p.id, p])), [products])
   const sellable = useMemo(() => products.filter(p => p.active), [products])
@@ -126,17 +144,49 @@ function POSTab({ products, categories, students, isAdmin, currentUser, onSaleDo
   }, [sellable, q, cat])
 
   const lines = cart.map(c => ({ ...c, p: byId.get(c.id) })).filter(l => l.p)
-  const subtotal = lines.reduce((s, l) => s + l.p.price * l.qty, 0)
+  const subtotal = lines.reduce((s, l) => s + effPrice(l.p) * l.qty, 0)
   const discNum = Math.min(Math.max(Number(discount) || 0, 0), subtotal)
-  const total = subtotal - discNum
+  const promoOff = promoResult?.valid ? Math.min(Number(promoResult.amount_off) || 0, subtotal - discNum) : 0
+  const afterPromo = subtotal - discNum - promoOff
+  const maxRedeemablePts = custType === 'student' && loyaltyBalance != null
+    ? Math.min(loyaltyBalance, Math.floor(afterPromo / LOYALTY_POINT_VALUE))
+    : 0
+  const redeemPtsNum = Math.min(Math.max(parseInt(redeemPts, 10) || 0, 0), maxRedeemablePts)
+  const redeemVal = redeemPtsNum * LOYALTY_POINT_VALUE
+  const total = Math.max(afterPromo - redeemVal, 0)
   const paidNum = paidAmt === '' ? total : Math.min(Math.max(Number(paidAmt) || 0, 0), total)
   const dueNum = total - paidNum
+  const willEarnPts = custType === 'student' && student ? Math.floor(paidNum / LOYALTY_EARN_RATE) : 0
 
   const studentHits = useMemo(() => {
     const s = studentQ.trim().toLowerCase()
     if (!s) return []
     return students.filter(st => (st.name || '').toLowerCase().includes(s) || String(st.gcc_no || '').includes(s)).slice(0, 6)
   }, [students, studentQ])
+
+  // Fetch the loyalty points balance whenever a student is selected/changed.
+  useEffect(() => {
+    let cancelled = false
+    setRedeemPts('')
+    if (custType !== 'student' || !student) { setLoyaltyBalance(null); return }
+    supabase.rpc('store_loyalty_balance', { p_gcc: gccStr(student.gcc_no) }).then(({ data, error }) => {
+      if (cancelled) return
+      if (error) { setLoyaltyBalance(null); return }
+      setLoyaltyBalance(Number(data) || 0)
+    })
+    return () => { cancelled = true }
+  }, [custType, student])
+
+  const checkPromo = async () => {
+    const code = promoCode.trim()
+    if (!code) { setPromoResult(null); return }
+    setCheckingPromo(true)
+    const { data, error } = await supabase.rpc('store_validate_promo', { p_code: code, p_subtotal: subtotal - discNum })
+    setCheckingPromo(false)
+    if (error) { setPromoResult({ valid: false, reason: error.message }); return }
+    setPromoResult(data)
+    if (!data?.valid) showToast(data?.reason || 'Invalid promo code', '#dc2626')
+  }
 
   const addToCart = p => {
     if (p.stock <= 0) { showToast(`${p.name} is out of stock`, '#dc2626'); return }
@@ -168,6 +218,7 @@ function POSTab({ products, categories, students, isAdmin, currentUser, onSaleDo
   const reset = () => {
     setCart([]); setStudent(null); setStudentQ(''); setCustName(''); setCustPhone('')
     setDiscount(''); setTxnRef(''); setPaidAmt(''); setPayMode('Cash'); setCustType('walkin')
+    setPromoCode(''); setPromoResult(null); setRedeemPts(''); setLoyaltyBalance(null)
   }
 
   const checkout = async () => {
@@ -185,6 +236,7 @@ function POSTab({ products, categories, students, isAdmin, currentUser, onSaleDo
         customer_name: student ? student.name : custName,
         phone: custPhone, discount: discNum, pay_mode: paidNum > 0 ? payMode : null,
         txn_ref: txnRef, amount_paid: paidNum, collected_by: collectedBy.trim(), source: 'counter',
+        promo_code: promoResult?.valid ? promoCode.trim() : '', redeem_points: redeemPtsNum,
         items: lines.map(l => ({ product_id: l.id, qty: l.qty })),
       }
       const { data, error } = await supabase.rpc('store_create_sale', { p: payload })
@@ -196,8 +248,9 @@ function POSTab({ products, categories, students, isAdmin, currentUser, onSaleDo
         ref: `store_${data.bill_no}_pay0`,
       })
       if (posted && Number(data.amount_paid) > 0) await supabase.from('store_sales').update({ account_posted: true }).eq('id', data.id)
+      const ptsNote = data.points_earned > 0 ? ` · +${data.points_earned} pts` : ''
       if (!posted) showToast('Sale saved, but posting to Accounts failed — check accounts columns.', '#d97706')
-      else showToast(`✅ ${data.bill_no} · ₹${n(data.total)}`, '#16a34a')
+      else showToast(`✅ ${data.bill_no} · ₹${n(data.total)}${ptsNote}`, '#16a34a')
 
       printBill(data)
       reset()
@@ -227,16 +280,18 @@ function POSTab({ products, categories, students, isAdmin, currentUser, onSaleDo
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 10, maxHeight: isMobile ? 'none' : 620, overflowY: 'auto', paddingRight: 2 }}>
           {filtered.map(p => {
             const out = p.stock <= 0, low = !out && p.stock <= (p.reorder_level ?? 5)
+            const price = effPrice(p), onSale = price < Number(p.price)
             return (
               <button key={p.id} onClick={() => addToCart(p)} disabled={out}
-                style={{ ...card, padding: 10, textAlign: 'left', cursor: out ? 'not-allowed' : 'pointer', opacity: out ? .5 : 1 }}>
+                style={{ ...card, padding: 10, textAlign: 'left', cursor: out ? 'not-allowed' : 'pointer', opacity: out ? .5 : 1, position: 'relative' }}>
+                {onSale && <span style={{ position: 'absolute', top: 6, left: 6, fontSize: 9.5, fontWeight: 800, color: 'white', background: '#dc2626', padding: '2px 6px', borderRadius: 5 }}>SALE</span>}
                 <div style={{ height: 70, borderRadius: 8, background: '#f1f5f9', marginBottom: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>
                   {p.image_url ? <img src={p.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '📦'}
                 </div>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a', lineHeight: 1.25, minHeight: 32 }}>{p.name}{p.size ? ` — ${p.size}` : ''}</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 6 }}>
-                  <span style={{ fontSize: 14, fontWeight: 900, color: NAVY }}>₹{n(p.price)}</span>
-                  {p.mrp > p.price && <span style={{ fontSize: 10.5, color: '#94a3b8', textDecoration: 'line-through' }}>₹{n(p.mrp)}</span>}
+                  <span style={{ fontSize: 14, fontWeight: 900, color: onSale ? '#dc2626' : NAVY }}>₹{n(price)}</span>
+                  {(onSale || p.mrp > p.price) && <span style={{ fontSize: 10.5, color: '#94a3b8', textDecoration: 'line-through' }}>₹{n(onSale ? p.price : p.mrp)}</span>}
                 </div>
                 <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: out ? '#dc2626' : low ? '#d97706' : '#16a34a' }}>
                   {out ? 'Out of stock' : `${p.stock} ${p.unit || 'pc'} left`}
@@ -257,20 +312,23 @@ function POSTab({ products, categories, students, isAdmin, currentUser, onSaleDo
         <div style={{ padding: 14 }}>
           {lines.length === 0 ? (
             <div style={{ textAlign: 'center', color: '#94a3b8', padding: '20px 0', fontSize: 13 }}>Tap products to add them</div>
-          ) : lines.map(l => (
-            <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid #f1f5f9' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>{l.p.name}{l.p.size ? ` — ${l.p.size}` : ''}</div>
-                <div style={{ fontSize: 11, color: '#64748b' }}>₹{n(l.p.price)} each</div>
+          ) : lines.map(l => {
+            const price = effPrice(l.p)
+            return (
+              <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>{l.p.name}{l.p.size ? ` — ${l.p.size}` : ''}</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>₹{n(price)} each{price < Number(l.p.price) && <span style={{ color: '#dc2626', fontWeight: 700 }}> · sale</span>}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <button onClick={() => setQty(l.id, l.qty - 1)} style={btn('#f1f5f9', '#334155', { padding: '3px 9px' })}>−</button>
+                  <span style={{ minWidth: 22, textAlign: 'center', fontWeight: 800, fontSize: 13 }}>{l.qty}</span>
+                  <button onClick={() => setQty(l.id, l.qty + 1)} style={btn('#f1f5f9', '#334155', { padding: '3px 9px' })}>+</button>
+                </div>
+                <div style={{ width: 62, textAlign: 'right', fontWeight: 800, fontSize: 13 }}>₹{n(price * l.qty)}</div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <button onClick={() => setQty(l.id, l.qty - 1)} style={btn('#f1f5f9', '#334155', { padding: '3px 9px' })}>−</button>
-                <span style={{ minWidth: 22, textAlign: 'center', fontWeight: 800, fontSize: 13 }}>{l.qty}</span>
-                <button onClick={() => setQty(l.id, l.qty + 1)} style={btn('#f1f5f9', '#334155', { padding: '3px 9px' })}>+</button>
-              </div>
-              <div style={{ width: 62, textAlign: 'right', fontWeight: 800, fontSize: 13 }}>₹{n(l.p.price * l.qty)}</div>
-            </div>
-          ))}
+            )
+          })}
 
           {/* Customer */}
           <div style={{ marginTop: 14 }}>
@@ -315,6 +373,39 @@ function POSTab({ products, categories, students, isAdmin, currentUser, onSaleDo
             )}
           </div>
 
+          {/* Promo code */}
+          <div style={{ marginTop: 14 }}>
+            <label style={lbl}>Promo code</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input value={promoCode} onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoResult(null) }}
+                onKeyDown={e => e.key === 'Enter' && checkPromo()} placeholder="e.g. WELCOME10" style={{ ...inp, flex: 1 }} />
+              <button onClick={checkPromo} disabled={checkingPromo || !promoCode.trim()} style={btn(NAVY, 'white', { padding: '9px 14px' })}>{checkingPromo ? '…' : 'Apply'}</button>
+            </div>
+            {promoResult?.valid && (
+              <div style={{ marginTop: 5, fontSize: 12, fontWeight: 700, color: '#16a34a', display: 'flex', justifyContent: 'space-between' }}>
+                <span>✓ {promoResult.code} applied</span>
+                <button onClick={() => { setPromoCode(''); setPromoResult(null) }} style={{ background: 'none', border: 'none', color: '#dc2626', fontWeight: 700, cursor: 'pointer', fontSize: 11 }}>Remove</button>
+              </div>
+            )}
+          </div>
+
+          {/* Loyalty points */}
+          {custType === 'student' && student && loyaltyBalance != null && (
+            <div style={{ marginTop: 10, background: '#fefce8', border: '1px solid #fde047', borderRadius: 8, padding: '8px 12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, fontWeight: 700, color: '#854d0e' }}>
+                <span>⭐ {loyaltyBalance} points available</span>
+                {willEarnPts > 0 && <span style={{ color: '#16a34a' }}>+{willEarnPts} pts on this bill</span>}
+              </div>
+              {maxRedeemablePts > 0 && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
+                  <input type="number" min={0} max={maxRedeemablePts} value={redeemPts} onChange={e => setRedeemPts(e.target.value)}
+                    placeholder="Redeem points" style={{ ...inp, padding: '6px 10px', fontSize: 12 }} />
+                  <button onClick={() => setRedeemPts(String(maxRedeemablePts))} style={btn('#fde047', '#854d0e', { padding: '6px 10px', fontSize: 11 })}>Max</button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Totals + payment */}
           <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <div>
@@ -342,6 +433,8 @@ function POSTab({ products, categories, students, isAdmin, currentUser, onSaleDo
           <div style={{ marginTop: 14, fontSize: 13, color: '#475569' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span>Subtotal</span><span>₹{n(subtotal)}</span></div>
             {discNum > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span>Discount</span><span>− ₹{n(discNum)}</span></div>}
+            {promoOff > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#16a34a' }}><span>Promo ({promoResult.code})</span><span>− ₹{n(promoOff)}</span></div>}
+            {redeemVal > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#854d0e' }}><span>Points redeemed ({redeemPtsNum})</span><span>− ₹{n(redeemVal)}</span></div>}
             {dueNum > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#b91c1c', fontWeight: 700 }}><span>Goes to student dues</span><span>₹{n(dueNum)}</span></div>}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 17, fontWeight: 900, color: 'white', background: NAVY, padding: '12px 14px', borderRadius: 10, marginTop: 8 }}>
@@ -360,7 +453,7 @@ function POSTab({ products, categories, students, isAdmin, currentUser, onSaleDo
 // ═══════════════════════════════════════════════════════════════════════════
 // PRODUCTS TAB
 // ═══════════════════════════════════════════════════════════════════════════
-const EMPTY_PRODUCT = { name: '', sku: '', barcode: '', category_id: '', price: '', mrp: '', size: '', sizes: '', stock: '', reorder_level: '5', unit: 'pc', description: '', image_url: '', online_visible: true, active: true }
+const EMPTY_PRODUCT = { name: '', sku: '', barcode: '', category_id: '', price: '', mrp: '', size: '', sizes: '', stock: '', reorder_level: '5', unit: 'pc', description: '', image_url: '', online_visible: true, active: true, sale_price: '', sale_starts: '', sale_ends: '' }
 
 function ProductsTab({ products, categories, isAdmin, currentUser, reload, showToast }) {
   const [q, setQ] = useState('')
@@ -386,7 +479,8 @@ function ProductsTab({ products, categories, isAdmin, currentUser, reload, showT
 
   const openNew = () => { setForm(EMPTY_PRODUCT); setEditing({}) }
   const openEdit = p => {
-    setForm({ ...EMPTY_PRODUCT, ...p, category_id: p.category_id ?? '', price: p.price ?? '', mrp: p.mrp ?? '', size: p.size ?? '', sizes: '', stock: p.stock, reorder_level: p.reorder_level ?? '', sku: p.sku ?? '', barcode: p.barcode ?? '', description: p.description ?? '', image_url: p.image_url ?? '' })
+    setForm({ ...EMPTY_PRODUCT, ...p, category_id: p.category_id ?? '', price: p.price ?? '', mrp: p.mrp ?? '', size: p.size ?? '', sizes: '', stock: p.stock, reorder_level: p.reorder_level ?? '', sku: p.sku ?? '', barcode: p.barcode ?? '', description: p.description ?? '', image_url: p.image_url ?? '',
+      sale_price: p.sale_price ?? '', sale_starts: p.sale_starts ? p.sale_starts.slice(0, 16) : '', sale_ends: p.sale_ends ? p.sale_ends.slice(0, 16) : '' })
     setEditing(p)
   }
   const f = (k, v) => setForm(x => ({ ...x, [k]: v }))
@@ -394,6 +488,7 @@ function ProductsTab({ products, categories, isAdmin, currentUser, reload, showT
   const save = async () => {
     if (!form.name.trim()) { showToast('Product name is required.', '#dc2626'); return }
     if (form.price === '' || Number(form.price) < 0) { showToast('Enter a valid selling price.', '#dc2626'); return }
+    if (form.sale_price !== '' && Number(form.sale_price) >= Number(form.price)) { showToast('Sale price must be lower than the regular price.', '#dc2626'); return }
     setSaving(true)
     try {
       const base = {
@@ -402,6 +497,8 @@ function ProductsTab({ products, categories, isAdmin, currentUser, reload, showT
         reorder_level: form.reorder_level === '' ? 5 : Number(form.reorder_level), unit: form.unit || 'pc',
         description: form.description || null, image_url: form.image_url || null,
         online_visible: !!form.online_visible, active: !!form.active, updated_at: new Date().toISOString(),
+        sale_price: form.sale_price === '' ? null : Number(form.sale_price),
+        sale_starts: form.sale_starts || null, sale_ends: form.sale_ends || null,
       }
       if (editing.id) {
         const { error } = await supabase.from('store_products').update({
@@ -478,13 +575,14 @@ function ProductsTab({ products, categories, isAdmin, currentUser, reload, showT
           <tbody>
             {rows.map(p => {
               const out = p.stock <= 0, low = !out && p.stock <= (p.reorder_level ?? 5)
+              const price = effPrice(p), onSale = price < Number(p.price)
               return (
                 <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9', opacity: p.active ? 1 : .5 }}>
                   <td style={{ padding: '9px 12px', fontWeight: 700, color: '#1e293b' }}>{p.name}{p.size ? ` — ${p.size}` : ''}{!p.active && <span style={{ marginLeft: 6, fontSize: 10, color: '#94a3b8' }}>(inactive)</span>}</td>
                   <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 12 }}>{byCat.get(p.category_id) || '—'}</td>
                   <td style={{ padding: '9px 12px', color: '#64748b', fontFamily: 'monospace', fontSize: 11 }}>{p.sku || '—'}{p.barcode ? ` · ${p.barcode}` : ''}</td>
-                  <td style={{ padding: '9px 12px', fontWeight: 800, color: NAVY }}>₹{n(p.price)}</td>
-                  <td style={{ padding: '9px 12px', color: '#94a3b8' }}>{p.mrp ? `₹${n(p.mrp)}` : '—'}</td>
+                  <td style={{ padding: '9px 12px', fontWeight: 800, color: onSale ? '#dc2626' : NAVY }}>₹{n(price)}{onSale && <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: 'white', background: '#dc2626', padding: '1px 5px', borderRadius: 4 }}>SALE</span>}</td>
+                  <td style={{ padding: '9px 12px', color: '#94a3b8' }}>{onSale ? <span style={{ textDecoration: 'line-through' }}>₹{n(p.price)}</span> : p.mrp ? `₹${n(p.mrp)}` : '—'}</td>
                   <td style={{ padding: '9px 12px' }}>
                     <span style={{ fontWeight: 800, color: out ? '#dc2626' : low ? '#d97706' : '#16a34a' }}>{p.stock}</span>
                     {out && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#dc2626' }}>OUT</span>}
@@ -525,6 +623,12 @@ function ProductsTab({ products, categories, isAdmin, currentUser, reload, showT
               <div><label style={lbl}>Low-stock alert at</label><input type="number" min={0} value={form.reorder_level} onChange={e => f('reorder_level', e.target.value)} style={inp} /></div>
               <div><label style={lbl}>Image URL</label><input value={form.image_url} onChange={e => f('image_url', e.target.value)} style={inp} placeholder="https://…" /></div>
               <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Description (shown online)</label><textarea value={form.description} onChange={e => f('description', e.target.value)} rows={2} style={{ ...inp, resize: 'vertical' }} /></div>
+              <div style={{ gridColumn: '1/-1', borderTop: '1px dashed #e2e8f0', paddingTop: 10, marginTop: 2 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '.03em', marginBottom: 8 }}>🏷️ Sale price (optional)</div>
+              </div>
+              <div><label style={lbl}>Sale price ₹</label><input type="number" min={0} value={form.sale_price} onChange={e => f('sale_price', e.target.value)} style={inp} placeholder="Leave blank for no sale" /></div>
+              <div><label style={lbl}>Sale starts</label><input type="datetime-local" value={form.sale_starts} onChange={e => f('sale_starts', e.target.value)} style={inp} /></div>
+              <div><label style={lbl}>Sale ends</label><input type="datetime-local" value={form.sale_ends} onChange={e => f('sale_ends', e.target.value)} style={inp} /></div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}><input type="checkbox" checked={form.online_visible} onChange={e => f('online_visible', e.target.checked)} /> Show on public store</label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}><input type="checkbox" checked={form.active} onChange={e => f('active', e.target.checked)} /> Active (sellable)</label>
             </div>
@@ -829,6 +933,207 @@ function ReportsTab({ products, categories, refreshKey }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PROMOTIONS TAB — discount codes + student loyalty points (admin only)
+// ═══════════════════════════════════════════════════════════════════════════
+const EMPTY_PROMO = { code: '', kind: 'percent', value: '', min_subtotal: '', max_discount: '', starts_at: '', ends_at: '', usage_limit: '', active: true }
+
+function PromotionsTab({ currentUser, showToast }) {
+  const [promos, setPromos] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(null)
+  const [form, setForm] = useState(EMPTY_PROMO)
+  const [saving, setSaving] = useState(false)
+  const [gccLookup, setGccLookup] = useState('')
+  const [gccBalance, setGccBalance] = useState(null)
+  const [gccLedger, setGccLedger] = useState([])
+  const [lookingUp, setLookingUp] = useState(false)
+  const by = currentUser?.userName || currentUser?.name || 'Admin'
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await supabase.from('store_promo_codes').select('*').order('created_at', { ascending: false })
+    if (error) showToast('Could not load promo codes: ' + error.message, '#dc2626')
+    setPromos(data || [])
+    setLoading(false)
+  }, [showToast])
+  useEffect(() => { load() }, [load])
+
+  const openNew = () => { setForm(EMPTY_PROMO); setEditing({}) }
+  const openEdit = p => {
+    setForm({ ...EMPTY_PROMO, ...p, value: p.value ?? '', min_subtotal: p.min_subtotal ?? '', max_discount: p.max_discount ?? '',
+      starts_at: p.starts_at ? p.starts_at.slice(0, 16) : '', ends_at: p.ends_at ? p.ends_at.slice(0, 16) : '', usage_limit: p.usage_limit ?? '' })
+    setEditing(p)
+  }
+  const f = (k, v) => setForm(x => ({ ...x, [k]: v }))
+
+  const save = async () => {
+    const code = form.code.trim().toUpperCase()
+    if (!code) { showToast('Enter a code.', '#dc2626'); return }
+    if (form.value === '' || Number(form.value) <= 0) { showToast('Enter a discount value greater than 0.', '#dc2626'); return }
+    if (form.kind === 'percent' && Number(form.value) > 100) { showToast('A percent discount cannot exceed 100.', '#dc2626'); return }
+    setSaving(true)
+    const payload = {
+      code, kind: form.kind, value: Number(form.value),
+      min_subtotal: form.min_subtotal === '' ? 0 : Number(form.min_subtotal),
+      max_discount: form.max_discount === '' ? null : Number(form.max_discount),
+      starts_at: form.starts_at || null, ends_at: form.ends_at || null,
+      usage_limit: form.usage_limit === '' ? null : parseInt(form.usage_limit, 10),
+      active: !!form.active,
+    }
+    const q = editing.id
+      ? supabase.from('store_promo_codes').update(payload).eq('id', editing.id)
+      : supabase.from('store_promo_codes').insert([payload])
+    const { error } = await q
+    setSaving(false)
+    if (error) { showToast('Save failed: ' + error.message, '#dc2626'); return }
+    showToast(editing.id ? '✅ Promo code updated' : '✅ Promo code created')
+    setEditing(null); load()
+  }
+
+  const toggleActive = async p => {
+    const { error } = await supabase.from('store_promo_codes').update({ active: !p.active }).eq('id', p.id)
+    if (error) { showToast('Update failed: ' + error.message, '#dc2626'); return }
+    load()
+  }
+
+  const lookupGcc = async () => {
+    const gcc = gccLookup.trim()
+    if (!gcc) return
+    setLookingUp(true)
+    const [{ data: bal }, { data: ledger, error }] = await Promise.all([
+      supabase.rpc('store_loyalty_balance', { p_gcc: gcc }),
+      supabase.from('store_loyalty_ledger').select('*').eq('gcc_no', gcc).order('created_at', { ascending: false }).limit(30),
+    ])
+    setLookingUp(false)
+    if (error) { showToast('Lookup failed: ' + error.message, '#dc2626'); return }
+    setGccBalance(Number(bal) || 0)
+    setGccLedger(ledger || [])
+  }
+
+  const adjustPoints = async () => {
+    const gcc = gccLookup.trim()
+    if (!gcc) { showToast('Enter a GCC No. first.', '#dc2626'); return }
+    const raw = window.prompt(`Adjust points for GCC-${gcc} (current balance ${gccBalance ?? '—'}).\nEnter +N to add, −N to remove:`)
+    if (raw === null) return
+    const delta = parseInt(raw, 10)
+    if (!delta) { showToast('Enter a non-zero whole number.', '#dc2626'); return }
+    const reason = window.prompt('Reason:', 'Manual adjustment') || 'Adjustment'
+    const { error } = await supabase.rpc('store_loyalty_adjust', { p_gcc: gcc, p_delta: delta, p_reason: reason, p_by: by })
+    if (error) { showToast('Adjust failed: ' + error.message, '#dc2626'); return }
+    showToast(`Points ${delta > 0 ? '+' : ''}${delta} applied`); lookupGcc()
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(340px,1fr))', gap: 18, alignItems: 'start' }}>
+        {/* Promo codes */}
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: NAVY }}>🏷️ Discount codes</div>
+            <button onClick={openNew} style={btn(NAVY)}>+ New code</button>
+          </div>
+          {loading ? <div style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>⏳ Loading…</div> : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {promos.map(p => {
+                const expired = p.ends_at && new Date(p.ends_at) < new Date()
+                const exhausted = p.usage_limit != null && p.used_count >= p.usage_limit
+                const live = p.active && !expired && !exhausted
+                return (
+                  <div key={p.id} style={{ ...card, padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: NAVY, fontFamily: 'monospace' }}>{p.code}</div>
+                        <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                          {p.kind === 'percent' ? `${p.value}% off` : `₹${n(p.value)} off`}
+                          {p.max_discount ? ` (max ₹${n(p.max_discount)})` : ''}
+                          {p.min_subtotal > 0 ? ` · min ₹${n(p.min_subtotal)}` : ''}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
+                          Used {p.used_count}{p.usage_limit ? ` / ${p.usage_limit}` : ''}
+                          {p.starts_at ? ` · from ${new Date(p.starts_at).toLocaleDateString('en-IN')}` : ''}
+                          {p.ends_at ? ` · until ${new Date(p.ends_at).toLocaleDateString('en-IN')}` : ''}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 99, background: live ? '#dcfce7' : '#f1f5f9', color: live ? '#16a34a' : '#94a3b8' }}>
+                        {!p.active ? 'OFF' : expired ? 'EXPIRED' : exhausted ? 'USED UP' : 'LIVE'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                      <button onClick={() => openEdit(p)} style={btn('#f1f5f9', '#334155', { padding: '4px 10px' })}>Edit</button>
+                      <button onClick={() => toggleActive(p)} style={btn(p.active ? '#fef2f2' : '#dcfce7', p.active ? '#dc2626' : '#16a34a', { padding: '4px 10px' })}>{p.active ? 'Turn off' : 'Turn on'}</button>
+                    </div>
+                  </div>
+                )
+              })}
+              {promos.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8' }}>No promo codes yet</div>}
+            </div>
+          )}
+        </div>
+
+        {/* Loyalty lookup */}
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: NAVY, marginBottom: 12 }}>⭐ Student loyalty points</div>
+          <div style={{ ...card, padding: 14 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input value={gccLookup} onChange={e => setGccLookup(e.target.value)} onKeyDown={e => e.key === 'Enter' && lookupGcc()}
+                placeholder="GCC No…" style={{ ...inp, flex: 1 }} />
+              <button onClick={lookupGcc} disabled={lookingUp} style={btn(NAVY)}>{lookingUp ? '…' : 'Look up'}</button>
+            </div>
+            {gccBalance !== null && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, background: '#fefce8', border: '1px solid #fde047', borderRadius: 8, padding: '10px 14px' }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#854d0e', textTransform: 'uppercase' }}>Balance</div>
+                    <div style={{ fontSize: 22, fontWeight: 900, color: '#854d0e' }}>{gccBalance} pts <span style={{ fontSize: 12, fontWeight: 600 }}>(₹{n(gccBalance)})</span></div>
+                  </div>
+                  <button onClick={adjustPoints} style={btn('#854d0e')}>± Adjust</button>
+                </div>
+                <div style={{ marginTop: 12, maxHeight: 220, overflowY: 'auto' }}>
+                  {gccLedger.map(l => (
+                    <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 12 }}>
+                      <span style={{ color: '#475569' }}>{l.reason}</span>
+                      <span style={{ fontWeight: 800, color: l.delta > 0 ? '#16a34a' : '#dc2626' }}>{l.delta > 0 ? '+' : ''}{l.delta}</span>
+                    </div>
+                  ))}
+                  {gccLedger.length === 0 && <div style={{ padding: 12, textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>No point activity yet</div>}
+                </div>
+              </>
+            )}
+          </div>
+          <div style={{ marginTop: 10, fontSize: 11.5, color: '#94a3b8', lineHeight: 1.5 }}>
+            Students earn 1 point per ₹100 paid on a bill (paid in full, on a student account). 1 point = ₹1 off a future bill, redeemable at the POS.
+          </div>
+        </div>
+      </div>
+
+      {editing && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.5)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => !saving && setEditing(null)}>
+          <div style={{ ...card, width: '100%', maxWidth: 480, maxHeight: '92vh', overflowY: 'auto', padding: 20 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: NAVY, marginBottom: 14 }}>{editing.id ? 'Edit promo code' : 'New promo code'}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Code *</label><input value={form.code} onChange={e => f('code', e.target.value.toUpperCase())} style={{ ...inp, fontFamily: 'monospace' }} placeholder="e.g. WELCOME10" /></div>
+              <div><label style={lbl}>Type</label>
+                <select value={form.kind} onChange={e => f('kind', e.target.value)} style={inp}><option value="percent">Percent %</option><option value="flat">Flat ₹</option></select></div>
+              <div><label style={lbl}>Value *</label><input type="number" min={0} value={form.value} onChange={e => f('value', e.target.value)} style={inp} placeholder={form.kind === 'percent' ? '10' : '100'} /></div>
+              <div><label style={lbl}>Min. order ₹</label><input type="number" min={0} value={form.min_subtotal} onChange={e => f('min_subtotal', e.target.value)} style={inp} placeholder="0" /></div>
+              <div><label style={lbl}>Max discount ₹{form.kind === 'flat' ? ' (n/a)' : ''}</label><input type="number" min={0} disabled={form.kind === 'flat'} value={form.max_discount} onChange={e => f('max_discount', e.target.value)} style={{ ...inp, background: form.kind === 'flat' ? '#f1f5f9' : 'white' }} placeholder="No cap" /></div>
+              <div><label style={lbl}>Starts</label><input type="datetime-local" value={form.starts_at} onChange={e => f('starts_at', e.target.value)} style={inp} /></div>
+              <div><label style={lbl}>Ends</label><input type="datetime-local" value={form.ends_at} onChange={e => f('ends_at', e.target.value)} style={inp} /></div>
+              <div><label style={lbl}>Usage limit</label><input type="number" min={0} value={form.usage_limit} onChange={e => f('usage_limit', e.target.value)} style={inp} placeholder="Unlimited" /></div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}><input type="checkbox" checked={form.active} onChange={e => f('active', e.target.checked)} /> Active</label>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+              <button onClick={save} disabled={saving} style={{ ...btn(NAVY), flex: 1, padding: 12, fontSize: 14 }}>{saving ? 'Saving…' : 'Save'}</button>
+              <button onClick={() => setEditing(null)} disabled={saving} style={btn('#f1f5f9', '#334155', { padding: '12px 20px' })}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // ROOT
 // ═══════════════════════════════════════════════════════════════════════════
 export default function Store() {
@@ -882,6 +1187,7 @@ export default function Store() {
     { id: 'products', label: '📦 Products & Stock' },
     { id: 'orders', label: `🌐 Online Orders${newOrders ? ` (${newOrders})` : ''}` },
     { id: 'sales', label: '🧾 Sales' },
+    ...(isAdmin ? [{ id: 'promotions', label: '🏷️ Promotions' }] : []),
     { id: 'reports', label: '📊 Reports' },
   ]
 
@@ -916,6 +1222,7 @@ export default function Store() {
           {tab === 'products' && <ProductsTab products={products} categories={categories} isAdmin={isAdmin} currentUser={currentUser} reload={reload} showToast={showToast} />}
           {tab === 'orders' && <OrdersTab currentUser={currentUser} showToast={showToast} onSaleDone={onSaleDone} />}
           {tab === 'sales' && <SalesTab isAdmin={isAdmin} currentUser={currentUser} showToast={showToast} onSaleDone={onSaleDone} refreshKey={refreshKey} />}
+          {tab === 'promotions' && isAdmin && <PromotionsTab currentUser={currentUser} showToast={showToast} />}
           {tab === 'reports' && <ReportsTab products={products} categories={categories} refreshKey={refreshKey} />}
         </>
       )}

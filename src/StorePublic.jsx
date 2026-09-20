@@ -23,6 +23,9 @@ export default function StorePublic() {
   const [placing, setPlacing] = useState(false)
   const [placed, setPlaced] = useState(null)
   const [formErr, setFormErr] = useState('')
+  const [promoCode, setPromoCode] = useState('')
+  const [promoResult, setPromoResult] = useState(null) // { valid, amount_off, reason, code }
+  const [checkingPromo, setCheckingPromo] = useState(false)
 
   useEffect(() => {
     supabase.from('store_public_catalog').select('*').order('name').then(({ data, error }) => {
@@ -43,11 +46,25 @@ export default function StorePublic() {
 
   const lines = Object.entries(cart).map(([id, qty]) => ({ p: byId.get(Number(id)), qty })).filter(l => l.p)
   const count = lines.reduce((a, l) => a + l.qty, 0)
-  const total = lines.reduce((a, l) => a + l.p.price * l.qty, 0)
+  const subtotal = lines.reduce((a, l) => a + l.p.price * l.qty, 0)
+  const promoOff = promoResult?.valid ? Math.min(Number(promoResult.amount_off) || 0, subtotal) : 0
+  const total = Math.max(subtotal - promoOff, 0)
 
   const setQty = (p, qty) => {
     const q2 = Math.max(0, Math.min(qty, p.stock, 50))
     setCart(c => { const x = { ...c }; if (q2 === 0) delete x[p.id]; else x[p.id] = q2; return x })
+  }
+
+  const checkPromo = async () => {
+    const code = promoCode.trim()
+    if (!code) { setPromoResult(null); return }
+    setCheckingPromo(true)
+    const { data, error } = await supabase.rpc('store_validate_promo', { p_code: code, p_subtotal: subtotal })
+    setCheckingPromo(false)
+    if (error) { setPromoResult({ valid: false, reason: error.message }); return }
+    setPromoResult(data)
+    if (!data?.valid) setFormErr(data?.reason || 'Invalid promo code')
+    else setFormErr('')
   }
 
   const placeOrder = async () => {
@@ -57,12 +74,13 @@ export default function StorePublic() {
     setPlacing(true)
     const { data, error } = await supabase.rpc('store_place_order', { p: {
       name: form.name, phone: form.phone, gcc_no: form.gcc_no, note: form.note,
+      promo_code: promoResult?.valid ? promoCode.trim() : '',
       items: lines.map(l => ({ product_id: l.p.id, qty: l.qty })),
     } })
     setPlacing(false)
     if (error) { setFormErr(error.message); return }
-    setPlaced({ no: data, total, name: form.name })
-    setCart({}); setShowCart(false)
+    setPlaced({ no: data.order_no, total: data.total, name: form.name })
+    setCart({}); setShowCart(false); setPromoCode(''); setPromoResult(null)
   }
 
   return (
@@ -101,8 +119,10 @@ export default function StorePublic() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(165px,1fr))', gap: 12 }}>
               {shown.map(p => {
                 const qty = cart[p.id] || 0
+                const strikePrice = p.on_sale ? p.mrp_price : p.mrp
                 return (
-                  <div key={p.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', opacity: p.in_stock ? 1 : .55 }}>
+                  <div key={p.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', opacity: p.in_stock ? 1 : .55, position: 'relative' }}>
+                    {p.on_sale && <span style={{ position: 'absolute', top: 8, left: 8, zIndex: 1, fontSize: 10, fontWeight: 800, color: 'white', background: '#dc2626', padding: '3px 8px', borderRadius: 6 }}>SALE</span>}
                     <div style={{ height: 120, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36 }}>
                       {p.image_url ? <img src={p.image_url} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" /> : '📦'}
                     </div>
@@ -112,8 +132,8 @@ export default function StorePublic() {
                       {p.description && <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 3, lineHeight: 1.3 }}>{p.description}</div>}
                       <div style={{ marginTop: 'auto', paddingTop: 8 }}>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                          <span style={{ fontSize: 16, fontWeight: 900, color: NAVY }}>₹{n(p.price)}</span>
-                          {p.mrp > p.price && <span style={{ fontSize: 11.5, color: '#94a3b8', textDecoration: 'line-through' }}>₹{n(p.mrp)}</span>}
+                          <span style={{ fontSize: 16, fontWeight: 900, color: p.on_sale ? '#dc2626' : NAVY }}>₹{n(p.price)}</span>
+                          {strikePrice > p.price && <span style={{ fontSize: 11.5, color: '#94a3b8', textDecoration: 'line-through' }}>₹{n(strikePrice)}</span>}
                         </div>
                         {!p.in_stock ? <div style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', marginTop: 6 }}>Out of stock</div>
                           : qty === 0 ? (
@@ -163,6 +183,25 @@ export default function StorePublic() {
                 <div style={{ width: 66, textAlign: 'right', fontWeight: 800 }}>₹{n(l.p.price * l.qty)}</div>
               </div>
             ))}
+            <div style={{ display: 'grid', gap: 6, marginBottom: 10 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Promo code</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input value={promoCode} onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoResult(null) }}
+                  onKeyDown={e => e.key === 'Enter' && checkPromo()} placeholder="Optional" style={{ ...inp, flex: 1 }} />
+                <button onClick={checkPromo} disabled={checkingPromo || !promoCode.trim()} style={{ padding: '0 16px', borderRadius: 9, border: 'none', background: NAVY, color: 'white', fontWeight: 700, cursor: 'pointer' }}>{checkingPromo ? '…' : 'Apply'}</button>
+              </div>
+              {promoResult?.valid && (
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#16a34a', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>✓ {promoResult.code} applied — ₹{n(promoResult.amount_off)} off</span>
+                  <button onClick={() => { setPromoCode(''); setPromoResult(null) }} style={{ background: 'none', border: 'none', color: '#dc2626', fontWeight: 700, cursor: 'pointer', fontSize: 11 }}>Remove</button>
+                </div>
+              )}
+            </div>
+
+            <div style={{ fontSize: 13, color: '#475569' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span>Subtotal</span><span>₹{n(subtotal)}</span></div>
+              {promoOff > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#16a34a' }}><span>Promo discount</span><span>− ₹{n(promoOff)}</span></div>}
+            </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 17, fontWeight: 900, color: NAVY, padding: '12px 0' }}><span>Total</span><span>₹{n(total)}</span></div>
 
             <div style={{ display: 'grid', gap: 9 }}>
