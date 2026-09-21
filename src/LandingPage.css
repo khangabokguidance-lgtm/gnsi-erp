@@ -755,8 +755,16 @@ section.pad-alt h2.st,.papers-section h2.st,.calendar-section h2.st,.helpdesk-se
 .fee-info h2{color:#000;font-family:var(--serif);font-size:clamp(1.6rem,4vw,2.25rem);margin-bottom:1.1rem}
 .fee-info p{color:#3A3A3A;line-height:1.85;font-size:clamp(1.0rem,2.4vw,1.08rem);margin-bottom:1.6rem}
 .fee-methods{display:flex;gap:0.55rem;flex-wrap:wrap;margin-bottom:1.6rem}
-.fee-method{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:.45rem 1rem;font-family:var(--sans);font-weight:600;font-size:clamp(0.78rem,2vw,0.9rem);color:rgba(255,255,255,.85)}
-.fee-box{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:var(--radius);padding:2.2rem}
+/* These pills and the "How to Pay" box below were both styled for a dark
+   section background (near-white text on a faint white tint) but
+   .fee-section itself is var(--white) — white-on-white, invisible. Pills
+   sit directly on the white section, so they get dark text on a light
+   gold-tinted fill instead of the near-transparent white-on-white look. */
+.fee-method{background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.3);border-radius:999px;padding:.45rem 1rem;font-family:var(--sans);font-weight:600;font-size:clamp(0.78rem,2vw,0.9rem);color:var(--navy)}
+/* .fee-box is a self-contained dark card (like .syl-card elsewhere), so its
+   white text is correct again once it actually sits on a dark fill instead
+   of a near-invisible rgba(255,255,255,.06) tint over the white page. */
+.fee-box{background:var(--navy);border:1px solid rgba(217,119,6,.14);border-radius:var(--radius);padding:2.2rem}
 .fee-box h3{color:var(--goldL);font-family:var(--serif);font-size:clamp(1.2rem,3vw,1.35rem);margin-bottom:1.3rem}
 .fee-step{display:flex;gap:1.1rem;align-items:flex-start;margin-bottom:1.1rem;padding-bottom:1.1rem;border-bottom:1px solid rgba(255,255,255,.08)}
 .fee-step:last-of-type{border:none;margin-bottom:1.3rem}
