@@ -53,6 +53,83 @@ function downloadIcs(filename, events) {
   URL.revokeObjectURL(url);
 }
 
+// ── FEE RECEIPT PRINT ────────────────────────────────────────────────────
+// Ported from StudentFeeLedger.jsx's printReceipt (same admin-side receipt
+// used at the front desk) so a parent gets the identical branded receipt
+// for a past payment, not a lookalike built separately. `row` here is the
+// flattened Payment History entry from loadFees above — `row.raw` carries
+// the original adm_fee_collections/adm_flat_fees/adm_course_fees row for
+// the fee-type-specific fields (hostel_type, course, month), and
+// `row.feeType` is 'adm' | 'flat' | 'crs', matching StudentFeeLedger's
+// printReceipt(student, row, type) signature exactly.
+const feeFmt = (n) => Number(n || 0).toLocaleString('en-IN');
+const feeFmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+function printFeeReceipt(student, historyEntry) {
+  const row = historyEntry.raw || {};
+  const type = historyEntry.feeType;
+  const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const receiptNo = row.receipt_no || historyEntry.receipt || '—';
+  const payDate = feeFmtDate(row.pay_date || historyEntry.date);
+  const payMode = row.pay_mode || historyEntry.mode || '—';
+  const txnRef = row.txn_ref || null;
+  let description, amount, sectionLabel, accentColor;
+
+  if (type === 'adm') {
+    description = row.description || row.fee_type || 'Admission / Kit Fee';
+    amount = Number(row.amount_paid ?? historyEntry.amount ?? 0);
+    sectionLabel = 'Admission & Kit Fee';
+    accentColor = '#4f46e5';
+  } else if (type === 'flat') {
+    description = `Monthly Fee — ${row.month || ''}${row.year ? ' ' + row.year : ''}${row.hostel_type ? ' (' + row.hostel_type + ')' : ''}`;
+    amount = Number(row.amount ?? historyEntry.amount ?? 0);
+    sectionLabel = `Monthly Flat Fee${row.hostel_type ? ' · ' + row.hostel_type : ''}`;
+    accentColor = '#059669';
+  } else {
+    description = `Course Fee — ${row.for_month || ''}${row.year ? ' ' + row.year : ''}`;
+    amount = Number(row.amount_paid ?? historyEntry.amount ?? 0);
+    sectionLabel = `Course Fee${row.course ? ' · ' + row.course : ''}`;
+    accentColor = '#7c3aed';
+  }
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Receipt ${receiptNo}</title>
+  <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#f0f4f8;display:flex;justify-content:center;padding:32px 16px}.page{width:720px;background:white;border-radius:0;box-shadow:0 4px 40px rgba(0,0,0,.15);overflow:hidden}.header{background:#1e3a5f;padding:28px 36px}.inst-name{font-size:20px;font-weight:700;color:white}.receipt-no{font-size:22px;font-weight:800;color:#c9a84c;font-family:monospace}.meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid #E2E8F0}.mc{padding:10px 18px;border-right:1px solid #E2E8F0}.ml{font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}.mv{font-weight:700;color:#1E293B;font-size:12px}table{width:100%;border-collapse:collapse}td{padding:8px 18px;border-bottom:1px solid #F1F5F9}.grand td{background:#1E1B4B;font-weight:900;font-size:16px;color:#fff;padding:14px 18px;border:none}.ftr{padding:16px 20px;background:#F8FAFC;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between}.sig-line{height:1px;width:130px;border-top:1.5px dashed #CBD5E1;margin-top:32px}.btns{display:flex;gap:10px;justify-content:center;margin-top:20px}.btn{padding:11px 30px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer}.bp{background:#1e3a5f;color:#fff}@media print{.btns{display:none}}</style></head><body>
+  <div class="page">
+    <div class="header" style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div><div class="inst-name">Guidance Navodaya &amp; Sainik Institute</div><div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:4px">Khangabok, Thoubal, Manipur</div></div>
+      <div style="text-align:right"><div style="font-size:10px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em">Receipt No.</div><div class="receipt-no">${receiptNo}</div></div>
+    </div>
+    <div style="height:4px;background:linear-gradient(90deg,${accentColor},#c9a84c)"></div>
+    <div class="meta">
+      <div class="mc"><div class="ml">Date</div><div class="mv">${payDate}</div></div>
+      <div class="mc"><div class="ml">Pay mode</div><div class="mv">${payMode}</div></div>
+      <div class="mc"><div class="ml">Type</div><div class="mv" style="color:${accentColor}">${sectionLabel}</div></div>
+    </div>
+    <table><tbody>
+      <tr><td style="color:#64748B;width:40%">Student</td><td style="font-weight:700">${student.name}</td></tr>
+      <tr><td style="color:#64748B">GCC No.</td><td style="font-weight:700">GCC-${student.gcc_no}</td></tr>
+      <tr><td style="color:#64748B">Class / Course</td><td style="font-weight:700">${[student.batch, student.course].filter(Boolean).join(' · ') || '—'}</td></tr>
+      ${row.hostel_type ? `<tr><td style="color:#64748B">Hostel Type</td><td style="font-weight:700">${row.hostel_type}</td></tr>` : ''}
+      ${txnRef ? `<tr><td style="color:#64748B">Txn ref</td><td style="font-weight:700">${txnRef}</td></tr>` : ''}
+    </tbody></table>
+    <table><tbody>
+      <tr><td style="color:#1E293B;font-weight:600">${description}</td><td style="text-align:right;font-weight:800;font-size:16px;color:${accentColor}">₹${feeFmt(amount)}</td></tr>
+      <tr class="grand"><td>Total Paid</td><td style="text-align:right">₹${feeFmt(amount)}</td></tr>
+    </tbody></table>
+    <div class="ftr">
+      <div><div style="font-size:11px;color:#94a3b8;margin-bottom:4px">Authorised signatory</div><div class="sig-line"></div></div>
+      <div style="text-align:right;font-size:11px;color:#94A3B8"><div style="font-weight:700;color:#1E293B;font-size:13px">GNSI</div><div>Printed on: ${dateStr}</div></div>
+    </div>
+  </div>
+  <div class="btns"><button class="btn bp" onclick="window.print()">Print receipt</button></div>
+  </body></html>`;
+
+  const pw = window.open('', '_blank', 'width=820,height=950,scrollbars=yes');
+  if (!pw) { window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank'); return; }
+  pw.document.write(html); pw.document.close();
+  setTimeout(() => pw.print(), 500);
+}
+
 // ── responsive hook ───────────────────────────────────────────────────────
 // Same pattern Accounts.jsx uses (useWindowWidth): drives real breakpoint
 // behavior (stacking grids, smaller padding/fonts) rather than just letting
@@ -352,11 +429,14 @@ function isStudentAbsentForExam(studentId, subjects, marksMap) {
 // load function / render block below for what to restore.
 const TABS = [
   { id: 'home',       label: '🏠 Dashboard' },
+  { id: 'profile',    label: '🪪 My Profile' },
   { id: 'att',        label: '📊 Attendance' },
   { id: 'exams',      label: '📝 Exam Scores' },
   { id: 'reportcard', label: '🧾 Report Card' },
   { id: 'fees',       label: '💳 Fee Dues' },
   { id: 'leave',      label: '🏨 Hostel Leave' },
+  { id: 'items',      label: '🎒 Parent Items' },
+  { id: 'purchases',  label: '🛒 Store Purchases' },
   { id: 'grievance',  label: '📮 Raise a Concern' },
   { id: 'alerts',     label: '🔔 Alerts' },
 ];
@@ -430,6 +510,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState('');
 
+  const [documents, setDocuments] = useState(initialTabState);
   const [attendance, setAttendance] = useState(initialTabState);
   const [exams, setExams] = useState(initialTabState);
   const [leave, setLeave] = useState(initialTabState);
@@ -456,6 +537,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
     setSiblings([]);
     setActiveTab('home');
     setAttendance(initialTabState);
+    setDocuments(initialTabState);
     setExams(initialTabState);
     setLeave(initialTabState);
     setAlerts(initialTabState);
@@ -515,7 +597,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
       const { data, error } = await Promise.race([
         supabase
           .from('students')
-          .select('id, name, course, class_name, batch, hostel_type, status, admission_no, gcc_no, photo_url')
+          .select('id, name, course, class_name, batch, hostel_type, status, admission_no, gcc_no, photo_url, dob, blood_group, father_name, mother_name, address')
           .eq('gcc_no', gccNo)
           .single(),
         timeout(15000),
@@ -533,7 +615,8 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
       setStudent(data);
       setLoginBusy(false);
-      loadAttendance(data.id);
+      loadAttendance(data);
+      loadDocuments(data.id);
       loadAlertsSummary(data.id);
 
       // Multi-child: look up siblings sharing the same guardian contact.
@@ -569,7 +652,8 @@ export default function ParentsPortal({ isOpen, onClose }) {
     setSiblings((prev) => prev.length ? prev : [child]);
     setStudent(child);
     setActiveTab('home');
-    loadAttendance(child.id);
+    loadAttendance(child);
+    loadDocuments(child.id);
     loadAlertsSummary(child.id);
   };
 
@@ -585,7 +669,8 @@ export default function ParentsPortal({ isOpen, onClose }) {
     setMoreOpen(false);
     setNavMenuOpen(false);
     if (!student) return;
-    if (id === 'att' && attendance.status === 'idle') loadAttendance(student.id);
+    if (id === 'att' && attendance.status === 'idle') loadAttendance(student);
+    if (id === 'profile' && documents.status === 'idle') loadDocuments(student.id);
     if (id === 'exams' && exams.status === 'idle') loadExams(student.id);
     if (id === 'reportcard' && rcExamTypes.status === 'idle') loadReportCardExamTypes(student.id);
     if (id === 'leave' && leave.status === 'idle') loadLeave(student.id);
@@ -595,40 +680,57 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
   // ── TAB: ATTENDANCE ──────────────────────────────────────────────────────
 
-  const loadAttendance = useCallback(async (studentId) => {
+  const loadAttendance = useCallback(async (stu) => {
     setAttendance({ status: 'loading', data: null, error: null });
 
     const now = new Date();
     const y = now.getFullYear();
     const m = String(now.getMonth() + 1).padStart(2, '0');
-    const from = `${y}-${m}-01`;
+    const monthStart = `${y}-${m}-01`;
     const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
-    const to = `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
+    const monthEnd = `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
     const monthLabel = now.toLocaleString('default', { month: 'long', year: 'numeric' });
 
     try {
-      // Real table is attendance_records (Hostel.jsx), not "attendance" —
-      // roll call runs twice a day (session: 'morning' | 'evening'), so a
-      // student can have up to two rows for the same date. Collapse to one
-      // status per day for the calendar/summary: Present if marked Present
-      // in either session that day, else the "worst" status present
-      // (Absent worse than Late/Sick/On Leave, which are worse than
-      // nothing-marked). This keeps the existing Present/Absent/% UI
-      // meaningful without silently double-counting days.
-      const { data } = await supabase
-        .from('attendance_records')
-        .select('date, status, session')
-        .eq('student_id', studentId)
-        .gte('date', from)
-        .lte('date', to)
-        .order('date', { ascending: true });
+      // Real tables are attendance_sessions + attendance_records
+      // (Attendance.jsx) — a session is one class period (course/subtype/
+      // period_number on a session_date), and attendance_records rows key
+      // off session_id, not a date column of their own. Roll call runs once
+      // per period, so a student can have several rows on the same date
+      // (one per class that day). Same join pattern Attendance.jsx itself
+      // uses to build a single student's monthly history: fetch this
+      // month's sessions, then this student's records against those
+      // session ids (matched by gcc_no, falling back to name), then join
+      // session_date back in. Collapse to one status per day for the
+      // calendar/summary: Present if marked Present in any period that
+      // day, else the "worst" status present (Absent worse than Late,
+      // worse than Leave).
+      const { data: sessions } = await supabase
+        .from('attendance_sessions')
+        .select('id, session_date')
+        .gte('session_date', monthStart)
+        .lte('session_date', monthEnd);
 
-      const STATUS_RANK = { 'Present': 0, 'Late': 1, 'Sick': 2, 'On Leave': 2, 'Absent': 3 };
+      const sessById = Object.fromEntries((sessions || []).map(s => [s.id, s]));
+      const ids = (sessions || []).map(s => s.id);
+
+      let recs = [];
+      if (ids.length) {
+        const q = stu.gcc_no != null && stu.gcc_no !== ''
+          ? supabase.from('attendance_records').select('session_id, status, gcc_no, student_name').in('session_id', ids).eq('gcc_no', stu.gcc_no)
+          : supabase.from('attendance_records').select('session_id, status, gcc_no, student_name').in('session_id', ids).eq('student_name', stu.name);
+        const { data } = await q;
+        recs = data || [];
+      }
+
+      const STATUS_RANK = { 'Present': 0, 'Late': 1, 'Leave': 2, 'Absent': 3 };
       const byDay = new Map();
-      (data || []).forEach(r => {
-        const existing = byDay.get(r.date);
+      recs.forEach(r => {
+        const date = sessById[r.session_id]?.session_date;
+        if (!date) return;
+        const existing = byDay.get(date);
         if (!existing || (STATUS_RANK[r.status] ?? 0) > (STATUS_RANK[existing.status] ?? 0)) {
-          byDay.set(r.date, r);
+          byDay.set(date, { date, status: r.status });
         }
       });
       const rows = [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
@@ -647,6 +749,52 @@ export default function ParentsPortal({ isOpen, onClose }) {
       setAttendance({ status: 'error', data: null, error: 'Failed to load attendance' });
     }
   }, []);
+
+  // ── TAB: MY PROFILE (documents) ──────────────────────────────────────────
+  // Real table is student_documents (Students.jsx): student_id, doc_type,
+  // file_name, storage_path, created_at. Files live in the "gnsi" storage
+  // bucket and are only reachable through short-lived signed URLs (no
+  // public bucket access) — same getSignedUrl(path, ttl) pattern
+  // Students.jsx uses for staff. Fetched once per student login; profile
+  // fields themselves (dob, blood_group, father_name, mother_name,
+  // address) already come back on the login row, added to that select.
+  const loadDocuments = useCallback(async (studentId) => {
+    setDocuments({ status: 'loading', data: null, error: null });
+    try {
+      const { data, error } = await supabase
+        .from('student_documents')
+        .select('id, doc_type, file_name, storage_path, created_at')
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setDocuments({ status: 'ready', data: data || [], error: null });
+    } catch (e) {
+      console.error('Documents load failed:', e);
+      setDocuments({ status: 'error', data: null, error: 'Failed to load documents' });
+    }
+  }, []);
+
+  const handleViewDocument = async (storagePath) => {
+    try {
+      const { data, error } = await supabase.storage.from('gnsi').createSignedUrl(storagePath, 3600);
+      if (error) throw error;
+      window.open(data.signedUrl, '_blank', 'noreferrer');
+    } catch (e) {
+      alert('Could not open document: ' + (e?.message || 'Unknown error'));
+    }
+  };
+
+  // Lets a parent fill in the handful of identity/contact fields that are
+  // still blank on the office record (dob, blood_group, father_name,
+  // mother_name, address) — never overwrite a field staff already entered,
+  // so this only ever patches columns that were null/empty going in.
+  // `patch` is pre-filtered by ProfileTab to just those blank fields.
+  const handleSaveProfileFields = async (patch) => {
+    if (!student?.id || !patch || Object.keys(patch).length === 0) return;
+    const { error } = await supabase.from('students').update(patch).eq('id', student.id);
+    if (error) throw error;
+    setStudent((prev) => (prev ? { ...prev, ...patch } : prev));
+  };
 
   // ── TAB: EXAM SCORES ─────────────────────────────────────────────────────
 
@@ -987,16 +1135,22 @@ export default function ParentsPortal({ isOpen, onClose }) {
       // label (see collectFee in feeEngine.js). Normalize all three into
       // one shape for a single combined, date-sorted history list.
       const gcc = String(stu.gcc_no || '');
+      // Select * (not a narrow column list) on each so the raw row is kept
+      // alongside the normalized display fields below — printReceipt needs
+      // fee-type-specific columns (hostel_type, course, month/for_month,
+      // fee_type) that the flattened `type`/`mode`/`amount` shape below
+      // doesn't carry, and re-deriving them from the normalized string
+      // (e.g. parsing "Flat Fee — June 2026" back apart) would be fragile.
       const [{ data: admRows }, { data: flatRows }, { data: courseRows }] = await Promise.all([
-        supabase.from('adm_fee_collections').select('amount_paid, pay_date, pay_mode, description, fee_type, receipt_no').eq('adm_app_id', gcc).eq('reverted', false),
-        supabase.from('adm_flat_fees').select('amount, pay_date, pay_mode, month, year, receipt_no').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false),
-        supabase.from('adm_course_fees').select('amount_paid, pay_date, pay_mode, for_month, year, receipt_no').eq('adm_app_id', gcc).eq('reverted', false),
+        supabase.from('adm_fee_collections').select('*').eq('adm_app_id', gcc).eq('reverted', false),
+        supabase.from('adm_flat_fees').select('*').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false),
+        supabase.from('adm_course_fees').select('*').eq('adm_app_id', gcc).eq('reverted', false),
       ]);
 
       const history = [
-        ...(admRows || []).map(r => ({ date: r.pay_date, type: r.description || 'Admission/Item Fee', mode: r.pay_mode, amount: r.amount_paid, receipt: r.receipt_no })),
-        ...(flatRows || []).map(r => ({ date: r.pay_date, type: `Flat Fee — ${r.month} ${r.year}`, mode: r.pay_mode, amount: r.amount, receipt: r.receipt_no })),
-        ...(courseRows || []).map(r => ({ date: r.pay_date, type: `Course Fee — ${r.for_month} ${r.year}`, mode: r.pay_mode, amount: r.amount_paid, receipt: r.receipt_no })),
+        ...(admRows || []).map(r => ({ date: r.pay_date, type: r.description || 'Admission/Item Fee', mode: r.pay_mode, amount: r.amount_paid, receipt: r.receipt_no, feeType: 'adm', raw: r })),
+        ...(flatRows || []).map(r => ({ date: r.pay_date, type: `Flat Fee — ${r.month} ${r.year}`, mode: r.pay_mode, amount: r.amount, receipt: r.receipt_no, feeType: 'flat', raw: r })),
+        ...(courseRows || []).map(r => ({ date: r.pay_date, type: `Course Fee — ${r.for_month} ${r.year}`, mode: r.pay_mode, amount: r.amount_paid, receipt: r.receipt_no, feeType: 'crs', raw: r })),
       ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
       setFees({ status: 'ready', data: { ...dues, history }, error: null });
@@ -1441,6 +1595,9 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 onSwitchChild={switchChild}
               />
             )}
+            {activeTab === 'profile' && (
+              <ProfileTab student={student} documents={documents} onViewDocument={handleViewDocument} onSaveFields={handleSaveProfileFields} isMobile={isMobile} />
+            )}
             {activeTab === 'att' && (
               <AttendanceTab state={attendance} isMobile={isMobile} />
             )}
@@ -1461,10 +1618,16 @@ export default function ParentsPortal({ isOpen, onClose }) {
               />
             )}
             {activeTab === 'fees' && (
-              <FeesTab state={fees} onPayNow={handlePayNow} nextDue={fees.status === 'ready' ? pickNextDue(fees.data) : null} isMobile={isMobile} />
+              <FeesTab state={fees} onPayNow={handlePayNow} nextDue={fees.status === 'ready' ? pickNextDue(fees.data) : null} isMobile={isMobile} student={student} />
             )}
             {activeTab === 'leave' && (
               <LeaveTab state={leave} studentId={student.id} studentName={student.name} onSubmitted={() => loadLeave(student.id)} />
+            )}
+            {activeTab === 'items' && (
+              <ParentItemsTab studentName={student.name} />
+            )}
+            {activeTab === 'purchases' && (
+              <StorePurchasesTab student={student} />
             )}
             {activeTab === 'grievance' && (
               <GrievanceTab
@@ -1502,12 +1665,13 @@ export default function ParentsPortal({ isOpen, onClose }) {
                       onClick={() => handleTabClick(t.id)}
                       style={{
                         flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                        gap: 2, padding: '8px 4px 6px', border: 'none', background: 'none', cursor: 'pointer',
-                        color: active ? NAVY : '#94a3b8',
+                        gap: 2, padding: '8px 4px 6px', border: 'none', background: 'none', cursor: 'pointer', position: 'relative',
+                        color: active ? CYAN : '#94a3b8',
                       }}
                     >
+                      {active && <span style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, borderRadius: 999, backgroundColor: CYAN }} />}
                       <span style={{ fontSize: 19, lineHeight: 1 }}>{t.icon}</span>
-                      <span style={{ fontSize: 10, fontWeight: active ? 800 : 600 }}>{t.label}</span>
+                      <span style={{ fontSize: 10, fontWeight: active ? 800 : 600, color: active ? NAVY : '#94a3b8' }}>{t.label}</span>
                     </button>
                   );
                 })}
@@ -1569,7 +1733,11 @@ export default function ParentsPortal({ isOpen, onClose }) {
 // colored left-border stat tiles, light backgrounds instead of dark
 // glassmorphism.
 
-const NAVY = '#1e3a5f';
+// Paytm-style palette: deep blue primary + cyan accent, replacing the
+// previous plain navy. NAVY is kept as the variable name (read everywhere
+// in this file) so this is a value swap, not a rename across 2000+ lines.
+const NAVY = '#00295B';
+const CYAN = '#00BAF2';
 
 // ── Material Design 3 tokens (mobile only) ───────────────────────────────
 // NAVY stays the M3 "primary" so the brand colour doesn't change — only the
@@ -1582,15 +1750,16 @@ const M3 = {
   radiusSm: 12,      // inputs, pills
   radiusFull: 999,   // chips
   primary: NAVY,
-  primaryContainer: '#dbe4f5',   // tonal fill behind primary content
+  accent: CYAN,
+  primaryContainer: '#dceefc',   // tonal fill behind primary content
   onPrimaryContainer: NAVY,
   surface: '#ffffff',
-  surfaceContainer: '#f4f6fb',   // low-emphasis tonal surface (M3 "surface container")
-  outline: '#dde2ee',
+  surfaceContainer: '#f2f7fc',   // low-emphasis tonal surface (M3 "surface container")
+  outline: '#dbe7f2',
   // M3 elevation is a soft, colour-tinted shadow rather than a hard drop
   // shadow — level 1 (resting cards) and level 3 (sheets/menus over content).
-  elevation1: '0 1px 3px rgba(30,58,95,0.10), 0 1px 2px rgba(30,58,95,0.06)',
-  elevation3: '0 4px 12px rgba(30,58,95,0.14), 0 2px 6px rgba(30,58,95,0.08)',
+  elevation1: '0 1px 3px rgba(0,41,91,0.10), 0 1px 2px rgba(0,41,91,0.06)',
+  elevation3: '0 4px 12px rgba(0,41,91,0.14), 0 2px 6px rgba(0,41,91,0.08)',
 };
 
 function Loading() {
@@ -1785,26 +1954,86 @@ function SiblingOverview({ siblings, activeStudentId, onSwitchChild, isMobile })
   );
 }
 
-// ── FEATURE 10: DASHBOARD HOME (single glanceable summary) ──────────────────
+// ── FEATURE 10: DASHBOARD HOME (Paytm-style: balance card + icon grid) ─────
+// Redesigned to match the Paytm app's home pattern: a gradient "balance
+// card" up top surfacing the one number that matters most (fee due, or an
+// all-clear state), then a grid of square icon tiles — one per portal
+// section — instead of a vertical list/menu. Every TABS entry gets a tile
+// here now (previously only 6 of 10 sections were tiled; Profile, Report
+// Card, Parent Items and Store Purchases were reachable only via the nav).
+const HOME_TILES = [
+  { id: 'profile',    icon: '🪪', label: 'My Profile',    color: NAVY },
+  { id: 'att',        icon: '📊', label: 'Attendance',    color: NAVY },
+  { id: 'exams',      icon: '📝', label: 'Exam Scores',   color: '#16a34a' },
+  { id: 'reportcard', icon: '🧾', label: 'Report Card',   color: '#7c3aed' },
+  { id: 'fees',       icon: '💳', label: 'Fee Dues',      color: '#dc2626' },
+  { id: 'leave',      icon: '🏨', label: 'Hostel Leave',  color: '#0891b2' },
+  { id: 'items',      icon: '🎒', label: 'Parent Items',  color: '#d97706' },
+  { id: 'purchases',  icon: '🛒', label: 'Store Purchases', color: CYAN },
+  { id: 'grievance',  icon: '📮', label: 'Raise a Concern', color: '#7c3aed' },
+  { id: 'alerts',     icon: '🔔', label: 'Alerts',        color: '#f59e0b' },
+];
+
 function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEnablePush, onGoTab, isMobile, siblings, onSwitchChild }) {
   const attPct = attendance.status === 'ready' ? attendance.data.pct : null;
   const feeBalance = fees.status === 'ready' ? fees.data.totalDue : undefined;
   const dueSoon = fees.status === 'ready' ? getDueSoonSummary(fees.data) : null;
-
-  const tiles = [
-    { id: 'att', icon: '📊', val: attPct !== null ? `${attPct}%` : '—', lbl: 'Attendance this month', color: '#1e3a5f' },
-    { id: 'fees', icon: '💳', val: feeBalance !== undefined && feeBalance !== null ? `₹${feeBalance}` : '—', lbl: 'Fee balance due', color: '#dc2626' },
-    { id: 'alerts', icon: '🔔', val: alertCount !== null ? alertCount : '—', lbl: 'Absences (30 days)', color: '#f59e0b' },
-    { id: 'leave', icon: '🏨', val: 'View', lbl: 'Hostel leave history', color: '#0891b2' },
-    { id: 'grievance', icon: '📮', val: 'View', lbl: 'Raise a concern', color: '#7c3aed' },
-    { id: 'exams', icon: '📝', val: 'View', lbl: 'Exam scores', color: '#16a34a' },
-  ];
+  const hasFeeData = feeBalance !== undefined && feeBalance !== null;
+  const feeIsDue = hasFeeData && feeBalance > 0;
 
   const [dueBannerDismissed, setDueBannerDismissed] = useState(false);
 
   return (
     <div>
+      {/* Paytm-style balance card — gradient banner, the one number that
+          matters most (fee balance) front and center, quick attendance
+          chip alongside it. */}
+      <div style={{
+        borderRadius: isMobile ? M3.radiusLg : 16,
+        background: `linear-gradient(135deg, ${NAVY} 0%, #003b7a 55%, ${CYAN} 130%)`,
+        padding: isMobile ? '20px 18px' : '24px 26px',
+        marginBottom: isMobile ? 14 : 18,
+        color: 'white',
+        boxShadow: '0 8px 24px rgba(0,41,91,0.25)',
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', opacity: 0.75 }}>
+          {student?.name || 'Student'}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 6 }}>
+          <div>
+            <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 600 }}>{hasFeeData ? 'Fee balance' : 'Fee balance'}</div>
+            <div style={{ fontSize: isMobile ? 30 : 34, fontWeight: 900, lineHeight: 1.15 }}>
+              {hasFeeData ? `₹${feeBalance}` : '—'}
+            </div>
+            {hasFeeData && (
+              <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2, color: feeIsDue ? '#fecaca' : '#bbf7d0' }}>
+                {feeIsDue ? 'Payment pending' : 'All dues cleared ✓'}
+              </div>
+            )}
+          </div>
+          <div style={{
+            borderRadius: isMobile ? M3.radiusMd : 12, backgroundColor: 'rgba(255,255,255,0.14)',
+            padding: '10px 14px', textAlign: 'center', minWidth: 78,
+          }}>
+            <div style={{ fontSize: 20, fontWeight: 900 }}>{attPct !== null ? `${attPct}%` : '—'}</div>
+            <div style={{ fontSize: 10, opacity: 0.85, fontWeight: 600 }}>Attendance</div>
+          </div>
+        </div>
+        {feeIsDue && (
+          <button
+            onClick={() => onGoTab('fees')}
+            style={{
+              marginTop: 14, borderRadius: 999, border: 'none', backgroundColor: CYAN, color: NAVY,
+              fontWeight: 800, padding: '9px 18px', fontSize: 13, cursor: 'pointer',
+            }}
+          >
+            Pay Now →
+          </button>
+        )}
+      </div>
+
       <SiblingOverview siblings={siblings} activeStudentId={student?.id} onSwitchChild={onSwitchChild} isMobile={isMobile} />
+
       {dueSoon && !dueBannerDismissed && (
         <div style={{
           borderRadius: isMobile ? M3.radiusMd : 12, border: isMobile ? 'none' : '1px solid #fecaca',
@@ -1834,41 +2063,59 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
           </div>
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? 130 : 140}px, 1fr))`, gap: isMobile ? 10 : 12, marginBottom: 16 }}>
-        {tiles.map(t => (
+
+      {/* Icon grid — Paytm's home-screen convention: a square tile per
+          section instead of a menu/list. One tile per TABS entry so every
+          section is one tap away from home, not just the 6 that used to
+          get a tile. */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: `repeat(${isMobile ? 4 : 5}, 1fr)`,
+        gap: isMobile ? 10 : 14, marginBottom: 16,
+      }}>
+        {HOME_TILES.map(t => (
           <button
             key={t.id}
             onClick={() => onGoTab(t.id)}
-            style={isMobile ? {
-              textAlign: 'left', borderRadius: M3.radiusMd, border: 'none', backgroundColor: M3.surface,
-              padding: 14, cursor: 'pointer', boxShadow: M3.elevation1,
-            } : {
-              textAlign: 'left', borderRadius: 12, border: '1px solid #e2e8f0', backgroundColor: 'white',
-              padding: 16, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${t.color}`,
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+              border: 'none', background: 'none', cursor: 'pointer', padding: isMobile ? '6px 2px' : '8px 4px',
             }}
           >
-            {isMobile ? (
-              <div style={{
-                height: 34, width: 34, borderRadius: M3.radiusSm, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 16, marginBottom: 10, backgroundColor: `${t.color}1a`,
-              }}>
-                {t.icon}
-              </div>
-            ) : (
-              <div style={{ fontSize: 20, marginBottom: 8 }}>{t.icon}</div>
-            )}
-            <div style={{ fontSize: 20, fontWeight: 800, color: t.color }}>{t.val}</div>
-            <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontWeight: 600 }}>{t.lbl}</div>
+            <div style={{
+              height: isMobile ? 48 : 56, width: isMobile ? 48 : 56, borderRadius: isMobile ? M3.radiusMd : 16,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: isMobile ? 22 : 26, backgroundColor: `${t.color}17`,
+              boxShadow: isMobile ? M3.elevation1 : '0 1px 4px rgba(0,0,0,0.05)',
+            }}>
+              {t.icon}
+            </div>
+            <span style={{ fontSize: isMobile ? 10.5 : 11.5, fontWeight: 700, color: '#334155', textAlign: 'center', lineHeight: 1.2 }}>{t.label}</span>
           </button>
         ))}
       </div>
+
+      {alertCount !== null && alertCount > 0 && (
+        <div
+          onClick={() => onGoTab('alerts')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+            borderRadius: isMobile ? M3.radiusMd : 12, border: isMobile ? 'none' : '1px solid #fde68a',
+            backgroundColor: isMobile ? '#fdf1da' : '#fffbeb', padding: isMobile ? 14 : 16, marginBottom: 16,
+          }}
+        >
+          <span style={{ fontSize: 18 }}>🔔</span>
+          <div style={{ fontSize: 12, color: '#92400e', fontWeight: 600 }}>
+            {alertCount} absence{alertCount > 1 ? 's' : ''} in the last 30 days — tap to view
+          </div>
+        </div>
+      )}
 
       {pushStatus !== 'subscribed' && (
         <div style={isMobile ? {
           borderRadius: M3.radiusMd, border: 'none', backgroundColor: M3.primaryContainer,
           padding: 16, display: 'flex', flexDirection: 'column', gap: 12,
         } : {
-          borderRadius: 12, border: '1px solid #dbeafe', backgroundColor: '#eff6ff', padding: 16,
+          borderRadius: 12, border: '1px solid #dbeefc', backgroundColor: '#eef8fe', padding: 16,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap',
         }}>
           <div>
@@ -1905,6 +2152,173 @@ function Pill({ tone, children }) {
   return <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 700, ...tones[tone] }}>{children}</span>;
 }
 
+// ── MY PROFILE TAB ───────────────────────────────────────────────────────────
+// Student identity/contact fields (confirmed columns on `students`, per
+// Students.jsx: dob, blood_group, father_name, mother_name, address) plus a
+// read-only list of student_documents, opened via short-lived signed URLs
+// from the "gnsi" storage bucket — same as staff use, no direct/public link.
+function ProfileField({ label, value }) {
+  if (!value) return null;
+  return (
+    <div>
+      <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#94a3b8', fontWeight: 700, marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 13, color: '#1e293b', fontWeight: 600 }}>{value}</div>
+    </div>
+  );
+}
+
+// Fields a parent is allowed to complete when the office record still has
+// them blank. Deliberately narrow — identity/contact fields only, and only
+// ones confirmed to exist as plain columns on `students` (Students.jsx).
+// Never includes anything already locked-in elsewhere (name, GCC no.,
+// course, etc.) — those stay staff-only.
+const COMPLETABLE_FIELDS = [
+  { key: 'dob', label: 'Date of Birth', type: 'date' },
+  { key: 'blood_group', label: 'Blood Group', type: 'text', placeholder: 'e.g. O+' },
+  { key: 'father_name', label: "Father's Name", type: 'text' },
+  { key: 'mother_name', label: "Mother's Name", type: 'text' },
+  { key: 'address', label: 'Address', type: 'textarea' },
+];
+
+function CompleteProfileForm({ student, missingFields, onSaveFields }) {
+  const [values, setValues] = useState(() => Object.fromEntries(missingFields.map((f) => [f.key, ''])));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  const handleChange = (key, val) => setValues((v) => ({ ...v, [key]: val }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const patch = {};
+    missingFields.forEach((f) => {
+      const v = (values[f.key] || '').trim();
+      if (v) patch[f.key] = v;
+    });
+    if (Object.keys(patch).length === 0) { setError('Fill in at least one field before saving.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      await onSaveFields(patch);
+      setSaved(true);
+    } catch (e2) {
+      console.error('Profile field save failed:', e2);
+      setError(e2?.message || 'Could not save — please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (saved) {
+    return (
+      <Card title="Complete Your Details">
+        <Empty icon="✅" text="Saved — thank you for completing this information." />
+      </Card>
+    );
+  }
+
+  return (
+    <Card title="Complete Your Details">
+      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+        These fields are missing from the office record. Fill in what you know — this won't overwrite anything already on file.
+      </div>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {missingFields.map((f) => (
+          <div key={f.key}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#475569', marginBottom: 4 }}>{f.label}</label>
+            {f.type === 'textarea' ? (
+              <textarea
+                value={values[f.key]}
+                onChange={(e) => handleChange(f.key, e.target.value)}
+                rows={2}
+                style={{ width: '100%', borderRadius: 8, border: '1px solid #e2e8f0', padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }}
+              />
+            ) : (
+              <input
+                type={f.type}
+                value={values[f.key]}
+                onChange={(e) => handleChange(f.key, e.target.value)}
+                placeholder={f.placeholder || ''}
+                style={{ width: '100%', borderRadius: 8, border: '1px solid #e2e8f0', padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }}
+              />
+            )}
+          </div>
+        ))}
+        {error && <div style={{ fontSize: 12, color: '#dc2626' }}>{error}</div>}
+        <button
+          type="submit"
+          disabled={saving}
+          style={{ alignSelf: 'flex-start', borderRadius: 8, border: 'none', backgroundColor: NAVY, color: 'white', fontWeight: 700, padding: '9px 18px', fontSize: 13, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.7 : 1 }}
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </form>
+    </Card>
+  );
+}
+
+function ProfileTab({ student, documents, onViewDocument, onSaveFields, isMobile }) {
+  const fmtDob = student?.dob ? String(student.dob).slice(0, 10) : '';
+  const missingFields = COMPLETABLE_FIELDS.filter((f) => !student?.[f.key]);
+  return (
+    <div>
+      <Card title="Student Details">
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: 16 }}>
+          <ProfileField label="Name" value={student?.name} />
+          <ProfileField label="GCC No." value={student?.gcc_no} />
+          <ProfileField label="Admission No." value={student?.admission_no} />
+          <ProfileField label="Course" value={student?.course} />
+          <ProfileField label="Class" value={student?.class_name} />
+          <ProfileField label="Batch" value={student?.batch} />
+          <ProfileField label="Hostel Type" value={student?.hostel_type} />
+          <ProfileField label="Status" value={student?.status} />
+          <ProfileField label="Date of Birth" value={fmtDob} />
+          <ProfileField label="Blood Group" value={student?.blood_group} />
+          <ProfileField label="Father's Name" value={student?.father_name} />
+          <ProfileField label="Mother's Name" value={student?.mother_name} />
+          <ProfileField label="Address" value={student?.address} />
+        </div>
+      </Card>
+      {missingFields.length > 0 && (
+        <CompleteProfileForm student={student} missingFields={missingFields} onSaveFields={onSaveFields} />
+      )}
+      <Card title="Documents">
+        {(documents.status === 'loading' || documents.status === 'idle') && <Loading />}
+        {documents.status === 'error' && <Empty icon="⚠️" text={documents.error} />}
+        {documents.status === 'ready' && (
+          documents.data.length === 0 ? (
+            <Empty icon="📄" text="No documents on file" />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {documents.data.map((d, i) => (
+                <div
+                  key={d.id || i}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                    borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #e2e8f0',
+                    backgroundColor: isMobile ? M3.surfaceContainer : '#f8fafc', padding: 14,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{d.doc_type || 'Document'}</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{d.file_name}{d.created_at ? ` · ${(d.created_at || '').slice(0, 10)}` : ''}</div>
+                  </div>
+                  <button
+                    onClick={() => onViewDocument(d.storage_path)}
+                    style={{ borderRadius: 8, border: '1px solid #e2e8f0', backgroundColor: 'white', color: NAVY, fontWeight: 700, padding: '6px 12px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    👁️ View
+                  </button>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function AttendanceTab({ state, isMobile }) {
   if (state.status === 'loading' || state.status === 'idle') {
     return <Card><Loading /></Card>;
@@ -1932,9 +2346,9 @@ function AttendanceTab({ state, isMobile }) {
               ? { backgroundColor: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0' }
               : st === 'Absent'
               ? { backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' }
-              : st === 'Late' || st === 'Sick'
+              : st === 'Late'
               ? { backgroundColor: '#fffbeb', color: '#d97706', border: '1px solid #fde68a' }
-              : st === 'On Leave'
+              : st === 'Leave'
               ? { backgroundColor: '#dbeafe', color: '#1d4ed8', border: '1px solid #bfdbfe' }
               : { backgroundColor: '#f8fafc', color: '#94a3b8', border: '1px solid #e2e8f0' };
             return (
@@ -2167,7 +2581,7 @@ function ReportCardTab({ examTypes, selectedType, onTypeChange, dates, selectedD
 }
 
 // ── FEATURE 1: FEE DUES TAB ──────────────────────────────────────────────────
-function FeesTab({ state, onPayNow, nextDue, isMobile }) {
+function FeesTab({ state, onPayNow, nextDue, isMobile, student }) {
   return (
     <Card title="Fee Summary">
       {(state.status === 'loading' || state.status === 'idle') && <Loading />}
@@ -2232,13 +2646,24 @@ function FeesTab({ state, onPayNow, nextDue, isMobile }) {
           <div>
             <div style={{ fontSize: 13, fontWeight: 800, color: NAVY, marginBottom: 12 }}>Payment History</div>
             {(state.data.history || []).length ? (
-              <PremiumTable head={['Date', 'Type', 'Mode', 'Amount']}>
+              <PremiumTable head={['Date', 'Type', 'Mode', 'Amount', '']}>
                 {(state.data.history || []).map((r, i) => (
                   <tr key={i} style={{ borderTop: i ? '1px solid #f1f5f9' : 'none' }}>
                     <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{(r.date || '').slice(0, 10) || '—'}</td>
                     <td style={{ padding: '10px 12px', color: '#475569' }}>{r.type || '—'}</td>
                     <td style={{ padding: '10px 12px', color: '#94a3b8' }}>{r.mode || '—'}</td>
                     <td style={{ padding: '10px 12px', fontWeight: 700, color: '#1e293b' }}>₹{r.amount ?? 0}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                      <button
+                        onClick={() => printFeeReceipt(student, r)}
+                        style={{
+                          borderRadius: isMobile ? 999 : 7, border: `1.5px solid ${NAVY}`, background: 'white', color: NAVY,
+                          fontSize: 11, fontWeight: 700, padding: '5px 10px', cursor: 'pointer', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        🖨️ Receipt
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </PremiumTable>
@@ -2461,7 +2886,251 @@ function LeaveTab({ state, studentId, studentName, onSubmitted }) {
           )
         )}
       </Card>
+      <ReceptionLeaveApplications studentName={studentName} />
     </div>
+  );
+}
+
+// Gate-pass leave applications filed at Reception (Reception.jsx's own
+// `leave_applications` table) — a separate workflow from the Hostel Leave
+// History above (`leave_records`, Hostel.jsx). This one carries the actual
+// approval trail: who printed it, who reviewed it, and the linked gate pass,
+// so it's shown read-only here rather than merged with the hostel history,
+// which would blur two different tables/statuses together.
+const RLA_STATUS_TONE = { Approved: 'hi', Rejected: 'lo', Pending: 'mi' };
+
+function ReceptionLeaveApplications({ studentName }) {
+  const isMobile = useWindowWidth() < 640;
+  const [state, setState] = useState(initialTabState);
+
+  useEffect(() => {
+    if (!studentName) return;
+    let cancelled = false;
+    (async () => {
+      setState({ status: 'loading', data: null, error: null });
+      try {
+        const { data, error } = await supabase
+          .from('leave_applications')
+          .select('*')
+          .eq('student_name', studentName)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false })
+          .limit(20);
+        if (error) throw error;
+        if (!cancelled) setState({ status: 'ready', data: data || [], error: null });
+      } catch (e) {
+        console.error('Reception leave applications load failed:', e);
+        if (!cancelled) setState({ status: 'error', data: null, error: 'Failed to load leave applications' });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [studentName]);
+
+  if (state.status === 'idle') return null;
+
+  return (
+    <Card title="Gate-Pass Leave Applications (Reception)">
+      {(state.status === 'loading') && <Loading />}
+      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+      {state.status === 'ready' && (
+        state.data.length === 0 ? (
+          <Empty icon="🚪" text="No gate-pass leave applications filed at Reception" />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {state.data.map((a, i) => (
+              <div style={{
+                borderRadius: isMobile ? 16 : 10,
+                border: isMobile ? 'none' : '1px solid #e2e8f0',
+                backgroundColor: isMobile ? M3.surfaceContainer : '#f8fafc',
+                padding: 16,
+              }} key={a.id || i}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{a.from_date} → {a.to_date}</span>
+                  <Pill tone={RLA_STATUS_TONE[a.status] || 'mi'}>{a.status || 'Pending'}</Pill>
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>{a.reason || '—'}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: '#94a3b8' }}>
+                  <span>Submitted by {a.submitted_by || '—'}{a.created_at ? ` · ${(a.created_at || '').slice(0, 10)}` : ''}</span>
+                  {a.printed_at && (
+                    <span>🖨️ Printed{a.printed_by ? ` by ${a.printed_by}` : ''} · {(a.printed_at || '').slice(0, 10)}</span>
+                  )}
+                  {a.status === 'Approved' && a.reviewed_by && (
+                    <span>✅ Approved by {a.reviewed_by}{a.reviewer_role ? ` (${a.reviewer_role})` : ''}{a.reviewed_at ? ` · ${(a.reviewed_at || '').slice(0, 10)}` : ''}</span>
+                  )}
+                  {a.status === 'Approved' && a.gate_pass_id && (
+                    <span>🎫 Gate pass issued</span>
+                  )}
+                  {a.status === 'Rejected' && (
+                    <span>❌ Rejected by {a.reviewed_by || '—'}{a.reviewer_role ? ` (${a.reviewer_role})` : ''}{a.reviewed_at ? ` · ${(a.reviewed_at || '').slice(0, 10)}` : ''}</span>
+                  )}
+                  {a.status === 'Rejected' && a.rejection_reason && (
+                    <span>Reason: {a.rejection_reason}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </Card>
+  );
+}
+
+// ── PARENT ITEMS TAB ─────────────────────────────────────────────────────────
+// Read-only view of items parents/guardians drop off at Reception for the
+// student (reception_parent_items — Reception.jsx's Parent Items tab).
+// Status lifecycle: Pending → Delivered/Returned (set by Reception staff via
+// canTransition; this view has no write actions, it only reflects status).
+const PI_STATUS_TONE = { Delivered: 'hi', Returned: 'hi', Pending: 'mi' };
+
+function ParentItemsTab({ studentName }) {
+  const isMobile = useWindowWidth() < 640;
+  const [state, setState] = useState(initialTabState);
+
+  useEffect(() => {
+    if (!studentName) return;
+    let cancelled = false;
+    (async () => {
+      setState({ status: 'loading', data: null, error: null });
+      try {
+        const { data, error } = await supabase
+          .from('reception_parent_items')
+          .select('*')
+          .eq('student_name', studentName)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        if (!cancelled) setState({ status: 'ready', data: data || [], error: null });
+      } catch (e) {
+        console.error('Parent items load failed:', e);
+        if (!cancelled) setState({ status: 'error', data: null, error: 'Failed to load parent items' });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [studentName]);
+
+  return (
+    <Card title="Items Dropped Off at Reception">
+      {(state.status === 'loading' || state.status === 'idle') && <Loading />}
+      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+      {state.status === 'ready' && (
+        state.data.length === 0 ? (
+          <Empty icon="🎒" text="No items recorded at Reception" />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {state.data.map((it, i) => (
+              <div style={{
+                borderRadius: isMobile ? 16 : 10,
+                border: isMobile ? 'none' : '1px solid #e2e8f0',
+                backgroundColor: isMobile ? M3.surfaceContainer : '#f8fafc',
+                padding: 16,
+              }} key={it.id || i}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{it.item_name || 'Item'}{it.quantity ? ` × ${it.quantity}` : ''}</span>
+                  <Pill tone={PI_STATUS_TONE[it.status] || 'mi'}>{it.status || 'Pending'}</Pill>
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+                  {it.parent_name ? `From ${it.parent_name}` : ''}{it.received_date ? ` · ${it.received_date}` : ''}{it.received_by ? ` · Received by ${it.received_by}` : ''}
+                </div>
+                {it.remarks && (
+                  <div style={{ fontSize: 12, color: '#64748b' }}>{it.remarks}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </Card>
+  );
+}
+
+// ── STORE PURCHASES TAB ──────────────────────────────────────────────────────
+// GNSI Store (StorePublic.jsx) is a separate, no-login storefront — orders
+// aren't linked to a students.id, only to whatever phone number the parent
+// typed in at checkout. The only confirmed lookup path is the same RPC the
+// storefront's own "Track my order" modal uses: store_lookup_orders(p_phone,
+// p_order_no). So this reuses resolveGuardianColumn() (already used for
+// sibling lookup above) to find whichever phone-ish column actually exists
+// on `students`, reads that value for the logged-in student, and looks up
+// orders against it — no guessed GCC-based RPC parameter, since the RPC's
+// real signature isn't visible from here.
+const STORE_STATUS_LABEL = { new: 'Order received', confirmed: 'Confirmed', ready: 'Ready for pickup', delivered: 'Delivered / collected', cancelled: 'Cancelled' };
+const STORE_STATUS_TONE = { new: 'mi', confirmed: 'mi', ready: 'mi', delivered: 'hi', cancelled: 'lo' };
+const storeCurrency = (v) => Number(v || 0).toLocaleString('en-IN');
+
+function StorePurchasesTab({ student }) {
+  const isMobile = useWindowWidth() < 640;
+  const [state, setState] = useState({ status: 'idle', data: null, error: null, phone: null });
+
+  useEffect(() => {
+    if (!student?.id) return;
+    let cancelled = false;
+    (async () => {
+      setState({ status: 'loading', data: null, error: null, phone: null });
+      try {
+        const col = await resolveGuardianColumn(student.id);
+        if (!col) {
+          if (!cancelled) setState({ status: 'ready', data: [], error: null, phone: null });
+          return;
+        }
+        const { data: row } = await supabase.from('students').select(col).eq('id', student.id).maybeSingle();
+        const phone = row?.[col];
+        if (!phone) {
+          if (!cancelled) setState({ status: 'ready', data: [], error: null, phone: null });
+          return;
+        }
+        const { data, error } = await supabase.rpc('store_lookup_orders', { p_phone: phone, p_order_no: null });
+        if (error) throw error;
+        if (!cancelled) setState({ status: 'ready', data: data || [], error: null, phone });
+      } catch (e) {
+        console.error('Store purchases load failed:', e);
+        if (!cancelled) setState({ status: 'error', data: null, error: 'Failed to load store purchases', phone: null });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [student?.id]);
+
+  return (
+    <Card title="GNSI Store Purchases">
+      {(state.status === 'loading' || state.status === 'idle') && <Loading />}
+      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+      {state.status === 'ready' && (
+        !state.phone ? (
+          <Empty icon="🛒" text="No phone number on file to match store orders — orders placed at guidancekhangabok.in/store are looked up by the phone number used at checkout." />
+        ) : state.data.length === 0 ? (
+          <Empty icon="🛒" text="No store orders found for this number" />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {state.data.map((o, i) => (
+              <div style={{
+                borderRadius: isMobile ? 16 : 10,
+                border: isMobile ? 'none' : '1px solid #e2e8f0',
+                backgroundColor: isMobile ? M3.surfaceContainer : '#f8fafc',
+                padding: 16,
+              }} key={o.id || i}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{o.order_no}</span>
+                  <Pill tone={STORE_STATUS_TONE[o.status] || 'mi'}>{STORE_STATUS_LABEL[o.status] || o.status}</Pill>
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>
+                  {o.created_at ? new Date(o.created_at).toLocaleString('en-IN') : ''}
+                </div>
+                {Array.isArray(o.items) && o.items.length > 0 && (
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+                    {o.items.map((it, idx) => (
+                      <div key={idx}>{it.name || 'Item'}{it.qty ? ` × ${it.qty}` : ''}</div>
+                    ))}
+                  </div>
+                )}
+                {o.total != null && (
+                  <div style={{ fontSize: 13, fontWeight: 800, color: NAVY }}>Total ₹{storeCurrency(o.total)}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </Card>
   );
 }
 
