@@ -1054,7 +1054,32 @@ footer a:hover{color:var(--goldL);padding-left:4px}
 .mob-cat-links{display:flex;flex-direction:column;gap:0.25rem;padding:.25rem 0 .8rem .8rem;border-left:2px solid rgba(217,119,6,.3);margin-left:.25rem}
 .mob-sub-link{padding:.6rem .65rem;font-family:var(--sans);font-size:.82rem;color:rgba(255,255,255,.82);text-decoration:none;border-radius:6px}
 .mob-sub-link:active{background:rgba(217,119,6,.15);color:var(--goldL)}
-.tab-nav-wrap{background:var(--white);border-bottom:1px solid rgba(17,17,17,.08);position:sticky;top:0;z-index:40;box-shadow:var(--sh-1)}.tab-nav-strip{display:flex;gap:.5rem;overflow-x:auto;white-space:nowrap;padding:.7rem 0;-ms-overflow-style:none;scrollbar-width:none}.tab-nav-strip::-webkit-scrollbar{display:none}.tab-nav-btn{flex:0 0 auto;font-family:var(--sans);font-size:.82rem;font-weight:600;letter-spacing:.01em;color:var(--navy);background:var(--navy4);border:1px solid transparent;border-radius:999px;padding:.5rem 1rem;cursor:pointer;transition:.25s cubic-bezier(.22,1,.36,1)}
+.tab-nav-wrap{background:var(--white);border-bottom:1px solid rgba(17,17,17,.08);position:sticky;top:0;z-index:40;box-shadow:var(--sh-1)}
+/* Outer wrapper positions the fade overlays + arrow buttons around the
+   scrollable strip. This replaces a bare overflow-x:auto row (which had
+   no visual cue that 25 tabs existed beyond the visible ones) with a
+   strip that clearly signals "more to scroll" via edge fades, and gives
+   desktop users click-to-scroll arrows instead of relying on trackpad/drag. */
+.tab-nav-strip-outer{position:relative;display:flex;align-items:center}
+.tab-nav-strip{display:flex;gap:.5rem;overflow-x:auto;white-space:nowrap;padding:.7rem .25rem;-ms-overflow-style:none;scrollbar-width:none;scroll-behavior:smooth;flex:1 1 auto;min-width:0}
+.tab-nav-strip::-webkit-scrollbar{display:none}
+.tab-nav-fade{position:absolute;top:0;bottom:0;width:32px;pointer-events:none;z-index:2;transition:opacity .2s ease}
+.tab-nav-fade-l{left:0;background:linear-gradient(90deg,var(--white),rgba(255,255,255,0))}
+.tab-nav-fade-r{right:0;background:linear-gradient(270deg,var(--white),rgba(255,255,255,0))}
+.tab-nav-fade.is-hidden{opacity:0}
+.tab-strip-arrow{flex:0 0 auto;display:none;align-items:center;justify-content:center;width:28px;height:28px;border-radius:999px;border:1px solid rgba(17,17,17,.12);background:var(--white);color:var(--navy);font-size:1.1rem;line-height:1;cursor:pointer;box-shadow:var(--sh-1);z-index:3;transition:opacity .2s ease}
+.tab-strip-arrow.is-hidden{opacity:0;pointer-events:none}
+@media(min-width:901px){
+  .tab-strip-arrow{display:flex}
+  .tab-strip-arrow-l{margin-right:.4rem}
+  .tab-strip-arrow-r{margin-left:.4rem}
+}
+@media(max-width:900px){
+  .tab-nav-strip{gap:.4rem;padding:.6rem .2rem}
+  .tab-nav-fade{width:20px}
+}
+.tab-nav-btn{flex:0 0 auto;font-family:var(--sans);font-size:.82rem;font-weight:600;letter-spacing:.01em;color:var(--navy);background:var(--navy4);border:1px solid transparent;border-radius:999px;padding:.5rem 1rem;cursor:pointer;transition:.25s cubic-bezier(.22,1,.36,1)}
+@media(max-width:900px){.tab-nav-btn{font-size:.76rem;padding:.42rem .8rem}}
 .tab-nav-btn:hover{transform:translateY(-1px)}
 .tab-nav-btn:active{transform:scale(.96)}
 .tab-nav-btn.cat-gold{background:rgba(217,119,6,.1);color:var(--goldD)}

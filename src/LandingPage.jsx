@@ -107,6 +107,8 @@ export default function LandingPage({ onLogin }) {
   const [feePaymentInfo, setFeePaymentInfo] = useState({ upi_id: '', upi_qr_url: '' });
   const [activeTab, setActiveTab] = useState('home');
   const tabContentRef = useRef(null);
+  const tabStripRef = useRef(null);
+  const [tabStripScroll, setTabStripScroll] = useState({ atStart: true, atEnd: false });
 
   // ═══ ADMIT CARD / RESULT PORTAL (public, fee-gated, real data) ═══
   // examTypes: live list pulled from the real `exam_types` table so the
@@ -467,6 +469,44 @@ export default function LandingPage({ onLogin }) {
     unrevealed.forEach(el => tabRevealObserver.observe(el));
     return () => tabRevealObserver.disconnect();
   }, [activeTab]);
+
+  // Tab pill strip (25 items) is a horizontally-scrolling row. Track
+  // scroll position so we can show/hide left/right fade+arrow affordances,
+  // and keep the active pill scrolled into view whenever it changes (via
+  // click or browser back/forward) so the user always sees which tab is on.
+  useEffect(() => {
+    const el = tabStripRef.current;
+    if (!el) return;
+    const updateScrollState = () => {
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      setTabStripScroll({
+        atStart: el.scrollLeft <= 4,
+        atEnd: el.scrollLeft >= maxScroll - 4,
+      });
+    };
+    updateScrollState();
+    el.addEventListener('scroll', updateScrollState, { passive: true });
+    window.addEventListener('resize', updateScrollState);
+    return () => {
+      el.removeEventListener('scroll', updateScrollState);
+      window.removeEventListener('resize', updateScrollState);
+    };
+  }, []);
+
+  useEffect(() => {
+    const el = tabStripRef.current;
+    if (!el) return;
+    const activeBtn = el.querySelector('.tab-nav-btn.active');
+    if (activeBtn) {
+      activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  }, [activeTab]);
+
+  const scrollTabStrip = (dir) => {
+    const el = tabStripRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.round(el.clientWidth * 0.7), behavior: 'smooth' });
+  };
 
   // Nav-menu links point at in-page hashes (e.g. "#enquiry", "#contact").
   // "#contact" is a sub-element inside the "enquiry" tab, not a tab of its
@@ -2130,19 +2170,46 @@ window.submitGrievance = async () => {
       </div>
     </div>
   </div>
-  {/* TAB STRIP */}
+  {/* TAB STRIP — 25 pills, horizontally scrollable on all breakpoints.
+      Left/right arrow buttons (desktop only, via CSS) + fade edges give a
+      visible cue that there's more to scroll; they hide themselves at
+      each end via tabStripScroll. Active pill auto-scrolls into view. */}
   <div className="tab-nav-wrap">
-    <div className="tab-nav-strip container">
-      {tabList.map((t) => (
-        <button
-          key={t.id}
-          type="button"
-          className={"tab-nav-btn cat-" + t.cat + (activeTab === t.id ? " active" : "")}
-          onClick={() => goToTab(t.id)}
-        >
-          {t.label}
-        </button>
-      ))}
+    <div className="tab-nav-strip-outer container">
+      <button
+        type="button"
+        aria-label="Scroll tabs left"
+        className={"tab-strip-arrow tab-strip-arrow-l" + (tabStripScroll.atStart ? " is-hidden" : "")}
+        onClick={() => scrollTabStrip(-1)}
+      >
+        ‹
+      </button>
+      <div
+        className={"tab-nav-fade tab-nav-fade-l" + (tabStripScroll.atStart ? " is-hidden" : "")}
+      />
+      <div className="tab-nav-strip" ref={tabStripRef}>
+        {tabList.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={"tab-nav-btn cat-" + t.cat + (activeTab === t.id ? " active" : "")}
+            onClick={() => goToTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div
+        className={"tab-nav-fade tab-nav-fade-r" + (tabStripScroll.atEnd ? " is-hidden" : "")}
+      />
+      <button
+        type="button"
+        aria-label="Scroll tabs right"
+        className={"tab-strip-arrow tab-strip-arrow-r" + (tabStripScroll.atEnd ? " is-hidden" : "")}
+        onClick={() => scrollTabStrip(1)}
+      >
+        ›
+      </button>
     </div>
   </div>
   {/* TAB CONTENT WRAPPER — used by the outside-click auto-close handler.
