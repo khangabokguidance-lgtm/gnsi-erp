@@ -923,27 +923,29 @@ footer a:hover{color:var(--goldL);padding-left:4px}
 
 @media(max-width:900px){
   html{font-size:clamp(16px,4.4vw,18px)}
-  .nav-inner{height:auto;min-height:64px;padding:.5rem 0;flex-wrap:nowrap}
+  /* Previous approach (flex-shrink + horizontal scroll on the button row)
+     kept breaking one way or another — a button losing its flex-shrink
+     rule collapsed to a sliver, and it depended on exact class matches
+     between this file and whatever JSX build is actually deployed. This
+     version is simpler and doesn't depend on that: the logo stays on its
+     own line, the action buttons wrap onto a second line below it and
+     shrink-to-fit via clamp() font sizing, wrapping to a 3rd line only if
+     truly needed. Nothing is ever cropped or scroll-hidden — every button
+     is always fully visible at its natural size. */
+  .nav-inner{height:auto;min-height:auto;padding:.6rem 0;flex-wrap:wrap;row-gap:.5rem}
   .brand img{height:36px!important;width:36px!important}
   .brand{flex-shrink:0;min-width:0}
   .brand-text h2{font-size:.92rem}
   .brand-text small{font-size:.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;display:block}
-  /* Pay Fee / Get App / Staff Login / hamburger no longer fit one nowrap
-     row with the logo below ~400px even at the tightened padding below —
-     that's what was slicing "STAFF LOGIN" off the right edge with no way
-     to reach it (nav-inner had no scroll of its own, and body's
-     overflow-x:hidden clips it rather than making it reachable). Letting
-     just this row scroll horizontally keeps every button reachable by a
-     swipe instead of permanently cutting the last one off-screen. */
-  .nav-fixed-actions{gap:.35rem;flex-wrap:nowrap;flex:1 1 0;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;justify-content:flex-end}
-  .nav-fixed-actions::-webkit-scrollbar{display:none}
-  .nav-fee,.nav-btn{padding:.4rem .55rem!important;font-size:.6rem!important;flex-shrink:0}
-  .hamburger{flex-shrink:0}
+  .nav-fixed-actions{flex-wrap:wrap;flex-basis:100%;justify-content:flex-end;gap:.4rem}
+  .nav-fee,.nav-btn,.nav-par{padding:.4rem .6rem!important;font-size:.68rem!important}
   /* Parents Login is already reachable from the mobile hamburger menu's
      "Parents Portal →" link — hide the duplicate in the fixed action bar
      below 900px so it doesn't crowd Pay Fee / Get App / Staff Login /
-     hamburger into an even tighter row. */
-  .nav-desktop-only{display:none!important}
+     hamburger. Targeting .nav-par directly (not just .nav-desktop-only)
+     so this hides it even if the JSX's extra class wasn't part of
+     whatever build is currently live — belt and suspenders. */
+  .nav-desktop-only,.nav-fixed-actions>.nav-par{display:none!important}
   .hero-wrap,.about-grid,.enquiry-grid,.head-institute-grid,.fee-grid,.video-grid,.scholar-grid,.portal-grid,.mocktest-grid,.app-grid,.helpdesk-grid{grid-template-columns:1fr}
   .footer-grid{grid-template-columns:1fr 1fr}
   .nav-links{display:none}
