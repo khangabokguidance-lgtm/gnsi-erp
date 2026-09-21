@@ -6,6 +6,53 @@ import { supabase } from './supabase';
 
 const EMBLEM_URL = "https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/gnsi-emblem.png";
 
+// ── .ics CALENDAR EXPORT ─────────────────────────────────────────────────
+// Builds a minimal RFC 5545 calendar file client-side (no library) from
+// dates already present in state the parent can see on screen — exam dates
+// from exam_marks, approved leave date ranges from leave_records. There is
+// no "upcoming events" table in this schema to export from, so this only
+// ever exports real dates the portal already shows, not a fabricated feed.
+function icsEscape(str) {
+  return String(str ?? '').replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n');
+}
+function icsDate(dateStr) {
+  // dateStr is 'YYYY-MM-DD' — VALUE=DATE all-day events need 'YYYYMMDD'.
+  return (dateStr || '').slice(0, 10).replace(/-/g, '');
+}
+function downloadIcs(filename, events) {
+  // events: [{ uid, title, date, endDate?, description? }] — endDate is
+  // exclusive per the iCal all-day-event convention, so callers pass the
+  // day AFTER the last day the event covers.
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//GNSI Parents Portal//EN',
+    'CALSCALE:GREGORIAN',
+  ];
+  events.forEach(ev => {
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:${icsEscape(ev.uid)}@gnsi-portal`,
+      `DTSTAMP:${icsDate(new Date().toISOString())}T000000Z`,
+      `DTSTART;VALUE=DATE:${icsDate(ev.date)}`,
+      `DTEND;VALUE=DATE:${icsDate(ev.endDate || ev.date)}`,
+      `SUMMARY:${icsEscape(ev.title)}`,
+      ev.description ? `DESCRIPTION:${icsEscape(ev.description)}` : null,
+      'END:VEVENT',
+    );
+  });
+  lines.push('END:VCALENDAR');
+  const blob = new Blob([lines.filter(Boolean).join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ── responsive hook ───────────────────────────────────────────────────────
 // Same pattern Accounts.jsx uses (useWindowWidth): drives real breakpoint
 // behavior (stacking grids, smaller padding/fonts) rather than just letting
@@ -373,6 +420,10 @@ export default function ParentsPortal({ isOpen, onClose }) {
   const [student, setStudent] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const [moreOpen, setMoreOpen] = useState(false);
+  // Hamburger dropdown for the top nav — replaces the old horizontal-scroll
+  // TABS strip, which overflowed/got cramped at tablet widths (below the
+  // 640px isMobile cutoff that switches to the separate bottom nav).
+  const [navMenuOpen, setNavMenuOpen] = useState(false);
 
   const [loginGcc, setLoginGcc] = useState('');
   const [loginName, setLoginName] = useState('');
@@ -532,6 +583,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
   const handleTabClick = (id) => {
     setActiveTab(id);
     setMoreOpen(false);
+    setNavMenuOpen(false);
     if (!student) return;
     if (id === 'att' && attendance.status === 'idle') loadAttendance(student.id);
     if (id === 'exams' && exams.status === 'idle') loadExams(student.id);
@@ -1283,21 +1335,55 @@ export default function ParentsPortal({ isOpen, onClose }) {
             </div>
           </div>
           {!isMobile && (
-            <div style={{ position: 'sticky', top: 60, zIndex: 10, display: 'flex', gap: 6, overflowX: 'auto', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: '12px 16px' }} className="no-scrollbar">
-              {TABS.map(t => (
+            <div style={{ position: 'sticky', top: 60, zIndex: 20, borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: '10px 16px' }}>
+              <div style={{ position: 'relative', maxWidth: 960, margin: '0 auto' }}>
                 <button
-                  key={t.id}
-                  onClick={() => handleTabClick(t.id)}
+                  onClick={() => setNavMenuOpen(o => !o)}
                   style={{
-                    flexShrink: 0, borderRadius: 999, padding: '7px 14px', fontSize: 12, fontWeight: 700,
-                    letterSpacing: '.02em', whiteSpace: 'nowrap', border: 'none', cursor: 'pointer', transition: 'all .15s',
-                    backgroundColor: activeTab === t.id ? NAVY : '#f1f5f9',
-                    color: activeTab === t.id ? 'white' : '#64748b',
+                    display: 'flex', alignItems: 'center', gap: 10, borderRadius: 10,
+                    border: '1px solid #e2e8f0', padding: '9px 14px', fontSize: 13, fontWeight: 700,
+                    backgroundColor: navMenuOpen ? '#eef2f9' : 'white', color: NAVY, cursor: 'pointer',
                   }}
+                  aria-expanded={navMenuOpen}
+                  aria-haspopup="true"
                 >
-                  {t.label}
+                  <span style={{ fontSize: 16, lineHeight: 1 }}>☰</span>
+                  <span>{TABS.find(t => t.id === activeTab)?.label || 'Menu'}</span>
+                  <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 2 }}>{navMenuOpen ? '▲' : '▼'}</span>
                 </button>
-              ))}
+
+                {navMenuOpen && (
+                  <>
+                    {/* Click-outside scrim — transparent, just for dismissal */}
+                    <div
+                      style={{ position: 'fixed', inset: 0, zIndex: 19 }}
+                      onClick={() => setNavMenuOpen(false)}
+                    />
+                    <div
+                      style={{
+                        position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 21,
+                        minWidth: 220, backgroundColor: 'white', borderRadius: 12, border: '1px solid #e2e8f0',
+                        boxShadow: '0 8px 24px rgba(15,23,42,0.12)', padding: 6,
+                      }}
+                    >
+                      {TABS.map(t => (
+                        <button
+                          key={t.id}
+                          onClick={() => handleTabClick(t.id)}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
+                            borderRadius: 8, border: 'none', padding: '10px 12px', fontSize: 13, fontWeight: 700,
+                            backgroundColor: activeTab === t.id ? NAVY : 'transparent',
+                            color: activeTab === t.id ? 'white' : '#334155', cursor: 'pointer',
+                          }}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
           <div style={{ flex: 1, position: 'relative', zIndex: 1, padding: isMobile ? '14px 10px' : '28px 16px', paddingBottom: isMobile ? 78 : 20, maxWidth: 960, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
@@ -1351,6 +1437,8 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 onEnablePush={enablePush}
                 onGoTab={handleTabClick}
                 isMobile={isMobile}
+                siblings={siblings}
+                onSwitchChild={switchChild}
               />
             )}
             {activeTab === 'att' && (
@@ -1376,7 +1464,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
               <FeesTab state={fees} onPayNow={handlePayNow} nextDue={fees.status === 'ready' ? pickNextDue(fees.data) : null} isMobile={isMobile} />
             )}
             {activeTab === 'leave' && (
-              <LeaveTab state={leave} />
+              <LeaveTab state={leave} studentId={student.id} studentName={student.name} onSubmitted={() => loadLeave(student.id)} />
             )}
             {activeTab === 'grievance' && (
               <GrievanceTab
@@ -1571,10 +1659,137 @@ function PremiumTable({ head, align, children }) {
   );
 }
 
+// Fee data here has no day-level due date (feeDues.js only tracks month/year
+// + paid/unpaid — see pickNextDue above), so a literal "due in N days"
+// countdown can't be built honestly from it. The real actionable signal
+// this data does support: an unpaid admission fee, or the current calendar
+// month's flat/course fee not yet marked paid — both mean money is owed
+// right now, which is what the banner surfaces.
+function getDueSoonSummary(dues) {
+  if (!dues) return null;
+  const items = [];
+  if (dues.admission && !dues.admission.paid && dues.admission.due > 0) {
+    items.push({ label: 'Admission Fee', amount: dues.admission.due });
+  }
+  const now = new Date();
+  const curMonthName = now.toLocaleString('default', { month: 'long' });
+  const curYear = now.getFullYear();
+  const isCurrentMonth = (i) => i.month === curMonthName && Number(i.year) === curYear;
+  const unpaidFlatNow = (dues.flatFee?.items || []).find(i => !i.paid && isCurrentMonth(i));
+  if (unpaidFlatNow) items.push({ label: `Hostel Fee — ${unpaidFlatNow.month} ${unpaidFlatNow.year}`, amount: unpaidFlatNow.expected });
+  const unpaidCourseNow = (dues.courseFee?.items || []).find(i => !i.paid && isCurrentMonth(i));
+  if (unpaidCourseNow) items.push({ label: `Course Fee — ${unpaidCourseNow.month} ${unpaidCourseNow.year}`, amount: unpaidCourseNow.expected });
+  return items.length ? items : null;
+}
+
+// Family overview — shown only for multi-child households (siblings.length
+// > 1). Runs the same lightweight per-child fee-due lookup (getStudentDues,
+// same as loadFees above but skipping the heavier payment-history join)
+// plus a this-month attendance-% query, in parallel for every sibling, so
+// a parent with multiple children doesn't have to switch back and forth to
+// see who's OK and who needs attention. Real data per child — nothing here
+// is estimated.
+function SiblingOverview({ siblings, activeStudentId, onSwitchChild, isMobile }) {
+  const [rows, setRows] = useState(null); // null = loading
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!siblings || siblings.length < 2) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const feeMod = await import('./feeDues.js');
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const from = `${y}-${m}-01`;
+        const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+        const to = `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
+
+        const results = await Promise.all(siblings.map(async (s) => {
+          let dues = null, pct = null;
+          try {
+            let admissionDate = s.admission_date;
+            if (admissionDate === undefined) {
+              const { data: admRow } = await supabase.from('students').select('admission_date').eq('id', s.id).maybeSingle();
+              admissionDate = admRow?.admission_date || null;
+            }
+            dues = await feeMod.getStudentDues({ ...s, admission_date: admissionDate });
+          } catch (e) { console.error('Sibling fee lookup failed:', s.id, e); }
+          try {
+            const { data } = await supabase
+              .from('attendance_records')
+              .select('date, status')
+              .eq('student_id', s.id)
+              .gte('date', from).lte('date', to);
+            const byDay = new Map();
+            (data || []).forEach(r => { if (!byDay.has(r.date)) byDay.set(r.date, r.status); });
+            const total = byDay.size;
+            const present = [...byDay.values()].filter(v => v === 'Present').length;
+            pct = total ? Math.round((present / total) * 100) : null;
+          } catch (e) { console.error('Sibling attendance lookup failed:', s.id, e); }
+          return { student: s, totalDue: dues?.totalDue ?? null, pct };
+        }));
+        if (!cancelled) setRows(results);
+      } catch (e) {
+        console.error('Sibling overview load failed:', e);
+        if (!cancelled) setError(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [siblings]);
+
+  if (!siblings || siblings.length < 2) return null;
+
+  return (
+    <Card title="Family Overview" right={<span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#94a3b8', fontWeight: 700 }}>{siblings.length} children</span>}>
+      {error && <Empty icon="⚠️" text="Could not load family overview" />}
+      {!error && rows === null && <Loading />}
+      {!error && rows !== null && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {rows.map(({ student: s, totalDue, pct }) => {
+            const isActive = s.id === activeStudentId;
+            return (
+              <button
+                key={s.id}
+                onClick={() => !isActive && onSwitchChild?.(s)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                  borderRadius: isMobile ? 16 : 10, textAlign: 'left', cursor: isActive ? 'default' : 'pointer',
+                  border: isActive ? `1px solid ${NAVY}` : (isMobile ? 'none' : '1px solid #e2e8f0'),
+                  backgroundColor: isActive ? '#eef2f9' : (isMobile ? M3.surfaceContainer : '#f8fafc'),
+                  padding: '12px 14px',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {s.name}
+                    {isActive && <span style={{ fontSize: 10, fontWeight: 700, color: NAVY }}>(viewing)</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{[s.course, s.class_name, s.batch].filter(Boolean).join(' · ')}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: pct === null ? '#94a3b8' : pct >= 75 ? '#16a34a' : '#dc2626', borderRadius: 999, padding: '3px 8px', backgroundColor: pct === null ? '#f1f5f9' : pct >= 75 ? '#dcfce7' : '#fee2e2' }}>
+                    {pct === null ? 'Att —' : `Att ${pct}%`}
+                  </span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: (totalDue ?? 0) > 0 ? '#dc2626' : '#16a34a', borderRadius: 999, padding: '3px 8px', backgroundColor: (totalDue ?? 0) > 0 ? '#fee2e2' : '#dcfce7' }}>
+                    {totalDue === null ? 'Fee —' : (totalDue ?? 0) > 0 ? `₹${totalDue} due` : 'Fees OK'}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ── FEATURE 10: DASHBOARD HOME (single glanceable summary) ──────────────────
-function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEnablePush, onGoTab, isMobile }) {
+function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEnablePush, onGoTab, isMobile, siblings, onSwitchChild }) {
   const attPct = attendance.status === 'ready' ? attendance.data.pct : null;
   const feeBalance = fees.status === 'ready' ? fees.data.totalDue : undefined;
+  const dueSoon = fees.status === 'ready' ? getDueSoonSummary(fees.data) : null;
 
   const tiles = [
     { id: 'att', icon: '📊', val: attPct !== null ? `${attPct}%` : '—', lbl: 'Attendance this month', color: '#1e3a5f' },
@@ -1585,8 +1800,40 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
     { id: 'exams', icon: '📝', val: 'View', lbl: 'Exam scores', color: '#16a34a' },
   ];
 
+  const [dueBannerDismissed, setDueBannerDismissed] = useState(false);
+
   return (
     <div>
+      <SiblingOverview siblings={siblings} activeStudentId={student?.id} onSwitchChild={onSwitchChild} isMobile={isMobile} />
+      {dueSoon && !dueBannerDismissed && (
+        <div style={{
+          borderRadius: isMobile ? M3.radiusMd : 12, border: isMobile ? 'none' : '1px solid #fecaca',
+          backgroundColor: isMobile ? '#fbe4e4' : '#fef2f2', padding: isMobile ? 14 : 16,
+          marginBottom: 14, display: 'flex', alignItems: 'flex-start', gap: 12,
+        }}>
+          <span style={{ fontSize: 18, flexShrink: 0 }}>⏰</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <strong style={{ fontSize: 13, fontWeight: 800, color: '#b91c1c' }}>Fee due</strong>
+            <p style={{ fontSize: 12, color: '#7f1d1d', margin: '4px 0 8px', lineHeight: 1.5 }}>
+              {dueSoon.map(d => `${d.label} (₹${d.amount})`).join(' · ')}
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => onGoTab('fees')}
+                style={{ borderRadius: isMobile ? 999 : 8, border: 'none', backgroundColor: '#dc2626', color: 'white', fontWeight: 700, padding: '8px 14px', fontSize: 12, cursor: 'pointer' }}
+              >
+                Pay Now
+              </button>
+              <button
+                onClick={() => setDueBannerDismissed(true)}
+                style={{ borderRadius: isMobile ? 999 : 8, border: '1px solid #fecaca', backgroundColor: 'transparent', color: '#b91c1c', fontWeight: 700, padding: '8px 14px', fontSize: 12, cursor: 'pointer' }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? 130 : 140}px, 1fr))`, gap: isMobile ? 10 : 12, marginBottom: 16 }}>
         {tiles.map(t => (
           <button
@@ -1749,9 +1996,73 @@ function groupExamRows(rows) {
   return [...groups.values()];
 }
 
+// Groups the flat exam_marks rows by subject (across all exams), sorted by
+// date, for the trend chart — a different cut of the same `state.data`
+// groupExamRows above groups by exam.
+function groupBySubject(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    if (r.pct === null || r.pct === undefined) continue; // ungraded rows can't plot
+    const key = r.subject || 'Unknown';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  for (const list of groups.values()) {
+    list.sort((a, b) => (a.exam_date || '').localeCompare(b.exam_date || ''));
+  }
+  return [...groups.entries()]
+    .map(([subject, points]) => ({ subject, points }))
+    .filter(g => g.points.length >= 2) // a single point isn't a "trend"
+    .sort((a, b) => a.subject.localeCompare(b.subject));
+}
+
+// Pure-SVG line chart — no charting library dependency. Plots % score over
+// exams for one subject; a flat/rising/falling line is exactly what a
+// parent needs to see at a glance, more than the underlying numbers.
+function SubjectTrendLine({ subject, points, isMobile }) {
+  const w = isMobile ? 280 : 420;
+  const h = 90;
+  const padX = 8;
+  const padY = 14;
+  const n = points.length;
+  const xAt = (i) => n === 1 ? w / 2 : padX + (i * (w - padX * 2)) / (n - 1);
+  const yAt = (pct) => padY + (1 - Math.max(0, Math.min(100, pct)) / 100) * (h - padY * 2);
+
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xAt(i).toFixed(1)} ${yAt(p.pct).toFixed(1)}`).join(' ');
+  const first = points[0].pct;
+  const last = points[points.length - 1].pct;
+  const delta = last - first;
+  const trendColor = delta > 2 ? '#16a34a' : delta < -2 ? '#dc2626' : '#94a3b8';
+  const trendLabel = delta > 2 ? `▲ +${delta}%` : delta < -2 ? `▼ ${delta}%` : '— steady';
+
+  return (
+    <div style={{
+      borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #e2e8f0',
+      backgroundColor: isMobile ? M3.surfaceContainer : '#f8fafc', padding: 14, marginBottom: 10,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{subject}</span>
+        <span style={{ fontSize: 11, fontWeight: 800, color: trendColor }}>{trendLabel}</span>
+      </div>
+      <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto', display: 'block' }} preserveAspectRatio="none">
+        {[25, 50, 75].map(g => (
+          <line key={g} x1={0} x2={w} y1={yAt(g)} y2={yAt(g)} stroke="#e2e8f0" strokeWidth="1" strokeDasharray="3,3" />
+        ))}
+        <path d={pathD} fill="none" stroke={NAVY} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {points.map((p, i) => (
+          <circle key={i} cx={xAt(i)} cy={yAt(p.pct)} r={3} fill={NAVY}>
+            <title>{`${p.examName || 'Exam'} (${(p.exam_date || '').slice(0, 10)}): ${p.pct}%`}</title>
+          </circle>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 function ExamsTab({ state }) {
   const isMobile = useWindowWidth() < 640;
   const groups = state.status === 'ready' ? groupExamRows(state.data) : [];
+  const trends = state.status === 'ready' ? groupBySubject(state.data) : [];
 
   return (
     <div>
@@ -1761,7 +2072,28 @@ function ExamsTab({ state }) {
         groups.length === 0 ? (
           <Card title="Exam Results"><Empty icon="📝" text="No results yet" /></Card>
         ) : (
-          groups.map((g, gi) => (
+          <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+            <button
+              onClick={() => downloadIcs('gnsi-exam-dates.ics', groups.filter(g => g.exam_date).map((g, i) => ({
+                uid: `exam-${g.examName}-${g.exam_date}-${i}`,
+                title: g.examName,
+                date: g.exam_date,
+                description: `GNSI exam: ${g.examName}`,
+              })))}
+              style={{ borderRadius: isMobile ? 999 : 8, border: '1px solid #e2e8f0', backgroundColor: 'white', color: NAVY, fontWeight: 700, padding: '7px 12px', fontSize: 11, cursor: 'pointer' }}
+            >
+              📅 Add to Calendar
+            </button>
+          </div>
+          {trends.length > 0 && (
+            <Card title="Performance Trend" right={<span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#94a3b8', fontWeight: 700 }}>Across all exams</span>}>
+              {trends.map((t, i) => (
+                <SubjectTrendLine key={i} subject={t.subject} points={t.points} isMobile={isMobile} />
+              ))}
+            </Card>
+          )}
+          {groups.map((g, gi) => (
             <Card
               key={gi}
               title={g.examName}
@@ -1780,7 +2112,8 @@ function ExamsTab({ state }) {
                 })}
               </PremiumTable>
             </Card>
-          ))
+          ))}
+          </>
         )
       )}
     </div>
@@ -1968,41 +2301,167 @@ function FeeMonthsBreakdown({ label, items, due }) {
   );
 }
 
-function LeaveTab({ state }) {
+const LEAVE_TYPES = ['Home Visit', 'Medical', 'Family Emergency', 'Other'];
+
+// New leave request form. Writes only the columns Hostel.jsx's own queries
+// have confirmed exist on leave_records (see loadLeave's comment above):
+// student_id, student_name, leave_type, from_date, to_date, status. `reason`
+// is included too since LeaveTab already reads it back for display, but if
+// that column turns out not to exist this insert will error — same
+// unconfirmed-column caveat the read side already carries.
+function LeaveRequestForm({ studentId, studentName, onSubmitted }) {
+  const isMobile = useWindowWidth() < 640;
+  const [leaveType, setLeaveType] = useState(LEAVE_TYPES[0]);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [justSubmitted, setJustSubmitted] = useState(false);
+
+  const inputStyle = isMobile
+    ? { width: '100%', borderRadius: 16, border: 'none', backgroundColor: '#eef1f7', padding: '13px 14px', fontSize: 13, color: '#1e293b', outline: 'none', boxSizing: 'border-box' }
+    : { width: '100%', borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', padding: '11px 14px', fontSize: 13, color: '#1e293b', outline: 'none', boxSizing: 'border-box' };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!fromDate || !toDate) { setError('Please select both dates.'); return; }
+    if (toDate < fromDate) { setError('Return date must be on or after the leave start date.'); return; }
+    setSubmitting(true);
+    setError('');
+    try {
+      const { error: insertError } = await supabase.from('leave_records').insert({
+        student_id: studentId,
+        student_name: studentName || null,
+        leave_type: leaveType,
+        from_date: fromDate,
+        to_date: toDate,
+        reason: reason.trim() || null,
+        status: 'Pending',
+      });
+      if (insertError) throw insertError;
+      setJustSubmitted(true);
+      setFromDate(''); setToDate(''); setReason('');
+      onSubmitted?.();
+    } catch (err) {
+      console.error('Leave request submit error:', err);
+      setError('Something went wrong. Please try again or contact the hostel office directly.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Card title="Request Leave">
+      {justSubmitted && (
+        <div style={{ marginBottom: 16, borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #bbf7d0', backgroundColor: isMobile ? '#e3f6e9' : '#f0fdf4', padding: '12px 16px', fontSize: 13, color: '#166534' }}>
+          ✓ Leave request submitted — the hostel office will review it.
+        </div>
+      )}
+      {error && (
+        <div style={{ marginBottom: 16, borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #fecaca', backgroundColor: isMobile ? '#fbe4e4' : '#fef2f2', padding: '12px 16px', fontSize: 13, color: '#b91c1c' }}>
+          {error}
+        </div>
+      )}
+      <form onSubmit={handleSubmit}>
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Leave Type</label>
+        <select value={leaveType} onChange={(e) => setLeaveType(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }}>
+          {LEAVE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>From</label>
+            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} style={inputStyle} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>To</label>
+            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} style={inputStyle} />
+          </div>
+        </div>
+
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Reason (optional)</label>
+        <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} style={{ ...inputStyle, marginBottom: 16, resize: 'vertical', fontFamily: 'inherit' }} />
+
+        <button
+          type="submit"
+          disabled={submitting}
+          style={{
+            width: '100%', borderRadius: isMobile ? 999 : 10, backgroundColor: NAVY, color: 'white', fontWeight: 700,
+            padding: isMobile ? '13px 20px' : '12px 20px', fontSize: 13, border: 'none',
+            cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1,
+          }}
+        >
+          {submitting ? 'Submitting…' : 'Submit Leave Request'}
+        </button>
+      </form>
+    </Card>
+  );
+}
+
+function LeaveTab({ state, studentId, studentName, onSubmitted }) {
   const isMobile = useWindowWidth() < 640;
   // Hostel.jsx's real leave_records statuses are capitalized (Approved,
   // Pending, Rejected) — not the lowercase guesses this used to key off.
   const stTone = { Approved: 'hi', Rejected: 'lo', Pending: 'mi' };
   return (
-    <Card title="Hostel Leave History">
-      {(state.status === 'loading' || state.status === 'idle') && <Loading />}
-      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
-      {state.status === 'ready' && (
-        state.data.length === 0 ? (
-          <Empty icon="🏨" text="No leave history" />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {state.data.map((r, i) => (
-              <div style={{
-                borderRadius: isMobile ? 16 : 10,
-                border: isMobile ? 'none' : '1px solid #e2e8f0',
-                backgroundColor: isMobile ? M3.surfaceContainer : '#f8fafc',
-                padding: 16,
-              }} key={i}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{r.from_date} → {r.to_date}</span>
-                  <Pill tone={stTone[r.status] || 'mi'}>{r.status || 'Pending'}</Pill>
+    <div>
+      <LeaveRequestForm studentId={studentId} studentName={studentName} onSubmitted={onSubmitted} />
+      <Card
+        title="Hostel Leave History"
+        right={
+          state.status === 'ready' && state.data.some(r => r.status === 'Approved') ? (
+            <button
+              onClick={() => downloadIcs('gnsi-approved-leave.ics', state.data.filter(r => r.status === 'Approved').map((r, i) => {
+                // .ics all-day DTEND is exclusive, so add one day past to_date
+                // to cover the full leave span inclusively.
+                const end = new Date(`${r.to_date}T00:00:00`);
+                end.setDate(end.getDate() + 1);
+                const endStr = end.toISOString().slice(0, 10);
+                return {
+                  uid: `leave-${r.id || i}-${r.from_date}`,
+                  title: `Hostel Leave${r.leave_type ? ` — ${r.leave_type}` : ''}`,
+                  date: r.from_date,
+                  endDate: endStr,
+                  description: r.reason || '',
+                };
+              }))}
+              style={{ borderRadius: 8, border: '1px solid #e2e8f0', backgroundColor: 'white', color: NAVY, fontWeight: 700, padding: '6px 10px', fontSize: 11, cursor: 'pointer' }}
+            >
+              📅 Add to Calendar
+            </button>
+          ) : null
+        }
+      >
+        {(state.status === 'loading' || state.status === 'idle') && <Loading />}
+        {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+        {state.status === 'ready' && (
+          state.data.length === 0 ? (
+            <Empty icon="🏨" text="No leave history" />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {state.data.map((r, i) => (
+                <div style={{
+                  borderRadius: isMobile ? 16 : 10,
+                  border: isMobile ? 'none' : '1px solid #e2e8f0',
+                  backgroundColor: isMobile ? M3.surfaceContainer : '#f8fafc',
+                  padding: 16,
+                }} key={i}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{r.from_date} → {r.to_date}</span>
+                    <Pill tone={stTone[r.status] || 'mi'}>{r.status || 'Pending'}</Pill>
+                  </div>
+                  {r.leave_type && (
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>{r.leave_type}</div>
+                  )}
+                  <div style={{ fontSize: 12, color: '#64748b' }}>{r.reason || '—'}</div>
                 </div>
-                {r.leave_type && (
-                  <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>{r.leave_type}</div>
-                )}
-                <div style={{ fontSize: 12, color: '#64748b' }}>{r.reason || '—'}</div>
-              </div>
-            ))}
-          </div>
-        )
-      )}
-    </Card>
+              ))}
+            </div>
+          )
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -2020,6 +2479,73 @@ const GRIEVANCE_CATEGORIES = [
   'Other',
 ];
 
+// Status tracking list — reads back past grievances by student_id so a
+// parent can see where things stand on a return visit, not just the
+// one-time "recorded" message right after submitting. No reply/thread
+// table is confirmed to exist for `grievances` (unlike Reception's
+// reception_complaints + complaint_updates pair), so this shows status
+// only — not fabricated staff replies.
+const GRV_STATUS_TONE = { Open: 'mi', 'In Progress': 'mi', Resolved: 'hi', Closed: 'hi', Rejected: 'lo' };
+
+function PastGrievances({ studentId, refreshKey }) {
+  const isMobile = useWindowWidth() < 640;
+  const [state, setState] = useState({ status: 'idle', data: null, error: null });
+
+  useEffect(() => {
+    if (!studentId) return;
+    let cancelled = false;
+    (async () => {
+      setState({ status: 'loading', data: null, error: null });
+      try {
+        const { data, error } = await supabase
+          .from('grievances')
+          .select('*')
+          .eq('student_id', studentId)
+          .order('created_at', { ascending: false })
+          .limit(20);
+        if (error) throw error;
+        if (!cancelled) setState({ status: 'ready', data: data || [], error: null });
+      } catch (e) {
+        console.error('Past grievances load failed:', e);
+        if (!cancelled) setState({ status: 'error', data: null, error: 'Failed to load past concerns' });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [studentId, refreshKey]);
+
+  if (state.status === 'idle') return null;
+
+  return (
+    <Card title="Past Concerns">
+      {(state.status === 'loading') && <Loading />}
+      {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+      {state.status === 'ready' && (
+        state.data.length === 0 ? (
+          <Empty icon="📮" text="No concerns raised yet" />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {state.data.map((g, i) => (
+              <div style={{
+                borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #e2e8f0',
+                backgroundColor: isMobile ? M3.surfaceContainer : '#f8fafc', padding: 16,
+              }} key={g.id || i}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{g.category || g.subject || 'Concern'}</span>
+                  <Pill tone={GRV_STATUS_TONE[g.status] || 'mi'}>{g.status || 'Open'}</Pill>
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>{g.description}</div>
+                {g.created_at && (
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{(g.created_at || '').slice(0, 10)}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </Card>
+  );
+}
+
 function GrievanceTab({ studentId, studentName, done, onSubmitted, isMobile }) {
   const [category, setCategory] = useState('Academic Weakness');
   const [description, setDescription] = useState('');
@@ -2027,6 +2553,9 @@ function GrievanceTab({ studentId, studentName, done, onSubmitted, isMobile }) {
   const [contact, setContact] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // Bumped on every successful submit so PastGrievances re-fetches and picks
+  // up the just-filed concern without a full page reload.
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -2046,6 +2575,7 @@ function GrievanceTab({ studentId, studentName, done, onSubmitted, isMobile }) {
         status: 'Open',
       });
       if (insertError) throw insertError;
+      setRefreshKey(k => k + 1);
       onSubmitted?.();
     } catch (err) {
       console.error('Parent grievance submit error:', err);
@@ -2055,74 +2585,75 @@ function GrievanceTab({ studentId, studentName, done, onSubmitted, isMobile }) {
     }
   };
 
-  if (done) {
-    return (
-      <Card>
-        <div style={{ textAlign: 'center', padding: '16px 0' }}>
-          <div style={{ fontSize: 32, marginBottom: 10 }}>✓</div>
-          <h3 style={{ margin: '0 0 6px', color: NAVY, fontSize: 16 }}>Your concern has been recorded</h3>
-          <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>
-            A staff member will review this and follow up with you shortly.
-          </p>
-        </div>
-      </Card>
-    );
-  }
-
   const inputStyle = isMobile
     ? { width: '100%', borderRadius: 16, border: 'none', backgroundColor: '#eef1f7', padding: '13px 14px', fontSize: 13, color: '#1e293b', outline: 'none', boxSizing: 'border-box' }
     : { width: '100%', borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', padding: '11px 14px', fontSize: 13, color: '#1e293b', outline: 'none', boxSizing: 'border-box' };
 
   return (
-    <Card title="Raise a Concern">
-      <p style={{ fontSize: 12, color: '#64748b', marginTop: 0, marginBottom: 18 }}>
-        {studentName ? `Regarding: ${studentName}` : "Tell us what's on your mind — we take every concern seriously."}
-      </p>
-      {error && (
-        <div style={{ marginBottom: 16, borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #fecaca', backgroundColor: isMobile ? '#fbe4e4' : '#fef2f2', padding: '12px 16px', fontSize: 13, color: '#b91c1c' }}>
-          {error}
-        </div>
+    <div>
+      {done ? (
+        <Card>
+          <div style={{ textAlign: 'center', padding: '16px 0' }}>
+            <div style={{ fontSize: 32, marginBottom: 10 }}>✓</div>
+            <h3 style={{ margin: '0 0 6px', color: NAVY, fontSize: 16 }}>Your concern has been recorded</h3>
+            <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>
+              A staff member will review this and follow up with you shortly.
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <Card title="Raise a Concern">
+          <p style={{ fontSize: 12, color: '#64748b', marginTop: 0, marginBottom: 18 }}>
+            {studentName ? `Regarding: ${studentName}` : "Tell us what's on your mind — we take every concern seriously."}
+          </p>
+          {error && (
+            <div style={{ marginBottom: 16, borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #fecaca', backgroundColor: isMobile ? '#fbe4e4' : '#fef2f2', padding: '12px 16px', fontSize: 13, color: '#b91c1c' }}>
+              {error}
+            </div>
+          )}
+          <form onSubmit={handleSubmit}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Category</label>
+            <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }}>
+              {GRIEVANCE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Describe your concern</label>
+            <textarea
+              rows={4}
+              required
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="e.g. My daughter seems to be struggling with Mathematics and I'd like to understand what support is available…"
+              style={{ ...inputStyle, marginBottom: 14, resize: 'vertical' }}
+            />
+
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginBottom: 18 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Your Name</label>
+                <input required value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Phone / Email (optional)</label>
+                <input value={contact} onChange={(e) => setContact(e.target.value)} style={inputStyle} />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              style={{
+                width: '100%', borderRadius: isMobile ? 999 : 10, backgroundColor: NAVY, color: 'white', fontWeight: 700,
+                padding: isMobile ? '15px 0' : '13px 0', border: 'none', fontSize: 14,
+                cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1,
+              }}
+            >
+              {submitting ? 'Submitting…' : 'Submit Concern'}
+            </button>
+          </form>
+        </Card>
       )}
-      <form onSubmit={handleSubmit}>
-        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Category</label>
-        <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ ...inputStyle, marginBottom: 14 }}>
-          {GRIEVANCE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-
-        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Describe your concern</label>
-        <textarea
-          rows={4}
-          required
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="e.g. My daughter seems to be struggling with Mathematics and I'd like to understand what support is available…"
-          style={{ ...inputStyle, marginBottom: 14, resize: 'vertical' }}
-        />
-
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginBottom: 18 }}>
-          <div>
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Your Name</label>
-            <input required value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Phone / Email (optional)</label>
-            <input value={contact} onChange={(e) => setContact(e.target.value)} style={inputStyle} />
-          </div>
-        </div>
-
-        <button
-          type="submit"
-          disabled={submitting}
-          style={{
-            width: '100%', borderRadius: isMobile ? 999 : 10, backgroundColor: NAVY, color: 'white', fontWeight: 700,
-            padding: isMobile ? '15px 0' : '13px 0', border: 'none', fontSize: 14,
-            cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1,
-          }}
-        >
-          {submitting ? 'Submitting…' : 'Submit Concern'}
-        </button>
-      </form>
-    </Card>
+      <PastGrievances studentId={studentId} refreshKey={refreshKey} />
+    </div>
   );
 }
 
