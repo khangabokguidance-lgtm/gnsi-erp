@@ -799,6 +799,16 @@ input.ff::placeholder,textarea.ff::placeholder{color:rgba(255,255,255,.4)}
 select.ff option{background:var(--navy);color:#fff}
 textarea.ff{min-height:100px;resize:vertical}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+label.fl .req{color:var(--goldL);margin-left:2px}
+input.ff.field-error,select.ff.field-error,textarea.ff.field-error{border-color:var(--red);box-shadow:0 0 0 3px rgba(220,38,38,.12)}
+.field-err-msg{color:#fca5a5;font-size:.75rem;margin:-.9rem 0 .8rem;display:none}
+.field-err-msg.show{display:block}
+/* Honeypot — a field real users never see or fill; hidden off-screen
+   rather than display:none so most bots that only check computed
+   visibility still fill it in, tripping the spam check server-side never
+   sees (validated purely client-side here, before submitEnquiry is even
+   called, so no schema change to the enquiries table is needed). */
+.hp-field{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;overflow:hidden}
 .contact-card{background:var(--white);border:1px solid var(--navy4);border-radius:var(--radius);border-left:4px solid var(--gold);padding:1.3rem 1.4rem;margin-bottom:1rem;transition:.2s}
 .contact-card:hover{box-shadow:var(--sh-1)}
 .contact-card h3{color:var(--navy);font-family:var(--serif);margin-bottom:.55rem;font-size:clamp(1.15rem,2.6vw,1.2rem)}

@@ -1052,30 +1052,75 @@ export default function LandingPage({ onLogin }) {
 })();
 
 // ---- 11. LIVE FORM SUBMISSIONS (replaces the 3 mock window.submit* functions) ----
+// Clears every field's error state (red border + inline message) — run at
+// the top of each submit attempt so a fixed field's error doesn't linger
+// after a previous failed attempt.
+function clearEnquiryFieldErrors() {
+  ['fStuName', 'fParName', 'fPhone', 'fClass', 'fCourse'].forEach(id => {
+    const el = document.getElementById(id);
+    const errEl = document.getElementById(id + 'Err');
+    if (el) el.classList.remove('field-error');
+    if (errEl) errEl.classList.remove('show');
+  });
+}
+function markEnquiryFieldError(id) {
+  const el = document.getElementById(id);
+  const errEl = document.getElementById(id + 'Err');
+  if (el) el.classList.add('field-error');
+  if (errEl) errEl.classList.add('show');
+}
+
 window.submitEnquiry = async () => {
   const msg = document.getElementById('formMsg');
   const btn = document.getElementById('fBtn');
   const studentName = document.getElementById('fStuName')?.value.trim();
   const parentName = document.getElementById('fParName')?.value.trim();
-  const phone = document.getElementById('fPhone')?.value.trim();
+  const phoneRaw = document.getElementById('fPhone')?.value.trim();
   const classGrade = document.getElementById('fClass')?.value.trim();
   const course = document.getElementById('fCourse')?.value;
   const message = document.getElementById('fMsg')?.value.trim();
+  // Honeypot — invisible to real visitors; a filled value means a bot
+  // submitted the form. Fail silently (looks like success) rather than
+  // telling the bot what tripped it, and never call submitEnquiry at all.
+  const honeypot = document.getElementById('fWebsite')?.value.trim();
 
-  if (!studentName || !phone) {
-    if (msg) { msg.style.display = 'block'; msg.className = 'form-msg error'; msg.textContent = 'Please enter student name and phone number.'; }
+  clearEnquiryFieldErrors();
+  if (msg) { msg.style.display = 'none'; }
+
+  if (honeypot) {
+    if (msg) { msg.style.display = 'block'; msg.className = 'form-msg success'; msg.textContent = 'Thank you! We will contact you shortly.'; }
+    return;
+  }
+
+  // Real validation per field, not just "name and phone present" — a
+  // phone number is only "real data" if it's actually a phone number.
+  // Strips spaces/dashes/+91 before checking so any common formatting the
+  // person types still passes.
+  const phoneDigits = (phoneRaw || '').replace(/[\s\-()]/g, '').replace(/^\+?91/, '');
+  const isValidPhone = /^[6-9]\d{9}$/.test(phoneDigits);
+
+  let firstInvalidId = null;
+  if (!studentName) { markEnquiryFieldError('fStuName'); firstInvalidId ||= 'fStuName'; }
+  if (!parentName) { markEnquiryFieldError('fParName'); firstInvalidId ||= 'fParName'; }
+  if (!phoneRaw || !isValidPhone) { markEnquiryFieldError('fPhone'); firstInvalidId ||= 'fPhone'; }
+  if (!classGrade) { markEnquiryFieldError('fClass'); firstInvalidId ||= 'fClass'; }
+  if (!course) { markEnquiryFieldError('fCourse'); firstInvalidId ||= 'fCourse'; }
+
+  if (firstInvalidId) {
+    if (msg) { msg.style.display = 'block'; msg.className = 'form-msg error'; msg.textContent = 'Please fix the highlighted fields below.'; }
+    document.getElementById(firstInvalidId)?.focus();
     return;
   }
 
   if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
   try {
     const { error } = await submitEnquiry({
-      student_name: studentName, parent_name: parentName, phone,
+      student_name: studentName, parent_name: parentName, phone: phoneRaw,
       class_grade: classGrade, course, message,
     });
     if (error) throw error;
     if (msg) { msg.style.display = 'block'; msg.className = 'form-msg success'; msg.textContent = 'Thank you! We will contact you shortly.'; }
-    ['fStuName', 'fParName', 'fPhone', 'fClass', 'fMsg'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    document.getElementById('enquiryForm')?.reset();
   } catch (e) {
     console.error('Enquiry submit failed:', e);
     if (msg) { msg.style.display = 'block'; msg.className = 'form-msg error'; msg.textContent = 'Something went wrong. Please try again or call us directly.'; }
@@ -4721,44 +4766,65 @@ window.submitGrievance = async () => {
           Send your details and our team will respond regarding courses, hostel
           availability, and the admission process.
         </p>
-        <div className="form-panel reveal">
+        <form
+          className="form-panel reveal"
+          id="enquiryForm"
+          noValidate
+          onSubmit={(e) => { e.preventDefault(); window.submitEnquiry(); }}
+        >
           <div className="form-msg" id="formMsg" />
           <div className="form-row">
             <div>
-              <label className="fl">Student Name</label>
+              <label className="fl" htmlFor="fStuName">Student Name <span className="req">*</span></label>
               <input
                 type="text"
                 className="ff"
                 id="fStuName"
+                name="student_name"
                 placeholder="Full name"
+                required
+                autoComplete="name"
               />
+              <span className="field-err-msg" id="fStuNameErr">Please enter the student's name.</span>
             </div>
             <div>
-              <label className="fl">Parent / Guardian</label>
+              <label className="fl" htmlFor="fParName">Parent / Guardian <span className="req">*</span></label>
               <input
                 type="text"
                 className="ff"
                 id="fParName"
+                name="parent_name"
                 placeholder="Full name"
+                required
+                autoComplete="name"
               />
+              <span className="field-err-msg" id="fParNameErr">Please enter the parent/guardian's name.</span>
             </div>
           </div>
-          <label className="fl">Phone Number</label>
+          <label className="fl" htmlFor="fPhone">Phone Number <span className="req">*</span></label>
           <input
             type="tel"
             className="ff"
             id="fPhone"
+            name="phone"
             placeholder="+91 XXXXX XXXXX"
+            required
+            inputMode="tel"
+            autoComplete="tel"
           />
-          <label className="fl">Student Class / Age</label>
+          <span className="field-err-msg" id="fPhoneErr">Please enter a valid 10-digit phone number.</span>
+          <label className="fl" htmlFor="fClass">Student Class / Age <span className="req">*</span></label>
           <input
             type="text"
             className="ff"
             id="fClass"
+            name="class_grade"
             placeholder="e.g. Class 5, Age 10"
+            required
           />
-          <label className="fl">Course Interested In</label>
-          <select className="ff" id="fCourse">
+          <span className="field-err-msg" id="fClassErr">Please enter the student's class or age.</span>
+          <label className="fl" htmlFor="fCourse">Course Interested In <span className="req">*</span></label>
+          <select className="ff" id="fCourse" name="course" required defaultValue="">
             <option value="">Select course</option>
             <option>NVS Preparation (Class 6)</option>
             <option>NVS Preparation (Class 9)</option>
@@ -4769,19 +4835,27 @@ window.submitGrievance = async () => {
             <option>Hostel Enquiry</option>
             <option>Free Demo Class</option>
           </select>
-          <label className="fl">Message</label>
+          <span className="field-err-msg" id="fCourseErr">Please select a course.</span>
+          <label className="fl" htmlFor="fMsg">Message</label>
           <textarea
             className="ff"
             id="fMsg"
+            name="message"
             placeholder="Your question or message"
             defaultValue={""}
           />
+          {/* Honeypot — real visitors never see this field (off-screen via
+              .hp-field), so if it comes back filled the submission is
+              treated as spam. Purely client-side, no schema change. */}
+          <div className="hp-field" aria-hidden="true">
+            <label htmlFor="fWebsite">Website</label>
+            <input type="text" id="fWebsite" name="website" tabIndex={-1} autoComplete="off" />
+          </div>
           <button
-            type="button"
+            type="submit"
             className="btn btn-gold"
             style={{ width: "100%", justifyContent: "center" }}
             id="fBtn"
-            onClick={() => window.submitEnquiry()}
           >
             Submit Enquiry →
           </button>
@@ -4799,7 +4873,7 @@ window.submitGrievance = async () => {
               +91 89742 98074
             </a>
           </p>
-        </div>
+        </form>
       </div>
       <div id="contact">
         <div className="eyebrow reveal">Contact</div>
