@@ -441,6 +441,33 @@ export default function LandingPage({ onLogin }) {
     return () => document.removeEventListener('click', handleOutsideTabClick);
   }, [activeTab]);
 
+  // Re-run scroll-reveal observation whenever the active tab changes.
+  // Every tab's content is conditionally rendered ({activeTab === 'x' && …}),
+  // so a tab like Facilities or Notices mounts its .reveal/.reveal-scale
+  // elements fresh each time it's opened. The main reveal-animation
+  // IntersectionObserver (elsewhere in this component) only queries the DOM
+  // and calls .observe() once, on first mount — it never sees elements that
+  // appear later from a tab switch, so they're stuck at opacity:0 (their
+  // unrevealed default) until a 3s CSS fallback force-shows them. That
+  // fallback makes it merely feel broken/slow rather than truly invisible,
+  // but the real fix is observing new .reveal elements as they appear, not
+  // waiting on the fallback. This intentionally creates its own short-lived
+  // observer rather than reaching into the big effect above (which has
+  // documented cross-closure state and isn't safe to restructure).
+  useEffect(() => {
+    const unrevealed = document.querySelectorAll(
+      '.reveal:not(.vis), .reveal-left:not(.vis), .reveal-right:not(.vis), .reveal-scale:not(.vis)'
+    );
+    if (!unrevealed.length) return;
+    const tabRevealObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) entry.target.classList.add('vis');
+      });
+    }, { threshold: 0.1 });
+    unrevealed.forEach(el => tabRevealObserver.observe(el));
+    return () => tabRevealObserver.disconnect();
+  }, [activeTab]);
+
   // Nav-menu links point at in-page hashes (e.g. "#enquiry", "#contact").
   // "#contact" is a sub-element inside the "enquiry" tab, not a tab of its
   // own, so it maps to the enquiry tab and then scrolls to #contact.
