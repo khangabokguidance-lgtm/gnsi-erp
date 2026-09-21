@@ -1664,6 +1664,28 @@ window.submitGrievance = async () => {
         >
           📱 Get App →
         </a>
+        {/* Reuses the existing (previously unused) .nav-par style — same
+            green WhatsApp-family accent the mobile hamburger's "Parents
+            Portal" link already uses, so this doesn't introduce a new
+            color. Desktop-only (hidden below 900px via .nav-desktop-only)
+            since the mobile hamburger menu already has this same action
+            ("Parents Portal →" in .mob-menu) — showing both would just
+            crowd an already-tight 4-icon mobile bar with a duplicate. */}
+        <button
+          onClick={() => setIsPortalOpen(true)}
+          className="nav-par nav-desktop-only"
+          style={{
+            fontFamily: 'Inter,sans-serif',
+            fontWeight: 700,
+            fontSize: ".72rem",
+            letterSpacing: ".07em",
+            textTransform: "uppercase",
+            borderRadius: 10,
+            cursor: "pointer",
+          }}
+        >
+          Parents Login →
+        </button>
         <button
           onClick={onLogin}
           className="nav-btn"
