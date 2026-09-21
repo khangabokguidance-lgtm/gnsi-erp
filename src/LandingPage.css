@@ -923,12 +923,22 @@ footer a:hover{color:var(--goldL);padding-left:4px}
 
 @media(max-width:900px){
   html{font-size:clamp(16px,4.4vw,18px)}
-  .nav-inner{height:auto;min-height:64px;padding:.5rem 0;flex-wrap:nowrap}
+  .nav-inner{height:auto;min-height:64px;padding:.5rem 0;flex-wrap:nowrap;overflow:hidden}
   .brand img{height:36px!important;width:36px!important}
+  .brand{flex-shrink:0;min-width:0}
   .brand-text h2{font-size:.92rem}
   .brand-text small{font-size:.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;display:block}
-  .nav-fixed-actions{gap:.35rem}
-  .nav-fee,.nav-btn{padding:.4rem .6rem!important;font-size:.62rem!important}
+  /* Pay Fee / Get App / Staff Login / hamburger no longer fit one nowrap
+     row with the logo below ~400px even at the tightened padding below —
+     that's what was slicing "STAFF LOGIN" off the right edge with no way
+     to reach it (nav-inner had no scroll of its own, and body's
+     overflow-x:hidden clips it rather than making it reachable). Letting
+     just this row scroll horizontally keeps every button reachable by a
+     swipe instead of permanently cutting the last one off-screen. */
+  .nav-fixed-actions{gap:.35rem;flex-wrap:nowrap;flex-shrink:1;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .nav-fixed-actions::-webkit-scrollbar{display:none}
+  .nav-fee,.nav-btn{padding:.4rem .55rem!important;font-size:.6rem!important;flex-shrink:0}
+  .hamburger{flex-shrink:0}
   /* Parents Login is already reachable from the mobile hamburger menu's
      "Parents Portal →" link — hide the duplicate in the fixed action bar
      below 900px so it doesn't crowd Pay Fee / Get App / Staff Login /
