@@ -981,7 +981,9 @@ function Accounts({role,userId}){
         const isExpense=r.type==='Expense'
         const overThreshold=amt>=(Number(approvalSettings.threshold_amount)||DEFAULT_APPROVAL_THRESHOLD)
         const lowerTrust=!canWrite
-        const needsApproval=isExpense&&(lowerTrust||overThreshold)
+        // Admin-approval gate disabled: every Expense entry saves straight
+        // through as Confirmed, regardless of amount or submitter role.
+        const needsApproval=false
         const approvalReason=lowerTrust&&overThreshold?'both':(lowerTrust?'role':(overThreshold?'threshold':null))
         return{r,amt,needsApproval,approvalReason}
       })
@@ -3273,14 +3275,6 @@ function Accounts({role,userId}){
                   </div>
                 )}
                 <div><label style={lStyle}>Amount <span style={{color:'#dc2626'}}>*</span></label><input type="number" min="0.01" step="0.01" placeholder="0" value={row.amount} onChange={e=>updateRow(i,'amount',e.target.value)} required style={iStyle}/>
-                  {row.type==='Expense'&&(()=>{
-                    const amt=Number(row.amount)||0
-                    const overThreshold=amt>=(Number(approvalSettings.threshold_amount)||DEFAULT_APPROVAL_THRESHOLD)
-                    const lowerTrust=!canWrite
-                    return (amt>0&&(overThreshold||lowerTrust))?(
-                      <p style={{fontSize:11,color:'#b45309',margin:'5px 0 0',fontWeight:600}}>⚠ Will need admin approval before it counts as confirmed{overThreshold?` (≥ ${fmt(approvalSettings.threshold_amount)} threshold)`:' (your role always requires approval)'}.</p>
-                    ):null
-                  })()}
                 </div>
                 <div><label style={lStyle}>Payment Mode <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.payment_mode} onChange={e=>updateRow(i,'payment_mode',e.target.value)} required style={iStyle}>
