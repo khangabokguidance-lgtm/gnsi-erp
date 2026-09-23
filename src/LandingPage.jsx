@@ -46,6 +46,10 @@ const HERO_SIDE_PHOTO_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1
 // Staff group photo (replaces the stats ribbon). Upload
 // gnsi-staff-felicitation-1600.jpg to gnsi-public/banners in Supabase.
 const STAFF_GROUP_PHOTO_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-staff-felicitation-1600.jpg";
+// About tab photo (replaces the old "Selection Record" bars). Upload
+// gnsi-about-speech-900.jpg to gnsi-public/banners in Supabase.
+const ABOUT_PHOTO_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-about-speech-900.jpg";
+const ABOUT_PHOTO_2_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-about-guests-1200.jpg";
 const ANDROID_APP_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/app/gnsi-parents-app.apk";
 
 // Small helpers used by the legacy DOM-injection blocks inside the effect
@@ -1744,7 +1748,7 @@ window.submitGrievance = async () => {
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
   <link
-    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600;700;800&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,600&family=Inter:wght@400;500;600;700&display=swap"
     rel="stylesheet"
   />
   <div id="sp" />
@@ -2879,7 +2883,7 @@ window.submitGrievance = async () => {
   {/* ABOUT */}
   {activeTab === 'about' && (
   <section className="pad" id="about">
-    <div className="container about-grid">
+    <div className="container about-full">
       <div className="about-text">
         <div className="eyebrow reveal">About the Institute</div>
         <h2 className="st reveal">A Decade of Shaping Successful Students</h2>
@@ -2888,114 +2892,49 @@ window.submitGrievance = async () => {
           <div className="rule-d" />
           <div className="rule-line" />
         </div>
-        <p className="reveal">
-          GNSI was founded in 2016 with a single purpose — to give students from
-          Manipur the preparation and discipline required to earn entry into
-          India's finest military and academic schools.
-        </p>
-        <p className="reveal">
-          Located at Khangabok in Thoubal District, the institute has grown from
-          a modest classroom to a full residential campus with a structured
-          curriculum, expert faculty, and a proven record of results.
-        </p>
-        <p className="reveal">
-          Our digital ERP portal allows parents to track attendance, examination
-          results, hostel leave, and institutional notices from any device, from
-          anywhere — live.
-        </p>
-        <div className="feat-tiles">
-          <div className="tile reveal">
-            <div>🏫</div>
-            <strong>Est. 2016</strong>
-            <span>A decade of discipline</span>
-          </div>
-          <div className="tile reveal">
-            <div>👨‍🎓</div>
-            <strong>500+ Alumni</strong>
-            <span>Across Manipur &amp; beyond</span>
-          </div>
-          <div className="tile reveal">
-            <div>🏆</div>
-            <strong>Rank 1</strong>
-            <span>Thoubal District</span>
-          </div>
-          <div className="tile reveal">
-            <div>📱</div>
-            <strong>Parents Portal</strong>
-            <span>Live tracking, any device</span>
-          </div>
+        <div className="about-copy">
+          <p className="reveal">
+            GNSI was founded in 2016 with a single purpose — to give students from
+            Manipur the preparation and discipline required to earn entry into
+            India's finest military and academic schools.
+          </p>
+          <p className="reveal">
+            Located at Khangabok in Thoubal District, the institute has grown from
+            a modest classroom to a full residential campus with a structured
+            curriculum, expert faculty, and a proven record of results.
+          </p>
+          <p className="reveal">
+            Our digital ERP portal allows parents to track attendance, examination
+            results, hostel leave, and institutional notices from any device, from
+            anywhere — live.
+          </p>
+        
         </div>
       </div>
-      <div>
-        <div className="eyebrow reveal">Performance Metrics</div>
-        <h2 className="st reveal" style={{ marginBottom: "1.4rem" }}>
-          Selection Record
-        </h2>
-        <div className="bar-block reveal">
-          <div className="bar-label">
-            <span>NVS Selection Rate</span>
-            <strong>94%</strong>
-          </div>
-          <div className="bar-track">
-            <div
-              className="bar-fill"
-              data-w={94}
-              style={{ background: "var(--navy)" }}
-            />
-          </div>
-        </div>
-        <div className="bar-block reveal">
-          <div className="bar-label">
-            <span>Sainik School Rate</span>
-            <strong>88%</strong>
-          </div>
-          <div className="bar-track">
-            <div
-              className="bar-fill"
-              data-w={88}
-              style={{ background: "var(--red)" }}
-            />
-          </div>
-        </div>
-        <div className="bar-block reveal">
-          <div className="bar-label">
-            <span>Student Satisfaction</span>
-            <strong>98%</strong>
-          </div>
-          <div className="bar-track">
-            <div
-              className="bar-fill"
-              data-w={98}
-              style={{ background: "var(--gold)" }}
-            />
-          </div>
-        </div>
-        <div className="bar-block reveal">
-          <div className="bar-label">
-            <span>Hostel Occupancy</span>
-            <strong>92%</strong>
-          </div>
-          <div className="bar-track">
-            <div
-              className="bar-fill"
-              data-w={92}
-              style={{ background: "var(--navy3)" }}
-            />
-          </div>
-        </div>
-        <div className="bar-block reveal">
-          <div className="bar-label">
-            <span>Faculty Rating</span>
-            <strong>96%</strong>
-          </div>
-          <div className="bar-track">
-            <div
-              className="bar-fill"
-              data-w={96}
-              style={{ background: "#3D3D3D" }}
-            />
-          </div>
-        </div>
+      {/* Both photos, full width, same height, uncropped */}
+      <div className="about-photos">
+        <figure className="about-photo reveal ap-portrait">
+          <img
+            src={ABOUT_PHOTO_URL}
+            alt="Address at the GNSI Freshers' Meet cum Felicitation Programme"
+            width={900}
+            height={1350}
+            loading="lazy"
+            onError={(e) => { e.currentTarget.closest('figure').style.display = 'none'; }}
+          />
+          <figcaption>Freshers' Meet cum Felicitation Programme</figcaption>
+        </figure>
+        <figure className="about-photo reveal ap-landscape">
+          <img
+            src={ABOUT_PHOTO_2_URL}
+            alt="Felicitation at the GNSI Freshers' Meet cum Felicitation Programme"
+            width={1200}
+            height={800}
+            loading="lazy"
+            onError={(e) => { e.currentTarget.closest('figure').style.display = 'none'; }}
+          />
+          <figcaption>Felicitation at the Freshers' Meet</figcaption>
+        </figure>
       </div>
     </div>
   </section>
