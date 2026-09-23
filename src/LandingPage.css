@@ -43,8 +43,8 @@ img{max-width:100%;display:block}
 .top-bar-soc:hover{border-color:var(--goldL);color:var(--goldL)}
 
 /* ═══ RESULT BANNER SLIDER ═══ */
-.ten-years-banner{width:100%;line-height:0;border-bottom:2px solid var(--gold);overflow:hidden}
-.ten-years-banner img{width:100%;height:clamp(140px,26vw,280px);display:block;object-fit:cover;object-position:center}
+.ten-years-banner{width:100%;line-height:0;border-bottom:2px solid var(--gold);background:#0B2A5B}
+.ten-years-banner img{width:100%;max-width:1600px;height:auto;margin:0 auto;display:block;object-fit:contain}
 .result-banner{background:var(--navy);border-bottom:2px solid var(--gold);overflow:hidden;position:relative}
 .result-banner-track{display:flex;transition:transform .7s cubic-bezier(.25,.46,.45,.94)}
 .result-banner-slide{min-width:100%;position:relative;height:clamp(200px,36vw,340px);display:flex;align-items:center;overflow:hidden}

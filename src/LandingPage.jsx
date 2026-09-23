@@ -1836,11 +1836,11 @@ window.submitGrievance = async () => {
         <div className="ticker-track">
           RESULT: 66 SELECTED IN NVS &amp; SAINIK
           SCHOOL 2025–26 ◆ NEW NAVODAYA BATCH COMMENCING 20 DECEMBER 2026 ◆ SAINIK &amp; FOUNDATION BATCHES COMMENCING 10 JANUARY 2027 ◆ SUNDAY MOCK TESTS
-          ONGOING ◆ EST. 2016 · 200+ OFFICERS PRODUCED ◆ CALL +91 89742 98074 ◆
+          ONGOING ◆ EST. 2016 · 200+ STUDENTS SELECTED ◆ CALL +91 89742 98074 ◆
           KHANGABOK, THOUBAL, MANIPUR &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;RESULT:
           66 SELECTED IN NVS &amp; SAINIK SCHOOL 2025–26
           ◆ NEW NAVODAYA BATCH COMMENCING 20 DECEMBER 2026 ◆ SAINIK &amp; FOUNDATION BATCHES COMMENCING 10 JANUARY 2027 ◆ SUNDAY MOCK TESTS ONGOING ◆ EST.
-          2016 · 200+ OFFICERS PRODUCED ◆ CALL +91 89742 98074 ◆ KHANGABOK,
+          2016 · 200+ STUDENTS SELECTED ◆ CALL +91 89742 98074 ◆ KHANGABOK,
           THOUBAL, MANIPUR &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
         </div>
       </div>
@@ -1850,6 +1850,8 @@ window.submitGrievance = async () => {
   {/* ② 10-YEARS CELEBRATION BANNER — replaces the old rotating result-banner
       slider; single static full-bleed photo, no text overlay (the banner
       image already carries its own text). */}
+  {/* 10-YEARS BANNER — full image at its natural ratio (see
+      .ten-years-banner in LandingPage.css: height:auto, no cropping). */}
   <div className="ten-years-banner">
     <img src={TEN_YEARS_BANNER_URL} alt="Celebrating 10 Years of Success — GNSI" />
   </div>
