@@ -428,7 +428,10 @@ function hydrateTabSections(setFeePaymentInfo) {
     const grid = document.getElementById('papersGrid');
     if (!grid) return;
     try {
-      const papers = await cachedFetch('papers', getPapers);
+      const papers = (await cachedFetch('papers', getPapers)).filter(p => p.pdf_url && p.pdf_url.trim());
+      // If the admin-managed table has no usable rows (empty, or every row
+      // is missing a pdf_url), leave the hardcoded, verified paper cards
+      // already in the page alone instead of wiping them out.
       if (!papers.length) return;
       const grouped = papers.reduce((acc, p) => {
         const k = p.exam_type || 'NVS';
@@ -441,7 +444,7 @@ function hydrateTabSections(setFeePaymentInfo) {
           <h3>${escapeHtml(exam)} Question Papers</h3>
           <div class="papers-sub">${papers.length} paper${papers.length > 1 ? 's' : ''} available</div>
           ${papers.map(p => `
-            <a class="paper-link" href="${p.pdf_url ? escapeHtml(p.pdf_url) : '#'}" target="_blank" rel="noopener noreferrer">
+            <a class="paper-link" href="${escapeHtml(p.pdf_url)}" target="_blank" rel="noopener noreferrer">
               <span class="paper-name">${escapeHtml(p.title)} (${escapeHtml(p.class_level || '')})</span>
               <span class="paper-dl">⬇</span>
             </a>`).join('')}
