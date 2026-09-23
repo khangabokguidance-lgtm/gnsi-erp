@@ -13,6 +13,11 @@ import PublicFeeLookup from './PublicFeeLookup';
 // and the browser caches it separately from the JS, and normal CSS tooling can
 // read it. Place LandingPage.css next to this file.
 import './LandingPage.css';
+// Programme logos (Home admissions panel). Put these PNGs next to this file.
+import logoNvs from './logo-nvs.png';
+import logoSainik from './logo-sainik.png';
+import logoRms from './logo-rms.png';
+import logoFoundation from './logo-foundation.png';
 
 // TODO: consider moving to Supabase storage for consistency with other site assets
 const FOUNDER_PHOTO_URL = "https://i.postimg.cc/Vsd7VXZ7/DSC05195.jpg";
@@ -2063,74 +2068,75 @@ window.submitGrievance = async () => {
         {/* One dominant CTA — everything else (portal, WhatsApp, brochure,
             demo, fee payment) is still one tap away, just visually
             secondary so it doesn't compete with the primary ask. */}
-        <div className="hero-btns hero-enter-5">
-          <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }} className="btn btn-gold hero-cta-primary">
-            Enquire for Admission →
-          </a>
-        </div>
-        <div className="hero-quick">
-          <button onClick={() => setIsPortalOpen(true)} className="btn-demo">
-            Parents Portal →
-          </button>
-          <a
-            href={ANDROID_APP_URL}
-            download=""
-            className="btn-brochure"
-          >
-            📱 Get Android App
-          </a>
-          <a
-            href="https://wa.me/918974298074?text=Hello%2C+I+am+enquiring+about+GNSI+admissions"
-            className="btn-brochure"
-            target="_blank"
-          >
-            WhatsApp Us
-          </a>
-          <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf"
-            className="btn-brochure"
-            target="_blank"
-            download=""
-          >
-            📄 Brochure
-          </a>
-          <button
-            className="btn-demo"
-            onClick={() => document.getElementById('enquiry').scrollIntoView({ behavior: 'smooth' })}
-          >
-            🎯 Free Demo Class
-          </button>
-          <button
-            onClick={() => setIsFeeOpen(true)}
-            className="btn-brochure"
-          >
-            💳 Pay Fee Online
-          </button>
-        </div>
-        {/* Quick programme picker — mirrors the big-brand pattern (Allen's
-            JEE/NEET/Class 6-10 chip row) of letting a visitor jump straight
-            into the course track relevant to them, right under the hero CTA. */}
-        <div className="hero-course-chips">
-          <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }} className="hero-course-chip cc-sainik">
-            <span className="hero-course-chip-icon">🎖️</span>
-            <span className="hero-course-chip-label">Sainik<br />Preparation</span>
-            <span className="hero-course-chip-arrow">→</span>
-          </a>
-          <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }} className="hero-course-chip cc-navodaya">
-            <span className="hero-course-chip-icon">📘</span>
-            <span className="hero-course-chip-label">Navodaya<br />Prep</span>
-            <span className="hero-course-chip-arrow">→</span>
-          </a>
-          <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }} className="hero-course-chip cc-foundation">
-            <span className="hero-course-chip-icon">🌱</span>
-            <span className="hero-course-chip-label">Foundation<br />Programme</span>
-            <span className="hero-course-chip-arrow">→</span>
-          </a>
-          <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }} className="hero-course-chip cc-combined">
-            <span className="hero-course-chip-icon">⭐</span>
-            <span className="hero-course-chip-label">Combined<br />Course</span>
-            <span className="hero-course-chip-arrow">→</span>
-          </a>
+        {/* ── Admissions panel: primary actions, quick links, programmes ── */}
+        <div className="adm-panel hero-enter-5">
+          <div className="adm-actions">
+            <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }} className="adm-btn adm-btn-primary">
+              Enquire for Admission
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </a>
+            <button type="button" onClick={() => setIsFeeOpen(true)} className="adm-btn adm-btn-secondary">
+              Pay Fee Online
+            </button>
+          </div>
+
+          <div className="adm-links" role="list">
+            <button type="button" role="listitem" onClick={() => setIsPortalOpen(true)} className="adm-link">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              Parents Portal
+            </button>
+            <a role="listitem" href={ANDROID_APP_URL} download="" className="adm-link">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+              Android App
+            </a>
+            <a role="listitem" href="https://wa.me/918974298074?text=Hello%2C+I+am+enquiring+about+GNSI+admissions" target="_blank" rel="noopener noreferrer" className="adm-link">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.6 7.3L3 20l1.3-5.1A8.4 8.4 0 1 1 21 11.5z"/></svg>
+              WhatsApp
+            </a>
+            <a role="listitem" href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf" target="_blank" rel="noopener noreferrer" download="" className="adm-link">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><polyline points="9 15 12 18 15 15"/></svg>
+              Brochure
+            </a>
+            <button type="button" role="listitem" onClick={() => goToTab('scholarship')} className="adm-link">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              Free Demo Class
+            </button>
+            <button type="button" role="listitem" onClick={() => goToTab('results')} className="adm-link">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="6"/><polyline points="8.2 13.2 7 22 12 19 17 22 15.8 13.2"/></svg>
+              Results
+            </button>
+          </div>
+
+          <div className="adm-prog-head">
+            <span>Programmes</span>
+            <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>View all courses</a>
+          </div>
+          <div className="adm-progs">
+            {[
+              { code: 'AISSEE', name: 'Sainik School', sub: 'AISSEE · Class 6 & 9 entry', tone: 'sainik', logos: [logoSainik] },
+              { code: 'JNVST', name: 'Navodaya Vidyalaya', sub: 'JNVST · Class 6 & 9 entry', tone: 'nvs', logos: [logoNvs] },
+              { code: 'RMS CET', name: 'Rashtriya Military School', sub: 'RMS CET · Class 6 & 9 entry', tone: 'rms', logos: [logoRms] },
+              { code: 'FDN', name: 'Foundation Classes', sub: 'School readiness & basics', tone: 'fdn', logos: [logoFoundation] },
+              { code: 'NVS + SS', name: 'Combined Course', sub: 'JNVST & AISSEE together', tone: 'comb', logos: [logoNvs, logoSainik] },
+            ].map((p) => (
+              <a
+                key={p.code}
+                href="#courses"
+                onClick={(e) => { e.preventDefault(); goToTab('courses'); }}
+                className={'adm-prog adm-' + p.tone}
+              >
+                <span className={'adm-prog-logo' + (p.logos.length > 1 ? ' is-pair' : '')} aria-hidden="true">
+                  {p.logos.map((src, i) => <img key={i} src={src} alt="" width={44} height={44} loading="lazy" />)}
+                </span>
+                <span className="adm-prog-text">
+                  <strong>{p.name}</strong>
+                  <small>{p.sub}</small>
+                </span>
+                <svg className="adm-prog-arrow" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+              </a>
+            ))}
+          </div>
+          <p className="adm-note">Logos belong to their respective institutions. GNSI is an independent coaching institute and is not affiliated with them.</p>
         </div>
       </div>
       <div className="hero-side">

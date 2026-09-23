@@ -1371,3 +1371,59 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
 }
 .cta-block .btn-out{background:transparent!important;color:#fff!important;border:1px solid rgba(255,255,255,.45)!important}
 .cta-block .btn-out:hover{border-color:#fff!important;background:rgba(255,255,255,.06)!important}
+
+/* ═══ ADMISSIONS PANEL (Home hero) ═══ */
+.adm-panel{margin-top:1.25rem;background:#fff;border:1px solid var(--navy4);border-radius:10px;padding:1.25rem;box-shadow:var(--sh-2)}
+.adm-actions{display:grid;grid-template-columns:1.6fr 1fr;gap:.6rem}
+.adm-btn{display:inline-flex;align-items:center;justify-content:center;gap:.55rem;height:50px;padding:0 1.1rem;border-radius:8px;font-family:var(--sans);font-size:.98rem;font-weight:600;text-decoration:none;cursor:pointer;transition:background .15s,border-color .15s;border:1px solid transparent;white-space:nowrap}
+.adm-btn-primary{background:var(--navy);color:#fff;box-shadow:inset 0 -3px 0 var(--goldL)}
+.adm-btn-primary:hover{background:var(--navy2)}
+.adm-btn-secondary{background:#fff;color:var(--navy);border-color:#C9D1DD}
+.adm-btn-secondary:hover{border-color:var(--navy)}
+.adm-btn:focus-visible,.adm-link:focus-visible,.adm-prog:focus-visible{outline:2px solid var(--goldL);outline-offset:2px}
+
+.adm-links{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-top:.85rem}
+.adm-link{display:flex;align-items:center;gap:.55rem;min-height:44px;padding:.55rem .7rem;border:1px solid var(--navy4);border-radius:8px;background:#F8F9FB;color:#1F2937;font-family:var(--sans);font-size:.84rem;font-weight:600;text-decoration:none;cursor:pointer;text-align:left;transition:border-color .15s,background .15s}
+.adm-link:hover{border-color:#AEB8C6;background:#fff}
+.adm-link svg{width:17px;height:17px;flex-shrink:0;fill:none;stroke:var(--goldD);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.adm-prog-head{display:flex;align-items:baseline;justify-content:space-between;margin:1.25rem 0 .6rem;padding-top:1rem;border-top:1px solid var(--navy4)}
+.adm-prog-head span{font-family:var(--sans);font-size:.72rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--goldD)}
+.adm-prog-head a{font-size:.82rem;font-weight:600;color:var(--navy3);text-decoration:none}
+.adm-prog-head a:hover{text-decoration:underline;text-underline-offset:3px}
+
+.adm-progs{display:grid;grid-template-columns:repeat(2,1fr);gap:.55rem}
+.adm-prog{display:flex;align-items:center;gap:.75rem;padding:.7rem .75rem;border:1px solid var(--navy4);border-radius:8px;background:#fff;text-decoration:none;transition:border-color .15s,box-shadow .15s}
+.adm-prog:hover{border-color:#AEB8C6;box-shadow:var(--sh-1)}
+.adm-prog:last-child{grid-column:1/-1}
+.adm-prog-code{flex:0 0 58px;height:44px;border-radius:6px;display:flex;align-items:center;justify-content:center;text-align:center;font-family:var(--sans);font-size:.66rem;font-weight:800;letter-spacing:.04em;line-height:1.1;padding:0 .25rem}
+.adm-prog-text{display:flex;flex-direction:column;min-width:0;flex:1}
+.adm-prog-text strong{font-family:var(--sans);font-size:.9rem;font-weight:600;color:var(--navy);line-height:1.25}
+.adm-prog-text small{font-size:.75rem;color:#667085;margin-top:1px}
+.adm-prog-arrow{width:16px;height:16px;flex-shrink:0;fill:none;stroke:#98A2B3;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.adm-prog:hover .adm-prog-arrow{stroke:var(--navy)}
+/* muted identity colours per exam */
+.adm-sainik .adm-prog-code{background:#F7ECEC;color:#8A2626;border:1px solid #E8CFCF}
+.adm-nvs .adm-prog-code{background:#EAF0F8;color:#1F4E8C;border:1px solid #CFDBEC}
+.adm-rms .adm-prog-code{background:#E9F4EE;color:#1E6B43;border:1px solid #CDE5D7}
+.adm-fdn .adm-prog-code{background:#F6F0E2;color:#7A5C1C;border:1px solid #E7D9B8}
+.adm-comb .adm-prog-code{background:var(--navy);color:#E2C57E;border:1px solid var(--navy)}
+
+@media (max-width:480px){
+  .adm-panel{padding:1rem}
+  .adm-actions{grid-template-columns:1fr}
+  .adm-links{grid-template-columns:repeat(2,1fr)}
+  .adm-prog-text strong{font-size:.86rem}
+}
+.hero-wrap > *{min-width:0}
+.adm-btn{white-space:normal;text-align:center}
+@media (max-width:480px){.adm-progs{grid-template-columns:1fr}.adm-prog{min-width:0}}
+.adm-progs > *{min-width:0}
+/* Programme logos */
+.adm-prog-logo{flex:0 0 48px;height:48px;display:flex;align-items:center;justify-content:center}
+.adm-prog-logo img{width:44px;height:44px;object-fit:contain;display:block}
+.adm-prog-logo.is-pair{flex-basis:70px}
+.adm-prog-logo.is-pair img{width:38px;height:38px}
+.adm-prog-logo.is-pair img + img{margin-left:-8px}
+.adm-note{margin:.7rem 0 0;font-size:.72rem;line-height:1.45;color:#8A93A3!important}
+.adm-panel .adm-note{font-size:.72rem!important;line-height:1.45!important;max-width:none!important;margin:.7rem 0 0!important;color:#8A93A3!important}
