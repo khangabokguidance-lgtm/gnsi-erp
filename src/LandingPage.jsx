@@ -40,6 +40,9 @@ const RESULT_POSTER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/o
 // Hero image: AISSEE 2026 result poster, hosted in the gnsi-public bucket.
 // To swap it later, upload a new image and paste its URL here.
 const HERO_RESULT_POSTER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/photo-2026-09-23-20-14-13-1790175011242.jpg";
+// Hero right-column photo (above the Live Dashboard). Upload
+// gnsi-freshers-meet-1200.jpg to gnsi-public/banners in Supabase.
+const HERO_SIDE_PHOTO_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-freshers-meet-1200.jpg";
 const ANDROID_APP_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/app/gnsi-parents-app.apk";
 
 // Small helpers used by the legacy DOM-injection blocks inside the effect
@@ -2136,6 +2139,19 @@ window.submitGrievance = async () => {
           </a>
         </div>
       </div>
+      <div className="hero-side">
+      {/* Event photo above the Live Dashboard */}
+      <figure className="hero-side-photo">
+        <img
+          src={HERO_SIDE_PHOTO_URL}
+          alt="GNSI students performing a traditional Manipuri dance at the Freshers' Meet cum Felicitation Programme"
+          width={1200}
+          height={800}
+          loading="eager"
+          onError={(e) => { e.currentTarget.closest('figure').style.display = 'none'; }}
+        />
+        <figcaption>Freshers' Meet cum Felicitation Programme</figcaption>
+      </figure>
       <div className="dash-panel">
         <div className="dash-hd">
           <div className="dash-hd-title">Live Dashboard</div>
@@ -2186,6 +2202,7 @@ window.submitGrievance = async () => {
             </strong>
           </div>
         </div>
+      </div>
       </div>
     </div>
   </section>

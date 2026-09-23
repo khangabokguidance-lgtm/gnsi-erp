@@ -1130,3 +1130,11 @@ footer a:hover{color:var(--goldL);padding-left:4px}
 .dash-row{gap:1rem}
 .dash-row span{flex-shrink:0}
 .dash-row strong{min-width:0;text-align:right;overflow-wrap:anywhere}
+
+/* ── Hero right column: event photo + Live Dashboard ── */
+.hero-side{display:flex;flex-direction:column;gap:1.25rem;min-width:0}
+.hero-side .dash-panel{margin-top:0}
+.hero-side-photo{margin:0;border-radius:var(--radius);overflow:hidden;border:1px solid rgba(217,119,6,.25);box-shadow:var(--sh-3);background:var(--navy)}
+.hero-side-photo img{display:block;width:100%;height:auto;aspect-ratio:3/2;object-fit:cover}
+.hero-side-photo figcaption{padding:.6rem .9rem;font-family:var(--sans);font-size:.78rem;font-weight:600;letter-spacing:.02em;color:var(--goldL);line-height:1.35}
+@media (max-width:900px){.hero-side{margin-top:2rem}}
