@@ -548,7 +548,7 @@ function RankersSection() {
             <div><label style={s.lbl}>Batch / Year</label><input style={s.inp} placeholder="e.g. Batch 2025–26" value={form.batch} onChange={e=>setForm(f=>({...f,batch:e.target.value}))}/></div>
             <div><label style={s.lbl}>Rank / Achievement (optional)</label><input style={s.inp} placeholder="e.g. AIR 1 or District Topper" value={form.rank} onChange={e=>setForm(f=>({...f,rank:e.target.value}))}/></div>
           </div>
-          <ImageUploadField label="Student Photo" folder="rankers" round previewSize={70} allowMultiple value={form.photo_url} onChange={url=>setForm(f=>({...f,photo_url:url}))}/>
+          <ImageUploadField label="Student Photo" folder="rankers" round previewSize={70} value={form.photo_url} onChange={url=>setForm(f=>({...f,photo_url:url}))}/>
           <div style={s.g2}>
             <div><label style={s.lbl}>Sort Order</label><input type="number" style={s.inp} value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:+e.target.value}))}/></div>
           </div>
