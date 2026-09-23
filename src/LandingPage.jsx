@@ -43,6 +43,9 @@ const HERO_RESULT_POSTER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage
 // Hero right-column photo (above the Live Dashboard). Upload
 // gnsi-freshers-meet-1200.jpg to gnsi-public/banners in Supabase.
 const HERO_SIDE_PHOTO_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-freshers-meet-1200.jpg";
+// Staff group photo (replaces the stats ribbon). Upload
+// gnsi-staff-felicitation-1600.jpg to gnsi-public/banners in Supabase.
+const STAFF_GROUP_PHOTO_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-staff-felicitation-1600.jpg";
 const ANDROID_APP_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/app/gnsi-parents-app.apk";
 
 // Small helpers used by the legacy DOM-injection blocks inside the effect
@@ -2206,55 +2209,19 @@ window.submitGrievance = async () => {
       </div>
     </div>
   </section>
-  {/* RIBBON */}
-  <div className="ribbon">
-    <div className="ribbon-grid">
-      <div className="ribbon-stat rs-gold reveal">
-        <div className="ribbon-stat-icon">🏛️</div>
-        <strong>
-          <span className="count-up" id="ribbon-years" data-target={10} data-suffix="+">
-            10+
-          </span>
-        </strong>
-        <span>Years of Excellence</span>
-      </div>
-      <div className="ribbon-stat rs-blue reveal">
-        <div className="ribbon-stat-icon">📘</div>
-        <strong>
-          <span className="count-up" id="ribbon-trained" data-target={500} data-suffix="+">
-            500+
-          </span>
-        </strong>
-        <span>Students Trained</span>
-      </div>
-      <div className="ribbon-stat rs-green reveal">
-        <div className="ribbon-stat-icon">📈</div>
-        <strong>
-          <span className="count-up" id="ribbon-selection-rate" data-target={95} data-suffix="%">
-            95%
-          </span>
-        </strong>
-        <span>Selection Rate</span>
-      </div>
-      <div className="ribbon-stat rs-red reveal">
-        <div className="ribbon-stat-icon">🎖️</div>
-        <strong>
-          <span className="count-up" id="ribbon-officers" data-target={200} data-suffix="+">
-            200+
-          </span>
-        </strong>
-        <span>Students Selected</span>
-      </div>
-      <div className="ribbon-stat rs-purple reveal">
-        <div className="ribbon-stat-icon">⭐</div>
-        <strong>
-          <span className="count-up" id="ribbon-selected-year" data-target={66} data-suffix="">
-            66
-          </span>
-        </strong>
-        <span id="ribbon-selected-year-label">Selected 2025–26</span>
-      </div>
-    </div>
+  {/* STAFF PHOTO — replaces the old stats ribbon. Shown whole at the
+      photo's own 3:2 proportion (no cropping). */}
+  <div className="ribbon ribbon-photo">
+    <figure className="ribbon-photo-fig">
+      <img
+        src={STAFF_GROUP_PHOTO_URL}
+        alt="GNSI faculty and staff at the Freshers' Meet cum Felicitation Programme"
+        width={1600}
+        height={1067}
+        loading="lazy"
+        onError={(e) => { e.currentTarget.closest('.ribbon').style.display = 'none'; }}
+      />
+    </figure>
   </div>
   {/* TAB STRIP — 25 pills, horizontally scrollable on all breakpoints.
       Left/right arrow buttons (desktop only, via CSS) + fade edges give a

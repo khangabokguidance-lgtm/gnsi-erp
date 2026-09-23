@@ -1138,3 +1138,9 @@ footer a:hover{color:var(--goldL);padding-left:4px}
 .hero-side-photo img{display:block;width:100%;height:auto;aspect-ratio:3/2;object-fit:cover}
 .hero-side-photo figcaption{padding:.6rem .9rem;font-family:var(--sans);font-size:.78rem;font-weight:600;letter-spacing:.02em;color:var(--goldL);line-height:1.35}
 @media (max-width:900px){.hero-side{margin-top:2rem}}
+
+/* ── Staff photo in place of the stats ribbon: whole photo, own 3:2 ratio ── */
+.ribbon-photo{padding:2.4rem 5%}
+.ribbon-photo-fig{width:min(1200px,100%);margin:0 auto;position:relative;z-index:1;line-height:0}
+.ribbon-photo-fig img{display:block;width:100%;height:auto;border-radius:12px;box-shadow:var(--sh-3)}
+@media (max-width:640px){.ribbon-photo{padding:1.2rem 4%}}
