@@ -66,6 +66,9 @@ const STAFF_GROUP_PHOTO_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/
 const ABOUT_PHOTO_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-about-speech-900.jpg";
 const ABOUT_PHOTO_2_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-about-guests-1200.jpg";
 const ANDROID_APP_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/app/gnsi-parents-app.apk";
+// Student result card (right column, below Admin Block photo). Upload
+// gnsi-thoungamba-result-2026.jpg to gnsi-public/banners in Supabase.
+const RESULT_CARD_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-thoungamba-result-2026.jpg";
 
 // Small helpers used by the legacy DOM-injection blocks inside the effect
 // below (these build raw HTML strings for document.getElementById(...).innerHTML,
@@ -2292,6 +2295,17 @@ window.submitGrievance = async () => {
           loading="lazy"
         />
         <figcaption>Administrative Block, GNSI Khangabok</figcaption>
+      </figure>
+      <figure className="hero-side-photo hero-result-card">
+        <img
+          src={RESULT_CARD_URL}
+          alt="Congratulations poster for Thoungamba Kshetrimayum — selected in RMS Chail, Sainik School Imphal (5th State Rank), JNV Umathel and Ramakrishna Mission Vidyapith Narendrapur"
+          width={768}
+          height={1280}
+          loading="lazy"
+          onError={(e) => { e.currentTarget.closest('figure').style.display = 'none'; }}
+        />
+        <figcaption>Thoungamba Kshetrimayum — selected across four schools</figcaption>
       </figure>
       </div>
     </div>
