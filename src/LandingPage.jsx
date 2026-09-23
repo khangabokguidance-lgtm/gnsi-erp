@@ -37,6 +37,9 @@ const RESULT_POSTER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/o
 // GNSI Parents Portal Android app (Capacitor-wrapped, opens straight to
 // the portal login via ?portal=1). Hosted in its own "app" Supabase
 // storage bucket (public), separate from gnsi-public which holds images.
+// Hero image: AISSEE 2026 result poster, hosted in the gnsi-public bucket.
+// To swap it later, upload a new image and paste its URL here.
+const HERO_RESULT_POSTER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/photo-2026-09-23-20-14-13-1790175011242.jpg";
 const ANDROID_APP_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/app/gnsi-parents-app.apk";
 
 // Small helpers used by the legacy DOM-injection blocks inside the effect
@@ -2042,81 +2045,19 @@ window.submitGrievance = async () => {
     <div className="hero-orb hero-orb2" />
     <div className="hero-wrap">
       <div>
-        <div className="tricolor">
-          <div />
-          <div />
-          <div />
-        </div>
-        <div className="hero-eyebrow hero-enter-1">Est. 2016 · 200+ Students Selected</div>
-        <h1 className="hero-enter-2">
-          <em>
-            <span data-en="">Forge Discipline.</span>
-            <span data-hi="">अनुशासन गढ़ो।</span>
-          </em>
-          <span>
-            <span data-en="">Command Excellence.</span>
-            <span data-hi="">श्रेष्ठता का नेतृत्व करो।</span>
-          </span>
+        {/* AISSEE 2026 result poster replaces the text headline + stats. */}
+        <h1 className="sr-only" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>
+          Guidance Navodaya &amp; Sainik Institute — AISSEE 2026 Results: 10 students in Top 10 State Rank
         </h1>
-        <p className="hero-enter-3">
-          <span data-en="">
-            Guidance Navodaya &amp; Sainik Institute — Manipur's premier
-            residential coaching centre for NVS, Sainik School, and RMS entrance
-            examinations. Over <strong>200 successful students</strong> selected
-            into Navodaya and Sainik School in a decade of dedicated coaching.
-          </span>
-          <span data-hi="">
-            गाइडेंस नवोदय और सैनिक इंस्टीट्यूट — मणिपुर का प्रमुख आवासीय कोचिंग
-            केंद्र NVS, सैनिक स्कूल और RMS प्रवेश परीक्षाओं के लिए। एक दशक में{" "}
-            <strong>200+ सफल विद्यार्थी</strong> नवोदय और सैनिक स्कूल में चयनित हुए।
-          </span>
-        </p>
-        {/* Proof-first: stats before the ask, so the claim in the eyebrow/
-            headline is backed up before we ask for any action. */}
-        <div className="stats-bar hero-enter-4">
-          <div className="stat-item">
-            <strong>
-              <span className="count-up" id="stat-selection-rate" data-target={95} data-suffix="%">
-                95%
-              </span>
-            </strong>
-            <span>Selection Rate</span>
-          </div>
-          <div className="stat-item">
-            <strong>
-              <span className="count-up" id="stat-years" data-target={10} data-suffix="+">
-                10+
-              </span>
-            </strong>
-            <span>Years</span>
-          </div>
-          <div className="stat-item">
-            <strong>
-              <span className="count-up" id="stat-officers" data-target={200} data-suffix="+">
-                200+
-              </span>
-            </strong>
-            <span>Students Selected</span>
-          </div>
-          <div className="stat-item">
-            <strong>
-              <span className="count-up" id="stat-trained" data-target={500} data-suffix="+">
-                500+
-              </span>
-            </strong>
-            <span>Trained</span>
-          </div>
-          {/* Current-year proof, not just cumulative totals — matches how
-              Allen/Aakash lead with "Session 2026-27" / "in 2023" figures
-              rather than only all-time numbers. */}
-          <div className="stat-item">
-            <strong>
-              <span className="count-up" id="stat-selected-year" data-target={66} data-suffix="">
-                66
-              </span>
-            </strong>
-            <span id="stat-selected-year-label">Selected 2025–26</span>
-          </div>
+        <div className="hero-enter-1" style={{ width: "100%", maxWidth: 640, margin: "0 auto 1.5rem" }}>
+          <img
+            src={HERO_RESULT_POSTER_URL}
+            alt="GNSI AISSEE 2026 results — 10 students as state toppers, 25+ in top 10,000 All India Rank, 80+ qualified for the written test"
+            width={1182}
+            height={1280}
+            fetchpriority="high"
+            style={{ display: "block", width: "100%", height: "auto", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,.18)" }}
+          />
         </div>
         {/* One dominant CTA — everything else (portal, WhatsApp, brochure,
             demo, fee payment) is still one tap away, just visually
