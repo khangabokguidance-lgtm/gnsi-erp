@@ -1419,21 +1419,21 @@ export default function ParentsPortal({ isOpen, onClose }) {
         id="ppOverlay"
       >
       {!student ? (
-        <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? '56px 12px 24px' : '40px 16px', background: 'linear-gradient(135deg,#eef2f9 0%,#f8fafc 60%)' }} id="ppLoginWrap">
+        <div style={{ position: 'relative', flex: '1 1 auto', minWidth: 0, width: '100%', minHeight: '100%', display: 'flex', justifyContent: 'center', padding: isMobile ? '56px 12px 24px' : '24px 16px', background: 'linear-gradient(135deg,#eef2f9 0%,#f8fafc 60%)', boxSizing: 'border-box' }} id="ppLoginWrap">
           <button
             onClick={onClose}
-            style={{ position: 'absolute', top: isMobile ? 12 : 20, right: isMobile ? 12 : 20, height: 40, width: 40, borderRadius: '50%', backgroundColor: 'white', border: '1px solid #e2e8f0', color: '#64748b', cursor: 'pointer', fontSize: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ position: 'fixed', top: isMobile ? 12 : 20, right: isMobile ? 12 : 20, height: 40, width: 40, borderRadius: '50%', backgroundColor: 'white', border: '1px solid #e2e8f0', color: '#64748b', cursor: 'pointer', fontSize: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5 }}
           >
             ✕
           </button>
-          <div style={{ width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', alignItems: 'center', margin: 'auto 0' }}>
             <img
               src={TENYEAR_BANNER_URL}
               alt="GNSI — Celebrating 10 Years of Success"
               style={{
-                width: '100%', maxWidth: 220, height: 'auto', borderRadius: isMobile ? 20 : 14,
-                marginBottom: isMobile ? 18 : 22, boxShadow: '0 10px 30px -8px rgba(15,23,42,.35)',
-                display: 'block',
+                width: '100%', maxWidth: 170, height: 'auto', borderRadius: isMobile ? 16 : 12,
+                marginBottom: isMobile ? 16 : 20, boxShadow: '0 10px 30px -8px rgba(15,23,42,.35)',
+                display: 'block', objectFit: 'contain',
               }}
               onError={(e) => { e.target.style.display = 'none'; }}
             />
@@ -1452,18 +1452,12 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 borderBottom: `3px solid ${GOLD}`,
                 textAlign: 'center',
               }}>
-                <div style={{
-                  width: 78, height: 78, borderRadius: '50%', margin: '0 auto 12px',
-                  backgroundColor: 'rgba(255,255,255,0.95)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: `2px solid ${GOLDL}`, boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
-                }}>
-                  <img
-                    src={EMBLEM_URL}
-                    alt="GNSI"
-                    style={{ height: 54, width: 54, objectFit: 'contain' }}
-                    onError={(e) => { e.target.style.display = 'none'; }}
-                  />
-                </div>
+                <img
+                  src={EMBLEM_URL}
+                  alt="GNSI"
+                  style={{ height: 66, width: 66, objectFit: 'contain', margin: '0 auto 12px', display: 'block', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.3))' }}
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
                 <h2 style={{ fontSize: 21, fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '.01em' }}>Parents Portal</h2>
                 <p style={{ fontSize: 12, color: GOLDL, marginTop: 5, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase' }}>
                   GNSI · Khangabok, Manipur
@@ -1472,18 +1466,12 @@ export default function ParentsPortal({ isOpen, onClose }) {
             )}
             {isMobile && (
               <div style={{ textAlign: 'center', marginBottom: 26 }}>
-                <div style={{
-                  width: 76, height: 76, borderRadius: '50%', margin: '0 auto 12px',
-                  backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: `2px solid ${GOLD}`,
-                }}>
-                  <img
-                    src={EMBLEM_URL}
-                    alt="GNSI"
-                    style={{ height: 54, width: 54, objectFit: 'contain' }}
-                    onError={(e) => { e.target.style.display = 'none'; }}
-                  />
-                </div>
+                <img
+                  src={EMBLEM_URL}
+                  alt="GNSI"
+                  style={{ height: 64, width: 64, objectFit: 'contain', margin: '0 auto 12px', display: 'block' }}
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
                 <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, margin: 0 }}>Parents Portal</h2>
                 <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>GNSI · Khangabok, Manipur</p>
               </div>
@@ -1547,8 +1535,9 @@ export default function ParentsPortal({ isOpen, onClose }) {
               <button
                 onClick={() => { onClose(); window.location.hash = '#courses'; }}
                 style={{
-                  background: 'none', border: `1px solid ${GOLD}`, color: GOLD, borderRadius: isMobile ? 999 : 8,
-                  padding: '9px 18px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                  background: 'none', border: `1px solid ${GOLD}`, color: GOLD, borderRadius: isMobile ? 14 : 8,
+                  padding: isMobile ? '10px 14px' : '9px 18px', fontSize: isMobile ? 11 : 11.5, fontWeight: 700,
+                  cursor: 'pointer', whiteSpace: 'normal', maxWidth: '100%', lineHeight: 1.4,
                 }}
               >
                 Browse Site: Admissions, Syllabus, Notices →
