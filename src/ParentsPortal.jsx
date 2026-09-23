@@ -4,7 +4,7 @@ import { supabase } from './supabase';
 // #1e3a5f accents, inline styles (no Tailwind). The legacy ParentsPortal.css
 // stylesheet is no longer used.
 
-const EMBLEM_URL = "https://pwrldrngqxbvwfztxxrd.supabase.co/storage/v1/object/public/gnsi-public/gnsi-emblem.png";
+const EMBLEM_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/emblem/gnsi-emblem.png";
 
 // ── .ics CALENDAR EXPORT ─────────────────────────────────────────────────
 // Builds a minimal RFC 5545 calendar file client-side (no library) from
@@ -439,6 +439,64 @@ const TABS = [
   { id: 'purchases',  label: '🛒 Store Purchases' },
   { id: 'grievance',  label: '📮 Raise a Concern' },
   { id: 'alerts',     label: '🔔 Alerts' },
+  { id: 'site',       label: '🌐 More Info & Site' },
+];
+
+// Every public landing-page section, so a logged-in parent can jump straight
+// to it without leaving the portal to go hunting through the public nav.
+// Grouped the same way the landing page's own "More" hamburger menu groups
+// them. Clicking a link closes the portal and sets window.location.hash —
+// LandingPage.jsx already listens for hashchange (see onHashChange) and
+// switches to the matching tab, so this needs no extra plumbing/props.
+const SITE_LINK_GROUPS = [
+  {
+    heading: 'Admissions & Results',
+    links: [
+      { label: 'Admissions / Enquiry', href: '#enquiry', icon: '📋' },
+      { label: "Results & Toppers' Wall", href: '#results', icon: '🏆' },
+      { label: 'Fee Payment', href: '#fee-payment', icon: '💳' },
+      { label: 'Courses', href: '#courses', icon: '📚' },
+      { label: 'Scholarship / Free Test', href: '#scholarship', icon: '🎓' },
+    ],
+  },
+  {
+    heading: 'Exam Preparation',
+    links: [
+      { label: 'Syllabus', href: '#syllabus', icon: '📖' },
+      { label: 'Question Papers', href: '#question-papers', icon: '📄' },
+      { label: 'Exam Calendar', href: '#exam-calendar', icon: '🗓️' },
+      { label: 'Important Dates', href: '#important-dates', icon: '⏰' },
+      { label: 'Mock Tests', href: '#mock-tests', icon: '📝' },
+    ],
+  },
+  {
+    heading: 'About GNSI',
+    links: [
+      { label: 'About GNSI', href: '#about', icon: 'ℹ️' },
+      { label: 'Head of the Institute', href: '#head-institute', icon: '🎖️' },
+      { label: 'Faculty', href: '#faculty', icon: '👨‍🏫' },
+      { label: 'Facilities', href: '#facilities', icon: '🏫' },
+      { label: 'Student Reviews', href: '#reviews', icon: '⭐' },
+    ],
+  },
+  {
+    heading: 'Media & Updates',
+    links: [
+      { label: 'Notices', href: '#notices', icon: '📌' },
+      { label: 'Blog & News', href: '#blog', icon: '📰' },
+      { label: 'Gallery', href: '#gallery', icon: '🖼️' },
+      { label: 'Videos', href: '#videos', icon: '🎬' },
+      { label: 'Events', href: '#events', icon: '🎉' },
+    ],
+  },
+  {
+    heading: 'Help',
+    links: [
+      { label: 'FAQ', href: '#faq', icon: '❓' },
+      { label: 'Download App', href: '#app-download', icon: '📲' },
+      { label: 'Helpdesk / Grievance', href: '#helpdesk', icon: '🆘' },
+    ],
+  },
 ];
 
 // Mobile-only bottom nav: 4 icons fit a thumb-reach bar (matches Android/iOS
@@ -1640,6 +1698,12 @@ export default function ParentsPortal({ isOpen, onClose }) {
             )}
             {activeTab === 'alerts' && (
               <AlertsTab state={alerts} />
+            )}
+            {activeTab === 'site' && (
+              <SiteLinksTab
+                isMobile={isMobile}
+                onNavigate={(href) => { onClose(); window.location.hash = href; }}
+              />
             )}
           </div>
 
@@ -3323,6 +3387,46 @@ function GrievanceTab({ studentId, studentName, done, onSubmitted, isMobile }) {
       )}
       <PastGrievances studentId={studentId} refreshKey={refreshKey} />
     </div>
+  );
+}
+
+// Grid of every public landing-page section, grouped the same way the
+// landing page's own hamburger menu groups them — lets a logged-in parent
+// jump straight to Notices, Syllabus, Gallery, etc. without leaving the
+// portal to go hunting through the public site's nav. onNavigate closes the
+// portal and sets the hash; LandingPage.jsx's own hashchange listener does
+// the actual tab switch, so this component has no routing logic of its own.
+function SiteLinksTab({ isMobile, onNavigate }) {
+  return (
+    <>
+      {SITE_LINK_GROUPS.map((group) => (
+        <Card key={group.heading} title={group.heading}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(180px, 1fr))',
+            gap: 10,
+          }}>
+            {group.links.map((link) => (
+              <button
+                key={link.href}
+                onClick={() => onNavigate(link.href)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
+                  borderRadius: isMobile ? 16 : 10,
+                  border: isMobile ? 'none' : '1px solid #e2e8f0',
+                  backgroundColor: isMobile ? '#eef1f7' : '#f8fafc',
+                  padding: isMobile ? '12px 14px' : '11px 14px',
+                  fontSize: 13, fontWeight: 600, color: '#1e293b', cursor: 'pointer',
+                }}
+              >
+                <span style={{ fontSize: 16, flexShrink: 0 }}>{link.icon}</span>
+                <span>{link.label}</span>
+              </button>
+            ))}
+          </div>
+        </Card>
+      ))}
+    </>
   );
 }
 
