@@ -1431,3 +1431,22 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
 .adm-link{gap:.65rem;min-height:52px;background:#fff}
 .adm-link .adm-ic{width:32px;height:32px;flex-shrink:0;object-fit:contain;display:block;fill:initial;stroke:none}
 .adm-link .adm-ic-wide{width:44px;height:auto;max-height:32px}
+
+/* ═══ PHOTO PROPORTIONS — never stretch, never cut important parts ═══ */
+/* Gallery + blog + lightbox: show the WHOLE photo inside its frame
+   (letterboxed on a soft navy background instead of cropped). */
+.gph2{background:#0E2244}
+.gph2 img{object-fit:contain!important;object-position:center!important;background:transparent}
+.gph2:hover img{transform:none}
+.blog-thumb{background:#EEF1F6}
+.blog-thumb img{object-fit:contain!important;object-position:center!important}
+.lb-photo{background:#0B1E3D}
+.lb-photo img{width:100%;height:100%;object-fit:contain!important}
+
+/* People photos: fill the card but anchor to the top so faces are never cut;
+   no zoom that crops further. */
+.ranker-photo img,.faculty-photo img,.head-institute-img img{object-fit:cover!important;object-position:center 15%!important;transform:none!important}
+
+/* Home side photos keep their own shape */
+.hero-side-photo img{aspect-ratio:auto!important;height:auto!important;object-fit:contain!important}
+.blog-thumb{height:auto!important;aspect-ratio:16/10}
