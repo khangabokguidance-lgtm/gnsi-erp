@@ -4716,18 +4716,34 @@ window.submitGrievance = async () => {
         </div>
         <div className="tl-item">
           <div className="tl-date">
-            <span className="tl-month">Jan</span>
-            <span className="tl-day">—</span>
+            <span className="tl-month">Nov</span>
+            <span className="tl-day">28</span>
           </div>
           <div className="tl-dot upcoming" />
           <div className="tl-content">
-            <h4>📝 JNVST + AISSEE Exam Day</h4>
+            <h4>📝 JNVST Class 6 Exam Day</h4>
             <p>
-              Both NVS Class 6 and Sainik School AISSEE examinations typically
-              held in January. Mock test series peaks at GNSI.
+              Jawahar Navodaya Vidyalaya Selection Test held on 28 November 2026
+              (official NVS Prospectus 2027). Mock test series peaks at GNSI.
             </p>
             <span className="tl-tag">
-              <span className="cal-badge cb-nvs">NVS</span>{" "}
+              <span className="cal-badge cb-nvs">NVS</span>
+            </span>
+          </div>
+        </div>
+        <div className="tl-item">
+          <div className="tl-date">
+            <span className="tl-month">Jan</span>
+            <span className="tl-day">Est.</span>
+          </div>
+          <div className="tl-dot upcoming" />
+          <div className="tl-content">
+            <h4>📝 AISSEE Exam Day (Estimated)</h4>
+            <p>
+              Sainik School AISSEE Class 6 exam typically held late January —
+              exact date to be confirmed once NTA releases the 2027 notification.
+            </p>
+            <span className="tl-tag">
               <span className="cal-badge cb-sainik">Sainik</span>
             </span>
           </div>
@@ -4735,14 +4751,15 @@ window.submitGrievance = async () => {
         <div className="tl-item">
           <div className="tl-date">
             <span className="tl-month">Feb</span>
-            <span className="tl-day">—</span>
+            <span className="tl-day">Est.</span>
           </div>
           <div className="tl-dot upcoming" />
           <div className="tl-content">
-            <h4>📝 RMS CET Examination</h4>
+            <h4>📝 RMS CET Examination (Estimated)</h4>
             <p>
               Rashtriya Military School Common Entrance Test for Class 6
-              admission.
+              admission — exact date to be confirmed once the 2026–27 cycle
+              notification is released.
             </p>
             <span className="tl-tag">
               <span className="cal-badge cb-rms">RMS</span>
