@@ -176,7 +176,7 @@ const PROGRAMMES = {
     tracks: ['Lakshya — Intensive programme', 'Umeed — Foundational track'],
     features: ['Mental ability & language focus', 'Weekly mock tests', 'Previous year paper analysis', 'Hostel & day scholar options'],
     patterns: [
-      { title: 'Class 6 (JNVST 2027) · 100 marks · 2 hr', rows: [['Mental Ability', '20 Qs', '25'], ['Environmental Studies (new)', '20 Qs', '25'], ['Arithmetic', '20 Qs', '25'], ['Language', '20 Qs', '25']] },
+      { title: 'Class 6 (JNVST 2027) · 100 marks · 2 hr', rows: [['Mental Ability (Section 1)', '20 Qs', '25'], ['Environmental Studies — new (Section 1)', '20 Qs', '25'], ['Arithmetic', '20 Qs', '25'], ['Language', '20 Qs', '25']] },
     ],
     batch: '20 December 2026',
   },
@@ -186,7 +186,7 @@ const PROGRAMMES = {
     tracks: [],
     features: ['Mathematics, English & General Knowledge', 'Intelligence & reasoning practice', 'Interview preparation', 'Previous year RMS CET papers', 'Hostel & day scholar options'],
     patterns: [
-      { title: 'Class 6 · 200 marks · 2 hr 30 min', rows: [['Mathematics', '50 Qs', '50'], ['English', '50 Qs', '50'], ['Intelligence & Reasoning', '50 Qs', '50'], ['General Knowledge', '50 Qs', '50']] },
+      { title: 'Class 6 · 200 marks (+20 interview) · 2 hr 30 min', rows: [['English (qualifying, min 35%)', '50 Qs', '50'], ['Intelligence Test', '50 Qs', '50'], ['Mathematics', '50 Qs', '50'], ['General Knowledge', '50 Qs', '50']] },
     ],
     batch: '',
   },
@@ -4171,8 +4171,8 @@ window.submitGrievance = async () => {
         <div className="syl-grid">
           <div className="syl-card">
             <h4>
-              <span>🧠</span> Mental Ability{" "}
-              <span className="syl-marks">25 Marks</span>
+              <span>🧠</span> Mental Ability Test{" "}
+              <span className="syl-marks">20 Qs · 25 Marks</span>
             </h4>
             <ul className="syl-topics">
               <li>Odd one out &amp; figures</li>
@@ -4182,25 +4182,27 @@ window.submitGrievance = async () => {
               <li>Space visualization</li>
               <li>Embedded figures</li>
             </ul>
+            <p style={{ fontSize: ".78rem", color: "var(--slate)", marginTop: ".4rem" }}>Non-verbal — figures &amp; diagrams only. Timed together with EVS (see note below).</p>
           </div>
           <div className="syl-card">
             <h4>
               <span>🌿</span> Environmental Studies (EVS){" "}
-              <span className="syl-marks">25 Marks</span>
+              <span className="syl-marks">20 Qs · 25 Marks</span>
             </h4>
             <ul className="syl-topics">
-              <li>New from JNVST 2027 — 20 questions</li>
+              <li>New from JNVST 2027</li>
               <li>The natural world — plants &amp; animals</li>
               <li>Human body &amp; health</li>
               <li>Science in daily life</li>
               <li>Social surroundings — family, food, shelter, water</li>
               <li>Based on NCERT Class 3–5 EVS</li>
             </ul>
+            <p style={{ fontSize: ".78rem", color: "var(--slate)", marginTop: ".4rem" }}>New for JNVST 2027. Timed together with Mental Ability (see note below).</p>
           </div>
           <div className="syl-card">
             <h4>
-              <span>🔢</span> Arithmetic{" "}
-              <span className="syl-marks">25 Marks</span>
+              <span>🔢</span> Arithmetic Test{" "}
+              <span className="syl-marks">20 Qs · 25 Marks</span>
             </h4>
             <ul className="syl-topics">
               <li>Number system &amp; operations</li>
@@ -4210,11 +4212,12 @@ window.submitGrievance = async () => {
               <li>Simple interest</li>
               <li>Mensuration (area, perimeter)</li>
             </ul>
+            <p style={{ fontSize: ".78rem", color: "var(--slate)", marginTop: ".4rem" }}>30 minutes. Qualifying minimum: 7 marks.</p>
           </div>
           <div className="syl-card">
             <h4>
-              <span>📖</span> Language{" "}
-              <span className="syl-marks">25 Marks</span>
+              <span>📖</span> Language Test{" "}
+              <span className="syl-marks">20 Qs · 25 Marks</span>
             </h4>
             <ul className="syl-topics">
               <li>Reading comprehension — 4 passages</li>
@@ -4224,9 +4227,10 @@ window.submitGrievance = async () => {
               <li>Drawing inferences</li>
               <li>In the medium chosen by the candidate</li>
             </ul>
+            <p style={{ fontSize: ".78rem", color: "var(--slate)", marginTop: ".4rem" }}>30 minutes. Qualifying minimum: 7 marks.</p>
           </div>
         </div>
-        <p className="syl-note">JNVST 2027 Class 6: 80 questions · 100 marks · 2 hours (Mental Ability + EVS 60 min, Arithmetic 30 min, Language 30 min). No negative marking.</p>
+        <p className="syl-note">JNVST 2027 Class 6: 80 questions · 100 marks · 2 hours, 11:30 AM–1:30 PM. Mental Ability and EVS are timed together as one 60-minute section (40 Qs, 50 marks, qualifying minimum 14); Arithmetic and Language each get their own 30-minute slot. 1.25 marks per correct answer, no negative marking. Source: NVS Prospectus cum Notification 2027.</p>
         <a
           href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/syllabus/nvs-class6-syllabus.pdf"
           className="syl-download"
@@ -4242,7 +4246,7 @@ window.submitGrievance = async () => {
           <div className="syl-card">
             <h4>
               <span>🔢</span> Mathematics{" "}
-              <span className="syl-marks">150 Marks</span>
+              <span className="syl-marks">50 Qs · 150 Marks</span>
             </h4>
             <ul className="syl-topics">
               <li>Natural numbers, LCM &amp; HCF</li>
@@ -4257,7 +4261,7 @@ window.submitGrievance = async () => {
           <div className="syl-card">
             <h4>
               <span>📖</span> Language{" "}
-              <span className="syl-marks">50 Marks</span>
+              <span className="syl-marks">25 Qs · 50 Marks</span>
             </h4>
             <ul className="syl-topics">
               <li>Comprehension passage</li>
@@ -4271,7 +4275,7 @@ window.submitGrievance = async () => {
           <div className="syl-card">
             <h4>
               <span>🌍</span> General Knowledge{" "}
-              <span className="syl-marks">50 Marks</span>
+              <span className="syl-marks">25 Qs · 50 Marks</span>
             </h4>
             <ul className="syl-topics">
               <li>Indian history &amp; culture</li>
@@ -4284,7 +4288,7 @@ window.submitGrievance = async () => {
           <div className="syl-card">
             <h4>
               <span>🧠</span> Intelligence{" "}
-              <span className="syl-marks">50 Marks</span>
+              <span className="syl-marks">25 Qs · 50 Marks</span>
             </h4>
             <ul className="syl-topics">
               <li>Analogies — mathematical &amp; verbal</li>
@@ -4312,7 +4316,7 @@ window.submitGrievance = async () => {
           <div className="syl-card">
             <h4>
               <span>📖</span> English{" "}
-              <span className="syl-marks">50 Marks</span>
+              <span className="syl-marks">50 Marks (Qualifying)</span>
             </h4>
             <ul className="syl-topics">
               <li>Grammar &amp; usage</li>
