@@ -1144,3 +1144,164 @@ footer a:hover{color:var(--goldL);padding-left:4px}
 .ribbon-photo-fig{width:min(1200px,100%);margin:0 auto;position:relative;z-index:1;line-height:0}
 .ribbon-photo-fig img{display:block;width:100%;height:auto;border-radius:12px;box-shadow:var(--sh-3)}
 @media (max-width:640px){.ribbon-photo{padding:1.2rem 4%}}
+
+/* ═══ NAV BAR + STICKY BAR — professional redesign (navy + brass gold) ═══ */
+nav{background:#0B1E3D;backdrop-filter:none;border-bottom:2px solid #C9A24B;box-shadow:0 2px 12px rgba(11,30,61,.18)}
+.nav-inner{height:68px;gap:1.25rem}
+.brand{gap:12px;min-width:0}
+.nv-crest{width:42px;height:42px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 1px rgba(201,162,75,.6)}
+.nv-crest img{width:34px;height:34px;object-fit:contain}
+.brand-text{min-width:0}
+.brand-text h2{font-family:var(--serif);font-weight:600;color:#fff;font-size:1.02rem;line-height:1.2;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand-text small{color:#D8C08A;font-family:var(--sans);font-size:.72rem;letter-spacing:.02em;text-transform:none;margin-top:2px}
+
+.nav-fixed-actions{gap:.5rem}
+.nv-btn{display:inline-flex;align-items:center;gap:.45rem;height:38px;padding:0 1rem;border-radius:6px;font-family:'Inter',var(--sans),sans-serif;font-size:.84rem;font-weight:600;letter-spacing:.01em;text-transform:none;white-space:nowrap;text-decoration:none;cursor:pointer;transition:background .15s,border-color .15s,color .15s;border:1px solid transparent;line-height:1}
+.nv-btn:focus-visible{outline:2px solid #C9A24B;outline-offset:2px}
+.nv-primary{background:#C9A24B;color:#0B1E3D;border-color:#C9A24B}
+.nv-primary:hover{background:#D9B566;border-color:#D9B566}
+.nv-ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.28)}
+.nv-ghost:hover{border-color:rgba(255,255,255,.6);background:rgba(255,255,255,.06)}
+.nv-link{background:transparent;color:rgba(255,255,255,.82);padding:0 .6rem}
+.nv-link:hover{color:#fff;text-decoration:underline;text-underline-offset:4px}
+.hamburger{margin-left:.25rem;border-radius:6px}
+.hamburger:hover{background:rgba(255,255,255,.06)}
+.hamburger span{width:22px;background:#fff}
+
+@media (max-width:1100px){.brand-text h2{max-width:260px}}
+@media (max-width:900px){
+  .nav-inner{height:60px}
+  .brand-text h2{font-size:.95rem;max-width:180px}
+  .nv-btn{height:34px;padding:0 .75rem;font-size:.8rem}
+}
+@media (max-width:560px){
+  .nv-hide-sm{display:none!important}
+  .brand-text h2{max-width:130px}
+  .nv-link{padding:0 .4rem}
+}
+
+/* Sticky bar: slim, aligned to the page width */
+#stickyBar{background:#0B1E3D;border-top:2px solid #C9A24B;padding:0;box-shadow:0 -4px 16px rgba(11,30,61,.18);display:block}
+#stickyBar .sb-inner{width:min(1200px,94%);margin:0 auto;min-height:60px;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.55rem 0}
+#stickyBar p{margin:0;color:rgba(255,255,255,.86);font-family:'Inter',var(--sans),sans-serif;font-size:.92rem;letter-spacing:0}
+#stickyBar p strong{color:#E2C57E;font-weight:600}
+.sticky-btns{gap:.5rem}
+.sb-btn{display:inline-flex;align-items:center;gap:.45rem;height:38px;padding:0 1.05rem;border-radius:6px;font-family:'Inter',var(--sans),sans-serif;font-size:.86rem;font-weight:600;letter-spacing:.01em;text-decoration:none;line-height:1}
+.sb-btn-gold{background:#C9A24B;color:#0B1E3D;border:1px solid #C9A24B}
+.sb-btn-gold:hover{background:#D9B566}
+.sb-btn-wa{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.3)!important}
+.sb-btn-wa svg{color:#25D366}
+.sb-btn-wa:hover{border-color:rgba(255,255,255,.6)!important;background:rgba(255,255,255,.06)}
+.sb-close{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:6px;color:rgba(255,255,255,.7);padding:0}
+.sb-close:hover{background:rgba(255,255,255,.08);color:#fff}
+@media (max-width:640px){
+  #stickyBar .sb-inner{justify-content:center}
+  #stickyBar p{display:none}
+  .sb-btn{height:36px;padding:0 .9rem}
+}
+/* Keep brand + actions on one line at every width (overrides older wrap rule) */
+.nav-inner{flex-wrap:nowrap!important;padding:0!important}
+nav .brand{flex:1 1 auto;min-width:0}
+.nav-fixed-actions{flex:0 0 auto!important;flex-wrap:nowrap!important;justify-content:flex-end}
+.brand-short{display:none}
+@media (max-width:900px){.nav-inner{height:60px!important}}
+@media (max-width:560px){
+  .brand-text h2 .brand-full{display:none}
+  .brand-short{display:inline}
+  .brand-text small{display:none}
+  .nv-crest{width:38px;height:38px}
+  .nav-fixed-actions{gap:.35rem}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PROFESSIONAL THEME LAYER — "Ledger & Crest"
+   The original tokens were misnamed: --navy was near-black (#111),
+   --gold was orange (#D97706), --navy3 bright blue, --saffron purple.
+   Correcting them here re-themes every tab to real navy + brass gold.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  --navy:#0B1E3D; --navy1:#081629; --navy2:#132B52; --navy3:#1F4E8C; --navy4:#E2E6ED;
+  --gold:#B8913F; --goldD:#8A6A24; --goldL:#C9A24B; --goldLL:#E2C57E;
+  --saffron:#132B52; --red:#9B2C2C; --green:#1E7A4B;
+  --mist:#4A5466; --slate:#1F2937;
+  --radius:8px;
+  --sh-1:0 1px 2px rgba(11,30,61,.06);
+  --sh-2:0 4px 14px rgba(11,30,61,.08);
+  --sh-3:0 12px 32px rgba(11,30,61,.12);
+}
+body{color:var(--slate)}
+
+/* Section rhythm: tighter, consistent */
+.pad,.pad-alt{padding:3.5rem 0 4rem}
+.pad-alt{background:#fff}
+@media (max-width:640px){.pad,.pad-alt{padding:2.25rem 0 2.75rem}}
+
+/* Section header: small caps eyebrow, serif title, short gold bar */
+.eyebrow{font-size:.74rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--goldD);margin-bottom:.55rem}
+.eyebrow::before{display:none!important}
+.st{font-size:clamp(1.55rem,3.2vw,2.15rem);font-weight:600;color:var(--navy);margin-bottom:.75rem;line-height:1.2;letter-spacing:-.005em}
+.rule{gap:0;margin-bottom:1.6rem}
+.rule .rule-line:first-child{flex:0 0 48px;height:3px;background:var(--goldL);border-radius:2px}
+.rule .rule-d,.rule .rule-line:not(:first-child){display:none}
+
+/* Tab strip: one neutral style, navy for the open tab */
+.tab-nav-wrap{box-shadow:0 1px 0 var(--navy4)}
+.tab-nav-btn,.tab-nav-btn[class*="cat-"]{background:#fff!important;color:#334155!important;border:1px solid var(--navy4)!important;border-radius:6px!important;font-weight:600;font-size:.82rem;padding:.45rem .9rem;box-shadow:none!important}
+.tab-nav-btn:hover,.tab-nav-btn[class*="cat-"]:hover{border-color:#9AA6B8!important;color:var(--navy)!important}
+.tab-nav-btn.active,.tab-nav-btn[class*="cat-"].active{background:var(--navy)!important;color:#fff!important;border-color:var(--navy)!important;box-shadow:inset 0 -2px 0 var(--goldL)!important}
+
+/* Buttons */
+.btn{border-radius:6px;font-weight:600;letter-spacing:.01em}
+.btn-gold{background:var(--goldL);color:var(--navy)}
+.btn-gold:hover{background:#D9B566}
+.btn-out{background:#fff;border:1px solid #CBD2DC!important;color:var(--navy)}
+.btn-out:hover{border-color:var(--navy)!important}
+.btn-grn{background:var(--green)}
+
+/* Cards: one family — white, hairline border, small radius, soft shadow */
+.course-card,.faculty-card,.papers-card,.facility-card,.testi-card,.notice-card,.syl-card,.alumni-card,.contact-card,.blog-card,.result-card,.review-card,.mock-card,.event-card,.ranker-card{border-radius:var(--radius)!important;box-shadow:var(--sh-1)}
+.course-card,.papers-card,.facility-card,.notice-card,.contact-card,.blog-card,.result-card,.review-card,.mock-card,.event-card{border:1px solid var(--navy4)}
+.course-card,.course-card.sainik,.course-card.navodaya,.course-card.foundation,.course-card.combined{border-top:3px solid var(--goldL)!important}
+.course-card:hover,.facility-card:hover,.blog-card:hover,.mock-card:hover{box-shadow:var(--sh-2)}
+.course-enquire{background:var(--navy)!important;color:#fff!important;border-radius:6px!important}
+.course-enquire:hover{background:var(--navy2)!important}
+
+/* Category badges: keep meaning, mute the colours */
+.course-badge,.cal-badge,.notice-badge{border-radius:4px!important;font-weight:600;letter-spacing:.04em}
+.cb-nvs,.cb-nv{background:#EAF0F8!important;color:#1F4E8C!important;border:1px solid #CFDBEC!important}
+.cb-sainik{background:#F7ECEC!important;color:#8A2626!important;border:1px solid #E8CFCF!important}
+.cb-rms,.cb-fn{background:#E9F4EE!important;color:#1E6B43!important;border:1px solid #CDE5D7!important}
+.cb-gnsi{background:#F6F0E2!important;color:#7A5C1C!important;border:1px solid #E7D9B8!important}
+
+/* ── Tab page top: less dead space under "Back to Home" ── */
+.tab-enter > .container:first-child + *{padding-top:1.75rem!important}
+
+/* ── Feature bands designed for dark: make them navy again ── */
+.scholar-section,.mocktest-section{background:var(--navy)!important;color:#fff}
+.scholar-section .st,.mocktest-section .st{color:#fff}
+.scholar-section .eyebrow,.mocktest-section .eyebrow,.scholar-section .eyebrow span,.mocktest-section .eyebrow span{color:var(--goldLL)!important}
+.scholar-section .rule .rule-line:first-child,.mocktest-section .rule .rule-line:first-child{background:var(--goldL)}
+.scholar-section p,.mocktest-section p{color:rgba(255,255,255,.82)}
+.scholar-form-box{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.16)}
+.scholar-section a[href^="tel"],.mocktest-section a[href^="tel"]{color:var(--goldLL)!important}
+
+/* ── Eyebrows on white: readable gold ── */
+.eyebrow,.eyebrow span{color:var(--goldD)!important}
+.scholar-section .eyebrow,.mocktest-section .eyebrow,.promo-banner .eyebrow,.hero .eyebrow{color:var(--goldLL)!important}
+
+/* ── Leftover white text inside light sections → body grey ── */
+:is(.pad,.pad-alt,.fee-section,.app-section,.helpdesk-section,.video-section) [style*="color: rgba(255, 255, 255"]:not(:is(.form-panel,.form-panel *,.faculty-card *,.ranker-card *,.video-main *,.video-embed *,.gph2 *,[class*="dark"] *)){color:var(--mist)!important}
+.helpdesk-form label,.helpdesk-form label span{color:var(--slate)!important}
+.cal-table small{color:var(--mist)!important}
+.cal-table td[style*="color"]{color:var(--goldD)!important}
+.fee-info a,.contact-card a[href^="tel"]{color:var(--goldD)!important}
+.contact-card a[href*="wa.me"]{color:var(--green)!important}
+.form-panel a{color:var(--goldLL)!important}
+.scholar-section .st,.mocktest-section .st,.scholar-section .st span,.mocktest-section .st span{color:#fff!important}
+.scholar-form-box p,.scholar-form-box p[style]{color:rgba(255,255,255,.72)!important}
+.mocktest-section .mock-card-title,.mocktest-section .mock-card-title span{color:#fff!important}
+.mocktest-section .mock-card-sub{color:rgba(255,255,255,.66)!important}
+.mock-card{background:rgba(255,255,255,.05)!important;border:1px solid rgba(255,255,255,.14)!important}
+.mock-card:hover{background:rgba(255,255,255,.09)!important;border-color:rgba(201,162,75,.6)!important}
+.papers-section [style*="color: rgba(255, 255, 255"]{color:var(--mist)!important}
+.result-number{color:var(--goldD)!important}

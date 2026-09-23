@@ -127,6 +127,7 @@ function prefetchTabData() {
     ['stats', getStats],
     ['examCalendar', getExamCalendar],
     ['timeline', getTimeline],
+    ['testimonials', () => getFeaturedTestimonials(8)],
   ];
   jobs.forEach(([key, fn]) => { cachedFetch(key, fn).catch(() => {}); });
 }
@@ -149,6 +150,38 @@ function hashToTab(hash) {
   return { tab: 'home' };
 }
 
+// ═══ TESTIMONIAL SLIDER ═══
+// Looks the track/dots up fresh on every call, so it keeps working after the
+// section remounts on a tab switch (the old version held on to the first
+// DOM nodes it found and went dead after navigating away and back).
+function goTesti(i) {
+  const track = document.getElementById('testiTrack');
+  if (!track) return;
+  const n = track.children.length;
+  if (!n) return;
+  const idx = ((i % n) + n) % n;
+  track.dataset.idx = String(idx);
+  track.style.transform = 'translateX(-' + (idx * 100) + '%)';
+  document.getElementById('testiDots')?.querySelectorAll('.slider-dot')
+    .forEach((d, k) => d.classList.toggle('active', k === idx));
+}
+function setupTestiSlider() {
+  const track = document.getElementById('testiTrack');
+  const dots = document.getElementById('testiDots');
+  if (!track) return;
+  if (dots) {
+    dots.innerHTML = '';
+    for (let i = 0; i < track.children.length; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'slider-dot';
+      dot.onclick = () => goTesti(i);
+      dots.appendChild(dot);
+    }
+  }
+  goTesti(0);
+  window.tSlide = (dir) => goTesti(Number(track.dataset.idx || 0) + dir);
+}
+
 // ═══ TAB SECTION HYDRATION ═══
 // Every tab is conditionally rendered, so its container (#eventsListEl,
 // #facultyGrid, …) only exists while that tab is open. These loaders used
@@ -158,6 +191,33 @@ function hashToTab(hash) {
 // still returns early when its container isn't on screen, so only the
 // open tab's data is actually fetched.
 function hydrateTabSections(setFeePaymentInfo) {
+  // ---- TESTIMONIALS (Home / Reviews): live quotes + working slider ----
+  (async () => {
+    const track = document.getElementById('testiTrack');
+    if (!track) return;
+    try {
+      const testimonials = await cachedFetch('testimonials', () => getFeaturedTestimonials(8));
+      if (testimonials.length && document.body.contains(track)) {
+        track.innerHTML = testimonials.map(t => `
+          <div class="testi-card">
+            <div class="stars">${'★'.repeat(t.rating || 5)}${'☆'.repeat(5 - (t.rating || 5))}</div>
+            <blockquote>"${escapeHtml(t.quote)}"</blockquote>
+            <div class="testi-foot">
+              <div class="testi-avatar">🎓</div>
+              <div class="testi-id">
+                <cite>Parent</cite>
+                <span class="testi-meta">${escapeHtml(t.attribution || '')}</span>
+              </div>
+            </div>
+          </div>`).join('');
+      }
+    } catch (e) {
+      console.error('Testimonials load failed:', e);
+    } finally {
+      setupTestiSlider();
+    }
+  })();
+
   // ---- 2. NOTICES (top 3 active, into #publicNoticeCards) ----
   (async () => {
     const grid = document.getElementById('publicNoticeCards');
@@ -230,7 +290,7 @@ function hydrateTabSections(setFeePaymentInfo) {
     try {
       const videos = await cachedFetch('videos', getVideos);
       if (!videos.length) {
-        list.innerHTML = '<p style="color:rgba(230,230,230,.85);font-family:Inter,sans-serif;font-size:.8rem;letter-spacing:.02em;text-transform:uppercase;padding:.5rem 0">Videos coming soon</p>';
+        list.innerHTML = '<p style="color:var(--mist);font-family:Inter,sans-serif;font-size:.85rem;padding:.5rem 0">Videos coming soon</p>';
         return;
       }
       list.innerHTML = videos.map((v, i) => `
@@ -1070,27 +1130,8 @@ export default function LandingPage({ onLogin }) {
     };
     const rbAuto = setInterval(() => { rbIndex = (rbIndex + 1) % rbSlides; updateRB(); }, 5000);
 
-    // Testimonials slider
-    let tIndex = 0;
-    const testiTrack = document.getElementById('testiTrack');
-    const testiDots = document.getElementById('testiDots');
-    const testiCards = testiTrack?.children.length || 0;
-    if (testiDots && testiCards > 0) {
-      for (let i = 0; i < testiCards; i++) {
-        const dot = document.createElement('div');
-        dot.className = 'slider-dot' + (i === 0 ? ' active' : '');
-        dot.onclick = () => { tIndex = i; updateT(); };
-        testiDots.appendChild(dot);
-      }
-    }
-    window.tSlide = (dir) => {
-      tIndex = (tIndex + dir + testiCards) % testiCards;
-      updateT();
-    };
-    const updateT = () => {
-      if (testiTrack) testiTrack.style.transform = 'translateX(-' + (tIndex * 100) + '%)';
-      testiDots?.querySelectorAll('.slider-dot').forEach((d, i) => d.classList.toggle('active', i === tIndex));
-    };
+    // Testimonials slider → setupTestiSlider() (module level), run on every
+    // tab change via hydrateTabSections so it survives remounts.
 
     // Bar fill animation
     const bars = document.querySelectorAll('.bar-fill');
@@ -1196,39 +1237,6 @@ export default function LandingPage({ onLogin }) {
   } catch (e) { console.error('Banners load failed:', e); }
 })();
 
-// ---- 10c. TESTIMONIALS (into #testiTrack, replacing the quote slider) ----
-(async () => {
-  const track = document.getElementById('testiTrack');
-  if (!track) return;
-  try {
-    const testimonials = await getFeaturedTestimonials(8);
-    if (!testimonials.length) return; // leave existing static cards as fallback
-    track.innerHTML = testimonials.map(t => `
-      <div class="testi-card">
-        <div class="stars">${'★'.repeat(t.rating || 5)}${'☆'.repeat(5 - (t.rating || 5))}</div>
-        <blockquote>"${escapeHtml(t.quote)}"</blockquote>
-        <div class="testi-foot">
-          <div class="testi-avatar">🎓</div>
-          <div class="testi-id">
-            <cite>Parent</cite>
-            <span class="testi-meta">${escapeHtml(t.attribution || '')}</span>
-          </div>
-        </div>
-      </div>`).join('');
-
-    // Rebuild the dot navigation to match the real card count
-    const dots = document.getElementById('testiDots');
-    if (dots) {
-      dots.innerHTML = '';
-      testimonials.forEach((_, i) => {
-        const dot = document.createElement('div');
-        dot.className = 'slider-dot' + (i === 0 ? ' active' : '');
-        dot.onclick = () => { tIndex = i; updateT(); };
-        dots.appendChild(dot);
-      });
-    }
-  } catch (e) { console.error('Testimonials load failed:', e); }
-})();
 
 // ---- 11. LIVE FORM SUBMISSIONS (replaces the 3 mock window.submit* functions) ----
 // Clears every field's error state (red border + inline message) — run at
@@ -1829,38 +1837,42 @@ window.submitGrievance = async () => {
   </div>
   {/* STICKY APPLY BAR */}
   <div id="stickyBar">
-    <p>
-      🏆 <strong>66 students selected</strong> in NVS &amp; Sainik School
-      2025–26 — across Manipur.
-    </p>
-    <div className="sticky-btns">
-      <button
-        className="sb-btn sb-btn-gold"
-        onClick={() => {
-          document.getElementById('resultBanner').scrollIntoView({ behavior: 'smooth' });
-          document.getElementById('stickyBar').classList.remove('show');
-        }}
-      >
-        View Results →
-      </button>
-      <a
-        href="https://wa.me/918974298074?text=Hello%20GNSI%2C%20I%20would%20like%20to%20know%20more%20about%20your%20programs."
-        className="sb-btn sb-btn-wa"
-        target="_blank"
-      >
-        WhatsApp
-      </a>
-      <button
-        className="sb-close"
-        onClick={(e) => {
-          const bar = e.currentTarget.parentElement.parentElement;
-          bar.classList.remove('show');
-          bar.style.display = 'none';
-        }}
-        title="Dismiss"
-      >
-        ✕
-      </button>
+    <div className="sb-inner">
+      <p>
+        <strong>66 students selected</strong> in NVS &amp; Sainik School, 2025–26
+      </p>
+      <div className="sticky-btns">
+        <button
+          type="button"
+          className="sb-btn sb-btn-gold"
+          onClick={() => {
+            goToTab('results');
+            document.getElementById('stickyBar')?.classList.remove('show');
+          }}
+        >
+          View Results
+        </button>
+        <a
+          href="https://wa.me/918974298074?text=Hello%20GNSI%2C%20I%20would%20like%20to%20know%20more%20about%20your%20programs."
+          className="sb-btn sb-btn-wa"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.5 3.5A11 11 0 0 0 3.2 17.1L2 22l5-1.2A11 11 0 1 0 20.5 3.5zM12 20a8 8 0 0 1-4.1-1.1l-.3-.2-3 .7.7-2.9-.2-.3A8 8 0 1 1 12 20zm4.4-6c-.2-.1-1.4-.7-1.7-.8s-.4-.1-.5.1-.6.8-.8 1-.3.2-.5.1a6.6 6.6 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3a.4.4 0 0 0 0-.4l-.8-1.8c-.2-.5-.4-.4-.5-.4h-.5a.9.9 0 0 0-.6.3 2.6 2.6 0 0 0-.8 1.9 4.5 4.5 0 0 0 1 2.4 10.2 10.2 0 0 0 3.9 3.5c1.5.6 2 .7 2.7.6a2.3 2.3 0 0 0 1.5-1 1.9 1.9 0 0 0 .1-1c0-.1-.2-.2-.4-.3z"/></svg>
+          WhatsApp
+        </a>
+        <button
+          type="button"
+          className="sb-close"
+          onClick={() => {
+            const bar = document.getElementById('stickyBar');
+            if (bar) { bar.classList.remove('show'); bar.style.display = 'none'; }
+          }}
+          aria-label="Dismiss"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
     </div>
   </div>
   {/* ALERT strip removed — no active admissions messaging (admissions closed Feb) */}
@@ -1897,10 +1909,12 @@ window.submitGrievance = async () => {
   <nav>
     <div className="nav-inner">
       <a className="brand" href="#home" onClick={(e) => { e.preventDefault(); goToTab('home'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
-        <img src={EMBLEM_URL} alt="GNSI" style={{ height: 46, width: 46, objectFit: "contain", flexShrink: 0 }} onError={(e) => { e.target.style.display = 'none'; }} />
+        <span className="nv-crest">
+          <img src={EMBLEM_URL} alt="" onError={(e) => { e.target.style.display = 'none'; }} />
+        </span>
         <div className="brand-text">
-          <h2>GNSI</h2>
-          <small>Est. 2016 · Khangabok, Manipur</small>
+          <h2><span className="brand-full">Guidance Navodaya &amp; Sainik Institute</span><span className="brand-short">GNSI</span></h2>
+          <small>Khangabok, Manipur · Est. 2016</small>
         </div>
       </a>
       {/* Full nav (Admissions, Results, Courses, etc.) now lives only inside
@@ -1908,76 +1922,19 @@ window.submitGrievance = async () => {
           opens it. Only the logo (left, above) and these two frequent
           actions plus the menu toggle stay fixed in the bar. */}
       <div className="nav-fixed-actions">
-        <button
-          onClick={() => setIsFeeOpen(true)}
-          className="nav-fee"
-          style={{
-            fontFamily: 'Inter,sans-serif',
-            fontWeight: 700,
-            fontSize: ".72rem",
-            letterSpacing: ".07em",
-            textTransform: "uppercase",
-            display: "inline-block",
-            padding: ".5rem 1.1rem",
-            color: "#fff",
-            border: "none",
-            borderRadius: 10,
-            cursor: "pointer"
-          }}
-        >
-          Pay Fee →
+        <button type="button" onClick={() => setIsFeeOpen(true)} className="nv-btn nv-primary">
+          Pay Fee
         </button>
-        <a
-          href={ANDROID_APP_URL}
-          download=""
-          className="nav-btn"
-          style={{
-            fontFamily: 'Inter,sans-serif',
-            fontWeight: 700,
-            fontSize: ".72rem",
-            letterSpacing: ".07em",
-            textTransform: "uppercase",
-            borderRadius: 10,
-            display: "inline-block"
-          }}
-        >
-          📱 Get App →
+        <a href={ANDROID_APP_URL} download="" className="nv-btn nv-ghost nv-hide-sm">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+          Get App
         </a>
-        {/* Reuses the existing (previously unused) .nav-par style — same
-            green WhatsApp-family accent the mobile hamburger's "Parents
-            Portal" link already uses, so this doesn't introduce a new
-            color. Desktop-only (hidden below 900px via .nav-desktop-only)
-            since the mobile hamburger menu already has this same action
-            ("Parents Portal →" in .mob-menu) — showing both would just
-            crowd an already-tight 4-icon mobile bar with a duplicate. */}
-        <button
-          onClick={() => setIsPortalOpen(true)}
-          className="nav-par nav-desktop-only"
-          style={{
-            fontFamily: 'Inter,sans-serif',
-            fontWeight: 700,
-            fontSize: ".72rem",
-            letterSpacing: ".07em",
-            textTransform: "uppercase",
-            borderRadius: 10,
-            cursor: "pointer",
-          }}
-        >
-          Parents Login →
+        {/* Desktop only — the mobile menu already has "Parents Portal". */}
+        <button type="button" onClick={() => setIsPortalOpen(true)} className="nv-btn nv-ghost nav-desktop-only">
+          Parents Login
         </button>
-        <button
-          onClick={onLogin}
-          className="nav-btn"
-          style={{
-            fontFamily: 'Inter,sans-serif',
-            fontWeight: 700,
-            fontSize: ".72rem",
-            letterSpacing: ".07em",
-            textTransform: "uppercase",
-            borderRadius: 10
-          }}
-        >
-          Staff Login →
+        <button type="button" onClick={onLogin} className="nv-btn nv-link">
+          Staff Login
         </button>
         <button
           className={"hamburger" + (mobileOpen ? " open" : "")}
@@ -2582,7 +2539,6 @@ window.submitGrievance = async () => {
     </div>
   </section>
   )}
-  <div className="subsection-tag"><span>Track Record</span></div>
   {/* ③ RANKER WALL */}
   {activeTab === 'rankers' && (
   <section className="ranker-section" id="rankers">
@@ -2721,7 +2677,8 @@ window.submitGrievance = async () => {
     </div>
   </section>
   )}
-  {/* TESTIMONIALS */}
+  {/* TESTIMONIALS — Home and Reviews only */}
+  {(activeTab === 'home' || activeTab === 'reviews') && (
   <section className="pad">
     <div className="container">
       <div className="eyebrow reveal">Testimonials</div>
@@ -2811,6 +2768,7 @@ window.submitGrievance = async () => {
       </div>
     </div>
   </section>
+  )}
   {/* ⑥ GOOGLE REVIEWS */}
   {activeTab === 'reviews' && (
   <section className="reviews-section" id="reviews">
@@ -2918,7 +2876,6 @@ window.submitGrievance = async () => {
     </div>
   </section>
   )}
-  <div className="subsection-tag"><span>Inside the Institute</span></div>
   {/* ABOUT */}
   {activeTab === 'about' && (
   <section className="pad" id="about">
@@ -3356,7 +3313,6 @@ window.submitGrievance = async () => {
     </div>
   </section>
   )}
-  <div className="subsection-tag"><span>Newsroom</span></div>
   {/* NOTICES */}
   {activeTab === 'notices' && (
   <section className="pad" id="notices">
@@ -3475,6 +3431,7 @@ window.submitGrievance = async () => {
   </section>
   )}
   {/* PROMO / ADVERTISEMENT BANNER */}
+  {activeTab === 'home' && (
   <section className="promo-banner">
     <div className="promo-inner">
       <div className="promo-text">
@@ -3501,6 +3458,7 @@ window.submitGrievance = async () => {
       </div>
     </div>
   </section>
+  )}
   {/* SECTION-WISE GALLERY */}
   {activeTab === 'gallery' && (
   <section className="pad" id="gallery">
@@ -3661,18 +3619,6 @@ window.submitGrievance = async () => {
     </div>
   </section>
   )}
-  <div className="part-divider">
-    <div className="part-divider-fade part-divider-fade-top" />
-    <div className="part-divider-inner">
-      <span className="part-num">II</span>
-      <span className="part-eyebrow">Part Two</span>
-      <h2 className="part-title">Prepare &amp; Apply</h2>
-      <p className="part-sub">Free resources, exam dates, and everything you need to take the next step.</p>
-      <div className="part-ornament" />
-    </div>
-    <div className="part-divider-fade part-divider-fade-bottom" />
-  </div>
-  <div className="subsection-tag"><span>Free Resources</span></div>
   {/* ③ SCHOLARSHIP / FREE MOCK TEST REGISTRATION */}
   {activeTab === 'scholarship' && (
   <section className="scholar-section" id="scholarship">
@@ -4489,7 +4435,6 @@ window.submitGrievance = async () => {
     </div>
   </section>
   )}
-  <div className="subsection-tag"><span>Plan Your Year</span></div>
   {/* ④ EXAM CALENDAR */}
   {activeTab === 'exam-calendar' && (
   <section className="calendar-section" id="exam-calendar">
@@ -5160,17 +5105,6 @@ window.submitGrievance = async () => {
     </div>
   </section>
   )}
-  <div className="part-divider">
-    <div className="part-divider-fade part-divider-fade-top" />
-    <div className="part-divider-inner">
-      <span className="part-num">III</span>
-      <span className="part-eyebrow">Part Three</span>
-      <h2 className="part-title">For GNSI Families</h2>
-      <p className="part-sub">Fees, results, the student app, and support — all in one place for enrolled families.</p>
-      <div className="part-ornament" />
-    </div>
-    <div className="part-divider-fade part-divider-fade-bottom" />
-  </div>
   {/* ⑧ ONLINE FEE PAYMENT */}
   {activeTab === 'fee-payment' && (
   <section className="fee-section" id="fee-payment">
@@ -5261,7 +5195,6 @@ window.submitGrievance = async () => {
     </div>
   </section>
   )}
-  <div className="subsection-tag"><span>Student &amp; Parent Tools</span></div>
   {/* ② ADMIT CARD + RESULT CHECKER PORTAL */}
   {activeTab === 'portal' && (
   <section className="portal-section" id="portal">
