@@ -566,10 +566,15 @@ export default function ParentsPortal({ isOpen, onClose }) {
   // 640px isMobile cutoff that switches to the separate bottom nav).
   const [navMenuOpen, setNavMenuOpen] = useState(false);
 
-  const [loginGcc, setLoginGcc] = useState('');
+  const [loginGcc, setLoginGcc] = useState(() => {
+    try { return localStorage.getItem('gnsi_pp_remember_gcc') || ''; } catch (_) { return ''; }
+  });
   const [loginName, setLoginName] = useState('');
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [rememberMe, setRememberMe] = useState(() => {
+    try { return !!localStorage.getItem('gnsi_pp_remember_gcc'); } catch (_) { return false; }
+  });
 
   const [documents, setDocuments] = useState(initialTabState);
   const [attendance, setAttendance] = useState(initialTabState);
@@ -643,6 +648,11 @@ export default function ParentsPortal({ isOpen, onClose }) {
     setLoginError('');
 
     try {
+      try {
+        if (rememberMe) localStorage.setItem('gnsi_pp_remember_gcc', gccNo);
+        else localStorage.removeItem('gnsi_pp_remember_gcc');
+      } catch (_) { /* localStorage unavailable — non-fatal */ }
+
       const timeout = (ms) => new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), ms));
 
@@ -1419,131 +1429,190 @@ export default function ParentsPortal({ isOpen, onClose }) {
         id="ppOverlay"
       >
       {!student ? (
-        <div style={{ position: 'relative', flex: '1 1 auto', minWidth: 0, width: '100%', minHeight: '100%', display: 'flex', justifyContent: 'center', padding: isMobile ? '56px 12px 24px' : '24px 16px', background: 'linear-gradient(135deg,#eef2f9 0%,#f8fafc 60%)', boxSizing: 'border-box' }} id="ppLoginWrap">
+        <div style={{ position: 'relative', flex: '1 1 auto', minWidth: 0, width: '100%', minHeight: '100%', display: 'flex', flexDirection: isMobile ? 'column' : 'row', boxSizing: 'border-box' }} id="ppLoginWrap">
           <button
             onClick={onClose}
             style={{ position: 'fixed', top: isMobile ? 12 : 20, right: isMobile ? 12 : 20, height: 40, width: 40, borderRadius: '50%', backgroundColor: 'white', border: '1px solid #e2e8f0', color: '#64748b', cursor: 'pointer', fontSize: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5 }}
           >
             ✕
           </button>
-          <div style={{ width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', alignItems: 'center', margin: 'auto 0' }}>
-            <img
-              src={TENYEAR_BANNER_URL}
-              alt="GNSI — Celebrating 10 Years of Success"
-              style={{
-                width: '100%', maxWidth: 170, height: 'auto', borderRadius: isMobile ? 16 : 12,
-                marginBottom: isMobile ? 16 : 20, boxShadow: '0 10px 30px -8px rgba(15,23,42,.35)',
-                display: 'block', objectFit: 'contain',
-              }}
-              onError={(e) => { e.target.style.display = 'none'; }}
-            />
+
+          {/* LEFT / TOP — brand + trust panel */}
           <div style={{
-            width: '100%', maxWidth: 420,
-            borderRadius: isMobile ? 28 : 18,
-            backgroundColor: 'white',
-            boxShadow: isMobile ? '0 2px 10px rgba(30,58,95,0.12)' : '0 20px 50px -12px rgba(15,23,42,.22)',
-            padding: isMobile ? '30px 22px 26px' : '0 36px 32px',
+            width: isMobile ? '100%' : '44%',
+            minWidth: 0,
+            boxSizing: 'border-box',
+            background: `linear-gradient(160deg, ${NAVY} 0%, #142c4d 100%)`,
+            position: 'relative',
             overflow: 'hidden',
+            padding: isMobile ? '40px 24px 28px' : '56px 48px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: isMobile ? 'flex-start' : 'space-between',
+            flexShrink: 0,
           }}>
-            {!isMobile && (
-              <div style={{
-                margin: '0 -36px 26px', padding: '26px 36px 20px',
-                background: `linear-gradient(135deg, ${NAVY} 0%, #142c4d 100%)`,
-                borderBottom: `3px solid ${GOLD}`,
-                textAlign: 'center',
-              }}>
+            <div style={{ position: 'absolute', top: -120, right: -120, width: 320, height: 320, borderRadius: '50%', background: 'rgba(216,182,92,0.08)' }} />
+            <div style={{ position: 'absolute', bottom: -160, left: -100, width: 380, height: 380, borderRadius: '50%', background: 'rgba(216,182,92,0.06)' }} />
+
+            <div style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 <img
                   src={EMBLEM_URL}
                   alt="GNSI"
-                  style={{ height: 66, width: 66, objectFit: 'contain', margin: '0 auto 12px', display: 'block', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.3))' }}
+                  style={{ height: isMobile ? 48 : 56, width: isMobile ? 48 : 56, objectFit: 'contain', flexShrink: 0, filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.3))' }}
                   onError={(e) => { e.target.style.display = 'none'; }}
                 />
-                <h2 style={{ fontSize: 21, fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '.01em' }}>Parents Portal</h2>
-                <p style={{ fontSize: 12, color: GOLDL, marginTop: 5, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase' }}>
-                  GNSI · Khangabok, Manipur
-                </p>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: '#fff', fontSize: 18, fontWeight: 800, letterSpacing: '.01em' }}>GNSI</div>
+                  <div style={{ color: '#93a5c2', fontSize: 11.5, fontWeight: 600, letterSpacing: '.04em' }}>PARENTS PORTAL</div>
+                </div>
               </div>
-            )}
-            {isMobile && (
-              <div style={{ textAlign: 'center', marginBottom: 26 }}>
-                <img
-                  src={EMBLEM_URL}
-                  alt="GNSI"
-                  style={{ height: 64, width: 64, objectFit: 'contain', margin: '0 auto 12px', display: 'block' }}
-                  onError={(e) => { e.target.style.display = 'none'; }}
-                />
-                <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, margin: 0 }}>Parents Portal</h2>
-                <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>GNSI · Khangabok, Manipur</p>
+
+              {!isMobile && (
+                <>
+                  <h1 style={{ color: '#fff', fontSize: 30, fontWeight: 800, lineHeight: 1.25, margin: '40px 0 12px', maxWidth: 380 }}>
+                    Stay close to your child's journey at GNSI.
+                  </h1>
+                  <p style={{ color: '#b7c3d9', fontSize: 14.5, lineHeight: 1.6, maxWidth: 360, margin: 0 }}>
+                    Track attendance, exam scores, hostel leave, fee dues and school updates — all from one secure portal.
+                  </p>
+                </>
+              )}
+            </div>
+
+            <div style={{ position: 'relative', marginTop: isMobile ? 20 : 0 }}>
+              <div style={{ display: 'flex', gap: isMobile ? 20 : 28, paddingTop: isMobile ? 18 : 24, borderTop: '1px solid rgba(255,255,255,0.12)' }}>
+                <div>
+                  <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 800, color: '#fff', lineHeight: 1 }}>10<span style={{ fontSize: 15 }}>+</span></div>
+                  <div style={{ fontSize: 10.5, color: '#cbd5e1', marginTop: 4, fontWeight: 600, letterSpacing: '.03em', textTransform: 'uppercase' }}>Years</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 800, color: '#fff', lineHeight: 1 }}>66</div>
+                  <div style={{ fontSize: 10.5, color: '#cbd5e1', marginTop: 4, fontWeight: 600, letterSpacing: '.03em', textTransform: 'uppercase' }}>Selected '25–26</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 800, color: '#fff', lineHeight: 1 }}>4.9<span style={{ fontSize: 13 }}>★</span></div>
+                  <div style={{ fontSize: 10.5, color: '#cbd5e1', marginTop: 4, fontWeight: 600, letterSpacing: '.03em', textTransform: 'uppercase' }}>Rating</div>
+                </div>
               </div>
-            )}
-            {loginError && (
-              <div style={{ marginBottom: 16, borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #fecaca', backgroundColor: isMobile ? '#fdeaea' : '#fef2f2', padding: '12px 16px', fontSize: 13, color: '#b91c1c' }}>
-                {loginError}
-              </div>
-            )}
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#64748b', marginBottom: 6 }}>GCC No.</label>
-            <input
-              type="text"
-              style={{
-                width: '100%', borderRadius: isMobile ? 16 : 10,
-                border: isMobile ? 'none' : '1px solid #cbd5e1',
-                backgroundColor: isMobile ? '#eef1f7' : '#f8fafc',
-                padding: isMobile ? '14px 16px' : '12px 14px',
-                color: '#1e293b', outline: 'none', marginBottom: 16, fontSize: 14, boxSizing: 'border-box',
-              }}
-              placeholder="e.g. 1107"
-              value={loginGcc}
-              onChange={(e) => setLoginGcc(e.target.value)}
-            />
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#64748b', marginBottom: 6 }}>Student Name</label>
-            <input
-              type="text"
-              style={{
-                width: '100%', borderRadius: isMobile ? 16 : 10,
-                border: isMobile ? 'none' : '1px solid #cbd5e1',
-                backgroundColor: isMobile ? '#eef1f7' : '#f8fafc',
-                padding: isMobile ? '14px 16px' : '12px 14px',
-                color: '#1e293b', outline: 'none', marginBottom: 22, fontSize: 14, boxSizing: 'border-box',
-              }}
-              placeholder="Full name as registered"
-              value={loginName}
-              onChange={(e) => setLoginName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
-            />
-            <button
-              style={{
-                width: '100%', borderRadius: isMobile ? 999 : 10, backgroundColor: NAVY, color: 'white', fontWeight: 700,
-                padding: isMobile ? '15px 0' : '13px 0', border: `1px solid ${NAVY}`, cursor: loginBusy ? 'not-allowed' : 'pointer',
-                fontSize: 14, opacity: loginBusy ? 0.6 : 1,
-                boxShadow: isMobile ? '0 3px 8px rgba(30,58,95,0.3)' : '0 6px 16px rgba(30,58,95,0.3)',
-              }}
-              disabled={loginBusy}
-              onClick={handleLogin}
-            >
-              {loginBusy ? 'Checking…' : 'Login to Parents Portal →'}
-            </button>
-            <p style={{ textAlign: 'center', fontSize: 12, color: '#64748b', marginTop: 18, marginBottom: 0 }}>
-              Contact institute if you need help:{" "}
-              <a href="tel:+918974298074" style={{ color: NAVY, fontWeight: 600, textDecoration: 'none' }}>
-                +91 89742 98074
-              </a>
-            </p>
-            <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 20, paddingTop: 16, textAlign: 'center' }}>
-              <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }}>
-                Not logging in?
-              </p>
-              <button
-                onClick={() => { onClose(); window.location.hash = '#courses'; }}
-                style={{
-                  background: 'none', border: `1px solid ${GOLD}`, color: GOLD, borderRadius: isMobile ? 14 : 8,
-                  padding: isMobile ? '10px 14px' : '9px 18px', fontSize: isMobile ? 11 : 11.5, fontWeight: 700,
-                  cursor: 'pointer', whiteSpace: 'normal', maxWidth: '100%', lineHeight: 1.4,
-                }}
-              >
-                Browse Site: Admissions, Syllabus, Notices →
-              </button>
+              {!isMobile && (
+                <div style={{ color: '#7c8caa', fontSize: 11.5, marginTop: 20 }}>GNSI · Khangabok, Manipur — Celebrating 10 Years of Success</div>
+              )}
             </div>
           </div>
+
+          {/* RIGHT / BOTTOM — form */}
+          <div style={{ flex: '1 1 auto', minWidth: 0, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? '28px 20px 32px' : '40px' }}>
+            <div style={{ width: '100%', maxWidth: 380 }}>
+
+              {/* step indicator */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 22, height: 22, borderRadius: '50%', backgroundColor: NAVY, color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>1</div>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: NAVY }}>Verify ID</span>
+                </div>
+                <div style={{ flex: 1, height: 2, backgroundColor: '#e2e8f0', borderRadius: 2 }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 22, height: 22, borderRadius: '50%', backgroundColor: '#e2e8f0', color: '#94a3b8', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>2</div>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: '#94a3b8' }}>Portal Access</span>
+                </div>
+              </div>
+
+              <h2 style={{ fontSize: 21, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Welcome back</h2>
+              <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 22px' }}>Sign in with your GCC No. and registered student name.</p>
+
+              {loginError && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 16, borderRadius: 10, border: '1px solid #fecaca', backgroundColor: '#fef2f2', padding: '11px 14px' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v5M12 16h.01" strokeLinecap="round" />
+                  </svg>
+                  <span style={{ fontSize: 12.5, color: '#b91c1c', lineHeight: 1.4 }}>{loginError}</span>
+                </div>
+              )}
+
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#64748b', marginBottom: 6 }}>GCC No.</label>
+              <input
+                type="text"
+                style={{
+                  width: '100%', borderRadius: isMobile ? 16 : 10,
+                  border: isMobile ? 'none' : '1.5px solid #dbe2ea',
+                  backgroundColor: isMobile ? '#eef1f7' : '#fff',
+                  padding: isMobile ? '14px 16px' : '12px 14px',
+                  color: '#1e293b', outline: 'none', marginBottom: 16, fontSize: 14, boxSizing: 'border-box',
+                }}
+                placeholder="e.g. 1107"
+                value={loginGcc}
+                onChange={(e) => setLoginGcc(e.target.value)}
+              />
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#64748b', marginBottom: 6 }}>Student Name</label>
+              <input
+                type="text"
+                style={{
+                  width: '100%', borderRadius: isMobile ? 16 : 10,
+                  border: isMobile ? 'none' : '1.5px solid #dbe2ea',
+                  backgroundColor: isMobile ? '#eef1f7' : '#fff',
+                  padding: isMobile ? '14px 16px' : '12px 14px',
+                  color: '#1e293b', outline: 'none', marginBottom: 16, fontSize: 14, boxSizing: 'border-box',
+                }}
+                placeholder="Full name as registered"
+                value={loginName}
+                onChange={(e) => setLoginName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
+              />
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: '#475569', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    style={{ width: 15, height: 15, accentColor: GOLD }}
+                    checked={rememberMe}
+                    onChange={(e) => {
+                      setRememberMe(e.target.checked);
+                      try { if (!e.target.checked) localStorage.removeItem('gnsi_pp_remember_gcc'); } catch (_) {}
+                    }}
+                  />
+                  Remember me
+                </label>
+                <a href="tel:+918974298074" style={{ color: GOLD, textDecoration: 'none', fontWeight: 600, fontSize: 13 }}>Need help?</a>
+              </div>
+
+              <button
+                style={{
+                  width: '100%', borderRadius: isMobile ? 999 : 10, backgroundColor: NAVY, color: 'white', fontWeight: 700,
+                  padding: isMobile ? '15px 0' : '13px 0', border: `1px solid ${NAVY}`, cursor: loginBusy ? 'not-allowed' : 'pointer',
+                  fontSize: 14, opacity: loginBusy ? 0.6 : 1,
+                  boxShadow: isMobile ? '0 3px 8px rgba(30,58,95,0.3)' : '0 6px 16px rgba(30,58,95,0.3)',
+                }}
+                disabled={loginBusy}
+                onClick={handleLogin}
+              >
+                {loginBusy ? 'Checking…' : 'Sign In to Portal →'}
+              </button>
+
+              <p style={{ textAlign: 'center', fontSize: 12, color: '#64748b', marginTop: 18, marginBottom: 0 }}>
+                Contact institute if you need help:{" "}
+                <a href="tel:+918974298074" style={{ color: NAVY, fontWeight: 600, textDecoration: 'none' }}>
+                  +91 89742 98074
+                </a>
+              </p>
+
+              <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 20, paddingTop: 16, textAlign: 'center' }}>
+                <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }}>
+                  Not logging in?
+                </p>
+                <button
+                  onClick={() => { onClose(); window.location.hash = '#courses'; }}
+                  style={{
+                    background: 'none', border: `1px solid ${GOLD}`, color: GOLD, borderRadius: isMobile ? 14 : 8,
+                    padding: isMobile ? '10px 14px' : '9px 18px', fontSize: isMobile ? 11 : 11.5, fontWeight: 700,
+                    cursor: 'pointer', whiteSpace: 'normal', maxWidth: '100%', lineHeight: 1.4,
+                  }}
+                >
+                  Browse Site: Admissions, Syllabus, Notices →
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ) : (
