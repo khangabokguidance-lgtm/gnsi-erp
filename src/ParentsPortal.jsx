@@ -5,6 +5,9 @@ import { supabase } from './supabase';
 // stylesheet is no longer used.
 
 const EMBLEM_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/emblem/gnsi-emblem.png";
+// "Celebrating 10 Years" full banner (navy background, not transparent) —
+// upload gnsi-10years-banner.jpg to gnsi-public/banners/ in Supabase.
+const TENYEAR_BANNER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-10years-banner.jpg";
 
 // ── .ics CALENDAR EXPORT ─────────────────────────────────────────────────
 // Builds a minimal RFC 5545 calendar file client-side (no library) from
@@ -1380,6 +1383,8 @@ export default function ParentsPortal({ isOpen, onClose }) {
   // one product instead of two different UI kits bolted together.
   const NAVY = '#1e3a5f';
   const BG = '#f8fafc';
+  const GOLD = '#B8912E';
+  const GOLDL = '#D9B65C';
 
   return (
     <>
@@ -1421,24 +1426,68 @@ export default function ParentsPortal({ isOpen, onClose }) {
           >
             ✕
           </button>
+          <div style={{ width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <img
+              src={TENYEAR_BANNER_URL}
+              alt="GNSI — Celebrating 10 Years of Success"
+              style={{
+                width: '100%', maxWidth: 220, height: 'auto', borderRadius: isMobile ? 20 : 14,
+                marginBottom: isMobile ? 18 : 22, boxShadow: '0 10px 30px -8px rgba(15,23,42,.35)',
+                display: 'block',
+              }}
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
           <div style={{
-            width: '100%', maxWidth: 400,
-            borderRadius: isMobile ? 28 : 16,
+            width: '100%', maxWidth: 420,
+            borderRadius: isMobile ? 28 : 18,
             backgroundColor: 'white',
-            boxShadow: isMobile ? '0 2px 10px rgba(30,58,95,0.12)' : '0 10px 40px -10px rgba(15,23,42,.15)',
-            padding: isMobile ? '28px 22px' : 32,
-            borderTop: isMobile ? 'none' : `4px solid ${NAVY}`,
+            boxShadow: isMobile ? '0 2px 10px rgba(30,58,95,0.12)' : '0 20px 50px -12px rgba(15,23,42,.22)',
+            padding: isMobile ? '30px 22px 26px' : '0 36px 32px',
+            overflow: 'hidden',
           }}>
-            <div style={{ textAlign: 'center', marginBottom: 26 }}>
-              <img
-                src={EMBLEM_URL}
-                alt="GNSI"
-                style={{ height: 64, width: 64, objectFit: 'contain', margin: '0 auto 12px' }}
-                onError={(e) => { e.target.style.display = 'none'; }}
-              />
-              <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, margin: 0 }}>Parents Portal</h2>
-              <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>GNSI · Khangabok, Manipur</p>
-            </div>
+            {!isMobile && (
+              <div style={{
+                margin: '0 -36px 26px', padding: '26px 36px 20px',
+                background: `linear-gradient(135deg, ${NAVY} 0%, #142c4d 100%)`,
+                borderBottom: `3px solid ${GOLD}`,
+                textAlign: 'center',
+              }}>
+                <div style={{
+                  width: 78, height: 78, borderRadius: '50%', margin: '0 auto 12px',
+                  backgroundColor: 'rgba(255,255,255,0.95)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: `2px solid ${GOLDL}`, boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
+                }}>
+                  <img
+                    src={EMBLEM_URL}
+                    alt="GNSI"
+                    style={{ height: 54, width: 54, objectFit: 'contain' }}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                </div>
+                <h2 style={{ fontSize: 21, fontWeight: 800, color: '#fff', margin: 0, letterSpacing: '.01em' }}>Parents Portal</h2>
+                <p style={{ fontSize: 12, color: GOLDL, marginTop: 5, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase' }}>
+                  GNSI · Khangabok, Manipur
+                </p>
+              </div>
+            )}
+            {isMobile && (
+              <div style={{ textAlign: 'center', marginBottom: 26 }}>
+                <div style={{
+                  width: 76, height: 76, borderRadius: '50%', margin: '0 auto 12px',
+                  backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: `2px solid ${GOLD}`,
+                }}>
+                  <img
+                    src={EMBLEM_URL}
+                    alt="GNSI"
+                    style={{ height: 54, width: 54, objectFit: 'contain' }}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                </div>
+                <h2 style={{ fontSize: 20, fontWeight: 800, color: NAVY, margin: 0 }}>Parents Portal</h2>
+                <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>GNSI · Khangabok, Manipur</p>
+              </div>
+            )}
             {loginError && (
               <div style={{ marginBottom: 16, borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #fecaca', backgroundColor: isMobile ? '#fdeaea' : '#fef2f2', padding: '12px 16px', fontSize: 13, color: '#b91c1c' }}>
                 {loginError}
@@ -1476,21 +1525,36 @@ export default function ParentsPortal({ isOpen, onClose }) {
             <button
               style={{
                 width: '100%', borderRadius: isMobile ? 999 : 10, backgroundColor: NAVY, color: 'white', fontWeight: 700,
-                padding: isMobile ? '15px 0' : '13px 0', border: 'none', cursor: loginBusy ? 'not-allowed' : 'pointer',
+                padding: isMobile ? '15px 0' : '13px 0', border: `1px solid ${NAVY}`, cursor: loginBusy ? 'not-allowed' : 'pointer',
                 fontSize: 14, opacity: loginBusy ? 0.6 : 1,
-                boxShadow: isMobile ? '0 3px 8px rgba(30,58,95,0.3)' : '0 2px 8px rgba(30,58,95,0.25)',
+                boxShadow: isMobile ? '0 3px 8px rgba(30,58,95,0.3)' : '0 6px 16px rgba(30,58,95,0.3)',
               }}
               disabled={loginBusy}
               onClick={handleLogin}
             >
               {loginBusy ? 'Checking…' : 'Login to Parents Portal →'}
             </button>
-            <p style={{ textAlign: 'center', fontSize: 12, color: '#64748b', marginTop: 18 }}>
+            <p style={{ textAlign: 'center', fontSize: 12, color: '#64748b', marginTop: 18, marginBottom: 0 }}>
               Contact institute if you need help:{" "}
               <a href="tel:+918974298074" style={{ color: NAVY, fontWeight: 600, textDecoration: 'none' }}>
                 +91 89742 98074
               </a>
             </p>
+            <div style={{ borderTop: '1px solid #e2e8f0', marginTop: 20, paddingTop: 16, textAlign: 'center' }}>
+              <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }}>
+                Not logging in?
+              </p>
+              <button
+                onClick={() => { onClose(); window.location.hash = '#courses'; }}
+                style={{
+                  background: 'none', border: `1px solid ${GOLD}`, color: GOLD, borderRadius: isMobile ? 999 : 8,
+                  padding: '9px 18px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                }}
+              >
+                Browse Site: Admissions, Syllabus, Notices →
+              </button>
+            </div>
+          </div>
           </div>
         </div>
       ) : (
