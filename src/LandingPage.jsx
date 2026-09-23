@@ -3989,12 +3989,30 @@ window.submitGrievance = async () => {
           <h3>Navodaya Vidyalaya (NVS)</h3>
           <div className="papers-sub">JNVST · Class 6 Entry</div>
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2025.pdf"
+            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2025-18jan.pdf"
             className="paper-link"
             target="_blank"
             download=""
           >
-            <span className="paper-name">JNVST Class 6 — 2025</span>
+            <span className="paper-name">JNVST Class 6 — 18 Jan 2025</span>
+            <span className="paper-dl">⬇</span>
+          </a>
+          <a
+            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2025-12apr.pdf"
+            className="paper-link"
+            target="_blank"
+            download=""
+          >
+            <span className="paper-name">JNVST Class 6 — 12 Apr 2025</span>
+            <span className="paper-dl">⬇</span>
+          </a>
+          <a
+            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2025-13dec.pdf"
+            className="paper-link"
+            target="_blank"
+            download=""
+          >
+            <span className="paper-name">JNVST Class 6 — 13 Dec 2025</span>
             <span className="paper-dl">⬇</span>
           </a>
           <a
@@ -4004,15 +4022,6 @@ window.submitGrievance = async () => {
             download=""
           >
             <span className="paper-name">JNVST Class 6 — 2024</span>
-            <span className="paper-dl">⬇</span>
-          </a>
-          <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/nvs-class6-2023.pdf"
-            className="paper-link"
-            target="_blank"
-            download=""
-          >
-            <span className="paper-name">JNVST Class 6 — 2023</span>
             <span className="paper-dl">⬇</span>
           </a>
           <button
@@ -4082,6 +4091,15 @@ window.submitGrievance = async () => {
             download=""
           >
             <span className="paper-name">RMS CET Class 6 — 2024</span>
+            <span className="paper-dl">⬇</span>
+          </a>
+          <a
+            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/papers/rms-class6-2023.pdf"
+            className="paper-link"
+            target="_blank"
+            download=""
+          >
+            <span className="paper-name">RMS CET Class 6 — 2023</span>
             <span className="paper-dl">⬇</span>
           </a>
           <button
