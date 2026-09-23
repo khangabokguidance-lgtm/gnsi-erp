@@ -1427,3 +1427,7 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
 .adm-prog-logo.is-pair img + img{margin-left:-8px}
 .adm-note{margin:.7rem 0 0;font-size:.72rem;line-height:1.45;color:#8A93A3!important}
 .adm-panel .adm-note{font-size:.72rem!important;line-height:1.45!important;max-width:none!important;margin:.7rem 0 0!important;color:#8A93A3!important}
+/* Quick-link tiles with picture icons */
+.adm-link{gap:.65rem;min-height:52px;background:#fff}
+.adm-link .adm-ic{width:32px;height:32px;flex-shrink:0;object-fit:contain;display:block;fill:initial;stroke:none}
+.adm-link .adm-ic-wide{width:44px;height:auto;max-height:32px}
