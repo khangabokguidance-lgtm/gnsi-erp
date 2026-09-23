@@ -1,434 +1,143 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabase'
-import { LOGO_BASE64 } from './logo'
+// Put both images next to Login.jsx (Vite bundles them)
+import loginPoster from './login-poster.jpg'
+import gnsiCrest from './gnsi-crest.png'
 
+// ─────────────────────────────────────────────────────────────────────────
+// Login — "Ledger & Crest" design (navy + brass gold, serif headings).
+// Only the presentation changed; the sign-in logic (admin shortcut via
+// admin_credentials, SHA-256 check against portal_users, staff_profiles
+// lookup, set_staff_context RPC, Remember me) is unchanged.
+// ─────────────────────────────────────────────────────────────────────────
+
+const STYLE_ID = 'gnsi-login-styles-v3'
 const injectStyles = () => {
-  if (document.getElementById('gnsi-login-styles')) return
+  if (document.getElementById(STYLE_ID)) return
+  // Remove the old login stylesheet if an earlier version injected it
+  document.getElementById('gnsi-login-styles')?.remove()
   const style = document.createElement('style')
-  style.id = 'gnsi-login-styles'
+  style.id = STYLE_ID
   style.textContent = `
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap');
 
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    .gl-page, .gl-page *, .gl-page *::before, .gl-page *::after { box-sizing: border-box; }
 
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(20px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes shake {
-      0%,100% { transform: translateX(0); }
-      20%     { transform: translateX(-7px); }
-      40%     { transform: translateX(7px); }
-      60%     { transform: translateX(-4px); }
-      80%     { transform: translateX(4px); }
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes pulse {
-      0%,100% { opacity: 1; }
-      50%     { opacity: .5; }
-    }
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateY(-6px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes floatA {
-      0%,100% { transform: translateY(0px) rotate(0deg); }
-      50%     { transform: translateY(-18px) rotate(3deg); }
-    }
-    @keyframes floatB {
-      0%,100% { transform: translateY(0px) rotate(0deg); }
-      50%     { transform: translateY(-12px) rotate(-2deg); }
+    @keyframes gl-fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    @keyframes gl-shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 50%{transform:translateX(6px)} 75%{transform:translateX(-3px)} }
+    @keyframes gl-spin { to { transform: rotate(360deg); } }
+
+    .gl-page {
+      --navy: #0B1E3D; --navy2: #132B52; --gold: #C9A24B; --goldL: #E2C57E;
+      --ink: #0F172A; --muted: #5B6475; --line: #D9DEE7; --bg: #F5F6F8; --err: #B42318;
+      min-height: 100vh; min-height: 100dvh;
+      display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+      background: var(--bg);
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      color: var(--ink);
+      margin: 0;
     }
 
-    .gnsi-page {
-      min-height: 100vh;
-      min-height: 100dvh;
-      background: #060d1a;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: 'Outfit', sans-serif;
-      padding: 20px 16px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .gnsi-bg-grid {
-      position: absolute;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(14,165,233,.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(14,165,233,.06) 1px, transparent 1px);
-      background-size: 48px 48px;
-      pointer-events: none;
-    }
-
-    .gnsi-bg-orb1 {
-      position: absolute;
-      width: 500px; height: 500px;
-      background: radial-gradient(circle, rgba(14,165,233,.12) 0%, transparent 70%);
-      border-radius: 50%;
-      top: -150px; left: -150px;
-      pointer-events: none;
-    }
-    .gnsi-bg-orb2 {
-      position: absolute;
-      width: 400px; height: 400px;
-      background: radial-gradient(circle, rgba(99,102,241,.1) 0%, transparent 70%);
-      border-radius: 50%;
-      bottom: -100px; right: -100px;
-      pointer-events: none;
-    }
-
-    .gnsi-float-card1 {
-      position: absolute;
-      top: 12%;
-      right: 8%;
-      width: 64px; height: 64px;
-      background: rgba(14,165,233,.08);
-      border: 1px solid rgba(14,165,233,.15);
-      border-radius: 16px;
-      animation: floatA 6s ease-in-out infinite;
-      pointer-events: none;
-    }
-    .gnsi-float-card2 {
-      position: absolute;
-      bottom: 18%;
-      left: 6%;
-      width: 44px; height: 44px;
-      background: rgba(99,102,241,.08);
-      border: 1px solid rgba(99,102,241,.15);
-      border-radius: 12px;
-      animation: floatB 8s ease-in-out infinite;
-      pointer-events: none;
-    }
-    .gnsi-float-card3 {
-      position: absolute;
-      top: 60%;
-      right: 5%;
-      width: 32px; height: 32px;
-      background: rgba(14,165,233,.06);
-      border: 1px solid rgba(14,165,233,.12);
-      border-radius: 8px;
-      animation: floatA 7s ease-in-out infinite 1s;
-      pointer-events: none;
-    }
-
-    .gnsi-wrap {
-      width: 100%;
-      max-width: 420px;
-      animation: fadeUp .6s cubic-bezier(.22,1,.36,1) both;
-      position: relative;
-      z-index: 1;
-    }
-
-    .gnsi-brand {
-      text-align: center;
-      margin-bottom: 32px;
-    }
-    .gnsi-logo-ring {
-      width: 72px; height: 72px;
-      border-radius: 20px;
-      background: linear-gradient(135deg, #0ea5e9, #6366f1);
+    /* ── Left: GNSI poster (panel navy matches the poster's #0E3266) ── */
+    .gl-brand {
+      background: #0E3266;
       display: flex; align-items: center; justify-content: center;
-      margin: 0 auto 16px;
-      box-shadow: 0 0 0 1px rgba(14,165,233,.3), 0 16px 40px rgba(14,165,233,.25);
-      position: relative;
+      padding: 32px; overflow: hidden;
+      border-right: 3px solid var(--gold);
     }
-    .gnsi-logo-ring::after {
-      content: '';
-      position: absolute;
-      inset: -4px;
-      border-radius: 24px;
-      border: 1px solid rgba(14,165,233,.2);
-    }
-    .gnsi-logo-icon {
-      font-size: 32px;
-      line-height: 1;
-    }
-    .gnsi-title {
-      font-size: clamp(22px, 5vw, 26px);
-      font-weight: 800;
-      color: #f0f9ff;
-      letter-spacing: -.5px;
-      margin-bottom: 4px;
-    }
-    .gnsi-subtitle {
-      font-size: 13px;
-      color: #64748b;
-      font-weight: 400;
-      letter-spacing: .3px;
+    .gl-poster {
+      display: block; width: auto; height: auto;
+      max-width: 100%; max-height: calc(100dvh - 64px);
+      object-fit: contain;
+      animation: gl-fade .5s ease both;
     }
 
-    .gnsi-card {
-      background: rgba(15,23,42,.85);
-      border: 1px solid rgba(14,165,233,.15);
-      border-radius: 24px;
-      padding: clamp(24px, 6vw, 36px) clamp(20px, 6vw, 32px);
-      backdrop-filter: blur(24px);
-      box-shadow:
-        0 0 0 1px rgba(255,255,255,.03),
-        0 32px 80px rgba(0,0,0,.5),
-        inset 0 1px 0 rgba(255,255,255,.05);
+    /* ── Right: sign-in ── */
+    .gl-main { display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+    .gl-card {
+      width: 100%; max-width: 400px;
+      background: #fff; border: 1px solid var(--line); border-radius: 12px;
+      padding: 36px 32px 28px;
+      box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 12px 32px rgba(15,23,42,.06);
+      animation: gl-fade .45s ease both;
     }
-    .gnsi-card.shake {
-      animation: shake .4s ease;
-    }
+    .gl-card.shake { animation: gl-shake .35s ease; }
 
-    .gnsi-section-label {
-      font-size: 10px;
-      font-weight: 600;
-      color: #0ea5e9;
-      letter-spacing: 1.2px;
-      text-transform: uppercase;
-      margin-bottom: 20px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .gnsi-section-label::before,
-    .gnsi-section-label::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(14,165,233,.3), transparent);
-    }
+    .gl-mobile-brand { display: none; }
 
-    .gnsi-field {
-      margin-bottom: 16px;
-    }
-    .gnsi-label {
-      display: block;
-      font-size: 11px;
-      font-weight: 600;
-      color: #94a3b8;
-      letter-spacing: .8px;
-      text-transform: uppercase;
-      margin-bottom: 8px;
-    }
-    .gnsi-input-wrap {
-      position: relative;
-    }
-    .gnsi-input-icon {
-      position: absolute;
-      left: 14px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: #475569;
-      display: flex;
-      align-items: center;
-      pointer-events: none;
-      transition: color .2s;
-    }
-    .gnsi-input {
-      width: 100%;
-      padding: 13px 44px 13px 44px;
-      background: rgba(2,6,23,.6);
-      border: 1.5px solid rgba(51,65,85,.8);
-      border-radius: 12px;
-      font-size: 14px;
-      font-family: 'Outfit', sans-serif;
-      font-weight: 400;
-      color: #e2e8f0;
-      outline: none;
-      transition: border-color .2s, box-shadow .2s, background .2s;
-      -webkit-appearance: none;
-    }
-    .gnsi-input::placeholder { color: #334155; }
-    .gnsi-input:focus {
-      border-color: #0ea5e9;
-      background: rgba(2,6,23,.8);
-      box-shadow: 0 0 0 3px rgba(14,165,233,.12);
-    }
-    .gnsi-input:focus ~ .gnsi-input-icon,
-    .gnsi-input-wrap:focus-within .gnsi-input-icon { color: #0ea5e9; }
+    .gl-card-crest { display: block; width: 64px; height: auto; margin: 0 0 18px; }
+    .gl-title { font-family: 'Source Serif 4', Georgia, serif; font-size: 26px; font-weight: 700; color: var(--navy); margin: 0 0 6px; }
+    .gl-sub { font-size: 14px; color: var(--muted); margin: 0 0 28px; }
 
-    .gnsi-eye-btn {
-      position: absolute;
-      right: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: #475569;
-      padding: 4px;
-      display: flex;
-      align-items: center;
-      border-radius: 6px;
-      transition: color .2s, background .2s;
+    .gl-field { margin-bottom: 18px; }
+    .gl-label { display: block; font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 7px; }
+    .gl-input-wrap { position: relative; }
+    .gl-input {
+      width: 100%; height: 46px; padding: 0 14px;
+      font: 400 15px 'Inter', system-ui, sans-serif; color: var(--ink);
+      background: #fff; border: 1px solid var(--line); border-radius: 8px;
+      outline: none; transition: border-color .15s, box-shadow .15s;
+      -webkit-appearance: none; appearance: none;
     }
-    .gnsi-eye-btn:hover { color: #94a3b8; background: rgba(255,255,255,.05); }
+    .gl-input::placeholder { color: #9AA3B2; }
+    .gl-input:hover { border-color: #BFC6D2; }
+    .gl-input:focus { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(11,30,61,.12); }
+    .gl-input.has-toggle { padding-right: 72px; }
+    .gl-input[aria-invalid="true"] { border-color: var(--err); }
 
-    .gnsi-remember-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 24px;
-      margin-top: 4px;
+    .gl-toggle {
+      position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+      height: 34px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent;
+      font: 600 12px 'Inter', system-ui, sans-serif; color: var(--navy2); cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px;
     }
-    .gnsi-remember {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      user-select: none;
-    }
-    .gnsi-checkbox {
-      width: 16px; height: 16px;
-      accent-color: #0ea5e9;
-      cursor: pointer;
-      border-radius: 4px;
-    }
-    .gnsi-remember-text {
-      font-size: 12px;
-      color: #64748b;
-      font-weight: 500;
-    }
-    .gnsi-forgot {
-      font-size: 11px;
-      color: #475569;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
+    .gl-toggle:hover { background: #EEF1F6; }
+    .gl-toggle:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px; }
 
-    .gnsi-error {
-      background: rgba(220,38,38,.1);
-      border: 1px solid rgba(220,38,38,.25);
-      color: #fca5a5;
-      font-size: 12px;
-      font-weight: 500;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 16px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      animation: slideIn .25s ease;
-    }
+    .gl-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 22px; flex-wrap: wrap; }
+    .gl-remember { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); cursor: pointer; user-select: none; }
+    .gl-remember input { width: 16px; height: 16px; accent-color: var(--navy); cursor: pointer; margin: 0; }
+    .gl-help { font-size: 13px; color: var(--muted); }
 
-    .gnsi-btn {
-      width: 100%;
-      padding: 14px;
-      background: linear-gradient(135deg, #0ea5e9, #6366f1);
-      color: #fff;
-      border: none;
-      border-radius: 12px;
-      font-size: 14px;
-      font-family: 'Outfit', sans-serif;
-      font-weight: 700;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      letter-spacing: .3px;
-      transition: opacity .2s, transform .15s, box-shadow .2s;
-      box-shadow: 0 4px 24px rgba(14,165,233,.25);
-      position: relative;
-      overflow: hidden;
+    .gl-error {
+      display: flex; gap: 10px; align-items: flex-start;
+      background: #FEF3F2; border: 1px solid #FECDCA; color: var(--err);
+      font-size: 13px; line-height: 1.45; border-radius: 8px; padding: 10px 12px; margin-bottom: 16px;
     }
-    .gnsi-btn::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(135deg, rgba(255,255,255,.15), transparent);
-      opacity: 0;
-      transition: opacity .2s;
-    }
-    .gnsi-btn:hover:not(:disabled)::before { opacity: 1; }
-    .gnsi-btn:hover:not(:disabled) {
-      transform: translateY(-1px);
-      box-shadow: 0 8px 32px rgba(14,165,233,.35);
-    }
-    .gnsi-btn:active:not(:disabled) { transform: translateY(0); }
-    .gnsi-btn:disabled { opacity: .6; cursor: not-allowed; }
+    .gl-error svg { flex-shrink: 0; margin-top: 1px; }
 
-    .gnsi-spinner {
-      width: 14px; height: 14px;
-      border: 2px solid rgba(255,255,255,.3);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin .7s linear infinite;
-      flex-shrink: 0;
+    .gl-btn {
+      width: 100%; height: 48px; border: 0; border-radius: 8px;
+      background: var(--navy); color: #fff;
+      font: 600 15px 'Inter', system-ui, sans-serif; letter-spacing: .2px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+      cursor: pointer; transition: background .15s, box-shadow .15s;
+      box-shadow: inset 0 -2px 0 var(--gold);
     }
+    .gl-btn:hover:not(:disabled) { background: var(--navy2); }
+    .gl-btn:focus-visible { outline: 3px solid rgba(201,162,75,.6); outline-offset: 2px; }
+    .gl-btn:disabled { opacity: .7; cursor: default; }
+    .gl-spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: gl-spin .7s linear infinite; }
 
-    .gnsi-divider {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin: 20px 0 0;
-    }
-    .gnsi-divider-line {
-      flex: 1;
-      height: 1px;
-      background: rgba(51,65,85,.5);
-    }
+    .gl-card-foot { margin-top: 22px; padding-top: 18px; border-top: 1px solid #EEF0F4; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 
-    .gnsi-footer {
-      text-align: center;
-      margin-top: 24px;
-    }
-    .gnsi-footer-text {
-      font-size: 11px;
-      color: #1e293b;
-      letter-spacing: .3px;
-    }
-    .gnsi-badges {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 14px;
-    }
-    .gnsi-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 10px;
-      border-radius: 99px;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: .4px;
-      border: 1px solid;
-    }
-    .gnsi-badge-blue {
-      background: rgba(14,165,233,.08);
-      border-color: rgba(14,165,233,.2);
-      color: #38bdf8;
-    }
-    .gnsi-badge-purple {
-      background: rgba(99,102,241,.08);
-      border-color: rgba(99,102,241,.2);
-      color: #a5b4fc;
-    }
-    .gnsi-badge-green {
-      background: rgba(16,185,129,.08);
-      border-color: rgba(16,185,129,.2);
-      color: #6ee7b7;
-    }
+    .gl-legal { text-align: center; font-size: 12px; color: #8A93A3; margin-top: 18px; }
 
-    .gnsi-version {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 10px;
-      color: #1e293b;
-      margin-top: 10px;
-      letter-spacing: .5px;
+    @media (max-width: 900px) {
+      .gl-page { grid-template-columns: 1fr; background: var(--bg); }
+      .gl-brand { display: none; }
+      .gl-main { align-items: flex-start; padding: 32px 16px 24px; }
+      .gl-mobile-brand { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 20px; }
+      .gl-crest-img { width: 88px; height: auto; margin-bottom: 10px; }
+      .gl-card-crest { display: none; }
+      .gl-mobile-name { font-family: 'Source Serif 4', Georgia, serif; font-weight: 700; font-size: 18px; color: var(--navy); }
+      .gl-mobile-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+      .gl-card { padding: 28px 22px 22px; }
     }
-
-    @media (max-width: 480px) {
-      .gnsi-page { padding: 16px 12px; align-items: flex-start; padding-top: 40px; }
-      .gnsi-card { border-radius: 20px; }
-      .gnsi-float-card1, .gnsi-float-card2, .gnsi-float-card3 { display: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .gl-card, .gl-poster { animation: none !important; }
     }
-    @media (max-height: 700px) {
-      .gnsi-brand { margin-bottom: 20px; }
-      .gnsi-logo-ring { width: 56px; height: 56px; border-radius: 16px; }
-      .gnsi-logo-icon { font-size: 26px; }
-    }
-  `
+`
   document.head.appendChild(style)
 }
 
@@ -437,26 +146,26 @@ async function sha256(text) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
 }
 
-const UserIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-  </svg>
-)
-const LockIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-  </svg>
-)
 const EyeOpen = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
   </svg>
 )
 const EyeClosed = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
     <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
     <line x1="1" y1="1" x2="23" y2="23"/>
+  </svg>
+)
+const AlertIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+  </svg>
+)
+const ShieldIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
   </svg>
 )
 
@@ -484,7 +193,7 @@ export default function Login({ onLogin }) {
     setTimeout(() => setShakeCard(false), 450)
   }
 
-  const handleLogin = async () => {
+  const doLogin = async () => {
     setError('')
     if (!username.trim() || !password.trim()) {
       showError('Please enter both username and password.'); return
@@ -601,120 +310,127 @@ onLogin({
     setLoading(false)
   }
 
+  // Wrapper: any unexpected failure (network drop, Supabase outage) shows a
+  // message and re-enables the button instead of leaving it stuck.
+  const handleLogin = async (e) => {
+    if (e && e.preventDefault) e.preventDefault()
+    if (loading) return
+    try {
+      await doLogin()
+    } catch (err) {
+      console.error('Login failed:', err)
+      showError('Could not reach the server. Check your connection and try again.')
+      setLoading(false)
+    }
+  }
+
+  const year = new Date().getFullYear()
+
   return (
-    <div className="gnsi-page">
-      <div className="gnsi-bg-grid" />
-      <div className="gnsi-bg-orb1" />
-      <div className="gnsi-bg-orb2" />
-      <div className="gnsi-float-card1" />
-      <div className="gnsi-float-card2" />
-      <div className="gnsi-float-card3" />
+    <div className="gl-page">
+      {/* Institute panel (hidden on phones) */}
+      <aside className="gl-brand">
+        <img
+          className="gl-poster"
+          src={loginPoster}
+          alt="Guidance Navodaya & Sainik Institute — Celebrating 10 Years of Success"
+        />
+      </aside>
 
-      <div className="gnsi-wrap">
-        <div className="gnsi-brand">
-          <div className="gnsi-logo-ring">
-            <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI" style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover' }} />
+      {/* Sign-in */}
+      <main className="gl-main">
+        <div style={{ width: '100%', maxWidth: 400 }}>
+          <div className="gl-mobile-brand">
+            <img className="gl-crest-img" src={gnsiCrest} alt="GNSI crest" />
+            <div className="gl-mobile-name">Guidance Navodaya &amp; Sainik Institute</div>
+            <div className="gl-mobile-sub">GNSI ERP · Staff Portal</div>
           </div>
-          <h1 className="gnsi-title">GNSI ERP</h1>
-          <p className="gnsi-subtitle">School Management System</p>
-        </div>
 
-        <div ref={cardRef} className={`gnsi-card${shakeCard ? ' shake' : ''}`}>
-          <div className="gnsi-section-label">Secure Sign In</div>
+          <form
+            ref={cardRef}
+            className={`gl-card${shakeCard ? ' shake' : ''}`}
+            onSubmit={handleLogin}
+            noValidate
+          >
+            <img className="gl-card-crest" src={gnsiCrest} alt="" aria-hidden="true" />
+            <h1 className="gl-title">Sign in</h1>
+            <p className="gl-sub">Use your GNSI staff account to continue.</p>
 
-          {/* Username */}
-          <div className="gnsi-field">
-            <label className="gnsi-label">Username</label>
-            <div className="gnsi-input-wrap">
-              <span className="gnsi-input-icon"><UserIcon /></span>
+            <div className="gl-field">
+              <label className="gl-label" htmlFor="gl-username">Username</label>
               <input
-                className="gnsi-input"
+                id="gl-username"
+                className="gl-input"
                 type="text"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleLogin()}
-                placeholder="Enter your username"
+                placeholder="Your username"
                 autoComplete="username"
                 autoCapitalize="none"
+                autoCorrect="off"
                 spellCheck="false"
+                aria-invalid={error ? 'true' : undefined}
+                autoFocus={!username}
               />
             </div>
-          </div>
 
-          {/* Password */}
-          <div className="gnsi-field">
-            <label className="gnsi-label">Password</label>
-            <div className="gnsi-input-wrap">
-              <span className="gnsi-input-icon"><LockIcon /></span>
-              <input
-                className="gnsi-input"
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleLogin()}
-                placeholder="Enter your password"
-                autoComplete="current-password"
-                style={{ paddingRight: 44 }}
-              />
-              <button
-                type="button"
-                className="gnsi-eye-btn"
-                onClick={() => setShowPassword(v => !v)}
-                title={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? <EyeClosed /> : <EyeOpen />}
-              </button>
+            <div className="gl-field">
+              <label className="gl-label" htmlFor="gl-password">Password</label>
+              <div className="gl-input-wrap">
+                <input
+                  id="gl-password"
+                  className="gl-input has-toggle"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  autoComplete="current-password"
+                  aria-invalid={error ? 'true' : undefined}
+                  autoFocus={!!username}
+                />
+                <button
+                  type="button"
+                  className="gl-toggle"
+                  onClick={() => setShowPassword(v => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
+                >
+                  {showPassword ? <EyeClosed /> : <EyeOpen />}
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </div>
-          </div>
 
-          {/* Remember + Forgot */}
-          <div className="gnsi-remember-row">
-            <label className="gnsi-remember">
-              <input
-                type="checkbox"
-                className="gnsi-checkbox"
-                checked={rememberMe}
-                onChange={e => setRememberMe(e.target.checked)}
-              />
-              <span className="gnsi-remember-text">Remember me</span>
-            </label>
-            <span className="gnsi-forgot">🔒 Contact admin</span>
-          </div>
-
-          {/* Error */}
-          {error && (
-            <div className="gnsi-error">
-              <span>⚠</span> {error}
+            <div className="gl-row">
+              <label className="gl-remember">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={e => setRememberMe(e.target.checked)}
+                />
+                Remember my username
+              </label>
+              <span className="gl-help">Forgot password? Contact the admin.</span>
             </div>
-          )}
 
-          {/* Submit */}
-          <button
-            className="gnsi-btn"
-            onClick={handleLogin}
-            disabled={loading}
-          >
-            {loading
-              ? <><div className="gnsi-spinner" /> Signing in…</>
-              : '🔐 Sign In'
-            }
-          </button>
+            {error && (
+              <div className="gl-error" role="alert">
+                <AlertIcon /> <span>{error}</span>
+              </div>
+            )}
 
-          <div className="gnsi-divider">
-            <div className="gnsi-divider-line" />
-          </div>
+            <button type="submit" className="gl-btn" disabled={loading}>
+              {loading ? <><span className="gl-spinner" aria-hidden="true" /> Signing in…</> : 'Sign in'}
+            </button>
+
+            <div className="gl-card-foot">
+              <ShieldIcon /> For authorised GNSI staff only.
+            </div>
+          </form>
+
+          <p className="gl-legal">© {year} Guidance Navodaya &amp; Sainik Institute</p>
         </div>
-
-        {/* Footer */}
-        <div className="gnsi-footer">
-          <div className="gnsi-badges">
-            <span className="gnsi-badge gnsi-badge-blue">⚡ React + Vite</span>
-            <span className="gnsi-badge gnsi-badge-purple">🛡 Supabase</span>
-            <span className="gnsi-badge gnsi-badge-green">✓ SHA-256</span>
-          </div>
-          <p className="gnsi-version">v2.1 · © {new Date().getFullYear()} GNSI</p>
-        </div>
-      </div>
+      </main>
     </div>
   )
 }
