@@ -1115,3 +1115,18 @@ footer a:hover{color:var(--goldL);padding-left:4px}
   opacity: 1 !important;
   transform: none !important;
 }
+/* ── Live Dashboard fixes ──────────────────────────────────────────────
+   1. The hero's left column is now the tall AISSEE poster, and
+      align-items:center pushed the dashboard halfway down the page.
+      It now sits at the top, next to the poster.
+   2. The panel is only ~340px wide, so its three KPI columns (~110px
+      each) could not fit "UPCOMING EXAMS" and it was cut off by the
+      panel's overflow:hidden. Columns can now shrink and labels wrap.
+   3. Long "Latest Notice" titles wrap instead of pushing out the row. */
+.hero-wrap{align-items:start}
+.dash-kpi{grid-template-columns:repeat(3,minmax(0,1fr))}
+.kpi{min-width:0;padding:1.1rem .45rem}
+.kpi span{display:block;margin-top:.45rem;font-size:clamp(.64rem,.95vw,.76rem);line-height:1.3;overflow-wrap:anywhere}
+.dash-row{gap:1rem}
+.dash-row span{flex-shrink:0}
+.dash-row strong{min-width:0;text-align:right;overflow-wrap:anywhere}
