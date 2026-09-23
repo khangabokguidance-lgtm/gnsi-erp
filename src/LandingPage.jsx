@@ -645,6 +645,62 @@ function hydrateTabSections(setFeePaymentInfo) {
     } catch (e) { console.error('Fee payment details load failed:', e); }
   })();
 
+  // ---- 10g. FEE PAYMENT — LIVE FEE STRUCTURE TABLE (into #feeRatesBox) ----
+  // Reads the real `fee_structures` table directly — the same table
+  // getFeeRates()/feeEngine.js uses to compute every student's actual dues,
+  // and the same one Fee Setup (admin) writes to. This is intentionally NOT
+  // the `course_fees` table (that one is a separate, disconnected admin UI
+  // that nothing on the live site reads). Shows current-session rates by
+  // course/hostel type so a visitor can see indicative fees before looking
+  // up a specific student. Renders nothing if no rows exist yet, so no
+  // fabricated fee ever appears here.
+  (async () => {
+    const ratesBox = document.getElementById('feeRatesBox');
+    if (!ratesBox) return;
+    try {
+      const now = new Date();
+      const y = now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+      const sessionYear = `${y}-${y + 1}`;
+
+      const { data: rows, error } = await supabase
+        .from('fee_structures')
+        .select('course, hostel_type, flat_fee, course_fee, admission_fee')
+        .eq('session_year', sessionYear)
+        .order('course')
+        .order('hostel_type');
+
+      if (error || !rows || !rows.length) return;
+
+      // One row per course+hostel_type combo (dedupe in case of batch-level
+      // duplicates — public view only needs course/hostel granularity).
+      const seen = new Set();
+      const unique = [];
+      for (const r of rows) {
+        const key = `${r.course}|${r.hostel_type}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(r);
+      }
+
+      ratesBox.innerHTML = `
+        <table class="fee-rates-table">
+          <thead>
+            <tr><th>Course</th><th>Hostel Type</th><th>Monthly Course Fee</th><th>Admission Fee</th></tr>
+          </thead>
+          <tbody>
+            ${unique.map(r => `
+              <tr>
+                <td>${escapeHtml(r.course || '—')}</td>
+                <td>${escapeHtml(r.hostel_type || '—')}</td>
+                <td>₹${Number(r.course_fee || 0).toLocaleString('en-IN')}</td>
+                <td>₹${Number(r.admission_fee || 0).toLocaleString('en-IN')}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        <p class="syl-note">Indicative fees for ${escapeHtml(sessionYear)}. Look up your child's GCC No. above for exact dues, including flat fee and any applicable discount.</p>`;
+    } catch (e) { console.error('Fee rates table load failed:', e); }
+  })();
+
 }
 
 export default function LandingPage({ onLogin }) {
@@ -5038,6 +5094,12 @@ window.submitGrievance = async () => {
           <span className="fee-method">📲 PhonePe</span>
           <span className="fee-method">🟢 Google Pay</span>
         </div>
+
+        {/* Live fee structure table — populated directly from fee_structures,
+            the real table the fee-dues engine uses. Hidden entirely until
+            rows exist for the current session, so nothing fake ever shows
+            here. */}
+        <div id="feeRatesBox" style={{ marginBottom: "1.5rem" }} className="reveal" />
 
         {/* Live UPI ID + QR — populated from Settings → Fee Payment in the
             Website Manager via getStats(). Hidden entirely until upi_id or
