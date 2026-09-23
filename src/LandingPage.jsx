@@ -2564,6 +2564,13 @@ window.submitGrievance = async () => {
             <li>Hostel &amp; day scholar options</li>
           </ul>
           <button
+            type="button"
+            className="course-details-btn"
+            onClick={() => setProgDetail('sainik')}
+          >
+            View Full Details
+          </button>
+          <button
             className="course-enquire"
             onClick={() => goToTab('enquiry')}
           >
@@ -2583,6 +2590,13 @@ window.submitGrievance = async () => {
             <li>Previous year paper analysis</li>
             <li>Hostel &amp; day scholar options</li>
           </ul>
+          <button
+            type="button"
+            className="course-details-btn"
+            onClick={() => setProgDetail('nvs')}
+          >
+            View Full Details
+          </button>
           <button
             className="course-enquire"
             onClick={() => goToTab('enquiry')}
@@ -2604,6 +2618,13 @@ window.submitGrievance = async () => {
             <li>Day scholar option available</li>
           </ul>
           <button
+            type="button"
+            className="course-details-btn"
+            onClick={() => setProgDetail('fdn')}
+          >
+            View Full Details
+          </button>
+          <button
             className="course-enquire"
             onClick={() => goToTab('enquiry')}
           >
@@ -2623,6 +2644,13 @@ window.submitGrievance = async () => {
             <li>Weekend booster classes</li>
             <li>Hostel &amp; day scholar options</li>
           </ul>
+          <button
+            type="button"
+            className="course-details-btn"
+            onClick={() => setProgDetail('comb')}
+          >
+            View Full Details
+          </button>
           <button
             className="course-enquire"
             onClick={() => goToTab('enquiry')}
