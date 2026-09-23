@@ -506,7 +506,6 @@ function RankersSection() {
   useEffect(()=>{load_();},[load_]);
 
   const save=async()=>{
-    if(!form.name||!form.school)return toast("Name and school required","error");
     setSave(true);
     const{error}=await saveRanker(form,editing);
     setSave(false);
@@ -1126,7 +1125,6 @@ function PapersSection() {
 
   const save=async()=>{
     if(!form.title)return toast("Title required","error");
-    if(!form.pdf_url||!form.pdf_url.trim())return toast("PDF URL is required — a paper with no URL shows a broken link on the site","error");
     setSave(true);
     const{error}=await savePaper(form,editing);
     setSave(false);if(error)return toast("Error: "+error.message,"error");
@@ -1156,7 +1154,7 @@ function PapersSection() {
             <div><label style={s.lbl}>Paper Title *</label><input style={s.inp} placeholder="e.g. JNVST Class 6 — 2025" value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}/></div>
             <div style={s.g2}>
               <div><label style={s.lbl}>Exam Type</label><select style={s.sel} value={form.exam_type} onChange={e=>setForm(f=>({...f,exam_type:e.target.value}))}>{["NVS","Sainik","RMS","GNSI Mock"].map(c=><option key={c}>{c}</option>)}</select></div>
-              <div><label style={s.lbl}>Class Level</label><select style={s.sel} value={form.class_level} onChange={e=>setForm(f=>({...f,class_level:e.target.value}))}>{["Class 6"].map(c=><option key={c}>{c}</option>)}</select></div>
+              <div><label style={s.lbl}>Class Level</label><select style={s.sel} value={form.class_level} onChange={e=>setForm(f=>({...f,class_level:e.target.value}))}>{["Class 6","Class 9","Class 10"].map(c=><option key={c}>{c}</option>)}</select></div>
             </div>
           </div>
           <div style={s.g2}>
