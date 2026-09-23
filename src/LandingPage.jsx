@@ -2493,53 +2493,39 @@ window.submitGrievance = async () => {
         <div className="rule-d" />
         <div className="rule-line" />
       </div>
-      <div className="ranker-grid">
-        <div className="ranker-card reveal-scale">
-          <div className="ranker-badge">AIR Rank</div>
-          <div className="rc-rank">01</div>
-          <div className="ranker-photo">L</div>
-          <div className="rc-shade" />
-          <div className="rc-edge" />
-          <div className="rc-cap">
-            <h4>GNSI Student</h4>
-            <div className="ranker-school">Sainik School Tilaiya</div>
-            <div className="ranker-batch">Batch 2025–26</div>
-          </div>
+      {/* Was hardcoded static "GNSI Student" placeholder cards, fully
+          disconnected from the real website_rankers table — deleting or
+          editing rankers in Website Manager never touched this block, which
+          is why removed rankers kept appearing here. Now uses the same live
+          rankersData / <RankerCard> the full Toppers' Wall (#rankers) and
+          the Results-tab preview already use, so there is exactly one
+          source of truth. */}
+      {rankersLoading ? (
+        <div className="ranker-grid">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div className="ranker-card" key={`home-ranker-skeleton-${i}`} style={{ opacity: 0.35 }}>
+              <div className="ranker-photo" />
+              <div className="rc-shade" />
+              <div className="rc-edge" />
+              <div className="rc-cap">
+                <h4>&nbsp;</h4>
+                <div className="ranker-school">&nbsp;</div>
+                <div className="ranker-batch">&nbsp;</div>
+              </div>
+            </div>
+          ))}
         </div>
-        <div className="ranker-card reveal-scale">
-          <div className="rc-rank">02</div>
-          <div className="ranker-photo">K</div>
-          <div className="rc-shade" />
-          <div className="rc-edge" />
-          <div className="rc-cap">
-            <h4>GNSI Student</h4>
-            <div className="ranker-school">NVS Jawahar Navodaya</div>
-            <div className="ranker-batch">Batch 2025–26</div>
-          </div>
+      ) : rankersData.length > 0 ? (
+        <div className="ranker-grid">
+          {rankersData.slice(0, 4).map((r, i) => (
+            <RankerCard ranker={r} index={i} key={r.id || i} />
+          ))}
         </div>
-        <div className="ranker-card reveal-scale">
-          <div className="rc-rank">03</div>
-          <div className="ranker-photo">R</div>
-          <div className="rc-shade" />
-          <div className="rc-edge" />
-          <div className="rc-cap">
-            <h4>GNSI Student</h4>
-            <div className="ranker-school">Sainik School Imphal</div>
-            <div className="ranker-batch">Batch 2025–26</div>
-          </div>
-        </div>
-        <div className="ranker-card reveal-scale">
-          <div className="rc-rank">04</div>
-          <div className="ranker-photo">M</div>
-          <div className="rc-shade" />
-          <div className="rc-edge" />
-          <div className="rc-cap">
-            <h4>GNSI Student</h4>
-            <div className="ranker-school">NVS Class 6</div>
-            <div className="ranker-batch">Batch 2025–26</div>
-          </div>
-        </div>
-      </div>
+      ) : (
+        <p style={{ color: 'var(--mist)', fontFamily: 'var(--sans)', fontSize: '.9rem', textAlign: 'center' }}>
+          Results will be published here shortly.
+        </p>
+      )}
       <div style={{ marginTop: '1.2rem' }} className="reveal">
         <a
           href="#rankers"
@@ -4501,10 +4487,10 @@ window.submitGrievance = async () => {
                   All India Sainik Schools
                 </small>
               </td>
-              <td>Est. Oct 2026</td>
               <td>Est. Nov 2026</td>
+              <td>Est. Dec 2026</td>
               <td>
-                <strong>To be announced</strong>
+                <strong>31 Jan 2027 (Tentative)</strong>
               </td>
               <td>Est. Mar 2027</td>
               <td>
@@ -4524,9 +4510,9 @@ window.submitGrievance = async () => {
               <td>Est. Sep 2026</td>
               <td>Est. Oct 2026</td>
               <td>
-                <strong>To be announced</strong>
+                <strong>13 Dec 2026 (Tentative)</strong>
               </td>
-              <td>Est. Apr 2027</td>
+              <td>Est. Feb 2027</td>
               <td>
                 <span className="cal-status cs-upcoming">● Upcoming</span>
               </td>
@@ -4612,7 +4598,7 @@ window.submitGrievance = async () => {
       </div>
       <p className="syl-note" style={{ marginTop: "1rem" }}>
         JNVST 2027 dates are official (NVS Prospectus 2027: apply by 31 Jul 2026, exam 28 Nov 2026, result by end March 2027).
-        AISSEE and RMS CET rows marked "Est." are planning estimates based on prior-year cycles — their official 2027 notifications have not been released yet. Always confirm with NTA (aissee@nta.ac.in) and the RMS website before finalising travel or leave plans.
+        AISSEE (31 Jan 2027) and RMS CET (13 Dec 2026) exam dates are both from NTA's own tentative Examination Calendar 2026–27 — the separate application notifications with exact registration dates haven't been released yet for either exam, so application-window dates above remain estimates. RMS CET registration is conducted online via NIELIT; final confirmation for both exams will come only with their own official notifications. Always confirm with NTA (aissee@nta.ac.in) and NIELIT (online-exam@nielit.gov.in) before finalising travel or leave plans.
       </p>
       <a
         href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Exam-Calendar-2026-27.pdf"
@@ -4733,36 +4719,38 @@ window.submitGrievance = async () => {
         </div>
         <div className="tl-item">
           <div className="tl-date">
-            <span className="tl-month">Jan</span>
-            <span className="tl-day">Est.</span>
+            <span className="tl-month">Dec</span>
+            <span className="tl-day">13</span>
           </div>
           <div className="tl-dot upcoming" />
           <div className="tl-content">
-            <h4>📝 AISSEE Exam Day (Estimated)</h4>
+            <h4>📝 RMS CET Examination (Tentative)</h4>
             <p>
-              Sainik School AISSEE Class 6 exam typically held late January —
-              exact date to be confirmed once NTA releases the 2027 notification.
+              Rashtriya Military School Common Entrance Test for Class 6
+              admission tentatively scheduled for 13 December 2026 per NTA's
+              Examination Calendar 2026–27. Final confirmation will come with
+              NIELIT's official RMS CET notification.
             </p>
             <span className="tl-tag">
-              <span className="cal-badge cb-sainik">Sainik</span>
+              <span className="cal-badge cb-rms">RMS</span>
             </span>
           </div>
         </div>
         <div className="tl-item">
           <div className="tl-date">
-            <span className="tl-month">Feb</span>
-            <span className="tl-day">Est.</span>
+            <span className="tl-month">Jan</span>
+            <span className="tl-day">31</span>
           </div>
           <div className="tl-dot upcoming" />
           <div className="tl-content">
-            <h4>📝 RMS CET Examination (Estimated)</h4>
+            <h4>📝 AISSEE Class 6 Exam Day (Tentative)</h4>
             <p>
-              Rashtriya Military School Common Entrance Test for Class 6
-              admission — exact date to be confirmed once the 2026–27 cycle
-              notification is released.
+              Sainik School AISSEE exam tentatively scheduled for 31 January
+              2027 per NTA's Examination Calendar 2026–27. Final confirmation
+              will come with NTA's official AISSEE notification.
             </p>
             <span className="tl-tag">
-              <span className="cal-badge cb-rms">RMS</span>
+              <span className="cal-badge cb-sainik">Sainik</span>
             </span>
           </div>
         </div>
