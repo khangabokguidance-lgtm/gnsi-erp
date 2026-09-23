@@ -850,6 +850,24 @@ export default function LandingPage({ onLogin }) {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
+  // Safety net for any plain <a href="#tab"> link without its own onClick
+  // (including links inside HTML injected from Supabase content): when the
+  // hash changes, open the matching tab instead of doing nothing.
+  // goToTab() uses pushState, which does not fire hashchange, so this only
+  // reacts to real link clicks / manual URL edits.
+  useEffect(() => {
+    const onHashChange = () => {
+      const target = hashToTab(window.location.hash);
+      if (window.location.hash === '#portal') { setIsPortalOpen(true); return; }
+      setActiveTab(target.tab);
+      setTimeout(() => {
+        document.getElementById(target.scrollTo || target.tab)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 60);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
   // Outside-click auto-close: when on any tab other than Home, a click that
   // lands outside the tabbed content region (and outside the tab strip,
   // nav and mobile menu, which have their own interactive elements) sends
@@ -1878,7 +1896,7 @@ window.submitGrievance = async () => {
   {/* NAV */}
   <nav>
     <div className="nav-inner">
-      <a className="brand" href="#">
+      <a className="brand" href="#home" onClick={(e) => { e.preventDefault(); goToTab('home'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
         <img src={EMBLEM_URL} alt="GNSI" style={{ height: 46, width: 46, objectFit: "contain", flexShrink: 0 }} onError={(e) => { e.target.style.display = 'none'; }} />
         <div className="brand-text">
           <h2>GNSI</h2>
@@ -2085,7 +2103,7 @@ window.submitGrievance = async () => {
             demo, fee payment) is still one tap away, just visually
             secondary so it doesn't compete with the primary ask. */}
         <div className="hero-btns hero-enter-5">
-          <a href="#enquiry" className="btn btn-gold hero-cta-primary">
+          <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }} className="btn btn-gold hero-cta-primary">
             Enquire for Admission →
           </a>
         </div>
