@@ -386,8 +386,6 @@ function hydrateTabSections(setFeePaymentInfo) {
       setCountUp('ribbon-selected-year', stats.selected_current_year);
       setText('ribbon-selected-year-label', stats.selected_current_year_label);
 
-      setText('stat-hostel-occupancy', stats.hostel_occupancy);
-      setText('stat-next-mock-test', stats.next_mock_test);
 
       setText('reviews-score-num', stats.google_review_score);
       setText('reviews-score-count', `Based on ${stats.google_review_count} Reviews`);
@@ -1113,11 +1111,25 @@ export default function LandingPage({ onLogin }) {
 (async () => {
   try {
     const kpi = await getLiveKPIs();
-    const set = (id, val) => { const el = document.getElementById(id); if (el) { el.textContent = val; el.classList.remove('lpulse'); } };
+    // Real value → show it. Query failed (null) → hide that tile/row
+    // rather than show a placeholder.
+    const set = (id, val) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('lpulse');
+      if (val === null || val === undefined) {
+        const box = el.closest('.kpi, .dash-row');
+        if (box) box.style.display = 'none';
+        return;
+      }
+      el.textContent = typeof val === 'number' ? val.toLocaleString('en-IN') : val;
+    };
     set('kpi-staff', kpi.staff);
     set('kpi-att', kpi.present);
     set('kpi-exams', kpi.exams);
     set('kpi-enq', kpi.enquiries);
+    set('kpi-students', kpi.activeStudents);
+    set('kpi-next-exam', kpi.nextExam);
     set('kpi-notice', kpi.latestNotice);
   } catch (e) { console.error('KPI load failed:', e); }
 })();
@@ -2174,7 +2186,7 @@ window.submitGrievance = async () => {
             <strong id="kpi-att" className="lpulse">
               —
             </strong>
-            <span>Present Today</span>
+            <span>Students Present</span>
           </div>
           <div className="kpi">
             <strong id="kpi-exams" className="lpulse">
@@ -2191,12 +2203,16 @@ window.submitGrievance = async () => {
             </strong>
           </div>
           <div className="dash-row">
-            <span>Hostel Occupancy</span>
-            <strong id="stat-hostel-occupancy">92%</strong>
+            <span>Active Students</span>
+            <strong id="kpi-students" className="lpulse">
+              —
+            </strong>
           </div>
           <div className="dash-row">
-            <span>Next Mock Test</span>
-            <strong id="stat-next-mock-test">This Sunday</strong>
+            <span>Next Exam</span>
+            <strong id="kpi-next-exam" className="lpulse">
+              —
+            </strong>
           </div>
           <div className="dash-row">
             <span>Latest Notice</span>

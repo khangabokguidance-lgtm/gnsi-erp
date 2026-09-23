@@ -606,20 +606,34 @@ export async function deleteTimelineItem(id) {
 }
 
 // ─── LIVE KPI (Dashboard Panel on Landing Page) ────────────────────────────
+// Every figure comes from the real ERP tables. A figure whose query fails
+// comes back as null, and the landing page hides that row instead of
+// showing a made-up or stale number.
+//   staff          → staff_profiles, status = 'Active'
+//   present        → attendance, today, status = 'Present'
+//   activeStudents → studentQueries.getActiveStudentCount() (same
+//                    "active student" rule the whole ERP uses)
+//   exams          → exam_schedule: distinct exams with a sitting today or later
+//   nextExam       → earliest upcoming exam_schedule date + its exam_types name
+//   enquiries      → enquiries not yet replied to
+//   latestNotice   → newest non-archived notice
 export async function getLiveKPIs() {
   const today = new Date().toISOString().slice(0, 10);
+  const countOf = (res) => (res && !res.error && typeof res.count === 'number' ? res.count : null);
 
-  const [staffRes, attRes, examsRes, enqRes, noticeRes] = await Promise.all([
-    supabase.from('staff').select('id', { count: 'exact', head: true }),
+  const [staffRes, attRes, schedRes, enqRes, noticeRes, studentCount] = await Promise.all([
+    supabase.from('staff_profiles').select('id', { count: 'exact', head: true }).eq('status', 'Active'),
     supabase
       .from('attendance')
       .select('id', { count: 'exact', head: true })
       .eq('date', today)
       .eq('status', 'Present'),
     supabase
-      .from('exams')
-      .select('id', { count: 'exact', head: true })
-      .gte('exam_date', today),
+      .from('exam_schedule')
+      .select('exam_type_id, exam_date')
+      .gte('exam_date', today)
+      .order('exam_date', { ascending: true })
+      .limit(500),
     supabase
       .from('enquiries')
       .select('id', { count: 'exact', head: true })
@@ -630,13 +644,37 @@ export async function getLiveKPIs() {
       .eq('is_archived', false)
       .order('created_at', { ascending: false })
       .limit(1),
+    import('./studentQueries')
+      .then((m) => m.getActiveStudentCount())
+      .then((r) => (typeof r === 'number' ? r : (r?.count ?? (typeof r?.data === 'number' ? r.data : null))))
+      .catch(() => null),
   ]);
 
+  let exams = null;
+  let nextExam = null;
+  if (!schedRes.error && Array.isArray(schedRes.data)) {
+    const rows = schedRes.data;
+    exams = new Set(rows.map((r) => r.exam_type_id)).size;
+    if (rows.length) {
+      const first = rows[0];
+      let name = '';
+      const { data: et } = await supabase.from('exam_types').select('name').eq('id', first.exam_type_id).maybeSingle();
+      if (et?.name) name = et.name;
+      const d = new Date(first.exam_date + 'T00:00:00');
+      const dateText = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+      nextExam = name ? `${name} · ${dateText}` : dateText;
+    } else {
+      nextExam = 'None scheduled';
+    }
+  }
+
   return {
-    staff: staffRes.count ?? '—',
-    present: attRes.count ?? '—',
-    exams: examsRes.count ?? '—',
-    enquiries: enqRes.count ?? '—',
-    latestNotice: noticeRes.data?.[0]?.title ?? 'No active notices',
+    staff: countOf(staffRes),
+    present: countOf(attRes),
+    activeStudents: studentCount,
+    exams,
+    nextExam,
+    enquiries: countOf(enqRes),
+    latestNotice: noticeRes.error ? null : (noticeRes.data?.[0]?.title ?? 'No active notices'),
   };
 }
