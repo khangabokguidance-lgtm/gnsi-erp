@@ -4242,12 +4242,13 @@ window.submitGrievance = async () => {
               <span className="syl-marks">150 Marks</span>
             </h4>
             <ul className="syl-topics">
-              <li>Number system &amp; operations</li>
-              <li>Fractions, decimals, percentages</li>
-              <li>Ratio &amp; proportion</li>
-              <li>Basic geometry</li>
-              <li>Mensuration</li>
-              <li>Simple interest &amp; profit/loss</li>
+              <li>Natural numbers, LCM &amp; HCF</li>
+              <li>Fractions, ratio &amp; proportion</li>
+              <li>Unitary method, average, percentage</li>
+              <li>Profit &amp; loss, simple interest</li>
+              <li>Lines, angles &amp; plane figures</li>
+              <li>Area, perimeter, volume of cube/cuboid</li>
+              <li>Decimal numbers, speed &amp; time</li>
             </ul>
           </div>
           <div className="syl-card">
@@ -4256,12 +4257,12 @@ window.submitGrievance = async () => {
               <span className="syl-marks">50 Marks</span>
             </h4>
             <ul className="syl-topics">
-              <li>Reading comprehension</li>
-              <li>Grammar — all tenses</li>
-              <li>Active &amp; passive voice</li>
-              <li>Vocabulary &amp; antonyms</li>
-              <li>Sentence improvement</li>
-              <li>Error detection</li>
+              <li>Comprehension passage</li>
+              <li>Preposition, article &amp; vocabulary</li>
+              <li>Verbs, tenses &amp; sentence types</li>
+              <li>Nouns, pronouns &amp; correct spelling</li>
+              <li>Antonyms, synonyms &amp; adjectives</li>
+              <li>Idioms, phrases &amp; sentence formation</li>
             </ul>
           </div>
           <div className="syl-card">
@@ -4283,14 +4284,16 @@ window.submitGrievance = async () => {
               <span className="syl-marks">50 Marks</span>
             </h4>
             <ul className="syl-topics">
-              <li>Verbal reasoning</li>
-              <li>Non-verbal reasoning</li>
-              <li>Series completion</li>
-              <li>Analogy &amp; classification</li>
+              <li>Analogies — mathematical &amp; verbal</li>
+              <li>Spatial &amp; mathematical patterns</li>
+              <li>Classification</li>
+              <li>Visual &amp; logical reasoning</li>
+              <li>Series &amp; sequences</li>
+              <li>Critical thinking &amp; familial relations</li>
             </ul>
           </div>
         </div>
-        <p className="syl-note">AISSEE Class 6: 125 questions · 300 marks · 2 hr 30 min. Mathematics 3 marks per question; others 2 marks. No negative marking.</p>
+        <p className="syl-note">AISSEE 2026 Class 6: 125 questions · 300 marks · 2 hr 30 min (2:00–4:30 pm). Mathematics 3 marks per question; others 2 marks. No negative marking. Source: NTA/Sainik Schools Society Information Bulletin 2026.</p>
         <a
           href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/syllabus/sainik-class6-syllabus.pdf"
           className="syl-download"
@@ -4305,18 +4308,6 @@ window.submitGrievance = async () => {
         <div className="syl-grid">
           <div className="syl-card">
             <h4>
-              <span>🔢</span> Mathematics{" "}
-              <span className="syl-marks">50 Marks</span>
-            </h4>
-            <ul className="syl-topics">
-              <li>Arithmetic — all operations</li>
-              <li>Algebra — equations</li>
-              <li>Geometry &amp; mensuration</li>
-              <li>Data handling</li>
-            </ul>
-          </div>
-          <div className="syl-card">
-            <h4>
               <span>📖</span> English{" "}
               <span className="syl-marks">50 Marks</span>
             </h4>
@@ -4325,6 +4316,31 @@ window.submitGrievance = async () => {
               <li>Reading comprehension</li>
               <li>Vocabulary</li>
               <li>Writing skills</li>
+            </ul>
+            <p style={{ fontSize: ".78rem", color: "var(--slate)", marginTop: ".4rem" }}>Qualifying only — candidates must score at least 35%; English marks are not counted toward the final merit list.</p>
+          </div>
+          <div className="syl-card">
+            <h4>
+              <span>🧠</span> Intelligence Test{" "}
+              <span className="syl-marks">50 Marks</span>
+            </h4>
+            <ul className="syl-topics">
+              <li>Analogies &amp; classification</li>
+              <li>Series &amp; sequence completion</li>
+              <li>Coding–decoding</li>
+              <li>Direction sense &amp; puzzles</li>
+            </ul>
+          </div>
+          <div className="syl-card">
+            <h4>
+              <span>🔢</span> Mathematics{" "}
+              <span className="syl-marks">50 Marks</span>
+            </h4>
+            <ul className="syl-topics">
+              <li>Arithmetic — all operations</li>
+              <li>Algebra — equations</li>
+              <li>Geometry &amp; mensuration</li>
+              <li>Data handling</li>
             </ul>
           </div>
           <div className="syl-card">
@@ -4341,28 +4357,17 @@ window.submitGrievance = async () => {
           </div>
           <div className="syl-card">
             <h4>
-              <span>🧠</span> Intelligence &amp; Reasoning{" "}
-              <span className="syl-marks">50 Marks</span>
-            </h4>
-            <ul className="syl-topics">
-              <li>Analogies &amp; classification</li>
-              <li>Series &amp; sequence completion</li>
-              <li>Coding–decoding</li>
-              <li>Direction sense &amp; puzzles</li>
-            </ul>
-          </div>
-          <div className="syl-card">
-            <h4>
-              <span>🎖️</span> Interview &amp; Medical
+              <span>🎖️</span> Interview{" "}
+              <span className="syl-marks">20 Marks</span>
             </h4>
             <ul className="syl-topics">
               <li>Shortlisted candidates are called for interview</li>
-              <li>Medical examination</li>
-              <li>Final merit after all stages</li>
+              <li>Medical fitness examination before admission</li>
+              <li>Final merit combines written test + interview marks</li>
             </ul>
           </div>
         </div>
-        <p className="syl-note">RMS CET Class 6: written test of 200 marks · 2 hr 30 min (the four subjects above, 50 questions each). Check the current RMS notification for final details.</p>
+        <p className="syl-note">RMS CET Class VI (2026-27 session): written test of 200 marks (English 50 min-qualify, Intelligence 50, Mathematics 50, GK &amp; Current Affairs 50, minimum 35–40% each to qualify) plus a 20-mark interview. Written test is of Class V standard. Source: RMS Common Prospectus 2025.</p>
         <a
           href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/syllabus/rms-syllabus.pdf"
           className="syl-download"
@@ -4416,12 +4421,12 @@ window.submitGrievance = async () => {
               <td>
                 <span className="cal-badge cb-nvs">NVS</span>
               </td>
-              <td>Jul 2026</td>
-              <td>Oct 2026</td>
+              <td>Till 31 Jul 2026</td>
+              <td>31 Jul 2026</td>
               <td>
-                <strong>Jan 2027</strong>
+                <strong>28 Nov 2026</strong>
               </td>
-              <td>Mar 2027</td>
+              <td>End Mar 2027</td>
               <td>
                 <span className="cal-status cs-upcoming">● Upcoming</span>
               </td>
@@ -4433,15 +4438,12 @@ window.submitGrievance = async () => {
                   All India Sainik Schools
                 </small>
               </td>
+              <td>Est. Oct 2026</td>
+              <td>Est. Nov 2026</td>
               <td>
-                <span className="cal-badge cb-sainik">Sainik</span>
+                <strong>To be announced</strong>
               </td>
-              <td>Oct 2026</td>
-              <td>Nov 2026</td>
-              <td>
-                <strong>Jan 2027</strong>
-              </td>
-              <td>Mar 2027</td>
+              <td>Est. Mar 2027</td>
               <td>
                 <span className="cal-status cs-upcoming">● Upcoming</span>
               </td>
@@ -4456,12 +4458,12 @@ window.submitGrievance = async () => {
               <td>
                 <span className="cal-badge cb-rms">RMS</span>
               </td>
-              <td>Nov 2026</td>
-              <td>Dec 2026</td>
+              <td>Est. Sep 2026</td>
+              <td>Est. Oct 2026</td>
               <td>
-                <strong>Feb 2027</strong>
+                <strong>To be announced</strong>
               </td>
-              <td>Apr 2027</td>
+              <td>Est. Apr 2027</td>
               <td>
                 <span className="cal-status cs-upcoming">● Upcoming</span>
               </td>
@@ -4545,6 +4547,10 @@ window.submitGrievance = async () => {
           </tbody>
         </table>
       </div>
+      <p className="syl-note" style={{ marginTop: "1rem" }}>
+        JNVST 2027 dates are official (NVS Prospectus 2027: apply by 31 Jul 2026, exam 28 Nov 2026, result by end March 2027).
+        AISSEE and RMS CET rows marked "Est." are planning estimates based on prior-year cycles — their official 2027 notifications have not been released yet. Always confirm with NTA (aissee@nta.ac.in) and the RMS website before finalising travel or leave plans.
+      </p>
       <a
         href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Exam-Calendar-2026-27.pdf"
         className="cal-download"
