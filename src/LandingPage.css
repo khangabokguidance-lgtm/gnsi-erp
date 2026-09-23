@@ -43,8 +43,10 @@ img{max-width:100%;display:block}
 .top-bar-soc:hover{border-color:var(--goldL);color:var(--goldL)}
 
 /* ═══ RESULT BANNER SLIDER ═══ */
-.ten-years-banner{width:100%;line-height:0;border-bottom:2px solid var(--gold);background:#0B2A5B}
-.ten-years-banner img{width:100%;max-width:1600px;height:auto;margin:0 auto;display:block;object-fit:contain}
+/* Banner: gnsi-10-years-banner-2400.jpg is already trimmed to the navy artwork, so it is shown whole at its natural ratio, capped at 1100px wide. */
+.ten-years-banner{width:100%;line-height:0;border-bottom:2px solid var(--gold);background:#0E3266}
+.ten-years-banner .tyb-frame{max-width:1100px;margin:0 auto}
+.ten-years-banner .tyb-frame img{display:block;width:100%;height:auto}
 .result-banner{background:var(--navy);border-bottom:2px solid var(--gold);overflow:hidden;position:relative}
 .result-banner-track{display:flex;transition:transform .7s cubic-bezier(.25,.46,.45,.94)}
 .result-banner-slide{min-width:100%;position:relative;height:clamp(200px,36vw,340px);display:flex;align-items:center;overflow:hidden}

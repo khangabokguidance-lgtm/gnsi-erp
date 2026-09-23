@@ -26,7 +26,7 @@ const EMBLEM_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/p
 // 10-Years celebration banner — replaces the old rotating result-banner
 // slider below with a single static photo. Lives in the gnsi-public
 // bucket's existing "banners" folder (same bucket as EMBLEM_URL above).
-const TEN_YEARS_BANNER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-10-years-banner.png";
+const TEN_YEARS_BANNER_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-10-years-banner-2400.jpg";
 
 // Latest result/achievement poster — shown as a popup 10s after page load,
 // then collapses into a small sticky corner badge. Swap this URL (or the
@@ -1853,7 +1853,9 @@ window.submitGrievance = async () => {
   {/* 10-YEARS BANNER — full image at its natural ratio (see
       .ten-years-banner in LandingPage.css: height:auto, no cropping). */}
   <div className="ten-years-banner">
-    <img src={TEN_YEARS_BANNER_URL} alt="Celebrating 10 Years of Success — GNSI" />
+    <div className="tyb-frame">
+      <img src={TEN_YEARS_BANNER_URL} alt="Celebrating 10 Years of Success — GNSI" width={2400} height={912} fetchpriority="high" />
+    </div>
   </div>
   {/* NAV */}
   <nav>
