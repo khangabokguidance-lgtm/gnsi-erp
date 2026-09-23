@@ -137,9 +137,11 @@ export async function submitScholarRegistration(form) {
 }
 
 export async function submitGrievance(form) {
-  const ticketId = 'GNSI-GRV-' + Date.now().toString().slice(-6);
+  // Use the caller's ticket ID when given, so the number shown to the
+  // parent on screen is the same one saved in the enquiries table.
+  const ticketId = form.ticket_id || ('GNSI-GRV-' + Date.now().toString().slice(-6));
 
-  return supabase.from('enquiries').insert({
+  const res = await supabase.from('enquiries').insert({
     student_name: form.student_name || 'Anonymous',
     parent_name: form.parent_name || '',
     phone: form.phone || '',
@@ -149,6 +151,7 @@ export async function submitGrievance(form) {
     replied: false,
     created_at: new Date().toISOString(),
   });
+  return { ...res, ticketId };
 }
 
 export async function getAllEnquiries() {

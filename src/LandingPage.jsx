@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useRef } from 'react';
 import {
   getActiveNotices, getRankers, getGallery, getVideos, getYouTubeThumb, getYouTubeEmbed,
   getPublishedPosts, getFeaturedReviews, getPapers, getActiveBanners, getFaculty,
@@ -84,6 +84,423 @@ function RankerCard({ ranker, index }) {
   );
 }
 
+// ═══ SESSION DATA CACHE ═══
+// Tabs remount on every visit (key={activeTab}), so without a cache every
+// tab click re-downloaded its data and first showed the old hardcoded
+// fallback until the request finished. Each source is now fetched once per
+// page visit and shared (e.g. getStats() was called twice on every tab
+// click; getVideos() by both Home and the Videos tab). A failed request is
+// dropped from the cache so the next visit to that tab retries it.
+const _dataCache = new Map();
+function cachedFetch(key, fn) {
+  if (!_dataCache.has(key)) {
+    const p = Promise.resolve().then(fn).catch((err) => {
+      _dataCache.delete(key);
+      throw err;
+    });
+    _dataCache.set(key, p);
+  }
+  return _dataCache.get(key);
+}
+
+// Warms the cache in the background shortly after the page loads, so by
+// the time a visitor opens a tab its data is already here and the live
+// content appears immediately instead of the stale fallback first.
+function prefetchTabData() {
+  const jobs = [
+    ['notices', () => getActiveNotices(3)],
+    ['reviews', () => getFeaturedReviews(6)],
+    ['blog', () => getPublishedPosts(6)],
+    ['videos', getVideos],
+    ['events', getEvents],
+    ['papers', getPapers],
+    ['faculty', getFaculty],
+    ['stats', getStats],
+    ['examCalendar', getExamCalendar],
+    ['timeline', getTimeline],
+  ];
+  jobs.forEach(([key, fn]) => { cachedFetch(key, fn).catch(() => {}); });
+}
+
+// ═══ URL HASH → TAB ═══
+// Lets shared links like guidancekhangabok.in/#faq open the FAQ tab directly
+// instead of always landing on Home. #portal is excluded: it opens the
+// Parents Portal overlay (isPortalOpen) as before. #contact lives inside
+// the Enquiry tab.
+const TAB_IDS = new Set([
+  'home', 'courses', 'rankers', 'results', 'reviews', 'about', 'head-institute',
+  'faculty', 'facilities', 'videos', 'notices', 'blog', 'gallery', 'events',
+  'scholarship', 'mock-tests', 'question-papers', 'syllabus', 'exam-calendar',
+  'important-dates', 'faq', 'enquiry', 'fee-payment', 'app-download', 'helpdesk',
+]);
+function hashToTab(hash) {
+  const id = decodeURIComponent((hash || '').replace(/^#/, '')).trim();
+  if (id === 'contact') return { tab: 'enquiry', scrollTo: 'contact' };
+  if (TAB_IDS.has(id)) return { tab: id };
+  return { tab: 'home' };
+}
+
+// ═══ TAB SECTION HYDRATION ═══
+// Every tab is conditionally rendered, so its container (#eventsListEl,
+// #facultyGrid, …) only exists while that tab is open. These loaders used
+// to run once on first page load — when only Home was mounted — so they
+// found nothing and never ran again. Now they run on mount AND every time
+// the active tab changes (see the useEffect on [activeTab]). Each loader
+// still returns early when its container isn't on screen, so only the
+// open tab's data is actually fetched.
+function hydrateTabSections(setFeePaymentInfo) {
+  // ---- 2. NOTICES (top 3 active, into #publicNoticeCards) ----
+  (async () => {
+    const grid = document.getElementById('publicNoticeCards');
+    if (!grid) return;
+    try {
+      const notices = await cachedFetch('notices', () => getActiveNotices(3));
+      if (!notices.length) return; // leave existing static cards as fallback
+      grid.innerHTML = notices.map(n => {
+        const cls = n.priority === 'High' ? 'urgent' : n.priority === 'Low' ? '' : 'success';
+        const badgeCls = n.priority === 'High' ? 'badge-limited' : n.priority === 'Low' ? 'badge-weekly' : 'badge-open';
+        return `
+          <div class="notice-card ${cls}">
+            <span class="notice-badge ${badgeCls}">${escapeHtml(n.priority || 'Notice')}</span>
+            <h3>${escapeHtml(n.title)}</h3>
+            <p>${escapeHtml(n.body)}</p>
+            <div class="notice-date">${fmtDate(n.notice_date)}</div>
+          </div>`;
+      }).join('');
+    } catch (e) { console.error('Notices load failed:', e); }
+  })();
+
+  // ---- 4. GOOGLE REVIEWS (into #reviewsGrid) ----
+  (async () => {
+    const grid = document.getElementById('reviewsGrid');
+    if (!grid) return;
+    try {
+      const reviews = await cachedFetch('reviews', () => getFeaturedReviews(6));
+      if (!reviews.length) return;
+      grid.innerHTML = reviews.map(r => `
+        <div class="review-card">
+          <div class="review-top">
+            <div class="review-av">${escapeHtml((r.reviewer_name || 'A')[0])}</div>
+            <div>
+              <div class="review-name">${escapeHtml(r.reviewer_name)}</div>
+              <div class="review-date">${fmtDate(r.review_date)}</div>
+            </div>
+          </div>
+          <div class="review-stars">${'★'.repeat(r.rating || 5)}${'☆'.repeat(5 - (r.rating || 5))}</div>
+          <p class="review-text">"${escapeHtml(r.review_text)}"</p>
+        </div>`).join('');
+    } catch (e) { console.error('Reviews load failed:', e); }
+  })();
+
+  // ---- 5. BLOG / NEWS (into #blogGrid) ----
+  (async () => {
+    const grid = document.getElementById('blogGrid');
+    if (!grid) return;
+    try {
+      const posts = await cachedFetch('blog', () => getPublishedPosts(6));
+      if (!posts.length) return;
+      grid.innerHTML = posts.map(p => `
+        <div class="blog-card">
+          <div class="blog-thumb">
+            ${p.image_url ? `<img src="${escapeHtml(p.image_url)}" alt="${escapeHtml(p.title)}" onerror="this.style.display='none'" />` : '📰'}
+            <span class="blog-cat">${escapeHtml(p.category || 'News')}</span>
+          </div>
+          <div class="blog-body">
+            <div class="blog-date">${fmtDate(p.published_date)}</div>
+            <h3>${escapeHtml(p.title)}</h3>
+            <p>${escapeHtml((p.body || '').slice(0, 140))}${(p.body || '').length > 140 ? '…' : ''}</p>
+          </div>
+        </div>`).join('');
+    } catch (e) { console.error('Blog load failed:', e); }
+  })();
+
+  // ---- 7. VIDEOS (main embed into #mainVideoEmbed, list into #videoListEl) ----
+  (async () => {
+    const list = document.getElementById('videoListEl');
+    if (!list) return;
+    try {
+      const videos = await cachedFetch('videos', getVideos);
+      if (!videos.length) {
+        list.innerHTML = '<p style="color:rgba(230,230,230,.85);font-family:Inter,sans-serif;font-size:.8rem;letter-spacing:.02em;text-transform:uppercase;padding:.5rem 0">Videos coming soon</p>';
+        return;
+      }
+      list.innerHTML = videos.map((v, i) => `
+        <div class="video-item" data-embed-url="${escapeHtml(v.youtube_url || '')}" data-index="${i}">
+          <div class="video-thumb">
+            ${getYouTubeThumb(v.youtube_url) ? `<img src="${getYouTubeThumb(v.youtube_url)}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'" />` : '▶'}
+          </div>
+          <div>
+            <div class="video-item-title">${escapeHtml(v.title)}</div>
+            <div class="video-item-sub">${escapeHtml(v.category || '')}${v.description ? ' · ' + escapeHtml(v.description) : ''}</div>
+          </div>
+        </div>`).join('');
+
+      // Wire click handlers + load first video into the main embed automatically
+      list.querySelectorAll('.video-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const url = item.getAttribute('data-embed-url');
+          if (url && window.loadMainVideo) window.loadMainVideo(url);
+        });
+      });
+      if (videos[0]?.youtube_url && window.loadMainVideo) {
+        window.loadMainVideo(videos[0].youtube_url);
+      }
+    } catch (e) { console.error('Videos load failed:', e); }
+  })();
+
+  // ---- 7b. EVENTS & SCHEDULE (into #eventsListEl) ----
+  (async () => {
+    const list = document.getElementById('eventsListEl');
+    if (!list) return;
+    try {
+      const events = await cachedFetch('events', getEvents);
+      if (!events.length) {
+        list.innerHTML = '<p style="color:var(--mist);font-family:Inter,sans-serif;font-size:.85rem;letter-spacing:.02em;padding:.5rem 0">No upcoming events scheduled right now — check back soon.</p>';
+        return;
+      }
+      const monthAbbr = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+      list.innerHTML = events.map(ev => {
+        const d = new Date(ev.event_date + 'T00:00:00');
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = monthAbbr[d.getMonth()];
+        return `
+          <div class="event-card reveal vis">
+            <div class="event-date-block">
+              <div class="day">${day}</div>
+              <div class="month">${month}</div>
+            </div>
+            <div class="event-body">
+              <h3>${escapeHtml(ev.title)}</h3>
+              ${ev.description ? `<span>${escapeHtml(ev.description)}</span>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+    } catch (e) { console.error('Events load failed:', e); }
+  })();
+
+  // ---- 8. QUESTION PAPERS (grouped by exam_type, into #papersGrid) ----
+  (async () => {
+    const grid = document.getElementById('papersGrid');
+    if (!grid) return;
+    try {
+      const papers = await cachedFetch('papers', getPapers);
+      if (!papers.length) return;
+      const grouped = papers.reduce((acc, p) => {
+        const k = p.exam_type || 'NVS';
+        (acc[k] = acc[k] || []).push(p);
+        return acc;
+      }, {});
+      const examClass = { NVS: 'nvs', Sainik: 'sainik', RMS: 'rms' };
+      grid.innerHTML = Object.entries(grouped).map(([exam, papers]) => `
+        <div class="papers-card ${examClass[exam] || ''}">
+          <h3>${escapeHtml(exam)} Question Papers</h3>
+          <div class="papers-sub">${papers.length} paper${papers.length > 1 ? 's' : ''} available</div>
+          ${papers.map(p => `
+            <a class="paper-link" href="${p.pdf_url ? escapeHtml(p.pdf_url) : '#'}" target="_blank" rel="noopener noreferrer">
+              <span class="paper-name">${escapeHtml(p.title)} (${escapeHtml(p.class_level || '')})</span>
+              <span class="paper-dl">⬇</span>
+            </a>`).join('')}
+        </div>`).join('');
+    } catch (e) { console.error('Papers load failed:', e); }
+  })();
+
+  // ---- 10. FACULTY (into #facultyGrid) ----
+  (async () => {
+    const grid = document.getElementById('facultyGrid');
+    if (!grid) return;
+    try {
+      const faculty = await cachedFetch('faculty', getFaculty);
+      if (!faculty.length) return;
+      grid.innerHTML = faculty.map((f, idx) => {
+        const initials = (f.name || 'F').split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+        // Accept whichever photo column the row has (photo_url preferred).
+        const photo = f.photo_url || f.image_url || f.photo || '';
+        return `
+          <div class="faculty-card">
+            <div class="fc-rank">${String(idx + 1).padStart(2, '0')}</div>
+            <div class="faculty-photo" style="position:relative;overflow:hidden">
+              ${photo ? `<img src="${escapeHtml(photo)}" alt="${escapeHtml(f.name)}" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top" onerror="this.remove()" />` : ''}
+              ${escapeHtml(initials)}
+            </div>
+            <div class="fc-shade"></div>
+            <div class="fc-edge"></div>
+            <div class="fc-cap">
+              <h3>${escapeHtml(f.name)}</h3>
+              <div class="role">${escapeHtml(f.role || '')}</div>
+              ${f.subject ? `<div class="subj">${escapeHtml(f.subject)}</div>` : ''}
+              ${f.experience ? `<div class="exp">${escapeHtml(f.experience)}</div>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+    } catch (e) { console.error('Faculty load failed:', e); }
+  })();
+
+  // ---- 10b. SITE STATS (stats-bar, ribbon, dashboard, reviews header) ----
+  // Reads website_settings via getStats(). Any key an admin hasn't set yet
+  // falls back to the STATS_DEFAULTS baked into websiteApi.js, so this is
+  // safe to run even before WebsiteTab has a stats editor wired up.
+  (async () => {
+    try {
+      const stats = await cachedFetch('stats', getStats);
+
+      // "97%" -> {target:97, suffix:'%'} ; "220+" -> {target:220, suffix:'+'} ; "66" -> {target:66, suffix:''}
+      const parseStat = (val) => {
+        const m = String(val ?? '').match(/^(\d+)(.*)$/);
+        return m ? { target: parseInt(m[1], 10), suffix: m[2] || '' } : { target: 0, suffix: '' };
+      };
+
+      const setCountUp = (id, rawVal) => {
+        const el = document.getElementById(id);
+        if (!el || rawVal == null) return;
+        const { target, suffix } = parseStat(rawVal);
+        el.setAttribute('data-target', target);
+        el.setAttribute('data-suffix', suffix);
+        el.textContent = `${target}${suffix}`;
+      };
+
+      const setText = (id, val) => {
+        const el = document.getElementById(id);
+        if (el && val != null) el.textContent = val;
+      };
+
+      setCountUp('stat-selection-rate', stats.selection_rate);
+      setCountUp('stat-years', stats.years_of_excellence);
+      setCountUp('stat-officers', stats.students_selected);
+      setCountUp('stat-trained', stats.students_trained);
+      setCountUp('stat-selected-year', stats.selected_current_year);
+      setText('stat-selected-year-label', stats.selected_current_year_label);
+
+      setCountUp('ribbon-years', stats.years_of_excellence);
+      setCountUp('ribbon-trained', stats.students_trained);
+      setCountUp('ribbon-selection-rate', stats.selection_rate);
+      setCountUp('ribbon-officers', stats.students_selected);
+      setCountUp('ribbon-selected-year', stats.selected_current_year);
+      setText('ribbon-selected-year-label', stats.selected_current_year_label);
+
+      setText('stat-hostel-occupancy', stats.hostel_occupancy);
+      setText('stat-next-mock-test', stats.next_mock_test);
+
+      setText('reviews-score-num', stats.google_review_score);
+      setText('reviews-score-count', `Based on ${stats.google_review_count} Reviews`);
+    } catch (e) { console.error('Stats load failed:', e); }
+  })();
+
+  // ---- 10d. EXAM CALENDAR (into #examCalBody) ----
+  (async () => {
+    const body = document.getElementById('examCalBody');
+    if (!body) return;
+    try {
+      const rows = await cachedFetch('examCalendar', getExamCalendar);
+      if (!rows.length) return; // leave existing static rows as fallback
+      const badgeClass = { NVS: 'cb-nvs', Sainik: 'cb-sainik', RMS: 'cb-rms' };
+      const statusClass = { Upcoming: 'cs-upcoming', Open: 'cs-open', Closed: 'cs-closed', Done: 'cs-done' };
+      body.innerHTML = rows.map(r => `
+        <tr>
+          <td>
+            <div class="cal-exam">${escapeHtml(r.exam_name)}</div>
+            ${r.sub_label ? `<small style="color:var(--mist);font-size:.72rem">${escapeHtml(r.sub_label)}</small>` : ''}
+          </td>
+          <td><span class="cal-badge ${badgeClass[r.exam_type] || 'cb-gnsi'}">${escapeHtml(r.exam_type || '')}</span></td>
+          <td>${escapeHtml(r.application_opens || '')}</td>
+          <td>${escapeHtml(r.application_closes || '')}</td>
+          <td><strong>${escapeHtml(r.exam_date || '')}</strong></td>
+          <td>${escapeHtml(r.result_date || '')}</td>
+          <td><span class="cal-status ${statusClass[r.status] || 'cs-upcoming'}">● ${escapeHtml(r.status || 'Upcoming')}</span></td>
+        </tr>`).join('');
+    } catch (e) { console.error('Exam calendar load failed:', e); }
+  })();
+
+  // ---- 10e. IMPORTANT DATES TIMELINE (into #timelineList) ----
+  (async () => {
+    const list = document.getElementById('timelineList');
+    if (!list) return;
+    try {
+      const items = await cachedFetch('timeline', getTimeline);
+      if (!items.length) return; // leave existing static timeline as fallback
+      const monthAbbr = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      list.innerHTML = items.map(t => {
+        let month = t.month_label, day = t.day_label;
+        if (t.event_date) {
+          const d = new Date(t.event_date + 'T00:00:00');
+          month = monthAbbr[d.getMonth()];
+          day = String(d.getDate()).padStart(2, '0');
+        }
+        const status = t.status || 'upcoming'; // done | open | upcoming
+        return `
+          <div class="tl-item">
+            <div class="tl-date">
+              <span class="tl-month">${escapeHtml(month || '')}</span>
+              <span class="tl-day">${escapeHtml(day || '—')}</span>
+            </div>
+            <div class="tl-dot ${status}"></div>
+            <div class="tl-content ${status}">
+              <h4>${escapeHtml(t.title)}</h4>
+              ${t.description ? `<p>${escapeHtml(t.description)}</p>` : ''}
+              ${t.tag_html ? `<div class="tl-tag">${t.tag_html}</div>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+    } catch (e) { console.error('Timeline load failed:', e); }
+  })();
+
+  // ---- 10f. FEE PAYMENT — LIVE UPI + BANK DETAILS (into #feeUpiBox / #feeBankBox) ----
+  // Reads upi_id, upi_qr_url, bank_name, account_holder_name, account_number,
+  // ifsc_code, branch_name via getStats() (Settings -> Fee Payment in the
+  // Website Manager). Each block only renders once real data exists, so
+  // nothing fake or placeholder ever appears here.
+  (async () => {
+    try {
+      const stats = await cachedFetch('stats', getStats);
+      setFeePaymentInfo({ upi_id: stats.upi_id || '', upi_qr_url: stats.upi_qr_url || '' });
+      const upiBox = document.getElementById('feeUpiBox');
+      const bankBox = document.getElementById('feeBankBox');
+      if (!upiBox && !bankBox) return;
+
+      if (upiBox && (stats.upi_id || stats.upi_qr_url)) {
+        upiBox.innerHTML = `
+          <div class="fee-upi-card">
+            ${stats.upi_qr_url ? `<img class="fee-upi-qr" src="${escapeHtml(stats.upi_qr_url)}" alt="UPI QR Code" onerror="this.style.display='none';" />` : ''}
+            <div class="fee-upi-info">
+              <div class="fee-upi-label">Scan or Pay via UPI ID</div>
+              ${stats.upi_id ? `
+                <div class="fee-upi-id">
+                  <strong id="feeUpiIdText">${escapeHtml(stats.upi_id)}</strong>
+                  <button type="button" class="fee-upi-copy" id="feeUpiCopyBtn">Copy</button>
+                </div>` : ''}
+            </div>
+          </div>`;
+
+        const copyBtn = document.getElementById('feeUpiCopyBtn');
+        if (copyBtn) {
+          copyBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(stats.upi_id).then(() => {
+              copyBtn.textContent = 'Copied ✓';
+              copyBtn.classList.add('copied');
+              setTimeout(() => { copyBtn.textContent = 'Copy'; copyBtn.classList.remove('copied'); }, 2000);
+            }).catch(() => {});
+          });
+        }
+      }
+
+      if (bankBox && (stats.bank_name || stats.account_number || stats.ifsc_code)) {
+        const rows = [
+          ['Account Holder', stats.account_holder_name],
+          ['Bank Name', stats.bank_name],
+          ['Account Number', stats.account_number],
+          ['IFSC Code', stats.ifsc_code],
+          ['Branch', stats.branch_name],
+        ].filter(([, v]) => v);
+
+        bankBox.innerHTML = `
+          <table class="fee-bank-table">
+            ${rows.map(([label, val]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(val)}</td></tr>`).join('')}
+          </table>`;
+      }
+    } catch (e) { console.error('Fee payment details load failed:', e); }
+  })();
+
+}
+
 export default function LandingPage({ onLogin }) {
   // ═══ DROPDOWN NAVIGATION — categories & subsections ═══
   const [expandedCat, setExpandedCat] = useState(null);
@@ -105,7 +522,10 @@ export default function LandingPage({ onLogin }) {
   });
   const [isFeeOpen, setIsFeeOpen] = useState(false);
   const [feePaymentInfo, setFeePaymentInfo] = useState({ upi_id: '', upi_qr_url: '' });
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window === 'undefined') return 'home';
+    return hashToTab(window.location.hash).tab;
+  });
   const tabContentRef = useRef(null);
   const tabStripRef = useRef(null);
   const [tabStripScroll, setTabStripScroll] = useState({ atStart: true, atEnd: false });
@@ -266,7 +686,7 @@ export default function LandingPage({ onLogin }) {
   useEffect(() => {
     (async () => {
       try {
-        const list = await getVideos();
+        const list = await cachedFetch('videos', getVideos);
         if (list.length) setVideosData(list);
       } catch (e) {
         console.error('Home videos preview load failed:', e);
@@ -355,7 +775,7 @@ export default function LandingPage({ onLogin }) {
         { label: 'Videos', href: '#videos' },
         { label: 'Events', href: '#events' },
         { label: 'About GNSI', href: '#about' },
-        { label: "Director's Message", href: '#head-institute' },
+        { label: 'Head of the Institute', href: '#head-institute' },
         { label: 'Download App', href: '#app-download' },
         { label: 'Helpdesk / Grievance', href: '#helpdesk' },
       ]
@@ -412,7 +832,7 @@ export default function LandingPage({ onLogin }) {
   useEffect(() => {
     const onPopState = (e) => {
       isPopRef.current = true;
-      const tab = e.state && e.state.tab ? e.state.tab : 'home';
+      const tab = e.state && e.state.tab ? e.state.tab : hashToTab(window.location.hash).tab;
       setActiveTab(tab);
       // Release the guard on the next tick, after this render (and any
       // effects it triggers) has settled, so a later real goToTab() call
@@ -693,169 +1113,14 @@ export default function LandingPage({ onLogin }) {
   } catch (e) { console.error('KPI load failed:', e); }
 })();
 
-// ---- 2. NOTICES (top 3 active, into #publicNoticeCards) ----
-(async () => {
-  const grid = document.getElementById('publicNoticeCards');
-  if (!grid) return;
-  try {
-    const notices = await getActiveNotices(3);
-    if (!notices.length) return; // leave existing static cards as fallback
-    grid.innerHTML = notices.map(n => {
-      const cls = n.priority === 'High' ? 'urgent' : n.priority === 'Low' ? '' : 'success';
-      const badgeCls = n.priority === 'High' ? 'badge-limited' : n.priority === 'Low' ? 'badge-weekly' : 'badge-open';
-      return `
-        <div class="notice-card ${cls}">
-          <span class="notice-badge ${badgeCls}">${escapeHtml(n.priority || 'Notice')}</span>
-          <h3>${escapeHtml(n.title)}</h3>
-          <p>${escapeHtml(n.body)}</p>
-          <div class="notice-date">${fmtDate(n.notice_date)}</div>
-        </div>`;
-    }).join('');
-  } catch (e) { console.error('Notices load failed:', e); }
-})();
-
 // NOTE: Ranker Wall (#rankers / Results-tab preview) is now rendered by
 // React directly (see rankersData state + <RankerCard>) instead of being
 // injected here — this avoids fetching/rendering the same data twice and
 // keeps one source of truth for the card markup.
 
-// ---- 4. GOOGLE REVIEWS (into #reviewsGrid) ----
-(async () => {
-  const grid = document.getElementById('reviewsGrid');
-  if (!grid) return;
-  try {
-    const reviews = await getFeaturedReviews(6);
-    if (!reviews.length) return;
-    grid.innerHTML = reviews.map(r => `
-      <div class="review-card">
-        <div class="review-top">
-          <div class="review-av">${escapeHtml((r.reviewer_name || 'A')[0])}</div>
-          <div>
-            <div class="review-name">${escapeHtml(r.reviewer_name)}</div>
-            <div class="review-date">${fmtDate(r.review_date)}</div>
-          </div>
-        </div>
-        <div class="review-stars">${'★'.repeat(r.rating || 5)}${'☆'.repeat(5 - (r.rating || 5))}</div>
-        <p class="review-text">"${escapeHtml(r.review_text)}"</p>
-      </div>`).join('');
-  } catch (e) { console.error('Reviews load failed:', e); }
-})();
-
-// ---- 5. BLOG / NEWS (into #blogGrid) ----
-(async () => {
-  const grid = document.getElementById('blogGrid');
-  if (!grid) return;
-  try {
-    const posts = await getPublishedPosts(6);
-    if (!posts.length) return;
-    grid.innerHTML = posts.map(p => `
-      <div class="blog-card">
-        <div class="blog-thumb">
-          ${p.image_url ? `<img src="${escapeHtml(p.image_url)}" alt="${escapeHtml(p.title)}" onerror="this.style.display='none'" />` : '📰'}
-          <span class="blog-cat">${escapeHtml(p.category || 'News')}</span>
-        </div>
-        <div class="blog-body">
-          <div class="blog-date">${fmtDate(p.published_date)}</div>
-          <h3>${escapeHtml(p.title)}</h3>
-          <p>${escapeHtml((p.body || '').slice(0, 140))}${(p.body || '').length > 140 ? '…' : ''}</p>
-        </div>
-      </div>`).join('');
-  } catch (e) { console.error('Blog load failed:', e); }
-})();
-
 // (Gallery data is now fetched via a React useEffect inside the component,
 // grouped by category into `galleryData` state — see near the top of the
 // component body. The old #galleryGrid DOM-injection block was removed.)
-
-// ---- 7. VIDEOS (main embed into #mainVideoEmbed, list into #videoListEl) ----
-(async () => {
-  const list = document.getElementById('videoListEl');
-  if (!list) return;
-  try {
-    const videos = await getVideos();
-    if (!videos.length) {
-      list.innerHTML = '<p style="color:rgba(230,230,230,.85);font-family:Inter,sans-serif;font-size:.8rem;letter-spacing:.02em;text-transform:uppercase;padding:.5rem 0">Videos coming soon</p>';
-      return;
-    }
-    list.innerHTML = videos.map((v, i) => `
-      <div class="video-item" data-embed-url="${escapeHtml(v.youtube_url || '')}" data-index="${i}">
-        <div class="video-thumb">
-          ${getYouTubeThumb(v.youtube_url) ? `<img src="${getYouTubeThumb(v.youtube_url)}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'" />` : '▶'}
-        </div>
-        <div>
-          <div class="video-item-title">${escapeHtml(v.title)}</div>
-          <div class="video-item-sub">${escapeHtml(v.category || '')}${v.description ? ' · ' + escapeHtml(v.description) : ''}</div>
-        </div>
-      </div>`).join('');
-
-    // Wire click handlers + load first video into the main embed automatically
-    list.querySelectorAll('.video-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const url = item.getAttribute('data-embed-url');
-        if (url && window.loadMainVideo) window.loadMainVideo(url);
-      });
-    });
-    if (videos[0]?.youtube_url && window.loadMainVideo) {
-      window.loadMainVideo(videos[0].youtube_url);
-    }
-  } catch (e) { console.error('Videos load failed:', e); }
-})();
-
-// ---- 7b. EVENTS & SCHEDULE (into #eventsListEl) ----
-(async () => {
-  const list = document.getElementById('eventsListEl');
-  if (!list) return;
-  try {
-    const events = await getEvents();
-    if (!events.length) {
-      list.innerHTML = '<p style="color:var(--mist);font-family:Inter,sans-serif;font-size:.85rem;letter-spacing:.02em;padding:.5rem 0">No upcoming events scheduled right now — check back soon.</p>';
-      return;
-    }
-    const monthAbbr = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-    list.innerHTML = events.map(ev => {
-      const d = new Date(ev.event_date + 'T00:00:00');
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = monthAbbr[d.getMonth()];
-      return `
-        <div class="event-card reveal">
-          <div class="event-date-block">
-            <div class="day">${day}</div>
-            <div class="month">${month}</div>
-          </div>
-          <div class="event-body">
-            <h3>${escapeHtml(ev.title)}</h3>
-            ${ev.description ? `<span>${escapeHtml(ev.description)}</span>` : ''}
-          </div>
-        </div>`;
-    }).join('');
-  } catch (e) { console.error('Events load failed:', e); }
-})();
-
-// ---- 8. QUESTION PAPERS (grouped by exam_type, into #papersGrid) ----
-(async () => {
-  const grid = document.getElementById('papersGrid');
-  if (!grid) return;
-  try {
-    const papers = await getPapers();
-    if (!papers.length) return;
-    const grouped = papers.reduce((acc, p) => {
-      const k = p.exam_type || 'NVS';
-      (acc[k] = acc[k] || []).push(p);
-      return acc;
-    }, {});
-    const examClass = { NVS: 'nvs', Sainik: 'sainik', RMS: 'rms' };
-    grid.innerHTML = Object.entries(grouped).map(([exam, papers]) => `
-      <div class="papers-card ${examClass[exam] || ''}">
-        <h3>${escapeHtml(exam)} Question Papers</h3>
-        <div class="papers-sub">${papers.length} paper${papers.length > 1 ? 's' : ''} available</div>
-        ${papers.map(p => `
-          <a class="paper-link" href="${p.pdf_url ? escapeHtml(p.pdf_url) : '#'}" target="_blank" rel="noopener noreferrer">
-            <span class="paper-name">${escapeHtml(p.title)} (${escapeHtml(p.class_level || '')})</span>
-            <span class="paper-dl">⬇</span>
-          </a>`).join('')}
-      </div>`).join('');
-  } catch (e) { console.error('Papers load failed:', e); }
-})();
 
 // ---- 9. RESULT BANNERS (into #rbTrack, replacing slider slides) ----
 (async () => {
@@ -892,84 +1157,6 @@ export default function LandingPage({ onLogin }) {
   } catch (e) { console.error('Banners load failed:', e); }
 })();
 
-// ---- 10. FACULTY (into #facultyGrid) ----
-(async () => {
-  const grid = document.getElementById('facultyGrid');
-  if (!grid) return;
-  try {
-    const faculty = await getFaculty();
-    if (!faculty.length) return;
-    grid.innerHTML = faculty.map((f, idx) => {
-      const initials = (f.name || 'F').split(' ').map(w => w[0]).join('').slice(0, 2);
-      return `
-        <div class="faculty-card">
-          <div class="fc-rank">${String(idx + 1).padStart(2, '0')}</div>
-          <div class="faculty-photo">
-            ${f.photo_url ? `<img src="${escapeHtml(f.photo_url)}" alt="${escapeHtml(f.name)}" onerror="this.style.display='none'" />` : escapeHtml(initials)}
-          </div>
-          <div class="fc-shade"></div>
-          <div class="fc-edge"></div>
-          <div class="fc-cap">
-            <h3>${escapeHtml(f.name)}</h3>
-            <div class="role">${escapeHtml(f.role || '')}</div>
-            ${f.subject ? `<div class="subj">${escapeHtml(f.subject)}</div>` : ''}
-            ${f.experience ? `<div class="exp">${escapeHtml(f.experience)}</div>` : ''}
-          </div>
-        </div>`;
-    }).join('');
-  } catch (e) { console.error('Faculty load failed:', e); }
-})();
-
-// ---- 10b. SITE STATS (stats-bar, ribbon, dashboard, reviews header) ----
-// Reads website_settings via getStats(). Any key an admin hasn't set yet
-// falls back to the STATS_DEFAULTS baked into websiteApi.js, so this is
-// safe to run even before WebsiteTab has a stats editor wired up.
-(async () => {
-  try {
-    const stats = await getStats();
-
-    // "97%" -> {target:97, suffix:'%'} ; "220+" -> {target:220, suffix:'+'} ; "66" -> {target:66, suffix:''}
-    const parseStat = (val) => {
-      const m = String(val ?? '').match(/^(\d+)(.*)$/);
-      return m ? { target: parseInt(m[1], 10), suffix: m[2] || '' } : { target: 0, suffix: '' };
-    };
-
-    const setCountUp = (id, rawVal) => {
-      const el = document.getElementById(id);
-      if (!el || rawVal == null) return;
-      const { target, suffix } = parseStat(rawVal);
-      el.setAttribute('data-target', target);
-      el.setAttribute('data-suffix', suffix);
-      el.textContent = `${target}${suffix}`;
-    };
-
-    const setText = (id, val) => {
-      const el = document.getElementById(id);
-      if (el && val != null) el.textContent = val;
-    };
-
-    setCountUp('stat-selection-rate', stats.selection_rate);
-    setCountUp('stat-years', stats.years_of_excellence);
-    setCountUp('stat-officers', stats.students_selected);
-    setCountUp('stat-trained', stats.students_trained);
-    setCountUp('stat-selected-year', stats.selected_current_year);
-    setText('stat-selected-year-label', stats.selected_current_year_label);
-
-    setCountUp('ribbon-years', stats.years_of_excellence);
-    setCountUp('ribbon-trained', stats.students_trained);
-    setCountUp('ribbon-selection-rate', stats.selection_rate);
-    setCountUp('ribbon-officers', stats.students_selected);
-    setCountUp('ribbon-selected-year', stats.selected_current_year);
-    setText('ribbon-selected-year-label', stats.selected_current_year_label);
-
-    setText('stat-hostel-occupancy', stats.hostel_occupancy);
-    setText('stat-next-mock-test', stats.next_mock_test);
-
-    setText('reviews-score-num', stats.google_review_score);
-    setText('reviews-score-count', `Based on ${stats.google_review_count} Reviews`);
-  } catch (e) { console.error('Stats load failed:', e); }
-})();
-
 // ---- 10c. TESTIMONIALS (into #testiTrack, replacing the quote slider) ----
 (async () => {
   const track = document.getElementById('testiTrack');
@@ -1002,120 +1189,6 @@ export default function LandingPage({ onLogin }) {
       });
     }
   } catch (e) { console.error('Testimonials load failed:', e); }
-})();
-
-// ---- 10d. EXAM CALENDAR (into #examCalBody) ----
-(async () => {
-  const body = document.getElementById('examCalBody');
-  if (!body) return;
-  try {
-    const rows = await getExamCalendar();
-    if (!rows.length) return; // leave existing static rows as fallback
-    const badgeClass = { NVS: 'cb-nvs', Sainik: 'cb-sainik', RMS: 'cb-rms' };
-    const statusClass = { Upcoming: 'cs-upcoming', Open: 'cs-open', Closed: 'cs-closed', Done: 'cs-done' };
-    body.innerHTML = rows.map(r => `
-      <tr>
-        <td>
-          <div class="cal-exam">${escapeHtml(r.exam_name)}</div>
-          ${r.sub_label ? `<small style="color:var(--mist);font-size:.72rem">${escapeHtml(r.sub_label)}</small>` : ''}
-        </td>
-        <td><span class="cal-badge ${badgeClass[r.exam_type] || 'cb-gnsi'}">${escapeHtml(r.exam_type || '')}</span></td>
-        <td>${escapeHtml(r.application_opens || '')}</td>
-        <td>${escapeHtml(r.application_closes || '')}</td>
-        <td><strong>${escapeHtml(r.exam_date || '')}</strong></td>
-        <td>${escapeHtml(r.result_date || '')}</td>
-        <td><span class="cal-status ${statusClass[r.status] || 'cs-upcoming'}">● ${escapeHtml(r.status || 'Upcoming')}</span></td>
-      </tr>`).join('');
-  } catch (e) { console.error('Exam calendar load failed:', e); }
-})();
-
-// ---- 10e. IMPORTANT DATES TIMELINE (into #timelineList) ----
-(async () => {
-  const list = document.getElementById('timelineList');
-  if (!list) return;
-  try {
-    const items = await getTimeline();
-    if (!items.length) return; // leave existing static timeline as fallback
-    const monthAbbr = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    list.innerHTML = items.map(t => {
-      let month = t.month_label, day = t.day_label;
-      if (t.event_date) {
-        const d = new Date(t.event_date + 'T00:00:00');
-        month = monthAbbr[d.getMonth()];
-        day = String(d.getDate()).padStart(2, '0');
-      }
-      const status = t.status || 'upcoming'; // done | open | upcoming
-      return `
-        <div class="tl-item">
-          <div class="tl-date">
-            <span class="tl-month">${escapeHtml(month || '')}</span>
-            <span class="tl-day">${escapeHtml(day || '—')}</span>
-          </div>
-          <div class="tl-dot ${status}"></div>
-          <div class="tl-content ${status}">
-            <h4>${escapeHtml(t.title)}</h4>
-            ${t.description ? `<p>${escapeHtml(t.description)}</p>` : ''}
-            ${t.tag_html ? `<div class="tl-tag">${t.tag_html}</div>` : ''}
-          </div>
-        </div>`;
-    }).join('');
-  } catch (e) { console.error('Timeline load failed:', e); }
-})();
-
-// ---- 10f. FEE PAYMENT — LIVE UPI + BANK DETAILS (into #feeUpiBox / #feeBankBox) ----
-// Reads upi_id, upi_qr_url, bank_name, account_holder_name, account_number,
-// ifsc_code, branch_name via getStats() (Settings -> Fee Payment in the
-// Website Manager). Each block only renders once real data exists, so
-// nothing fake or placeholder ever appears here.
-(async () => {
-  const upiBox = document.getElementById('feeUpiBox');
-  const bankBox = document.getElementById('feeBankBox');
-  if (!upiBox && !bankBox) return;
-  try {
-    const stats = await getStats();
-    setFeePaymentInfo({ upi_id: stats.upi_id || '', upi_qr_url: stats.upi_qr_url || '' });
-
-    if (upiBox && (stats.upi_id || stats.upi_qr_url)) {
-      upiBox.innerHTML = `
-        <div class="fee-upi-card">
-          ${stats.upi_qr_url ? `<img class="fee-upi-qr" src="${escapeHtml(stats.upi_qr_url)}" alt="UPI QR Code" onerror="this.style.display='none';" />` : ''}
-          <div class="fee-upi-info">
-            <div class="fee-upi-label">Scan or Pay via UPI ID</div>
-            ${stats.upi_id ? `
-              <div class="fee-upi-id">
-                <strong id="feeUpiIdText">${escapeHtml(stats.upi_id)}</strong>
-                <button type="button" class="fee-upi-copy" id="feeUpiCopyBtn">Copy</button>
-              </div>` : ''}
-          </div>
-        </div>`;
-
-      const copyBtn = document.getElementById('feeUpiCopyBtn');
-      if (copyBtn) {
-        copyBtn.addEventListener('click', () => {
-          navigator.clipboard.writeText(stats.upi_id).then(() => {
-            copyBtn.textContent = 'Copied ✓';
-            copyBtn.classList.add('copied');
-            setTimeout(() => { copyBtn.textContent = 'Copy'; copyBtn.classList.remove('copied'); }, 2000);
-          }).catch(() => {});
-        });
-      }
-    }
-
-    if (bankBox && (stats.bank_name || stats.account_number || stats.ifsc_code)) {
-      const rows = [
-        ['Account Holder', stats.account_holder_name],
-        ['Bank Name', stats.bank_name],
-        ['Account Number', stats.account_number],
-        ['IFSC Code', stats.ifsc_code],
-        ['Branch', stats.branch_name],
-      ].filter(([, v]) => v);
-
-      bankBox.innerHTML = `
-        <table class="fee-bank-table">
-          ${rows.map(([label, val]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(val)}</td></tr>`).join('')}
-        </table>`;
-    }
-  } catch (e) { console.error('Fee payment details load failed:', e); }
 })();
 
 // ---- 11. LIVE FORM SUBMISSIONS (replaces the 3 mock window.submit* functions) ----
@@ -1231,13 +1304,17 @@ window.submitGrievance = async () => {
     return;
   }
 
+  // Ticket ID is generated here and passed to submitGrievance, which saves
+  // it in the enquiry's course field ("GRIEVANCE: GNSI-GRV-xxxxxx"), so the
+  // number the parent sees is the one in the admin panel.
+  const ticketId = 'GNSI-GRV-' + Date.now().toString().slice(-6);
   try {
     const { error } = await submitGrievance({
       student_name: name, parent_name: name, phone,
+      ticket_id: ticketId,
       message: `[${category}] ${description}`,
     });
     if (error) throw error;
-    const ticketId = 'GNSI-GRV-' + Date.now().toString().slice(-6);
     if (msg) { msg.style.display = 'block'; msg.className = 'grv-msg ok'; msg.textContent = 'Grievance submitted! Ticket ID: ' + ticketId; }
     ['grvName', 'grvPhone', 'grvMsg2'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   } catch (e) {
@@ -1246,22 +1323,8 @@ window.submitGrievance = async () => {
   }
 };
 
-    // FAQ accordion
-    document.querySelectorAll('.faq-q').forEach(q => {
-      q.addEventListener('click', () => {
-        const a = q.nextElementSibling;
-        const icon = q.querySelector('.faq-icon');
-        if (a.style.display === 'block') {
-          a.style.display = 'none';
-          if (icon) icon.textContent = '+';
-        } else {
-          document.querySelectorAll('.faq-a').forEach(x => x.style.display = 'none');
-          document.querySelectorAll('.faq-icon').forEach(x => x.textContent = '+');
-          a.style.display = 'block';
-          if (icon) icon.textContent = String.fromCharCode(8722);
-        }
-      });
-    });
+    // FAQ accordion — now handled by handleFaqClick (React onClick on the
+    // .faq container), so it works every time the FAQ tab is opened.
 
     // Language toggle
     window.setLang = (lang, btn) => {
@@ -1518,6 +1581,67 @@ window.submitGrievance = async () => {
     };
   }, []);
 
+  // Load live data for whichever tab is now on screen (notices, reviews,
+  // blog, videos, events, papers, faculty, exam calendar, timeline, fee
+  // details). Declared after the main effect above so window.loadMainVideo
+  // already exists when the Videos loader calls it.
+  // useLayoutEffect (not useEffect): when the data is already cached, the
+  // loaders finish in microtasks before the browser paints, so the tab
+  // never flashes its old hardcoded content.
+  useLayoutEffect(() => {
+    hydrateTabSections(setFeePaymentInfo);
+
+    // Performance bars (About tab) mount fresh on every visit, so observe
+    // them each time instead of only once at first page load.
+    const bars = document.querySelectorAll('.bar-fill');
+    if (!bars.length) return;
+    const tabBarObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const w = entry.target.getAttribute('data-w');
+          if (w) entry.target.style.width = w + '%';
+          tabBarObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.5 });
+    bars.forEach(b => tabBarObserver.observe(b));
+    return () => tabBarObserver.disconnect();
+  }, [activeTab]);
+
+  // Background prefetch of all tab data ~1.5s after load (after the
+  // above-the-fold content has had the network to itself).
+  useEffect(() => {
+    const t = setTimeout(prefetchTabData, 1500);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Deep link: if the page was opened with a tab hash (e.g. a shared
+  // guidancekhangabok.in/#syllabus link), scroll that section into view
+  // once it has rendered. The tab itself is picked in useState below.
+  useEffect(() => {
+    const target = hashToTab(window.location.hash);
+    if (target.tab === 'home') return;
+    const t = setTimeout(() => {
+      document.getElementById(target.scrollTo || target.tab)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+    return () => clearTimeout(t);
+  }, []);
+
+  // FAQ accordion via React event delegation — one question open at a time.
+  const handleFaqClick = (e) => {
+    const q = e.target.closest('.faq-q');
+    if (!q) return;
+    const a = q.nextElementSibling;
+    const icon = q.querySelector('.faq-icon');
+    const wasOpen = a && a.style.display === 'block';
+    e.currentTarget.querySelectorAll('.faq-a').forEach(x => { x.style.display = 'none'; });
+    e.currentTarget.querySelectorAll('.faq-icon').forEach(x => { x.textContent = '+'; });
+    if (!wasOpen && a) {
+      a.style.display = 'block';
+      if (icon) icon.textContent = String.fromCharCode(8722);
+    }
+  };
+
   return (
 <>
   <meta charSet="UTF-8" />
@@ -1541,7 +1665,7 @@ window.submitGrievance = async () => {
   />
   <meta
     property="og:description"
-    content="Manipur's premier coaching for NVS, Sainik School & RMS. 95% selection rate. 200+ students selected. Admissions open 2026–27."
+    content="Manipur's premier coaching for NVS, Sainik School & RMS. 95% selection rate. 200+ students selected. New batches: Navodaya from 20 December 2026, Sainik School & Foundation from 10 January 2027."
   />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://guidancekhangabok.in" />
@@ -1708,11 +1832,11 @@ window.submitGrievance = async () => {
       <div className="ticker-scroll">
         <div className="ticker-track">
           RESULT: 66 SELECTED IN NVS &amp; SAINIK
-          SCHOOL 2025–26 ◆ SUMMER BATCH COMMENCING JULY 2026 ◆ SUNDAY MOCK TESTS
+          SCHOOL 2025–26 ◆ NEW NAVODAYA BATCH COMMENCING 20 DECEMBER 2026 ◆ SAINIK &amp; FOUNDATION BATCHES COMMENCING 10 JANUARY 2027 ◆ SUNDAY MOCK TESTS
           ONGOING ◆ EST. 2016 · 200+ OFFICERS PRODUCED ◆ CALL +91 89742 98074 ◆
           KHANGABOK, THOUBAL, MANIPUR &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;RESULT:
           66 SELECTED IN NVS &amp; SAINIK SCHOOL 2025–26
-          ◆ SUMMER BATCH COMMENCING JULY 2026 ◆ SUNDAY MOCK TESTS ONGOING ◆ EST.
+          ◆ NEW NAVODAYA BATCH COMMENCING 20 DECEMBER 2026 ◆ SAINIK &amp; FOUNDATION BATCHES COMMENCING 10 JANUARY 2027 ◆ SUNDAY MOCK TESTS ONGOING ◆ EST.
           2016 · 200+ OFFICERS PRODUCED ◆ CALL +91 89742 98074 ◆ KHANGABOK,
           THOUBAL, MANIPUR &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
         </div>
@@ -3046,7 +3170,18 @@ window.submitGrievance = async () => {
       <div className="faculty-grid" id="facultyGrid">
         <div className="faculty-card reveal">
           <div className="fc-rank">01</div>
-          <div className="faculty-photo">H</div>
+          <div className="faculty-photo" style={{ position: "relative", overflow: "hidden" }}>
+            {FOUNDER_PHOTO_URL && (
+              <img
+                src={FOUNDER_PHOTO_URL}
+                alt="Moirangthem Himan Singh"
+                loading="lazy"
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center top" }}
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
+              />
+            )}
+            H
+          </div>
           <div className="fc-shade" />
           <div className="fc-edge" />
           <div className="fc-cap">
@@ -3273,13 +3408,13 @@ window.submitGrievance = async () => {
       <div className="cards-row" id="publicNoticeCards">
         <div className="notice-card urgent reveal">
           <div className="notice-badge badge-open">Open</div>
-          <h3>Admissions 2026–27</h3>
+          <h3>New Batches — Admissions Open</h3>
           <p>
-            Applications are open for the 2026–27 session. Limited seats
-            available for both day scholars and hostel boarders. Contact the
-            institute at the earliest.
+            Navodaya (JNVST) batch commences 20 December 2026. Sainik School and
+            Foundation batches commence 10 January 2027. Limited seats for both
+            day scholars and hostel boarders — call or WhatsApp to reserve.
           </p>
-          <div className="notice-date">Issued: June 2026</div>
+          <div className="notice-date">From 20 Dec 2026 · 10 Jan 2027</div>
         </div>
         <div className="notice-card reveal">
           <div className="notice-badge badge-weekly">Weekly</div>
@@ -3295,9 +3430,9 @@ window.submitGrievance = async () => {
           <h3>Hostel Seats</h3>
           <p>
             Very few residential hostel seats remain available for the new
-            academic session. Parents are urged to confirm at the earliest.
+            batch. Parents are urged to confirm at the earliest.
           </p>
-          <div className="notice-date">Issued: June 2026</div>
+          <div className="notice-date">Limited Seats</div>
         </div>
       </div>
     </div>
@@ -3339,11 +3474,12 @@ window.submitGrievance = async () => {
             📋<span className="blog-cat">Admissions</span>
           </div>
           <div className="blog-body">
-            <div className="blog-date">June 2026</div>
-            <h3>Admissions Open for 2026–27: What Parents Need to Know</h3>
+            <div className="blog-date">Admissions</div>
+            <h3>Joining GNSI: What Parents Need to Know</h3>
             <p>
-              Seats are limited for the new session beginning July 2026. Here is
-              everything you need to know about the admission process, courses,
+              The Navodaya batch commences on 20 December 2026 and the Sainik
+              and Foundation batches on 10 January 2027. Seats are limited.
+              Here is everything you need to know about the admission process, courses,
               hostel options, and fee structure at GNSI.
             </p>
             <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }} className="blog-read">
@@ -3379,7 +3515,7 @@ window.submitGrievance = async () => {
   <section className="promo-banner">
     <div className="promo-inner">
       <div className="promo-text">
-        <div className="promo-badge">Admissions 2026-27 · Now Open</div>
+        <div className="promo-badge">New Batches · From 20 Dec 2026</div>
         <h2>
           Ten years of results. <em>One decision</em> your child will thank you for.
         </h2>
@@ -4564,7 +4700,7 @@ window.submitGrievance = async () => {
             </tr>
             <tr>
               <td>
-                <div className="cal-exam">Summer Batch 2026</div>
+                <div className="cal-exam">Navodaya Batch</div>
                 <small style={{ color: "rgba(255,255,255,.75)", fontSize: ".72rem" }}>
                   GNSI New Session
                 </small>
@@ -4573,7 +4709,25 @@ window.submitGrievance = async () => {
                 <span className="cal-badge cb-gnsi">GNSI</span>
               </td>
               <td colSpan={3} style={{ color: "var(--gold)", fontWeight: 600 }}>
-                Commencing 1 July 2026
+                Commencing 20 December 2026
+              </td>
+              <td>—</td>
+              <td>
+                <span className="cal-status cs-open">★ Admissions Open</span>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <div className="cal-exam">Sainik &amp; Foundation Batch</div>
+                <small style={{ color: "rgba(255,255,255,.75)", fontSize: ".72rem" }}>
+                  GNSI New Session
+                </small>
+              </td>
+              <td>
+                <span className="cal-badge cb-gnsi">GNSI</span>
+              </td>
+              <td colSpan={3} style={{ color: "var(--gold)", fontWeight: 600 }}>
+                Commencing 10 January 2027
               </td>
               <td>—</td>
               <td>
@@ -4615,40 +4769,6 @@ window.submitGrievance = async () => {
       <div className="timeline reveal" id="timelineList">
         <div className="tl-item">
           <div className="tl-date">
-            <span className="tl-month">Jun</span>
-            <span className="tl-day">30</span>
-          </div>
-          <div className="tl-dot open" />
-          <div className="tl-content open">
-            <h4>🔴 GNSI Admission Deadline 2026–27</h4>
-            <p>
-              Last date to apply for GNSI Summer Batch. Hostel seats extremely
-              limited. Contact immediately.
-            </p>
-            <span className="tl-tag">
-              <span className="cal-badge cb-gnsi">GNSI</span>
-            </span>
-          </div>
-        </div>
-        <div className="tl-item">
-          <div className="tl-date">
-            <span className="tl-month">Jul</span>
-            <span className="tl-day">01</span>
-          </div>
-          <div className="tl-dot upcoming" />
-          <div className="tl-content">
-            <h4>🎓 GNSI Summer Batch Begins</h4>
-            <p>
-              New academic session commences. Fresh batch of NVS, Sainik School,
-              and RMS aspirants.
-            </p>
-            <span className="tl-tag">
-              <span className="cal-badge cb-gnsi">GNSI</span>
-            </span>
-          </div>
-        </div>
-        <div className="tl-item">
-          <div className="tl-date">
             <span className="tl-month">Jul</span>
             <span className="tl-day">—</span>
           </div>
@@ -4677,6 +4797,42 @@ window.submitGrievance = async () => {
               Class 9 admission 2027. Register at nta.ac.in.
             </p>
             <span className="tl-tag">
+              <span className="cal-badge cb-sainik">Sainik</span>
+            </span>
+          </div>
+        </div>
+        <div className="tl-item">
+          <div className="tl-date">
+            <span className="tl-month">Dec</span>
+            <span className="tl-day">20</span>
+          </div>
+          <div className="tl-dot open" />
+          <div className="tl-content open">
+            <h4>🎓 GNSI Navodaya Batch Begins</h4>
+            <p>
+              New Navodaya (JNVST) batch commences at GNSI. Admissions open —
+              limited day scholar and hostel seats.
+            </p>
+            <span className="tl-tag">
+              <span className="cal-badge cb-gnsi">GNSI</span>{" "}
+              <span className="cal-badge cb-nvs">NVS</span>
+            </span>
+          </div>
+        </div>
+        <div className="tl-item">
+          <div className="tl-date">
+            <span className="tl-month">Jan</span>
+            <span className="tl-day">10</span>
+          </div>
+          <div className="tl-dot open" />
+          <div className="tl-content open">
+            <h4>🎓 GNSI Sainik &amp; Foundation Batch Begins</h4>
+            <p>
+              New Sainik School (AISSEE) and Foundation batches commence at GNSI
+              on 10 January 2027. Admissions open — limited seats.
+            </p>
+            <span className="tl-tag">
+              <span className="cal-badge cb-gnsi">GNSI</span>{" "}
               <span className="cal-badge cb-sainik">Sainik</span>
             </span>
           </div>
@@ -4763,7 +4919,7 @@ window.submitGrievance = async () => {
         <div className="rule-d" />
         <div className="rule-line" />
       </div>
-      <div className="faq reveal" style={{ maxWidth: 720 }}>
+      <div className="faq reveal" style={{ maxWidth: 720 }} onClick={handleFaqClick}>
         <div className="faq-item">
           <div className="faq-q">
             What examinations does GNSI prepare students for?
@@ -4816,9 +4972,9 @@ window.submitGrievance = async () => {
             When does the next batch commence?<div className="faq-icon">+</div>
           </div>
           <div className="faq-a">
-            The Summer 2026 batch commences in July 2026. Applications must be
-            submitted before 30 June 2026. Contact the institute by phone or
-            WhatsApp for current seat availability.
+            The Navodaya (JNVST) batch commences on 20 December 2026. The Sainik
+            School and Foundation batches commence on 10 January 2027. For RMS
+            and current seat availability, call or WhatsApp the institute.
           </div>
         </div>
         <div className="faq-item">
@@ -5383,9 +5539,10 @@ window.submitGrievance = async () => {
         </div>
         <div className="app-btns">
           <a
-            href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/gnsi-app.apk"
+            href={ANDROID_APP_URL}
             className="app-btn"
             target="_blank"
+            rel="noopener noreferrer"
             download=""
           >
             <span className="app-btn-icon">▲</span>
@@ -5395,18 +5552,21 @@ window.submitGrievance = async () => {
             </div>
           </a>
           <a
-            href="https://play.google.com/store"
+            href="#"
+            onClick={(e) => e.preventDefault()}
             className="app-btn"
-            target="_blank"
+            style={{ opacity: ".45", cursor: "not-allowed" }}
+            title="Coming soon"
           >
             <span className="app-btn-icon">▲</span>
             <div className="app-btn-txt">
-              <small>Get it on</small>
+              <small>Coming soon</small>
               <strong>Google Play</strong>
             </div>
           </a>
           <a
             href="#"
+            onClick={(e) => e.preventDefault()}
             className="app-btn"
             style={{ opacity: ".45", cursor: "not-allowed" }}
             title="Coming soon"
@@ -5450,14 +5610,14 @@ window.submitGrievance = async () => {
           </div>
         </div>
         <div className="app-qr">
-          <div
-            style={{
-              width: 80,
-              height: 80,
-              background:
-                "repeating-linear-gradient(0deg,rgba(80,80,80,.15) 0,rgba(80,80,80,.15) 4px,transparent 4px,transparent 8px),repeating-linear-gradient(90deg,rgba(80,80,80,.15) 0,rgba(80,80,80,.15) 4px,transparent 4px,transparent 8px)",
-              margin: "0 auto"
-            }}
+          <img
+            src={"https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=4&data=" + encodeURIComponent(ANDROID_APP_URL)}
+            alt="QR code to download the GNSI Android app"
+            width={80}
+            height={80}
+            loading="lazy"
+            style={{ display: "block", width: 80, height: 80, margin: "0 auto", background: "#fff", borderRadius: 4 }}
+            onError={(e) => { e.currentTarget.style.display = "none"; }}
           />
           <p>Scan QR to Download</p>
         </div>

@@ -1284,6 +1284,26 @@ function BannersSection() {
 // ════════════════════════════════════════════════════════════
 //  ⑩ FACULTY
 // ════════════════════════════════════════════════════════════
+// Bulk faculty photo helpers: turn "m-himan-singh_2.jpg" into
+// "M Himan Singh" and compare names ignoring case, spaces and punctuation.
+const fileStemToName = (fileName) =>
+  (fileName || "").replace(/\.[^.]+$/, "").replace(/[_\-.]+/g, " ").replace(/\s*\d+\s*$/, "")
+    .replace(/\s+/g, " ").trim().replace(/\b\w/g, c => c.toUpperCase());
+const normName = (str) => (str || "").toLowerCase().replace(/[^a-z]/g, "");
+function matchFacultyByFileName(fileName, rows) {
+  const stem = normName(fileStemToName(fileName));
+  if (!stem) return null;
+  const exact = rows.find(r => normName(r.name) === stem);
+  if (exact) return exact.id;
+  // Partial: every word of the file name appears in the staff name (e.g. "himan.jpg" → "Moirangthem Himan Singh")
+  const words = fileStemToName(fileName).toLowerCase().split(" ").filter(w => w.length > 2);
+  const partial = rows.filter(r => {
+    const n = (r.name || "").toLowerCase();
+    return words.length && words.every(w => n.includes(w));
+  });
+  return partial.length === 1 ? partial[0].id : null; // only auto-pick when unambiguous
+}
+
 function FacultySection() {
   const [rows,setRows]=useState([]);
   const [load,setLoad]=useState(true);
@@ -1308,10 +1328,106 @@ function FacultySection() {
     setEdit(null);load_();
   };
   const del=async id=>{if(!confirm("Remove faculty?"))return;await deleteFaculty(id);toast("Removed");load_();};
+
+  // ── Bulk photo upload ──
+  // Pick many photos at once. Each is compressed + uploaded, then matched
+  // to a faculty member by file name (e.g. "Himan Singh.jpg"). Review the
+  // matches, change any, add unmatched ones as new faculty, then Save All.
+  const bulkRef=useRef(null);
+  const [bulkBusy,setBulkBusy]=useState(false);
+  const [bulkProg,setBulkProg]=useState({done:0,total:0});
+  const [bulkItems,setBulkItems]=useState([]); // {key,url,fileName,assign:"<id>"|"new"|"skip",newName,newRole}
+  const [bulkSaving,setBulkSaving]=useState(false);
+
+  const handleBulkFaculty=async(e)=>{
+    const files=Array.from(e.target.files||[]);
+    e.target.value="";
+    if(!files.length)return;
+    setBulkBusy(true);setBulkProg({done:0,total:files.length});
+    const items=[];let fail=0;
+    for(const file of files){
+      if(!file.type?.startsWith("image/")||file.size>30*1024*1024){fail++;setBulkProg(p=>({...p,done:p.done+1}));continue;}
+      const toUpload=await compressImage(file);
+      const{url,error}=await uploadWebsiteImage(toUpload,"faculty");
+      if(url&&!error){
+        const match=matchFacultyByFileName(file.name,rows);
+        items.push({key:url,url,fileName:file.name,assign:match?String(match):"new",newName:/^(img|dsc|pxl|photo|image|whatsapp|screenshot|camera)\b/i.test(fileStemToName(file.name))?"":fileStemToName(file.name),newRole:"Teaching Faculty"});
+      }else fail++;
+      setBulkProg(p=>({...p,done:p.done+1}));
+    }
+    setBulkBusy(false);
+    setBulkItems(prev=>[...prev,...items]);
+    if(items.length)toast(`${items.length} photo${items.length>1?"s":""} uploaded ✓ — check matches below`);
+    if(fail)toast(`${fail} file${fail>1?"s":""} failed to upload`,"error");
+  };
+  const setItem=(key,patch)=>setBulkItems(list=>list.map(it=>it.key===key?{...it,...patch}:it));
+
+  const saveBulk=async()=>{
+    const todo=bulkItems.filter(it=>it.assign!=="skip");
+    if(!todo.length){setBulkItems([]);return;}
+    const ids=todo.filter(it=>it.assign!=="new").map(it=>it.assign);
+    if(new Set(ids).size!==ids.length)return toast("Two photos are assigned to the same person — fix before saving","error");
+    if(todo.some(it=>it.assign==="new"&&(!it.newName.trim()||!it.newRole.trim())))return toast("New faculty need a name and role","error");
+    setBulkSaving(true);
+    let ok=0,fail=0,order=rows.length;
+    for(const it of todo){
+      const{error}=it.assign==="new"
+        ?await saveFaculty({name:it.newName.trim(),role:it.newRole.trim(),subject:"",experience:"",photo_url:it.url,sort_order:order++},null)
+        :await saveFaculty({photo_url:it.url},Number(it.assign));
+      if(error)fail++;else ok++;
+    }
+    setBulkSaving(false);
+    toast(`${ok} saved${fail?`, ${fail} failed`:""} ✓`,fail&&!ok?"error":"success");
+    if(!fail)setBulkItems([]);
+    load_();
+  };
   const startEdit=f=>{setEdit(f.id);setForm({name:f.name,role:f.role,subject:f.subject||"",experience:f.experience||"",photo_url:f.photo_url||"",sort_order:f.sort_order||0});};
 
   return (
     <div>
+      <div style={{...s.card,borderLeft:`4px solid ${C.gold}`}}>
+        <div style={s.cardHd}><span style={s.cardTit}>📚 Bulk Upload Staff Photos</span></div>
+        <div style={s.cardBdy}>
+          <input ref={bulkRef} type="file" accept="image/*" multiple onChange={handleBulkFaculty} style={{display:"none"}}/>
+          <button style={{...s.btnG,opacity:bulkBusy?.6:1}} onClick={()=>bulkRef.current?.click()} disabled={bulkBusy||bulkSaving}>
+            {bulkBusy
+              ?<span style={{display:"flex",alignItems:"center",gap:".4rem"}}><Spin/>Uploading {bulkProg.done}/{bulkProg.total}…</span>
+              :"Select Multiple Photos →"}
+          </button>
+          <div style={{fontSize:".72rem",color:"#64748b",marginTop:".5rem"}}>
+            Tip: name each file after the staff member (e.g. <b>Himan Singh.jpg</b>) and it will be matched automatically. Anything unmatched can be assigned below or added as new faculty.
+          </div>
+
+          {bulkItems.length>0&&(
+            <div style={{marginTop:"1rem"}}>
+              {bulkItems.map(it=>(
+                <div key={it.key} style={{display:"flex",gap:".8rem",alignItems:"center",flexWrap:"wrap",padding:".6rem 0",borderTop:"1px solid rgba(148,163,184,.2)"}}>
+                  <img src={it.url} alt="" style={{width:"56px",height:"56px",borderRadius:"50%",objectFit:"cover",border:`2px solid ${C.gold}`,flexShrink:0}}/>
+                  <div style={{flex:"1 1 220px",minWidth:0}}>
+                    <div style={{fontSize:".72rem",color:"#64748b",marginBottom:".3rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.fileName}</div>
+                    <select style={{...s.sel,marginBottom:it.assign==="new"?".5rem":0}} value={it.assign} onChange={e=>setItem(it.key,{assign:e.target.value})}>
+                      <option value="new">➕ Add as new faculty</option>
+                      <option value="skip">✕ Skip this photo</option>
+                      {rows.map(r=><option key={r.id} value={String(r.id)}>{r.name}{r.photo_url?" (replace photo)":""}</option>)}
+                    </select>
+                    {it.assign==="new"&&(
+                      <div style={s.g2}>
+                        <input style={{...s.inp,marginBottom:0}} placeholder="Full name *" value={it.newName} onChange={e=>setItem(it.key,{newName:e.target.value})}/>
+                        <input style={{...s.inp,marginBottom:0}} placeholder="Role *" value={it.newRole} onChange={e=>setItem(it.key,{newRole:e.target.value})}/>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <div style={{display:"flex",gap:".5rem",marginTop:".8rem",flexWrap:"wrap"}}>
+                <button style={{...s.btnG,opacity:bulkSaving?.6:1}} onClick={saveBulk} disabled={bulkSaving||bulkBusy}>{bulkSaving?"Saving…":`Save All (${bulkItems.filter(i=>i.assign!=="skip").length}) →`}</button>
+                <button style={s.btnR} onClick={()=>setBulkItems([])} disabled={bulkSaving}>Clear</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div style={s.card}>
         <div style={s.cardHd}><span style={s.cardTit}>{editing?"✏️ Edit Faculty":"➕ Add Faculty"}</span>{editing&&<button style={s.btnR} onClick={()=>{setEdit(null);setForm({name:"",role:"",subject:"",experience:"",photo_url:"",sort_order:0})}}>Cancel</button>}</div>
         <div style={s.cardBdy}>
