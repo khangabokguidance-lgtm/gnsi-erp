@@ -157,8 +157,17 @@ async function linkSupabaseAuth(username, password, isAdminShortcut = false) {
     if (error) {
       const r = await supabase.auth.signUp({ email, password })
       if (r.error || !r.data?.session) {
-        console.warn('Supabase Auth link skipped:', r.error?.message || 'no session (is "Confirm email" turned off?)')
-        return false
+        // Account exists but still has an OLD password (password was changed
+        // in the Admin Panel / dashboard). Verify the real password on the
+        // server, copy it to the secure login, then sign in again.
+        const { data: synced } = await supabase.rpc('staff_sync_auth_password', {
+          p_username: username.trim(), p_password: password, p_admin: isAdminShortcut,
+        })
+        const retry = synced ? await supabase.auth.signInWithPassword({ email, password }) : { error: true }
+        if (retry.error) {
+          console.warn('Supabase Auth link skipped:', r.error?.message || 'no session (is "Confirm email" turned off?)')
+          return false
+        }
       }
     }
     const { data, error: linkErr } = await supabase.rpc('staff_link_auth', {

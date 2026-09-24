@@ -6,6 +6,7 @@ import FaceEnroll, { FaceApprovalQueue } from './FaceEnroll'
 import { staffDB } from './staffDB'
 import { useCurrentUser } from './useCurrentUser'
 import { EventBus, GNSI_EVENTS } from './EventBus'
+import { StaffAvatar, PremiumHero, PREMIUM_CSS } from './staffPhotos'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -91,11 +92,14 @@ function useIsMobile() {
 // ─── Global CSS ───────────────────────────────────────────────────────────────
 
 const globalCSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+  ${PREMIUM_CSS}
   * { box-sizing:border-box }
-  body { font-family:'Outfit',system-ui,sans-serif; background:#f1f5f9 }
-  select,input,textarea { font-family:'Outfit',system-ui,sans-serif }
-  select:focus,input:focus,textarea:focus { outline:2px solid #1e3a5f; outline-offset:1px; border-color:#1e3a5f !important }
+  body { font-family:'Plus Jakarta Sans',system-ui,sans-serif; background:#F4F1EA }
+  select,input,textarea { font-family:'Plus Jakarta Sans',system-ui,sans-serif }
+  table thead tr { background:#FBF8F1 !important }
+  table tbody tr:hover { background:#FBF8F1 }
+  select:focus,input:focus,textarea:focus { outline:2px solid #0B1E3D; outline-offset:1px; border-color:#0B1E3D !important }
   ::-webkit-scrollbar { width:4px; height:4px }
   ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px }
   @keyframes slideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
@@ -108,16 +112,16 @@ const globalCSS = `
     .hide-mob   { display:none !important }
     .task-grid  { grid-template-columns:repeat(2,1fr) !important }
   }
-  @media(max-width:400px){ .stat-grid { grid-template-columns:1fr !important } }
+  @media(max-width:400px){ .stat-grid { grid-template-columns:repeat(2,1fr) !important } }
 `
 
 // ─── Shared Styles ────────────────────────────────────────────────────────────
 
 const S = {
-  page:  { padding:20, fontFamily:"'Outfit',system-ui,sans-serif", background:'#f1f5f9', minHeight:'100vh' },
-  card:  { background:'white', borderRadius:12, boxShadow:'0 2px 8px rgba(0,0,0,.07)', padding:20, marginBottom:16 },
-  btn:   (color='#1e3a5f', disabled=false) => ({ backgroundColor:disabled?'#94a3b8':color, color:'white', border:'none', borderRadius:8, padding:'10px 18px', fontWeight:700, cursor:disabled?'not-allowed':'pointer', fontSize:13, fontFamily:'inherit', minHeight:44 }),
-  btnSm: (color='#1e3a5f') => ({ backgroundColor:color, color:'white', border:'none', borderRadius:6, padding:'6px 12px', fontWeight:600, cursor:'pointer', fontSize:12, fontFamily:'inherit', minHeight:36 }),
+  page:  { padding:20, fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif", background:'linear-gradient(180deg,#F4F1EA,#F8F6F0)', minHeight:'100vh' },
+  card:  { background:'white', borderRadius:16, border:'1px solid #E8E1D0', boxShadow:'0 10px 30px rgba(11,30,61,.06)', padding:20, marginBottom:16 },
+  btn:   (color='#0B1E3D', disabled=false) => ({ backgroundColor:disabled?'#94a3b8':color, color:'white', border:'none', borderRadius:999, padding:'10px 18px', fontWeight:700, cursor:disabled?'not-allowed':'pointer', fontSize:13, fontFamily:'inherit', minHeight:44 }),
+  btnSm: (color='#0B1E3D') => ({ backgroundColor:color, color:'white', border:'none', borderRadius:6, padding:'6px 12px', fontWeight:600, cursor:'pointer', fontSize:12, fontFamily:'inherit', minHeight:36 }),
   input: { width:'100%', padding:'10px 12px', borderRadius:8, border:'1px solid #d1d5db', fontSize:14, boxSizing:'border-box', fontFamily:'inherit', minHeight:44 },
   label: { display:'block', fontSize:12, fontWeight:700, color:'#374151', marginBottom:5, textTransform:'uppercase', letterSpacing:'.05em' },
 }
@@ -128,9 +132,9 @@ const TD = { padding:'11px 14px', verticalAlign:'middle', color:'#334155' }
 
 function useToast() {
   const [msg, setMsg]   = useState('')
-  const [col, setCol]   = useState('#1e3a5f')
+  const [col, setCol]   = useState('#0B1E3D')
   const timerRef        = useRef(null)
-  const show = useCallback((message, color='#1e3a5f') => {
+  const show = useCallback((message, color='#0B1E3D') => {
     if (timerRef.current) clearTimeout(timerRef.current)
     setMsg(message); setCol(color)
     timerRef.current = setTimeout(() => setMsg(''), 3200)
@@ -156,7 +160,7 @@ function ConfirmModal({ title, message, confirmLabel='Confirm', danger=false, on
         <div style={{ fontSize:16, fontWeight:800, color:'#1e293b', marginBottom:8 }}>{title}</div>
         <p style={{ fontSize:13, color:'#64748b', marginBottom:20, lineHeight:1.7 }}>{message}</p>
         <div style={{ display:'flex', gap:10 }}>
-          <button onClick={onConfirm} style={{ flex:1, padding:12, borderRadius:8, border:'none', background:danger?'#dc2626':'#1e3a5f', color:'white', fontWeight:700, fontSize:14, cursor:'pointer', minHeight:44 }}>{confirmLabel}</button>
+          <button onClick={onConfirm} style={{ flex:1, padding:12, borderRadius:8, border:'none', background:danger?'#dc2626':'#0B1E3D', color:'white', fontWeight:700, fontSize:14, cursor:'pointer', minHeight:44 }}>{confirmLabel}</button>
           <button onClick={onCancel}  style={{ padding:'12px 20px', borderRadius:8, border:'1px solid #e2e8f0', background:'white', color:'#64748b', fontWeight:600, fontSize:13, cursor:'pointer', minHeight:44 }}>Cancel</button>
         </div>
       </div>
@@ -178,7 +182,7 @@ function LevelBadge({ score }) {
   return <span style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'4px 9px', borderRadius:99, fontSize:12, fontWeight:700, background:lvl.bg, color:lvl.color, border:`1px solid ${lvl.border}` }}>{lvl.emoji} {lvl.label}</span>
 }
 
-function ScoreBar({ value, max, color='#1e3a5f' }) {
+function ScoreBar({ value, max, color='#0B1E3D' }) {
   const p = Math.min(100, (value / max) * 100)
   return (
     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -249,7 +253,7 @@ function AdminPinModal({ onSuccess, onClose }) {
       <div style={{ background:'white', borderRadius:isMobile?'20px 20px 0 0':16, padding:32, width:'100%', maxWidth:360, boxShadow:'0 20px 60px rgba(0,0,0,.3)', textAlign:'center', animation:'slideUp .25s ease' }}>
         {isMobile && <div style={{ width:36, height:4, background:'#e2e8f0', borderRadius:2, margin:'0 auto 20px', opacity:.6 }}/>}
         <div style={{ fontSize:40, marginBottom:12 }}>🔐</div>
-        <h2 style={{ fontSize:18, fontWeight:800, color:'#1e3a5f', margin:'0 0 6px' }}>Admin Access Required</h2>
+        <h2 style={{ fontSize:18, fontWeight:800, color:'#0B1E3D', margin:'0 0 6px' }}>Admin Access Required</h2>
         <p style={{ fontSize:13, color:'#64748b', margin:'0 0 24px' }}>Salary configuration is restricted. Session expires in 15 minutes.</p>
         <input type="password" placeholder="Enter Admin PIN" value={pin}
           onChange={e => { setPin(e.target.value); setError('') }}
@@ -258,7 +262,7 @@ function AdminPinModal({ onSuccess, onClose }) {
         {error && <div style={{ background:'#fee2e2', color:'#dc2626', borderRadius:8, padding:'8px 12px', fontSize:13, fontWeight:600, marginBottom:12 }}>{error}</div>}
         <div style={{ display:'flex', gap:10 }}>
           <button onClick={onClose} style={{ ...S.btn('#64748b'), flex:1 }}>Cancel</button>
-          <button onClick={verify} disabled={loading} style={{ ...S.btn('#1e3a5f', loading), flex:1 }}>{loading ? '⏳ Verifying…' : '🔓 Verify'}</button>
+          <button onClick={verify} disabled={loading} style={{ ...S.btn('#0B1E3D', loading), flex:1 }}>{loading ? '⏳ Verifying…' : '🔓 Verify'}</button>
         </div>
       </div>
     </div>
@@ -317,7 +321,7 @@ function EditStaffModal({ staffMember, onClose, onSaved, showToast }) {
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:10000, display:'flex', alignItems:isMobile?'flex-end':'center', justifyContent:'center', padding:isMobile?0:16 }}>
       <div style={{ background:'white', borderRadius:isMobile?'20px 20px 0 0':16, width:'100%', maxWidth:580, maxHeight:isMobile?'92vh':'88vh', display:'flex', flexDirection:'column', overflow:'hidden', boxShadow:'0 20px 60px rgba(0,0,0,.3)', animation:'slideUp .25s ease' }}>
-        <div style={{ background:'linear-gradient(135deg,#1e3a5f,#254e91)', padding:'18px 22px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+        <div style={{ background:'linear-gradient(135deg,#0B1E3D,#254e91)', padding:'18px 22px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
           <div>
             <div style={{ fontSize:11, color:'#93c5fd', fontWeight:600, letterSpacing:1, textTransform:'uppercase' }}>✏️ Edit Staff Profile</div>
             <div style={{ fontSize:17, fontWeight:800, color:'white', marginTop:4 }}>{staffMember.name}</div>
@@ -413,7 +417,7 @@ function SalarySetupModal({ staffMember, onClose, onSaved, showToast }) {
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.65)', zIndex:10000, display:'flex', alignItems:isMobile?'flex-end':'center', justifyContent:'center', padding:isMobile?0:16 }}>
       <div style={{ background:'white', borderRadius:isMobile?'20px 20px 0 0':16, width:'100%', maxWidth:500, maxHeight:isMobile?'92vh':'88vh', display:'flex', flexDirection:'column', overflow:'hidden', boxShadow:'0 20px 60px rgba(0,0,0,.3)', animation:'slideUp .25s ease' }}>
-        <div style={{ background:'linear-gradient(135deg,#1e3a5f,#254e91)', padding:'18px 22px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+        <div style={{ background:'linear-gradient(135deg,#0B1E3D,#254e91)', padding:'18px 22px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
           <div>
             <div style={{ fontSize:11, color:'#93c5fd', fontWeight:600, letterSpacing:1, textTransform:'uppercase' }}>🔐 Admin · Salary Config</div>
             <div style={{ fontSize:17, fontWeight:800, color:'white', marginTop:4 }}>{staffMember.name}</div>
@@ -466,7 +470,7 @@ function SalarySetupModal({ staffMember, onClose, onSaved, showToast }) {
           </div>
           <div style={{ display:'flex', gap:10 }}>
             <button onClick={onClose} style={{ ...S.btn('#64748b'), flex:1 }}>Cancel</button>
-            <button onClick={handleSave} disabled={saving} style={{ ...S.btn('#1e3a5f', saving), flex:2 }}>{saving ? '⏳ Saving…' : '💾 Save Salary'}</button>
+            <button onClick={handleSave} disabled={saving} style={{ ...S.btn('#0B1E3D', saving), flex:2 }}>{saving ? '⏳ Saving…' : '💾 Save Salary'}</button>
           </div>
         </div>
       </div>
@@ -554,7 +558,7 @@ function AssignTaskModal({ staffList, preselectedStaff, onClose, onSaved }) {
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,.65)', backdropFilter:'blur(4px)', zIndex:10000, display:'flex', alignItems:isMobile?'flex-end':'center', justifyContent:'center', padding:isMobile?0:20 }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ background:'white', borderRadius:isMobile?'20px 20px 0 0':20, width:'100%', maxWidth:640, maxHeight:isMobile?'94vh':'90vh', display:'flex', flexDirection:'column', overflow:'hidden', boxShadow:'0 24px 64px rgba(0,0,0,.22)', animation:'slideUp .25s ease' }}>
-        <div style={{ background:'linear-gradient(135deg,#1e3a5f,#6366f1)', padding:'20px 24px', color:'white', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+        <div style={{ background:'linear-gradient(135deg,#0B1E3D,#6366f1)', padding:'20px 24px', color:'white', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
           <div>
             <div style={{ fontSize:11, opacity:.7, letterSpacing:1, textTransform:'uppercase' }}>GNSI · Staff Tasks</div>
             <div style={{ fontSize:19, fontWeight:800 }}>Assign New Task</div>
@@ -583,7 +587,7 @@ function AssignTaskModal({ staffList, preselectedStaff, onClose, onSaved }) {
           )}
         </div>
         <div style={{ padding:'16px 20px 20px', display:'flex', gap:12, flexShrink:0 }}>
-          <button onClick={handleSave} disabled={saving} style={{ flex:1, background:'linear-gradient(135deg,#1e3a5f,#6366f1)', color:'white', border:'none', borderRadius:12, padding:14, cursor:'pointer', fontWeight:800, fontSize:15, fontFamily:'inherit', minHeight:48, opacity:saving?.7:1 }}>
+          <button onClick={handleSave} disabled={saving} style={{ flex:1, background:'linear-gradient(135deg,#0B1E3D,#6366f1)', color:'white', border:'none', borderRadius:12, padding:14, cursor:'pointer', fontWeight:800, fontSize:15, fontFamily:'inherit', minHeight:48, opacity:saving?.7:1 }}>
             {saving ? '⏳ Assigning…' : '✅ Assign Task'}
           </button>
           <button onClick={onClose} style={{ padding:'14px 22px', background:'#f1f5f9', border:'none', borderRadius:12, cursor:'pointer', fontWeight:600, color:'#64748b', fontFamily:'inherit' }}>Cancel</button>
@@ -611,7 +615,7 @@ function TaskDetailModal({ task, onClose, onStatusChange }) {
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,.55)', backdropFilter:'blur(4px)', zIndex:10001, display:'flex', alignItems:isMobile?'flex-end':'center', justifyContent:'center', padding:isMobile?0:20 }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ background:'white', borderRadius:isMobile?'20px 20px 0 0':20, width:'100%', maxWidth:540, maxHeight:isMobile?'92vh':'88vh', display:'flex', flexDirection:'column', overflow:'hidden', boxShadow:'0 20px 60px rgba(0,0,0,.2)', animation:'slideUp .25s ease' }}>
-        <div style={{ background:'linear-gradient(135deg,#1e3a5f,#0ea5e9)', padding:'20px 22px', color:'white', display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexShrink:0 }}>
+        <div style={{ background:'linear-gradient(135deg,#0B1E3D,#0ea5e9)', padding:'20px 22px', color:'white', display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexShrink:0 }}>
           <div>
             <div style={{ fontSize:11, opacity:.7, textTransform:'uppercase', letterSpacing:1 }}>Task Detail</div>
             <div style={{ fontSize:17, fontWeight:800, marginTop:4, lineHeight:1.3 }}>{task.title}</div>
@@ -636,7 +640,7 @@ function TaskDetailModal({ task, onClose, onStatusChange }) {
           <div style={{ marginBottom:14 }}>
             <label style={{ ...S.label, marginBottom:6 }}>Completion Note</label>
             <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} style={{ ...S.input, resize:'vertical', fontFamily:'inherit' }} placeholder="Add progress note..."/>
-            <button onClick={saveNote} disabled={saving} style={{ ...S.btn('#1e3a5f', saving), marginTop:8, padding:'8px 16px', fontSize:13 }}>{saving ? 'Saving…' : 'Save Note'}</button>
+            <button onClick={saveNote} disabled={saving} style={{ ...S.btn('#0B1E3D', saving), marginTop:8, padding:'8px 16px', fontSize:13 }}>{saving ? 'Saving…' : 'Save Note'}</button>
           </div>
         </div>
         <div style={{ padding:'14px 20px 20px', display:'flex', gap:10, flexShrink:0 }}>
@@ -1262,7 +1266,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
   }, [staff])
 
   const statsCards = [
-    { label:'Total Staff',  value:staff.length,                                          color:'#1e3a5f', bg:'#eff6ff', icon:'👨‍🏫' },
+    { label:'Total Staff',  value:staff.length,                                          color:'#0B1E3D', bg:'#eff6ff', icon:'👨‍🏫' },
     { label:'Active',       value:staff.filter(s => s.status === 'Active').length,       color:'#16a34a', bg:'#dcfce7', icon:'✅' },
     { label:'Teaching',     value:roleCounts['Teaching']+roleCounts['Teaching + Admin'],  color:'#0891b2', bg:'#e0f2fe', icon:'🎓' },
     { label:'Non-Teaching', value:roleCounts['Non-Teaching'],                            color:'#6366f1', bg:'#eef2ff', icon:'🏢' },
@@ -1282,10 +1286,9 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
       )}
 
       {/* ── Header ── */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20, flexWrap:'wrap', gap:10 }}>
+      <PremiumHero mobile={isMobile} icon="👨‍🏫" title="Staff Management" subtitle="Profiles · Roles · Performance · Tasks — with faculty photos" />
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, flexWrap:'wrap', gap:10 }}>
         <div>
-          <h1 style={{ fontSize:isMobile?22:26, fontWeight:800, color:'#1e3a5f', margin:0, letterSpacing:'-.02em' }}>👨‍🏫 Staff Management</h1>
-          <p style={{ color:'#64748b', fontSize:13, margin:'4px 0 0' }}>Profiles · Roles · Performance · Tasks</p>
           {isAdminUnlocked() && <span style={{ display:'inline-block', marginTop:6, padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:700, background:'#dcfce7', color:'#16a34a' }}>🔓 Admin session active</span>}
           {!canEdit && <span style={{ display:'inline-block', marginTop:6, marginLeft:8, padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:700, background:'#f1f5f9', color:'#64748b' }}>👁 View only</span>}
         </div>
@@ -1305,9 +1308,9 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
           {ALL_TABS.map(t => (
             <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
               padding:'10px 8px', fontWeight:700, fontSize:isMobile?11:12, cursor:'pointer',
-              background:activeTab===t.key ? '#1e3a5f' : 'white',
+              background:activeTab===t.key ? '#0B1E3D' : 'white',
               color:activeTab===t.key ? 'white' : '#64748b',
-              border:activeTab===t.key ? '2px solid #1e3a5f' : '2px solid #e2e8f0',
+              border:activeTab===t.key ? '2px solid #0B1E3D' : '2px solid #e2e8f0',
               borderRadius:10, fontFamily:'inherit', minHeight:44, whiteSpace:'nowrap',
               boxShadow:activeTab===t.key ? '0 2px 8px rgba(30,58,95,.25)' : 'none',
               transition:'all .15s',
@@ -1333,7 +1336,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
           {/* Add form */}
           {showForm && canEdit && (
             <div style={S.card}>
-              <h2 style={{ fontSize:17, fontWeight:800, color:'#1e3a5f', marginTop:0 }}>Add Staff Profile</h2>
+              <h2 style={{ fontSize:17, fontWeight:800, color:'#0B1E3D', marginTop:0 }}>Add Staff Profile</h2>
               <p style={{ fontSize:12, color:'#94a3b8', marginTop:-6, marginBottom:14 }}>💡 Salary configured separately by admin after adding.</p>
               <form onSubmit={handleAdd}>
                 <div className="form-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
@@ -1374,7 +1377,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
                     </select>
                   </div>
                 </div>
-                <button type="submit" disabled={saving} style={{ ...S.btn('#1e3a5f', saving), marginTop:16 }}>
+                <button type="submit" disabled={saving} style={{ ...S.btn('#0B1E3D', saving), marginTop:16 }}>
                   {saving ? '⏳ Saving…' : '✅ Save Staff'}
                 </button>
               </form>
@@ -1424,7 +1427,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
 
                   {/* Avatar + Name + Score ring */}
                   <div style={{ display:'flex', alignItems:'flex-start', gap:12, marginTop:2 }}>
-                    <div style={{ width:52, height:52, borderRadius:'50%', background:`linear-gradient(135deg,hsl(${hue},70%,55%),hsl(${hue+40},70%,45%))`, display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:700, fontSize:16, flexShrink:0, boxShadow:'0 2px 8px rgba(0,0,0,.12)' }}>{initials}</div>
+                    <StaffAvatar name={item.name} id={item.id} style={{ width:52, height:52, borderRadius:'50%', background:`linear-gradient(135deg,hsl(${hue},70%,55%),hsl(${hue+40},70%,45%))`, display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:700, fontSize:16, flexShrink:0, boxShadow:'0 2px 8px rgba(0,0,0,.12)' }}>{initials}</StaffAvatar>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontWeight:800, fontSize:15, color:'#1e293b', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.name}</div>
                       <div style={{ fontSize:12, color:'#64748b', marginTop:2 }}>{item.designation}</div>
@@ -1555,7 +1558,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
               <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page===1} style={{ ...S.btnSm('#64748b'), opacity:page===1?.4:1 }}>←</button>
               {Array.from({ length:Math.min(5, totalPages) }, (_, i) => {
                 const p = totalPages <= 5 ? i+1 : Math.max(1, Math.min(page-2, totalPages-4)) + i
-                return <button key={p} onClick={() => setPage(p)} style={{ ...S.btnSm(page===p?'#1e3a5f':'#e2e8f0'), color:page===p?'white':'#374151', minWidth:36 }}>{p}</button>
+                return <button key={p} onClick={() => setPage(p)} style={{ ...S.btnSm(page===p?'#0B1E3D':'#e2e8f0'), color:page===p?'white':'#374151', minWidth:36 }}>{p}</button>
               })}
               <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page===totalPages} style={{ ...S.btnSm('#64748b'), opacity:page===totalPages?.4:1 }}>→</button>
             </div>
@@ -1593,7 +1596,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
           {/* Staff task overview */}
           {staffTaskMonitor.length > 0 && (
             <div style={{ ...S.card, marginBottom:16 }}>
-              <h3 style={{ margin:'0 0 14px', fontSize:14, fontWeight:800, color:'#1e3a5f' }}>👥 Staff Task Overview</h3>
+              <h3 style={{ margin:'0 0 14px', fontSize:14, fontWeight:800, color:'#0B1E3D' }}>👥 Staff Task Overview</h3>
               <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:12 }}>
                 {staffTaskMonitor.map(s => {
                   const rate  = s.taskTotal > 0 ? Math.round((s.taskDone / s.taskTotal) * 100) : 0
@@ -1674,16 +1677,16 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
                           </td>
                           <td style={TD}>
                             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                              <div style={{ width:26, height:26, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#0ea5e9)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:9, fontWeight:700, flexShrink:0 }}>
+                              <StaffAvatar name={task.assigned_to} id={null} style={{ width:26, height:26, borderRadius:'50%', background:'linear-gradient(135deg,#6366f1,#0ea5e9)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontSize:9, fontWeight:700, flexShrink:0 }}>
                                 {task.assigned_to?.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()}
-                              </div>
+                              </StaffAvatar>
                               <span style={{ fontSize:13, fontWeight:500, color:'#334155' }}>{task.assigned_to}</span>
                             </div>
                           </td>
                           <td style={TD}><RoleBadge role={assignedStaff?.role}/></td>
                           <td style={{ ...TD, fontSize:12, color:'#64748b' }}>
                             {task.course
-                              ? <span style={{ padding:'2px 8px', borderRadius:6, background:'#eff6ff', color:'#1e3a5f', fontWeight:600, fontSize:11 }}>{task.course}{task.subtype ? ` / ${task.subtype}` : ''}</span>
+                              ? <span style={{ padding:'2px 8px', borderRadius:6, background:'#eff6ff', color:'#0B1E3D', fontWeight:600, fontSize:11 }}>{task.course}{task.subtype ? ` / ${task.subtype}` : ''}</span>
                               : <span style={{ color:'#e2e8f0' }}>—</span>}
                           </td>
                           <td style={TD}><TaskBadge value={task.priority} type="priority"/></td>
@@ -1737,7 +1740,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
           {/* Header */}
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:12, marginBottom:18 }}>
             <div>
-              <h2 style={{ fontSize:17, fontWeight:800, color:'#1e3a5f', margin:0 }}>📊 Monthly Performance Scoring</h2>
+              <h2 style={{ fontSize:17, fontWeight:800, color:'#0B1E3D', margin:0 }}>📊 Monthly Performance Scoring</h2>
               <p style={{ color:'#64748b', fontSize:12, margin:'4px 0 0' }}>
                 ⚡ Auto-Mark calculates ALL 7 fields — attendance, tasks, feedback & initiative
               </p>
@@ -1789,7 +1792,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
 
           {/* How scores are calculated */}
           <div style={{ marginBottom:14, padding:'12px 14px', background:'#f8fafc', borderRadius:10, border:'1px solid #e2e8f0' }}>
-            <div style={{ fontSize:11, fontWeight:800, color:'#1e3a5f', marginBottom:8 }}>HOW SCORES ARE CALCULATED AUTOMATICALLY</div>
+            <div style={{ fontSize:11, fontWeight:800, color:'#0B1E3D', marginBottom:8 }}>HOW SCORES ARE CALCULATED AUTOMATICALLY</div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:8 }}>
               {[
                 { icon:'📍', label:'Attendance /30',  color:'#0ea5e9', desc:'Days present ÷ working days × 30',          src:'GeoAttendance' },
@@ -1814,8 +1817,8 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
           <div style={{ overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:800 }}>
               <thead>
-                <tr style={{ background:'#1e3a5f', color:'white' }}>
-                  <th style={{ padding:'10px 14px', textAlign:'left', position:'sticky', left:0, background:'#1e3a5f', zIndex:2, minWidth:160, fontSize:11 }}>Staff</th>
+                <tr style={{ background:'#0B1E3D', color:'white' }}>
+                  <th style={{ padding:'10px 14px', textAlign:'left', position:'sticky', left:0, background:'#0B1E3D', zIndex:2, minWidth:160, fontSize:11 }}>Staff</th>
                   {[
                     { label:'Present',    sub:`/${workingDays}`, color:'#7dd3fc', tip:'GeoAttendance ⚡' },
                     { label:'Late',       sub:'',                color:'#fda4af', tip:'GeoAttendance ⚡' },
@@ -1858,7 +1861,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
         <>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18, flexWrap:'wrap', gap:10 }}>
             <div>
-              <h2 style={{ fontSize:17, fontWeight:800, color:'#1e3a5f', margin:0 }}>🏆 Performance Leaderboard</h2>
+              <h2 style={{ fontSize:17, fontWeight:800, color:'#0B1E3D', margin:0 }}>🏆 Performance Leaderboard</h2>
               <p style={{ fontSize:12, color:'#64748b', margin:'4px 0 0' }}>Rankings update when scores are saved · {leaderboard.length} scored staff</p>
             </div>
             <input type="month" value={scoreMonth} onChange={e => setScoreMonth(e.target.value)}
@@ -1887,7 +1890,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
                     return (
                       <div key={s.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, minWidth:130 }}>
                         <div style={{ fontSize:30 }}>{medal}</div>
-                        <div style={{ width:52, height:52, borderRadius:'50%', background:`linear-gradient(135deg,${color},${color}88)`, display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:800, fontSize:17, boxShadow:`0 4px 16px ${color}55`, border:`3px solid ${color}` }}>{initials}</div>
+                        <StaffAvatar name={s.name} id={s.id} style={{ width:52, height:52, borderRadius:'50%', background:`linear-gradient(135deg,${color},${color}88)`, display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:800, fontSize:17, boxShadow:`0 4px 16px ${color}55`, border:`3px solid ${color}` }}>{initials}</StaffAvatar>
                         <div style={{ fontWeight:800, color:'#1e293b', fontSize:13, textAlign:'center', maxWidth:120 }}>{s.name}</div>
                         <RoleBadge role={s.role}/>
                         <div style={{ fontSize:22, fontWeight:800, color, fontFamily:"'JetBrains Mono',monospace" }}>{s.score}</div>
@@ -1946,7 +1949,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
                 <div style={{ overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
                   <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:660 }}>
                     <thead>
-                      <tr style={{ background:'#1e3a5f', color:'white' }}>
+                      <tr style={{ background:'#0B1E3D', color:'white' }}>
                         {['#','Staff','Role','Dept','Att','Punct','Tasks','Fdbk','Init','Total','Level'].map(h => (
                           <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontSize:11, fontWeight:700, color:'#e2e8f0', whiteSpace:'nowrap' }}>{h}</th>
                         ))}
@@ -1998,7 +2001,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
         <>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18, flexWrap:'wrap', gap:10 }}>
             <div>
-              <h2 style={{ fontSize:17, fontWeight:800, color:'#1e3a5f', margin:0 }}>📅 Score History & Trends</h2>
+              <h2 style={{ fontSize:17, fontWeight:800, color:'#0B1E3D', margin:0 }}>📅 Score History & Trends</h2>
               <p style={{ fontSize:12, color:'#64748b', margin:'4px 0 0' }}>Per-staff performance over time · spot trends · identify growth</p>
             </div>
             <select value={historyStaffId} onChange={e => setHistoryStaffId(e.target.value)}
@@ -2040,9 +2043,9 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
               <>
                 {/* Staff summary card */}
                 <div style={{ background:'white', borderRadius:14, padding:20, marginBottom:16, display:'flex', alignItems:'center', gap:16, flexWrap:'wrap', boxShadow:'0 2px 8px rgba(0,0,0,.06)' }}>
-                  <div style={{ width:54, height:54, borderRadius:'50%', flexShrink:0, background:`linear-gradient(135deg,hsl(${(staffInfo?.name?.charCodeAt(0)||0)%360},70%,55%),hsl(${(staffInfo?.name?.charCodeAt(0)||0)%360+40},70%,45%))`, display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:800, fontSize:19 }}>
+                  <StaffAvatar name={staffInfo?.name} id={staffInfo?.id} style={{ width:54, height:54, borderRadius:'50%', flexShrink:0, background:`linear-gradient(135deg,hsl(${(staffInfo?.name?.charCodeAt(0)||0)%360},70%,55%),hsl(${(staffInfo?.name?.charCodeAt(0)||0)%360+40},70%,45%))`, display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:800, fontSize:19 }}>
                     {staffInfo?.name?.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()}
-                  </div>
+                  </StaffAvatar>
                   <div style={{ flex:1, minWidth:120 }}>
                     <div style={{ fontWeight:800, fontSize:16, color:'#1e293b' }}>{staffInfo?.name}</div>
                     <div style={{ fontSize:12, color:'#64748b', marginTop:2 }}>{staffInfo?.designation} · {staffInfo?.department}</div>
@@ -2058,7 +2061,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
                   </div>
                   {/* Stat boxes */}
                   {[
-                    { label:'Latest',  value:latest.total_score, color:getLevel(latest.total_score)?.color||'#1e3a5f', emoji:getLevel(latest.total_score)?.emoji },
+                    { label:'Latest',  value:latest.total_score, color:getLevel(latest.total_score)?.color||'#0B1E3D', emoji:getLevel(latest.total_score)?.emoji },
                     { label:'Average', value:avg,                color:'#0891b2' },
                     { label:'Best',    value:best.total_score,   color:'#16a34a', sub:formatMonth(best.month).split(' ')[0] },
                     { label:'Worst',   value:worst.total_score,  color:'#dc2626', sub:formatMonth(worst.month).split(' ')[0] },
@@ -2085,7 +2088,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
 
                 {/* Bar chart trend */}
                 <div style={{ ...S.card, marginBottom:16 }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:'#1e3a5f', marginBottom:14 }}>📊 Monthly Score Trend</div>
+                  <div style={{ fontSize:13, fontWeight:700, color:'#0B1E3D', marginBottom:14 }}>📊 Monthly Score Trend</div>
                   <div style={{ display:'flex', alignItems:'flex-end', gap:8, height:150, overflowX:'auto', paddingBottom:6 }}>
                     {scores_asc.map((r, i) => {
                       const lvl    = getLevel(r.total_score)
@@ -2109,7 +2112,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
 
                 {/* Component breakdown */}
                 <div style={{ ...S.card, marginBottom:16 }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:'#1e3a5f', marginBottom:14 }}>🔍 Component Breakdown — {formatMonth(latest.month)}</div>
+                  <div style={{ fontSize:13, fontWeight:700, color:'#0B1E3D', marginBottom:14 }}>🔍 Component Breakdown — {formatMonth(latest.month)}</div>
                   <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                     {[
                       { label:'Attendance',     score:latest.p1_attendance,  max:30, color:'#0ea5e9', icon:'📍', src:'GeoAttendance' },
@@ -2195,7 +2198,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
         <>
           {isAdmin && (
             <div style={{ ...S.card }}>
-              <h3 style={{ margin:'0 0 12px', fontSize:14, fontWeight:800, color:'#1e3a5f' }}>🧑‍💼 Pending Face Enrollments</h3>
+              <h3 style={{ margin:'0 0 12px', fontSize:14, fontWeight:800, color:'#0B1E3D' }}>🧑‍💼 Pending Face Enrollments</h3>
               <FaceApprovalQueue currentAdminId={currentUser?.staff_profile_id || null} showToast={showToast} />
             </div>
           )}
@@ -2203,7 +2206,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
             <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:10, padding:'12px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:10 }}>
               <span style={{ fontSize:20 }}>📍</span>
               <div>
-                <div style={{ fontSize:13, fontWeight:700, color:'#1e3a5f' }}>Self Attendance</div>
+                <div style={{ fontSize:13, fontWeight:700, color:'#0B1E3D' }}>Self Attendance</div>
                 <div style={{ fontSize:12, color:'#64748b' }}>Mark your own attendance using your device location.</div>
               </div>
             </div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import { EventBus, GNSI_EVENTS } from './EventBus'
+import { StaffAvatar, PremiumHero, PREMIUM_CSS, findStaffPhoto } from './staffPhotos'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -44,16 +45,16 @@ function useIsMobile() {
 // ─── Responsive style helpers ─────────────────────────────────────────────────
 
 const S = {
-  page:   (mob) => ({ padding: mob ? '12px' : '24px', fontFamily:"'Segoe UI', sans-serif", background:'#f8fafc', minHeight:'100vh' }),
-  card:   { background:'white', borderRadius:'12px', boxShadow:'0 2px 8px rgba(0,0,0,0.08)', padding:'16px', marginBottom:'16px' },
-  cardMob:{ background:'white', borderRadius:'10px', boxShadow:'0 2px 8px rgba(0,0,0,0.08)', padding:'12px', marginBottom:'12px' },
-  btn:    (c='#1e3a5f', dis=false) => ({ backgroundColor:dis?'#94a3b8':c, color:'white', border:'none', borderRadius:'8px', padding:'10px 16px', fontWeight:'600', cursor:dis?'not-allowed':'pointer', fontSize:'13px', opacity:dis?0.7:1, whiteSpace:'nowrap' }),
-  btnSm:  (c='#1e3a5f') => ({ backgroundColor:c, color:'white', border:'none', borderRadius:'6px', padding:'6px 10px', fontWeight:'600', cursor:'pointer', fontSize:'12px', lineHeight:'1', whiteSpace:'nowrap' }),
+  page:   (mob) => ({ padding: mob ? '12px' : '24px', fontFamily:"'Plus Jakarta Sans','Segoe UI',sans-serif", background:'linear-gradient(180deg,#F4F1EA,#F8F6F0)', minHeight:'100vh' }),
+  card:   { background:'white', borderRadius:'16px', border:'1px solid #E8E1D0', boxShadow:'0 10px 30px rgba(11,30,61,.06)', padding:'16px', marginBottom:'16px' },
+  cardMob:{ background:'white', borderRadius:'14px', border:'1px solid #E8E1D0', boxShadow:'0 8px 22px rgba(11,30,61,.06)', padding:'12px', marginBottom:'12px' },
+  btn:    (c='#0B1E3D', dis=false) => ({ backgroundColor:dis?'#94a3b8':c, color:'white', border:'none', borderRadius:'8px', padding:'10px 16px', fontWeight:'600', cursor:dis?'not-allowed':'pointer', fontSize:'13px', opacity:dis?0.7:1, whiteSpace:'nowrap' }),
+  btnSm:  (c='#0B1E3D') => ({ backgroundColor:c, color:'white', border:'none', borderRadius:'6px', padding:'6px 10px', fontWeight:'600', cursor:'pointer', fontSize:'12px', lineHeight:'1', whiteSpace:'nowrap' }),
   inp:    { width:'100%', padding:'10px 14px', borderRadius:'8px', border:'1px solid #d1d5db', fontSize:'14px', boxSizing:'border-box', background:'white' },
   inpSm:  { width:'100%', padding:'8px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'13px', boxSizing:'border-box', background:'white' },
   lbl:    { display:'block', fontSize:'13px', fontWeight:'600', color:'#374151', marginBottom:'6px' },
-  tab:    (a, mob) => ({ padding: mob ? '8px 12px' : '10px 20px', fontWeight:'600', fontSize: mob ? '12px' : '13px', cursor:'pointer', background:'none', border:'none', borderBottomWidth:a?'3px':'0px', borderBottomStyle:'solid', borderBottomColor:a?'#1e3a5f':'transparent', color:a?'#1e3a5f':'#64748b', transition:'all 0.2s', whiteSpace:'nowrap' }),
-  statCard:(color, bg) => ({ backgroundColor:bg, borderRadius:'10px', padding:'14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)', borderLeft:`4px solid ${color}` }),
+  tab:    (a, mob) => ({ padding: mob ? '8px 12px' : '10px 20px', fontWeight:'600', fontSize: mob ? '12px' : '13px', cursor:'pointer', background:'none', border:'none', borderBottomWidth:a?'3px':'0px', borderBottomStyle:'solid', borderBottomColor:a?'#0B1E3D':'transparent', color:a?'#0B1E3D':'#64748b', transition:'all 0.2s', whiteSpace:'nowrap' }),
+  statCard:(color, bg) => ({ backgroundColor:'#fff', borderRadius:'14px', padding:'14px', border:'1px solid #E8E1D0', boxShadow:'0 8px 22px rgba(11,30,61,.06)', borderTop:`3px solid ${color}` }),
   badge:  (c, bg) => ({ padding:'3px 10px', borderRadius:'999px', fontSize:'11px', fontWeight:'700', background:bg, color:c, display:'inline-block' }),
 }
 
@@ -77,6 +78,7 @@ function buildSlipHTML(s, ded, month, copy) {
   const custom=Number(ded?.custom_deduction||0), esi=Number(ded?.esi_deduction||0), tds=Number(ded?.tds_deduction||0)
   const totDed=adv+lat+adm+pf+perfPenalty+custom+esi+tds, net=g+perfBonus+ot+arr+reimb-totDed
   const ini=(s.name||'').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase()
+  const photoRaw=findStaffPhoto(s.name, s.id), photo=photoRaw?String(photoRaw).replace(/"/g,'%22'):null
   const isOff=copy==='office', ctag=isOff?'OFFICE COPY':'STAFF COPY', cbg=isOff?'#FCEBEB':'#E6F1FB', cclr=isOff?'#6B1A1A':'#0C447C'
   const mo=fmtMonth(month), genDate=new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})
   const payMode=ded?.payment_mode||''
@@ -99,7 +101,7 @@ function buildSlipHTML(s, ded, month, copy) {
       </td>
     </tr></table>
     <div style="background:#EEF4FF;border-bottom:1px solid #C5D8F5;padding:8px 14px;display:flex;align-items:center;gap:12px">
-      <div style="width:36px;height:36px;border-radius:50%;background:#1B3A6B;display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:13px;font-weight:700;color:#fff">${ini}</span></div>
+      ${photo?`<img src="${photo}" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;object-position:center top;border:2px solid #C9A24B;flex-shrink:0"/>`:`<div style="width:36px;height:36px;border-radius:50%;background:#1B3A6B;display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:13px;font-weight:700;color:#fff">${ini}</span></div>`}
       <div style="flex:1">
         <div style="font-size:15px;font-weight:700;color:#1B3A6B">${s.name||'—'}</div>
         <div style="font-size:11px;color:#3A5A9B;margin-top:2px">${s.designation||s.department||'—'}${payMode?` · Paid via ${payMode}`:''}</div>
@@ -431,16 +433,16 @@ function ReportsTab({ salaryRows, staff, advances, isMobile }) {
     <div>
       {/* Advanced Filter Panel */}
       <div style={S.card}>
-        <div style={{ fontWeight: 700, color: '#1e3a5f', marginBottom: 12, fontSize: 14 }}>🔎 Advanced Filter</div>
+        <div style={{ fontWeight: 700, color: '#0B1E3D', marginBottom: 12, fontSize: 14 }}>🔎 Advanced Filter</div>
 
         {/* Period mode toggle */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
           <button onClick={() => setPeriodMode('calendar')}
-            style={{ ...S.btnSm(periodMode === 'calendar' ? '#1e3a5f' : '#94a3b8'), opacity: periodMode === 'calendar' ? 1 : 0.6 }}>
+            style={{ ...S.btnSm(periodMode === 'calendar' ? '#0B1E3D' : '#94a3b8'), opacity: periodMode === 'calendar' ? 1 : 0.6 }}>
             📅 Calendar month (payroll)
           </button>
           <button onClick={() => setPeriodMode('custom')}
-            style={{ ...S.btnSm(periodMode === 'custom' ? '#1e3a5f' : '#94a3b8'), opacity: periodMode === 'custom' ? 1 : 0.6 }}>
+            style={{ ...S.btnSm(periodMode === 'custom' ? '#0B1E3D' : '#94a3b8'), opacity: periodMode === 'custom' ? 1 : 0.6 }}>
             🗓️ Custom period (attendance)
           </button>
         </div>
@@ -532,7 +534,7 @@ function ReportsTab({ salaryRows, staff, advances, isMobile }) {
             </select>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <button onClick={fetchCustomRange} disabled={customLoading} style={S.btnSm('#1e3a5f')}>
+            <button onClick={fetchCustomRange} disabled={customLoading} style={S.btnSm('#0B1E3D')}>
               {customLoading ? '⏳ Loading…' : '🔄 Refresh'}
             </button>
           </div>
@@ -543,10 +545,10 @@ function ReportsTab({ salaryRows, staff, advances, isMobile }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
           <input value={viewName} onChange={e => setViewName(e.target.value)} placeholder="Save this filter as..."
             style={{ ...S.inpSm, maxWidth: 200 }} />
-          <button onClick={saveView} style={S.btnSm('#1e3a5f')}>💾 Save View</button>
+          <button onClick={saveView} style={S.btnSm('#0B1E3D')}>💾 Save View</button>
           {savedViews.map(v => (
             <span key={v.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#eff6ff', borderRadius: 999, padding: '4px 10px' }}>
-              <button onClick={() => applyView(v)} style={{ background: 'none', border: 'none', color: '#1e3a5f', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>{v.name}</button>
+              <button onClick={() => applyView(v)} style={{ background: 'none', border: 'none', color: '#0B1E3D', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>{v.name}</button>
               <button onClick={() => deleteView(v.name)} style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: 12, cursor: 'pointer' }}>✕</button>
             </span>
           ))}
@@ -556,7 +558,7 @@ function ReportsTab({ salaryRows, staff, advances, isMobile }) {
       {periodMode === 'custom' ? (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10, marginBottom: 16 }}>
-            <div style={S.statCard('#1e3a5f', '#eff6ff')}><p style={{ fontSize: 11, color: '#1e3a5f', fontWeight: 600, margin: 0 }}>Staff Records</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#1e3a5f' }}>{customFiltered.length}</h2></div>
+            <div style={S.statCard('#0B1E3D', '#eff6ff')}><p style={{ fontSize: 11, color: '#0B1E3D', fontWeight: 600, margin: 0 }}>Staff Records</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#0B1E3D' }}>{customFiltered.length}</h2></div>
             <div style={S.statCard('#16a34a', '#f0fdf4')}><p style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, margin: 0 }}>Total Present Days</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#16a34a' }}>{customFiltered.reduce((s,r)=>s+Number(r.present_days||0),0)}</h2></div>
             <div style={S.statCard('#dc2626', '#fee2e2')}><p style={{ fontSize: 11, color: '#dc2626', fontWeight: 600, margin: 0 }}>Total Absent Days</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#dc2626' }}>{customFiltered.reduce((s,r)=>s+Number(r.absent_days||0),0)}</h2></div>
             <div style={S.statCard('#0369a1', '#e0f2fe')}><p style={{ fontSize: 11, color: '#0369a1', fontWeight: 600, margin: 0 }}>Total Half Days</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#0369a1' }}>{customFiltered.reduce((s,r)=>s+Number(r.half_day_days||0),0)}</h2></div>
@@ -608,7 +610,7 @@ function ReportsTab({ salaryRows, staff, advances, isMobile }) {
       <>
       {/* Summary + Export */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10, marginBottom: 16 }}>
-        <div style={S.statCard('#1e3a5f', '#eff6ff')}><p style={{ fontSize: 11, color: '#1e3a5f', fontWeight: 600, margin: 0 }}>Records</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#1e3a5f' }}>{filtered.length}</h2></div>
+        <div style={S.statCard('#0B1E3D', '#eff6ff')}><p style={{ fontSize: 11, color: '#0B1E3D', fontWeight: 600, margin: 0 }}>Records</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#0B1E3D' }}>{filtered.length}</h2></div>
         <div style={S.statCard('#16a34a', '#f0fdf4')}><p style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, margin: 0 }}>Total Net</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#16a34a' }}>{fmt(totals.net)}</h2></div>
         <div style={S.statCard('#0891b2', '#e0f2fe')}><p style={{ fontSize: 11, color: '#0891b2', fontWeight: 600, margin: 0 }}>Paid / Unpaid</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#0891b2' }}>{totals.paidCount} / {totals.unpaidCount}</h2></div>
         <div style={S.statCard('#f59e0b', '#fef3c7')}><p style={{ fontSize: 11, color: '#f59e0b', fontWeight: 600, margin: 0 }}>Advance Outstanding</p><h2 style={{ fontSize: 20, margin: '2px 0 0', color: '#f59e0b' }}>{fmt(totals.advTotal)}</h2></div>
@@ -667,7 +669,7 @@ function SlipModal({ s, ded, month, onClose }) {
   return (
     <div onClick={e=>{if(e.target===e.currentTarget)onClose()}} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:1000, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0' }}>
       <div style={{ background:'white', borderRadius:'12px 12px 0 0', width:'100%', maxWidth:'640px', maxHeight:'92vh', overflow:'hidden', display:'flex', flexDirection:'column' }}>
-        <div style={{ background:'#1e3a5f', color:'white', padding:'10px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+        <div style={{ background:'#0B1E3D', color:'white', padding:'10px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
           <span style={{ fontSize:'12px', fontWeight:'600', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, marginRight:'8px' }}>Salary Slip — {s.name} · {fmtMonth(month)}</span>
           <div style={{ display:'flex', gap:'6px', alignItems:'center', flexShrink:0 }}>
             <button onClick={()=>printSlip(s,ded,month)} style={S.btnSm('#B8860B')}>🖨 Print</button>
@@ -697,22 +699,22 @@ function MobileStaffCard({ s, i, d, dedMap, setDed, setSlipStaff, bulkMode, isSe
   const net = g+ot+arr+reimb+(perfAdj>0?perfAdj:0) - td
 
   return (
-    <div style={{ background: isPaid ? '#f0fdf4' : 'white', border: `1px solid ${isPaid ? '#bbf7d0' : '#e2e8f0'}`, borderRadius:'10px', marginBottom:'8px', overflow:'hidden', borderLeft: `4px solid ${isPaid ? '#16a34a' : '#1e3a5f'}` }}>
+    <div style={{ background: isPaid ? '#f0fdf4' : 'white', border: `1px solid ${isPaid ? '#bbf7d0' : '#e2e8f0'}`, borderRadius:'10px', marginBottom:'8px', overflow:'hidden', borderLeft: `4px solid ${isPaid ? '#16a34a' : '#0B1E3D'}` }}>
       {/* Card header — always visible */}
       <div style={{ padding:'10px 12px', display:'flex', alignItems:'center', gap:'10px' }} onClick={() => setExpanded(v=>!v)}>
         {bulkMode && (
           <input type="checkbox" checked={isSelected} onChange={e=>{e.stopPropagation();toggleSelect(s.id)}}
             style={{ width:'16px', height:'16px', flexShrink:0 }} />
         )}
-        <div style={{ width:'32px', height:'32px', borderRadius:'50%', background:'#1e3a5f', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+        <StaffAvatar name={s.name} id={s.id} style={{ width:'32px', height:'32px', borderRadius:'50%', background:'#0B1E3D', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
           <span style={{ fontSize:'11px', fontWeight:'700', color:'white' }}>{(s.name||'').split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase()}</span>
-        </div>
+        </StaffAvatar>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontWeight:'700', color:'#1e293b', fontSize:'13px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.name}</div>
           <div style={{ fontSize:'11px', color:'#64748b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.designation||s.department||'—'}</div>
         </div>
         <div style={{ textAlign:'right', flexShrink:0 }}>
-          <div style={{ fontSize:'15px', fontWeight:'800', color: isPaid ? '#16a34a' : '#1e3a5f' }}>{fmt(net)}</div>
+          <div style={{ fontSize:'15px', fontWeight:'800', color: isPaid ? '#16a34a' : '#0B1E3D' }}>{fmt(net)}</div>
           <span style={S.badge(isPaid?'#16a34a':'#dc2626', isPaid?'#dcfce7':'#fee2e2')}>{isPaid?'✅ Paid':'⏳ Unpaid'}</span>
         </div>
         <div style={{ fontSize:'16px', color:'#94a3b8', flexShrink:0, transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition:'transform 0.2s' }}>▼</div>
@@ -807,7 +809,7 @@ function MobileStaffCard({ s, i, d, dedMap, setDed, setSlipStaff, bulkMode, isSe
               style={{ ...S.inpSm, width:'auto', flex:1, minWidth:'120px' }}>
               {PAYMENT_MODES.map(m=><option key={m} value={m}>{m}</option>)}
             </select>
-            <button onClick={()=>setSlipStaff(s)} style={{ ...S.btnSm('#1e3a5f'), padding:'7px 12px' }}>🧾 Slip</button>
+            <button onClick={()=>setSlipStaff(s)} style={{ ...S.btnSm('#0B1E3D'), padding:'7px 12px' }}>🧾 Slip</button>
           </div>
         </div>
       )}
@@ -945,7 +947,7 @@ function AnnualSummary({ staff, salaryRows, isMobile }) {
 
       {/* Bar chart */}
       <div style={isMobile ? S.cardMob : S.card}>
-        <h3 style={{ fontSize:'14px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>📊 Monthly Net — FY {fiscalYear}</h3>
+        <h3 style={{ fontSize:'14px', fontWeight:'700', color:'#0B1E3D', marginTop:0 }}>📊 Monthly Net — FY {fiscalYear}</h3>
         <div style={{ overflowX:'auto' }}>
           <div style={{ display:'flex', alignItems:'flex-end', gap:'6px', height:'140px', paddingBottom:'4px', minWidth: isMobile ? '560px' : 'auto' }}>
             {fiscalMonths.map(m => {
@@ -954,10 +956,10 @@ function AnnualSummary({ staff, salaryRows, isMobile }) {
               const [,mo]=m.split('-')
               return (
                 <div key={m} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'4px', minWidth:'42px', flex:1 }}>
-                  <div style={{ fontSize:'9px', fontWeight:'700', color:'#1e3a5f', textAlign:'center' }}>{d.net>0?fmt(d.net):''}</div>
+                  <div style={{ fontSize:'9px', fontWeight:'700', color:'#0B1E3D', textAlign:'center' }}>{d.net>0?fmt(d.net):''}</div>
                   <div style={{ position:'relative', width:'100%', height:`${h}px` }}>
                     <div style={{ position:'absolute', bottom:0, width:'100%', height:'100%', background:'#cbd5e1', borderRadius:'4px 4px 0 0' }} />
-                    <div style={{ position:'absolute', bottom:0, width:'100%', height:`${pctBar(d.paid,d.net)}%`, background:'#1e3a5f', borderRadius:'4px 4px 0 0', transition:'height 0.4s' }} />
+                    <div style={{ position:'absolute', bottom:0, width:'100%', height:`${pctBar(d.paid,d.net)}%`, background:'#0B1E3D', borderRadius:'4px 4px 0 0', transition:'height 0.4s' }} />
                   </div>
                   <div style={{ fontSize:'9px', color:'#94a3b8' }}>{FISCAL_MONTHS[parseInt(mo)-1]?.slice(0,3)}</div>
                 </div>
@@ -966,7 +968,7 @@ function AnnualSummary({ staff, salaryRows, isMobile }) {
           </div>
         </div>
         <div style={{ display:'flex', gap:'12px', fontSize:'11px', color:'#64748b', marginTop:'8px' }}>
-          <span><span style={{ display:'inline-block', width:'10px', height:'10px', background:'#1e3a5f', borderRadius:'2px', marginRight:'4px' }}/>Paid</span>
+          <span><span style={{ display:'inline-block', width:'10px', height:'10px', background:'#0B1E3D', borderRadius:'2px', marginRight:'4px' }}/>Paid</span>
           <span><span style={{ display:'inline-block', width:'10px', height:'10px', background:'#cbd5e1', borderRadius:'2px', marginRight:'4px' }}/>Unpaid</span>
         </div>
       </div>
@@ -1004,7 +1006,7 @@ function AnnualSummary({ staff, salaryRows, isMobile }) {
         <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
             <thead>
-              <tr style={{ background:'#1e3a5f', color:'white' }}>
+              <tr style={{ background:'#0B1E3D', color:'white' }}>
                 {['Month','Staff Count','Gross','Deductions','Net Payable','Paid','Unpaid','Coverage'].map(h=>(
                   <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontWeight:'600', fontSize:'12px' }}>{h}</th>
                 ))}
@@ -1619,16 +1621,13 @@ const handleDeleteAdvance = useCallback(async (id) => {
 
   return (
     <div style={S.page(isMobile)}>
-      {/* Header */}
-      <div style={{ marginBottom:'16px' }}>
-        <h1 style={{ fontSize: isMobile ? '20px' : '26px', fontWeight:'bold', color:'#1e3a5f', margin:0 }}>💵 Salary Management</h1>
-        {!isMobile && <p style={{ color:'#64748b', fontSize:'14px', margin:'4px 0 0' }}>Salary register · Advances · History · Annual summary</p>}
-      </div>
+      <style>{PREMIUM_CSS}</style>
+      <PremiumHero mobile={isMobile} icon="💵" title="Salary Management" subtitle="Salary register · Advances · History · Annual summary" />
 
       {/* Stats grid — 2 cols on mobile, 5 on desktop */}
       <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(5,1fr)', gap: isMobile ? '8px' : '14px', marginBottom:'16px' }}>
         {[
-          { label:'Total Staff',        value:staff.length,   color:'#1e3a5f', bg:'#eff6ff', icon:'👨‍🏫', money:false },
+          { label:'Total Staff',        value:staff.length,   color:'#0B1E3D', bg:'#eff6ff', icon:'👨‍🏫', money:false },
           { label:'Paid This Month',    value:paidThisMonth,  color:'#16a34a', bg:'#dcfce7', icon:'✅',  money:false },
           { label:'Total Paid',         value:totalPaid,      color:'#16a34a', bg:'#f0fdf4', icon:'💰',  money:true  },
           { label:'Total Unpaid',       value:totalUnpaid,    color:'#dc2626', bg:'#fee2e2', icon:'⏳',  money:true  },
@@ -1658,8 +1657,8 @@ const handleDeleteAdvance = useCallback(async (id) => {
           <div style={{ background:'white', padding: isMobile ? '10px 12px' : '12px 16px', borderRadius:'10px', boxShadow:'0 2px 8px rgba(0,0,0,0.07)', marginBottom:'12px' }}>
             {/* Top row: title + month picker */}
             <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', marginBottom:'8px' }}>
-              <div style={{ background:'#1e3a5f', color:'white', padding:'3px 8px', borderRadius:'6px', fontSize:'12px', fontWeight:'700' }}>GNSI</div>
-              {!isMobile && <span style={{ fontWeight:'700', color:'#1e3a5f', fontSize:'14px' }}>Salary Register</span>}
+              <div style={{ background:'#0B1E3D', color:'white', padding:'3px 8px', borderRadius:'6px', fontSize:'12px', fontWeight:'700' }}>GNSI</div>
+              {!isMobile && <span style={{ fontWeight:'700', color:'#0B1E3D', fontSize:'14px' }}>Salary Register</span>}
               <input type="month" value={regMonth} onChange={e=>setRegMonth(e.target.value)}
                 style={{ padding:'6px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'13px', flex: isMobile ? 1 : 'none' }} />
               {isMobile && (
@@ -1687,7 +1686,7 @@ const handleDeleteAdvance = useCallback(async (id) => {
                 <button onClick={resetDeductions} style={S.btnSm('#64748b')}>Reset Ded.</button>
                 <button onClick={()=>exportToCSV(filteredStaff,dedMap,regMonth)} style={S.btnSm('#0891b2')}>⬇ CSV</button>
                 {!isMobile && <button onClick={()=>printAllSlips(filteredStaff,dedMap,regMonth)} style={S.btnSm('#B8860B')}>🖨 All Slips</button>}
-                {!isMobile && <button onClick={()=>printRegister(tableRef)} style={S.btnSm('#1e3a5f')}>🖨 Register</button>}
+                {!isMobile && <button onClick={()=>printRegister(tableRef)} style={S.btnSm('#0B1E3D')}>🖨 Register</button>}
                 <button
                   onClick={() => {
                     if (window.confirm(`Auto-generate payroll for ${fmtMonth(regMonth)} from face attendance data? This recalculates late/absent/performance deductions for ${roleFilter?filteredStaff.length:staff.length} staff and saves the register immediately.`)) runAutoPayroll()
@@ -1734,7 +1733,7 @@ const handleDeleteAdvance = useCallback(async (id) => {
           {/* Summary bar — 2 cols on mobile */}
           <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(5,1fr)', gap:'8px', marginBottom:'12px' }}>
             {[
-              { label:'Staff',      value:filteredStaff.length, money:false, color:'#1e3a5f' },
+              { label:'Staff',      value:filteredStaff.length, money:false, color:'#0B1E3D' },
               { label:'Gross',      value:regTotals.tG,         money:true,  color:'#0C447C' },
               { label:'Deductions', value:regTotals.tD,         money:true,  color:'#791F1F' },
               { label:'PF Total',   value:regTotals.tPf,        money:true,  color:'#7c3aed' },
@@ -1818,7 +1817,7 @@ const handleDeleteAdvance = useCallback(async (id) => {
                       padding: 20,
                       boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
                       border: `1px solid ${isPaid ? '#bbf7d0' : probationMap[s.id]?.onProbation ? '#fcd34d' : '#f1f5f9'}`,
-borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? '#f59e0b' : '#1e3a5f'}`,
+borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? '#f59e0b' : '#0B1E3D'}`,
                       transition: 'all 0.25s cubic-bezier(0.4,0,0.2,1)',
                       position: 'relative',
                       overflow: 'hidden',
@@ -1835,20 +1834,20 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
                         position: 'absolute', top: 0, left: 0, right: 0, height: 4,
                         background: isPaid
                           ? 'linear-gradient(90deg,#16a34a,#22c55e)'
-                          : 'linear-gradient(90deg,#1e3a5f,#6366f1)',
+                          : 'linear-gradient(90deg,#0B1E3D,#6366f1)',
                         borderRadius: '16px 16px 0 0'
                       }} />
 
                       {/* Header: Avatar + Name + Role */}
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginTop: 2 }}>
                         {/* Avatar */}
-                        <div style={{
+                        <StaffAvatar name={s.name} id={s.id} style={{
                           width: 52, height: 52, borderRadius: '50%',
                           background: `linear-gradient(135deg, hsl(${hue},70%,55%), hsl(${hue + 40},70%,45%))`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           color: 'white', fontWeight: 700, fontSize: 16, flexShrink: 0,
                           boxShadow: '0 2px 8px rgba(0,0,0,.12)'
-                        }}>{initials}</div>
+                        }}>{initials}</StaffAvatar>
 
                         {/* Name & Meta */}
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1887,7 +1886,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
   <span style={{
     display: 'inline-flex', alignItems: 'center', gap: 3,
     padding: '3px 9px', borderRadius: 99, fontSize: 11, fontWeight: 600,
-    backgroundColor: '#eff6ff', color: '#1e3a5f'
+    backgroundColor: '#eff6ff', color: '#0B1E3D'
   }}>📋 Saved</span>
 )}
 {scoreMap[s.id] && (() => {
@@ -1908,7 +1907,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
 
                         {/* Net Amount */}
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <div style={{ fontSize: 18, fontWeight: 800, color: isPaid ? '#16a34a' : '#1e3a5f', fontFamily: "'JetBrains Mono',monospace" }}>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: isPaid ? '#16a34a' : '#0B1E3D', fontFamily: "'JetBrains Mono',monospace" }}>
                             {fmt(net)}
                           </div>
                           <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>Net Salary</div>
@@ -2050,7 +2049,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
                         >
                           {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
-                        <button onClick={() => setSlipStaff(s)} style={{ ...S.btnSm('#1e3a5f'), padding: '7px 12px' }}>🧾 Slip</button>
+                        <button onClick={() => setSlipStaff(s)} style={{ ...S.btnSm('#0B1E3D'), padding: '7px 12px' }}>🧾 Slip</button>
                         {row && row.status !== 'Paid' && (
                           <button onClick={() => handleMarkPaid(row.id, d.payment_mode)} style={{ ...S.btnSm('#16a34a'), padding: '7px 12px' }}>✅ Pay</button>
                         )}
@@ -2079,7 +2078,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
       {activeTab==='pending' && (
         <>
           <div style={{ display:'flex', gap:'10px', marginBottom:'16px', alignItems:'center', flexWrap:'wrap' }}>
-            <h2 style={{ fontSize: isMobile ? '15px' : '17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>⏳ Pending Payments</h2>
+            <h2 style={{ fontSize: isMobile ? '15px' : '17px', fontWeight:'700', color:'#0B1E3D', margin:0 }}>⏳ Pending Payments</h2>
             <input type="month" value={regMonth} onChange={e=>setRegMonth(e.target.value)}
               style={{ padding:'6px 10px', borderRadius:'6px', border:'1px solid #d1d5db', fontSize:'13px', flex: isMobile ? 1 : 'none' }} />
           </div>
@@ -2092,7 +2091,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
         <>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px', flexWrap:'wrap', gap:'8px' }}>
             <div>
-              <h2 style={{ fontSize: isMobile ? '15px' : '17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>💳 Advance Salary</h2>
+              <h2 style={{ fontSize: isMobile ? '15px' : '17px', fontWeight:'700', color:'#0B1E3D', margin:0 }}>💳 Advance Salary</h2>
               {!isMobile && <p style={{ fontSize:'13px', color:'#64748b', margin:'4px 0 0' }}>Auto-deducted when saving salary register</p>}
             </div>
             <button onClick={()=>setShowAdvForm(!showAdvForm)} style={S.btn()}>{showAdvForm?'✖ Cancel':'➕ Issue Advance'}</button>
@@ -2100,7 +2099,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
 
           {showAdvForm && (
             <div style={isMobile ? S.cardMob : S.card}>
-              <h3 style={{ fontSize:'14px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>Issue New Advance</h3>
+              <h3 style={{ fontSize:'14px', fontWeight:'700', color:'#0B1E3D', marginTop:0 }}>Issue New Advance</h3>
               <form onSubmit={handleAddAdvance}>
                 <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap:'12px', marginBottom:'14px' }}>
                   <div>
@@ -2238,7 +2237,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
       {activeTab==='history' && (
         <>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px', flexWrap:'wrap', gap:'10px' }}>
-            <h2 style={{ fontSize: isMobile ? '15px' : '17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>📅 Salary History</h2>
+            <h2 style={{ fontSize: isMobile ? '15px' : '17px', fontWeight:'700', color:'#0B1E3D', margin:0 }}>📅 Salary History</h2>
             <div style={{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap', flex: isMobile ? '1 1 100%' : 'none' }}>
               <select value={histStaffId} onChange={e=>setHistStaffId(e.target.value)}
                 style={{ ...S.inpSm, flex:1, minWidth:'0' }}>
@@ -2257,7 +2256,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
               {/* Quick stats — 2 cols on mobile */}
               <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap:'10px', marginBottom:'16px' }}>
                 {[
-                  { label:'Records', value:historyData.length, color:'#1e3a5f', bg:'#eff6ff', icon:'📋', money:false },
+                  { label:'Records', value:historyData.length, color:'#0B1E3D', bg:'#eff6ff', icon:'📋', money:false },
                   { label:'Total Earned', value:historyData.reduce((a,r)=>a+(r.net_salary||0),0), color:'#16a34a', bg:'#dcfce7', icon:'💰', money:true },
                   { label:'Avg Monthly', value:Math.round(historyData.reduce((a,r)=>a+(r.net_salary||0),0)/historyData.length), color:'#7c3aed', bg:'#f3e8ff', icon:'📊', money:true },
                   { label:'Highest Month', value:Math.max(...historyData.map(r=>r.net_salary||0)), color:'#ca8a04', bg:'#fef9c3', icon:'🏆', money:true },
@@ -2272,7 +2271,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
 
               {/* Trend chart */}
               <div style={isMobile ? S.cardMob : S.card}>
-                <h3 style={{ fontSize:'13px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>Net Salary Trend</h3>
+                <h3 style={{ fontSize:'13px', fontWeight:'700', color:'#0B1E3D', marginTop:0 }}>Net Salary Trend</h3>
                 <div style={{ overflowX:'auto' }}>
                   <div style={{ display:'flex', alignItems:'flex-end', gap:'6px', height:'110px', minWidth: isMobile ? `${historyData.length*52}px` : 'auto' }}>
                     {[...historyData].reverse().map(r => {
@@ -2281,8 +2280,8 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
                       const isCmp=compareMonth&&r.month===compareMonth
                       return (
                         <div key={r.month} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:'3px', minWidth:'44px' }}>
-                          <div style={{ fontSize:'9px', fontWeight:'700', color:'#1e3a5f', textAlign:'center' }}>{fmt(r.net_salary)}</div>
-                          <div style={{ width:'100%', height:`${h}px`, background:isCmp?'#f59e0b':r.status==='Paid'?'#1e3a5f':'#94a3b8', borderRadius:'4px 4px 0 0' }} title={r.month}/>
+                          <div style={{ fontSize:'9px', fontWeight:'700', color:'#0B1E3D', textAlign:'center' }}>{fmt(r.net_salary)}</div>
+                          <div style={{ width:'100%', height:`${h}px`, background:isCmp?'#f59e0b':r.status==='Paid'?'#0B1E3D':'#94a3b8', borderRadius:'4px 4px 0 0' }} title={r.month}/>
                           <div style={{ fontSize:'9px', color:'#94a3b8' }}>{r.month.slice(5)}/{r.month.slice(2,4)}</div>
                           {isCmp && <div style={{ fontSize:'9px', color:'#f59e0b', fontWeight:'700' }}>★</div>}
                         </div>
@@ -2301,11 +2300,11 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
                 if (!cmpRow) return null
                 return (
                   <div style={isMobile ? S.cardMob : S.card}>
-                    <h3 style={{ fontSize:'13px', fontWeight:'700', color:'#1e3a5f', marginTop:0 }}>📊 YoY: {fmtMonth(compareMonth)} vs {fmtMonth(prevYear)}</h3>
+                    <h3 style={{ fontSize:'13px', fontWeight:'700', color:'#0B1E3D', marginTop:0 }}>📊 YoY: {fmtMonth(compareMonth)} vs {fmtMonth(prevYear)}</h3>
                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
                       {[['This Year',cmpRow],['Last Year',prevRow]].map(([label,row])=>(
                         <div key={label} style={{ padding:'12px', border:'1px solid #e2e8f0', borderRadius:'8px', background:row?'white':'#f8fafc' }}>
-                          <div style={{ fontWeight:'700', color:'#1e3a5f', marginBottom:'10px', fontSize:'13px' }}>{label} — {row?fmtMonth(row.month):'No data'}</div>
+                          <div style={{ fontWeight:'700', color:'#0B1E3D', marginBottom:'10px', fontSize:'13px' }}>{label} — {row?fmtMonth(row.month):'No data'}</div>
                           {row ? (
                             <div style={{ display:'flex', flexDirection:'column', gap:'5px', fontSize:'12px' }}>
                               {[['Gross',((row.basic_salary||0)+(row.seniority_allowance||0)+(row.loyalty_bonus||0)+(row.role_bonus||0)),'#0C447C'],['Deductions',((row.advance_deduction||0)+(row.late_deduction||0)+(row.admin_deduction||0)),'#A32D2D'],['Net',row.net_salary,'#27500A']].map(([l,v,c])=>(
@@ -2361,7 +2360,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
                           ))}
                         </div>
                         <div style={{ display:'flex', gap:'6px' }}>
-                          {sForSlip && <button onClick={()=>setSlipStaff(sForSlip)} style={{ ...S.btnSm('#1e3a5f'), flex:1 }}>🧾 Slip</button>}
+                          {sForSlip && <button onClick={()=>setSlipStaff(sForSlip)} style={{ ...S.btnSm('#0B1E3D'), flex:1 }}>🧾 Slip</button>}
                           {r.status!=='Paid' && <button onClick={()=>handleMarkPaid(r.id,r.payment_mode)} style={{ ...S.btnSm('#16a34a'), flex:1 }}>✅ Mark Paid</button>}
                           <button onClick={()=>handleDeleteSalary(r.id)} style={S.btnSm('#dc2626')}>🗑</button>
                         </div>
@@ -2405,7 +2404,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
                             </td>
                             <td style={{ padding:'10px' }}>
                               <div style={{ display:'flex', gap:'4px' }}>
-                                {sForSlip&&<button onClick={()=>setSlipStaff(sForSlip)} style={S.btnSm('#1e3a5f')}>🧾</button>}
+                                {sForSlip&&<button onClick={()=>setSlipStaff(sForSlip)} style={S.btnSm('#0B1E3D')}>🧾</button>}
                                 {r.status!=='Paid'&&<button onClick={()=>handleMarkPaid(r.id,r.payment_mode)} style={S.btnSm('#16a34a')}>✅</button>}
                                 <button onClick={()=>handleDeleteSalary(r.id)} style={S.btnSm('#dc2626')}>🗑</button>
                               </div>
@@ -2428,7 +2427,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
       {activeTab==='annual' && (
         <>
           <div style={{ marginBottom:'16px' }}>
-            <h2 style={{ fontSize: isMobile ? '15px' : '17px', fontWeight:'700', color:'#1e3a5f', margin:0 }}>📆 Annual Summary</h2>
+            <h2 style={{ fontSize: isMobile ? '15px' : '17px', fontWeight:'700', color:'#0B1E3D', margin:0 }}>📆 Annual Summary</h2>
             {!isMobile && <p style={{ fontSize:'13px', color:'#64748b', margin:'4px 0 0' }}>Financial year overview · Month-by-month trend · Staff totals</p>}
           </div>
           <AnnualSummary staff={staff} salaryRows={salaryRows} isMobile={isMobile} />
@@ -2446,7 +2445,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
     <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:12, padding:'14px 18px', marginBottom:20, display:'flex', gap:16, alignItems:'center', flexWrap:'wrap' }}>
       <div style={{ fontSize:24 }}>⚙️</div>
       <div style={{ flex:1 }}>
-        <div style={{ fontWeight:700, color:'#1e3a5f', fontSize:14 }}>Currently Active Rates</div>
+        <div style={{ fontWeight:700, color:'#0B1E3D', fontSize:14 }}>Currently Active Rates</div>
         <div style={{ fontSize:12, color:'#64748b', marginTop:4, display:'flex', gap:16, flexWrap:'wrap' }}>
           <span>🕐 Late: <strong style={{ color:'#dc2626' }}>₹{dedRules.late_rate}/day</strong></span>
           <span>⭕ Absent: <strong style={{ color:'#dc2626' }}>₹{dedRules.absent_rate}/day</strong></span>
@@ -2462,7 +2461,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
 
     {/* Edit form */}
     <div style={{ ...S.card }}>
-      <h2 style={{ fontSize:15, fontWeight:700, color:'#1e3a5f', marginTop:0, marginBottom:4 }}>
+      <h2 style={{ fontSize:15, fontWeight:700, color:'#0B1E3D', marginTop:0, marginBottom:4 }}>
         Set New Deduction Rates
       </h2>
       <p style={{ fontSize:12, color:'#64748b', marginBottom:20 }}>
@@ -2535,7 +2534,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
         </div>
       </div>
 
-      <h2 style={{ fontSize:15, fontWeight:700, color:'#1e3a5f', marginTop:24, marginBottom:4 }}>
+      <h2 style={{ fontSize:15, fontWeight:700, color:'#0B1E3D', marginTop:24, marginBottom:4 }}>
         🎓 Teaching Performance Rewards
       </h2>
       <p style={{ fontSize:12, color:'#64748b', marginBottom:20 }}>
@@ -2606,7 +2605,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
       <button
         onClick={handleSaveRules}
         disabled={rulesSaving}
-        style={{ ...S.btn('#1e3a5f', rulesSaving), width:'100%', padding:14, fontSize:14 }}
+        style={{ ...S.btn('#0B1E3D', rulesSaving), width:'100%', padding:14, fontSize:14 }}
       >
         {rulesSaving ? '⏳ Saving...' : '💾 Save New Rates'}
       </button>
@@ -2615,7 +2614,7 @@ borderLeft: `4px solid ${isPaid ? '#16a34a' : probationMap[s.id]?.onProbation ? 
     {/* Rules history */}
     {rulesHistory.length > 0 && (
       <div style={{ ...S.card, padding:0, overflow:'hidden' }}>
-        <div style={{ padding:'12px 16px', fontWeight:700, color:'#1e3a5f', borderBottom:'1px solid #f1f5f9', fontSize:14 }}>
+        <div style={{ padding:'12px 16px', fontWeight:700, color:'#0B1E3D', borderBottom:'1px solid #f1f5f9', fontSize:14 }}>
           📅 Rate History
         </div>
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
