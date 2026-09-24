@@ -1406,6 +1406,7 @@ function InlineFix({ f, onDone, log }) {
 
   if (f.id === "rls_off") return <RlsLockTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
   if (f.id === "sensitive_read") return <PrivateLockTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
+  if (f.id === "anon_write") return <WriteLockTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
 
   if (f.id === "no_session") {
     return (
@@ -1585,6 +1586,79 @@ function PrivateLockTool({ onDone, log }) {
         </div>
       )}
       <div style={{fontSize:11.5,color:T.inkSub,marginTop:10}}><b>Not offered yet:</b> students and adm_* fee tables — the website admit-card / fee lookup still reads them directly.</div>
+    </div>
+  )
+}
+
+// ── Open write rules: staff-only changes, reading unchanged, with undo ───
+function WriteLockTool({ onDone, log }) {
+  const [d, setD] = useState(null)
+  const [sel, setSel] = useState({})
+  const [q, setQ] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.rpc("write_candidates")
+    if (error) { setErr(/write_candidates|does not exist/i.test(error.message) ? "Run write_lockdown.sql in Supabase first." : error.message); return }
+    setD(data); setSel({})
+  }, [])
+  useEffect(() => { load() }, [load])
+  const act = async (fn, tables, msg) => {
+    if (!tables.length || !window.confirm(msg)) return
+    setBusy(true)
+    const { data, error } = await supabase.rpc(fn, { p_tables: tables })
+    setBusy(false); log(error ? error.message : data, !error)
+    if (!error) { load(); onDone() }
+  }
+  const box = {background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px",marginTop:8}
+  if (err) return <div style={{...box,color:T.rose,fontWeight:700}}>{err}</div>
+  if (!d) return <div style={box}>Loading…</div>
+  const rows = d.rows || []
+  const open = rows.filter(r => !r.locked && r.open > 0 && r.t.includes(q.trim().toLowerCase()))
+  const locked = rows.filter(r => r.locked)
+  const picked = Object.keys(sel).filter(k => sel[k])
+  return (
+    <div style={box}>
+      <div style={{fontWeight:800,color:T.ink,marginBottom:6,fontSize:12.5}}>✍️ Stop anonymous changes ({rows.filter(r=>!r.locked).length} tables)</div>
+      <div style={{fontSize:11.5,color:T.inkSub,marginBottom:8}}>
+        Reading stays exactly as today (website and screens keep working). Only adding / editing / deleting will need a signed-in staff login.
+        Old rules are backed up — Undo restores them.
+      </div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Filter tables…" style={{padding:"7px 10px",borderRadius:8,border:`1px solid ${T.border}`,fontSize:12.5,flex:"1 1 180px",fontFamily:"inherit"}}/>
+        <button disabled={busy} onClick={()=>setSel(s=>({...s,...Object.fromEntries(open.map(r=>[r.t,true]))}))} style={{padding:"7px 12px",borderRadius:999,border:`1px solid ${T.border}`,background:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Select all{q ? " shown" : ""} ({open.length})</button>
+        <button disabled={busy||!picked.length} onClick={()=>setSel({})} style={{padding:"7px 12px",borderRadius:999,border:`1px solid ${T.border}`,background:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",opacity:picked.length?1:.5}}>Clear</button>
+        <button disabled={busy||!picked.length} onClick={()=>act("write_lock", picked, `Require staff login to change ${picked.length} table(s)?\n\nReading stays the same. Staff not on secure login won't be able to save there. Undo is available.`)}
+          style={{padding:"7px 14px",borderRadius:999,border:"none",background:"#0f7a52",color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",opacity:(busy||!picked.length)?.5:1}}>
+          {busy ? "Working…" : `✍️ Protect (${picked.length})`}
+        </button>
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,maxHeight:240,overflowY:"auto"}}>
+        {open.map(r => (
+          <label key={r.t} style={{fontSize:11.5,display:"flex",alignItems:"center",gap:5,border:`1px solid ${sel[r.t]?T.navy:T.border}`,borderRadius:8,padding:"3px 8px",cursor:"pointer",background:sel[r.t]?"#EEF3FB":"#fff"}}>
+            <input type="checkbox" checked={!!sel[r.t]} onChange={e=>setSel(s=>({...s,[r.t]:e.target.checked}))}/>
+            <code>{r.t}</code><span style={{color:"#b3273f",fontWeight:800}}>· {r.open}</span>
+          </label>
+        ))}
+        {open.length === 0 && <span style={{fontSize:12.5,color:T.emerald,fontWeight:700}}>{q ? "No match." : "All offered tables are protected."}</span>}
+      </div>
+      {locked.length > 0 && (
+        <div style={{marginTop:12,borderTop:`1px solid ${T.border}`,paddingTop:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+            <span style={{fontSize:12,fontWeight:800,color:T.ink,flex:1}}>Protected · {locked.length}</span>
+            <button disabled={busy} onClick={()=>act("write_unlock", locked.map(r=>r.t), `Undo protection on ALL ${locked.length} tables?`)} style={{border:"1px solid #b3273f",background:"#fff",color:"#b3273f",borderRadius:999,padding:"3px 10px",fontSize:11.5,fontWeight:800,cursor:"pointer"}}>↶ Undo all</button>
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,maxHeight:160,overflowY:"auto"}}>
+            {locked.map(r => (
+              <span key={r.t} style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:11.5,border:`1px solid ${T.border}`,borderRadius:8,padding:"3px 4px 3px 8px"}}>
+                <code>{r.t}</code>
+                <button disabled={busy} onClick={()=>act("write_unlock", [r.t], `Undo protection on ${r.t}?`)} style={{border:"none",background:"#FDECEE",color:"#b3273f",borderRadius:6,padding:"2px 7px",fontSize:11,fontWeight:800,cursor:"pointer"}}>Undo</button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {(d.kept || []).length > 0 && <div style={{fontSize:11.5,color:T.inkSub,marginTop:10}}><b>Kept open on purpose</b> (website / parent forms write to them, or use the Private tool): {d.kept.join(", ")}</div>}
     </div>
   )
 }
