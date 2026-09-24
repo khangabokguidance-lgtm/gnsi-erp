@@ -263,7 +263,8 @@ export default function Login({ onLogin }) {
       // rules) — which check is_staff_admin(p_admin_id) against a real
       // staff_profiles id — can verify this session. If this admin login
       // is ever handed to a different person, update this id to match.
-      await supabase.rpc('set_staff_context', { p_staff_id: 37, p_is_admin: true })
+      // set_staff_context now runs AFTER linkSupabaseAuth (below) — the
+      // server only grants admin to a signed-in, linked admin session.
 
       // Look up the REAL portal_users row for this username (if one
       // exists) so the session carries the actual stored role/name/id
@@ -282,6 +283,7 @@ export default function Login({ onLogin }) {
         .maybeSingle()
 
       await linkSupabaseAuth(username, password, true)
+      await supabase.rpc('set_staff_context', { p_staff_id: 37, p_is_admin: true })
       onLogin(realUser
         ? { ...realUser, staff_profile_id: realUser.staff_profile_id ?? 37 }
         : { id: 'admin', name: 'Administrator', username: ADMIN_USER, role: 'Admin', staff_profile_id: 37 }
