@@ -1519,3 +1519,17 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
   .faculty-card .subj{font-size:.58rem;padding-top:.2rem;margin-top:.2rem;line-height:1.2}
   .faculty-card .exp{display:none}
 }
+
+/* ── NAV: Parents Login visible on mobile too ── */
+.nv-parents{display:inline-flex!important}
+.nv-lbl-short{display:none}
+@media (max-width:560px){
+  .nv-lbl-full{display:none}
+  .nv-lbl-short{display:inline}
+  .nav-fixed-actions .nv-btn{height:32px;padding:0 .55rem;font-size:.74rem}
+  .nav-fixed-actions{gap:.3rem}
+}
+@media (max-width:380px){
+  .nav-fixed-actions .nv-btn{padding:0 .4rem;font-size:.68rem}
+  .nv-crest{width:32px;height:32px}
+}

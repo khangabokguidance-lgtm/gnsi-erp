@@ -2205,9 +2205,9 @@ window.submitGrievance = async () => {
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
           Get App
         </a>
-        {/* Desktop only — the mobile menu already has "Parents Portal". */}
-        <button type="button" onClick={() => setIsPortalOpen(true)} className="nv-btn nv-ghost nav-desktop-only">
-          Parents Login
+        {/* Visible at every width; label shortens to "Parents" on small phones. */}
+        <button type="button" onClick={() => setIsPortalOpen(true)} className="nv-btn nv-ghost nv-parents">
+          <span className="nv-lbl-full">Parents Login</span><span className="nv-lbl-short">Parents</span>
         </button>
         <button type="button" onClick={onLogin} className="nv-btn nv-link">
           Staff Login
