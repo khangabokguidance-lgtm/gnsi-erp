@@ -2344,6 +2344,8 @@ window.submitGrievance = async () => {
     .mob-menu.pm .pm-close{width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:background .2s,border-color .2s}
     .mob-menu.pm .pm-close:hover{background:rgba(212,175,55,.18);border-color:#d4af37}
     .mob-menu.pm .pm-close{position:static;flex-shrink:0}
+    .mob-menu.pm .pm-close svg{display:block;stroke:#fff!important;width:18px;height:18px}
+    .mob-menu.pm .pm-close::before,.mob-menu.pm .pm-close::after{content:none!important}
     .mob-menu.pm .pm-hd{flex-wrap:nowrap}
     .mob-menu.pm .pm-scroll{flex:1;overflow-y:auto;padding:1.1rem 1rem 1.2rem;-webkit-overflow-scrolling:touch}
     .mob-menu.pm .pm-label{font-size:.64rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(212,175,55,.85);margin:0 0 .6rem .2rem}
