@@ -1538,3 +1538,31 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
 .home-faculty-grid{grid-template-columns:repeat(3,minmax(0,1fr));max-width:900px}
 .home-faculty-grid:empty{min-height:120px}
 @media (max-width:768px){.home-faculty-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* ═══ HOME: multi-colour sections ═══
+   Each home block gets its own full-width tinted band + matching accent
+   (eyebrow, heading underline, card top borders, outline buttons).
+   Colours cycle; add/remove blocks and it still works. */
+#home{padding-top:0!important;padding-bottom:0!important;background:none!important}
+#home>.container{--band:#fff;--acc:var(--gold);position:relative;margin-top:0!important;padding-top:3rem;padding-bottom:3rem;background:var(--band);box-shadow:0 0 0 100vmax var(--band);clip-path:inset(0 -100vmax)}
+#home>.container .eyebrow{color:var(--acc)!important}
+#home>.container .rule .rule-line:first-child{background:var(--acc)!important}
+#home>.container .rule-d{border-color:var(--acc)!important}
+#home>.container h2.st::after{background:var(--acc)!important;border-color:var(--acc)!important}
+#home>.container .btn-out{border-color:var(--acc)!important;color:var(--acc)!important}
+#home>.container .btn-out:hover{background:var(--acc)!important;color:#fff!important}
+#home>.container :is(.course-card,.ranker-card,.result-card,.home-video-card,.testi-card,.notice-card){border-top:3px solid var(--acc)!important}
+#home>.container:nth-of-type(7n+1){--band:#FFF8E6;--acc:#B7791F}
+#home>.container:nth-of-type(7n+2){--band:#EAF3FF;--acc:#1F4E8C}
+#home>.container:nth-of-type(7n+3){--band:#EAF8F0;--acc:#1E7A4C}
+#home>.container:nth-of-type(7n+4){--band:#FDEEF0;--acc:#B42335}
+#home>.container:nth-of-type(7n+5){--band:#F2EEFF;--acc:#5B3FB5}
+#home>.container:nth-of-type(7n+6){--band:#FFF0E4;--acc:#C2561A}
+#home>.container:nth-of-type(7n+7){--band:#E8F7F8;--acc:#0E7C86}
+/* Course cards keep their own identity colours on Home */
+#home .course-card.sainik{border-top-color:#B42335!important}
+#home .course-card.navodaya{border-top-color:#1F4E8C!important}
+#home .course-card.foundation{border-top-color:#1E7A4C!important}
+#home .course-card.combined{border-top-color:#B7791F!important}
+#home .course-card{background:#fff}
+@media (max-width:768px){#home>.container{padding-top:2.2rem;padding-bottom:2.2rem}}
