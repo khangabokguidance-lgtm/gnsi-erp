@@ -2619,7 +2619,7 @@ window.submitGrievance = async () => {
     <div className="container" style={{ marginTop: '2.5rem' }}>
       <div className="eyebrow reveal">Our Pride</div>
       <h2 className="st reveal">
-        {wallGroup.session ? `Toppers ${sessionTitle(wallGroup.session)}` : 'Our Toppers'}
+        Stars of Guidance
       </h2>
       <div className="rule reveal">
         <div className="rule-line" />
