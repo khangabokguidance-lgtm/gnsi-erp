@@ -6,7 +6,7 @@ import FaceEnroll, { FaceApprovalQueue } from './FaceEnroll'
 import { staffDB } from './staffDB'
 import { useCurrentUser } from './useCurrentUser'
 import { EventBus, GNSI_EVENTS } from './EventBus'
-import { StaffAvatar, PremiumHero, PREMIUM_CSS } from './staffPhotos'
+import { StaffAvatar, PremiumHero, PREMIUM_CSS, goldBtn } from './staffPhotos'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1286,53 +1286,43 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
       )}
 
       {/* ── Header ── */}
-      <PremiumHero mobile={isMobile} icon="👨‍🏫" title="Staff Management" subtitle="Profiles · Roles · Performance · Tasks — with faculty photos" />
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, flexWrap:'wrap', gap:10 }}>
+      <PremiumHero mobile={isMobile} icon="👨‍🏫" title="Staff Management" subtitle="Profiles · Roles · Performance · Tasks"
+        stats={activeTab === 'staff' ? statsCards.map(c => ({ icon: c.icon, label: c.label, value: c.value })) : null}
+        right={<>
+          {activeTab === 'staff' && canEdit && (
+            <button onClick={() => setShowForm(!showForm)} style={goldBtn}>{showForm ? '✖ Cancel' : '➕ Add Staff'}</button>
+          )}
+          {activeTab === 'tasks' && canEdit && (
+            <button onClick={() => { setAssignPreselected(null); setShowAssignModal(true) }} style={goldBtn}>＋ Assign Task</button>
+          )}
+        </>} />
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10, flexWrap:'wrap', gap:10 }}>
         <div>
           {isAdminUnlocked() && <span style={{ display:'inline-block', marginTop:6, padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:700, background:'#dcfce7', color:'#16a34a' }}>🔓 Admin session active</span>}
           {!canEdit && <span style={{ display:'inline-block', marginTop:6, marginLeft:8, padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:700, background:'#f1f5f9', color:'#64748b' }}>👁 View only</span>}
         </div>
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          {activeTab === 'staff' && canEdit && (
-            <button onClick={() => setShowForm(!showForm)} style={S.btn()}>{showForm ? '✖ Cancel' : '➕ Add Staff'}</button>
-          )}
-          {activeTab === 'tasks' && canEdit && (
-            <button onClick={() => { setAssignPreselected(null); setShowAssignModal(true) }} style={{ ...S.btn('#6366f1'), background:'linear-gradient(135deg,#6366f1,#0ea5e9)' }}>＋ Assign Task</button>
-          )}
-        </div>
       </div>
 
       {/* ── Tab bar ── */}
-      <div style={{ overflowX:'auto', marginBottom:20, WebkitOverflowScrolling:'touch' }}>
-        <div className="tab-bar" style={{ display:'grid', gridTemplateColumns:`repeat(${ALL_TABS.length},1fr)`, gap:6 }}>
-          {ALL_TABS.map(t => (
-            <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
-              padding:'10px 8px', fontWeight:700, fontSize:isMobile?11:12, cursor:'pointer',
-              background:activeTab===t.key ? '#0B1E3D' : 'white',
-              color:activeTab===t.key ? 'white' : '#64748b',
-              border:activeTab===t.key ? '2px solid #0B1E3D' : '2px solid #e2e8f0',
-              borderRadius:10, fontFamily:'inherit', minHeight:44, whiteSpace:'nowrap',
-              boxShadow:activeTab===t.key ? '0 2px 8px rgba(30,58,95,.25)' : 'none',
-              transition:'all .15s',
-            }}>{t.label}</button>
-          ))}
+      <div style={{ overflowX:'auto', marginBottom:20, WebkitOverflowScrolling:'touch', scrollbarWidth:'none' }}>
+        <div style={{ display:'inline-flex', minWidth:'100%', gap:4, padding:5, borderRadius:999, background:'#fff', border:'1px solid #E8E1D0', boxShadow:'0 8px 22px rgba(11,30,61,.06)' }}>
+          {ALL_TABS.map(t => {
+            const on = activeTab === t.key
+            return (
+              <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
+                flex:'1 0 auto', padding:isMobile?'9px 14px':'10px 18px', fontWeight:800, fontSize:isMobile?12:13, cursor:'pointer',
+                background:on ? 'linear-gradient(180deg,#132B52,#0B1E3D)' : 'transparent',
+                color:on ? '#E2C57E' : '#5B6478', border:'none', borderRadius:999, fontFamily:'inherit', minHeight:40, whiteSpace:'nowrap',
+                boxShadow:on ? '0 8px 18px rgba(11,30,61,.25), inset 0 0 0 1px rgba(226,197,126,.35)' : 'none', transition:'all .18s',
+              }}>{t.label}</button>
+            )
+          })}
         </div>
       </div>
 
       {/* ══ STAFF LIST ══ */}
       {activeTab === 'staff' && (
         <>
-          {/* Stat cards */}
-          <div className="stat-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))', gap:12, marginBottom:20 }}>
-            {statsCards.map(card => (
-              <div key={card.label} style={{ backgroundColor:card.bg, borderRadius:12, padding:'14px 16px', boxShadow:'0 2px 8px rgba(0,0,0,.06)', borderLeft:`4px solid ${card.color}` }}>
-                <div style={{ fontSize:18, marginBottom:5 }}>{card.icon}</div>
-                <p style={{ fontSize:11, color:card.color, fontWeight:700, margin:0, textTransform:'uppercase', letterSpacing:.04 }}>{card.label}</p>
-                <h2 style={{ fontSize:24, fontWeight:800, color:card.color, margin:'3px 0 0', fontFamily:"'JetBrains Mono',monospace" }}>{card.value}</h2>
-              </div>
-            ))}
-          </div>
-
           {/* Add form */}
           {showForm && canEdit && (
             <div style={S.card}>
@@ -1412,24 +1402,27 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
               const initials   = item.name?.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase() || '??'
               const hue        = (item.name?.charCodeAt(0) || 0) % 360
               return (
-                <div key={item.id} style={{
-                  background:'white', borderRadius:16, padding:20,
-                  boxShadow:'0 2px 12px rgba(0,0,0,.06)', border:'1px solid #f1f5f9',
+                <div key={item.id} className="gp-in" style={{
+                  background:'#fff', borderRadius:20, padding:'0 20px 20px',
+                  boxShadow:'0 10px 30px rgba(11,30,61,.07)', border:'1px solid #E8E1D0',
                   transition:'all 0.25s cubic-bezier(0.4,0,0.2,1)',
                   position:'relative', overflow:'hidden',
-                  display:'flex', flexDirection:'column', gap:14, cursor:'pointer'
+                  display:'flex', flexDirection:'column', gap:14
                 }}
-                  onMouseEnter={e => { e.currentTarget.style.boxShadow='0 12px 40px rgba(0,0,0,.12)'; e.currentTarget.style.transform='translateY(-2px)' }}
-                  onMouseLeave={e => { e.currentTarget.style.boxShadow='0 2px 12px rgba(0,0,0,.06)'; e.currentTarget.style.transform='translateY(0)' }}
+                  onMouseEnter={e => { e.currentTarget.style.boxShadow='0 20px 44px rgba(11,30,61,.14)'; e.currentTarget.style.transform='translateY(-3px)' }}
+                  onMouseLeave={e => { e.currentTarget.style.boxShadow='0 10px 30px rgba(11,30,61,.07)'; e.currentTarget.style.transform='translateY(0)' }}
                 >
-                  {/* Status bar */}
-                  <div style={{ position:'absolute', top:0, left:0, right:0, height:4, background:item.status==='Active'?'linear-gradient(90deg,#16a34a,#22c55e)':'linear-gradient(90deg,#dc2626,#f87171)', borderRadius:'16px 16px 0 0' }}/>
+                  {/* Crest band */}
+                  <div style={{ margin:'0 -20px', height:58, background:'radial-gradient(120% 160% at 100% 0%, #1F4E8C 0%, #132B52 45%, #0B1E3D 85%)', position:'relative' }}>
+                    <div style={{ position:'absolute', left:0, right:0, bottom:0, height:2, background:item.status==='Active'?'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)':'linear-gradient(90deg,#dc2626,#f87171)' }}/>
+                    <span style={{ position:'absolute', right:14, top:12, fontSize:10.5, fontWeight:800, letterSpacing:'.12em', textTransform:'uppercase', color:'rgba(226,197,126,.9)' }}>{item.department || 'GNSI'}</span>
+                  </div>
 
                   {/* Avatar + Name + Score ring */}
-                  <div style={{ display:'flex', alignItems:'flex-start', gap:12, marginTop:2 }}>
-                    <StaffAvatar name={item.name} id={item.id} style={{ width:52, height:52, borderRadius:'50%', background:`linear-gradient(135deg,hsl(${hue},70%,55%),hsl(${hue+40},70%,45%))`, display:'flex', alignItems:'center', justifyContent:'center', color:'white', fontWeight:700, fontSize:16, flexShrink:0, boxShadow:'0 2px 8px rgba(0,0,0,.12)' }}>{initials}</StaffAvatar>
+                  <div style={{ display:'flex', alignItems:'flex-end', gap:12, marginTop:-36 }}>
+                    <StaffAvatar name={item.name} id={item.id} style={{ width:76, height:76, borderRadius:'50%', border:'3px solid #fff', outline:'2px solid #E2C57E', background:`linear-gradient(135deg,#0B1E3D,#1F4E8C)`, display:'flex', alignItems:'center', justifyContent:'center', color:'#E2C57E', fontWeight:700, fontSize:24, fontFamily:"'Playfair Display',Georgia,serif", flexShrink:0, boxShadow:'0 8px 20px rgba(11,30,61,.25)' }}>{initials}</StaffAvatar>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontWeight:800, fontSize:15, color:'#1e293b', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.name}</div>
+                      <div className="gp-serif" style={{ fontWeight:700, fontSize:17, color:'#0B1E3D', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', marginTop:36 }}>{item.name}</div>
                       <div style={{ fontSize:12, color:'#64748b', marginTop:2 }}>{item.designation}</div>
                       <div style={{ marginTop:6, display:'flex', gap:6, flexWrap:'wrap' }}>
                         <RoleBadge role={item.role}/>
@@ -1476,14 +1469,14 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
                   {/* Salary + Tasks */}
                   <div style={{ display:'flex', gap:10, alignItems:'stretch', flexWrap:'wrap' }}>
                     {canEdit && (
-                      <div style={{ flex:1, minWidth:120, background:gross>0?'#eff6ff':'#fef2f2', borderRadius:10, padding:'10px 12px', border:`1.5px solid ${gross>0?'#bfdbfe':'#fecaca'}` }}>
+                      <div style={{ flex:1, minWidth:120, background:gross>0?'linear-gradient(135deg,#FBF6E9,#F6EEDA)':'#fef2f2', borderRadius:12, padding:'10px 12px', border:`1px solid ${gross>0?'#E8D6A8':'#fecaca'}` }}>
                         <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600, textTransform:'uppercase', letterSpacing:0.5 }}>Gross Salary</div>
                         {gross > 0
-                          ? <div style={{ fontSize:16, fontWeight:800, color:'#0C447C', fontFamily:"'JetBrains Mono',monospace", marginTop:2 }}>{fmt(gross)}</div>
+                          ? <div className="gp-serif" style={{ fontSize:18, fontWeight:700, color:'#0B1E3D', marginTop:2 }}>{fmt(gross)}</div>
                           : <div style={{ fontSize:12, fontWeight:600, color:'#dc2626', marginTop:2 }}>⚠ Not Set</div>}
                       </div>
                     )}
-                    <div style={{ flex:1, minWidth:120, background:'#f8fafc', borderRadius:10, padding:'10px 12px', border:'1.5px solid #e2e8f0' }}>
+                    <div style={{ flex:1, minWidth:120, background:'#FBF8F1', borderRadius:12, padding:'10px 12px', border:'1px solid #E8E1D0' }}>
                       {tm.total > 0 ? (
                         <>
                           <MiniBar done={tm.done} total={tm.total} overdue={tm.overdue}/>

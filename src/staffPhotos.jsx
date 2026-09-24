@@ -36,7 +36,9 @@ async function loadPhotos() {
     const rows = await getFaculty()
     ;(rows || []).forEach(r => add(r.name, r.photo_url || r.photo || r.image_url))
   } catch (_) {}
-  cache = { byId, byName, list }
+  const freq = new Map()
+  list.forEach(e => new Set(e.toks).forEach(t => freq.set(t, (freq.get(t) || 0) + 1)))
+  cache = { byId, byName, list, freq }
   subs.forEach(f => f())
   return cache
 }
@@ -54,16 +56,59 @@ export function findStaffPhoto(name, id) {
   if (id != null && cache.byId.has(String(id))) return cache.byId.get(String(id))
   const n = norm(name); if (!n) return null
   if (cache.byName.has(n)) return cache.byName.get(n)
-  // Loose match: every word of the shorter name appears in the other (≥2 words)
-  const t = tokens(name); if (t.length < 2) return null
-  let best = null
+  // Fuzzy match — handles order, extra/missing middle names, short forms
+  // (Kh → Khundrakpam) and spelling variants (Praveen/Prabin, Laishramcha).
+  // Common words (Singh, Devi) and family names shared by many people only
+  // count if a personal name (e.g. Arjun, Chetan) also matches.
+  const t = tokens(name); if (!t.length) return null
+  const freq = cache.freq
+  let best = null, bestW = 0, tie = false
   for (const e of cache.list) {
-    if (e.toks.length < 2) continue
-    const [a, b] = t.length <= e.toks.length ? [t, e.toks] : [e.toks, t]
-    if (a.every(x => b.includes(x))) { best = e.url; break }
+    const m = matchedTokens(t, e.toks)            // [[staffWord, facultyWord], …]
+    const rare = m.filter(([x, y]) => !COMMON.has(x) && !COMMON.has(y) && (freq.get(y) || 0) <= 1)
+    if (!rare.length || m.length < Math.min(2, t.length)) continue
+    const w = rare.length * 3 + m.length
+    if (w > bestW) { best = e.url; bestW = w; tie = false }
+    else if (w === bestW && e.url !== best) tie = true
   }
-  return best
+  return !tie ? best : null
 }
+
+const COMMON = new Set(['singh', 'devi', 'chanu', 'leima', 'meitei', 'sharma', 'kumar', 'kumari', 'rani', 'md', 'mohd'])
+
+// Edit distance (small strings only)
+function lev(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 9
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i])
+  for (let j = 1; j <= b.length; j++) d[0][j] = j
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1))
+  return d[a.length][b.length]
+}
+function tokSim(a, b) {
+  if (a === b) return true
+  const m = Math.min(a.length, b.length)
+  if (m >= 2 && m <= 3 && (a.startsWith(b) || b.startsWith(a))) return true       // Kh → Khundrakpam
+  if (m >= 4 && (a.startsWith(b) || b.startsWith(a))) return true                   // Laishram → Laishramcha
+  if (m >= 5 && lev(a, b) <= 2) return true
+  if (m >= 4 && lev(a, b) <= 1) return true
+  const sq = s => s.replace(/v/g, 'b').replace(/ee/g, 'i').replace(/sh/g, 's').replace(/(.)\1+/g, '$1')
+  if (m < 4) return false
+  const A = sq(a), B = sq(b)
+  if (Math.min(A.length, B.length) >= 5 && (A.startsWith(B) || B.startsWith(A))) return true  // Shandhya ~ Sandhyarani
+  return lev(A, B) <= 1                                                             // Praveen ~ Prabin
+}
+// the words of `a` (staff name) that have a similar word in `b` (each used once)
+function matchedTokens(a, b) {
+  const used = new Set(), out = []
+  for (const x of a) {
+    const k = b.findIndex((y, i) => !used.has(i) && tokSim(x, y))
+    if (k >= 0) { used.add(k); out.push([x, b[k]]) }
+  }
+  return out
+}
+
+
 
 export function useStaffPhotos() {
   const [, force] = useState(0)
@@ -120,7 +165,7 @@ export function PremiumHero({ icon, title, subtitle, eyebrow = 'GNSI · Guidance
         {right && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>{right}</div>}
       </div>
       {stats && stats.length > 0 && (
-        <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: `repeat(${mobile ? 2 : Math.min(stats.length, 5)}, minmax(0,1fr))`, gap: 10, marginTop: 18 }}>
+        <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: `repeat(${mobile ? 2 : Math.min(stats.length, 6)}, minmax(0,1fr))`, gap: 10, marginTop: 18 }}>
           {stats.map(s => (
             <div key={s.label} style={{ borderRadius: 14, padding: '12px 14px', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(226,197,126,.22)', minWidth: 0 }}>
               <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,.62)' }}>{s.icon} {s.label}</div>
