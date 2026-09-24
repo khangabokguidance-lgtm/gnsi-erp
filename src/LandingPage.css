@@ -1533,3 +1533,8 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
   .nav-fixed-actions .nv-btn{padding:0 .4rem;font-size:.68rem}
   .nv-crest{width:32px;height:32px}
 }
+
+/* ── HOME: faculty preview (same cards; 3 per row on desktop) ── */
+.home-faculty-grid{grid-template-columns:repeat(3,minmax(0,1fr));max-width:900px}
+.home-faculty-grid:empty{min-height:120px}
+@media (max-width:768px){.home-faculty-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}

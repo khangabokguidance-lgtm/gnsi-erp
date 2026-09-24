@@ -514,12 +514,14 @@ function hydrateTabSections(setFeePaymentInfo) {
 
   // ---- 10. FACULTY (into #facultyGrid) ----
   (async () => {
+    // Fills the Faculty tab grid and the Home preview grid (first 6).
     const grid = document.getElementById('facultyGrid');
-    if (!grid) return;
+    const homeGrid = document.getElementById('homeFacultyGrid');
+    if (!grid && !homeGrid) return;
     try {
       const faculty = await cachedFetch('faculty', getFaculty);
-      if (!faculty.length) return;
-      grid.innerHTML = faculty.map((f, idx) => {
+      if (!faculty.length) { if (homeGrid) homeGrid.closest('.home-faculty').style.display = 'none'; return; }
+      const cardsHtml = (list) => list.map((f, idx) => {
         const initials = (f.name || 'F').split(' ').filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase();
         // Accept whichever photo column the row has (photo_url preferred).
         const photo = f.photo_url || f.image_url || f.photo || '';
@@ -540,6 +542,8 @@ function hydrateTabSections(setFeePaymentInfo) {
             </div>
           </div>`;
       }).join('');
+      if (grid && document.body.contains(grid)) grid.innerHTML = cardsHtml(faculty);
+      if (homeGrid && document.body.contains(homeGrid)) homeGrid.innerHTML = cardsHtml(faculty.slice(0, 6));
     } catch (e) { console.error('Faculty load failed:', e); }
   })();
 
@@ -2669,6 +2673,26 @@ window.submitGrievance = async () => {
           className="btn btn-out"
         >
           View All Toppers →
+        </a>
+      </div>
+    </div>
+    <div className="container home-faculty" style={{ marginTop: '2.5rem' }}>
+      <div className="eyebrow reveal">Our Team</div>
+      <h2 className="st reveal">Faculty &amp; Leadership</h2>
+      <div className="rule reveal">
+        <div className="rule-line" />
+        <div className="rule-d" />
+        <div className="rule-line" />
+      </div>
+      {/* Filled from the faculty table by hydrateTabSections (first 6). */}
+      <div className="faculty-grid home-faculty-grid" id="homeFacultyGrid" />
+      <div style={{ marginTop: '1.2rem' }} className="reveal">
+        <a
+          href="#faculty"
+          onClick={(e) => { e.preventDefault(); goToTab('faculty'); }}
+          className="btn btn-out"
+        >
+          Meet All Faculty →
         </a>
       </div>
     </div>
