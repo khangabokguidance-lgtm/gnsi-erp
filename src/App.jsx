@@ -598,7 +598,7 @@ export default function App() {
       const s = localStorage.getItem('gnsi_session')
       if (!s) return null
       const p = JSON.parse(s)
-      if (p.expiry < Date.now()) { localStorage.removeItem('gnsi_session'); return null }
+      if (p.expiry < Date.now()) { localStorage.removeItem('gnsi_session'); supabase.auth.signOut().catch(() => {}); return null }
       return p.user
     } catch { return null }
   })
@@ -686,6 +686,8 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('gnsi_session')
+    // End the Supabase Auth session too (Security Phase 1)
+    supabase.auth.signOut().catch(() => {})
     setCurrentUser(null); setActive('dashboard'); setPermMap({})
   }
 

@@ -141,6 +141,41 @@ const injectStyles = () => {
   document.head.appendChild(style)
 }
 
+// ── Supabase Auth link (Security Phase 1) ─────────────────────────────────
+// After the normal GNSI password check succeeds, the same username/password
+// also signs the staff member into Supabase Auth, and staff_link_auth()
+// (runs inside the database, re-checks the GNSI password) records which
+// staff account it is. From then on the database can tell staff apart from
+// the public website. Never blocks login: if anything here fails, the
+// staff member still gets in exactly as before.
+const staffEmail = (u) => `${String(u).trim().toLowerCase().replace(/[^a-z0-9._-]/g, '_')}.staff@guidancekhangabok.in`
+
+async function linkSupabaseAuth(username, password, isAdminShortcut = false) {
+  try {
+    const email = staffEmail(username)
+    let { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) {
+      const r = await supabase.auth.signUp({ email, password })
+      if (r.error || !r.data?.session) {
+        console.warn('Supabase Auth link skipped:', r.error?.message || 'no session (is "Confirm email" turned off?)')
+        return false
+      }
+    }
+    const { data, error: linkErr } = await supabase.rpc('staff_link_auth', {
+      p_username: username.trim(), p_password: password, p_admin: isAdminShortcut,
+    })
+    if (linkErr || !data) {
+      console.warn('staff_link_auth failed:', linkErr?.message || 'not verified')
+      await supabase.auth.signOut()
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('Supabase Auth link error:', e)
+    return false
+  }
+}
+
 async function sha256(text) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
@@ -246,6 +281,7 @@ export default function Login({ onLogin }) {
         .eq('username', ADMIN_USER)
         .maybeSingle()
 
+      await linkSupabaseAuth(username, password, true)
       onLogin(realUser
         ? { ...realUser, staff_profile_id: realUser.staff_profile_id ?? 37 }
         : { id: 'admin', name: 'Administrator', username: ADMIN_USER, role: 'Admin', staff_profile_id: 37 }
@@ -253,15 +289,23 @@ export default function Login({ onLogin }) {
       setLoading(false); return
     }
 
-    const hashedPassword = await sha256(password.trim())
-
-    const { data, error: dbErr } = await supabase
-      .from('portal_users')
-      .select('id, name, username, role, active, staff_profile_id')
-      .eq('username', username.trim().toLowerCase())
-      .eq('password_hash', hashedPassword)
-      .eq('active', true)
-      .single()
+    // Password is checked inside the database (staff_verify_login) so the
+    // browser never reads password hashes. Falls back to the old direct
+    // check only if the Phase 1 SQL hasn't been run yet.
+    let data = null, dbErr = null
+    const rpc = await supabase.rpc('staff_verify_login', { p_username: username.trim(), p_password: password.trim() })
+    if (!rpc.error) {
+      data = rpc.data || null
+    } else {
+      const hashedPassword = await sha256(password.trim())
+      ;({ data, error: dbErr } = await supabase
+        .from('portal_users')
+        .select('id, name, username, role, active, staff_profile_id')
+        .eq('username', username.trim().toLowerCase())
+        .eq('password_hash', hashedPassword)
+        .eq('active', true)
+        .single())
+    }
 
     if (dbErr || !data) {
       showError('Invalid username or password.')
@@ -289,6 +333,8 @@ export default function Login({ onLogin }) {
         .maybeSingle()
       profile = p
     }
+
+    await linkSupabaseAuth(username.trim().toLowerCase(), password.trim())
 
     await supabase.rpc('set_staff_context', {
   p_staff_id: profile?.id ?? 0,
