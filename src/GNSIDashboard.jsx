@@ -1407,6 +1407,8 @@ function InlineFix({ f, onDone, log }) {
   if (f.id === "rls_off") return <RlsLockTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
   if (f.id === "sensitive_read") return <PrivateLockTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
   if (f.id === "anon_write") return <WriteLockTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
+  if (f.id === "boarder_no_house") return <HouseAssignTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
+  if (f.id === "gp_overdue") return <GatePassReturnTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
 
   if (f.id === "no_session") {
     return (
@@ -1585,7 +1587,8 @@ function PrivateLockTool({ onDone, log }) {
           </div>
         </div>
       )}
-      <div style={{fontSize:11.5,color:T.inkSub,marginTop:10}}><b>Not offered yet:</b> students and adm_* fee tables — the website admit-card / fee lookup still reads them directly.</div>
+      {!rows.some(r => r.t === "students") && <div style={{fontSize:11.5,color:T.inkSub,marginTop:10}}><b>students + adm_* fee tables</b> appear here after you run private_lockdown_fees.sql.</div>}
+      {rows.some(r => r.t === "students" && !r.locked) && <div style={{fontSize:11.5,color:"#9a6a08",marginTop:10,fontWeight:700}}>⚠️ Before making <code>students</code> private: every parent needs a PIN (Website → Parent PINs). The old "GCC + student name" parent login stops working once it is private.</div>}
     </div>
   )
 }
@@ -1608,6 +1611,13 @@ function WriteLockTool({ onDone, log }) {
     setBusy(true)
     const { data, error } = await supabase.rpc(fn, { p_tables: tables })
     setBusy(false); log(error ? error.message : data, !error)
+    if (!error) { load(); onDone() }
+  }
+  const act2 = async (t, keepRead) => {
+    if (!window.confirm(`${t}: public can only ADD rows${keepRead ? " (and still read)" : " (no public reading)"}.\n\nStaff keep full access. Undo is available under Protected.`)) return
+    setBusy(true)
+    const { data, error } = await supabase.rpc("write_narrow", { p_tables: [t], p_keep_read: keepRead })
+    setBusy(false); log(error ? (/write_narrow|does not exist/i.test(error.message) ? "Run the latest write_lockdown.sql first." : error.message) : data, !error)
     if (!error) { load(); onDone() }
   }
   const box = {background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px",marginTop:8}
@@ -1658,7 +1668,174 @@ function WriteLockTool({ onDone, log }) {
           </div>
         </div>
       )}
-      {(d.kept || []).length > 0 && <div style={{fontSize:11.5,color:T.inkSub,marginTop:10}}><b>Kept open on purpose</b> (website / parent forms write to them, or use the Private tool): {d.kept.join(", ")}</div>}
+      {(d.kept || []).length > 0 && (
+        <div style={{marginTop:12,borderTop:`1px solid ${T.border}`,paddingTop:10}}>
+          <div style={{fontSize:12,fontWeight:800,color:T.ink,marginBottom:4}}>Public forms · {d.kept.length}</div>
+          <div style={{fontSize:11.5,color:T.inkSub,marginBottom:8}}>The website or parents add rows here without a staff login. Make them <b>add-only</b>: the public can still submit, but can no longer edit, delete or (optionally) read.</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {d.kept.map(t => (
+              <div key={t} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <code style={{flex:"1 1 160px",fontSize:11.5}}>{t}</code>
+                <button disabled={busy} onClick={() => act2(t, false)} style={{border:"none",background:"#0f7a52",color:"#fff",borderRadius:999,padding:"4px 11px",fontSize:11.5,fontWeight:800,cursor:"pointer"}}>➕ Add-only</button>
+                <button disabled={busy} onClick={() => act2(t, true)} style={{border:`1px solid ${T.navy}`,background:"#fff",color:T.navy,borderRadius:999,padding:"4px 11px",fontSize:11.5,fontWeight:800,cursor:"pointer"}}>➕ Add-only, keep reading</button>
+              </div>
+            ))}
+          </div>
+          <div style={{fontSize:11,color:T.inkSub,marginTop:6}}>Use "keep reading" for things the website shows (e.g. approved reviews). Private data like applications → plain Add-only.</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Assign houses to boarders right from the dashboard ─────────────────────
+function HouseAssignTool({ onDone, log }) {
+  const [list, setList] = useState(null)      // boarders without a house
+  const [houses, setHouses] = useState([])    // [{ name, count }]
+  const [pick, setPick] = useState({})        // student id -> house
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const isActive = s => !/inactive|dropout/i.test(s.status || "")
+  const isBoarder = s => /boarder/i.test(s.hostel_type || "") && !/day/i.test(s.hostel_type || "")
+  const load = useCallback(async () => {
+    setErr(null)
+    const { data, error } = await supabase.from("students").select("id, name, house, hostel_type, status, class_name, course").limit(5000)
+    if (error) { setErr(error.message); return }
+    const rows = (data || []).filter(s => isActive(s) && isBoarder(s))
+    const counts = {}
+    rows.forEach(s => { const h = (s.house || "").trim(); if (h) counts[h] = (counts[h] || 0) + 1 })
+    let names = Object.keys(counts)
+    try {
+      const { data: hs } = await supabase.from("houses").select("name")
+      ;(hs || []).forEach(h => { if (h?.name && !names.includes(h.name)) { names.push(h.name); counts[h.name] = 0 } })
+    } catch (_) {}
+    setHouses(names.sort().map(n => ({ name: n, count: counts[n] || 0 })))
+    setList(rows.filter(s => !(s.house || "").trim()).sort((a, b) => a.name.localeCompare(b.name)))
+    setPick({})
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  const autoBalance = () => {
+    const c = Object.fromEntries(houses.map(h => [h.name, h.count]))
+    const p = {}
+    list.forEach(s => {
+      const h = Object.keys(c).sort((a, b) => c[a] - c[b] || a.localeCompare(b))[0]
+      if (h) { p[s.id] = h; c[h]++ }
+    })
+    setPick(p)
+  }
+  const save = async () => {
+    const todo = Object.entries(pick).filter(([, h]) => h)
+    if (!todo.length) return
+    if (!window.confirm(`Assign houses to ${todo.length} boarder(s)?`)) return
+    setBusy(true)
+    let ok = 0, fail = 0
+    for (const [id, h] of todo) {
+      const { error } = await supabase.from("students").update({ house: h }).eq("id", id)
+      error ? fail++ : ok++
+    }
+    setBusy(false)
+    log(`${ok} boarder(s) assigned to a house${fail ? `, ${fail} failed` : ""}.`, !fail)
+    load(); onDone()
+  }
+
+  const box = {background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px",marginTop:8}
+  if (err) return <div style={{...box,color:T.rose,fontWeight:700}}>{err}</div>
+  if (!list) return <div style={box}>Loading boarders…</div>
+  if (!list.length) return <div style={{...box,color:T.emerald,fontWeight:700}}>✓ Every boarder has a house.</div>
+  const nPicked = Object.values(pick).filter(Boolean).length
+  const sel = {padding:"6px 8px",borderRadius:8,border:`1px solid ${T.border}`,fontSize:12.5,fontFamily:"inherit",background:"#fff",minWidth:140}
+  return (
+    <div style={box}>
+      <div style={{fontWeight:800,color:T.ink,marginBottom:6,fontSize:12.5}}>🏠 Assign houses here</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10,fontSize:11.5,color:T.inkSub}}>
+        {houses.map(h => <span key={h.name} style={{border:`1px solid ${T.border}`,borderRadius:999,padding:"2px 9px"}}>{h.name}: <b>{h.count}</b></span>)}
+        {!houses.length && <span>No houses found yet — type them in Hostel → Houses first.</span>}
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+        {list.map(s => (
+          <div key={s.id} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            <span style={{flex:"1 1 220px",fontSize:12.5,fontWeight:700,color:T.ink}}>{s.name}
+              <span style={{fontWeight:500,color:T.inkSub}}> {[s.class_name, s.course].filter(Boolean).join(" · ")}</span></span>
+            <select value={pick[s.id] || ""} onChange={e => setPick(p => ({ ...p, [s.id]: e.target.value }))} style={sel}>
+              <option value="">— choose house —</option>
+              {houses.map(h => <option key={h.name} value={h.name}>{h.name}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        <select onChange={e => { const v = e.target.value; if (v) setPick(Object.fromEntries(list.map(s => [s.id, v]))); e.target.value = "" }} style={sel} defaultValue="">
+          <option value="">Put all in…</option>
+          {houses.map(h => <option key={h.name} value={h.name}>{h.name}</option>)}
+        </select>
+        <button disabled={busy || !houses.length} onClick={autoBalance} style={{padding:"7px 12px",borderRadius:999,border:`1px solid ${T.navy}`,background:"#fff",color:T.navy,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>⚖️ Auto-balance</button>
+        <button disabled={busy || !nPicked} onClick={save} style={{padding:"7px 14px",borderRadius:999,border:"none",background:"#0f7a52",color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",opacity:(busy||!nPicked)?.5:1}}>
+          {busy ? "Saving…" : `💾 Save (${nPicked})`}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Overdue gate passes: call guardian / mark returned ────────────────────
+function GatePassReturnTool({ onDone, log }) {
+  const [rows, setRows] = useState(null)
+  const [sel, setSel] = useState({})
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const today = new Date().toISOString().slice(0, 10)
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.from("reception_gatepasses").select("*")
+      .is("deleted_at", null).in("status", ["Exited", "Out"]).limit(1000)
+    if (error) { setErr(error.message); return }
+    const due = (data || []).filter(r => String(r.return_date || r.exit_date || "").slice(0, 10) < today && (r.return_date || r.exit_date))
+      .sort((a, b) => String(a.return_date || a.exit_date).localeCompare(String(b.return_date || b.exit_date)))
+    setRows(due); setSel({})
+  }, [today])
+  useEffect(() => { load() }, [load])
+  const phoneOf = r => r.guardian_phone || r.parent_phone || r.phone || r.contact || r.mobile || r.guardian_contact || ""
+  const daysLate = r => Math.max(0, Math.round((Date.parse(today) - Date.parse(String(r.return_date || r.exit_date).slice(0, 10))) / 86400000))
+  const markReturned = async (ids) => {
+    if (!ids.length || !window.confirm(`Mark ${ids.length} student(s) as RETURNED to campus?\n\nOnly do this once you have confirmed they are back.`)) return
+    setBusy(true)
+    const { error } = await supabase.from("reception_gatepasses").update({ status: "Returned" }).in("id", ids)
+    setBusy(false)
+    log(error ? error.message : `${ids.length} gate pass(es) marked Returned.`, !error)
+    if (!error) { load(); onDone() }
+  }
+  const box = {background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px",marginTop:8}
+  if (err) return <div style={{...box,color:T.rose,fontWeight:700}}>{err}</div>
+  if (!rows) return <div style={box}>Loading gate passes…</div>
+  if (!rows.length) return <div style={{...box,color:T.emerald,fontWeight:700}}>✓ No overdue gate passes.</div>
+  const picked = Object.keys(sel).filter(k => sel[k])
+  const all = picked.length === rows.length
+  return (
+    <div style={box}>
+      <div style={{fontWeight:800,color:T.ink,marginBottom:4,fontSize:12.5}}>🚪 Overdue gate passes · {rows.length}</div>
+      <div style={{fontSize:11.5,color:T.inkSub,marginBottom:8}}>Call the guardian if unsure. Mark returned only for children confirmed back on campus.</div>
+      <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,color:T.inkMid,marginBottom:6,cursor:"pointer"}}>
+        <input type="checkbox" checked={all} ref={el => { if (el) el.indeterminate = picked.length > 0 && !all }}
+          onChange={() => setSel(all ? {} : Object.fromEntries(rows.map(r => [r.id, true])))}/> Select all
+      </label>
+      <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:320,overflowY:"auto",marginBottom:10}}>
+        {rows.map(r => {
+          const late = daysLate(r), ph = phoneOf(r)
+          return (
+            <div key={r.id} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",border:`1px solid ${sel[r.id]?T.navy:T.border}`,borderRadius:8,padding:"5px 8px",background:sel[r.id]?"#EEF3FB":"#fff"}}>
+              <input type="checkbox" checked={!!sel[r.id]} onChange={e => setSel(s => ({ ...s, [r.id]: e.target.checked }))}/>
+              <span style={{flex:"1 1 200px",fontSize:12.5,fontWeight:700,color:T.ink}}>{r.student_name}
+                <span style={{fontWeight:500,color:T.inkSub}}> · due {String(r.return_date || r.exit_date).slice(0,10)}{r.reason ? " · " + r.reason : ""}</span></span>
+              <span style={{fontSize:11,fontWeight:800,color:late>30?"#b3273f":late>7?"#c2410c":"#9a6a08"}}>{late} day{late===1?"":"s"} late</span>
+              {ph && <a href={`tel:${ph}`} style={{fontSize:11.5,fontWeight:800,color:T.navy,textDecoration:"none",border:`1px solid ${T.border}`,borderRadius:999,padding:"2px 9px"}}>📞 {ph}</a>}
+              <button disabled={busy} onClick={() => markReturned([r.id])} style={{border:"none",background:"#dcfce7",color:"#166534",borderRadius:999,padding:"3px 10px",fontSize:11.5,fontWeight:800,cursor:"pointer"}}>↩ In</button>
+            </div>
+          )
+        })}
+      </div>
+      <button disabled={busy || !picked.length} onClick={() => markReturned(picked)} style={{padding:"7px 14px",borderRadius:999,border:"none",background:"#0f7a52",color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",opacity:(busy||!picked.length)?.5:1}}>
+        {busy ? "Saving…" : `↩ Mark returned (${picked.length})`}
+      </button>
     </div>
   )
 }

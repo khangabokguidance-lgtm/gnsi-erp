@@ -30,6 +30,10 @@ import { supabase } from './supabase'
 
 const PAGE = 1000
 
+async function hasStaffSession() {
+  try { const { data } = await supabase.auth.getSession(); return !!data?.session } catch { return false }
+}
+
 // Pagination-safe fetch — Supabase/PostgREST caps a single .select() at
 // 1000 rows. Any module that queries `students` directly for a full or
 // filtered roster WILL silently lose the newest rows once the school
@@ -67,6 +71,12 @@ export function activeStudentFilter(q) {
 // full rows — for dashboard "enrolled" counters (Attendance Overview,
 // Hostel summary cards, etc.) that only need a number.
 export async function getActiveStudentCount() {
+  // Public website (no staff login): use the secure counter — the students
+  // table itself is private.
+  if (!(await hasStaffSession())) {
+    const { data, error } = await supabase.rpc('public_active_student_count')
+    if (!error && typeof data === 'number') return data
+  }
   const { count, error } = await supabase.from('students').select('id', { count: 'exact', head: true })
     .is('deleted_at', null).neq('status', 'Inactive').neq('status', 'Dropout')
   if (error) { console.error('getActiveStudentCount error:', error.message); return null }
@@ -101,6 +111,11 @@ export async function getStudentById(id, select = '*') {
 // students up by gcc_no instead of id.
 export async function getStudentByGcc(gccNo, select = '*') {
   if (!gccNo) return null
+  // Public website (admit card / fee lookup): secure one-student lookup.
+  if (!(await hasStaffSession())) {
+    const { data, error } = await supabase.rpc('public_student_by_gcc', { p_gcc: String(gccNo) })
+    if (!error) return data || null
+  }
   const { data, error } = await supabase.from('students').select(select).eq('gcc_no', String(gccNo)).maybeSingle()
   if (error) { console.error('getStudentByGcc error:', error.message); return null }
   return data

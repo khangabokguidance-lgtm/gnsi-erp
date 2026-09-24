@@ -1738,11 +1738,20 @@ window.submitGrievance = async () => {
       res.classList.add('show');
 
       try {
-        const { data: stu, error } = await supabase
-          .from('students')
-          .select('id, name, course, class_name, batch, status, admission_no, gcc_no, admission_date')
-          .eq('gcc_no', gcc)
-          .maybeSingle();
+        // Secure one-student lookup (students table is private). Falls back to
+        // the old direct read only until private_lockdown_fees.sql is run.
+        let stu = null, error = null;
+        {
+          const r = await supabase.rpc('public_student_by_gcc', { p_gcc: gcc });
+          if (!r.error) stu = r.data || null;
+          else ({ data: stu, error } = await supabase.from('students')
+            .select('id, name, course, class_name, batch, status, admission_no, gcc_no, admission_date, hostel_type')
+            .eq('gcc_no', gcc).maybeSingle());
+        }
+        if (stu) {
+          const escA = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+          stu = { ...stu, name_html: escA(stu.name) };
+        }
 
         if (error || !stu) {
           res.classList.remove('ok'); res.classList.add('err');

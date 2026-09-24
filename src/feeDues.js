@@ -20,6 +20,11 @@ import {
   MONTHS_LIST, getSessionYear, ADM_FEE_BASE, resolveFeeMonthYear,
 } from './feeEngine'
 
+// True when a signed-in staff session exists (Supabase Auth, Phase 1).
+async function hasStaffSession() {
+  try { const { data } = await supabase.auth.getSession(); return !!data?.session } catch { return false }
+}
+
 // Course fee has no auto-generated month list the way flat fee does (staff
 // pick the month manually per collectFee's design) — so "due" months for
 // course fee are: every non-flat-fee month from the session's start
@@ -94,12 +99,33 @@ export async function getStudentDues(student, sessionYear = getSessionYear()) {
     return { _failed: true }
   })
 
+  // Staff (signed in) read the fee tables directly. Everyone else — the
+  // public website, the Parents Portal — gets ONLY this student's rows via
+  // the secure public_fee_rows() function, because the tables are private.
+  // (A private table read without permission returns 0 rows, not an error —
+  // which would wrongly show "fees clear", so we never rely on that.)
+  const staff = await hasStaffSession()
+  let admQ, flatQ, courseQ
+  if (staff) {
+    admQ    = supabase.from('adm_fee_collections').select('amount_paid, description, fee_type').eq('adm_app_id', gcc).eq('reverted', false)
+    flatQ   = supabase.from('adm_flat_fees').select('month,year,amount').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false)
+    courseQ = supabase.from('adm_course_fees').select('for_month,year,amount_paid').eq('adm_app_id', gcc).eq('reverted', false)
+  } else {
+    const rows = Promise.resolve(supabase.rpc('public_fee_rows', { p_gcc: gcc })).then(r => {
+      if (r.error) throw new Error(r.error.message)
+      return r.data || { adm: [], flat: [], course: [] }
+    })
+    admQ    = rows.then(d => ({ data: d.adm || [] }))
+    flatQ   = rows.then(d => ({ data: d.flat || [] }))
+    courseQ = rows.then(d => ({ data: d.course || [] }))
+  }
+
   const [ratesResult, flatFeeMonthsResult, admFeeRows, flatFeeRows, courseFeeRows] = await Promise.all([
     wrapRates(getFeeRates(sessionYear, student.course, student.batch, student.hostel_type, gcc), 'fee_rates'),
     wrapRates(getFlatFees(student.hostel_type, student.course, student.batch, sessionYear, gcc, student.admission_date), 'flat_fee_months'),
-    wrap(supabase.from('adm_fee_collections').select('amount_paid, description, fee_type').eq('adm_app_id', gcc).eq('reverted', false), 'adm_fee_collections'),
-    wrap(supabase.from('adm_flat_fees').select('month,year,amount').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false), 'adm_flat_fees'),
-    wrap(supabase.from('adm_course_fees').select('for_month,year,amount_paid').eq('adm_app_id', gcc).eq('reverted', false), 'adm_course_fees'),
+    wrap(admQ, 'adm_fee_collections'),
+    wrap(flatQ, 'adm_flat_fees'),
+    wrap(courseQ, 'adm_course_fees'),
   ])
 
   const rates = ratesResult._failed ? { flatFee: 0, courseFee: 0, admissionFee: 0 } : ratesResult
