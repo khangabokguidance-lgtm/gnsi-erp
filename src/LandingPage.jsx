@@ -139,6 +139,63 @@ const escapeHtml = (str) =>
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
 
+// ═══ MOBILE MENU ICONS ═══
+// Thin line icons (24×24, currentColor) for the premium mobile menu.
+const PM_ICON_PATHS = {
+  // Section icons (one per tab) — used by the All Sections grid and the
+  // mobile menu. Keys match the tab ids in tabList.
+  home: 'M3 10.5 12 3l9 7.5M5.5 9v11h13V9M10 20v-6h4v6',
+  courses: 'M12 3 2 8l10 5 10-5zM2 13l10 5 10-5M2 17.5l10 5 10-5',
+  rankers: 'M7.2 2h9.6l-3 6h-3.6zM12 22a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 13.5l1 2 2.2.3-1.6 1.5.4 2.2-2-1-2 1 .4-2.2-1.6-1.5 2.2-.3z',
+  results: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4',
+  reviews: 'M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z',
+  about: 'M3 21h18M5 21V10l7-5 7 5v11M9 21v-5h6v5M10.5 11a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0',
+  'head-institute': 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0M12 15l-1.2 2.2L12 21l1.2-3.8z',
+  faculty: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
+  facilities: 'M3 18V6M3 13h18v5M21 18v-2M9 13V9h8a4 4 0 0 1 4 4M4.5 10a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0-3.6 0',
+  videos: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM10 8.5v7l6-3.5z',
+  notices: 'M3 11v2a1 1 0 0 0 1 1h3l5 4V6L7 10H4a1 1 0 0 0-1 1zM16 8.5a5 5 0 0 1 0 7M19 5.5a9 9 0 0 1 0 13',
+  blog: 'M4 5h13v14a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2zM17 9h3v10a2 2 0 0 1-2 2M7.5 8.5h6M7.5 12h6M7.5 15.5h4',
+  gallery: 'M3 4h18v16H3zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5-9 10',
+  events: 'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4M12 12.8l.9 1.8 2 .3-1.4 1.4.3 2-1.8-.9-1.8.9.3-2-1.4-1.4 2-.3z',
+  scholarship: 'M2 9l10-5 10 5-10 5zM6 11v5c3 2 9 2 12 0v-5M22 9v6',
+  'mock-tests': 'M9 3h6v3H9zM9 4.5H6v17h12v-17h-3M9 13l2 2 4-4',
+  'question-papers': 'M14 2H6v20h12V6zM14 2v4h4M8.5 12h7M8.5 15.5h7M8.5 9h3',
+  syllabus: 'M4 4h6a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-6a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6z',
+  'exam-calendar': 'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4M9 15.5l2 2 4-4',
+  'important-dates': 'M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 9v4l2.5 2M4 4 2 6M20 4l2 2',
+  faq: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5M12 17.5h.01',
+  enquiry: 'M3 5h18v14H3zM3 6l9 7 9-7',
+  'fee-payment': 'M3 6h18v12H3zM3 10h18M7 15h4',
+  'admit-card': 'M3 5h18v14H3zM7 10a2 2 0 1 0 4 0 2 2 0 0 0-4 0M6 16c.6-1.6 1.9-2.5 3-2.5s2.4.9 3 2.5M14 9h4M14 13h4',
+  'app-download': 'M7 2h10v20H7zM12 7v7M9 11.5l3 3 3-3M11 18.5h2',
+  helpdesk: 'M4 14v-2a8 8 0 0 1 16 0v2M4 14h3v6H5a1 1 0 0 1-1-1zM20 14h-3v6h2a1 1 0 0 0 1-1zM17 20a3 3 0 0 1-3 2h-2',
+  contact: 'M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21zM12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
+  portal: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
+  staff: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4',
+  app: 'M7 2h10v20H7zM11 18h2',
+  phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z',
+  grid: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
+  chevron: 'M9 6l6 6-6 6',
+  down: 'M6 9l6 6 6-6',
+  close: 'M6 6l12 12M18 6 6 18',
+};
+function PmIcon({ name, size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={PM_ICON_PATHS[name] || PM_ICON_PATHS.grid} />
+    </svg>
+  );
+}
+// "More" links grouped for the mobile menu.
+const PM_GROUPS = [
+  { title: 'Academics', ids: ['syllabus', 'question-papers', 'exam-calendar', 'mock-tests', 'important-dates', 'scholarship'] },
+  { title: 'Results & Community', ids: ['rankers', 'reviews', 'notices', 'blog', 'events'] },
+  { title: 'The Institute', ids: ['about', 'head-institute', 'faculty', 'facilities', 'gallery', 'videos'] },
+  { title: 'Help', ids: ['faq', 'app-download', 'helpdesk'] },
+];
+
 // Shared card for a single ranker/successful-candidate, used by both the
 // Results-tab preview strip and the full Toppers' Wall (#rankers) so the
 // markup only lives in one place. `index` drives the 01/02/03… rank number
@@ -924,12 +981,45 @@ export default function LandingPage({ onLogin }) {
   const [rankerSessionSel, setRankerSessionSel] = useState(null);
   const wallGroup = rankerGroups.find((g) => g.session === rankerSessionSel) || latestRankers;
   const sessionTitle = (sess) => (sess && sess !== EARLIER_SESSION ? sess : 'Earlier Years');
+  // Year switcher, shared by Home "Our Pride", the Toppers' Wall and the
+  // Results preview — picking a year in one updates all three.
+  const renderYearSwitch = (dark) => (
+    rankerGroups.length > 0 && (
+      <div
+        role="tablist"
+        aria-label="Choose year"
+        style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '.5rem', margin: '0 0 1.6rem' }}
+      >
+        {rankerGroups.map((g) => {
+          const on = g.session === wallGroup.session;
+          return (
+            <button
+              key={g.session}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => setRankerSessionSel(g.session)}
+              style={{
+                padding: '.45rem 1rem', borderRadius: 999, cursor: 'pointer',
+                fontFamily: 'var(--sans)', fontSize: '.82rem', fontWeight: 700,
+                border: '1px solid ' + (on ? 'var(--gold)' : dark ? 'rgba(255,255,255,.35)' : 'rgba(15,31,61,.2)'),
+                background: on ? 'var(--gold)' : dark ? 'transparent' : '#fff',
+                color: on ? 'var(--navy)' : dark ? '#fff' : 'var(--navy)',
+              }}
+            >
+              {sessionTitle(g.session)} · {g.rankers.length}
+            </button>
+          );
+        })}
+      </div>
+    )
+  );
   // Cards for a newly chosen year mount after the reveal observer ran, so
   // show them straight away instead of waiting for the CSS fallback.
   useEffect(() => {
     if (!rankerSessionSel) return;
     const t = setTimeout(() => {
-      document.querySelectorAll('#rankers .ranker-card.reveal-scale').forEach((el) => el.classList.add('vis'));
+      document.querySelectorAll('.ranker-card.reveal-scale').forEach((el) => el.classList.add('vis'));
     }, 30);
     return () => clearTimeout(t);
   }, [rankerSessionSel]);
@@ -1219,15 +1309,6 @@ export default function LandingPage({ onLogin }) {
   // cat drives each section tile's accent colour (see .sec-tile.cat-* in the grid styles):
   // gold = core/home, blue = institute info, green = results & community,
   // red = academics/exam-prep, purple = admin/utility.
-  // Icons for the "All Sections" grid below the top banner.
-  const TAB_ICONS = {
-    courses: '📚', rankers: '🏅', results: '🏆', reviews: '⭐', about: '🏫',
-    'head-institute': '👤', faculty: '👩‍🏫', facilities: '🏠', videos: '🎬',
-    notices: '📢', blog: '📰', gallery: '🖼️', events: '📅', scholarship: '🎓',
-    'mock-tests': '📝', 'question-papers': '📄', syllabus: '📘',
-    'exam-calendar': '🗓️', 'important-dates': '⏰', faq: '❓', enquiry: '✉️',
-    'fee-payment': '💳', 'admit-card': '🪪', 'app-download': '📱', helpdesk: '🛟',
-  };
   const tabList = [
     { id: 'home', label: 'Home', cat: 'gold' },
     { id: 'courses', label: 'Courses', cat: 'red' },
@@ -1262,7 +1343,7 @@ export default function LandingPage({ onLogin }) {
   useEffect(() => {
     if (expandedCat === null) return;
     const handleOutsideClick = (e) => {
-      if (!e.target.closest('.nav-cat') && !e.target.closest('.mob-cat')) setExpandedCat(null);
+      if (!e.target.closest('.nav-cat') && !e.target.closest('.mob-cat') && !e.target.closest('.pm-acc')) setExpandedCat(null);
     };
     document.addEventListener('click', handleOutsideClick);
     return () => document.removeEventListener('click', handleOutsideClick);
@@ -2175,91 +2256,188 @@ window.submitGrievance = async () => {
       </div>
     </div>
   </nav>
-  <div className={"mob-menu" + (mobileOpen ? " open" : "")}>
-    <div className="mob-menu-hd">
-      <div className="mob-menu-brand">
-        {!emblemFailed && (
-          <img src={EMBLEM_URL} alt="GNSI" style={{ height: 34, width: 34, objectFit: "contain", flexShrink: 0 }} onError={() => setEmblemFailed(true)} />
-        )}
-        <span>GNSI</span>
+  {/* MOBILE MENU — premium redesign. Outer .mob-menu/.open keep the
+      existing slide-in behaviour from LandingPage.css; everything inside is
+      styled by the scoped .pm-* rules below. */}
+  <style>{`
+    .mob-menu.pm{background:linear-gradient(180deg,#0b1a36 0%,#0d2147 55%,#0b1a36 100%)!important;color:#e8edf7;display:flex;flex-direction:column;font-family:var(--sans,system-ui,sans-serif)}
+    .pm-hd{display:flex;align-items:center;gap:.8rem;padding:1.1rem 1.1rem 1rem;border-bottom:1px solid rgba(212,175,55,.22);background:rgba(255,255,255,.02)}
+    .pm-crest{width:46px;height:46px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 1px rgba(212,175,55,.55),0 6px 18px rgba(0,0,0,.35);overflow:hidden}
+    .pm-crest img{width:100%;height:100%;object-fit:contain}
+    .pm-crest b{color:#0b1a36;font:800 .8rem/1 Georgia,serif;letter-spacing:.04em}
+    .pm-brand{min-width:0;flex:1}
+    .pm-brand strong{display:block;font:700 1rem/1.25 Georgia,'Times New Roman',serif;color:#fff;letter-spacing:.01em}
+    .pm-brand small{display:block;margin-top:.2rem;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:#d4af37}
+    .pm-close{width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:background .2s,border-color .2s}
+    .pm-close:hover{background:rgba(212,175,55,.18);border-color:#d4af37}
+    .pm-scroll{flex:1;overflow-y:auto;padding:1.1rem 1rem 1.2rem;-webkit-overflow-scrolling:touch}
+    .pm-label{font-size:.64rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(212,175,55,.85);margin:0 0 .6rem .2rem}
+    .pm-grid{display:grid;grid-template-columns:1fr 1fr;gap:.55rem;margin-bottom:1.3rem}
+    .pm-tile{display:flex;align-items:center;gap:.65rem;padding:.8rem .75rem;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:#e8edf7;text-decoration:none;font-size:.86rem;font-weight:600;transition:background .2s,border-color .2s,transform .15s}
+    .pm-tile:active{transform:scale(.98)}
+    .pm-tile:last-child:nth-child(odd){grid-column:1/-1}
+    .pm-tile:hover{background:rgba(255,255,255,.09);border-color:rgba(212,175,55,.45)}
+    .pm-tile .pm-ic{width:34px;height:34px;border-radius:9px;background:rgba(212,175,55,.12);color:#d4af37;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .pm-tile.on{background:linear-gradient(135deg,rgba(212,175,55,.22),rgba(212,175,55,.08));border-color:#d4af37;color:#fff}
+    .pm-tile.on .pm-ic{background:#d4af37;color:#0b1a36}
+    .pm-acc{border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);margin-bottom:1.3rem;overflow:hidden}
+    .pm-acc-btn{width:100%;display:flex;align-items:center;gap:.65rem;padding:.85rem .9rem;background:none;border:0;color:#fff;font:inherit;font-size:.88rem;font-weight:600;cursor:pointer;text-align:left}
+    .pm-acc-btn .pm-ic{color:#d4af37;display:flex}
+    .pm-acc-btn .pm-arr{margin-left:auto;display:flex;color:rgba(255,255,255,.6);transition:transform .25s}
+    .pm-acc-btn.open .pm-arr{transform:rotate(180deg)}
+    .pm-acc-body{padding:.2rem .9rem 1rem;border-top:1px solid rgba(255,255,255,.06)}
+    .pm-group-t{font-size:.62rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.45);margin:.9rem 0 .45rem}
+    .pm-chips{display:flex;flex-wrap:wrap;gap:.4rem}
+    .pm-chip{display:inline-flex;align-items:center;gap:.35rem;padding:.42rem .75rem;border-radius:999px;border:1px solid rgba(255,255,255,.14);color:#dfe6f3;text-decoration:none;font-size:.76rem;font-weight:500;transition:border-color .2s,background .2s}
+    .pm-chip svg{color:#d4af37;flex-shrink:0}.pm-chip.on svg{color:#0b1a36}
+    .pm-chip:hover{border-color:#d4af37;background:rgba(212,175,55,.1)}
+    .pm-chip.on{background:#d4af37;border-color:#d4af37;color:#0b1a36;font-weight:700}
+    .pm-list{border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.08);margin-bottom:1.1rem}
+    .pm-row{width:100%;display:flex;align-items:center;gap:.75rem;padding:.85rem .9rem;background:rgba(255,255,255,.03);border:0;border-bottom:1px solid rgba(255,255,255,.06);color:#e8edf7;text-decoration:none;font:inherit;font-size:.86rem;font-weight:600;cursor:pointer;text-align:left}
+    .pm-row:last-child{border-bottom:0}
+    .pm-row:hover{background:rgba(255,255,255,.07)}
+    .pm-row .pm-ic{color:#d4af37;display:flex}
+    .pm-row .pm-sub{display:block;font-size:.7rem;font-weight:400;color:rgba(255,255,255,.5);margin-top:.1rem}
+    .pm-row .pm-arr{margin-left:auto;color:rgba(255,255,255,.4);display:flex}
+    .pm-contact{display:flex;align-items:center;justify-content:center;gap:.45rem;font-size:.78rem;color:rgba(255,255,255,.6);text-decoration:none;padding:.3rem 0 .2rem}
+    .pm-contact b{color:#fff;font-weight:600}
+    .pm-bottom{display:grid;grid-template-columns:1fr 1.3fr;gap:.6rem;padding:.85rem 1rem calc(.85rem + env(safe-area-inset-bottom));border-top:1px solid rgba(212,175,55,.22);background:rgba(6,14,30,.65);backdrop-filter:blur(8px)}
+    .pm-btn{display:flex;align-items:center;justify-content:center;gap:.45rem;height:48px;border-radius:12px;font:inherit;font-size:.9rem;font-weight:700;cursor:pointer;text-decoration:none;letter-spacing:.01em}
+    .pm-btn-ghost{background:transparent;border:1px solid rgba(212,175,55,.6);color:#f3dc8c}
+    .pm-btn-gold{background:linear-gradient(135deg,#e7c65a,#c9a227);border:0;color:#0b1a36;box-shadow:0 8px 22px rgba(201,162,39,.35)}
+  `}</style>
+  <div
+    className={"mob-menu pm" + (mobileOpen ? " open" : "")}
+    role="dialog"
+    aria-modal="true"
+    aria-label="Site menu"
+  >
+    <div className="pm-hd">
+      <div className="pm-crest">
+        {!emblemFailed
+          ? <img src={EMBLEM_URL} alt="" onError={() => setEmblemFailed(true)} />
+          : <b>GNSI</b>}
       </div>
-      <button className="mob-menu-close" onClick={closeMobile} aria-label="Close menu">
-        ✕
+      <div className="pm-brand">
+        <strong>Guidance Navodaya &amp; Sainik Institute</strong>
+        <small>Khangabok · Est. 2016</small>
+      </div>
+      <button className="pm-close" onClick={closeMobile} aria-label="Close menu">
+        <PmIcon name="close" size={18} />
       </button>
     </div>
-    <div className="mob-menu-scroll">
-      <a
-        href="#home"
-        onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('home'); }}
-        className="mob-cat-link-flat"
-      >
-        🏠 Home
-      </a>
-      {navCategories.map((cat, idx) => (
-        cat.links.length === 1 ? (
-          <a
-            key={cat.label}
-            href={cat.links[0].href}
-            onClick={(e) => { e.preventDefault(); closeMobile(); goToHash(cat.links[0].href); }}
-            className="mob-cat-link-flat"
-          >
-            {cat.icon} {cat.label}
-          </a>
-        ) : (
-          <div className="mob-cat" key={cat.label}>
+
+    <div className="pm-scroll">
+      <p className="pm-label">Quick Access</p>
+      <div className="pm-grid">
+        {[{ id: 'home', label: 'Home', href: '#home' },
+          ...navCategories.filter((c) => c.links.length === 1).map((c) => ({
+            id: c.links[0].href.replace('#', ''), label: c.label, href: c.links[0].href,
+          }))].map((item) => {
+          const tabId = item.id === 'contact' ? 'enquiry' : item.id;
+          const on = activeTab === tabId && item.id !== 'contact';
+          return (
+            <a
+              key={item.id}
+              href={item.href}
+              className={"pm-tile" + (on ? " on" : "")}
+              aria-current={on ? 'page' : undefined}
+              onClick={(e) => {
+                e.preventDefault(); closeMobile();
+                if (item.id === 'home') goToTab('home'); else goToHash(item.href);
+              }}
+            >
+              <span className="pm-ic"><PmIcon name={item.id} /></span>
+              {item.label}
+            </a>
+          );
+        })}
+      </div>
+
+      {(() => {
+        const moreIdx = navCategories.findIndex((c) => c.links.length > 1);
+        if (moreIdx < 0) return null;
+        const more = navCategories[moreIdx];
+        const open = expandedCat === moreIdx;
+        const byId = new Map(more.links.map((l) => [l.href.replace('#', ''), l]));
+        const used = new Set();
+        const groups = PM_GROUPS.map((g) => ({
+          title: g.title,
+          links: g.ids.filter((id) => byId.has(id)).map((id) => { used.add(id); return byId.get(id); }),
+        })).filter((g) => g.links.length);
+        const rest = more.links.filter((l) => !used.has(l.href.replace('#', '')));
+        if (rest.length) groups.push({ title: 'More', links: rest });
+        return (
+          <div className="pm-acc">
             <button
               type="button"
-              className={"mob-cat-btn" + (expandedCat === idx ? " expanded" : "")}
-              onClick={() => toggleCat(idx)}
+              className={"pm-acc-btn" + (open ? " open" : "")}
+              aria-expanded={open}
+              onClick={() => toggleCat(moreIdx)}
             >
-              <span>{cat.icon} {cat.label}</span>
-              <span className="mob-cat-arrow">▾</span>
+              <span className="pm-ic"><PmIcon name="grid" /></span>
+              All Sections
+              <span className="pm-arr"><PmIcon name="down" size={18} /></span>
             </button>
-            {expandedCat === idx && (
-              <div className="mob-cat-links">
-                {cat.links.map((link) => (
-                  <a
-                    key={link.href}
-                    href={link.href}
-                    className="mob-sub-link"
-                    onClick={(e) => { e.preventDefault(); closeMobile(); goToHash(link.href); }}
-                  >
-                    {link.label}
-                  </a>
+            {open && (
+              <div className="pm-acc-body">
+                {groups.map((g) => (
+                  <div key={g.title}>
+                    <div className="pm-group-t">{g.title}</div>
+                    <div className="pm-chips">
+                      {g.links.map((link) => {
+                        const on = activeTab === link.href.replace('#', '');
+                        return (
+                          <a
+                            key={link.href}
+                            href={link.href}
+                            className={"pm-chip" + (on ? " on" : "")}
+                            onClick={(e) => { e.preventDefault(); closeMobile(); goToHash(link.href); }}
+                          >
+                            <PmIcon name={link.href.replace('#', '')} size={14} />
+                            {link.label}
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
           </div>
-        )
-      ))}
-      <a
-        href="#"
-        onClick={(e) => { e.preventDefault(); setIsPortalOpen(true); closeMobile(); }}
-        className="mob-par"
-      >
-        Parents Portal →
+        );
+      })()}
+
+      <p className="pm-label">Accounts &amp; App</p>
+      <div className="pm-list">
+        <button type="button" className="pm-row" onClick={() => { setIsPortalOpen(true); closeMobile(); }}>
+          <span className="pm-ic"><PmIcon name="portal" /></span>
+          <span>Parents Portal<span className="pm-sub">Attendance, results &amp; fees</span></span>
+          <span className="pm-arr"><PmIcon name="chevron" size={18} /></span>
+        </button>
+        <a href={site.apk} download="" className="pm-row" onClick={closeMobile}>
+          <span className="pm-ic"><PmIcon name="app" /></span>
+          <span>Get the Android App<span className="pm-sub">GNSI Parents app</span></span>
+          <span className="pm-arr"><PmIcon name="chevron" size={18} /></span>
+        </a>
+        <button type="button" className="pm-row" onClick={() => { onLogin(); closeMobile(); }}>
+          <span className="pm-ic"><PmIcon name="staff" /></span>
+          <span>Staff Login<span className="pm-sub">GNSI Portal</span></span>
+          <span className="pm-arr"><PmIcon name="chevron" size={18} /></span>
+        </button>
+      </div>
+
+      <a href={site.tel} className="pm-contact">
+        <PmIcon name="phone" size={15} /> Admissions helpline <b>{site.phone}</b>
       </a>
-      <a
-        href={site.apk}
-        download=""
-        className="mob-par"
-        onClick={closeMobile}
-      >
-        📱 Get Android App →
-      </a>
-      <button
-        onClick={() => { onLogin(); closeMobile(); }}
-        className="mob-staff"
-      >
-        Staff Login →
-      </button>
     </div>
-    <div className="mob-menu-bottom">
-      <button onClick={() => { setIsFeeOpen(true); closeMobile(); }} className="mmb-fee">
-        💳 Pay Fee
+
+    <div className="pm-bottom">
+      <button type="button" onClick={() => { setIsFeeOpen(true); closeMobile(); }} className="pm-btn pm-btn-ghost">
+        <PmIcon name="fee-payment" size={18} /> Pay Fee
       </button>
-      <a href="#enquiry" onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('enquiry'); }} className="mmb-apply">
-        Apply Now →
+      <a href="#enquiry" onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('enquiry'); }} className="pm-btn pm-btn-gold">
+        Apply Now <PmIcon name="chevron" size={18} />
       </a>
     </div>
   </div>
@@ -2474,16 +2652,17 @@ window.submitGrievance = async () => {
     .sec-grid-title{font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--navy,#0f1f3d);margin:0 0 .7rem;text-align:center}
     .sec-grid{--per:9;--gap:.55rem;display:flex;flex-wrap:wrap;justify-content:center;gap:var(--gap)}
     .sec-tile{flex:0 0 calc((100% - (var(--per) - 1) * var(--gap)) / var(--per));min-width:0}
-    .sec-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;min-height:74px;padding:.55rem .35rem;border-radius:10px;background:#fff;border:1px solid rgba(15,31,61,.1);border-top:3px solid var(--tc);cursor:pointer;font:inherit;color:var(--navy,#0f1f3d);text-align:center;transition:transform .15s,box-shadow .15s,background .15s}
+    .sec-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4rem;min-height:88px;padding:.55rem .35rem;border-radius:10px;background:#fff;border:1px solid rgba(15,31,61,.1);border-top:3px solid var(--tc);cursor:pointer;font:inherit;color:var(--navy,#0f1f3d);text-align:center;transition:transform .15s,box-shadow .15s,background .15s}
     .sec-tile:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(15,31,61,.12)}
     .sec-tile:focus-visible{outline:2px solid var(--tc);outline-offset:2px}
     .sec-tile.active{background:var(--navy,#0f1f3d);color:#fff;border-color:var(--navy,#0f1f3d);border-top-color:var(--tc)}
-    .sec-tile-ic{font-size:1.35rem;line-height:1}
+    .sec-tile-ic{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;color:var(--tc);background:color-mix(in srgb,var(--tc) 12%,#fff)}
+    .sec-tile.active .sec-tile-ic{background:var(--tc);color:#fff}
     .sec-tile-lb{font-size:.74rem;font-weight:700;line-height:1.2}
     .sec-tile.cat-gold{--tc:#c9a227}.sec-tile.cat-red{--tc:#c0392b}.sec-tile.cat-green{--tc:#1e8e4e}
     .sec-tile.cat-blue{--tc:#2563eb}.sec-tile.cat-purple{--tc:#7c3aed}
     @media (max-width:1024px){.sec-grid{--per:7}}
-    @media (max-width:700px){.sec-grid{--per:5;--gap:.35rem}.sec-tile{min-height:66px;padding:.45rem .2rem}.sec-tile-ic{font-size:1.15rem}.sec-tile-lb{font-size:.64rem}}
+    @media (max-width:700px){.sec-grid{--per:5;--gap:.35rem}.sec-tile{min-height:78px;padding:.45rem .2rem}.sec-tile-ic{width:34px;height:34px}.sec-tile-ic svg{width:19px;height:19px}.sec-tile-lb{font-size:.64rem}}
     @media (max-width:340px){.sec-grid{--per:4}}
   `}</style>
   <div className="sec-grid-wrap">
@@ -2499,7 +2678,7 @@ window.submitGrievance = async () => {
             aria-current={activeTab === t.id ? 'page' : undefined}
             onClick={() => goToTab(t.id)}
           >
-            <span className="sec-tile-ic" aria-hidden="true">{TAB_ICONS[t.id] || '•'}</span>
+            <span className="sec-tile-ic" aria-hidden="true"><PmIcon name={t.id} size={22} /></span>
             <span className="sec-tile-lb">{t.label}</span>
           </button>
         ))}
@@ -2569,7 +2748,7 @@ window.submitGrievance = async () => {
     <div className="container" style={{ marginTop: '2.5rem' }}>
       <div className="eyebrow reveal">Our Pride</div>
       <h2 className="st reveal">
-        {latestRankers.session ? `Toppers ${sessionTitle(latestRankers.session)}` : 'Our Toppers'}
+        {wallGroup.session ? `Toppers ${sessionTitle(wallGroup.session)}` : 'Our Toppers'}
       </h2>
       <div className="rule reveal">
         <div className="rule-line" />
@@ -2599,11 +2778,14 @@ window.submitGrievance = async () => {
           ))}
         </div>
       ) : rankersData.length > 0 ? (
-        <div className="ranker-grid">
-          {latestRankers.rankers.slice(0, 4).map((r, i) => (
-            <RankerCard ranker={r} index={i} key={r.id || i} />
-          ))}
-        </div>
+        <>
+          {renderYearSwitch(false)}
+          <div className="ranker-grid" key={wallGroup.session}>
+            {wallGroup.rankers.slice(0, 4).map((r, i) => (
+              <RankerCard ranker={r} index={i} key={r.id || i} />
+            ))}
+          </div>
+        </>
       ) : (
         <p style={{ color: 'var(--mist)', fontFamily: 'var(--sans)', fontSize: '.9rem', textAlign: 'center' }}>
           Results will be published here shortly.
@@ -2845,35 +3027,7 @@ window.submitGrievance = async () => {
         </div>
       ) : rankersData.length > 0 ? (
         <>
-          {rankerGroups.length > 1 && (
-            <div
-              role="tablist"
-              aria-label="Choose year"
-              style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '.5rem', margin: '0 0 1.6rem' }}
-            >
-              {rankerGroups.map((g) => {
-                const on = g.session === wallGroup.session;
-                return (
-                  <button
-                    key={g.session}
-                    type="button"
-                    role="tab"
-                    aria-selected={on}
-                    onClick={() => setRankerSessionSel(g.session)}
-                    style={{
-                      padding: '.45rem 1rem', borderRadius: 999, cursor: 'pointer',
-                      fontFamily: 'var(--sans)', fontSize: '.82rem', fontWeight: 700,
-                      border: '1px solid ' + (on ? 'var(--gold)' : 'rgba(255,255,255,.35)'),
-                      background: on ? 'var(--gold)' : 'transparent',
-                      color: on ? 'var(--navy)' : 'inherit',
-                    }}
-                  >
-                    {sessionTitle(g.session)} · {g.rankers.length}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {renderYearSwitch(true)}
           <div className="ranker-grid" key={wallGroup.session}>
             {wallGroup.rankers.map((r, i) => (
               <RankerCard ranker={r} index={i} key={r.id || i} />
@@ -2957,8 +3111,9 @@ window.submitGrievance = async () => {
             <div className="rule-line" />
           </div>
           {/* Preview only — first 8, same data/markup as the full Toppers' Wall (#rankers) via <RankerCard> */}
-          <div className="ranker-grid">
-            {latestRankers.rankers.slice(0, 8).map((r, i) => (
+          {renderYearSwitch(false)}
+          <div className="ranker-grid" key={wallGroup.session}>
+            {wallGroup.rankers.slice(0, 8).map((r, i) => (
               <RankerCard ranker={r} index={i} key={r.id || i} />
             ))}
           </div>
