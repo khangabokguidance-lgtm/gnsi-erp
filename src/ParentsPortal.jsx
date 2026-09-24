@@ -587,6 +587,50 @@ async function resolveGuardianColumn(sampleStudentId) {
   return null;
 }
 
+// ── "Your Portal PIN" card: view, copy, save — with the save-it instruction ──
+function MyPinCard({ pin, student }) {
+  const key = 'gnsi_pp_pin_saved_' + (student?.gcc_no || '');
+  const [show, setShow] = useState(false);
+  const [saved, setSaved] = useState(() => { try { return localStorage.getItem(key) === '1'; } catch (_) { return false; } });
+  const [copied, setCopied] = useState(false);
+  const markSaved = () => { setSaved(true); try { localStorage.setItem(key, '1'); } catch (_) {} };
+  const copy = async () => { try { await navigator.clipboard.writeText(pin); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch (_) {} };
+  const download = () => {
+    const txt = `GNSI Parents Portal\n\nStudent: ${student?.name || ''}\nGCC No: ${student?.gcc_no || ''}\nPortal PIN: ${pin}\n\nKeep this PIN safe for future use.\nIf you forget it, please contact the institute office.\n`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
+    a.download = `GNSI-Portal-PIN-${student?.gcc_no || ''}.txt`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+    markSaved();
+  };
+  const btn = { padding: '8px 14px', borderRadius: 999, border: '1px solid #E2C57E', background: '#fff', color: '#0B1E3D', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' };
+  if (saved && !show) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '0 0 10px' }}>
+        <button onClick={() => setShow(true)} style={{ ...btn, fontSize: 12 }}>🔑 View my Portal PIN</button>
+      </div>
+    );
+  }
+  return (
+    <div style={{ margin: '0 0 16px', borderRadius: 16, padding: '16px 18px', background: 'linear-gradient(135deg,#0B1E3D,#1F4E8C)', color: '#fff', boxShadow: '0 12px 30px rgba(11,30,61,.25)', border: '1px solid rgba(226,197,126,.35)' }}>
+      <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', color: '#E2C57E', textTransform: 'uppercase' }}>Your Portal PIN</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '8px 0 10px' }}>
+        <span style={{ fontSize: 30, fontWeight: 800, letterSpacing: 8, fontFamily: 'monospace' }}>{show ? pin : '••••••'}</span>
+        <button onClick={() => setShow(s => !s)} style={btn}>{show ? '🙈 Hide' : '👁 Show'}</button>
+        <button onClick={copy} style={btn}>{copied ? '✓ Copied' : '📋 Copy'}</button>
+        <button onClick={download} style={btn}>⬇ Save</button>
+      </div>
+      <div style={{ fontSize: 13, lineHeight: 1.55, color: 'rgba(255,255,255,.9)' }}>
+        📌 <b>Please save this PIN for future use</b> — write it down or keep it in your phone.<br />
+        If you forget it, please contact the <b>institute office</b>{' '}
+        (<a href="tel:+918974298074" style={{ color: '#E2C57E', fontWeight: 700, textDecoration: 'none' }}>+91 89742 98074</a>).
+      </div>
+      {!saved && <button onClick={markSaved} style={{ ...btn, marginTop: 12, background: '#E2C57E', border: 'none' }}>✓ I have saved my PIN</button>}
+      {saved && <button onClick={() => setShow(false)} style={{ ...btn, marginTop: 12 }}>Close</button>}
+    </div>
+  );
+}
+
 export default function ParentsPortal({ isOpen, onClose }) {
   const windowWidth = useWindowWidth();
   const isMobile = windowWidth < 640;
@@ -599,6 +643,8 @@ export default function ParentsPortal({ isOpen, onClose }) {
   // such column exists or the resolved column has no value for them.
   const [siblings, setSiblings] = useState([]);
   const [student, setStudent] = useState(null);
+  // Parent's own PIN, kept only for this browser tab so they can view / save it.
+  const [myPin, setMyPin] = useState(() => { try { return sessionStorage.getItem('gnsi_pp_mypin') || ''; } catch (_) { return ''; } });
   const [activeTab, setActiveTab] = useState('home');
   const [moreOpen, setMoreOpen] = useState(false);
   // Hamburger dropdown for the top nav — replaces the old horizontal-scroll
@@ -741,6 +787,8 @@ export default function ParentsPortal({ isOpen, onClose }) {
           return;
         }
         pinOk = true;
+        setMyPin(pin);
+        try { sessionStorage.setItem('gnsi_pp_mypin', pin); } catch (_) {}
       }
 
       // Base columns only — NOT any guardian/parent contact column. Which
@@ -827,6 +875,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
   const handleLogout = () => {
     supabase.auth.signOut().catch(() => {});
+    setMyPin(''); try { sessionStorage.removeItem('gnsi_pp_mypin'); } catch (_) {}
     setLoginGcc('');
     setLoginName('');
     setLoginError('');
@@ -1784,6 +1833,10 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 </label>
                 <a href="tel:+918974298074" style={{ color: GOLD, textDecoration: 'none', fontWeight: 600, fontSize: 13 }}>Need help?</a>
               </div>
+              <div style={{ fontSize: 12, color: '#64748b', margin: '-8px 0 16px', lineHeight: 1.5 }}>
+                🔑 Forgot your PIN? Please contact the <b>institute office</b>{' '}
+                (<a href="tel:+918974298074" style={{ color: GOLD, fontWeight: 700, textDecoration: 'none' }}>+91 89742 98074</a>) — the office will issue a new one.
+              </div>
 
               <button
                 style={{
@@ -1956,6 +2009,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
               </button>
             </div>
 
+            {activeTab === 'home' && myPin && <MyPinCard pin={myPin} student={student} />}
             {activeTab === 'home' && (
               <DashboardTab
                 student={student}

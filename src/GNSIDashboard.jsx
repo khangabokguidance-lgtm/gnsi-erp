@@ -1841,10 +1841,80 @@ function GatePassReturnTool({ onDone, log }) {
   )
 }
 
+// ── Slip store: survives re-scans (the issue card disappears once fixed) ──
+const slipStore = { pins: [], staff: [], subs: new Set() }
+const slipSet = (k, v) => { slipStore[k] = v; slipStore.subs.forEach(f => f()) }
+function useSlips() {
+  const [, force] = useState(0)
+  useEffect(() => { const f = () => force(x => x + 1); slipStore.subs.add(f); return () => slipStore.subs.delete(f) }, [])
+  return slipStore
+}
+const escSlip = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]))
+function printPinSlips(rows) {
+  const w = window.open("", "_blank"); if (!w) { alert("Allow pop-ups for this site to print."); return }
+  w.document.write(`<html><head><title>Parent Portal PINs</title><style>
+    body{font-family:Arial,sans-serif;margin:12mm}.g{display:grid;grid-template-columns:1fr 1fr;gap:8mm}
+    .s{border:1.5px dashed #0B1E3D;border-radius:6px;padding:5mm;page-break-inside:avoid}
+    .h{font-weight:700;color:#0B1E3D;font-size:13px}.p{font-size:26px;letter-spacing:6px;font-weight:800;margin:3mm 0}
+    .m{font-size:11px;color:#444}</style></head><body><div class="g">` +
+    rows.map(r => `<div class="s"><div class="h">GNSI Parents Portal</div><div class="m">${escSlip(r.name)} · ${escSlip(r.class_name || r.course)}</div>
+      <div class="m">GCC No: <b>${escSlip(r.gcc_no)}</b></div><div class="p">${escSlip(r.pin)}</div>
+      <div class="m">Log in at guidancekhangabok.in → Parents Portal with the GCC No. and this PIN.<br><b>Please save this PIN for future use.</b> If you forget it, please contact the institute office.</div></div>`).join("") +
+    `</div><script>window.onload=()=>window.print()<\/script></body></html>`)
+  w.document.close()
+}
+function printStaffSlips(rows) {
+  const w = window.open("", "_blank"); if (!w) { alert("Allow pop-ups for this site to print."); return }
+  w.document.write(`<html><head><title>Staff logins</title><style>body{font-family:Arial,sans-serif;margin:12mm}
+    .g{display:grid;grid-template-columns:1fr 1fr;gap:8mm}.s{border:1.5px dashed #0B1E3D;border-radius:6px;padding:5mm;page-break-inside:avoid}
+    .h{font-weight:700;color:#0B1E3D;font-size:13px}.p{font-family:monospace;font-size:20px;font-weight:800;margin:3mm 0;letter-spacing:1px}.m{font-size:11px;color:#444}</style></head><body><div class="g">` +
+    rows.map(r => `<div class="s"><div class="h">GNSI ERP login</div><div class="m">${escSlip(r.name)} · ${escSlip(r.role)}</div>
+      <div class="m">Username: <b>${escSlip(r.username)}</b></div><div class="p">${escSlip(r.password)}</div>
+      <div class="m">Keep private. Log in with this password; you can change it later.</div></div>`).join("") +
+    `</div><script>window.onload=()=>window.print()<\/script></body></html>`)
+  w.document.close()
+}
+function downloadPinCsv(rows) {
+  const cell = v => '"' + String(v ?? "").replace(/"/g, '""') + '"'
+  const csv = "﻿" + [["Name","Class","GCC No","PIN"], ...rows.map(r => [r.name, r.class_name || r.course, r.gcc_no, r.pin])].map(r => r.map(cell).join(",")).join("\n")
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }))
+  a.download = `parent-pins-${new Date().toISOString().slice(0,10)}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000)
+}
+
+// Always-visible panel: slips from this session + the PIN generator
+function SlipsAndToolsPanel({ onChange }) {
+  const s = useSlips()
+  const [openPins, setOpenPins] = useState(false)
+  const btn = (bg) => ({padding:"7px 14px",borderRadius:999,border:"none",background:bg,color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"})
+  return (
+    <Panel title="🧰 Tools & slips" style={{marginTop:14}}>
+      {s.pins.length > 0 && (
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:10,padding:"10px 12px",borderRadius:10,background:"#FFFBEB",border:"1px solid #FDE68A"}}>
+          <span style={{flex:"1 1 240px",fontSize:12.5,fontWeight:700,color:"#92400e"}}>🔐 {s.pins.length} new parent PIN(s) ready — print or save before closing this page.</span>
+          <button onClick={() => printPinSlips(s.pins)} style={btn(T.navy)}>🖨 Print slips</button>
+          <button onClick={() => downloadPinCsv(s.pins)} style={btn("#0f7a52")}>⬇ Save list (CSV)</button>
+          <button onClick={() => { if (window.confirm("Clear the PIN list from this page? Make sure you printed or saved it.")) slipSet("pins", []) }} style={{...btn("#fff"),color:"#b3273f",border:"1px solid #b3273f"}}>Clear</button>
+        </div>
+      )}
+      {s.staff.length > 0 && (
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:10,padding:"10px 12px",borderRadius:10,background:"#EEF3FB",border:"1px solid #C9D6EA"}}>
+          <span style={{flex:"1 1 240px",fontSize:12.5,fontWeight:700,color:T.navy}}>👥 {s.staff.length} new staff password(s) ready — print before closing this page.</span>
+          <button onClick={() => printStaffSlips(s.staff)} style={btn(T.navy)}>🖨 Print staff slips</button>
+          <button onClick={() => { if (window.confirm("Clear the staff password list from this page? Make sure you printed it.")) slipSet("staff", []) }} style={{...btn("#fff"),color:"#b3273f",border:"1px solid #b3273f"}}>Clear</button>
+        </div>
+      )}
+      <button onClick={() => setOpenPins(o => !o)} style={{padding:"8px 14px",borderRadius:999,border:`1px solid ${T.navy}`,background:"#fff",color:T.navy,fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit"}}>
+        {openPins ? "▴ Hide" : "▾ Parent PIN generator"}
+      </button>
+      {openPins && <BulkPinTool onDone={onChange} log={() => {}} alwaysRedo/>}
+    </Panel>
+  )
+}
+
 // ── Bulk parent PINs: issue for every student without one + print slips ──
-function BulkPinTool({ onDone, log }) {
+function BulkPinTool({ onDone, log, alwaysRedo }) {
   const [todo, setTodo] = useState(null)
-  const [issued, setIssued] = useState([])     // [{ name, gcc_no, class_name, course, pin }] — only in memory
+  const issued = useSlips().pins
   const [prog, setProg] = useState(null)
   const [err, setErr] = useState(null)
   const [all, setAll] = useState([])          // every active student with a GCC No.
@@ -1871,24 +1941,11 @@ function BulkPinTool({ onDone, log }) {
       const { error } = await supabase.rpc("set_parent_pin", { p_student_id: String(s.id), p_pin: pin })
       if (error) fail++; else out.push({ name: s.name, gcc_no: s.gcc_no, class_name: s.class_name || "", course: s.course || "", pin })
     }
-    setProg(null); setIssued(out)
+    setProg(null); slipSet("pins", out)
     log(`${out.length} parent PIN(s) issued${fail ? `, ${fail} failed` : ""}. Print the slips now.`, !fail)
     load(); onDone()
   }
-  const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]))
-  const printSlips = () => {
-    const w = window.open("", "_blank"); if (!w) return
-    w.document.write(`<html><head><title>Parent Portal PINs</title><style>
-      body{font-family:Arial,sans-serif;margin:12mm}.g{display:grid;grid-template-columns:1fr 1fr;gap:8mm}
-      .s{border:1.5px dashed #0B1E3D;border-radius:6px;padding:5mm;page-break-inside:avoid}
-      .h{font-weight:700;color:#0B1E3D;font-size:13px}.p{font-size:26px;letter-spacing:6px;font-weight:800;margin:3mm 0}
-      .m{font-size:11px;color:#444}</style></head><body><div class="g">` +
-      issued.map(r => `<div class="s"><div class="h">GNSI Parents Portal</div><div class="m">${esc(r.name)} · ${esc(r.class_name || r.course)}</div>
-        <div class="m">GCC No: <b>${esc(r.gcc_no)}</b></div><div class="p">${esc(r.pin)}</div>
-        <div class="m">Log in at guidancekhangabok.in → Parents Portal with the GCC No. and this PIN. Keep it private.</div></div>`).join("") +
-      `</div><script>window.onload=()=>window.print()<\/script></body></html>`)
-    w.document.close()
-  }
+  const printSlips = () => printPinSlips(issued)
   const box = {background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px",marginTop:8}
   const btn = (bg, dis) => ({padding:"7px 14px",borderRadius:999,border:"none",background:bg,color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",opacity:dis?.5:1})
   if (err) return <div style={{...box,color:T.rose,fontWeight:700}}>{err}</div>
@@ -1909,9 +1966,10 @@ function BulkPinTool({ onDone, log }) {
           </label>
           <button disabled={!(redo ? all : todo).length} onClick={run} style={btn(redo ? "#c2410c" : "#0f7a52", !(redo ? all : todo).length)}>🎲 {redo ? "Re-generate" : "Generate"} {(redo ? all : todo).length} PINs</button>
           {issued.length > 0 && <button onClick={printSlips} style={btn(T.navy)}>🖨 Print {issued.length} slips</button>}
+          {issued.length > 0 && <button onClick={() => downloadPinCsv(issued)} style={btn("#0f7a52")}>⬇ CSV</button>}
         </div>
       )}
-      {issued.length > 0 && <div style={{fontSize:11.5,color:"#9a6a08",marginTop:8,fontWeight:700}}>⚠️ Print now — the PINs disappear when you leave this page. Lost slip? Reset that child's PIN in Website → Parent PINs.</div>}
+      {issued.length > 0 && <div style={{fontSize:11.5,color:"#9a6a08",marginTop:8,fontWeight:700}}>⚠️ Print or save now — the PINs are also kept in "🧰 Tools & slips" below until you leave this page.</div>}
       <div style={{fontSize:11.5,color:T.inkSub,marginTop:8}}>Once a child has a PIN, the old "GCC No. + name" login stops working for that child.</div>
     </div>
   )
@@ -1923,7 +1981,8 @@ function StaffAccountTool({ f, onDone, log }) {
   const [busy, setBusy] = useState(null)
   const [pw, setPw] = useState({})
   const [sel, setSel] = useState({})
-  const [made, setMade] = useState([])        // [{ name, username, password }] — shown once
+  const made = useSlips().staff
+  const setMade = (fn) => slipSet("staff", typeof fn === "function" ? fn(slipStore.staff) : fn)
   const names = new Set((f.items || []).map(x => String(x).toLowerCase()))
   // Readable strong password: no look-alike characters (0/O, 1/l/I)
   const genPw = () => {
@@ -1985,10 +2044,10 @@ function StaffAccountTool({ f, onDone, log }) {
       <div style={{fontWeight:800,color:T.ink,marginBottom:4,fontSize:12.5}}>👥 Staff accounts</div>
       <div style={{fontSize:11.5,color:T.inkSub,marginBottom:8}}>
         {f.id === "staff_unlinked"
-          ? "These clear by themselves as each person logs in again (the ERP asks them once). Disable old or test logins here."
+          ? "These clear by themselves as each person logs in again (the ERP asks them once). Or give someone a new password (🎲 or type one → Set) and hand them the slip. Disable old or test logins."
           : "Passwords upgrade to bcrypt automatically at each person's next login. Or set a new one here (8+ characters) and tell them."}
       </div>
-      {f.id === "weak_hash" && (() => {
+      {(f.id === "weak_hash" || f.id === "staff_unlinked") && (() => {
         const picked = list.filter(u => sel[u.id])
         return (
           <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>
@@ -2007,7 +2066,7 @@ function StaffAccountTool({ f, onDone, log }) {
         {list.map(u => (
           <div key={u.id} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",border:`1px solid ${T.border}`,borderRadius:8,padding:"5px 8px"}}>
             <span style={{flex:"1 1 180px",fontSize:12.5}}><b>{u.name}</b> <span style={{color:T.inkSub}}>· {u.username} · {u.role}</span></span>
-            {f.id === "weak_hash" && (<>
+            {(f.id === "weak_hash" || f.id === "staff_unlinked") && (<>
               <input type="checkbox" checked={!!sel[u.id]} onChange={e => setSel(s => ({ ...s, [u.id]: e.target.checked }))} title="Select for bulk generate"/>
               <input type="text" placeholder="new password" value={pw[u.id] || ""} onChange={e => setPw(s => ({ ...s, [u.id]: e.target.value }))}
                 style={{padding:"5px 8px",borderRadius:7,border:`1px solid ${T.border}`,fontSize:12,width:140,fontFamily:"monospace"}}/>
@@ -2332,6 +2391,7 @@ export function SecurityCenter({ onNavigate } = {}) {
           </Panel>
         ))}
       </div>
+      <SlipsAndToolsPanel onChange={run}/>
       <FixHistoryPanel refreshKey={lockKey} onChange={run}/>
       <RlsLockedPanel refreshKey={lockKey} onChange={run}/>
     </div>
