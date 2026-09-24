@@ -1404,6 +1404,8 @@ function InlineFix({ f, onDone, log }) {
     )
   }
 
+  if (f.id === "rls_off") return <RlsLockTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
+
   if (f.id === "no_session") {
     return (
       <div style={{...box,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -1423,6 +1425,86 @@ function InlineFix({ f, onDone, log }) {
   return null
 }
 
+// ── RLS lock tool: pick tables, lock them, undo any time ──────────────────
+function RlsLockTool({ onDone, log }) {
+  const [c, setC] = useState(null)       // { lockable:[{t,student}], kept_open:[] }
+  const [sel, setSel] = useState({})
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.rpc("rls_candidates")
+    if (error) { setErr(/rls_candidates|does not exist/i.test(error.message) ? "Run rls_lockdown.sql in Supabase first." : error.message); return }
+    setC(data); setSel({})
+  }, [])
+  useEffect(() => { load() }, [load])
+  const lock = async (tables) => {
+    if (!tables.length) return
+    if (!window.confirm(`Lock ${tables.length} table(s)?\n\nAfter this only signed-in staff (and parents, for their own child) can use them. Anyone not on secure login will see empty screens there.\n\nYou can Undo below at any time.`)) return
+    setBusy(true)
+    const { data, error } = await supabase.rpc("rls_lock", { p_tables: tables })
+    setBusy(false); log(error ? error.message : data, !error)
+    if (!error) { load(); onDone() }
+  }
+  const box = {background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px",marginTop:8}
+  if (err) return <div style={{...box,color:T.rose,fontWeight:700}}>{err}</div>
+  if (!c) return <div style={box}>Loading tables…</div>
+  const picked = Object.keys(sel).filter(k => sel[k])
+  return (
+    <div style={box}>
+      <div style={{fontWeight:800,color:T.ink,marginBottom:6,fontSize:12.5}}>🔐 Lock tables ({c.lockable.length} can be locked safely)</div>
+      <div style={{fontSize:11.5,color:T.inkSub,marginBottom:8}}>Tip: lock a few, use the ERP for a while, then lock the rest. 👪 = parents will still see their own child's rows.</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,maxHeight:220,overflowY:"auto",marginBottom:10}}>
+        {c.lockable.map(x => (
+          <label key={x.t} style={{fontSize:11.5,display:"flex",alignItems:"center",gap:5,border:`1px solid ${sel[x.t]?T.navy:T.border}`,borderRadius:8,padding:"3px 8px",cursor:"pointer",background:sel[x.t]?"#EEF3FB":"#fff"}}>
+            <input type="checkbox" checked={!!sel[x.t]} onChange={e=>setSel(s=>({...s,[x.t]:e.target.checked}))}/>
+            <code>{x.t}</code>{x.student && <span title="parents keep read access to their child">👪</span>}
+          </label>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button disabled={busy} onClick={()=>setSel(Object.fromEntries(c.lockable.map(x=>[x.t,true])))} style={{padding:"7px 12px",borderRadius:999,border:`1px solid ${T.border}`,background:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Select all</button>
+        <button disabled={busy||!picked.length} onClick={()=>lock(picked)} style={{padding:"7px 14px",borderRadius:999,border:"none",background:"#0f7a52",color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",opacity:(busy||!picked.length)?.5:1}}>{busy?"Locking…":`🔐 Lock selected (${picked.length})`}</button>
+      </div>
+      {c.kept_open.length > 0 && (
+        <div style={{fontSize:11.5,color:T.inkSub,marginTop:10}}>
+          <b>Kept open on purpose</b> (the public website or login screen reads them before sign-in): {c.kept_open.join(", ")}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RlsLockedPanel({ refreshKey, onChange }) {
+  const [rows, setRows] = useState([])
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.rpc("rls_locked")
+    setRows(error ? [] : (data || []))
+  }, [])
+  useEffect(() => { load() }, [load, refreshKey])
+  if (!rows.length) return null
+  const undo = async (tables) => {
+    if (!window.confirm(tables ? `Undo lock on ${tables.join(", ")}?` : `Undo ALL ${rows.length} locked tables?`)) return
+    setBusy(true)
+    await supabase.rpc("rls_unlock", { p_tables: tables })
+    setBusy(false); load(); onChange?.()
+  }
+  return (
+    <Panel title={`🔐 Locked tables · ${rows.length}`} style={{marginTop:14}}>
+      <div style={{fontSize:12,color:T.inkSub,marginBottom:10}}>If any screen shows empty data since locking, press Undo for that table.</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+        {rows.map(r => (
+          <span key={r.t} style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:11.5,border:`1px solid ${T.border}`,borderRadius:8,padding:"3px 4px 3px 8px",background:"#fff"}}>
+            <code>{r.t}</code>
+            <button disabled={busy} onClick={()=>undo([r.t])} style={{border:"none",background:"#FDECEE",color:"#b3273f",borderRadius:6,padding:"2px 7px",fontSize:11,fontWeight:800,cursor:"pointer"}}>Undo</button>
+          </span>
+        ))}
+      </div>
+      <button disabled={busy} onClick={()=>undo(null)} style={{padding:"7px 14px",borderRadius:999,border:"1px solid #b3273f",background:"#fff",color:"#b3273f",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>↶ Undo all</button>
+    </Panel>
+  )
+}
+
 export function SecurityCenter({ onNavigate } = {}) {
   const [state, setState] = useState({ status: "loading", findings: [], checkedAt: null, error: null })
   const [open, setOpen] = useState({})
@@ -1430,6 +1512,7 @@ export function SecurityCenter({ onNavigate } = {}) {
   const [kind, setKind] = useState("all")      // all | security | data
   const [fixing, setFixing] = useState(null)   // finding id being fixed, or "all"
   const [log, setLog] = useState([])           // [{ id, title, msg, ok }]
+  const [lockKey, setLockKey] = useState(0)
 
   const run = useCallback(async () => {
     setState(s => ({ ...s, status: "loading", error: null }))
@@ -1466,6 +1549,7 @@ export function SecurityCenter({ onNavigate } = {}) {
       return
     }
     setState({ status: "ready", findings: [...local, ...((data && data.findings) || [])], checkedAt: data?.checked_at || new Date().toISOString(), error: null })
+    setLockKey(k => k + 1)
   }, [])
   useEffect(() => { run() }, [run])
 
@@ -1479,7 +1563,7 @@ export function SecurityCenter({ onNavigate } = {}) {
   }
   const logLine = (f, msg, ok) => setLog(l => [{ id: f.id, title: f.title, msg, ok, at: new Date() }, ...l].slice(0, 20))
   const fixAll = async () => {
-    const list = state.findings.filter(f => f.fixable)
+    const list = state.findings.filter(f => f.fixable && f.id !== "rls_off")
     if (!list.length) return
     if (!window.confirm(`Apply ${list.length} safe automatic fix(es)?\n\n` + list.map(f => "• " + f.title).join("\n"))) return
     setFixing("all")
@@ -1558,10 +1642,10 @@ export function SecurityCenter({ onNavigate } = {}) {
           </button>
         ))}
         <div style={{flex:1}}/>
-        {findings.some(f => f.fixable) && (
+        {findings.some(f => f.fixable && f.id !== "rls_off") && (
           <button onClick={fixAll} disabled={!!fixing} style={{padding:"9px 16px",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",
             fontSize:12.5,fontWeight:800,background:"#0f7a52",color:"#fff",boxShadow:"0 8px 20px rgba(15,122,82,.3)",opacity:fixing?.6:1}}>
-            {fixing==="all" ? "Fixing…" : `🔧 Fix all safe issues (${findings.filter(f=>f.fixable).length})`}
+            {fixing==="all" ? "Fixing…" : `🔧 Fix all safe issues (${findings.filter(f=>f.fixable && f.id !== "rls_off").length})`}
           </button>
         )}
       </div>
@@ -1613,7 +1697,7 @@ export function SecurityCenter({ onNavigate } = {}) {
                         )}
                         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 12px",display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                           <span style={{flex:"1 1 240px"}}><span style={{fontWeight:800,color:T.emerald}}>How to fix: </span>{f.fix}</span>
-                          {f.fixable && (
+                          {f.fixable && f.id !== "rls_off" && (
                             <button onClick={async () => { if (await applyFix(f)) run() }} disabled={!!fixing}
                               style={{padding:"8px 14px",borderRadius:999,border:"none",background:"#0f7a52",color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",opacity:fixing?.6:1}}>
                               {fixing===f.id ? "Fixing…" : `🔧 ${f.fix_label || "Fix now"}`}
@@ -1636,6 +1720,7 @@ export function SecurityCenter({ onNavigate } = {}) {
           </Panel>
         ))}
       </div>
+      <RlsLockedPanel refreshKey={lockKey} onChange={run}/>
     </div>
   )
 }
