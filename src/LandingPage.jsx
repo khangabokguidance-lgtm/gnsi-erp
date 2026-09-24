@@ -142,35 +142,13 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-dig
 // ═══ MOBILE MENU ICONS ═══
 // Thin line icons (24×24, currentColor) for the premium mobile menu.
 const PM_ICON_PATHS = {
-  // Section icons (one per tab) — used by the All Sections grid and the
-  // mobile menu. Keys match the tab ids in tabList.
   home: 'M3 10.5 12 3l9 7.5M5.5 9v11h13V9M10 20v-6h4v6',
-  courses: 'M12 3 2 8l10 5 10-5zM2 13l10 5 10-5M2 17.5l10 5 10-5',
-  rankers: 'M7.2 2h9.6l-3 6h-3.6zM12 22a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 13.5l1 2 2.2.3-1.6 1.5.4 2.2-2-1-2 1 .4-2.2-1.6-1.5 2.2-.3z',
+  enquiry: 'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5',
   results: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4',
-  reviews: 'M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z',
-  about: 'M3 21h18M5 21V10l7-5 7 5v11M9 21v-5h6v5M10.5 11a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0',
-  'head-institute': 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0M12 15l-1.2 2.2L12 21l1.2-3.8z',
-  faculty: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
-  facilities: 'M3 18V6M3 13h18v5M21 18v-2M9 13V9h8a4 4 0 0 1 4 4M4.5 10a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0-3.6 0',
-  videos: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM10 8.5v7l6-3.5z',
-  notices: 'M3 11v2a1 1 0 0 0 1 1h3l5 4V6L7 10H4a1 1 0 0 0-1 1zM16 8.5a5 5 0 0 1 0 7M19 5.5a9 9 0 0 1 0 13',
-  blog: 'M4 5h13v14a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2zM17 9h3v10a2 2 0 0 1-2 2M7.5 8.5h6M7.5 12h6M7.5 15.5h4',
-  gallery: 'M3 4h18v16H3zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5-9 10',
-  events: 'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4M12 12.8l.9 1.8 2 .3-1.4 1.4.3 2-1.8-.9-1.8.9.3-2-1.4-1.4 2-.3z',
-  scholarship: 'M2 9l10-5 10 5-10 5zM6 11v5c3 2 9 2 12 0v-5M22 9v6',
-  'mock-tests': 'M9 3h6v3H9zM9 4.5H6v17h12v-17h-3M9 13l2 2 4-4',
-  'question-papers': 'M14 2H6v20h12V6zM14 2v4h4M8.5 12h7M8.5 15.5h7M8.5 9h3',
-  syllabus: 'M4 4h6a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-6a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6z',
-  'exam-calendar': 'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4M9 15.5l2 2 4-4',
-  'important-dates': 'M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 9v4l2.5 2M4 4 2 6M20 4l2 2',
-  faq: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5M12 17.5h.01',
-  enquiry: 'M3 5h18v14H3zM3 6l9 7 9-7',
   'fee-payment': 'M3 6h18v12H3zM3 10h18M7 15h4',
-  'admit-card': 'M3 5h18v14H3zM7 10a2 2 0 1 0 4 0 2 2 0 0 0-4 0M6 16c.6-1.6 1.9-2.5 3-2.5s2.4.9 3 2.5M14 9h4M14 13h4',
-  'app-download': 'M7 2h10v20H7zM12 7v7M9 11.5l3 3 3-3M11 18.5h2',
-  helpdesk: 'M4 14v-2a8 8 0 0 1 16 0v2M4 14h3v6H5a1 1 0 0 1-1-1zM20 14h-3v6h2a1 1 0 0 0 1-1zM17 20a3 3 0 0 1-3 2h-2',
   contact: 'M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21zM12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
+  courses: 'M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5',
+  'admit-card': 'M3 5h18v14H3zM7 10a2 2 0 1 0 4 0 2 2 0 0 0-4 0M6 16c.6-1.6 1.9-2.5 3-2.5s2.4.9 3 2.5M14 9h4M14 13h4',
   portal: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
   staff: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4',
   app: 'M7 2h10v20H7zM11 18h2',
@@ -1309,6 +1287,15 @@ export default function LandingPage({ onLogin }) {
   // cat drives each section tile's accent colour (see .sec-tile.cat-* in the grid styles):
   // gold = core/home, blue = institute info, green = results & community,
   // red = academics/exam-prep, purple = admin/utility.
+  // Icons for the "All Sections" grid below the top banner.
+  const TAB_ICONS = {
+    courses: '📚', rankers: '🏅', results: '🏆', reviews: '⭐', about: '🏫',
+    'head-institute': '👤', faculty: '👩‍🏫', facilities: '🏠', videos: '🎬',
+    notices: '📢', blog: '📰', gallery: '🖼️', events: '📅', scholarship: '🎓',
+    'mock-tests': '📝', 'question-papers': '📄', syllabus: '📘',
+    'exam-calendar': '🗓️', 'important-dates': '⏰', faq: '❓', enquiry: '✉️',
+    'fee-payment': '💳', 'admit-card': '🪪', 'app-download': '📱', helpdesk: '🛟',
+  };
   const tabList = [
     { id: 'home', label: 'Home', cat: 'gold' },
     { id: 'courses', label: 'Courses', cat: 'red' },
@@ -2288,8 +2275,7 @@ window.submitGrievance = async () => {
     .pm-acc-body{padding:.2rem .9rem 1rem;border-top:1px solid rgba(255,255,255,.06)}
     .pm-group-t{font-size:.62rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.45);margin:.9rem 0 .45rem}
     .pm-chips{display:flex;flex-wrap:wrap;gap:.4rem}
-    .pm-chip{display:inline-flex;align-items:center;gap:.35rem;padding:.42rem .75rem;border-radius:999px;border:1px solid rgba(255,255,255,.14);color:#dfe6f3;text-decoration:none;font-size:.76rem;font-weight:500;transition:border-color .2s,background .2s}
-    .pm-chip svg{color:#d4af37;flex-shrink:0}.pm-chip.on svg{color:#0b1a36}
+    .pm-chip{padding:.42rem .75rem;border-radius:999px;border:1px solid rgba(255,255,255,.14);color:#dfe6f3;text-decoration:none;font-size:.76rem;font-weight:500;transition:border-color .2s,background .2s}
     .pm-chip:hover{border-color:#d4af37;background:rgba(212,175,55,.1)}
     .pm-chip.on{background:#d4af37;border-color:#d4af37;color:#0b1a36;font-weight:700}
     .pm-list{border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.08);margin-bottom:1.1rem}
@@ -2347,7 +2333,7 @@ window.submitGrievance = async () => {
                 if (item.id === 'home') goToTab('home'); else goToHash(item.href);
               }}
             >
-              <span className="pm-ic"><PmIcon name={item.id} /></span>
+              <span className="pm-ic"><PmIcon name={item.id === 'enquiry' ? 'enquiry' : item.id} /></span>
               {item.label}
             </a>
           );
@@ -2394,7 +2380,6 @@ window.submitGrievance = async () => {
                             className={"pm-chip" + (on ? " on" : "")}
                             onClick={(e) => { e.preventDefault(); closeMobile(); goToHash(link.href); }}
                           >
-                            <PmIcon name={link.href.replace('#', '')} size={14} />
                             {link.label}
                           </a>
                         );
@@ -2652,17 +2637,16 @@ window.submitGrievance = async () => {
     .sec-grid-title{font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--navy,#0f1f3d);margin:0 0 .7rem;text-align:center}
     .sec-grid{--per:9;--gap:.55rem;display:flex;flex-wrap:wrap;justify-content:center;gap:var(--gap)}
     .sec-tile{flex:0 0 calc((100% - (var(--per) - 1) * var(--gap)) / var(--per));min-width:0}
-    .sec-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4rem;min-height:88px;padding:.55rem .35rem;border-radius:10px;background:#fff;border:1px solid rgba(15,31,61,.1);border-top:3px solid var(--tc);cursor:pointer;font:inherit;color:var(--navy,#0f1f3d);text-align:center;transition:transform .15s,box-shadow .15s,background .15s}
+    .sec-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;min-height:74px;padding:.55rem .35rem;border-radius:10px;background:#fff;border:1px solid rgba(15,31,61,.1);border-top:3px solid var(--tc);cursor:pointer;font:inherit;color:var(--navy,#0f1f3d);text-align:center;transition:transform .15s,box-shadow .15s,background .15s}
     .sec-tile:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(15,31,61,.12)}
     .sec-tile:focus-visible{outline:2px solid var(--tc);outline-offset:2px}
     .sec-tile.active{background:var(--navy,#0f1f3d);color:#fff;border-color:var(--navy,#0f1f3d);border-top-color:var(--tc)}
-    .sec-tile-ic{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;color:var(--tc);background:color-mix(in srgb,var(--tc) 12%,#fff)}
-    .sec-tile.active .sec-tile-ic{background:var(--tc);color:#fff}
+    .sec-tile-ic{font-size:1.35rem;line-height:1}
     .sec-tile-lb{font-size:.74rem;font-weight:700;line-height:1.2}
     .sec-tile.cat-gold{--tc:#c9a227}.sec-tile.cat-red{--tc:#c0392b}.sec-tile.cat-green{--tc:#1e8e4e}
     .sec-tile.cat-blue{--tc:#2563eb}.sec-tile.cat-purple{--tc:#7c3aed}
     @media (max-width:1024px){.sec-grid{--per:7}}
-    @media (max-width:700px){.sec-grid{--per:5;--gap:.35rem}.sec-tile{min-height:78px;padding:.45rem .2rem}.sec-tile-ic{width:34px;height:34px}.sec-tile-ic svg{width:19px;height:19px}.sec-tile-lb{font-size:.64rem}}
+    @media (max-width:700px){.sec-grid{--per:5;--gap:.35rem}.sec-tile{min-height:66px;padding:.45rem .2rem}.sec-tile-ic{font-size:1.15rem}.sec-tile-lb{font-size:.64rem}}
     @media (max-width:340px){.sec-grid{--per:4}}
   `}</style>
   <div className="sec-grid-wrap">
@@ -2678,7 +2662,7 @@ window.submitGrievance = async () => {
             aria-current={activeTab === t.id ? 'page' : undefined}
             onClick={() => goToTab(t.id)}
           >
-            <span className="sec-tile-ic" aria-hidden="true"><PmIcon name={t.id} size={22} /></span>
+            <span className="sec-tile-ic" aria-hidden="true">{TAB_ICONS[t.id] || '•'}</span>
             <span className="sec-tile-lb">{t.label}</span>
           </button>
         ))}
