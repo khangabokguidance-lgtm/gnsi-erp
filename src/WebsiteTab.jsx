@@ -12,7 +12,7 @@
 //  ⑨ Result Banners (website_result_banners)
 //  ⑩ Question Papers (website_papers)
 //  ⑪ Scholarship Test Dates (website_settings)
-//  ⑫ Site Settings (deadline, brochure, UPI, social, stats)
+//  ⑫ Site Settings (deadline, brochure, UPI, social, stats, results cards)
 //  ⑬ Events & Schedule (website_events)
 //  ⑭ Testimonials (website_testimonials)
 //  ⑮ Exam Calendar (website_exam_calendar)
@@ -417,6 +417,39 @@ function EnquiriesSection() {
 // ════════════════════════════════════════════════════════════
 //  ② PUBLIC NOTICES
 // ════════════════════════════════════════════════════════════
+
+// ── Latest strip (ticker) editor — shown at the top of Notices ──
+function TickerCard({notices}){
+  const [cfg,setCfg]=useState({ticker_extra:"",ticker_show_contact:"yes",ticker_use_notices:"yes"});
+  const [saving,setSave]=useState(false);
+  useEffect(()=>{getSettings().then(c=>setCfg(x=>({...x,...Object.fromEntries(Object.entries(c||{}).filter(([k])=>k.startsWith("ticker_")))}))).catch(()=>{});},[]);
+  const set_=(k,v)=>setCfg(c=>({...c,[k]:v}));
+  const save=async()=>{setSave(true);const{error}=await saveSettings({ticker_extra:cfg.ticker_extra||"",ticker_show_contact:cfg.ticker_show_contact||"yes",ticker_use_notices:cfg.ticker_use_notices||"yes"});setSave(false);if(error)return toast("Error: "+error.message,"error");toast("Latest strip saved ✓");};
+  const active=(notices||[]).filter(n=>!n.is_archived&&n.title).slice(0,8);
+  const extra=(cfg.ticker_extra||"").split("\n").map(x=>x.trim()).filter(Boolean);
+  const items=[...(cfg.ticker_use_notices!=="no"?active.map(n=>(n.priority==="High"?"🔴 ":"")+n.title.toUpperCase()):[]),...extra.map(x=>x.toUpperCase())];
+  const preview=(items.length?items:["(nothing to show — add a notice or an extra line)"]).concat(cfg.ticker_show_contact!=="no"?["CALL +91 …","KHANGABOK, THOUBAL, MANIPUR"]:[]).join("  ◆  ");
+  return(
+    <div style={s.card}>
+      <div style={s.cardHd}><span style={s.cardTit}>📢 "Latest" Scrolling Strip</span></div>
+      <div style={s.cardBdy}>
+        <div style={{background:"#0B1E3D",borderRadius:8,display:"flex",alignItems:"center",overflow:"hidden",marginBottom:"1rem"}}>
+          <span style={{background:"#B8913F",color:"#0B1E3D",fontWeight:800,fontSize:".7rem",padding:".55rem .8rem",letterSpacing:".08em"}}>LATEST</span>
+          <span style={{color:"#E2C57E",fontSize:".75rem",padding:"0 .8rem",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{preview}</span>
+        </div>
+        <div style={s.g2}>
+          <div><label style={s.lbl}>Show active notices in the strip</label><select style={s.sel} value={cfg.ticker_use_notices||"yes"} onChange={e=>set_("ticker_use_notices",e.target.value)}><option value="yes">Yes — newest 8 notice titles</option><option value="no">No</option></select></div>
+          <div><label style={s.lbl}>Add phone & address at the end</label><select style={s.sel} value={cfg.ticker_show_contact||"yes"} onChange={e=>set_("ticker_show_contact",e.target.value)}><option value="yes">Yes</option><option value="no">No</option></select></div>
+        </div>
+        <label style={s.lbl}>Extra lines (one per line — always shown)</label>
+        <textarea style={s.ta} rows={3} placeholder={"New Navodaya batch commencing 20 December 2026\nSunday mock tests ongoing"} value={cfg.ticker_extra||""} onChange={e=>set_("ticker_extra",e.target.value)}/>
+        <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":"💾 Save Strip"}</button>
+        <p style={{color:"#94a3b8",fontSize:".72rem",marginTop:".5rem"}}>Archive a notice to remove it from the strip. High-priority notices get a 🔴.</p>
+      </div>
+    </div>
+  );
+}
+
 function NoticesSection() {
   const [rows,setRows]=useState([]);
   const [load,setLoad]=useState(true);
@@ -448,6 +481,7 @@ function NoticesSection() {
 
   return (
     <div>
+      <TickerCard notices={rows}/>
       <div style={s.card}>
         <div style={s.cardHd}><span style={s.cardTit}>{editing?"✏️ Edit Notice":"📝 New Notice"}</span>{editing&&<button style={s.btnR} onClick={()=>{setEdit(null);setForm({title:"",body:"",priority:"Medium",notice_date:new Date().toISOString().slice(0,10)})}}>Cancel</button>}</div>
         <div style={s.cardBdy}>
@@ -461,7 +495,7 @@ function NoticesSection() {
           <label style={s.lbl}>Body *</label>
           <textarea style={s.ta} placeholder="Notice text shown on the public website…" value={form.body} onChange={e=>setForm(f=>({...f,body:e.target.value}))} rows={4}/>
           <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Publishing…":editing?"Update Notice":"Publish to Website →"}</button>
-          <p style={{color:"rgba(71,85,105,.28)",fontSize:".72rem",fontFamily:"inherit",marginTop:".5rem"}}>High priority → red border on website · Top 3 active notices shown on homepage</p>
+          <p style={{color:"rgba(71,85,105,.28)",fontSize:".72rem",fontFamily:"inherit",marginTop:".5rem"}}>High priority → red border on website · Top 3 active notices shown on homepage · Titles also scroll in the \u201cLatest\u201d strip</p>
         </div>
       </div>
       {load?<div style={s.loading}><Spin/>Loading…</div>:rows.map(n=>(
@@ -1802,6 +1836,20 @@ function SettingsSection() {
     {key:"selection_rate",         label:"Selection Rate",           type:"text",    ph:"95%",                group:"Homepage Stats"},
     {key:"selected_current_year",  label:"Selected Last Batch",      type:"text",    ph:"66",                 group:"Homepage Stats"},
     {key:"selected_current_year_label", label:"Selected Last Batch Label", type:"text", ph:"Selected 2025–26",  group:"Homepage Stats"},
+    // Results page — "Selections & Achievements" stat cards (4 cards)
+    {key:"ach1_value", label:"Card 1 · Number", type:"text", ph:"66", group:"Results & Achievements"},
+    {key:"ach1_label", label:"Card 1 · Title",  type:"text", ph:"Selections in 2025–26", group:"Results & Achievements"},
+    {key:"ach1_sub",   label:"Card 1 · Small line", type:"text", ph:"NVS & Sainik School combined", group:"Results & Achievements"},
+    {key:"ach2_value", label:"Card 2 · Number", type:"text", ph:"10", group:"Results & Achievements"},
+    {key:"ach2_label", label:"Card 2 · Title",  type:"text", ph:"Top-10 State Ranks", group:"Results & Achievements"},
+    {key:"ach2_sub",   label:"Card 2 · Small line", type:"text", ph:"AISSEE 2026", group:"Results & Achievements"},
+    {key:"ach3_value", label:"Card 3 · Number", type:"text", ph:"25+", group:"Results & Achievements"},
+    {key:"ach3_label", label:"Card 3 · Title",  type:"text", ph:"Within Top 10,000 AIR", group:"Results & Achievements"},
+    {key:"ach3_sub",   label:"Card 3 · Small line", type:"text", ph:"AISSEE 2026 All India Rank", group:"Results & Achievements"},
+    {key:"ach4_value", label:"Card 4 · Number", type:"text", ph:"80+", group:"Results & Achievements"},
+    {key:"ach4_label", label:"Card 4 · Title",  type:"text", ph:"Qualified Written Test", group:"Results & Achievements"},
+    {key:"ach4_sub",   label:"Card 4 · Small line", type:"text", ph:"AISSEE 2026", group:"Results & Achievements"},
+    {key:"ach_note",   label:"Note under the cards", type:"text", ph:"Verified result letters are available at the institute office on request.", group:"Results & Achievements"},
     // Social
     {key:"social_facebook",     label:"Facebook URL",                type:"text",    ph:"https://facebook.com/gnsikhangabok",   group:"Social Media"},
     {key:"social_youtube",      label:"YouTube URL",                 type:"text",    ph:"https://youtube.com/@gnsikhangabok",   group:"Social Media"},
@@ -1880,6 +1928,27 @@ CREATE TABLE IF NOT EXISTS website_timeline (id bigserial primary key, title tex
           <div key={g} style={s.card}>
             <div style={s.cardHd}><span style={s.cardTit}>{g}</span></div>
             <div style={s.cardBdy}>
+              {g==="Results & Achievements"&&(
+                <>
+                  <p style={{color:"#64748b",fontSize:".8rem",lineHeight:1.6,margin:"0 0 .9rem"}}>
+                    The 4 number cards on the website's <b>Results</b> page. Leave a box empty to keep the current figure; type <b>-</b> as the Number to hide that card. The year-wise cards below them fill automatically from the Ranker Wall.
+                  </p>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:".6rem",marginBottom:"1.1rem"}}>
+                    {[1,2,3,4].map(n=>{
+                      const v=(cfg[`ach${n}_value`]||"").trim()||KEYS.find(k=>k.key===`ach${n}_value`).ph;
+                      if(v==="-")return <div key={n} style={{border:"1px dashed #cbd5e1",borderRadius:10,padding:".8rem",color:"#94a3b8",fontSize:".75rem",display:"flex",alignItems:"center",justifyContent:"center"}}>Card {n} hidden</div>;
+                      const col=["#B8913F","#1F4E8C","#1E7A4C","#A61E30"][n-1];
+                      return(
+                        <div key={n} style={{border:"1px solid #e2e8f0",borderTop:`3px solid ${col}`,borderRadius:10,padding:".8rem",background:"#fff"}}>
+                          <div style={{fontFamily:"Georgia,serif",fontWeight:700,fontSize:"1.6rem",color:col,lineHeight:1}}>{v}</div>
+                          <div style={{fontWeight:700,fontSize:".8rem",color:"#0B1E3D",marginTop:".35rem"}}>{(cfg[`ach${n}_label`]||"").trim()||KEYS.find(k=>k.key===`ach${n}_label`).ph}</div>
+                          <div style={{fontSize:".7rem",color:"#64748b"}}>{(cfg[`ach${n}_sub`]||"").trim()||KEYS.find(k=>k.key===`ach${n}_sub`).ph}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
               <div style={gKeys.length>=4?s.g2:undefined}>
                 {gKeys.map(({key,label,type,ph})=>(
                   <div key={key}>

@@ -796,6 +796,15 @@ export default function LandingPage({ onLogin }) {
     return () => { alive = false; };
   }, []);
   const site = useMemo(() => buildSite(siteCfg), [siteCfg]);
+  // Ticker ("Latest" strip) — real notices from the notices table.
+  const [tickerNotices, setTickerNotices] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    getActiveNotices(8)
+      .then((rows) => { if (alive) setTickerNotices((rows || []).filter((n) => n && n.title)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
   // If the emblem image fails to load, show a "GNSI" monogram in the nav
   // crest instead of an empty white box.
   const [emblemFailed, setEmblemFailed] = useState(false);
@@ -2148,14 +2157,21 @@ window.submitGrievance = async () => {
       <div className="ticker-label">Latest</div>
       <div className="ticker-scroll">
         <div className="ticker-track">
-          RESULT: 66 SELECTED IN NVS &amp; SAINIK
-          SCHOOL 2025–26 ◆ NEW NAVODAYA BATCH COMMENCING 20 DECEMBER 2026 ◆ SAINIK &amp; FOUNDATION BATCHES COMMENCING 10 JANUARY 2027 ◆ SUNDAY MOCK TESTS
-          ONGOING ◆ EST. 2016 ◆ CALL {site.phone.toUpperCase()} ◆
-          KHANGABOK, THOUBAL, MANIPUR &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;RESULT:
-          66 SELECTED IN NVS &amp; SAINIK SCHOOL 2025–26
-          ◆ NEW NAVODAYA BATCH COMMENCING 20 DECEMBER 2026 ◆ SAINIK &amp; FOUNDATION BATCHES COMMENCING 10 JANUARY 2027 ◆ SUNDAY MOCK TESTS ONGOING ◆ EST.
-          2016 ◆ CALL {site.phone.toUpperCase()} ◆ KHANGABOK,
-          THOUBAL, MANIPUR &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+          {(() => {
+            // Live notices from Website Manager → Notices (newest first,
+            // archived hidden). Falls back to the standing message if none.
+            // Controlled from Website Manager → Notices → "Latest" strip.
+            const useNotices = (siteCfg.ticker_use_notices || 'yes') !== 'no';
+            const showContact = (siteCfg.ticker_show_contact || 'yes') !== 'no';
+            const extra = String(siteCfg.ticker_extra || '').split('\n').map((x) => x.trim()).filter(Boolean).map((x) => x.toUpperCase());
+            let items = [
+              ...(useNotices ? tickerNotices.map((n) => (n.priority === 'High' ? '🔴 ' : '') + n.title.toUpperCase()) : []),
+              ...extra,
+            ];
+            if (!items.length) items = ['RESULT: 66 SELECTED IN NVS & SAINIK SCHOOL 2025–26', 'SUNDAY MOCK TESTS ONGOING', 'EST. 2016'];
+            const line = [...items, ...(showContact ? [`CALL ${site.phone.toUpperCase()}`, 'KHANGABOK, THOUBAL, MANIPUR'] : [])].join('  ◆  ');
+            return (<>{line}&nbsp;&nbsp;◆&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{line}&nbsp;&nbsp;◆&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</>);
+          })()}
         </div>
       </div>
     </div>
@@ -2956,45 +2972,80 @@ window.submitGrievance = async () => {
         <div className="rule-d" />
         <div className="rule-line" />
       </div>
-      <div className="cards-row">
-        <div className="result-card reveal-left">
-          <div className="year-badge">
-            2025<small>–26</small>
+      {/* Headline figures — edited in Website Manager → Settings →
+          "Results & Achievements" (ach1_value / ach1_label / ach1_sub …).
+          A card whose value is blank in Settings falls back to the figures
+          below; set a value to "-" to hide that card. */}
+      {(() => {
+        const DEF = [
+          { v: '66',  l: 'Selections in 2025–26',   s: 'NVS & Sainik School combined', c: 'ach-gold' },
+          { v: '10',  l: 'Top-10 State Ranks',      s: 'AISSEE 2026',                  c: 'ach-blue' },
+          { v: '25+', l: 'Within Top 10,000 AIR',   s: 'AISSEE 2026 All India Rank',   c: 'ach-green' },
+          { v: '80+', l: 'Qualified Written Test',  s: 'AISSEE 2026',                  c: 'ach-red' },
+        ];
+        const cards = DEF.map((d, i) => {
+          const n = i + 1;
+          const v = (siteCfg[`ach${n}_value`] || '').trim() || d.v;
+          return { v, l: (siteCfg[`ach${n}_label`] || '').trim() || d.l, s: (siteCfg[`ach${n}_sub`] || '').trim() || d.s, c: d.c };
+        }).filter((c) => c.v !== '-');
+        if (!cards.length) return null;
+        return (
+          <div className="ach-stats reveal" style={cards.length < 4 ? { gridTemplateColumns: `repeat(${cards.length},minmax(0,1fr))` } : undefined}>
+            {cards.map((c) => (
+              <div className={'ach-stat ' + c.c} key={c.c}>
+                <div className="ach-num">{c.v}</div>
+                <div className="ach-lbl">{c.l}</div>
+                {c.s && <div className="ach-sub">{c.s}</div>}
+              </div>
+            ))}
           </div>
-          <div className="result-body">
-            <div className="result-number">66</div>
-            <h3>NVS &amp; Sainik School</h3>
-            <p>
-              66 students selected across NVS Jawahar Navodaya and Sainik School
-              — our best result to date.
-            </p>
-          </div>
+        );
+      })()}
+
+      {/* Year-wise record — built live from the Toppers' Wall (website_rankers) */}
+      {rankerGroups.length > 0 && (
+        <div className="ach-years">
+          {rankerGroups.slice(0, 3).map((g, gi) => {
+            const counts = {};
+            g.rankers.forEach((r) => {
+              const k = (r.school || '').trim();
+              if (k) counts[k] = (counts[k] || 0) + 1;
+            });
+            const top = Object.entries(counts).sort((x, y) => y[1] - x[1]).slice(0, 4);
+            const title = sessionTitle(g.session);
+            const [y1, y2] = String(title).split(/[–-]/);
+            return (
+              <div className={'ach-year reveal' + (gi === 0 ? ' latest' : '')} key={g.session}>
+                <div className="ach-year-hd">
+                  <div className="ach-year-badge">
+                    {y2 ? (<>{y1}<small>–{y2}</small></>) : title}
+                  </div>
+                  {gi === 0 && <span className="ach-tag">Latest</span>}
+                </div>
+                <div className="ach-year-num">
+                  {g.rankers.length}
+                  <span>{g.rankers.length === 1 ? 'student' : 'students'} on the Toppers' Wall</span>
+                </div>
+                {top.length > 0 && (
+                  <ul className="ach-schools">
+                    {top.map(([name, n]) => (
+                      <li key={name}><span>{name}</span><b>{n}</b></li>
+                    ))}
+                  </ul>
+                )}
+                <button
+                  type="button"
+                  className="ach-link"
+                  onClick={() => { setRankerSessionSel(g.session); goToTab('rankers'); }}
+                >
+                  See {title} toppers →
+                </button>
+              </div>
+            );
+          })}
         </div>
-        <div className="result-card reveal">
-          <div className="year-badge">
-            2024<small>–25</small>
-          </div>
-          <div className="result-body">
-            <h3>Strong District Performance</h3>
-            <p>
-              Continued high selection rates with district-level recognition
-              across military and academic entrance tracks.
-            </p>
-          </div>
-        </div>
-        <div className="result-card reveal-right">
-          <div className="year-badge">
-            2023<small>–24</small>
-          </div>
-          <div className="result-body">
-            <h3>Consistent Growth</h3>
-            <p>
-              Consistent placement improvement year on year. Students
-              continuing to excel at Navodaya and Sainik School.
-            </p>
-          </div>
-        </div>
-      </div>
+      )}
+      <p className="ach-note">{(siteCfg.ach_note || '').trim() || 'Verified result letters are available at the institute office on request.'}</p>
 
       {rankersData.length > 0 && (
         <>
