@@ -4,7 +4,8 @@ import {
   getPublishedPosts, getFeaturedReviews, getPapers, getActiveBanners, getFaculty,
   getLiveKPIs, getEvents, submitEnquiry, submitScholarRegistration, submitGrievance,
   getStats, getFeaturedTestimonials, getExamCalendar, getTimeline,
-  groupRankersBySession, EARLIER_SESSION
+  groupRankersBySession, EARLIER_SESSION,
+  getFacilities, getMockTests, getFaqs
 } from './websiteApi';
 import { supabase } from './supabase';
 import ParentsPortal from './ParentsPortal';
@@ -197,9 +198,9 @@ function cachedFetch(key, fn) {
 // content appears immediately instead of the stale fallback first.
 function prefetchTabData() {
   const jobs = [
-    ['notices', () => getActiveNotices(3)],
+    ['notices12', () => getActiveNotices(12)],
     ['reviews', () => getFeaturedReviews(6)],
-    ['blog', () => getPublishedPosts(6)],
+    ['blog12', () => getPublishedPosts(12)],
     ['videos', getVideos],
     ['events', getEvents],
     ['papers', getPapers],
@@ -359,7 +360,7 @@ function hydrateTabSections(setFeePaymentInfo) {
     const grid = document.getElementById('publicNoticeCards');
     if (!grid) return;
     try {
-      const notices = await cachedFetch('notices', () => getActiveNotices(3));
+      const notices = await cachedFetch('notices12', () => getActiveNotices(12));
       if (!notices.length) return; // leave existing static cards as fallback
       grid.innerHTML = notices.map(n => {
         const cls = n.priority === 'High' ? 'urgent' : n.priority === 'Low' ? '' : 'success';
@@ -402,7 +403,7 @@ function hydrateTabSections(setFeePaymentInfo) {
     const grid = document.getElementById('blogGrid');
     if (!grid) return;
     try {
-      const posts = await cachedFetch('blog', () => getPublishedPosts(6));
+      const posts = await cachedFetch('blog12', () => getPublishedPosts(12));
       if (!posts.length) return;
       grid.innerHTML = posts.map(p => `
         <div class="blog-card">
@@ -413,7 +414,8 @@ function hydrateTabSections(setFeePaymentInfo) {
           <div class="blog-body">
             <div class="blog-date">${fmtDate(p.published_date)}</div>
             <h3>${escapeHtml(p.title)}</h3>
-            <p>${escapeHtml((p.body || '').slice(0, 140))}${(p.body || '').length > 140 ? '…' : ''}</p>
+            <p>${escapeHtml((p.body || '').slice(0, 160))}${(p.body || '').length > 160 ? '…' : ''}</p>
+            ${(p.body || '').length > 160 ? `<details class="blog-more"><summary>Read full article →</summary><div class="blog-full">${escapeHtml(p.body).replace(/\n/g, '<br>')}</div></details>` : ''}
           </div>
         </div>`).join('');
     } catch (e) { console.error('Blog load failed:', e); }
@@ -796,6 +798,18 @@ export default function LandingPage({ onLogin }) {
     return () => { alive = false; };
   }, []);
   const site = useMemo(() => buildSite(siteCfg), [siteCfg]);
+  // Website Manager–driven content: Facilities, Mock Tests, FAQs.
+  // Each falls back to the built-in content while its table is empty.
+  const [facilitiesData, setFacilitiesData] = useState([]);
+  const [mockTestsData, setMockTestsData] = useState([]);
+  const [faqData, setFaqData] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    getFacilities().then((r) => alive && setFacilitiesData(r || [])).catch(() => {});
+    getMockTests().then((r) => alive && setMockTestsData(r || [])).catch(() => {});
+    getFaqs().then((r) => alive && setFaqData(r || [])).catch(() => {});
+    return () => { alive = false; };
+  }, []);
   // Ticker ("Latest" strip) — real notices from the notices table.
   const [tickerNotices, setTickerNotices] = useState([]);
   useEffect(() => {
@@ -1958,8 +1972,10 @@ window.submitGrievance = async () => {
     const wasOpen = a && a.style.display === 'block';
     e.currentTarget.querySelectorAll('.faq-a').forEach(x => { x.style.display = 'none'; });
     e.currentTarget.querySelectorAll('.faq-icon').forEach(x => { x.textContent = '+'; });
+    e.currentTarget.querySelectorAll('.faq-item.open').forEach(x => x.classList.remove('open'));
     if (!wasOpen && a) {
       a.style.display = 'block';
+      q.closest('.faq-item')?.classList.add('open');
       if (icon) icon.textContent = String.fromCharCode(8722);
     }
   };
@@ -3557,6 +3573,32 @@ window.submitGrievance = async () => {
         <div className="rule-d" />
         <div className="rule-line" />
       </div>
+      {facilitiesData.length > 0 ? (
+        <div className="fac-grid">
+          {facilitiesData.map((f) => {
+            const pts = String(f.points || '').split('\n').map((x) => x.trim()).filter(Boolean);
+            return (
+              <article className="fac-card reveal-scale" key={f.id}>
+                <div className="fac-media">
+                  {f.photo_url ? (
+                    <img src={f.photo_url} alt={f.title} loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                  ) : (
+                    <span className="fac-emoji">{f.icon || '🏫'}</span>
+                  )}
+                  <span className="fac-chip">{f.icon || '🏫'}</span>
+                </div>
+                <div className="fac-body">
+                  <h3>{f.title}</h3>
+                  {f.description && <p>{f.description}</p>}
+                  {pts.length > 0 && (
+                    <ul>{pts.map((x, i) => <li key={i}>{x}</li>)}</ul>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
       <div className="facilities-grid">
         <div className="facility-card reveal-scale">
           <span className="facility-icon">🏠</span>
@@ -3637,6 +3679,7 @@ window.submitGrievance = async () => {
           </ul>
         </div>
       </div>
+      )}
     </div>
   </section>
   )}
@@ -4159,6 +4202,29 @@ window.submitGrievance = async () => {
         />
       </div>
       <div className="mocktest-grid reveal">
+        {mockTestsData.length > 0 ? (
+          <div className="mock-cards mock-live">
+            {mockTestsData.map((m) => (
+              <div className="mock-pdf" key={m.id}>
+                <div className="mock-pdf-ic">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+                  <span>PDF</span>
+                </div>
+                <div className="mock-pdf-tx">
+                  <span className="mock-pdf-tag">{m.exam_type || 'Mock'}</span>
+                  <strong>{m.title}</strong>
+                  <small>
+                    {[m.details, m.test_date ? new Date(m.test_date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''].filter(Boolean).join(' · ')}
+                  </small>
+                </div>
+                <div className="mock-pdf-act">
+                  {m.pdf_url && <a href={m.pdf_url} target="_blank" rel="noopener" className="mock-dl">⬇ Paper</a>}
+                  {m.answer_key_url && <a href={m.answer_key_url} target="_blank" rel="noopener" className="mock-dl alt">🔑 Key</a>}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="mock-cards">
           <a className="mock-card" href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }}>
             <div className="mock-icon">📝</div>
@@ -4246,6 +4312,7 @@ window.submitGrievance = async () => {
             <div className="mock-card-arrow">→</div>
           </a>
         </div>
+        )}
         <div className="mock-info">
           <h3>
             <span data-en="">Sunday Mock Test Series</span>
@@ -5084,7 +5151,20 @@ window.submitGrievance = async () => {
         <div className="rule-d" />
         <div className="rule-line" />
       </div>
-      <div className="faq reveal" style={{ maxWidth: 720 }} onClick={handleFaqClick}>
+      {faqData.length > 0 ? (
+        <div className="faq faq-pro reveal" onClick={handleFaqClick}>
+          {faqData.map((f) => (
+            <div className="faq-item" key={f.id}>
+              <div className="faq-q">
+                <span>{f.question}</span>
+                <div className="faq-icon">+</div>
+              </div>
+              <div className="faq-a">{f.answer}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+      <div className="faq faq-pro reveal" onClick={handleFaqClick}>
         <div className="faq-item">
           <div className="faq-q">
             What examinations does GNSI prepare students for?
@@ -5154,6 +5234,7 @@ window.submitGrievance = async () => {
           </div>
         </div>
       </div>
+      )}
     </div>
   </section>
   )}

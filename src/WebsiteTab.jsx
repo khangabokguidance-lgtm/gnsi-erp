@@ -37,7 +37,10 @@ import {
   getAllTestimonials, saveTestimonial, toggleTestimonialFeatured, deleteTestimonial,
   getExamCalendar, saveExamCalendarRow, deleteExamCalendarRow,
   getTimeline, saveTimelineItem, deleteTimelineItem,
-  uploadWebsiteImage,
+  uploadWebsiteImage, uploadWebsiteFile,
+  getFacilities, saveFacility, deleteFacility,
+  getMockTests, saveMockTest, deleteMockTest,
+  getFaqs, saveFaq, deleteFaq,
 } from './websiteApi';
 
 // ── colours ─────────────────────────────────────────────────
@@ -63,6 +66,9 @@ const SUB_TABS = [
   { id:"papers",     icon:"📄", label:"Papers" },
   { id:"banners",    icon:"🎉", label:"Result Banners" },
   { id:"faculty",    icon:"👨‍🏫", label:"Faculty" },
+  { id:"facilities", icon:"🏫", label:"Facilities" },
+  { id:"mocktests",  icon:"📝", label:"Mock Tests" },
+  { id:"faq",        icon:"❓", label:"FAQs" },
   { id:"testimonials", icon:"💬", label:"Testimonials" },
   { id:"examcal",    icon:"🗓️",  label:"Exam Calendar" },
   { id:"timeline",   icon:"📌", label:"Timeline" },
@@ -1905,7 +1911,10 @@ CREATE TABLE IF NOT EXISTS website_faculty (id bigserial primary key, name text 
 CREATE TABLE IF NOT EXISTS website_events (id bigserial primary key, title text not null, description text, event_date date not null, sort_order int default 0, is_active boolean default true, created_at timestamptz default now());
 CREATE TABLE IF NOT EXISTS website_testimonials (id bigserial primary key, quote text not null, attribution text default 'Parent', rating int default 5, is_featured boolean default true, sort_order int default 0, created_at timestamptz default now());
 CREATE TABLE IF NOT EXISTS website_exam_calendar (id bigserial primary key, exam_name text not null, sub_label text, exam_type text default 'NVS', application_opens text, application_closes text, exam_date text, exam_date_sort date, result_date text, status text default 'Upcoming', sort_order int default 0);
-CREATE TABLE IF NOT EXISTS website_timeline (id bigserial primary key, title text not null, description text, event_date date, status text default 'upcoming', tag_html text, sort_order int default 0);`;
+CREATE TABLE IF NOT EXISTS website_timeline (id bigserial primary key, title text not null, description text, event_date date, status text default 'upcoming', tag_html text, sort_order int default 0);
+${FAC_SQL}
+${MOCK_SQL}
+${FAQ_SQL}`;
 
   if(load)return<div style={s.loading}><Spin/>Loading settings…</div>;
 
@@ -1982,6 +1991,226 @@ CREATE TABLE IF NOT EXISTS website_timeline (id bigserial primary key, title tex
   );
 }
 
+
+// ════════════════════════════════════════════════════════════
+//  PDF UPLOAD FIELD (mock tests)
+// ════════════════════════════════════════════════════════════
+function PdfUploadField({label,folder,value,onChange}){
+  const [busy,setBusy]=useState(false);
+  const ref=useRef(null);
+  const handle=async e=>{
+    const f=e.target.files?.[0];e.target.value="";
+    if(!f)return;
+    if(f.type!=="application/pdf"&&!/\.pdf$/i.test(f.name))return toast("Please choose a PDF file","error");
+    if(f.size>25*1024*1024)return toast("PDF larger than 25MB","error");
+    setBusy(true);
+    const{url,error}=await uploadWebsiteFile(f,folder);
+    setBusy(false);
+    if(error||!url)return toast("Upload failed: "+(error?.message||"unknown"),"error");
+    onChange(url);toast("PDF uploaded ✓");
+  };
+  return(
+    <div style={{marginBottom:"1rem"}}>
+      <label style={s.lbl}>{label}</label>
+      <input ref={ref} type="file" accept="application/pdf,.pdf" onChange={handle} style={{display:"none"}}/>
+      <div style={{display:"flex",gap:".6rem",alignItems:"center",flexWrap:"wrap"}}>
+        <button type="button" style={{...s.btnG,opacity:busy?.6:1}} onClick={()=>ref.current?.click()} disabled={busy}>{busy?"Uploading…":value?"Replace PDF":"⬆ Upload PDF"}</button>
+        {value&&<a href={value} target="_blank" rel="noreferrer" style={{fontSize:".78rem",color:"#1e3a5f",fontWeight:600}}>📄 View current PDF</a>}
+        {value&&<button type="button" style={s.btnR} onClick={()=>onChange("")}>Remove</button>}
+      </div>
+      <input style={{...s.inp,marginTop:".5rem"}} placeholder="…or paste a PDF link" value={value||""} onChange={e=>onChange(e.target.value)}/>
+    </div>
+  );
+}
+
+const SQL_NOTE=(sql)=>(
+  <details style={{marginBottom:"1rem",fontSize:".75rem",color:"#64748b"}}>
+    <summary style={{cursor:"pointer"}}>First time? Run this SQL once in Supabase</summary>
+    <pre style={{background:"#0f172a",color:"#4ade80",padding:".7rem",borderRadius:6,whiteSpace:"pre-wrap",fontSize:".68rem",marginTop:".5rem"}}>{sql}</pre>
+    <button style={{...s.btnG,fontSize:".7rem"}} onClick={()=>{navigator.clipboard.writeText(sql);toast("SQL copied ✓");}}>📋 Copy SQL</button>
+  </details>
+);
+
+// ════════════════════════════════════════════════════════════
+//  FACILITIES (website_facilities)
+// ════════════════════════════════════════════════════════════
+const FAC_SQL=`CREATE TABLE IF NOT EXISTS website_facilities (id bigserial primary key, title text not null, description text, points text, icon text default '🏫', photo_url text, sort_order int default 0, is_active boolean default true, created_at timestamptz default now());`;
+function FacilitiesSection(){
+  const blank={title:"",description:"",points:"",icon:"🏫",photo_url:"",sort_order:0,is_active:true};
+  const [rows,setRows]=useState([]);const [load,setLoad]=useState(true);
+  const [form,setForm]=useState(blank);const [editing,setEdit]=useState(null);const [saving,setSave]=useState(false);
+  const load_=useCallback(async()=>{setLoad(true);setRows(await getFacilities(true));setLoad(false);},[]);
+  useEffect(()=>{load_();},[load_]);
+  const save=async()=>{
+    if(!form.title)return toast("Title required","error");
+    setSave(true);const{error}=await saveFacility({...form,sort_order:Number(form.sort_order)||0},editing);setSave(false);
+    if(error)return toast("Error: "+error.message,"error");
+    toast(editing?"Updated ✓":"Added ✓");setForm({...blank,sort_order:rows.length+1});setEdit(null);load_();
+  };
+  const del=async id=>{if(!confirm("Delete this facility?"))return;await deleteFacility(id);toast("Deleted");load_();};
+  const toggle=async r=>{await saveFacility({is_active:!r.is_active},r.id);load_();};
+  return(
+    <div>
+      <div style={s.card}>
+        <div style={s.cardHd}><span style={s.cardTit}>{editing?"✏️ Edit Facility":"🏫 Add Facility"}</span>{editing&&<button style={s.btnR} onClick={()=>{setEdit(null);setForm(blank);}}>Cancel</button>}</div>
+        <div style={s.cardBdy}>
+          {SQL_NOTE(FAC_SQL)}
+          <ImageUploadField label="Photo (real campus photo)" folder="facilities" value={form.photo_url} onChange={url=>setForm(f=>({...f,photo_url:url}))} previewSize={110}/>
+          <div style={s.g2}>
+            <div><label style={s.lbl}>Title *</label><input style={s.inp} placeholder="Residential Hostel" value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}/></div>
+            <div style={s.g2}>
+              <div><label style={s.lbl}>Icon</label><input style={s.inp} placeholder="🏠" value={form.icon} onChange={e=>setForm(f=>({...f,icon:e.target.value}))}/></div>
+              <div><label style={s.lbl}>Order</label><input type="number" style={s.inp} value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:e.target.value}))}/></div>
+            </div>
+          </div>
+          <label style={s.lbl}>Short description</label>
+          <textarea style={s.ta} rows={2} placeholder="Supervised residential accommodation modelled on Sainik School environment." value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))}/>
+          <label style={s.lbl}>Key points (one per line)</label>
+          <textarea style={s.ta} rows={4} placeholder={"Separate boys hostel blocks\n24/7 warden supervision"} value={form.points} onChange={e=>setForm(f=>({...f,points:e.target.value}))}/>
+          <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Facility":"Add to Website →"}</button>
+          <p style={{color:"#94a3b8",fontSize:".72rem",marginTop:".5rem"}}>Until you add at least one facility here, the website keeps showing its built-in six facility cards.</p>
+        </div>
+      </div>
+      {load?<div style={s.loading}><Spin/>Loading…</div>:
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:".8rem"}}>
+        {rows.map(r=>(
+          <div key={r.id} style={{...s.card,marginBottom:0,opacity:r.is_active?1:.5,overflow:"hidden"}}>
+            {r.photo_url?<img src={r.photo_url} alt="" style={{width:"100%",height:140,objectFit:"cover",display:"block"}}/>:<div style={{height:140,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"2.4rem",background:"#f1f5f9"}}>{r.icon||"🏫"}</div>}
+            <div style={{padding:".8rem"}}>
+              <div style={{fontWeight:700,color:"#1e293b"}}>{r.icon} {r.title}</div>
+              <div style={{fontSize:".75rem",color:"#64748b",margin:".3rem 0 .6rem"}}>{r.description}</div>
+              <div style={{display:"flex",gap:".35rem",flexWrap:"wrap"}}>
+                <button style={s.btnG} onClick={()=>{setEdit(r.id);setForm({title:r.title,description:r.description||"",points:r.points||"",icon:r.icon||"🏫",photo_url:r.photo_url||"",sort_order:r.sort_order||0,is_active:r.is_active});window.scrollTo({top:0,behavior:"smooth"});}}>Edit</button>
+                <button style={s.btnGrn} onClick={()=>toggle(r)}>{r.is_active?"Hide":"Show"}</button>
+                <button style={s.btnR} onClick={()=>del(r.id)}>Delete</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+//  MOCK TESTS (website_mock_tests) — real PDF downloads
+// ════════════════════════════════════════════════════════════
+const MOCK_SQL=`CREATE TABLE IF NOT EXISTS website_mock_tests (id bigserial primary key, title text not null, exam_type text default 'NVS', details text, test_date date, pdf_url text, answer_key_url text, sort_order int default 0, is_active boolean default true, created_at timestamptz default now());`;
+function MockTestsSection(){
+  const blank={title:"",exam_type:"NVS",details:"",test_date:"",pdf_url:"",answer_key_url:"",sort_order:0,is_active:true};
+  const [rows,setRows]=useState([]);const [load,setLoad]=useState(true);
+  const [form,setForm]=useState(blank);const [editing,setEdit]=useState(null);const [saving,setSave]=useState(false);
+  const load_=useCallback(async()=>{setLoad(true);setRows(await getMockTests(true));setLoad(false);},[]);
+  useEffect(()=>{load_();},[load_]);
+  const save=async()=>{
+    if(!form.title)return toast("Title required","error");
+    if(!form.pdf_url)return toast("Upload the question paper PDF","error");
+    setSave(true);const{error}=await saveMockTest({...form,test_date:form.test_date||null,sort_order:Number(form.sort_order)||0},editing);setSave(false);
+    if(error)return toast("Error: "+error.message,"error");
+    toast(editing?"Updated ✓":"Published ✓");setForm(blank);setEdit(null);load_();
+  };
+  const del=async id=>{if(!confirm("Delete this mock test?"))return;await deleteMockTest(id);toast("Deleted");load_();};
+  const toggle=async r=>{await saveMockTest({is_active:!r.is_active},r.id);load_();};
+  return(
+    <div>
+      <div style={s.card}>
+        <div style={s.cardHd}><span style={s.cardTit}>{editing?"✏️ Edit Mock Test":"📝 Add Mock Test PDF"}</span>{editing&&<button style={s.btnR} onClick={()=>{setEdit(null);setForm(blank);}}>Cancel</button>}</div>
+        <div style={s.cardBdy}>
+          {SQL_NOTE(MOCK_SQL)}
+          <div style={s.g2}>
+            <div><label style={s.lbl}>Title *</label><input style={s.inp} placeholder="NVS Class 6 Full Mock Test — Set 1" value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}/></div>
+            <div style={s.g2}>
+              <div><label style={s.lbl}>Exam</label><select style={s.sel} value={form.exam_type} onChange={e=>setForm(f=>({...f,exam_type:e.target.value}))}><option>NVS</option><option>Sainik</option><option>RMS</option><option>Foundation</option><option>General</option></select></div>
+              <div><label style={s.lbl}>Test date</label><input type="date" style={s.inp} value={form.test_date||""} onChange={e=>setForm(f=>({...f,test_date:e.target.value}))}/></div>
+            </div>
+          </div>
+          <label style={s.lbl}>Details</label>
+          <input style={s.inp} placeholder="80 Questions · 90 Minutes" value={form.details} onChange={e=>setForm(f=>({...f,details:e.target.value}))}/>
+          <div style={s.g2}>
+            <PdfUploadField label="Question paper PDF *" folder="mock-tests" value={form.pdf_url} onChange={u=>setForm(f=>({...f,pdf_url:u}))}/>
+            <PdfUploadField label="Answer key PDF (optional)" folder="mock-tests" value={form.answer_key_url} onChange={u=>setForm(f=>({...f,answer_key_url:u}))}/>
+          </div>
+          <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update":"Publish to Website →"}</button>
+        </div>
+      </div>
+      {load?<div style={s.loading}><Spin/>Loading…</div>:rows.map(r=>(
+        <div key={r.id} style={{...s.card,opacity:r.is_active?1:.5}}>
+          <div style={s.cardHd}>
+            <div style={{display:"flex",gap:".6rem",alignItems:"center",flexWrap:"wrap"}}>
+              <span style={s.badge("Medium")}>{r.exam_type}</span>
+              <span style={{color:"#1e293b",fontWeight:600}}>{r.title}</span>
+              <span style={{fontSize:".72rem",color:"#94a3b8"}}>{r.details}{r.test_date?` · ${fmt(r.test_date)}`:""}</span>
+            </div>
+            <div style={{display:"flex",gap:".35rem",flexWrap:"wrap"}}>
+              {r.pdf_url&&<a href={r.pdf_url} target="_blank" rel="noreferrer" style={{...s.btnGrn,textDecoration:"none"}}>Paper</a>}
+              {r.answer_key_url&&<a href={r.answer_key_url} target="_blank" rel="noreferrer" style={{...s.btnGrn,textDecoration:"none"}}>Key</a>}
+              <button style={s.btnG} onClick={()=>{setEdit(r.id);setForm({title:r.title,exam_type:r.exam_type||"NVS",details:r.details||"",test_date:r.test_date||"",pdf_url:r.pdf_url||"",answer_key_url:r.answer_key_url||"",sort_order:r.sort_order||0,is_active:r.is_active});window.scrollTo({top:0,behavior:"smooth"});}}>Edit</button>
+              <button style={s.btnGrn} onClick={()=>toggle(r)}>{r.is_active?"Hide":"Show"}</button>
+              <button style={s.btnR} onClick={()=>del(r.id)}>Delete</button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+//  FAQs (website_faq)
+// ════════════════════════════════════════════════════════════
+const FAQ_SQL=`CREATE TABLE IF NOT EXISTS website_faq (id bigserial primary key, question text not null, answer text not null, category text default 'General', sort_order int default 0, is_active boolean default true, created_at timestamptz default now());`;
+function FaqSection(){
+  const blank={question:"",answer:"",category:"General",sort_order:0,is_active:true};
+  const [rows,setRows]=useState([]);const [load,setLoad]=useState(true);
+  const [form,setForm]=useState(blank);const [editing,setEdit]=useState(null);const [saving,setSave]=useState(false);
+  const load_=useCallback(async()=>{setLoad(true);setRows(await getFaqs(true));setLoad(false);},[]);
+  useEffect(()=>{load_();},[load_]);
+  const save=async()=>{
+    if(!form.question||!form.answer)return toast("Question and answer required","error");
+    setSave(true);const{error}=await saveFaq({...form,sort_order:Number(form.sort_order)||0},editing);setSave(false);
+    if(error)return toast("Error: "+error.message,"error");
+    toast(editing?"Updated ✓":"Added ✓");setForm({...blank,category:form.category,sort_order:rows.length+1});setEdit(null);load_();
+  };
+  const del=async id=>{if(!confirm("Delete this FAQ?"))return;await deleteFaq(id);toast("Deleted");load_();};
+  const toggle=async r=>{await saveFaq({is_active:!r.is_active},r.id);load_();};
+  return(
+    <div>
+      <div style={s.card}>
+        <div style={s.cardHd}><span style={s.cardTit}>{editing?"✏️ Edit FAQ":"❓ Add FAQ"}</span>{editing&&<button style={s.btnR} onClick={()=>{setEdit(null);setForm(blank);}}>Cancel</button>}</div>
+        <div style={s.cardBdy}>
+          {SQL_NOTE(FAQ_SQL)}
+          <label style={s.lbl}>Question *</label>
+          <input style={s.inp} placeholder="Is boarding hostel facility available?" value={form.question} onChange={e=>setForm(f=>({...f,question:e.target.value}))}/>
+          <label style={s.lbl}>Answer *</label>
+          <textarea style={s.ta} rows={4} value={form.answer} onChange={e=>setForm(f=>({...f,answer:e.target.value}))}/>
+          <div style={s.g2}>
+            <div><label style={s.lbl}>Category</label><select style={s.sel} value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}><option>General</option><option>Admissions</option><option>Hostel</option><option>Fees</option><option>Exams</option><option>Parents Portal</option></select></div>
+            <div><label style={s.lbl}>Order</label><input type="number" style={s.inp} value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:e.target.value}))}/></div>
+          </div>
+          <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update FAQ":"Add to Website →"}</button>
+          <p style={{color:"#94a3b8",fontSize:".72rem",marginTop:".5rem"}}>Until you add at least one FAQ here, the website keeps showing its built-in questions.</p>
+        </div>
+      </div>
+      {load?<div style={s.loading}><Spin/>Loading…</div>:rows.map(r=>(
+        <div key={r.id} style={{...s.card,opacity:r.is_active?1:.5}}>
+          <div style={s.cardHd}>
+            <div style={{display:"flex",gap:".6rem",alignItems:"center",flexWrap:"wrap"}}>
+              <span style={s.badge("Low")}>{r.category}</span>
+              <span style={{color:"#1e293b",fontWeight:600}}>{r.question}</span>
+            </div>
+            <div style={{display:"flex",gap:".35rem"}}>
+              <button style={s.btnG} onClick={()=>{setEdit(r.id);setForm({question:r.question,answer:r.answer,category:r.category||"General",sort_order:r.sort_order||0,is_active:r.is_active});window.scrollTo({top:0,behavior:"smooth"});}}>Edit</button>
+              <button style={s.btnGrn} onClick={()=>toggle(r)}>{r.is_active?"Hide":"Show"}</button>
+              <button style={s.btnR} onClick={()=>del(r.id)}>Delete</button>
+            </div>
+          </div>
+          <div style={{padding:".6rem 1.1rem",fontSize:".82rem",color:"#64748b",lineHeight:1.6}}>{r.answer}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════
 //  MAIN EXPORT
 // ════════════════════════════════════════════════════════════
@@ -2000,6 +2229,9 @@ export default function WebsiteTab() {
     papers:    <PapersSection/>,
     banners:   <BannersSection/>,
     faculty:   <FacultySection/>,
+    facilities:<FacilitiesSection/>,
+    mocktests: <MockTestsSection/>,
+    faq:       <FaqSection/>,
     testimonials: <TestimonialsSection/>,
     examcal:   <ExamCalendarSection/>,
     timeline:  <TimelineSection/>,

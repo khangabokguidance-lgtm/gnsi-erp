@@ -721,3 +721,58 @@ export async function getLiveKPIs() {
     latestNotice: noticeRes.error ? null : (noticeRes.data?.[0]?.title ?? 'No active notices'),
   };
 }
+// ─── FILE UPLOAD (PDFs etc.) — same bucket as images ─────────────────────
+export async function uploadWebsiteFile(file, folder = 'files') {
+  return uploadWebsiteImage(file, folder);
+}
+
+// ─── FACILITIES (website_facilities) ────────────────────────────────────────
+// { title, description, points (one per line), icon, photo_url, sort_order, is_active }
+export async function getFacilities(includeHidden = false) {
+  let q = supabase.from('website_facilities').select('*').order('sort_order').order('id');
+  if (!includeHidden) q = q.eq('is_active', true);
+  const { data, error } = await q;
+  if (error) return [];
+  return data || [];
+}
+export async function saveFacility(form, editingId = null) {
+  if (editingId) return supabase.from('website_facilities').update(form).eq('id', editingId);
+  return supabase.from('website_facilities').insert(form);
+}
+export async function deleteFacility(id) {
+  return supabase.from('website_facilities').delete().eq('id', id);
+}
+
+// ─── MOCK TESTS (website_mock_tests) ────────────────────────────────────────
+// { title, exam_type, details, test_date, pdf_url, answer_key_url, sort_order, is_active }
+export async function getMockTests(includeHidden = false) {
+  let q = supabase.from('website_mock_tests').select('*').order('sort_order').order('test_date', { ascending: false });
+  if (!includeHidden) q = q.eq('is_active', true);
+  const { data, error } = await q;
+  if (error) return [];
+  return data || [];
+}
+export async function saveMockTest(form, editingId = null) {
+  if (editingId) return supabase.from('website_mock_tests').update(form).eq('id', editingId);
+  return supabase.from('website_mock_tests').insert(form);
+}
+export async function deleteMockTest(id) {
+  return supabase.from('website_mock_tests').delete().eq('id', id);
+}
+
+// ─── FAQ (website_faq) ──────────────────────────────────────────────────────
+// { question, answer, category, sort_order, is_active }
+export async function getFaqs(includeHidden = false) {
+  let q = supabase.from('website_faq').select('*').order('sort_order').order('id');
+  if (!includeHidden) q = q.eq('is_active', true);
+  const { data, error } = await q;
+  if (error) return [];
+  return data || [];
+}
+export async function saveFaq(form, editingId = null) {
+  if (editingId) return supabase.from('website_faq').update(form).eq('id', editingId);
+  return supabase.from('website_faq').insert(form);
+}
+export async function deleteFaq(id) {
+  return supabase.from('website_faq').delete().eq('id', id);
+}
