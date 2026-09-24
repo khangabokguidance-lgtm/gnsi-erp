@@ -1061,46 +1061,63 @@ export default function LandingPage({ onLogin }) {
   }, []);
 
 
-  // Nav priority, per site review: surface only what a prospective parent
-  // needs fastest (Admissions, Results, Fee Payment, Contact, Courses,
-  // Portal) as direct links; everything else (syllabus, gallery, faculty,
-  // blog, etc.) lives under one "More" menu instead of five separate
-  // dropdowns competing for attention.
-  //
-  // A category with a single link renders as a direct clickable item (no
-  // dropdown arrow); a category with multiple links still expands like
-  // before. "More" bundles every lower-priority section into one dropdown.
+  // Hamburger menu, grouped into collapsible categories (one open at a time).
+  // A category with a single link renders as a direct clickable item.
   const navCategories = [
-    { label: 'Admissions', icon: '📋', links: [{ label: 'Admissions', href: '#enquiry' }] },
-    { label: 'Results', icon: '🏆', links: [{ label: 'Results', href: '#results' }] },
-    { label: 'Fee Payment', icon: '💳', links: [{ label: 'Fee Payment', href: '#fee-payment' }] },
-    { label: 'Contact', icon: '📍', links: [{ label: 'Contact', href: '#contact' }] },
-    { label: 'Courses', icon: '📚', links: [{ label: 'Courses', href: '#courses' }] },
-    { label: 'Admit Card', icon: '🔑', links: [{ label: 'Admit Card / Result', href: '#admit-card' }] },
     {
-      label: 'More',
-      icon: '⋯',
+      label: 'Admissions', icon: '📋',
+      links: [
+        { label: 'Apply / Enquire', href: '#enquiry' },
+        { label: 'Courses', href: '#courses' },
+        { label: 'Scholarship / Free Test', href: '#scholarship' },
+        { label: 'Fee Payment', href: '#fee-payment' },
+        { label: 'Important Dates', href: '#important-dates' },
+      ]
+    },
+    {
+      label: 'Academics', icon: '📚',
       links: [
         { label: 'Syllabus', href: '#syllabus' },
         { label: 'Question Papers', href: '#question-papers' },
-        { label: 'Exam Calendar', href: '#exam-calendar' },
         { label: 'Mock Tests', href: '#mock-tests' },
+        { label: 'Exam Calendar', href: '#exam-calendar' },
+        { label: 'Admit Card / Result', href: '#admit-card' },
+      ]
+    },
+    {
+      label: 'Results', icon: '🏆',
+      links: [
+        { label: 'Results', href: '#results' },
         { label: "Toppers' Wall", href: '#rankers' },
         { label: 'Student Reviews', href: '#reviews' },
-        { label: 'Notices', href: '#notices' },
-        { label: 'Blog & News', href: '#blog' },
-        { label: 'Scholarship / Free Test', href: '#scholarship' },
-        { label: 'Important Dates', href: '#important-dates' },
-        { label: 'FAQ', href: '#faq' },
+      ]
+    },
+    {
+      label: 'Campus', icon: '🏫',
+      links: [
+        { label: 'About GNSI', href: '#about' },
+        { label: 'Head of the Institute', href: '#head-institute' },
         { label: 'Faculty', href: '#faculty' },
         { label: 'Facilities', href: '#facilities' },
         { label: 'Gallery', href: '#gallery' },
         { label: 'Videos', href: '#videos' },
         { label: 'Events', href: '#events' },
-        { label: 'About GNSI', href: '#about' },
-        { label: 'Head of the Institute', href: '#head-institute' },
-        { label: 'Download App', href: '#app-download' },
+      ]
+    },
+    {
+      label: 'Updates', icon: '📢',
+      links: [
+        { label: 'Notices', href: '#notices' },
+        { label: 'Blog & News', href: '#blog' },
+      ]
+    },
+    {
+      label: 'Support', icon: '🛟',
+      links: [
+        { label: 'Contact', href: '#contact' },
+        { label: 'FAQ', href: '#faq' },
         { label: 'Helpdesk / Grievance', href: '#helpdesk' },
+        { label: 'Download App', href: '#app-download' },
       ]
     },
   ];
