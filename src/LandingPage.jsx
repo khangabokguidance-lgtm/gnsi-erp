@@ -791,14 +791,15 @@ export default function LandingPage({ onLogin }) {
     return () => { alive = false; };
   }, []);
   const site = useMemo(() => buildSite(siteCfg), [siteCfg]);
+  // If the emblem image fails to load, show a "GNSI" monogram in the nav
+  // crest instead of an empty white box.
+  const [emblemFailed, setEmblemFailed] = useState(false);
   const [progDetail, setProgDetail] = useState(null); // key of PROGRAMMES shown in the details panel
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === 'undefined') return 'home';
     return hashToTab(window.location.hash).tab;
   });
   const tabContentRef = useRef(null);
-  const tabStripRef = useRef(null);
-  const [tabStripScroll, setTabStripScroll] = useState({ atStart: true, atEnd: false });
 
   // ═══ ADMIT CARD / RESULT PORTAL (public, fee-gated, real data) ═══
   // examTypes: live list pulled from the real `exam_types` table so the
@@ -1149,7 +1150,7 @@ export default function LandingPage({ onLogin }) {
       if (!(e.target instanceof Element) || !e.target.isConnected) return;
       if (tabContentRef.current && tabContentRef.current.contains(e.target)) return;
       if (e.target.closest(
-        '.tab-nav-strip, .sec-grid-wrap, .hero, nav, .mob-menu, .lb-overlay, ' +
+        '.sec-grid-wrap, .hero, nav, .mob-menu, .lb-overlay, ' +
         '.pd-overlay, .poster-overlay, .poster-badge, footer, .cta-block, ' +
         '#stickyBar, [role="dialog"], [aria-modal="true"]'
       )) return;
@@ -1186,44 +1187,6 @@ export default function LandingPage({ onLogin }) {
     return () => tabRevealObserver.disconnect();
   }, [activeTab]);
 
-  // Tab pill strip (25 items) is a horizontally-scrolling row. Track
-  // scroll position so we can show/hide left/right fade+arrow affordances,
-  // and keep the active pill scrolled into view whenever it changes (via
-  // click or browser back/forward) so the user always sees which tab is on.
-  useEffect(() => {
-    const el = tabStripRef.current;
-    if (!el) return;
-    const updateScrollState = () => {
-      const maxScroll = el.scrollWidth - el.clientWidth;
-      setTabStripScroll({
-        atStart: el.scrollLeft <= 4,
-        atEnd: el.scrollLeft >= maxScroll - 4,
-      });
-    };
-    updateScrollState();
-    el.addEventListener('scroll', updateScrollState, { passive: true });
-    window.addEventListener('resize', updateScrollState);
-    return () => {
-      el.removeEventListener('scroll', updateScrollState);
-      window.removeEventListener('resize', updateScrollState);
-    };
-  }, []);
-
-  useEffect(() => {
-    const el = tabStripRef.current;
-    if (!el) return;
-    const activeBtn = el.querySelector('.tab-nav-btn.active');
-    if (activeBtn) {
-      activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-    }
-  }, [activeTab]);
-
-  const scrollTabStrip = (dir) => {
-    const el = tabStripRef.current;
-    if (!el) return;
-    el.scrollBy({ left: dir * Math.round(el.clientWidth * 0.7), behavior: 'smooth' });
-  };
-
   // Nav-menu links point at in-page hashes (e.g. "#enquiry", "#contact").
   // "#contact" is a sub-element inside the "enquiry" tab, not a tab of its
   // own, so it maps to the enquiry tab and then scrolls to #contact.
@@ -1234,7 +1197,7 @@ export default function LandingPage({ onLogin }) {
     goToTab(hashId);
   };
 
-  // cat drives the tab pill's accent color (see .tab-nav-btn.cat-* CSS):
+  // cat drives each section tile's accent colour (see .sec-tile.cat-* in the grid styles):
   // gold = core/home, blue = institute info, green = results & community,
   // red = academics/exam-prep, purple = admin/utility.
   // Icons for the "All Sections" grid below the top banner.
@@ -2140,7 +2103,21 @@ window.submitGrievance = async () => {
     <div className="nav-inner">
       <a className="brand" href="#home" onClick={(e) => { e.preventDefault(); goToTab('home'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
         <span className="nv-crest">
-          <img src={EMBLEM_URL} alt="" onError={(e) => { e.target.style.display = 'none'; }} />
+          {!emblemFailed ? (
+            <img src={EMBLEM_URL} alt="GNSI emblem" onError={() => setEmblemFailed(true)} />
+          ) : (
+            <span
+              aria-label="GNSI"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: '100%', height: '100%', color: 'var(--navy, #0f1f3d)',
+                fontWeight: 800, fontSize: '.95rem', letterSpacing: '.04em',
+                fontFamily: 'Georgia, "Times New Roman", serif'
+              }}
+            >
+              GNSI
+            </span>
+          )}
         </span>
         <div className="brand-text">
           <h2><span className="brand-full">Guidance Navodaya &amp; Sainik Institute</span><span className="brand-short">GNSI</span></h2>
@@ -2182,7 +2159,9 @@ window.submitGrievance = async () => {
   <div className={"mob-menu" + (mobileOpen ? " open" : "")}>
     <div className="mob-menu-hd">
       <div className="mob-menu-brand">
-        <img src={EMBLEM_URL} alt="GNSI" style={{ height: 34, width: 34, objectFit: "contain", flexShrink: 0 }} onError={(e) => { e.target.style.display = "none"; }} />
+        {!emblemFailed && (
+          <img src={EMBLEM_URL} alt="GNSI" style={{ height: 34, width: 34, objectFit: "contain", flexShrink: 0 }} onError={() => setEmblemFailed(true)} />
+        )}
         <span>GNSI</span>
       </div>
       <button className="mob-menu-close" onClick={closeMobile} aria-label="Close menu">
@@ -2263,47 +2242,6 @@ window.submitGrievance = async () => {
       <a href="#enquiry" onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('enquiry'); }} className="mmb-apply">
         Apply Now →
       </a>
-    </div>
-  </div>
-  {/* ALL SECTIONS GRID — every section (except Home) as a tile, right
-      below the top banner and menu bar, so visitors see everything at a
-      glance instead of scrolling the tab strip. Uses the same tabList,
-      so a new tab added there shows up here automatically. */}
-  <style>{`
-    .sec-grid-wrap{background:#f6f3ea;padding:1.1rem 0 1.25rem;border-bottom:1px solid rgba(15,31,61,.08)}
-    .sec-grid-title{font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--navy,#0f1f3d);margin:0 0 .7rem;text-align:center}
-    .sec-grid{--per:9;--gap:.55rem;display:flex;flex-wrap:wrap;justify-content:center;gap:var(--gap)}
-    .sec-tile{flex:0 0 calc((100% - (var(--per) - 1) * var(--gap)) / var(--per));min-width:0}
-    .sec-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;min-height:74px;padding:.55rem .35rem;border-radius:10px;background:#fff;border:1px solid rgba(15,31,61,.1);border-top:3px solid var(--tc);cursor:pointer;font:inherit;color:var(--navy,#0f1f3d);text-align:center;transition:transform .15s,box-shadow .15s,background .15s}
-    .sec-tile:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(15,31,61,.12)}
-    .sec-tile:focus-visible{outline:2px solid var(--tc);outline-offset:2px}
-    .sec-tile.active{background:var(--navy,#0f1f3d);color:#fff;border-color:var(--navy,#0f1f3d);border-top-color:var(--tc)}
-    .sec-tile-ic{font-size:1.35rem;line-height:1}
-    .sec-tile-lb{font-size:.74rem;font-weight:700;line-height:1.2}
-    .sec-tile.cat-gold{--tc:#c9a227}.sec-tile.cat-red{--tc:#c0392b}.sec-tile.cat-green{--tc:#1e8e4e}
-    .sec-tile.cat-blue{--tc:#2563eb}.sec-tile.cat-purple{--tc:#7c3aed}
-    @media (max-width:1024px){.sec-grid{--per:7}}
-    @media (max-width:700px){.sec-grid{--per:5;--gap:.35rem}.sec-tile{min-height:66px;padding:.45rem .2rem}.sec-tile-ic{font-size:1.15rem}.sec-tile-lb{font-size:.64rem}}
-    @media (max-width:340px){.sec-grid{--per:4}}
-  `}</style>
-  <div className="sec-grid-wrap">
-    <div className="container">
-      <p className="sec-grid-title">Explore GNSI · All Sections</p>
-      <div className="sec-grid" role="list">
-        {tabList.filter((t) => t.id !== 'home').map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="listitem"
-            className={"sec-tile cat-" + t.cat + (activeTab === t.id ? " active" : "")}
-            aria-current={activeTab === t.id ? 'page' : undefined}
-            onClick={() => goToTab(t.id)}
-          >
-            <span className="sec-tile-ic" aria-hidden="true">{TAB_ICONS[t.id] || '•'}</span>
-            <span className="sec-tile-lb">{t.label}</span>
-          </button>
-        ))}
-      </div>
     </div>
   </div>
   {/* HERO */}
@@ -2508,46 +2446,45 @@ window.submitGrievance = async () => {
       />
     </figure>
   </div>
-  {/* TAB STRIP — 25 pills, horizontally scrollable on all breakpoints.
-      Left/right arrow buttons (desktop only, via CSS) + fade edges give a
-      visible cue that there's more to scroll; they hide themselves at
-      each end via tabStripScroll. Active pill auto-scrolls into view. */}
-  <div className="tab-nav-wrap">
-    <div className="tab-nav-strip-outer container">
-      <button
-        type="button"
-        aria-label="Scroll tabs left"
-        className={"tab-strip-arrow tab-strip-arrow-l" + (tabStripScroll.atStart ? " is-hidden" : "")}
-        onClick={() => scrollTabStrip(-1)}
-      >
-        ‹
-      </button>
-      <div
-        className={"tab-nav-fade tab-nav-fade-l" + (tabStripScroll.atStart ? " is-hidden" : "")}
-      />
-      <div className="tab-nav-strip" ref={tabStripRef}>
-        {tabList.map((t) => (
+  {/* ALL SECTIONS GRID — replaces the old horizontally-scrolling tab
+      strip: every section (except Home — the logo and "Back to Home"
+      cover that) is visible at once as a tile, no scrolling. Uses the same tabList,
+      so a new tab added there shows up here automatically. */}
+  <style>{`
+    .sec-grid-wrap{background:#f6f3ea;padding:1.1rem 0 1.25rem;border-bottom:1px solid rgba(15,31,61,.08)}
+    .sec-grid-title{font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--navy,#0f1f3d);margin:0 0 .7rem;text-align:center}
+    .sec-grid{--per:9;--gap:.55rem;display:flex;flex-wrap:wrap;justify-content:center;gap:var(--gap)}
+    .sec-tile{flex:0 0 calc((100% - (var(--per) - 1) * var(--gap)) / var(--per));min-width:0}
+    .sec-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;min-height:74px;padding:.55rem .35rem;border-radius:10px;background:#fff;border:1px solid rgba(15,31,61,.1);border-top:3px solid var(--tc);cursor:pointer;font:inherit;color:var(--navy,#0f1f3d);text-align:center;transition:transform .15s,box-shadow .15s,background .15s}
+    .sec-tile:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(15,31,61,.12)}
+    .sec-tile:focus-visible{outline:2px solid var(--tc);outline-offset:2px}
+    .sec-tile.active{background:var(--navy,#0f1f3d);color:#fff;border-color:var(--navy,#0f1f3d);border-top-color:var(--tc)}
+    .sec-tile-ic{font-size:1.35rem;line-height:1}
+    .sec-tile-lb{font-size:.74rem;font-weight:700;line-height:1.2}
+    .sec-tile.cat-gold{--tc:#c9a227}.sec-tile.cat-red{--tc:#c0392b}.sec-tile.cat-green{--tc:#1e8e4e}
+    .sec-tile.cat-blue{--tc:#2563eb}.sec-tile.cat-purple{--tc:#7c3aed}
+    @media (max-width:1024px){.sec-grid{--per:7}}
+    @media (max-width:700px){.sec-grid{--per:5;--gap:.35rem}.sec-tile{min-height:66px;padding:.45rem .2rem}.sec-tile-ic{font-size:1.15rem}.sec-tile-lb{font-size:.64rem}}
+    @media (max-width:340px){.sec-grid{--per:4}}
+  `}</style>
+  <div className="sec-grid-wrap">
+    <div className="container">
+      <p className="sec-grid-title">Explore GNSI · All Sections</p>
+      <div className="sec-grid" role="list">
+        {tabList.filter((t) => t.id !== 'home').map((t) => (
           <button
             key={t.id}
             type="button"
-            className={"tab-nav-btn cat-" + t.cat + (activeTab === t.id ? " active" : "")}
+            role="listitem"
+            className={"sec-tile cat-" + t.cat + (activeTab === t.id ? " active" : "")}
+            aria-current={activeTab === t.id ? 'page' : undefined}
             onClick={() => goToTab(t.id)}
           >
-            {t.label}
+            <span className="sec-tile-ic" aria-hidden="true">{TAB_ICONS[t.id] || '•'}</span>
+            <span className="sec-tile-lb">{t.label}</span>
           </button>
         ))}
       </div>
-      <div
-        className={"tab-nav-fade tab-nav-fade-r" + (tabStripScroll.atEnd ? " is-hidden" : "")}
-      />
-      <button
-        type="button"
-        aria-label="Scroll tabs right"
-        className={"tab-strip-arrow tab-strip-arrow-r" + (tabStripScroll.atEnd ? " is-hidden" : "")}
-        onClick={() => scrollTabStrip(1)}
-      >
-        ›
-      </button>
     </div>
   </div>
   {/* TAB CONTENT WRAPPER — used by the outside-click auto-close handler.
