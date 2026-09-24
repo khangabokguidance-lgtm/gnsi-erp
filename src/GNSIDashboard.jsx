@@ -1474,6 +1474,52 @@ function RlsLockTool({ onDone, log }) {
   )
 }
 
+// ── Fix history (stored in the database) with Undo ─────────────────────
+function FixHistoryPanel({ refreshKey, onChange }) {
+  const [rows, setRows] = useState(null)
+  const [busy, setBusy] = useState(null)
+  const [openId, setOpenId] = useState(null)
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.rpc("system_fix_history", { p_limit: 30 })
+    setRows(error ? null : (data || []))
+  }, [])
+  useEffect(() => { load() }, [load, refreshKey])
+  if (!rows || !rows.length) return null
+  const undo = async (r) => {
+    if (!window.confirm(`Undo this fix?\n\n${r.message}`)) return
+    setBusy(r.id)
+    const { data, error } = await supabase.rpc("system_fix_undo", { p_log_id: r.id })
+    setBusy(null)
+    alert(error ? "Undo failed: " + error.message : "↶ " + data)
+    load(); onChange?.()
+  }
+  return (
+    <Panel title={`🕘 Fix history · last ${rows.length}`} style={{marginTop:14}}>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {rows.map(r => (
+          <div key={r.id} style={{border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 12px",background:r.undone_at?"#F7F7F7":"#fff"}}>
+            <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+              <span style={{fontSize:12.5,flex:"1 1 240px",color:T.inkMid,textDecoration:r.undone_at?"line-through":"none"}}>
+                <b style={{color:T.ink}}>{r.message}</b>
+                <span style={{color:T.inkSub}}> · {new Date(r.at).toLocaleString("en-IN",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"})}{r.by ? " · " + r.by : ""}</span>
+              </span>
+              {r.items?.length > 0 && <button onClick={() => setOpenId(openId === r.id ? null : r.id)} style={{border:"none",background:"transparent",color:T.navy,fontWeight:700,fontSize:12,cursor:"pointer"}}>{openId === r.id ? "Hide" : "Details"}</button>}
+              {r.undone_at
+                ? <span style={{fontSize:11,fontWeight:800,color:T.inkSub}}>↶ {r.undo_msg}</span>
+                : r.undoable && <button disabled={busy===r.id} onClick={() => undo(r)} style={{border:"1px solid #b3273f",background:"#fff",color:"#b3273f",borderRadius:999,padding:"4px 12px",fontSize:11.5,fontWeight:800,cursor:"pointer"}}>{busy===r.id ? "Undoing…" : "↶ Undo"}</button>}
+            </div>
+            {openId === r.id && (
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
+                {r.items.map((it,i) => <code key={i} style={{fontSize:11,background:"#F6F8FC",border:`1px solid ${T.border}`,borderRadius:6,padding:"2px 7px"}}>{String(it)}</code>)}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </Panel>
+  )
+}
+
 function RlsLockedPanel({ refreshKey, onChange }) {
   const [rows, setRows] = useState([])
   const [busy, setBusy] = useState(false)
@@ -1513,6 +1559,21 @@ export function SecurityCenter({ onNavigate } = {}) {
   const [fixing, setFixing] = useState(null)   // finding id being fixed, or "all"
   const [log, setLog] = useState([])           // [{ id, title, msg, ok }]
   const [lockKey, setLockKey] = useState(0)
+  const [picked, setPicked] = useState({})     // id -> true (manual fix selection)
+  const [preview, setPreview] = useState({})   // id -> { loading } | { n, msg, items } | { error }
+  const doPreview = async (f) => {
+    setPreview(p => ({ ...p, [f.id]: { loading: true } }))
+    const { data, error } = await supabase.rpc("system_fix_preview", { p_id: f.id })
+    setPreview(p => ({ ...p, [f.id]: error ? { error: /system_fix_preview|does not exist/i.test(error.message) ? "Run the latest system_health.sql to enable preview." : error.message } : data }))
+  }
+  const exportReport = () => {
+    const cell = v => { let s = String(v ?? ""); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"' }
+    const rows = [["Severity","Module","Type","Issue","Details","How to fix","Auto-fix","Records"]]
+    state.findings.forEach(f => rows.push([f.severity, f.module, f.kind || "security", f.title, f.detail, f.fix, f.fixable ? "yes" : "no", (f.items || []).join(" | ")]))
+    const blob = new Blob(["\ufeff" + rows.map(r => r.map(cell).join(",")).join("\n")], { type: "text/csv" })
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob)
+    a.download = `gnsi-health-${new Date().toISOString().slice(0,10)}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000)
+  }
 
   const run = useCallback(async () => {
     setState(s => ({ ...s, status: "loading", error: null }))
@@ -1556,16 +1617,21 @@ export function SecurityCenter({ onNavigate } = {}) {
   const applyFix = async (f, silent = false) => {
     if (!silent && !window.confirm(`Apply the automatic fix?\n\n${f.title}\n\n${f.fix}`)) return false
     setFixing(f.id)
-    const { data, error } = await supabase.rpc("system_fix", { p_id: f.id })
+    let who = null
+    try { const u = JSON.parse(localStorage.getItem("gnsi_session") || "null")?.user; who = u?.name || u?.username || null } catch (_) {}
+    let { data, error } = await supabase.rpc("system_fix", { p_id: f.id, p_by: who })
+    if (error && /system_fix\(p_by|p_by|function .*system_fix/i.test(error.message)) ({ data, error } = await supabase.rpc("system_fix", { p_id: f.id }))
     setLog(l => [{ id: f.id, title: f.title, msg: error ? error.message : data, ok: !error, at: new Date() }, ...l].slice(0, 20))
     setFixing(null)
     return !error
   }
   const logLine = (f, msg, ok) => setLog(l => [{ id: f.id, title: f.title, msg, ok, at: new Date() }, ...l].slice(0, 20))
-  const fixAll = async () => {
-    const list = state.findings.filter(f => f.fixable && f.id !== "rls_off")
+  const canFix = (f) => f.fixable && f.id !== "rls_off"
+  const fixAll = async (onlyPicked = false) => {
+    const list = state.findings.filter(f => canFix(f) && (!onlyPicked || picked[f.id]))
     if (!list.length) return
-    if (!window.confirm(`Apply ${list.length} safe automatic fix(es)?\n\n` + list.map(f => "• " + f.title).join("\n"))) return
+    if (!window.confirm(`Apply ${list.length} automatic fix(es)?\n\n` + list.map(f => "• " + f.title).join("\n"))) return
+    setPicked({})
     setFixing("all")
     for (const f of list) await applyFix(f, true)
     setFixing(null)
@@ -1624,6 +1690,10 @@ export function SecurityCenter({ onNavigate } = {}) {
             boxShadow:"0 10px 24px rgba(201,162,75,.35)",opacity:state.status==="loading"?.6:1}}>
             {state.status==="loading" ? "Scanning…" : "↻ Re-scan"}
           </button>
+          <button onClick={exportReport} disabled={!findings.length} style={{position:"relative",padding:"10px 16px",borderRadius:999,border:"1px solid rgba(226,197,126,.6)",
+            background:"rgba(255,255,255,.08)",color:"#fff",fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit",opacity:findings.length?1:.5}}>
+            ⬇ Export report
+          </button>
         </div>
       </div>
 
@@ -1642,12 +1712,24 @@ export function SecurityCenter({ onNavigate } = {}) {
           </button>
         ))}
         <div style={{flex:1}}/>
-        {findings.some(f => f.fixable && f.id !== "rls_off") && (
-          <button onClick={fixAll} disabled={!!fixing} style={{padding:"9px 16px",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",
-            fontSize:12.5,fontWeight:800,background:"#0f7a52",color:"#fff",boxShadow:"0 8px 20px rgba(15,122,82,.3)",opacity:fixing?.6:1}}>
-            {fixing==="all" ? "Fixing…" : `🔧 Fix all safe issues (${findings.filter(f=>f.fixable && f.id !== "rls_off").length})`}
-          </button>
-        )}
+        {findings.some(canFix) && (() => {
+          const fx = findings.filter(canFix)
+          const nPicked = fx.filter(f => picked[f.id]).length
+          const all = nPicked === fx.length
+          return (
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12.5,fontWeight:700,color:T.inkMid,cursor:"pointer",padding:"7px 12px",borderRadius:999,border:`1px solid ${T.border}`,background:"#fff"}}>
+                <input type="checkbox" checked={all} ref={el => { if (el) el.indeterminate = nPicked > 0 && !all }}
+                  onChange={() => setPicked(all ? {} : Object.fromEntries(fx.map(f => [f.id, true])))}/>
+                Select all ({fx.length})
+              </label>
+              <button onClick={() => fixAll(true)} disabled={!!fixing || !nPicked} style={{padding:"9px 16px",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",
+                fontSize:12.5,fontWeight:800,background:"#0f7a52",color:"#fff",boxShadow:"0 8px 20px rgba(15,122,82,.3)",opacity:(fixing||!nPicked)?.5:1}}>
+                {fixing==="all" ? "Fixing…" : `🔧 Fix selected (${nPicked})`}
+              </button>
+            </div>
+          )
+        })()}
       </div>
 
       {log.length > 0 && (
@@ -1676,14 +1758,20 @@ export function SecurityCenter({ onNavigate } = {}) {
                 const isOpen = !!open[f.id]
                 return (
                   <div key={f.id} style={{border:`1px solid ${sv.color}30`,borderLeft:`4px solid ${sv.color}`,background:sv.bg,borderRadius:12,overflow:"hidden"}}>
-                    <button onClick={() => setOpen(o => ({...o,[f.id]:!o[f.id]}))}
+                    <div role="button" tabIndex={0} onKeyDown={e => { if (e.key === "Enter") setOpen(o => ({...o,[f.id]:!o[f.id]})) }} onClick={() => setOpen(o => ({...o,[f.id]:!o[f.id]}))}
                       style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"transparent",border:"none",cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
+                      {canFix(f) && (
+                        <input type="checkbox" checked={!!picked[f.id]} title="Select for Fix selected"
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => setPicked(p => ({ ...p, [f.id]: e.target.checked }))}
+                          style={{width:16,height:16,flexShrink:0,cursor:"pointer",accentColor:"#0f7a52"}}/>
+                      )}
                       <span style={{fontSize:10,fontWeight:800,color:"#fff",background:sv.color,borderRadius:999,padding:"3px 9px",letterSpacing:".06em",textTransform:"uppercase",flexShrink:0}}>{sv.label}</span>
                       <span style={{flex:1,fontSize:13.5,fontWeight:700,color:T.ink,minWidth:0}}>{f.title}</span>
                       <span style={{fontSize:10,fontWeight:700,color:T.inkSub,border:`1px solid ${T.border}`,background:"#fff",borderRadius:999,padding:"2px 8px",flexShrink:0}}>{(f.kind||"security")==="data"?"Data":"Security"}</span>
                       {f.fixable && <span style={{fontSize:10,fontWeight:800,color:"#0f7a52",background:"#E7F6EF",borderRadius:999,padding:"2px 8px",flexShrink:0}}>Auto-fix</span>}
                       <span style={{fontSize:11,color:T.inkSub,transform:isOpen?"rotate(180deg)":"none",transition:"transform .15s"}}>▾</span>
-                    </button>
+                    </div>
                     {isOpen && (
                       <div style={{padding:"0 14px 14px 14px",fontSize:12.5,lineHeight:1.6,color:T.inkMid}}>
                         <div style={{marginBottom:8}}>{f.detail}</div>
@@ -1698,7 +1786,13 @@ export function SecurityCenter({ onNavigate } = {}) {
                         <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 12px",display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                           <span style={{flex:"1 1 240px"}}><span style={{fontWeight:800,color:T.emerald}}>How to fix: </span>{f.fix}</span>
                           {f.fixable && f.id !== "rls_off" && (
-                            <button onClick={async () => { if (await applyFix(f)) run() }} disabled={!!fixing}
+                            <button onClick={() => doPreview(f)} disabled={!!fixing || preview[f.id]?.loading}
+                              style={{padding:"8px 14px",borderRadius:999,border:`1px solid ${T.navy}`,background:"#fff",color:T.navy,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+                              {preview[f.id]?.loading ? "Checking…" : "👁 Preview"}
+                            </button>
+                          )}
+                          {f.fixable && f.id !== "rls_off" && (
+                            <button onClick={async () => { if (await applyFix(f)) { setPreview(p => ({ ...p, [f.id]: undefined })); run() } }} disabled={!!fixing}
                               style={{padding:"8px 14px",borderRadius:999,border:"none",background:"#0f7a52",color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",opacity:fixing?.6:1}}>
                               {fixing===f.id ? "Fixing…" : `🔧 ${f.fix_label || "Fix now"}`}
                             </button>
@@ -1710,6 +1804,20 @@ export function SecurityCenter({ onNavigate } = {}) {
                             </button>
                           )}
                         </div>
+                        {preview[f.id] && !preview[f.id].loading && (
+                          <div style={{marginTop:8,background:"#F6F8FC",border:`1px dashed ${T.navy}55`,borderRadius:10,padding:"10px 12px"}}>
+                            {preview[f.id].error ? <span style={{color:T.rose,fontWeight:700}}>{preview[f.id].error}</span> : (<>
+                              <div style={{fontWeight:800,color:T.ink,marginBottom:6}}>Dry run — nothing changed yet: {preview[f.id].n} record(s) would change.</div>
+                              <div style={{fontSize:12,color:T.inkSub,marginBottom:6}}>{preview[f.id].msg}</div>
+                              {(preview[f.id].items || []).length > 0 && (
+                                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                                  {preview[f.id].items.slice(0,40).map((it,i) => <code key={i} style={{fontSize:11,background:"#fff",border:`1px solid ${T.border}`,borderRadius:6,padding:"2px 7px"}}>{String(it)}</code>)}
+                                  {preview[f.id].items.length > 40 && <span style={{fontSize:11,color:T.inkSub}}>+{preview[f.id].items.length-40} more</span>}
+                                </div>
+                              )}
+                            </>)}
+                          </div>
+                        )}
                         <InlineFix f={f} onDone={run} log={logLine}/>
                       </div>
                     )}
@@ -1720,6 +1828,7 @@ export function SecurityCenter({ onNavigate } = {}) {
           </Panel>
         ))}
       </div>
+      <FixHistoryPanel refreshKey={lockKey} onChange={run}/>
       <RlsLockedPanel refreshKey={lockKey} onChange={run}/>
     </div>
   )

@@ -598,6 +598,10 @@ function AccessDenied() {
   )
 }
 
+// Every login ends automatically 24 hours after it started (hard limit —
+// using the ERP does not extend it). Staff must log in again.
+const SESSION_MAX_MS = 24 * 60 * 60 * 1000
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => {
     try {
@@ -686,7 +690,7 @@ export default function App() {
       staffProfileId = data?.staff_profile_id ?? null
     }
     const enriched = { ...user, staff_profile_id: staffProfileId }
-    localStorage.setItem('gnsi_session', JSON.stringify({ user: enriched, expiry: Date.now() + 8*60*60*1000 }))
+    localStorage.setItem('gnsi_session', JSON.stringify({ user: enriched, expiry: Date.now() + SESSION_MAX_MS, loginAt: Date.now() }))
     setCurrentUser(enriched); setActive('dashboard'); loadPermissions(user.role)
   }
 
@@ -696,6 +700,49 @@ export default function App() {
     supabase.auth.signOut().catch(() => {})
     setCurrentUser(null); setActive('dashboard'); setPermMap({})
   }
+
+  // 24-hour auto lock-out: checked every minute and whenever the tab
+  // becomes visible again (e.g. phone unlocked next morning).
+  useEffect(() => {
+    if (!currentUser) return
+    const check = () => {
+      try {
+        const p = JSON.parse(localStorage.getItem('gnsi_session') || 'null')
+        const started = p?.loginAt ?? (p?.expiry ? p.expiry - SESSION_MAX_MS : 0)
+        if (!p || Date.now() >= Math.min(p.expiry, started + SESSION_MAX_MS)) {
+          handleLogout()
+          alert('Your session has ended (24-hour limit). Please log in again.')
+        }
+      } catch { handleLogout() }
+    }
+    check()
+    const t = setInterval(check, 60 * 1000)
+    const onVis = () => { if (document.visibilityState === 'visible') check() }
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('storage', onVis)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('storage', onVis) }
+  }, [currentUser?.username])
+
+  // Security: a staff session restored from an old login that never got
+  // a secure (Supabase Auth) session is logged out ONCE per device, so the
+  // next login links it automatically. The flag stops a loop if linking
+  // fails for some reason — they'd then keep working as before.
+  useEffect(() => {
+    if (!currentUser) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        if (localStorage.getItem('gnsi_relogin_v1:' + currentUser.username) === 'done') return
+        const { data } = await supabase.auth.getSession()
+        if (cancelled) return
+        if (data?.session) { localStorage.setItem('gnsi_relogin_v1:' + currentUser.username, 'done'); return }
+        localStorage.setItem('gnsi_relogin_v1:' + currentUser.username, 'done')
+        alert('Security update: please log in again once to continue.')
+        handleLogout()
+      } catch {}
+    })()
+    return () => { cancelled = true }
+  }, [currentUser?.username])
 
   useEffect(() => { if (currentUser) loadPermissions(currentUser.role) }, [currentUser])
 
