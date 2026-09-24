@@ -244,6 +244,7 @@ const TABS = [
   { id: 'leave', label: '🧳 Leave' },
   { id: 'hmdashboard', label: '📊 HM Dash' },
   { id: 'maintenance', label: '🛠️ Repairs' },
+  { id: 'parentitems', label: '📦 Parent Items' },
   { id: 'journal', label: '📓 Journal' },
   { id: 'doubtsession', label: '💬 Doubt' },
   { id: 'classtimetable', label: '📚 Classes' },
@@ -263,7 +264,7 @@ const TABS = [
 const TAB_GROUPS = [
   { label: 'Money', ids: ['housecontrib', 'houseexpense', 'moneydash', 'a4stock', 'studymaterial'] },
   { label: 'Houses & Discipline', ids: ['house', 'housemaster', 'discipline', 'superintendentdash'] },
-  { label: 'Daily Operations', ids: ['schedule', 'attendance', 'hmrollreport', 'nightduty', 'allotments', 'transfer', 'kitchen', 'sickbay', 'maintenance'] },
+  { label: 'Daily Operations', ids: ['schedule', 'attendance', 'hmrollreport', 'nightduty', 'allotments', 'transfer', 'kitchen', 'sickbay', 'maintenance', 'parentitems'] },
   { label: 'Academics & Activities', ids: ['hmactivities', 'classtimetable', 'doubtsession', 'journal'] },
   { label: 'Monitoring & Reports', ids: ['adminmonitor', 'hmdashboard', 'leave', 'neglectreport', 'commandcentre'] },
 ]
@@ -10951,6 +10952,146 @@ if (typeof console !== 'undefined' && console.assert) {
   console.assert(duplicatedInGroups.length === 0, 'TAB_GROUPS has duplicate tab id(s):', duplicatedInGroups)
 }
 
+
+// ════════════════════════════════════════════════════════════════════════
+//  PARENT ITEMS — hand-over of items parents drop at Reception
+//  Reads the same reception_parent_items table Reception writes to and the
+//  Parents Portal reads, so a hand-over marked here shows to the parent
+//  immediately. House masters see their own house by default.
+// ════════════════════════════════════════════════════════════════════════
+const PI_NORM = (h) => String(h || '').toLowerCase().replace(/\s+house$/, '').trim()
+function HostelParentItemsTab({ currentHousemaster, currentUser }) {
+  const isAdmin = isAdminRole(currentUser?.role)
+  const myHouse = currentHousemaster?.house || ''
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [status, setStatus] = useState('Pending')
+  const [house, setHouse] = useState(myHouse && !isAdmin ? myHouse : 'All')
+  const [busyId, setBusyId] = useState(null)
+  const [q, setQ] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('reception_parent_items')
+      .select('*')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(500)
+    if (error) console.error('Parent items load failed:', error)
+    setRows(data || [])
+    setLoading(false)
+  }, [])
+  useEffect(() => { load() }, [load])
+  useEffect(() => { if (myHouse && !isAdmin) setHouse(myHouse) }, [myHouse, isAdmin])
+
+  const houses = useMemo(() => [...new Set(rows.map(r => r.house).filter(Boolean))].sort(), [rows])
+  const inHouse = useCallback((r) => house === 'All' || PI_NORM(r.house) === PI_NORM(house), [house])
+  const shown = useMemo(() => rows.filter(r =>
+    (status === 'All' || (r.status || 'Pending') === status) && inHouse(r) &&
+    (!q || `${r.student_name} ${r.item_name} ${r.parent_name}`.toLowerCase().includes(q.toLowerCase()))
+  ), [rows, status, inHouse, q])
+  const counts = useMemo(() => {
+    const base = rows.filter(inHouse)
+    return {
+      Pending: base.filter(r => (r.status || 'Pending') === 'Pending').length,
+      Delivered: base.filter(r => r.status === 'Delivered').length,
+      Returned: base.filter(r => r.status === 'Returned').length,
+      All: base.length,
+    }
+  }, [rows, inHouse])
+
+  const actor = currentHousemaster?.name || currentUser?.name || 'Hostel'
+  const update = async (item, to) => {
+    if (to === 'Returned' && !window.confirm(`Mark "${item.item_name}" as returned to the parent?`)) return
+    setBusyId(item.id)
+    const patch = to === 'Delivered'
+      ? { status: 'Delivered', handed_over_by: actor, handed_over_at: new Date().toISOString() }
+      : { status: 'Returned', returned_at: new Date().toISOString() }
+    let { error } = await supabase.from('reception_parent_items').update(patch).eq('id', item.id)
+    // Hand-over columns not added yet → still update the status.
+    if (error && /handed_over|returned_at/i.test(error.message || '')) {
+      ({ error } = await supabase.from('reception_parent_items').update({ status: to }).eq('id', item.id))
+    }
+    setBusyId(null)
+    if (error) { alert('Could not update: ' + error.message); return }
+    setRows(prev => prev.map(r => r.id === item.id ? { ...r, ...patch } : r))
+  }
+
+  const pill = (on) => ({ padding: '7px 14px', borderRadius: 999, border: `1px solid ${on ? '#0B1E3D' : '#e2e8f0'}`, background: on ? '#0B1E3D' : '#fff', color: on ? '#E2C57E' : '#334155', fontSize: 12, fontWeight: 700, cursor: 'pointer' })
+  const fmtDT = (d) => d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ background: 'linear-gradient(135deg,#0B1E3D,#132B52)', color: '#fff', borderRadius: 16, padding: '18px 20px', borderBottom: '3px solid #C9A24B' }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.14em', color: '#E2C57E', textTransform: 'uppercase' }}>From Reception</div>
+        <div style={{ fontSize: 20, fontWeight: 800, marginTop: 2 }}>📦 Parent Items to Hand Over</div>
+        <div style={{ fontSize: 12.5, color: '#cbd5e1', marginTop: 4 }}>Items parents left at Reception. Tap <b>✓ Handed to student</b> when the child receives it — the parent sees it straight away in the Parents Portal.</div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {['Pending', 'Delivered', 'Returned', 'All'].map(sv => (
+          <button key={sv} type="button" style={pill(status === sv)} onClick={() => setStatus(sv)}>
+            {sv === 'Pending' ? '⏳ To hand over' : sv === 'Delivered' ? '✓ Handed over' : sv === 'Returned' ? '↩ Returned' : 'All'} ({counts[sv]})
+          </button>
+        ))}
+        <select value={house} onChange={e => setHouse(e.target.value)} disabled={!isAdmin && !!myHouse}
+          style={{ marginLeft: 'auto', padding: '8px 10px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12.5, fontWeight: 600 }}>
+          <option value="All">All houses</option>
+          {[...new Set([myHouse, ...houses].filter(Boolean))].map(h => <option key={h} value={h}>{h}</option>)}
+        </select>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search student / item…"
+          style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12.5, minWidth: 180 }} />
+        <button type="button" onClick={load} title="Refresh" style={{ ...pill(false), padding: '7px 12px' }}>↻</button>
+      </div>
+
+      {loading ? <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Loading…</div>
+        : shown.length === 0 ? <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', background: '#fff', borderRadius: 14, border: '1px dashed #e2e8f0' }}>Nothing here{status === 'Pending' ? ' — all items handed over ✓' : ''}</div>
+        : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12 }}>
+            {shown.map(it => {
+              const st = it.status || 'Pending'
+              const col = st === 'Pending' ? '#d97706' : st === 'Delivered' ? '#16a34a' : '#64748b'
+              return (
+                <div key={it.id} style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', borderLeft: `4px solid ${col}`, boxShadow: '0 4px 14px rgba(11,30,61,.06)', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: '#0B1E3D' }}>{it.student_name}</div>
+                      <div style={{ fontSize: 11.5, color: '#64748b' }}>{[it.house, it.class_name, it.hostel_type].filter(Boolean).join(' · ')}</div>
+                    </div>
+                    <span style={{ alignSelf: 'flex-start', fontSize: 10.5, fontWeight: 800, color: col, background: `${col}14`, border: `1px solid ${col}40`, borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap' }}>
+                      {st === 'Pending' ? 'At Reception' : st === 'Delivered' ? 'Handed over' : 'Returned'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>🎒 {it.item_name}{it.quantity && it.quantity !== '1' ? ` × ${it.quantity}` : ''}</div>
+                  <div style={{ fontSize: 11.5, color: '#94a3b8' }}>
+                    {it.parent_name ? `From ${it.parent_name}` : ''}{it.received_date ? ` · ${it.received_date}` : ''}{it.received_by ? ` · received by ${it.received_by}` : ''}
+                  </div>
+                  {it.remarks && <div style={{ fontSize: 12, color: '#64748b', background: '#f8fafc', borderRadius: 8, padding: '6px 8px' }}>{it.remarks}</div>}
+                  {st === 'Delivered' && it.handed_over_by && <div style={{ fontSize: 11.5, color: '#166534' }}>✓ Handed by {it.handed_over_by}{it.handed_over_at ? ` · ${fmtDT(it.handed_over_at)}` : ''}</div>}
+                  <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
+                    {st === 'Pending' && (
+                      <button type="button" disabled={busyId === it.id} onClick={() => update(it, 'Delivered')}
+                        style={{ flex: 1, padding: '9px 10px', borderRadius: 10, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', opacity: busyId === it.id ? .6 : 1 }}>
+                        ✓ Handed to student
+                      </button>
+                    )}
+                    {st === 'Delivered' && (
+                      <button type="button" disabled={busyId === it.id} onClick={() => update(it, 'Returned')}
+                        style={{ flex: 1, padding: '9px 10px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', opacity: busyId === it.id ? .6 : 1 }}>
+                        ↩ Returned to parent
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+    </div>
+  )
+}
+
 function Hostel() {
   // Loads Fraunces (display/headings) and Inter (body) from Google Fonts
   // once, on first mount — FONT_DISPLAY/FONT_BODY above already fall back
@@ -10977,7 +11118,7 @@ function Hostel() {
   const initialParams = useMemo(() => {
     try { return new URLSearchParams(window.location.search) } catch { return null }
   }, [])
-  const VALID_TABS = ['allotments','schedule','nightduty','discipline','superintendentdash','sickbay','house','housecontrib','houseexpense','moneydash','a4stock','studymaterial','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
+  const VALID_TABS = ['allotments','schedule','nightduty','discipline','superintendentdash','sickbay','house','housecontrib','houseexpense','moneydash','a4stock','studymaterial','housemaster','kitchen','hmactivities','adminmonitor','attendance','leave','hmdashboard','maintenance','parentitems','journal','classtimetable','doubtsession','neglectreport','hmrollreport','commandcentre']
   const [activeTab, setActiveTab] = useState(() => {
     const t = initialParams?.get('tab')
     return t && VALID_TABS.includes(t) ? t : 'hmdashboard'
@@ -11105,6 +11246,7 @@ function Hostel() {
     leave: <LeaveTab students={students} currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     hmdashboard: <HMDashboard students={students} staffProfiles={staffProfiles} currentHousemaster={currentHousemaster} onTabChange={changeTab} currentUser={currentUser} />,
     maintenance: <MaintenanceTab currentHousemaster={currentHousemaster} currentUser={currentUser} autoOpenForm={autoOpenForm?.tabId === 'maintenance' ? autoOpenForm : null} />,
+    parentitems: <HostelParentItemsTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,
     journal: <JournalTab currentHousemaster={currentHousemaster} autoOpenForm={autoOpenForm?.tabId === 'journal' ? autoOpenForm : null} currentUser={currentUser} />,
     classtimetable: <ClassTimetableTab />,
     doubtsession: <HMDoubtSessionsTab currentHousemaster={currentHousemaster} currentUser={currentUser} />,

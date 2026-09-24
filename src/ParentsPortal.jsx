@@ -1861,7 +1861,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
               <LeaveTab state={leave} studentId={student.id} studentName={student.name} onSubmitted={() => loadLeave(student.id)} />
             )}
             {activeTab === 'items' && (
-              <ParentItemsTab studentName={student.name} />
+              <ParentItemsTab studentName={student.name} studentId={student.id} />
             )}
             {activeTab === 'purchases' && (
               <StorePurchasesTab student={student} />
@@ -3235,34 +3235,44 @@ function ReceptionLeaveApplications({ studentName }) {
 // canTransition; this view has no write actions, it only reflects status).
 const PI_STATUS_TONE = { Delivered: 'hi', Returned: 'hi', Pending: 'mi' };
 
-function ParentItemsTab({ studentName }) {
+function ParentItemsTab({ studentName, studentId }) {
   const isMobile = useWindowWidth() < 640;
   const [state, setState] = useState(initialTabState);
 
   useEffect(() => {
-    if (!studentName) return;
+    if (!studentName && studentId == null) return;
     let cancelled = false;
     (async () => {
       setState({ status: 'loading', data: null, error: null });
       try {
-        const { data, error } = await supabase
-          .from('reception_parent_items')
-          .select('*')
-          .eq('student_name', studentName)
-          .is('deleted_at', null)
-          .order('created_at', { ascending: false });
-        if (error) throw error;
-        if (!cancelled) setState({ status: 'ready', data: data || [], error: null });
+        // Exact match on student_id (set by Reception for new items). Older
+        // items without an id fall back to the name match, but only when
+        // they have no student_id — so a same-name student's items never mix in.
+        const byId = studentId != null
+          ? supabase.from('reception_parent_items').select('*').eq('student_id', String(studentId)).is('deleted_at', null)
+          : null;
+        const byName = supabase.from('reception_parent_items').select('*').eq('student_name', studentName).is('deleted_at', null);
+        const [idRes, nameRes] = await Promise.all([byId || Promise.resolve({ data: [], error: null }), byName]);
+        if (nameRes.error) throw nameRes.error;
+        const idRows = idRes.error ? [] : (idRes.data || []); // column may not exist yet
+        const nameRows = (nameRes.data || []).filter(r => idRes.error || r.student_id == null || String(r.student_id) === String(studentId));
+        const seen = new Set();
+        const rows = [...idRows, ...nameRows]
+          .filter(r => !seen.has(r.id) && seen.add(r.id))
+          .sort((x, y) => new Date(y.created_at || 0) - new Date(x.created_at || 0));
+        if (!cancelled) setState({ status: 'ready', data: rows, error: null });
       } catch (e) {
         console.error('Parent items load failed:', e);
         if (!cancelled) setState({ status: 'error', data: null, error: 'Failed to load parent items' });
       }
     })();
     return () => { cancelled = true; };
-  }, [studentName]);
+  }, [studentName, studentId]);
+
+  const fmtDT = (d) => d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 
   return (
-    <Card title="Items Dropped Off at Reception">
+    <Card title="Items You Sent for Your Child">
       {(state.status === 'loading' || state.status === 'idle') && <Loading />}
       {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
       {state.status === 'ready' && (
@@ -3270,25 +3280,39 @@ function ParentItemsTab({ studentName }) {
           <Empty icon="🎒" text="No items recorded at Reception" />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {state.data.map((it, i) => (
-              <div style={{
-                borderRadius: isMobile ? 16 : 10,
-                border: isMobile ? 'none' : '1px solid #e2e8f0',
-                backgroundColor: isMobile ? M3.surfaceContainer : '#f8fafc',
-                padding: 16,
-              }} key={it.id || i}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{it.item_name || 'Item'}{it.quantity ? ` × ${it.quantity}` : ''}</span>
-                  <Pill tone={PI_STATUS_TONE[it.status] || 'mi'}>{it.status || 'Pending'}</Pill>
+            {state.data.map((it, i) => {
+              const st = it.status || 'Pending';
+              const isDay = /day/i.test(it.hostel_type || '') || !it.house;
+              // Steps: 1 received at Reception → 2 with hostel (house master) → 3 received by child
+              const steps = [
+                { label: 'At Reception', sub: [it.received_date, it.received_by && `by ${it.received_by}`].filter(Boolean).join(' · '), done: true },
+                { label: isDay ? 'Ready for pickup' : `With ${it.house || 'hostel'}`, sub: isDay ? 'Collect at Reception' : 'Listed for house master', done: true },
+                { label: st === 'Returned' ? 'Returned to you' : 'Received by child', sub: st === 'Delivered' ? [it.handed_over_by && `by ${it.handed_over_by}`, fmtDT(it.handed_over_at)].filter(Boolean).join(' · ') : st === 'Returned' ? fmtDT(it.returned_at) : 'Waiting', done: st !== 'Pending' },
+              ];
+              const tone = st === 'Pending' ? '#d97706' : st === 'Delivered' ? '#16a34a' : '#64748b';
+              return (
+                <div key={it.id || i} style={{ borderRadius: 16, border: '1px solid rgba(11,30,61,0.08)', borderLeft: `4px solid ${tone}`, backgroundColor: '#fff', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? 14 : 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: NAVY }}>🎒 {it.item_name || 'Item'}{it.quantity && it.quantity !== '1' ? ` × ${it.quantity}` : ''}</span>
+                    <Pill tone={PI_STATUS_TONE[st] || 'mi'}>{st === 'Pending' ? 'On the way' : st === 'Delivered' ? 'Received ✓' : 'Returned'}</Pill>
+                  </div>
+                  {it.parent_name && <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 10 }}>Dropped off by {it.parent_name}</div>}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 6, position: 'relative' }}>
+                    {steps.map((sp, k) => (
+                      <div key={k} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 4, position: 'relative' }}>
+                        {k > 0 && <div style={{ position: 'absolute', top: 11, right: '50%', width: '100%', height: 2, background: sp.done ? tone : '#e2e8f0', zIndex: 0 }} />}
+                        <div style={{ position: 'relative', zIndex: 1, width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, background: sp.done ? tone : '#fff', color: sp.done ? '#fff' : '#94a3b8', border: `2px solid ${sp.done ? tone : '#e2e8f0'}` }}>{sp.done ? '✓' : k + 1}</div>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, color: sp.done ? '#1e293b' : '#94a3b8', lineHeight: 1.25 }}>{sp.label}</div>
+                        {sp.sub && <div style={{ fontSize: 10.5, color: '#94a3b8', lineHeight: 1.3 }}>{sp.sub}</div>}
+                      </div>
+                    ))}
+                  </div>
+                  {it.remarks && (
+                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 10, background: '#FAF7F0', borderRadius: 8, padding: '6px 10px' }}>{it.remarks}</div>
+                  )}
                 </div>
-                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
-                  {it.parent_name ? `From ${it.parent_name}` : ''}{it.received_date ? ` · ${it.received_date}` : ''}{it.received_by ? ` · Received by ${it.received_by}` : ''}
-                </div>
-                {it.remarks && (
-                  <div style={{ fontSize: 12, color: '#64748b' }}>{it.remarks}</div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )
       )}

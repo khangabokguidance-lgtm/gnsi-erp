@@ -2050,7 +2050,13 @@ export default function ReceptionPage({ currentUser }) {
       }
     }
     const clean = Object.fromEntries(Object.entries(payload).map(([k, v]) => [k, v === '' ? null : v]))
-    const { error } = await supabase.from(table).insert(clean)
+    let { error } = await supabase.from(table).insert(clean)
+    // Parent items: if the student_id column hasn't been added yet (SQL not
+    // run), save without it rather than blocking Reception.
+    if (error && table === 'reception_parent_items' && /student_id/i.test(error.message || '')) {
+      const { student_id, ...rest } = clean
+      ;({ error } = await supabase.from(table).insert(rest))
+    }
     if (error) alert(error.message)
     else { reset(); fetchAll() }
     setSaving(false)
@@ -2951,6 +2957,8 @@ export default function ReceptionPage({ currentUser }) {
                   handleInsert('reception_parent_items', {
                     ...restPiForm,
                     student_name: piStudent?.name || piForm.student_name,
+                    // Links the item to the exact student (Parents Portal + Hostel match on this)
+                    student_id: piStudent?.id != null ? String(piStudent.id) : null,
                     item_name: (item_names || []).join(', '),
                   }, () => { setPiForm({ ...PI_DEF, received_date: today() }); setPiStudent(null); setPiResetKey(k => k + 1) })
                 }}>
