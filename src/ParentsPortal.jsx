@@ -439,6 +439,8 @@ const TABS = [
   { id: 'fees',       label: '💳 Fee Dues' },
   { id: 'leave',      label: '🏨 Hostel Leave' },
   { id: 'items',      label: '🎒 Parent Items' },
+  { id: 'gatepass',   label: '🎫 Gate Passes' },
+  { id: 'visitors',   label: '📖 Visitor Book' },
   { id: 'purchases',  label: '🛒 Store Purchases' },
   { id: 'grievance',  label: '📮 Raise a Concern' },
   { id: 'alerts',     label: '🔔 Alerts' },
@@ -1863,6 +1865,12 @@ export default function ParentsPortal({ isOpen, onClose }) {
             {activeTab === 'items' && (
               <ParentItemsTab studentName={student.name} studentId={student.id} />
             )}
+            {activeTab === 'gatepass' && (
+              <GatePassTab student={student} />
+            )}
+            {activeTab === 'visitors' && (
+              <VisitorBookTab student={student} />
+            )}
             {activeTab === 'purchases' && (
               <StorePurchasesTab student={student} />
             )}
@@ -2214,6 +2222,8 @@ const HOME_TILES = [
   { id: 'fees',       icon: '💳', label: 'Fee Dues',      color: '#dc2626' },
   { id: 'leave',      icon: '🏨', label: 'Hostel Leave',  color: '#0891b2' },
   { id: 'items',      icon: '🎒', label: 'Parent Items',  color: '#d97706' },
+  { id: 'gatepass',   icon: '🎫', label: 'Gate Passes',   color: '#0e7490' },
+  { id: 'visitors',   icon: '📖', label: 'Visitor Book',  color: '#9333ea' },
   { id: 'purchases',  icon: '🛒', label: 'Store Purchases', color: CYAN },
   { id: 'grievance',  icon: '📮', label: 'Raise a Concern', color: '#7c3aed' },
   { id: 'alerts',     icon: '🔔', label: 'Alerts',        color: '#f59e0b' },
@@ -3251,11 +3261,17 @@ function ParentItemsTab({ studentName, studentId }) {
         const byId = studentId != null
           ? supabase.from('reception_parent_items').select('*').eq('student_id', String(studentId)).is('deleted_at', null)
           : null;
-        const byName = supabase.from('reception_parent_items').select('*').eq('student_name', studentName).is('deleted_at', null);
+        // Case- and space-insensitive name match ("ABHINAV LAISHRAM" = "Abhinav  Laishram").
+        const cleanName = String(studentName || '').trim().replace(/\s+/g, ' ');
+        const namePattern = cleanName.replace(/[%_]/g, '').split(' ').join('%');
+        const byName = supabase.from('reception_parent_items').select('*').ilike('student_name', namePattern).is('deleted_at', null);
         const [idRes, nameRes] = await Promise.all([byId || Promise.resolve({ data: [], error: null }), byName]);
         if (nameRes.error) throw nameRes.error;
         const idRows = idRes.error ? [] : (idRes.data || []); // column may not exist yet
-        const nameRows = (nameRes.data || []).filter(r => idRes.error || r.student_id == null || String(r.student_id) === String(studentId));
+        const norm = (v) => String(v || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        const nameRows = (nameRes.data || [])
+          .filter(r => norm(r.student_name) === norm(cleanName)) // exact after normalising
+          .filter(r => idRes.error || r.student_id == null || String(r.student_id) === String(studentId));
         const seen = new Set();
         const rows = [...idRows, ...nameRows]
           .filter(r => !seen.has(r.id) && seen.add(r.id))
@@ -3263,7 +3279,7 @@ function ParentItemsTab({ studentName, studentId }) {
         if (!cancelled) setState({ status: 'ready', data: rows, error: null });
       } catch (e) {
         console.error('Parent items load failed:', e);
-        if (!cancelled) setState({ status: 'error', data: null, error: 'Failed to load parent items' });
+        if (!cancelled) setState({ status: 'error', data: null, error: 'Could not load items: ' + (e?.message || 'unknown error') });
       }
     })();
     return () => { cancelled = true; };
@@ -3317,6 +3333,275 @@ function ParentItemsTab({ studentName, studentId }) {
         )
       )}
     </Card>
+  );
+}
+
+// ── GATE PASS TAB ────────────────────────────────────────────────────────────
+// Reads reception_gatepasses (issued at Reception / from approved leave).
+// Matched by GCC No. when the pass has one, otherwise by normalised name.
+const GP_STEPS = ['Issued', 'Exited', 'Returned'];
+function GatePassTab({ student }) {
+  const isMobile = useWindowWidth() < 640;
+  const [state, setState] = useState(initialTabState);
+
+  useEffect(() => {
+    if (!student) return;
+    let cancelled = false;
+    (async () => {
+      setState({ status: 'loading', data: null, error: null });
+      try {
+        const cleanName = String(student.name || '').trim().replace(/\s+/g, ' ');
+        const pattern = cleanName.replace(/[%_]/g, '').split(' ').join('%');
+        const qs = [
+          supabase.from('reception_gatepasses').select('*').ilike('student_name', pattern).is('deleted_at', null),
+        ];
+        if (student.gcc_no) qs.push(supabase.from('reception_gatepasses').select('*').eq('gcc_no', String(student.gcc_no)).is('deleted_at', null));
+        const res = await Promise.all(qs);
+        if (res[0].error) throw res[0].error;
+        const norm = (v) => String(v || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        const gcc = String(student.gcc_no || '');
+        const rows = [...(res[0].data || []), ...((res[1] && !res[1].error && res[1].data) || [])]
+          .filter(r => {
+            // "GCC-1107", "001107" and "1107" all count as the same GCC No.
+            const a = String(r.gcc_no || '').replace(/\D/g, '').replace(/^0+/, '');
+            const b = gcc.replace(/\D/g, '').replace(/^0+/, '');
+            if (a && b) return a === b;
+            return norm(r.student_name) === norm(cleanName);
+          });
+        const seen = new Set();
+        const uniq = rows.filter(r => !seen.has(r.id) && seen.add(r.id))
+          .sort((a, b) => new Date(b.exit_date || b.created_at || 0) - new Date(a.exit_date || a.created_at || 0));
+        if (!cancelled) setState({ status: 'ready', data: uniq, error: null });
+      } catch (e) {
+        console.error('Gate pass load failed:', e);
+        if (!cancelled) setState({ status: 'error', data: null, error: 'Could not load gate passes: ' + (e?.message || 'unknown error') });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [student?.id, student?.name, student?.gcc_no]);
+
+  const fmtD = (d) => d ? new Date(String(d).length <= 10 ? d + 'T00:00:00' : d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+  const fmtT = (t) => {
+    if (!t) return '';
+    const m = String(t).match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return t;
+    const h = +m[1]; return `${((h + 11) % 12) + 1}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
+  };
+  const fmtDT = (d) => d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+
+  const data = state.status === 'ready' ? state.data : [];
+  const out = data.filter(r => r.status === 'Exited' || r.status === 'Out');
+  const issued = data.filter(r => r.status === 'Issued');
+
+  return (
+    <div>
+      {state.status === 'ready' && data.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10, marginBottom: 14 }}>
+          {[
+            ['Total passes', data.length, NAVY],
+            ['Currently out', out.length, '#dc2626'],
+            ['Late returns', data.filter(r => r.is_late).length, '#d97706'],
+          ].map(([l, v, c]) => (
+            <div key={l} style={{ background: '#fff', borderRadius: 16, border: '1px solid rgba(11,30,61,0.07)', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? '12px 10px' : '14px 16px', borderTop: `3px solid ${c}` }}>
+              <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 700, color: c, fontFamily: 'Georgia, serif', lineHeight: 1 }}>{v}</div>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#64748b', marginTop: 4 }}>{l}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {out.length > 0 && (
+        <div style={{ borderRadius: 14, background: '#fef2f2', border: '1px solid #fecaca', padding: '12px 14px', marginBottom: 14, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <span style={{ fontSize: 18 }}>🚶</span>
+          <div style={{ fontSize: 12.5, color: '#7f1d1d', lineHeight: 1.5 }}>
+            <strong>Your child is currently out on a gate pass.</strong>{' '}
+            {out[0].expected_return_time || out[0].return_date
+              ? `Expected back ${[fmtD(out[0].return_date), fmtT(out[0].expected_return_time)].filter(Boolean).join(' · ')}.`
+              : ''}
+          </div>
+        </div>
+      )}
+      {out.length === 0 && issued.length > 0 && (
+        <div style={{ borderRadius: 14, background: '#eff6ff', border: '1px solid #bfdbfe', padding: '12px 14px', marginBottom: 14, fontSize: 12.5, color: '#1e3a8a' }}>
+          🎫 A gate pass has been issued{issued[0].exit_date ? ` for ${fmtD(issued[0].exit_date)}` : ''} and not yet used.
+        </div>
+      )}
+
+      <Card title="Gate Pass Record">
+        {(state.status === 'loading' || state.status === 'idle') && <Loading />}
+        {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+        {state.status === 'ready' && (
+          data.length === 0 ? (
+            <Empty icon="🎫" text="No gate passes issued yet" />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {data.map((g, i) => {
+                const st = g.status === 'Out' ? 'Exited' : (g.status || 'Issued');
+                const idx = Math.max(0, GP_STEPS.indexOf(st));
+                const tone = st === 'Returned' ? (g.is_late ? '#d97706' : '#16a34a') : st === 'Exited' ? '#dc2626' : '#2563eb';
+                const label = st === 'Returned' ? (g.is_late ? 'Returned late' : 'Returned') : st === 'Exited' ? 'Out now' : 'Issued';
+                const steps = [
+                  { t: 'Pass issued', s: [fmtD(g.exit_date), g.approved_by && `by ${g.approved_by}`].filter(Boolean).join(' · ') },
+                  { t: 'Left campus', s: fmtT(g.exit_time) },
+                  { t: 'Back on campus', s: g.actual_return_at ? fmtDT(g.actual_return_at) : [fmtD(g.return_date), fmtT(g.expected_return_time)].filter(Boolean).join(' · ') && `Due ${[fmtD(g.return_date), fmtT(g.expected_return_time)].filter(Boolean).join(' · ')}` },
+                ];
+                return (
+                  <div key={g.id || i} style={{ borderRadius: 16, border: '1px solid rgba(11,30,61,0.08)', borderLeft: `4px solid ${tone}`, background: '#fff', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? 14 : 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: NAVY }}>🎫 {g.reason || 'Gate pass'}</div>
+                        <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>
+                          {[g.id && `Pass #${g.id}`, g.responsible_contact && `Guardian: ${g.responsible_contact}`].filter(Boolean).join(' · ')}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 10.5, fontWeight: 800, color: tone, background: `${tone}14`, border: `1px solid ${tone}40`, borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap' }}>{label}</span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 6, marginTop: 12 }}>
+                      {steps.map((sp, k) => {
+                        const done = k <= idx;
+                        return (
+                          <div key={k} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 4, position: 'relative' }}>
+                            {k > 0 && <div style={{ position: 'absolute', top: 11, right: '50%', width: '100%', height: 2, background: done ? tone : '#e2e8f0' }} />}
+                            <div style={{ position: 'relative', zIndex: 1, width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, background: done ? tone : '#fff', color: done ? '#fff' : '#94a3b8', border: `2px solid ${done ? tone : '#e2e8f0'}` }}>{done ? '✓' : k + 1}</div>
+                            <div style={{ fontSize: 11.5, fontWeight: 700, color: done ? '#1e293b' : '#94a3b8', lineHeight: 1.25 }}>{sp.t}</div>
+                            {sp.s && <div style={{ fontSize: 10.5, color: '#94a3b8', lineHeight: 1.3 }}>{sp.s}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {(g.is_late && g.late_reason) && (
+                      <div style={{ fontSize: 12, color: '#92400e', marginTop: 10, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '6px 10px' }}>⏰ Late return: {g.late_reason}</div>
+                    )}
+                    {g.remarks && (
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 8, background: '#FAF7F0', borderRadius: 8, padding: '6px 10px' }}>{g.remarks}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ── VISITOR BOOK TAB ─────────────────────────────────────────────────────────
+// Visits Reception recorded for this child. New entries carry student_id;
+// older ones are found by the "Re: <name>" text Reception puts in
+// meeting_with. Visitor phone numbers and ID proofs are never shown here.
+function VisitorBookTab({ student }) {
+  const isMobile = useWindowWidth() < 640;
+  const [state, setState] = useState(initialTabState);
+
+  useEffect(() => {
+    if (!student) return;
+    let cancelled = false;
+    (async () => {
+      setState({ status: 'loading', data: null, error: null });
+      try {
+        const cols = 'id, visitor_name, purpose, meeting_with, visit_date, in_time, out_time, visit_category, remarks, created_at, student_id, student_name';
+        const colsOld = 'id, visitor_name, purpose, meeting_with, visit_date, in_time, out_time, visit_category, remarks, created_at';
+        const cleanName = String(student.name || '').trim().replace(/\s+/g, ' ');
+        const pattern = cleanName.replace(/[%_]/g, '').split(' ').join('%');
+        const byText = supabase.from('reception_visitors').select(colsOld).ilike('meeting_with', `%${pattern}%`).is('deleted_at', null);
+        const byId = supabase.from('reception_visitors').select(cols).eq('student_id', String(student.id)).is('deleted_at', null);
+        const byName = supabase.from('reception_visitors').select(cols).ilike('student_name', pattern).is('deleted_at', null);
+        const [t, i, n] = await Promise.all([byText, byId, byName]);
+        if (t.error) throw t.error;
+        const norm = (v) => String(v || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        const nameRows = (n.error ? [] : (n.data || [])).filter(r => norm(r.student_name) === norm(cleanName) && (r.student_id == null || String(r.student_id) === String(student.id)));
+        // Text match: "Re: Abhinav Laishram (Achiever)" — whole name, not a longer one
+        const re = new RegExp(`(^|[^a-z])${norm(cleanName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^a-z])`, 'i');
+        const textRows = (t.data || []).filter(r => re.test(norm(r.meeting_with)));
+        const all = [...(i.error ? [] : (i.data || [])), ...nameRows, ...textRows];
+        const seen = new Set();
+        const rows = all.filter(r => !seen.has(r.id) && seen.add(r.id))
+          .sort((a, b) => new Date(b.visit_date || b.created_at || 0) - new Date(a.visit_date || a.created_at || 0));
+        if (!cancelled) setState({ status: 'ready', data: rows, error: null });
+      } catch (e) {
+        console.error('Visitor book load failed:', e);
+        if (!cancelled) setState({ status: 'error', data: null, error: 'Could not load visitor book: ' + (e?.message || 'unknown error') });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [student?.id, student?.name]);
+
+  const fmtD = (d) => d ? new Date(String(d).length <= 10 ? d + 'T00:00:00' : d).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) : '';
+  const fmtT = (t) => {
+    if (!t) return '';
+    const s = String(t);
+    if (s.includes('T')) return new Date(s).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    const m = s.match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return s;
+    const h = +m[1]; return `${((h + 11) % 12) + 1}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
+  };
+
+  const data = state.status === 'ready' ? state.data : [];
+  const thisMonth = data.filter(v => {
+    const d = new Date(v.visit_date || v.created_at || 0); const n = new Date();
+    return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear();
+  }).length;
+
+  return (
+    <div>
+      {state.status === 'ready' && data.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10, marginBottom: 14 }}>
+          {[
+            ['Total visits', data.length, NAVY],
+            ['This month', thisMonth, '#9333ea'],
+            ['Last visit', data[0]?.visit_date ? new Date(String(data[0].visit_date).length <= 10 ? data[0].visit_date + 'T00:00:00' : data[0].visit_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—', '#0e7490'],
+          ].map(([l, v, c]) => (
+            <div key={l} style={{ background: '#fff', borderRadius: 16, border: '1px solid rgba(11,30,61,0.07)', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? '12px 10px' : '14px 16px', borderTop: `3px solid ${c}` }}>
+              <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: c, fontFamily: 'Georgia, serif', lineHeight: 1.1 }}>{v}</div>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#64748b', marginTop: 4 }}>{l}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Card title="Visitor Book">
+        {(state.status === 'loading' || state.status === 'idle') && <Loading />}
+        {state.status === 'error' && <Empty icon="⚠️" text={state.error} />}
+        {state.status === 'ready' && (
+          data.length === 0 ? (
+            <Empty icon="📖" text="No visits recorded for your child yet" />
+          ) : (
+            <div style={{ position: 'relative', paddingLeft: 18 }}>
+              <div style={{ position: 'absolute', left: 6, top: 6, bottom: 6, width: 2, background: '#EAE3D2', borderRadius: 2 }} />
+              {data.map((v, i) => {
+                const onCampus = v.in_time && !v.out_time;
+                return (
+                  <div key={v.id || i} style={{ position: 'relative', marginBottom: 12 }}>
+                    <div style={{ position: 'absolute', left: -17, top: 16, width: 12, height: 12, borderRadius: '50%', background: onCampus ? '#16a34a' : '#C9A24B', boxShadow: '0 0 0 3px #fff' }} />
+                    <div style={{ borderRadius: 14, border: '1px solid rgba(11,30,61,0.08)', background: '#fff', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? 12 : 14 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: NAVY }}>👤 {v.visitor_name || 'Visitor'}</div>
+                          <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>{fmtD(v.visit_date || v.created_at)}</div>
+                        </div>
+                        {onCampus
+                          ? <span style={{ fontSize: 10.5, fontWeight: 800, color: '#16a34a', background: '#16a34a14', border: '1px solid #16a34a40', borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap' }}>On campus</span>
+                          : v.visit_category ? <span style={{ fontSize: 10.5, fontWeight: 700, color: '#64748b', background: '#f1f5f9', borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap' }}>{v.visit_category}</span> : null}
+                      </div>
+                      {v.purpose && <div style={{ fontSize: 13, color: '#1e293b', marginTop: 8 }}><strong style={{ color: '#64748b', fontWeight: 700 }}>Purpose:</strong> {v.purpose}</div>}
+                      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8, fontSize: 12, color: '#475569' }}>
+                        {v.in_time && <span>🟢 In: <strong>{fmtT(v.in_time)}</strong></span>}
+                        {v.out_time && <span>🔴 Out: <strong>{fmtT(v.out_time)}</strong></span>}
+                      </div>
+                      {v.remarks && <div style={{ fontSize: 12, color: '#64748b', marginTop: 8, background: '#FAF7F0', borderRadius: 8, padding: '6px 10px' }}>{v.remarks}</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        )}
+      </Card>
+      <p style={{ fontSize: 11.5, color: '#94a3b8', textAlign: 'center', margin: '4px 0 0' }}>If you see a visit you don't recognise, please contact the office on +91 89742 98074.</p>
+    </div>
   );
 }
 

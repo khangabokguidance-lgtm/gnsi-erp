@@ -2053,8 +2053,11 @@ export default function ReceptionPage({ currentUser }) {
     let { error } = await supabase.from(table).insert(clean)
     // Parent items: if the student_id column hasn't been added yet (SQL not
     // run), save without it rather than blocking Reception.
-    if (error && table === 'reception_parent_items' && /student_id/i.test(error.message || '')) {
+    // If the student link columns haven't been added yet (SQL not run),
+    // save without them rather than blocking Reception.
+    if (error && /student_id|student_name/i.test(error.message || '') && (table === 'reception_parent_items' || table === 'reception_visitors')) {
       const { student_id, ...rest } = clean
+      if (table === 'reception_visitors') delete rest.student_name
       ;({ error } = await supabase.from(table).insert(rest))
     }
     if (error) alert(error.message)
@@ -2465,7 +2468,12 @@ export default function ReceptionPage({ currentUser }) {
               <div style={{ padding: pad }}>
                 <form onSubmit={e => {
                   e.preventDefault()
-                  handleInsert('reception_visitors', visitorForm, () => { setVisitorForm({ ...VIS_DEF, visit_date: today() }); setVisitorStudent(null); setVisitorResetKey(k => k + 1) })
+                  handleInsert('reception_visitors', {
+                    ...visitorForm,
+                    // Link the visit to the student (shown in the Parents Portal Visitor Book)
+                    student_id: visitorStudent?.id != null ? String(visitorStudent.id) : null,
+                    student_name: visitorStudent?.name || null,
+                  }, () => { setVisitorForm({ ...VIS_DEF, visit_date: today() }); setVisitorStudent(null); setVisitorResetKey(k => k + 1) })
                 }}>
                   <div style={grid2(mob)}>
                     <div style={span2}>
