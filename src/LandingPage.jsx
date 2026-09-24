@@ -2581,7 +2581,7 @@ window.submitGrievance = async () => {
   {activeTab === 'home' && (
   <section className="pad-alt" id="home">
     <div className="container">
-      <div className="eyebrow reveal">Welcome to GNSI</div>
+      <div className="eyebrow reveal">Campus Life</div>
       <h2 className="st reveal">Gallery</h2>
       <div className="rule reveal">
         <div className="rule-line" />
@@ -3028,7 +3028,7 @@ window.submitGrievance = async () => {
   )}
   {/* TESTIMONIALS — Home and Reviews only */}
   {(activeTab === 'home' || activeTab === 'reviews') && (
-  <section className="pad">
+  <section className="pad testi-section">
     <div className="container">
       <div className="eyebrow reveal">Testimonials</div>
       <h2 className="st reveal">What Parents Say</h2>
@@ -3037,7 +3037,7 @@ window.submitGrievance = async () => {
         <div className="rule-d" />
         <div className="rule-line" />
       </div>
-      <div style={{ maxWidth: 680 }} className="reveal">
+      <div style={{ maxWidth: 680 }} className="reveal testi-box">
         <div className="testi-wrap">
           <div className="testi-track" id="testiTrack">
             <div className="testi-card">

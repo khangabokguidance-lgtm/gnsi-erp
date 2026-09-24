@@ -1539,33 +1539,6 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
 .home-faculty-grid:empty{min-height:120px}
 @media (max-width:768px){.home-faculty-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
-/* ═══ HOME: multi-colour sections ═══
-   Each home block gets its own full-width tinted band + matching accent
-   (eyebrow, heading underline, card top borders, outline buttons).
-   Colours cycle; add/remove blocks and it still works. */
-#home{padding-top:0!important;padding-bottom:0!important;background:none!important}
-#home>.container{--band:#fff;--acc:var(--gold);position:relative;margin-top:0!important;padding-top:3rem;padding-bottom:3rem;background:var(--band);box-shadow:0 0 0 100vmax var(--band);clip-path:inset(0 -100vmax)}
-#home>.container .eyebrow{color:var(--acc)!important}
-#home>.container .rule .rule-line:first-child{background:var(--acc)!important}
-#home>.container .rule-d{border-color:var(--acc)!important}
-#home>.container h2.st::after{background:var(--acc)!important;border-color:var(--acc)!important}
-#home>.container .btn-out{border-color:var(--acc)!important;color:var(--acc)!important}
-#home>.container .btn-out:hover{background:var(--acc)!important;color:#fff!important}
-#home>.container :is(.course-card,.ranker-card,.result-card,.home-video-card,.testi-card,.notice-card){border-top:3px solid var(--acc)!important}
-#home>.container:nth-of-type(7n+1){--band:#FFF8E6;--acc:#B7791F}
-#home>.container:nth-of-type(7n+2){--band:#EAF3FF;--acc:#1F4E8C}
-#home>.container:nth-of-type(7n+3){--band:#EAF8F0;--acc:#1E7A4C}
-#home>.container:nth-of-type(7n+4){--band:#FDEEF0;--acc:#B42335}
-#home>.container:nth-of-type(7n+5){--band:#F2EEFF;--acc:#5B3FB5}
-#home>.container:nth-of-type(7n+6){--band:#FFF0E4;--acc:#C2561A}
-#home>.container:nth-of-type(7n+7){--band:#E8F7F8;--acc:#0E7C86}
-/* Course cards keep their own identity colours on Home */
-#home .course-card.sainik{border-top-color:#B42335!important}
-#home .course-card.navodaya{border-top-color:#1F4E8C!important}
-#home .course-card.foundation{border-top-color:#1E7A4C!important}
-#home .course-card.combined{border-top-color:#B7791F!important}
-#home .course-card{background:#fff}
-@media (max-width:768px){#home>.container{padding-top:2.2rem;padding-bottom:2.2rem}}
 
 /* ═══ CTA — premium "Begin the Journey" ═══ */
 .cta-pro{position:relative;overflow:hidden;background:radial-gradient(120% 90% at 50% 0%,#16335F 0%,#0B1E3D 55%,#07142A 100%);color:#fff;padding:5rem 5% 4.5rem;border-top:1px solid rgba(201,162,75,.35);text-align:center}
@@ -1612,3 +1585,77 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
   .cta-btn{justify-content:center;height:50px}
   .cta-pro-cards{grid-template-columns:1fr}
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   HOME — PREMIUM LAYER
+   Full-width tinted bands (one colour family per section), centred
+   editorial headings, refined cards, consistent buttons.
+   ═══════════════════════════════════════════════════════════════ */
+#home{padding-top:0!important;padding-bottom:0!important;background:none!important}
+#home>.container{--band:#fff;--acc:#A87A1F;position:relative;margin-top:0!important;padding-top:4.5rem;padding-bottom:4.5rem;background:var(--band);box-shadow:0 0 0 100vmax var(--band);clip-path:inset(0 -100vmax)}
+#home>.container::before{content:"";position:absolute;top:0;left:50%;width:100vw;transform:translateX(-50%);height:1px;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--acc) 35%,transparent),transparent)}
+#home>.container:nth-of-type(7n+1){--band:#FBF7EE;--acc:#A87A1F}
+#home>.container:nth-of-type(7n+2){--band:#F1F6FD;--acc:#1F4E8C}
+#home>.container:nth-of-type(7n+3){--band:#EFF8F3;--acc:#1E7A4C}
+#home>.container:nth-of-type(7n+4){--band:#FCF2F3;--acc:#A61E30}
+#home>.container:nth-of-type(7n+5){--band:#F4F1FC;--acc:#5B3FB5}
+#home>.container:nth-of-type(7n+6){--band:#FDF4EC;--acc:#B4531A}
+#home>.container:nth-of-type(7n+7){--band:#EEF7F8;--acc:#0E7C86}
+
+/* Section headings: centred, editorial */
+#home>.container>.eyebrow,#home>.container>h2.st,#home>.container>.rule{text-align:center;justify-content:center;margin-left:auto;margin-right:auto}
+#home>.container>.eyebrow{display:table;padding:.38rem .95rem;border-radius:999px;background:color-mix(in srgb,var(--acc) 10%,#fff);border:1px solid color-mix(in srgb,var(--acc) 28%,transparent);color:var(--acc)!important;font-size:.72rem!important;font-weight:700;letter-spacing:.16em;text-transform:uppercase;margin-bottom:1rem}
+#home>.container>h2.st{font-size:clamp(1.9rem,4.4vw,3rem);letter-spacing:-.01em;color:#0B1E3D;margin-bottom:.9rem}
+#home>.container>.rule{display:flex;margin-bottom:2.6rem}
+#home>.container>.rule .rule-line:first-child{flex:0 0 64px;height:3px;border-radius:3px;background:linear-gradient(90deg,var(--acc),color-mix(in srgb,var(--acc) 40%,#E2C57E))!important}
+#home>.container>p{max-width:720px;margin-left:auto;margin-right:auto;text-align:center;color:#4A5568;line-height:1.8}
+#home .eyebrow::before,#home .eyebrow::after{display:none}
+
+/* Buttons under each section: centred, pill, accent */
+#home>.container>div:has(>.btn-out){text-align:center;margin-top:2.2rem!important}
+#home .btn-out{border-radius:999px!important;padding:.85rem 1.8rem!important;border:1.5px solid var(--acc)!important;color:var(--acc)!important;background:#fff!important;font-weight:700;letter-spacing:.01em;box-shadow:0 4px 14px rgba(11,30,61,.06);transition:all .2s}
+#home .btn-out:hover{background:var(--acc)!important;color:#fff!important;box-shadow:0 10px 24px color-mix(in srgb,var(--acc) 35%,transparent);transform:translateY(-2px)}
+
+/* Cards: soft layered shadows, rounded, hover lift */
+#home :is(.course-card,.gph2,.ranker-card,.faculty-card,.home-video-card,.testi-card){border-radius:16px!important;box-shadow:0 1px 2px rgba(11,30,61,.06),0 10px 30px rgba(11,30,61,.08)!important;transition:transform .25s,box-shadow .25s}
+#home :is(.course-card,.gph2,.ranker-card,.faculty-card,.home-video-card):hover{transform:translateY(-6px);box-shadow:0 2px 4px rgba(11,30,61,.08),0 20px 44px rgba(11,30,61,.16)!important}
+#home .course-card{background:#fff;border:1px solid rgba(11,30,61,.07)!important;border-top:4px solid var(--acc)!important}
+#home .course-card.sainik{border-top-color:#A61E30!important}
+#home .course-card.navodaya{border-top-color:#1F4E8C!important}
+#home .course-card.foundation{border-top-color:#1E7A4C!important}
+#home .course-card.combined{border-top-color:#A87A1F!important}
+#home .gph2{overflow:hidden}
+#home .gph-lbl{font-family:var(--sans);letter-spacing:.12em;font-weight:700}
+
+/* Grids centred */
+#home .ranker-grid,#home .home-faculty-grid{justify-content:center;margin-left:auto;margin-right:auto}
+#home .home-faculty-grid{max-width:960px;gap:1.4rem}
+#home .ranker-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,240px));gap:1.3rem}
+
+/* Year switcher pill */
+#home [class*="year"] button,#home .yr-pill{border-radius:999px}
+
+/* Testimonials */
+.reviews-section .testi-card,#home .testi-card{border-radius:18px!important;border:1px solid rgba(11,30,61,.08)!important;box-shadow:0 1px 2px rgba(11,30,61,.05),0 16px 40px rgba(11,30,61,.08)!important}
+
+/* All-sections grid: cleaner tiles */
+.sec-grid-wrap{background:linear-gradient(180deg,#F8F5EE,#F3EFE4)!important;padding:1.8rem 0 2rem!important}
+.sec-grid-title{letter-spacing:.2em!important;color:#8A6A24!important;margin-bottom:1.1rem!important}
+.sec-tile{border-radius:14px!important;border:1px solid rgba(11,30,61,.08)!important;border-top:3px solid var(--tc)!important;box-shadow:0 1px 2px rgba(11,30,61,.05),0 6px 16px rgba(11,30,61,.06)!important;min-height:84px!important}
+.sec-tile:hover{transform:translateY(-3px)!important;box-shadow:0 12px 28px rgba(11,30,61,.14)!important}
+
+@media (max-width:768px){
+  #home>.container{padding-top:3rem;padding-bottom:3rem}
+  #home>.container>.rule{margin-bottom:1.8rem}
+  #home .ranker-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}
+  #home .home-faculty-grid{gap:.5rem}
+}
+
+/* Testimonials — same premium heading treatment, centred */
+.testi-section{background:#fff}
+.testi-section .container>.eyebrow,.testi-section .container>h2.st,.testi-section .container>.rule{text-align:center;justify-content:center;margin-left:auto;margin-right:auto}
+.testi-section .container>.eyebrow{display:table;padding:.38rem .95rem;border-radius:999px;background:#FBF3E2;border:1px solid rgba(168,122,31,.3);color:#A87A1F!important;font-size:.72rem!important;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
+.testi-section .container>h2.st{font-size:clamp(1.9rem,4.4vw,3rem)}
+.testi-section .container>.rule{display:flex;margin-bottom:2.4rem}
+.testi-section .testi-box{margin-left:auto;margin-right:auto}
+.testi-section .eyebrow::before,.testi-section .eyebrow::after{display:none}
