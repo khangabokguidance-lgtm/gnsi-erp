@@ -2326,59 +2326,68 @@ window.submitGrievance = async () => {
       existing slide-in behaviour from LandingPage.css; everything inside is
       styled by the scoped .pm-* rules below. */}
   <style>{`
+    .mob-menu.pm a,.mob-menu.pm button{margin:0;width:auto;min-width:0;height:auto;min-height:0;float:none;border-radius:0;box-shadow:none;text-transform:none;letter-spacing:normal;line-height:1.3;text-decoration:none;background:none;border:0;color:inherit}
+    .mob-menu.pm div,.mob-menu.pm span,.mob-menu.pm strong,.mob-menu.pm small,.mob-menu.pm p{float:none}
+    .mob-menu.pm .pm-hd,.mob-menu.pm .pm-scroll,.mob-menu.pm .pm-bottom{padding-left:max(1rem,calc((100% - 560px) / 2));padding-right:max(1rem,calc((100% - 560px) / 2))}
+    .mob-menu.pm .pm-brand{flex:1 1 auto;min-width:0}
+    .mob-menu.pm .pm-brand strong,.mob-menu.pm .pm-brand small{white-space:normal;word-break:normal}
+    .mob-menu.pm .pm-brand small{white-space:nowrap}
+
     .mob-menu.pm{background:linear-gradient(180deg,#0b1a36 0%,#0d2147 55%,#0b1a36 100%)!important;color:#e8edf7;display:flex;flex-direction:column;font-family:var(--sans,system-ui,sans-serif)}
-    .pm-hd{display:flex;align-items:center;gap:.8rem;padding:1.1rem 1.1rem 1rem;border-bottom:1px solid rgba(212,175,55,.22);background:rgba(255,255,255,.02)}
-    .pm-crest{width:46px;height:46px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 1px rgba(212,175,55,.55),0 6px 18px rgba(0,0,0,.35);overflow:hidden}
-    .pm-crest img{width:100%;height:100%;object-fit:contain}
-    .pm-crest b{color:#0b1a36;font:800 .8rem/1 Georgia,serif;letter-spacing:.04em}
-    .pm-brand{min-width:0;flex:1}
-    .pm-brand strong{display:block;font:700 1rem/1.25 Georgia,'Times New Roman',serif;color:#fff;letter-spacing:.01em}
-    .pm-brand small{display:block;margin-top:.2rem;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:#d4af37}
-    .pm-close{width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:background .2s,border-color .2s}
-    .pm-close:hover{background:rgba(212,175,55,.18);border-color:#d4af37}
-    .pm-scroll{flex:1;overflow-y:auto;padding:1.1rem 1rem 1.2rem;-webkit-overflow-scrolling:touch}
-    .pm-label{font-size:.64rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(212,175,55,.85);margin:0 0 .6rem .2rem}
-    .pm-grid{display:grid;grid-template-columns:1fr 1fr;gap:.55rem;margin-bottom:1.3rem}
-    .pm-tile{display:flex;align-items:center;gap:.65rem;padding:.8rem .75rem;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:#e8edf7;text-decoration:none;font-size:.86rem;font-weight:600;transition:background .2s,border-color .2s,transform .15s}
-    .pm-tile:active{transform:scale(.98)}
-    .pm-tile:last-child:nth-child(odd){grid-column:1/-1}
-    @media (hover:hover){.pm-tile:hover{background:rgba(255,255,255,.09);border-color:rgba(212,175,55,.45)}}
-    .pm-tile .pm-ic.has-logo{background:#fff;padding:3px;overflow:hidden}
-    .pm-tile.on .pm-ic.has-logo{background:#fff;box-shadow:0 0 0 2px #d4af37}
-    .pm-chip-logo{width:16px;height:16px;border-radius:4px;object-fit:contain;background:#fff;flex-shrink:0}
-    .pm-row .pm-ic.pm-logo{width:34px;height:34px;border-radius:9px;background:#fff;overflow:hidden;padding:2px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
-    .pm-row .pm-ic.pm-logo img{width:100%;height:100%;object-fit:contain}
-    .pm-row .pm-ic.pm-logo-fallback{background:rgba(212,175,55,.12);padding:0}
-    .pm-btn-gold .tap-ripple{background:#fff}
+    .mob-menu.pm .pm-hd{display:flex;align-items:center;gap:.8rem;padding:1.1rem 1.1rem 1rem;border-bottom:1px solid rgba(212,175,55,.22);background:rgba(255,255,255,.02)}
+    .mob-menu.pm .pm-crest{width:46px;height:46px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 1px rgba(212,175,55,.55),0 6px 18px rgba(0,0,0,.35);overflow:hidden}
+    .mob-menu.pm .pm-crest img{width:100%;height:100%;object-fit:contain}
+    .mob-menu.pm .pm-crest b{color:#0b1a36;font:800 .8rem/1 Georgia,serif;letter-spacing:.04em}
+    .mob-menu.pm .pm-brand{min-width:0;flex:1}
+    .mob-menu.pm .pm-brand strong{display:block;font:700 1rem/1.25 Georgia,'Times New Roman',serif;color:#fff;letter-spacing:.01em}
+    .mob-menu.pm .pm-brand small{display:block;margin-top:.2rem;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:#d4af37}
+    .mob-menu.pm .pm-close{width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:background .2s,border-color .2s}
+    .mob-menu.pm .pm-close:hover{background:rgba(212,175,55,.18);border-color:#d4af37}
+    .mob-menu.pm .pm-close{position:static;flex-shrink:0}
+    .mob-menu.pm .pm-hd{flex-wrap:nowrap}
+    .mob-menu.pm .pm-scroll{flex:1;overflow-y:auto;padding:1.1rem 1rem 1.2rem;-webkit-overflow-scrolling:touch}
+    .mob-menu.pm .pm-label{font-size:.64rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(212,175,55,.85);margin:0 0 .6rem .2rem}
+    .mob-menu.pm .pm-grid{display:grid;grid-template-columns:1fr 1fr;gap:.55rem;margin-bottom:1.3rem}
+    .mob-menu.pm .pm-tile{display:flex;align-items:center;gap:.65rem;padding:.8rem .75rem;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:#e8edf7;text-decoration:none;font-size:.86rem;font-weight:600;transition:background .2s,border-color .2s,transform .15s}
+    .mob-menu.pm .pm-tile:active{transform:scale(.98)}
+    .mob-menu.pm .pm-tile:last-child:nth-child(odd){grid-column:1/-1}
+    @media (hover:hover){.mob-menu.pm .pm-tile:hover{background:rgba(255,255,255,.09);border-color:rgba(212,175,55,.45)}}
+    .mob-menu.pm .pm-tile .pm-ic.has-logo{background:#fff;padding:3px;overflow:hidden}
+    .mob-menu.pm .pm-tile.on .pm-ic.has-logo{background:#fff;box-shadow:0 0 0 2px #d4af37}
+    .mob-menu.pm .pm-chip-logo{width:16px;height:16px;border-radius:4px;object-fit:contain;background:#fff;flex-shrink:0}
+    .mob-menu.pm .pm-row .pm-ic.pm-logo{width:34px;height:34px;border-radius:9px;background:#fff;overflow:hidden;padding:2px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+    .mob-menu.pm .pm-row .pm-ic.pm-logo img{width:100%;height:100%;object-fit:contain}
+    .mob-menu.pm .pm-row .pm-ic.pm-logo-fallback{background:rgba(212,175,55,.12);padding:0}
+    .mob-menu.pm .pm-btn-gold .tap-ripple{background:#fff}
     ${TAP_CSS}
-    .pm-tile .pm-ic{width:34px;height:34px;border-radius:9px;background:rgba(212,175,55,.12);color:#d4af37;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-    .pm-tile.on{background:linear-gradient(135deg,rgba(212,175,55,.22),rgba(212,175,55,.08));border-color:#d4af37;color:#fff}
-    .pm-tile.on .pm-ic{background:#d4af37;color:#0b1a36}
-    .pm-acc{border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);margin-bottom:1.3rem;overflow:hidden}
-    .pm-acc-btn{width:100%;display:flex;align-items:center;gap:.65rem;padding:.85rem .9rem;background:none;border:0;color:#fff;font:inherit;font-size:.88rem;font-weight:600;cursor:pointer;text-align:left}
-    .pm-acc-btn .pm-ic{color:#d4af37;display:flex}
-    .pm-acc-btn .pm-arr{margin-left:auto;display:flex;color:rgba(255,255,255,.6);transition:transform .25s}
-    .pm-acc-btn.open .pm-arr{transform:rotate(180deg)}
-    .pm-acc-body{padding:.2rem .9rem 1rem;border-top:1px solid rgba(255,255,255,.06)}
-    .pm-group-t{font-size:.62rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.45);margin:.9rem 0 .45rem}
-    .pm-chips{display:flex;flex-wrap:wrap;gap:.4rem}
-    .pm-chip{display:inline-flex;align-items:center;gap:.35rem;padding:.42rem .75rem;border-radius:999px;border:1px solid rgba(255,255,255,.14);color:#dfe6f3;text-decoration:none;font-size:.76rem;font-weight:500;transition:border-color .2s,background .2s}
-    .pm-chip svg{color:#d4af37;flex-shrink:0}.pm-chip.on svg{color:#0b1a36}
-    .pm-chip:hover{border-color:#d4af37;background:rgba(212,175,55,.1)}
-    .pm-chip.on{background:#d4af37;border-color:#d4af37;color:#0b1a36;font-weight:700}
-    .pm-list{border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.08);margin-bottom:1.1rem}
-    .pm-row{width:100%;display:flex;align-items:center;gap:.75rem;padding:.85rem .9rem;background:rgba(255,255,255,.03);border:0;border-bottom:1px solid rgba(255,255,255,.06);color:#e8edf7;text-decoration:none;font:inherit;font-size:.86rem;font-weight:600;cursor:pointer;text-align:left}
-    .pm-row:last-child{border-bottom:0}
-    .pm-row:hover{background:rgba(255,255,255,.07)}
-    .pm-row .pm-ic{color:#d4af37;display:flex}
-    .pm-row .pm-sub{display:block;font-size:.7rem;font-weight:400;color:rgba(255,255,255,.5);margin-top:.1rem}
-    .pm-row .pm-arr{margin-left:auto;color:rgba(255,255,255,.4);display:flex}
-    .pm-contact{display:flex;align-items:center;justify-content:center;gap:.45rem;font-size:.78rem;color:rgba(255,255,255,.6);text-decoration:none;padding:.3rem 0 .2rem}
-    .pm-contact b{color:#fff;font-weight:600}
-    .pm-bottom{display:grid;grid-template-columns:1fr 1.3fr;gap:.6rem;padding:.85rem 1rem calc(.85rem + env(safe-area-inset-bottom));border-top:1px solid rgba(212,175,55,.22);background:rgba(6,14,30,.65);backdrop-filter:blur(8px)}
-    .pm-btn{display:flex;align-items:center;justify-content:center;gap:.45rem;height:48px;border-radius:12px;font:inherit;font-size:.9rem;font-weight:700;cursor:pointer;text-decoration:none;letter-spacing:.01em}
-    .pm-btn-ghost{background:transparent;border:1px solid rgba(212,175,55,.6);color:#f3dc8c}
-    .pm-btn-gold{background:linear-gradient(135deg,#e7c65a,#c9a227);border:0;color:#0b1a36;box-shadow:0 8px 22px rgba(201,162,39,.35)}
+    .mob-menu.pm .pm-tile .pm-ic{width:34px;height:34px;border-radius:9px;background:rgba(212,175,55,.12);color:#d4af37;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .mob-menu.pm .pm-tile.on{background:linear-gradient(135deg,rgba(212,175,55,.22),rgba(212,175,55,.08));border-color:#d4af37;color:#fff}
+    .mob-menu.pm .pm-tile.on .pm-ic{background:#d4af37;color:#0b1a36}
+    .mob-menu.pm .pm-acc{border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);margin-bottom:1.3rem;overflow:hidden}
+    .mob-menu.pm .pm-acc-btn{width:100%;display:flex;align-items:center;gap:.65rem;padding:.85rem .9rem;background:none;border:0;color:#fff;font:inherit;font-size:.88rem;font-weight:600;cursor:pointer;text-align:left}
+    .mob-menu.pm .pm-acc-btn .pm-ic{color:#d4af37;display:flex}
+    .mob-menu.pm .pm-acc-btn .pm-arr{margin-left:auto;display:flex;color:rgba(255,255,255,.6);transition:transform .25s}
+    .mob-menu.pm .pm-acc-btn.open .pm-arr{transform:rotate(180deg)}
+    .mob-menu.pm .pm-acc-body{padding:.2rem .9rem 1rem;border-top:1px solid rgba(255,255,255,.06)}
+    .mob-menu.pm .pm-group-t{font-size:.62rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.45);margin:.9rem 0 .45rem}
+    .mob-menu.pm .pm-chips{display:flex;flex-wrap:wrap;gap:.4rem}
+    .mob-menu.pm .pm-chip{display:inline-flex;align-items:center;gap:.35rem;padding:.42rem .75rem;border-radius:999px;border:1px solid rgba(255,255,255,.14);color:#dfe6f3;text-decoration:none;font-size:.76rem;font-weight:500;transition:border-color .2s,background .2s}
+    .mob-menu.pm .pm-chip svg{color:#d4af37;flex-shrink:0}.mob-menu.pm .pm-chip.on svg{color:#0b1a36}
+    .mob-menu.pm .pm-chip:hover{border-color:#d4af37;background:rgba(212,175,55,.1)}
+    .mob-menu.pm .pm-chip.on{background:#d4af37;border-color:#d4af37;color:#0b1a36;font-weight:700}
+    .mob-menu.pm .pm-list{border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.08);margin-bottom:1.1rem}
+    .mob-menu.pm .pm-row{width:100%;display:flex;align-items:center;gap:.75rem;padding:.85rem .9rem;background:rgba(255,255,255,.03);border:0;border-bottom:1px solid rgba(255,255,255,.06);color:#e8edf7;text-decoration:none;font:inherit;font-size:.86rem;font-weight:600;cursor:pointer;text-align:left}
+    .mob-menu.pm .pm-row:last-child{border-bottom:0}
+    .mob-menu.pm .pm-row:hover{background:rgba(255,255,255,.07)}
+    .mob-menu.pm .pm-row .pm-ic{color:#d4af37;display:flex}
+    .mob-menu.pm .pm-row .pm-sub{display:block;font-size:.7rem;font-weight:400;color:rgba(255,255,255,.5);margin-top:.1rem}
+    .mob-menu.pm .pm-row .pm-arr{margin-left:auto;color:rgba(255,255,255,.4);display:flex}
+    .mob-menu.pm .pm-contact{display:flex;align-items:center;justify-content:center;gap:.45rem;font-size:.78rem;color:rgba(255,255,255,.6);text-decoration:none;padding:.3rem 0 .2rem}
+    .mob-menu.pm .pm-contact b{color:#fff;font-weight:600}
+    .mob-menu.pm .pm-bottom{display:grid;grid-template-columns:1fr 1.3fr;gap:.6rem;padding:.85rem 1rem calc(.85rem + env(safe-area-inset-bottom));border-top:1px solid rgba(212,175,55,.22);background:rgba(6,14,30,.65);backdrop-filter:blur(8px)}
+    .mob-menu.pm .pm-btn{display:flex;align-items:center;justify-content:center;gap:.45rem;height:48px;border-radius:12px;font:inherit;font-size:.9rem;font-weight:700;cursor:pointer;text-decoration:none;letter-spacing:.01em}
+    .mob-menu.pm .pm-btn-ghost{background:transparent;border:1px solid rgba(212,175,55,.6);color:#f3dc8c}
+    .mob-menu.pm .pm-btn-gold{background:linear-gradient(135deg,#e7c65a,#c9a227);border:0;color:#0b1a36;box-shadow:0 8px 22px rgba(201,162,39,.35)}
   `}</style>
   <div
     className={"mob-menu pm" + (mobileOpen ? " open" : "")}
