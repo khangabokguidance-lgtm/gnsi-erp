@@ -1782,7 +1782,10 @@ export function SecurityCenter({ onNavigate } = {}) {
   }
 
   const findings = state.findings
-  const score = Math.max(0, 100 - findings.reduce((a, f) => a + (SEV[f.severity]?.w || 0), 0))
+  // Smooth score: every issue lowers it, but it only reaches 0 when things are
+  // truly out of control — so fixing one issue always moves the needle.
+  const penalty = findings.reduce((a, f) => a + (SEV[f.severity]?.w || 0), 0)
+  const score = Math.round(100 * Math.exp(-penalty / 120))
   const grade = score >= 90 ? { t:"Strong", c:"#0f7a52" } : score >= 70 ? { t:"Fair", c:"#9a6a08" } : score >= 40 ? { t:"At risk", c:"#c2410c" } : { t:"Critical", c:"#b3273f" }
   const counts = SEV_ORDER.reduce((m, k) => ({ ...m, [k]: findings.filter(f => f.severity === k).length }), {})
   const byModule = {}
@@ -1802,7 +1805,7 @@ export function SecurityCenter({ onNavigate } = {}) {
             <svg width="118" height="118" viewBox="0 0 118 118">
               <circle cx="59" cy="59" r="50" fill="none" stroke="rgba(255,255,255,.12)" strokeWidth="10"/>
               <circle cx="59" cy="59" r="50" fill="none" stroke={grade.c === "#0f7a52" ? "#4ADE80" : grade.c === "#9a6a08" ? "#FACC15" : grade.c === "#c2410c" ? "#FB923C" : "#F87171"} strokeWidth="10" strokeLinecap="round"
-                strokeDasharray={`${(score/100)*314} 314`} transform="rotate(-90 59 59)" style={{transition:"stroke-dasharray .9s ease"}}/>
+                strokeDasharray={`${Math.max(score, 0.001)/100*314} 314`} transform="rotate(-90 59 59)" style={{transition:"stroke-dasharray .9s ease"}}/>
             </svg>
             <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
               <div style={{fontSize:32,fontWeight:700,color:"#fff",fontFamily:SERIF,lineHeight:1}}>{state.status==="loading"?"…":score}</div>
