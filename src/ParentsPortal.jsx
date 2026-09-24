@@ -1423,6 +1423,24 @@ export default function ParentsPortal({ isOpen, onClose }) {
           box-sizing: border-box !important;
         }
         #ppOverlay { max-width: 100vw; overflow-x: hidden; }
+        /* ── Mobile-safe layout guards (every tab) ─────────────────────────
+           Long unbroken text (remarks, emails, receipt numbers), wide
+           tables and grid/flex children with long content were pushing
+           cards past the screen edge on phones. */
+        #ppShell, #ppShell * { max-width: 100%; }
+        #ppShell p, #ppShell span, #ppShell div, #ppShell td, #ppShell th, #ppShell strong, #ppShell a, #ppShell li { overflow-wrap: anywhere; word-break: normal; }
+        #ppShell [style*="display: grid"] > *, #ppShell [style*="display: flex"] > * { min-width: 0; }
+        #ppShell table { width: 100%; border-collapse: collapse; }
+        #ppShell div:has(> table) { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        #ppShell img, #ppShell svg, #ppShell canvas, #ppShell iframe, #ppShell video { max-width: 100%; height: auto; }
+        #ppShell input, #ppShell select, #ppShell textarea, #ppShell button { max-width: 100%; }
+        #ppShell pre { white-space: pre-wrap; }
+        @media (max-width: 640px) {
+          #ppShell th, #ppShell td { padding: 8px 8px !important; font-size: 12px !important; }
+          #ppShell td { white-space: normal !important; }
+          #ppShell table { min-width: 0; }
+          #ppShell div:has(> table) > table th { white-space: nowrap; }
+        }
         #ppOverlay img { max-width: 100%; }
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
         #ppLoginWrap .pp-serif { font-family: 'Playfair Display', Georgia, 'Times New Roman', serif !important; }
@@ -1520,7 +1538,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
                   <p style={{ color: '#b7c3d9', fontSize: 15, lineHeight: 1.7, maxWidth: 400, margin: '0 0 26px' }}>
                     Track attendance, exam scores, hostel leave, fee dues and school updates — all from one secure portal.
                   </p>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, maxWidth: 460 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10, maxWidth: 460 }}>
                     {[
                       ['📊', 'Live attendance', 'Daily, as marked'],
                       ['📝', 'Exam scores', 'Marks & report cards'],
@@ -2525,7 +2543,7 @@ function ProfileTab({ student, documents, onViewDocument, onSaveFields, isMobile
   return (
     <div>
       <Card title="Student Details">
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr) minmax(0, 1fr)' : 'repeat(3, minmax(0, 1fr))', gap: 16 }}>
           <ProfileField label="Name" value={student?.name} />
           <ProfileField label="GCC No." value={student?.gcc_no} />
           <ProfileField label="Admission No." value={student?.admission_no} />
@@ -2599,7 +2617,7 @@ function AttendanceTab({ state, isMobile }) {
         title="This Month's Attendance"
         right={<span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', color: '#94a3b8', fontWeight: 700 }}>{monthLabel}</span>}
       >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: isMobile ? 4 : 6, marginBottom: isMobile ? 16 : 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: isMobile ? 4 : 6, marginBottom: isMobile ? 16 : 20 }}>
           {Array.from({ length: daysInMonth }, (_, i) => {
             const d = i + 1;
             const dd = String(d).padStart(2, '0');
@@ -2624,7 +2642,7 @@ function AttendanceTab({ state, isMobile }) {
             );
           })}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: isMobile ? 8 : 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: isMobile ? 8 : 12 }}>
           <div style={{ borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #bbf7d0', backgroundColor: isMobile ? '#e3f6e9' : '#f0fdf4', padding: isMobile ? 10 : 12, textAlign: 'center' }}>
             <strong style={{ display: 'block', fontSize: isMobile ? 16 : 18, fontWeight: 800, color: '#16a34a' }}>{present}</strong>
             <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: '#64748b', fontWeight: 700 }}>Present</span>
@@ -2803,7 +2821,7 @@ function ReportCardTab({ examTypes, selectedType, onTypeChange, dates, selectedD
     : { width: '100%', borderRadius: 10, border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', color: '#1e293b', fontSize: 13, padding: '10px 14px', outline: 'none', boxSizing: 'border-box' };
   return (
     <Card title="Report Card">
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 14, marginBottom: 16 }}>
         <div>
           <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Exam</label>
           <select style={selectStyle} value={selectedType} onChange={(e) => onTypeChange(e.target.value)}>
@@ -2856,7 +2874,7 @@ function FeesTab({ state, onPayNow, nextDue, isMobile, student }) {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isMobile ? 8 : 12, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: isMobile ? 8 : 12, marginBottom: 16 }}>
             <div style={{ borderRadius: isMobile ? 16 : 10, border: isMobile ? 'none' : '1px solid #bbf7d0', backgroundColor: isMobile ? '#e3f6e9' : '#f0fdf4', padding: isMobile ? 12 : 16, textAlign: 'center' }}>
               <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', fontWeight: 700, marginBottom: 4 }}>Total Paid</div>
               <div style={{ fontSize: isMobile ? 17 : 20, fontWeight: 800, color: '#16a34a' }}>₹{state.data.totalPaid ?? 0}</div>
@@ -3056,7 +3074,7 @@ function LeaveRequestForm({ studentId, studentName, onSubmitted }) {
           {LEAVE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 12, marginBottom: 14 }}>
           <div>
             <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>From</label>
             <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} style={inputStyle} />
@@ -3857,7 +3875,7 @@ function GrievanceTab({ studentId, studentName, done, onSubmitted, isMobile }) {
               style={{ ...inputStyle, marginBottom: 14, resize: 'vertical' }}
             />
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginBottom: 18 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 12, marginBottom: 18 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#64748b', marginBottom: 6 }}>Your Name</label>
                 <input required value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
@@ -3900,7 +3918,7 @@ function SiteLinksTab({ isMobile, onNavigate }) {
         <Card key={group.heading} title={group.heading}>
           <div style={{
             display: 'grid',
-            gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(180px, 1fr))',
+            gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fill, minmax(180px, 1fr))',
             gap: 10,
           }}>
             {group.links.map((link) => (
