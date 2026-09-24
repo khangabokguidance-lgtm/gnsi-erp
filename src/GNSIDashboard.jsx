@@ -8,6 +8,7 @@ import {
   FunnelChart, Funnel, LabelList,
 } from "recharts"
 import { supabase } from "./supabase"
+import AdminIntelligence from "./AdminIntelligence"
 
 // ─── PROFESSIONAL INSTITUTE THEME TOKENS ────────────────────────────────────
 const T = {
@@ -74,6 +75,8 @@ const ACADEMIC_MONTHS = MONTHS_LIST.map((month, i) => {
 // the order sections actually appear on the page.
 const SECTION_TABS = [
   { id: 'overview',   icon: '📊', label: 'Overview' },
+  { id: 'security',   icon: '🛡️', label: '360° Health' },
+  { id: 'intel',      icon: '🧠', label: 'Intelligence' },
   { id: 'finance',    icon: '💰', label: 'Finance' },
   { id: 'students',   icon: '🎓', label: 'Students' },
   { id: 'dropout',    icon: '📉', label: 'Dropout' },
@@ -1323,6 +1326,228 @@ const G = {
   split:  "grid-split",
 }
 
+
+// ─── SECURITY CENTER ─────────────────────────────────────────────────────────
+// Runs public.security_audit() (security_audit.sql — read-only, admin-only)
+// plus a few checks only the browser can see, and shows every finding by
+// module with severity, what it means and how to fix it.
+const SEV = {
+  critical: { label: "Critical", color: "#b3273f", bg: "#FDF2F3", w: 25 },
+  high:     { label: "High",     color: "#c2410c", bg: "#FFF4ED", w: 12 },
+  medium:   { label: "Medium",   color: "#9a6a08", bg: "#FFFBEB", w: 5 },
+  low:      { label: "Low",      color: "#1F4E8C", bg: "#EEF4FB", w: 1 },
+}
+const SEV_ORDER = ["critical","high","medium","low"]
+
+export function SecurityCenter() {
+  const [state, setState] = useState({ status: "loading", findings: [], checkedAt: null, error: null })
+  const [open, setOpen] = useState({})
+  const [filter, setFilter] = useState("all")
+  const [kind, setKind] = useState("all")      // all | security | data
+  const [fixing, setFixing] = useState(null)   // finding id being fixed, or "all"
+  const [log, setLog] = useState([])           // [{ id, title, msg, ok }]
+
+  const run = useCallback(async () => {
+    setState(s => ({ ...s, status: "loading", error: null }))
+    const local = []
+    // Browser-only checks
+    if (import.meta.env?.VITE_ADMIN_PASSWORD) local.push({ id:"env_admin_pw", module:"Login", severity:"critical",
+      title:"Admin password is built into the website code",
+      detail:"VITE_ADMIN_PASSWORD is set, so the password ships inside the public JavaScript that every visitor downloads.",
+      fix:"Change the admin password, then delete VITE_ADMIN_PASSWORD from .env and your hosting settings and redeploy.", items:[] })
+    if (typeof location !== "undefined" && location.protocol !== "https:" && !/localhost|127\.0\.0\.1/.test(location.hostname)) local.push({ id:"no_https", module:"Website", severity:"critical",
+      title:"Site opened without HTTPS", detail:"Logins and data travel unencrypted.", fix:"Always use https:// (force HTTPS in hosting).", items:[] })
+    let sessionOk = false
+    try { const { data } = await supabase.auth.getSession(); sessionOk = !!data?.session } catch (_) {}
+    if (!sessionOk) local.push({ id:"no_session", module:"Login", severity:"medium",
+      title:"You are not on secure login yet", detail:"This admin session is using the public key, so the full audit cannot run.",
+      fix:"Log out and log back in once (Phase 1 secure login).", items:[] })
+
+    // 360° scan: security + data health in every module (system_health.sql).
+    // Falls back to the security-only audit if the health function isn't installed.
+    let { data, error } = await supabase.rpc("system_health_check")
+    if (error && /system_health_check|does not exist/i.test(error.message)) {
+      ({ data, error } = await supabase.rpc("security_audit"))
+      if (!error) error = { message: "Run system_health.sql to add data checks and Fix buttons.", soft: true }
+    }
+    if (error && !data) {
+      setState({ status: "partial", findings: local, checkedAt: new Date().toISOString(),
+        error: /function .*security_audit|does not exist/i.test(error.message)
+          ? "Run security_audit.sql and system_health.sql in Supabase to enable the full scan."
+          : error.message })
+      return
+    }
+    if (error?.soft) {
+      setState({ status: "ready", findings: [...local, ...((data && data.findings) || [])], checkedAt: data?.checked_at || new Date().toISOString(), error: error.message })
+      return
+    }
+    setState({ status: "ready", findings: [...local, ...((data && data.findings) || [])], checkedAt: data?.checked_at || new Date().toISOString(), error: null })
+  }, [])
+  useEffect(() => { run() }, [run])
+
+  const applyFix = async (f, silent = false) => {
+    if (!silent && !window.confirm(`Apply the automatic fix?\n\n${f.title}\n\n${f.fix}`)) return false
+    setFixing(f.id)
+    const { data, error } = await supabase.rpc("system_fix", { p_id: f.id })
+    setLog(l => [{ id: f.id, title: f.title, msg: error ? error.message : data, ok: !error, at: new Date() }, ...l].slice(0, 20))
+    setFixing(null)
+    return !error
+  }
+  const fixAll = async () => {
+    const list = state.findings.filter(f => f.fixable)
+    if (!list.length) return
+    if (!window.confirm(`Apply ${list.length} safe automatic fix(es)?\n\n` + list.map(f => "• " + f.title).join("\n"))) return
+    setFixing("all")
+    for (const f of list) await applyFix(f, true)
+    setFixing(null)
+    run()
+  }
+
+  const findings = state.findings
+  const score = Math.max(0, 100 - findings.reduce((a, f) => a + (SEV[f.severity]?.w || 0), 0))
+  const grade = score >= 90 ? { t:"Strong", c:"#0f7a52" } : score >= 70 ? { t:"Fair", c:"#9a6a08" } : score >= 40 ? { t:"At risk", c:"#c2410c" } : { t:"Critical", c:"#b3273f" }
+  const counts = SEV_ORDER.reduce((m, k) => ({ ...m, [k]: findings.filter(f => f.severity === k).length }), {})
+  const byModule = {}
+  findings.filter(f => (filter === "all" || f.severity === filter) && (kind === "all" || (f.kind || "security") === kind))
+    .sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity))
+    .forEach(f => { (byModule[f.module] = byModule[f.module] || []).push(f) })
+
+  return (
+    <div>
+      <SectionHeader icon="🛡️" title="360° Health Center"/>
+      <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr)",gap:14,marginBottom:18}} className="sec-top">
+        <div style={{position:"relative",overflow:"hidden",borderRadius:20,padding:"22px 24px",
+          background:"radial-gradient(120% 140% at 100% 0%, #1F4E8C 0%, #132B52 40%, #0B1E3D 78%)",
+          boxShadow:"0 22px 50px rgba(11,30,61,.28), inset 0 0 0 1px rgba(226,197,126,.22)",display:"flex",alignItems:"center",gap:22,flexWrap:"wrap"}}>
+          <div style={{position:"absolute",left:0,right:0,top:0,height:3,background:"linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)"}}/>
+          <div style={{position:"relative",width:118,height:118,flexShrink:0}}>
+            <svg width="118" height="118" viewBox="0 0 118 118">
+              <circle cx="59" cy="59" r="50" fill="none" stroke="rgba(255,255,255,.12)" strokeWidth="10"/>
+              <circle cx="59" cy="59" r="50" fill="none" stroke={grade.c === "#0f7a52" ? "#4ADE80" : grade.c === "#9a6a08" ? "#FACC15" : grade.c === "#c2410c" ? "#FB923C" : "#F87171"} strokeWidth="10" strokeLinecap="round"
+                strokeDasharray={`${(score/100)*314} 314`} transform="rotate(-90 59 59)" style={{transition:"stroke-dasharray .9s ease"}}/>
+            </svg>
+            <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+              <div style={{fontSize:32,fontWeight:700,color:"#fff",fontFamily:SERIF,lineHeight:1}}>{state.status==="loading"?"…":score}</div>
+              <div style={{fontSize:10,color:"#E2C57E",fontWeight:800,letterSpacing:".12em"}}>/ 100</div>
+            </div>
+          </div>
+          <div style={{position:"relative",flex:"1 1 260px",minWidth:0}}>
+            <div style={{fontSize:10.5,fontWeight:800,color:"#E2C57E",letterSpacing:".18em",textTransform:"uppercase"}}>360° health score · security + data, all modules</div>
+            <div style={{fontSize:26,fontWeight:700,color:"#fff",fontFamily:SERIF,margin:"4px 0"}}>{state.status==="loading"?"Scanning all modules…":grade.t}</div>
+            <div style={{fontSize:12.5,color:"rgba(255,255,255,.72)"}}>
+              {findings.length === 0 && state.status === "ready" ? "No issues found across modules." : `${findings.length} issue${findings.length===1?"":"s"} across ${Object.keys(findings.reduce((m,f)=>({...m,[f.module]:1}),{})).length} area(s)`}
+              {state.checkedAt && ` · checked ${new Date(state.checkedAt).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}`}
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
+              {SEV_ORDER.map(k => (
+                <button key={k} onClick={() => setFilter(filter === k ? "all" : k)}
+                  style={{padding:"6px 12px",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:800,
+                    border:`1px solid ${filter===k?"#E2C57E":"rgba(255,255,255,.2)"}`,
+                    background: filter===k ? "rgba(226,197,126,.18)" : "rgba(255,255,255,.06)", color:"#fff"}}>
+                  <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:SEV[k].color,marginRight:6,boxShadow:"0 0 0 2px rgba(255,255,255,.25)"}}/>
+                  {counts[k]} {SEV[k].label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button onClick={run} disabled={state.status==="loading"} style={{position:"relative",padding:"10px 18px",borderRadius:999,border:"1px solid #E2C57E",
+            background:"linear-gradient(180deg,#D9B566,#C9A24B)",color:"#0B1E3D",fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit",
+            boxShadow:"0 10px 24px rgba(201,162,75,.35)",opacity:state.status==="loading"?.6:1}}>
+            {state.status==="loading" ? "Scanning…" : "↻ Re-scan"}
+          </button>
+        </div>
+      </div>
+
+      {state.error && (
+        <div style={{background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:14,padding:"12px 16px",marginBottom:14,fontSize:12.5,color:"#92400e"}}>
+          ⚠️ {state.error}
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:14}}>
+        {[["all","All checks"],["security","🔒 Security"],["data","🗂️ Data health"]].map(([k,l]) => (
+          <button key={k} onClick={() => setKind(k)} style={{padding:"8px 14px",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:12.5,fontWeight:700,
+            border:`1px solid ${kind===k?T.navy:T.border}`,background:kind===k?T.navy:"#fff",color:kind===k?"#E2C57E":T.inkMid,
+            boxShadow:kind===k?"0 6px 16px rgba(11,30,61,.2)":"none"}}>
+            {l} ({findings.filter(f => k==="all" || (f.kind||"security")===k).length})
+          </button>
+        ))}
+        <div style={{flex:1}}/>
+        {findings.some(f => f.fixable) && (
+          <button onClick={fixAll} disabled={!!fixing} style={{padding:"9px 16px",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",
+            fontSize:12.5,fontWeight:800,background:"#0f7a52",color:"#fff",boxShadow:"0 8px 20px rgba(15,122,82,.3)",opacity:fixing?.6:1}}>
+            {fixing==="all" ? "Fixing…" : `🔧 Fix all safe issues (${findings.filter(f=>f.fixable).length})`}
+          </button>
+        )}
+      </div>
+
+      {log.length > 0 && (
+        <Panel title="Fix log" style={{marginBottom:14}}>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {log.map((l,i) => (
+              <div key={i} style={{fontSize:12.5,display:"flex",gap:8,alignItems:"flex-start"}}>
+                <span style={{color:l.ok?T.emerald:T.rose,fontWeight:800}}>{l.ok?"✓":"✗"}</span>
+                <span style={{color:T.inkMid}}><b style={{color:T.ink}}>{l.title}</b> — {l.msg} <span style={{color:T.inkSub}}>· {l.at.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</span></span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {state.status !== "loading" && Object.keys(byModule).length === 0 && (
+        <Panel><div style={{textAlign:"center",padding:"18px 0",color:T.emerald,fontWeight:700}}>✓ {filter==="all" ? "All checks passed." : `No ${SEV[filter].label.toLowerCase()} issues.`}</div></Panel>
+      )}
+
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        {Object.entries(byModule).map(([mod, list]) => (
+          <Panel key={mod} title={`${mod} · ${list.length} issue${list.length===1?"":"s"}`}>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {list.map(f => {
+                const sv = SEV[f.severity] || SEV.low
+                const isOpen = !!open[f.id]
+                return (
+                  <div key={f.id} style={{border:`1px solid ${sv.color}30`,borderLeft:`4px solid ${sv.color}`,background:sv.bg,borderRadius:12,overflow:"hidden"}}>
+                    <button onClick={() => setOpen(o => ({...o,[f.id]:!o[f.id]}))}
+                      style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:"transparent",border:"none",cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
+                      <span style={{fontSize:10,fontWeight:800,color:"#fff",background:sv.color,borderRadius:999,padding:"3px 9px",letterSpacing:".06em",textTransform:"uppercase",flexShrink:0}}>{sv.label}</span>
+                      <span style={{flex:1,fontSize:13.5,fontWeight:700,color:T.ink,minWidth:0}}>{f.title}</span>
+                      <span style={{fontSize:10,fontWeight:700,color:T.inkSub,border:`1px solid ${T.border}`,background:"#fff",borderRadius:999,padding:"2px 8px",flexShrink:0}}>{(f.kind||"security")==="data"?"Data":"Security"}</span>
+                      {f.fixable && <span style={{fontSize:10,fontWeight:800,color:"#0f7a52",background:"#E7F6EF",borderRadius:999,padding:"2px 8px",flexShrink:0}}>Auto-fix</span>}
+                      <span style={{fontSize:11,color:T.inkSub,transform:isOpen?"rotate(180deg)":"none",transition:"transform .15s"}}>▾</span>
+                    </button>
+                    {isOpen && (
+                      <div style={{padding:"0 14px 14px 14px",fontSize:12.5,lineHeight:1.6,color:T.inkMid}}>
+                        <div style={{marginBottom:8}}>{f.detail}</div>
+                        {Array.isArray(f.items) && f.items.length > 0 && (
+                          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+                            {f.items.slice(0,60).map((it,i) => (
+                              <code key={i} style={{fontSize:11,background:"#fff",border:`1px solid ${T.border}`,borderRadius:6,padding:"2px 7px",color:T.ink}}>{String(it)}</code>
+                            ))}
+                            {f.items.length > 60 && <span style={{fontSize:11,color:T.inkSub}}>+{f.items.length-60} more</span>}
+                          </div>
+                        )}
+                        <div style={{background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 12px",display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                          <span style={{flex:"1 1 240px"}}><span style={{fontWeight:800,color:T.emerald}}>How to fix: </span>{f.fix}</span>
+                          {f.fixable && (
+                            <button onClick={async () => { if (await applyFix(f)) run() }} disabled={!!fixing}
+                              style={{padding:"8px 14px",borderRadius:999,border:"none",background:"#0f7a52",color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",opacity:fixing?.6:1}}>
+                              {fixing===f.id ? "Fixing…" : `🔧 ${f.fix_label || "Fix now"}`}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </Panel>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 export default function GNSIDashboard({ scrollToSection, onNavigate }) {
   const [data, setData] = useState(null)
@@ -1544,6 +1769,11 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
               color:"#0B1E3D",fontSize:12.5,fontWeight:800,
               cursor:"pointer",fontFamily:"inherit",boxShadow:"0 10px 24px rgba(201,162,75,.35)",
             }}>🔔 Enable Notifications</button>
+            <button onClick={() => goToSection('security')} style={{
+              padding:"10px 18px",borderRadius:999,position:"relative",
+              border:"1px solid rgba(226,197,126,.5)",background:"rgba(255,255,255,.08)",
+              color:"#fff",fontSize:12.5,fontWeight:800,cursor:"pointer",fontFamily:"inherit",
+            }}>🛡️ 360° Health Check</button>
           </div>
 
           {/* Daily Briefing — rule-based summary (getDailyBriefing →
@@ -1730,6 +1960,15 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
         </div>
 
         {/* ═══ FINANCE ═══════════════════════════════════════ */}
+        <div ref={setSectionRef('security')} className="dash-section" style={{display: activeSection === 'security' ? 'block' : 'none'}}>
+          {activeSection === 'security' && <SecurityCenter/>}
+        </div>
+
+        {/* ═══ ADMIN INTELLIGENCE ═════════════════════════════ */}
+        <div ref={setSectionRef('intel')} className="dash-section" style={{display: activeSection === 'intel' ? 'block' : 'none'}}>
+          {activeSection === 'intel' && <AdminIntelligence onOpenStudent={() => onNavigate?.('students')}/>}
+        </div>
+
         <div ref={setSectionRef('finance')} className="dash-section" style={{display: activeSection === 'finance' ? 'block' : 'none'}}>
           <SectionHeader sectionId="finance" collapsed={collapsedSections['finance']} onToggle={toggleSection} icon="💰" title="Finance & Fee Analytics"/>
           <InsightPanel insights={insightsBySection['finance']}/>

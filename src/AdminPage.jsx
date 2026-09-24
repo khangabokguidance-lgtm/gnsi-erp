@@ -5,6 +5,8 @@ import {
   Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis,
 } from 'recharts'
 import WebsiteTab from "./WebsiteTab";
+import AdminIntelligence from "./AdminIntelligence";
+import { SecurityCenter } from "./GNSIDashboard";
 
 // ─────────────────────────────────────────────
 //  CONSTANTS
@@ -70,6 +72,8 @@ const NAV = [
   { id: 'password',    icon: '🔑', label: 'Password'    },
   { id: 'audit',       icon: '📋', label: 'Audit'       },
   { id: 'website',     icon: '🌐', label: 'Website'     },
+  { id: 'intel',       icon: '🧠', label: 'Intelligence' },
+  { id: 'health',      icon: '🩺', label: '360° Health' },
 ]
 
 // FIX: session idle timeout — 30 minutes
@@ -87,6 +91,13 @@ async function hashPassword(plain) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 async function verifyPassword(plain, hash) { return (await hashPassword(plain)) === hash }
+
+// CSV cell: escape quotes + block formula injection (=,+,-,@) in Excel
+function csvCell(v) {
+  let s = String(v ?? '')
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s
+  return '"' + s.replace(/"/g, '""') + '"'
+}
 
 // FIX: audit log now surfaces errors to console instead of silently swallowing them
 async function logAudit(action, currentUser) {
@@ -311,24 +322,13 @@ function ChangePasswordSection({ currentUser }) {
     if (newPass !== confirm)             { setError('New passwords do not match.'); return }
     if (/^(.)\1+$/.test(newPass))        { setError('Password is too simple.'); return }
     setSaving(true)
-    const { data: creds } = await supabase.from('admin_credentials').select('password_hash,is_changed').eq('id', 1).single()
-    let validCurrent = false
-    if (creds.is_changed) {
-      validCurrent = await verifyPassword(current, creds.password_hash)
-    } else {
-      // FIX: always hash before comparing — never compare plaintext
-      const envHash = import.meta.env.VITE_ADMIN_PASSWORD_HASH
-      validCurrent = await verifyPassword(current, envHash)
-      // fallback: if env hash not set, hash the env password and compare
-      if (!validCurrent && import.meta.env.VITE_ADMIN_PASSWORD) {
-        const fallbackHash = await hashPassword(import.meta.env.VITE_ADMIN_PASSWORD)
-        validCurrent = await verifyPassword(current, fallbackHash)
-      }
+    // Verified + saved on the server (admin_change_password RPC) — the hash
+    // never travels to the browser and the table stays locked.
+    const { error: rpcErr } = await supabase.rpc('admin_change_password', { p_current: current, p_new: newPass })
+    if (rpcErr) {
+      setError(/incorrect/i.test(rpcErr.message) ? 'Current password is incorrect.' : rpcErr.message)
+      setSaving(false); return
     }
-    if (!validCurrent) { setError('Current password is incorrect.'); setSaving(false); return }
-    const newHash = await hashPassword(newPass)
-    const { error: updateErr } = await supabase.from('admin_credentials').update({ password_hash: newHash, is_changed: true, updated_at: new Date().toISOString() }).eq('id', 1)
-    if (updateErr) { setError(updateErr.message); setSaving(false); return }
     await logAudit('Admin changed their password', currentUser)
     setIsChanged(true); setSuccess(true)
     setCurrent(''); setNewPass(''); setConfirm('')
@@ -492,8 +492,14 @@ function UsersSection({ currentUser, allStaff = [] }) {
   useEffect(() => { fetchUsers() }, [fetchUsers])
 
   // FIX: optimistic toggle now reverts on error
+  const isSelf = (u) => u.username && currentUser?.username && u.username.toLowerCase() === currentUser.username.toLowerCase()
+  const lastAdmin = (u) => ['Admin','Administrator'].includes(u.role) && u.active &&
+    users.filter(x => x.active && ['Admin','Administrator'].includes(x.role)).length <= 1
+
   const toggleActive = async (user) => {
     const newVal = !user.active
+    if (!newVal && isSelf(user))    { showToast('⚠️ You cannot disable your own account'); return }
+    if (!newVal && lastAdmin(user)) { showToast('⚠️ Cannot disable the last active admin'); return }
     setUsers(prev => prev.map(u => u.id === user.id ? { ...u, active: newVal } : u))
     const { error } = await supabase.from('portal_users').update({ active: newVal }).eq('id', user.id)
     if (error) {
@@ -505,6 +511,8 @@ function UsersSection({ currentUser, allStaff = [] }) {
   }
 
   const deleteUser = async (user) => {
+    if (isSelf(user))    { showToast('⚠️ You cannot delete your own account'); setConfirm(null); return }
+    if (lastAdmin(user)) { showToast('⚠️ Cannot delete the last active admin'); setConfirm(null); return }
     setDeleting(user.id)
     const { error } = await supabase.from('portal_users').delete().eq('id', user.id)
     if (!error) {
@@ -1263,7 +1271,7 @@ function AccessLogsSection() {
       const meta = modMeta(l.module_key)
       rows.push([meta.label, l.username || '', l.role || '', new Date(l.accessed_at).toLocaleString('en-IN')])
     })
-    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n')
+    const csv = rows.map(r => r.map(csvCell).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
@@ -1369,7 +1377,7 @@ function AuditSection() {
   const exportAuditCSV = () => {
     const rows = [['Time', 'User', 'Level', 'Action']]
     filtered.forEach(l => rows.push([new Date(l.created_at).toLocaleString('en-IN'), l.user_name || '', l.level || '', l.action || '']))
-    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n')
+    const csv = rows.map(r => r.map(csvCell).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
@@ -1432,10 +1440,14 @@ export default function AdminPage({ currentUser, onLogout, allStaff = [] }) {
   const isMobile = useIsMobile()
 
   // FIX: auto-logout on idle — warn at 25 min, logout at 30 min
+  const idleKill = useRef(null)
   const handleIdle = useCallback(() => {
     setIdleWarning(true)
-    setTimeout(() => { onLogout?.() }, 5 * 60 * 1000)
+    clearTimeout(idleKill.current)
+    idleKill.current = setTimeout(() => { onLogout?.() }, 5 * 60 * 1000)
   }, [onLogout])
+  const stayLoggedIn = () => { clearTimeout(idleKill.current); idleKill.current = null; setIdleWarning(false) }
+  useEffect(() => () => clearTimeout(idleKill.current), [])
   useIdleTimeout(handleIdle, 25 * 60 * 1000)
 
   // FIX: admin role check — block non-admin users
@@ -1483,7 +1495,7 @@ export default function AdminPage({ currentUser, onLogout, allStaff = [] }) {
       {idleWarning && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1300, background: '#DC2626', color: 'white', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, fontWeight: 600, gap: 10 }}>
           <span>⚠️ Your session is about to expire due to inactivity. You will be logged out in 5 minutes.</span>
-          <button onClick={() => setIdleWarning(false)} style={{ padding: '5px 14px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.15)', color: 'white', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', flexShrink: 0 }}>
+          <button onClick={stayLoggedIn} style={{ padding: '5px 14px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.15)', color: 'white', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', flexShrink: 0 }}>
             Stay Logged In
           </button>
         </div>
@@ -1547,7 +1559,9 @@ export default function AdminPage({ currentUser, onLogout, allStaff = [] }) {
           {activeTab === 'accesslogs'  && <AccessLogsSection />}
           {activeTab === 'password'    && <ChangePasswordSection currentUser={currentUser} />}
           {activeTab === 'audit'       && <AuditSection />}
-          {activeTab === 'website'     && <WebsiteTab />} 
+          {activeTab === 'website'     && <WebsiteTab />}
+          {activeTab === 'intel'       && <AdminIntelligence />}
+          {activeTab === 'health'      && <SecurityCenter />}
         </div>
       </div>
     </div>
