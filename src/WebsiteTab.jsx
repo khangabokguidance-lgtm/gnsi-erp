@@ -25,6 +25,7 @@ import {
   getAllNotices, saveNotice, archiveNotice, deleteNotice,
   getAllEvents, saveEvent, deleteEvent, toggleEventActive,
   getRankers, saveRanker, deleteRanker,
+  rankerSession, sessionOptions, groupRankersBySession, EARLIER_SESSION,
   getGallery, addGalleryImage, updateGalleryCaption, deleteGalleryImage,
   getVideos, saveVideo, deleteVideo, getYouTubeThumb, getYouTubeEmbed,
   getAllPosts, savePost, togglePostPublished, deletePost,
@@ -491,31 +492,58 @@ function NoticesSection() {
 //  ③ RANKER WALL
 // ════════════════════════════════════════════════════════════
 function RankersSection() {
+  const SESSIONS=sessionOptions();
+  // Default session for new entries: the one before the current academic
+  // year (results announced in 2026 belong to the 2025–26 session).
+  const DEFAULT_SESSION=SESSIONS[2]||SESSIONS[0];
+  const blank=(session)=>({name:"",school:"",batch:"",rank:"",photo_url:"",sort_order:0,session:session||DEFAULT_SESSION});
+
   const [rows,setRows]=useState([]);
   const [load,setLoad]=useState(true);
-  const [form,setForm]=useState({name:"",school:"",batch:"",rank:"",photo_url:"",sort_order:0});
+  const [form,setForm]=useState(blank());
   const [editing,setEdit]=useState(null);
   const [saving,setSave]=useState(false);
+  const [view,setView]=useState("all"); // session filter for the list below
+  const [needsColumn,setNeedsColumn]=useState(false);
 
   const load_=useCallback(async()=>{
     setLoad(true);
     const data=await getRankers();
-    if(data)setRows(data);
+    if(data){
+      setRows(data);
+      // Rows exist but none has the session column → column not added yet.
+      setNeedsColumn(data.length>0&&!data.some(r=>Object.prototype.hasOwnProperty.call(r,"session")));
+    }
     setLoad(false);
   },[]);
   useEffect(()=>{load_();},[load_]);
 
+  const groups=groupRankersBySession(rows);
+  const shown=view==="all"?rows:rows.filter(r=>rankerSession(r)===view);
+  const nextOrder=(session)=>rows.filter(r=>rankerSession(r)===session).length;
+
   const save=async()=>{
+    if(!form.name.trim())return toast("Student name is required","error");
+    if(!form.session)return toast("Choose the session / year","error");
     setSave(true);
     const{error}=await saveRanker(form,editing);
     setSave(false);
-    if(error)return toast("Error: "+error.message,"error");
-    toast(editing?"Ranker updated ✓":"Ranker added to website ✓");
-    setForm({name:"",school:"",batch:"",rank:"",photo_url:"",sort_order:rows.length});
-    setEdit(null);load_();
+    if(error){
+      if(/session/i.test(error.message||"")){setNeedsColumn(true);return toast("Run the ‘Add Session column’ SQL above first, then save again","error");}
+      return toast("Error: "+error.message,"error");
+    }
+    toast(editing?"Ranker updated ✓":`Ranker added to ${form.session} ✓`);
+    setEdit(null);
+    setForm({...blank(form.session),sort_order:nextOrder(form.session)+(editing?0:1)});
+    load_();
   };
   const del=async id=>{if(!confirm("Remove ranker?"))return;await deleteRanker(id);toast("Removed");load_();};
-  const startEdit=r=>{setEdit(r.id);setForm({name:r.name,school:r.school||"",batch:r.batch||"",rank:r.rank||"",photo_url:r.photo_url||"",sort_order:r.sort_order||0});};
+  const startEdit=r=>{
+    const sess=rankerSession(r);
+    setEdit(r.id);
+    setForm({name:r.name,school:r.school||"",batch:r.batch||"",rank:r.rank||"",photo_url:r.photo_url||"",sort_order:r.sort_order||0,session:sess===EARLIER_SESSION?DEFAULT_SESSION:sess});
+    window.scrollTo({top:0,behavior:"smooth"});
+  };
 
   const SQL=`CREATE TABLE IF NOT EXISTS website_rankers (
   id         bigserial primary key,
@@ -524,51 +552,78 @@ function RankersSection() {
   batch      text,
   rank       text,
   photo_url  text,
-  sort_order int default 0
+  sort_order int default 0,
+  session    text
 );`;
+  const ALTER_SQL=`ALTER TABLE website_rankers ADD COLUMN IF NOT EXISTS session text;`;
+
+  const chip=(active)=>({padding:".35rem .8rem",borderRadius:"999px",border:`1px solid ${active?C.navy:"#cbd5e1"}`,background:active?C.navy:"#fff",color:active?"#fff":"#1e293b",fontSize:".75rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"});
 
   return (
     <div>
-      <div style={{...s.card,borderColor:"rgba(148,163,184,.3)",marginBottom:"1rem"}}>
-        <div style={s.cardHd}><span style={s.cardTit}>📋 Setup — Create Table First</span></div>
+      <div style={{...s.card,borderColor:needsColumn?"#f59e0b":"rgba(148,163,184,.3)",marginBottom:"1rem"}}>
+        <div style={s.cardHd}><span style={s.cardTit}>{needsColumn?"⚠️ One-time step — Add Session column":"📋 Setup SQL"}</span></div>
         <div style={s.cardBdy}>
-          <pre style={{background:"#0f172a",padding:".8rem",borderRadius:"8px",fontSize:".72rem",color:"#4ade80",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{SQL}</pre>
-          <button style={{...s.btnG,fontSize:".72rem"}} onClick={()=>{navigator.clipboard.writeText(SQL);toast("SQL copied ✓");}}>📋 Copy SQL</button>
+          <p style={{fontSize:".8rem",color:"#475569",margin:"0 0 .5rem"}}>
+            Year-wise toppers need a <b>session</b> column. Run this once in Supabase → SQL Editor (safe to run again):
+          </p>
+          <pre style={{background:"#0f172a",padding:".8rem",borderRadius:"8px",fontSize:".72rem",color:"#4ade80",overflowX:"auto",lineHeight:1.6,whiteSpace:"pre-wrap",marginBottom:".7rem"}}>{ALTER_SQL}</pre>
+          <button style={{...s.btnG,fontSize:".72rem",marginRight:".5rem"}} onClick={()=>{navigator.clipboard.writeText(ALTER_SQL);toast("SQL copied ✓");}}>📋 Copy Session SQL</button>
+          <button style={{...s.btnG,fontSize:".72rem"}} onClick={()=>{navigator.clipboard.writeText(SQL);toast("Full table SQL copied ✓");}}>📋 Copy Full Table SQL</button>
+          <p style={{fontSize:".72rem",color:"#64748b",margin:".6rem 0 0"}}>
+            Existing toppers without a session are placed by the year written in their Batch (e.g. “Batch 2024–25”); otherwise they show under “{EARLIER_SESSION}”. Edit them to assign a session.
+          </p>
         </div>
       </div>
 
       <div style={s.card}>
-        <div style={s.cardHd}><span style={s.cardTit}>{editing?"✏️ Edit Ranker":"🏆 Add Selected Student"}</span>{editing&&<button style={s.btnR} onClick={()=>{setEdit(null);setForm({name:"",school:"",batch:"",rank:"",photo_url:"",sort_order:0})}}>Cancel</button>}</div>
+        <div style={s.cardHd}><span style={s.cardTit}>{editing?"✏️ Edit Ranker":"🏆 Add Selected Student"}</span>{editing&&<button style={s.btnR} onClick={()=>{setEdit(null);setForm(blank(form.session))}}>Cancel</button>}</div>
         <div style={s.cardBdy}>
           <div style={s.g2}>
+            <div>
+              <label style={s.lbl}>Session / Year *</label>
+              <select style={s.sel} value={form.session} onChange={e=>setForm(f=>({...f,session:e.target.value}))}>
+                {SESSIONS.map(y=><option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
             <div><label style={s.lbl}>Student Name *</label><input style={s.inp} placeholder="e.g. Laishram Ibeton Singh" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/></div>
-            <div><label style={s.lbl}>School Selected *</label><input style={s.inp} placeholder="e.g. Sainik School Tilaiya" value={form.school} onChange={e=>setForm(f=>({...f,school:e.target.value}))}/></div>
           </div>
           <div style={s.g2}>
-            <div><label style={s.lbl}>Batch / Year</label><input style={s.inp} placeholder="e.g. Batch 2025–26" value={form.batch} onChange={e=>setForm(f=>({...f,batch:e.target.value}))}/></div>
+            <div><label style={s.lbl}>School Selected *</label><input style={s.inp} placeholder="e.g. Sainik School Tilaiya" value={form.school} onChange={e=>setForm(f=>({...f,school:e.target.value}))}/></div>
             <div><label style={s.lbl}>Rank / Achievement (optional)</label><input style={s.inp} placeholder="e.g. AIR 1 or District Topper" value={form.rank} onChange={e=>setForm(f=>({...f,rank:e.target.value}))}/></div>
           </div>
-          <ImageUploadField label="Student Photo" folder="rankers" round previewSize={70} value={form.photo_url} onChange={url=>setForm(f=>({...f,photo_url:url}))}/>
           <div style={s.g2}>
-            <div><label style={s.lbl}>Sort Order</label><input type="number" style={s.inp} value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:+e.target.value}))}/></div>
+            <div><label style={s.lbl}>Batch label (optional)</label><input style={s.inp} placeholder="e.g. NVS Batch · Class 6" value={form.batch} onChange={e=>setForm(f=>({...f,batch:e.target.value}))}/></div>
+            <div><label style={s.lbl}>Sort Order (within the year)</label><input type="number" style={s.inp} value={form.sort_order} onChange={e=>setForm(f=>({...f,sort_order:+e.target.value}))}/></div>
           </div>
-          <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Ranker":"Add to Ranker Wall →"}</button>
+          <ImageUploadField label="Student Photo" folder="rankers" round previewSize={70} value={form.photo_url} onChange={url=>setForm(f=>({...f,photo_url:url}))}/>
+          <button style={{...s.btnG,opacity:saving?.6:1}} onClick={save} disabled={saving}>{saving?"Saving…":editing?"Update Ranker":`Add to ${form.session} Toppers →`}</button>
         </div>
       </div>
 
-      {load?<div style={s.loading}><Spin/>Loading rankers…</div>:!rows.length?<div style={s.empty}>No rankers yet — add your first selected student above</div>:(
+      {!load&&rows.length>0&&(
+        <div style={{display:"flex",flexWrap:"wrap",gap:".4rem",margin:"0 0 .9rem"}}>
+          <button style={chip(view==="all")} onClick={()=>setView("all")}>All ({rows.length})</button>
+          {groups.map(g=>(
+            <button key={g.session} style={chip(view===g.session)} onClick={()=>setView(g.session)}>{g.session} ({g.rankers.length})</button>
+          ))}
+        </div>
+      )}
+
+      {load?<div style={s.loading}><Spin/>Loading rankers…</div>:!rows.length?<div style={s.empty}>No rankers yet — add your first selected student above</div>:!shown.length?<div style={s.empty}>No toppers in {view}</div>:(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:".8rem"}}>
-          {rows.map(r=>(
+          {shown.map(r=>(
             <div key={r.id} style={{...s.card,marginBottom:0}}>
               <div style={{padding:"1rem",textAlign:"center"}}>
+                <div style={{display:"inline-block",background:C.navy,color:"#fff",fontSize:".6rem",fontWeight:700,padding:".12rem .5rem",borderRadius:"999px",marginBottom:".5rem"}}>{rankerSession(r)}</div>
                 {r.photo_url
-                  ?<img src={r.photo_url} alt={r.name} style={{width:"64px",height:"64px",borderRadius:"50%",objectFit:"cover",border:`2px solid ${C.gold}`,margin:"0 auto .7rem"}} onError={e=>e.target.style.display="none"}/>
+                  ?<img src={r.photo_url} alt={r.name} style={{width:"64px",height:"64px",borderRadius:"50%",objectFit:"cover",border:`2px solid ${C.gold}`,margin:"0 auto .7rem",display:"block"}} onError={e=>e.target.style.display="none"}/>
                   :<div style={{width:"64px",height:"64px",borderRadius:"50%",background:C.navy,border:`2px solid ${C.gold}`,margin:"0 auto .7rem",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"inherit",fontWeight:700,fontSize:"1.3rem",color:"#ffffff"}}>{(r.name||"S")[0]}</div>
                 }
                 {r.rank&&<div style={{background:"rgba(148,163,184,.2)",color:C.goldLL,fontFamily:"inherit",fontWeight:700,fontSize:".6rem",letterSpacing:"0",textTransform:"none",padding:".15rem .5rem",marginBottom:".4rem",display:"inline-block"}}>{r.rank}</div>}
                 <div style={{color:"#1e293b",fontFamily:"inherit",fontSize:".97rem",marginBottom:".2rem"}}>{r.name}</div>
                 <div style={{color:C.goldL,fontFamily:"inherit",fontSize:".68rem",letterSpacing:"0",textTransform:"none",marginBottom:".15rem"}}>{r.school}</div>
-                <div style={{color:"rgba(71,85,105,.35)",fontFamily:"inherit",fontSize:".65rem"}}>{r.batch}</div>
+                <div style={{color:"rgba(71,85,105,.55)",fontFamily:"inherit",fontSize:".65rem"}}>{r.batch}</div>
               </div>
               <div style={{padding:".5rem",borderTop:"1px solid rgba(148,163,184,.1)",display:"flex",gap:".4rem",justifyContent:"center"}}>
                 <button style={s.btnG} onClick={()=>startEdit(r)}>Edit</button>
@@ -1788,7 +1843,8 @@ function SettingsSection() {
   const set_=(key,val)=>setCfg(c=>({...c,[key]:val}));
 
   const ALL_SQL=`-- Run all at once in Supabase SQL Editor
-CREATE TABLE IF NOT EXISTS website_rankers (id bigserial primary key, name text not null, school text, batch text, rank text, photo_url text, sort_order int default 0);
+CREATE TABLE IF NOT EXISTS website_rankers (id bigserial primary key, name text not null, school text, batch text, rank text, photo_url text, sort_order int default 0, session text);
+ALTER TABLE website_rankers ADD COLUMN IF NOT EXISTS session text;
 CREATE TABLE IF NOT EXISTS website_reviews (id bigserial primary key, reviewer_name text not null, review_text text, rating int default 5, review_date date default current_date, is_featured boolean default true, created_at timestamptz default now());
 CREATE TABLE IF NOT EXISTS website_blog (id bigserial primary key, title text not null, body text, category text default 'News', image_url text, published_date date default current_date, is_published boolean default true, created_at timestamptz default now());
 CREATE TABLE IF NOT EXISTS website_videos (id bigserial primary key, title text not null, youtube_url text, description text, category text default 'Campus', sort_order int default 0, created_at timestamptz default now());

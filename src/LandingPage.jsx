@@ -3,7 +3,8 @@ import {
   getActiveNotices, getRankers, getGallery, getVideos, getYouTubeThumb, getYouTubeEmbed,
   getPublishedPosts, getFeaturedReviews, getPapers, getActiveBanners, getFaculty,
   getLiveKPIs, getEvents, submitEnquiry, submitScholarRegistration, submitGrievance,
-  getStats, getFeaturedTestimonials, getExamCalendar, getTimeline
+  getStats, getFeaturedTestimonials, getExamCalendar, getTimeline,
+  groupRankersBySession, EARLIER_SESSION
 } from './websiteApi';
 import { supabase } from './supabase';
 import ParentsPortal from './ParentsPortal';
@@ -899,7 +900,7 @@ export default function LandingPage({ onLogin }) {
   // is only one place that owns this fetch and only one card markup to
   // maintain. Capped to a sane page size; raise RANKERS_LIMIT if the table
   // is known to be small, or add real pagination if it grows large.
-  const RANKERS_LIMIT = 60;
+  const RANKERS_LIMIT = 1000;
   const [rankersData, setRankersData] = useState([]);
   const [rankersLoading, setRankersLoading] = useState(true);
   useEffect(() => {
@@ -914,6 +915,24 @@ export default function LandingPage({ onLogin }) {
       }
     })();
   }, []);
+
+  // Year-wise Toppers: rankers grouped by session ("2025–26"), newest first.
+  // Home and the Results preview show the latest session; the Toppers'
+  // Wall has year chips to switch between sessions.
+  const rankerGroups = useMemo(() => groupRankersBySession(rankersData), [rankersData]);
+  const latestRankers = rankerGroups[0] || { session: '', rankers: [] };
+  const [rankerSessionSel, setRankerSessionSel] = useState(null);
+  const wallGroup = rankerGroups.find((g) => g.session === rankerSessionSel) || latestRankers;
+  const sessionTitle = (sess) => (sess && sess !== EARLIER_SESSION ? sess : 'Earlier Years');
+  // Cards for a newly chosen year mount after the reveal observer ran, so
+  // show them straight away instead of waiting for the CSS fallback.
+  useEffect(() => {
+    if (!rankerSessionSel) return;
+    const t = setTimeout(() => {
+      document.querySelectorAll('#rankers .ranker-card.reveal-scale').forEach((el) => el.classList.add('vis'));
+    }, 30);
+    return () => clearTimeout(t);
+  }, [rankerSessionSel]);
 
   useEffect(() => {
     (async () => {
@@ -2549,7 +2568,9 @@ window.submitGrievance = async () => {
     </div>
     <div className="container" style={{ marginTop: '2.5rem' }}>
       <div className="eyebrow reveal">Our Pride</div>
-      <h2 className="st reveal">Toppers 2025–26</h2>
+      <h2 className="st reveal">
+        {latestRankers.session ? `Toppers ${sessionTitle(latestRankers.session)}` : 'Our Toppers'}
+      </h2>
       <div className="rule reveal">
         <div className="rule-line" />
         <div className="rule-d" />
@@ -2579,7 +2600,7 @@ window.submitGrievance = async () => {
         </div>
       ) : rankersData.length > 0 ? (
         <div className="ranker-grid">
-          {rankersData.slice(0, 4).map((r, i) => (
+          {latestRankers.rankers.slice(0, 4).map((r, i) => (
             <RankerCard ranker={r} index={i} key={r.id || i} />
           ))}
         </div>
@@ -2789,7 +2810,9 @@ window.submitGrievance = async () => {
   <section className="ranker-section" id="rankers">
     <div className="container">
       <div className="eyebrow reveal">Our Pride</div>
-      <h2 className="st reveal">2025–26 Selections</h2>
+      <h2 className="st reveal">
+        {wallGroup.session ? `${sessionTitle(wallGroup.session)} Selections` : 'Our Selections'}
+      </h2>
       <div className="rule reveal">
         <div
           className="rule-line"
@@ -2821,11 +2844,42 @@ window.submitGrievance = async () => {
           ))}
         </div>
       ) : rankersData.length > 0 ? (
-        <div className="ranker-grid">
-          {rankersData.map((r, i) => (
-            <RankerCard ranker={r} index={i} key={r.id || i} />
-          ))}
-        </div>
+        <>
+          {rankerGroups.length > 1 && (
+            <div
+              role="tablist"
+              aria-label="Choose year"
+              style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '.5rem', margin: '0 0 1.6rem' }}
+            >
+              {rankerGroups.map((g) => {
+                const on = g.session === wallGroup.session;
+                return (
+                  <button
+                    key={g.session}
+                    type="button"
+                    role="tab"
+                    aria-selected={on}
+                    onClick={() => setRankerSessionSel(g.session)}
+                    style={{
+                      padding: '.45rem 1rem', borderRadius: 999, cursor: 'pointer',
+                      fontFamily: 'var(--sans)', fontSize: '.82rem', fontWeight: 700,
+                      border: '1px solid ' + (on ? 'var(--gold)' : 'rgba(255,255,255,.35)'),
+                      background: on ? 'var(--gold)' : 'transparent',
+                      color: on ? 'var(--navy)' : 'inherit',
+                    }}
+                  >
+                    {sessionTitle(g.session)} · {g.rankers.length}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div className="ranker-grid" key={wallGroup.session}>
+            {wallGroup.rankers.map((r, i) => (
+              <RankerCard ranker={r} index={i} key={r.id || i} />
+            ))}
+          </div>
+        </>
       ) : (
         <p style={{ color: 'var(--mist)', fontFamily: 'var(--sans)', fontSize: '.9rem', textAlign: 'center' }}>
           Results will be published here shortly.
@@ -2837,7 +2891,7 @@ window.submitGrievance = async () => {
         </a>
       </div>
       <p className="ranker-note">
-        66 students selected in 2025–26 · Contact institute for verified result letters
+        Contact institute for verified result letters
       </p>
     </div>
   </section>
@@ -2904,7 +2958,7 @@ window.submitGrievance = async () => {
           </div>
           {/* Preview only — first 8, same data/markup as the full Toppers' Wall (#rankers) via <RankerCard> */}
           <div className="ranker-grid">
-            {rankersData.slice(0, 8).map((r, i) => (
+            {latestRankers.rankers.slice(0, 8).map((r, i) => (
               <RankerCard ranker={r} index={i} key={r.id || i} />
             ))}
           </div>

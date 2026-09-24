@@ -211,6 +211,53 @@ export async function deleteRanker(id) {
   return supabase.from('website_rankers').delete().eq('id', id);
 }
 
+// ─── RANKER SESSIONS (year-wise Toppers' Wall) ─────────────────────────────
+// Each ranker row carries a `session` like "2025–26" (column added by the
+// ALTER TABLE shown in Website Manager → Ranker Wall). Older rows without
+// one fall back to a session written inside their Batch text
+// ("Batch 2024-25" → "2024–25"); anything else is grouped as "Earlier".
+export const EARLIER_SESSION = 'Earlier';
+
+export function normalizeSession(text) {
+  const m = String(text || '').match(/(20\d{2})\s*[–—\-/]\s*(\d{2,4})/);
+  if (!m) return '';
+  const start = parseInt(m[1], 10);
+  return `${start}–${String(start + 1).slice(-2)}`;
+}
+
+export function rankerSession(r) {
+  return normalizeSession(r && r.session) || normalizeSession(r && r.batch) || EARLIER_SESSION;
+}
+
+// Sessions offered in the admin dropdown: next session down to 2016–17
+// (the year GNSI was founded), newest first.
+export function sessionOptions() {
+  const now = new Date();
+  // Academic session turns over in April (e.g. Apr 2026 → "2026–27").
+  const current = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  const out = [];
+  for (let y = current + 1; y >= 2016; y--) out.push(`${y}–${String(y + 1).slice(-2)}`);
+  return out;
+}
+
+// → [{ session: '2025–26', rankers: [...] }, …] newest session first,
+// "Earlier" last. Keeps each session's rankers in sort_order.
+export function groupRankersBySession(rows) {
+  const map = new Map();
+  (rows || []).forEach((r) => {
+    const k = rankerSession(r);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(r);
+  });
+  return [...map.entries()]
+    .sort(([a], [b]) => {
+      if (a === EARLIER_SESSION) return 1;
+      if (b === EARLIER_SESSION) return -1;
+      return parseInt(b, 10) - parseInt(a, 10);
+    })
+    .map(([session, rankers]) => ({ session, rankers }));
+}
+
 // ─── GALLERY (website_gallery) ────────────────────────────────────────────────
 export async function getGallery() {
   const { data, error } = await supabase
