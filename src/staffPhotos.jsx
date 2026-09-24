@@ -8,6 +8,7 @@
 // ════════════════════════════════════════════════════════════════════════
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { getFaculty } from './websiteApi'
 
 const norm = (s) => String(s || '').toLowerCase().replace(/^(dr|mr|mrs|ms|miss|prof|sir)\.?\s+/g, '').replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim()
 const tokens = (s) => norm(s).split(' ').filter(t => t.length > 1)
@@ -30,9 +31,10 @@ async function loadPhotos() {
       if (url) { byId.set(String(r.id), url); add(r.name, url) }
     })
   } catch (_) {}
+  // Faculty photos managed in Website Manager → Faculty (same source as the website)
   try {
-    const { data } = await supabase.from('website_faculty').select('name, photo_url').limit(500)
-    ;(data || []).forEach(r => add(r.name, r.photo_url))
+    const rows = await getFaculty()
+    ;(rows || []).forEach(r => add(r.name, r.photo_url || r.photo || r.image_url))
   } catch (_) {}
   cache = { byId, byName, list }
   subs.forEach(f => f())
@@ -40,6 +42,12 @@ async function loadPhotos() {
 }
 
 export function refreshStaffPhotos() { loading = loadPhotos(); return loading }
+
+// Website Manager → Faculty fires this after every add / edit / photo upload
+if (typeof window !== 'undefined' && !window.__gnsiFacultyListener) {
+  window.__gnsiFacultyListener = true
+  window.addEventListener('gnsi:faculty-updated', () => { if (cache || loading) refreshStaffPhotos() })
+}
 
 export function findStaffPhoto(name, id) {
   if (!cache) return null

@@ -1409,6 +1409,8 @@ function FacultySection() {
     setLoad(true);
     const data=await getFaculty();
     setRows(data);setLoad(false);
+    // Staff / Salary avatars use these photos — tell them to refresh.
+    try{window.dispatchEvent(new Event('gnsi:faculty-updated'));}catch(_){}
   },[]);
   useEffect(()=>{load_();},[load_]);
 
