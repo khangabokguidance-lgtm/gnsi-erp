@@ -1,5 +1,12 @@
 import { useState, useCallback, useEffect } from 'react';
-import { supabase } from './supabase';
+// Parents use their own Supabase client/session (see parentSupabase.js).
+import { parentSupabase as supabase } from './parentSupabase';
+import './privateFiles';
+
+// Escapes text before it is placed inside HTML strings (receipts, report
+// cards, progress reports). Names/addresses/remarks come from the database
+// and some are editable by parents, so they must never be treated as HTML.
+const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 // Redesigned to match Accounts.jsx's design language — white cards, navy
 // #1e3a5f accents, inline styles (no Tailwind). The legacy ParentsPortal.css
 // stylesheet is no longer used.
@@ -95,28 +102,28 @@ function printFeeReceipt(student, historyEntry) {
     accentColor = '#7c3aed';
   }
 
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Receipt ${receiptNo}</title>
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Receipt ${esc(receiptNo)}</title>
   <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#f0f4f8;display:flex;justify-content:center;padding:32px 16px}.page{width:720px;background:white;border-radius:0;box-shadow:0 4px 40px rgba(0,0,0,.15);overflow:hidden}.header{background:#1e3a5f;padding:28px 36px}.inst-name{font-size:20px;font-weight:700;color:white}.receipt-no{font-size:22px;font-weight:800;color:#c9a84c;font-family:monospace}.meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid #E2E8F0}.mc{padding:10px 18px;border-right:1px solid #E2E8F0}.ml{font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}.mv{font-weight:700;color:#1E293B;font-size:12px}table{width:100%;border-collapse:collapse}td{padding:8px 18px;border-bottom:1px solid #F1F5F9}.grand td{background:#1E1B4B;font-weight:900;font-size:16px;color:#fff;padding:14px 18px;border:none}.ftr{padding:16px 20px;background:#F8FAFC;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between}.sig-line{height:1px;width:130px;border-top:1.5px dashed #CBD5E1;margin-top:32px}.btns{display:flex;gap:10px;justify-content:center;margin-top:20px}.btn{padding:11px 30px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer}.bp{background:#1e3a5f;color:#fff}@media print{.btns{display:none}}</style></head><body>
   <div class="page">
     <div class="header" style="display:flex;justify-content:space-between;align-items:flex-start">
       <div><div class="inst-name">Guidance Navodaya &amp; Sainik Institute</div><div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:4px">Khangabok, Thoubal, Manipur</div></div>
-      <div style="text-align:right"><div style="font-size:10px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em">Receipt No.</div><div class="receipt-no">${receiptNo}</div></div>
+      <div style="text-align:right"><div style="font-size:10px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em">Receipt No.</div><div class="receipt-no">${esc(receiptNo)}</div></div>
     </div>
     <div style="height:4px;background:linear-gradient(90deg,${accentColor},#c9a84c)"></div>
     <div class="meta">
-      <div class="mc"><div class="ml">Date</div><div class="mv">${payDate}</div></div>
-      <div class="mc"><div class="ml">Pay mode</div><div class="mv">${payMode}</div></div>
-      <div class="mc"><div class="ml">Type</div><div class="mv" style="color:${accentColor}">${sectionLabel}</div></div>
+      <div class="mc"><div class="ml">Date</div><div class="mv">${esc(payDate)}</div></div>
+      <div class="mc"><div class="ml">Pay mode</div><div class="mv">${esc(payMode)}</div></div>
+      <div class="mc"><div class="ml">Type</div><div class="mv" style="color:${accentColor}">${esc(sectionLabel)}</div></div>
     </div>
     <table><tbody>
-      <tr><td style="color:#64748B;width:40%">Student</td><td style="font-weight:700">${student.name}</td></tr>
-      <tr><td style="color:#64748B">GCC No.</td><td style="font-weight:700">GCC-${student.gcc_no}</td></tr>
-      <tr><td style="color:#64748B">Class / Course</td><td style="font-weight:700">${[student.batch, student.course].filter(Boolean).join(' · ') || '—'}</td></tr>
-      ${row.hostel_type ? `<tr><td style="color:#64748B">Hostel Type</td><td style="font-weight:700">${row.hostel_type}</td></tr>` : ''}
-      ${txnRef ? `<tr><td style="color:#64748B">Txn ref</td><td style="font-weight:700">${txnRef}</td></tr>` : ''}
+      <tr><td style="color:#64748B;width:40%">Student</td><td style="font-weight:700">${esc(student.name)}</td></tr>
+      <tr><td style="color:#64748B">GCC No.</td><td style="font-weight:700">GCC-${esc(student.gcc_no)}</td></tr>
+      <tr><td style="color:#64748B">Class / Course</td><td style="font-weight:700">${esc([student.batch, student.course].filter(Boolean).join(' · ') || '—')}</td></tr>
+      ${row.hostel_type ? `<tr><td style="color:#64748B">Hostel Type</td><td style="font-weight:700">${esc(row.hostel_type)}</td></tr>` : ''}
+      ${txnRef ? `<tr><td style="color:#64748B">Txn ref</td><td style="font-weight:700">${esc(txnRef)}</td></tr>` : ''}
     </tbody></table>
     <table><tbody>
-      <tr><td style="color:#1E293B;font-weight:600">${description}</td><td style="text-align:right;font-weight:800;font-size:16px;color:${accentColor}">₹${feeFmt(amount)}</td></tr>
+      <tr><td style="color:#1E293B;font-weight:600">${esc(description)}</td><td style="text-align:right;font-weight:800;font-size:16px;color:${accentColor}">₹${feeFmt(amount)}</td></tr>
       <tr class="grand"><td>Total Paid</td><td style="text-align:right">₹${feeFmt(amount)}</td></tr>
     </tbody></table>
     <div class="ftr">
@@ -211,6 +218,37 @@ function getCourseMax(course) {
 // report card. This intentionally diverges from Exams.jsx's staff-side
 // version (per explicit request): a parent-printed card will no longer be
 // byte-identical to a staff-printed one.
+// Prefixes every selector in a stylesheet with `scope`, so CSS injected
+// into the page (report card) can't restyle the rest of the site.
+// body/html/* rules are redirected onto the scope element itself.
+function scopeCss(css, scope) {
+  const scopeSel = (sel) => sel.split(',').map(x => {
+    const t = x.trim();
+    if (!t) return t;
+    if (/^(html|body)\b/.test(t)) return t.replace(/^(html|body)\b/, scope);
+    if (/^\*/.test(t)) return `${scope} ${t}, ${scope}`;
+    return `${scope} ${t}`;
+  }).join(', ');
+  let out = '', i = 0;
+  while (i < css.length) {
+    const open = css.indexOf('{', i);
+    if (open === -1) { out += css.slice(i); break; }
+    const head = css.slice(i, open).trim();
+    if (head.startsWith('@media') || head.startsWith('@supports')) {
+      let depth = 1, j = open + 1;
+      while (j < css.length && depth) { if (css[j] === '{') depth++; else if (css[j] === '}') depth--; j++; }
+      out += `${head}{${scopeCss(css.slice(open + 1, j - 1), scope)}}`;
+      i = j;
+    } else {
+      const close = css.indexOf('}', open);
+      const body = css.slice(open + 1, close);
+      out += head.startsWith('@') ? `${head}{${body}}` : `${scopeSel(head)}{${body}}`;
+      i = close + 1;
+    }
+  }
+  return out;
+}
+
 const REPORT_CARD_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 @page{margin:0.7cm;size:A4;}
@@ -307,7 +345,7 @@ function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, c
     const barColor = subPct >= 80 ? "#1a56db" : subPct >= 60 ? "#1B4F8A" : subPct >= 40 ? "#BA7517" : "#C0392B";
     const gradeLbl = subPct >= 90 ? "A+" : subPct >= 80 ? "A" : subPct >= 70 ? "B+" : subPct >= 60 ? "B" : subPct >= 50 ? "C" : subPct >= 40 ? "D" : "F";
     return `<tr>
-      <td style="text-align:left;font-weight:600;color:#2D3748">${idx + 1}. ${s}</td>
+      <td style="text-align:left;font-weight:600;color:#2D3748">${idx + 1}. ${esc(s)}</td>
       <td>${subMax}</td>
       <td style="font-family:'EB Garamond',serif;font-size:14px;font-weight:700;color:#0A1628">${m}</td>
       <td><div style="display:flex;align-items:center;gap:5px;"><div style="flex:1;height:6px;background:#E2E8F0;border-radius:3px;overflow:hidden;"><div style="width:${subPct}%;height:100%;background:${barColor};border-radius:3px;"></div></div><span style="font-size:10px;font-weight:700;color:${barColor};min-width:32px">${subPct}%</span></div></td>
@@ -317,7 +355,7 @@ function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, c
   }).join("");
 
   const remarkBlock = remarkText
-    ? `<div class="remark-box"><div class="remark-label">✦ Teacher's Remarks</div><div class="remark-text">"${remarkText}"</div></div>`
+    ? `<div class="remark-box"><div class="remark-label">✦ Teacher's Remarks</div><div class="remark-text">"${esc(remarkText)}"</div></div>`
     : "";
 
   return `<div class="card">
@@ -329,12 +367,12 @@ function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, c
         <div class="inst-name">${institute.name || "Guidance Navodaya & Sainik Institute"}</div>
         <div class="inst-addr">${institute.address || "Khangabok, Thoubal, Manipur"}</div>
       </div>
-      <div class="doc-badge"><div class="doc-badge-title">REPORT<br/>CARD</div><div class="doc-badge-sub">${examName}</div></div>
+      <div class="doc-badge"><div class="doc-badge-title">REPORT<br/>CARD</div><div class="doc-badge-sub">${esc(examName)}</div></div>
     </div>
     <div class="exam-result-bar">
       <div class="exam-info">
-        <div class="exam-info-item"><span class="exam-info-label">Examination</span><span class="exam-info-value">${examName}</span></div>
-        <div class="exam-info-item"><span class="exam-info-label">Date</span><span class="exam-info-value">${examDate || "—"}</span></div>
+        <div class="exam-info-item"><span class="exam-info-label">Examination</span><span class="exam-info-value">${esc(examName)}</span></div>
+        <div class="exam-info-item"><span class="exam-info-label">Date</span><span class="exam-info-value">${esc(examDate || "—")}</span></div>
         <div class="exam-info-item"><span class="exam-info-label">Academic Year</span><span class="exam-info-value">${institute.academicYear || "2025-2026"}</span></div>
         <div class="exam-info-item"><span class="exam-info-label">Class Rank</span><span class="exam-info-value" style="color:${rank <= 3 ? "#f0c040" : "white"}">${rank}<sup style="font-size:10px">${rankSuffix}</sup> / ${allStudents.length}</span></div>
       </div>
@@ -346,9 +384,9 @@ function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, c
     <div class="student-section">
       <div class="section-title">Candidate Details</div>
       <table class="student-table">
-        <tr><td class="lbl">Student Name</td><td class="val big" colspan="3">${st.name}</td></tr>
-        <tr><td class="lbl">GCC / Roll No.</td><td class="val big" style="letter-spacing:3px">${String(st.gcc_no || "").padStart(6, "0")}</td><td class="lbl">Admission No.</td><td class="val">${st.admission_no || "—"}</td></tr>
-        <tr><td class="lbl">Course</td><td class="val">${st.course || course}</td><td class="lbl">Batch</td><td class="val">${st.class_name || "—"}</td></tr>
+        <tr><td class="lbl">Student Name</td><td class="val big" colspan="3">${esc(st.name)}</td></tr>
+        <tr><td class="lbl">GCC / Roll No.</td><td class="val big" style="letter-spacing:3px">${esc(String(st.gcc_no || "").padStart(6, "0"))}</td><td class="lbl">Admission No.</td><td class="val">${esc(st.admission_no || "—")}</td></tr>
+        <tr><td class="lbl">Course</td><td class="val">${esc(st.course || course)}</td><td class="lbl">Batch</td><td class="val">${esc(st.class_name || "—")}</td></tr>
       </table>
     </div>
     <div class="score-grid" style="margin:0 16px;">
@@ -376,7 +414,7 @@ function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, c
       <div class="sig-block"><div class="sig-space"></div><div class="sig-label">Class Teacher</div></div>
       <div class="sig-block"><div class="sig-space"></div><div class="sig-label">Head of Institute</div></div>
     </div>
-    <div class="footer-strip"><div class="footer-text">${institute.name || "GNSI"} · ${institute.address || "Khangabok, Manipur"} · ${examName} · Academic Year ${institute.academicYear || "2025-2026"}</div></div>
+    <div class="footer-strip"><div class="footer-text">${institute.name || "GNSI"} · ${institute.address || "Khangabok, Manipur"} · ${esc(examName)} · Academic Year ${institute.academicYear || "2025-2026"}</div></div>
     <div class="bottom-strip"></div>
   </div>`;
 }
@@ -644,9 +682,17 @@ export default function ParentsPortal({ isOpen, onClose }) {
     const nameInput = loginName.trim().toUpperCase();
 
     if (!gccNo || !nameInput) {
-      setLoginError('Please enter both GCC No. and Student Name.');
+      setLoginError('Please enter your GCC No. and Portal PIN.');
       return;
     }
+    // Slow down guessing: 5 wrong tries → wait 5 minutes (per browser).
+    try {
+      const lock = +localStorage.getItem('gnsi_pp_lock') || 0;
+      if (Date.now() < lock) {
+        setLoginError(`Too many attempts. Please try again in ${Math.ceil((lock - Date.now()) / 60000)} minute(s), or call the office.`);
+        return;
+      }
+    } catch (_) {}
     setLoginBusy(true);
     setLoginError('');
 
@@ -658,6 +704,44 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
       const timeout = (ms) => new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Request timed out. Please check your connection and try again.')), ms));
+
+      // ── Portal PIN (Security Phase 2A) ────────────────────────────────
+      // If the office has issued a PIN for this GCC No., the PIN is
+      // required and the parent gets a real, private login. Students
+      // without a PIN yet can still use the old GCC + name sign-in.
+      let pinOk = false;
+      const hasPinRes = await supabase.rpc('parent_has_pin', { p_gcc: gccNo });
+      const hasPin = !hasPinRes.error && hasPinRes.data === true;
+      if (hasPin) {
+        const pin = loginName.trim();
+        if (!/^\d{6}$/.test(pin)) {
+          setLoginError('This student has a Portal PIN. Please enter the 6-digit PIN given by the office.');
+          setLoginBusy(false);
+          return;
+        }
+        const { data: emailData } = await supabase.rpc('parent_email', { p_gcc: gccNo });
+        const email = emailData;
+        let { error: sErr } = await supabase.auth.signInWithPassword({ email, password: pin });
+        if (sErr) {
+          const { data: v } = await supabase.rpc('parent_verify_pin', { p_gcc: gccNo, p_pin: pin });
+          if (v === 'locked') { setLoginError('Too many wrong PINs. Please wait 15 minutes or call the office.'); setLoginBusy(false); return; }
+          if (v !== 'ok') { setLoginError('GCC No. and PIN do not match our records.'); setLoginBusy(false); return; }
+          const up = await supabase.auth.signUp({ email, password: pin });
+          if (up.error || !up.data?.session) {
+            setLoginError('Could not open your portal. Please call the office. (' + (up.error?.message || 'sign-up blocked') + ')');
+            setLoginBusy(false);
+            return;
+          }
+        }
+        const { data: linked } = await supabase.rpc('parent_link_auth', { p_gcc: gccNo, p_pin: pin });
+        if (!linked) {
+          await supabase.auth.signOut();
+          setLoginError('GCC No. and PIN do not match our records.');
+          setLoginBusy(false);
+          return;
+        }
+        pinOk = true;
+      }
 
       // Base columns only — NOT any guardian/parent contact column. Which
       // of those actually exist on this schema is unconfirmed (Fees.jsx's
@@ -680,13 +764,21 @@ export default function ParentsPortal({ isOpen, onClose }) {
       const normalizedDataName = (data?.name || '').toUpperCase().replace(/\s+/g, ' ').trim();
       const normalizedInput = nameInput.replace(/\s+/g, ' ').trim();
 
-      if (error || !data || normalizedDataName !== normalizedInput) {
-        const msg = error ? `Error: ${error.message}` : !data ? 'GCC No. not found.' : 'Name does not match.';
+      if (error || !data || (!pinOk && normalizedDataName !== normalizedInput)) {
+        const msg = error ? 'Could not sign in right now. Please try again.' : 'GCC No. and student name do not match our records.';
+        if (!error) {
+          try {
+            const n = (+localStorage.getItem('gnsi_pp_fails') || 0) + 1;
+            if (n >= 5) { localStorage.setItem('gnsi_pp_lock', String(Date.now() + 5 * 60 * 1000)); localStorage.setItem('gnsi_pp_fails', '0'); }
+            else localStorage.setItem('gnsi_pp_fails', String(n));
+          } catch (_) {}
+        }
         setLoginError(msg);
         setLoginBusy(false);
         return;
       }
 
+      try { localStorage.removeItem('gnsi_pp_fails'); localStorage.removeItem('gnsi_pp_lock'); } catch (_) {}
       setStudent(data);
       setLoginBusy(false);
       loadAttendance(data);
@@ -734,6 +826,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
   };
 
   const handleLogout = () => {
+    supabase.auth.signOut().catch(() => {});
     setLoginGcc('');
     setLoginName('');
     setLoginError('');
@@ -839,11 +932,18 @@ export default function ParentsPortal({ isOpen, onClose }) {
     try {
       const { data, error } = await supabase
         .from('student_documents')
-        .select('id, doc_type, file_name, storage_path, created_at')
+        .select('id, document_type, file_url, created_at')
         .eq('student_id', studentId)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      setDocuments({ status: 'ready', data: data || [], error: null });
+      // Real columns: document_type, file_url. file_url may be a full
+      // Supabase URL or a bare storage path — both are handled on open.
+      const docs = (data || []).map(d => {
+        const url = d.file_url || '';
+        const name = decodeURIComponent(url.split('?')[0].split('/').pop() || '');
+        return { ...d, doc_type: d.document_type, file_name: name, storage_path: url };
+      });
+      setDocuments({ status: 'ready', data: docs, error: null });
     } catch (e) {
       console.error('Documents load failed:', e);
       setDocuments({ status: 'error', data: null, error: 'Failed to load documents' });
@@ -852,7 +952,13 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
   const handleViewDocument = async (storagePath) => {
     try {
-      const { data, error } = await supabase.storage.from('gnsi').createSignedUrl(storagePath, 3600);
+      // Accepts ".../storage/v1/object/public/<bucket>/<path>",
+      // ".../object/sign/<bucket>/<path>?token=…" or a bare "<path>".
+      const raw = String(storagePath || '');
+      const m = raw.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/([^?]+)/);
+      const bucket = m ? m[1] : 'gnsi';
+      const path = m ? decodeURIComponent(m[2]) : raw.replace(/^\/+/, '');
+      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 600);
       if (error) throw error;
       window.open(data.signedUrl, '_blank', 'noreferrer');
     } catch (e) {
@@ -867,6 +973,17 @@ export default function ParentsPortal({ isOpen, onClose }) {
   // `patch` is pre-filtered by ProfileTab to just those blank fields.
   const handleSaveProfileFields = async (patch) => {
     if (!student?.id || !patch || Object.keys(patch).length === 0) return;
+    // Only the five parent-fillable fields, plain text, sensible length.
+    const ALLOWED = { dob: 10, blood_group: 5, father_name: 80, mother_name: 80, address: 300 };
+    const clean = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (!(k in ALLOWED)) continue;
+      const t = String(v ?? '').replace(/[<>]/g, '').trim().slice(0, ALLOWED[k]);
+      if (t) clean[k] = t;
+    }
+    if (clean.dob && !/^\d{4}-\d{2}-\d{2}$/.test(clean.dob)) delete clean.dob;
+    if (Object.keys(clean).length === 0) return;
+    patch = clean;
     const { error } = await supabase.from('students').update(patch).eq('id', student.id);
     if (error) throw error;
     setStudent((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -1047,7 +1164,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
           styleTag.id = 'rcPrintStyles';
           styleTag.textContent = `
             @media print {
-              body > *:not(#rcPrintOverlay) { display: none !important; }
+              body:has(> #rcPrintOverlay) > *:not(#rcPrintOverlay) { display: none !important; }
               #rcPrintOverlay .no-print { display: none !important; }
             }
           `;
@@ -1055,7 +1172,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
         }
       }
       overlay.innerHTML = `
-        <style>${REPORT_CARD_CSS}</style>
+        <style>${scopeCss(REPORT_CARD_CSS, '#rcPrintOverlay')}</style>
         <div class="no-print" style="position:sticky;top:0;z-index:2;background:rgba(15,23,42,.92);backdrop-filter:blur(8px);padding:1rem 1.4rem;display:flex;gap:.7rem;justify-content:flex-end;box-shadow:0 4px 20px rgba(0,0,0,.25);">
           <button class="btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
           <button class="btn-close" onclick="document.getElementById('rcPrintOverlay').remove();document.body.style.overflow='';">✕ Close</button>
@@ -1353,7 +1470,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
       const examRowsHtml = (markRows || []).map(r => {
         const pct = (r.total_marks && r.marks_obtained != null) ? Math.round((r.marks_obtained / r.total_marks) * 100) : null;
-        return `<tr><td>${r.subject || '—'}</td><td>${r.marks_obtained ?? '—'}/${r.total_marks ?? '—'}</td><td>${pct !== null ? pct + '%' : '—'}</td><td>${(r.exam_date || '').slice(0, 10)}</td></tr>`;
+        return `<tr><td>${esc(r.subject || '—')}</td><td>${r.marks_obtained ?? '—'}/${r.total_marks ?? '—'}</td><td>${pct !== null ? pct + '%' : '—'}</td><td>${(r.exam_date || '').slice(0, 10)}</td></tr>`;
       }).join('');
 
       const feesHtml = feesSnapshot
@@ -1362,15 +1479,15 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
       const win = window.open('', '_blank');
       win.document.write(`
-        <html><head><title>Progress Report — ${student.name}</title>
+        <html><head><title>Progress Report — ${esc(student.name)}</title>
         <style>
           body { font-family: Georgia, serif; padding: 30px; color: #1a1a1a; }
           h1 { color: #0B1E3D; } table { width: 100%; border-collapse: collapse; margin: 14px 0; }
           th, td { border: 1px solid #999; padding: 6px 10px; text-align: left; }
           th { background: #0B1E3D; color: #fff; }
         </style></head><body>
-        <h1>Progress Report — ${student.name}</h1>
-        <p>${[student.course, student.class_name, student.batch].filter(Boolean).join(' · ')} &middot; GCC No. ${student.gcc_no}</p>
+        <h1>Progress Report — ${esc(student.name)}</h1>
+        <p>${esc([student.course, student.class_name, student.batch].filter(Boolean).join(' · '))} &middot; GCC No. ${esc(student.gcc_no)}</p>
         <h3>Attendance (last ${attRows?.length || 0} recorded days)</h3>
         <p><strong>${attPct}%</strong> present (${presentCount} of ${attRows?.length || 0} days)</p>
         <h3>Recent Exam Scores</h3>
@@ -1404,6 +1521,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
   return (
     <>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
         @keyframes pp-spin { to { transform: rotate(360deg); } }
         #ppOverlay .no-scrollbar::-webkit-scrollbar { display: none; }
         #ppOverlay .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -1442,7 +1560,6 @@ export default function ParentsPortal({ isOpen, onClose }) {
           #ppShell div:has(> table) > table th { white-space: nowrap; }
         }
         #ppOverlay img { max-width: 100%; }
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
         #ppLoginWrap .pp-serif { font-family: 'Playfair Display', Georgia, 'Times New Roman', serif !important; }
         #ppLoginWrap .pp-left::before { content:''; position:absolute; inset:0; background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: 44px 44px; -webkit-mask-image: radial-gradient(80% 70% at 30% 30%, #000, transparent); mask-image: radial-gradient(80% 70% at 30% 30%, #000, transparent); pointer-events:none; }
         @keyframes pp-rise { from { opacity:0; transform: translateY(18px); } to { opacity:1; transform:none; } }
@@ -1609,7 +1726,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 </div>
               </div>
               <h2 className="pp-serif" style={{ fontSize: 30, fontWeight: 700, color: NAVY, margin: '0 0 6px', textAlign: 'center' }}>Welcome back</h2>
-              <p style={{ fontSize: 13.5, color: '#64748b', margin: '0 0 24px', textAlign: 'center' }}>Sign in with your GCC No. and registered student name.</p>
+              <p style={{ fontSize: 13.5, color: '#64748b', margin: '0 0 24px', textAlign: 'center' }}>Sign in with your child's GCC No. and the 6-digit Portal PIN from the office.</p>
 
               {loginError && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 16, borderRadius: 10, border: '1px solid #fecaca', backgroundColor: '#fef2f2', padding: '11px 14px' }}>
@@ -1635,7 +1752,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 value={loginGcc}
                 onChange={(e) => setLoginGcc(e.target.value)}
               />
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#64748b', marginBottom: 6 }}>Student Name</label>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#64748b', marginBottom: 6 }}>Portal PIN</label>
               <input
                 type="text"
                 style={{
@@ -1645,7 +1762,8 @@ export default function ParentsPortal({ isOpen, onClose }) {
                   padding: '14px 16px',
                   color: '#1e293b', outline: 'none', marginBottom: 16, fontSize: 14, boxSizing: 'border-box',
                 }}
-                placeholder="Full name as registered"
+                placeholder="6-digit PIN (no PIN yet? type student name)"
+                autoComplete="off"
                 value={loginName}
                 onChange={(e) => setLoginName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { supabase } from './supabase'
+import './privateFiles'
 
 import Login              from './Login'
 import Students           from './Students'
