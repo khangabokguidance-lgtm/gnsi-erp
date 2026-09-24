@@ -368,6 +368,14 @@ function ChangePasswordSection({ currentUser }) {
 // ─────────────────────────────────────────────
 //  USER MODAL
 // ─────────────────────────────────────────────
+// Re-save a password as bcrypt on the server (staff_bcrypt.sql).
+// If that SQL isn't installed yet the SHA-256 value stays and is
+// upgraded automatically at the user's next login.
+async function upgradePw(userId, plain) {
+  const { error } = await supabase.rpc('admin_set_staff_password', { p_user_id: String(userId), p_password: plain })
+  if (error) console.warn('[bcrypt] password kept as SHA-256 until next login:', error.message)
+}
+
 function UserModal({ existing, onClose, onSaved, currentUser, allStaff = [] }) {
   const isEdit = !!existing
   const [form, setForm] = useState({
@@ -397,6 +405,7 @@ function UserModal({ existing, onClose, onSaved, currentUser, allStaff = [] }) {
       if (form.password) update.password_hash = await hashPassword(form.password)
       const { error } = await supabase.from('portal_users').update(update).eq('id', existing.id)
       if (error) { setErr(error.message); setSaving(false); return }
+      if (form.password) await upgradePw(existing.id, form.password)
       await logAudit(`Updated user: ${form.name}`, currentUser)
     } else {
       const cleanUsername = form.username.trim().toLowerCase()
@@ -404,19 +413,20 @@ function UserModal({ existing, onClose, onSaved, currentUser, allStaff = [] }) {
       const { data: dup } = await supabase.from('portal_users').select('id').eq('username', cleanUsername).maybeSingle()
       if (dup) { setErr('Username already taken.'); setSaving(false); return }
       const hashedPw = await hashPassword(form.password)
-      const { error } = await supabase.from('portal_users').insert({
+      const { data: created, error } = await supabase.from('portal_users').insert({
         name: form.name.trim(),
         username: cleanUsername,
         password_hash: hashedPw,
         role: form.role,
         active: true,
         staff_profile_id: form.staff_profile_id ? parseInt(form.staff_profile_id) : null,
-      })
+      }).select('id').single()
       if (error) {
         // FIX: surface DB unique constraint violation as friendly message
         if (error.code === '23505') { setErr('Username already taken.'); setSaving(false); return }
         setErr(error.message); setSaving(false); return
       }
+      if (created?.id) await upgradePw(created.id, form.password)
       await logAudit(`Added user: ${form.name} (${form.role})`, currentUser)
     }
     onSaved(); onClose()
