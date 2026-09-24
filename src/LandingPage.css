@@ -1801,3 +1801,49 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
 #admit-card .portal-result h4{font-family:var(--serif);color:#0B1E3D!important}
 #admit-card .portal-row{padding:.6rem 0!important}
 @media (max-width:760px){#admit-card .portal-grid{grid-template-columns:1fr}}
+
+/* ═══ ENQUIRY / APPLICATION FORM ═══ */
+.enq-type{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem;margin:0 0 1rem}
+.enq-type-btn{display:flex;align-items:center;justify-content:center;gap:.45rem;min-height:52px;padding:.55rem .6rem;border-radius:10px;border:1px solid rgba(11,30,61,.16);background:#fff;color:#0B1E3D;font:inherit;font-weight:700;font-size:.82rem;line-height:1.2;text-align:center;cursor:pointer;transition:all .18s}
+.enq-type-btn span{font-size:1.1rem}
+.enq-type-btn:hover{border-color:#C9A24B}
+.enq-type-btn.on{background:linear-gradient(180deg,#D9B566,#C9A24B);color:#0B1E3D;border-color:#E2C57E;box-shadow:0 8px 20px rgba(201,162,75,.35)}
+.enq-app-note{font-size:.82rem;line-height:1.6;color:#6B4E12;background:#FBF3E2;border:1px solid rgba(184,145,63,.35);border-radius:10px;padding:.65rem .85rem;margin-bottom:1rem}
+.enq-sec{font-family:var(--sans);font-size:.7rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#A87A1F;margin:1.1rem 0 .6rem;padding-bottom:.4rem;border-bottom:1px solid rgba(184,145,63,.3)}
+#enquiryForm textarea.app-f{min-height:70px}
+@media (max-width:560px){.enq-type{grid-template-columns:1fr}.enq-type-btn{justify-content:flex-start;min-height:46px}}
+
+/* ═══ ENQUIRY — premium layout ═══ */
+#enquiry{background:linear-gradient(180deg,#FBF8F1 0%,#F4EFE3 100%)!important;padding:5rem 0!important}
+#enquiry .enquiry-grid{grid-template-columns:1.25fr .75fr;gap:2.6rem;align-items:start}
+#enquiry .eyebrow{display:inline-flex;padding:.38rem .95rem;border-radius:999px;background:#FBF3E2;border:1px solid rgba(168,122,31,.3);color:#A87A1F!important;font-size:.72rem!important;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
+#enquiry .eyebrow::before,#enquiry .eyebrow::after{display:none}
+#enquiry h2.st{font-size:clamp(2rem,4.6vw,3.1rem);color:#0B1E3D!important}
+.enq-lead{color:#4A5568!important;font-size:1.02rem;line-height:1.8;margin:0 0 1.3rem;max-width:560px}
+.enq-trust{list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.7rem;margin:0 0 1.6rem;padding:0}
+.enq-trust li{background:#fff;border:1px solid rgba(11,30,61,.08);border-radius:14px;padding:.85rem 1rem;box-shadow:0 6px 18px rgba(11,30,61,.06)}
+.enq-trust b{display:block;font-family:var(--serif);font-size:1.45rem;color:#B8913F;line-height:1.1}
+.enq-trust span{font-size:.76rem;color:#6B7280}
+#enquiry .form-panel{position:relative;background:radial-gradient(130% 90% at 100% 0%,#16335F 0%,#0B1E3D 55%,#081629 100%)!important;border-radius:22px!important;padding:2.2rem 2.2rem 1.8rem!important;box-shadow:0 30px 70px rgba(11,30,61,.28),0 0 0 1px rgba(226,197,126,.22);overflow:hidden}
+#enquiry .form-panel::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)}
+#enquiry .form-panel .fl{color:rgba(255,255,255,.82)!important;font-size:.7rem!important;letter-spacing:.12em!important;font-weight:700}
+#enquiry .form-panel .req{color:#E2C57E}
+#enquiry .form-panel .ff{background:rgba(255,255,255,.06)!important;border:1px solid rgba(255,255,255,.16)!important;border-radius:10px!important;color:#fff!important;min-height:48px;transition:border-color .18s,box-shadow .18s,background .18s}
+#enquiry .form-panel .ff::placeholder{color:rgba(255,255,255,.4)}
+#enquiry .form-panel .ff:focus{border-color:#E2C57E!important;box-shadow:0 0 0 4px rgba(226,197,126,.18)!important;background:rgba(255,255,255,.1)!important}
+#enquiry .form-panel select.ff option{color:#0B1E3D;background:#fff}
+#enquiry .form-panel input[type=date].ff{color-scheme:dark}
+#enquiry .form-panel .ff.field-error{border-color:#F87171!important;box-shadow:0 0 0 3px rgba(248,113,113,.18)!important}
+#enquiry .form-panel .enq-sec{color:#E2C57E;border-bottom-color:rgba(226,197,126,.25)}
+#enquiry .form-panel .enq-type-btn:not(.on){background:rgba(255,255,255,.06);color:#fff;border-color:rgba(255,255,255,.18)}
+#enquiry .form-panel .enq-type-btn:not(.on):hover{border-color:#E2C57E}
+#enquiry .form-panel .enq-app-note{background:rgba(226,197,126,.1);border-color:rgba(226,197,126,.3);color:#F3E3B8}
+#enquiry #fBtn{height:54px;border-radius:12px!important;font-size:1rem;background:linear-gradient(180deg,#D9B566,#C9A24B 55%,#B8913F)!important;color:#0B1E3D!important;border:1px solid #E2C57E!important;box-shadow:0 12px 28px rgba(201,162,75,.35);margin-top:.6rem}
+#enquiry #fBtn:hover{transform:translateY(-2px)}
+#enquiry .form-panel p,#enquiry .form-panel p a{color:rgba(255,255,255,.7)!important}
+#enquiry .form-panel p a{color:#E2C57E!important}
+#enquiry #contact{position:sticky;top:90px}
+#enquiry .contact-card{background:#fff!important;border:1px solid rgba(11,30,61,.08)!important;border-left:4px solid #C9A24B!important;border-radius:16px!important;box-shadow:0 10px 28px rgba(11,30,61,.07);padding:1.3rem 1.4rem!important}
+#enquiry .contact-card h3{font-family:var(--serif);color:#0B1E3D}
+@media (max-width:900px){#enquiry .enquiry-grid{grid-template-columns:1fr}#enquiry #contact{position:static}}
+@media (max-width:560px){#enquiry .form-panel{padding:1.5rem 1.1rem 1.3rem!important;border-radius:18px!important}.enq-trust{grid-template-columns:repeat(3,minmax(0,1fr));gap:.4rem}.enq-trust li{padding:.6rem .55rem}.enq-trust b{font-size:1.1rem}.enq-trust span{font-size:.66rem}}

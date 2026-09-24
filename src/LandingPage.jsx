@@ -798,6 +798,7 @@ export default function LandingPage({ onLogin }) {
     return () => { alive = false; };
   }, []);
   const site = useMemo(() => buildSite(siteCfg), [siteCfg]);
+  const [enqType, setEnqType] = useState('general');
   // Website Manager–driven content: Facilities, Mock Tests, FAQs.
   // Each falls back to the built-in content while its table is empty.
   const [facilitiesData, setFacilitiesData] = useState([]);
@@ -1572,6 +1573,19 @@ window.submitEnquiry = async () => {
   if (!classGrade) { markEnquiryFieldError('fClass'); firstInvalidId ||= 'fClass'; }
   if (!course) { markEnquiryFieldError('fCourse'); firstInvalidId ||= 'fCourse'; }
 
+  // Application fields (Navodaya / Sainik forms only)
+  const formType = document.getElementById('fType')?.value || 'general';
+  const appLines = [];
+  document.querySelectorAll('#enquiryForm .app-f').forEach((el) => {
+    const v = (el.value || '').trim();
+    el.classList.remove('field-error');
+    document.getElementById(el.id + 'Err')?.classList.remove('show');
+    if (!v && el.dataset.req) { markEnquiryFieldError(el.id); firstInvalidId ||= el.id; }
+    if (v) appLines.push(`${el.dataset.label}: ${v}`);
+  });
+  const altDigits = (document.getElementById('fAltPhone')?.value || '').replace(/[\s\-()]/g, '').replace(/^\+?91/, '');
+  if (altDigits && !/^[6-9]\d{9}$/.test(altDigits)) { markEnquiryFieldError('fAltPhone'); firstInvalidId ||= 'fAltPhone'; }
+
   if (firstInvalidId) {
     if (msg) { msg.style.display = 'block'; msg.className = 'form-msg error'; msg.textContent = 'Please fix the highlighted fields below.'; }
     document.getElementById(firstInvalidId)?.focus();
@@ -1580,12 +1594,17 @@ window.submitEnquiry = async () => {
 
   if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
   try {
+    const isApp = formType !== 'general';
+    const appTitle = formType === 'sainik' ? 'SAINIK (AISSEE) APPLICATION' : 'NAVODAYA (JNVST) APPLICATION';
+    const fullMessage = isApp
+      ? [`— ${appTitle} —`, ...appLines, message ? `Message: ${message}` : ''].filter(Boolean).join('\n')
+      : message;
     const { error } = await submitEnquiry({
       student_name: studentName, parent_name: parentName, phone: phoneRaw,
-      class_grade: classGrade, course, message,
+      class_grade: classGrade, course: isApp ? `APPLICATION: ${course}` : course, message: fullMessage,
     });
     if (error) throw error;
-    if (msg) { msg.style.display = 'block'; msg.className = 'form-msg success'; msg.textContent = 'Thank you! We will contact you shortly.'; }
+    if (msg) { msg.style.display = 'block'; msg.className = 'form-msg success'; msg.textContent = isApp ? 'Application received! Our office will call you within 1 working day to confirm.' : 'Thank you! We will contact you shortly.'; }
     document.getElementById('enquiryForm')?.reset();
   } catch (e) {
     console.error('Enquiry submit failed:', e);
@@ -5250,18 +5269,16 @@ window.submitGrievance = async () => {
           <div className="rule-d" />
           <div className="rule-line" />
         </div>
-        <p
-          style={{
-            color: "rgba(255,255,255,.85)",
-            marginBottom: "2rem",
-            lineHeight: "1.85",
-            fontSize: "clamp(0.92rem,2.4vw,1rem)"
-          }}
-          className="reveal"
+        <p className="reveal enq-lead"
         >
           Send your details and our team will respond regarding courses, hostel
           availability, and the admission process.
         </p>
+        <ul className="enq-trust reveal">
+          <li><b>66</b><span>selections in 2025–26</span></li>
+          <li><b>2016</b><span>established, Khangabok</span></li>
+          <li><b>1 day</b><span>typical call-back time</span></li>
+        </ul>
         <form
           className="form-panel reveal"
           id="enquiryForm"
@@ -5269,6 +5286,30 @@ window.submitGrievance = async () => {
           onSubmit={(e) => { e.preventDefault(); window.submitEnquiry(); }}
         >
           <div className="form-msg" id="formMsg" />
+          {/* Form type — General enquiry or full Navodaya / Sainik application.
+              Application fields are packed into the enquiry's message, so no
+              database change is needed; they show in Website Manager → Enquiries. */}
+          <input type="hidden" id="fType" value={enqType} readOnly />
+          <div className="enq-type" role="tablist" aria-label="Form type">
+            {[
+              ['general', '💬', 'General Enquiry'],
+              ['navodaya', '🏫', 'Navodaya (JNVST) Application'],
+              ['sainik', '🎖️', 'Sainik (AISSEE) Application'],
+            ].map(([k, ic, lb]) => (
+              <button key={k} type="button" role="tab" aria-selected={enqType === k}
+                className={'enq-type-btn' + (enqType === k ? ' on' : '')} onClick={() => setEnqType(k)}>
+                <span>{ic}</span>{lb}
+              </button>
+            ))}
+          </div>
+          {enqType !== 'general' && (
+            <div className="enq-app-note">
+              {enqType === 'navodaya'
+                ? 'Coaching admission form for JNVST preparation. Our office will call to confirm the seat and fees.'
+                : 'Coaching admission form for AISSEE (Sainik School) preparation. Our office will call to confirm the seat and fees.'}
+            </div>
+          )}
+          {enqType !== 'general' && <div className="enq-sec">Student Details</div>}
           <div className="form-row">
             <div>
               <label className="fl" htmlFor="fStuName">Student Name <span className="req">*</span></label>
@@ -5319,8 +5360,121 @@ window.submitGrievance = async () => {
             required
           />
           <span className="field-err-msg" id="fClassErr">Please enter the student's class or age.</span>
+          {enqType !== 'general' && (
+            <>
+          <div className="form-row">
+            <div>
+              <label className="fl" htmlFor="fDob">Date of Birth <span className="req">*</span></label>
+              <input type="date" className="ff app-f" id="fDob" data-label="Date of Birth" data-req="1" />
+              <span className="field-err-msg" id="fDobErr">Please fill this in.</span>
+            </div>
+            <div>
+              <label className="fl" htmlFor="fGender">Gender <span className="req">*</span></label>
+              <select className="ff app-f" id="fGender" data-label="Gender" data-req="1" defaultValue=""><option value="">Select</option><option>Boy</option><option>Girl</option></select>
+              <span className="field-err-msg" id="fGenderErr">Please fill this in.</span>
+            </div>
+          </div>
+          <div className="form-row">
+            <div>
+              <label className="fl" htmlFor="fSchool">Current School <span className="req">*</span></label>
+              <input type="text" className="ff app-f" id="fSchool" data-label="Current School" data-req="1" placeholder="School name" />
+              <span className="field-err-msg" id="fSchoolErr">Please fill this in.</span>
+            </div>
+            <div>
+              <label className="fl" htmlFor="fSchoolType">School Type <span className="req">*</span></label>
+              <select className="ff app-f" id="fSchoolType" data-label="School Type" data-req="1" defaultValue=""><option value="">Select</option><option>Government</option><option>Government-aided</option><option>Private</option></select>
+              <span className="field-err-msg" id="fSchoolTypeErr">Please fill this in.</span>
+            </div>
+          </div>
+          <div className="form-row">
+            <div>
+              <label className="fl" htmlFor="fDistrict">District <span className="req">*</span></label>
+              <select className="ff app-f" id="fDistrict" data-label="District" data-req="1" defaultValue=""><option value="">Select</option><option>Thoubal</option><option>Imphal East</option><option>Imphal West</option><option>Bishnupur</option><option>Kakching</option><option>Churachandpur</option><option>Senapati</option><option>Ukhrul</option><option>Chandel</option><option>Tamenglong</option><option>Jiribam</option><option>Kangpokpi</option><option>Tengnoupal</option><option>Pherzawl</option><option>Noney</option><option>Kamjong</option><option>Other</option></select>
+              <span className="field-err-msg" id="fDistrictErr">Please fill this in.</span>
+            </div>
+            <div>
+              <label className="fl" htmlFor="fArea">Area</label>
+              <select className="ff app-f" id="fArea" data-label="Area"  defaultValue=""><option value="">Select</option><option>Rural</option><option>Urban</option></select>
+              <span className="field-err-msg" id="fAreaErr">Please fill this in.</span>
+            </div>
+          </div>
+          <div className="form-row">
+            <div>
+              <label className="fl" htmlFor="fCategory">Category <span className="req">*</span></label>
+              <select className="ff app-f" id="fCategory" data-label="Category" data-req="1" defaultValue=""><option value="">Select</option><option>General</option><option>OBC</option><option>SC</option><option>ST</option><option>EWS</option></select>
+              <span className="field-err-msg" id="fCategoryErr">Please fill this in.</span>
+            </div>
+            <div>
+              <label className="fl" htmlFor="fHostel">Stay Option <span className="req">*</span></label>
+              <select className="ff app-f" id="fHostel" data-label="Stay Option" data-req="1" defaultValue=""><option value="">Select</option><option>Boarder (Hostel)</option><option>Day Boarder</option><option>Day Scholar</option></select>
+              <span className="field-err-msg" id="fHostelErr">Please fill this in.</span>
+            </div>
+          </div>
+          {enqType === 'sainik' && (
+          <div className="form-row">
+            <div>
+              <label className="fl" htmlFor="fSainikClass">Applying for Class <span className="req">*</span></label>
+              <select className="ff app-f" id="fSainikClass" data-label="Applying for Class" data-req="1" defaultValue=""><option value="">Select</option><option>Class 6</option><option>Class 9</option></select>
+              <span className="field-err-msg" id="fSainikClassErr">Please fill this in.</span>
+            </div>
+            <div>
+              <label className="fl" htmlFor="fSainikPref">Preferred Sainik School(s)</label>
+              <input type="text" className="ff app-f" id="fSainikPref" data-label="Preferred Sainik School(s)"  placeholder="e.g. Sainik School Imphal" />
+              <span className="field-err-msg" id="fSainikPrefErr">Please fill this in.</span>
+            </div>
+          </div>
+          )}
+          {enqType === 'navodaya' && (
+          <div className="form-row">
+            <div>
+              <label className="fl" htmlFor="fNvsClass">Applying for Class <span className="req">*</span></label>
+              <select className="ff app-f" id="fNvsClass" data-label="Applying for Class" data-req="1" defaultValue=""><option value="">Select</option><option>Class 6</option><option>Class 9</option><option>Class 11</option></select>
+              <span className="field-err-msg" id="fNvsClassErr">Please fill this in.</span>
+            </div>
+            <div>
+              <label className="fl" htmlFor="fNvsPref">Preferred JNV</label>
+              <input type="text" className="ff app-f" id="fNvsPref" data-label="Preferred JNV"  placeholder="e.g. JNV Thoubal" />
+              <span className="field-err-msg" id="fNvsPrefErr">Please fill this in.</span>
+            </div>
+          </div>
+          )}
+          <div className="enq-sec">Parent Details</div>
+          <div className="form-row">
+            <div>
+              <label className="fl" htmlFor="fFather">Father's Name <span className="req">*</span></label>
+              <input type="text" className="ff app-f" id="fFather" data-label="Father's Name" data-req="1" placeholder="Full name" />
+              <span className="field-err-msg" id="fFatherErr">Please fill this in.</span>
+            </div>
+            <div>
+              <label className="fl" htmlFor="fMother">Mother's Name</label>
+              <input type="text" className="ff app-f" id="fMother" data-label="Mother's Name"  placeholder="Full name" />
+              <span className="field-err-msg" id="fMotherErr">Please fill this in.</span>
+            </div>
+          </div>
+          <div className="form-row">
+            <div>
+              <label className="fl" htmlFor="fOccupation">Parent's Occupation</label>
+              <input type="text" className="ff app-f" id="fOccupation" data-label="Parent's Occupation"  placeholder="e.g. Farmer, Teacher" />
+              <span className="field-err-msg" id="fOccupationErr">Please fill this in.</span>
+            </div>
+            <div>
+              <label className="fl" htmlFor="fAltPhone">Alternate Phone</label>
+              <input type="tel" className="ff app-f" id="fAltPhone" data-label="Alternate Phone"  placeholder="+91 XXXXX XXXXX" />
+              <span className="field-err-msg" id="fAltPhoneErr">Please fill this in.</span>
+            </div>
+          </div>
+          <label className="fl" htmlFor="fAddress">Full Address <span className="req">*</span></label>
+          <textarea className="ff app-f" id="fAddress" data-label="Address" data-req="1" rows={2} placeholder="Village / Locality, Post Office, PIN" />
+          <span className="field-err-msg" id="fAddressErr">Please enter the address.</span>
+          <label className="fl" htmlFor="fHeard">How did you hear about GNSI?</label>
+          <select className="ff app-f" id="fHeard" data-label="Heard via" defaultValue="">
+            <option value="">Select</option><option>Friends / Relatives</option><option>Former GNSI student</option><option>Facebook / YouTube</option><option>WhatsApp</option><option>Banner / Poster</option><option>Google search</option><option>Other</option>
+          </select>
+          <div className="enq-sec">Course</div>
+            </>
+          )}
           <label className="fl" htmlFor="fCourse">Course Interested In <span className="req">*</span></label>
-          <select className="ff" id="fCourse" name="course" required defaultValue="">
+          <select className="ff" id="fCourse" name="course" required key={enqType} defaultValue={enqType === 'navodaya' ? 'NVS Preparation (Class 6)' : enqType === 'sainik' ? 'Sainik School Preparation' : ''}>
             <option value="">Select course</option>
             <option>NVS Preparation (Class 6)</option>
             <option>Sainik School Preparation</option>
@@ -5352,7 +5506,7 @@ window.submitGrievance = async () => {
             style={{ width: "100%", justifyContent: "center" }}
             id="fBtn"
           >
-            Submit Enquiry →
+            {enqType === 'general' ? 'Submit Enquiry →' : 'Submit Application →'}
           </button>
           <p
             style={{
