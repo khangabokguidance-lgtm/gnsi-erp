@@ -139,41 +139,6 @@ const escapeHtml = (str) =>
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
 
-// ═══ MOBILE MENU ICONS ═══
-// Thin line icons (24×24, currentColor) for the premium mobile menu.
-const PM_ICON_PATHS = {
-  home: 'M3 10.5 12 3l9 7.5M5.5 9v11h13V9M10 20v-6h4v6',
-  enquiry: 'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5',
-  results: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4',
-  'fee-payment': 'M3 6h18v12H3zM3 10h18M7 15h4',
-  contact: 'M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21zM12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
-  courses: 'M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5',
-  'admit-card': 'M3 5h18v14H3zM7 10a2 2 0 1 0 4 0 2 2 0 0 0-4 0M6 16c.6-1.6 1.9-2.5 3-2.5s2.4.9 3 2.5M14 9h4M14 13h4',
-  portal: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
-  staff: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4',
-  app: 'M7 2h10v20H7zM11 18h2',
-  phone: 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z',
-  grid: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
-  chevron: 'M9 6l6 6-6 6',
-  down: 'M6 9l6 6 6-6',
-  close: 'M6 6l12 12M18 6 6 18',
-};
-function PmIcon({ name, size = 20 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d={PM_ICON_PATHS[name] || PM_ICON_PATHS.grid} />
-    </svg>
-  );
-}
-// "More" links grouped for the mobile menu.
-const PM_GROUPS = [
-  { title: 'Academics', ids: ['syllabus', 'question-papers', 'exam-calendar', 'mock-tests', 'important-dates', 'scholarship'] },
-  { title: 'Results & Community', ids: ['rankers', 'reviews', 'notices', 'blog', 'events'] },
-  { title: 'The Institute', ids: ['about', 'head-institute', 'faculty', 'facilities', 'gallery', 'videos'] },
-  { title: 'Help', ids: ['faq', 'app-download', 'helpdesk'] },
-];
-
 // Shared card for a single ranker/successful-candidate, used by both the
 // Results-tab preview strip and the full Toppers' Wall (#rankers) so the
 // markup only lives in one place. `index` drives the 01/02/03… rank number
@@ -1330,7 +1295,7 @@ export default function LandingPage({ onLogin }) {
   useEffect(() => {
     if (expandedCat === null) return;
     const handleOutsideClick = (e) => {
-      if (!e.target.closest('.nav-cat') && !e.target.closest('.mob-cat') && !e.target.closest('.pm-acc')) setExpandedCat(null);
+      if (!e.target.closest('.nav-cat') && !e.target.closest('.mob-cat')) setExpandedCat(null);
     };
     document.addEventListener('click', handleOutsideClick);
     return () => document.removeEventListener('click', handleOutsideClick);
@@ -2243,186 +2208,91 @@ window.submitGrievance = async () => {
       </div>
     </div>
   </nav>
-  {/* MOBILE MENU — premium redesign. Outer .mob-menu/.open keep the
-      existing slide-in behaviour from LandingPage.css; everything inside is
-      styled by the scoped .pm-* rules below. */}
-  <style>{`
-    .mob-menu.pm{background:linear-gradient(180deg,#0b1a36 0%,#0d2147 55%,#0b1a36 100%)!important;color:#e8edf7;display:flex;flex-direction:column;font-family:var(--sans,system-ui,sans-serif)}
-    .pm-hd{display:flex;align-items:center;gap:.8rem;padding:1.1rem 1.1rem 1rem;border-bottom:1px solid rgba(212,175,55,.22);background:rgba(255,255,255,.02)}
-    .pm-crest{width:46px;height:46px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 1px rgba(212,175,55,.55),0 6px 18px rgba(0,0,0,.35);overflow:hidden}
-    .pm-crest img{width:100%;height:100%;object-fit:contain}
-    .pm-crest b{color:#0b1a36;font:800 .8rem/1 Georgia,serif;letter-spacing:.04em}
-    .pm-brand{min-width:0;flex:1}
-    .pm-brand strong{display:block;font:700 1rem/1.25 Georgia,'Times New Roman',serif;color:#fff;letter-spacing:.01em}
-    .pm-brand small{display:block;margin-top:.2rem;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:#d4af37}
-    .pm-close{width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:background .2s,border-color .2s}
-    .pm-close:hover{background:rgba(212,175,55,.18);border-color:#d4af37}
-    .pm-scroll{flex:1;overflow-y:auto;padding:1.1rem 1rem 1.2rem;-webkit-overflow-scrolling:touch}
-    .pm-label{font-size:.64rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:rgba(212,175,55,.85);margin:0 0 .6rem .2rem}
-    .pm-grid{display:grid;grid-template-columns:1fr 1fr;gap:.55rem;margin-bottom:1.3rem}
-    .pm-tile{display:flex;align-items:center;gap:.65rem;padding:.8rem .75rem;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:#e8edf7;text-decoration:none;font-size:.86rem;font-weight:600;transition:background .2s,border-color .2s,transform .15s}
-    .pm-tile:active{transform:scale(.98)}
-    .pm-tile:last-child:nth-child(odd){grid-column:1/-1}
-    .pm-tile:hover{background:rgba(255,255,255,.09);border-color:rgba(212,175,55,.45)}
-    .pm-tile .pm-ic{width:34px;height:34px;border-radius:9px;background:rgba(212,175,55,.12);color:#d4af37;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-    .pm-tile.on{background:linear-gradient(135deg,rgba(212,175,55,.22),rgba(212,175,55,.08));border-color:#d4af37;color:#fff}
-    .pm-tile.on .pm-ic{background:#d4af37;color:#0b1a36}
-    .pm-acc{border-radius:12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);margin-bottom:1.3rem;overflow:hidden}
-    .pm-acc-btn{width:100%;display:flex;align-items:center;gap:.65rem;padding:.85rem .9rem;background:none;border:0;color:#fff;font:inherit;font-size:.88rem;font-weight:600;cursor:pointer;text-align:left}
-    .pm-acc-btn .pm-ic{color:#d4af37;display:flex}
-    .pm-acc-btn .pm-arr{margin-left:auto;display:flex;color:rgba(255,255,255,.6);transition:transform .25s}
-    .pm-acc-btn.open .pm-arr{transform:rotate(180deg)}
-    .pm-acc-body{padding:.2rem .9rem 1rem;border-top:1px solid rgba(255,255,255,.06)}
-    .pm-group-t{font-size:.62rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.45);margin:.9rem 0 .45rem}
-    .pm-chips{display:flex;flex-wrap:wrap;gap:.4rem}
-    .pm-chip{padding:.42rem .75rem;border-radius:999px;border:1px solid rgba(255,255,255,.14);color:#dfe6f3;text-decoration:none;font-size:.76rem;font-weight:500;transition:border-color .2s,background .2s}
-    .pm-chip:hover{border-color:#d4af37;background:rgba(212,175,55,.1)}
-    .pm-chip.on{background:#d4af37;border-color:#d4af37;color:#0b1a36;font-weight:700}
-    .pm-list{border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.08);margin-bottom:1.1rem}
-    .pm-row{width:100%;display:flex;align-items:center;gap:.75rem;padding:.85rem .9rem;background:rgba(255,255,255,.03);border:0;border-bottom:1px solid rgba(255,255,255,.06);color:#e8edf7;text-decoration:none;font:inherit;font-size:.86rem;font-weight:600;cursor:pointer;text-align:left}
-    .pm-row:last-child{border-bottom:0}
-    .pm-row:hover{background:rgba(255,255,255,.07)}
-    .pm-row .pm-ic{color:#d4af37;display:flex}
-    .pm-row .pm-sub{display:block;font-size:.7rem;font-weight:400;color:rgba(255,255,255,.5);margin-top:.1rem}
-    .pm-row .pm-arr{margin-left:auto;color:rgba(255,255,255,.4);display:flex}
-    .pm-contact{display:flex;align-items:center;justify-content:center;gap:.45rem;font-size:.78rem;color:rgba(255,255,255,.6);text-decoration:none;padding:.3rem 0 .2rem}
-    .pm-contact b{color:#fff;font-weight:600}
-    .pm-bottom{display:grid;grid-template-columns:1fr 1.3fr;gap:.6rem;padding:.85rem 1rem calc(.85rem + env(safe-area-inset-bottom));border-top:1px solid rgba(212,175,55,.22);background:rgba(6,14,30,.65);backdrop-filter:blur(8px)}
-    .pm-btn{display:flex;align-items:center;justify-content:center;gap:.45rem;height:48px;border-radius:12px;font:inherit;font-size:.9rem;font-weight:700;cursor:pointer;text-decoration:none;letter-spacing:.01em}
-    .pm-btn-ghost{background:transparent;border:1px solid rgba(212,175,55,.6);color:#f3dc8c}
-    .pm-btn-gold{background:linear-gradient(135deg,#e7c65a,#c9a227);border:0;color:#0b1a36;box-shadow:0 8px 22px rgba(201,162,39,.35)}
-  `}</style>
-  <div
-    className={"mob-menu pm" + (mobileOpen ? " open" : "")}
-    role="dialog"
-    aria-modal="true"
-    aria-label="Site menu"
-  >
-    <div className="pm-hd">
-      <div className="pm-crest">
-        {!emblemFailed
-          ? <img src={EMBLEM_URL} alt="" onError={() => setEmblemFailed(true)} />
-          : <b>GNSI</b>}
+  <div className={"mob-menu" + (mobileOpen ? " open" : "")}>
+    <div className="mob-menu-hd">
+      <div className="mob-menu-brand">
+        {!emblemFailed && (
+          <img src={EMBLEM_URL} alt="GNSI" style={{ height: 34, width: 34, objectFit: "contain", flexShrink: 0 }} onError={() => setEmblemFailed(true)} />
+        )}
+        <span>GNSI</span>
       </div>
-      <div className="pm-brand">
-        <strong>Guidance Navodaya &amp; Sainik Institute</strong>
-        <small>Khangabok · Est. 2016</small>
-      </div>
-      <button className="pm-close" onClick={closeMobile} aria-label="Close menu">
-        <PmIcon name="close" size={18} />
+      <button className="mob-menu-close" onClick={closeMobile} aria-label="Close menu">
+        ✕
       </button>
     </div>
-
-    <div className="pm-scroll">
-      <p className="pm-label">Quick Access</p>
-      <div className="pm-grid">
-        {[{ id: 'home', label: 'Home', href: '#home' },
-          ...navCategories.filter((c) => c.links.length === 1).map((c) => ({
-            id: c.links[0].href.replace('#', ''), label: c.label, href: c.links[0].href,
-          }))].map((item) => {
-          const tabId = item.id === 'contact' ? 'enquiry' : item.id;
-          const on = activeTab === tabId && item.id !== 'contact';
-          return (
-            <a
-              key={item.id}
-              href={item.href}
-              className={"pm-tile" + (on ? " on" : "")}
-              aria-current={on ? 'page' : undefined}
-              onClick={(e) => {
-                e.preventDefault(); closeMobile();
-                if (item.id === 'home') goToTab('home'); else goToHash(item.href);
-              }}
-            >
-              <span className="pm-ic"><PmIcon name={item.id === 'enquiry' ? 'enquiry' : item.id} /></span>
-              {item.label}
-            </a>
-          );
-        })}
-      </div>
-
-      {(() => {
-        const moreIdx = navCategories.findIndex((c) => c.links.length > 1);
-        if (moreIdx < 0) return null;
-        const more = navCategories[moreIdx];
-        const open = expandedCat === moreIdx;
-        const byId = new Map(more.links.map((l) => [l.href.replace('#', ''), l]));
-        const used = new Set();
-        const groups = PM_GROUPS.map((g) => ({
-          title: g.title,
-          links: g.ids.filter((id) => byId.has(id)).map((id) => { used.add(id); return byId.get(id); }),
-        })).filter((g) => g.links.length);
-        const rest = more.links.filter((l) => !used.has(l.href.replace('#', '')));
-        if (rest.length) groups.push({ title: 'More', links: rest });
-        return (
-          <div className="pm-acc">
+    <div className="mob-menu-scroll">
+      <a
+        href="#home"
+        onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('home'); }}
+        className="mob-cat-link-flat"
+      >
+        🏠 Home
+      </a>
+      {navCategories.map((cat, idx) => (
+        cat.links.length === 1 ? (
+          <a
+            key={cat.label}
+            href={cat.links[0].href}
+            onClick={(e) => { e.preventDefault(); closeMobile(); goToHash(cat.links[0].href); }}
+            className="mob-cat-link-flat"
+          >
+            {cat.icon} {cat.label}
+          </a>
+        ) : (
+          <div className="mob-cat" key={cat.label}>
             <button
               type="button"
-              className={"pm-acc-btn" + (open ? " open" : "")}
-              aria-expanded={open}
-              onClick={() => toggleCat(moreIdx)}
+              className={"mob-cat-btn" + (expandedCat === idx ? " expanded" : "")}
+              onClick={() => toggleCat(idx)}
             >
-              <span className="pm-ic"><PmIcon name="grid" /></span>
-              All Sections
-              <span className="pm-arr"><PmIcon name="down" size={18} /></span>
+              <span>{cat.icon} {cat.label}</span>
+              <span className="mob-cat-arrow">▾</span>
             </button>
-            {open && (
-              <div className="pm-acc-body">
-                {groups.map((g) => (
-                  <div key={g.title}>
-                    <div className="pm-group-t">{g.title}</div>
-                    <div className="pm-chips">
-                      {g.links.map((link) => {
-                        const on = activeTab === link.href.replace('#', '');
-                        return (
-                          <a
-                            key={link.href}
-                            href={link.href}
-                            className={"pm-chip" + (on ? " on" : "")}
-                            onClick={(e) => { e.preventDefault(); closeMobile(); goToHash(link.href); }}
-                          >
-                            {link.label}
-                          </a>
-                        );
-                      })}
-                    </div>
-                  </div>
+            {expandedCat === idx && (
+              <div className="mob-cat-links">
+                {cat.links.map((link) => (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    className="mob-sub-link"
+                    onClick={(e) => { e.preventDefault(); closeMobile(); goToHash(link.href); }}
+                  >
+                    {link.label}
+                  </a>
                 ))}
               </div>
             )}
           </div>
-        );
-      })()}
-
-      <p className="pm-label">Accounts &amp; App</p>
-      <div className="pm-list">
-        <button type="button" className="pm-row" onClick={() => { setIsPortalOpen(true); closeMobile(); }}>
-          <span className="pm-ic"><PmIcon name="portal" /></span>
-          <span>Parents Portal<span className="pm-sub">Attendance, results &amp; fees</span></span>
-          <span className="pm-arr"><PmIcon name="chevron" size={18} /></span>
-        </button>
-        <a href={site.apk} download="" className="pm-row" onClick={closeMobile}>
-          <span className="pm-ic"><PmIcon name="app" /></span>
-          <span>Get the Android App<span className="pm-sub">GNSI Parents app</span></span>
-          <span className="pm-arr"><PmIcon name="chevron" size={18} /></span>
-        </a>
-        <button type="button" className="pm-row" onClick={() => { onLogin(); closeMobile(); }}>
-          <span className="pm-ic"><PmIcon name="staff" /></span>
-          <span>Staff Login<span className="pm-sub">GNSI Portal</span></span>
-          <span className="pm-arr"><PmIcon name="chevron" size={18} /></span>
-        </button>
-      </div>
-
-      <a href={site.tel} className="pm-contact">
-        <PmIcon name="phone" size={15} /> Admissions helpline <b>{site.phone}</b>
+        )
+      ))}
+      <a
+        href="#"
+        onClick={(e) => { e.preventDefault(); setIsPortalOpen(true); closeMobile(); }}
+        className="mob-par"
+      >
+        Parents Portal →
       </a>
-    </div>
-
-    <div className="pm-bottom">
-      <button type="button" onClick={() => { setIsFeeOpen(true); closeMobile(); }} className="pm-btn pm-btn-ghost">
-        <PmIcon name="fee-payment" size={18} /> Pay Fee
+      <a
+        href={site.apk}
+        download=""
+        className="mob-par"
+        onClick={closeMobile}
+      >
+        📱 Get Android App →
+      </a>
+      <button
+        onClick={() => { onLogin(); closeMobile(); }}
+        className="mob-staff"
+      >
+        Staff Login →
       </button>
-      <a href="#enquiry" onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('enquiry'); }} className="pm-btn pm-btn-gold">
-        Apply Now <PmIcon name="chevron" size={18} />
+    </div>
+    <div className="mob-menu-bottom">
+      <button onClick={() => { setIsFeeOpen(true); closeMobile(); }} className="mmb-fee">
+        💳 Pay Fee
+      </button>
+      <a href="#enquiry" onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('enquiry'); }} className="mmb-apply">
+        Apply Now →
       </a>
     </div>
   </div>
