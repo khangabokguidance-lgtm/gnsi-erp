@@ -6,6 +6,15 @@
 
 import { supabase } from './supabase';
 
+// Today's date as YYYY-MM-DD in the visitor's own timezone (IST for GNSI).
+// toISOString() is UTC, which is 5½ hours behind India — between midnight
+// and 5:30 AM it still returned yesterday's date.
+function localToday() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 // ─── IMAGE UPLOAD (Supabase Storage, gnsi-public bucket) ──────────────────
 // Uploads a File straight from a WebsiteTab <input type="file"> into the
 // public gnsi-public bucket and returns its public URL — the same URL
@@ -443,7 +452,7 @@ export async function deleteFaculty(id) {
 // ─── EVENTS (website_events) ─────────────────────────────────────────────────
 // Public landing page only ever needs active, upcoming events (soonest first).
 export async function getEvents(limit) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
   let query = supabase
     .from('website_events')
     .select('*')
@@ -488,25 +497,12 @@ export async function deleteEvent(id) {
 }
 
 // ─── SITE STATS (stored as rows in website_settings — no new table needed) ─
-// Powers: hero stats-bar, ribbon strip, and the Live Dashboard's
-// "Hostel Occupancy" / "Next Mock Test" rows. Falls back to sensible
-// defaults if a key hasn't been set yet in WebsiteTab.
-const STATS_DEFAULTS = {
-  selection_rate: '95%',
-  years_of_excellence: '10+',
-  officers_produced: '200+',
-  students_trained: '500+',
-  selected_current_year: '66',
-  selected_current_year_label: 'Selected 2025–26',
-  hostel_occupancy: '92%',
-  next_mock_test: 'This Sunday',
-  google_review_score: '4.9',
-  google_review_count: '80+',
-};
-
+// Every figure comes only from what an admin has entered in Website Manager
+// → Settings. There are no built-in default numbers: a setting left empty
+// stays empty, and the landing page hides that figure instead of showing
+// a made-up one.
 export async function getStats() {
-  const settings = await getSettings();
-  return { ...STATS_DEFAULTS, ...settings };
+  return getSettings();
 }
 
 export async function saveStats(stats) {
@@ -618,7 +614,7 @@ export async function deleteTimelineItem(id) {
 //   enquiries      → enquiries not yet replied to
 //   latestNotice   → newest non-archived notice
 export async function getLiveKPIs() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
   const countOf = (res) => (res && !res.error && typeof res.count === 'number' ? res.count : null);
 
   const [staffRes, attRes, schedRes, enqRes, noticeRes, studentCount] = await Promise.all([

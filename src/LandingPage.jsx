@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useState, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useRef, useMemo } from 'react';
 import {
   getActiveNotices, getRankers, getGallery, getVideos, getYouTubeThumb, getYouTubeEmbed,
   getPublishedPosts, getFeaturedReviews, getPapers, getActiveBanners, getFaculty,
@@ -66,6 +66,63 @@ const STAFF_GROUP_PHOTO_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/
 const ABOUT_PHOTO_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-about-speech-900.jpg";
 const ABOUT_PHOTO_2_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-about-guests-1200.jpg";
 const ANDROID_APP_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/app/gnsi-parents-app.apk";
+const BROCHURE_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf";
+
+// ═══ SITE SETTINGS (Website Manager → Settings) ═══
+// Contact details, social links, brochure, app links, founder text and
+// admission dates all come from website_settings. Each value falls back to
+// the original hardcoded one when the setting is left empty, so the page
+// never shows a blank link. Link settings are only used if they start with
+// http(s):// — anything else falls back, so a typo can't break a link.
+const SITE_FALLBACK = {
+  phone: '+91 89742 98074',
+  email: 'gnsikhangabok@gmail.com',
+  address: 'Khangabok, Thoubal District, Manipur',
+  facebook: 'https://facebook.com/gnsikhangabok',
+  youtube: 'https://youtube.com/@gnsikhangabok',
+  instagram: 'https://instagram.com/gnsikhangabok',
+  reviewUrl: 'https://g.page/gnsikhangabok/review',
+  founderQuote: 'Every child who walks into GNSI carries the potential to serve the nation. Our responsibility is to ensure that potential is never wasted for lack of opportunity or preparation.',
+  batchStart: '20 Dec 2026',
+};
+function buildSite(cfg) {
+  const text = (k, fb = '') => {
+    const v = cfg && cfg[k];
+    return typeof v === 'string' && v.trim() ? v.trim() : fb;
+  };
+  const url = (k, fb = '') => {
+    const v = text(k);
+    return /^https?:\/\//i.test(v) ? v : fb;
+  };
+  const phone = text('contact_phone', SITE_FALLBACK.phone);
+  let digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) digits = '91' + digits;
+  if (digits.length < 11 || digits.length > 13) digits = '918974298074';
+  const apk = url('app_apk_url', ANDROID_APP_URL);
+  const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text('contact_email')) ? text('contact_email') : SITE_FALLBACK.email;
+  return {
+    phone,
+    tel: 'tel:+' + digits,
+    wa: 'https://wa.me/' + digits,
+    email,
+    address: text('contact_address', SITE_FALLBACK.address),
+    facebook: url('social_facebook', SITE_FALLBACK.facebook),
+    youtube: url('social_youtube', SITE_FALLBACK.youtube),
+    instagram: url('social_instagram', SITE_FALLBACK.instagram),
+    whatsappChannel: url('social_whatsapp_channel', ''),
+    brochure: url('brochure_url', BROCHURE_URL),
+    apk,
+    // Top-bar app icon: Play Store listing once it exists, the APK until then.
+    appLink: url('play_store_url', apk),
+    reviewUrl: url('google_review_url', SITE_FALLBACK.reviewUrl),
+    founderQuote: text('founder_quote', SITE_FALLBACK.founderQuote).replace(/^["“]+|["”]+$/g, ''),
+    founderBio: text('founder_bio', ''),
+    batchStart: text('batch_start_date', SITE_FALLBACK.batchStart),
+    admissionDeadline: text('admission_deadline', ''),
+    reviewScore: text('google_review_score', ''),
+    reviewCount: text('google_review_count', ''),
+  };
+}
 // Student result card (right column, below Admin Block photo). Upload
 // gnsi-thoungamba-result-2026.jpg to gnsi-public/banners in Supabase.
 const RESULT_CARD_URL = "https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/banners/gnsi-thoungamba-result-2026.jpg";
@@ -211,13 +268,15 @@ const PROGRAMMES = {
 // ═══ URL HASH → TAB ═══
 // Lets shared links like guidancekhangabok.in/#faq open the FAQ tab directly
 // instead of always landing on Home. #portal is excluded: it opens the
-// Parents Portal overlay (isPortalOpen) as before. #contact lives inside
-// the Enquiry tab.
+// Parents Portal overlay (isPortalOpen) as before. The Admit Card & Result
+// section is its own tab, #admit-card, so it never collides with #portal.
+// #contact lives inside the Enquiry tab.
 const TAB_IDS = new Set([
   'home', 'courses', 'rankers', 'results', 'reviews', 'about', 'head-institute',
   'faculty', 'facilities', 'videos', 'notices', 'blog', 'gallery', 'events',
   'scholarship', 'mock-tests', 'question-papers', 'syllabus', 'exam-calendar',
   'important-dates', 'faq', 'enquiry', 'fee-payment', 'app-download', 'helpdesk',
+  'admit-card',
 ]);
 function hashToTab(hash) {
   const id = decodeURIComponent((hash || '').replace(/^#/, '')).trim();
@@ -484,9 +543,8 @@ function hydrateTabSections(setFeePaymentInfo) {
   })();
 
   // ---- 10b. SITE STATS (stats-bar, ribbon, dashboard, reviews header) ----
-  // Reads website_settings via getStats(). Any key an admin hasn't set yet
-  // falls back to the STATS_DEFAULTS baked into websiteApi.js, so this is
-  // safe to run even before WebsiteTab has a stats editor wired up.
+  // Reads website_settings via getStats(). A key an admin hasn't set is
+  // simply skipped (no built-in default numbers any more).
   (async () => {
     try {
       const stats = await cachedFetch('stats', getStats);
@@ -526,8 +584,6 @@ function hydrateTabSections(setFeePaymentInfo) {
       setText('ribbon-selected-year-label', stats.selected_current_year_label);
 
 
-      setText('reviews-score-num', stats.google_review_score);
-      setText('reviews-score-count', `Based on ${stats.google_review_count} Reviews`);
     } catch (e) { console.error('Stats load failed:', e); }
   })();
 
@@ -724,6 +780,17 @@ export default function LandingPage({ onLogin }) {
   });
   const [isFeeOpen, setIsFeeOpen] = useState(false);
   const [feePaymentInfo, setFeePaymentInfo] = useState({ upi_id: '', upi_qr_url: '' });
+  // Website Manager settings (see buildSite above). Shares the 'stats'
+  // cache entry, so this adds no extra request.
+  const [siteCfg, setSiteCfg] = useState({});
+  useEffect(() => {
+    let alive = true;
+    cachedFetch('stats', getStats)
+      .then((cfg) => { if (alive && cfg) setSiteCfg(cfg); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const site = useMemo(() => buildSite(siteCfg), [siteCfg]);
   const [progDetail, setProgDetail] = useState(null); // key of PROGRAMMES shown in the details panel
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === 'undefined') return 'home';
@@ -956,7 +1023,7 @@ export default function LandingPage({ onLogin }) {
     { label: 'Fee Payment', icon: '💳', links: [{ label: 'Fee Payment', href: '#fee-payment' }] },
     { label: 'Contact', icon: '📍', links: [{ label: 'Contact', href: '#contact' }] },
     { label: 'Courses', icon: '📚', links: [{ label: 'Courses', href: '#courses' }] },
-    { label: 'Portal', icon: '🔑', links: [{ label: 'Admit Card / Portal', href: '#portal' }] },
+    { label: 'Admit Card', icon: '🔑', links: [{ label: 'Admit Card / Result', href: '#admit-card' }] },
     {
       label: 'More',
       icon: '⋯',
@@ -1069,20 +1136,28 @@ export default function LandingPage({ onLogin }) {
   // nav and mobile menu, which have their own interactive elements) sends
   // the user back to Home. Clicks inside a section, or on the tab strip
   // itself, never trigger this.
+  //
+  // Never fires while a popup is open (Parents Portal, fee lookup,
+  // programme details, result poster), and never for clicks on the
+  // footer, CTA block, sticky bar, poster badge or any dialog — those
+  // have their own buttons that switch tabs, and a Home switch fired
+  // after them would override where the user actually asked to go.
+  const anyPopupOpen = isPortalOpen || isFeeOpen || !!progDetail || posterState === 'popup';
   useEffect(() => {
-    if (activeTab === 'home') return;
+    if (activeTab === 'home' || anyPopupOpen) return;
     const handleOutsideTabClick = (e) => {
+      if (!(e.target instanceof Element) || !e.target.isConnected) return;
       if (tabContentRef.current && tabContentRef.current.contains(e.target)) return;
-      if (e.target.closest('.tab-nav-strip')) return;
-      if (e.target.closest('.hero')) return;
-      if (e.target.closest('nav')) return;
-      if (e.target.closest('.mob-menu')) return;
-      if (e.target.closest('.lb-overlay')) return;
+      if (e.target.closest(
+        '.tab-nav-strip, .sec-grid-wrap, .hero, nav, .mob-menu, .lb-overlay, ' +
+        '.pd-overlay, .poster-overlay, .poster-badge, footer, .cta-block, ' +
+        '#stickyBar, [role="dialog"], [aria-modal="true"]'
+      )) return;
       goToTab('home');
     };
     document.addEventListener('click', handleOutsideTabClick);
     return () => document.removeEventListener('click', handleOutsideTabClick);
-  }, [activeTab]);
+  }, [activeTab, anyPopupOpen]);
 
   // Re-run scroll-reveal observation whenever the active tab changes.
   // Every tab's content is conditionally rendered ({activeTab === 'x' && …}),
@@ -1162,6 +1237,15 @@ export default function LandingPage({ onLogin }) {
   // cat drives the tab pill's accent color (see .tab-nav-btn.cat-* CSS):
   // gold = core/home, blue = institute info, green = results & community,
   // red = academics/exam-prep, purple = admin/utility.
+  // Icons for the "All Sections" grid below the top banner.
+  const TAB_ICONS = {
+    courses: '📚', rankers: '🏅', results: '🏆', reviews: '⭐', about: '🏫',
+    'head-institute': '👤', faculty: '👩‍🏫', facilities: '🏠', videos: '🎬',
+    notices: '📢', blog: '📰', gallery: '🖼️', events: '📅', scholarship: '🎓',
+    'mock-tests': '📝', 'question-papers': '📄', syllabus: '📘',
+    'exam-calendar': '🗓️', 'important-dates': '⏰', faq: '❓', enquiry: '✉️',
+    'fee-payment': '💳', 'admit-card': '🪪', 'app-download': '📱', helpdesk: '🛟',
+  };
   const tabList = [
     { id: 'home', label: 'Home', cat: 'gold' },
     { id: 'courses', label: 'Courses', cat: 'red' },
@@ -1186,7 +1270,7 @@ export default function LandingPage({ onLogin }) {
     { id: 'faq', label: 'FAQ', cat: 'purple' },
     { id: 'enquiry', label: 'Enquire', cat: 'gold' },
     { id: 'fee-payment', label: 'Fee Payment', cat: 'gold' },
-    { id: 'portal', label: 'Parents Portal', cat: 'gold' },
+    { id: 'admit-card', label: 'Admit Card & Result', cat: 'gold' },
     { id: 'app-download', label: 'App Download', cat: 'purple' },
     { id: 'helpdesk', label: 'Helpdesk', cat: 'purple' },
   ];
@@ -1917,17 +2001,17 @@ window.submitGrievance = async () => {
   {/* ① TOP CONTACT BAR */}
   <div className="top-bar">
     <div className="top-bar-left">
-      <a href="tel:+918974298074" className="top-bar-item">
+      <a href={site.tel} className="top-bar-item">
         <span>📞</span>
-        <span data-en="">+91 89742 98074</span>
-        <span data-hi="">+91 89742 98074</span>
+        <span data-en="">{site.phone}</span>
+        <span data-hi="">{site.phone}</span>
       </a>
-      <a href="mailto:gnsikhangabok@gmail.com" className="top-bar-item">
-        <span>✉</span> gnsikhangabok@gmail.com
+      <a href={'mailto:' + site.email} className="top-bar-item">
+        <span>✉</span> {site.email}
       </a>
       <span className="top-bar-item">
         <span>📍</span>
-        <span data-en="">Khangabok, Thoubal, Manipur</span>
+        <span data-en="">{site.address}</span>
         <span data-hi="">खंगाबोक, थौबल, मणिपुर</span>
       </span>
     </div>
@@ -1939,7 +2023,7 @@ window.submitGrievance = async () => {
       <div className="top-bar-social">
         <a
           className="top-bar-soc"
-          href="https://facebook.com/gnsikhangabok"
+          href={site.facebook}
           target="_blank"
           title="Facebook"
         >
@@ -1947,7 +2031,7 @@ window.submitGrievance = async () => {
         </a>
         <a
           className="top-bar-soc"
-          href="https://youtube.com/@gnsikhangabok"
+          href={site.youtube}
           target="_blank"
           title="YouTube"
         >
@@ -1955,7 +2039,7 @@ window.submitGrievance = async () => {
         </a>
         <a
           className="top-bar-soc"
-          href="https://instagram.com/gnsikhangabok"
+          href={site.instagram}
           target="_blank"
           title="Instagram"
         >
@@ -1963,7 +2047,7 @@ window.submitGrievance = async () => {
         </a>
         <a
           className="top-bar-soc"
-          href="https://wa.me/918974298074"
+          href={site.wa}
           target="_blank"
           title="WhatsApp"
           style={{ color: "#4AE382", borderColor: "rgba(37,211,102,.3)" }}
@@ -1972,7 +2056,7 @@ window.submitGrievance = async () => {
         </a>
         <a
           className="top-bar-soc"
-          href="https://play.google.com/store"
+          href={site.appLink}
           target="_blank"
           title="Play Store"
         >
@@ -1999,7 +2083,7 @@ window.submitGrievance = async () => {
           View Results
         </button>
         <a
-          href="https://wa.me/918974298074?text=Hello%20GNSI%2C%20I%20would%20like%20to%20know%20more%20about%20your%20programs."
+          href={site.wa + '?text=Hello%20GNSI%2C%20I%20would%20like%20to%20know%20more%20about%20your%20programs.'}
           className="sb-btn sb-btn-wa"
           target="_blank"
           rel="noopener noreferrer"
@@ -2030,11 +2114,11 @@ window.submitGrievance = async () => {
         <div className="ticker-track">
           RESULT: 66 SELECTED IN NVS &amp; SAINIK
           SCHOOL 2025–26 ◆ NEW NAVODAYA BATCH COMMENCING 20 DECEMBER 2026 ◆ SAINIK &amp; FOUNDATION BATCHES COMMENCING 10 JANUARY 2027 ◆ SUNDAY MOCK TESTS
-          ONGOING ◆ EST. 2016 ◆ CALL +91 89742 98074 ◆
+          ONGOING ◆ EST. 2016 ◆ CALL {site.phone.toUpperCase()} ◆
           KHANGABOK, THOUBAL, MANIPUR &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;RESULT:
           66 SELECTED IN NVS &amp; SAINIK SCHOOL 2025–26
           ◆ NEW NAVODAYA BATCH COMMENCING 20 DECEMBER 2026 ◆ SAINIK &amp; FOUNDATION BATCHES COMMENCING 10 JANUARY 2027 ◆ SUNDAY MOCK TESTS ONGOING ◆ EST.
-          2016 ◆ CALL +91 89742 98074 ◆ KHANGABOK,
+          2016 ◆ CALL {site.phone.toUpperCase()} ◆ KHANGABOK,
           THOUBAL, MANIPUR &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
         </div>
       </div>
@@ -2071,7 +2155,7 @@ window.submitGrievance = async () => {
         <button type="button" onClick={() => setIsFeeOpen(true)} className="nv-btn nv-primary">
           Pay Fee
         </button>
-        <a href={ANDROID_APP_URL} download="" className="nv-btn nv-ghost nv-hide-sm">
+        <a href={site.apk} download="" className="nv-btn nv-ghost nv-hide-sm">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
           Get App
         </a>
@@ -2158,7 +2242,7 @@ window.submitGrievance = async () => {
         Parents Portal →
       </a>
       <a
-        href={ANDROID_APP_URL}
+        href={site.apk}
         download=""
         className="mob-par"
         onClick={closeMobile}
@@ -2179,6 +2263,47 @@ window.submitGrievance = async () => {
       <a href="#enquiry" onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('enquiry'); }} className="mmb-apply">
         Apply Now →
       </a>
+    </div>
+  </div>
+  {/* ALL SECTIONS GRID — every section (except Home) as a tile, right
+      below the top banner and menu bar, so visitors see everything at a
+      glance instead of scrolling the tab strip. Uses the same tabList,
+      so a new tab added there shows up here automatically. */}
+  <style>{`
+    .sec-grid-wrap{background:#f6f3ea;padding:1.1rem 0 1.25rem;border-bottom:1px solid rgba(15,31,61,.08)}
+    .sec-grid-title{font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--navy,#0f1f3d);margin:0 0 .7rem;text-align:center}
+    .sec-grid{--per:9;--gap:.55rem;display:flex;flex-wrap:wrap;justify-content:center;gap:var(--gap)}
+    .sec-tile{flex:0 0 calc((100% - (var(--per) - 1) * var(--gap)) / var(--per));min-width:0}
+    .sec-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;min-height:74px;padding:.55rem .35rem;border-radius:10px;background:#fff;border:1px solid rgba(15,31,61,.1);border-top:3px solid var(--tc);cursor:pointer;font:inherit;color:var(--navy,#0f1f3d);text-align:center;transition:transform .15s,box-shadow .15s,background .15s}
+    .sec-tile:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(15,31,61,.12)}
+    .sec-tile:focus-visible{outline:2px solid var(--tc);outline-offset:2px}
+    .sec-tile.active{background:var(--navy,#0f1f3d);color:#fff;border-color:var(--navy,#0f1f3d);border-top-color:var(--tc)}
+    .sec-tile-ic{font-size:1.35rem;line-height:1}
+    .sec-tile-lb{font-size:.74rem;font-weight:700;line-height:1.2}
+    .sec-tile.cat-gold{--tc:#c9a227}.sec-tile.cat-red{--tc:#c0392b}.sec-tile.cat-green{--tc:#1e8e4e}
+    .sec-tile.cat-blue{--tc:#2563eb}.sec-tile.cat-purple{--tc:#7c3aed}
+    @media (max-width:1024px){.sec-grid{--per:7}}
+    @media (max-width:700px){.sec-grid{--per:5;--gap:.35rem}.sec-tile{min-height:66px;padding:.45rem .2rem}.sec-tile-ic{font-size:1.15rem}.sec-tile-lb{font-size:.64rem}}
+    @media (max-width:340px){.sec-grid{--per:4}}
+  `}</style>
+  <div className="sec-grid-wrap">
+    <div className="container">
+      <p className="sec-grid-title">Explore GNSI · All Sections</p>
+      <div className="sec-grid" role="list">
+        {tabList.filter((t) => t.id !== 'home').map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="listitem"
+            className={"sec-tile cat-" + t.cat + (activeTab === t.id ? " active" : "")}
+            aria-current={activeTab === t.id ? 'page' : undefined}
+            onClick={() => goToTab(t.id)}
+          >
+            <span className="sec-tile-ic" aria-hidden="true">{TAB_ICONS[t.id] || '•'}</span>
+            <span className="sec-tile-lb">{t.label}</span>
+          </button>
+        ))}
+      </div>
     </div>
   </div>
   {/* HERO */}
@@ -2222,15 +2347,15 @@ window.submitGrievance = async () => {
               <img className="adm-ic" src={icParents} alt="" width={32} height={32} />
               Parents Portal
             </button>
-            <a role="listitem" href={ANDROID_APP_URL} download="" className="adm-link">
+            <a role="listitem" href={site.apk} download="" className="adm-link">
               <img className="adm-ic" src={icAndroid} alt="" width={32} height={32} />
               Android App
             </a>
-            <a role="listitem" href="https://wa.me/918974298074?text=Hello%2C+I+am+enquiring+about+GNSI+admissions" target="_blank" rel="noopener noreferrer" className="adm-link">
+            <a role="listitem" href={site.wa + '?text=Hello%2C+I+am+enquiring+about+GNSI+admissions'} target="_blank" rel="noopener noreferrer" className="adm-link">
               <img className="adm-ic" src={icWhatsApp} alt="" width={32} height={32} />
               WhatsApp
             </a>
-            <a role="listitem" href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf" target="_blank" rel="noopener noreferrer" download="" className="adm-link">
+            <a role="listitem" href={site.brochure} target="_blank" rel="noopener noreferrer" download="" className="adm-link">
               <img className="adm-ic" src={icBrochure} alt="" width={32} height={32} />
               Brochure
             </a>
@@ -2974,11 +3099,15 @@ window.submitGrievance = async () => {
         />
       </div>
       <div className="reviews-header reveal">
+        {site.reviewScore && (
         <div className="reviews-score">
-          <span className="score-num" id="reviews-score-num">4.9</span>
+          <span className="score-num">{site.reviewScore}</span>
           <div className="score-stars">★★★★★</div>
-          <span className="score-count" id="reviews-score-count">Based on 80+ Reviews</span>
+          {site.reviewCount && (
+            <span className="score-count">Based on {site.reviewCount} Reviews</span>
+          )}
         </div>
+        )}
         <p className="reviews-desc">
           Trusted by hundreds of families across Manipur. Our parents
           consistently rate GNSI as the best coaching institute in Thoubal
@@ -3049,7 +3178,7 @@ window.submitGrievance = async () => {
       </div>
       <div style={{ marginTop: "1.5rem" }} className="reveal">
         <a
-          href="https://g.page/gnsikhangabok/review"
+          href={site.reviewUrl}
           target="_blank"
           className="google-badge"
         >
@@ -3158,10 +3287,25 @@ window.submitGrievance = async () => {
           <div className="rule-line" />
         </div>
         <blockquote className="head-institute-quote">
-          "Every child who walks into GNSI carries the potential to serve the
-          nation. Our responsibility is to ensure that potential is never wasted
-          for lack of opportunity or preparation."
+          &ldquo;{site.founderQuote}&rdquo;
         </blockquote>
+        {site.founderBio ? (
+          site.founderBio.split(/\n\s*\n/).map((para, i) => (
+            <p
+              key={i}
+              style={{
+                color: "var(--slate)",
+                lineHeight: "1.9",
+                marginBottom: "1rem",
+                fontSize: "clamp(0.9rem,2.4vw,0.95rem)",
+                whiteSpace: "pre-line"
+              }}
+            >
+              {para.trim()}
+            </p>
+          ))
+        ) : (
+        <>
         <p
           style={{
             color: "var(--slate)",
@@ -3187,6 +3331,8 @@ window.submitGrievance = async () => {
           resilience — the qualities that Navodaya and Sainik School demand, and
           that life rewards.
         </p>
+        </>
+        )}
         <div className="head-institute-sig">
           Moirangthem Himan Singh <span>Head of the Institute , GNSI</span>
         </div>
@@ -3414,7 +3560,7 @@ window.submitGrievance = async () => {
           </div>
           <div style={{ marginTop: "1rem" }}>
             <a
-              href="https://youtube.com/@gnsikhangabok"
+              href={site.youtube}
               target="_blank"
               className="btn btn-out"
               style={{
@@ -3552,7 +3698,10 @@ window.submitGrievance = async () => {
   <section className="promo-banner">
     <div className="promo-inner">
       <div className="promo-text">
-        <div className="promo-badge">New Batches · From 20 Dec 2026</div>
+        <div className="promo-badge">
+          New Batches · From {site.batchStart}
+          {site.admissionDeadline && <> · Apply by {site.admissionDeadline}</>}
+        </div>
         <h2>
           Ten years of results. <em>One decision</em> your child will thank you for.
         </h2>
@@ -3645,21 +3794,21 @@ window.submitGrievance = async () => {
         </span>
         <a
           className="soc-btn soc-fb"
-          href="https://facebook.com/gnsikhangabok"
+          href={site.facebook}
           target="_blank"
         >
           f Facebook
         </a>
         <a
           className="soc-btn soc-yt"
-          href="https://youtube.com/@gnsikhangabok"
+          href={site.youtube}
           target="_blank"
         >
           ▶ YouTube
         </a>
         <a
           className="soc-btn soc-ig"
-          href="https://instagram.com/gnsikhangabok"
+          href={site.instagram}
           target="_blank"
         >
           ◉ Instagram
@@ -3790,7 +3939,7 @@ window.submitGrievance = async () => {
           </div>
         </div>
         <a
-          href="https://wa.me/918974298074?text=Hello%20GNSI%2C%20I%20would%20like%20to%20register%20for%20the%20free%20demo%20class%20and%20scholarship%20test."
+          href={site.wa + '?text=Hello%20GNSI%2C%20I%20would%20like%20to%20register%20for%20the%20free%20demo%20class%20and%20scholarship%20test.'}
           className="btn btn-gold"
           target="_blank"
           style={{ display: "inline-flex" }}
@@ -3843,8 +3992,8 @@ window.submitGrievance = async () => {
           }}
         >
           Or call us:{" "}
-          <a href="tel:+918974298074" style={{ color: "var(--goldL)" }}>
-            +91 89742 98074
+          <a href={site.tel} style={{ color: "var(--goldL)" }}>
+            {site.phone}
           </a>
         </p>
       </div>
@@ -4163,7 +4312,7 @@ window.submitGrievance = async () => {
           </a>
           <button
             className="papers-cta"
-            onClick={() => window.open('https://wa.me/918974298074?text=Hello%20GNSI%2C%20please%20send%20me%20RMS%20previous%20year%20papers.', '_blank')}
+            onClick={() => window.open(site.wa + '?text=Hello%20GNSI%2C%20please%20send%20me%20RMS%20previous%20year%20papers.', '_blank')}
           >
             Request More via WhatsApp →
           </button>
@@ -4486,6 +4635,9 @@ window.submitGrievance = async () => {
                 <small style={{ color: "rgba(255,255,255,.75)", fontSize: ".72rem" }}>
                   All India Sainik Schools
                 </small>
+              </td>
+              <td>
+                <span className="cal-badge cb-sainik">Sainik</span>
               </td>
               <td>Est. Nov 2026</td>
               <td>Est. Dec 2026</td>
@@ -5000,8 +5152,8 @@ window.submitGrievance = async () => {
             }}
           >
             Or call us directly:{" "}
-            <a href="tel:+918974298074" style={{ color: "#000000", textDecoration: "underline" }}>
-              +91 89742 98074
+            <a href={site.tel} style={{ color: "#000000", textDecoration: "underline" }}>
+              {site.phone}
             </a>
           </p>
         </form>
@@ -5017,16 +5169,16 @@ window.submitGrievance = async () => {
         <div className="contact-card reveal">
           <h3>Guidance Navodaya &amp; Sainik Institute</h3>
           <p>
-            Khangabok, Thoubal District, Manipur
+            {site.address}
             <br />
             Phone:{" "}
-            <a href="tel:+918974298074" style={{ color: "var(--navy)", textDecoration: "underline" }}>
-              +91 89742 98074
+            <a href={site.tel} style={{ color: "var(--navy)", textDecoration: "underline" }}>
+              {site.phone}
             </a>
             <br />
             WhatsApp:{" "}
             <a
-              href="https://wa.me/918974298074"
+              href={site.wa}
               style={{ color: "var(--wa)" }}
               target="_blank"
             >
@@ -5047,21 +5199,21 @@ window.submitGrievance = async () => {
           <div className="social-strip">
             <a
               className="soc-btn soc-fb"
-              href="https://facebook.com/gnsikhangabok"
+              href={site.facebook}
               target="_blank"
             >
               f Facebook
             </a>
             <a
               className="soc-btn soc-yt"
-              href="https://youtube.com/@gnsikhangabok"
+              href={site.youtube}
               target="_blank"
             >
               ▶ YouTube
             </a>
             <a
               className="soc-btn soc-ig"
-              href="https://instagram.com/gnsikhangabok"
+              href={site.instagram}
               target="_blank"
             >
               ◉ Instagram
@@ -5070,7 +5222,7 @@ window.submitGrievance = async () => {
         </div>
         <div className="map-wrap reveal" id="mapWrap" onClick={() => window.loadMap()}>
           <div className="map-placeholder" id="mapPlaceholder">
-            <span>📍 Khangabok, Thoubal District, Manipur</span>
+            <span>📍 {site.address}</span>
             <button className="map-load-btn">View on Map →</button>
           </div>
         </div>
@@ -5121,8 +5273,8 @@ window.submitGrievance = async () => {
           className="reveal"
         >
           For any payment issues contact:{" "}
-          <a href="tel:+918974298074" style={{ color: "var(--goldL)" }}>
-            +91 89742 98074
+          <a href={site.tel} style={{ color: "var(--goldL)" }}>
+            {site.phone}
           </a>
         </p>
       </div>
@@ -5150,7 +5302,7 @@ window.submitGrievance = async () => {
           <div className="fee-step-num">3</div>
           <div className="fee-step-txt">
             <strong>Send Screenshot</strong>WhatsApp your payment screenshot to
-            +91 89742 98074 with your student name and ID for confirmation.
+            {site.phone} with your student name and ID for confirmation.
           </div>
         </div>
         <button
@@ -5162,12 +5314,12 @@ window.submitGrievance = async () => {
         <p className="pay-note">
           Or WhatsApp your screenshot to{' '}
           <a
-            href="https://wa.me/918974298074?text=Hello%20GNSI%2C%20I%20would%20like%20to%20pay%20fees%20online.%20Please%20share%20UPI%20and%20bank%20details."
+            href={site.wa + '?text=Hello%20GNSI%2C%20I%20would%20like%20to%20pay%20fees%20online.%20Please%20share%20UPI%20and%20bank%20details.'}
             target="_blank"
             rel="noreferrer"
             style={{ color: '#fff', textDecoration: 'underline' }}
           >
-            +91 89742 98074
+            {site.phone}
           </a>{' '}· Receipt issued within 24 hours
         </p>
       </div>
@@ -5175,8 +5327,8 @@ window.submitGrievance = async () => {
   </section>
   )}
   {/* ② ADMIT CARD + RESULT CHECKER PORTAL */}
-  {activeTab === 'portal' && (
-  <section className="portal-section" id="portal">
+  {activeTab === 'admit-card' && (
+  <section className="portal-section" id="admit-card">
     <div className="container">
       <div className="eyebrow reveal" style={{ color: "var(--goldL)" }}>
         <span data-en="">Student Portal</span>
@@ -5414,7 +5566,7 @@ window.submitGrievance = async () => {
         </div>
         <div className="app-btns">
           <a
-            href={ANDROID_APP_URL}
+            href={site.apk}
             className="app-btn"
             target="_blank"
             rel="noopener noreferrer"
@@ -5486,7 +5638,7 @@ window.submitGrievance = async () => {
         </div>
         <div className="app-qr">
           <img
-            src={"https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=4&data=" + encodeURIComponent(ANDROID_APP_URL)}
+            src={"https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=4&data=" + encodeURIComponent(site.apk)}
             alt="QR code to download the GNSI Android app"
             width={80}
             height={80}
@@ -5536,7 +5688,7 @@ window.submitGrievance = async () => {
               <div>
                 <span className="hc-label">Primary Helpline</span>
                 <span className="hc-val">
-                  <a href="tel:+918974298074">+91 89742 98074</a>
+                  <a href={site.tel}>{site.phone}</a>
                 </span>
               </div>
             </div>
@@ -5545,7 +5697,7 @@ window.submitGrievance = async () => {
               <div>
                 <span className="hc-label">WhatsApp Support</span>
                 <span className="hc-val">
-                  <a href="https://wa.me/918974298074" target="_blank">
+                  <a href={site.wa} target="_blank">
                     Chat on WhatsApp →
                   </a>
                 </span>
@@ -5556,8 +5708,8 @@ window.submitGrievance = async () => {
               <div>
                 <span className="hc-label">Email</span>
                 <span className="hc-val">
-                  <a href="mailto:gnsikhangabok@gmail.com">
-                    gnsikhangabok@gmail.com
+                  <a href={'mailto:' + site.email}>
+                    {site.email}
                   </a>
                 </span>
               </div>
@@ -5567,7 +5719,7 @@ window.submitGrievance = async () => {
               <div>
                 <span className="hc-label">Visit Campus</span>
                 <span className="hc-val">
-                  <span data-en="">Khangabok, Thoubal District, Manipur</span>
+                  <span data-en="">{site.address}</span>
                   <span data-hi="">खंगाबोक, थौबल जिला, मणिपुर</span>
                 </span>
               </div>
@@ -5703,7 +5855,7 @@ window.submitGrievance = async () => {
         Apply / Enquire →
       </a>
       <a
-        href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf"
+        href={site.brochure}
         className="btn btn-out"
         download=""
         target="_blank"
@@ -5717,7 +5869,7 @@ window.submitGrievance = async () => {
         💳 Pay Fee →
       </button>
       <a
-        href="https://wa.me/918974298074"
+        href={site.wa}
         className="btn btn-wa"
         target="_blank"
       >
@@ -5751,7 +5903,7 @@ window.submitGrievance = async () => {
         <div className="foot-social" style={{ marginTop: ".9rem" }}>
           <a
             className="foot-soc-icon"
-            href="https://facebook.com/gnsikhangabok"
+            href={site.facebook}
             target="_blank"
             aria-label="Facebook"
           >
@@ -5759,7 +5911,7 @@ window.submitGrievance = async () => {
           </a>
           <a
             className="foot-soc-icon"
-            href="https://youtube.com/@gnsikhangabok"
+            href={site.youtube}
             target="_blank"
             aria-label="YouTube"
           >
@@ -5767,7 +5919,7 @@ window.submitGrievance = async () => {
           </a>
           <a
             className="foot-soc-icon"
-            href="https://instagram.com/gnsikhangabok"
+            href={site.instagram}
             target="_blank"
             aria-label="Instagram"
           >
@@ -5775,13 +5927,26 @@ window.submitGrievance = async () => {
           </a>
           <a
             className="foot-soc-icon"
-            href="https://wa.me/918974298074"
+            href={site.wa}
             target="_blank"
             aria-label="WhatsApp"
             style={{ color: "#4AE382", borderColor: "rgba(37,211,102,.3)" }}
           >
             <svg viewBox="0 0 24 24"><path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.26-.47-2.39-1.48-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.13-.14.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.61-.92-2.21-.24-.58-.49-.5-.67-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48 0 1.46 1.07 2.88 1.22 3.07.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.62.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.7.25-1.29.17-1.42-.07-.12-.27-.2-.57-.35M12.05 21.78h-.01a9.87 9.87 0 0 1-5.03-1.38l-.36-.21-3.74.98 1-3.65-.24-.37a9.86 9.86 0 0 1-1.51-5.26C2.16 6.45 6.6 2 12.05 2c2.64 0 5.12 1.03 6.99 2.9a9.83 9.83 0 0 1 2.89 6.99c0 5.45-4.44 9.89-9.88 9.89Z"/></svg>
           </a>
+          {site.whatsappChannel && (
+            <a
+              className="foot-soc-icon"
+              href={site.whatsappChannel}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="WhatsApp Channel"
+              title="WhatsApp Channel"
+              style={{ color: "#4AE382", borderColor: "rgba(37,211,102,.3)", fontSize: ".7rem", fontWeight: 700 }}
+            >
+              CH
+            </a>
+          )}
         </div>
       </div>
       <div>
@@ -5803,7 +5968,7 @@ window.submitGrievance = async () => {
         <a href="#courses" onClick={(e) => { e.preventDefault(); goToTab('courses'); }}>Combined Course</a>
         <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); }}>Apply Now</a>
         <a
-          href="https://hiqaqdfhopuakaydfkgb.supabase.co/storage/v1/object/public/gnsi-public/GNSI-Brochure-2026.pdf"
+          href={site.brochure}
           target="_blank"
           download=""
         >
@@ -5812,9 +5977,9 @@ window.submitGrievance = async () => {
       </div>
       <div>
         <h4>Contact</h4>
-        <a href="tel:+918974298074">+91 89742 98074</a>
+        <a href={site.tel}>{site.phone}</a>
         <a
-          href="https://wa.me/918974298074"
+          href={site.wa}
           target="_blank"
           style={{ color: "#4AE382" }}
         >
@@ -5835,7 +6000,7 @@ window.submitGrievance = async () => {
           Parents Portal
         </a>
         <a
-          href={ANDROID_APP_URL}
+          href={site.apk}
           download=""
           style={{ color: "#4AE382" }}
         >
@@ -5872,7 +6037,7 @@ window.submitGrievance = async () => {
   {/* WA FLOAT */}
   <a
     id="waFloat"
-    href="https://wa.me/918974298074?text=Hello%20GNSI%2C%20I%20am%20interested%20in%20admissions."
+    href={site.wa + '?text=Hello%20GNSI%2C%20I%20am%20interested%20in%20admissions.'}
     target="_blank"
   >
     <div className="wa-tooltip">Chat with us on WhatsApp</div>
@@ -5978,7 +6143,7 @@ window.submitGrievance = async () => {
             <button type="button" className="adm-btn adm-btn-primary" onClick={() => { setProgDetail(null); goToTab('enquiry'); }}>
               Enquire now
             </button>
-            <a className="adm-btn adm-btn-secondary" href={'https://wa.me/918974298074?text=' + waText} target="_blank" rel="noopener noreferrer">
+            <a className="adm-btn adm-btn-secondary" href={site.wa + '?text=' + waText} target="_blank" rel="noopener noreferrer">
               Ask on WhatsApp
             </a>
             <button type="button" className="pd-more" onClick={() => { setProgDetail(null); goToTab(progDetail === 'fdn' || progDetail === 'comb' ? 'courses' : 'syllabus'); }}>
