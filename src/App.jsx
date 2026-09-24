@@ -224,23 +224,26 @@ function clearLoginAttempts() {
 }
 
 const D = {
-  bg:           '#03263a',
-  bgDeep:       '#021e2e',
-  bgSurface:    '#0a1f2e',
-  bgHover:      '#0d2840',
-  bgActive:     '#0f1e10',
-  border:       '#1a3347',
-  borderStrong: '#254560',
-  accent:       '#f59e0b',
-  accentLight:  '#fbbf24',
-  accentGlow:   'rgba(245,158,11,0.12)',
-  accentBorder: 'rgba(245,158,11,0.3)',
-  textPrimary:  '#f0f4f8',
-  textSecondary:'#94afc4',
-  textMuted:    '#6b8fa8',
-  textFaint:    '#4a6b82',
+  // Premium navy + brass-gold shell (matches website, portal and login)
+  bg:           '#0B1E3D',
+  bgDeep:       '#081629',
+  bgSurface:    '#132B52',
+  bgHover:      'rgba(255,255,255,0.06)',
+  bgActive:     'rgba(201,162,75,0.14)',
+  border:       'rgba(255,255,255,0.08)',
+  borderStrong: 'rgba(255,255,255,0.14)',
+  accent:       '#C9A24B',
+  accentLight:  '#E2C57E',
+  accentGlow:   'rgba(201,162,75,0.14)',
+  accentBorder: 'rgba(226,197,126,0.38)',
+  textPrimary:  '#F5F1E6',
+  textSecondary:'#B9C3D6',
+  textMuted:    '#8E9AB2',
+  textFaint:    '#65728C',
   green:        '#22c55e',
 }
+const UI_FONT = "'Inter','Segoe UI',system-ui,sans-serif"
+const SERIF_FONT = "'Playfair Display','Source Serif 4',Georgia,serif"
 
 const LS = {
   get: (k, fb) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb } catch { return fb } },
@@ -293,7 +296,7 @@ function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) 
   const [pinHov, setPinHov] = useState(false)
   return (
     <div style={{ position: 'relative' }} onMouseEnter={() => setHov(true)} onMouseLeave={() => { setHov(false); setPinHov(false) }}>
-      <button onClick={onClick} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: compact ? '5px 10px 5px 12px' : '7px 10px 7px 14px', borderRadius: 8, marginBottom: 1, border: isActive ? `1px solid ${D.accentBorder}` : `1px solid ${hov ? D.border : 'transparent'}`, cursor: 'pointer', textAlign: 'left', fontSize: compact ? 12.5 : 13.5, fontWeight: isActive ? 600 : 400, background: isActive ? `linear-gradient(90deg, ${D.bgActive} 0%, rgba(15,30,16,0.6) 100%)` : hov ? D.bgHover : 'transparent', color: isActive ? D.accentLight : hov ? D.textPrimary : D.textSecondary, position: 'relative', transition: 'background .12s, border-color .12s, color .12s', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
+      <button onClick={onClick} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: compact ? '5px 10px 5px 12px' : '7px 10px 7px 14px', borderRadius: 8, marginBottom: 1, border: isActive ? `1px solid ${D.accentBorder}` : `1px solid ${hov ? D.border : 'transparent'}`, cursor: 'pointer', textAlign: 'left', fontSize: compact ? 12.5 : 13.5, fontWeight: isActive ? 600 : 400, background: isActive ? `linear-gradient(90deg, rgba(201,162,75,0.20) 0%, rgba(201,162,75,0.04) 100%)` : hov ? D.bgHover : 'transparent', color: isActive ? D.accentLight : hov ? D.textPrimary : D.textSecondary, position: 'relative', transition: 'background .12s, border-color .12s, color .12s', fontFamily: UI_FONT }}>
         {isActive && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, borderRadius: '0 3px 3px 0', background: D.accent, boxShadow: `0 0 8px ${D.accent}` }} />}
         <span style={{ fontSize: compact ? 13 : 15, lineHeight: 1, flexShrink: 0 }}>{item.icon}</span>
         <span style={{ flex: 1, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
@@ -311,7 +314,7 @@ function GroupHeader({ label, collapsed, onToggle, count }) {
   const [hov, setHov] = useState(false)
   return (
     <button onClick={onToggle} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '5px 10px 4px 12px', background: hov ? 'rgba(255,255,255,0.03)' : 'transparent', border: 'none', cursor: 'pointer', borderRadius: 6, transition: 'background .1s', marginBottom: 2 }}>
-      <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em', color: hov ? D.textMuted : D.textFaint, textTransform: 'uppercase', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif", flex: 1, textAlign: 'left', transition: 'color .1s' }}>{label}</span>
+      <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em', color: hov ? D.textMuted : D.textFaint, textTransform: 'uppercase', fontFamily: UI_FONT, flex: 1, textAlign: 'left', transition: 'color .1s' }}>{label}</span>
       {count > 0 && <span style={{ fontSize: 9, color: D.textFaint, background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 99 }}>{count}</span>}
       <span style={{ fontSize: 9, color: D.textFaint, transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform .2s', display: 'inline-block' }}>▾</span>
     </button>
@@ -322,7 +325,7 @@ function PinnedItems({ pins, activePage, onNavigate, onPin }) {
   if (!pins.length) return null
   return (
     <div style={{ marginBottom: 4 }}>
-      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em', color: D.accentBorder, padding: '4px 12px 5px', textTransform: 'uppercase', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>📌 PINNED</div>
+      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em', color: D.accentBorder, padding: '4px 12px 5px', textTransform: 'uppercase', fontFamily: UI_FONT }}>📌 PINNED</div>
       {pins.map(id => { const item = ALL_ITEMS.find(i => i.id === id); if (!item) return null; return <NavItem key={id} item={item} isActive={activePage === id} onClick={() => onNavigate(id)} onPin={onPin} isPinned compact /> })}
     </div>
   )
@@ -332,7 +335,7 @@ function RecentItems({ recents, activePage, onNavigate }) {
   if (!recents.length) return null
   return (
     <div style={{ marginBottom: 4 }}>
-      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em', color: D.textFaint, padding: '4px 12px 5px', textTransform: 'uppercase', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>RECENT</div>
+      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.11em', color: D.textFaint, padding: '4px 12px 5px', textTransform: 'uppercase', fontFamily: UI_FONT }}>RECENT</div>
       {recents.map(id => { const item = ALL_ITEMS.find(i => i.id === id); if (!item) return null; return <NavItem key={id} item={item} isActive={activePage === id} onClick={() => onNavigate(id)} compact /> })}
     </div>
   )
@@ -341,7 +344,7 @@ function RecentItems({ recents, activePage, onNavigate }) {
 function LogoutButton({ onLogout }) {
   const [hov, setHov] = useState(false)
   return (
-    <button onClick={onLogout} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', borderRadius: 8, border: `1px solid ${hov ? D.accentBorder : D.border}`, cursor: 'pointer', textAlign: 'left', fontSize: 13, fontWeight: 500, background: hov ? D.accentGlow : D.bgSurface, color: hov ? D.accentLight : D.textMuted, transition: 'all .15s', fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>
+    <button onClick={onLogout} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', borderRadius: 8, border: `1px solid ${hov ? D.accentBorder : D.border}`, cursor: 'pointer', textAlign: 'left', fontSize: 13, fontWeight: 500, background: hov ? D.accentGlow : D.bgSurface, color: hov ? D.accentLight : D.textMuted, transition: 'all .15s', fontFamily: UI_FONT }}>
       <span style={{ fontSize: 14 }}>🚪</span><span>Sign Out</span>
     </button>
   )
@@ -352,11 +355,11 @@ function LogoHeader({ isMobile, onClose, collapsed, onToggleCollapse }) {
   return (
     <div style={{ padding: '0 10px 0 14px', height: 60, display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 11, borderBottom: `1px solid ${D.border}`, flexShrink: 0, background: `linear-gradient(90deg, ${D.bgDeep} 0%, ${D.bg} 100%)`, position: 'relative', overflow: 'hidden', justifyContent: collapsed ? 'center' : 'flex-start' }}>
       <div style={{ position: 'absolute', bottom: 0, left: 14, right: 14, height: 1, background: `linear-gradient(90deg, ${D.accent}44, transparent)` }} />
-      <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI" style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover', flexShrink: 0 }} />
+      <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI" style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, background: '#fff', boxShadow: `0 0 0 2px ${D.accent}` }} />
       {!collapsed && (
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15.5, fontWeight: 700, color: D.textPrimary, letterSpacing: '-.01em', lineHeight: 1.1, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>GNSI <span style={{ color: D.accent }}>ERP</span></div>
-          <div style={{ fontSize: 9.5, color: D.textFaint, letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2, fontFamily: "'Trebuchet MS', monospace" }}>School Management</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: D.textPrimary, lineHeight: 1.1, fontFamily: SERIF_FONT }}>GNSI <span style={{ color: D.accentLight }}>ERP</span></div>
+          <div style={{ fontSize: 9.5, color: D.textFaint, letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2, fontFamily: UI_FONT }}>School Management</div>
         </div>
       )}
       {isMobile
@@ -421,9 +424,9 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     <>
       <div style={{ margin: '10px 10px 0', background: `linear-gradient(135deg, ${D.bgSurface} 0%, rgba(15,40,60,0.8) 100%)`, border: `1px solid ${D.border}`, borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 60, background: `radial-gradient(ellipse at left center, ${D.accentGlow} 0%, transparent 70%)`, pointerEvents: 'none' }} />
-        <div style={{ width: 36, height: 36, borderRadius: 9, flexShrink: 0, background: D.accentGlow, border: `1.5px solid ${D.accentBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: D.accentLight, fontFamily: "'Trebuchet MS', monospace", zIndex: 1 }}>{initials}</div>
+        <div style={{ width: 36, height: 36, borderRadius: 9, flexShrink: 0, background: D.accentGlow, border: `1.5px solid ${D.accentBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: D.accentLight, fontFamily: UI_FONT, zIndex: 1 }}>{initials}</div>
         <div style={{ minWidth: 0, flex: 1, zIndex: 1 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: D.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }}>{currentUser?.name || 'User'}</div>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: D.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3, fontFamily: UI_FONT }}>{currentUser?.name || 'User'}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 4, padding: '2px 7px' }}>
               <span style={{ width: 4, height: 4, borderRadius: '50%', background: D.accent, flexShrink: 0 }} />
@@ -441,7 +444,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
       <div style={{ padding: '8px 10px 4px', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: D.bgDeep, border: `1px solid ${D.borderStrong}`, borderRadius: 8, padding: '7px 11px' }}>
           <span style={{ fontSize: 12, color: D.textMuted, flexShrink: 0 }}>🔍</span>
-          <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search modules…" style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: D.textPrimary, fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif" }} />
+          <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search modules…" style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: D.textPrimary, fontFamily: UI_FONT }} />
           {search ? <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: D.textMuted, fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button> : <span style={{ fontSize: 10, color: D.textFaint, background: 'rgba(255,255,255,0.07)', border: `1px solid ${D.border}`, borderRadius: 4, padding: '2px 5px', fontFamily: 'monospace', flexShrink: 0 }}>/</span>}
         </div>
       </div>
@@ -504,9 +507,10 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
   }, [drawerOpen])
 
   const sidebarStyles = {
-    background: D.bg, display: 'flex', flexDirection: 'column',
-    fontFamily: "'Trebuchet MS', 'Segoe UI', system-ui, sans-serif",
-    borderRight: `1px solid ${D.border}`,
+    background: 'linear-gradient(180deg, #0B1E3D 0%, #0A1A35 55%, #081629 100%)', display: 'flex', flexDirection: 'column',
+    fontFamily: UI_FONT,
+    borderRight: '1px solid rgba(226,197,126,0.18)',
+    boxShadow: '6px 0 24px rgba(8,22,41,0.18)',
   }
 
   if (!isMobile) {
@@ -524,7 +528,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
 
   return (
     <>
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, background: D.bg, borderBottom: `1px solid ${D.border}`, display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', zIndex: 200 }}>
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, background: 'linear-gradient(90deg,#0B1E3D,#132B52)', borderBottom: `2px solid ${D.accent}`, boxShadow: '0 6px 18px rgba(8,22,41,0.25)', display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', zIndex: 200 }}>
         <button onClick={() => setDrawerOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 5, padding: 4, position: 'relative', flexShrink: 0 }}>
           {[0,1,2].map(i => <span key={i} style={{ display: 'block', width: 22, height: 2, borderRadius: 2, background: D.textMuted }} />)}
           {totalBadges > 0 && <span style={{ position: 'absolute', top: 0, right: 0, width: 8, height: 8, borderRadius: '50%', background: D.accent, border: `1.5px solid ${D.bg}` }} />}
@@ -584,10 +588,12 @@ function StatCard({ icon, label, value, sub, trend, accent }) {
 
 function AccessDenied() {
   return (
-    <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>
-      <div style={{ fontSize: 48, marginBottom: 12 }}>🚫</div>
-      <h2 style={{ color: '#dc2626' }}>Access Denied</h2>
-      <p>You don't have permission to view this module.</p>
+    <div style={{ padding: 48, display: 'flex', justifyContent: 'center' }}>
+      <div style={{ background: '#fff', border: '1px solid #E8E1D0', borderRadius: 20, padding: '36px 32px', textAlign: 'center', maxWidth: 420, boxShadow: '0 18px 40px rgba(11,30,61,.08)' }}>
+        <div style={{ width: 64, height: 64, borderRadius: '50%', margin: '0 auto 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, background: '#FDF2F3', border: '1px solid #F3C6CD' }}>🔒</div>
+        <h2 style={{ color: '#0B1E3D', fontFamily: SERIF_FONT, margin: '0 0 6px' }}>Access restricted</h2>
+        <p style={{ color: '#7A8398', margin: 0, fontSize: 13.5 }}>You don't have permission to open this module. Ask an admin if you need it.</p>
+      </div>
     </div>
   )
 }
@@ -733,7 +739,14 @@ export default function App() {
     if (showLogin) return <Login onLogin={(user) => { setShowLogin(false); handleLogin(user) }} onLoginFailed={recordLoginAttempt} loginLock={checkLoginLock()} />
     return <LandingPage onLogin={() => setShowLogin(true)} />
   }
-  if (permLoading) return <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>⏳ Loading permissions…</div>
+  if (permLoading) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'radial-gradient(120% 90% at 50% 0%, #16335F, #0B1E3D 60%, #081629)', fontFamily: UI_FONT }}>
+      <div style={{ textAlign: 'center' }}>
+        <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI" style={{ width: 64, height: 64, borderRadius: '50%', background: '#fff', boxShadow: '0 0 0 3px #C9A24B, 0 16px 36px rgba(0,0,0,.35)' }} />
+        <div style={{ color: '#E2C57E', fontSize: 11, fontWeight: 800, letterSpacing: '.18em', marginTop: 16 }}>LOADING YOUR WORKSPACE…</div>
+      </div>
+    </div>
+  )
 
   // FIX 1: use unified isAdminRole in canAccess
   const canAccess = (key) => {
@@ -808,7 +821,7 @@ export default function App() {
     if (active === 'cast-receiver') return <CastReceiver />
     if (active === 'dashboard') return isAdmin
       ? <GNSIDashboard onNavigate={setActive} currentUser={currentUser} />
-      : <UserDashboard onNavigate={setActive} currentUser={currentUser} />
+      : <UserDashboard onNavigate={setActive} currentUser={currentUser} modules={ALL_ITEMS.filter(i => i.id !== 'dashboard' && canAccess(i.id))} />
     if (!canAccess(active)) return <AccessDenied />
     return moduleMap[active] || (
       <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
@@ -819,7 +832,8 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', fontFamily: "'Segoe UI', system-ui, sans-serif", minHeight: '100vh', background: '#f8fafc' }}>
+    <div style={{ display: 'flex', fontFamily: UI_FONT, minHeight: '100vh', background: '#F4F1EA' }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap');`}</style>
       <Sidebar
         activePage={active}
         setActivePage={setActive}
@@ -830,28 +844,67 @@ export default function App() {
         onToggleCollapse={() => setSidebarCollapsed(p => !p)}
       />
       {!isMobile && (
-        <div style={{ position: 'fixed', top: 0, right: 0, left: sidebarW, height: 48, background: '#021e2e', borderBottom: '1px solid #1a3347', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', zIndex: 99, transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1)' }}>
-          <span style={{ fontSize: 12, color: '#4a6b82', fontFamily: 'monospace' }}>
-            {ALL_ITEMS.find(i => i.id === active)?.icon}{' '}{ALL_ITEMS.find(i => i.id === active)?.label || 'Dashboard'}
-          </span>
+        <div style={{ position: 'fixed', top: 0, right: 0, left: sidebarW, height: 60, background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid #E8E1D0', boxShadow: '0 4px 18px rgba(11,30,61,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', zIndex: 99, transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1)', fontFamily: UI_FONT }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <span style={{ width: 34, height: 34, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#0B1E3D', fontSize: 16, boxShadow: 'inset 0 0 0 1px rgba(226,197,126,0.4)' }}>{ALL_ITEMS.find(i => i.id === active)?.icon || '⊞'}</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#A87A1F' }}>{ALL_GROUPS.find(g => g.items.some(i => i.id === active))?.group || 'CORE'}</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#0B1E3D', fontFamily: SERIF_FONT, lineHeight: 1.15 }}>{ALL_ITEMS.find(i => i.id === active)?.label || 'Dashboard'}</div>
+            </div>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 13, color: '#94afc4' }}>{currentUser?.name}</span>
-            <button onClick={handleLogout} style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', color: '#fca5a5', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(220,38,38,.22)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(220,38,38,.12)'}>🚪 Sign Out</button>
+            <span style={{ fontSize: 12, color: '#7A8398', fontWeight: 600 }}>{new Date().toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' })}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 12px 5px 5px', borderRadius: 999, background: '#F6F3EC', border: '1px solid #E8E1D0' }}>
+              <span style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(150deg,#16335F,#0B1E3D)', color: '#E2C57E', fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontFamily: SERIF_FONT }}>{(currentUser?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</span>
+              <div style={{ lineHeight: 1.15 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#0B1E3D' }}>{currentUser?.name}</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#A87A1F', textTransform: 'uppercase', letterSpacing: '.08em' }}>{currentUser?.role}</div>
+              </div>
+            </div>
+            <button onClick={handleLogout} style={{ background: '#fff', border: '1px solid #E8E1D0', borderRadius: 999, padding: '8px 14px', cursor: 'pointer', color: '#b3273f', fontSize: 12.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }} onMouseEnter={e => { e.currentTarget.style.background = '#FDF2F3'; e.currentTarget.style.borderColor = '#F3C6CD' }} onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#E8E1D0' }}>🚪 Sign Out</button>
           </div>
         </div>
       )}
-      <main style={{ flex: 1, overflowY: 'auto', minHeight: '100vh', paddingLeft: isMobile ? 0 : sidebarW, paddingTop: isMobile ? 56 : 48, transition: 'padding-left 0.22s cubic-bezier(0.4,0,0.2,1)' }}>
+      <main style={{ flex: 1, overflowY: 'auto', minHeight: '100vh', paddingLeft: isMobile ? 0 : sidebarW, paddingTop: isMobile ? 56 : 60, transition: 'padding-left 0.22s cubic-bezier(0.4,0,0.2,1)' }}>
         {renderContent()}
       </main>
     </div>
   )
 }
 
-// Minimal UserDashboard (unchanged from original)
-function UserDashboard({ onNavigate, currentUser }) {
+// Staff (non-admin) home — premium welcome + one-tap tiles for the
+// modules this person is allowed to open.
+function UserDashboard({ onNavigate, currentUser, modules = [] }) {
+  const now = new Date()
+  const greet = now.getHours() < 12 ? 'Good Morning' : now.getHours() < 17 ? 'Good Afternoon' : 'Good Evening'
   return (
-    <div style={{ padding: '16px 20px' }}>
-      <h1 style={{ fontSize: 18, fontWeight: 800, color: '#1e3a5f', margin: '0 0 16px' }}>👤 Welcome, {currentUser?.name}</h1>
+    <div style={{ padding: 'clamp(14px,2.4vw,28px)', maxWidth: 1300, margin: '0 auto', fontFamily: UI_FONT }}>
+      <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 20, padding: '28px 26px', marginBottom: 22, background: 'radial-gradient(120% 140% at 100% 0%, #1F4E8C 0%, #132B52 40%, #0B1E3D 78%)', boxShadow: '0 22px 50px rgba(11,30,61,.28), inset 0 0 0 1px rgba(226,197,126,.22)' }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+        <div style={{ position: 'absolute', right: -80, top: -80, width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(226,197,126,.22), transparent 70%)' }} />
+        <div style={{ position: 'relative' }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, color: '#E2C57E', letterSpacing: '.18em', textTransform: 'uppercase', marginBottom: 8 }}>{currentUser?.role || 'Staff'} · GNSI ERP</div>
+          <h1 style={{ margin: 0, color: '#fff', fontFamily: SERIF_FONT, fontSize: 'clamp(24px,4vw,34px)', fontWeight: 700, lineHeight: 1.15 }}>{greet}, {(currentUser?.name || '').split(' ')[0] || 'there'}</h1>
+          <p style={{ margin: '6px 0 0', color: 'rgba(255,255,255,.72)', fontSize: 13 }}>{now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+        </div>
+      </div>
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#A87A1F', margin: '0 0 12px' }}>Your modules</div>
+      {modules.length === 0 ? (
+        <div style={{ background: '#fff', border: '1px dashed #D9CFB8', borderRadius: 16, padding: 28, textAlign: 'center', color: '#7A8398', fontSize: 13 }}>No modules assigned yet — ask the admin to grant access.</div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+          {modules.map(m => (
+            <button key={m.id} onClick={() => onNavigate(m.id)}
+              style={{ textAlign: 'left', background: '#fff', border: '1px solid #E8E1D0', borderRadius: 16, padding: '16px 16px 14px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(11,30,61,.05), 0 10px 28px rgba(11,30,61,.07)', transition: 'transform .18s, box-shadow .18s', fontFamily: UI_FONT }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 18px 40px rgba(11,30,61,.14)' }}
+              onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 1px 2px rgba(11,30,61,.05), 0 10px 28px rgba(11,30,61,.07)' }}>
+              <span style={{ width: 40, height: 40, borderRadius: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, background: '#0B1E3D', boxShadow: 'inset 0 0 0 1px rgba(226,197,126,.4)', marginBottom: 10 }}>{m.icon}</span>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#0B1E3D' }}>{m.label}</div>
+              <div style={{ fontSize: 11, color: '#A87A1F', fontWeight: 700, marginTop: 2 }}>Open →</div>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

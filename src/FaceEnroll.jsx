@@ -425,10 +425,12 @@ export function FaceApprovalQueue({ currentAdminId, showToast }) {
 
   useEffect(() => { fetchPending() }, [fetchPending])
 
+  // Approve/reject goes through review_face_enrollments() (see
+  // phase2c_face_approval.sql) — the database checks the caller is a
+  // signed-in admin and records the reviewer itself, so a crafted request
+  // from the browser can no longer approve a face.
   const decide = async (id, status) => {
-    const { error } = await supabase.from('staff_face_descriptors').update({
-      status, reviewed_by: currentAdminId, reviewed_at: new Date().toISOString(),
-    }).eq('id', id)
+    const { error } = await supabase.rpc('review_face_enrollments', { p_ids: [String(id)], p_status: status })
     if (error) showToast?.('Update failed: ' + error.message, 'err')
     else { showToast?.(status === 'approved' ? '✅ Approved' : 'Rejected', status === 'approved' ? 'ok' : 'warn'); fetchPending() }
   }
@@ -455,12 +457,9 @@ export function FaceApprovalQueue({ currentAdminId, showToast }) {
     setBulkWorking(true)
     const ids = [...selected]
     let failCount = 0
-    for (const id of ids) {
-      const { error } = await supabase.from('staff_face_descriptors').update({
-        status, reviewed_by: currentAdminId, reviewed_at: new Date().toISOString(),
-      }).eq('id', id)
-      if (error) failCount++
-    }
+    const { data: updated, error } = await supabase.rpc('review_face_enrollments', { p_ids: ids.map(String), p_status: status })
+    if (error) { failCount = ids.length; showToast?.('Update failed: ' + error.message, 'err') }
+    else failCount = Math.max(0, ids.length - (updated ?? ids.length))
     setBulkWorking(false)
     setSelected(new Set())
     if (failCount > 0) {

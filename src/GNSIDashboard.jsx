@@ -11,20 +11,22 @@ import { supabase } from "./supabase"
 
 // ─── PROFESSIONAL INSTITUTE THEME TOKENS ────────────────────────────────────
 const T = {
-  bg:       "#f5f6f8",
+  // Premium "Ledger & Crest" palette — navy + brass gold on warm ivory,
+  // matching the website, Parents Portal and login.
+  bg:       "#F4F1EA",
   bgCard:   "#ffffff",
-  bgCardAlt:"#fafbfc",
-  bgInset:  "#f1f3f6",
-  border:   "#e3e6eb",
-  borderMd: "#d1d5db",
-  ink:      "#131a2b",
-  inkMid:   "#48536b",
-  inkSub:   "#7c8798",
-  gold:     "#a67c1e",
-  goldLt:   "#c99a3a",
+  bgCardAlt:"#FBF9F4",
+  bgInset:  "#F1ECE0",
+  border:   "#E8E1D0",
+  borderMd: "#D9CFB8",
+  ink:      "#0B1E3D",
+  inkMid:   "#3E4A63",
+  inkSub:   "#7A8398",
+  gold:     "#A87A1F",
+  goldLt:   "#C9A24B",
   emerald:  "#0f7a52",
   rose:     "#b3273f",
-  sky:      "#1e5fa8",
+  sky:      "#1F4E8C",
   violet:   "#5b4bb8",
   amber:    "#9a6a08",
   teal:     "#0e7c72",
@@ -32,17 +34,18 @@ const T = {
   indigo:   "#4747a8",
   orange:   "#b0530f",
   lime:     "#5a7d1e",
-  slate:    "#7c8798",
-  slateL:   "#aab2c0",
-  navy:     "#131a2b",
-  navyLt:   "#1d2740",
+  slate:    "#7A8398",
+  slateL:   "#B3B9C6",
+  navy:     "#0B1E3D",
+  navyLt:   "#132B52",
   navyCard: "#ffffff",
   white:    "#ffffff",
-  // Institute accent — used sparingly for the single "brand" line/mark
-  // (Daily Briefing header, top of page), not on every card.
-  accent:     "#1e5fa8",
-  accentSoft: "#e7eef7",
+  accent:     "#0B1E3D",
+  accentSoft: "#F3EEE1",
 }
+const SERIF = "'Playfair Display','Source Serif 4',Georgia,serif"
+const SHADOW = "0 1px 2px rgba(11,30,61,.05), 0 10px 28px rgba(11,30,61,.07)"
+const SHADOW_HI = "0 2px 4px rgba(11,30,61,.08), 0 18px 40px rgba(11,30,61,.14)"
 
 const fmt = n => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN")
 const pct = (a, b) => b > 0 ? Math.round((a / b) * 100) : 0
@@ -251,16 +254,19 @@ function Panel({ children, style={}, accent, title, sub }) {
     <div style={{
       background:T.bgCard,
       border:`1px solid ${T.border}`,
-      borderTop: accent ? `2px solid ${accent}` : `1px solid ${T.border}`,
-      borderRadius:10,
-      padding:"18px 20px",
-      boxShadow:"0 1px 2px rgba(19,26,43,.04)",
+      borderRadius:16,
+      padding:"20px 22px",
+      boxShadow:SHADOW,
       position:"relative",
+      overflow:"hidden",
       ...style
     }}>
+      {accent && <div style={{position:"absolute",left:0,right:0,top:0,height:3,background:`linear-gradient(90deg, ${accent}, ${accent}66)`}}/>}
       {title && (
         <div style={{marginBottom:14}}>
-          <div style={{fontSize:13,fontWeight:700,color:T.ink,letterSpacing:"0"}}>{title}</div>
+          <div style={{fontSize:15,fontWeight:700,color:T.ink,fontFamily:SERIF,display:"flex",alignItems:"center",gap:8}}>
+            <span style={{width:4,height:15,borderRadius:3,background:T.goldLt,display:"inline-block"}}/>{title}
+          </div>
           {sub && <div style={{fontSize:11.5,color:T.inkSub,marginTop:2}}>{sub}</div>}
         </div>
       )}
@@ -273,7 +279,7 @@ function Badge({ label, color }) {
   return (
     <span style={{
       fontSize:10,fontWeight:700,color,textTransform:"uppercase",letterSpacing:".06em",
-      background:`${color}12`,padding:"2px 7px",borderRadius:4,
+      background:`${color}12`,padding:"3px 9px",borderRadius:999,
       border:`1px solid ${color}2e`,
     }}>{label}</span>
   )
@@ -304,19 +310,21 @@ function KPI({ icon, label, value, sub, color, progress, progressMax, isMoney, t
       style={{
       background:T.bgCard,
       border:`1px solid ${hover ? color+'55' : T.border}`,
-      borderTop:`2px solid ${color}`,
-      borderRadius:10,padding:"16px 18px",
-      display:"flex",flexDirection:"column",gap:7,
-      position:"relative",
-      boxShadow: hover ? "0 4px 12px rgba(19,26,43,.08)" : "0 1px 2px rgba(19,26,43,.04)",
+      borderRadius:16,padding:"18px 18px 16px",
+      display:"flex",flexDirection:"column",gap:8,
+      position:"relative",overflow:"hidden",
+      boxShadow: hover ? SHADOW_HI : SHADOW,
+      transform: hover ? "translateY(-3px)" : "none",
       cursor: onClick ? "pointer" : "default",
-      transition: "box-shadow .15s ease, border-color .15s ease",
+      transition: "box-shadow .2s ease, border-color .2s ease, transform .2s ease",
     }}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <span style={{fontSize:18,opacity:.85}}>{icon}</span>
+      <div style={{position:"absolute",left:0,right:0,top:0,height:3,background:`linear-gradient(90deg, ${color}, ${color}55)`}}/>
+      <div style={{position:"absolute",right:-28,top:-28,width:90,height:90,borderRadius:"50%",background:`${color}0d`}}/>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",position:"relative"}}>
+        <span style={{width:36,height:36,borderRadius:11,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:17,background:`${color}14`,border:`1px solid ${color}30`}}>{icon}</span>
         <Badge label={label} color={color}/>
       </div>
-      <div style={{fontSize:23,fontWeight:800,color:T.ink,letterSpacing:"-.01em",lineHeight:1}}>
+      <div style={{fontSize:27,fontWeight:700,color:T.ink,letterSpacing:"-.01em",lineHeight:1,fontFamily:SERIF,position:"relative"}}>
         {isMoney ? fmt(value) : <Counter value={value}/>}
       </div>
       {sub && <div style={{fontSize:11.5,color:T.inkSub}}>{sub}</div>}
@@ -336,7 +344,7 @@ function Gauge({ value, max=100, color, size=90 }) {
     <svg width={size} height={size} style={{overflow:"visible"}}>
       <circle cx={cx} cy={cy} r={r} fill="none" stroke={T.bgInset} strokeWidth={8} strokeDasharray={`${arc} ${circumference-arc}`} strokeDashoffset={-circumference*0.125} strokeLinecap="round"/>
       <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={8} strokeDasharray={`${filled} ${circumference-filled}`} strokeDashoffset={-circumference*0.125} strokeLinecap="round"/>
-      <text x={cx} y={cy+6} textAnchor="middle" fill={T.ink} fontSize={15} fontWeight={800}>{Math.round(value)}%</text>
+      <text x={cx} y={cy+6} textAnchor="middle" fill={T.ink} fontSize={16} fontWeight={700} style={{fontFamily:SERIF}}>{Math.round(value)}%</text>
     </svg>
   )
 }
@@ -355,14 +363,14 @@ function SectionHeader({ icon, title, sectionId, collapsed, onToggle }) {
     <div
       onClick={clickable ? () => onToggle(sectionId) : undefined}
       style={{
-        display:"flex",alignItems:"center",gap:9,margin:"0 0 16px",paddingBottom:12,
+        display:"flex",alignItems:"center",gap:11,margin:"0 0 18px",paddingBottom:14,
         borderBottom:`1px solid ${T.border}`,
         cursor: clickable ? "pointer" : "default",
         userSelect: clickable ? "none" : "auto",
       }}
     >
-      <span style={{fontSize:17,opacity:.75}}>{icon}</span>
-      <h2 style={{fontSize:16,fontWeight:700,margin:0,color:T.ink,letterSpacing:"0",flex:1}}>{title}</h2>
+      <span style={{width:34,height:34,borderRadius:10,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:16,background:T.navy,boxShadow:`inset 0 0 0 1px ${T.goldLt}55`}}>{icon}</span>
+      <h2 style={{fontSize:20,fontWeight:700,margin:0,color:T.ink,fontFamily:SERIF,flex:1}}>{title}</h2>
       {clickable && (
         <span style={{
           fontSize:11,color:T.inkSub,transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
@@ -393,12 +401,13 @@ function SectionNav({ activeId, onSelect }) {
   return (
     <div style={{
       position: "sticky", top: 0, zIndex: 20,
-      background: T.bgCard, borderBottom: `1px solid ${T.border}`,
+      background: "rgba(255,255,255,.92)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+      borderBottom: `1px solid ${T.border}`, boxShadow: "0 6px 18px rgba(11,30,61,.05)",
       marginBottom: 20,
     }}>
       <div style={{
-        display: "flex", gap: 2, overflowX: "auto", WebkitOverflowScrolling: "touch",
-        padding: "0 16px", scrollbarWidth: "none",
+        display: "flex", gap: 6, overflowX: "auto", WebkitOverflowScrolling: "touch",
+        padding: "10px 16px", scrollbarWidth: "none",
       }} className="section-nav-scroll">
         {SECTION_TABS.map(t => {
           const active = t.id === activeId
@@ -409,12 +418,13 @@ function SectionNav({ activeId, onSelect }) {
               onClick={() => onSelect(t.id)}
               style={{
                 display: "flex", alignItems: "center", gap: 6,
-                padding: "11px 13px", whiteSpace: "nowrap",
-                background: "none", border: "none", cursor: "pointer",
-                fontFamily: "inherit", fontSize: 12.5, fontWeight: active ? 700 : 500,
-                color: active ? T.accent : T.inkSub,
-                borderBottom: `2px solid ${active ? T.accent : "transparent"}`,
-                transition: "color .12s ease, border-color .12s ease",
+                padding: "8px 14px", whiteSpace: "nowrap", borderRadius: 999,
+                background: active ? T.navy : "transparent",
+                border: `1px solid ${active ? T.navy : "transparent"}`, cursor: "pointer",
+                fontFamily: "inherit", fontSize: 12.5, fontWeight: active ? 700 : 600,
+                color: active ? "#E2C57E" : T.inkMid,
+                boxShadow: active ? "0 6px 16px rgba(11,30,61,.22)" : "none",
+                transition: "background .15s ease, color .15s ease",
               }}
             >
               <span style={{fontSize:13,opacity:active?1:.7}}>{t.icon}</span>
@@ -1441,6 +1451,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
       fontFamily:"'DM Sans','Segoe UI',system-ui,sans-serif",color:T.ink,
     }}>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap');
         @keyframes shimmer{0%{opacity:.4}50%{opacity:.7}100%{opacity:.4}}
         @keyframes slideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
         *{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:#c7ccd6 transparent}
@@ -1466,13 +1477,13 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
           .grid-cols2{grid-template-columns:repeat(2,1fr)}
           .grid-split{grid-template-columns:2fr 1fr}
         }
-        .dash-section{margin-bottom:32px}
+        .dash-section{margin-bottom:32px;animation:slideIn .35s ease both}
         .fee-banner{
           background:${T.bgCard};
           border:1px solid ${T.border};
-          border-top:2px solid ${T.gold};
-          box-shadow:0 1px 2px rgba(19,26,43,.04);
-          border-radius:10px;
+          border-top:3px solid ${T.goldLt};
+          box-shadow:${SHADOW};
+          border-radius:16px;
           padding:16px 20px;
           margin-bottom:18px;
           display:flex;
@@ -1489,20 +1500,24 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
 
       <SectionNav activeId={activeSection} onSelect={goToSection}/>
 
-      <div style={{padding:"20px 16px",maxWidth:"100%"}}>
+      <div style={{padding:"20px clamp(12px,2.2vw,28px)",maxWidth:1500,margin:"0 auto"}}>
 
         {/* ═══ OVERVIEW ════════════════════════════════════════ */}
         <div ref={setSectionRef('overview')} className="dash-section" style={{display: activeSection === 'overview' ? 'block' : 'none'}}>
           <div style={{
-            display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:16,
-            marginBottom:20,paddingBottom:18,borderBottom:`1px solid ${T.border}`,
+            display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:16,
+            marginBottom:20,padding:"26px 26px 24px",borderRadius:20,position:"relative",overflow:"hidden",
+            background:"radial-gradient(120% 140% at 100% 0%, #1F4E8C 0%, #132B52 40%, #0B1E3D 78%)",
+            boxShadow:"0 22px 50px rgba(11,30,61,.28), inset 0 0 0 1px rgba(226,197,126,.22)",
           }}>
-            <div>
-              <div style={{fontSize:10,fontWeight:700,color:T.gold,textTransform:"uppercase",letterSpacing:".1em",marginBottom:5}}>Administrator Dashboard</div>
-              <h1 style={{fontSize:22,fontWeight:800,margin:0,color:T.ink,letterSpacing:"-.01em"}}>
+            <div style={{position:"absolute",left:0,right:0,top:0,height:3,background:"linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)"}}/>
+            <div style={{position:"absolute",right:-80,top:-80,width:260,height:260,borderRadius:"50%",background:"radial-gradient(circle, rgba(226,197,126,.22), transparent 70%)"}}/>
+            <div style={{position:"relative"}}>
+              <div style={{fontSize:10.5,fontWeight:800,color:"#E2C57E",textTransform:"uppercase",letterSpacing:".18em",marginBottom:8}}>Administrator Dashboard · GNSI</div>
+              <h1 style={{fontSize:"clamp(24px,4vw,34px)",fontWeight:700,margin:0,color:"#fff",fontFamily:SERIF,lineHeight:1.15}}>
                 Good {now.getHours()<12?"Morning":now.getHours()<17?"Afternoon":"Evening"}
               </h1>
-              <p style={{color:T.inkSub,fontSize:12.5,margin:"4px 0 0"}}>
+              <p style={{color:"rgba(255,255,255,.72)",fontSize:13,margin:"6px 0 0"}}>
                 {now.toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})} · {now.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})} · Academic Year {CURRENT_YEAR}–{CURRENT_YEAR+1}
               </p>
             </div>
@@ -1524,11 +1539,11 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
                 alert("✅ Push notifications enabled! You'll get alerts for payments, students, and tasks.")
               }catch(e){alert("❌ Failed: "+e.message)}
             }} style={{
-              padding:"7px 15px",borderRadius:7,
-              border:`1px solid ${T.border}`,background:T.bgCard,
-              color:T.inkMid,fontSize:12,fontWeight:600,
-              cursor:"pointer",fontFamily:"inherit",
-            }}>Enable Notifications</button>
+              padding:"10px 18px",borderRadius:999,position:"relative",
+              border:"1px solid #E2C57E",background:"linear-gradient(180deg,#D9B566,#C9A24B)",
+              color:"#0B1E3D",fontSize:12.5,fontWeight:800,
+              cursor:"pointer",fontFamily:"inherit",boxShadow:"0 10px 24px rgba(201,162,75,.35)",
+            }}>🔔 Enable Notifications</button>
           </div>
 
           {/* Daily Briefing — rule-based summary (getDailyBriefing →
@@ -1537,11 +1552,11 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
           <div style={{
             background:T.bgCard,
             border:`1px solid ${T.border}`,
-            borderLeft:`3px solid ${T.accent}`,
-            borderRadius:10, padding:"18px 22px", marginBottom:18,
+            borderLeft:`4px solid ${T.goldLt}`,
+            borderRadius:16, padding:"20px 24px", marginBottom:20, boxShadow:SHADOW,
           }}>
-            <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:13}}>
-              <span style={{fontSize:11.5,fontWeight:700,color:T.ink,letterSpacing:".01em"}}>Daily Briefing</span>
+            <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:14}}>
+              <span style={{fontSize:16,fontWeight:700,color:T.ink,fontFamily:SERIF}}>☀️ Daily Briefing</span>
               <span style={{fontSize:10.5,color:T.inkSub}}>· {dailyBriefing.length} item{dailyBriefing.length!==1?"s":""} requiring review</span>
             </div>
             {dailyBriefing.length===0 ? (
