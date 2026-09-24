@@ -1318,7 +1318,7 @@ export default function LandingPage({ onLogin }) {
   // footer, CTA block, sticky bar, poster badge or any dialog — those
   // have their own buttons that switch tabs, and a Home switch fired
   // after them would override where the user actually asked to go.
-  const anyPopupOpen = isPortalOpen || isFeeOpen || !!progDetail || posterState === 'popup';
+  const anyPopupOpen = isPortalOpen || isFeeOpen || !!progDetail || posterState === 'popup' || mobileOpen;
   useEffect(() => {
     if (activeTab === 'home' || anyPopupOpen) return;
     const handleOutsideTabClick = (e) => {
@@ -2429,8 +2429,9 @@ window.submitGrievance = async () => {
               aria-current={on ? 'page' : undefined}
               onPointerDown={tapFx}
               onClick={(e) => {
-                e.preventDefault(); closeMobile();
+                e.preventDefault();
                 if (item.id === 'home') goToTab('home'); else goToHash(item.href);
+                closeMobile();
               }}
             >
               <span className={"pm-ic" + (REAL_LOGOS[item.id] ? " has-logo" : "")}><TabBadge id={item.id} size={20} emblemOk={!emblemFailed} /></span>
@@ -2480,7 +2481,7 @@ window.submitGrievance = async () => {
                             href={link.href}
                             className={"pm-chip tap" + (on ? " on" : "")}
                             onPointerDown={tapFx}
-                            onClick={(e) => { e.preventDefault(); closeMobile(); goToHash(link.href); }}
+                            onClick={(e) => { e.preventDefault(); goToHash(link.href); closeMobile(); }}
                           >
                             {REAL_LOGOS[link.href.replace('#', '')] && link.href !== '#results'
                               ? <img className="pm-chip-logo" src={REAL_LOGOS[link.href.replace('#', '')][0]} alt="" />
@@ -2528,7 +2529,7 @@ window.submitGrievance = async () => {
       <button type="button" onPointerDown={tapFx} onClick={() => { setIsFeeOpen(true); closeMobile(); }} className="pm-btn pm-btn-ghost tap">
         <PmIcon name="fee-payment" size={18} /> Pay Fee
       </button>
-      <a href="#enquiry" onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('enquiry'); }} onPointerDown={tapFx} className="pm-btn pm-btn-gold tap">
+      <a href="#enquiry" onClick={(e) => { e.preventDefault(); goToTab('enquiry'); closeMobile(); }} onPointerDown={tapFx} className="pm-btn pm-btn-gold tap">
         Apply Now <PmIcon name="chevron" size={18} />
       </a>
     </div>
