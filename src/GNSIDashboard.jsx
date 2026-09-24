@@ -1377,7 +1377,6 @@ function InlineFix({ f, onDone, log }) {
           <input type="password" placeholder="Repeat new" value={pw.n2} onChange={e=>setPw({...pw,n2:e.target.value})} style={inp}/>
           <button onClick={save} disabled={busy} style={btn("#0f7a52")}>{busy?"Saving…":"Save"}</button>
         </div>
-        {f.id === "env_admin_pw" && <div style={{fontSize:11.5,color:T.inkSub,marginTop:6}}>Afterwards also delete VITE_ADMIN_PASSWORD from .env / hosting and redeploy — that part can only be done there.</div>}
         {msg && <div style={{fontSize:12,marginTop:6,color:msg.ok?T.emerald:T.rose,fontWeight:700}}>{msg.t}</div>}
       </div>
     )
@@ -1899,10 +1898,8 @@ export function SecurityCenter({ onNavigate } = {}) {
     setState(s => ({ ...s, status: "loading", error: null }))
     const local = []
     // Browser-only checks
-    if (import.meta.env?.VITE_ADMIN_PASSWORD) local.push({ id:"env_admin_pw", module:"Login", severity:"critical",
-      title:"Admin password is built into the website code",
-      detail:"VITE_ADMIN_PASSWORD is set, so the password ships inside the public JavaScript that every visitor downloads.",
-      fix:"Change the admin password, then delete VITE_ADMIN_PASSWORD from .env and your hosting settings and redeploy.", items:[] })
+    // (Admin password is no longer read from the website code, so there is
+    //  nothing to check here — the database check "admin_default_pw" covers it.)
     if (typeof location !== "undefined" && location.protocol !== "https:" && !/localhost|127\.0\.0\.1/.test(location.hostname)) local.push({ id:"no_https", module:"Website", severity:"critical",
       title:"Site opened without HTTPS", detail:"Logins and data travel unencrypted.", fix:"Always use https:// (force HTTPS in hosting).", items:[] })
     let sessionOk = false

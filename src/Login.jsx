@@ -241,7 +241,6 @@ export default function Login({ onLogin }) {
     if (username.trim() === ADMIN_USER) {
       // Password is checked ON THE SERVER (admin_login_check, bcrypt).
       // Falls back to the old table read only until admin_bcrypt.sql is run.
-      const ADMIN_PASS = import.meta.env.VITE_ADMIN_PASSWORD
       let status = null
       const { data: st, error: rpcErr } = await supabase.rpc('admin_login_check', { p_password: password })
       if (!rpcErr) status = st
@@ -254,7 +253,13 @@ export default function Login({ onLogin }) {
         }
         status = !data.is_changed ? 'default' : (password === data.password_hash ? 'ok' : 'bad')
       }
-      const ok = status === 'ok' || (status === 'default' && !!ADMIN_PASS && password === ADMIN_PASS)
+      // No password is built into the website any more. If the admin password
+      // was never set, it must be set once in Supabase (admin_set_password.sql).
+      if (status === 'default') {
+        showError('Admin password is not set up yet. Set it in Supabase (admin_set_password.sql).')
+        setLoading(false); return
+      }
+      const ok = status === 'ok'
 
       if (!ok) { showError('Invalid username or password.'); setLoading(false); return }
 
