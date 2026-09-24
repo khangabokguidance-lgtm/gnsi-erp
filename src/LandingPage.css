@@ -1847,3 +1847,18 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
 #enquiry .contact-card h3{font-family:var(--serif);color:#0B1E3D}
 @media (max-width:900px){#enquiry .enquiry-grid{grid-template-columns:1fr}#enquiry #contact{position:static}}
 @media (max-width:560px){#enquiry .form-panel{padding:1.5rem 1.1rem 1.3rem!important;border-radius:18px!important}.enq-trust{grid-template-columns:repeat(3,minmax(0,1fr));gap:.4rem}.enq-trust li{padding:.6rem .55rem}.enq-trust b{font-size:1.1rem}.enq-trust span{font-size:.66rem}}
+
+/* ═══ PHOTO SLIDER (below hero) ═══ */
+.ps-slider{position:relative;width:min(1200px,100%);margin:0 auto;border-radius:16px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.35),0 0 0 1px rgba(226,197,126,.25);background:#081629;z-index:1}
+.ps-track{display:flex;transition:transform .7s cubic-bezier(.22,.61,.36,1)}
+.ps-slide{flex:0 0 100%;margin:0;position:relative;aspect-ratio:3/2;line-height:0}
+.ps-slide img{width:100%;height:100%;object-fit:cover;display:block}
+.ps-slide figcaption{position:absolute;left:0;right:0;bottom:0;padding:2.4rem 1.4rem 1.1rem;background:linear-gradient(180deg,transparent,rgba(8,22,41,.85));color:#fff;font-family:var(--sans);font-size:clamp(.82rem,2vw,1rem);font-weight:600;line-height:1.4}
+.ps-nav{position:absolute;top:50%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;border:1px solid rgba(255,255,255,.35);background:rgba(8,22,41,.45);backdrop-filter:blur(6px);color:#fff;font-size:1.8rem;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s,border-color .2s;z-index:2}
+.ps-nav:hover{background:#C9A24B;border-color:#C9A24B;color:#0B1E3D}
+.ps-nav.prev{left:14px}.ps-nav.next{right:14px}
+.ps-dots{position:absolute;right:1.2rem;bottom:1.1rem;display:flex;gap:.4rem;z-index:2}
+.ps-dots button{width:8px;height:8px;border-radius:999px;border:0;padding:0;background:rgba(255,255,255,.45);cursor:pointer;transition:width .25s,background .25s}
+.ps-dots button.on{width:24px;background:#E2C57E}
+.ps-count{position:absolute;top:14px;right:14px;z-index:2;font-family:var(--sans);font-size:.72rem;font-weight:700;color:#fff;background:rgba(8,22,41,.55);padding:.25rem .6rem;border-radius:999px;letter-spacing:.06em}
+@media (max-width:640px){.ps-slider{border-radius:12px}.ps-nav{width:36px;height:36px;font-size:1.4rem}.ps-slide figcaption{padding:1.8rem .9rem .8rem;padding-right:5.5rem}.ps-dots{right:.8rem;bottom:.9rem}}

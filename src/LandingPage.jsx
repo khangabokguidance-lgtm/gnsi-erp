@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useState, useRef, useMemo } from 're
 import {
   getActiveNotices, getRankers, getGallery, getVideos, getYouTubeThumb, getYouTubeEmbed,
   getPublishedPosts, getFeaturedReviews, getPapers, getActiveBanners, getFaculty,
-  getLiveKPIs, getEvents, submitEnquiry, submitScholarRegistration, submitGrievance,
+  getEvents, submitEnquiry, submitScholarRegistration, submitGrievance,
   getStats, getFeaturedTestimonials, getExamCalendar, getTimeline,
   groupRankersBySession, EARLIER_SESSION,
   getFacilities, getMockTests, getFaqs
@@ -921,6 +921,33 @@ export default function LandingPage({ onLogin }) {
   ];
 
   const [galleryData, setGalleryData] = useState(defaultGalleryData);
+  // ── Photo slider (below the hero) ──
+  // Fixed campus photos first, then photos from Website Manager → Gallery.
+  const photoSlides = useMemo(() => {
+    const fixed = [
+      { src: STAFF_GROUP_PHOTO_URL, caption: "Faculty & staff — Freshers' Meet cum Felicitation Programme" },
+      { src: HERO_SIDE_PHOTO_URL, caption: "Students performing at the Freshers' Meet" },
+      { src: adminBlockPhoto, caption: 'Administrative Block, GNSI Khangabok' },
+    ];
+    const fromGallery = [];
+    (galleryData || []).forEach((g) => (g.items || []).forEach((it) => {
+      if (it.img && fromGallery.length < 12) fromGallery.push({ src: it.img, caption: it.label || g.title || '' });
+    }));
+    const seen = new Set();
+    return [...fixed, ...fromGallery].filter((x) => x.src && !seen.has(x.src) && seen.add(x.src));
+  }, [galleryData]);
+  const [photoIdx, setPhotoIdx] = useState(0);
+  const [photoPaused, setPhotoPaused] = useState(false);
+  const photoTouch = useRef(null);
+  const goPhoto = (i) => {
+    const n = photoSlides.length || 1;
+    setPhotoIdx(((i % n) + n) % n);
+  };
+  useEffect(() => {
+    if (photoPaused || photoSlides.length < 2) return;
+    const t = setInterval(() => setPhotoIdx((i) => (i + 1) % photoSlides.length), 5000);
+    return () => clearInterval(t);
+  }, [photoPaused, photoSlides.length]);
 
   // ═══ RANKERS / SUCCESSFUL CANDIDATES ═══
   // Single source of truth for both the Results-tab preview strip and the
@@ -1446,32 +1473,7 @@ export default function LandingPage({ onLogin }) {
     }, { threshold: 0.5 });
     counters.forEach(c => countObserver.observe(c));
 
-// ---- 1. LIVE KPI DASHBOARD ----
-(async () => {
-  try {
-    const kpi = await getLiveKPIs();
-    // Real value → show it. Query failed (null) → hide that tile/row
-    // rather than show a placeholder.
-    const set = (id, val) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.classList.remove('lpulse');
-      if (val === null || val === undefined) {
-        const box = el.closest('.kpi, .dash-row');
-        if (box) box.style.display = 'none';
-        return;
-      }
-      el.textContent = typeof val === 'number' ? val.toLocaleString('en-IN') : val;
-    };
-    set('kpi-staff', kpi.staff);
-    set('kpi-att', kpi.present);
-    set('kpi-exams', kpi.exams);
-    set('kpi-enq', kpi.enquiries);
-    set('kpi-students', kpi.activeStudents);
-    set('kpi-next-exam', kpi.nextExam);
-    set('kpi-notice', kpi.latestNotice);
-  } catch (e) { console.error('KPI load failed:', e); }
-})();
+// ---- 1. LIVE KPI DASHBOARD — removed from the landing page ----
 
 // NOTE: Ranker Wall (#rankers / Results-tab preview) is now rendered by
 // React directly (see rankersData state + <RankerCard>) instead of being
@@ -2465,7 +2467,7 @@ window.submitGrievance = async () => {
         </div>
       </div>
       <div className="hero-side">
-      {/* Event photo above the Live Dashboard */}
+      {/* Event photo */}
       <figure className="hero-side-photo">
         <img
           src={HERO_SIDE_PHOTO_URL}
@@ -2477,61 +2479,6 @@ window.submitGrievance = async () => {
         />
         <figcaption>Freshers' Meet cum Felicitation Programme</figcaption>
       </figure>
-      <div className="dash-panel">
-        <div className="dash-hd">
-          <div className="dash-hd-title">Live Dashboard</div>
-          <div className="live-dot">
-            <div className="dot" />
-            Live
-          </div>
-        </div>
-        <div className="dash-kpi">
-          <div className="kpi">
-            <strong id="kpi-staff" className="lpulse">
-              —
-            </strong>
-            <span>Staff</span>
-          </div>
-          <div className="kpi">
-            <strong id="kpi-att" className="lpulse">
-              —
-            </strong>
-            <span>Students Present</span>
-          </div>
-          <div className="kpi">
-            <strong id="kpi-exams" className="lpulse">
-              —
-            </strong>
-            <span>Upcoming Exams</span>
-          </div>
-        </div>
-        <div className="dash-body">
-          <div className="dash-row">
-            <span>New Enquiries</span>
-            <strong id="kpi-enq" className="lpulse">
-              —
-            </strong>
-          </div>
-          <div className="dash-row">
-            <span>Active Students</span>
-            <strong id="kpi-students" className="lpulse">
-              —
-            </strong>
-          </div>
-          <div className="dash-row">
-            <span>Next Exam</span>
-            <strong id="kpi-next-exam" className="lpulse">
-              —
-            </strong>
-          </div>
-          <div className="dash-row">
-            <span>Latest Notice</span>
-            <strong id="kpi-notice" className="lpulse">
-              —
-            </strong>
-          </div>
-        </div>
-      </div>
       <figure className="hero-side-photo">
         <img
           src={adminBlockPhoto}
@@ -2559,16 +2506,37 @@ window.submitGrievance = async () => {
   {/* STAFF PHOTO — replaces the old stats ribbon. Shown whole at the
       photo's own 3:2 proportion (no cropping). */}
   <div className="ribbon ribbon-photo">
-    <figure className="ribbon-photo-fig">
-      <img
-        src={STAFF_GROUP_PHOTO_URL}
-        alt="GNSI faculty and staff at the Freshers' Meet cum Felicitation Programme"
-        width={1600}
-        height={1067}
-        loading="lazy"
-        onError={(e) => { e.currentTarget.closest('.ribbon').style.display = 'none'; }}
-      />
-    </figure>
+    <div
+      className="ps-slider"
+      onTouchStart={(e) => { photoTouch.current = e.touches[0].clientX; }}
+      onTouchEnd={(e) => {
+        const dx = e.changedTouches[0].clientX - (photoTouch.current ?? 0);
+        if (Math.abs(dx) > 40) goPhoto(photoIdx + (dx < 0 ? 1 : -1));
+      }}
+      onMouseEnter={() => setPhotoPaused(true)}
+      onMouseLeave={() => setPhotoPaused(false)}
+    >
+      <div className="ps-track" style={{ transform: `translateX(-${photoIdx * 100}%)` }}>
+        {photoSlides.map((sl, i) => (
+          <figure className="ps-slide" key={sl.src + i} aria-hidden={i !== photoIdx}>
+            <img src={sl.src} alt={sl.caption || 'GNSI campus photo'} loading={i === 0 ? 'eager' : 'lazy'} />
+            {sl.caption && <figcaption>{sl.caption}</figcaption>}
+          </figure>
+        ))}
+      </div>
+      {photoSlides.length > 1 && (
+        <>
+          <button type="button" className="ps-nav prev" aria-label="Previous photo" onClick={() => goPhoto(photoIdx - 1)}>‹</button>
+          <button type="button" className="ps-nav next" aria-label="Next photo" onClick={() => goPhoto(photoIdx + 1)}>›</button>
+          <div className="ps-dots">
+            {photoSlides.map((_, i) => (
+              <button key={i} type="button" className={i === photoIdx ? 'on' : ''} aria-label={`Photo ${i + 1}`} onClick={() => goPhoto(i)} />
+            ))}
+          </div>
+          <div className="ps-count">{photoIdx + 1} / {photoSlides.length}</div>
+        </>
+      )}
+    </div>
   </div>
   {/* ALL SECTIONS GRID — replaces the old horizontally-scrolling tab
       strip: every section (except Home — the logo and "Back to Home"
