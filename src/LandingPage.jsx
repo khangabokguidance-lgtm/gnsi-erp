@@ -196,64 +196,6 @@ const PM_GROUPS = [
   { title: 'Help', ids: ['faq', 'app-download', 'helpdesk'] },
 ];
 
-// ═══ REAL LOGOS + TOUCH FINISH ═══
-// Sections that have a real logo use it (exam emblems, app/WhatsApp marks,
-// GNSI emblem); the rest fall back to the matching line icon.
-const REAL_LOGOS = {
-  courses: [logoNvs, logoSainik, logoRms],
-  results: [icResults],
-  scholarship: [icDemo],
-  'app-download': [icAndroid],
-  helpdesk: [icWhatsApp],
-  'admit-card': [icParents],
-  portal: [icParents],
-};
-const EMBLEM_TABS = new Set(['about', 'head-institute']);
-function TabBadge({ id, size = 22, emblemOk = true }) {
-  const logos = REAL_LOGOS[id] || (emblemOk && EMBLEM_TABS.has(id) ? [EMBLEM_URL] : null);
-  if (!logos) return <PmIcon name={id} size={size} />;
-  if (id === 'results') {
-    return <img className="tb-logo tb-wide" src={logos[0]} alt="" draggable="false" />;
-  }
-  if (logos.length > 1) {
-    return (
-      <span className="tb-stack">
-        {logos.map((src, i) => <img key={i} className="tb-logo tb-mini" src={src} alt="" draggable="false" />)}
-      </span>
-    );
-  }
-  return <img className="tb-logo" src={logos[0]} alt="" draggable="false" />;
-}
-// Material-style ripple + a light haptic tick on Android. Attach to
-// onPointerDown of any element with the .tap class.
-function tapFx(e) {
-  const el = e.currentTarget;
-  if (!el || e.button > 0) return;
-  const r = el.getBoundingClientRect();
-  const d = Math.max(r.width, r.height) * 2;
-  const dot = document.createElement('span');
-  dot.className = 'tap-ripple';
-  dot.style.width = dot.style.height = d + 'px';
-  dot.style.left = (e.clientX - r.left - d / 2) + 'px';
-  dot.style.top = (e.clientY - r.top - d / 2) + 'px';
-  el.appendChild(dot);
-  dot.addEventListener('animationend', () => dot.remove());
-  try { if (e.pointerType === 'touch' && navigator.vibrate) navigator.vibrate(8); } catch (_) {}
-}
-const TAP_CSS = `
-  .tap{position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none;-webkit-user-select:none}
-  .tap .tap-ripple{position:absolute;border-radius:50%;background:currentColor;opacity:.18;transform:scale(0);pointer-events:none;animation:tapRipple .55s cubic-bezier(.2,.7,.3,1) forwards}
-  @keyframes tapRipple{to{transform:scale(1);opacity:0}}
-  .tap:active{transform:scale(.965)!important;transition:transform .08s ease!important}
-  .tb-logo{width:100%;height:100%;object-fit:contain;border-radius:inherit;display:block}
-  .tb-wide{object-fit:contain;padding:2px}
-  .tb-stack{display:flex;align-items:center;justify-content:center;width:100%;height:100%}
-  .tb-mini{width:54%;height:54%;border-radius:50%;background:#fff;box-shadow:0 0 0 1.5px #fff,0 1px 3px rgba(0,0,0,.25);margin-left:-16%}
-  .tb-mini:first-child{margin-left:0}
-  .has-logo{background:#fff!important;padding:3px;box-shadow:inset 0 0 0 1px rgba(15,31,61,.08)}
-  @media (prefers-reduced-motion:reduce){.tap .tap-ripple{display:none}.tap:active{transform:none!important}}
-`;
-
 // Shared card for a single ranker/successful-candidate, used by both the
 // Results-tab preview strip and the full Toppers' Wall (#rankers) so the
 // markup only lives in one place. `index` drives the 01/02/03… rank number
@@ -2334,15 +2276,7 @@ window.submitGrievance = async () => {
     .pm-tile{display:flex;align-items:center;gap:.65rem;padding:.8rem .75rem;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:#e8edf7;text-decoration:none;font-size:.86rem;font-weight:600;transition:background .2s,border-color .2s,transform .15s}
     .pm-tile:active{transform:scale(.98)}
     .pm-tile:last-child:nth-child(odd){grid-column:1/-1}
-    @media (hover:hover){.pm-tile:hover{background:rgba(255,255,255,.09);border-color:rgba(212,175,55,.45)}}
-    .pm-tile .pm-ic.has-logo{background:#fff;padding:3px;overflow:hidden}
-    .pm-tile.on .pm-ic.has-logo{background:#fff;box-shadow:0 0 0 2px #d4af37}
-    .pm-chip-logo{width:16px;height:16px;border-radius:4px;object-fit:contain;background:#fff;flex-shrink:0}
-    .pm-row .pm-ic.pm-logo{width:34px;height:34px;border-radius:9px;background:#fff;overflow:hidden;padding:2px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
-    .pm-row .pm-ic.pm-logo img{width:100%;height:100%;object-fit:contain}
-    .pm-row .pm-ic.pm-logo-fallback{background:rgba(212,175,55,.12);padding:0}
-    .pm-btn-gold .tap-ripple{background:#fff}
-    ${TAP_CSS}
+    .pm-tile:hover{background:rgba(255,255,255,.09);border-color:rgba(212,175,55,.45)}
     .pm-tile .pm-ic{width:34px;height:34px;border-radius:9px;background:rgba(212,175,55,.12);color:#d4af37;display:flex;align-items:center;justify-content:center;flex-shrink:0}
     .pm-tile.on{background:linear-gradient(135deg,rgba(212,175,55,.22),rgba(212,175,55,.08));border-color:#d4af37;color:#fff}
     .pm-tile.on .pm-ic{background:#d4af37;color:#0b1a36}
@@ -2388,7 +2322,7 @@ window.submitGrievance = async () => {
         <strong>Guidance Navodaya &amp; Sainik Institute</strong>
         <small>Khangabok · Est. 2016</small>
       </div>
-      <button className="pm-close tap" onPointerDown={tapFx} onClick={closeMobile} aria-label="Close menu">
+      <button className="pm-close" onClick={closeMobile} aria-label="Close menu">
         <PmIcon name="close" size={18} />
       </button>
     </div>
@@ -2406,15 +2340,14 @@ window.submitGrievance = async () => {
             <a
               key={item.id}
               href={item.href}
-              className={"pm-tile tap" + (on ? " on" : "")}
+              className={"pm-tile" + (on ? " on" : "")}
               aria-current={on ? 'page' : undefined}
-              onPointerDown={tapFx}
               onClick={(e) => {
                 e.preventDefault(); closeMobile();
                 if (item.id === 'home') goToTab('home'); else goToHash(item.href);
               }}
             >
-              <span className={"pm-ic" + (REAL_LOGOS[item.id] ? " has-logo" : "")}><TabBadge id={item.id} size={20} emblemOk={!emblemFailed} /></span>
+              <span className="pm-ic"><PmIcon name={item.id} /></span>
               {item.label}
             </a>
           );
@@ -2438,8 +2371,7 @@ window.submitGrievance = async () => {
           <div className="pm-acc">
             <button
               type="button"
-              className={"pm-acc-btn tap" + (open ? " open" : "")}
-              onPointerDown={tapFx}
+              className={"pm-acc-btn" + (open ? " open" : "")}
               aria-expanded={open}
               onClick={() => toggleCat(moreIdx)}
             >
@@ -2459,13 +2391,10 @@ window.submitGrievance = async () => {
                           <a
                             key={link.href}
                             href={link.href}
-                            className={"pm-chip tap" + (on ? " on" : "")}
-                            onPointerDown={tapFx}
+                            className={"pm-chip" + (on ? " on" : "")}
                             onClick={(e) => { e.preventDefault(); closeMobile(); goToHash(link.href); }}
                           >
-                            {REAL_LOGOS[link.href.replace('#', '')] && link.href !== '#results'
-                              ? <img className="pm-chip-logo" src={REAL_LOGOS[link.href.replace('#', '')][0]} alt="" />
-                              : <PmIcon name={link.href.replace('#', '')} size={14} />}
+                            <PmIcon name={link.href.replace('#', '')} size={14} />
                             {link.label}
                           </a>
                         );
@@ -2481,20 +2410,18 @@ window.submitGrievance = async () => {
 
       <p className="pm-label">Accounts &amp; App</p>
       <div className="pm-list">
-        <button type="button" className="pm-row tap" onPointerDown={tapFx} onClick={() => { setIsPortalOpen(true); closeMobile(); }}>
-          <span className="pm-ic pm-logo"><img src={icParents} alt="" /></span>
+        <button type="button" className="pm-row" onClick={() => { setIsPortalOpen(true); closeMobile(); }}>
+          <span className="pm-ic"><PmIcon name="portal" /></span>
           <span>Parents Portal<span className="pm-sub">Attendance, results &amp; fees</span></span>
           <span className="pm-arr"><PmIcon name="chevron" size={18} /></span>
         </button>
-        <a href={site.apk} download="" className="pm-row tap" onPointerDown={tapFx} onClick={closeMobile}>
-          <span className="pm-ic pm-logo"><img src={icAndroid} alt="" /></span>
+        <a href={site.apk} download="" className="pm-row" onClick={closeMobile}>
+          <span className="pm-ic"><PmIcon name="app" /></span>
           <span>Get the Android App<span className="pm-sub">GNSI Parents app</span></span>
           <span className="pm-arr"><PmIcon name="chevron" size={18} /></span>
         </a>
-        <button type="button" className="pm-row tap" onPointerDown={tapFx} onClick={() => { onLogin(); closeMobile(); }}>
-          <span className={"pm-ic pm-logo" + (emblemFailed ? " pm-logo-fallback" : "")}>
-            {!emblemFailed ? <img src={EMBLEM_URL} alt="" /> : <PmIcon name="staff" />}
-          </span>
+        <button type="button" className="pm-row" onClick={() => { onLogin(); closeMobile(); }}>
+          <span className="pm-ic"><PmIcon name="staff" /></span>
           <span>Staff Login<span className="pm-sub">GNSI Portal</span></span>
           <span className="pm-arr"><PmIcon name="chevron" size={18} /></span>
         </button>
@@ -2506,10 +2433,10 @@ window.submitGrievance = async () => {
     </div>
 
     <div className="pm-bottom">
-      <button type="button" onPointerDown={tapFx} onClick={() => { setIsFeeOpen(true); closeMobile(); }} className="pm-btn pm-btn-ghost tap">
+      <button type="button" onClick={() => { setIsFeeOpen(true); closeMobile(); }} className="pm-btn pm-btn-ghost">
         <PmIcon name="fee-payment" size={18} /> Pay Fee
       </button>
-      <a href="#enquiry" onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('enquiry'); }} onPointerDown={tapFx} className="pm-btn pm-btn-gold tap">
+      <a href="#enquiry" onClick={(e) => { e.preventDefault(); closeMobile(); goToTab('enquiry'); }} className="pm-btn pm-btn-gold">
         Apply Now <PmIcon name="chevron" size={18} />
       </a>
     </div>
@@ -2726,13 +2653,10 @@ window.submitGrievance = async () => {
     .sec-grid{--per:9;--gap:.55rem;display:flex;flex-wrap:wrap;justify-content:center;gap:var(--gap)}
     .sec-tile{flex:0 0 calc((100% - (var(--per) - 1) * var(--gap)) / var(--per));min-width:0}
     .sec-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4rem;min-height:88px;padding:.55rem .35rem;border-radius:10px;background:#fff;border:1px solid rgba(15,31,61,.1);border-top:3px solid var(--tc);cursor:pointer;font:inherit;color:var(--navy,#0f1f3d);text-align:center;transition:transform .15s,box-shadow .15s,background .15s}
-    @media (hover:hover){.sec-tile:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(15,31,61,.12)}}
-    .sec-tile{box-shadow:0 1px 2px rgba(15,31,61,.05),0 2px 8px rgba(15,31,61,.04)}
-    .sec-tile.active .sec-tile-ic.has-logo{box-shadow:0 0 0 2px var(--tc)}
-    ${TAP_CSS}
+    .sec-tile:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(15,31,61,.12)}
     .sec-tile:focus-visible{outline:2px solid var(--tc);outline-offset:2px}
     .sec-tile.active{background:var(--navy,#0f1f3d);color:#fff;border-color:var(--navy,#0f1f3d);border-top-color:var(--tc)}
-    .sec-tile-ic{width:44px;height:44px;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--tc);background:color-mix(in srgb,var(--tc) 12%,#fff)}
+    .sec-tile-ic{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;color:var(--tc);background:color-mix(in srgb,var(--tc) 12%,#fff)}
     .sec-tile.active .sec-tile-ic{background:var(--tc);color:#fff}
     .sec-tile-lb{font-size:.74rem;font-weight:700;line-height:1.2}
     .sec-tile.cat-gold{--tc:#c9a227}.sec-tile.cat-red{--tc:#c0392b}.sec-tile.cat-green{--tc:#1e8e4e}
@@ -2750,17 +2674,11 @@ window.submitGrievance = async () => {
             key={t.id}
             type="button"
             role="listitem"
-            className={"sec-tile tap cat-" + t.cat + (activeTab === t.id ? " active" : "")}
+            className={"sec-tile cat-" + t.cat + (activeTab === t.id ? " active" : "")}
             aria-current={activeTab === t.id ? 'page' : undefined}
-            onPointerDown={tapFx}
             onClick={() => goToTab(t.id)}
           >
-            <span
-              className={"sec-tile-ic" + (REAL_LOGOS[t.id] || (!emblemFailed && EMBLEM_TABS.has(t.id)) ? " has-logo" : "")}
-              aria-hidden="true"
-            >
-              <TabBadge id={t.id} emblemOk={!emblemFailed} />
-            </span>
+            <span className="sec-tile-ic" aria-hidden="true"><PmIcon name={t.id} size={22} /></span>
             <span className="sec-tile-lb">{t.label}</span>
           </button>
         ))}
