@@ -310,8 +310,8 @@ function ChangePasswordSection({ currentUser }) {
 
   useEffect(() => {
     ;(async () => {
-      const { data } = await supabase.from('admin_credentials').select('is_changed').eq('id', 1).single()
-      setIsChanged(data?.is_changed ?? false)
+      const { data, error } = await supabase.rpc('admin_password_status')
+      setIsChanged(error ? false : !!data)
     })()
   }, [])
 

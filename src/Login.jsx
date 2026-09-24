@@ -239,19 +239,22 @@ export default function Login({ onLogin }) {
     else            localStorage.removeItem('gnsi_remembered_user')
 
     if (username.trim() === ADMIN_USER) {
-      const { data, error: dbErr } = await supabase
-        .from('admin_credentials')
-        .select('password_hash, is_changed')
-        .eq('id', 1)
-        .single()
-
-      if (dbErr || !data) {
-        showError('Admin credentials not found. Contact system administrator.')
-        setLoading(false); return
-      }
-
+      // Password is checked ON THE SERVER (admin_login_check, bcrypt).
+      // Falls back to the old table read only until admin_bcrypt.sql is run.
       const ADMIN_PASS = import.meta.env.VITE_ADMIN_PASSWORD
-      const ok = data.is_changed ? password === data.password_hash : password === ADMIN_PASS
+      let status = null
+      const { data: st, error: rpcErr } = await supabase.rpc('admin_login_check', { p_password: password })
+      if (!rpcErr) status = st
+      else {
+        const { data, error: dbErr } = await supabase
+          .from('admin_credentials').select('password_hash, is_changed').eq('id', 1).single()
+        if (dbErr || !data) {
+          showError('Admin credentials not found. Contact system administrator.')
+          setLoading(false); return
+        }
+        status = !data.is_changed ? 'default' : (password === data.password_hash ? 'ok' : 'bad')
+      }
+      const ok = status === 'ok' || (status === 'default' && !!ADMIN_PASS && password === ADMIN_PASS)
 
       if (!ok) { showError('Invalid username or password.'); setLoading(false); return }
 
