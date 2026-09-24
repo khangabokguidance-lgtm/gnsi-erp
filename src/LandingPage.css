@@ -1505,3 +1505,17 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
   .pd-more{font-size:.82rem}
 }
 .syl-note{margin:.9rem 0 .2rem;font-size:.85rem;line-height:1.55;color:#475467;background:#F8F9FB;border:1px solid var(--navy4);border-left:3px solid var(--goldL);border-radius:6px;padding:.6rem .85rem}
+
+/* ── FACULTY: 3 columns on mobile (desktop unchanged) ── */
+@media (max-width:768px){
+  .faculty-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
+  .faculty-card{border-radius:10px}
+  .faculty-card:hover{transform:none}
+  .faculty-photo{font-size:2rem}
+  .faculty-card .fc-rank{font-size:1.6rem;top:-.1rem;left:.35rem}
+  .faculty-card .fc-cap{padding:.45rem .4rem .45rem}
+  .faculty-card h3{font-size:.7rem;line-height:1.15;margin-bottom:.12rem}
+  .faculty-card .role{font-size:.52rem;letter-spacing:0;margin-bottom:0;line-height:1.2}
+  .faculty-card .subj{font-size:.58rem;padding-top:.2rem;margin-top:.2rem;line-height:1.2}
+  .faculty-card .exp{display:none}
+}
