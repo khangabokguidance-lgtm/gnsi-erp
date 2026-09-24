@@ -1408,6 +1408,8 @@ function InlineFix({ f, onDone, log }) {
   if (f.id === "anon_write") return <WriteLockTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
   if (f.id === "boarder_no_house") return <HouseAssignTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
   if (f.id === "gp_overdue") return <GatePassReturnTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
+  if (f.id === "pin_missing") return <BulkPinTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
+  if (f.id === "staff_unlinked" || f.id === "weak_hash") return <StaffAccountTool f={f} onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
 
   if (f.id === "no_session") {
     return (
@@ -1835,6 +1837,188 @@ function GatePassReturnTool({ onDone, log }) {
       <button disabled={busy || !picked.length} onClick={() => markReturned(picked)} style={{padding:"7px 14px",borderRadius:999,border:"none",background:"#0f7a52",color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",opacity:(busy||!picked.length)?.5:1}}>
         {busy ? "Saving…" : `↩ Mark returned (${picked.length})`}
       </button>
+    </div>
+  )
+}
+
+// ── Bulk parent PINs: issue for every student without one + print slips ──
+function BulkPinTool({ onDone, log }) {
+  const [todo, setTodo] = useState(null)
+  const [issued, setIssued] = useState([])     // [{ name, gcc_no, class_name, course, pin }] — only in memory
+  const [prog, setProg] = useState(null)
+  const [err, setErr] = useState(null)
+  const [all, setAll] = useState([])          // every active student with a GCC No.
+  const [redo, setRedo] = useState(false)     // also re-generate for students who already have a PIN
+  const load = useCallback(async () => {
+    const [st, ps] = await Promise.all([
+      supabase.from("students").select("id,name,gcc_no,course,batch,class_name,status").order("name").limit(5000),
+      supabase.rpc("parent_pin_status"),
+    ])
+    if (st.error || ps.error) { setErr((st.error || ps.error).message); return }
+    const has = new Set((ps.data || []).map(r => String(r.student_id)))
+    setAll((st.data || []).filter(s => !/inactive|dropout/i.test(s.status || "") && s.gcc_no))
+    setTodo((st.data || []).filter(s => !/inactive|dropout/i.test(s.status || "") && s.gcc_no && !has.has(String(s.id))))
+  }, [])
+  useEffect(() => { load() }, [load])
+  const newPin = () => { const a = new Uint32Array(1); crypto.getRandomValues(a); return String(a[0] % 1000000).padStart(6, "0") }
+  const run = async () => {
+    const list = redo ? all : todo
+    if (!list.length || !window.confirm(`${redo ? "RE-GENERATE" : "Issue"} 6-digit PINs for ${list.length} student(s)?${redo ? "\n\nEvery existing PIN stops working — parents need the new slips." : ""}\n\nPrint the slips straight after — PINs are shown only once and cannot be read back.`)) return
+    const out = []; let fail = 0
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i], pin = newPin()
+      setProg({ done: i, total: list.length })
+      const { error } = await supabase.rpc("set_parent_pin", { p_student_id: String(s.id), p_pin: pin })
+      if (error) fail++; else out.push({ name: s.name, gcc_no: s.gcc_no, class_name: s.class_name || "", course: s.course || "", pin })
+    }
+    setProg(null); setIssued(out)
+    log(`${out.length} parent PIN(s) issued${fail ? `, ${fail} failed` : ""}. Print the slips now.`, !fail)
+    load(); onDone()
+  }
+  const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]))
+  const printSlips = () => {
+    const w = window.open("", "_blank"); if (!w) return
+    w.document.write(`<html><head><title>Parent Portal PINs</title><style>
+      body{font-family:Arial,sans-serif;margin:12mm}.g{display:grid;grid-template-columns:1fr 1fr;gap:8mm}
+      .s{border:1.5px dashed #0B1E3D;border-radius:6px;padding:5mm;page-break-inside:avoid}
+      .h{font-weight:700;color:#0B1E3D;font-size:13px}.p{font-size:26px;letter-spacing:6px;font-weight:800;margin:3mm 0}
+      .m{font-size:11px;color:#444}</style></head><body><div class="g">` +
+      issued.map(r => `<div class="s"><div class="h">GNSI Parents Portal</div><div class="m">${esc(r.name)} · ${esc(r.class_name || r.course)}</div>
+        <div class="m">GCC No: <b>${esc(r.gcc_no)}</b></div><div class="p">${esc(r.pin)}</div>
+        <div class="m">Log in at guidancekhangabok.in → Parents Portal with the GCC No. and this PIN. Keep it private.</div></div>`).join("") +
+      `</div><script>window.onload=()=>window.print()<\/script></body></html>`)
+    w.document.close()
+  }
+  const box = {background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px",marginTop:8}
+  const btn = (bg, dis) => ({padding:"7px 14px",borderRadius:999,border:"none",background:bg,color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",opacity:dis?.5:1})
+  if (err) return <div style={{...box,color:T.rose,fontWeight:700}}>{err}</div>
+  if (!todo) return <div style={box}>Loading…</div>
+  return (
+    <div style={box}>
+      <div style={{fontWeight:800,color:T.ink,marginBottom:6,fontSize:12.5}}>🔐 Issue parent PINs in bulk</div>
+      {prog ? (
+        <div>
+          <div style={{fontSize:12.5,marginBottom:6}}>Issuing… {prog.done} / {prog.total}</div>
+          <div style={{height:8,background:"#EEF1F6",borderRadius:99,overflow:"hidden"}}><div style={{height:"100%",width:`${(prog.done/prog.total)*100}%`,background:"#0f7a52",transition:"width .2s"}}/></div>
+        </div>
+      ) : (
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          <span style={{flex:"1 1 220px",fontSize:12.5}}>{todo.length} active student(s) have no PIN yet · {all.length - todo.length} have one.</span>
+          <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,color:T.inkMid,cursor:"pointer"}}>
+            <input type="checkbox" checked={redo} onChange={e => setRedo(e.target.checked)}/> Re-generate for everyone
+          </label>
+          <button disabled={!(redo ? all : todo).length} onClick={run} style={btn(redo ? "#c2410c" : "#0f7a52", !(redo ? all : todo).length)}>🎲 {redo ? "Re-generate" : "Generate"} {(redo ? all : todo).length} PINs</button>
+          {issued.length > 0 && <button onClick={printSlips} style={btn(T.navy)}>🖨 Print {issued.length} slips</button>}
+        </div>
+      )}
+      {issued.length > 0 && <div style={{fontSize:11.5,color:"#9a6a08",marginTop:8,fontWeight:700}}>⚠️ Print now — the PINs disappear when you leave this page. Lost slip? Reset that child's PIN in Website → Parent PINs.</div>}
+      <div style={{fontSize:11.5,color:T.inkSub,marginTop:8}}>Once a child has a PIN, the old "GCC No. + name" login stops working for that child.</div>
+    </div>
+  )
+}
+
+// ── Staff accounts: see who is behind, disable old/test logins, reset passwords ──
+function StaffAccountTool({ f, onDone, log }) {
+  const [users, setUsers] = useState(null)
+  const [busy, setBusy] = useState(null)
+  const [pw, setPw] = useState({})
+  const [sel, setSel] = useState({})
+  const [made, setMade] = useState([])        // [{ name, username, password }] — shown once
+  const names = new Set((f.items || []).map(x => String(x).toLowerCase()))
+  // Readable strong password: no look-alike characters (0/O, 1/l/I)
+  const genPw = () => {
+    const A = "ABCDEFGHJKMNPQRSTUVWXYZ", a = "abcdefghjkmnpqrstuvwxyz", d = "23456789", s = "@#$%&*"
+    const r = (set) => { const x = new Uint32Array(1); crypto.getRandomValues(x); return set[x[0] % set.length] }
+    const chars = [r(A), r(A), r(a), r(a), r(a), r(a), r(d), r(d), r(d), r(s)]
+    for (let i = chars.length - 1; i > 0; i--) { const x = new Uint32Array(1); crypto.getRandomValues(x); const j = x[0] % (i + 1); [chars[i], chars[j]] = [chars[j], chars[i]] }
+    return chars.join("")
+  }
+  const bulk = async (targets) => {
+    if (!targets.length || !window.confirm(`Generate and set NEW passwords for ${targets.length} staff?\n\nTheir old passwords stop working. Print the slips straight after — passwords are shown only once.`)) return
+    setBusy("bulk")
+    const out = []; let fail = 0
+    for (const u of targets) {
+      const p = genPw()
+      const { error } = await supabase.rpc("admin_set_staff_password", { p_user_id: String(u.id), p_password: p })
+      if (error) fail++; else out.push({ name: u.name, username: u.username, role: u.role, password: p })
+    }
+    setBusy(null); setSel({}); setMade(out)
+    log(`${out.length} new staff password(s) generated${fail ? `, ${fail} failed` : ""}. Print the slips now.`, !fail)
+    onDone()
+  }
+  const escS = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]))
+  const printPw = () => {
+    const w = window.open("", "_blank"); if (!w) return
+    w.document.write(`<html><head><title>Staff logins</title><style>body{font-family:Arial,sans-serif;margin:12mm}
+      .g{display:grid;grid-template-columns:1fr 1fr;gap:8mm}.s{border:1.5px dashed #0B1E3D;border-radius:6px;padding:5mm;page-break-inside:avoid}
+      .h{font-weight:700;color:#0B1E3D;font-size:13px}.p{font-family:monospace;font-size:20px;font-weight:800;margin:3mm 0;letter-spacing:1px}.m{font-size:11px;color:#444}</style></head><body><div class="g">` +
+      made.map(r => `<div class="s"><div class="h">GNSI ERP login</div><div class="m">${escS(r.name)} · ${escS(r.role)}</div>
+        <div class="m">Username: <b>${escS(r.username)}</b></div><div class="p">${escS(r.password)}</div>
+        <div class="m">Keep private. You will be asked to log in once more after the update.</div></div>`).join("") +
+      `</div><script>window.onload=()=>window.print()<\/script></body></html>`)
+    w.document.close()
+  }
+  const load = useCallback(async () => {
+    const { data } = await supabase.from("portal_users").select("id,name,username,role,active").eq("active", true).order("name")
+    setUsers(data || [])
+  }, [])
+  useEffect(() => { load() }, [load])
+  const disable = async (u) => {
+    if (!window.confirm(`Disable ${u.username} (${u.name})? They will not be able to log in. You can re-enable in Admin → Users.`)) return
+    setBusy(u.id)
+    const { error } = await supabase.from("portal_users").update({ active: false }).eq("id", u.id)
+    setBusy(null); log(error ? error.message : `${u.username} disabled.`, !error); if (!error) { load(); onDone() }
+  }
+  const reset = async (u) => {
+    const p = (pw[u.id] || "").trim()
+    if (p.length < 8) { alert("Password must be at least 8 characters."); return }
+    setBusy(u.id)
+    const { error } = await supabase.rpc("admin_set_staff_password", { p_user_id: String(u.id), p_password: p })
+    setBusy(null); log(error ? error.message : `${u.username}: new password set (bcrypt). Tell them to log in with it.`, !error)
+    if (!error) { setMade(m => [...m.filter(x => x.username !== u.username), { name: u.name, username: u.username, role: u.role, password: p }]); setPw(s => ({ ...s, [u.id]: "" })); onDone() }
+  }
+  const box = {background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px",marginTop:8}
+  if (!users) return <div style={box}>Loading staff…</div>
+  const list = f.id === "staff_unlinked" ? users.filter(u => names.has(String(u.username).toLowerCase())) : users
+  return (
+    <div style={box}>
+      <div style={{fontWeight:800,color:T.ink,marginBottom:4,fontSize:12.5}}>👥 Staff accounts</div>
+      <div style={{fontSize:11.5,color:T.inkSub,marginBottom:8}}>
+        {f.id === "staff_unlinked"
+          ? "These clear by themselves as each person logs in again (the ERP asks them once). Disable old or test logins here."
+          : "Passwords upgrade to bcrypt automatically at each person's next login. Or set a new one here (8+ characters) and tell them."}
+      </div>
+      {f.id === "weak_hash" && (() => {
+        const picked = list.filter(u => sel[u.id])
+        return (
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>
+            <button disabled={!!busy} onClick={() => setSel(picked.length === list.length ? {} : Object.fromEntries(list.map(u => [u.id, true])))}
+              style={{padding:"6px 12px",borderRadius:999,border:`1px solid ${T.border}`,background:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+              {picked.length === list.length ? "Clear" : "Select all"} ({list.length})</button>
+            <button disabled={!!busy || !picked.length} onClick={() => bulk(picked)}
+              style={{padding:"6px 14px",borderRadius:999,border:"none",background:"#0f7a52",color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",opacity:(busy||!picked.length)?.5:1}}>
+              {busy === "bulk" ? "Generating…" : `🎲 Generate & set (${picked.length})`}</button>
+            {made.length > 0 && <button onClick={printPw} style={{padding:"6px 14px",borderRadius:999,border:"none",background:T.navy,color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>🖨 Print {made.length} login slip(s)</button>}
+          </div>
+        )
+      })()}
+      {made.length > 0 && <div style={{fontSize:11.5,color:"#9a6a08",fontWeight:700,marginBottom:8}}>⚠️ Print now — generated passwords disappear when you leave this page.</div>}
+      <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:320,overflowY:"auto"}}>
+        {list.map(u => (
+          <div key={u.id} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",border:`1px solid ${T.border}`,borderRadius:8,padding:"5px 8px"}}>
+            <span style={{flex:"1 1 180px",fontSize:12.5}}><b>{u.name}</b> <span style={{color:T.inkSub}}>· {u.username} · {u.role}</span></span>
+            {f.id === "weak_hash" && (<>
+              <input type="checkbox" checked={!!sel[u.id]} onChange={e => setSel(s => ({ ...s, [u.id]: e.target.checked }))} title="Select for bulk generate"/>
+              <input type="text" placeholder="new password" value={pw[u.id] || ""} onChange={e => setPw(s => ({ ...s, [u.id]: e.target.value }))}
+                style={{padding:"5px 8px",borderRadius:7,border:`1px solid ${T.border}`,fontSize:12,width:140,fontFamily:"monospace"}}/>
+              <button disabled={busy === u.id} onClick={() => setPw(s => ({ ...s, [u.id]: genPw() }))} title="Generate a new password"
+                style={{border:`1px solid ${T.navy}`,background:"#fff",color:T.navy,borderRadius:999,padding:"4px 9px",fontSize:11.5,fontWeight:800,cursor:"pointer"}}>🎲</button>
+              <button disabled={busy === u.id} onClick={() => reset(u)} style={{border:"none",background:"#0f7a52",color:"#fff",borderRadius:999,padding:"4px 10px",fontSize:11.5,fontWeight:800,cursor:"pointer"}}>Set</button>
+            </>)}
+            <button disabled={busy === u.id} onClick={() => disable(u)} style={{border:"1px solid #b3273f",background:"#fff",color:"#b3273f",borderRadius:999,padding:"4px 10px",fontSize:11.5,fontWeight:800,cursor:"pointer"}}>Disable</button>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
