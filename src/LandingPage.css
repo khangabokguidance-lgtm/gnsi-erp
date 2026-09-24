@@ -1566,3 +1566,49 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
 #home .course-card.combined{border-top-color:#B7791F!important}
 #home .course-card{background:#fff}
 @media (max-width:768px){#home>.container{padding-top:2.2rem;padding-bottom:2.2rem}}
+
+/* ═══ CTA — premium "Begin the Journey" ═══ */
+.cta-pro{position:relative;overflow:hidden;background:radial-gradient(120% 90% at 50% 0%,#16335F 0%,#0B1E3D 55%,#07142A 100%);color:#fff;padding:5rem 5% 4.5rem;border-top:1px solid rgba(201,162,75,.35);text-align:center}
+.cta-pro::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);background-size:44px 44px;mask-image:radial-gradient(70% 70% at 50% 30%,#000,transparent);pointer-events:none}
+.cta-pro-glow{position:absolute;left:50%;top:-180px;width:620px;height:620px;transform:translateX(-50%);background:radial-gradient(circle,rgba(201,162,75,.22),transparent 65%);pointer-events:none}
+.cta-pro-inner{position:relative;max-width:980px;margin:0 auto}
+.cta-pro-crest{width:92px;height:92px;margin:0 auto 1.3rem;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;padding:10px;box-shadow:0 0 0 4px rgba(201,162,75,.55),0 0 0 10px rgba(201,162,75,.12),0 18px 40px rgba(0,0,0,.35)}
+.cta-pro-crest img{width:100%;height:100%;object-fit:contain}
+.cta-pro-crest span{color:#0B1E3D;font-family:var(--serif);font-weight:800;font-size:1.3rem}
+.cta-pro-eyebrow{font-family:var(--sans);font-size:.74rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#E2C57E;margin-bottom:.7rem}
+.cta-pro h2{font-family:var(--serif);font-weight:600;font-size:clamp(2rem,5vw,3.3rem);line-height:1.1;color:#fff;margin:0 0 1rem}
+.cta-pro-lead{max-width:680px;margin:0 auto 1.6rem;color:rgba(255,255,255,.78);font-size:clamp(.95rem,2.2vw,1.08rem);line-height:1.75}
+.cta-pro-proof{list-style:none;display:flex;flex-wrap:wrap;justify-content:center;gap:.6rem;margin:0 0 2.2rem;padding:0}
+.cta-pro-proof li{padding:.45rem .95rem;border-radius:999px;border:1px solid rgba(226,197,126,.35);background:rgba(255,255,255,.04);font-family:var(--sans);font-size:.82rem;color:rgba(255,255,255,.85)}
+.cta-pro-proof strong{color:#E2C57E;font-weight:700;margin-right:.2rem}
+.cta-pro-primary{display:flex;justify-content:center;flex-wrap:wrap;gap:.9rem;margin-bottom:2.2rem}
+.cta-btn{display:inline-flex;align-items:center;gap:.6rem;height:54px;padding:0 1.7rem;border-radius:10px;font-family:var(--sans);font-size:1rem;font-weight:700;text-decoration:none;transition:transform .18s,box-shadow .18s,background .18s,border-color .18s;cursor:pointer}
+.cta-btn svg,.cta-card-ic svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.cta-card-ic svg.fill{fill:currentColor;stroke:none}
+.cta-btn-gold{background:linear-gradient(180deg,#D9B566,#C9A24B 55%,#B8913F);color:#0B1E3D;border:1px solid #E2C57E;box-shadow:0 10px 28px rgba(201,162,75,.35),inset 0 1px 0 rgba(255,255,255,.4)}
+.cta-btn-gold:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(201,162,75,.45),inset 0 1px 0 rgba(255,255,255,.4)}
+.cta-btn-gold .cta-arrow{transition:transform .18s}
+.cta-btn-gold:hover .cta-arrow{transform:translateX(3px)}
+.cta-btn-ghost{background:rgba(255,255,255,.04);color:#fff;border:1px solid rgba(255,255,255,.28)}
+.cta-btn-ghost:hover{border-color:#E2C57E;color:#E2C57E;background:rgba(226,197,126,.06)}
+.cta-pro-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.9rem;padding-top:2rem;border-top:1px solid rgba(255,255,255,.1)}
+.cta-card{display:flex;align-items:center;gap:.85rem;padding:1rem 1.1rem;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:#fff;text-align:left;text-decoration:none;font:inherit;cursor:pointer;transition:background .18s,border-color .18s,transform .18s}
+.cta-card:hover{background:rgba(255,255,255,.09);border-color:rgba(226,197,126,.5);transform:translateY(-2px)}
+.cta-card-ic{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.cta-card-ic.ic-blue{background:rgba(96,165,250,.16);color:#93C5FD}
+.cta-card-ic.ic-gold{background:rgba(226,197,126,.16);color:#E2C57E}
+.cta-card-ic.ic-wa{background:#25D366;color:#fff}
+.cta-card-ic.ic-wa svg{width:22px;height:22px}
+.cta-card-tx{display:flex;flex-direction:column;gap:.15rem;min-width:0;flex:1}
+.cta-card-tx strong{font-family:var(--sans);font-size:.95rem;font-weight:700;color:#fff}
+.cta-card-tx small{font-size:.78rem;color:rgba(255,255,255,.6)}
+.cta-card-go{color:#E2C57E;font-weight:700;transition:transform .18s}
+.cta-card:hover .cta-card-go{transform:translateX(3px)}
+.cta-btn:focus-visible,.cta-card:focus-visible{outline:2px solid #E2C57E;outline-offset:3px}
+@media (max-width:760px){
+  .cta-pro{padding:3.6rem 5% 3.2rem}
+  .cta-pro-crest{width:76px;height:76px}
+  .cta-pro-primary{flex-direction:column;align-items:stretch}
+  .cta-btn{justify-content:center;height:50px}
+  .cta-pro-cards{grid-template-columns:1fr}
+}
