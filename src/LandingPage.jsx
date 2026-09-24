@@ -2972,6 +2972,45 @@ window.submitGrievance = async () => {
         <div className="rule-d" />
         <div className="rule-line" />
       </div>
+      {/* Section styles kept inline so this block always renders styled,
+          even if an older LandingPage.css is deployed. */}
+      <style>{`
+/* ═══ RESULTS — Selections & Achievements (premium) ═══ */
+.ach-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem;margin:0 0 2.2rem}
+.ach-stat{--c:#A87A1F;position:relative;overflow:hidden;background:#fff;border:1px solid rgba(11,30,61,.08);border-radius:16px;padding:1.5rem 1.3rem 1.3rem;box-shadow:0 1px 2px rgba(11,30,61,.05),0 10px 28px rgba(11,30,61,.07)}
+.ach-stat::before{content:"";position:absolute;left:0;top:0;right:0;height:4px;background:var(--c)}
+.ach-stat::after{content:"";position:absolute;right:-40px;top:-40px;width:120px;height:120px;border-radius:50%;background:color-mix(in srgb,var(--c) 9%,transparent)}
+.ach-gold{--c:#B8913F}.ach-blue{--c:#1F4E8C}.ach-green{--c:#1E7A4C}.ach-red{--c:#A61E30}
+.ach-num{font-family:var(--serif);font-weight:700;font-size:clamp(2.3rem,5vw,3.2rem);line-height:1;color:var(--c);margin-bottom:.55rem;letter-spacing:-.02em}
+.ach-lbl{font-family:var(--sans);font-weight:700;font-size:.95rem;color:#0B1E3D;margin-bottom:.2rem}
+.ach-sub{font-size:.78rem;color:#6B7280;letter-spacing:.02em}
+.ach-years{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.1rem}
+.ach-year{display:flex;flex-direction:column;background:#fff;border:1px solid rgba(11,30,61,.08);border-radius:16px;padding:1.4rem;box-shadow:0 1px 2px rgba(11,30,61,.05),0 10px 28px rgba(11,30,61,.07);transition:transform .25s,box-shadow .25s}
+.ach-year:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(11,30,61,.13)}
+.ach-year.latest{background:radial-gradient(120% 100% at 100% 0%,#16335F,#0B1E3D 60%);border-color:#0B1E3D;color:#fff}
+.ach-year-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.1rem}
+.ach-year-badge{font-family:var(--serif);font-weight:700;font-size:1.55rem;color:#0B1E3D;line-height:1}
+.ach-year-badge small{font-size:.95rem;color:#B8913F;margin-left:.1rem}
+.ach-year.latest .ach-year-badge{color:#fff}
+.ach-year.latest .ach-year-badge small{color:#E2C57E}
+.ach-tag{font-family:var(--sans);font-size:.66rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;padding:.3rem .6rem;border-radius:999px;background:#C9A24B;color:#0B1E3D}
+.ach-year-num{font-family:var(--serif);font-weight:700;font-size:2.4rem;line-height:1;color:#B8913F;margin-bottom:1rem;display:flex;align-items:baseline;gap:.55rem;flex-wrap:wrap}
+.ach-year-num span{font-family:var(--sans);font-size:.82rem;font-weight:600;color:#4A5568}
+.ach-year.latest .ach-year-num{color:#E2C57E}
+.ach-year.latest .ach-year-num span{color:rgba(255,255,255,.75)}
+.ach-schools{list-style:none;margin:0 0 1.1rem;padding:0;border-top:1px solid rgba(11,30,61,.08)}
+.ach-year.latest .ach-schools{border-top-color:rgba(255,255,255,.14)}
+.ach-schools li{display:flex;justify-content:space-between;gap:.8rem;padding:.55rem 0;border-bottom:1px solid rgba(11,30,61,.06);font-size:.88rem;color:#1F2937}
+.ach-year.latest .ach-schools li{border-bottom-color:rgba(255,255,255,.1);color:rgba(255,255,255,.88)}
+.ach-schools b{font-family:var(--sans);font-weight:800;color:#0B1E3D;background:#F3EEE1;border-radius:999px;min-width:28px;text-align:center;padding:0 .5rem}
+.ach-year.latest .ach-schools b{background:rgba(226,197,126,.18);color:#E2C57E}
+.ach-link{margin-top:auto;align-self:flex-start;background:none;border:0;padding:0;font:inherit;font-weight:700;font-size:.88rem;color:#1F4E8C;cursor:pointer}
+.ach-year.latest .ach-link{color:#E2C57E}
+.ach-link:hover{text-decoration:underline}
+.ach-note{margin:1.4rem 0 0;font-size:.82rem;color:#6B7280;text-align:center}
+@media (max-width:900px){.ach-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.ach-years{grid-template-columns:1fr}}
+@media (max-width:420px){.ach-stat{padding:1.1rem .9rem}.ach-lbl{font-size:.85rem}}
+`}</style>
       {/* Headline figures — edited in Website Manager → Settings →
           "Results & Achievements" (ach1_value / ach1_label / ach1_sub …).
           A card whose value is blank in Settings falls back to the figures
