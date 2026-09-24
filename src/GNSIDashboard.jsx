@@ -1405,6 +1405,7 @@ function InlineFix({ f, onDone, log }) {
   }
 
   if (f.id === "rls_off") return <RlsLockTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
+  if (f.id === "sensitive_read") return <PrivateLockTool onDone={onDone} log={(m,ok)=>log(f,m,ok)}/>
 
   if (f.id === "no_session") {
     return (
@@ -1517,6 +1518,74 @@ function FixHistoryPanel({ refreshKey, onChange }) {
         ))}
       </div>
     </Panel>
+  )
+}
+
+// ── Private tables: lock with backup + undo ───────────────────────────────
+function PrivateLockTool({ onDone, log }) {
+  const [rows, setRows] = useState(null)
+  const [sel, setSel] = useState({})
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const load = useCallback(async () => {
+    const { data, error } = await supabase.rpc("private_candidates")
+    if (error) { setErr(/private_candidates|does not exist/i.test(error.message) ? "Run private_lockdown.sql in Supabase first." : error.message); return }
+    setRows(data || []); setSel({})
+  }, [])
+  useEffect(() => { load() }, [load])
+  const act = async (fn, tables, q) => {
+    if (!tables.length || !window.confirm(q)) return
+    setBusy(true)
+    const { data, error } = await supabase.rpc(fn, { p_tables: tables })
+    setBusy(false); log(error ? error.message : data, !error)
+    if (!error) { load(); onDone() }
+  }
+  const box = {background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px",marginTop:8}
+  if (err) return <div style={{...box,color:T.rose,fontWeight:700}}>{err}</div>
+  if (!rows) return <div style={box}>Loading…</div>
+  const open = rows.filter(r => !r.locked), locked = rows.filter(r => r.locked)
+  const picked = Object.keys(sel).filter(k => sel[k])
+  const chip = (on) => ({fontSize:11.5,display:"flex",alignItems:"center",gap:5,border:`1px solid ${on?T.navy:T.border}`,borderRadius:8,padding:"3px 8px",cursor:"pointer",background:on?"#EEF3FB":"#fff"})
+  return (
+    <div style={box}>
+      <div style={{fontWeight:800,color:T.ink,marginBottom:6,fontSize:12.5}}>🔏 Make tables private</div>
+      <div style={{fontSize:11.5,color:T.inkSub,marginBottom:8}}>
+        Old open rules are backed up, then only signed-in staff get access (👪 parents keep their own child's rows).
+        Enquiries can still be submitted from the website. Lock 2–3, check Reception / Hostel / Parents Portal, then the rest.
+      </div>
+      {open.length === 0 ? <div style={{fontSize:12.5,color:T.emerald,fontWeight:700}}>All offered tables are private.</div> : (<>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+          {open.map(r => (
+            <label key={r.t} style={chip(!!sel[r.t])}>
+              <input type="checkbox" checked={!!sel[r.t]} onChange={e=>setSel(s=>({...s,[r.t]:e.target.checked}))}/>
+              <code>{r.t}</code>{r.student && <span title="parents keep read access to their child">👪</span>}
+              {r.open > 0 && <span style={{color:"#b3273f",fontWeight:800}}>· {r.open} open</span>}
+            </label>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button disabled={busy} onClick={()=>setSel(Object.fromEntries(open.map(r=>[r.t,true])))} style={{padding:"7px 12px",borderRadius:999,border:`1px solid ${T.border}`,background:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Select all</button>
+          <button disabled={busy||!picked.length} onClick={()=>act("private_lock", picked, `Make ${picked.length} table(s) private?\n\nStaff who are not on secure login will see empty screens there. Undo is available.`)}
+            style={{padding:"7px 14px",borderRadius:999,border:"none",background:"#0f7a52",color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",opacity:(busy||!picked.length)?.5:1}}>
+            {busy ? "Working…" : `🔏 Make private (${picked.length})`}
+          </button>
+        </div>
+      </>)}
+      {locked.length > 0 && (
+        <div style={{marginTop:12,borderTop:`1px solid ${T.border}`,paddingTop:10}}>
+          <div style={{fontSize:12,fontWeight:800,color:T.ink,marginBottom:6}}>Private now · {locked.length}</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {locked.map(r => (
+              <span key={r.t} style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:11.5,border:`1px solid ${T.border}`,borderRadius:8,padding:"3px 4px 3px 8px"}}>
+                <code>{r.t}</code>
+                <button disabled={busy} onClick={()=>act("private_unlock", [r.t], `Restore the old (open) rules on ${r.t}?`)} style={{border:"none",background:"#FDECEE",color:"#b3273f",borderRadius:6,padding:"2px 7px",fontSize:11,fontWeight:800,cursor:"pointer"}}>Undo</button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      <div style={{fontSize:11.5,color:T.inkSub,marginTop:10}}><b>Not offered yet:</b> students and adm_* fee tables — the website admit-card / fee lookup still reads them directly.</div>
+    </div>
   )
 }
 

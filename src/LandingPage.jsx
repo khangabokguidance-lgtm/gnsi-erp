@@ -1846,23 +1846,26 @@ window.submitGrievance = async () => {
       res.classList.add('show');
 
       try {
-        const { data: stu, error } = await supabase
-          .from('students')
-          .select('id, name, gcc_no')
-          .eq('gcc_no', gcc)
-          .maybeSingle();
+        // Secure lookup (public_exam_result) — the website no longer reads the
+        // students / exam_marks tables directly. Falls back to the old reads
+        // only until private_lockdown.sql has been run.
+        let stu = null, marks = null, error = null;
+        const rpcRes = await supabase.rpc('public_exam_result', { p_gcc: gcc, p_exam_type_id: String(examTypeId) });
+        if (!rpcRes.error) {
+          if (rpcRes.data) { stu = { name: rpcRes.data.name }; marks = rpcRes.data.marks || []; }
+        } else {
+          ({ data: stu, error } = await supabase.from('students').select('id, name, gcc_no').eq('gcc_no', gcc).maybeSingle());
+          if (stu) ({ data: marks } = await supabase.from('exam_marks')
+            .select('subject, marks_obtained, total_marks, exam_date').eq('student_id', stu.id).eq('exam_type_id', examTypeId));
+        }
+        const escH = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+        if (stu) stu = { ...stu, name: escH(stu.name) };
 
         if (error || !stu) {
           res.classList.remove('ok'); res.classList.add('err');
           data.innerHTML = '<p style="color:#B91C1C;font-weight:600">GCC No. not found. Please check and try again.</p>';
           return;
         }
-
-        const { data: marks } = await supabase
-          .from('exam_marks')
-          .select('subject, marks_obtained, total_marks, exam_date')
-          .eq('student_id', stu.id)
-          .eq('exam_type_id', examTypeId);
 
         const examName = (portalExamTypes.find(t => String(t.id) === String(examTypeId)) || {}).name || 'Selected Exam';
 

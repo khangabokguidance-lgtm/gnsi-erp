@@ -317,6 +317,10 @@ export default function Login({ onLogin }) {
       setLoading(false); return
     }
 
+    // Link the secure session FIRST so the staff_profiles lookup below works
+    // once that table is private (private_lockdown.sql).
+    await linkSupabaseAuth(username.trim().toLowerCase(), password.trim())
+
     // Trust the existing portal_users.staff_profile_id link when it's set —
     // matching on name is fragile (duplicate/near-duplicate names, casing,
     // whitespace) and can silently attach the wrong profile or none at all.
@@ -339,7 +343,6 @@ export default function Login({ onLogin }) {
       profile = p
     }
 
-    await linkSupabaseAuth(username.trim().toLowerCase(), password.trim())
 
     await supabase.rpc('set_staff_context', {
   p_staff_id: profile?.id ?? 0,
