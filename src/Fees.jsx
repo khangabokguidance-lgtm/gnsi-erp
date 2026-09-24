@@ -3,6 +3,7 @@ import { getActiveStudents } from './studentQueries'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { PersonalAccountantButton } from './personalAccountant'
 import { isAdminRole } from './roles'
+import { printFeeReceipt } from './premiumReceipt'
 import {
   fmt, today, gccStr, rcptNo,
   collectFee, deleteLegacyFeeRecord,
@@ -52,9 +53,16 @@ const RAZORPAY_VERIFY_URL       = import.meta.env?.VITE_RAZORPAY_VERIFY_URL     
 // self-approves immediately via feeEngine's documented isSelfApproveAllowed
 // path, which stamps the approval self_approved=true in the audit trail so
 // it's never silently indistinguishable from a real second-admin approval.
+// Real identity = the secure-login (Supabase Auth) user id — display names can repeat.
+async function myAuthId() {
+  try { const { data } = await supabase.auth.getSession(); return data?.session?.user?.id || null } catch { return null }
+}
+
 async function fileFeeActionRequest({ actionType, table, id, reason, currentUser, adminCount }) {
   const who = currentUser?.userName || currentUser?.name || 'Admin'
-  const req = await requestFeeActionRequest({ actionType, table, id, reason, requestedBy: who, requestedById: who })
+  const uid = await myAuthId()
+  if (!uid) throw new Error('Log out and log in again (secure login) before filing a revert/delete request.')
+  const req = await requestFeeActionRequest({ actionType, table, id, reason, requestedBy: who, requestedById: uid })
   // isSingleAdminSystem just checks "≤1 distinct id" — adminCount is already
   // that count (from a live staff_profiles roster fetch), so this is
   // equivalent to isSingleAdminSystem(<that many distinct admin ids>)
@@ -63,7 +71,7 @@ async function fileFeeActionRequest({ actionType, table, id, reason, currentUser
   // must default to REQUIRING dual control (the safer failure mode), never
   // to self-approving just because the count hasn't loaded.
   if (adminCount != null && adminCount <= 1) {
-    await approveFeeActionRequest({ requestId: req.id, approvedBy: who, approvedById: who, isSelfApproveAllowed: true })
+    await approveFeeActionRequest({ requestId: req.id, approvedBy: who, approvedById: uid, isSelfApproveAllowed: true })
     return { selfApproved: true, request: req }
   }
   return { selfApproved: false, request: req }
@@ -105,10 +113,10 @@ async function fetchAllRows(table, { select = '*', filters = [], orderCol = null
   while (true) {
     let q = supabase.from(table).select(select)
     for (const [col, op, val] of filters) q = q[op](col, val)
-    if (orderCol) q = q.order(orderCol, { ascending })
+    q = q.order(orderCol || 'id', { ascending })   // stable order so pages never skip/repeat rows
     q = q.range(from, from + PAGE - 1)
     const { data, error } = await q
-    if (error) { console.error(`fetchAllRows(${table}) error:`, error.message); break }
+    if (error) { console.error(`fetchAllRows(${table}) error:`, error.message); throw new Error(`Could not load ${table}: ${error.message}`) }
     all = all.concat(data || [])
     if (!data || data.length < PAGE) break
     from += PAGE
@@ -233,7 +241,7 @@ function exportPrintHTML(rows, filename, title, meta={}) {
   const hdr=H.map(h=>`<th>${esc(h)}</th>`).join('')
   const bdy=rows.map((r,i)=>`<tr class="${i%2===0?'':'ev'}">${H.map(h=>`<td>${esc(r[h])}</td>`).join('')}</tr>`).join('')
   const metaRows=Object.entries(meta).map(([k,v])=>`<div class="mi"><span class="mk">${esc(k)}</span><span class="mv">${esc(String(v))}</span></div>`).join('')
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${title}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#0f172a;background:white;padding:12mm 14mm}.inst{font-size:18px;font-weight:900;color:#1e3a5f;font-family:Georgia,serif}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px double #1e3a5f;padding-bottom:8px;margin-bottom:10px}.rtype{font-size:11px;font-weight:900;color:white;background:#1e3a5f;padding:2px 10px;border-radius:4px;display:inline-block}.rdate{font-size:10px;color:#64748b;display:block;margin-top:3px}.meta{display:flex;gap:20px;flex-wrap:wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;margin-bottom:10px}.mi{display:flex;flex-direction:column}.mk{font-size:8px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}.mv{font-size:11px;font-weight:700;color:#1e3a5f}table{width:100%;border-collapse:collapse;font-size:10.5px}thead tr{background:#1e3a5f;color:white}th{padding:6px 8px;text-align:left;font-weight:700;font-size:10px;white-space:nowrap}tbody tr{border-bottom:1px solid #f1f5f9}tbody tr.ev{background:#f8fafc}td{padding:5px 8px}.foot{margin-top:10px;display:flex;justify-content:space-between;font-size:8.5px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:5px}@media print{body{padding:0}.np{display:none}}@media screen{body{background:#e2e8f0;padding:20px}.wrap{background:white;padding:20mm;box-shadow:0 4px 20px rgba(0,0,0,.12);max-width:297mm;margin:0 auto}.pbtn{position:fixed;top:16px;right:16px;background:#1e3a5f;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}.cbtn{position:fixed;top:16px;right:170px;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}}</style></head><body><button class="pbtn np" onclick="window.print()">Print / PDF</button><button class="cbtn np" onclick="window.close()">Close</button><div class="wrap"><div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div></div><div><span class="rtype">${esc(title)}</span><span class="rdate">Generated: ${new Date().toLocaleString('en-IN')}</span></div></div><div class="meta">${metaRows}</div><table><thead><tr>${hdr}</tr></thead><tbody>${bdy}</tbody></table><div class="foot"><span>GNSI Portal</span><span>Total records: ${rows.length}</span><span>CONFIDENTIAL</span></div></div></body></html>`
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${esc(title)}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#0f172a;background:white;padding:12mm 14mm}.inst{font-size:18px;font-weight:900;color:#1e3a5f;font-family:Georgia,serif}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px double #1e3a5f;padding-bottom:8px;margin-bottom:10px}.rtype{font-size:11px;font-weight:900;color:white;background:#1e3a5f;padding:2px 10px;border-radius:4px;display:inline-block}.rdate{font-size:10px;color:#64748b;display:block;margin-top:3px}.meta{display:flex;gap:20px;flex-wrap:wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;margin-bottom:10px}.mi{display:flex;flex-direction:column}.mk{font-size:8px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}.mv{font-size:11px;font-weight:700;color:#1e3a5f}table{width:100%;border-collapse:collapse;font-size:10.5px}thead tr{background:#1e3a5f;color:white}th{padding:6px 8px;text-align:left;font-weight:700;font-size:10px;white-space:nowrap}tbody tr{border-bottom:1px solid #f1f5f9}tbody tr.ev{background:#f8fafc}td{padding:5px 8px}.foot{margin-top:10px;display:flex;justify-content:space-between;font-size:8.5px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:5px}@media print{body{padding:0}.np{display:none}}@media screen{body{background:#e2e8f0;padding:20px}.wrap{background:white;padding:20mm;box-shadow:0 4px 20px rgba(0,0,0,.12);max-width:297mm;margin:0 auto}.pbtn{position:fixed;top:16px;right:16px;background:#1e3a5f;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}.cbtn{position:fixed;top:16px;right:170px;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}}</style></head><body><button class="pbtn np" onclick="window.print()">Print / PDF</button><button class="cbtn np" onclick="window.close()">Close</button><div class="wrap"><div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div></div><div><span class="rtype">${esc(title)}</span><span class="rdate">Generated: ${new Date().toLocaleString('en-IN')}</span></div></div><div class="meta">${metaRows}</div><table><thead><tr>${hdr}</tr></thead><tbody>${bdy}</tbody></table><div class="foot"><span>GNSI Portal</span><span>Total records: ${rows.length}</span><span>CONFIDENTIAL</span></div></div></body></html>`
   const win=window.open('','_blank','width=1000,height=700,scrollbars=yes');win.document.write(html);win.document.close()
 }
 
@@ -245,10 +253,16 @@ const _fdate=s=>{if(!s)return '—';const d=new Date(s+'T00:00:00');return d.toL
 const _fday=s=>{if(!s)return '';return new Date(s+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long'})}
 function _toWords(n){if(!n||n===0)return 'Zero';const ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'],tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];const c=x=>{if(x<20)return ones[x];if(x<100)return tens[Math.floor(x/10)]+(x%10?' '+ones[x%10]:'');if(x<1000)return ones[Math.floor(x/100)]+' Hundred'+(x%100?' '+c(x%100):'');if(x<100000)return c(Math.floor(x/1000))+' Thousand'+(x%1000?' '+c(x%1000):'');if(x<10000000)return c(Math.floor(x/100000))+' Lakh'+(x%100000?' '+c(x%100000):'');return c(Math.floor(x/10000000))+' Crore'+(x%10000000?' '+c(x%10000000):'')};return c(Math.round(n))+' Only'}
 function DailyIncomeReport({date,transactions=[],generatedBy='Admin'}){
+  const transactionsRaw=transactions,generatedByRaw=generatedBy
   const todayStr=new Date().toLocaleDateString('en-CA'),reportDate=date||todayStr
   const [offlineRcpt,setOfflineRcpt]=useState(''),[reportTitle,setReportTitle]=useState('Daily Income Report')
+  const offlineRcptRaw=offlineRcpt,reportTitleRaw=reportTitle
   const grand=transactions.reduce((s,r)=>s+(Number(r.amount)||0),0)
   const handlePrint=()=>{
+    // Escape every text value from the database / inputs before it goes into the print HTML
+    const E=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
+    const transactions=(transactionsRaw||[]).map(r=>Object.fromEntries(Object.entries(r).map(([k,v])=>[k,typeof v==='string'?E(v):v])))
+    const reportTitle=E(reportTitleRaw),offlineRcpt=E(offlineRcptRaw),generatedBy=E(generatedByRaw)
     const modes={},courses={};transactions.forEach(r=>{const m=r.pay_mode||'Unspecified';modes[m]=(modes[m]||0)+(Number(r.amount)||0)});transactions.forEach(r=>{const c=r.course||'Unknown';courses[c]=(courses[c]||0)+(Number(r.amount)||0)})
     const byStudent={};transactions.forEach(r=>{const k=String(r.gcc_no||r.name);if(!byStudent[k])byStudent[k]={gcc_no:r.gcc_no,name:r.name,rows:[]};byStudent[k].rows.push(r)})
     const groups=Object.values(byStudent).sort((a,b)=>(a.name||'').localeCompare(b.name||''))
@@ -821,7 +835,9 @@ function PendingApprovalsTab({ isAdmin, currentUser, adminCount, onRefresh }) {
   const [toast, setToast] = useState(null)
   const showToast = (msg, color = '#1e3a5f') => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
 
-  const myId = currentUser?.userName || currentUser?.name || 'Admin'
+  const myName = currentUser?.userName || currentUser?.name || 'Admin'
+  const [myId, setMyId] = useState(null)   // secure-login user id
+  useEffect(() => { myAuthId().then(setMyId) }, [])
 
   const load = () => {
     setLoading(true)
@@ -863,7 +879,8 @@ function PendingApprovalsTab({ isAdmin, currentUser, adminCount, onRefresh }) {
     if (!window.confirm(`Approve this ${row.action_type} of "${row.snap?.student_name || row.record_id}"?\n\nReason on file: ${row.reason}\n\nThis will actually ${row.action_type} the entry.`)) return
     setBusyId(row.id)
     try {
-      const result = await approveFeeActionRequest({ requestId: row.id, approvedBy: myId, approvedById: myId, isSelfApproveAllowed })
+      if (!myId) { showToast('Log out and log in again (secure login) before approving.', '#dc2626'); setBusyId(null); return }
+      const result = await approveFeeActionRequest({ requestId: row.id, approvedBy: myName, approvedById: myId, isSelfApproveAllowed })
       showToast(result.self_approved ? '✅ Approved (self-approved — single admin on file)' : '✅ Approved and applied.', '#16a34a')
       load()
       onRefresh && onRefresh()
@@ -1634,16 +1651,18 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   // "2026" === 2026 is always false → ₹0. Use String() to normalise both sides.
   const thisYearStr     = String(thisYear)
   const thisMonthStart  = `${thisYearStr}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-  const thisMonthFlat   = adm_flat_fees.filter(r => r.paid && r.month === thisMonth && String(r.year) === thisYearStr).reduce((s, r) => s + (r.amount || 0), 0)
-  const thisMonthCrsf   = adm_course_fees.filter(r => !r.reverted && r.for_month === thisMonth && String(r.year) === thisYearStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
-  const thisMonthAdm    = adm_fee_collections.filter(r => !r.reverted && r.pay_date >= thisMonthStart && r.pay_date <= todayStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const todayLocal      = new Date().toLocaleDateString('en-CA')   // declared here: used below before todayStr exists
+  // All three fee types counted by the date the money was PAID (matches Accounts / cash in hand)
+  const thisMonthFlat   = adm_flat_fees.filter(r => r.paid && r.pay_date >= thisMonthStart && r.pay_date <= todayLocal).reduce((s, r) => s + (Number(r.amount) || 0), 0)
+  const thisMonthCrsf   = adm_course_fees.filter(r => !r.reverted && r.pay_date >= thisMonthStart && r.pay_date <= todayLocal).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const thisMonthAdm    = adm_fee_collections.filter(r => !r.reverted && r.pay_date >= thisMonthStart && r.pay_date <= todayLocal).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
   const thisMonthTotal  = thisMonthFlat + thisMonthCrsf + thisMonthAdm
 
   const prevYearStr     = String(now.getMonth() === 0 ? thisYear - 1 : thisYear)
   const prevMonthStart  = new Date(now.getFullYear(), now.getMonth() - 1, 1).toLocaleDateString('en-CA')
   const prevMonthEnd    = new Date(now.getFullYear(), now.getMonth(), 0).toLocaleDateString('en-CA')
-  const prevMonthFlat   = adm_flat_fees.filter(r => r.paid && r.month === prevMonth && String(r.year) === prevYearStr).reduce((s, r) => s + (r.amount || 0), 0)
-  const prevMonthCrsf   = adm_course_fees.filter(r => !r.reverted && r.for_month === prevMonth && String(r.year) === prevYearStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+  const prevMonthFlat   = adm_flat_fees.filter(r => r.paid && r.pay_date >= prevMonthStart && r.pay_date <= prevMonthEnd).reduce((s, r) => s + (Number(r.amount) || 0), 0)
+  const prevMonthCrsf   = adm_course_fees.filter(r => !r.reverted && r.pay_date >= prevMonthStart && r.pay_date <= prevMonthEnd).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
   const prevMonthAdm    = adm_fee_collections.filter(r => !r.reverted && r.pay_date >= prevMonthStart && r.pay_date <= prevMonthEnd).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
   const prevMonthTotal  = prevMonthFlat + prevMonthCrsf + prevMonthAdm
   const monthChange     = prevMonthTotal > 0 ? Math.round(((thisMonthTotal - prevMonthTotal) / prevMonthTotal) * 100) : null
@@ -2512,14 +2531,16 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
   const toggleRepeater = async () => {
     if (!student?.gcc_no) return
+    if (!isAdmin) { showToast('Only an admin can change the Repeater status.', '#dc2626'); return }
     const newVal = !isRepeater
     setRepeaterSaving(true)
-    await supabase
+    const { error } = await supabase
       .from('students')
       .update({ is_repeater: newVal })
       .eq('gcc_no', parseInt(student.gcc_no))
-    setIsRepeater(newVal)
     setRepeaterSaving(false)
+    if (error) { showToast('Could not save Repeater status: ' + error.message, '#dc2626'); return }
+    setIsRepeater(newVal)
   }
 
   const saveAdmissionDate = async (val) => {
@@ -2527,21 +2548,23 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     setAdmissionDate(val)
     if (!val) return
     setAdmDateSaving(true)
-    await supabase
+    const { error } = await supabase
       .from('students')
       .update({ admission_date: val })
       .eq('gcc_no', parseInt(student.gcc_no))
     setAdmDateSaving(false)
+    if (error) showToast('Admission date NOT saved: ' + error.message, '#dc2626')
   }
 
   const saveOverrideInline = async () => {
+    if (!isAdmin) { setOverrideFeedback({ type: 'err', msg: 'Only an admin can change a student\'s fee rate.' }); return }
     const amt = parseFloat(overrideAmt)
     if (isNaN(amt) || amt < 0) { setOverrideFeedback({ type: 'err', msg: 'Enter a valid amount.' }); return }
     const gccInt = parseInt(gcc) || null
     if (!gccInt) return
     setOverrideSaving(true)
     try {
-      await saveStudentFlatFeeOverride(gccInt, sessionYear, amt, overrideReason, 'admin')
+      await saveStudentFlatFeeOverride(gccInt, sessionYear, amt, overrideReason, currentUser?.role || 'staff')
       clearFeeRateCache()
       const rates = await getFeeRates(sessionYear, student.course || '', student.batch || '', hostelType, gccInt)
       setFeeRates(rates)
@@ -2695,8 +2718,15 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         // history and any per-year report/export built from it. Derive the
         // year from payDate (the date field the staff member is entering)
         // instead.
-        const payYear = (payDate && /^\d{4}-/.test(payDate)) ? Number(payDate.slice(0, 4)) : CURRENT_YEAR
-        items.push({ kind: 'course', month: r.for_month, year: payYear, course: r.course, subtype: r.subtype, amount: amt })
+        // Year = the April–March session the month belongs to (not the payment date):
+        // Apr–Dec → session start year, Jan–Mar → start+1.
+        // So December dues paid on 5 Jan 2027 are filed as December 2026.
+        const pd = (payDate && /^\d{4}-\d{2}/.test(payDate)) ? payDate : new Date().toLocaleDateString('en-CA')
+        const pdY = Number(pd.slice(0, 4)), pdM = Number(pd.slice(5, 7))
+        const sessStart = pdM >= 4 ? pdY : pdY - 1   // current April–March session at the time of payment
+        const JAN_MAR = ['January', 'February', 'March']
+        const courseYear = JAN_MAR.includes(r.for_month) ? sessStart + 1 : sessStart
+        items.push({ kind: 'course', month: r.for_month, year: courseYear, course: r.course, subtype: r.subtype, amount: amt })
       }
     })
     if (advThis > 0) items.push({ kind: 'advance', label: advFor, amount: advThis })
@@ -2716,15 +2746,29 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       studentId: student.id, receiptNo, items,
     })
 
-    printReceipt({
-      receipt_no: receiptNo, pay_date: payDate, pay_mode: mode || payMode,
-      txn_ref: ref ?? txnRef, collected_by: collectedBy,
-      student_name: student.name, adm_no: admRec?.adm_no || '--',
-      gcc_no: gcc, class_name: student.batch || '', course: student.course || '',
-      hostel_type: hostelType, sections, total,
-    })
+    // Premium hospital-style receipt (premiumReceipt.js) — same design as the
+    // Student Fee Ledger. Falls back to the old receipt if anything fails.
+    try {
+      printFeeReceipt({
+        receipt_no: receiptNo, pay_date: payDate, pay_mode: mode || payMode,
+        txn_ref: ref ?? txnRef, collected_by: collectedBy,
+        student_name: student.name, adm_no: admRec?.adm_no || '--',
+        gcc_no: gcc, class_name: student.batch || '', course: student.course || '',
+        hostel_type: hostelType, items, total, photo_url: student.photo_url,
+      })
+    } catch (e) {
+      console.error('premium receipt failed, using classic:', e)
+      printReceipt({
+        receipt_no: receiptNo, pay_date: payDate, pay_mode: mode || payMode,
+        txn_ref: ref ?? txnRef, collected_by: collectedBy,
+        student_name: student.name, adm_no: admRec?.adm_no || '--',
+        gcc_no: gcc, class_name: student.batch || '', course: student.course || '',
+        hostel_type: hostelType, sections, total,
+      })
+    }
 
     showToast(`✅ Collected ₹${total.toLocaleString('en-IN')}`, '#16a34a')
+    setPayDate(today())   // next payment defaults to the real current date (page may be open past midnight)
     setLastPayment({ studentName: student.name, gcc, receiptNo, total, payDate, items })
     setCrsfRows([{ course: '', subtype: '', hostelType: hostelType, for_month: '', amount: '' }])
     setAdvAmt('')
@@ -2734,8 +2778,17 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     onRefresh()
   }
 
+  // Every line must be a positive amount, and the charged total must equal the lines.
+  const validateItems = (items) => {
+    const bad = items.find(i => !(Number(i.amount) > 0))
+    if (bad) { showToast('Every amount must be more than ₹0 — check the fee lines (no negative values).', '#dc2626'); return false }
+    const sum = items.reduce((s, i) => s + Number(i.amount), 0)
+    if (Math.round(sum) !== Math.round(grandThis)) { showToast(`Total mismatch (lines ₹${sum} vs total ₹${grandThis}) — remove negative or empty amounts.`, '#dc2626'); return false }
+    return true
+  }
+
   const handleSave = async () => {
-    if (!student || !admRec || grandThis === 0 || saving) return
+    if (!student || !admRec || grandThis <= 0 || saving) return
     // ✦ Bug fix: Fees.jsx had no admission_date requirement at all, unlike
     // FeeCollectionModal.jsx (fixed earlier this session) — without a real
     // admission date on file, the fee engine can't correctly determine
@@ -2758,9 +2811,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       showToast(`Transaction reference is required for ${payMode} payments.`, '#dc2626')
       return
     }
+    const itemsToSave = buildFeeItems()
+    if (!validateItems(itemsToSave)) return
     setSaving(true)
     try {
-      await finalizeCollection(buildFeeItems())
+      await finalizeCollection(itemsToSave)
     } catch (err) {
       showToast('Save failed: ' + err.message, '#dc2626')
     }
@@ -2776,7 +2831,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // If the parent closes the checkout modal or payment fails, nothing is
   // written — no partial/ghost records.
   const handleRazorpayCollect = async () => {
-    if (!student || !admRec || grandThis === 0 || razorpayBusy) return
+    if (!student || !admRec || grandThis <= 0 || razorpayBusy) return
+    if (!validateItems(buildFeeItems())) return
     if (!admissionDate) {
       showToast('Admission Date is required before collecting fees — set it below.', '#dc2626')
       return
@@ -2843,7 +2899,14 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               const verify = await verifyRes.json()
               if (!verifyRes.ok || !verify?.verified) throw new Error(verify?.error || 'Payment verification failed')
 
-              await finalizeCollection(items, { mode: 'Razorpay', ref: response.razorpay_payment_id })
+              try {
+                await finalizeCollection(items, { mode: 'Razorpay', ref: response.razorpay_payment_id })
+              } catch (saveErr) {
+                // Money WAS taken — never show this as a failed payment.
+                try { localStorage.setItem('gnsi_rzp_unrecorded_' + response.razorpay_payment_id, JSON.stringify({ gcc, items, at: new Date().toISOString() })) } catch (_) {}
+                alert(`⚠️ PAYMENT RECEIVED BUT NOT SAVED\n\nRazorpay payment id: ${response.razorpay_payment_id}\nStudent: ${student?.name} (GCC ${gcc})\n\nDo NOT charge again. Note this id and record it as a Bank/UPI payment with this id as the reference.\n\nError: ${saveErr.message}`)
+                resolve('unrecorded'); return
+              }
               resolve()
             } catch (err) {
               reject(err)
@@ -2873,7 +2936,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const myCrsfRecs = gcc ? adm_course_fees.filter(r => gccStr(r.adm_app_id) === gcc && !r.reverted) : []
 
   const admPaid      = myAdmCols.some(c => c.fee_type === 'admission')
-  const paidMonths   = myFlatRecs.map(r => r.month)
+  // month+year keys — a month paid in an earlier year must not block this year's fee
+  const paidMonths   = myFlatRecs.map(r => `${r.month}|${r.year}`)
   const admEverPaid  = myAdmCols.reduce((s, c) => s + (Number(c.amount_paid) || 0), 0)
   const flatEverPaid = myFlatRecs.reduce((s, r) => s + (r.amount || 0), 0)
   const crsfEverPaid = myCrsfRecs.reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
@@ -2882,10 +2946,10 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const dressTotal = DRESS_ITEMS.reduce((s, i, idx) => s + (dressChecked[idx] ? i.price : 0), 0)
   const admPkgThis = (admPaid || isRepeater) ? 0 : (admFeeAmt + dressTotal + (prospChecked ? PROSPECTUS_FEE : 0))
 
-  const selFlat  = flatFees.filter((_, i) => flatChecked[i] && !paidMonths.includes(flatFees[i]?.month))
+  const selFlat  = flatFees.filter((_, i) => flatChecked[i] && !paidMonths.includes(`${flatFees[i]?.month}|${flatFees[i]?.year}`))
   const flatThis = selFlat.reduce((s, f) => s + f.amount, 0)
-  const crsfThis = crsfRows.reduce((s, r) => s + (Number(r.amount) || 0), 0)
-  const advThis  = Number(advAmt) || 0
+  const crsfThis = crsfRows.reduce((s, r) => s + Math.max(0, Number(r.amount) || 0), 0)
+  const advThis  = Math.max(0, Number(advAmt) || 0)
   const grandThis = admPkgThis + flatThis + crsfThis + advThis
 
   const handleSelect = async s => {
@@ -2902,8 +2966,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     const studentFlatFees = await getFlatFees(s.hostel_type || 'Day Scholar', s.course || '', s.batch || '', sSessionYear, parseInt(gccStr(s.gcc_no)) || null)
     const paid = adm_flat_fees
       .filter(r => gccStr(r.adm_app_id) === gccStr(s.gcc_no) && r.paid)
-      .map(r => r.month)
-    setFlatChecked(studentFlatFees.map(ff => !paid.includes(ff.month)))
+      .map(r => `${r.month}|${r.year}`)
+    setFlatChecked(studentFlatFees.map(ff => !paid.includes(`${ff.month}|${ff.year}`)))
 
     const defaultCourse     = s.course && COURSE_STRUCTURE[s.course] ? s.course : ''
     const defaultHostelType = s.hostel_type || 'Day Scholar'
@@ -3220,7 +3284,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               <div style={{ padding: '12px 16px' }}>
                 <div style={{ marginBottom: 12 }}>
                   <label style={lbl}>Admission fee (₹)</label>
-                  <input type="number" value={admFeeAmt} onChange={e => setAdmFeeAmt(parseInt(e.target.value) || 0)} style={inp} />
+                  <input type="number" value={admFeeAmt} onChange={e => setAdmFeeAmt(Math.max(0, parseInt(e.target.value) || 0))} min={0} style={inp} />
                 </div>
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', marginBottom: 10 }}>
                   {DRESS_ITEMS.map((item, i) => (
@@ -3258,7 +3322,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               {flatFees.length === 0
                 ? <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: 16 }}>Loading months…</div>
                 : flatFees.map((ff, i) => {
-                    const paid = paidMonths.includes(ff.month)
+                    const paid = paidMonths.includes(`${ff.month}|${ff.year}`)
                     return (
                       <label key={ff.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: i < flatFees.length - 1 ? '1px solid #f1f5f9' : 'none', cursor: paid ? 'default' : 'pointer' }}>
                         <input type="checkbox"
@@ -3561,10 +3625,17 @@ export default function Fees() {
   const [adminCount, setAdminCount] = useState(null)
   useEffect(() => {
     let cancelled = false
-    supabase.from('staff_profiles').select('id, role').then(({ data, error }) => {
+    // Counted on the SERVER (fee_admin_count) — a browser-side roster read can be
+    // limited by access rules and wrongly report 1 admin (→ self-approve).
+    supabase.rpc('fee_admin_count').then(({ data, error }) => {
       if (cancelled) return
-      if (error) { console.error('Fees: could not load admin roster for dual-control check —', error.message); return }
-      setAdminCount((data || []).filter(s => isAdminRole(s.role)).length)
+      if (!error && typeof data === 'number') { setAdminCount(data); return }
+      supabase.from('staff_profiles').select('id, role').then(({ data: d2, error: e2 }) => {
+        if (cancelled) return
+        if (e2) { console.error('Fees: could not load admin roster for dual-control check —', e2.message); return }
+        // Fallback can't be trusted to be complete → never allow self-approve from it
+        setAdminCount(Math.max(2, (d2 || []).filter(s => isAdminRole(s.role)).length))
+      })
     })
     return () => { cancelled = true }
   }, [])
@@ -3592,7 +3663,9 @@ export default function Fees() {
     // this trades away visibility into dues owed by students who already
     // left — if that's needed later, add a separate getAllStudents() pull
     // for a dedicated "past students" ledger view instead of reverting this.
-    const [fees_, students_, admissions_, admFeeCols_, admFlatFees_, admCourseFees_] = await Promise.all([
+    let fees_, students_, admissions_, admFeeCols_, admFlatFees_, admCourseFees_
+    try {
+    ;[fees_, students_, admissions_, admFeeCols_, admFlatFees_, admCourseFees_] = await Promise.all([
       fetchAllRows('fees', { orderCol: 'created_at', ascending: false }),
       getActiveStudents('*'),
       fetchAllRows('admissions'),
@@ -3600,6 +3673,12 @@ export default function Fees() {
       fetchAllRows('adm_flat_fees', { filters: [['paid', 'eq', true], ['reverted', 'eq', false]] }),
       fetchAllRows('adm_course_fees', { filters: [['reverted', 'eq', false]] }),
     ])
+    } catch (err) {
+      // Never show partial data as if complete — totals would be silently wrong.
+      setLoading(false)
+      alert('⚠️ Fee data could not be loaded completely, so totals are NOT shown.\n\n' + err.message + '\n\nCheck your connection and press refresh.')
+      return
+    }
     setFees(fees_)
     setStudents(students_)
     setAdmissions(admissions_)
@@ -3855,7 +3934,11 @@ export default function Fees() {
     setSaving(false)
   }
 
-  const handleCollect = async (id, amount) => { await supabase.from('fees').update({ paid: amount, status: 'Paid' }).eq('id', id); loadAll() }
+  const handleCollect = async (id, amount) => {
+    const { error } = await supabase.from('fees').update({ paid: amount, status: 'Paid' }).eq('id', id)
+    if (error) { alert('Could not mark as paid: ' + error.message); return }
+    loadAll()
+  }
   const handleDelete  = async id => {
     if (!isAdmin) { alert('Only admin can delete records.'); return }
     if (!window.confirm('Permanently delete this legacy fee record? This cannot be undone.')) return

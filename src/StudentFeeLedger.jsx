@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from './supabase'
 import { PremiumHero, PREMIUM_CSS } from './staffPhotos'
+import { printFeeReceipt } from './premiumReceipt'
 
 // ─── Mobile hook ──────────────────────────────────────────────────────────────
 function useMobile() {
@@ -49,91 +50,159 @@ function StudentPhoto({ s, size = 40, ring = '#E2C57E' }) {
 
 // ─── Receipt printer (unchanged) ─────────────────────────────────────────────
 const escH = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
-function printReceipt(studentRaw, row, type) {
-  const student = { ...studentRaw, name: escH(studentRaw.name) }
-  const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-  const receiptNo = row.receipt_no || '—'
-  const payDate = fmtDate(row.pay_date)
-  const payMode = row.pay_mode || '—'
-  const txnRef = row.txn_ref || null
-  let description, amount, sectionLabel, accentColor
 
-  if (type === 'adm') {
-    description = row.description || row.fee_type || 'Admission / Kit Fee'
-    amount = Number(row.amount_paid || 0)
-    sectionLabel = 'Admission & Kit Fee'
-    accentColor = '#4f46e5'
-  } else if (type === 'flat') {
-    description = `Monthly Fee — ${row.month || ''}${row.year ? ' ' + row.year : ''}${row.hostel_type ? ' (' + row.hostel_type + ')' : ''}`
-    amount = Number(row.amount || 0)
-    sectionLabel = `Monthly Flat Fee${row.hostel_type ? ' · ' + row.hostel_type : ''}`
-    accentColor = '#059669'
-  } else {
-    description = `Course Fee — ${row.for_month || ''}${row.year ? ' ' + row.year : ''}`
-    amount = Number(row.amount_paid || 0)
-    sectionLabel = `Course Fee${row.course ? ' · ' + row.course : ''}`
-    accentColor = '#7c3aed'
-  }
-
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Receipt ${receiptNo}</title>
-  <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#f0f4f8;display:flex;justify-content:center;padding:32px 16px}.page{width:720px;background:white;border-radius:0;box-shadow:0 4px 40px rgba(0,0,0,.15);overflow:hidden}.header{background:#0B1E3D;padding:28px 36px}.inst-name{font-size:20px;font-weight:700;color:white}.receipt-no{font-size:22px;font-weight:800;color:#C9A24B;font-family:monospace}.meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid #E2E8F0}.mc{padding:10px 18px;border-right:1px solid #E2E8F0}.ml{font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}.mv{font-weight:700;color:#1E293B;font-size:12px}table{width:100%;border-collapse:collapse}td{padding:8px 18px;border-bottom:1px solid #F1F5F9}.grand td{background:#1E1B4B;font-weight:900;font-size:16px;color:#fff;padding:14px 18px;border:none}.ftr{padding:16px 20px;background:#F8FAFC;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between}.sig-line{height:1px;width:130px;border-top:1.5px dashed #CBD5E1;margin-top:32px}.btns{display:flex;gap:10px;justify-content:center;margin-top:20px}.btn{padding:11px 30px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer}.bp{background:#0B1E3D;color:#fff}@media print{.btns{display:none}}</style></head><body>
-  <div class="page">
-    <div class="header" style="display:flex;justify-content:space-between;align-items:flex-start">
-      <div><div class="inst-name">Guidance Navodaya &amp; Sainik Institute</div><div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:4px">Khangabok, Thoubal, Manipur</div></div>
-      <div style="text-align:right"><div style="font-size:10px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em">Receipt No.</div><div class="receipt-no">${receiptNo}</div></div>
-    </div>
-    <div style="height:4px;background:linear-gradient(90deg,${accentColor},#C9A24B)"></div>
-    <div class="meta">
-      <div class="mc"><div class="ml">Date</div><div class="mv">${payDate}</div></div>
-      <div class="mc"><div class="ml">Pay mode</div><div class="mv">${payMode}</div></div>
-      <div class="mc"><div class="ml">Type</div><div class="mv" style="color:${accentColor}">${sectionLabel}</div></div>
-    </div>
-    <table><tbody>
-      <tr><td style="color:#64748B;width:40%">Student</td><td style="font-weight:700">${student.name}</td></tr>
-      <tr><td style="color:#64748B">GCC No.</td><td style="font-weight:700">GCC-${student.gcc_no}</td></tr>
-      <tr><td style="color:#64748B">Class / Course</td><td style="font-weight:700">${[student.batch, student.course].filter(Boolean).join(' · ') || '—'}</td></tr>
-      ${row.hostel_type ? `<tr><td style="color:#64748B">Hostel Type</td><td style="font-weight:700">${row.hostel_type}</td></tr>` : ''}
-      ${txnRef ? `<tr><td style="color:#64748B">Txn ref</td><td style="font-weight:700">${txnRef}</td></tr>` : ''}
-    </tbody></table>
-    <table><tbody>
-      <tr><td style="color:#1E293B;font-weight:600">${description}</td><td style="text-align:right;font-weight:800;font-size:16px;color:${accentColor}">₹${fmt(amount)}</td></tr>
-      <tr class="grand"><td>Total Paid</td><td style="text-align:right">₹${fmt(amount)}</td></tr>
-    </tbody></table>
-    <div class="ftr">
-      <div><div style="font-size:11px;color:#94a3b8;margin-bottom:4px">Authorised signatory</div><div class="sig-line"></div></div>
-      <div style="text-align:right;font-size:11px;color:#94A3B8"><div style="font-weight:700;color:#1E293B;font-size:13px">GNSI</div><div>Printed on: ${dateStr}</div></div>
-    </div>
-  </div>
-  <div class="btns"><button class="btn bp" onclick="window.print()">Print receipt</button></div>
-  </body></html>`
-
-  const pw = window.open('', '_blank', 'width=820,height=950,scrollbars=yes')
-  if (!pw) { window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank'); return }
-  pw.document.write(html); pw.document.close()
-  setTimeout(() => pw.print(), 500)
+// Indian-system amount in words: 125000 → "One Lakh Twenty Five Thousand Rupees Only"
+function amountInWords(num) {
+  num = Math.round(Number(num) || 0)
+  if (num === 0) return 'Zero Rupees Only'
+  const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen']
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+  const two = n => n < 20 ? a[n] : b[Math.floor(n / 10)] + (n % 10 ? ' ' + a[n % 10] : '')
+  const three = n => (n >= 100 ? a[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' : '') : '') + (n % 100 ? two(n % 100) : '')
+  const parts = []
+  const cr = Math.floor(num / 10000000); num %= 10000000
+  const lk = Math.floor(num / 100000); num %= 100000
+  const th = Math.floor(num / 1000); num %= 1000
+  if (cr) parts.push(two(cr) + ' Crore')
+  if (lk) parts.push(two(lk) + ' Lakh')
+  if (th) parts.push(two(th) + ' Thousand')
+  if (num) parts.push(three(num))
+  return parts.join(' ') + ' Rupees Only'
 }
 
-function printLedger(studentRaw, admRows, flatRows, crsRows, grandTotal) {
-  const student = { ...studentRaw, name: escH(studentRaw.name) }
-  const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-  const section = (title, headers, rows) => rows.length === 0 ? '' : `<div class="section"><div class="sec-title">${title}</div><table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`
-  const admHtmlRows = admRows.map(r => `<tr><td>${fmtDate(r.pay_date)}</td><td>${r.description || r.fee_type || '—'}</td><td>${r.pay_mode || '—'}</td><td>${r.receipt_no || '—'}</td><td class="amt">₹${fmt(r.amount_paid)}</td></tr>`)
-  const flatHtmlRows = flatRows.map(r => `<tr><td>${fmtDate(r.pay_date)}</td><td>${r.month || '—'} ${r.year || ''}</td><td>${r.hostel_type || '—'}</td><td>${r.pay_mode || '—'}</td><td>${r.receipt_no || '—'}</td><td class="amt">₹${fmt(r.amount)}</td></tr>`)
-  const crsHtmlRows = crsRows.map(r => `<tr><td>${fmtDate(r.pay_date)}</td><td>${r.for_month || '—'}${r.year ? ' ' + r.year : ''}</td><td>${r.course || '—'}</td><td>${r.hostel_type || '—'}</td><td>${r.pay_mode || '—'}</td><td>${r.receipt_no || '—'}</td><td class="amt">₹${fmt(r.amount_paid)}</td></tr>`)
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fee Ledger — ${student.name}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#fff;padding:32px;color:#1e293b;font-size:13px}.hdr{display:flex;justify-content:space-between;border-bottom:3px solid #0B1E3D;padding-bottom:16px;margin-bottom:20px}.inst{font-size:18px;font-weight:700;color:#0B1E3D}.title{font-size:22px;font-weight:800;color:#0B1E3D;margin-bottom:16px}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;padding:16px;background:#f8fafc;border-radius:8px}.ml{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}.mv{font-weight:700;color:#1e293b;font-size:13px}.section{margin-bottom:20px}.sec-title{font-size:13px;font-weight:800;color:#0B1E3D;text-transform:uppercase;letter-spacing:.08em;padding:8px 0;border-bottom:2px solid #0B1E3D;margin-bottom:8px}table{width:100%;border-collapse:collapse}th{padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748b;background:#f8fafc;border-bottom:1px solid #e2e8f0;text-transform:uppercase}td{padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12px}.amt{font-weight:700;text-align:right}.grand{display:flex;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:2px solid #0B1E3D}.grand-box{background:#0B1E3D;color:white;padding:14px 24px;border-radius:8px;text-align:right}.grand-label{font-size:11px;opacity:.7;margin-bottom:2px}.grand-amt{font-size:22px;font-weight:800}.ftr{margin-top:32px;display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:12px}@media print{body{padding:16px}}</style></head><body>
-  <div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div><div style="font-size:11px;color:#64748b">Khangabok, Thoubal, Manipur</div></div><div style="text-align:right"><div style="font-size:11px;color:#94a3b8">Printed on</div><div style="font-weight:700">${dateStr}</div></div></div>
-  <div class="title">Student Fee Ledger</div>
-  <div class="meta"><div><div class="ml">Student</div><div class="mv">${student.name}</div></div><div><div class="ml">GCC No.</div><div class="mv">GCC-${student.gcc_no}</div></div><div><div class="ml">Adm. No.</div><div class="mv">${student.admission_no || '—'}</div></div><div><div class="ml">Class / Course</div><div class="mv">${[student.batch, student.course].filter(Boolean).join(' · ') || '—'}</div></div></div>
-  ${section('Admission &amp; Kit Fees', ['Date', 'Description', 'Mode', 'Receipt No.', 'Amount'], admHtmlRows)}
-  ${section('Monthly Flat Fees', ['Date', 'Month', 'Hostel Type', 'Mode', 'Receipt No.', 'Amount'], flatHtmlRows)}
-  ${section('Course Fees', ['Date', 'Month', 'Course', 'Hostel Type', 'Mode', 'Receipt No.', 'Amount'], crsHtmlRows)}
-  <div class="grand"><div class="grand-box"><div class="grand-label">Grand Total Paid</div><div class="grand-amt">₹${fmt(grandTotal)}</div></div></div>
-  <div class="ftr"><span>GNSI · Student Fee Ledger · ${student.name} (GCC-${student.gcc_no})</span><span>Computer generated · ${dateStr}</span></div>
-  </body></html>`
-  const pw = window.open('', '_blank', 'width=800,height=900,scrollbars=yes')
+// Shared premium print styles (A4 / A5 friendly)
+const PRINT_BASE = `
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Plus Jakarta Sans',Arial,sans-serif;background:#ECE7DB;color:#1B2437;display:flex;flex-direction:column;align-items:center;padding:28px 12px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .serif{font-family:'Playfair Display',Georgia,serif}
+  .mono{font-family:'JetBrains Mono',monospace}
+  .sheet{position:relative;width:760px;max-width:100%;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 30px 70px rgba(11,30,61,.22)}
+  .frame{position:absolute;inset:10px;border:1px solid #E2C57E;border-radius:4px;pointer-events:none}
+  .frame:after{content:'';position:absolute;inset:4px;border:.5px solid rgba(201,162,75,.45);border-radius:2px}
+  .hdr{position:relative;padding:30px 40px 24px;background:radial-gradient(120% 160% at 100% 0%,#1F4E8C 0%,#132B52 42%,#0B1E3D 82%);color:#fff;display:flex;align-items:center;gap:18px}
+  .crest{width:62px;height:62px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#E2C57E,#B8913F);color:#0B1E3D;font-family:'Playfair Display',serif;font-weight:800;font-size:20px;box-shadow:0 0 0 3px rgba(255,255,255,.15),0 8px 18px rgba(0,0,0,.25)}
+  .inst{font-family:'Playfair Display',serif;font-size:21px;font-weight:700;letter-spacing:.01em;line-height:1.2}
+  .sub{font-size:11px;color:rgba(255,255,255,.7);margin-top:4px;letter-spacing:.04em}
+  .tag{font-size:9.5px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#E2C57E}
+  .goldbar{height:4px;background:linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)}
+  .body{position:relative;padding:26px 40px 30px}
+  .wm{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%) rotate(-18deg);font-family:'Playfair Display',serif;font-size:120px;font-weight:800;color:rgba(22,163,74,.07);letter-spacing:.1em;pointer-events:none;white-space:nowrap}
+  .lbl{font-size:9.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#8A8F9C}
+  .val{font-size:13.5px;font-weight:700;color:#1B2437;margin-top:3px}
+  .grid{display:grid;gap:14px 22px}
+  table{width:100%;border-collapse:collapse}
+  th{font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#6B7280;text-align:left;padding:10px 12px;background:#FBF8F1;border-bottom:1.5px solid #E2C57E}
+  td{padding:11px 12px;font-size:12.5px;border-bottom:1px solid #F1ECE0;vertical-align:top}
+  .amt{text-align:right;font-weight:800;white-space:nowrap}
+  .sig{height:1px;width:170px;border-top:1px solid #1B2437;margin:40px 0 6px}
+  .btns{display:flex;gap:10px;justify-content:center;margin-top:18px}
+  .btn{padding:11px 26px;border:none;border-radius:999px;font-size:13.5px;font-weight:800;cursor:pointer;font-family:inherit}
+  .bp{background:linear-gradient(180deg,#132B52,#0B1E3D);color:#E2C57E}
+  .bs{background:#fff;color:#0B1E3D;border:1px solid #E2C57E}
+  @page{size:A4;margin:10mm}
+  @media print{body{background:#fff;padding:0}.sheet{box-shadow:none;border-radius:0;width:100%}.btns{display:none}}
+`
+const HEADER = (right) => `
+  <div class="hdr">
+    <div class="crest">GN</div>
+    <div style="flex:1;min-width:0">
+      <div class="tag">Est. 2016 · Residential Coaching</div>
+      <div class="inst">Guidance Navodaya &amp; Sainik Institute</div>
+      <div class="sub">Khangabok, Thoubal, Manipur · guidancekhangabok.in · +91 89742 98074</div>
+    </div>
+    ${right}
+  </div><div class="goldbar"></div>`
+
+function openPrint(html, title) {
+  const pw = window.open('', '_blank', 'width=860,height=980,scrollbars=yes')
   if (!pw) { window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank'); return }
-  pw.document.write(html); pw.document.close()
-  setTimeout(() => pw.print(), 400)
+  pw.document.write(html); pw.document.close(); pw.document.title = title
+  setTimeout(() => { try { pw.focus(); pw.print() } catch (_) {} }, 700)
+}
+
+// ─── Receipt — same premium design as Fees → Collect (premiumReceipt.js) ───
+function printReceipt(st, row, type) {
+  let item
+  if (type === 'adm') item = { particulars: row.description || row.fee_type || 'Admission / Kit Fee', period: 'One-time', category: 'Admission & Kit', amount: row.amount_paid }
+  else if (type === 'flat') item = { particulars: 'Monthly Flat Fee', period: `${row.month || ''} ${row.year || ''}`.trim() || '—', category: row.hostel_type || 'Hostel', amount: row.amount }
+  else item = { particulars: 'Course Fee', period: `${row.for_month || ''} ${row.year || ''}`.trim() || '—', category: row.course || st.course || 'Course', amount: row.amount_paid }
+  printFeeReceipt({
+    receipt_no: row.receipt_no, pay_date: row.pay_date, pay_mode: row.pay_mode, txn_ref: row.txn_ref,
+    collected_by: row.collected_by, student_name: st.name, adm_no: st.admission_no, gcc_no: st.gcc_no,
+    class_name: [st.class_name, st.batch].filter(Boolean).join(' · '), course: st.course,
+    hostel_type: row.hostel_type || st.hostel_type, items: [item],
+  })
+}
+
+// ─── Premium full ledger statement ───────────────────────────────────────────
+function printLedger(studentRaw, admRows, flatRows, crsRows, grandTotal) {
+  const st = studentRaw || {}
+  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  const sum = (rows, k) => rows.reduce((s, r) => s + Number(r[k] || 0), 0)
+  const section = (title, accent, headers, rows, total) => rows.length === 0 ? '' : `
+    <div style="margin-top:22px;page-break-inside:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="serif" style="font-size:15px;font-weight:700;color:#0B1E3D"><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${accent};margin-right:8px"></span>${title}</div>
+        <div style="font-size:11px;color:#8A8F9C">${rows.length} payment${rows.length === 1 ? '' : 's'} · <b style="color:${accent}">₹${fmt(total)}</b></div>
+      </div>
+      <table><thead><tr>${headers.map((h, i) => `<th${i === headers.length - 1 ? ' style="text-align:right"' : ''}>${h}</th>`).join('')}</tr></thead>
+      <tbody>${rows.join('')}</tbody></table>
+    </div>`
+  const td = v => `<td>${escH(v)}</td>`
+  const admHtml = admRows.map(r => `<tr>${td(fmtDate(r.pay_date))}<td style="font-weight:700">${escH(r.description || r.fee_type || '—')}</td>${td(r.pay_mode || '—')}<td class="mono">${escH(r.receipt_no || '—')}</td><td class="amt mono">${fmt(r.amount_paid)}</td></tr>`)
+  const flatHtml = flatRows.map(r => `<tr>${td(fmtDate(r.pay_date))}<td style="font-weight:700">${escH((r.month || '—') + ' ' + (r.year || ''))}</td>${td(r.hostel_type || '—')}${td(r.pay_mode || '—')}<td class="mono">${escH(r.receipt_no || '—')}</td><td class="amt mono">${fmt(r.amount)}</td></tr>`)
+  const crsHtml = crsRows.map(r => `<tr>${td(fmtDate(r.pay_date))}<td style="font-weight:700">${escH((r.for_month || '—') + (r.year ? ' ' + r.year : ''))}</td>${td(r.course || '—')}${td(r.pay_mode || '—')}<td class="mono">${escH(r.receipt_no || '—')}</td><td class="amt mono">${fmt(r.amount_paid)}</td></tr>`)
+  const cls = [st.class_name, st.batch, st.course].filter(Boolean).join(' · ') || '—'
+  const photo = st.photo_url ? `<img src="${escH(st.photo_url)}" style="width:70px;height:70px;border-radius:50%;object-fit:cover;object-position:center top;border:2px solid #E2C57E"/>` : ''
+  const count = admRows.length + flatRows.length + crsRows.length
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fee Ledger — ${escH(st.name)}</title><style>${PRINT_BASE}</style></head><body>
+  <div class="sheet"><div class="frame"></div>
+    ${HEADER(`<div style="text-align:right;flex-shrink:0"><div class="tag">Fee Statement</div><div class="serif" style="font-size:18px;font-weight:700;color:#E2C57E;margin-top:4px">Student Ledger</div><div style="font-size:11px;color:rgba(255,255,255,.7);margin-top:3px">As on ${today}</div></div>`)}
+    <div class="body">
+      <div style="display:flex;align-items:center;gap:16px;padding:16px 18px;border:1px solid #EFE6CF;border-radius:12px;background:linear-gradient(135deg,#FFFDF7,#FBF6E9)">
+        ${photo}
+        <div class="grid" style="flex:1;grid-template-columns:2fr 1fr 1fr">
+          <div><div class="lbl">Student</div><div class="val serif" style="font-size:18px">${escH(st.name)}</div></div>
+          <div><div class="lbl">GCC No.</div><div class="val mono">GCC-${escH(st.gcc_no)}</div></div>
+          <div><div class="lbl">Adm. No.</div><div class="val">${escH(st.admission_no || '—')}</div></div>
+          <div><div class="lbl">Class / Course</div><div class="val">${escH(cls)}</div></div>
+          <div><div class="lbl">Hostel</div><div class="val">${escH(st.hostel_type || '—')}</div></div>
+          <div><div class="lbl">Transactions</div><div class="val">${count}</div></div>
+        </div>
+      </div>
+
+      <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-top:16px">
+        ${[['Admission & Kit', sum(admRows, 'amount_paid'), '#4F46E5'], ['Monthly Flat', sum(flatRows, 'amount'), '#047857'], ['Course Fees', sum(crsRows, 'amount_paid'), '#6D28D9'], ['Grand Total', grandTotal, '#B8913F']]
+          .map(([l, v, c]) => `<div style="padding:12px 14px;border-radius:12px;border:1px solid #EFE6CF;border-top:3px solid ${c}"><div class="lbl">${l}</div><div class="serif" style="font-size:19px;font-weight:700;color:${c};margin-top:3px">₹${fmt(v)}</div></div>`).join('')}
+      </div>
+
+      ${section('Admission &amp; Kit Fees', '#4F46E5', ['Date', 'Description', 'Mode', 'Receipt No.', 'Amount (₹)'], admHtml, sum(admRows, 'amount_paid'))}
+      ${section('Monthly Flat Fees', '#047857', ['Date', 'Month', 'Hostel', 'Mode', 'Receipt No.', 'Amount (₹)'], flatHtml, sum(flatRows, 'amount'))}
+      ${section('Course Fees', '#6D28D9', ['Date', 'Month', 'Course', 'Mode', 'Receipt No.', 'Amount (₹)'], crsHtml, sum(crsRows, 'amount_paid'))}
+      ${count === 0 ? '<div style="margin-top:22px;padding:20px;text-align:center;color:#8A8F9C;border:1px dashed #E2C57E;border-radius:12px">No payments recorded yet.</div>' : ''}
+
+      <div style="display:flex;justify-content:space-between;align-items:stretch;gap:16px;margin-top:22px;flex-wrap:wrap">
+        <div style="flex:1 1 300px;padding:12px 16px;border-radius:12px;background:#FBF8F1;border:1px dashed #E2C57E">
+          <div class="lbl">Total paid in words</div>
+          <div class="serif" style="font-size:14.5px;font-weight:700;margin-top:4px;color:#0B1E3D">${amountInWords(grandTotal)}</div>
+        </div>
+        <div style="flex:0 0 230px;padding:14px 18px;border-radius:12px;background:linear-gradient(135deg,#0B1E3D,#132B52);color:#fff;text-align:right;box-shadow:inset 0 0 0 1px rgba(226,197,126,.35)">
+          <div class="tag">Grand total paid</div>
+          <div class="serif" style="font-size:28px;font-weight:700;color:#E2C57E;margin-top:2px">₹${fmt(grandTotal)}</div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:10px;gap:16px;flex-wrap:wrap">
+        <div style="font-size:10.5px;color:#8A8F9C;line-height:1.6">Computer-generated statement · ${escH(st.name)} (GCC-${escH(st.gcc_no)}) · ${today}<br/>For queries please contact the institute office.</div>
+        <div style="text-align:center"><div class="sig"></div><div class="lbl">Accounts Office</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="btns"><button class="btn bp" onclick="window.print()">🖨 Print statement</button><button class="btn bs" onclick="window.close()">Close</button></div>
+  </body></html>`
+  openPrint(html, `Fee Ledger — ${st.name || ''}`)
 }
 
 // ─── Column definitions ───────────────────────────────────────────────────────
