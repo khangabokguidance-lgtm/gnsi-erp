@@ -566,6 +566,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
   // 640px isMobile cutoff that switches to the separate bottom nav).
   const [navMenuOpen, setNavMenuOpen] = useState(false);
 
+  const [ppZoom, setPpZoom] = useState(1);
   const [loginGcc, setLoginGcc] = useState(() => {
     try { return localStorage.getItem('gnsi_pp_remember_gcc') || ''; } catch (_) { return ''; }
   });
@@ -687,6 +688,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
       setStudent(data);
       setLoginBusy(false);
       loadAttendance(data);
+      loadFees(data); // fee balance on the home card
       loadDocuments(data.id);
       loadAlertsSummary(data.id);
 
@@ -724,6 +726,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
     setStudent(child);
     setActiveTab('home');
     loadAttendance(child);
+    loadFees(child);
     loadDocuments(child.id);
     loadAlertsSummary(child.id);
   };
@@ -1391,8 +1394,8 @@ export default function ParentsPortal({ isOpen, onClose }) {
   // left-border stat cards, and inline styles (no Tailwind) — same
   // conventions Accounts.jsx uses throughout, so the two modules look like
   // one product instead of two different UI kits bolted together.
-  const NAVY = '#1e3a5f';
-  const BG = '#f8fafc';
+  const NAVY = '#0B1E3D';
+  const BG = '#F6F3EC';
   const GOLD = '#B8912E';
   const GOLDL = '#D9B65C';
 
@@ -1419,6 +1422,22 @@ export default function ParentsPortal({ isOpen, onClose }) {
         }
         #ppOverlay { max-width: 100vw; overflow-x: hidden; }
         #ppOverlay img { max-width: 100%; }
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+        #ppLoginWrap .pp-serif { font-family: 'Playfair Display', Georgia, 'Times New Roman', serif !important; }
+        #ppLoginWrap .pp-left::before { content:''; position:absolute; inset:0; background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: 44px 44px; -webkit-mask-image: radial-gradient(80% 70% at 30% 30%, #000, transparent); mask-image: radial-gradient(80% 70% at 30% 30%, #000, transparent); pointer-events:none; }
+        @keyframes pp-rise { from { opacity:0; transform: translateY(18px); } to { opacity:1; transform:none; } }
+        @keyframes pp-shine { 0% { transform: translateX(-120%) skewX(-20deg); } 60%,100% { transform: translateX(260%) skewX(-20deg); } }
+        @keyframes pp-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+        #ppLoginWrap .pp-card { animation: pp-rise .7s cubic-bezier(.22,.61,.36,1) both; }
+        #ppLoginWrap .pp-left-in { animation: pp-rise .8s .1s cubic-bezier(.22,.61,.36,1) both; }
+        #ppLoginWrap .pp-crest { animation: pp-float 5s ease-in-out infinite; }
+        #ppLoginWrap .pp-btn { position: relative; overflow: hidden; transition: transform .18s, box-shadow .18s; }
+        #ppLoginWrap .pp-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 18px 36px rgba(201,162,75,.45), inset 0 1px 0 rgba(255,255,255,.45) !important; }
+        #ppLoginWrap .pp-btn::after { content:''; position:absolute; top:0; bottom:0; left:0; width:40%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); animation: pp-shine 3.2s ease-in-out infinite; }
+        #ppLoginWrap .pp-feat { display:flex; gap:12px; align-items:flex-start; padding:12px 14px; border-radius:14px; background: rgba(255,255,255,.05); border:1px solid rgba(226,197,126,.18); backdrop-filter: blur(6px); }
+        #ppLoginWrap .pp-feat-ic { width:34px; height:34px; flex-shrink:0; border-radius:10px; display:flex; align-items:center; justify-content:center; background: rgba(226,197,126,.14); border:1px solid rgba(226,197,126,.35); font-size:16px; }
+        #ppLoginWrap input[type=text] { transition: border-color .18s, box-shadow .18s, background .18s; }
+        #ppLoginWrap input[type=text]:focus { border-color: #C9A24B !important; box-shadow: 0 0 0 4px rgba(201,162,75,0.18); background: #fff !important; }
       `}</style>
       <div
         style={{
@@ -1429,23 +1448,55 @@ export default function ParentsPortal({ isOpen, onClose }) {
         id="ppOverlay"
       >
       {!student ? (
-        <div style={{ position: 'relative', flex: '1 1 auto', minWidth: 0, width: '100%', minHeight: '100%', display: 'flex', flexDirection: isMobile ? 'column' : 'row', boxSizing: 'border-box' }} id="ppLoginWrap">
-          <button
-            onClick={onClose}
-            style={{ position: 'fixed', top: isMobile ? 12 : 20, right: isMobile ? 12 : 20, height: 40, width: 40, borderRadius: '50%', backgroundColor: 'white', border: '1px solid #e2e8f0', color: '#64748b', cursor: 'pointer', fontSize: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5 }}
-          >
-            ✕
-          </button>
+        <div id="ppLoginWrap" style={{ flex: '1 1 auto', minWidth: 0, width: '100%', minHeight: '100%', display: 'flex', flexDirection: 'column', background: '#F4F1EA' }}>
+          {/* ── Official-portal chrome: tricolour strip, utility bar, header band ── */}
+          <div style={{ display: 'flex', height: 5, flexShrink: 0 }}>
+            <div style={{ flex: 1, background: '#FF9933' }} /><div style={{ flex: 1, background: '#FFFFFF' }} /><div style={{ flex: 1, background: '#138808' }} />
+          </div>
+          <div style={{ background: '#0B1E3D', color: '#cbd5e1', fontSize: 11.5, flexShrink: 0 }}>
+            <div style={{ maxWidth: 1200, margin: '0 auto', padding: isMobile ? '6px 12px' : '6px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 600 }}>{isMobile ? 'Parents Portal' : 'GNSI · Official Parents Portal · Khangabok, Thoubal, Manipur'}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} aria-label="Text size">
+                  {[['A-', 0.92], ['A', 1], ['A+', 1.1]].map(([l, z]) => (
+                    <button key={l} type="button" onClick={() => setPpZoom(z)} title={`Text size ${l}`}
+                      style={{ minWidth: 26, height: 22, borderRadius: 4, border: '1px solid rgba(255,255,255,.2)', background: ppZoom === z ? '#C9A24B' : 'transparent', color: ppZoom === z ? '#0B1E3D' : '#e2e8f0', fontSize: 11, fontWeight: 800, cursor: 'pointer', padding: '0 4px' }}>{l}</button>
+                  ))}
+                </div>
+                {!isMobile && <a href="tel:+918974298074" style={{ color: '#E2C57E', textDecoration: 'none', fontWeight: 700 }}>☎ Helpdesk: +91 89742 98074</a>}
+                <button type="button" onClick={onClose} style={{ border: '1px solid rgba(255,255,255,.25)', background: 'transparent', color: '#fff', borderRadius: 4, fontSize: 11, fontWeight: 700, padding: '3px 10px', cursor: 'pointer' }}>✕ Close</button>
+              </div>
+            </div>
+          </div>
+          <div style={{ background: '#fff', borderBottom: '3px solid #C9A24B', boxShadow: '0 4px 16px rgba(11,30,61,.08)', flexShrink: 0 }}>
+            <div style={{ maxWidth: 1200, margin: '0 auto', padding: isMobile ? '10px 12px' : '14px 24px', display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 16 }}>
+              <img src={EMBLEM_URL} alt="GNSI" style={{ height: isMobile ? 44 : 62, width: isMobile ? 44 : 62, objectFit: 'contain', flexShrink: 0 }} onError={(e) => { e.target.style.display = 'none'; }} />
+              <div style={{ minWidth: 0, flex: 1, borderLeft: '2px solid #E5DECB', paddingLeft: isMobile ? 10 : 16 }}>
+                <div className="pp-serif" style={{ color: '#0B1E3D', fontSize: isMobile ? 15 : 22, fontWeight: 700, lineHeight: 1.15 }}>Guidance Navodaya &amp; Sainik Institute</div>
+                <div style={{ color: '#8A6A24', fontSize: isMobile ? 10 : 12, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2 }}>Parents Portal · Est. 2016</div>
+              </div>
+              {!isMobile && (
+                <div style={{ textAlign: 'right', fontSize: 11.5, color: '#64748b', lineHeight: 1.5 }}>
+                  <div style={{ fontWeight: 700, color: '#0B1E3D' }}>{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</div>
+                  <div>NVS · Sainik School · RMS coaching</div>
+                </div>
+              )}
+            </div>
+          </div>
+        <div style={{ position: 'relative', flex: '1 1 auto', minWidth: 0, width: '100%', display: 'flex', flexDirection: isMobile ? 'column' : 'row', boxSizing: 'border-box', zoom: ppZoom }}>
 
           {/* LEFT / TOP — brand + trust panel */}
-          <div style={{
-            width: isMobile ? '100%' : '44%',
+          <div className="pp-left" style={{
+            width: isMobile ? '100%' : '46%',
             minWidth: 0,
             boxSizing: 'border-box',
-            background: `linear-gradient(160deg, ${NAVY} 0%, #142c4d 100%)`,
+            background: 'radial-gradient(120% 90% at 100% 0%, #1F4E8C 0%, #132B52 35%, #0B1E3D 70%, #081629 100%)',
+            borderRight: isMobile ? 'none' : `2px solid ${GOLD}`,
+            boxShadow: isMobile ? 'none' : 'inset -30px 0 60px rgba(0,0,0,.25)',
+            borderBottom: isMobile ? `2px solid ${GOLD}` : 'none',
             position: 'relative',
             overflow: 'hidden',
-            padding: isMobile ? '40px 24px 28px' : '56px 48px',
+            padding: isMobile ? '4px 24px 18px' : '48px 48px',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: isMobile ? 'flex-start' : 'space-between',
@@ -1455,27 +1506,35 @@ export default function ParentsPortal({ isOpen, onClose }) {
             <div style={{ position: 'absolute', bottom: -160, left: -100, width: 380, height: 380, borderRadius: '50%', background: 'rgba(216,182,92,0.06)' }} />
 
             <div style={{ position: 'relative' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <img
-                  src={EMBLEM_URL}
-                  alt="GNSI"
-                  style={{ height: isMobile ? 48 : 56, width: isMobile ? 48 : 56, objectFit: 'contain', flexShrink: 0, filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.3))' }}
-                  onError={(e) => { e.target.style.display = 'none'; }}
-                />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ color: '#fff', fontSize: 18, fontWeight: 800, letterSpacing: '.01em' }}>GNSI</div>
-                  <div style={{ color: '#93a5c2', fontSize: 11.5, fontWeight: 600, letterSpacing: '.04em' }}>PARENTS PORTAL</div>
-                </div>
-              </div>
-
               {!isMobile && (
                 <>
-                  <h1 style={{ color: '#fff', fontSize: 30, fontWeight: 800, lineHeight: 1.25, margin: '40px 0 12px', maxWidth: 380 }}>
-                    Stay close to your child's journey at GNSI.
+                  <div className="pp-left-in">
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 0, padding: '6px 12px', borderRadius: 999, border: '1px solid rgba(226,197,126,.35)', background: 'rgba(226,197,126,.08)', color: '#E2C57E', fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em' }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ADE80', boxShadow: '0 0 0 3px rgba(74,222,128,.2)' }} /> OFFICIAL · SECURE ACCESS
+                  </div>
+                  <h1 className="pp-serif" style={{ color: '#fff', fontSize: 42, fontWeight: 600, lineHeight: 1.15, margin: '18px 0 14px', maxWidth: 460 }}>
+                    Stay close to your child's <span style={{ color: '#E2C57E', fontStyle: 'italic' }}>journey</span> at GNSI.
                   </h1>
-                  <p style={{ color: '#b7c3d9', fontSize: 14.5, lineHeight: 1.6, maxWidth: 360, margin: 0 }}>
+                  <p style={{ color: '#b7c3d9', fontSize: 15, lineHeight: 1.7, maxWidth: 400, margin: '0 0 26px' }}>
                     Track attendance, exam scores, hostel leave, fee dues and school updates — all from one secure portal.
                   </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, maxWidth: 460 }}>
+                    {[
+                      ['📊', 'Live attendance', 'Daily, as marked'],
+                      ['📝', 'Exam scores', 'Marks & report cards'],
+                      ['💳', 'Fee dues', 'Balance & receipts'],
+                      ['🏨', 'Hostel leave', 'Apply & track'],
+                    ].map(([ic, t, d]) => (
+                      <div className="pp-feat" key={t}>
+                        <div className="pp-feat-ic">{ic}</div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>{t}</div>
+                          <div style={{ color: '#93a5c2', fontSize: 11.5, marginTop: 2 }}>{d}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  </div>
                 </>
               )}
             </div>
@@ -1483,15 +1542,15 @@ export default function ParentsPortal({ isOpen, onClose }) {
             <div style={{ position: 'relative', marginTop: isMobile ? 20 : 0 }}>
               <div style={{ display: 'flex', gap: isMobile ? 20 : 28, paddingTop: isMobile ? 18 : 24, borderTop: '1px solid rgba(255,255,255,0.12)' }}>
                 <div>
-                  <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 800, color: '#fff', lineHeight: 1 }}>10<span style={{ fontSize: 15 }}>+</span></div>
+                  <div style={{ fontSize: isMobile ? 24 : 32, fontWeight: 700, color: '#E2C57E', lineHeight: 1, fontFamily: "'Playfair Display', Georgia, serif" }}>10<span style={{ fontSize: 15 }}>+</span></div>
                   <div style={{ fontSize: 10.5, color: '#cbd5e1', marginTop: 4, fontWeight: 600, letterSpacing: '.03em', textTransform: 'uppercase' }}>Years</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 800, color: '#fff', lineHeight: 1 }}>66</div>
+                  <div style={{ fontSize: isMobile ? 24 : 32, fontWeight: 700, color: '#E2C57E', lineHeight: 1, fontFamily: "'Playfair Display', Georgia, serif" }}>66</div>
                   <div style={{ fontSize: 10.5, color: '#cbd5e1', marginTop: 4, fontWeight: 600, letterSpacing: '.03em', textTransform: 'uppercase' }}>Selected '25–26</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 800, color: '#fff', lineHeight: 1 }}>4.9<span style={{ fontSize: 13 }}>★</span></div>
+                  <div style={{ fontSize: isMobile ? 24 : 32, fontWeight: 700, color: '#E2C57E', lineHeight: 1, fontFamily: "'Playfair Display', Georgia, serif" }}>4.9<span style={{ fontSize: 13 }}>★</span></div>
                   <div style={{ fontSize: 10.5, color: '#cbd5e1', marginTop: 4, fontWeight: 600, letterSpacing: '.03em', textTransform: 'uppercase' }}>Rating</div>
                 </div>
               </div>
@@ -1502,13 +1561,19 @@ export default function ParentsPortal({ isOpen, onClose }) {
           </div>
 
           {/* RIGHT / BOTTOM — form */}
-          <div style={{ flex: '1 1 auto', minWidth: 0, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? '28px 20px 32px' : '40px' }}>
-            <div style={{ width: '100%', maxWidth: 380 }}>
+          <div style={{ flex: '1 1 auto', minWidth: 0, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? '22px 16px 32px' : '40px', background: '#F4F1EA' }}>
+            <div className="pp-card" style={{ width: '100%', maxWidth: 440, background: '#fff', borderRadius: 14, padding: isMobile ? '26px 20px' : '36px 34px', border: '1px solid rgba(11,30,61,0.07)', boxShadow: '0 1px 2px rgba(11,30,61,0.05), 0 24px 60px rgba(11,30,61,0.12)', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 4, background: `linear-gradient(90deg, ${GOLD}, ${GOLDL}, ${GOLD})` }} />
 
+              {/* formal title bar */}
+              <div style={{ margin: isMobile ? '-26px -20px 22px' : '-36px -34px 26px', padding: '14px 20px', background: 'linear-gradient(90deg,#0B1E3D,#132B52)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase' }}>🔐 Parent Login</span>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: '#E2C57E', letterSpacing: '.08em' }}>SECURE · VERIFIED</span>
+              </div>
               {/* step indicator */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 22, height: 22, borderRadius: '50%', backgroundColor: NAVY, color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>1</div>
+                  <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(180deg,#D9B566,#C9A24B)', color: NAVY, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>1</div>
                   <span style={{ fontSize: 12.5, fontWeight: 700, color: NAVY }}>Verify ID</span>
                 </div>
                 <div style={{ flex: 1, height: 2, backgroundColor: '#e2e8f0', borderRadius: 2 }} />
@@ -1518,8 +1583,13 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 </div>
               </div>
 
-              <h2 style={{ fontSize: 21, fontWeight: 800, color: NAVY, margin: '0 0 6px' }}>Welcome back</h2>
-              <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 22px' }}>Sign in with your GCC No. and registered student name.</p>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
+                <div style={{ height: 58, width: 58, borderRadius: 18, background: 'linear-gradient(150deg,#16335F,#0B1E3D)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 12px 26px rgba(11,30,61,.25), inset 0 0 0 1px rgba(226,197,126,.35)` }}>
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#E2C57E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11"/><circle cx="12" cy="16" r="1.3" fill="#E2C57E"/></svg>
+                </div>
+              </div>
+              <h2 className="pp-serif" style={{ fontSize: 30, fontWeight: 700, color: NAVY, margin: '0 0 6px', textAlign: 'center' }}>Welcome back</h2>
+              <p style={{ fontSize: 13.5, color: '#64748b', margin: '0 0 24px', textAlign: 'center' }}>Sign in with your GCC No. and registered student name.</p>
 
               {loginError && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 16, borderRadius: 10, border: '1px solid #fecaca', backgroundColor: '#fef2f2', padding: '11px 14px' }}>
@@ -1535,10 +1605,10 @@ export default function ParentsPortal({ isOpen, onClose }) {
               <input
                 type="text"
                 style={{
-                  width: '100%', borderRadius: isMobile ? 16 : 10,
-                  border: isMobile ? 'none' : '1.5px solid #dbe2ea',
-                  backgroundColor: isMobile ? '#eef1f7' : '#fff',
-                  padding: isMobile ? '14px 16px' : '12px 14px',
+                  width: '100%', borderRadius: 12,
+                  border: '1.5px solid #E5DECB',
+                  backgroundColor: '#FBFAF7',
+                  padding: '14px 16px',
                   color: '#1e293b', outline: 'none', marginBottom: 16, fontSize: 14, boxSizing: 'border-box',
                 }}
                 placeholder="e.g. 1107"
@@ -1549,10 +1619,10 @@ export default function ParentsPortal({ isOpen, onClose }) {
               <input
                 type="text"
                 style={{
-                  width: '100%', borderRadius: isMobile ? 16 : 10,
-                  border: isMobile ? 'none' : '1.5px solid #dbe2ea',
-                  backgroundColor: isMobile ? '#eef1f7' : '#fff',
-                  padding: isMobile ? '14px 16px' : '12px 14px',
+                  width: '100%', borderRadius: 12,
+                  border: '1.5px solid #E5DECB',
+                  backgroundColor: '#FBFAF7',
+                  padding: '14px 16px',
                   color: '#1e293b', outline: 'none', marginBottom: 16, fontSize: 14, boxSizing: 'border-box',
                 }}
                 placeholder="Full name as registered"
@@ -1579,16 +1649,21 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
               <button
                 style={{
-                  width: '100%', borderRadius: isMobile ? 999 : 10, backgroundColor: NAVY, color: 'white', fontWeight: 700,
-                  padding: isMobile ? '15px 0' : '13px 0', border: `1px solid ${NAVY}`, cursor: loginBusy ? 'not-allowed' : 'pointer',
-                  fontSize: 14, opacity: loginBusy ? 0.6 : 1,
-                  boxShadow: isMobile ? '0 3px 8px rgba(30,58,95,0.3)' : '0 6px 16px rgba(30,58,95,0.3)',
+                  width: '100%', borderRadius: 12, background: 'linear-gradient(180deg,#D9B566,#C9A24B 55%,#B8913F)', color: NAVY, fontWeight: 800,
+                  padding: '15px 0', border: '1px solid #E2C57E', cursor: loginBusy ? 'not-allowed' : 'pointer',
+                  fontSize: 15, opacity: loginBusy ? 0.6 : 1, letterSpacing: '.01em',
+                  boxShadow: '0 12px 28px rgba(201,162,75,0.35), inset 0 1px 0 rgba(255,255,255,0.4)',
                 }}
+                className="pp-btn"
                 disabled={loginBusy}
                 onClick={handleLogin}
               >
                 {loginBusy ? 'Checking…' : 'Sign In to Portal →'}
               </button>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12, fontSize: 11.5, color: '#94a3b8', fontWeight: 600 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1E7A4C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                Private to your family · Verified by GNSI office
+              </div>
 
               <p style={{ textAlign: 'center', fontSize: 12, color: '#64748b', marginTop: 18, marginBottom: 0 }}>
                 Contact institute if you need help:{" "}
@@ -1615,6 +1690,14 @@ export default function ParentsPortal({ isOpen, onClose }) {
             </div>
           </div>
         </div>
+          {/* Official footer strip */}
+          <div style={{ background: '#081629', color: '#94a3b8', fontSize: 11, borderTop: '3px solid #C9A24B', flexShrink: 0 }}>
+            <div style={{ maxWidth: 1200, margin: '0 auto', padding: isMobile ? '12px 12px 16px' : '12px 24px', display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <span>© {new Date().getFullYear()} Guidance Navodaya &amp; Sainik Institute, Khangabok · Private coaching institute — not a government body</span>
+              <span>Content managed by GNSI office · Best viewed on Chrome / Safari</span>
+            </div>
+          </div>
+        </div>
       ) : (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: BG }} id="ppShell">
           {showInstallBanner && (
@@ -1626,12 +1709,14 @@ export default function ParentsPortal({ isOpen, onClose }) {
               </div>
             </div>
           )}
-          <div style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: isMobile ? 8 : 16, borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: isMobile ? '10px 12px' : '12px 20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, minWidth: 0 }}>
-              <img src={EMBLEM_URL} alt="GNSI" style={{ height: isMobile ? 30 : 36, width: isMobile ? 30 : 36, objectFit: 'contain', flexShrink: 0 }} onError={(e) => { e.target.style.display = "none"; }} />
+          <div style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: isMobile ? 8 : 16, borderBottom: `2px solid ${GOLD}`, background: 'linear-gradient(90deg,#0B1E3D 0%,#132B52 100%)', padding: isMobile ? '10px 12px' : '12px 24px', boxShadow: '0 6px 20px rgba(11,30,61,0.18)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 12, minWidth: 0 }}>
+              <div style={{ height: isMobile ? 36 : 42, width: isMobile ? 36 : 42, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, flexShrink: 0, boxShadow: `0 0 0 2px ${GOLDL}` }}>
+                <img src={EMBLEM_URL} alt="GNSI" style={{ height: '100%', width: '100%', objectFit: 'contain' }} onError={(e) => { e.target.style.display = "none"; }} />
+              </div>
               <div style={{ minWidth: 0 }}>
-                <h3 style={{ fontSize: isMobile ? 13 : 14, fontWeight: 800, color: NAVY, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name || 'Student'}</h3>
-                {!isMobile && <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>GNSI Parents Portal</p>}
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.16em', color: GOLDL, textTransform: 'uppercase' }}>GNSI Parents Portal</div>
+                <h3 style={{ fontSize: isMobile ? 14 : 16, fontWeight: 700, color: '#fff', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'Georgia, "Times New Roman", serif' }}>{student.name || 'Student'}</h3>
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, flexShrink: 0 }}>
@@ -1639,9 +1724,9 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 <select
                   style={{
                     borderRadius: isMobile ? 999 : 8,
-                    border: isMobile ? 'none' : '1px solid #cbd5e1',
-                    backgroundColor: isMobile ? '#eef1f7' : '#f8fafc',
-                    color: '#1e293b', fontSize: isMobile ? 11 : 12, padding: isMobile ? '7px 10px' : '7px 10px', outline: 'none', maxWidth: isMobile ? 90 : 'none',
+                    border: '1px solid rgba(255,255,255,0.25)',
+                    backgroundColor: 'rgba(255,255,255,0.08)',
+                    color: '#fff', fontSize: isMobile ? 11 : 12, padding: isMobile ? '7px 10px' : '7px 10px', outline: 'none', maxWidth: isMobile ? 90 : 'none',
                   }}
                   value={student.id}
                   onChange={(e) => {
@@ -1657,10 +1742,10 @@ export default function ParentsPortal({ isOpen, onClose }) {
               <button
                 style={{
                   borderRadius: isMobile ? 999 : 8,
-                  border: isMobile ? 'none' : '1px solid #e2e8f0',
-                  color: isMobile ? NAVY : '#64748b',
-                  backgroundColor: isMobile ? '#eef1f7' : 'white',
-                  padding: isMobile ? '8px 10px' : '8px 12px', fontSize: isMobile ? 13 : 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                  border: '1px solid rgba(226,197,126,0.5)',
+                  color: '#E2C57E',
+                  backgroundColor: 'rgba(255,255,255,0.06)',
+                  padding: isMobile ? '8px 12px' : '8px 16px', fontSize: isMobile ? 13 : 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
                 }}
                 onClick={() => { handleLogout(); onClose(); }}
               >
@@ -1669,74 +1754,45 @@ export default function ParentsPortal({ isOpen, onClose }) {
             </div>
           </div>
           {!isMobile && (
-            <div style={{ position: 'sticky', top: 60, zIndex: 20, borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: '10px 16px' }}>
-              <div style={{ position: 'relative', maxWidth: 960, margin: '0 auto' }}>
-                <button
-                  onClick={() => setNavMenuOpen(o => !o)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10, borderRadius: 10,
-                    border: '1px solid #e2e8f0', padding: '9px 14px', fontSize: 13, fontWeight: 700,
-                    backgroundColor: navMenuOpen ? '#eef2f9' : 'white', color: NAVY, cursor: 'pointer',
-                  }}
-                  aria-expanded={navMenuOpen}
-                  aria-haspopup="true"
-                >
-                  <span style={{ fontSize: 16, lineHeight: 1 }}>☰</span>
-                  <span>{TABS.find(t => t.id === activeTab)?.label || 'Menu'}</span>
-                  <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 2 }}>{navMenuOpen ? '▲' : '▼'}</span>
-                </button>
-
-                {navMenuOpen && (
-                  <>
-                    {/* Click-outside scrim — transparent, just for dismissal */}
-                    <div
-                      style={{ position: 'fixed', inset: 0, zIndex: 19 }}
-                      onClick={() => setNavMenuOpen(false)}
-                    />
-                    <div
+            <div style={{ position: 'sticky', top: 68, zIndex: 19, backgroundColor: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(8px)', borderBottom: '1px solid #EAE3D2', boxShadow: '0 4px 14px rgba(11,30,61,0.05)' }}>
+              <div className="no-scrollbar" style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6, padding: '10px 16px' }}>
+                {TABS.map(t => {
+                  const on = activeTab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => handleTabClick(t.id)}
                       style={{
-                        position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 21,
-                        minWidth: 220, backgroundColor: 'white', borderRadius: 12, border: '1px solid #e2e8f0',
-                        boxShadow: '0 8px 24px rgba(15,23,42,0.12)', padding: 6,
+                        flexShrink: 0, borderRadius: 999, padding: '8px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                        border: on ? `1px solid ${NAVY}` : '1px solid transparent',
+                        backgroundColor: on ? NAVY : 'transparent',
+                        color: on ? '#E2C57E' : '#334155',
+                        boxShadow: on ? '0 6px 16px rgba(11,30,61,0.2)' : 'none',
+                        transition: 'background .15s, color .15s',
                       }}
                     >
-                      {TABS.map(t => (
-                        <button
-                          key={t.id}
-                          onClick={() => handleTabClick(t.id)}
-                          style={{
-                            width: '100%', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
-                            borderRadius: 8, border: 'none', padding: '10px 12px', fontSize: 13, fontWeight: 700,
-                            backgroundColor: activeTab === t.id ? NAVY : 'transparent',
-                            color: activeTab === t.id ? 'white' : '#334155', cursor: 'pointer',
-                          }}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
+                      {t.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
-          <div style={{ flex: 1, position: 'relative', zIndex: 1, padding: isMobile ? '14px 10px' : '28px 16px', paddingBottom: isMobile ? 78 : 20, maxWidth: 960, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
-            <div style={isMobile ? {
-              display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap',
-              gap: 12, borderRadius: 24, backgroundColor: 'white', boxShadow: '0 1px 3px rgba(30,58,95,0.10), 0 1px 2px rgba(30,58,95,0.06)',
-              padding: 16, marginBottom: 14,
-            } : {
-              display: 'flex', alignItems: 'center', flexWrap: 'nowrap',
-              gap: 16, borderRadius: 12, backgroundColor: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-              padding: 16, marginBottom: 20, borderLeft: `4px solid ${NAVY}`,
+          <div style={{ flex: 1, position: 'relative', zIndex: 1, padding: isMobile ? '14px 10px' : '28px 16px', paddingBottom: isMobile ? 84 : 32, maxWidth: 1100, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+            <div style={{
+              display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', flexWrap: isMobile ? 'wrap' : 'nowrap',
+              gap: isMobile ? 12 : 18, borderRadius: 20, backgroundColor: 'white',
+              border: '1px solid rgba(11,30,61,0.07)', boxShadow: '0 1px 2px rgba(11,30,61,0.05), 0 12px 32px rgba(11,30,61,0.07)',
+              padding: isMobile ? '16px 16px 16px 20px' : '18px 22px 18px 26px', marginBottom: isMobile ? 14 : 20, position: 'relative', overflow: 'hidden',
             }}>
-              <div style={{ height: isMobile ? 46 : 56, width: isMobile ? 46 : 56, flexShrink: 0, borderRadius: '50%', backgroundColor: '#eef2f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 15 : 18, fontWeight: 800, color: NAVY, overflow: 'hidden', border: isMobile ? 'none' : `2px solid ${NAVY}` }}>
+              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5, background: `linear-gradient(180deg, ${GOLDL}, ${GOLD})` }} />
+              <div style={{ height: isMobile ? 52 : 64, width: isMobile ? 52 : 64, flexShrink: 0, borderRadius: '50%', background: 'linear-gradient(150deg,#16335F,#0B1E3D)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 18 : 22, fontWeight: 700, color: '#E2C57E', overflow: 'hidden', boxShadow: `0 0 0 3px #fff, 0 0 0 5px ${GOLDL}`, fontFamily: 'Georgia, serif' }}>
                 {student.photo_url
                   ? <img src={student.photo_url} alt="" style={{ height: '100%', width: '100%', objectFit: 'cover', borderRadius: '50%' }} />
                   : ((student.name || 'S')[0] || 'S').toUpperCase()}
               </div>
               <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                <h3 style={{ fontSize: isMobile ? 14 : 16, fontWeight: 800, color: '#1e293b', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name || 'Student'}</h3>
+                <h3 style={{ fontSize: isMobile ? 15.5 : 19, fontWeight: 700, color: NAVY, fontFamily: 'Georgia, "Times New Roman", serif', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name || 'Student'}</h3>
                 <p style={{ fontSize: isMobile ? 11 : 12, color: '#64748b', margin: '2px 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[student.course, student.class_name, student.batch].filter(Boolean).join(' · ')}</p>
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                   <span style={{ borderRadius: 999, backgroundColor: isMobile ? '#eef1f7' : '#f1f5f9', border: isMobile ? 'none' : '1px solid #e2e8f0', padding: '3px 10px', fontSize: 10, fontWeight: 700, color: '#64748b' }}>{student.hostel_type || '—'}</span>
@@ -1747,8 +1803,9 @@ export default function ParentsPortal({ isOpen, onClose }) {
                 style={{
                   flexShrink: 0,
                   borderRadius: isMobile ? 999 : 10,
-                  border: isMobile ? 'none' : `1px solid ${NAVY}`,
-                  backgroundColor: '#eef2f9', color: NAVY,
+                  border: `1px solid ${GOLD}`,
+                  background: 'linear-gradient(180deg,#D9B566,#C9A24B)', color: NAVY,
+                  boxShadow: '0 8px 20px rgba(201,162,75,0.3)',
                   padding: isMobile ? '11px 14px' : '10px 14px', fontSize: isMobile ? 12 : 12, fontWeight: 700,
                   cursor: exportBusy ? 'not-allowed' : 'pointer', opacity: exportBusy ? 0.6 : 1,
                   width: isMobile ? '100%' : 'auto', textAlign: 'center',
@@ -1922,8 +1979,8 @@ export default function ParentsPortal({ isOpen, onClose }) {
 // Paytm-style palette: deep blue primary + cyan accent, replacing the
 // previous plain navy. NAVY is kept as the variable name (read everywhere
 // in this file) so this is a value swap, not a rename across 2000+ lines.
-const NAVY = '#00295B';
-const CYAN = '#00BAF2';
+const NAVY = '#0B1E3D';
+const CYAN = '#C9A24B'; // accent (gold) — premium navy & gold theme
 
 // ── Material Design 3 tokens (mobile only) ───────────────────────────────
 // NAVY stays the M3 "primary" so the brand colour doesn't change — only the
@@ -1937,14 +1994,14 @@ const M3 = {
   radiusFull: 999,   // chips
   primary: NAVY,
   accent: CYAN,
-  primaryContainer: '#dceefc',   // tonal fill behind primary content
+  primaryContainer: '#F3EEE1',   // tonal fill behind primary content
   onPrimaryContainer: NAVY,
   surface: '#ffffff',
-  surfaceContainer: '#f2f7fc',   // low-emphasis tonal surface (M3 "surface container")
-  outline: '#dbe7f2',
+  surfaceContainer: '#FAF7F0',   // low-emphasis tonal surface (M3 "surface container")
+  outline: '#EAE3D2',
   // M3 elevation is a soft, colour-tinted shadow rather than a hard drop
   // shadow — level 1 (resting cards) and level 3 (sheets/menus over content).
-  elevation1: '0 1px 3px rgba(0,41,91,0.10), 0 1px 2px rgba(0,41,91,0.06)',
+  elevation1: '0 1px 2px rgba(11,30,61,0.06), 0 8px 24px rgba(11,30,61,0.07)',
   elevation3: '0 4px 12px rgba(0,41,91,0.14), 0 2px 6px rgba(0,41,91,0.08)',
 };
 
@@ -1974,24 +2031,26 @@ function Card({ title, right, children }) {
   const isMobile = useWindowWidth() < 640;
   return (
     <div style={{
-      borderRadius: isMobile ? M3.radiusLg : 12,
-      border: isMobile ? 'none' : '1px solid #e2e8f0',
-      backgroundColor: isMobile ? M3.surface : 'white',
-      boxShadow: isMobile ? M3.elevation1 : '0 2px 8px rgba(0,0,0,0.06)',
+      borderRadius: isMobile ? M3.radiusLg : 18,
+      border: '1px solid rgba(11,30,61,0.07)',
+      backgroundColor: 'white',
+      boxShadow: '0 1px 2px rgba(11,30,61,0.05), 0 12px 32px rgba(11,30,61,0.07)',
       overflow: 'hidden', marginBottom: isMobile ? 12 : 16,
     }}>
       {title && (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
-          borderBottom: isMobile ? 'none' : '1px solid #e2e8f0',
-          backgroundColor: isMobile ? M3.surfaceContainer : 'transparent',
-          padding: isMobile ? '14px 16px' : '14px 18px',
+          borderBottom: '1px solid #F0EADC',
+          background: 'linear-gradient(180deg,#FFFFFF,#FBF8F1)',
+          padding: isMobile ? '14px 16px' : '16px 20px',
         }}>
-          <div style={{ fontSize: isMobile ? 14 : 14, fontWeight: 700, letterSpacing: isMobile ? 0 : undefined, color: NAVY }}>{title}</div>
+          <div style={{ fontSize: isMobile ? 14.5 : 15.5, fontWeight: 700, color: NAVY, fontFamily: 'Georgia, "Times New Roman", serif', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 4, height: 16, borderRadius: 4, background: CYAN, display: 'inline-block' }} />{title}
+          </div>
           {right}
         </div>
       )}
-      <div style={{ padding: isMobile ? 16 : 18 }}>{children}</div>
+      <div style={{ padding: isMobile ? 16 : 20 }}>{children}</div>
     </div>
   );
 }
@@ -2175,21 +2234,27 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
           matters most (fee balance) front and center, quick attendance
           chip alongside it. */}
       <div style={{
-        borderRadius: isMobile ? M3.radiusLg : 16,
-        background: `linear-gradient(135deg, ${NAVY} 0%, #003b7a 55%, ${CYAN} 130%)`,
-        padding: isMobile ? '20px 18px' : '24px 26px',
-        marginBottom: isMobile ? 14 : 18,
-        color: 'white',
-        boxShadow: '0 8px 24px rgba(0,41,91,0.25)',
+        borderRadius: isMobile ? 22 : 22,
+        background: 'radial-gradient(120% 140% at 100% 0%, #1F4E8C 0%, #132B52 38%, #0B1E3D 75%)',
+        padding: isMobile ? '22px 18px' : '28px 30px',
+        marginBottom: isMobile ? 14 : 20,
+        color: 'white', position: 'relative', overflow: 'hidden',
+        boxShadow: '0 20px 48px rgba(11,30,61,0.28), inset 0 0 0 1px rgba(226,197,126,0.22)',
       }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', opacity: 0.75 }}>
+        <div style={{ position: 'absolute', right: -70, top: -70, width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(226,197,126,0.22), transparent 70%)' }} />
+        <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
+        <div style={{ position: 'relative', fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#E2C57E' }}>
           {student?.name || 'Student'}
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 6 }}>
           <div>
-            <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 600 }}>{hasFeeData ? 'Fee balance' : 'Fee balance'}</div>
-            <div style={{ fontSize: isMobile ? 30 : 34, fontWeight: 900, lineHeight: 1.15 }}>
-              {hasFeeData ? `₹${feeBalance}` : '—'}
+            <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 600 }}>Fee balance</div>
+            <div style={{ fontSize: isMobile ? 32 : 40, fontWeight: 700, lineHeight: 1.15, fontFamily: 'Georgia, "Times New Roman", serif' }}>
+              {hasFeeData
+                ? `₹${Number(feeBalance).toLocaleString('en-IN')}`
+                : fees.status === 'error'
+                  ? <button onClick={() => onGoTab('fees')} style={{ background: 'none', border: 'none', padding: 0, color: '#E2C57E', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>View fee details →</button>
+                  : <span style={{ fontSize: 15, fontWeight: 600, opacity: 0.75, fontFamily: 'inherit' }}>Loading…</span>}
             </div>
             {hasFeeData && (
               <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2, color: feeIsDue ? '#fecaca' : '#bbf7d0' }}>
@@ -2198,10 +2263,10 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
             )}
           </div>
           <div style={{
-            borderRadius: isMobile ? M3.radiusMd : 12, backgroundColor: 'rgba(255,255,255,0.14)',
-            padding: '10px 14px', textAlign: 'center', minWidth: 78,
+            borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(226,197,126,0.35)',
+            padding: '12px 16px', textAlign: 'center', minWidth: 90, position: 'relative',
           }}>
-            <div style={{ fontSize: 20, fontWeight: 900 }}>{attPct !== null ? `${attPct}%` : '—'}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: '#E2C57E', fontFamily: 'Georgia, serif' }}>{attPct !== null ? `${attPct}%` : '—'}</div>
             <div style={{ fontSize: 10, opacity: 0.85, fontWeight: 600 }}>Attendance</div>
           </div>
         </div>
@@ -2209,8 +2274,8 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
           <button
             onClick={() => onGoTab('fees')}
             style={{
-              marginTop: 14, borderRadius: 999, border: 'none', backgroundColor: CYAN, color: NAVY,
-              fontWeight: 800, padding: '9px 18px', fontSize: 13, cursor: 'pointer',
+              marginTop: 16, borderRadius: 999, border: '1px solid #E2C57E', background: 'linear-gradient(180deg,#D9B566,#C9A24B)', color: NAVY,
+              fontWeight: 800, padding: '10px 22px', fontSize: 13, cursor: 'pointer', position: 'relative', boxShadow: '0 8px 20px rgba(201,162,75,0.35)',
             }}
           >
             Pay Now →
@@ -2255,23 +2320,24 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
           section is one tap away from home, not just the 6 that used to
           get a tile. */}
       <div style={{
-        display: 'grid', gridTemplateColumns: `repeat(${isMobile ? 4 : 5}, 1fr)`,
-        gap: isMobile ? 10 : 14, marginBottom: 16,
+        display: 'grid', gridTemplateColumns: `repeat(${isMobile ? 3 : 6}, minmax(0, 1fr))`,
+        gap: isMobile ? 10 : 14, marginBottom: 18,
       }}>
         {HOME_TILES.map(t => (
           <button
             key={t.id}
             onClick={() => onGoTab(t.id)}
             style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-              border: 'none', background: 'none', cursor: 'pointer', padding: isMobile ? '6px 2px' : '8px 4px',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+              border: '1px solid rgba(11,30,61,0.07)', background: '#fff', cursor: 'pointer',
+              padding: isMobile ? '12px 4px 10px' : '16px 6px 14px', borderRadius: isMobile ? 16 : 18,
+              boxShadow: '0 1px 2px rgba(11,30,61,0.04), 0 6px 18px rgba(11,30,61,0.06)', minWidth: 0,
             }}
           >
             <div style={{
-              height: isMobile ? 48 : 56, width: isMobile ? 48 : 56, borderRadius: isMobile ? M3.radiusMd : 16,
+              height: isMobile ? 42 : 50, width: isMobile ? 42 : 50, borderRadius: isMobile ? 12 : 14,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: isMobile ? 22 : 26, backgroundColor: `${t.color}17`,
-              boxShadow: isMobile ? M3.elevation1 : '0 1px 4px rgba(0,0,0,0.05)',
+              fontSize: isMobile ? 20 : 24, backgroundColor: `${t.color}14`, border: `1px solid ${t.color}33`,
             }}>
               {t.icon}
             </div>
