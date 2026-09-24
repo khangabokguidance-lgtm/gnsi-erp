@@ -1339,7 +1339,91 @@ const SEV = {
 }
 const SEV_ORDER = ["critical","high","medium","low"]
 
-export function SecurityCenter() {
+// Where to jump for issues that need a human decision (module keys from App).
+const HC_ROUTE = {
+  dup_gcc:"students", no_gcc:"students", boarder_no_house:"hostel", staff_link:"staff",
+  face_pending:"faceattendance", gp_overdue:"reception", vis_open:"reception", pi_stale:"hostel",
+  pi_link:"reception", vis_link:"reception", enq_old:"admissions", ranker_session:"website",
+  fac_photo:"website", notice_old:"notice",
+}
+
+// Inline "fix it here" tools for findings that have no one-click server fix.
+function InlineFix({ f, onDone, log }) {
+  const [busy, setBusy] = useState(false)
+  const [pw, setPw] = useState({ cur:"", n1:"", n2:"" })
+  const [msg, setMsg] = useState(null)
+  const box = {background:"#fff",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 12px",marginTop:8}
+  const btn = (bg) => ({padding:"8px 14px",borderRadius:999,border:"none",background:bg,color:"#fff",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit",opacity:busy?.6:1})
+  const inp = {padding:"8px 10px",borderRadius:8,border:`1px solid ${T.border}`,fontSize:12.5,fontFamily:"inherit",flex:"1 1 150px",minWidth:0}
+
+  if (f.id === "admin_default_pw" || f.id === "env_admin_pw") {
+    const save = async () => {
+      setMsg(null)
+      if (pw.n1.length < 8) return setMsg({ok:false,t:"New password must be at least 8 characters."})
+      if (pw.n1 !== pw.n2) return setMsg({ok:false,t:"New passwords do not match."})
+      setBusy(true)
+      const { error } = await supabase.rpc("admin_change_password", { p_current: pw.cur, p_new: pw.n1 })
+      setBusy(false)
+      if (error) return setMsg({ok:false,t:error.message})
+      setPw({cur:"",n1:"",n2:""}); setMsg({ok:true,t:"Admin password changed. The default password no longer works."})
+      log(f, "Admin password changed", true); onDone()
+    }
+    return (
+      <div style={box}>
+        <div style={{fontWeight:800,color:T.ink,marginBottom:8,fontSize:12.5}}>🔑 Change admin password here</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <input type="password" placeholder="Current password" value={pw.cur} onChange={e=>setPw({...pw,cur:e.target.value})} style={inp}/>
+          <input type="password" placeholder="New (min 8)" value={pw.n1} onChange={e=>setPw({...pw,n1:e.target.value})} style={inp}/>
+          <input type="password" placeholder="Repeat new" value={pw.n2} onChange={e=>setPw({...pw,n2:e.target.value})} style={inp}/>
+          <button onClick={save} disabled={busy} style={btn("#0f7a52")}>{busy?"Saving…":"Save"}</button>
+        </div>
+        {f.id === "env_admin_pw" && <div style={{fontSize:11.5,color:T.inkSub,marginTop:6}}>Afterwards also delete VITE_ADMIN_PASSWORD from .env / hosting and redeploy — that part can only be done there.</div>}
+        {msg && <div style={{fontSize:12,marginTop:6,color:msg.ok?T.emerald:T.rose,fontWeight:700}}>{msg.t}</div>}
+      </div>
+    )
+  }
+
+  if (f.id === "face_pending") {
+    const decide = async (status) => {
+      if (!window.confirm(`${status === "approved" ? "Approve" : "Reject"} ALL pending face enrollments?`)) return
+      setBusy(true); setMsg(null)
+      const { data: rows, error: e1 } = await supabase.from("staff_face_descriptors").select("id").eq("status","pending")
+      const ids = (rows || []).map(r => r.id)
+      const { error } = e1 ? { error: e1 } : await supabase.rpc("review_face_enrollments", { p_ids: ids, p_status: status })
+      setBusy(false)
+      const t = error ? error.message : `${ids.length} enrollment(s) ${status}.`
+      setMsg({ok:!error,t}); log(f, t, !error); if (!error) onDone()
+    }
+    return (
+      <div style={{...box,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{flex:"1 1 200px",fontSize:12.5}}>Review in bulk from here (check photos in Face Attendance first if unsure).</span>
+        <button onClick={()=>decide("approved")} disabled={busy} style={btn("#0f7a52")}>✓ Approve all</button>
+        <button onClick={()=>decide("rejected")} disabled={busy} style={btn("#b3273f")}>✗ Reject all</button>
+        {msg && <div style={{width:"100%",fontSize:12,color:msg.ok?T.emerald:T.rose,fontWeight:700}}>{msg.t}</div>}
+      </div>
+    )
+  }
+
+  if (f.id === "no_session") {
+    return (
+      <div style={{...box,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+        <span style={{flex:"1 1 200px",fontSize:12.5}}>Sign out, then log in again to switch to secure login.</span>
+        <button onClick={async()=>{ try{ await supabase.auth.signOut() }catch(_){} ; try{ localStorage.clear(); sessionStorage.clear() }catch(_){} ; location.reload() }} style={btn(T.navy)}>↻ Sign out now</button>
+      </div>
+    )
+  }
+
+  if (f.id === "no_https" && typeof location !== "undefined") {
+    return (
+      <div style={{...box}}>
+        <button onClick={()=>{ location.href = "https://" + location.host + location.pathname + location.search }} style={btn(T.navy)}>🔒 Reopen with HTTPS</button>
+      </div>
+    )
+  }
+  return null
+}
+
+export function SecurityCenter({ onNavigate } = {}) {
   const [state, setState] = useState({ status: "loading", findings: [], checkedAt: null, error: null })
   const [open, setOpen] = useState({})
   const [filter, setFilter] = useState("all")
@@ -1393,6 +1477,7 @@ export function SecurityCenter() {
     setFixing(null)
     return !error
   }
+  const logLine = (f, msg, ok) => setLog(l => [{ id: f.id, title: f.title, msg, ok, at: new Date() }, ...l].slice(0, 20))
   const fixAll = async () => {
     const list = state.findings.filter(f => f.fixable)
     if (!list.length) return
@@ -1534,7 +1619,14 @@ export function SecurityCenter() {
                               {fixing===f.id ? "Fixing…" : `🔧 ${f.fix_label || "Fix now"}`}
                             </button>
                           )}
+                          {!f.fixable && HC_ROUTE[f.id] && onNavigate && (
+                            <button onClick={() => onNavigate(HC_ROUTE[f.id])}
+                              style={{padding:"8px 14px",borderRadius:999,border:`1px solid ${T.navy}`,background:"#fff",color:T.navy,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+                              Open & fix →
+                            </button>
+                          )}
                         </div>
+                        <InlineFix f={f} onDone={run} log={logLine}/>
                       </div>
                     )}
                   </div>
@@ -1961,7 +2053,7 @@ export default function GNSIDashboard({ scrollToSection, onNavigate }) {
 
         {/* ═══ FINANCE ═══════════════════════════════════════ */}
         <div ref={setSectionRef('security')} className="dash-section" style={{display: activeSection === 'security' ? 'block' : 'none'}}>
-          {activeSection === 'security' && <SecurityCenter/>}
+          {activeSection === 'security' && <SecurityCenter onNavigate={onNavigate}/>}
         </div>
 
         {/* ═══ ADMIN INTELLIGENCE ═════════════════════════════ */}
