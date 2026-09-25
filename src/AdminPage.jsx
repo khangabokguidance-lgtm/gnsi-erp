@@ -7,6 +7,7 @@ import {
 import WebsiteTab from "./WebsiteTab";
 import AdminIntelligence from "./AdminIntelligence";
 import { SecurityCenter } from "./GNSIDashboard";
+import Store from "./Store";
 
 // ─────────────────────────────────────────────
 //  CONSTANTS
@@ -34,6 +35,7 @@ const ALL_MODULES = [
   { key: 'studymaterial',    label: 'Study Materials',    icon: '📖'  },
   { key: 'studylockers',     label: 'Study Lockers',      icon: '🗃️' },
   { key: 'kitchen',          label: 'Kitchen',            icon: '🍽️' },
+  { key: 'store',            label: 'Store',              icon: '🏬'  },
   { key: 'staff',            label: 'Staff',              icon: '👨‍🏫' },
   { key: 'hr',               label: 'HR',                 icon: '🗂️' },
   { key: 'leave',            label: 'Leave',              icon: '🏖️' },
@@ -71,6 +73,7 @@ const NAV = [
   { id: 'accesslogs',  icon: '🗂️', label: 'Access Logs', badge: 'NEW' },
   { id: 'password',    icon: '🔑', label: 'Password'    },
   { id: 'audit',       icon: '📋', label: 'Audit'       },
+  { id: 'store',       icon: '🏬', label: 'Store',       badge: 'NEW' },
   { id: 'website',     icon: '🌐', label: 'Website'     },
   { id: 'intel',       icon: '🧠', label: 'Intelligence' },
   { id: 'health',      icon: '🩺', label: '360° Health' },
@@ -1557,10 +1560,12 @@ export default function AdminPage({ currentUser, onLogout, allStaff = [] }) {
       </div>
 
       <div className="adm-main-pad" style={{ padding: isMobile ? '16px' : '28px', maxWidth: 1300, margin: '0 auto' }}>
-        <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 20 }}>{activeNav?.icon}</span>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A', letterSpacing: '-.02em' }}>{activeNav?.label}</h2>
-        </div>
+        {activeTab !== 'store' && (
+          <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20 }}>{activeNav?.icon}</span>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A', letterSpacing: '-.02em' }}>{activeNav?.label}</h2>
+          </div>
+        )}
         <div style={{ animation: 'adm-fadein .18s ease' }} key={activeTab}>
           {activeTab === 'users'       && <UsersSection       currentUser={currentUser} allStaff={allStaff} />}
           {activeTab === 'permissions' && <PermissionsSection currentUser={currentUser} />}
@@ -1569,6 +1574,17 @@ export default function AdminPage({ currentUser, onLogout, allStaff = [] }) {
           {activeTab === 'accesslogs'  && <AccessLogsSection />}
           {activeTab === 'password'    && <ChangePasswordSection currentUser={currentUser} />}
           {activeTab === 'audit'       && <AuditSection />}
+          {activeTab === 'store'       && (
+            <div style={{ background: 'white', borderRadius: 14, border: '1px solid #E2E8F0', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 14px 0' }}>
+                <a href="/store" target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize: 12.5, fontWeight: 700, color: '#1e3a5f', textDecoration: 'none', padding: '6px 12px', borderRadius: 8, border: '1px solid #BFDBFE', background: '#EFF6FF' }}>
+                  🌐 Open public storefront ↗
+                </a>
+              </div>
+              <Store />
+            </div>
+          )}
           {activeTab === 'website'     && <WebsiteTab />}
           {activeTab === 'intel'       && <AdminIntelligence />}
           {activeTab === 'health'      && <SecurityCenter />}
