@@ -99,10 +99,17 @@ const T = {
   border:  'var(--border)',
   border2: 'var(--border2)',
   // Brand
-  brand:      '#2563EB',
-  brandLight: '#EFF6FF',
-  brandBorder:'#BFDBFE',
-  brandText:  '#1D4ED8',
+  brand:      '#1e3a6e',
+  brandLight: 'var(--brand-light)',
+  brandBorder:'var(--brand-border)',
+  brandText:  '#132a4f',
+  // Premium accents — navy + antique gold, shared with Store / POS / C&M
+  navy:       '#132a4f',
+  navy2:      '#1e3a6e',
+  gold:       '#b8923a',
+  goldLight:  '#f6efdc',
+  goldBorder: '#e9d9b0',
+  serif:      "'Fraunces',Georgia,serif",
   // Semantic
   green:        '#059669', greenLight:'#ECFDF5', greenBorder:'#A7F3D0', greenText:'#065F46',
   amber:        '#D97706', amberLight:'#FFFBEB', amberBorder:'#FDE68A', amberText:'#92400E',
@@ -116,7 +123,7 @@ const T = {
   shadow:  'var(--shadow)',
   shadow2: 'var(--shadow2)',
   // Radii
-  r4:'4px', r6:'6px', r8:'8px', r10:'10px', r12:'12px', r16:'16px', r20:'20px', r24:'24px',
+  r4:'5px', r6:'8px', r8:'10px', r10:'12px', r12:'14px', r16:'18px', r20:'22px', r24:'999px',
 }
 
 // Minimal inline icon set — used in page chrome (header, tabs, toolbar) to
@@ -139,33 +146,37 @@ const SIcon = {
 // CSS Variables injected once
 const CSS_VARS = `
   :root {
-    --bg: #F8FAFC;
+    --bg: #f7f5f0;
     --surface: #FFFFFF;
-    --surface2: #F1F5F9;
-    --surface-hover: #F8FAFC;
-    --text1: #0F172A;
-    --text2: #334155;
-    --text3: #64748B;
-    --text4: #94A3B8;
-    --border: #E2E8F0;
-    --border2: #CBD5E1;
-    --shadow: 0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04);
-    --shadow2: 0 4px 16px rgba(15,23,42,.08), 0 2px 6px rgba(15,23,42,.05);
+    --surface2: #f3f0e8;
+    --surface-hover: #faf8f3;
+    --text1: #0f1b2e;
+    --text2: #2c3a52;
+    --text3: #5d6b82;
+    --text4: #98a2b3;
+    --border: #e8e3d8;
+    --border2: #d9d2c2;
+    --brand-light: #eef2f9;
+    --brand-border: #c9d4e8;
+    --shadow: 0 1px 2px rgba(19,42,79,.05), 0 2px 8px rgba(19,42,79,.04);
+    --shadow2: 0 12px 32px -8px rgba(19,42,79,.18), 0 4px 10px rgba(19,42,79,.06);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0F172A;
-      --surface: #1E293B;
-      --surface2: #0F172A;
-      --surface-hover: #1E293B;
-      --text1: #F1F5F9;
-      --text2: #CBD5E1;
-      --text3: #94A3B8;
-      --text4: #64748B;
-      --border: #1E293B;
-      --border2: #334155;
-      --shadow: 0 1px 3px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.2);
-      --shadow2: 0 4px 16px rgba(0,0,0,.4), 0 2px 6px rgba(0,0,0,.2);
+      --bg: #0a1220;
+      --surface: #111c30;
+      --surface2: #0d1628;
+      --surface-hover: #15223a;
+      --text1: #eef1f6;
+      --text2: #c8d0de;
+      --text3: #93a0b6;
+      --text4: #647189;
+      --border: #1c2a44;
+      --border2: #2a3b5a;
+      --brand-light: rgba(122,153,214,.14);
+      --brand-border: rgba(122,153,214,.32);
+      --shadow: 0 1px 3px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.2);
+      --shadow2: 0 16px 36px -8px rgba(0,0,0,.6), 0 4px 10px rgba(0,0,0,.3);
     }
   }
 `
@@ -916,7 +927,7 @@ function FeeBadge({ dues }) {
 
 const Card = ({ children, style={}, onClick }) => (
   <div onClick={onClick} style={{
-    background:T.surface, borderRadius:T.r12, border:`1px solid ${T.border}`,
+    background:T.surface, borderRadius:T.r16, border:`1px solid ${T.border}`,
     boxShadow:T.shadow, overflow:'hidden', ...style,
     cursor:onClick?'pointer':undefined,
     transition:onClick?'box-shadow .15s,transform .15s':undefined,
@@ -927,9 +938,10 @@ const Card = ({ children, style={}, onClick }) => (
 )
 
 function Btn({ children, onClick, variant='secondary', size='md', disabled, style={}, title }) {
-  const sizes={sm:{padding:'5px 12px',fontSize:12,height:30},md:{padding:'8px 16px',fontSize:13,height:36},lg:{padding:'10px 20px',fontSize:14,height:40}}
+  const sizes={sm:{padding:'6px 13px',fontSize:12.5,height:32},md:{padding:'9px 18px',fontSize:13.5,height:40},lg:{padding:'11px 22px',fontSize:14.5,height:46}}
   const variants={
-    primary:{background:T.brand,color:'#fff',border:`1px solid ${T.brand}`,':hover':{background:T.brandText}},
+    primary:{background:`linear-gradient(180deg,${T.navy2},${T.navy})`,color:'#fff',border:`1px solid ${T.navy}`,boxShadow:'0 1px 0 rgba(255,255,255,.12) inset, 0 4px 12px -4px rgba(19,42,79,.45)'},
+    gold:{background:`linear-gradient(180deg,#c9a24a,${T.gold})`,color:'#fff',border:`1px solid #a37f2e`,boxShadow:'0 1px 0 rgba(255,255,255,.25) inset, 0 4px 12px -4px rgba(184,146,58,.5)'},
     secondary:{background:T.surface,color:T.text2,border:`1px solid ${T.border2}`},
     ghost:{background:'transparent',color:T.text3,border:`1px solid transparent`},
     danger:{background:T.redLight,color:T.red,border:`1px solid ${T.redBorder}`},
@@ -939,13 +951,14 @@ function Btn({ children, onClick, variant='secondary', size='md', disabled, styl
   const s=sizes[size]||sizes.md
   return (
     <button onClick={onClick} disabled={disabled} title={title} style={{
-      ...s, borderRadius:T.r8, fontWeight:600, cursor:disabled?'not-allowed':'pointer',
-      opacity:disabled ? .5 : 1, display:'inline-flex', alignItems:'center', gap:6,
-      transition:'all .12s', whiteSpace:'nowrap', flexShrink:0,
+      ...s, borderRadius:T.r8, fontWeight:650, cursor:disabled?'not-allowed':'pointer',
+      opacity:disabled ? .5 : 1, display:'inline-flex', alignItems:'center', gap:7,
+      transition:'transform .12s, filter .12s, box-shadow .12s', whiteSpace:'nowrap', flexShrink:0,
+      letterSpacing:'-.005em',
       fontFamily:'inherit', ...v, ...style,
     }}
-    onMouseEnter={!disabled?e=>{e.currentTarget.style.filter='brightness(.95)'}:undefined}
-    onMouseLeave={!disabled?e=>{e.currentTarget.style.filter=''}:undefined}
+    onMouseEnter={!disabled?e=>{e.currentTarget.style.filter=variant==='primary'||variant==='gold'?'brightness(1.08)':'brightness(.97)';e.currentTarget.style.transform='translateY(-1px)'}:undefined}
+    onMouseLeave={!disabled?e=>{e.currentTarget.style.filter='';e.currentTarget.style.transform=''}:undefined}
     >{children}</button>
   )
 }
@@ -958,8 +971,8 @@ function Input({ value, onChange, placeholder, type='text', style={}, inputRef, 
       style={{
         width:'100%', padding:'8px 12px', borderRadius:T.r8, border:`1px solid ${T.border2}`,
         fontSize:14, background:T.surface, color:T.text1, outline:'none',
-        fontFamily:'inherit', transition:'border-color .12s', boxSizing:'border-box',
-        height:36, ...style,
+        fontFamily:'inherit', transition:'border-color .12s, box-shadow .12s', boxSizing:'border-box',
+        height:40, ...style,
       }}
       onFocus2={e=>e.target.style.borderColor=T.brand}
     />
@@ -971,7 +984,7 @@ function Select({ value, onChange, children, style={} }) {
     <select value={value} onChange={onChange} style={{
       padding:'7px 10px', borderRadius:T.r8, border:`1px solid ${T.border2}`,
       fontSize:13, background:T.surface, color:T.text1, cursor:'pointer',
-      outline:'none', fontFamily:'inherit', height:36, ...style,
+      outline:'none', fontFamily:'inherit', height:40, ...style,
     }}>{children}</select>
   )
 }
@@ -980,7 +993,7 @@ function Divider({ label }) {
   return (
     <div style={{display:'flex',alignItems:'center',gap:12,margin:'20px 0 14px'}}>
       <div style={{flex:1,height:1,background:T.border}}/>
-      <span style={{fontSize:10,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:T.text4}}>{label}</span>
+      <span style={{fontSize:10,fontWeight:700,letterSpacing:'.16em',textTransform:'uppercase',color:T.gold}}>{label}</span>
       <div style={{flex:1,height:1,background:T.border}}/>
     </div>
   )
@@ -1008,16 +1021,16 @@ function FieldRow({ label, children, error }) {
 
 function Toast({ msg, color=T.brand }) {
   return (
-    <div style={{
-      position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)',
-      zIndex:999999, background:T.surface, borderRadius:T.r12,
-      border:`1px solid ${T.border}`, boxShadow:T.shadow2,
-      padding:'12px 20px', fontSize:13, fontWeight:600, color:T.text1,
+    <div role="status" style={{
+      position:'fixed', top:18, left:'50%', transform:'translateX(-50%)',
+      zIndex:999999, background:T.navy, borderRadius:T.r24,
+      border:'1px solid rgba(233,217,176,.25)', boxShadow:'0 18px 40px -12px rgba(10,18,32,.55)',
+      padding:'11px 20px 11px 14px', fontSize:13, fontWeight:600, color:'#fff',
       display:'flex', alignItems:'center', gap:10, whiteSpace:'nowrap',
-      maxWidth:'90vw', animation:'toastIn .2s cubic-bezier(.34,1.56,.64,1)',
-      borderLeft:`3px solid ${color}`,
+      maxWidth:'92vw', overflow:'hidden', textOverflow:'ellipsis',
+      animation:'toastDown .28s cubic-bezier(.34,1.4,.64,1)',
     }}>
-      <span style={{width:6,height:6,borderRadius:'50%',background:color,flexShrink:0}}/>
+      <span style={{width:9,height:9,borderRadius:'50%',background:color,flexShrink:0,boxShadow:`0 0 0 3px rgba(255,255,255,.12)`}}/>
       {msg}
     </div>
   )
@@ -1032,14 +1045,15 @@ function UndoBanner({ student, onUndo, onDismiss }) {
   return (
     <div style={{
       position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)',
-      zIndex:999999, background:T.surface, borderRadius:T.r12,
-      border:`1px solid ${T.border}`, boxShadow:T.shadow2,
-      padding:'14px 20px', display:'flex', alignItems:'center', gap:14,
-      fontSize:13, fontWeight:600, color:T.text1, whiteSpace:'nowrap', maxWidth:'90vw',
+      zIndex:999999, background:T.navy, borderRadius:T.r16,
+      border:'1px solid rgba(233,217,176,.25)', boxShadow:'0 18px 40px -12px rgba(10,18,32,.55)',
+      padding:'12px 14px 12px 20px', display:'flex', alignItems:'center', gap:14,
+      fontSize:13, fontWeight:600, color:'#fff', whiteSpace:'nowrap', maxWidth:'92vw',
+      animation:'slideUp .25s ease',
     }}>
       <span>Archived <strong>{student.name}</strong></span>
       <Btn onClick={onUndo} variant='success' size='sm'>↩ Undo ({secs}s)</Btn>
-      <button onClick={onDismiss} style={{background:'none',border:'none',color:T.text3,cursor:'pointer',fontSize:18,padding:'0 4px',lineHeight:1}}>×</button>
+      <button onClick={onDismiss} aria-label="Dismiss" style={{background:'none',border:'none',color:'rgba(255,255,255,.6)',cursor:'pointer',fontSize:18,padding:'0 4px',lineHeight:1}}>×</button>
     </div>
   )
 }
@@ -1051,7 +1065,7 @@ function Modal({ children, onClose, width=480, title, subtitle }) {
     <div style={{
       position:'fixed', inset:0, zIndex:99999,
       display:'flex', alignItems:isMobile?'flex-end':'center', justifyContent:'center',
-      background:'rgba(15,23,42,.5)', backdropFilter:'blur(4px)',
+      background:'rgba(10,18,32,.55)', backdropFilter:'blur(6px)', WebkitBackdropFilter:'blur(6px)',
     }} onClick={onClose}>
       <div style={{
         background:T.surface, borderRadius:isMobile?`${T.r20} ${T.r20} 0 0`:T.r16,
@@ -1062,19 +1076,20 @@ function Modal({ children, onClose, width=480, title, subtitle }) {
         overflow:'hidden',
       }} onClick={e=>e.stopPropagation()}>
         {(title||subtitle) && (
-          <div style={{padding:'18px 20px 14px', borderBottom:`1px solid ${T.border}`, flexShrink:0, position:'relative'}}>
-            {isMobile && <div style={{width:32,height:3,background:T.border2,borderRadius:2,margin:'0 auto 12px',opacity:.7}}/>}
-            {title && <div style={{fontSize:16,fontWeight:700,color:T.text1,letterSpacing:'-.01em'}}>{title}</div>}
-            {subtitle && <div style={{fontSize:12,color:T.text3,marginTop:2}}>{subtitle}</div>}
-            <button onClick={onClose} style={{
-              position:'absolute', top:14, right:16, width:28, height:28,
-              borderRadius:T.r6, border:`1px solid ${T.border}`,
-              background:T.surface2, cursor:'pointer', fontSize:14, color:T.text3,
+          <div style={{padding:'20px 56px 16px 22px', borderBottom:`1px solid ${T.border}`, flexShrink:0, position:'relative', background:`linear-gradient(180deg,${T.surface2},${T.surface})`}}>
+            <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${T.navy},${T.navy2} 60%,${T.gold})`}}/>
+            {isMobile && <div style={{width:36,height:4,background:T.border2,borderRadius:2,margin:'0 auto 12px',opacity:.8}}/>}
+            {title && <div style={{fontSize:18,fontWeight:600,color:T.text1,letterSpacing:'-.01em',fontFamily:T.serif}}>{title}</div>}
+            {subtitle && <div style={{fontSize:12.5,color:T.text3,marginTop:3}}>{subtitle}</div>}
+            <button onClick={onClose} aria-label="Close" style={{
+              position:'absolute', top:isMobile?26:16, right:16, width:32, height:32,
+              borderRadius:'50%', border:`1px solid ${T.border}`,
+              background:T.surface, cursor:'pointer', fontSize:16, color:T.text3,
               display:'flex', alignItems:'center', justifyContent:'center',
             }}>×</button>
           </div>
         )}
-        <div style={{padding:'20px', flex:1, overflowY:'auto'}}>{children}</div>
+        <div style={{padding:'20px 22px', flex:1, overflowY:'auto'}}>{children}</div>
       </div>
     </div>
   )
@@ -1297,22 +1312,29 @@ function FeeViewerModal({ student, feeData, feeHistory, onClose }) {
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 function KpiCard({ label, value, color=T.text2, icon, onClick, active, warn, sub }) {
+  const tone=warn&&!active?T.red:color
+  const rest=active?`0 0 0 3px ${color}22, ${T.shadow}`:T.shadow
   return (
-    <div onClick={onClick} style={{
-      background: active?`${color}08`:warn?T.redLight:T.surface,
-      borderRadius:T.r12, border:`1px solid ${active?color+'25':warn?T.redBorder:T.border}`,
-      padding:'14px 16px', cursor:onClick?'pointer':undefined,
-      transition:'all .15s', flex:'1 1 90px', minWidth:80,
-      boxShadow:active?`0 0 0 3px ${color}15`:T.shadow,
+    <div className="st-kpi" onClick={onClick} role={onClick?'button':undefined} tabIndex={onClick?0:undefined}
+      onKeyDown={onClick?e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onClick()}}:undefined}
+      style={{
+      position:'relative', overflow:'hidden',
+      background: active?`linear-gradient(180deg,${color}10,${T.surface})`:T.surface,
+      borderRadius:T.r12, border:`1px solid ${active?color+'55':warn?T.redBorder:T.border}`,
+      padding:'14px 16px 13px', cursor:onClick?'pointer':undefined,
+      transition:'transform .15s, box-shadow .15s', minWidth:0,
+      boxShadow:rest,
     }}
-    onMouseEnter={onClick?e=>{e.currentTarget.style.transform='translateY(-1px)';e.currentTarget.style.boxShadow=T.shadow2}:undefined}
-    onMouseLeave={onClick?e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow=active?`0 0 0 3px ${color}15`:T.shadow}:undefined}
+    onMouseEnter={onClick?e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow=T.shadow2}:undefined}
+    onMouseLeave={onClick?e=>{e.currentTarget.style.transform='';e.currentTarget.style.boxShadow=rest}:undefined}
     >
-      <div style={{fontSize:10,fontWeight:600,letterSpacing:'.08em',textTransform:'uppercase',color:active?color:warn?T.red:T.text4,marginBottom:6,display:'flex',alignItems:'center',gap:5}}>
-        {icon&&<span style={{fontSize:13}}>{icon}</span>}{label}
+      <div style={{position:'absolute',left:0,top:0,bottom:0,width:3,background:tone,opacity:active||warn?1:.55}}/>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6,marginBottom:8}}>
+        <span style={{fontSize:11.5,fontWeight:700,letterSpacing:'.01em',color:active?color:warn?T.red:T.text3,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{label}</span>
+        {icon&&<span style={{width:24,height:24,borderRadius:7,display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:12,background:`${tone}14`,color:tone,flexShrink:0}}>{icon}</span>}
       </div>
-      <div style={{fontSize:22,fontWeight:700,color:active?color:warn?T.red:T.text1,letterSpacing:'-.03em',lineHeight:1}}>{value}</div>
-      {sub && <div style={{fontSize:10,color:T.text4,marginTop:3}}>{sub}</div>}
+      <div style={{fontSize:26,fontWeight:700,color:active?color:warn?T.red:T.text1,letterSpacing:'-.02em',lineHeight:1,fontFamily:T.serif,fontVariantNumeric:'tabular-nums'}}>{value}</div>
+      {sub && <div style={{fontSize:10.5,color:T.text4,marginTop:4}}>{sub}</div>}
     </div>
   )
 }
@@ -2044,12 +2066,12 @@ function printIDCard(student) {
     body{margin:0;display:flex;justify-content:center;padding:20px;background:#f1f5f9;font-family:system-ui,sans-serif}
     @media print{body{padding:0;background:#fff}}
     .card{width:3.375in;height:2.125in;border:1px solid #cbd5e1;border-radius:10px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.12)}
-    .hdr{background:#2563EB;color:#fff;padding:8px 12px;display:flex;align-items:center;gap:8px}
+    .hdr{background:#1e3a6e;color:#fff;padding:8px 12px;display:flex;align-items:center;gap:8px}
     .logo{font-size:16px;font-weight:800;letter-spacing:-.02em}.sub{font-size:9px;line-height:1.5;opacity:.85}
     .body{display:flex;padding:10px 12px;gap:10px}.photo{width:56px;height:70px;border:1px solid #e2e8f0;border-radius:6px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
     .name{font-size:13px;font-weight:800;color:#0f172a;margin-bottom:4px}
     .f{font-size:9px;color:#64748b;margin-bottom:2px}.f span{font-weight:700;color:#0f172a}
-    .gcc{font-size:15px;font-weight:800;color:#2563EB;margin-top:6px;letter-spacing:.02em}
+    .gcc{font-size:15px;font-weight:800;color:#1e3a6e;margin-top:6px;letter-spacing:.02em}
   </style></head><body>
   <div class="card">
     <div class="hdr"><div class="logo">GNSI</div><div class="sub">Guidance Navodaya & Sainik Institute<br>Khangabok, Thoubal, Manipur</div></div>
@@ -2082,7 +2104,7 @@ function printBatchList(students, label, canViewPII = false) {
     h2{color:#0f172a;margin-bottom:4px}
     table{width:100%;border-collapse:collapse}
     th,td{border:1px solid #e2e8f0;padding:6px 10px;text-align:left}
-    th{background:#2563EB;color:#fff;font-weight:600}
+    th{background:#1e3a6e;color:#fff;font-weight:600}
   </style></head><body>
     <h2>GNSI Student List${label ? ` — ${label}` : ''}</h2>
     <p style="color:#64748b;margin-bottom:12px">Total: ${students.length} · ${new Date().toLocaleDateString('en-IN')}</p>
@@ -2099,8 +2121,8 @@ function printFeeReceipt(student, payment) {
   const w=window.open('','_blank')
   w.document.write(`<html><head><title>Receipt</title><style>
     body{font-family:system-ui,sans-serif;padding:30px;max-width:560px;margin:auto;color:#334155}
-    .hdr{text-align:center;border-bottom:2px solid #2563EB;padding-bottom:16px;margin-bottom:20px}
-    .logo{font-size:22px;font-weight:800;color:#2563EB}.sub{font-size:13px;color:#64748b;margin-top:4px}
+    .hdr{text-align:center;border-bottom:2px solid #1e3a6e;padding-bottom:16px;margin-bottom:20px}
+    .logo{font-size:22px;font-weight:800;color:#1e3a6e}.sub{font-size:13px;color:#64748b;margin-top:4px}
     .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9}
     .lbl{color:#64748b;font-weight:600}.val{font-weight:700;color:#0f172a}
     .amt{font-size:28px;font-weight:800;color:#059669;text-align:center;margin:20px 0;padding:16px;background:#ecfdf5;border-radius:8px}
@@ -2184,8 +2206,8 @@ function printProfessionalReport(cfg) {
     @page { size: A4 portrait; margin: 14mm 12mm; }
     *{box-sizing:border-box}
     body{font-family:'Segoe UI',system-ui,sans-serif;color:#1E293B;padding:0;margin:0;font-size:11px}
-    .letterhead{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #2563EB;padding-bottom:12px;margin-bottom:14px}
-    .brand{font-size:20px;font-weight:800;color:#2563EB;letter-spacing:-.02em}
+    .letterhead{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a6e;padding-bottom:12px;margin-bottom:14px}
+    .brand{font-size:20px;font-weight:800;color:#1e3a6e;letter-spacing:-.02em}
     .brand-sub{font-size:10px;color:#64748B;margin-top:2px;line-height:1.5}
     .meta-box{text-align:right;font-size:10px;color:#64748B}
     .meta-box b{color:#0F172A}
@@ -2201,7 +2223,7 @@ function printProfessionalReport(cfg) {
     tr{page-break-inside:avoid}
     th{background:#0F172A;color:#fff;padding:7px 9px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
     td{padding:6px 9px;border-bottom:1px solid #E2E8F0;font-size:10.5px}
-    tr.grouphead td{background:#EFF6FF;color:#1D4ED8;font-weight:800;font-size:11px;padding:8px 9px;border-top:2px solid #BFDBFE}
+    tr.grouphead td{background:#eef2f9;color:#132a4f;font-weight:800;font-size:11px;padding:8px 9px;border-top:2px solid #c9d4e8}
     tr.grouphead span{color:#64748B;font-weight:500;font-size:9.5px}
     tr.subtotal td{background:#F1F5F9;font-weight:700;border-bottom:2px solid #CBD5E1}
     .signatures{display:flex;justify-content:space-between;margin-top:36px;font-size:10px;color:#475569}
@@ -2653,20 +2675,22 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
   ]
 
   return (
-    <div style={{position:'fixed',inset:0,zIndex:99998,display:'flex',justifyContent:isMobile?'stretch':'flex-end'}} onClick={onClose}>
+    <div style={{position:'fixed',inset:0,zIndex:99998,display:'flex',justifyContent:isMobile?'stretch':'flex-end',background:'rgba(10,18,32,.45)',backdropFilter:'blur(3px)',WebkitBackdropFilter:'blur(3px)'}} onClick={onClose}>
       <div style={{
-        width:isMobile?'100%':540, background:T.surface,
+        width:isMobile?'100%':580, background:T.surface,
         borderLeft:isMobile?'none':`1px solid ${T.border}`,
-        boxShadow:'-8px 0 32px rgba(15,23,42,.12)',
+        boxShadow:'-24px 0 60px -20px rgba(10,18,32,.45)',
         display:'flex',flexDirection:'column',
         animation:isMobile?'slideUp .25s ease':'slideLeft .25s cubic-bezier(.34,1.2,.64,1)',
       }} onClick={e=>e.stopPropagation()}>
 
         {/* Header */}
-        <div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:'16px',flexShrink:0}}>
-          <div style={{display:'flex',alignItems:'flex-start',gap:12,marginBottom:14}}>
-            <div style={{position:'relative',flexShrink:0}}>
-              <Avatar name={student.name} photoUrl={student.photo_url} size={48}/>
+        <div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+          <div className="st-hero" style={{borderRadius:0,boxShadow:'none',display:'flex',alignItems:'flex-start',gap:14,padding:isMobile?'18px 16px':'22px 20px'}}>
+            <div style={{position:'relative',flexShrink:0,zIndex:1}}>
+              <div style={{padding:3,borderRadius:'50%',background:'rgba(255,255,255,.95)',boxShadow:`0 0 0 2px ${T.gold}`}}>
+                <Avatar name={student.name} photoUrl={student.photo_url} size={58}/>
+              </div>
               <IfCan can={can.write}>
                 <label style={{position:'absolute',bottom:-2,right:-2,width:20,height:20,borderRadius:'50%',background:T.brand,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:10,border:`2px solid ${T.surface}`,color:'#fff'}} title="Upload photo (Supabase Storage)">
                   📷<input type="file" accept={ALLOWED_IMAGE_EXTS.join(',')} style={{display:'none'}} onChange={handlePhotoUpload}/>
@@ -2676,9 +2700,10 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
                 </label>
               </IfCan>
             </div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:17,fontWeight:700,color:T.text1,letterSpacing:'-.02em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{student.name}</div>
-              <div style={{fontSize:12,color:T.text3,marginTop:2}}>GCC-{student.gcc_no} · {student.batch} · {student.session}</div>
+            <div style={{flex:1,minWidth:0,position:'relative'}}>
+              <div style={{fontSize:10,fontWeight:700,letterSpacing:'.18em',textTransform:'uppercase',color:T.goldBorder,marginBottom:4}}>Student Profile</div>
+              <div style={{fontSize:21,fontWeight:600,color:'#fff',letterSpacing:'-.01em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontFamily:T.serif}}>{student.name}</div>
+              <div style={{fontSize:12,color:'rgba(255,255,255,.7)',marginTop:3}}>GCC-{student.gcc_no} · {student.batch} · {student.session}</div>
               <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:6}}>
                 {student.course&&<CoursePill course={student.course}/>}
                 {student.house&&<HousePill house={student.house}/>}
@@ -2689,18 +2714,18 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
                 </div>
               )}
             </div>
-            <div style={{display:'flex',gap:6,flexShrink:0}}>
+            <div style={{display:'flex',gap:6,flexShrink:0,position:'relative'}}>
               <IfCan can={can.write}>
-                <Btn onClick={()=>onEdit(student)} size='sm'>✏ Edit</Btn>
+                <button className="st-hbtn gold" style={{height:32,padding:'0 12px',fontSize:12.5}} onClick={()=>onEdit(student)}>✏ Edit</button>
               </IfCan>
-              <button onClick={onClose} style={{width:32,height:32,borderRadius:T.r8,border:`1px solid ${T.border}`,background:T.surface2,cursor:'pointer',color:T.text3,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><SIcon.x size={14}/></button>
+              <button onClick={onClose} aria-label="Close" style={{width:32,height:32,borderRadius:'50%',border:'1px solid rgba(255,255,255,.25)',background:'rgba(255,255,255,.08)',cursor:'pointer',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><SIcon.x size={14}/></button>
             </div>
           </div>
 
           {/* Stats strip */}
-          <div style={{display:'grid',gridTemplateColumns:`repeat(${STAT_ITEMS.length},1fr)`,gap:6,overflowX:'auto'}}>
+          <div style={{display:'grid',gridTemplateColumns:`repeat(${STAT_ITEMS.length},minmax(84px,1fr))`,gap:8,overflowX:'auto',padding:'14px 16px'}}>
             {STAT_ITEMS.map(p=>(
-              <div key={p.label} style={{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:T.r8,padding:'8px 10px',textAlign:'center'}}>
+              <div key={p.label} style={{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:T.r10,padding:'9px 10px',textAlign:'center'}}>
                 <div style={{fontSize:10,color:T.text4,marginBottom:3,fontWeight:600,textTransform:'uppercase',letterSpacing:'.06em'}}>{p.label}</div>
                 <div style={{fontSize:12,fontWeight:600,color:T.text1}}>{p.value}</div>
               </div>
@@ -2712,10 +2737,10 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
         <div style={{display:'flex',borderBottom:`1px solid ${T.border}`,background:T.surface,flexShrink:0,overflowX:'auto'}}>
           {TABS.map(t=>(
             <button key={t.key} onClick={()=>setTab(t.key)} style={{
-              flex:1,minWidth:64,padding:'10px 8px',border:'none',background:'none',
-              fontSize:11,fontWeight:600,cursor:'pointer',transition:'all .12s',
-              color:tab===t.key?T.brand:T.text3,
-              borderBottom:`2px solid ${tab===t.key?T.brand:'transparent'}`,
+              flex:'1 0 auto',minWidth:64,padding:'12px 12px',border:'none',background:'none',
+              fontSize:11,fontWeight:700,cursor:'pointer',transition:'all .12s',
+              color:tab===t.key?T.navy2:T.text3,
+              borderBottom:`2px solid ${tab===t.key?T.gold:'transparent'}`,
               textTransform:'uppercase',letterSpacing:'.05em',whiteSpace:'nowrap',fontFamily:'inherit',
             }}>{t.label}</button>
           ))}
@@ -2930,16 +2955,18 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
   const validate=()=>{const e={};if(!form.name?.trim())e.name='Name is required';if(!form.gcc_no?.toString().trim())e.gcc_no='GCC No. required';if(gccDup)e.gcc_no=`GCC ${form.gcc_no} used by ${gccDup.name}`;if(phoneDup)e.phone=`Phone used by ${phoneDup.name}`;setErrors(e);return!Object.keys(e).length}
   const handleSave=async()=>{if(!validate())return;setSaving(true);await onSave(editing?.id||null,{...form,hostel_type:derived});setSaving(false);if(!editing)localStorage.removeItem(DRAFT_KEY)}
 
-  const INP={width:'100%',padding:'8px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,height:36,fontFamily:'inherit',boxSizing:'border-box',outline:'none'}
+  const INP={width:'100%',padding:'9px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,height:42,fontFamily:'inherit',boxSizing:'border-box',outline:'none'}
   const INP_ERR={...INP,borderColor:T.red}
-  const SEL={...INP,cursor:'pointer',height:36}
+  const SEL={...INP,cursor:'pointer',height:42}
 
   return (
-    <Card style={{marginBottom:20}}>
+    <Card style={{marginBottom:20,boxShadow:T.shadow2,animation:'fadeUp .25s ease',position:'relative'}}>
+      <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${T.navy},${T.navy2} 60%,${T.gold})`}}/>
       {/* Form header */}
-      <div style={{padding:'16px 20px',borderBottom:`1px solid ${T.border}`,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+      <div style={{padding:'20px 22px 16px',borderBottom:`1px solid ${T.border}`,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,background:`linear-gradient(180deg,${T.surface2},${T.surface})`}}>
         <div>
-          <div style={{fontSize:15,fontWeight:700,color:T.text1}}>{editing?'Edit Student':'New Student'}</div>
+          <div style={{fontSize:10,fontWeight:700,letterSpacing:'.18em',textTransform:'uppercase',color:T.gold,marginBottom:4}}>{editing?`GCC-${editing.gcc_no||'—'}`:'Admission record'}</div>
+          <div style={{fontSize:20,fontWeight:600,color:T.text1,fontFamily:T.serif}}>{editing?'Edit Student':'New Student'}</div>
           <div style={{fontSize:12,color:T.text3,marginTop:2,display:'flex',gap:12,flexWrap:'wrap'}}>
             {!editing&&draftSaved&&<span style={{color:T.green,fontWeight:600}}>✓ Draft saved</span>}
             {!editing&&savedDraft&&!draftSaved&&<span style={{color:T.amber,fontWeight:600}}>Draft restored — PII fields must be re-entered</span>}
@@ -2947,7 +2974,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
         </div>
         <div style={{display:'flex',gap:8}}>
           {!editing&&<Btn onClick={()=>{localStorage.removeItem(DRAFT_KEY);setForm(blank)}} size='sm'>Clear</Btn>}
-          <button onClick={onCancel} style={{width:32,height:32,borderRadius:T.r8,border:`1px solid ${T.border}`,background:T.surface2,cursor:'pointer',color:T.text3,display:'flex',alignItems:'center',justifyContent:'center'}}><SIcon.x size={14}/></button>
+          <button onClick={onCancel} aria-label="Close form" style={{width:34,height:34,borderRadius:'50%',border:`1px solid ${T.border}`,background:T.surface,cursor:'pointer',color:T.text3,display:'flex',alignItems:'center',justifyContent:'center'}}><SIcon.x size={14}/></button>
         </div>
       </div>
 
@@ -3058,28 +3085,32 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
   ].filter(a=>a.show)
 
   return (
-    <div style={{
-      background:T.surface, borderRadius:T.r12,
-      border:`1px solid ${isSel?T.brandBorder:T.border}`,
-      boxShadow:isSel?`0 0 0 2px ${T.brandLight}`:T.shadow,
-      overflow:'hidden', position:'relative', transition:'box-shadow .15s',
+    <div className="st-card" style={{
+      background:T.surface, borderRadius:T.r16,
+      border:`1px solid ${isSel?T.gold:T.border}`,
+      boxShadow:isSel?`0 0 0 3px ${T.goldLight}, ${T.shadow}`:T.shadow,
+      overflow:'hidden', position:'relative',
     }}>
-      {/* Cover strip — course-colored gradient, stands in for a "cover photo" */}
+      {/* Cover strip — navy band with the course colour glowing through */}
       <div style={{
-        height:52, background:`linear-gradient(135deg,${accent}cc,${accent}55)`,
-        position:'relative',
+        height:60, position:'relative',
+        background:`radial-gradient(120% 140% at 100% 0%,${accent}bb 0%,transparent 55%),linear-gradient(135deg,${T.navy} 0%,${T.navy2} 100%)`,
       }}>
-        <input type="checkbox" checked={isSel} onChange={e=>{e.stopPropagation();onSelect(s.id)}} onClick={e=>e.stopPropagation()}
-          style={{position:'absolute',top:8,left:8,width:15,height:15,cursor:'pointer',accentColor:'#fff'}}/>
-        <div style={{position:'absolute',top:8,right:8}}>
+        <div style={{position:'absolute',inset:0,backgroundImage:'radial-gradient(rgba(255,255,255,.08) 1px,transparent 1px)',backgroundSize:'10px 10px',opacity:.7}}/>
+        <div style={{position:'absolute',left:0,right:0,bottom:0,height:2,background:`linear-gradient(90deg,transparent,${T.gold},transparent)`,opacity:.8}}/>
+        <label onClick={e=>e.stopPropagation()} title="Select" style={{position:'absolute',top:9,left:9,width:24,height:24,borderRadius:7,background:isSel?T.gold:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.3)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
+          <input type="checkbox" checked={isSel} onChange={e=>{e.stopPropagation();onSelect(s.id)}} onClick={e=>e.stopPropagation()}
+            style={{width:14,height:14,cursor:'pointer',accentColor:T.gold,margin:0}}/>
+        </label>
+        <div style={{position:'absolute',top:9,right:9}}>
           <StatusPill status={s.status}/>
         </div>
       </div>
 
       {/* Avatar overlapping the cover, centered like a profile header */}
-      <div style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'0 16px 14px',marginTop:-30}}>
+      <div style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'0 16px 16px',marginTop:-32}}>
         <div style={{position:'relative'}}>
-          <div style={{padding:3,background:T.surface,borderRadius:'50%'}}>
+          <div style={{padding:3,background:T.surface,borderRadius:'50%',boxShadow:`0 0 0 1.5px ${T.goldBorder}, 0 6px 14px -6px rgba(19,42,79,.35)`}}>
             <Avatar name={s.name} photoUrl={s.photo_url} size={64}/>
           </div>
           {birthday&&<span style={{position:'absolute',bottom:-2,right:-2,fontSize:16}}>🎂</span>}
@@ -3087,11 +3118,11 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
 
         <div style={{textAlign:'center',marginTop:8,cursor:'pointer'}} onClick={()=>onOpenDetail(s)}>
           <div style={{display:'flex',alignItems:'center',gap:5,justifyContent:'center',flexWrap:'wrap'}}>
-            <span style={{fontWeight:700,fontSize:15,color:T.text1,letterSpacing:'-.01em'}}>{s.name}</span>
+            <span className="st-name" style={{fontWeight:700,fontSize:15.5,color:T.text1,letterSpacing:'-.01em'}}>{s.name}</span>
             {recent&&<span style={{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:T.r4,background:T.tealLight,color:T.teal,border:`1px solid ${T.tealBorder}`}}>NEW</span>}
           </div>
-          <div style={{fontSize:11.5,color:T.text3,marginTop:2}}>
-            {s.gcc_no&&`GCC-${s.gcc_no} · `}{s.batch}
+          <div style={{fontSize:11.5,color:T.text3,marginTop:3,fontVariantNumeric:'tabular-nums'}}>
+            {s.gcc_no&&<span style={{fontWeight:700,color:T.gold,letterSpacing:'.03em'}}>GCC-{s.gcc_no}</span>}{s.gcc_no&&s.batch?' · ':''}{s.batch}
           </div>
           <div style={{display:'flex',gap:5,justifyContent:'center',flexWrap:'wrap',marginTop:6}}>
             {s.course&&<CoursePill course={s.course}/>}
@@ -3105,7 +3136,7 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
         </div>
 
         {/* Mini stat row — attendance + fee, like FB's friend-count/mutuals line */}
-        <div style={{display:'flex',gap:14,marginTop:10,alignItems:'center'}}>
+        <div style={{display:'flex',gap:0,marginTop:12,alignItems:'stretch',width:'100%',background:T.surface2,border:`1px solid ${T.border}`,borderRadius:T.r10,padding:'8px 0',justifyContent:'space-evenly'}}>
           <div style={{textAlign:'center'}}>
             <div style={{fontSize:9.5,color:T.text4,fontWeight:600,textTransform:'uppercase',letterSpacing:'.05em'}}>Attendance</div>
             <div style={{marginTop:2}}>{att!=null?<span style={{fontSize:13,fontWeight:700,color:att>=75?T.green:T.red}}>{att.toFixed(0)}%</span>:<span style={{fontSize:12,color:T.text4}}>—</span>}</div>
@@ -3119,7 +3150,7 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
       </div>
 
       {/* Action bar — Facebook-style Like/Comment/Share row */}
-      <div style={{borderTop:`1px solid ${T.border}`, display:'flex'}}>
+      <div style={{borderTop:`1px solid ${T.border}`, display:'flex', background:T.surface}}>
         {isMobile ? (
           <>
             <button onClick={()=>onOpenDetail(s)} style={{flex:1,padding:'10px 6px',border:'none',borderRight:`1px solid ${T.border}`,background:'none',cursor:'pointer',fontSize:12,fontWeight:600,color:T.brand,fontFamily:'inherit'}}>👤 Profile</button>
@@ -3127,19 +3158,19 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
           </>
         ) : (
           ACTIONS.map((a,i)=>(
-            <button key={a.l} onClick={a.fn} title={a.l} style={{
-              flex:1, padding:'10px 4px', border:'none',
+            <button key={a.l} onClick={a.fn} title={a.l} aria-label={a.l} style={{
+              flex:'1 1 0', minWidth:0, padding:'9px 2px 8px', border:'none',
               borderRight:i<ACTIONS.length-1?`1px solid ${T.border}`:'none',
               background:'none', cursor:'pointer', fontSize:11.5, fontWeight:600,
               color:a.danger?T.red:a.primary?T.brand:T.text2,
               display:'flex', flexDirection:'column', alignItems:'center', gap:2,
               fontFamily:'inherit', transition:'background .12s',
             }}
-            onMouseEnter={e=>e.currentTarget.style.background=T.surface2}
-            onMouseLeave={e=>e.currentTarget.style.background='none'}
+            onMouseEnter={e=>{e.currentTarget.style.background=a.danger?T.redLight:T.surface2;if(!a.danger&&!a.primary)e.currentTarget.style.color=T.brand}}
+            onMouseLeave={e=>{e.currentTarget.style.background='none';e.currentTarget.style.color=a.danger?T.red:a.primary?T.brand:T.text2}}
             >
               <span style={{fontSize:14}}>{a.icon}</span>
-              {a.l}
+              <span style={{fontSize:10.5,maxWidth:'100%',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.l==='Attendance'?'Attend':a.l}</span>
             </button>
           ))
         )}
@@ -4950,22 +4981,54 @@ const effectiveCols = visibleCols.filter(col => {
   const rc=ROLE_CFG[role]||ROLE_CFG.viewer
 
   const globalCSS=`
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap');
     ${CSS_VARS}
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     @keyframes toastIn{from{transform:translateX(-50%) translateY(12px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}
+    @keyframes toastDown{from{transform:translateX(-50%) translateY(-14px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}
     @keyframes slideUp{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
     @keyframes slideLeft{from{transform:translateX(24px);opacity:0}to{transform:translateX(0);opacity:1}}
     @keyframes fadeUp{from{transform:translateY(10px);opacity:0}to{transform:translateY(0);opacity:1}}
     @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes stShimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-    body{background:var(--bg);font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:var(--text1)}
+    body{background:var(--bg);font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:var(--text1);-webkit-font-smoothing:antialiased}
     select,input,textarea{background:var(--surface)!important;color:var(--text1)!important;border-color:var(--border2)!important;font-family:inherit}
-    select:focus,input:focus,textarea:focus{border-color:#2563EB!important;outline:none!important;box-shadow:0 0 0 3px rgba(37,99,235,.12)!important}
+    select:focus,input:focus,textarea:focus{border-color:${T.navy2}!important;outline:none!important;box-shadow:0 0 0 3px rgba(30,58,110,.14)!important}
+    button:focus-visible,[role=button]:focus-visible{outline:2px solid ${T.gold};outline-offset:2px}
     select option{background:var(--surface);color:var(--text1)}
-    ::-webkit-scrollbar{width:4px;height:4px}
+    ::selection{background:${T.goldBorder};color:${T.navy}}
+    ::-webkit-scrollbar{width:6px;height:6px}
     ::-webkit-scrollbar-track{background:transparent}
-    ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+    ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:6px}
     ::-webkit-scrollbar-thumb:hover{background:var(--text4)}
+    .st-root h1,.st-root h2,.st-root h3{font-family:${T.serif}}
+    .st-hero{position:relative;overflow:hidden;border-radius:22px;color:#fff;background:radial-gradient(90% 140% at 100% 0%,rgba(184,146,58,.28) 0%,transparent 55%),linear-gradient(135deg,#0e203f 0%,${T.navy} 45%,${T.navy2} 100%);box-shadow:0 24px 48px -24px rgba(19,42,79,.55)}
+    .st-hero::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.07) 1px,transparent 1px);background-size:14px 14px;mask-image:linear-gradient(90deg,transparent,#000 70%);-webkit-mask-image:linear-gradient(90deg,transparent,#000 70%);pointer-events:none}
+    .st-hero::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,${T.gold},transparent)}
+    .st-hbtn{display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 16px;border-radius:12px;font:650 13.5px/1 'Plus Jakarta Sans',system-ui,sans-serif;cursor:pointer;white-space:nowrap;transition:transform .12s,background .12s,filter .12s}
+    .st-hbtn:hover{transform:translateY(-1px)}
+    .st-hbtn.ghost{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.2)}
+    .st-hbtn.ghost:hover{background:rgba(255,255,255,.16)}
+    .st-hbtn.gold{background:linear-gradient(180deg,#d4ae58,${T.gold});color:#1a1406;border:1px solid #a37f2e;box-shadow:0 1px 0 rgba(255,255,255,.35) inset,0 8px 18px -8px rgba(184,146,58,.8)}
+    .st-hbtn.gold:hover{filter:brightness(1.06)}
+    .st-hstat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:11px 14px;min-width:0;backdrop-filter:blur(4px)}
+    .st-tabs{display:flex;gap:4px;padding:5px;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    .st-tabs::-webkit-scrollbar{display:none}
+    .st-tab{display:flex;align-items:center;gap:7px;padding:9px 16px;border:none;border-radius:10px;background:none;cursor:pointer;font:600 13.5px/1 'Plus Jakarta Sans',system-ui,sans-serif;color:var(--text3);white-space:nowrap;transition:background .15s,color .15s}
+    .st-tab:hover{color:var(--text1);background:var(--surface2)}
+    .st-tab.on{background:linear-gradient(180deg,${T.navy2},${T.navy});color:#fff;box-shadow:0 6px 14px -6px rgba(19,42,79,.6)}
+    .st-tab.on svg{color:${T.goldBorder}}
+    .st-tool{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .st-kpis{display:flex;gap:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;padding:2px 2px 6px;margin:0 -2px;scrollbar-width:thin}
+    .st-kpis>.st-kpi{flex:1 0 132px;scroll-snap-align:start}
+    .st-filter{position:sticky;top:0;z-index:100;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);padding:10px 0;margin-bottom:14px;border-bottom:1px solid var(--border)}
+    .st-card{transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s;animation:fadeUp .3s ease both}
+    .st-card:hover{transform:translateY(-3px);box-shadow:var(--shadow2)!important}
+    .st-card:hover .st-name{color:${T.navy2}}
+    .st-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
+    .st-skel{border-radius:16px;height:268px;border:1px solid var(--border);background:linear-gradient(90deg,var(--surface) 0%,var(--surface2) 40%,var(--surface) 80%);background-size:800px 100%;animation:stShimmer 1.3s linear infinite}
+    @media (max-width:640px){.st-kpis{gap:8px}.st-kpis>.st-kpi{flex:0 0 132px}.st-grid{grid-template-columns:1fr;gap:12px}.st-hero{border-radius:18px}.st-tab{padding:9px 12px;font-size:13px}}
+    @media (prefers-reduced-motion:reduce){.st-card,.st-card:hover,.st-hbtn:hover{animation:none;transform:none;transition:none}}
   `
 
   // ─── Render ──────────────────────────────────────────────────────────────────
@@ -5029,84 +5092,105 @@ const effectiveCols = visibleCols.filter(col => {
       )}
 
       {/* ─── Main Page ─── */}
-      <div style={{
-        padding:isMobile?'0 12px 80px':'0 24px 48px',
+      <div className="st-root" style={{
+        padding:isMobile?'12px 12px 88px':'22px 28px 56px',
         background:T.bg, minHeight:'100vh', color:T.text1,
         fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",
+        maxWidth:1600, margin:'0 auto',
       }}>
 
-        {/* Page header */}
-        <div style={{
-          padding:isMobile?'16px 0 14px':'28px 0 20px',
-          borderBottom:`1px solid ${T.border}`, marginBottom:16,
-          display:'flex', alignItems:'flex-start', justifyContent:'space-between',
-          flexWrap:'wrap', gap:12,
-        }}>
-          <div>
-            <div style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'.16em',color:T.text4,marginBottom:6}}>GNSI · Student Registry</div>
-            <h1 style={{fontSize:isMobile?22:28,fontWeight:800,color:T.text1,letterSpacing:'-.04em',lineHeight:1,margin:0}}>Students</h1>
-            <div style={{display:'flex',alignItems:'center',gap:10,marginTop:8,flexWrap:'wrap'}}>
-              <span style={{fontSize:13,color:T.text3}}>
-                {loading?'Loading…':<><strong style={{color:T.text1}}>{filtered.length}</strong> / {students.length} students</>}
-              </span>
-              <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',borderRadius:T.r24,fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',color:rc.color,background:rc.bg,border:`1px solid ${rc.border}`}}>
-                {role}
-              </span>
+        {/* Hero header */}
+        <section className="st-hero" style={{padding:isMobile?'18px 16px 16px':'26px 28px 22px',marginBottom:16}}>
+          <div style={{position:'relative',display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:16}}>
+            <div style={{display:'flex',alignItems:'center',gap:isMobile?12:16,minWidth:0}}>
+              <div style={{width:isMobile?46:56,height:isMobile?46:56,borderRadius:16,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(145deg,rgba(233,217,176,.28),rgba(233,217,176,.06))',border:'1px solid rgba(233,217,176,.35)',color:T.goldBorder}}>
+                <SIcon.users size={isMobile?22:26}/>
+              </div>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:10.5,fontWeight:700,textTransform:'uppercase',letterSpacing:'.2em',color:T.goldBorder,marginBottom:6}}>GNSI · Student Registry</div>
+                <h1 style={{fontSize:isMobile?26:34,fontWeight:600,color:'#fff',letterSpacing:'-.02em',lineHeight:1,margin:0,fontFamily:T.serif}}>Students</h1>
+                <div style={{display:'flex',alignItems:'center',gap:10,marginTop:9,flexWrap:'wrap'}}>
+                  <span style={{fontSize:13,color:'rgba(255,255,255,.72)'}}>
+                    {loading?'Loading roster…':<><strong style={{color:'#fff'}}>{filtered.length}</strong> of {students.length} students shown</>}
+                  </span>
+                  <span style={{display:'inline-flex',alignItems:'center',gap:6,padding:'3px 10px',borderRadius:999,fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',color:T.goldBorder,background:'rgba(184,146,58,.16)',border:'1px solid rgba(233,217,176,.35)'}}>
+                    <span style={{width:6,height:6,borderRadius:'50%',background:rc.color}}/>{role}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+              <button className="st-hbtn ghost" onClick={loadAll} title="Refresh"><span style={{display:'inline-flex',animation:loading?'spin .8s linear infinite':'none'}}><SIcon.refresh size={15}/></span>{!isMobile&&'Refresh'}</button>
+              <IfCan can={can.write}>
+                <button className="st-hbtn gold" onClick={()=>{setEditing(null);setFormOpen(true);setPageTab('students')}}><SIcon.plus size={15}/> {isMobile?'Add':'New Student'}</button>
+              </IfCan>
             </div>
           </div>
-          <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-            <Btn onClick={loadAll} size='sm'><SIcon.refresh size={14}/> Refresh</Btn>
-            <IfCan can={can.write}>
-              <Btn onClick={()=>{setEditing(null);setFormOpen(true);setPageTab('students')}} variant='primary'><SIcon.plus size={14}/> {isMobile?'Add':'New Student'}</Btn>
-            </IfCan>
-          </div>
-        </div>
 
-        {/* Page-level tabs — Dashboard / Students / Data Quality */}
-        <div style={{display:'flex',gap:2,marginBottom:22,borderBottom:`1px solid ${T.border}`}}>
-          {[{key:'dashboard',label:'Dashboard',icon:SIcon.home},{key:'students',label:'Students',icon:SIcon.users},{key:'scholarship',label:'Scholarship/Waiver',icon:SIcon.check},{key:'dataQuality',label:'Data Quality',icon:SIcon.check}].map(t=>{
-            const active=pageTab===t.key
-            return (
-              <button key={t.key} onClick={()=>setPageTab(t.key)} style={{
-                display:'flex', alignItems:'center', gap:7,
-                padding:'11px 16px', border:'none', background:'none', cursor:'pointer',
-                fontSize:13.5, fontWeight:600, fontFamily:'inherit',
-                color:active?T.brand:T.text3,
-                borderBottom:`2px solid ${active?T.brand:'transparent'}`,
-                marginBottom:-1, transition:'color .12s, border-color .12s',
-              }}>
-                <t.icon size={15}/>
-                {t.label}
-              </button>
-            )
-          })}
-        </div>
+          {/* Hero quick stats */}
+          <div style={{position:'relative',display:'grid',gridTemplateColumns:isMobile?'repeat(2,minmax(0,1fr))':'repeat(4,minmax(0,1fr))',gap:isMobile?8:12,marginTop:isMobile?16:22}}>
+            {(()=>{
+              const act=students.filter(s=>s.status==='Active').length
+              const attVals=students.map(s=>attData[s.id]).filter(v=>v!=null)
+              const avgAtt=attVals.length?attVals.reduce((x,y)=>x+y,0)/attVals.length:null
+              const boarders=students.filter(s=>s.hostel_type==='Boarder').length
+              return [
+                {l:'Active students',v:loading?'—':act,sub:students.length?`${Math.round(act/students.length*100)}% of roster`:'—'},
+                {l:'Avg. attendance',v:avgAtt==null?'—':`${avgAtt.toFixed(0)}%`,sub:attVals.length?`${attVals.length} with records`:'No records yet',tone:avgAtt==null?null:avgAtt>=75?'#86efac':'#fca5a5'},
+                {l:'Boarders',v:loading?'—':boarders,sub:`${students.filter(s=>s.hostel_type==='Day Scholar').length} day scholars`},
+                {l:'Fee dues',v:feeDueCount,sub:feeDueCount?'students pending':'All clear',tone:feeDueCount?'#fcd34d':'#86efac'},
+              ].map(h=>(
+                <div key={h.l} className="st-hstat">
+                  <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.12em',color:'rgba(255,255,255,.6)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{h.l}</div>
+                  <div style={{fontFamily:T.serif,fontSize:isMobile?22:26,fontWeight:600,color:h.tone||'#fff',marginTop:6,lineHeight:1,fontVariantNumeric:'tabular-nums'}}>{h.v}</div>
+                  <div style={{fontSize:11,color:'rgba(255,255,255,.55)',marginTop:5,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{h.sub}</div>
+                </div>
+              ))
+            })()}
+          </div>
+        </section>
+
+        {/* Page-level tabs — Dashboard / Students / Scholarship / Data Quality */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:16}}>
+          <nav className="st-tabs" role="tablist" style={{maxWidth:'100%'}}>
+            {[{key:'dashboard',label:'Dashboard',icon:SIcon.home},{key:'students',label:'Students',icon:SIcon.users},{key:'scholarship',label:'Scholarship/Waiver',icon:SIcon.fileText},{key:'dataQuality',label:'Data Quality',icon:SIcon.check}].map(t=>{
+              const active=pageTab===t.key
+              return (
+                <button key={t.key} role="tab" aria-selected={active} className={'st-tab'+(active?' on':'')} onClick={()=>setPageTab(t.key)}>
+                  <t.icon size={15}/>
+                  {t.label}
+                </button>
+              )
+            })}
+          </nav>
 
         {/* Action Toolbar */}
         {pageTab==='students'&&(
-        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:16,overflowX:'auto',WebkitOverflowScrolling:'touch',paddingBottom:isMobile?4:0}}>
+        <div className="st-tool" style={{overflowX:isMobile?'auto':'visible',WebkitOverflowScrolling:'touch',flexWrap:isMobile?'nowrap':'wrap',maxWidth:'100%',paddingBottom:isMobile?2:0}}>
           <IfCan can={can.export}>
             <div style={{position:'relative'}} ref={exportMenuRef}>
               <Btn onClick={()=>setShowExportMenu(v=>!v)} size='sm'><SIcon.download size={14}/> Export</Btn>
               {showExportMenu&&!isMobile&&(
-                <div style={{position:'absolute',left:0,top:'110%',background:T.surface,border:`1px solid ${T.border}`,borderRadius:T.r10,boxShadow:T.shadow2,zIndex:9999,minWidth:210,overflow:'hidden'}}>
+                <div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:T.surface,border:`1px solid ${T.border}`,borderRadius:T.r12,boxShadow:T.shadow2,zIndex:9999,minWidth:230,overflow:'hidden',padding:6,animation:'fadeUp .15s ease'}}>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:'.14em',textTransform:'uppercase',color:T.gold,padding:'6px 10px 8px'}}>Export</div>
                   {EXPORT_ITEMS.map(item=>(
-                    <button key={item.label} onClick={()=>{item.fn();setShowExportMenu(false)}} style={{width:'100%',padding:'10px 16px',border:'none',background:'none',textAlign:'left',fontSize:13,fontWeight:500,cursor:'pointer',color:T.text2,borderBottom:`1px solid ${T.border}`,fontFamily:'inherit'}} onMouseEnter={e=>e.currentTarget.style.background=T.surface2} onMouseLeave={e=>e.currentTarget.style.background='none'}>{item.label}</button>
+                    <button key={item.label} onClick={()=>{item.fn();setShowExportMenu(false)}} style={{width:'100%',padding:'10px 12px',border:'none',background:'none',textAlign:'left',fontSize:13,fontWeight:500,cursor:'pointer',color:T.text2,borderRadius:T.r6,fontFamily:'inherit',display:'flex',alignItems:'center',gap:8}} onMouseEnter={e=>e.currentTarget.style.background=T.surface2} onMouseLeave={e=>e.currentTarget.style.background='none'}><SIcon.download size={13}/>{item.label}</button>
                   ))}
                 </div>
               )}
             </div>
           </IfCan>
           <IfCan can={can.export}>
-            <Btn onClick={()=>setShowReportGen(true)} size='sm' style={{color:T.violet,borderColor:T.violetBorder}}><SIcon.fileText size={14}/> Reports</Btn>
+            <Btn onClick={()=>setShowReportGen(true)} size='sm' style={{color:T.navy2,borderColor:T.goldBorder,background:T.goldLight}}><SIcon.fileText size={14}/> Reports</Btn>
           </IfCan>
-          <Btn onClick={()=>setShowDeleted(v=>!v)} size='sm' style={{color:showDeleted?T.red:T.text2,background:showDeleted?T.redLight:'transparent',borderColor:showDeleted?T.redBorder:T.border}}><SIcon.archive size={14}/> Archive{deleted.length>0?` (${deleted.length})`:''}</Btn>
+          <Btn onClick={()=>setShowDeleted(v=>!v)} size='sm' style={{color:showDeleted?T.red:T.text2,background:showDeleted?T.redLight:T.surface,borderColor:showDeleted?T.redBorder:T.border2}}><SIcon.archive size={14}/> Archive{deleted.length>0?` (${deleted.length})`:''}</Btn>
           <IfCan can={can.write}>
-            <Btn onClick={()=>setShowMergeDups(true)} size='sm' style={{color:T.red,borderColor:T.redBorder}}><SIcon.merge size={14}/> Merge</Btn>
-            <Btn onClick={()=>setShowRollover(true)} size='sm' style={{color:T.brand,borderColor:T.brandBorder}}><SIcon.rotate size={14}/> Rollover</Btn>
+            <Btn onClick={()=>setShowMergeDups(true)} size='sm'><SIcon.merge size={14}/> Merge</Btn>
+            <Btn onClick={()=>setShowRollover(true)} size='sm'><SIcon.rotate size={14}/> Rollover</Btn>
           </IfCan>
         </div>
         )}
+        </div>
 
         {pageTab==='dashboard'&&(
           <StudentDashboard
@@ -5131,9 +5215,12 @@ const effectiveCols = visibleCols.filter(col => {
         {pageTab==='students'&&(<>
         {/* Archive panel */}
         {showDeleted&&(
-          <Card style={{marginBottom:16,border:`1px solid ${T.redBorder}`}}>
-            <div style={{padding:'14px 16px',borderBottom:`1px solid ${T.redBorder}`,background:T.redLight}}>
-              <div style={{fontWeight:700,color:T.red,fontSize:13,textTransform:'uppercase',letterSpacing:'.08em'}}>Archive ({deleted.length})</div>
+          <Card style={{marginBottom:16,border:`1px solid ${T.redBorder}`,animation:'fadeUp .2s ease'}}>
+            <div style={{padding:'14px 18px',borderBottom:`1px solid ${T.redBorder}`,background:T.redLight,display:'flex',alignItems:'center',gap:10}}>
+              <SIcon.archive size={16}/>
+              <div style={{fontWeight:700,color:T.red,fontSize:12,textTransform:'uppercase',letterSpacing:'.12em'}}>Archive · {deleted.length}</div>
+              <div style={{flex:1}}/>
+              <span style={{fontSize:11.5,color:T.redText}}>Restore brings a record back to the active roster</span>
             </div>
             <div style={{padding:'12px 16px'}}>
               {deleted.length===0?<div style={{color:T.text4,fontSize:13}}>No archived records.</div>
@@ -5152,7 +5239,7 @@ const effectiveCols = visibleCols.filter(col => {
         )}
 
         {/* KPI Strip */}
-        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:16}}>
+        <div className="st-kpis" style={{marginBottom:18}}>
           {KPI_ITEMS.map(k=>(
             <KpiCard key={k.label} label={k.label} value={k.value} color={k.color} warn={k.warn} icon={k.icon}
               active={k.fkey==='hostel'?filterHostel===k.fval:k.fkey==='status'?filterStatus===k.fval:false}
@@ -5166,23 +5253,24 @@ const effectiveCols = visibleCols.filter(col => {
 
         {/* Selection bar */}
         {selected.size>0&&(
-          <div style={{display:'flex',alignItems:'center',gap:8,padding:'10px 16px',background:T.brandLight,border:`1px solid ${T.brandBorder}`,borderRadius:T.r10,marginBottom:12,flexWrap:'wrap'}}>
-            <span style={{fontSize:13,fontWeight:700,color:T.brand}}>{selected.size} selected</span>
+          <div style={{display:'flex',alignItems:'center',gap:8,padding:'10px 12px 10px 16px',background:`linear-gradient(135deg,${T.navy},${T.navy2})`,border:`1px solid ${T.navy}`,borderRadius:T.r12,marginBottom:12,flexWrap:'wrap',boxShadow:T.shadow2,position:'sticky',top:8,zIndex:101,animation:'fadeUp .2s ease'}}>
+            <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',minWidth:28,height:28,padding:'0 8px',borderRadius:999,background:T.gold,color:'#1a1406',fontSize:13,fontWeight:800}}>{selected.size}</span>
+            <span style={{fontSize:13,fontWeight:600,color:'#fff'}}>selected</span>
             <div style={{flex:1}}/>
             <IfCan can={can.write}>
-              <Btn onClick={()=>setShowBulkOps(true)} variant='primary' size='sm'>Bulk Actions</Btn>
+              <Btn onClick={()=>setShowBulkOps(true)} variant='gold' size='sm'>Bulk Actions</Btn>
               <Btn onClick={()=>setShowHouseReassign(true)} size='sm' style={{color:T.violet,borderColor:T.violetBorder}}>Reassign House</Btn>
             </IfCan>
             <IfCan can={can.fees}>
               <Btn onClick={()=>setShowBulkFee(true)} variant='success' size='sm'>Bulk Fee</Btn>
               <Btn onClick={()=>setShowBulkScholarship(true)} size='sm' style={{color:T.green,borderColor:T.greenBorder}}>Scholarship/Waiver</Btn>
             </IfCan>
-            <button onClick={clearSel} style={{width:28,height:28,borderRadius:T.r6,border:`1px solid ${T.border}`,background:T.surface,cursor:'pointer',fontSize:14,color:T.text3,display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
+            <button onClick={clearSel} aria-label="Clear selection" style={{width:32,height:32,borderRadius:'50%',border:'1px solid rgba(255,255,255,.25)',background:'rgba(255,255,255,.08)',cursor:'pointer',fontSize:16,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>
           </div>
         )}
 
         {/* Sticky filter bar */}
-        <div style={{position:'sticky',top:0,zIndex:100,background:T.bg,paddingTop:8,paddingBottom:8,borderBottom:`1px solid ${T.border}`,marginBottom:12}}>
+        <div className="st-filter">
           {/* Presets row */}
           <div style={{display:'flex',gap:6,marginBottom:8,overflowX:'auto',WebkitOverflowScrolling:'touch',paddingBottom:2,alignItems:'center'}}>
             <Btn onClick={()=>setShowPresets(v=>!v)} size='sm' style={{flexShrink:0,fontSize:11}}>⭐ Presets{presets.length?` (${presets.length})`:''}</Btn>
@@ -5210,18 +5298,19 @@ const effectiveCols = visibleCols.filter(col => {
           <div style={{overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
             <div style={{display:'flex',gap:6,alignItems:'center',minWidth:isMobile?'max-content':'auto'}}>
               {/* Search */}
-              <div style={{position:'relative',minWidth:180,flex:isMobile?'0 0 180px':1}}>
-                <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',color:T.text4,fontSize:14,pointerEvents:'none'}}>⌕</span>
+              <div style={{position:'relative',minWidth:200,flex:isMobile?'0 0 220px':1}}>
+                <span style={{position:'absolute',left:13,top:'50%',transform:'translateY(-50%)',color:T.text4,pointerEvents:'none',display:'flex'}}><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>
                 <input ref={searchRef} value={search}
                   onChange={e=>{setSearch(e.target.value);setPage(1)}}
                   onFocus={()=>setShowRecents(true)}
                   onBlur={()=>setTimeout(()=>setShowRecents(false),150)}
                   onKeyDown={e=>{if(e.key==='Enter'&&search.trim()){addSearch(search.trim());setShowRecents(false)}}}
                   placeholder={isMobile?'Search…':'Name, GCC, phone… (⌘K)'}
-                  style={{width:'100%',paddingLeft:30,paddingRight:10,height:36,borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:13,background:T.surface,color:T.text1,fontFamily:'inherit',outline:'none'}}
+                  style={{width:'100%',paddingLeft:38,paddingRight:search?34:12,height:42,borderRadius:T.r10,border:`1px solid ${T.border2}`,fontSize:13.5,background:T.surface,color:T.text1,fontFamily:'inherit',outline:'none',boxShadow:T.shadow}}
                 />
+                {search&&<button onMouseDown={e=>e.preventDefault()} onClick={()=>{setSearch('');setPage(1);searchRef.current?.focus()}} aria-label="Clear search" style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',width:24,height:24,borderRadius:'50%',border:'none',background:T.surface2,color:T.text3,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><SIcon.x size={12}/></button>}
                 {showRecents&&recentSearches.length>0&&(
-                  <div style={{position:'absolute',top:'110%',left:0,right:0,background:T.surface,border:`1px solid ${T.border}`,borderRadius:T.r8,boxShadow:T.shadow2,zIndex:999,overflow:'hidden',minWidth:200}}>
+                  <div style={{position:'absolute',top:'calc(100% + 6px)',left:0,right:0,background:T.surface,border:`1px solid ${T.border}`,borderRadius:T.r12,boxShadow:T.shadow2,zIndex:999,overflow:'hidden',minWidth:220,animation:'fadeUp .15s ease'}}>
                     <div style={{display:'flex',justifyContent:'space-between',padding:'6px 12px',borderBottom:`1px solid ${T.border}`}}>
                       <span style={{fontSize:10,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.08em'}}>Recent</span>
                       <button onMouseDown={clearSearches} style={{background:'none',border:'none',fontSize:11,color:T.red,cursor:'pointer',fontWeight:600}}>Clear</button>
@@ -5242,13 +5331,13 @@ const effectiveCols = visibleCols.filter(col => {
                 {val:filterSession,set:v=>{setFilterSession(v);setPage(1)},opts:['All',...SESSIONS],label:'Session'},
                 {val:filterBatch,set:v=>{setFilterBatch(v);setPage(1)},opts:allBatches,label:'Batch'},
               ].map(f=>(
-                <select key={f.label} value={f.val} onChange={e=>f.set(e.target.value)} style={{padding:'7px 8px',borderRadius:T.r8,border:`1px solid ${f.val!=='All'?T.brand:T.border2}`,fontSize:12,background:f.val!=='All'?T.brandLight:T.surface,color:f.val!=='All'?T.brand:T.text1,cursor:'pointer',height:36,fontFamily:'inherit',flexShrink:0}}>
-                  {f.opts.map(o=><option key={o}>{o}</option>)}
+                <select key={f.label} aria-label={f.label} title={f.label} value={f.val} onChange={e=>f.set(e.target.value)} style={{padding:'7px 10px',borderRadius:T.r10,border:`1px solid ${f.val!=='All'?T.navy2:T.border2}`,fontSize:12.5,fontWeight:f.val!=='All'?700:500,background:f.val!=='All'?T.brandLight:T.surface,color:f.val!=='All'?T.navy2:T.text1,cursor:'pointer',height:42,fontFamily:'inherit',flexShrink:0,boxShadow:T.shadow}}>
+                  {f.opts.map(o=><option key={o} value={o}>{o==='All'?`${f.label}: All`:o}</option>)}
                 </select>
               ))}
 
               {hasFilters&&<Btn onClick={clearAllFilters} size='sm' style={{color:T.red,borderColor:T.redBorder,flexShrink:0}}>✕ Clear</Btn>}
-              <span style={{fontSize:12,color:T.text4,whiteSpace:'nowrap',flexShrink:0}}>{filtered.length}/{students.length}</span>
+              <span style={{fontSize:12,fontWeight:700,color:T.text3,whiteSpace:'nowrap',flexShrink:0,padding:'5px 10px',borderRadius:999,background:T.surface2,border:`1px solid ${T.border}`,fontVariantNumeric:'tabular-nums'}}>{filtered.length}/{students.length}</span>
             </div>
           </div>
 
@@ -5272,19 +5361,19 @@ const effectiveCols = visibleCols.filter(col => {
 
         {/* Student List */}
         {loading?(
-          <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'40vh',gap:14,color:T.text3}}>
-            <div style={{width:20,height:20,border:`2.5px solid ${T.border2}`,borderTopColor:T.brand,borderRadius:'50%',animation:'spin .7s linear infinite'}}/>
-            <span style={{fontWeight:600,fontSize:14}}>Loading students…</span>
+          <div className="st-grid" aria-busy="true" aria-label="Loading students">
+            {Array.from({length:isMobile?3:8}).map((_,i)=><div key={i} className="st-skel"/>)}
           </div>
         ):filtered.length===0?(
           <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'60px 20px',textAlign:'center'}}>
-            <div style={{width:64,height:64,borderRadius:T.r16,background:T.surface2,border:`1px solid ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:30,marginBottom:14}}>🎓</div>
-            <div style={{fontSize:16,fontWeight:700,color:T.text2,marginBottom:6}}>{students.length===0?'No students yet':'No results'}</div>
+            <div style={{width:76,height:76,borderRadius:22,background:`linear-gradient(145deg,${T.goldLight},${T.surface})`,border:`1px solid ${T.goldBorder}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:34,marginBottom:16,boxShadow:T.shadow}}>🎓</div>
+            <div style={{fontSize:20,fontWeight:600,color:T.text1,marginBottom:6,fontFamily:T.serif}}>{students.length===0?'No students yet':'No results'}</div>
             <p style={{fontSize:13,color:T.text3,maxWidth:'30ch',lineHeight:1.7,margin:'0 0 20px'}}>{students.length===0?'Click "+ New Student" to add the first student.':'Try adjusting your search or filters.'}</p>
             {can.write&&students.length===0&&<Btn onClick={()=>{setEditing(null);setFormOpen(true)}} variant='primary'>+ New Student</Btn>}
+            {students.length>0&&hasFilters&&<Btn onClick={clearAllFilters}>Clear all filters</Btn>}
           </div>
         ):(
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:14}}>
+          <div className="st-grid">
             {paginated.map(s=>(
               <StudentCard key={s.id} s={s} can={can}
                 onEdit={st=>{setEditing(st);setFormOpen(true)}}
@@ -5300,13 +5389,13 @@ const effectiveCols = visibleCols.filter(col => {
 
         {/* Pagination */}
         {!loading&&filtered.length>PAGE_SIZE&&(
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:20,flexWrap:'wrap',gap:8}}>
-            <span style={{fontSize:12,color:T.text4}}>Showing {(page-1)*PAGE_SIZE+1}–{Math.min(page*PAGE_SIZE,filtered.length)} of {filtered.length}</span>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:22,flexWrap:'wrap',gap:10,padding:'10px 12px 10px 16px',background:T.surface,border:`1px solid ${T.border}`,borderRadius:T.r12,boxShadow:T.shadow}}>
+            <span style={{fontSize:12.5,color:T.text3,fontVariantNumeric:'tabular-nums'}}>Showing {(page-1)*PAGE_SIZE+1}–{Math.min(page*PAGE_SIZE,filtered.length)} of {filtered.length}</span>
             <div style={{display:'flex',gap:4}}>
               <Btn onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} size='sm'>←</Btn>
               {Array.from({length:Math.min(isMobile?3:5,totalPages)},(_,i)=>{
                 const p=totalPages<=5?i+1:Math.max(1,Math.min(page-2,totalPages-4))+i
-                return <button key={p} onClick={()=>setPage(p)} style={{width:32,height:32,borderRadius:T.r8,border:`1px solid ${page===p?T.brand:T.border}`,fontSize:12,fontWeight:600,cursor:'pointer',background:page===p?T.brand:T.surface,color:page===p?'#fff':T.text3,transition:'all .12s',fontFamily:'inherit'}}>{p}</button>
+                return <button key={p} onClick={()=>setPage(p)} aria-current={page===p?'page':undefined} style={{width:32,height:32,borderRadius:T.r8,border:`1px solid ${page===p?T.navy:T.border}`,fontSize:12.5,fontWeight:700,cursor:'pointer',background:page===p?`linear-gradient(180deg,${T.navy2},${T.navy})`:T.surface,color:page===p?'#fff':T.text3,transition:'all .12s',fontFamily:'inherit'}}>{p}</button>
               })}
               <Btn onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages} size='sm'>→</Btn>
             </div>
