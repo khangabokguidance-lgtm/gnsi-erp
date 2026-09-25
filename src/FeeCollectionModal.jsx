@@ -22,19 +22,21 @@ const FEE_ITEMS = [
 const HOSTEL_TYPES = ['Day Scholar', 'Boarder', 'Day Boarder']
 
 const C = {
-  navy:    '#1e3a5f',
-  indigo:  '#4f46e5',
+  navy:    '#1e3a6e',
+  navyDk:  '#132a4f',
+  gold:    '#b8923a',
+  indigo:  '#1e3a6e',
   emerald: '#059669',
   violet:  '#7c3aed',
   amber:   '#d97706',
   red:     '#dc2626',
-  slate: { 50:'#f8fafc', 100:'#f1f5f9', 200:'#e2e8f0', 400:'#94a3b8', 500:'#64748b', 700:'#334155', 900:'#0f172a' },
+  slate: { 50:'#faf8f3', 100:'#f3f0e8', 200:'#e8e3d8', 400:'#98a2b3', 500:'#5d6b82', 700:'#2c3a52', 900:'#0f1b2e' },
 }
 
 const inp = {
-  padding: '9px 12px', borderRadius: 8, border: '1px solid #e2e8f0',
-  fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box',
-  fontFamily: 'inherit', background: 'white',
+  padding: '10px 12px', borderRadius: 10, border: '1px solid #d9d2c2',
+  fontSize: 13.5, outline: 'none', width: '100%', boxSizing: 'border-box',
+  fontFamily: 'inherit', background: 'white', minHeight: 40, color: '#0f1b2e',
 }
 
 const PaidBadge = () => (
@@ -119,7 +121,7 @@ function PaymentSuccessToast({ toast, onDone }) {
           />
         </svg>
         <div style={{ fontSize: 15, fontWeight: 800, color: '#065f46', letterSpacing: .2 }}>Payment Successful</div>
-        <div style={{ fontSize: 26, fontWeight: 900, color: '#0f172a', marginTop: 6 }}>₹{fmt(toast.amount)}</div>
+        <div style={{ fontSize: 30, fontWeight: 600, color: '#132a4f', marginTop: 6, fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums' }}>₹{fmt(toast.amount)}</div>
         {toast.label && (
           <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6, textAlign: 'center', maxWidth: 220, lineHeight: 1.5 }}>
             {toast.label}
@@ -895,7 +897,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
 
   const tabBtn = (id, label, icon) => (
     <button type="button" onClick={() => { setTab(id); setSaved(null); setError(null) }}
-      style={{ flex:1, padding:'10px 6px', borderRadius:8, border:'none', cursor:'pointer', fontSize:12, fontWeight:700, background:tab===id?C.navy:C.slate[100], color:tab===id?'white':C.slate[500], transition:'all .15s' }}>
+      style={{ flex:1, padding:'10px 6px', borderRadius:10, border:'none', cursor:'pointer', fontSize:12.5, fontWeight:700, fontFamily:'inherit', background:tab===id?`linear-gradient(180deg,${C.navy},${C.navyDk})`:'transparent', color:tab===id?'white':C.slate[500], boxShadow:tab===id?'0 6px 14px -6px rgba(19,42,79,.6)':'none', transition:'all .15s' }}>
       {icon} {label}
     </button>
   )
@@ -908,16 +910,30 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
 
   return createPortal(
     <>
-    <div style={{ position:'fixed', inset:0, background:'rgba(15,17,26,.75)', zIndex:999999, display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(6px)' }} onClick={handleClose}>
-      <div style={{ width:'min(560px,96vw)', background:'white', borderRadius:18, boxShadow:'0 32px 80px rgba(0,0,0,.25)', overflow:'hidden', display:'flex', flexDirection:'column', maxHeight:'92vh' }} onClick={e => e.stopPropagation()}>
-        <div style={{ height:4, background:`linear-gradient(90deg,${C.navy},${C.indigo},${C.violet})` }} />
+    <div className="fcm-root" style={{ position:'fixed', inset:0, background:'rgba(10,18,32,.6)', zIndex:999999, display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(6px)', WebkitBackdropFilter:'blur(6px)', fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif" }} onClick={handleClose}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap');
+        .fcm-root * { box-sizing:border-box; }
+        .fcm-root input:not([type=checkbox]):not([type=radio]):focus, .fcm-root select:focus, .fcm-root textarea:focus { outline:none; border-color:#1e3a6e !important; box-shadow:0 0 0 3px rgba(30,58,110,.14) !important; }
+        .fcm-root button { font-family:inherit; }
+        .fcm-root button:not(:disabled) { transition:transform .12s, filter .12s, box-shadow .15s, background-color .15s; }
+        .fcm-root button:not(:disabled):hover { filter:brightness(.97); }
+        .fcm-root button:not(:disabled):active { transform:scale(.98); }
+        .fcm-root button:focus-visible { outline:2px solid #b8923a; outline-offset:2px; }
+        .fcm-root ::-webkit-scrollbar { width:6px; height:6px; }
+        .fcm-root ::-webkit-scrollbar-thumb { background:#d9d2c2; border-radius:6px; }
+        @keyframes fcmIn { from { opacity:0; transform:translateY(14px) scale(.98) } to { opacity:1; transform:none } }
+        @media (prefers-reduced-motion:reduce) { .fcm-sheet { animation:none !important; } }
+      `}</style>
+      <div className="fcm-sheet" style={{ width:'min(580px,96vw)', background:'white', borderRadius:22, boxShadow:'0 40px 90px -20px rgba(10,18,32,.55)', border:'1px solid #e8e3d8', overflow:'hidden', display:'flex', flexDirection:'column', maxHeight:'92vh', animation:'fcmIn .25s cubic-bezier(.2,.8,.2,1)' }} onClick={e => e.stopPropagation()}>
 
         {/* Header */}
-        <div style={{ padding:'18px 22px 14px', borderBottom:`1px solid ${C.slate[100]}` }}>
+        <div style={{ padding:'18px 22px 16px', borderBottom:`1px solid ${C.slate[200]}`, background:'linear-gradient(180deg,#faf8f3,#fff)', position:'relative' }}>
+          <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background:`linear-gradient(90deg,${C.navyDk},${C.navy} 60%,${C.gold})` }} />
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
             <div>
-              <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.1em', color:C.slate[400], marginBottom:4 }}>Fee Collection</div>
-              <div style={{ fontSize:18, fontWeight:800, color:C.slate[900] }}>{name || '—'}</div>
+              <div style={{ fontSize:10.5, fontWeight:700, textTransform:'uppercase', letterSpacing:'.18em', color:C.gold, marginBottom:5 }}>Fee Collection</div>
+              <div style={{ fontSize:22, fontWeight:600, color:C.navyDk, fontFamily:"'Fraunces',Georgia,serif", letterSpacing:'-.01em', lineHeight:1.15 }}>{name || '—'}</div>
               <div style={{ fontSize:12, color:C.slate[400], marginTop:3, display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
                 {gcc    && <span style={{ fontWeight:700, color:C.navy }}>GCC-{gcc}</span>}
                 {course && <span>{course}</span>}
@@ -963,7 +979,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                 {admDateSaving && <span style={{ fontSize:11, color:C.slate[400] }}>saving…</span>}
               </div>
             </div>
-            <button type="button" onClick={handleClose} style={{ width:30, height:30, borderRadius:8, border:`1px solid ${C.slate[200]}`, background:C.slate[50], cursor:'pointer', fontSize:18, color:C.slate[500], display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
+            <button type="button" aria-label="Close" onClick={handleClose} style={{ width:34, height:34, borderRadius:'50%', border:`1px solid ${C.slate[200]}`, background:'white', cursor:'pointer', fontSize:18, color:C.slate[500], display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
           </div>
 
           {!isStudentActive && (
@@ -1611,15 +1627,16 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
             : ratesLoading ? '⏳ Loading…'
             : '🖨️ Record & Print Receipt'
           return (
-        <div style={{ padding:'14px 22px', borderTop:`1px solid ${C.slate[100]}`, background:C.slate[50], display:'flex', gap:10, justifyContent:'flex-end' }}>
-          <button type="button" onClick={handleClose} style={{ padding:'9px 20px', borderRadius:9, border:`1px solid ${C.slate[200]}`, background:'white', fontSize:13, fontWeight:600, cursor:'pointer', color:C.slate[500] }}>Close</button>
+        <div style={{ padding:'14px 22px', borderTop:`1px solid ${C.slate[200]}`, background:C.slate[50], display:'flex', gap:10, justifyContent:'flex-end', flexWrap:'wrap' }}>
+          <button type="button" onClick={handleClose} style={{ padding:'11px 20px', borderRadius:12, border:`1px solid ${C.slate[200]}`, background:'white', fontSize:13, fontWeight:600, cursor:'pointer', color:C.slate[500] }}>Close</button>
           <button type="button"
             onClick={tab==='admission'?saveAdmission:tab==='flat'?saveFlat:saveCourse}
             disabled={blocked}
-            style={{ padding:'9px 24px', borderRadius:9, border:'none', fontSize:13, fontWeight:700,
+            style={{ padding:'11px 24px', borderRadius:12, border: blocked ? 'none' : '1px solid #a37f2e', fontSize:13.5, fontWeight:800,
               cursor: blocked ? 'not-allowed' : 'pointer',
-              background: blocked ? C.slate[400] : `linear-gradient(135deg,${C.navy},${C.indigo})`,
-              color:'white', opacity: blocked ? .7 : 1 }}>
+              background: blocked ? C.slate[400] : 'linear-gradient(180deg,#d4ae58,#b8923a)',
+              color: blocked ? 'white' : '#1a1406', opacity: blocked ? .7 : 1,
+              boxShadow: blocked ? 'none' : '0 1px 0 rgba(255,255,255,.35) inset, 0 10px 22px -10px rgba(184,146,58,.9)' }}>
             {label}
           </button>
         </div>
@@ -1635,8 +1652,8 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           comment above the state declarations for why. */}
       {adminConfirmOpen && (
         <div style={{ position:'fixed', inset:0, background:'rgba(15,17,26,.55)', zIndex:1000000, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={() => setAdminConfirmOpen(false)}>
-          <div style={{ width:'min(360px,90vw)', background:'white', borderRadius:16, boxShadow:'0 24px 60px rgba(0,0,0,.3)', padding:'22px 24px' }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize:15, fontWeight:800, color:C.slate[900], marginBottom:4 }}>
+          <div style={{ width:'min(380px,90vw)', background:'white', borderRadius:20, boxShadow:'0 30px 70px -20px rgba(10,18,32,.55)', border:'1px solid #e8e3d8', padding:'22px 24px', animation:'fcmIn .2s ease' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize:18, fontWeight:600, color:C.navyDk, marginBottom:6, fontFamily:"'Fraunces',Georgia,serif" }}>
               🔒 {adminConfirmFor?.endsWith('-rate') ? 'Authorize Rate Deviation' : 'Authorize Advance Payment'}
             </div>
             <div style={{ fontSize:12, color:C.slate[500], marginBottom:16 }}>

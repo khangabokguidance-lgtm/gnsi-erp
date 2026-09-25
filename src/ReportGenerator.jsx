@@ -31,30 +31,30 @@ const T = {
 }
 const N = {
   bg:      '#FFFFFF',
-  bg2:     '#F5F5F7',
-  text:    '#1D1D1F',
-  text2:   '#3A3A3C',
-  muted:   '#86868B',
-  muted2:  '#6E6E73',
-  navy:    '#1D1D1F',
-  navyLight:'#3A3A3C',
-  gold:    '#D4AF6A',
-  goldDark:'#B8915A',
+  bg2:     '#faf8f3',
+  text:    '#0f1b2e',
+  text2:   '#2c3a52',
+  muted:   '#5d6b82',
+  muted2:  '#6b7688',
+  navy:    '#132a4f',
+  navyLight:'#1e3a6e',
+  gold:    '#b8923a',
+  goldDark:'#9c7a2c',
   emerald: '#0A8042',
   rose:    '#D70015',
-  border:  'rgba(0,0,0,0.07)',
+  border:  '#d9d2c2',
   shadow:  (size='md') => {
     const m = {
-      sm: '0 0 0 1px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04)',
-      md: '0 0 0 1px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04), 0 8px 20px rgba(0,0,0,.06)',
-      lg: '0 0 0 1px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.05), 0 16px 36px rgba(0,0,0,.10)',
+      sm: '0 0 0 1px #e8e3d8, 0 1px 2px rgba(19,42,79,.05)',
+      md: '0 0 0 1px #e8e3d8, 0 1px 2px rgba(19,42,79,.05), 0 8px 22px -10px rgba(19,42,79,.18)',
+      lg: '0 0 0 1px #e8e3d8, 0 2px 4px rgba(19,42,79,.06), 0 18px 40px -16px rgba(19,42,79,.28)',
     }
     return m[size] || m.md
   },
   inset: (size='md') => {
     const m = {
-      sm: '0 0 0 1.5px rgba(29,29,31,.18), inset 0 0 0 1px rgba(0,0,0,.03)',
-      md: '0 0 0 2px rgba(29,29,31,.18), inset 0 0 0 1px rgba(0,0,0,.03)',
+      sm: '0 0 0 2px rgba(30,58,110,.55), 0 0 0 5px rgba(30,58,110,.08)',
+      md: '0 0 0 2px rgba(30,58,110,.55), 0 0 0 5px rgba(30,58,110,.08)',
     }
     return m[size] || m.md
   },
@@ -76,9 +76,9 @@ const today = () => new Date().toLocaleDateString('en-IN', { day:'2-digit', mont
 const todayCompact = () => new Date().toISOString().slice(0,10)
 
 // ─── Report template registry ───────────────────────────────────────────────
-const TEMPLATES = [
+const TEMPLATES = [ // accent colours tuned to the portal's navy/gold palette
   {
-    key:'summary', label:'Admission Summary', icon:'📋', color:T.indigo[600], bg:T.indigo[50],
+    key:'summary', label:'Admission Summary', icon:'📋', color:'#1e3a6e', bg:'#eef2f9',
     desc:'Counts by status, course, and house for the selected range',
   },
   {
@@ -106,7 +106,7 @@ function FilterChip({ label, options, value, onChange }) {
     <div>
       <div style={{ fontSize:10, fontWeight:700, color:N.muted, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:6 }}>{label}</div>
       <select value={value} onChange={e=>onChange(e.target.value)}
-        style={{ width:'100%', padding:'9px 12px', borderRadius:10, border:`1px solid ${N.border}`, fontSize:13, background:'#fff', color:N.text, fontFamily:'system-ui,sans-serif' }}>
+        style={{ width:'100%', boxSizing:'border-box', padding:'9px 12px', minHeight:40, borderRadius:10, border:`1px solid ${N.border}`, fontSize:13, background:'#fff', color:N.text, fontFamily:'inherit' }}>
         <option value="All">All</option>
         {options.map(o=><option key={o} value={o}>{o}</option>)}
       </select>
@@ -135,8 +135,10 @@ function buildPDF(templateKey, rows, cols, filters) {
   const pageWidth = doc.internal.pageSize.getWidth()
 
   // Letterhead
-  doc.setFillColor(29,29,31)
+  doc.setFillColor(19,42,79)
   doc.rect(0, 0, pageWidth, 70, 'F')
+  doc.setFillColor(184,146,58)
+  doc.rect(0, 70, pageWidth, 2.5, 'F')
   doc.setTextColor(255,255,255)
   doc.setFont('helvetica','bold')
   doc.setFontSize(16)
@@ -148,7 +150,7 @@ function buildPDF(templateKey, rows, cols, filters) {
   doc.text(`Generated on ${today()}`, 40, 60)
 
   const tmpl = TEMPLATES.find(t=>t.key===templateKey)
-  doc.setTextColor(29,29,31)
+  doc.setTextColor(19,42,79)
   doc.setFont('helvetica','bold')
   doc.setFontSize(13)
   doc.text(tmpl.label, 40, 92)
@@ -174,20 +176,20 @@ function buildPDF(templateKey, rows, cols, filters) {
     const byCourse = Object.keys(COURSE_STRUCTURE).map(c => [c, rows.filter(a=>a.course===c).length])
     autoTable(doc, {
       startY, head:[['Status','Count']], body:byStatus,
-      theme:'striped', headStyles:{ fillColor:[63,63,70] }, margin:{ left:40, right:40 },
+      theme:'striped', headStyles:{ fillColor:[30,58,110] }, alternateRowStyles:{ fillColor:[250,248,243] }, margin:{ left:40, right:40 },
     })
     autoTable(doc, {
       startY: doc.lastAutoTable.finalY + 24, head:[['Course','Count']], body:byCourse,
-      theme:'striped', headStyles:{ fillColor:[63,63,70] }, margin:{ left:40, right:40 },
+      theme:'striped', headStyles:{ fillColor:[30,58,110] }, alternateRowStyles:{ fillColor:[250,248,243] }, margin:{ left:40, right:40 },
     })
-    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(29,29,31)
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(19,42,79)
     doc.text(`Total Applications: ${rows.length}`, 40, doc.lastAutoTable.finalY + 24)
 
   } else if (templateKey === 'fees') {
     const feeRows = rows
       .map(a => {
         const c = cols.find(c => String(parseInt(c.adm_app_id))===String(parseInt(a.gcc)) && c.fee_type==='admission')
-        return c ? [a.gcc, a.name, a.course||'—', c.amount ? `₹${fmt(c.amount)}` : '—', c.payment_date || c.created_at?.slice(0,10) || '—'] : null
+        return c ? [a.gcc, a.name, a.course||'—', c.amount ? `Rs. ${fmt(c.amount)}` : '—', c.payment_date || c.created_at?.slice(0,10) || '—'] : null
       })
       .filter(Boolean)
     autoTable(doc, {
@@ -196,7 +198,7 @@ function buildPDF(templateKey, rows, cols, filters) {
     })
     const total = feeRows.reduce((s,r) => s + parseInt(String(r[3]).replace(/[^\d]/g,'')||0), 0)
     doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(5,150,105)
-    doc.text(`Total Collected: ₹${fmt(total)}  (${feeRows.length} payments)`, 40, doc.lastAutoTable.finalY + 24)
+    doc.text(`Total Collected: Rs. ${fmt(total)}  (${feeRows.length} payments)`, 40, doc.lastAutoTable.finalY + 24)
 
   } else if (templateKey === 'house') {
     const houseRows = HOUSES_LIST.filter(h=>h!=='Day Scholar').map(h => {
@@ -301,52 +303,89 @@ export default function ReportGenerator({ apps, cols, sessionOptions=[], courseO
     }
   }
 
+  const counts = {
+    total: filteredRows.length,
+    enrolled: filteredRows.filter(a=>a.status==='Enrolled').length,
+    pending: filteredRows.filter(a=>a.status==='Applied'||a.status==='Under Review').length,
+  }
+
   return (
-    <div style={{ background:N.bg, borderRadius:20, boxShadow:N.shadow('lg'), overflow:'hidden', marginBottom:16 }}>
+    <div className="rg-root" style={{ background:N.bg, borderRadius:20, boxShadow:N.shadow('lg'), overflow:'hidden', marginBottom:16, fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif" }}>
+      <style>{`
+        .rg-root * { box-sizing:border-box; }
+        .rg-root input:focus, .rg-root select:focus { outline:none; border-color:#1e3a6e !important; box-shadow:0 0 0 3px rgba(30,58,110,.14) !important; }
+        .rg-root button:not(:disabled) { transition:transform .12s, filter .12s, box-shadow .15s; }
+        .rg-root button:not(:disabled):hover { filter:brightness(.98); }
+        .rg-root button:not(:disabled):active { transform:scale(.98); }
+        .rg-root button:focus-visible { outline:2px solid #b8923a; outline-offset:2px; }
+        .rg-tpl:hover { transform:translateY(-2px); }
+      `}</style>
 
       {/* Header */}
-      <div style={{ background:`linear-gradient(135deg, ${N.navy} 0%, ${N.navyLight} 100%)`, padding:'18px 22px' }}>
-        <div style={{ fontSize:15, fontWeight:700, color:'#fff', display:'flex', alignItems:'center', gap:8 }}>
-          <span style={{ width:7, height:7, borderRadius:'50%', background:`linear-gradient(135deg,${N.gold},${N.goldDark})` }} />
-          Report Generator
-        </div>
-        <div style={{ fontSize:12, color:'rgba(255,255,255,.6)', marginTop:3 }}>
-          Build admission, fee, and occupancy reports as PDF or Excel
+      <div style={{ position:'relative', overflow:'hidden', padding:'20px 24px', background:'radial-gradient(90% 160% at 100% 0%,rgba(184,146,58,.28) 0%,transparent 55%),linear-gradient(135deg,#0e203f 0%,#132a4f 45%,#1e3a6e 100%)' }}>
+        <div style={{ position:'absolute', left:0, right:0, bottom:0, height:2, background:'linear-gradient(90deg,transparent,#b8923a,transparent)' }} />
+        <div style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'space-between', gap:14, flexWrap:'wrap' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+            <div style={{ width:44, height:44, borderRadius:14, display:'flex', alignItems:'center', justifyContent:'center', background:'linear-gradient(145deg,rgba(233,217,176,.28),rgba(233,217,176,.06))', border:'1px solid rgba(233,217,176,.35)', color:'#e9d9b0', flexShrink:0 }}>
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M7 3.5h7L18 8v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/><path d="M14 3.5V8h4M9 12.5h6M9 16h4"/></svg>
+            </div>
+            <div>
+              <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.2em', textTransform:'uppercase', color:'#e9d9b0', marginBottom:4 }}>Admissions · Reports</div>
+              <div style={{ fontSize:21, fontWeight:600, color:'#fff', fontFamily:"'Fraunces',Georgia,serif", letterSpacing:'-.01em' }}>Report Generator</div>
+              <div style={{ fontSize:12, color:'rgba(255,255,255,.65)', marginTop:3 }}>Admission, fee and occupancy reports as letterheaded PDF or Excel</div>
+            </div>
+          </div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', flex:'1 1 240px', justifyContent:'flex-end' }}>
+            {[['Matching',counts.total,'#fff'],['Enrolled',counts.enrolled,'#86efac'],['Pending',counts.pending,'#fcd34d']].map(([l,v,c]) => (
+              <div key={l} style={{ flex:'1 1 70px', maxWidth:110, minWidth:0, padding:'8px 12px', borderRadius:12, background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.12)' }}>
+                <div style={{ fontSize:9.5, fontWeight:700, letterSpacing:'.12em', textTransform:'uppercase', color:'rgba(255,255,255,.6)' }}>{l}</div>
+                <div style={{ fontSize:20, fontWeight:600, color:c, fontFamily:"'Fraunces',Georgia,serif", fontVariantNumeric:'tabular-nums', marginTop:2 }}>{v}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
       <div style={{ padding:'20px 22px' }}>
 
         {/* Template picker */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(220px,100%),1fr))', gap:10, marginBottom:20 }}>
+        <div style={{ fontSize:10.5, fontWeight:700, letterSpacing:'.16em', textTransform:'uppercase', color:N.gold, marginBottom:10 }}>1 · Choose a report</div>
+        <div role="radiogroup" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(220px,100%),1fr))', gap:12, marginBottom:22 }}>
           {TEMPLATES.map(t => {
             const active = selected === t.key
             return (
-              <button key={t.key} onClick={()=>setSelected(t.key)}
+              <button key={t.key} role="radio" aria-checked={active} className="rg-tpl" onClick={()=>setSelected(t.key)}
                 style={{
-                  textAlign:'left', padding:'14px 16px', borderRadius:14, border:'none', cursor:'pointer',
-                  background: active ? t.bg : N.bg, boxShadow: active ? N.inset('sm') : N.shadow('sm'),
-                  transition:'box-shadow .15s',
+                  position:'relative', overflow:'hidden', textAlign:'left', padding:'16px 16px 15px 18px', borderRadius:16, border:'none', cursor:'pointer', fontFamily:'inherit',
+                  background: active ? `linear-gradient(180deg,${t.bg},#fff)` : N.bg, boxShadow: active ? N.inset('sm') : N.shadow('sm'),
+                  transition:'box-shadow .15s, transform .15s',
                 }}>
-                <div style={{ fontSize:20, marginBottom:6 }}>{t.icon}</div>
-                <div style={{ fontSize:13, fontWeight:700, color: active ? t.color : N.text }}>{t.label}</div>
-                <div style={{ fontSize:11, color:N.muted, marginTop:3, lineHeight:1.4 }}>{t.desc}</div>
+                <div style={{ position:'absolute', left:0, top:0, bottom:0, width:3, background: active ? t.color : 'transparent' }} />
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                  <span style={{ width:36, height:36, borderRadius:11, background:t.bg, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:17 }}>{t.icon}</span>
+                  <span style={{ width:18, height:18, borderRadius:'50%', border:`2px solid ${active ? t.color : '#d9d2c2'}`, display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
+                    {active && <span style={{ width:8, height:8, borderRadius:'50%', background:t.color }} />}
+                  </span>
+                </div>
+                <div style={{ fontSize:14, fontWeight:700, color: active ? t.color : N.text }}>{t.label}</div>
+                <div style={{ fontSize:11.5, color:N.muted, marginTop:4, lineHeight:1.45 }}>{t.desc}</div>
               </button>
             )
           })}
         </div>
 
+        <div style={{ fontSize:10.5, fontWeight:700, letterSpacing:'.16em', textTransform:'uppercase', color:N.gold, marginBottom:10 }}>2 · Narrow it down</div>
         {/* Filters */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:12, marginBottom:18, padding:'16px 18px', background:N.bg2, borderRadius:14 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:12, marginBottom:18, padding:'16px 18px', background:N.bg2, border:'1px solid #e8e3d8', borderRadius:16 }}>
           <div>
             <div style={{ fontSize:10, fontWeight:700, color:N.muted, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:6 }}>From</div>
             <input type="date" value={filters.dateFrom} onChange={e=>setFilter('dateFrom', e.target.value)}
-              style={{ width:'100%', padding:'9px 12px', borderRadius:10, border:`1px solid ${N.border}`, fontSize:13, background:'#fff' }} />
+              style={{ width:'100%', boxSizing:'border-box', padding:'9px 12px', minHeight:40, borderRadius:10, border:`1px solid ${N.border}`, fontSize:13, background:'#fff', color:N.text, fontFamily:'inherit' }} />
           </div>
           <div>
             <div style={{ fontSize:10, fontWeight:700, color:N.muted, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:6 }}>To</div>
             <input type="date" value={filters.dateTo} onChange={e=>setFilter('dateTo', e.target.value)}
-              style={{ width:'100%', padding:'9px 12px', borderRadius:10, border:`1px solid ${N.border}`, fontSize:13, background:'#fff' }} />
+              style={{ width:'100%', boxSizing:'border-box', padding:'9px 12px', minHeight:40, borderRadius:10, border:`1px solid ${N.border}`, fontSize:13, background:'#fff', color:N.text, fontFamily:'inherit' }} />
           </div>
           <FilterChip label="Session" options={sessionOptions} value={filters.session} onChange={v=>setFilter('session',v)} />
           <FilterChip label="Course"  options={courseOptions}  value={filters.course}  onChange={v=>setFilter('course',v)} />
@@ -354,28 +393,29 @@ export default function ReportGenerator({ apps, cols, sessionOptions=[], courseO
         </div>
 
         {/* Preview count + actions */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12, paddingTop:16, borderTop:'1px solid #e8e3d8' }}>
           <div style={{ fontSize:13, color:N.muted2 }}>
+            <span style={{ fontSize:10.5, fontWeight:700, letterSpacing:'.16em', textTransform:'uppercase', color:N.gold, marginRight:10 }}>3 · Export</span>
             <strong style={{ color:N.text, fontWeight:800 }}>{filteredRows.length}</strong> record{filteredRows.length!==1?'s':''} match{filteredRows.length===1?'es':''} the selected filters
           </div>
           <div style={{ display:'flex', gap:10 }}>
             <button onClick={()=>handleGenerate('excel')} disabled={generating || filteredRows.length===0}
               style={{ padding:'10px 20px', borderRadius:12, border:'none', cursor: filteredRows.length===0?'not-allowed':'pointer',
-                background: N.bg, boxShadow:N.shadow('sm'), color:T.emerald[600], fontSize:13, fontWeight:700,
+                background: N.bg, boxShadow:N.shadow('sm'), color:T.emerald[700], fontSize:13, fontWeight:700, fontFamily:'inherit',
                 opacity: filteredRows.length===0 ? 0.5 : 1, display:'flex', alignItems:'center', gap:7 }}>
               {generating==='excel' ? '⏳ Generating…' : '📊 Export Excel'}
             </button>
             <button onClick={()=>handleGenerate('pdf')} disabled={generating || filteredRows.length===0}
               style={{ padding:'10px 20px', borderRadius:12, border:'none', cursor: filteredRows.length===0?'not-allowed':'pointer',
-                background: `linear-gradient(135deg,${N.navy},${N.navyLight})`, color:'#fff', fontSize:13, fontWeight:700,
-                opacity: filteredRows.length===0 ? 0.5 : 1, boxShadow:'0 4px 14px rgba(29,29,31,.25)', display:'flex', alignItems:'center', gap:7 }}>
+                background: `linear-gradient(180deg,${N.navyLight},${N.navy})`, color:'#fff', fontSize:13, fontWeight:700, fontFamily:'inherit',
+                opacity: filteredRows.length===0 ? 0.5 : 1, boxShadow:'0 1px 0 rgba(255,255,255,.12) inset, 0 8px 18px -8px rgba(19,42,79,.6)', display:'flex', alignItems:'center', gap:7 }}>
               {generating==='pdf' ? '⏳ Generating…' : '🖨 Export PDF'}
             </button>
           </div>
         </div>
 
         {filteredRows.length === 0 && (
-          <div style={{ marginTop:14, padding:'10px 14px', borderRadius:10, background:T.rose[50], color:T.rose[600], fontSize:12, fontWeight:600 }}>
+          <div style={{ marginTop:14, padding:'11px 14px', borderRadius:12, background:T.rose[50], border:`1px solid ${T.rose[100]}`, color:T.rose[700], fontSize:12.5, fontWeight:600 }}>
             No records match these filters — widen the date range or clear a filter to generate a report.
           </div>
         )}
