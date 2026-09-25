@@ -66,24 +66,24 @@ function broadcastStudentsUpdate(detail) {
 //  from this single token block.
 // ══════════════════════════════════════════════════════════════
 const FONT_DISPLAY = '"Fraunces", "Georgia", "Iowan Old Style", "Times New Roman", serif'
-const FONT_BODY = '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+const FONT_BODY = '"Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
 
 const MD = {
   color: {
-    primary:          '#1a2f4d', // muted institutional navy
-    primaryContainer: '#e8edf4', // quiet tonal navy, used behind navy content
+    primary:          '#1e3a6e', // muted institutional navy
+    primaryContainer: '#eef2f9', // quiet tonal navy, used behind navy content
     onPrimaryContainer: '#152238',
-    secondary:          '#a8842f', // muted brass/gold (desaturated from the original brighter gold)
-    secondaryContainer: '#f6efdd',
+    secondary:          '#b8923a', // muted brass/gold (desaturated from the original brighter gold)
+    secondaryContainer: '#f6efdc',
     onSecondaryContainer: '#5c4816',
     surface:          '#ffffff',
-    surfaceDim:       '#f5f6f8',   // page background — slightly cooler/quieter grey
+    surfaceDim:       '#f7f5f0',   // page background — warm ivory (shared portal look)
     surfaceContainer: '#ffffff',  // card background
-    surfaceVariant:   '#eef0f3',  // subtle recessed areas (input fill, chips)
-    outline:          '#d9dee5',
-    outlineVariant:   '#e7eaee',
-    onSurface:        '#1c2530',
-    onSurfaceVariant: '#5c6773',
+    surfaceVariant:   '#faf8f3',  // subtle recessed areas (input fill, chips)
+    outline:          '#d9d2c2',
+    outlineVariant:   '#e8e3d8',
+    onSurface:        '#0f1b2e',
+    onSurfaceVariant: '#5d6b82',
     error:            '#b3261e',
     errorContainer:   '#fbe9e7',
     success:          '#276b3d',
@@ -94,17 +94,17 @@ const MD = {
   // than a floating app surface.
   elevation: {
     0: 'none',
-    1: '0 1px 2px rgba(20,28,40,0.05)',
-    2: '0 2px 6px rgba(20,28,40,0.07)',
-    3: '0 4px 12px rgba(20,28,40,0.09)',
-    4: '0 8px 20px rgba(20,28,40,0.11)',
+    1: '0 1px 2px rgba(19,42,79,0.05), 0 6px 18px -10px rgba(19,42,79,0.14)',
+    2: '0 2px 4px rgba(19,42,79,0.06), 0 10px 24px -12px rgba(19,42,79,0.2)',
+    3: '0 4px 10px rgba(19,42,79,0.08), 0 16px 32px -14px rgba(19,42,79,0.26)',
+    4: '0 8px 20px rgba(19,42,79,0.1), 0 24px 48px -20px rgba(19,42,79,0.35)',
   },
-  radius: { control: '7px', field: '9px', card: '11px', sheet: '16px', pill: '999px' },
+  radius: { control: '10px', field: '12px', card: '16px', sheet: '20px', pill: '999px' },
   type: {
     label:    { fontSize: '11px', fontWeight: '700', letterSpacing: '0.06em', fontFamily: FONT_BODY },
     body:     { fontSize: '14px', fontWeight: '500', fontFamily: FONT_BODY },
     title:    { fontSize: '16px', fontWeight: '700', fontFamily: FONT_DISPLAY },
-    headline: { fontSize: '22px', fontWeight: '700', letterSpacing: '-0.005em', fontFamily: FONT_DISPLAY },
+    headline: { fontSize: '22px', fontWeight: '600', letterSpacing: '-0.01em', fontFamily: FONT_DISPLAY },
   },
 }
 
@@ -145,9 +145,9 @@ function saveAutoFired(obj) {
 const inp = {
   width: '100%', padding: '11px 13px', borderRadius: MD.radius.control,
   border: `1px solid ${MD.color.outline}`, fontSize: '15px', // 16px prevents iOS zoom; 15px + explicit font stack reads calmer
-  boxSizing: 'border-box', backgroundColor: MD.color.surfaceVariant,
+  boxSizing: 'border-box', backgroundColor: '#ffffff',
   minHeight: '44px', color: MD.color.onSurface, fontFamily: FONT_BODY,
-  transition: 'border-color 0.15s ease, background-color 0.15s ease',
+  transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
 }
 const lbl = {
   display: 'block', fontSize: '11px', fontWeight: '700',
@@ -159,8 +159,9 @@ const lbl = {
 // action, not an app control.
 const btn = (bg = MD.color.primary, c = 'white') => ({
   backgroundColor: bg, color: c, border: 'none', borderRadius: MD.radius.control,
+  ...(bg === MD.color.primary ? { backgroundImage: 'linear-gradient(180deg,#1e3a6e,#132a4f)', boxShadow: '0 1px 0 rgba(255,255,255,.12) inset, 0 6px 14px -6px rgba(19,42,79,.55)' } : { boxShadow: '0 1px 2px rgba(19,42,79,.06)' }),
   padding: '11px 20px', fontWeight: '700', cursor: 'pointer', fontSize: '13px',
-  minHeight: '44px', minWidth: '44px', boxShadow: MD.elevation[1], fontFamily: FONT_BODY,
+  minHeight: '44px', minWidth: '44px', fontFamily: FONT_BODY,
   letterSpacing: '0.01em',
   transition: 'box-shadow 0.15s ease, transform 0.1s ease',
 })
@@ -704,34 +705,38 @@ function StatCard({ icon, label, value, color, bg, compact = false }) {
 
   if (mobile || compact) {
     return (
-      <div style={{
-        backgroundColor: MD.color.surfaceContainer, borderRadius: MD.radius.field, padding: '11px 13px',
+      <div className="hs-stat" style={{
+        position: 'relative', overflow: 'hidden',
+        backgroundColor: MD.color.surfaceContainer, borderRadius: MD.radius.field, padding: '12px 13px 12px 15px',
         boxShadow: MD.elevation[1], border: `1px solid ${MD.color.outlineVariant}`,
-        display: 'flex', alignItems: 'center', gap: '10px',
+        display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0,
       }}>
+        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: color }} />
         <div style={{
-          fontSize: '16px', width: '32px', height: '32px', borderRadius: '10px',
+          fontSize: '15px', width: '32px', height: '32px', borderRadius: '10px',
           background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>{icon}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontSize: '10px', color: MD.color.onSurfaceVariant, fontWeight: '700', margin: 0, lineHeight: 1.2, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</p>
-          <h2 style={{ fontSize: '19px', fontWeight: '800', color, margin: '2px 0 0', lineHeight: 1.2 }}>{value}</h2>
+          <p style={{ fontSize: '10px', color: MD.color.onSurfaceVariant, fontWeight: '700', margin: 0, lineHeight: 1.2, textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</p>
+          <h2 style={{ fontSize: '21px', fontWeight: '600', color, margin: '3px 0 0', lineHeight: 1.1, fontFamily: FONT_DISPLAY, fontVariantNumeric: 'tabular-nums' }}>{value}</h2>
         </div>
       </div>
     )
   }
 
   return (
-    <div style={{
-      backgroundColor: MD.color.surfaceContainer, borderRadius: MD.radius.card, padding: '18px',
-      boxShadow: MD.elevation[1], border: `1px solid ${MD.color.outlineVariant}`,
+    <div className="hs-stat" style={{
+      position: 'relative', overflow: 'hidden',
+      backgroundColor: MD.color.surfaceContainer, borderRadius: MD.radius.card, padding: '16px 18px 16px 20px',
+      boxShadow: MD.elevation[1], border: `1px solid ${MD.color.outlineVariant}`, minWidth: 0,
     }}>
+      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: color }} />
       <div style={{
-        fontSize: '19px', width: '42px', height: '42px', borderRadius: '12px',
-        background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px',
+        fontSize: '16px', width: '34px', height: '34px', borderRadius: '11px',
+        background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12,
       }}>{icon}</div>
-      <p style={{ fontSize: '12px', color: MD.color.onSurfaceVariant, fontWeight: '700', margin: 0, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</p>
-      <h2 style={{ fontSize: '27px', fontWeight: '800', color, margin: '4px 0 0' }}>{value}</h2>
+      <p style={{ fontSize: '11px', color: MD.color.onSurfaceVariant, fontWeight: '700', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1.25 }}>{label}</p>
+      <h2 style={{ fontSize: '29px', fontWeight: '600', color, margin: 0, lineHeight: 1, fontFamily: FONT_DISPLAY, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>{value}</h2>
     </div>
   )
 }
@@ -740,20 +745,20 @@ function statusStyle(status) {
   const map = {
     Occupied: { bg: '#dcfce7', color: '#16a34a' },
     Vacant: { bg: '#fee2e2', color: '#dc2626' },
-    Shifted: { bg: '#fef9c3', color: '#a8842f' },
+    Shifted: { bg: '#fef9c3', color: '#b8923a' },
     Vacated: { bg: '#e5e7eb', color: '#374151' },
     Resolved: { bg: '#dcfce7', color: '#16a34a' },
     Open: { bg: '#fee2e2', color: '#dc2626' },
-    'In Progress': { bg: '#fef9c3', color: '#a8842f' },
+    'In Progress': { bg: '#fef9c3', color: '#b8923a' },
     Closed: { bg: '#e5e7eb', color: '#374151' },
     Discharged: { bg: '#dcfce7', color: '#16a34a' },
     Admitted: { bg: '#dbeafe', color: '#1d4ed8' },
     Present: { bg: '#dcfce7', color: '#16a34a' },
     Absent: { bg: '#fee2e2', color: '#dc2626' },
-    Late: { bg: '#fef9c3', color: '#a8842f' },
+    Late: { bg: '#fef9c3', color: '#b8923a' },
     'On Leave': { bg: '#dbeafe', color: '#1d4ed8' },
     Sick: { bg: '#f5f3ff', color: '#7c3aed' },
-    Pending: { bg: '#fef9c3', color: '#a8842f' },
+    Pending: { bg: '#fef9c3', color: '#b8923a' },
     Approved: { bg: '#dcfce7', color: '#16a34a' },
     Rejected: { bg: '#fee2e2', color: '#dc2626' },
     Overdue: { bg: '#fee2e2', color: '#dc2626' },
@@ -1067,11 +1072,11 @@ function printTableReport({ title, subtitle, columns, rows, schoolName = 'Guidan
         <title>${title}</title>
         <style>
           body { font-family: sans-serif; padding: 24px; color: #1e293b; }
-          h1 { font-size: 18px; color: #1a2f4d; margin-bottom: 2px; }
+          h1 { font-size: 18px; color: #1e3a6e; margin-bottom: 2px; }
           h2 { font-size: 13px; color: #64748b; font-weight: 500; margin: 0 0 4px; }
           .sub { font-size: 11px; color: #94a3b8; margin-bottom: 16px; }
           table { width: 100%; border-collapse: collapse; font-size: 11px; }
-          th { background: #1a2f4d; color: white; padding: 6px 8px; text-align: left; }
+          th { background: #1e3a6e; color: white; padding: 6px 8px; text-align: left; }
           td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; }
           .empty { text-align: center; padding: 30px; color: #94a3b8; }
         </style>
@@ -1110,7 +1115,7 @@ function ReportExportButtons({ title, subtitle, columns, rows, allRows }) {
       )}
       <button
         onClick={() => generateTableReportPDF({ title, subtitle, columns, rows: activeRows })}
-        style={{ padding: '7px 14px', borderRadius: '8px', border: 'none', background: '#1a2f4d', color: 'white', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+        style={{ padding: '7px 14px', borderRadius: '8px', border: 'none', background: '#1e3a6e', color: 'white', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
       >
         ⬇️ PDF
       </button>
@@ -1147,7 +1152,7 @@ function MobileActionButtons({ actions }) {
             borderRadius: '8px',
             border: 'none',
             background: action.bg || '#eff6ff',
-            color: action.color || '#1a2f4d',
+            color: action.color || '#1e3a6e',
             fontSize: '12px',
             fontWeight: '700',
             cursor: 'pointer',
@@ -1174,7 +1179,7 @@ const HOUSE_PALETTE = [
   { color: '#1d4ed8', bg: '#dbeafe', light: '#eff6ff', border: '#93c5fd', dark: '#1e40af' },
   { color: '#dc2626', bg: '#fee2e2', light: '#fff1f2', border: '#fca5a5', dark: '#b91c1c' },
   { color: '#16a34a', bg: '#dcfce7', light: '#f0fdf4', border: '#6ee7b7', dark: '#15803d' },
-  { color: '#a8842f', bg: '#fef9c3', light: '#fefce8', border: '#fde047', dark: '#a16207' },
+  { color: '#b8923a', bg: '#fef9c3', light: '#fefce8', border: '#fde047', dark: '#a16207' },
   { color: '#7c3aed', bg: '#f5f3ff', light: '#faf5ff', border: '#c4b5fd', dark: '#6d28d9' },
   { color: '#0891b2', bg: '#e0f2fe', light: '#f0f9ff', border: '#7dd3fc', dark: '#0e7490' },
   { color: '#be185d', bg: '#fce7f3', light: '#fdf2f8', border: '#f9a8d4', dark: '#9d174d' },
@@ -1184,7 +1189,7 @@ const HOUSE_PALETTE = [
 const statusConfig = {
   Present: { bg: '#dcfce7', color: '#16a34a', icon: '✓' },
   Absent: { bg: '#fee2e2', color: '#dc2626', icon: '✕' },
-  Late: { bg: '#fef9c3', color: '#a8842f', icon: '⏰' },
+  Late: { bg: '#fef9c3', color: '#b8923a', icon: '⏰' },
   'On Leave': { bg: '#dbeafe', color: '#1d4ed8', icon: '🚪' },
   Sick: { bg: '#f5f3ff', color: '#7c3aed', icon: '🏥' },
   Unmarked: { bg: '#f1f5f9', color: '#94a3b8', icon: '?' },
@@ -1278,7 +1283,7 @@ function UnassignedHouseRoomPicker({ student, houseNames, onAssign }) {
       <input value={room} onChange={e => setRoom(e.target.value)} placeholder="Room no."
         style={{ ...inp, width: 70, padding: '6px 8px', fontSize: '12px' }} />
       <button onClick={confirm} disabled={saving}
-        style={{ padding: '6px 10px', borderRadius: 6, border: 'none', background: '#1a2f4d', color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: saving ? 'default' : 'pointer' }}>
+        style={{ padding: '6px 10px', borderRadius: 6, border: 'none', background: '#1e3a6e', color: '#fff', fontSize: 11.5, fontWeight: 700, cursor: saving ? 'default' : 'pointer' }}>
         {saving ? '…' : 'Assign'}
       </button>
       <button onClick={() => setHouse('')} disabled={saving}
@@ -2089,7 +2094,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
         {/* Overall stats bar */}
         <div style={{
-          background: '#1a2f4d', borderRadius: '14px', padding: '16px 20px',
+          background: '#1e3a6e', borderRadius: '14px', padding: '16px 20px',
           marginBottom: '20px', color: 'white',
         }}>
           <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '10px', fontWeight: '600' }}>
@@ -2510,7 +2515,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                         </div>
                         {allDone
                           ? <span style={{ fontSize: '12px', fontWeight: '700', padding: '4px 10px', borderRadius: '99px', background: '#dcfce7', color: '#16a34a' }}>✓ Complete</span>
-                          : <span style={{ fontSize: '12px', fontWeight: '700', padding: '4px 10px', borderRadius: '99px', background: '#fef9c3', color: '#a8842f' }}>{stats.unmarked} pending</span>
+                          : <span style={{ fontSize: '12px', fontWeight: '700', padding: '4px 10px', borderRadius: '99px', background: '#fef9c3', color: '#b8923a' }}>{stats.unmarked} pending</span>
                         }
                       </div>
 
@@ -2519,7 +2524,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                         {[
                           { label: 'P', value: stats.present, color: '#16a34a', bg: '#dcfce7' },
                           { label: 'A', value: stats.absent, color: '#dc2626', bg: '#fee2e2' },
-                          { label: 'L', value: stats.late, color: '#a8842f', bg: '#fef9c3' },
+                          { label: 'L', value: stats.late, color: '#b8923a', bg: '#fef9c3' },
                           { label: '🚪', value: stats.onLeave, color: '#1d4ed8', bg: '#dbeafe' },
                           { label: '🏥', value: stats.sick, color: '#7c3aed', bg: '#f5f3ff' },
                         ].map(s => (
@@ -2560,7 +2565,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                                 </div>
                                 <button
                                   onClick={e => { e.stopPropagation(); handleCatchUpRollCall(houseName) }}
-                                  style={{ width: '100%', padding: '6px', borderRadius: '7px', border: 'none', background: '#1a2f4d', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer', marginBottom: isAdmin ? '6px' : 0 }}
+                                  style={{ width: '100%', padding: '6px', borderRadius: '7px', border: 'none', background: '#1e3a6e', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer', marginBottom: isAdmin ? '6px' : 0 }}
                                 >
                                   📋 Complete Missed Roll Call
                                 </button>
@@ -2683,11 +2688,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                       {activeAlertPanel === 'unmarked' && (
                         <AlertStudentPanel
                           students={unmarkedStudentsAll}
-                          accentColor="#a8842f"
+                          accentColor="#b8923a"
                           actions={[
                             { label: '✓ Present', status: 'Present', bg: '#dcfce7', color: '#16a34a' },
                             { label: '✕ Absent', status: 'Absent', bg: '#fee2e2', color: '#dc2626' },
-                            { label: '⏰ Late', status: 'Late', bg: '#fef9c3', color: '#a8842f' },
+                            { label: '⏰ Late', status: 'Late', bg: '#fef9c3', color: '#b8923a' },
                             { label: '🚪 Leave', status: 'On Leave', bg: '#dbeafe', color: '#1d4ed8' },
                           ]}
                           onMark={handleMark}
@@ -2809,7 +2814,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button
                 onClick={() => handleCatchUpRollCall(selectedHouse)}
-                style={{ ...btn('#1a2f4d'), fontSize: '12px', padding: '8px 16px' }}
+                style={{ ...btn('#1e3a6e'), fontSize: '12px', padding: '8px 16px' }}
               >
                 📋 Complete Missed Roll Call
               </button>
@@ -2831,7 +2836,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             { icon: '👥', label: 'Total', value: stats.total, color: pal.color, bg: pal.bg },
             { icon: '✅', label: 'Present', value: stats.present, color: '#16a34a', bg: '#dcfce7' },
             { icon: '❌', label: 'Absent', value: stats.absent, color: '#dc2626', bg: '#fee2e2' },
-            { icon: '⏰', label: 'Late', value: stats.late, color: '#a8842f', bg: '#fef9c3' },
+            { icon: '⏰', label: 'Late', value: stats.late, color: '#b8923a', bg: '#fef9c3' },
             { icon: '🏥', label: 'Sick', value: stats.sick, color: '#7c3aed', bg: '#f5f3ff' },
             { icon: '🚪', label: 'On Leave', value: stats.onLeave, color: '#1d4ed8', bg: '#dbeafe' },
             { icon: '⚪', label: 'Unmarked', value: stats.unmarked, color: '#94a3b8', bg: '#f1f5f9' },
@@ -3346,7 +3351,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                             <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: '700', flex: 1 }}>
                               {reasonGiven === 'Nothing to report' ? '✅ Confirmed — nothing to report' : `✅ Skipped — reason: "${reasonGiven}"`}
                               {reasonGiven === 'Nothing to report' && streak >= 8 && (
-                                <div style={{ color: '#a8842f', fontWeight: '600', marginTop: '3px' }}>
+                                <div style={{ color: '#b8923a', fontWeight: '600', marginTop: '3px' }}>
                                   📋 This has been "Nothing to report" for {t.label} in most recent sessions here — worth double-checking it's genuinely quiet.
                                 </div>
                               )}
@@ -3416,7 +3421,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                     const firstUnmarked = rollCallStudents.findIndex(s => getStatus(s.id) === 'Unmarked')
                     if (firstUnmarked >= 0) { setRollCallIndex(firstUnmarked); setView('rollcall') }
                   }}
-                  style={{ ...btn('#a8842f'), padding: '12px 24px' }}
+                  style={{ ...btn('#b8923a'), padding: '12px 24px' }}
                 >
                   ⏳ Mark Remaining
                 </button>
@@ -3628,7 +3633,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             {/* Secondary status buttons */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '20px' }}>
               {[
-                { status: 'Late', bg: '#a8842f', label: '⏰ Late' },
+                { status: 'Late', bg: '#b8923a', label: '⏰ Late' },
                 { status: 'Sick', bg: '#7c3aed', label: '🏥 Sick' },
                 { status: 'On Leave', bg: '#1d4ed8', label: '🚪 Leave' },
               ].map(({ status, bg, label }) => (
@@ -3775,8 +3780,8 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
       <div>
         {toast && <div style={{ position:'sticky', top:0, zIndex:99, background:'#fff', borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, marginBottom:12, color:'#1e293b' }}>{toast.msg}</div>}
         <div style={mobileStatGrid}>
-          <StatCard icon="📋" label="Raised" value={stats.raised} color="#1a2f4d" bg="#eff6ff" compact />
-          <StatCard icon="🔧" label="In Progress" value={stats.inProgress} color="#a8842f" bg="#fef9c3" compact />
+          <StatCard icon="📋" label="Raised" value={stats.raised} color="#1e3a6e" bg="#eff6ff" compact />
+          <StatCard icon="🔧" label="In Progress" value={stats.inProgress} color="#b8923a" bg="#fef9c3" compact />
           <StatCard icon="🚨" label="Urgent" value={stats.urgent} color="#dc2626" bg="#fee2e2" compact />
           <StatCard icon="✅" label="Resolved" value={stats.resolved} color="#16a34a" bg="#dcfce7" compact />
         </div>
@@ -3804,7 +3809,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
         </div>
         {showForm && (
           <div style={{ ...mobileCard, marginBottom: '12px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1a2f4d', margin: '0 0 12px' }}>New Complaint</h3>
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a6e', margin: '0 0 12px' }}>New Complaint</h3>
             <form onSubmit={handleSave}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -3826,9 +3831,9 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
         )}
         <MobileCardList>
           {filtered.map(r => (
-            <MobileRecordCard key={r.id} accentColor={r.priority === 'Urgent' ? '#dc2626' : r.priority === 'High' ? '#a8842f' : '#1a2f4d'}>
+            <MobileRecordCard key={r.id} accentColor={r.priority === 'Urgent' ? '#dc2626' : r.priority === 'High' ? '#b8923a' : '#1e3a6e'}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                <div><span style={{ fontSize: '12px', fontWeight: '700', color: '#1a2f4d', background: '#eff6ff', padding: '2px 8px', borderRadius: '99px' }}>{r.category}</span><span style={{ marginLeft: '6px', ...statusStyle(r.priority) }}>{r.priority}</span></div>
+                <div><span style={{ fontSize: '12px', fontWeight: '700', color: '#1e3a6e', background: '#eff6ff', padding: '2px 8px', borderRadius: '99px' }}>{r.category}</span><span style={{ marginLeft: '6px', ...statusStyle(r.priority) }}>{r.priority}</span></div>
                 <span style={statusStyle(r.status)}>{r.status}</span>
               </div>
               <div style={{ fontWeight: '700', fontSize: '15px', color: '#1e293b', marginBottom: '4px' }}>📍 {r.location}{r.room_number ? ` · Room ${r.room_number}` : ''}</div>
@@ -3836,7 +3841,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
               {r.status !== 'Closed' && r.status !== 'Resolved' && (
                 <MobileActionButtons actions={[
                   ...(r.status === 'Raised' ? [{ label: 'Assign', onClick: () => handleStatusChange(r.id, 'Assigned'), bg: '#dbeafe', color: '#1d4ed8' }] : []),
-                  ...(r.status === 'Assigned' ? [{ label: 'Start Work', onClick: () => handleStatusChange(r.id, 'In Progress'), bg: '#fef9c3', color: '#a8842f' }] : []),
+                  ...(r.status === 'Assigned' ? [{ label: 'Start Work', onClick: () => handleStatusChange(r.id, 'In Progress'), bg: '#fef9c3', color: '#b8923a' }] : []),
                   ...(r.status === 'In Progress' ? [{ label: 'Resolve', onClick: () => handleStatusChange(r.id, 'Resolved'), bg: '#dcfce7', color: '#16a34a' }] : []),
                   { label: 'Close', onClick: () => handleStatusChange(r.id, 'Closed'), bg: '#e5e7eb', color: '#374151' },
                 ]} />
@@ -3853,8 +3858,8 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
     <div>
       {toast && <div style={{ position:'sticky', top:0, zIndex:99, background:'#fff', borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, marginBottom:12, color:'#1e293b' }}>{toast.msg}</div>}
       <div style={statGrid(130)}>
-        <StatCard icon="📋" label="Raised" value={stats.raised} color="#1a2f4d" bg="#eff6ff" />
-        <StatCard icon="🔧" label="In Progress" value={stats.inProgress} color="#a8842f" bg="#fef9c3" />
+        <StatCard icon="📋" label="Raised" value={stats.raised} color="#1e3a6e" bg="#eff6ff" />
+        <StatCard icon="🔧" label="In Progress" value={stats.inProgress} color="#b8923a" bg="#fef9c3" />
         <StatCard icon="🚨" label="Urgent Open" value={stats.urgent} color="#dc2626" bg="#fee2e2" />
         <StatCard icon="✅" label="Resolved" value={stats.resolved} color="#16a34a" bg="#dcfce7" />
       </div>
@@ -3884,7 +3889,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
       </div>
       {showForm && (
         <div style={{ ...card, marginBottom: '20px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1a2f4d', marginBottom: '16px' }}>New Maintenance Request</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a6e', marginBottom: '16px' }}>New Maintenance Request</h3>
           <form onSubmit={handleSave}>
             <div style={grid2}>
               <div><label style={lbl}>Category</label><select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={inp}>{MAINTENANCE_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></div>
@@ -3916,12 +3921,12 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
       {loading ? <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading...</div> : (
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 900 }}>
-            <thead><tr style={{ background: '#1a2f4d' }}>{['#', 'Category', 'Priority', 'Location', 'Room', 'Description', 'Status', 'Assigned', 'Raised', 'Actions'].map(h => <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: '#1e3a6e' }}>{['#', 'Category', 'Priority', 'Location', 'Room', 'Description', 'Status', 'Assigned', 'Raised', 'Actions'].map(h => <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
             <tbody>
               {filtered.map((r, i) => (
                 <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }} onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = 'white'}>
                   <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: '12px' }}>{i + 1}</td>
-                  <td style={{ padding: '11px 14px', fontWeight: '600', color: '#1a2f4d' }}>{r.category}</td>
+                  <td style={{ padding: '11px 14px', fontWeight: '600', color: '#1e3a6e' }}>{r.category}</td>
                   <td style={{ padding: '11px 14px' }}><span style={statusStyle(r.priority)}>{r.priority}</span></td>
                   <td style={{ padding: '11px 14px', color: '#64748b' }}>{r.location}</td>
                   <td style={{ padding: '11px 14px', color: '#64748b', fontFamily: 'monospace' }}>{r.room_number || '—'}</td>
@@ -3932,7 +3937,7 @@ function MaintenanceTab({ currentHousemaster, currentUser, autoOpenForm }) {
                   <td style={{ padding: '11px 14px' }}>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       {r.status === 'Raised' && isAdmin && <button onClick={() => handleStatusChange(r.id, 'Assigned')} style={{ ...btn('#1d4ed8'), fontSize: '11px', padding: '4px 8px' }}>Assign</button>}
-                      {r.status === 'Assigned' && <button onClick={() => handleStatusChange(r.id, 'In Progress')} style={{ ...btn('#a8842f'), fontSize: '11px', padding: '4px 8px' }}>Start</button>}
+                      {r.status === 'Assigned' && <button onClick={() => handleStatusChange(r.id, 'In Progress')} style={{ ...btn('#b8923a'), fontSize: '11px', padding: '4px 8px' }}>Start</button>}
                       {r.status === 'In Progress' && <button onClick={() => handleStatusChange(r.id, 'Resolved')} style={{ ...btn('#16a34a'), fontSize: '11px', padding: '4px 8px' }}>Resolve</button>}
                       {r.status === 'Resolved' && <button onClick={() => handleStatusChange(r.id, 'Closed')} style={{ ...btn('#374151'), fontSize: '11px', padding: '4px 8px' }}>Close</button>}
                       {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ ...btn('#fee2e2', '#dc2626'), fontSize: '11px', padding: '4px 8px' }}>🗑</button>}
@@ -4204,7 +4209,7 @@ function MonthlyCertificateCard() {
 
   return (
     <div style={{
-      background: 'linear-gradient(135deg, #1a2f4d 0%, #0f2744 100%)',
+      background: 'linear-gradient(135deg, #1e3a6e 0%, #0f2744 100%)',
       borderRadius: '16px', padding: '22px', color: 'white',
       boxShadow: '0 4px 16px rgba(30,58,95,0.25)',
     }}>
@@ -4345,7 +4350,7 @@ function HMRollCallReportTab() {
     return { sessionsExpected, sessionsComplete, completionPct, onTimePct, daysBlocked }
   }
 
-  const scoreColor = (pct) => pct === null ? '#94a3b8' : pct >= 90 ? '#16a34a' : pct >= 70 ? '#a8842f' : '#dc2626'
+  const scoreColor = (pct) => pct === null ? '#94a3b8' : pct >= 90 ? '#16a34a' : pct >= 70 ? '#b8923a' : '#dc2626'
   const scoreBg = (pct) => pct === null ? '#f1f5f9' : pct >= 90 ? '#dcfce7' : pct >= 70 ? '#fef9c3' : '#fee2e2'
 
   // Flattened one-row-per-house-per-day-per-session view, for export only.
@@ -4377,7 +4382,7 @@ function HMRollCallReportTab() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
-          <h2 style={{ fontSize: mobile ? '17px' : '20px', fontWeight: '800', color: '#1a2f4d', margin: 0 }}>Roll Call Report</h2>
+          <h2 style={{ fontSize: mobile ? '17px' : '20px', fontWeight: '800', color: '#1e3a6e', margin: 0 }}>Roll Call Report</h2>
           <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0' }}>{startStr} → {endStr}</p>
         </div>
         <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', padding: '5px', borderRadius: '10px' }}>
@@ -4387,7 +4392,7 @@ function HMRollCallReportTab() {
               onClick={() => setRangeMode(m.key)}
               style={{
                 padding: '8px 14px', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer',
-                background: rangeMode === m.key ? '#1a2f4d' : 'transparent',
+                background: rangeMode === m.key ? '#1e3a6e' : 'transparent',
                 color: rangeMode === m.key ? 'white' : '#64748b',
               }}
             >
@@ -4430,7 +4435,7 @@ function HMRollCallReportTab() {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '8px' }}>
                     {[
-                      { label: 'Sessions', value: `${summary.sessionsComplete}/${summary.sessionsExpected}`, color: '#1a2f4d', bg: '#eff6ff' },
+                      { label: 'Sessions', value: `${summary.sessionsComplete}/${summary.sessionsExpected}`, color: '#1e3a6e', bg: '#eff6ff' },
                       { label: 'Completion', value: summary.completionPct === null ? '—' : `${summary.completionPct}%`, color: scoreColor(summary.completionPct), bg: scoreBg(summary.completionPct) },
                       { label: 'On-Time Rate', value: summary.onTimePct === null ? '—' : `${summary.onTimePct}%`, color: scoreColor(summary.onTimePct), bg: scoreBg(summary.onTimePct) },
                       { label: 'Days Blocked', value: summary.daysBlocked, color: summary.daysBlocked > 0 ? '#dc2626' : '#16a34a', bg: summary.daysBlocked > 0 ? '#fee2e2' : '#dcfce7' },
@@ -4460,7 +4465,7 @@ function HMRollCallReportTab() {
                             const n = getDayStats(houseName, d, 'night')
                             const cellStyle = (s) => ({
                               padding: '8px 10px',
-                              color: s.pct === null ? '#94a3b8' : s.complete ? (s.onTime === false ? '#a8842f' : '#16a34a') : '#dc2626',
+                              color: s.pct === null ? '#94a3b8' : s.complete ? (s.onTime === false ? '#b8923a' : '#16a34a') : '#dc2626',
                               fontWeight: '700',
                             })
                             return (
@@ -4924,7 +4929,7 @@ function HMPerformanceRanking() {
   const scoreColor = (score) => {
     if (score === null) return '#94a3b8'
     if (score >= 80) return '#16a34a'
-    if (score >= 60) return '#a8842f'
+    if (score >= 60) return '#b8923a'
     return '#dc2626'
   }
   const scoreBg = (score) => {
@@ -5010,7 +5015,7 @@ function HMPerformanceRanking() {
                       {r.score === null ? '—' : `${r.score}%`}
                     </div>
                     <span style={{
-                      fontSize: '14px', color: isExpanded ? '#1a2f4d' : '#94a3b8', transition: 'transform 0.2s',
+                      fontSize: '14px', color: isExpanded ? '#1e3a6e' : '#94a3b8', transition: 'transform 0.2s',
                       transform: isExpanded ? 'rotate(180deg)' : 'none', display: 'inline-flex',
                       width: '24px', height: '24px', alignItems: 'center', justifyContent: 'center',
                       borderRadius: '50%', background: isExpanded ? '#e3ecf7' : 'transparent',
@@ -5411,8 +5416,8 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
     { id: 'leave', label: '🚪 Leave', icon: '🚪', color: '#1d4ed8', bg: '#dbeafe', desc: `${leaveToday.length} requests` },
     { id: 'sickbay', label: '🏥 Sickbay', icon: '🏥', color: '#7c3aed', bg: '#f5f3ff', desc: `${sickbayToday.length} admitted` },
     { id: 'discipline', label: '⚠️ Discipline', icon: '⚠️', color: '#dc2626', bg: '#fee2e2', desc: `${disciplineOpen.length} open` },
-    { id: 'maintenance', label: '🔧 Repairs', icon: '🔧', color: '#a8842f', bg: '#fef9c3', desc: `${maintenanceOpen.length} urgent` },
-    { id: 'journal', label: '📝 Journal', icon: '📝', color: '#1a2f4d', bg: '#eff6ff', desc: 'Daily notes' },
+    { id: 'maintenance', label: '🔧 Repairs', icon: '🔧', color: '#b8923a', bg: '#fef9c3', desc: `${maintenanceOpen.length} urgent` },
+    { id: 'journal', label: '📝 Journal', icon: '📝', color: '#1e3a6e', bg: '#eff6ff', desc: 'Daily notes' },
     { id: 'doubtsession', label: '🙋 Doubt', icon: '🙋', color: '#b45309', bg: '#fef9c3', desc: `${myDoubtTasks.length} pending` },
   ]
 
@@ -5748,7 +5753,7 @@ function HMDashboard({ students, staffProfiles, currentHousemaster, onTabChange,
               { label: 'Sickbay', value: sickbayToday.length, color: '#7c3aed' },
               { label: 'Unmarked', value: unmarkedCount, color: MD.color.secondary },
               { label: 'Discipline', value: disciplineOpen.length, color: MD.color.error },
-              { label: 'Repairs', value: maintenanceOpen.length, color: '#a8842f' },
+              { label: 'Repairs', value: maintenanceOpen.length, color: '#b8923a' },
               { label: 'Doubt', value: myDoubtTasks.length, color: '#b45309' },
             ]
             const max = Math.max(1, ...chartItems.map(i => i.value))
@@ -5880,7 +5885,7 @@ function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
     return f
   }, [entries, date, search])
 
-  const categoryColors = { General: '#1a2f4d', Assembly: '#16a34a', Discipline: '#dc2626', Medical: '#7c3aed', Maintenance: '#a8842f', 'Parent Call': '#1d4ed8', 'Staff Handover': '#0891b2', Inspection: '#374151', Event: '#059669' }
+  const categoryColors = { General: '#1e3a6e', Assembly: '#16a34a', Discipline: '#dc2626', Medical: '#7c3aed', Maintenance: '#b8923a', 'Parent Call': '#1d4ed8', 'Staff Handover': '#0891b2', Inspection: '#374151', Event: '#059669' }
 
   if (mobile) {
     return (
@@ -5920,7 +5925,7 @@ function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
                 <textarea value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} rows={4} placeholder="Write your notes here..." required style={{ ...inp, resize: 'vertical' }} />
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#374151' }}><input type="checkbox" checked={form.flagged} onChange={e => setForm(f => ({ ...f, flagged: e.target.checked }))} style={{ width: '20px', height: '20px' }} />🚩 Flag as important</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1a2f4d'), flex: 1 }}>{saving ? '⏳' : '✓ Save'}</button>
+                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1e3a6e'), flex: 1 }}>{saving ? '⏳' : '✓ Save'}</button>
                   <button type="button" onClick={() => setShowForm(false)} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
                 </div>
               </div>
@@ -5929,10 +5934,10 @@ function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
         )}
         <MobileCardList>
           {filtered.map(e => (
-            <MobileRecordCard key={e.id} accentColor={categoryColors[e.category] || '#1a2f4d'}>
+            <MobileRecordCard key={e.id} accentColor={categoryColors[e.category] || '#1e3a6e'}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '11px', fontWeight: '700', padding: '2px 8px', borderRadius: '99px', background: (categoryColors[e.category] || '#1a2f4d') + '15', color: categoryColors[e.category] || '#1a2f4d' }}>{e.category}</span>
+                  <span style={{ fontSize: '11px', fontWeight: '700', padding: '2px 8px', borderRadius: '99px', background: (categoryColors[e.category] || '#1e3a6e') + '15', color: categoryColors[e.category] || '#1e3a6e' }}>{e.category}</span>
                   {e.flagged && <span style={{ fontSize: '16px' }}>🚩</span>}
                 </div>
                 <span style={{ fontSize: '12px', color: '#94a3b8' }}>{e.entry_time}</span>
@@ -5978,7 +5983,7 @@ function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
       </div>
       {showForm && (
         <div style={{ ...card, marginBottom: '20px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1a2f4d', marginBottom: '16px' }}>New Journal Entry</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a6e', marginBottom: '16px' }}>New Journal Entry</h3>
           <form onSubmit={handleSave}>
             <div style={grid2}>
               <div><label style={lbl}>Date *</label><input type="date" value={form.entry_date} onChange={e => setForm(f => ({ ...f, entry_date: e.target.value }))} required style={inp} /></div>
@@ -5990,7 +5995,7 @@ function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
               <div style={{ gridColumn: '1/-1' }}><label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#374151', cursor: 'pointer' }}><input type="checkbox" checked={form.flagged} onChange={e => setForm(f => ({ ...f, flagged: e.target.checked }))} />🚩 Flag as important</label></div>
             </div>
             <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>{saving ? '⏳ Saving...' : '✅ Save Entry'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a6e')}>{saving ? '⏳ Saving...' : '✅ Save Entry'}</button>
               <button type="button" onClick={() => setShowForm(false)} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -5998,10 +6003,10 @@ function JournalTab({ currentHousemaster, autoOpenForm, currentUser }) {
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {filtered.map(e => (
-          <div key={e.id} style={{ background: 'white', borderRadius: '12px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${categoryColors[e.category] || '#1a2f4d'}` }}>
+          <div key={e.id} style={{ background: 'white', borderRadius: '12px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${categoryColors[e.category] || '#1e3a6e'}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '12px', fontWeight: '700', padding: '3px 10px', borderRadius: '99px', background: (categoryColors[e.category] || '#1a2f4d') + '15', color: categoryColors[e.category] || '#1a2f4d' }}>{e.category}</span>
+                <span style={{ fontSize: '12px', fontWeight: '700', padding: '3px 10px', borderRadius: '99px', background: (categoryColors[e.category] || '#1e3a6e') + '15', color: categoryColors[e.category] || '#1e3a6e' }}>{e.category}</span>
                 {e.flagged && <span style={{ fontSize: '16px' }}>🚩</span>}
                 <span style={{ fontSize: '13px', color: '#64748b' }}>{e.entry_date} · {e.entry_time}</span>
               </div>
@@ -6142,7 +6147,7 @@ create table if not exists day_scholar_records (
       <div>
         {toast && <div style={{ position:'sticky', top:0, zIndex:99, background:'#fff', borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, marginBottom:12, color:'#1e293b' }}>{toast.msg}</div>}
         <div style={mobileStatGrid}>
-          <StatCard icon="📋" label="Total" value={records.length} color="#1a2f4d" bg="#eff6ff" compact />
+          <StatCard icon="📋" label="Total" value={records.length} color="#1e3a6e" bg="#eff6ff" compact />
           <StatCard icon="✅" label="Active" value={active} color="#16a34a" bg="#dcfce7" compact />
           <StatCard icon="🚌" label="With Transport" value={withTransport} color="#7c3aed" bg="#f5f3ff" compact />
           <StatCard icon="⏸" label="Inactive" value={inactive} color="#dc2626" bg="#fee2e2" compact />
@@ -6171,7 +6176,7 @@ create table if not exists day_scholar_records (
         </div>
         {showForm && (
           <div style={{ ...mobileCard, marginBottom: '12px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1a2f4d', margin: '0 0 12px' }}>{editRec ? 'Edit Record' : 'New Day Scholar'}</h3>
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a6e', margin: '0 0 12px' }}>{editRec ? 'Edit Record' : 'New Day Scholar'}</h3>
             <form onSubmit={handleSave}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div>
@@ -6204,7 +6209,7 @@ create table if not exists day_scholar_records (
                 </div>
                 <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Remarks..." rows={2} style={{ ...inp, resize: 'vertical' }} />
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1a2f4d'), flex: 1 }}>{saving ? '⏳' : '✓ Save'}</button>
+                  <button type="submit" disabled={saving} style={{ ...btn(saving ? '#94a3b8' : '#1e3a6e'), flex: 1 }}>{saving ? '⏳' : '✓ Save'}</button>
                   <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={{ ...btn('#f1f5f9', '#374151'), flex: 1 }}>Cancel</button>
                 </div>
               </div>
@@ -6224,7 +6229,7 @@ create table if not exists day_scholar_records (
               {r.parent_name && <div style={{ fontSize: '12px', color: '#374151' }}>👨‍👩‍👦 {r.parent_name} {r.parent_phone ? `· 📞 ${r.parent_phone}` : ''}</div>}
               {r.transport_route && <div style={{ fontSize: '12px', color: '#7c3aed', marginTop: '4px' }}>🚌 {r.transport_route} {r.pickup_point ? `· 📍 ${r.pickup_point}` : ''}</div>}
               <MobileActionButtons actions={[
-                { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1a2f4d' },
+                { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1e3a6e' },
                 ...(isAdmin ? [{ label: '🗑 Delete', onClick: () => handleDelete(r.id), bg: '#fee2e2', color: '#dc2626' }] : []),
               ]} />
             </MobileRecordCard>
@@ -6239,7 +6244,7 @@ create table if not exists day_scholar_records (
     <div>
       {toast && <div style={{ position:'sticky', top:0, zIndex:99, background:'#fff', borderLeft:`3px solid ${toast.color}`, borderRadius:10, padding:'11px 16px', fontSize:13, fontWeight:600, marginBottom:12, color:'#1e293b' }}>{toast.msg}</div>}
       <div style={statGrid()}>
-        <StatCard icon="📋" label="Total Day Scholars" value={records.length} color="#1a2f4d" bg="#eff6ff" />
+        <StatCard icon="📋" label="Total Day Scholars" value={records.length} color="#1e3a6e" bg="#eff6ff" />
         <StatCard icon="✅" label="Active" value={active} color="#16a34a" bg="#dcfce7" />
         <StatCard icon="🚌" label="With Transport" value={withTransport} color="#7c3aed" bg="#f5f3ff" />
         <StatCard icon="⏸" label="Inactive" value={inactive} color="#dc2626" bg="#fee2e2" />
@@ -6280,7 +6285,7 @@ create table if not exists day_scholar_records (
 
       {showForm && (
         <div style={{ background: 'white', borderRadius: '12px', padding: '24px', marginBottom: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1a2f4d', marginBottom: '4px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a6e', marginBottom: '4px' }}>
             {editRec ? 'Edit Day Scholar Record' : 'New Day Scholar Record'}
           </h3>
           <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px' }}>🔗 Link to a student from the Students module or enter manually</p>
@@ -6319,7 +6324,7 @@ create table if not exists day_scholar_records (
               <div><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>{saving ? '⏳ Saving...' : '✅ Save Record'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a6e')}>{saving ? '⏳ Saving...' : '✅ Save Record'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -6332,7 +6337,7 @@ create table if not exists day_scholar_records (
           <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 1000 }}>
               <thead>
-                <tr style={{ background: '#1a2f4d' }}>
+                <tr style={{ background: '#1e3a6e' }}>
                   {['#', 'GCC', 'Student', 'Class', 'Parent', 'Phone', 'Route', 'Pickup', 'Vehicle', 'Status', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: '700', color: 'white', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
@@ -6345,7 +6350,7 @@ create table if not exists day_scholar_records (
                     onMouseLeave={e => e.currentTarget.style.background = 'white'}
                   >
                     <td style={{ padding: '11px 14px', color: '#94a3b8', fontSize: 12 }}>{i + 1}</td>
-                    <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1a2f4d', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
                     <td style={{ padding: '11px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
                       {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
@@ -6393,7 +6398,7 @@ const CATEGORY_STYLE = {
   Routine: { color: '#0891b2', bg: '#e0f2fe' },
   Physical: { color: '#16a34a', bg: '#dcfce7' },
   Assembly: { color: '#7c3aed', bg: '#f5f3ff' },
-  Meals: { color: '#a8842f', bg: '#fef9c3' },
+  Meals: { color: '#b8923a', bg: '#fef9c3' },
   Academic: { color: '#1d4ed8', bg: '#dbeafe' },
   Special: { color: '#be185d', bg: '#fce7f3' },
   Other: { color: '#374151', bg: '#f1f5f9' },
@@ -6534,7 +6539,7 @@ function ScheduleTab({ currentUser }) {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
-          <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#1a2f4d', margin: 0 }}>Hostel Daily Activities</h2>
+          <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#1e3a6e', margin: 0 }}>Hostel Daily Activities</h2>
           <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0' }}>
             Today is a <strong style={{ color: todayDayType === 'sunday' ? '#16a34a' : '#1d4ed8' }}>
               {todayDayType === 'sunday' ? 'Sunday / Rest Day' : 'Weekday'}
@@ -6569,7 +6574,7 @@ function ScheduleTab({ currentUser }) {
         {TYPE_TABS.map(t => (
           <button key={t.id} onClick={() => { setType(t.id); setCatFilter('All') }} style={{
             flex: 1, padding: '9px 10px', border: 'none', borderRadius: '8px',
-            background: type === t.id ? '#1a2f4d' : 'transparent',
+            background: type === t.id ? '#1e3a6e' : 'transparent',
             color: type === t.id ? 'white' : '#64748b',
             cursor: 'pointer', fontSize: '13px', fontWeight: type === t.id ? 700 : 500,
           }}>{t.label}</button>
@@ -6577,7 +6582,7 @@ function ScheduleTab({ currentUser }) {
       </div>
 
       {/* Progress bar */}
-      <div style={{ background: '#1a2f4d', borderRadius: '14px', padding: '16px 20px', marginBottom: '16px', color: 'white' }}>
+      <div style={{ background: '#1e3a6e', borderRadius: '14px', padding: '16px 20px', marginBottom: '16px', color: 'white' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
           <div>
             <div style={{ fontSize: '13px', fontWeight: '700', opacity: 0.8 }}>TODAY'S ACTIVITY PROGRESS</div>
@@ -6678,7 +6683,7 @@ function ScheduleTab({ currentUser }) {
                 </div>
                 {adminMode && (
                   <div style={{ display: 'flex', gap: '4px' }}>
-                    <button onClick={() => setEditRow(r.id)} style={{ width: '30px', height: '30px', borderRadius: '8px', border: 'none', background: '#eff6ff', color: '#1a2f4d', cursor: 'pointer', fontSize: '12px' }}>✏️</button>
+                    <button onClick={() => setEditRow(r.id)} style={{ width: '30px', height: '30px', borderRadius: '8px', border: 'none', background: '#eff6ff', color: '#1e3a6e', cursor: 'pointer', fontSize: '12px' }}>✏️</button>
                     <button onClick={() => handleDelete(r.id)} style={{ width: '30px', height: '30px', borderRadius: '8px', border: 'none', background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: '12px' }}>✕</button>
                   </div>
                 )}
@@ -6692,7 +6697,7 @@ function ScheduleTab({ currentUser }) {
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 560 }}>
             <thead>
-              <tr style={{ background: '#1a2f4d' }}>
+              <tr style={{ background: '#1e3a6e' }}>
                 {['#', 'From', 'To', 'Activity', 'Category', adminMode ? 'Actions' : '', '✓ Done'].map((h, i) => (
                   <th key={i} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
@@ -6726,7 +6731,7 @@ function ScheduleTab({ currentUser }) {
                 return (
                   <tr key={r.id} style={{ background: isDone ? '#f0fdf4' : 'white', borderBottom: '1px solid #f1f5f9', opacity: isDone ? 0.75 : 1 }}>
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{r.no}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#1a2f4d' }}>{r.from_time}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#1e3a6e' }}>{r.from_time}</td>
                     <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#94a3b8' }}>{r.to_time || '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <span style={{ fontSize: 15, marginRight: 8 }}>{actIcon(r.activity)}</span>
@@ -6738,7 +6743,7 @@ function ScheduleTab({ currentUser }) {
                     {adminMode ? (
                       <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', gap: 6 }}>
-                          <button onClick={() => setEditRow(r.id)} style={{ background: '#eff6ff', color: '#1a2f4d', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✏ Edit</button>
+                          <button onClick={() => setEditRow(r.id)} style={{ background: '#eff6ff', color: '#1e3a6e', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✏ Edit</button>
                           <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>✕ Del</button>
                         </div>
                       </td>
@@ -6776,11 +6781,11 @@ const emptyMD = {
 }
 
 const SHIFT_STYLE = {
-  'Breakfast': { color: '#a8842f', bg: '#fef9c3', icon: '🌅' },
+  'Breakfast': { color: '#b8923a', bg: '#fef9c3', icon: '🌅' },
   'Lunch': { color: '#16a34a', bg: '#dcfce7', icon: '☀️' },
   'Tea': { color: '#0891b2', bg: '#e0f2fe', icon: '☕' },
   'Dinner': { color: '#7c3aed', bg: '#f5f3ff', icon: '🌙' },
-  'Full Day': { color: '#1a2f4d', bg: '#eff6ff', icon: '📋' },
+  'Full Day': { color: '#1e3a6e', bg: '#eff6ff', icon: '📋' },
 }
 
 function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
@@ -6904,7 +6909,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
         placeholder={`Search ${label.toLowerCase()}...`}
       />
       {form[`staff${slot}`] && (
-        <div style={{ marginTop: 6, padding: '6px 10px', background: '#eff6ff', borderRadius: 6, fontSize: 12, color: '#1a2f4d', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ marginTop: 6, padding: '6px 10px', background: '#eff6ff', borderRadius: 6, fontSize: 12, color: '#1e3a6e', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>✅ {form[`staff${slot}`]}</span>
           <button type="button" onClick={() => clearStaff(slot)} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 11 }}>✕ Clear</button>
         </div>
@@ -6928,7 +6933,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
         <button onClick={() => { if (month === 0) { setMonth(11); setYear(y => y - 1) } else setMonth(m => m - 1) }}
           style={{ ...btn('#f1f5f9', '#374151'), padding: '6px 14px', fontSize: 16 }}>‹</button>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: '#1a2f4d' }}>{MONTHS[month]} {year}</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#1e3a6e' }}>{MONTHS[month]} {year}</div>
           <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
             {monthRoster.length} duties assigned ·{' '}
             {uncovered.length > 0
@@ -6944,7 +6949,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
       {/* ── Today's duties banner */}
       {todayDuties.length > 0 && (
         <div style={{
-          background: '#1a2f4d', borderRadius: 12, padding: '14px 18px',
+          background: '#1e3a6e', borderRadius: 12, padding: '14px 18px',
           marginBottom: 16, color: 'white',
         }}>
           <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.7, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
@@ -6983,9 +6988,9 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
 
       {/* ── Stats */}
       <div style={mobile ? mobileStatGrid : statGrid(130)}>
-        <StatCard icon="📋" label="Total" value={stats.total} color="#1a2f4d" bg="#eff6ff" compact={mobile} />
+        <StatCard icon="📋" label="Total" value={stats.total} color="#1e3a6e" bg="#eff6ff" compact={mobile} />
         <StatCard icon="✅" label="Completed" value={stats.completed} color="#16a34a" bg="#dcfce7" compact={mobile} />
-        <StatCard icon="🟡" label="On Duty" value={stats.onDuty} color="#a8842f" bg="#fef9c3" compact={mobile} />
+        <StatCard icon="🟡" label="On Duty" value={stats.onDuty} color="#b8923a" bg="#fef9c3" compact={mobile} />
         <StatCard icon="❌" label="Absent" value={stats.absent} color="#dc2626" bg="#fee2e2" compact={mobile} />
       </div>
 
@@ -6995,7 +7000,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
           {['All', ...MESS_SHIFTS].map(s => (
             <button key={s} onClick={() => setShiftFilter(s)} style={{
               padding: '6px 12px', borderRadius: 99, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-              background: shiftFilter === s ? '#1a2f4d' : '#f1f5f9',
+              background: shiftFilter === s ? '#1e3a6e' : '#f1f5f9',
               color: shiftFilter === s ? 'white' : '#64748b',
             }}>{s === 'All' ? '📋 All' : `${SHIFT_STYLE[s]?.icon || ''} ${s}`}</button>
           ))}
@@ -7025,7 +7030,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
       {/* ── Form */}
       {showForm && isAdmin && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1a2f4d', marginBottom: 4 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a6e', marginBottom: 4 }}>
             {editRec ? 'Edit Mess Duty' : 'Assign Mess Duty'}
           </h3>
           <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>🔗 Staff pulled live from Staff Profiles · Up to 3 staff per duty slot</p>
@@ -7069,7 +7074,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a6e')}>
                 {saving ? '⏳ Saving...' : '✅ Save Duty'}
               </button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
@@ -7120,7 +7125,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
                 {r.notes && <div style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic', marginBottom: 8 }}>📝 {r.notes}</div>}
                 {isAdmin && (
                   <MobileActionButtons actions={[
-                    { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1a2f4d' },
+                    { label: '✏️ Edit', onClick: () => openEdit(r), bg: '#eff6ff', color: '#1e3a6e' },
                     { label: '🗑 Delete', onClick: () => handleDelete(r.id), bg: '#fee2e2', color: '#dc2626' },
                   ]} />
                 )}
@@ -7133,7 +7138,7 @@ function NightDutyTab({ staffProfiles, autoOpenForm, currentUser }) {
         <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 780 }}>
             <thead>
-              <tr style={{ background: '#1a2f4d' }}>
+              <tr style={{ background: '#1e3a6e' }}>
                 {['#', 'Date', 'Shift', 'Staff 1', 'Staff 2', 'Staff 3', 'Status', 'Notes', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
@@ -7359,9 +7364,9 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
     <div>
       {/* FIXED: was repeat(4,1fr) */}
       <div style={statGrid()}>
-        <StatCard icon="📋" label="Total" value={records.length} color="#1a2f4d" bg="#eff6ff" />
+        <StatCard icon="📋" label="Total" value={records.length} color="#1e3a6e" bg="#eff6ff" />
         <StatCard icon="🔴" label="Open" value={open} color="#dc2626" bg="#fee2e2" />
-        <StatCard icon="🟡" label="In Progress" value={inProgress} color="#a8842f" bg="#fef9c3" />
+        <StatCard icon="🟡" label="In Progress" value={inProgress} color="#b8923a" bg="#fef9c3" />
         <StatCard icon="🟢" label="Resolved" value={resolved} color="#16a34a" bg="#dcfce7" />
       </div>
 
@@ -7397,7 +7402,7 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
 
       {showForm && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1a2f4d', marginBottom: 4 }}>{editRec ? 'Edit Record' : 'New Discipline Record'}</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a6e', marginBottom: 4 }}>{editRec ? 'Edit Record' : 'New Discipline Record'}</h3>
           <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>🔗 Student data pulled live from Students module</p>
           <form onSubmit={handleSave}>
             {/* FIXED: was 1fr 1fr */}
@@ -7422,7 +7427,7 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
               <div style={{ gridColumn: '1/-1' }}><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a6e')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -7465,7 +7470,7 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
           <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 900 }}>
               <thead>
-                <tr style={{ background: '#1a2f4d' }}>
+                <tr style={{ background: '#1e3a6e' }}>
                   {['#', 'Date', 'GCC', 'Student', 'Batch', 'House', 'Incident', 'Action', 'Reported By', 'Status', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
                   ))}
@@ -7479,7 +7484,7 @@ function DisciplineTab({ students, autoOpenForm, currentUser }) {
                   >
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                     <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{r.date}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1a2f4d', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
                       {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
@@ -7569,9 +7574,9 @@ function SuperintendentDashboard({ students, currentUser }) {
   return (
     <div>
       <div style={statGrid()}>
-        <StatCard icon="📋" label="Total" value={records.length} color="#1a2f4d" bg="#eff6ff" />
+        <StatCard icon="📋" label="Total" value={records.length} color="#1e3a6e" bg="#eff6ff" />
         <StatCard icon="🔴" label="Open" value={open} color="#dc2626" bg="#fee2e2" />
-        <StatCard icon="🟡" label="In Progress" value={inProgress} color="#a8842f" bg="#fef9c3" />
+        <StatCard icon="🟡" label="In Progress" value={inProgress} color="#b8923a" bg="#fef9c3" />
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
@@ -7708,7 +7713,7 @@ function SickbayTab({ students, autoOpenForm, currentUser }) {
     <div>
       {/* FIXED: was repeat(3,1fr) */}
       <div style={statGrid(160)}>
-        <StatCard icon="🏥" label="Total Records" value={records.length} color="#1a2f4d" bg="#eff6ff" />
+        <StatCard icon="🏥" label="Total Records" value={records.length} color="#1e3a6e" bg="#eff6ff" />
         <StatCard icon="🛏️" label="Currently Admitted" value={admitted} color="#1d4ed8" bg="#dbeafe" />
         <StatCard icon="✅" label="Discharged" value={discharged} color="#16a34a" bg="#dcfce7" />
       </div>
@@ -7746,7 +7751,7 @@ function SickbayTab({ students, autoOpenForm, currentUser }) {
 
       {showForm && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1a2f4d', marginBottom: 4 }}>{editRec ? 'Edit Record' : 'New Sickbay Record'}</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a6e', marginBottom: 4 }}>{editRec ? 'Edit Record' : 'New Sickbay Record'}</h3>
           <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>🔗 Student data pulled live from Students module</p>
           <form onSubmit={handleSave}>
             {/* FIXED: was 1fr 1fr */}
@@ -7773,7 +7778,7 @@ function SickbayTab({ students, autoOpenForm, currentUser }) {
               <div><label style={lbl}>Status</label><select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inp}><option>Admitted</option><option>Discharged</option></select></div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a6e')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -7817,7 +7822,7 @@ function SickbayTab({ students, autoOpenForm, currentUser }) {
           <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1000 }}>
               <thead>
-                <tr style={{ background: '#1a2f4d' }}>
+                <tr style={{ background: '#1e3a6e' }}>
                   {['#', 'Date', 'GCC', 'Student', 'Batch', 'House', 'Hostel Type', 'Complaint', 'Treatment', 'Referred', 'Attended By', 'Status', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
                   ))}
@@ -7831,7 +7836,7 @@ function SickbayTab({ students, autoOpenForm, currentUser }) {
                   >
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                     <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{r.date}</td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1a2f4d', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{r.gcc_no ? `GCC-${r.gcc_no}` : '—'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{r.student_name}</div>
                       {r.student_id && <div style={{ fontSize: 10, color: '#16a34a' }}>🔗 linked</div>}
@@ -7880,7 +7885,7 @@ const HOUSE_COLORS = [
   { color: '#1d4ed8', bg: '#dbeafe', border: '#93c5fd' },
   { color: '#dc2626', bg: '#fee2e2', border: '#fca5a5' },
   { color: '#16a34a', bg: '#dcfce7', border: '#6ee7b7' },
-  { color: '#a8842f', bg: '#fef9c3', border: '#fde047' },
+  { color: '#b8923a', bg: '#fef9c3', border: '#fde047' },
   { color: '#7c3aed', bg: '#f5f3ff', border: '#c4b5fd' },
   { color: '#0891b2', bg: '#e0f2fe', border: '#7dd3fc' },
 ]
@@ -7932,7 +7937,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
     e.preventDefault()
     if (!isAdmin) { alert('Only admins can create or edit houses.'); return }
     setSaving(true)
-    const HOUSE_COLOR_HEX = ['#1d4ed8', '#dc2626', '#16a34a', '#a8842f', '#7c3aed', '#0891b2']
+    const HOUSE_COLOR_HEX = ['#1d4ed8', '#dc2626', '#16a34a', '#b8923a', '#7c3aed', '#0891b2']
     const payload = {
       name: form.name.trim(), motto: form.motto, color_index: Number(form.color_index),
       color: HOUSE_COLOR_HEX[Number(form.color_index) % HOUSE_COLOR_HEX.length],
@@ -8019,7 +8024,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
   const handleBulkAssign = async houseName => {
     if (!isAdmin) { showToast('Only admins can bulk assign', '#dc2626'); return }
     const unassigned = activeStudents.filter(s => !isAssigned(s))
-    if (!unassigned.length) { showToast('No unassigned students', '#a8842f'); return }
+    if (!unassigned.length) { showToast('No unassigned students', '#b8923a'); return }
     const remaining = getHouseRemaining(houseName)
     if (remaining && unassigned.length > remaining.available) {
       if (!window.confirm(`⚠ ${houseName} only has ${remaining.available} seat(s) left (${remaining.occupied}/${remaining.capacity}), but ${unassigned.length} students are unassigned. Assign anyway? (will exceed capacity)`)) return
@@ -8146,7 +8151,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               </div>
               {/* FIXED: added flexWrap:'wrap' */}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {isAdmin && <button onClick={() => { setEditRec(activeHouseObj); setForm({ ...activeHouseObj }); setShowForm(true); setActiveHouse(null) }} style={{ ...btn('#eff6ff', '#1a2f4d'), fontSize: 12, padding: '7px 14px' }}>✏️ Edit House</button>}
+                {isAdmin && <button onClick={() => { setEditRec(activeHouseObj); setForm({ ...activeHouseObj }); setShowForm(true); setActiveHouse(null) }} style={{ ...btn('#eff6ff', '#1e3a6e'), fontSize: 12, padding: '7px 14px' }}>✏️ Edit House</button>}
                 {isAdmin && <button onClick={() => handleBulkAssign(activeHouseObj.name)} style={{ ...btn('#ecfdf5', '#059669'), fontSize: 12, padding: '7px 14px' }}>+ Assign Unassigned ({unassignedCount})</button>}
               </div>
             </div>
@@ -8237,7 +8242,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                           onMouseLeave={e => e.currentTarget.style.background = 'white'}
                         >
                           <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
-                          <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1a2f4d', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                          <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                           <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.gender || '—'}</td>
                           <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
@@ -8296,7 +8301,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 
       {!activeHouse && showForm && isAdmin && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1a2f4d', marginBottom: 16 }}>{editRec ? 'Edit House' : 'Create New House'}</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a6e', marginBottom: 16 }}>{editRec ? 'Edit House' : 'Create New House'}</h3>
           <form onSubmit={handleSaveHouse}>
             {/* FIXED: was 1fr 1fr */}
             <div style={grid2}>
@@ -8331,7 +8336,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               <div><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>{saving ? '⏳ Saving...' : '✅ Save House'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a6e')}>{saving ? '⏳ Saving...' : '✅ Save House'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -8342,7 +8347,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
         <>
           {/* FIXED: was repeat(4,1fr) */}
           <div style={statGrid(130)}>
-            <StatCard icon="🏠" label="Total Houses" value={houses.length} color="#1a2f4d" bg="#eff6ff" />
+            <StatCard icon="🏠" label="Total Houses" value={houses.length} color="#1e3a6e" bg="#eff6ff" />
             <StatCard icon="👥" label="Assigned" value={activeStudents.filter(s => isAssigned(s)).length} color="#16a34a" bg="#dcfce7" />
             <StatCard icon="⚠️" label="Unassigned" value={unassignedCount} color="#dc2626" bg="#fee2e2" />
             <StatCard icon="🚪" label="Dropout (house pending clear)" value={dropoutWithHouseCount} color="#b45309" bg="#fef3c7" />
@@ -8361,7 +8366,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
               <button
                 onClick={() => setShowAdvFilters(v => !v)}
                 style={{
-                  ...btn(showAdvFilters || advFilterCount > 0 ? '#eff6ff' : '#f1f5f9', showAdvFilters || advFilterCount > 0 ? '#1a2f4d' : '#374151'),
+                  ...btn(showAdvFilters || advFilterCount > 0 ? '#eff6ff' : '#f1f5f9', showAdvFilters || advFilterCount > 0 ? '#1e3a6e' : '#374151'),
                   fontSize: 12, padding: '7px 14px',
                 }}
               >
@@ -8458,7 +8463,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                             {h.motto && <div style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic', marginTop: 2 }}>"{h.motto}"</div>}
                           </div>
                           <div style={{ display: 'flex', gap: 6 }}>
-                            <button onClick={e => { e.stopPropagation(); setEditRec(h); setForm({ ...h }); setShowForm(true) }} style={{ background: '#eff6ff', color: '#1a2f4d', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
+                            <button onClick={e => { e.stopPropagation(); setEditRec(h); setForm({ ...h }); setShowForm(true) }} style={{ background: '#eff6ff', color: '#1e3a6e', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✏️</button>
                             {isAdmin && <button onClick={e => { e.stopPropagation(); handleDeleteHouse(h.id) }} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>}
                           </div>
                         </div>
@@ -8513,7 +8518,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
 
           {houses.length > 0 && (
             <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
-              <div style={{ background: '#1a2f4d', padding: '11px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ background: '#1e3a6e', padding: '11px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontWeight: 700, color: 'white', fontSize: 13 }}>📋 All Students — House Assignment</span>
                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,.6)' }}>{unassignedCount} unassigned</span>
               </div>
@@ -8576,7 +8581,7 @@ function HouseTab({ students: propStudents, currentUser, houseColorMap }) {
                         onMouseLeave={e => e.currentTarget.style.background = 'white'}
                       >
                         <td style={{ padding: '9px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1a2f4d', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                         <td style={{ padding: '9px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
                         <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
                         <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.course || '—'}</td>
@@ -10429,7 +10434,7 @@ function HousemasterTab({ currentUser }) {
 
       {showForm && isAdmin && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,.08)', maxWidth: 900 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1a2f4d', marginBottom: 16 }}>{editRec ? 'Edit Housemaster' : 'Add Housemaster'}</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a6e', marginBottom: 16 }}>{editRec ? 'Edit Housemaster' : 'Add Housemaster'}</h3>
           <form onSubmit={handleSave}>
             {/* FIXED: was 1fr 1fr */}
             <div style={grid2}>
@@ -10468,7 +10473,7 @@ function HousemasterTab({ currentUser }) {
               <div><label style={lbl}>Remarks</label><input value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} style={inp} /></div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a6e')}>{saving ? '⏳ Saving...' : '✅ Save'}</button>
               <button type="button" onClick={() => { setShowForm(false); setEditRec(null) }} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -10502,7 +10507,7 @@ function HousemasterTab({ currentUser }) {
                     </div>
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                        <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ flex: 1, ...btn('#eff6ff', '#1a2f4d'), fontSize: 12, padding: '7px' }}>✏️ Edit</button>
+                        <button onClick={() => { setEditRec(r); setForm({ ...r }); setShowForm(true) }} style={{ flex: 1, ...btn('#eff6ff', '#1e3a6e'), fontSize: 12, padding: '7px' }}>✏️ Edit</button>
                         <button onClick={() => handleDelete(r.id)} style={{ flex: 1, ...btn('#fee2e2', '#dc2626'), fontSize: 12, padding: '7px' }}>🗑 Remove</button>
                       </div>
                     )}
@@ -10576,9 +10581,9 @@ function KitchenTab({ currentUser }) {
     <div>
       {/* FIXED: was repeat(5,1fr) — worst mobile offender */}
       <div style={statGrid(130)}>
-        <StatCard icon="📋" label="Total Records" value={records.length} color="#1a2f4d" bg="#eff6ff" />
+        <StatCard icon="📋" label="Total Records" value={records.length} color="#1e3a6e" bg="#eff6ff" />
         {MEAL_TYPES.map((m, i) => {
-          const colors = ['#a8842f', '#16a34a', '#0891b2', '#7c3aed']
+          const colors = ['#b8923a', '#16a34a', '#0891b2', '#7c3aed']
           const bgs = ['#fef9c3', '#dcfce7', '#e0f2fe', '#f5f3ff']
           return (
             <StatCard key={m}
@@ -10619,7 +10624,7 @@ function KitchenTab({ currentUser }) {
 
       {showForm && (
         <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1a2f4d', marginBottom: 16 }}>Log Kitchen Record</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1e3a6e', marginBottom: 16 }}>Log Kitchen Record</h3>
           <form onSubmit={handleSave}>
             {/* FIXED: was 1fr 1fr */}
             <div style={grid2}>
@@ -10651,7 +10656,7 @@ function KitchenTab({ currentUser }) {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1a2f4d')}>{saving ? '⏳ Saving...' : '✅ Log Meal'}</button>
+              <button type="submit" disabled={saving} style={btn(saving ? '#94a3b8' : '#1e3a6e')}>{saving ? '⏳ Saving...' : '✅ Log Meal'}</button>
               <button type="button" onClick={() => setShowForm(false)} style={btn('#f1f5f9', '#374151')}>Cancel</button>
             </div>
           </form>
@@ -10666,7 +10671,7 @@ function KitchenTab({ currentUser }) {
               <div key={r.id} style={{ background: 'white', borderRadius: 12, padding: 14, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
                   <div>
-                    <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1a2f4d' }}>{r.meal_type}</span>
+                    <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1e3a6e' }}>{r.meal_type}</span>
                     <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>{r.date}</div>
                   </div>
                   {isAdmin && <button onClick={() => handleDelete(r.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>🗑</button>}
@@ -10687,7 +10692,7 @@ function KitchenTab({ currentUser }) {
           <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 600 }}>
               <thead>
-                <tr style={{ background: '#1a2f4d' }}>
+                <tr style={{ background: '#1e3a6e' }}>
                   {['#', 'Date', 'Meal', 'Menu', 'Prepared By', 'Served', 'Remarks', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
                   ))}
@@ -10702,7 +10707,7 @@ function KitchenTab({ currentUser }) {
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                     <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 12 }}>{r.date}</td>
                     <td style={{ padding: '10px 14px' }}>
-                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1a2f4d' }}>{r.meal_type}</span>
+                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1e3a6e' }}>{r.meal_type}</span>
                     </td>
                     <td style={{ padding: '10px 14px', color: '#374151', maxWidth: 200 }}>
                       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.menu}>{r.menu}</div>
@@ -10786,7 +10791,7 @@ function NeglectReportTab({ currentUser }) {
 
   return (
     <div>
-      <div style={{ background: '#1a2f4d', borderRadius: '14px', padding: '18px 20px', marginBottom: '20px', color: 'white' }}>
+      <div style={{ background: '#1e3a6e', borderRadius: '14px', padding: '18px 20px', marginBottom: '20px', color: 'white' }}>
         <div style={{ fontSize: '14px', fontWeight: '800', marginBottom: '4px' }}>🚨 Six-Tab Compliance Neglect Report</div>
         <div style={{ fontSize: '12px', opacity: 0.75 }}>
           Tracks housemasters who complete roll call without logging Discipline, Sickbay, Repairs, Journal, Mess Duty, or Activities for their house that session.
@@ -10869,7 +10874,7 @@ function NeglectReportTab({ currentUser }) {
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: 700 }}>
             <thead>
-              <tr style={{ background: '#1a2f4d' }}>
+              <tr style={{ background: '#1e3a6e' }}>
                 {['#', 'Date', 'Type', 'Session', 'House', 'Housemaster', 'Missing Checks'].map(h => (
                   <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12 }}>{h}</th>
                 ))}
@@ -10884,7 +10889,7 @@ function NeglectReportTab({ currentUser }) {
                     <span style={{
                       padding: '3px 10px', borderRadius: 99, fontSize: 10, fontWeight: 700,
                       background: r.check_type === 'standalone' ? '#f5f3ff' : r.check_type === 'rushed_rollcall' ? '#fef2f2' : '#eff6ff',
-                      color: r.check_type === 'standalone' ? '#7c3aed' : r.check_type === 'rushed_rollcall' ? '#dc2626' : '#1a2f4d',
+                      color: r.check_type === 'standalone' ? '#7c3aed' : r.check_type === 'rushed_rollcall' ? '#dc2626' : '#1e3a6e',
                     }}>
                       {r.check_type === 'standalone' ? '📋 3x-Daily' : r.check_type === 'rushed_rollcall' ? '⏱️ Rushed' : '✅ Roll Call'}
                     </span>
@@ -10893,12 +10898,12 @@ function NeglectReportTab({ currentUser }) {
                     <span style={{
                       padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700,
                       background: r.session === 'morning' ? '#fef9c3' : r.session === 'afternoon' ? '#fef3c7' : '#e0f2fe',
-                      color: r.session === 'morning' ? '#a8842f' : r.session === 'afternoon' ? '#d97706' : '#0891b2',
+                      color: r.session === 'morning' ? '#b8923a' : r.session === 'afternoon' ? '#d97706' : '#0891b2',
                     }}>
                       {r.session === 'morning' ? '🌅' : r.session === 'afternoon' ? '☀️' : '🌙'} {r.session}
                     </span>
                   </td>
-                  <td style={{ padding: '10px 14px', fontWeight: 700, color: '#1a2f4d' }}>🏠 {r.house}</td>
+                  <td style={{ padding: '10px 14px', fontWeight: 700, color: '#1e3a6e' }}>🏠 {r.house}</td>
                   <td style={{ padding: '10px 14px', color: '#374151' }}>{r.housemaster_name || 'Unknown'}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
@@ -11104,7 +11109,7 @@ function Hostel() {
     const link = document.createElement('link')
     link.id = 'hostel-premium-fonts'
     link.rel = 'stylesheet'
-    link.href = 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap'
+    link.href = 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap'
     document.head.appendChild(link)
   }, [])
 
@@ -11124,6 +11129,7 @@ function Hostel() {
     return t && VALID_TABS.includes(t) ? t : 'hmdashboard'
   })
   const [menuOpen, setMenuOpen] = useState(false) // hamburger dropdown, top-right of the header — replaces the old always-visible tab bar/grid
+  const [menuQuery, setMenuQuery] = useState('') // live filter inside the "All sections" menu
   const [students, setStudents] = useState([])
   const [staffProfiles, setStaffProfiles] = useState([])
   const [dataLoading, setDataLoading] = useState(true)
@@ -11204,7 +11210,7 @@ function Hostel() {
     // Load house colors
     if (houses?.length) {
       const colorMap = {}
-      const palette = ['#1d4ed8', '#dc2626', '#16a34a', '#a8842f', '#7c3aed', '#0891b2', '#be185d', '#047857']
+      const palette = ['#1d4ed8', '#dc2626', '#16a34a', '#b8923a', '#7c3aed', '#0891b2', '#be185d', '#047857']
       houses.forEach(h => {
         colorMap[h.name] = palette[Number(h.color_index) % palette.length]
       })
@@ -11221,6 +11227,25 @@ function Hostel() {
   // refetch immediately so activeStudents (and every roll-call view built
   // from it) drops or re-adds them without needing a manual reload.
   useStudentsUpdatedListener(fetchShared)
+
+  useEffect(() => {
+    if (!menuOpen) { setMenuQuery(''); return }
+    const onKey = e => { if (e.key === 'Escape') setMenuOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [menuOpen])
+
+  const activeTabDef = TABS.find(t => t.id === activeTab)
+  const activeGroup = TAB_GROUPS.find(g => g.ids.includes(activeTab))
+  const QUICK_TABS = ['hmdashboard', 'attendance', 'leave', 'sickbay', 'discipline', 'house', 'kitchen', 'maintenance']
+  const splitLabel = label => {
+    const m = (label || '').match(/^(\S+)\s+(.*)$/)
+    return m ? { icon: m[1], text: m[2] } : { icon: '', text: label }
+  }
+  const hourNow = new Date().getHours()
+  const greeting = hourNow < 12 ? 'Good morning' : hourNow < 17 ? 'Good afternoon' : 'Good evening'
+  const boardersCount = students.filter(st => st.status !== 'Inactive' && st.status !== 'Dropout' && isAssigned(st)).length
+  const houseCount = Object.keys(houseColorMap).length
 
   const standaloneTab = activeTab === 'schedule' || activeTab === 'kitchen' || activeTab === 'housemaster' || activeTab === 'adminmonitor' || activeTab === 'neglectreport' || activeTab === 'hmrollreport'
 
@@ -11265,100 +11290,201 @@ function Hostel() {
           applies consistently across all 17 tabs without editing each
           individual heading's inline style. */}
       <style>{`
+        .gnsi-hostel-root { -webkit-font-smoothing: antialiased; color: ${MD.color.onSurface}; }
         .gnsi-hostel-root h1, .gnsi-hostel-root h2, .gnsi-hostel-root h3 {
           font-family: ${FONT_DISPLAY};
         }
+        .gnsi-hostel-root input:not([type=checkbox]):not([type=radio]):not([type=file]):focus,
+        .gnsi-hostel-root select:focus, .gnsi-hostel-root textarea:focus {
+          outline: none; border-color: #1e3a6e !important; box-shadow: 0 0 0 3px rgba(30,58,110,.14) !important;
+        }
+        .gnsi-hostel-root button:not(:disabled) { transition: transform .12s, filter .12s, box-shadow .15s, background-color .15s; }
+        .gnsi-hostel-root button:not(:disabled):hover { filter: brightness(.97); }
+        .gnsi-hostel-root button:not(:disabled):active { transform: scale(.98); }
+        .gnsi-hostel-root button:focus-visible { outline: 2px solid #b8923a; outline-offset: 2px; }
+        .gnsi-hostel-root thead th { text-transform: uppercase; letter-spacing: .06em; font-size: 11px !important; font-weight: 700 !important; white-space: nowrap; }
+        .gnsi-hostel-root tbody tr { transition: background-color .12s; }
+        .gnsi-hostel-root tbody tr:hover { background-color: #faf8f3; }
+        .gnsi-hostel-root ::selection { background: #e9d9b0; color: #132a4f; }
+        .gnsi-hostel-root ::-webkit-scrollbar { width: 6px; height: 6px; }
+        .gnsi-hostel-root ::-webkit-scrollbar-thumb { background: #d9d2c2; border-radius: 6px; }
+        .hs-hero { position: relative; overflow: hidden; color: #fff;
+          background: radial-gradient(90% 140% at 100% 0%, rgba(184,146,58,.28) 0%, transparent 55%), linear-gradient(135deg, #0e203f 0%, #132a4f 45%, #1e3a6e 100%);
+          box-shadow: 0 24px 48px -24px rgba(19,42,79,.55); }
+        .hs-hero::before { content: ''; position: absolute; inset: 0; pointer-events: none;
+          background-image: radial-gradient(rgba(255,255,255,.07) 1px, transparent 1px); background-size: 14px 14px;
+          -webkit-mask-image: linear-gradient(90deg, transparent, #000 70%); mask-image: linear-gradient(90deg, transparent, #000 70%); }
+        .hs-hero::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, transparent, #b8923a, transparent); }
+        .hs-hero > * { position: relative; }
+        .hs-hbtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 15px; border-radius: 12px;
+          font: 650 13px/1 ${FONT_BODY}; cursor: pointer; white-space: nowrap; background: rgba(255,255,255,.08); color: #fff; border: 1px solid rgba(255,255,255,.22); }
+        .hs-hbtn:hover { background: rgba(255,255,255,.16) !important; filter: none !important; }
+        .hs-hbtn.gold { background: linear-gradient(180deg, #d4ae58, #b8923a); color: #1a1406; border-color: #a37f2e; box-shadow: 0 1px 0 rgba(255,255,255,.35) inset, 0 8px 18px -8px rgba(184,146,58,.8); }
+        .hs-hbtn.gold:hover { background: linear-gradient(180deg, #dcb863, #c29a42) !important; }
+        .hs-hstat { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; padding: 11px 14px; min-width: 0; }
+        .hs-quick { display: flex; gap: 4px; padding: 5px; background: #fff; border: 1px solid #e8e3d8; border-radius: 14px;
+          box-shadow: 0 1px 2px rgba(19,42,79,.05); overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .hs-quick::-webkit-scrollbar { display: none; }
+        .hs-qt { display: flex; align-items: center; gap: 7px; padding: 9px 14px; border: none; border-radius: 10px; background: none; cursor: pointer;
+          font: 600 13px/1 ${FONT_BODY}; color: #5d6b82; white-space: nowrap; }
+        .hs-qt:hover { color: #0f1b2e; background: #f3f0e8 !important; filter: none !important; }
+        .hs-qt.on { background: linear-gradient(180deg, #1e3a6e, #132a4f) !important; color: #fff; box-shadow: 0 6px 14px -6px rgba(19,42,79,.6); }
+        .hs-menu { animation: hsDrop .18s ease both; }
+        @keyframes hsDrop { from { opacity: 0; transform: translateY(-6px) } to { opacity: 1; transform: none } }
+        .hs-mi { width: 100%; text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; cursor: pointer; font: 500 13px/1.2 ${FONT_BODY};
+          background: none; color: #1c2530; display: flex; align-items: center; gap: 10px; }
+        .hs-mi:hover { background: #faf8f3 !important; border-color: #e8e3d8; filter: none !important; }
+        .hs-mi.on { background: #eef2f9 !important; border-color: #c9d4e8; color: #132a4f; font-weight: 700; }
+        .hs-mi .ic { width: 30px; height: 30px; border-radius: 9px; background: #f3f0e8; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+        .hs-mi.on .ic { background: #fff; box-shadow: 0 0 0 1px #e9d9b0; }
+        .hs-stat { transition: transform .15s, box-shadow .15s; }
+        .hs-stat:hover { transform: translateY(-2px); box-shadow: ${MD.elevation[2]} !important; }
+        .hs-skel { height: 96px; border-radius: 16px; border: 1px solid #e8e3d8; background: linear-gradient(90deg, #fff 0%, #f3f0e8 40%, #fff 80%); background-size: 800px 100%; animation: hsShim 1.3s linear infinite; }
+        @keyframes hsShim { 0% { background-position: -400px 0 } 100% { background-position: 400px 0 } }
+        @media (prefers-reduced-motion: reduce) { .hs-menu, .hs-skel { animation: none; } .hs-stat:hover { transform: none; } }
       `}</style>
+
       {/* ── Letterhead header — navy panel, gold foil rule, serif institutional mark ── */}
-      <div style={{
-        background: MD.color.primary, borderRadius: MD.radius.card,
-        padding: mobile ? '16px 18px 14px' : '22px 26px 18px',
-        marginBottom: mobile ? '16px' : '22px', position: 'relative', overflow: 'hidden',
+      <section className="hs-hero" style={{
+        borderRadius: mobile ? 18 : 22,
+        padding: mobile ? '18px 16px 16px' : '26px 28px 22px',
+        marginBottom: mobile ? '14px' : '16px',
       }}>
-        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '3px', background: `linear-gradient(90deg, ${MD.color.secondary}, ${MD.color.secondary}00 75%)` }} />
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-          <div>
-            <div style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase', color: MD.color.secondary, marginBottom: '4px' }}>
-              GNSI · Boarding Administration
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: mobile ? 'nowrap' : 'wrap', gap: mobile ? 8 : 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: mobile ? 12 : 16, minWidth: 0 }}>
+            <div style={{ width: mobile ? 46 : 56, height: mobile ? 46 : 56, borderRadius: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(145deg,rgba(233,217,176,.28),rgba(233,217,176,.06))', border: '1px solid rgba(233,217,176,.35)', color: '#e9d9b0' }}>
+              <svg viewBox="0 0 24 24" width={mobile ? 22 : 26} height={mobile ? 22 : 26} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h14V9.5"/><path d="M9.5 20v-5.5h5V20"/><path d="M8 12.5h.01M16 12.5h.01"/></svg>
             </div>
-            <h1 style={{ ...MD.type.headline, fontSize: mobile ? '20px' : '26px', color: 'white', margin: 0 }}>
-              Hostel Management
-            </h1>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '10.5px', fontWeight: '700', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#e9d9b0', marginBottom: '6px' }}>
+                GNSI · Boarding Administration
+              </div>
+              <h1 style={{ fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: mobile ? '25px' : '33px', color: 'white', margin: 0, lineHeight: 1.05, letterSpacing: '-0.01em' }}>
+                Hostel Management
+              </h1>
+              <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span>{greeting}{currentUser?.name ? `, ${currentUser.name.split(' ')[0]}` : ''}</span>
+                <span style={{ opacity: .5 }}>·</span>
+                <span>{new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                {currentHousemaster?.house && <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: '#e9d9b0', background: 'rgba(184,146,58,.16)', border: '1px solid rgba(233,217,176,.35)' }}>🏠 {currentHousemaster.house}</span>}
+              </div>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-            <p style={{ color: 'rgba(255,255,255,0.72)', fontSize: mobile ? '12px' : '13px', margin: 0, fontWeight: '500', textAlign: 'right' }}>
-              {dataLoading
-                ? <span style={{ color: MD.color.secondary, fontWeight: 700 }}>Loading…</span>
-                : <span style={{ fontWeight: 700 }}>{students.length} students · {staffProfiles.length} staff</span>
-              }
-            </p>
-            {/* Hamburger — all 19 tabs now live in this dropdown instead of
-                an always-visible tab bar/grid, per instruction. Dashboard
-                (hmdashboard) stays the default landing tab (VALID_TABS
-                fallback above already does this — unchanged). */}
-            <div style={{ position: 'relative' }}>
-              <button onClick={() => setMenuOpen(o => !o)} aria-label="Menu" style={{
-                width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-                border: '1px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.1)',
-                color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 16, cursor: 'pointer',
-              }}>
-                ☰
-              </button>
-              {menuOpen && (
-                <>
-                  <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 998 }} />
-                  <div style={{
-                    position: 'fixed', top: mobile ? 100 : 120, right: mobile ? 12 : 28, zIndex: 999,
-                    width: mobile ? 240 : 260, maxHeight: '75vh', overflowY: 'auto',
-                    background: 'white', borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,0.25)',
-                    padding: 8,
-                  }}>
-                    {TAB_GROUPS.map((group, gi) => (
-                      <div key={group.label}>
-                        <div style={{
-                          padding: '8px 12px 4px', fontSize: 10.5, fontWeight: 800,
-                          textTransform: 'uppercase', letterSpacing: '.06em',
-                          color: MD.color.onSurfaceVariant, marginTop: gi === 0 ? 0 : 6,
-                          borderTop: gi === 0 ? 'none' : `1px solid ${MD.color.outlineVariant}`,
-                          paddingTop: gi === 0 ? 4 : 10,
-                        }}>
-                          {group.label}
-                        </div>
-                        {group.ids.map(id => {
-                          const t = TABS.find(tab => tab.id === id)
-                          if (!t) return null
-                          return (
-                            <button key={t.id} onClick={() => { changeTab(t.id); setMenuOpen(false) }} style={{
-                              width: '100%', textAlign: 'left', padding: '10px 12px', borderRadius: 8,
-                              border: 'none', cursor: 'pointer', fontFamily: FONT_BODY, fontSize: 13,
-                              background: activeTab === t.id ? MD.color.primary + '14' : 'none',
-                              color: activeTab === t.id ? MD.color.primary : '#1e293b',
-                              fontWeight: activeTab === t.id ? 700 : 500,
-                              display: 'block', marginBottom: 2,
-                            }}>
-                              {t.label}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative', flexShrink: 0 }}>
+            {!mobile && activeTab !== 'attendance' && (
+              <button className="hs-hbtn gold" onClick={() => changeTab('attendance')}>✅ Roll Call</button>
+            )}
+            {/* Hamburger — every section lives in this grouped menu; the quick
+                bar below only shortcuts the most-used ones. */}
+            <button className="hs-hbtn" onClick={() => setMenuOpen(o => !o)} aria-label="Menu" aria-expanded={menuOpen}>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>☰</span>{!mobile && 'All sections'}
+            </button>
           </div>
         </div>
+
+        {/* Hero quick figures */}
+        <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(3,minmax(0,1fr))' : 'repeat(4,minmax(0,1fr))', gap: mobile ? 8 : 12, marginTop: mobile ? 16 : 22 }}>
+          {[
+            { l: 'Students', v: dataLoading ? '—' : students.filter(st => st.status !== 'Inactive' && st.status !== 'Dropout').length, sub: 'Active roster' },
+            { l: 'In houses', v: dataLoading ? '—' : boardersCount, sub: houseCount ? `${houseCount} houses` : 'Allocated' },
+            { l: 'Staff', v: dataLoading ? '—' : staffProfiles.length, sub: 'On record' },
+            ...(!mobile ? [{ l: 'Section', v: activeTabDef ? splitLabel(activeTabDef.label).text : '—', sub: activeGroup?.label || 'Dashboard', small: true }] : []),
+          ].map(h => (
+            <div key={h.l} className="hs-hstat">
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: 'rgba(255,255,255,.6)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.l}</div>
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: h.small ? (mobile ? 16 : 20) : (mobile ? 21 : 26), fontWeight: 600, color: '#fff', marginTop: 6, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontVariantNumeric: 'tabular-nums' }}>{h.v}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', marginTop: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.sub}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Quick navigation — most-used sections one tap away */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: mobile ? 14 : 20 }}>
+        <nav className="hs-quick" role="tablist" style={{ flex: 1, minWidth: 0 }}>
+          {[...QUICK_TABS, ...(QUICK_TABS.includes(activeTab) ? [] : [activeTab])].map(id => {
+            const t = TABS.find(tab => tab.id === id)
+            if (!t) return null
+            const { icon, text } = splitLabel(t.label)
+            return (
+              <button key={id} role="tab" aria-selected={activeTab === id} className={'hs-qt' + (activeTab === id ? ' on' : '')} onClick={() => changeTab(id)}>
+                <span style={{ fontSize: 14 }}>{icon}</span>{text}
+              </button>
+            )
+          })}
+        </nav>
+        {!mobile && (
+          <button onClick={() => setMenuOpen(true)} style={{ height: 46, padding: '0 16px', borderRadius: 14, border: '1px solid #e8e3d8', background: '#fff', color: '#132a4f', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: FONT_BODY, whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(19,42,79,.05)' }}>
+            More ▾
+          </button>
+        )}
       </div>
+
+      {/* All-sections menu */}
+      {menuOpen && (
+        <>
+          <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 998, background: 'rgba(10,18,32,.35)', backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)' }} />
+          <div className="hs-menu" role="dialog" aria-label="All sections" style={{
+            position: 'fixed', zIndex: 999,
+            ...(mobile ? { left: 0, right: 0, bottom: 0, maxHeight: '82vh', borderRadius: '20px 20px 0 0' } : { top: 90, right: 28, width: 620, maxHeight: '78vh', borderRadius: 20 }),
+            background: 'white', boxShadow: '0 30px 60px -20px rgba(10,18,32,.45)', border: '1px solid #e8e3d8',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }}>
+            <div style={{ padding: mobile ? '12px 16px 12px' : '18px 20px 14px', borderBottom: '1px solid #e8e3d8', background: 'linear-gradient(180deg,#faf8f3,#fff)' }}>
+              {mobile && <div style={{ width: 36, height: 4, borderRadius: 2, background: '#d9d2c2', margin: '0 auto 12px' }} />}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.18em', textTransform: 'uppercase', color: '#b8923a' }}>Navigate</div>
+                  <div style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 600, color: '#132a4f' }}>All sections</div>
+                </div>
+                <button onClick={() => setMenuOpen(false)} aria-label="Close" style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid #e8e3d8', background: '#fff', cursor: 'pointer', color: '#5d6b82', fontSize: 16 }}>×</button>
+              </div>
+              <input autoFocus={!mobile} value={menuQuery} onChange={e => setMenuQuery(e.target.value)} placeholder="🔍  Find a section…" style={{ ...inp, minHeight: 42 }}
+                onKeyDown={e => {
+                  if (e.key !== 'Enter') return
+                  const q = menuQuery.trim().toLowerCase(); if (!q) return
+                  const hit = TABS.find(t => t.label.toLowerCase().includes(q))
+                  if (hit) { changeTab(hit.id); setMenuOpen(false) }
+                }} />
+            </div>
+            <div style={{ overflowY: 'auto', padding: mobile ? '10px 12px 28px' : '14px 16px 18px', display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: mobile ? 4 : '6px 16px', alignContent: 'start' }}>
+              {TAB_GROUPS.map(group => {
+                const q = menuQuery.trim().toLowerCase()
+                const items = group.ids.map(id => TABS.find(tab => tab.id === id)).filter(t => t && (!q || t.label.toLowerCase().includes(q) || group.label.toLowerCase().includes(q)))
+                if (!items.length) return null
+                return (
+                  <div key={group.label} style={{ marginBottom: 8 }}>
+                    <div style={{ padding: '8px 12px 6px', fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.12em', color: '#b8923a' }}>
+                      {group.label}
+                    </div>
+                    {items.map(t => {
+                      const { icon, text } = splitLabel(t.label)
+                      return (
+                        <button key={t.id} className={'hs-mi' + (activeTab === t.id ? ' on' : '')} onClick={() => { changeTab(t.id); setMenuOpen(false) }}>
+                          <span className="ic">{icon}</span>
+                          <span style={{ flex: 1 }}>{text}</span>
+                          {activeTab === t.id && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#b8923a' }} />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
       {/* Desktop/Tablet Tab Bar and Mobile Tab Grid removed — all tabs now
           live in the hamburger menu in the header above, per instruction. */}
 
       {dataLoading && !standaloneTab
         ? (
-          <div style={{ textAlign: 'center', padding: mobile ? '40px' : '60px', color: '#64748b' }}>
-            <div style={{ fontSize: mobile ? '24px' : '32px', marginBottom: '12px' }}>⏳</div>
-            <div style={{ fontSize: mobile ? '14px' : '15px', fontWeight: 600 }}>Loading student & staff data...</div>
-            <div style={{ fontSize: '13px', marginTop: '6px', color: '#94a3b8' }}>This only happens once on first load</div>
+          <div aria-busy="true">
+            <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
+              {Array.from({ length: 4 }).map((_, i) => <div key={i} className="hs-skel" />)}
+            </div>
+            <div className="hs-skel" style={{ height: 260 }} />
+            <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 600, color: MD.color.onSurfaceVariant, marginTop: 14 }}>Loading student &amp; staff data…</div>
           </div>
         )
         : tabContent[activeTab]
@@ -11438,11 +11564,11 @@ function StudentTransferTab({ students, currentUser }) {
 
   const handleTransfer = async () => {
     if (selectedIds.size === 0) {
-      showToast('Select at least one student.', '#a8842f')
+      showToast('Select at least one student.', '#b8923a')
       return
     }
     if (!targetHouse) {
-      showToast('Please select a target house.', '#a8842f')
+      showToast('Please select a target house.', '#b8923a')
       return
     }
     const selectedStudents = activeStudents.filter(s => selectedIds.has(s.id))
@@ -11481,7 +11607,7 @@ function StudentTransferTab({ students, currentUser }) {
 
   const handleSingleTransfer = async (student) => {
     if (!targetHouse) {
-      showToast('Please select a target house.', '#a8842f')
+      showToast('Please select a target house.', '#b8923a')
       return
     }
     const house = houses.find(h => normalizeHouse(h.name) === normalizeHouse(targetHouse))
@@ -11523,14 +11649,14 @@ function StudentTransferTab({ students, currentUser }) {
 
   const handleBulkRemove = async () => {
     if (selectedIds.size === 0) {
-      showToast('Select at least one student.', '#a8842f')
+      showToast('Select at least one student.', '#b8923a')
       return
     }
     const selectedStudents = activeStudents.filter(s => selectedIds.has(s.id))
     const alreadyUnassigned = selectedStudents.filter(s => !isAssigned(s)).length
     const toRemove = selectedStudents.filter(s => isAssigned(s))
     if (toRemove.length === 0) {
-      showToast('Selected students are already unassigned.', '#a8842f')
+      showToast('Selected students are already unassigned.', '#b8923a')
       return
     }
     if (!window.confirm(
@@ -11579,7 +11705,7 @@ function StudentTransferTab({ students, currentUser }) {
       )}
 
       <div style={mobile ? mobileStatGrid : statGrid(130)}>
-        <StatCard icon="👥" label="Total Active" value={totalActive} color="#1a2f4d" bg="#eff6ff" compact={mobile} />
+        <StatCard icon="👥" label="Total Active" value={totalActive} color="#1e3a6e" bg="#eff6ff" compact={mobile} />
         <StatCard icon="⚠️" label="Unassigned" value={unassignedCount} color="#dc2626" bg="#fee2e2" compact={mobile} />
         <StatCard icon="🚪" label="Dropout" value={dropoutCount} color="#b45309" bg="#fef3c7" compact={mobile} />
         <StatCard icon="✅" label="Selected" value={selectedCount} color="#16a34a" bg="#dcfce7" compact={mobile} />
@@ -11611,7 +11737,7 @@ function StudentTransferTab({ students, currentUser }) {
           onClick={handleTransfer}
           disabled={transferring || selectedIds.size === 0 || !targetHouse}
           style={{
-            ...btn(transferring || selectedIds.size === 0 || !targetHouse ? '#94a3b8' : '#1a2f4d'),
+            ...btn(transferring || selectedIds.size === 0 || !targetHouse ? '#94a3b8' : '#1e3a6e'),
             whiteSpace: 'nowrap',
           }}
         >
@@ -11630,7 +11756,7 @@ function StudentTransferTab({ students, currentUser }) {
         <button
           onClick={() => setFilterHouse('Unassigned')}
           style={{
-            ...btn(filterHouse === 'Unassigned' ? '#1a2f4d' : '#eff6ff', filterHouse === 'Unassigned' ? 'white' : '#1a2f4d'),
+            ...btn(filterHouse === 'Unassigned' ? '#1e3a6e' : '#eff6ff', filterHouse === 'Unassigned' ? 'white' : '#1e3a6e'),
             whiteSpace: 'nowrap',
           }}
         >
@@ -11667,7 +11793,7 @@ function StudentTransferTab({ students, currentUser }) {
                     </div>
                   </div>
                   {currentHouse !== '—' ? (
-                    <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1a2f4d', flexShrink: 0 }}>🏠 {currentHouse}</span>
+                    <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1e3a6e', flexShrink: 0 }}>🏠 {currentHouse}</span>
                   ) : (
                     <span style={{ color: '#dc2626', fontWeight: 600, fontSize: 12, flexShrink: 0 }}>Unassigned</span>
                   )}
@@ -11703,7 +11829,7 @@ function StudentTransferTab({ students, currentUser }) {
       <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 600 }}>
           <thead>
-            <tr style={{ background: '#1a2f4d' }}>
+            <tr style={{ background: '#1e3a6e' }}>
               <th style={{ padding: '11px 14px', color: 'white', width: '40px' }}>
                 <input
                   type="checkbox"
@@ -11736,11 +11862,11 @@ function StudentTransferTab({ students, currentUser }) {
                   </td>
                   <td style={{ padding: '9px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
                   <td style={{ padding: '9px 14px', fontWeight: 600, color: '#1e293b' }}>{s.name}</td>
-                  <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1a2f4d' }}>{s.gcc_no || '—'}</td>
+                  <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e' }}>{s.gcc_no || '—'}</td>
                   <td style={{ padding: '9px 14px', color: '#64748b' }}>{s.batch || '—'}</td>
                   <td style={{ padding: '9px 14px' }}>
                     {currentHouse !== '—' ? (
-                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1a2f4d' }}>🏠 {currentHouse}</span>
+                      <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, background: '#eff6ff', color: '#1e3a6e' }}>🏠 {currentHouse}</span>
                     ) : (
                       <span style={{ color: '#dc2626', fontWeight: 600 }}>Unassigned</span>
                     )}
