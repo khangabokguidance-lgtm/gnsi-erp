@@ -19,6 +19,8 @@ import { EventBus, GNSI_EVENTS } from './EventBus'
 import { isAdminRole } from './roles'
 // Course → subject → chapter taxonomy (shared with QuestionBankViewer.jsx).
 import { COURSES, COURSE_LIST } from './qbankTaxonomy'
+import { T, heroStyle, optionStyle } from './qbankTheme'
+import { HeroStat, QBThemeStyles, OptionLetter } from './QBTheme'
 
 // ── BMEI04 font (base64, embedded once per file load) — needed because
 // browsers can't render this legacy encoding without the font that maps
@@ -196,11 +198,13 @@ const DIAGRAM_KEYWORDS = [
 ]
 
 // ── COLORS ───────────────────────────────────────────────────────────────────
+// Palette comes from the shared Question Bank theme (qbankTheme.jsx) so the
+// workspace and the read-only viewer look like one product.
 const C = {
-  navy: '#1e3a5f', green: '#16a34a', rose: '#dc2626',
-  amber: '#d97706', violet: '#7c3aed', slate: '#64748b',
-  indigo: '#4f46e5', teal: '#0891b2', bg: '#f8fafc',
-  border: '#e2e8f0', white: '#ffffff',
+  navy: T.navy, green: '#16a34a', rose: T.rose,
+  amber: '#d97706', violet: T.violet, slate: T.muted,
+  indigo: T.indigo, teal: T.teal, bg: T.canvas,
+  border: T.border, white: T.surface,
 }
 const SC = {
   Mathematics:         { color: '#1e3a5f', bg: '#eff6ff', border: '#bfdbfe' },
@@ -224,21 +228,29 @@ const SC = {
 const CHART_COLORS = ['#1e3a5f','#16a34a','#dc2626','#d97706','#7c3aed','#0891b2']
 
 // ── SHARED STYLES ─────────────────────────────────────────────────────────────
+// Hover/focus states, select chevrons and responsive collapse for these
+// come from QB_CSS (qbankTheme.jsx), scoped to the .qbx root.
 const iS = {
-  width:'100%', padding:'8px 11px', borderRadius:7,
-  border:`1px solid ${C.border}`, fontSize:13,
-  background:C.white, boxSizing:'border-box', fontFamily:'inherit', outline:'none',
+  width:'100%', padding:'9px 12px', borderRadius:T.radiusSm,
+  border:`1px solid ${T.border}`, fontSize:13.5, lineHeight:1.35,
+  background:T.surface, boxSizing:'border-box', fontFamily:'inherit', outline:'none',
+  boxShadow:'0 1px 1px rgba(16,24,40,.03)',
 }
-const lS = { display:'block', fontSize:11, fontWeight:700, color:C.slate, marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' }
-const cardS = { background:C.white, borderRadius:12, boxShadow:'0 1px 6px rgba(0,0,0,.07)', padding:'20px 22px', marginBottom:16 }
+const lS = { display:'flex', alignItems:'center', gap:6, fontSize:11, fontWeight:600, color:T.muted, marginBottom:6, textTransform:'uppercase', letterSpacing:'.06em' }
+const cardS = { background:T.surface, borderRadius:T.radius, border:`1px solid ${T.border}`, boxShadow:T.shadow, padding:'20px 22px', marginBottom:16 }
 const btn = (bg, dis=false) => ({
-  padding:'8px 18px', borderRadius:8, background: dis ? '#94a3b8' : bg,
-  color:'#fff', border:'none', fontSize:13, fontWeight:700,
-  cursor: dis ? 'not-allowed' : 'pointer', opacity: dis ? .7 : 1,
+  display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6,
+  padding:'9px 16px', borderRadius:T.radiusSm, background: dis ? '#cbd5e1' : bg,
+  color:'#fff', border:'none', fontSize:13, fontWeight:600, letterSpacing:'.005em',
+  cursor: dis ? 'not-allowed' : 'pointer', opacity: dis ? .85 : 1,
+  boxShadow: dis ? 'none' : '0 1px 2px rgba(16,24,40,.12), inset 0 1px 0 rgba(255,255,255,.08)',
+  whiteSpace:'nowrap',
 })
 const btnSm = (bg, color='#fff') => ({
-  padding:'4px 10px', borderRadius:6, background:bg,
-  color, border:'none', fontSize:11, fontWeight:700, cursor:'pointer',
+  display:'inline-flex', alignItems:'center', gap:4,
+  padding:'5px 11px', borderRadius:7, background:bg,
+  color, border: color === '#fff' ? 'none' : `1px solid ${T.border}`,
+  fontSize:11.5, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap',
 })
 const tdS = { padding:'10px 12px', color:C.slate, fontSize:13 }
 
@@ -340,21 +352,29 @@ function parseCSV(text) {
 
 function Badge({ text, color, bg, border }) {
   return (
-    <span style={{ padding:'2px 9px', borderRadius:99, fontSize:10, fontWeight:700,
+    <span style={{ display:'inline-flex', alignItems:'center', padding:'3px 9px', borderRadius:99,
+      fontSize:10.5, fontWeight:600, letterSpacing:'.01em', lineHeight:1.4,
       color, background:bg, border:`1px solid ${border||bg}`, whiteSpace:'nowrap' }}>
       {text}
     </span>
   )
 }
 
+// Icon + tone chosen from the toast's color, so every existing
+// showToast(msg, color) call gets a matching icon without changes.
+const TOAST_ICON = { [T.rose]: '!', '#d97706': '!', '#16a34a': '✓' }
 function Toast({ msg, color }) {
   return (
-    <div style={{ position:'fixed', top:20, right:20, zIndex:99999,
-      background:'#fff', border:`1px solid ${C.border}`,
-      borderLeft:`3px solid ${color}`, borderRadius:10,
-      padding:'11px 18px', fontSize:13, fontWeight:600,
-      boxShadow:'0 8px 32px rgba(0,0,0,.12)', maxWidth:360 }}>
-      {msg}
+    <div role="status" aria-live="polite" style={{ position:'fixed', top:20, right:20, zIndex:99999,
+      display:'flex', alignItems:'flex-start', gap:10,
+      background:'#fff', border:`1px solid ${T.border}`, borderRadius:12,
+      padding:'12px 16px 12px 12px', fontSize:13, fontWeight:500, color:T.text, lineHeight:1.45,
+      boxShadow:T.shadowLg, maxWidth:380, animation:'qbToastIn .22s ease both' }}>
+      <span style={{ flexShrink:0, width:22, height:22, borderRadius:'50%', background:color, color:'#fff',
+        display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800 }}>
+        {TOAST_ICON[color] || 'i'}
+      </span>
+      <span style={{ paddingTop:1 }}>{msg}</span>
     </div>
   )
 }
@@ -1179,66 +1199,67 @@ function parseCSVQuestions(csvText, defaultCourse, defaultSubject, defaultChapte
 function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onDelete, onEdit }) {
   const [reveal, setReveal] = useState(showAnswer)
   const sc = SC[q.subject] || SC.Mathematics
+  const diffTone = q.difficulty==='Easy' ? [T.green, T.greenSoft] : q.difficulty==='Hard' ? [T.rose, T.roseSoft] : [T.amber, T.amberSoft]
   return (
-    <div style={{ ...cardS, marginBottom:8, padding:'12px 16px',
-      border: selected ? `2px solid ${C.navy}` : `1px solid ${C.border}`,
-      background: selected ? '#f0f6ff' : q._needsDiagram ? '#fffbeb' : '#fff' }}>
-      <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+    <div className="qb-lift" style={{ ...cardS, marginBottom:10, padding:'16px 18px',
+      border: selected ? `1.5px solid ${T.navy}` : `1px solid ${T.border}`,
+      borderLeft: q._needsDiagram && !selected ? `3px solid ${T.accent}` : undefined,
+      background: selected ? '#f5f9ff' : T.surface }}>
+      <div style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
         {selectable && (
-          <input type="checkbox" checked={!!selected}
+          <input type="checkbox" checked={!!selected} aria-label={`Select question ${index+1}`}
             onChange={() => onToggle?.(q.id || q._id)}
-            style={{ width:16, height:16, marginTop:3, cursor:'pointer', flexShrink:0 }} />
+            style={{ width:16, height:16, marginTop:4, flexShrink:0 }} />
         )}
-        <div style={{ flex:1 }}>
-          <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginBottom:7, alignItems:'center' }}>
-            <span style={{ fontSize:11, color:C.slate, fontWeight:700 }}>Q{index+1}</span>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:10, alignItems:'center' }}>
+            <span style={{ fontSize:11.5, fontWeight:700, color:T.navy, background:T.navySoft, padding:'3px 8px',
+              borderRadius:7, fontVariantNumeric:'tabular-nums' }}>Q{index+1}</span>
             {q.subject && <Badge text={q.subject} color={sc.color} bg={sc.bg} border={sc.border} />}
-            {q.chapter && <Badge text={q.chapter} color={C.slate} bg="#f1f5f9" />}
-            {q.subsection && <Badge text={q.subsection} color="#0369a1" bg="#e0f2fe" />}
-            <Badge text={q.difficulty||'Medium'}
-              color={q.difficulty==='Easy'?C.green:q.difficulty==='Hard'?C.rose:C.amber}
-              bg={q.difficulty==='Easy'?'#dcfce7':q.difficulty==='Hard'?'#fee2e2':'#fef9c3'} />
-            <Badge text={`${q.marks||1}M`} color={C.indigo} bg="#eff6ff" />
-            {q._needsDiagram && <Badge text="⚠️ Needs Diagram" color="#92400e" bg="#fef3c7" />}
-            {q.diagram_url && <Badge text="🖼 Has Diagram" color="#065f46" bg="#d1fae5" />}
+            {q.chapter && <Badge text={q.chapter} color={T.muted} bg={T.surfaceAlt} border={T.border} />}
+            {q.subsection && <Badge text={q.subsection} color={T.teal} bg={T.tealSoft} />}
+            <Badge text={q.difficulty||'Medium'} color={diffTone[0]} bg={diffTone[1]} />
+            <Badge text={`${q.marks||1} mark${(q.marks||1)===1?'':'s'}`} color={T.indigo} bg={T.indigoSoft} />
+            {q._needsDiagram && <Badge text="Needs diagram" color={T.amber} bg={T.amberSoft} border={T.amberLine} />}
+            {q.diagram_url && <Badge text="🖼 Diagram" color={T.green} bg={T.greenSoft} />}
+            <span style={{ marginLeft:'auto', display:'flex', gap:6 }}>
+              {onEdit && <button onClick={() => onEdit(q)} style={btnSm('#fff', T.indigo)} title="Edit question">✏️ Edit</button>}
+              {onDelete && <button onClick={() => onDelete(q.id)} style={btnSm('#fff', T.rose)} title="Delete question">🗑 Delete</button>}
+            </span>
           </div>
-          <div style={{ fontSize:14, color:'#1e293b', fontWeight:500, lineHeight:1.6, marginBottom:q.question_mayek ? 4 : 8 }}>
+          <div style={{ fontSize:14.5, color:T.ink, fontWeight:500, lineHeight:1.65, marginBottom:q.question_mayek ? 4 : 12 }}>
             {q.question}
           </div>
           {q.question_mayek && (
-            <div style={{ fontSize:15, color:'#374151', lineHeight:1.7, marginBottom:8, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
+            <div style={{ fontSize:15, color:'#374151', lineHeight:1.7, marginBottom:12, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
               {q.question_mayek}
             </div>
           )}
           {q.diagram_url && (
             <img src={q.diagram_url} alt="Question diagram"
-              style={{ maxWidth:280, maxHeight:180, borderRadius:8, border:`1px solid ${C.border}`, marginBottom:8, display:'block' }} />
+              style={{ maxWidth:300, maxHeight:190, borderRadius:10, border:`1px solid ${T.border}`, marginBottom:12, display:'block', background:'#fff' }} />
           )}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:8 }}>
-            {['A','B','C','D'].map(l => (
-              <div key={l} style={{ padding:'5px 10px', borderRadius:6, fontSize:12,
-                background: reveal && q.correct_option===l ? '#dcfce7' : '#f8fafc',
-                border:`1px solid ${reveal && q.correct_option===l ? '#86efac' : C.border}`,
-                color: reveal && q.correct_option===l ? '#15803d' : '#374151',
-                fontWeight: reveal && q.correct_option===l ? 700 : 400 }}>
-                <span style={{ fontWeight:700, marginRight:5, color:C.slate }}>{l}.</span>
-                {q[`option_${l.toLowerCase()}`] || '—'}
-                {reveal && q.correct_option===l && ' ✓'}
-                {q[`option_${l.toLowerCase()}_mayek`] && (
-                  <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font), fontWeight:400, marginTop:2 }}>
-                    {q[`option_${l.toLowerCase()}_mayek`]}
+          <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
+            {['A','B','C','D'].map(l => {
+              const correct = reveal && q.correct_option===l
+              return (
+                <div key={l} style={optionStyle(correct)}>
+                  <OptionLetter letter={l} correct={correct} />
+                  <div style={{ minWidth:0, paddingTop:1 }}>
+                    {q[`option_${l.toLowerCase()}`] || <span style={{ color:T.faint }}>—</span>}
+                    {q[`option_${l.toLowerCase()}_mayek`] && (
+                      <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font), fontWeight:400, marginTop:2 }}>
+                        {q[`option_${l.toLowerCase()}_mayek`]}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            ))}
+                </div>
+              )
+            })}
           </div>
-          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-            <button onClick={() => setReveal(r=>!r)} style={btnSm(reveal?C.slate:C.green)}>
-              {reveal ? '🙈 Hide' : '👁 Answer'}
-            </button>
-            {onEdit && <button onClick={() => onEdit(q)} style={btnSm(C.indigo)}>✏️ Edit</button>}
-            {onDelete && <button onClick={() => onDelete(q.id)} style={btnSm(C.rose)}>🗑 Delete</button>}
-          </div>
+          <button onClick={() => setReveal(r=>!r)} style={reveal ? btnSm('#fff', T.muted) : btnSm(T.green)}>
+            {reveal ? '🙈 Hide answer' : '👁 Show answer'}
+          </button>
         </div>
       </div>
     </div>
@@ -1470,12 +1491,12 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     <>
       {/* initialFilter active banner */}
       {initialFilter && (filterSubject !== 'All' || filterChapter !== 'All') && (
-        <div style={{ padding:'8px 14px', borderRadius:8, background:'#ede9fe', border:'1px solid #ddd6fe', marginBottom:14, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <span style={{ fontSize:12, fontWeight:700, color:'#7c3aed' }}>
+        <div className="qb-fade" style={{ padding:'10px 14px', borderRadius:12, background:T.violetSoft, border:'1px solid #ddd6fe', marginBottom:14, display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
+          <span style={{ fontSize:12.5, fontWeight:600, color:T.violet }}>
             📚 Showing: {filterSubject !== 'All' ? filterSubject : ''}{filterChapter !== 'All' ? ` › ${filterChapter}` : ''}
           </span>
           <button onClick={() => { setFilterSubject('All'); setFilterChapter('All'); setPage(1) }}
-            style={{ ...btnSm('#7c3aed'), fontSize:10 }}>✕ Clear filter</button>
+            style={btnSm('#fff', T.violet)}>✕ Clear filter</button>
         </div>
       )}
 
@@ -1490,127 +1511,161 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
         <StudyMaterialsRefPanel subject={filterSubject} chapter={filterChapter} onNavigate={onNavigate} />
       )}
 
-      {/* Subject stat cards */}
-      <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:20 }}>
-        {courseSubjectList.map(s => {
-          const sc = SC[s] || SC.Mathematics
-          const count = subjectCounts.get(s) || 0
+      {/* Subject cards — click to filter */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))', gap:12, marginBottom:18 }}>
+        {[{ key:'All', label:'All subjects', count: filterCourse === 'All' ? questions.length : [...subjectCounts.values()].reduce((a,b)=>a+b,0), color:T.navy },
+          ...courseSubjectList.map(s => ({ key:s, label:s, count: subjectCounts.get(s) || 0, color:(SC[s] || SC.Mathematics).color }))
+            // With every course listed, most subjects belong to other courses
+            // and read 0 — show only subjects that have questions (plus the
+            // selected one). A specific course still lists all its subjects.
+            .filter(c => filterCourse !== 'All' || c.count > 0 || c.key === filterSubject)
+        ].map(({ key, label, count, color }) => {
+          const active = filterSubject === key
+          const total = Math.max(1, questions.length)
           return (
-            <div key={s} onClick={() => { setFilterSubject(s); setFilterChapter('All'); setFilterSubsection('All'); setPage(1) }}
-              style={{ flex:1, minWidth:130, padding:'13px 15px', borderRadius:10,
-                background:sc.bg, border:`1.5px solid ${filterSubject===s?sc.color:sc.border}`,
-                cursor:'pointer', transition:'all .12s' }}>
-              <div style={{ fontSize:24, fontWeight:800, color:sc.color }}>{count}</div>
-              <div style={{ fontSize:10, fontWeight:700, color:sc.color, textTransform:'uppercase', letterSpacing:'.05em', marginTop:2 }}>{s}</div>
-            </div>
+            <button key={key} className="qb-lift qb-click" aria-pressed={active}
+              onClick={() => { setFilterSubject(key); setFilterChapter('All'); setFilterSubsection('All'); setPage(1) }}
+              style={{ textAlign:'left', padding:'14px 16px', borderRadius:T.radius, cursor:'pointer',
+                background: active ? '#fff' : T.surface, position:'relative', overflow:'hidden',
+                border:`1px solid ${active ? color : T.border}`,
+                boxShadow: active ? `0 0 0 3px ${color}22, ${T.shadow}` : T.shadow }}>
+              <span aria-hidden style={{ position:'absolute', left:0, top:0, bottom:0, width:4, background:color, opacity: active ? 1 : .55 }} />
+              <div style={{ fontSize:24, fontWeight:800, color:T.ink, letterSpacing:'-.02em', fontVariantNumeric:'tabular-nums' }}>
+                {count.toLocaleString('en-IN')}
+              </div>
+              <div style={{ fontSize:11.5, fontWeight:600, color: active ? color : T.muted, marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{label}</div>
+              <div style={{ height:4, borderRadius:99, background:T.surfaceAlt, marginTop:10, overflow:'hidden' }}>
+                <div style={{ width:`${Math.min(100, (count / total) * 100)}%`, height:'100%', background:color, borderRadius:99 }} />
+              </div>
+            </button>
           )
         })}
-        <div onClick={() => { setFilterSubject('All'); setFilterChapter('All'); setPage(1) }}
-          style={{ flex:1, minWidth:100, padding:'13px 15px', borderRadius:10,
-            background:'#f1f5f9', border:`1.5px solid ${filterSubject==='All'?C.navy:C.border}`, cursor:'pointer' }}>
-          <div style={{ fontSize:24, fontWeight:800, color:C.navy }}>{questions.length}</div>
-          <div style={{ fontSize:10, fontWeight:700, color:C.slate, textTransform:'uppercase', letterSpacing:'.05em', marginTop:2 }}>All</div>
-        </div>
       </div>
 
       {/* Filters */}
-      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 1fr 1fr', gap:8, marginBottom:10 }}>
-        <input style={iS} placeholder="🔍 Search questions…" value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1) }} />
-        <select style={iS} value={filterCourse}
-          onChange={e => { setFilterCourse(e.target.value); setFilterSubject('All'); setFilterChapter('All'); setFilterSubsection('All'); setPage(1) }}>
-          <option value="All">All Courses</option>
-          {COURSE_LIST.map(c => <option key={c} value={c}>{COURSES[c].label}</option>)}
-        </select>
-        <select style={iS} value={filterSubject}
-          onChange={e => { setFilterSubject(e.target.value); setFilterChapter('All'); setFilterSubsection('All'); setPage(1) }}>
-          <option value="All">All Subjects</option>
-          {courseSubjectList.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select style={{ ...iS, opacity: filterSubject!=='All'?1:.5 }} value={filterChapter}
-          onChange={e => { setFilterChapter(e.target.value); setFilterSubsection('All'); setPage(1) }}
-          disabled={filterSubject==='All'}>
-          <option value="All">All Chapters</option>
-          {chapters.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select style={{ ...iS, opacity: subsections.length?1:.5 }} value={filterSubsection}
-          onChange={e => { setFilterSubsection(e.target.value); setPage(1) }}
-          disabled={!subsections.length}>
-          <option value="All">All Subsections</option>
-          {subsections.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select style={iS} value={filterDiff}
-          onChange={e => { setFilterDiff(e.target.value); setPage(1) }}>
-          <option value="All">All Difficulties</option>
-          {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
-        </select>
-        <select style={iS} value={filterDiagram}
-          onChange={e => { setFilterDiagram(e.target.value); setPage(1) }}>
-          <option value="All">All Diagrams</option>
-          <option value="missing">⚠️ Needs diagram</option>
-          <option value="has">🖼 Has diagram</option>
-        </select>
-      </div>
-
-      {/* Bulk action bar */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-        <span style={{ fontSize:12, color:C.slate }}>{filtered.length} questions found</span>
-        <div style={{ display:'flex', gap:8 }}>
-          {isAdmin && selected.size > 0 && (
-            <button onClick={handleBulkDelete} style={btn(C.rose)}>🗑 Delete {selected.size} selected</button>
-          )}
+      <div style={{ ...cardS, padding:14, marginBottom:14 }}>
+        <div className="qb-grid" style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 1fr 1fr', gap:10 }}>
+          <div style={{ position:'relative' }}>
+            <span aria-hidden style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:13, color:T.faint, pointerEvents:'none' }}>🔍</span>
+            <input style={{ ...iS, paddingLeft:34 }} placeholder="Search questions…" value={search} aria-label="Search questions"
+              onChange={e => { setSearch(e.target.value); setPage(1) }} />
+          </div>
+          <select style={iS} value={filterCourse} aria-label="Course"
+            onChange={e => { setFilterCourse(e.target.value); setFilterSubject('All'); setFilterChapter('All'); setFilterSubsection('All'); setPage(1) }}>
+            <option value="All">All Courses</option>
+            {COURSE_LIST.map(c => <option key={c} value={c}>{COURSES[c].label}</option>)}
+          </select>
+          <select style={iS} value={filterSubject} aria-label="Subject"
+            onChange={e => { setFilterSubject(e.target.value); setFilterChapter('All'); setFilterSubsection('All'); setPage(1) }}>
+            <option value="All">All Subjects</option>
+            {courseSubjectList.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select style={{ ...iS, opacity: filterSubject!=='All'?1:.55 }} value={filterChapter} aria-label="Chapter"
+            onChange={e => { setFilterChapter(e.target.value); setFilterSubsection('All'); setPage(1) }}
+            disabled={filterSubject==='All'}>
+            <option value="All">All Chapters</option>
+            {chapters.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select style={{ ...iS, opacity: subsections.length?1:.55 }} value={filterSubsection} aria-label="Subsection"
+            onChange={e => { setFilterSubsection(e.target.value); setPage(1) }}
+            disabled={!subsections.length}>
+            <option value="All">All Subsections</option>
+            {subsections.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select style={iS} value={filterDiff} aria-label="Difficulty"
+            onChange={e => { setFilterDiff(e.target.value); setPage(1) }}>
+            <option value="All">All Difficulties</option>
+            {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <select style={iS} value={filterDiagram} aria-label="Diagram"
+            onChange={e => { setFilterDiagram(e.target.value); setPage(1) }}>
+            <option value="All">All Diagrams</option>
+            <option value="missing">⚠️ Needs diagram</option>
+            <option value="has">🖼 Has diagram</option>
+          </select>
         </div>
       </div>
 
-      {/* Edit inline modal — admin only */}
+      {/* Results bar */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, flexWrap:'wrap', marginBottom:12, padding:'0 2px' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
+          <span style={{ fontSize:13, color:T.muted }}>
+            <strong style={{ color:T.ink, fontVariantNumeric:'tabular-nums' }}>{filtered.length.toLocaleString('en-IN')}</strong> question{filtered.length !== 1 ? 's' : ''}
+            {totalPages > 1 && <> · page {page} of {totalPages}</>}
+          </span>
+          {isAdmin && !loading && paginated.length > 0 && (
+            <label style={{ display:'inline-flex', gap:7, alignItems:'center', fontSize:12.5, color:T.muted, cursor:'pointer' }}>
+              <input type="checkbox" checked={allOnPageSelected} onChange={toggleAll} />
+              Select page
+            </label>
+          )}
+          {(search || filterCourse !== 'All' || filterSubject !== 'All' || filterDiff !== 'All' || filterDiagram !== 'All') && (
+            <button onClick={() => { setSearch(''); setFilterCourse('All'); setFilterSubject('All'); setFilterChapter('All'); setFilterSubsection('All'); setFilterDiff('All'); setFilterDiagram('All'); setPage(1) }}
+              style={{ ...btnSm('transparent', T.indigo), border:'none', padding:'4px 6px' }}>Reset filters</button>
+          )}
+        </div>
+        {isAdmin && selected.size > 0 && (
+          <button onClick={handleBulkDelete} style={btn(C.rose)}>🗑 Delete {selected.size} selected</button>
+        )}
+      </div>
+
+      {/* Edit inline panel — admin only */}
       {isAdmin && editQ && (
-        <div style={{ ...cardS, border:`2px solid ${C.indigo}`, marginBottom:16 }}>
-          <div style={{ fontWeight:700, color:C.navy, marginBottom:12 }}>✏️ Edit Question</div>
+        <div className="qb-fade" style={{ ...cardS, border:`1.5px solid ${T.indigo}`, boxShadow:`0 0 0 4px ${T.indigoSoft}, ${T.shadow}`, marginBottom:16 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+            <span style={{ width:30, height:30, borderRadius:9, background:T.indigoSoft, display:'flex', alignItems:'center', justifyContent:'center' }}>✏️</span>
+            <div style={{ fontWeight:700, color:T.ink, fontSize:15 }}>Edit question</div>
+          </div>
           <QuestionRowForm row={editQ} index={0} onChange={(i,k,v) => setEditQ(q=>({...q,[k]:v}))}
             onRemove={null} showImageUpload showToast={showToast} />
           <div style={{ display:'flex', gap:8, marginTop:12 }}>
-            <button onClick={() => handleEditSave(editQ)} style={btn(C.green)}>✅ Save Changes</button>
-            <button onClick={cancelEdit} style={btn(C.slate)}>Cancel</button>
+            <button onClick={() => handleEditSave(editQ)} style={btn(C.green)}>✓ Save changes</button>
+            <button onClick={cancelEdit} style={btnSm('#fff', T.muted)}>Cancel</button>
           </div>
         </div>
       )}
 
       {loading
-        ? <div style={{ textAlign:'center', padding:48, color:C.slate }}>⏳ Loading questions…</div>
-        : paginated.length === 0
-          ? <div style={{ ...cardS, textAlign:'center', padding:48, color:'#94a3b8' }}>
-              No questions found. Add questions using Manual Add or Bulk Paste tab.
-            </div>
-          : (
-            <>
-              {isAdmin && (
-                <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
-                  <input type="checkbox" checked={allOnPageSelected}
-                    onChange={toggleAll} />
-                  <span style={{ fontSize:12, color:C.slate }}>Select all on page</span>
-                </div>
-              )}
-              {paginated.map((q, i) => (
-                <QCard key={q.id} q={q} index={(page-1)*PAGE+i}
-                  selectable={isAdmin} selected={selected.has(q.id)}
-                  onToggle={isAdmin ? toggleSelect : undefined}
-                  onEdit={isAdmin ? startEdit : undefined}
-                  onDelete={isAdmin ? handleDelete : undefined} />
+        ? [0,1,2].map(i => (
+            <div key={i} style={{ ...cardS, marginBottom:10, padding:'18px' }} aria-hidden>
+              {[['40%',10],['92%',14],['70%',14]].map(([w,h],j) => (
+                <div key={j} style={{ width:w, height:h, borderRadius:6, marginBottom:10,
+                  background:'linear-gradient(90deg,#eef2f7 25%,#f6f8fb 50%,#eef2f7 75%)', backgroundSize:'200% 100%',
+                  animation:'qbShimmer 1.2s linear infinite' }} />
               ))}
-            </>
-          )
+            </div>
+          ))
+        : paginated.length === 0
+          ? <div className="qb-fade" style={{ ...cardS, textAlign:'center', padding:'48px 24px' }}>
+              <div style={{ width:52, height:52, borderRadius:16, margin:'0 auto 12px', background:T.navySoft, display:'flex', alignItems:'center', justifyContent:'center', fontSize:24 }}>🗂️</div>
+              <div style={{ fontSize:15, fontWeight:700, color:T.ink }}>No questions found</div>
+              <div style={{ fontSize:13, color:T.muted, marginTop:4 }}>Try a different filter, or add questions from Manual Add or Bulk Paste.</div>
+            </div>
+          : paginated.map((q, i) => (
+              <QCard key={q.id} q={q} index={(page-1)*PAGE+i}
+                selectable={isAdmin} selected={selected.has(q.id)}
+                onToggle={isAdmin ? toggleSelect : undefined}
+                onEdit={isAdmin ? startEdit : undefined}
+                onDelete={isAdmin ? handleDelete : undefined} />
+            ))
       }
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div style={{ display:'flex', gap:8, justifyContent:'center', marginTop:16, alignItems:'center' }}>
-          <button onClick={() => setPage(1)} disabled={page===1} style={btn(C.slate, page===1)}>«</button>
-          <button onClick={() => setPage(p=>Math.max(1,p-1))} disabled={page===1} style={btn(C.slate, page===1)}>‹</button>
-          <span style={{ padding:'8px 14px', fontWeight:600, color:C.navy, fontSize:13 }}>
-            Page {page} / {totalPages}
+        <div style={{ display:'flex', gap:6, justifyContent:'center', marginTop:18, alignItems:'center' }}>
+          {[
+            { label:'«', to:1, dis: page===1, title:'First page' },
+            { label:'‹ Prev', to:Math.max(1,page-1), dis: page===1, title:'Previous page' },
+          ].map(b => <button key={b.label} title={b.title} onClick={() => setPage(b.to)} disabled={b.dis}
+            style={{ ...btnSm('#fff', T.text), padding:'7px 12px', opacity: b.dis ? .45 : 1, cursor: b.dis ? 'not-allowed' : 'pointer' }}>{b.label}</button>)}
+          <span style={{ padding:'7px 14px', fontWeight:600, color:T.ink, fontSize:13, fontVariantNumeric:'tabular-nums' }}>
+            {page} <span style={{ color:T.faint, fontWeight:500 }}>/ {totalPages}</span>
           </span>
-          <button onClick={() => setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages} style={btn(C.slate, page===totalPages)}>›</button>
-          <button onClick={() => setPage(totalPages)} disabled={page===totalPages} style={btn(C.slate, page===totalPages)}>»</button>
+          {[
+            { label:'Next ›', to:Math.min(totalPages,page+1), dis: page===totalPages, title:'Next page' },
+            { label:'»', to:totalPages, dis: page===totalPages, title:'Last page' },
+          ].map(b => <button key={b.label} title={b.title} onClick={() => setPage(b.to)} disabled={b.dis}
+            style={{ ...btnSm('#fff', T.text), padding:'7px 12px', opacity: b.dis ? .45 : 1, cursor: b.dis ? 'not-allowed' : 'pointer' }}>{b.label}</button>)}
         </div>
       )}
     </>
@@ -1681,7 +1736,7 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
           <button onClick={() => onRemove(index)} style={btnSm('#fee2e2', C.rose)}>✖ Remove</button>
         )}
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:10, marginBottom:10 }}>
+      <div className="qb-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:10, marginBottom:10 }}>
         <div>
           <label style={lS}>Course *</label>
           <select style={iS} value={row.course || ''}
@@ -1736,7 +1791,7 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
           value={row.question} placeholder="Type question here… (fractions: use 5/4, 2 1/3 format)"
           onChange={e => handleQuestionChange(e.target.value)} />
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+      <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
         {['A','B','C','D'].map(l => (
           <div key={l}>
             <label style={{ ...lS, color: row.correct_option===l ? C.green : C.slate }}>
@@ -1753,7 +1808,7 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
           </div>
         ))}
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:8 }}>
+      <div className="qb-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:8 }}>
         <div>
           <label style={lS}>Correct Answer *</label>
           <select style={iS} value={row.correct_option}
@@ -2174,7 +2229,7 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
             Paste any question paper format — app detects questions, options and subsections automatically
           </div>
 
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:14,
+          <div className="qb-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:14,
             padding:'12px 14px', borderRadius:9, background:'#f8fafc', border:`1px solid ${C.border}` }}>
             <div>
               <label style={lS}>Assign Course to all</label>
@@ -2349,7 +2404,7 @@ Answer: B`} />
                   {q.question_mayek}
                 </div>
               )}
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:10 }}>
+              <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:10 }}>
                 {['A','B','C','D'].map(l => (
                   <div key={l} style={{ padding:'5px 10px', borderRadius:6, fontSize:12,
                     background: q.correct_option===l ? '#dcfce7' : '#f8fafc',
@@ -2380,7 +2435,7 @@ Answer: B`} />
                   <button onClick={() => setAnswer(i,'')} style={btnSm('#f1f5f9', C.slate)}>✖ Clear</button>
                 )}
               </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr', gap:6 }}>
+              <div className="qb-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr', gap:6 }}>
                 <select style={{ ...iS, fontSize:11, padding:'4px 8px' }} value={q.course || ''}
                   onChange={e => { updateQ(i,'course',e.target.value); updateQ(i,'subject',''); updateQ(i,'chapter','') }}>
                   <option value="">Course?</option>
@@ -2771,7 +2826,7 @@ function TabTranslit({ questions, refetch, showToast }) {
         ))}
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+      <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
         <div>
           <label style={lS}>{mode === 'toMayek' ? 'BMEI04 Keystrokes' : 'Meetei Mayek Input'}</label>
           <textarea value={input} onChange={e => setInput(e.target.value)} rows={8}
@@ -3563,7 +3618,7 @@ function TabPaper({ questions, showToast }) {
     <>
       <div style={cardS}>
         <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:16 }}>📄 Create Question Paper</div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:14 }}>
+        <div className="qb-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:14 }}>
           <div>
             <label style={lS}>Course *</label>
             <select style={iS} value={course}
@@ -3710,7 +3765,7 @@ function TabPaper({ questions, showToast }) {
                   <img src={q.diagram_url} alt="diagram"
                     style={{ maxWidth:200, maxHeight:140, borderRadius:6, marginBottom:6, display:'block' }} />
                 )}
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
+                <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
                   {['A','B','C','D'].map(l => (
                     <div key={l} style={{ fontSize:12, padding:'3px 8px', color:'#374151' }}>
                       <span style={{ fontWeight:700, color:C.slate, marginRight:4 }}>{l}.</span>
@@ -4041,7 +4096,7 @@ function TabTest({ questions, showToast }) {
   return (
     <div style={cardS}>
       <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:18 }}>📝 Online Test</div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:12 }}>
+      <div className="qb-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:12 }}>
         <div>
           <label style={lS}>Student Name *</label>
           <input style={iS} value={studentName} onChange={e=>setStudentName(e.target.value)}
@@ -4185,7 +4240,7 @@ function TabSmartPPT({ questions, showToast }) {
         <div style={{ fontSize:12, color:C.slate, marginBottom:16 }}>
           Pick a chapter — every question becomes a slide automatically. Present live (with cast) or export a real .pptx.
         </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:14 }}>
+        <div className="qb-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:14 }}>
           <div>
             <label style={lS}>Course *</label>
             <select style={iS} value={course} onChange={e => { setCourse(e.target.value); setSubject(''); setChapter('') }}>
@@ -4273,48 +4328,52 @@ function SubjectStatsCard({ subj, chapData, chapters, countColor, countBg, count
   const { counts: materialCounts } = useMaterialCountsByChapter(subj)
 
   return (
-    <div style={{ ...cardS, borderTop:`3px solid ${sc.color}` }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+    <div style={{ ...cardS, position:'relative', overflow:'hidden' }}>
+      <span aria-hidden style={{ position:'absolute', left:0, right:0, top:0, height:3, background:sc.color }} />
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, gap:12, flexWrap:'wrap' }}>
         <div>
-          <div style={{ fontSize:15, fontWeight:800, color:sc.color }}>{subj}</div>
-          <div style={{ fontSize:12, color:C.slate }}>{totalSubj} total questions</div>
+          <div style={{ fontSize:16, fontWeight:700, color:T.ink, letterSpacing:'-.01em' }}>{subj}</div>
+          <div style={{ fontSize:12.5, color:T.muted, marginTop:2 }}>
+            {totalSubj.toLocaleString('en-IN')} questions · {(chapters || []).filter(ch => (chapData[ch]?.total || 0) > 0).length} of {(chapters || []).length} chapters covered
+          </div>
         </div>
-        <Badge text={`${totalSubj} Q`} color={sc.color} bg={sc.bg} border={sc.border} />
+        <div style={{ minWidth:160, flex:'0 1 220px' }}>
+          <div style={{ height:6, borderRadius:99, background:T.surfaceAlt, overflow:'hidden', border:`1px solid ${T.border}` }}>
+            <div style={{ height:'100%', background:sc.color, borderRadius:99,
+              width:`${(chapters || []).length ? Math.round(100 * (chapters || []).filter(ch => (chapData[ch]?.total || 0) > 0).length / (chapters || []).length) : 0}%` }} />
+          </div>
+        </div>
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
+      <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8, alignItems:'start' }}>
         {(chapters || []).map(ch => {
           const chData = chapData[ch] || { total:0, subsections:{} }
           const matCount = materialCounts[ch] || 0
           return (
-            <div key={ch} style={{ padding:'10px 14px', borderRadius:8,
-              border:`1px solid ${C.border}`, background:'#fafafa' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6, gap:6 }}>
-                <span style={{ fontSize:12, fontWeight:600, color:'#1e293b', flex:1 }}>{ch}</span>
-                <span style={{ padding:'2px 8px', borderRadius:99, fontSize:11, fontWeight:700,
+            <div key={ch} style={{ padding:'10px 12px', borderRadius:10,
+              border:`1px solid ${T.border}`, background: chData.total ? T.surface : T.surfaceAlt }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+                <span style={{ width:8, height:8, borderRadius:'50%', flexShrink:0, background:countColor(chData.total) }} title={countLabel(chData.total)} />
+                <span style={{ fontSize:12.5, fontWeight:600, color: chData.total ? T.text : T.muted, flex:1, minWidth:0 }}>{ch}</span>
+                <span title={`${countLabel(chData.total)} coverage`} style={{ padding:'2px 8px', borderRadius:99, fontSize:11, fontWeight:700, fontVariantNumeric:'tabular-nums',
                   color: countColor(chData.total), background: countBg(chData.total), whiteSpace:'nowrap' }}>
-                  {countLabel(chData.total)} {chData.total}
+                  {chData.total}
                 </span>
                 <span
                   onClick={() => onNavigate?.('studymaterial')}
                   title={matCount > 0 ? `${matCount} study material${matCount>1?'s':''} for this chapter — click to open` : 'No study materials yet for this chapter — click to add one'}
                   style={{ padding:'2px 8px', borderRadius:99, fontSize:11, fontWeight:700, whiteSpace:'nowrap', cursor: onNavigate ? 'pointer' : 'default',
-                    color: matCount > 0 ? '#0369a1' : '#94a3b8', background: matCount > 0 ? '#e0f2fe' : '#f1f5f9' }}>
+                    color: matCount > 0 ? T.teal : T.faint, background: matCount > 0 ? T.tealSoft : T.surfaceAlt }}>
                   📄 {matCount}
                 </span>
               </div>
               {Object.keys(chData.subsections).length > 0 && (
-                <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:4 }}>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:8, paddingLeft:16 }}>
                   {Object.entries(chData.subsections).map(([ss,cnt]) => (
-                    <span key={ss} style={{ fontSize:10, padding:'2px 6px', borderRadius:4,
-                      background:'#f1f5f9', color:C.slate, border:`1px solid ${C.border}` }}>
+                    <span key={ss} style={{ fontSize:10.5, padding:'2px 7px', borderRadius:6,
+                      background:T.surfaceAlt, color:T.muted, border:`1px solid ${T.border}` }}>
                       {ss}: {cnt}
                     </span>
                   ))}
-                </div>
-              )}
-              {chData.total === 0 && (
-                <div style={{ fontSize:11, color:C.rose, marginTop:2 }}>
-                  Add questions via Manual Add or Bulk Paste
                 </div>
               )}
             </div>
@@ -4353,9 +4412,11 @@ function TabStats({ questions, refetch, showToast, isAdmin, onNavigate }) {
   }, [questions, filterCourse, courseSubjectList, courseSubjects])
 
   const subjects = filterSubject==='All' ? courseSubjectList : [filterSubject]
-  const countColor = (n) => n >= 20 ? C.green : n >= 10 ? C.amber : C.rose
-  const countBg    = (n) => n >= 20 ? '#dcfce7' : n >= 10 ? '#fef9c3' : '#fee2e2'
-  const countLabel = (n) => n >= 20 ? '✅' : n >= 10 ? '⚠️' : '❌'
+  // Coverage tiers: 20+ good, 10–19 low, 1–9 thin, 0 empty (neutral, so an
+  // unstarted syllabus reads as "to do" rather than a wall of red errors).
+  const countColor = (n) => n >= 20 ? T.green : n >= 10 ? T.amber : n > 0 ? T.rose : T.faint
+  const countBg    = (n) => n >= 20 ? T.greenSoft : n >= 10 ? T.amberSoft : n > 0 ? T.roseSoft : T.surfaceAlt
+  const countLabel = (n) => n >= 20 ? 'Good' : n >= 10 ? 'Low' : n > 0 ? 'Thin' : 'Empty'
 
   // ── CSV export — feature #9 ──
   const handleExportCSV = () => {
@@ -4444,8 +4505,12 @@ function TabStats({ questions, refetch, showToast, isAdmin, onNavigate }) {
           Total: <strong>{questions.filter(q=>(q.course||'')===filterCourse).length}</strong> questions in {COURSES[filterCourse]?.label || filterCourse}
         </span>
         <button onClick={handleExportCSV} style={btnSm('#eff6ff', C.navy)}>⬇ Export CSV</button>
-        <div style={{ display:'flex', gap:12, marginLeft:'auto', fontSize:12 }}>
-          <span>✅ 20+ Good</span><span>⚠️ 10–19 Low</span><span>❌ 0–9 Empty</span>
+        <div style={{ display:'flex', gap:14, marginLeft:'auto', fontSize:12, color:T.muted, flexWrap:'wrap' }}>
+          {[[20,'20+ good'],[10,'10–19 low'],[1,'1–9 thin'],[0,'empty']].map(([n,l]) => (
+            <span key={l} style={{ display:'inline-flex', alignItems:'center', gap:6 }}>
+              <span style={{ width:8, height:8, borderRadius:'50%', background:countColor(n) }} />{l}
+            </span>
+          ))}
         </div>
       </div>
       {subjects.map(subj => (
@@ -4621,15 +4686,29 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
     }
   }, [isAdmin, tab])
 
+  // Headline numbers for the page header.
+  const bankStats = useMemo(() => {
+    const chapters = new Set()
+    let diagrams = 0, noAnswer = 0
+    for (const q of questions) {
+      if (q.subject && q.chapter) chapters.add(`${q.course || ''}|${q.subject}|${q.chapter}`)
+      if (q.diagram_url) diagrams++
+      if (!q.correct_option) noAnswer++
+    }
+    return { total: questions.length, chapters: chapters.size, diagrams, noAnswer }
+  }, [questions])
+
   // Module-level gate — Teaching + Admin role only. This is a UI-layer
   // convenience; Supabase RLS or an equivalent server-side check should also
   // enforce this so the restriction doesn't depend solely on the client.
   if (!isStaffAllowed) {
     return (
-      <div style={{ padding:24, fontFamily:'system-ui,sans-serif', background:C.bg, minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center' }}>
-        <div style={{ ...cardS, maxWidth:420, textAlign:'center', padding:'40px 32px' }}>
-          <div style={{ fontSize:40, marginBottom:12 }}>🔒</div>
-          <div style={{ fontSize:17, fontWeight:800, color:C.navy, marginBottom:8 }}>Question Bank is restricted</div>
+      <div className="qbx" style={{ padding:24, background:C.bg, minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center' }}>
+        <QBThemeStyles />
+        <div className="qb-fade" style={{ ...cardS, maxWidth:440, textAlign:'center', padding:'40px 34px' }}>
+          <div style={{ width:56, height:56, borderRadius:16, margin:'0 auto 16px', display:'flex', alignItems:'center', justifyContent:'center',
+            background:T.navySoft, fontSize:26 }}>🔒</div>
+          <div style={{ fontSize:18, fontWeight:700, color:T.ink, marginBottom:8, letterSpacing:'-.01em' }}>Question Bank is restricted</div>
           <div style={{ fontSize:13, color:C.slate, lineHeight:1.6 }}>
             This module is only available to admin and Computer Staffs accounts.
             If you need access to questions or papers for a class, please ask
@@ -4641,52 +4720,82 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
     )
   }
 
+  // group: 'bank' = content management, 'tools' = language tools,
+  // 'deliver' = papers/tests/slides/analytics (admin). Groups are separated
+  // by a divider in the tab bar.
   const ALL_TABS = [
-    { key:'bank',    icon:'📚', label:'Question Bank', count: questions.length },
-    { key:'manual',  icon:'✏️', label:'Manual Add',    count: null },
-    { key:'bulk',    icon:'📤', label:'Bulk Paste',    count: null },
-    { key:'translit',icon:'🔤', label:'Mayek Tool',    count: null },
-    { key:'dictionary',icon:'📖', label:'Dictionary',  count: null },
-    { key:'paper',   icon:'📄', label:'Create Paper',  count: null,  adminOnly: true },
-    { key:'test',    icon:'📝', label:'Online Test',   count: null,  adminOnly: true },
-    { key:'smartppt',icon:'🎬', label:'Smart PPT',     count: null,  adminOnly: true },
-    { key:'stats',   icon:'📊', label:'Stats',         count: null,  adminOnly: true },
+    { key:'bank',    icon:'📚', label:'Question Bank', count: questions.length, group:'bank' },
+    { key:'manual',  icon:'✏️', label:'Manual Add',    count: null, group:'bank' },
+    { key:'bulk',    icon:'📤', label:'Bulk Paste',    count: null, group:'bank' },
+    { key:'translit',icon:'🔤', label:'Mayek Tool',    count: null, group:'tools' },
+    { key:'dictionary',icon:'📖', label:'Dictionary',  count: null, group:'tools' },
+    { key:'paper',   icon:'📄', label:'Create Paper',  count: null,  adminOnly: true, group:'deliver' },
+    { key:'test',    icon:'📝', label:'Online Test',   count: null,  adminOnly: true, group:'deliver' },
+    { key:'smartppt',icon:'🎬', label:'Smart PPT',     count: null,  adminOnly: true, group:'deliver' },
+    { key:'stats',   icon:'📊', label:'Stats',         count: null,  adminOnly: true, group:'deliver' },
   ]
   const TABS = isAdmin ? ALL_TABS : ALL_TABS.filter(t => !t.adminOnly)
+  const fmt = n => n.toLocaleString('en-IN')
 
   return (
-    <div style={{ padding:24, fontFamily:'system-ui,sans-serif', background:C.bg, minHeight:'100vh' }}>
+    <div className="qbx qb-page" style={{ padding:24, background:C.bg, minHeight:'100vh' }}>
+      <QBThemeStyles />
       <BmeiFontFace />
       {toast && <Toast msg={toast.msg} color={toast.color} />}
 
-      <div style={{ marginBottom:22 }}>
-        <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.12em', color:C.slate, marginBottom:4 }}>
-          GNSI Portal
-        </div>
-        <div style={{ fontSize:26, fontWeight:900, color:C.navy, letterSpacing:'-.02em' }}>Question Bank</div>
-        <div style={{ fontSize:13, color:C.slate, marginTop:3 }}>
-          AISSEE · Sainik School · Navodaya — store, organise, test and print · No AI needed
+      {/* ── Header ── */}
+      <div className="qb-hero" style={{ ...heroStyle, marginBottom:16 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:20, flexWrap:'wrap' }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ display:'inline-flex', alignItems:'center', gap:8, fontSize:10.5, fontWeight:700, textTransform:'uppercase',
+              letterSpacing:'.14em', color:'#fcd34d', marginBottom:8 }}>
+              <span style={{ width:6, height:6, borderRadius:'50%', background:T.accent, boxShadow:`0 0 0 4px rgba(245,158,11,.18)` }} />
+              GNSI Portal · Academics
+            </div>
+            <div className="qb-hero-title" style={{ fontSize:28, fontWeight:800, letterSpacing:'-.025em', lineHeight:1.1 }}>Question Bank</div>
+            <div className="qb-hero-sub" style={{ fontSize:13.5, color:'rgba(255,255,255,.72)', marginTop:6, maxWidth:520, lineHeight:1.5 }}>
+              Sainik · Navodaya · RMS · Foundation — build, organise and deliver questions, papers and tests.
+            </div>
+          </div>
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+            <HeroStat label="Questions" value={loading ? '—' : fmt(bankStats.total)} />
+            <HeroStat label="Chapters" value={loading ? '—' : fmt(bankStats.chapters)} hint="Distinct course / subject / chapter combinations with questions" />
+            <HeroStat label="Diagrams" value={loading ? '—' : fmt(bankStats.diagrams)} />
+            {bankStats.noAnswer > 0 && !loading && (
+              <HeroStat label="No answer" value={fmt(bankStats.noAnswer)} hint="Questions saved without a correct option marked" />
+            )}
+          </div>
         </div>
       </div>
 
-      <div style={{ display:'flex', gap:6, marginBottom:22, flexWrap:'wrap' }}>
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            style={{ display:'flex', alignItems:'center', gap:6, padding:'9px 18px', borderRadius:9,
-              border: tab===t.key ? `2px solid ${C.navy}` : `2px solid ${C.border}`,
-              background: tab===t.key ? C.navy : '#fff',
-              color: tab===t.key ? '#fff' : C.slate,
-              fontSize:13, fontWeight:700, cursor:'pointer', transition:'all .12s' }}>
-            <span style={{ fontSize:15 }}>{t.icon}</span>
-            {t.label}
-            {t.count !== null && t.count > 0 && (
-              <span style={{ padding:'1px 7px', borderRadius:99, fontSize:10, fontWeight:700,
-                background: tab===t.key?'rgba(255,255,255,.2)':C.navy, color:'#fff' }}>
-                {t.count}
-              </span>
-            )}
-          </button>
-        ))}
+      {/* ── Tab bar ── */}
+      <div role="tablist" aria-label="Question Bank sections" className="qb-tabs"
+        style={{ position:'sticky', top:0, zIndex:60, display:'flex', alignItems:'center', gap:4, overflowX:'auto',
+          padding:6, marginBottom:20, background:'rgba(255,255,255,.92)', backdropFilter:'blur(8px)',
+          border:`1px solid ${T.border}`, borderRadius:14, boxShadow:T.shadow }}>
+        {TABS.map((t, i) => {
+          const active = tab === t.key
+          const newGroup = i > 0 && TABS[i - 1].group !== t.group
+          return (
+            <React.Fragment key={t.key}>
+              {newGroup && <span aria-hidden style={{ width:1, alignSelf:'stretch', margin:'6px 4px', background:T.border, flexShrink:0 }} />}
+              <button role="tab" aria-selected={active} onClick={() => setTab(t.key)}
+                style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'9px 14px', borderRadius:10, flexShrink:0,
+                  border:'none', background: active ? T.navy : 'transparent',
+                  color: active ? '#fff' : T.muted, boxShadow: active ? '0 2px 8px rgba(14,42,71,.25)' : 'none',
+                  fontSize:13, fontWeight: active ? 600 : 500, cursor:'pointer', whiteSpace:'nowrap' }}>
+                <span style={{ fontSize:14, filter: active ? 'none' : 'grayscale(.35)' }}>{t.icon}</span>
+                {t.label}
+                {t.count !== null && t.count > 0 && (
+                  <span style={{ padding:'1px 7px', borderRadius:99, fontSize:10.5, fontWeight:700, fontVariantNumeric:'tabular-nums',
+                    background: active ? 'rgba(255,255,255,.18)' : T.navySoft, color: active ? '#fff' : T.navy }}>
+                    {fmt(t.count)}
+                  </span>
+                )}
+              </button>
+            </React.Fragment>
+          )
+        })}
       </div>
 
       {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} initialFilter={initialFilter} isAdmin={isAdmin} onNavigate={onNavigate} />}

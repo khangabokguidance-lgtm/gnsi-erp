@@ -31,6 +31,8 @@ import { normalizeToQBank, fetchAllPages } from './StudyMaterialBridge'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 import { isAdminRole } from './roles'
 import { COURSES } from './qbankTaxonomy'
+import { T, heroStyle, optionStyle } from './qbankTheme'
+import { QBThemeStyles, HeroStat, OptionLetter } from './QBTheme'
 // ── BMEI04 font support — ported from QuestionBank.jsx ──────────────────────
 // Some question_mayek / option_x_mayek text is stored in the BMEI04
 // transliteration encoding (plain Latin letters that only resolve to actual
@@ -80,14 +82,10 @@ const SUBJECT_ICONS = {
 const PAGE_STEP = 50 // questions rendered per "Show more" step
 const QUESTION_COLUMNS = 'id, course, subject, chapter, subsection, question, question_mayek, question_mayek_font, option_a, option_a_mayek, option_b, option_b_mayek, option_c, option_c_mayek, option_d, option_d_mayek, correct_option, difficulty, marks, diagram_url, created_at'
 
-const C = {
-  navy: '#1e3a5f', slate: '#64748b', border: '#e2e8f0',
-  white: '#ffffff', bg: '#f8fafc', green: '#16a34a',
-  rose: '#dc2626', amber: '#d97706', indigo: '#4f46e5',
-}
-const iS = { width: '100%', padding: '8px 11px', borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 13, background: C.white, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }
-const cardS = { background: C.white, borderRadius: 12, boxShadow: '0 1px 6px rgba(0,0,0,.07)', padding: '18px 20px', marginBottom: 14 }
-const btnSm = (bg, color = '#fff') => ({ padding: '4px 10px', borderRadius: 6, background: bg, color, border: 'none', fontSize: 11, fontWeight: 700, cursor: 'pointer' })
+// Colors come from the shared Question Bank theme (T, qbankTheme.js).
+const iS = { width: '100%', padding: '9px 12px', borderRadius: T.radiusSm, border: `1px solid ${T.border}`, fontSize: 13.5, background: T.surface, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none', boxShadow: '0 1px 1px rgba(16,24,40,.03)' }
+const cardS = { background: T.surface, borderRadius: T.radius, border: `1px solid ${T.border}`, boxShadow: T.shadow, padding: '18px 20px', marginBottom: 14 }
+const btnSm = (bg, color = '#fff') => ({ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 11px', borderRadius: 7, background: bg, color, border: color === '#fff' ? 'none' : `1px solid ${T.border}`, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' })
 
 // Subject names a question for (course, subject) may be stored under: the
 // exact taxonomy name, plus the old flat bucket name (Mathematics /
@@ -131,7 +129,7 @@ function useIsMobile() {
 
 function Badge({ text, color, bg, border }) {
   return (
-    <span style={{ padding: '2px 9px', borderRadius: 99, fontSize: 10, fontWeight: 700,
+    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 9px', borderRadius: 99, fontSize: 10.5, fontWeight: 600, lineHeight: 1.4,
       color, background: bg, border: `1px solid ${border || bg}`, whiteSpace: 'nowrap' }}>
       {text}
     </span>
@@ -176,57 +174,70 @@ function PrintStyles() {
 function ViewOnlyQCard({ q, index, subjectColor }) {
   const [reveal, setReveal] = useState(false)
   return (
-    <div style={{ ...cardS, marginBottom: 8, padding: '12px 16px' }}>
-      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 7, alignItems: 'center' }}>
-        <span style={{ fontSize: 11, color: C.slate, fontWeight: 700 }}>Q{index + 1}</span>
-        {q.subsection && <Badge text={q.subsection} color="#0369a1" bg="#e0f2fe" />}
+    <div className="qb-lift" style={{ ...cardS, marginBottom: 10, padding: '16px 18px', breakInside: 'avoid' }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: T.navy, background: T.navySoft, padding: '3px 8px', borderRadius: 7, fontVariantNumeric: 'tabular-nums' }}>Q{index + 1}</span>
+        {q.subsection && <Badge text={q.subsection} color={T.teal} bg={T.tealSoft} />}
         <Badge text={q.difficulty || 'Medium'}
-          color={q.difficulty === 'Easy' ? C.green : q.difficulty === 'Hard' ? C.rose : C.amber}
-          bg={q.difficulty === 'Easy' ? '#dcfce7' : q.difficulty === 'Hard' ? '#fee2e2' : '#fef9c3'} />
-        <Badge text={`${q.marks || 1}M`} color={C.indigo} bg="#eff6ff" />
-        {q.diagram_url && <Badge text="🖼 Diagram" color="#065f46" bg="#d1fae5" />}
+          color={q.difficulty === 'Easy' ? T.green : q.difficulty === 'Hard' ? T.rose : T.amber}
+          bg={q.difficulty === 'Easy' ? T.greenSoft : q.difficulty === 'Hard' ? T.roseSoft : T.amberSoft} />
+        <Badge text={`${q.marks || 1} mark${(q.marks || 1) === 1 ? '' : 's'}`} color={T.indigo} bg={T.indigoSoft} />
+        {q.diagram_url && <Badge text="🖼 Diagram" color={T.green} bg={T.greenSoft} />}
         {!q.course && (
           <span className="qbv-no-print" title="Saved before course tagging (or by a tool that doesn't set a course) — shown in every course that uses this subject">
-            <Badge text="No course tag" color="#92400e" bg="#fef3c7" />
+            <Badge text="No course tag" color={T.amber} bg={T.amberSoft} border={T.amberLine} />
           </span>
         )}
       </div>
-      <div style={{ fontSize: 14, color: '#1e293b', fontWeight: 500, lineHeight: 1.6, marginBottom: q.question_mayek ? 4 : 8 }}>
+      <div style={{ fontSize: 14.5, color: T.ink, fontWeight: 500, lineHeight: 1.65, marginBottom: q.question_mayek ? 4 : 12 }}>
         {q.question}
       </div>
       {q.question_mayek && (
-        <div style={{ fontSize: 15, color: '#374151', lineHeight: 1.7, marginBottom: 8, fontFamily: mayekFontFamily(q.question_mayek_font) }}>
+        <div style={{ fontSize: 15, color: '#374151', lineHeight: 1.7, marginBottom: 12, fontFamily: mayekFontFamily(q.question_mayek_font) }}>
           {q.question_mayek}
         </div>
       )}
       {q.diagram_url && (
         <img src={q.diagram_url} alt="Question diagram"
-          style={{ maxWidth: 280, maxHeight: 180, borderRadius: 8, border: `1px solid ${C.border}`, marginBottom: 8, display: 'block' }} />
+          style={{ maxWidth: 300, maxHeight: 190, borderRadius: 10, border: `1px solid ${T.border}`, marginBottom: 12, display: 'block', background: '#fff' }} />
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginBottom: 8 }}>
-        {['A', 'B', 'C', 'D'].map(l => (
-          <div key={l} className={`qbv-opt${q.correct_option === l ? ' qbv-correct-opt' : ''}`}
-            style={{ padding: '5px 10px', borderRadius: 6, fontSize: 12,
-            background: reveal && q.correct_option === l ? '#dcfce7' : '#f8fafc',
-            border: `1px solid ${reveal && q.correct_option === l ? '#86efac' : C.border}`,
-            color: reveal && q.correct_option === l ? '#15803d' : '#374151',
-            fontWeight: reveal && q.correct_option === l ? 700 : 400 }}>
-            <span style={{ fontWeight: 700, marginRight: 5, color: C.slate }}>{l}.</span>
-            {q[`option_${l.toLowerCase()}`] || '—'}
-            {q.correct_option === l && (
-              <span className="qbv-answer-mark" style={{ display: reveal ? 'inline' : 'none' }}> ✓</span>
-            )}
-            {q[`option_${l.toLowerCase()}_mayek`] && (
-              <div style={{ fontFamily: mayekFontFamily(q.question_mayek_font), fontWeight: 400, marginTop: 2 }}>
-                {q[`option_${l.toLowerCase()}_mayek`]}
+      <div className="qb-opts" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+        {['A', 'B', 'C', 'D'].map(l => {
+          const correct = reveal && q.correct_option === l
+          return (
+            <div key={l} className={`qbv-opt${q.correct_option === l ? ' qbv-correct-opt' : ''}`} style={optionStyle(correct)}>
+              <OptionLetter letter={l} correct={correct} />
+              <div style={{ minWidth: 0, paddingTop: 1 }}>
+                {q[`option_${l.toLowerCase()}`] || <span style={{ color: T.faint }}>—</span>}
+                {q.correct_option === l && (
+                  <span className="qbv-answer-mark" style={{ display: 'none' }}> ✓</span>
+                )}
+                {q[`option_${l.toLowerCase()}_mayek`] && (
+                  <div style={{ fontFamily: mayekFontFamily(q.question_mayek_font), fontWeight: 400, marginTop: 2 }}>
+                    {q[`option_${l.toLowerCase()}_mayek`]}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ))}
+            </div>
+          )
+        })}
       </div>
-      <button onClick={() => setReveal(r => !r)} className="qbv-no-print" style={btnSm(reveal ? C.slate : subjectColor)}>
-        {reveal ? '🙈 Hide Answer' : '👁 Show Answer'}
+      <button onClick={() => setReveal(r => !r)} className="qbv-no-print" style={reveal ? btnSm('#fff', T.muted) : btnSm(subjectColor)}>
+        {reveal ? '🙈 Hide answer' : '👁 Show answer'}
       </button>
+    </div>
+  )
+}
+
+// Centered empty / error state for the question pane.
+function EmptyState({ icon, title, text, action, tone }) {
+  return (
+    <div className="qb-fade" style={{ ...cardS, textAlign: 'center', padding: '44px 24px' }}>
+      <div style={{ width: 52, height: 52, borderRadius: 16, margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 24, background: tone === 'rose' ? T.roseSoft : T.navySoft }}>{icon}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: tone === 'rose' ? T.rose : T.ink }}>{title}</div>
+      {text && <div style={{ fontSize: 13, color: T.muted, marginTop: 4, maxWidth: 420, marginInline: 'auto', lineHeight: 1.5 }}>{text}</div>}
+      {action && <div style={{ marginTop: 14 }}>{action}</div>}
     </div>
   )
 }
@@ -239,28 +250,28 @@ function ChapterList({ chapters, activeChapter, onSelect, countsByChapter }) {
     return <div style={{ ...cardS, textAlign: 'center', padding: 32, color: '#94a3b8' }}>No chapters defined for this subject.</div>
   }
   return (
-    <div style={{ ...cardS, padding: 10 }}>
+    <nav aria-label="Chapters" className="qb-scroll" style={{ ...cardS, padding: 8, position: 'sticky', top: 12, maxHeight: 'calc(100vh - 24px)', overflowY: 'auto', marginBottom: 0 }}>
       {chapters.map(ch => {
         const count = countsByChapter?.[ch] || 0
         const active = ch === activeChapter
         return (
-          <div key={ch} onClick={() => onSelect(ch)}
+          <button key={ch} onClick={() => onSelect(ch)} aria-current={active ? 'true' : undefined}
             style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '9px 12px', borderRadius: 8, cursor: 'pointer',
-              background: active ? '#eff6ff' : 'transparent',
-              border: `1px solid ${active ? '#bfdbfe' : 'transparent'}`,
-              marginBottom: 3,
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+              padding: '9px 10px 9px 12px', borderRadius: 9, cursor: 'pointer', textAlign: 'left',
+              background: active ? T.navy : 'transparent', border: 'none', marginBottom: 2,
+              boxShadow: active ? '0 2px 8px rgba(14,42,71,.22)' : 'none',
             }}>
-            <span style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: active ? C.indigo : '#374151' }}>{ch}</span>
+            <span style={{ fontSize: 13, fontWeight: active ? 600 : 500, color: active ? '#fff' : (count > 0 ? T.text : T.faint), lineHeight: 1.35 }}>{ch}</span>
             <span style={{
-              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99,
-              color: count > 0 ? '#4338ca' : '#94a3b8', background: count > 0 ? '#eef2ff' : '#f1f5f9',
+              flexShrink: 0, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 99, fontVariantNumeric: 'tabular-nums',
+              color: active ? '#fff' : count > 0 ? T.navy : T.faint,
+              background: active ? 'rgba(255,255,255,.18)' : count > 0 ? T.navySoft : T.surfaceAlt,
             }}>{count}</span>
-          </div>
+          </button>
         )
       })}
-    </div>
+    </nav>
   )
 }
 
@@ -446,88 +457,137 @@ export default function QuestionBankViewer({ currentUser }) {
   }
   const canPrint = !!activeChapter && chapterQuestions.length > 0
 
+  const chaptersWithQuestions = Object.values(countsByChapter).filter(n => n > 0).length
+  const fmt = n => n.toLocaleString('en-IN')
+
   return (
-    <div style={{ fontFamily: 'inherit' }}>
+    <div className="qbx" style={{ fontFamily: T.font }}>
+      <QBThemeStyles />
       <BmeiFontFace />
       <PrintStyles />
-      {/* Course tabs */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-        {Object.entries(COURSE_DISPLAY).map(([key, c]) => (
-          <button key={key} onClick={() => setActiveCourse(key)}
-            style={{
-              padding: '9px 16px', borderRadius: 9, border: `1.5px solid ${activeCourse === key ? c.color : C.border}`,
-              background: activeCourse === key ? c.bg : C.white, color: activeCourse === key ? c.text : C.slate,
-              fontWeight: 700, fontSize: 13, cursor: 'pointer',
-            }}>
-            {c.label} <span style={{ opacity: .7, fontWeight: 500 }}>· {c.short}</span>
-          </button>
-        ))}
+
+      {/* ── Header: course switcher + headline numbers ── */}
+      <div className="qb-hero qbv-no-print" style={{ ...heroStyle, marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 18, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
+              letterSpacing: '.14em', color: '#fcd34d', marginBottom: 8 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.accent, boxShadow: '0 0 0 4px rgba(245,158,11,.18)' }} />
+              Question Bank · Read-only
+            </div>
+            <div className="qb-hero-title" style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-.02em', lineHeight: 1.15 }}>
+              {courseData.label}{activeSubject ? <span style={{ color: 'rgba(255,255,255,.55)', fontWeight: 600 }}> · {activeSubject}</span> : null}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <HeroStat label="Questions" value={loading ? '—' : fmt(subjectQuestions.length)} />
+            <HeroStat label="Chapters" value={loading ? '—' : `${chaptersWithQuestions}/${chapters.length}`} hint="Chapters with at least one question / all chapters" />
+          </div>
+        </div>
+        <div role="tablist" aria-label="Course" className="qb-tabs" style={{ display: 'flex', gap: 6, flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: 'auto', marginTop: 18 }}>
+          {Object.entries(COURSE_DISPLAY).map(([key, c]) => {
+            const active = activeCourse === key
+            return (
+              <button key={key} role="tab" aria-selected={active} onClick={() => setActiveCourse(key)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 10, flexShrink: 0, whiteSpace: 'nowrap',
+                  border: `1px solid ${active ? '#fff' : 'rgba(255,255,255,.16)'}`,
+                  background: active ? '#fff' : 'rgba(255,255,255,.06)', color: active ? T.ink : 'rgba(255,255,255,.86)',
+                  fontWeight: 600, fontSize: 13, cursor: 'pointer',
+                }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, boxShadow: active ? `0 0 0 3px ${c.color}33` : 'none' }} />
+                {c.label}
+                <span style={{ fontSize: 11, fontWeight: 500, opacity: .6 }}>{c.short}</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
-      {/* Subject tabs */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+      {/* ── Subject chips ── */}
+      <div role="tablist" aria-label="Subject" className="qbv-no-print qb-tabs"
+        style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: 6, marginBottom: 16,
+          background: T.surface, border: `1px solid ${T.border}`, borderRadius: 14, boxShadow: T.shadow }}>
         {subjectList.map(s => {
           const active = s === activeSubject
           return (
-            <button key={s} onClick={() => { setActiveSubject(s); setActiveChapter(null) }}
+            <button key={s} role="tab" aria-selected={active} onClick={() => { setActiveSubject(s); setActiveChapter(null) }}
               style={{
-                padding: '7px 13px', borderRadius: 8, border: `1px solid ${active ? courseData.color : C.border}`,
-                background: active ? courseData.bg : C.white, color: active ? courseData.text : '#374151',
-                fontWeight: active ? 700 : 500, fontSize: 12.5, cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: 7, flexShrink: 0,
+                padding: '8px 14px', borderRadius: 10, border: 'none',
+                background: active ? courseData.bg : 'transparent', color: active ? courseData.text : T.muted,
+                boxShadow: active ? `inset 0 0 0 1px ${courseData.color}55` : 'none',
+                fontWeight: active ? 600 : 500, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
               }}>
-              {SUBJECT_ICONS[s] || '📁'} {s}
+              <span style={{ fontSize: 14 }}>{SUBJECT_ICONS[s] || '📁'}</span>{s}
             </button>
           )
         })}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '260px 1fr', gap: 16 }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.slate, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>
-            Chapters {loading ? '· loading…' : `· ${subjectQuestions.length} total`}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0,1fr)' : '280px minmax(0,1fr)', gap: 18, alignItems: 'start' }}>
+        <div className="qbv-no-print">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 11, fontWeight: 600, color: T.muted,
+            textTransform: 'uppercase', letterSpacing: '.08em', margin: '0 4px 8px' }}>
+            <span>Chapters</span>
+            <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>{loading ? 'Loading…' : `${fmt(subjectQuestions.length)} questions`}</span>
           </div>
-          <ChapterList chapters={chapters} activeChapter={activeChapter} onSelect={setActiveChapter} countsByChapter={countsByChapter} />
+          {isMobile ? (
+            // On phones a 20–30 row chapter list would push the questions far
+            // below the fold — a dropdown keeps them on screen.
+            <select style={iS} value={activeChapter || ''} aria-label="Chapter" onChange={e => setActiveChapter(e.target.value)}>
+              {chapters.map(ch => <option key={ch} value={ch}>{ch} ({countsByChapter[ch] || 0})</option>)}
+            </select>
+          ) : (
+            <ChapterList chapters={chapters} activeChapter={activeChapter} onSelect={setActiveChapter} countsByChapter={countsByChapter} />
+          )}
         </div>
 
-        <div>
-          <div style={{ ...cardS, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }} className="qbv-no-print">
-            <input style={{ ...iS, flex: 1, minWidth: 180 }} placeholder="Search questions, options, Mayek text…"
-              value={search} onChange={e => setSearch(e.target.value)} />
-            <select style={{ ...iS, width: 'auto' }} value={difficultyFilter} onChange={e => setDifficultyFilter(e.target.value)}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ ...cardS, padding: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }} className="qbv-no-print">
+            <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+              <span aria-hidden style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: T.faint, pointerEvents: 'none' }}>🔍</span>
+              <input style={{ ...iS, paddingLeft: 34 }} placeholder="Search questions, options, Mayek text…" aria-label="Search this chapter"
+                value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+            <select style={{ ...iS, width: 'auto' }} value={difficultyFilter} aria-label="Difficulty" onChange={e => setDifficultyFilter(e.target.value)}>
               <option value="All">All difficulties</option>
               <option value="Easy">Easy</option>
               <option value="Medium">Medium</option>
               <option value="Hard">Hard</option>
             </select>
             {isAdmin ? (
-              <>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {[
-                  { hide: false, label: '🖨️ Print with Answers', title: "Print this chapter's questions with answers marked" },
-                  { hide: true,  label: '🖨️ Print Questions Only', title: 'Print a blank question sheet (no answers marked)' },
-                ].map(({ hide, label, title }) => (
+                  { hide: false, label: '🖨️ Print with answers', title: "Print this chapter's questions with answers marked", primary: true },
+                  { hide: true,  label: 'Questions only', title: 'Print a blank question sheet (no answers marked)', primary: false },
+                ].map(({ hide, label, title, primary }) => (
                   <button key={label}
                     onClick={() => printChapter(hide)}
                     disabled={!canPrint}
                     title={!activeChapter ? 'Select a chapter first' : title}
                     style={{
-                      padding: '8px 14px', borderRadius: 7, border: 'none', fontSize: 12.5, fontWeight: 700,
-                      cursor: canPrint ? 'pointer' : 'default',
-                      color: canPrint ? '#fff' : '#94a3b8',
-                      background: canPrint ? courseData.color : '#f1f5f9',
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '9px 14px', borderRadius: T.radiusSm, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
+                      cursor: canPrint ? 'pointer' : 'not-allowed', opacity: canPrint ? 1 : .5,
+                      border: primary ? 'none' : `1px solid ${T.border}`,
+                      color: primary ? '#fff' : T.text,
+                      background: primary ? T.navy : T.surface,
+                      boxShadow: primary ? '0 1px 2px rgba(16,24,40,.12)' : 'none',
                     }}>
                     {label}
                   </button>
                 ))}
-              </>
+              </div>
             ) : (
               <span
                 title="Question Bank is preview-only for your account — printing is available to admin accounts"
-                style={{ padding: '5px 12px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: '#64748b', background: '#f1f5f9', border: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>
+                style={{ padding: '6px 12px', borderRadius: 99, fontSize: 11.5, fontWeight: 600, color: T.muted, background: T.surfaceAlt, border: `1px solid ${T.border}`, whiteSpace: 'nowrap' }}>
                 👁 Preview only
               </span>
             )}
             {untaggedCount > 0 && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.slate, cursor: 'pointer', width: '100%' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: T.muted, cursor: 'pointer', width: '100%', paddingTop: 2 }}>
                 <input type="checkbox" checked={includeUntagged} onChange={e => setIncludeUntagged(e.target.checked)} />
                 Include {untaggedCount} question{untaggedCount !== 1 ? 's' : ''} with no course tag
               </label>
@@ -537,19 +597,24 @@ export default function QuestionBankViewer({ currentUser }) {
           <div className={`qbv-print-root${printHideAnswers ? ' qbv-hide-answers' : ''}`}>
 
           {loadError ? (
-            <div style={{ ...cardS, textAlign: 'center', padding: 32, color: C.rose }}>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>Couldn't load questions for {activeSubject}.</div>
-              <div style={{ fontSize: 12, color: C.slate, marginBottom: 12 }}>{loadError}</div>
-              <button onClick={() => loadSubjectQuestions(activeSubject)} style={btnSm(C.navy)}>↻ Retry</button>
-            </div>
+            <EmptyState icon="⚠️" tone="rose" title={`Couldn't load questions for ${activeSubject}`} text={loadError}
+              action={<button onClick={() => loadSubjectQuestions(activeSubject)} style={{ ...btnSm(T.navy), padding: '8px 14px', fontSize: 12.5 }}>↻ Retry</button>} />
           ) : !activeChapter ? (
-            <div style={{ ...cardS, textAlign: 'center', padding: 32, color: '#94a3b8' }}>Select a chapter to view its questions.</div>
+            <EmptyState icon="📚" title="Pick a chapter" text="Choose a chapter on the left to see its questions." />
           ) : loading ? (
-            <div style={{ ...cardS, textAlign: 'center', padding: 32, color: '#94a3b8' }}>Loading…</div>
+            [0, 1, 2].map(i => (
+              <div key={i} style={{ ...cardS, marginBottom: 10, padding: 18 }} aria-hidden>
+                {[['35%', 10], ['92%', 14], ['64%', 14]].map(([w, h], j) => (
+                  <div key={j} style={{ width: w, height: h, borderRadius: 6, marginBottom: 10,
+                    background: 'linear-gradient(90deg,#eef2f7 25%,#f6f8fb 50%,#eef2f7 75%)', backgroundSize: '200% 100%',
+                    animation: 'qbShimmer 1.2s linear infinite' }} />
+                ))}
+              </div>
+            ))
           ) : chapterQuestions.length === 0 ? (
-            <div style={{ ...cardS, textAlign: 'center', padding: 32, color: '#94a3b8' }}>
-              {search.trim() || difficultyFilter !== 'All' ? 'No questions match this filter.' : 'No questions in the bank for this chapter yet.'}
-            </div>
+            search.trim() || difficultyFilter !== 'All'
+              ? <EmptyState icon="🔎" title="No matches" text="No questions in this chapter match the search or difficulty filter." />
+              : <EmptyState icon="🗂️" title="No questions yet" text="This chapter doesn't have any questions in the bank yet." />
           ) : (
             <>
               {/* Print-only heading — the on-screen title line below is
@@ -558,15 +623,18 @@ export default function QuestionBankViewer({ currentUser }) {
                 <div style={{ fontSize: 18, fontWeight: 800 }}>{courseData.label} — {activeSubject}</div>
                 <div style={{ fontSize: 13, color: '#475569', marginTop: 2 }}>{activeChapter} · {chapterQuestions.length} question{chapterQuestions.length !== 1 ? 's' : ''}</div>
               </div>
-              <div className="qbv-no-print" style={{ fontSize: 12, color: C.slate, marginBottom: 8, fontWeight: 600 }}>
-                {chapterQuestions.length} question{chapterQuestions.length !== 1 ? 's' : ''} — {activeSubject} › {activeChapter}
+              <div className="qbv-no-print" style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', margin: '4px 2px 12px' }}>
+                <div style={{ fontSize: 17, fontWeight: 700, color: T.ink, letterSpacing: '-.01em' }}>{activeChapter}</div>
+                <div style={{ fontSize: 12.5, color: T.muted }}>
+                  <strong style={{ color: T.ink, fontVariantNumeric: 'tabular-nums' }}>{fmt(chapterQuestions.length)}</strong> question{chapterQuestions.length !== 1 ? 's' : ''} · {activeSubject}
+                </div>
               </div>
               {shownQuestions.map((q, i) => (
                 <ViewOnlyQCard key={q.id} q={q} index={i} subjectColor={courseData.color} />
               ))}
               {shownQuestions.length < chapterQuestions.length && (
                 <div className="qbv-no-print" style={{ textAlign: 'center', padding: '8px 0 16px' }}>
-                  <button onClick={() => setVisible({ key: viewKey, n: visibleCount + PAGE_STEP })} style={{ ...btnSm(courseData.color), padding: '8px 16px', fontSize: 12.5 }}>
+                  <button onClick={() => setVisible({ key: viewKey, n: visibleCount + PAGE_STEP })} style={{ ...btnSm('#fff', T.text), padding: '9px 18px', fontSize: 13 }}>
                     Show {Math.min(PAGE_STEP, chapterQuestions.length - shownQuestions.length)} more
                     <span style={{ opacity: .8, fontWeight: 500 }}> ({shownQuestions.length} of {chapterQuestions.length})</span>
                   </button>
