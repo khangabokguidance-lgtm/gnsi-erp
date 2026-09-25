@@ -119,7 +119,7 @@ function useWindowWidth() {
 function Toast({ toast }) {
   if (!toast) return null
   return (
-    <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 99999, background: 'white', border: '1px solid #e2e8f0', borderLeft: `3px solid ${toast.color}`, borderRadius: 10, padding: '11px 16px', fontSize: 13, fontWeight: 600, boxShadow: '0 8px 32px rgba(0,0,0,.12)', maxWidth: 340, color: '#1e293b' }}>
+    <div role="status" style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 99999, background: 'white', border: '1px solid #e2e8f0', borderLeft: `3px solid ${toast.color}`, borderRadius: 10, padding: '11px 16px', fontSize: 13, fontWeight: 600, boxShadow: '0 8px 32px rgba(0,0,0,.12)', maxWidth: 'min(420px, calc(100vw - 32px))', color: '#1e293b' }}>
       {toast.msg}
     </div>
   )
@@ -188,17 +188,150 @@ ${Number(sale.due_amount) > 0 ? `<div class="row" style="color:#b91c1c;font-weig
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// POS TAB
+// COUNTER POS — tap items → Pay → choose method → done
 // ═══════════════════════════════════════════════════════════════════════════
+const FREQ_KEY = 'gnsi_pos_frequent'
+const AUTOPRINT_KEY = 'gnsi_pos_autoprint'
+const PAY_TILES = [['Cash', '💵'], ['UPI', '📱'], ['Card', '💳'], ['Bank Transfer', '🏦'], ['Cheque', '🧾']]
+const POS_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+.pos{--ink:#0e1b33;--mute:#64748b;--faint:#94a3b8;--line:#e7e3da;--bg:#f7f5f0;--navy:#132a4f;--navy2:#1e3a6e;--gold:#b8923a;--gold2:#e9d9b0;--green:#15803d;--red:#dc2626;--amber:#b45309;
+  font-family:'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased;background:var(--bg);border-radius:20px;border:1px solid var(--line);overflow:hidden}
+.pos *{box-sizing:border-box}.pos button{font-family:inherit;cursor:pointer}.pos input{font-family:inherit}
+.pos:fullscreen{border-radius:0;border:none}
+.pos-shell{display:grid;grid-template-columns:minmax(0,1fr) 400px;height:calc(100vh - 170px);min-height:600px}
+.pos:fullscreen .pos-shell{height:100vh}
+@media(max-width:1100px){.pos-shell{grid-template-columns:minmax(0,1fr) 360px}}
+@media(max-width:899px){.pos-shell{grid-template-columns:1fr;height:auto}}
+.pos-main{display:flex;flex-direction:column;min-width:0;min-height:0;padding:16px 16px 0}
+.pos-top{display:flex;gap:8px;align-items:center}
+.pos-search{flex:1;position:relative}
+.pos-search input{width:100%;height:52px;border-radius:14px;border:1.5px solid var(--line);background:#fff;padding:0 16px 0 48px;font-size:16px;color:var(--ink);outline:none;transition:border-color .15s,box-shadow .15s}
+.pos-search input:focus{border-color:var(--navy2);box-shadow:0 0 0 4px rgba(30,58,110,.1)}
+.pos-search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--faint)}
+.pos-search kbd{position:absolute;right:12px;top:50%;transform:translateY(-50%);font:700 11px/1 monospace;color:var(--faint);border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:#faf8f3}
+.pos-ibtn{height:52px;min-width:52px;padding:0 14px;border-radius:14px;border:1.5px solid var(--line);background:#fff;color:var(--ink);font-size:13px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;gap:7px;transition:background .15s}
+.pos-ibtn:hover{background:#faf8f3}
+.pos-held{display:flex;gap:6px;align-items:center;overflow-x:auto;margin-top:10px;padding-bottom:2px}
+.pos-held .h{flex:none;display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 6px 0 12px;border-radius:99px;background:#ecfeff;border:1px solid #a5f3fc;color:#0e7490;font-size:12.5px;font-weight:700}
+.pos-held .h button{border:none;background:none;color:inherit;font:inherit;padding:0}.pos-held .h .x{width:22px;height:22px;border-radius:99px;background:#fff;color:var(--faint)}
+.pos-cats{display:flex;gap:7px;overflow-x:auto;padding:12px 0 10px;scrollbar-width:none}.pos-cats::-webkit-scrollbar{display:none}
+.pos-cat{flex:none;height:40px;padding:0 16px;border-radius:12px;border:1.5px solid var(--line);background:#fff;color:#334155;font-size:13.5px;font-weight:700;transition:all .12s}
+.pos-cat:hover{border-color:#cfc7b6}.pos-cat.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.pos-cat.kit{background:#fbf6ea;border-color:var(--gold2);color:#6b5320}.pos-cat.kit:hover{background:#f6ecd2}
+.pos-grid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;align-content:start;padding:2px 2px 16px}
+@media(max-width:899px){.pos-grid{overflow:visible;grid-template-columns:repeat(auto-fill,minmax(135px,1fr))}}
+.pos-tile{position:relative;background:#fff;border:1.5px solid var(--line);border-radius:16px;padding:0;text-align:left;overflow:hidden;display:flex;flex-direction:column;transition:transform .1s,box-shadow .15s,border-color .15s;user-select:none}
+.pos-tile:hover{box-shadow:0 8px 24px rgba(14,27,51,.1);border-color:transparent}
+.pos-tile:active{transform:scale(.97)}
+.pos-tile.in{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold2)}
+.pos-tile.out{opacity:.45;cursor:not-allowed}
+.pos-tile .img{aspect-ratio:4/3;background:linear-gradient(145deg,#f3efe6,#e9e3d6);display:grid;place-items:center;font-size:34px;overflow:hidden}
+.pos-tile .img img{width:100%;height:100%;object-fit:cover}
+.pos-tile .b{padding:9px 11px 11px;display:flex;flex-direction:column;gap:3px;flex:1}
+.pos-tile .nm{font-size:13.5px;font-weight:700;line-height:1.25;color:var(--ink)}
+.pos-tile .sz{display:inline-block;font-size:11px;font-weight:800;background:#f1f5f9;border-radius:5px;padding:1px 6px;margin-left:4px;vertical-align:1px;color:#334155}
+.pos-tile .pr{display:flex;align-items:baseline;justify-content:space-between;gap:6px;margin-top:auto;padding-top:4px}
+.pos-tile .pr b{font-size:17px;font-weight:800}.pos-tile .pr b.sale{color:#9a3412}
+.pos-tile .st{font-size:11px;font-weight:700}
+.pos-tile .qty{position:absolute;top:8px;right:8px;min-width:30px;height:30px;padding:0 8px;border-radius:99px;background:var(--gold);color:#132a4f;font-weight:800;font-size:14px;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.18);animation:pos-pop .25s}
+.pos-tile .minus{position:absolute;top:8px;left:8px;width:30px;height:30px;border-radius:99px;border:none;background:rgba(255,255,255,.95);color:var(--ink);font-size:18px;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.pos-tile .tag{position:absolute;left:8px;bottom:auto;top:8px;font-size:10px;font-weight:800;padding:3px 7px;border-radius:6px;background:#132a4f;color:var(--gold2)}
+.pos-empty{grid-column:1/-1;text-align:center;padding:60px 10px;color:var(--mute)}
+.pos-hints{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--faint);padding:8px 2px 12px;border-top:1px solid var(--line)}
+.pos-hints kbd{font:700 10.5px/1 monospace;color:#475569;background:#fff;border:1px solid var(--line);border-radius:5px;padding:2px 5px;margin-right:3px}
+@media(max-width:899px){.pos-hints{display:none}}
+/* bill panel */
+.pos-bill{background:radial-gradient(600px 300px at 110% -10%,rgba(184,146,58,.22),transparent 60%),linear-gradient(170deg,#132a4f,#0e1f3d);color:#fff;display:flex;flex-direction:column;min-height:0}
+@media(max-width:899px){.pos-bill{min-height:520px}}
+.pos-bhead{padding:16px 18px 12px;border-bottom:1px solid rgba(255,255,255,.08)}
+.pos-seg{display:grid;grid-template-columns:1fr 1fr;background:rgba(255,255,255,.07);border-radius:12px;padding:4px;gap:4px}
+.pos-seg button{height:36px;border:none;border-radius:9px;background:none;color:rgba(255,255,255,.65);font-size:13px;font-weight:700}
+.pos-seg button.on{background:#fff;color:var(--navy)}
+.pos-din{width:100%;height:42px;border-radius:11px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;padding:0 12px;font-size:14px;outline:none}
+.pos-din::placeholder{color:rgba(255,255,255,.45)}.pos-din:focus{border-color:var(--gold);background:rgba(255,255,255,.1)}
+.pos-stu{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:8px 10px}
+.pos-stu .av{width:36px;height:36px;border-radius:99px;background:var(--gold);color:#132a4f;font-weight:800;display:grid;place-items:center;flex:none}
+.pos-drop{position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;color:var(--ink);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.35);z-index:30;overflow:hidden}
+.pos-drop button{display:block;width:100%;text-align:left;border:none;background:none;padding:10px 12px;font-size:13px;border-bottom:1px solid #f1f5f9}
+.pos-drop button:hover,.pos-drop button.on{background:#f7f5f0}
+.pos-lines{flex:1;overflow-y:auto;padding:6px 18px}
+.pos-line{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.07);animation:pos-in .2s}
+.pos-line .th{width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,.1);display:grid;place-items:center;overflow:hidden;font-size:18px}
+.pos-line .th img{width:100%;height:100%;object-fit:cover}
+.pos-line .nm{font-size:13.5px;font-weight:700;line-height:1.25}.pos-line .sub{font-size:11.5px;color:rgba(255,255,255,.55)}
+.pos-step{display:inline-flex;align-items:center;margin-top:5px;background:rgba(255,255,255,.08);border-radius:9px}
+.pos-step button{width:30px;height:28px;border:none;background:none;color:#fff;font-size:16px;font-weight:700}
+.pos-step span{min-width:24px;text-align:center;font-weight:800;font-size:13.5px}
+.pos-line .amt{font-weight:800;font-size:15px;text-align:right}
+.pos-bempty{flex:1;display:grid;place-items:center;text-align:center;color:rgba(255,255,255,.5);padding:20px;font-size:13.5px;line-height:1.6}
+.pos-bempty .i{font-size:42px;margin-bottom:6px;opacity:.8}
+.pos-adj{display:flex;gap:6px;flex-wrap:wrap;padding:10px 18px 0}
+.pos-adj>button{height:32px;padding:0 11px;border-radius:9px;border:1px dashed rgba(255,255,255,.25);background:none;color:rgba(255,255,255,.8);font-size:12px;font-weight:700}
+.pos-adj>button.on{border-style:solid;border-color:var(--gold);color:var(--gold2);background:rgba(184,146,58,.12)}
+.pos-adjrow{display:flex;gap:6px;padding:8px 18px 0}
+.pos-adjrow .pos-din{height:38px;font-size:13px}
+.pos-adjrow button{height:38px;padding:0 12px;border-radius:10px;border:none;background:var(--gold);color:#132a4f;font-weight:800;font-size:12.5px;white-space:nowrap}
+.pos-tot{padding:12px 18px 16px;border-top:1px solid rgba(255,255,255,.08);margin-top:10px}
+.pos-tot .r{display:flex;justify-content:space-between;font-size:13px;color:rgba(255,255,255,.7);padding:2px 0}
+.pos-tot .r.g{color:#86efac}.pos-tot .r.y{color:var(--gold2)}
+.pos-tot .big{display:flex;justify-content:space-between;align-items:baseline;margin:8px 0 12px}
+.pos-tot .big span{font-size:13px;font-weight:700;color:rgba(255,255,255,.7);letter-spacing:.08em;text-transform:uppercase}
+.pos-tot .big b{font-size:38px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.pos-pay{width:100%;height:60px;border:none;border-radius:16px;background:linear-gradient(180deg,#d4ad55,#b8923a);color:#132a4f;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 8px 24px rgba(184,146,58,.35);transition:transform .1s,filter .15s}
+.pos-pay:hover{filter:brightness(1.05)}.pos-pay:active{transform:scale(.99)}
+.pos-pay:disabled{background:rgba(255,255,255,.1);color:rgba(255,255,255,.35);box-shadow:none;cursor:not-allowed}
+.pos-pay kbd{font:700 11px/1 monospace;background:rgba(19,42,79,.15);border-radius:5px;padding:3px 5px}
+.pos-sec{display:flex;gap:8px;margin-bottom:10px}
+.pos-sec button{flex:1;height:38px;border-radius:11px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:rgba(255,255,255,.85);font-size:12.5px;font-weight:700}
+.pos-sec button:hover{background:rgba(255,255,255,.1)}.pos-sec button:disabled{opacity:.35;cursor:not-allowed}
+/* pay sheet */
+.pos-ov{position:fixed;inset:0;z-index:9500;background:rgba(8,16,32,.6);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:grid;place-items:center;padding:16px;animation:pos-fade .15s}
+.pos-sheet{width:min(860px,100%);max-height:calc(100vh - 32px);overflow:auto;background:#fff;border-radius:24px;box-shadow:0 30px 80px rgba(0,0,0,.35);display:grid;grid-template-columns:1fr 1.15fr;animation:pos-zoom .2s cubic-bezier(.2,.8,.2,1);font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:var(--ink,#0e1b33)}
+@media(max-width:760px){.pos-sheet{grid-template-columns:1fr}}
+.pos-sl{background:linear-gradient(170deg,#132a4f,#0e1f3d);color:#fff;padding:24px;display:flex;flex-direction:column;gap:6px}
+.pos-sr{padding:22px 24px;display:flex;flex-direction:column;gap:14px}
+.pos-methods{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+@media(max-width:480px){.pos-methods{grid-template-columns:repeat(3,1fr)}}
+.pos-m{height:74px;border-radius:14px;border:1.5px solid #e7e3da;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:12px;font-weight:700;color:#334155;transition:all .12s}
+.pos-m span{font-size:24px}.pos-m:hover{border-color:#cfc7b6}.pos-m.on{border-color:#132a4f;background:#132a4f;color:#fff;box-shadow:0 6px 16px rgba(19,42,79,.25)}
+.pos-lbl{font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px}
+.pos-cashin{height:58px;border-radius:14px;border:1.5px solid #e7e3da;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:26px;font-weight:800;background:#faf8f3}
+.pos-cashin small{font-size:12px;font-weight:600;color:#94a3b8}
+.pos-quick{display:flex;gap:6px;flex-wrap:wrap}
+.pos-quick button{flex:1;min-width:70px;height:40px;border-radius:11px;border:1.5px solid #e7e3da;background:#fff;font-weight:800;font-size:13.5px;color:#132a4f}
+.pos-quick button:hover{background:#faf8f3}.pos-quick button.ex{background:#fbf6ea;border-color:#e9d9b0}
+.pos-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.pos-pad button{height:46px;border-radius:11px;border:none;background:#f3f0e9;font-size:19px;font-weight:700;color:#0e1b33}
+.pos-pad button:active{background:#e6e0d3}
+.pos-change{border-radius:14px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;font-weight:800}
+.pos-change b{font-size:28px;letter-spacing:-.02em}
+.pos-in{height:48px;width:100%;border-radius:12px;border:1.5px solid #e7e3da;padding:0 14px;font-size:15px;outline:none;font-family:inherit}
+.pos-in:focus{border-color:#1e3a6e;box-shadow:0 0 0 4px rgba(30,58,110,.1)}
+.pos-done{height:58px;border:none;border-radius:16px;background:#15803d;color:#fff;font-size:17px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:10px}
+.pos-done:disabled{background:#cbd5e1;cursor:not-allowed}
+.pos-done kbd{font:700 11px/1 monospace;background:rgba(0,0,0,.15);border-radius:5px;padding:3px 6px}
+/* success */
+.pos-ok{width:min(440px,100%);background:#fff;border-radius:26px;box-shadow:0 30px 80px rgba(0,0,0,.35);text-align:center;padding:30px 26px 24px;animation:pos-zoom .25s cubic-bezier(.2,.8,.2,1);font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0e1b33}
+.pos-okc{width:78px;height:78px;border-radius:99px;background:#dcfce7;color:#15803d;display:grid;place-items:center;font-size:40px;margin:0 auto 12px;animation:pos-pop .45s}
+@keyframes pos-pop{0%{transform:scale(.6)}60%{transform:scale(1.12)}100%{transform:scale(1)}}
+@keyframes pos-in{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}
+@keyframes pos-fade{from{opacity:0}to{opacity:1}}
+@keyframes pos-zoom{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.pos *,.pos-ov *{animation:none!important;transition:none!important}}
+`
+
 function POSTab({ products, categories, students, kits = [], isAdmin, currentUser, onSaleDone, showToast }) {
   const w = useWindowWidth()
   const isMobile = w < 900
+  const rootRef = useRef(null)
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('All')
   const [cart, setCart] = useState([]) // [{id, qty}]
   const [custType, setCustType] = useState('walkin')
   const [student, setStudent] = useState(null)
   const [studentQ, setStudentQ] = useState('')
+  const [stuHi, setStuHi] = useState(0)
   const [custName, setCustName] = useState('')
   const [custPhone, setCustPhone] = useState('')
   const [discount, setDiscount] = useState('')
@@ -208,45 +341,58 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
   const [collectedBy, setCollectedBy] = useState(currentUser?.userName || currentUser?.name || '')
   const [saving, setSaving] = useState(false)
   const [promoCode, setPromoCode] = useState('')
-  const [promoResult, setPromoResult] = useState(null) // { valid, amount_off, reason }
+  const [promoResult, setPromoResult] = useState(null)
   const [checkingPromo, setCheckingPromo] = useState(false)
   const [loyaltyBalance, setLoyaltyBalance] = useState(null)
   const [redeemPts, setRedeemPts] = useState('')
   const [tendered, setTendered] = useState('')
   const [lastSale, setLastSale] = useState(null)
   const [held, setHeld] = useState(() => { try { return JSON.parse(localStorage.getItem(HELD_KEY) || '[]') } catch { return [] } })
-  const searchRef = useRef(null)
   const [scanning, setScanning] = useState(false)
+  const [adj, setAdj] = useState(null) // 'promo' | 'discount' | 'points'
+  const [payOpen, setPayOpen] = useState(false)
+  const [partPay, setPartPay] = useState(false)
+  const [done, setDone] = useState(null) // completed sale shown on the success screen
+  const [autoPrint, setAutoPrint] = useState(() => { try { return localStorage.getItem(AUTOPRINT_KEY) !== 'off' } catch { return true } })
+  const [freq, setFreq] = useState(() => { try { return JSON.parse(localStorage.getItem(FREQ_KEY) || '{}') } catch { return {} } })
+  const [flash, setFlash] = useState(null)
+  const searchRef = useRef(null)
+  const sheetRef = useRef(null)
+  const billRef = useRef(null)
   const saveHeld = list => { setHeld(list); try { localStorage.setItem(HELD_KEY, JSON.stringify(list)) } catch {} }
 
   const byId = useMemo(() => new Map(products.map(p => [p.id, p])), [products])
   const sellable = useMemo(() => products.filter(p => p.active), [products])
+  const frequent = useMemo(() => sellable.filter(p => freq[p.id]).sort((a, b) => freq[b.id] - freq[a.id]).slice(0, 24), [sellable, freq])
+  const activeKits = kits.filter(k => k.active)
+  const inCart = useMemo(() => Object.fromEntries(cart.map(c => [c.id, c.qty])), [cart])
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase()
-    return sellable.filter(p => {
-      if (cat !== 'All' && String(p.category_id) !== String(cat)) return false
-      if (!s) return true
-      return [p.name, p.size, p.sku, p.barcode].some(v => (v || '').toString().toLowerCase().includes(s))
+    const base = !s && cat === 'freq' ? frequent : sellable
+    return base.filter(p => {
+      if (s) return [p.name, p.size, p.sku, p.barcode].some(v => (v || '').toString().toLowerCase().includes(s))
+      return cat === 'All' || cat === 'freq' || String(p.category_id) === String(cat)
     })
-  }, [sellable, q, cat])
+  }, [sellable, frequent, q, cat])
 
   const lines = cart.map(c => ({ ...c, p: byId.get(c.id) })).filter(l => l.p)
+  const count = lines.reduce((a, l) => a + l.qty, 0)
   const subtotal = lines.reduce((s, l) => s + effPrice(l.p) * l.qty, 0)
+  const mrpTotal = lines.reduce((s, l) => s + Math.max(Number(l.p.mrp) || 0, effPrice(l.p)) * l.qty, 0)
   const discNum = Math.min(Math.max(Number(discount) || 0, 0), subtotal)
   const promoOff = promoResult?.valid ? Math.min(Number(promoResult.amount_off) || 0, subtotal - discNum) : 0
   const afterPromo = subtotal - discNum - promoOff
-  const maxRedeemablePts = custType === 'student' && loyaltyBalance != null
-    ? Math.min(loyaltyBalance, Math.floor(afterPromo / LOYALTY_POINT_VALUE))
-    : 0
+  const maxRedeemablePts = custType === 'student' && loyaltyBalance != null ? Math.min(loyaltyBalance, Math.floor(afterPromo / LOYALTY_POINT_VALUE)) : 0
   const redeemPtsNum = Math.min(Math.max(parseInt(redeemPts, 10) || 0, 0), maxRedeemablePts)
   const redeemVal = redeemPtsNum * LOYALTY_POINT_VALUE
   const total = Math.max(afterPromo - redeemVal, 0)
-  const paidNum = paidAmt === '' ? total : Math.min(Math.max(Number(paidAmt) || 0, 0), total)
+  const paidNum = !partPay || paidAmt === '' ? total : Math.min(Math.max(Number(paidAmt) || 0, 0), total)
   const dueNum = total - paidNum
   const willEarnPts = custType === 'student' && student ? Math.floor(paidNum / LOYALTY_EARN_RATE) : 0
   const tenderedNum = Number(tendered) || 0
-  const changeDue = payMode === 'Cash' && tenderedNum > 0 ? tenderedNum - paidNum : null
+  const changeDue = payMode === 'Cash' && paidNum > 0 && tenderedNum > 0 ? tenderedNum - paidNum : null
+  const savings = Math.max(0, mrpTotal - subtotal) + discNum + promoOff + redeemVal
 
   const studentHits = useMemo(() => {
     const s = studentQ.trim().toLowerCase()
@@ -254,15 +400,12 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
     return students.filter(st => (st.name || '').toLowerCase().includes(s) || String(st.gcc_no || '').includes(s)).slice(0, 6)
   }, [students, studentQ])
 
-  // Fetch the loyalty points balance whenever a student is selected/changed.
   useEffect(() => {
     let cancelled = false
     setRedeemPts('')
     if (custType !== 'student' || !student) { setLoyaltyBalance(null); return }
     supabase.rpc('store_loyalty_balance', { p_gcc: gccStr(student.gcc_no) }).then(({ data, error }) => {
-      if (cancelled) return
-      if (error) { setLoyaltyBalance(null); return }
-      setLoyaltyBalance(Number(data) || 0)
+      if (!cancelled) setLoyaltyBalance(error ? null : Number(data) || 0)
     })
     return () => { cancelled = true }
   }, [custType, student])
@@ -273,31 +416,29 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
     setCheckingPromo(true)
     const { data, error } = await supabase.rpc('store_validate_promo', { p_code: code, p_subtotal: subtotal - discNum })
     setCheckingPromo(false)
-    if (error) { setPromoResult({ valid: false, reason: error.message }); return }
+    if (error) { setPromoResult({ valid: false, reason: error.message }); showToast(error.message, '#dc2626'); return }
     setPromoResult(data)
-    if (!data?.valid) showToast(data?.reason || 'Invalid promo code', '#dc2626')
+    if (!data?.valid) showToast(data?.reason || 'Invalid promo code', '#dc2626'); else setAdj(null)
   }
 
+  const bumpTile = id => { setFlash(id); setTimeout(() => setFlash(f => f === id ? null : f), 300) }
   const addToCart = p => {
+    if (done) setDone(null)
     if (p.stock <= 0) { showToast(`${p.name} is out of stock`, '#dc2626'); return }
-    setCart(c => {
-      const ex = c.find(x => x.id === p.id)
-      if (ex) {
-        if (ex.qty + 1 > p.stock) { showToast(`Only ${p.stock} in stock`, '#d97706'); return c }
-        return c.map(x => x.id === p.id ? { ...x, qty: x.qty + 1 } : x)
-      }
-      return [...c, { id: p.id, qty: 1 }]
-    })
+    const have = inCart[p.id] || 0
+    if (have + 1 > p.stock) { showToast(`Only ${p.stock} in stock`, '#d97706'); return }
+    setCart(c => c.some(x => x.id === p.id) ? c.map(x => x.id === p.id ? { ...x, qty: x.qty + 1 } : x) : [...c, { id: p.id, qty: 1 }])
+    bumpTile(p.id)
   }
-  // One tap adds every item of a kit, as far as stock allows.
   const addKit = kit => {
+    if (done) setDone(null)
     const next = cart.map(x => ({ ...x })), missing = []
     arr(kit.items).forEach(({ product_id, qty }) => {
       const p = byId.get(product_id)
       if (!p || !p.active) { missing.push('an item no longer sold'); return }
-      const ex = next.find(x => x.id === p.id), q = Math.min(Number(qty) || 1, p.stock - (ex ? ex.qty : 0))
-      if (q <= 0) { missing.push(`${p.name}${p.size ? ' ' + p.size : ''}`); return }
-      if (ex) ex.qty += q; else next.push({ id: p.id, qty: q })
+      const ex = next.find(x => x.id === p.id), k = Math.min(Number(qty) || 1, p.stock - (ex ? ex.qty : 0))
+      if (k <= 0) { missing.push(`${p.name}${p.size ? ' ' + p.size : ''}`); return }
+      if (ex) ex.qty += k; else next.push({ id: p.id, qty: k })
     })
     setCart(next)
     showToast(missing.length ? `🎒 ${kit.name}: added, but out of stock — ${missing.join(', ')}` : `🎒 ${kit.name} added`, missing.length ? '#d97706' : '#16a34a')
@@ -315,51 +456,58 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
     setCart(c => c.map(x => x.id === id ? { ...x, qty } : x))
   }
 
-  // Barcode scanners type the code then press Enter.
+  // Barcode scanners type the code then press Enter; otherwise Enter adds the only match.
   const onSearchKey = e => {
+    if (e.key === 'Escape') { setQ(''); return }
     if (e.key !== 'Enter') return
     const s = q.trim().toLowerCase()
     if (!s) return
     const exact = sellable.find(p => (p.barcode || '').toLowerCase() === s || (p.sku || '').toLowerCase() === s)
-    if (exact) { addToCart(exact); setQ('') }
+    if (exact) { addToCart(exact); setQ(''); return }
+    if (filtered.length === 1) { addToCart(filtered[0]); setQ('') }
   }
 
   const reset = () => {
     setCart([]); setStudent(null); setStudentQ(''); setCustName(''); setCustPhone('')
     setDiscount(''); setTxnRef(''); setPaidAmt(''); setPayMode('Cash'); setCustType('walkin')
-    setPromoCode(''); setPromoResult(null); setRedeemPts(''); setLoyaltyBalance(null); setTendered('')
+    setPromoCode(''); setPromoResult(null); setRedeemPts(''); setLoyaltyBalance(null); setTendered(''); setAdj(null); setPartPay(false)
   }
 
-  // ── Held (parked) bills — kept on this device so a queue can be served in parallel ──
   const holdBill = () => {
     if (!lines.length) { showToast('Nothing to hold — the bill is empty.', '#d97706'); return }
     const label = student ? student.name : custName.trim() || `Bill ${held.length + 1}`
-    const entry = {
-      id: Date.now(), at: new Date().toISOString(), label, cart, custType, custName, custPhone,
-      student: student ? { id: student.id, name: student.name, gcc_no: student.gcc_no, course: student.course, hostel_type: student.hostel_type } : null,
-      total,
-    }
-    saveHeld([entry, ...held].slice(0, 20))
-    reset()
+    const entry = { id: Date.now(), at: new Date().toISOString(), label, cart, custType, custName, custPhone, total, discount, promoCode: promoResult?.valid ? promoCode : '', promoResult: promoResult?.valid ? promoResult : null,
+      student: student ? { id: student.id, name: student.name, gcc_no: student.gcc_no, course: student.course, hostel_type: student.hostel_type } : null }
+    saveHeld([entry, ...held].slice(0, 20)); reset()
     showToast(`⏸ Held: ${label}`, '#0e7490')
   }
   const resumeBill = h => {
     if (lines.length && !window.confirm('The current bill is not empty. Replace it with the held bill?')) return
-    reset()
+    reset(); setDone(null)
     setCart(h.cart.filter(c => byId.get(c.id)))
     setCustType(h.custType); setCustName(h.custName || ''); setCustPhone(h.custPhone || '')
+    if (h.discount) setDiscount(h.discount)
+    if (h.promoResult?.valid) { setPromoCode(h.promoCode || ''); setPromoResult(h.promoResult) }
     if (h.student) setStudent(students.find(s => s.id === h.student.id) || h.student)
     saveHeld(held.filter(x => x.id !== h.id))
   }
   const dropHeld = h => window.confirm(`Discard held bill "${h.label}"?`) && saveHeld(held.filter(x => x.id !== h.id))
+  const clearBill = () => { if (!lines.length || window.confirm('Clear this bill?')) reset() }
+
+  const openPay = () => {
+    if (!lines.length) return
+    if (custType === 'student' && !student) { showToast('Choose the student for this bill first.', '#dc2626'); return }
+    setTendered(''); setPayOpen(true)
+    setTimeout(() => { if (!sheetRef.current?.contains(document.activeElement)) sheetRef.current?.focus() }, 30)
+  }
 
   const checkout = async () => {
     if (!lines.length || saving) return
-    if (!collectedBy.trim()) { showToast('Collected By is required.', '#dc2626'); return }
+    if (!collectedBy.trim()) { showToast('Enter who is billing (Billed by).', '#dc2626'); return }
     if (custType === 'student' && !student) { showToast('Select the student for this bill.', '#dc2626'); return }
     if (dueNum > 0 && custType !== 'student') { showToast('Part-payment is only allowed on a student account.', '#dc2626'); return }
-    if (paidNum > 0 && payMode !== 'Cash' && !txnRef.trim()) { showToast(`Transaction reference required for ${payMode}.`, '#dc2626'); return }
-    if (changeDue !== null && changeDue < 0) { showToast(`Cash tendered is ₹${n(-changeDue)} short.`, '#dc2626'); return }
+    if (paidNum > 0 && payMode !== 'Cash' && !txnRef.trim()) { showToast(`Enter the ${payMode} reference number.`, '#dc2626'); return }
+    if (changeDue !== null && changeDue < 0) { showToast(`Cash received is ₹${n(-changeDue)} short.`, '#dc2626'); return }
 
     setSaving(true)
     try {
@@ -381,276 +529,340 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
         ref: `store_${data.bill_no}_pay0`,
       })
       if (posted && Number(data.amount_paid) > 0) await supabase.from('store_sales').update({ account_posted: true }).eq('id', data.id)
-      const ptsNote = data.points_earned > 0 ? ` · +${data.points_earned} pts` : ''
       if (!posted) showToast('Sale saved, but posting to Accounts failed — check accounts columns.', '#d97706')
-      else showToast(`✅ ${data.bill_no} · ₹${n(data.total)}${ptsNote}`, '#16a34a')
 
       const printed = changeDue !== null ? { ...data, tendered: tenderedNum, change: changeDue } : data
-      printBill(printed)
+      if (autoPrint) printBill(printed)
       setLastSale(printed)
-      reset()
-      onSaleDone()
+      const f = { ...freq }; lines.forEach(l => { f[l.id] = (f[l.id] || 0) + l.qty })
+      setFreq(f); try { localStorage.setItem(FREQ_KEY, JSON.stringify(f)) } catch {}
+      setDone({ ...printed, mode: paidNum > 0 ? payMode : null, due: dueNum, items: count, points: data.points_earned })
+      setPayOpen(false); reset(); chime(); onSaleDone()
     } catch (err) {
       showToast('Sale failed: ' + err.message, '#dc2626')
     }
     setSaving(false)
   }
 
-  // ── Keyboard shortcuts: F2 search · F8 hold · F9 charge · Esc clear search ──
+  const toggleFull = () => {
+    try { if (document.fullscreenElement) document.exitFullscreen(); else rootRef.current?.requestFullscreen?.() } catch {}
+  }
+
+  // ── Keyboard: F2 search · F8 hold · F9 pay · Enter complete (pay screen) · Esc back ──
   const keysRef = useRef({})
-  keysRef.current = { checkout, holdBill }
+  keysRef.current = { openPay, holdBill, checkout, payOpen, done, setDone, setPayOpen, payMode, setTendered }
   useEffect(() => {
     const onKey = e => {
+      const k = keysRef.current
+      if (k.done) { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); k.setDone(null); searchRef.current?.focus() } return }
+      if (k.payOpen) {
+        if (e.key === 'Escape') { e.preventDefault(); k.setPayOpen(false) }
+        else if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') { e.preventDefault(); k.checkout() }
+        else if (k.payMode === 'Cash' && e.target.tagName !== 'INPUT') {
+          if (/^[0-9]$/.test(e.key)) k.setTendered(t => (t + e.key).replace(/^0+/, '').slice(0, 7))
+          else if (e.key === 'Backspace') k.setTendered(t => t.slice(0, -1))
+        }
+        return
+      }
       if (document.querySelector('[data-store-modal]')) return
       if (e.key === 'F2') { e.preventDefault(); searchRef.current?.focus(); searchRef.current?.select() }
-      else if (e.key === 'F8') { e.preventDefault(); keysRef.current.holdBill() }
-      else if (e.key === 'F9') { e.preventDefault(); keysRef.current.checkout() }
-      else if (e.key === 'Escape' && document.activeElement === searchRef.current) setQ('')
+      else if (e.key === 'F8') { e.preventDefault(); k.holdBill() }
+      else if (e.key === 'F9') { e.preventDefault(); k.openPay() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  const quickCash = [...new Set([paidNum, Math.ceil(paidNum / 50) * 50, Math.ceil(paidNum / 100) * 100, Math.ceil(paidNum / 500) * 500, Math.ceil(paidNum / 2000) * 2000].filter(v => v >= paidNum && v > 0))].slice(0, 4)
+  const catList = [...(frequent.length ? [{ id: 'freq', name: '★ Frequent' }] : []), { id: 'All', name: 'All items' }, ...categories]
+  const initials = s => (s || '?').split(/\s+/).map(x => x[0]).slice(0, 2).join('').toUpperCase()
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.6fr 1fr', gap: 18, alignItems: 'start' }}>
-      {/* Catalogue */}
-      <div>
-        <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-          <input ref={searchRef} autoFocus value={q} onChange={e => setQ(e.target.value)} onKeyDown={onSearchKey}
-            placeholder="🔍 Search name / size — or scan barcode & press Enter" style={{ ...inp, flex: 1, minWidth: 220 }} />
-          <button onClick={() => setScanning(true)} title="Scan barcodes with this device's camera" style={btn('#f1f5f9', '#334155', { border: '1px solid #e2e8f0' })}>📷 Camera</button>
-          {lastSale && <button onClick={() => printBill(lastSale)} title={`Reprint ${lastSale.bill_no}`} style={btn('#f1f5f9', '#334155', { border: '1px solid #e2e8f0' })}>🖨 Last bill</button>}
-        </div>
-        {scanning && <CameraScanner onCode={onScanned} onClose={() => { setScanning(false); searchRef.current?.focus() }} />}
-        {kits.filter(k => k.active).length > 0 && (
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10, overflowX: 'auto', paddingBottom: 2 }}>
-            {kits.filter(k => k.active).map(k => {
-              const items = arr(k.items), total = items.reduce((a, i) => a + (byId.get(i.product_id) ? effPrice(byId.get(i.product_id)) * (Number(i.qty) || 1) : 0), 0)
-              return <button key={k.id} onClick={() => addKit(k)} title={items.map(i => { const p = byId.get(i.product_id); return p ? `${p.name}${p.size ? ' ' + p.size : ''} ×${i.qty}` : '' }).join(', ')}
-                style={{ flex: 'none', padding: '7px 12px', borderRadius: 9, border: '1.5px solid #e9d9b0', background: '#fbf6ea', color: '#6b5320', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>🎒 {k.name} · {items.length} items · ₹{n(total)}</button>
-            })}
+    <div className="pos" ref={rootRef}>
+      <style>{POS_CSS}</style>
+      <div className="pos-shell">
+        {/* ── Products ── */}
+        <section className="pos-main">
+          <div className="pos-top">
+            <div className="pos-search">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+              <input ref={searchRef} autoFocus value={q} onChange={e => { setQ(e.target.value); if (done) setDone(null) }} onKeyDown={onSearchKey} placeholder="Search item or scan barcode" aria-label="Search products" />
+              {!isMobile && <kbd>F2</kbd>}
+            </div>
+            <button className="pos-ibtn" onClick={() => setScanning(true)} title="Scan with camera">📷{!isMobile && ' Scan'}</button>
+            {lastSale && <button className="pos-ibtn" onClick={() => printBill(lastSale)} title={`Reprint ${lastSale.bill_no}`}>🖨{!isMobile && ' Reprint'}</button>}
+            {!isMobile && <button className="pos-ibtn" onClick={toggleFull} title="Full screen">⛶</button>}
           </div>
-        )}
-        {!isMobile && (
-          <div style={{ display: 'flex', gap: 12, marginBottom: 10, fontSize: 11, color: '#94a3b8' }}>
-            {[['F2', 'Search'], ['F8', 'Hold bill'], ['F9', 'Charge'], ['Esc', 'Clear search']].map(([k, l]) => (
-              <span key={k}><kbd style={{ fontFamily: 'monospace', fontSize: 10.5, fontWeight: 700, color: '#475569', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, padding: '1px 5px' }}>{k}</kbd> {l}</span>
-            ))}
-          </div>
-        )}
-        {held.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center', background: '#ecfeff', border: '1px solid #a5f3fc', borderRadius: 9, padding: '7px 10px' }}>
-            <span style={{ fontSize: 11, fontWeight: 800, color: '#0e7490' }}>⏸ HELD ({held.length}):</span>
-            {held.map(h => (
-              <span key={h.id} style={{ display: 'inline-flex', alignItems: 'center', background: 'white', border: '1px solid #a5f3fc', borderRadius: 99, overflow: 'hidden' }}>
-                <button onClick={() => resumeBill(h)} title={`Held ${new Date(h.at).toLocaleTimeString('en-IN', { timeStyle: 'short' })}`} style={{ border: 'none', background: 'none', padding: '4px 4px 4px 10px', fontSize: 11.5, fontWeight: 700, color: '#0e7490', cursor: 'pointer' }}>{h.label} · ₹{n(h.total)}</button>
-                <button onClick={() => dropHeld(h)} title="Discard" style={{ border: 'none', background: 'none', padding: '4px 8px 4px 2px', fontSize: 13, color: '#94a3b8', cursor: 'pointer' }}>×</button>
-              </span>
-            ))}
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-          {[{ id: 'All', name: 'All' }, ...categories].map(c => (
-            <button key={c.id} onClick={() => setCat(c.id)}
-              style={{ padding: '6px 13px', borderRadius: 99, border: `1.5px solid ${String(cat) === String(c.id) ? NAVY : '#e2e8f0'}`, background: String(cat) === String(c.id) ? NAVY : 'white', color: String(cat) === String(c.id) ? 'white' : '#475569', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-              {c.name}
-            </button>
-          ))}
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 10, maxHeight: isMobile ? 'none' : 620, overflowY: 'auto', paddingRight: 2 }}>
-          {filtered.map(p => {
-            const out = p.stock <= 0, low = !out && p.stock <= (p.reorder_level ?? 5)
-            const price = effPrice(p), onSale = price < Number(p.price)
-            return (
-              <button key={p.id} onClick={() => addToCart(p)} disabled={out}
-                style={{ ...card, padding: 10, textAlign: 'left', cursor: out ? 'not-allowed' : 'pointer', opacity: out ? .5 : 1, position: 'relative' }}>
-                {onSale && <span style={{ position: 'absolute', top: 6, left: 6, fontSize: 9.5, fontWeight: 800, color: 'white', background: '#dc2626', padding: '2px 6px', borderRadius: 5 }}>SALE</span>}
-                <div style={{ height: 70, borderRadius: 8, background: '#f1f5f9', marginBottom: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>
-                  {p.image_url ? <img src={p.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '📦'}
-                </div>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a', lineHeight: 1.25, minHeight: 32 }}>{p.name}{p.size ? ` — ${p.size}` : ''}</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 6 }}>
-                  <span style={{ fontSize: 14, fontWeight: 900, color: onSale ? '#dc2626' : NAVY }}>₹{n(price)}</span>
-                  {(onSale || p.mrp > p.price) && <span style={{ fontSize: 10.5, color: '#94a3b8', textDecoration: 'line-through' }}>₹{n(onSale ? p.price : p.mrp)}</span>}
-                </div>
-                <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: out ? '#dc2626' : low ? '#d97706' : '#16a34a' }}>
-                  {out ? 'Out of stock' : `${p.stock} ${p.unit || 'pc'} left`}
-                </div>
-              </button>
-            )
-          })}
-          {filtered.length === 0 && <div style={{ gridColumn: '1/-1', padding: 32, textAlign: 'center', color: '#94a3b8' }}>No products found</div>}
-        </div>
-      </div>
+          {scanning && <CameraScanner onCode={onScanned} onClose={() => { setScanning(false); searchRef.current?.focus() }} />}
 
-      {/* Cart */}
-      <div style={{ ...card, position: isMobile ? 'static' : 'sticky', top: 16, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontWeight: 800, fontSize: 14, color: NAVY, display: 'flex', justifyContent: 'space-between' }}>
-          <span>🛒 Current bill</span>
-          {lines.length > 0 && (
-            <span style={{ display: 'flex', gap: 10 }}>
-              <button onClick={holdBill} style={{ background: 'none', border: 'none', color: '#0e7490', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>⏸ Hold</button>
-              <button onClick={reset} style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Clear</button>
-            </span>
-          )}
-        </div>
-        <div style={{ padding: 14 }}>
-          {lines.length === 0 ? (
-            <div style={{ textAlign: 'center', color: '#94a3b8', padding: '20px 0', fontSize: 13 }}>Tap products to add them</div>
-          ) : lines.map(l => {
-            const price = effPrice(l.p)
-            return (
-              <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid #f1f5f9' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>{l.p.name}{l.p.size ? ` — ${l.p.size}` : ''}</div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>₹{n(price)} each{price < Number(l.p.price) && <span style={{ color: '#dc2626', fontWeight: 700 }}> · sale</span>}</div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <button onClick={() => setQty(l.id, l.qty - 1)} style={btn('#f1f5f9', '#334155', { padding: '3px 9px' })}>−</button>
-                  <span style={{ minWidth: 22, textAlign: 'center', fontWeight: 800, fontSize: 13 }}>{l.qty}</span>
-                  <button onClick={() => setQty(l.id, l.qty + 1)} style={btn('#f1f5f9', '#334155', { padding: '3px 9px' })}>+</button>
-                </div>
-                <div style={{ width: 62, textAlign: 'right', fontWeight: 800, fontSize: 13 }}>₹{n(price * l.qty)}</div>
-              </div>
-            )
-          })}
-
-          {/* Customer */}
-          <div style={{ marginTop: 14 }}>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-              {[['walkin', 'Walk-in'], ['student', 'Student account']].map(([id, label]) => (
-                <button key={id} onClick={() => { setCustType(id); if (id === 'walkin') { setStudent(null); setStudentQ('') } }}
-                  style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: `1.5px solid ${custType === id ? NAVY : '#e2e8f0'}`, background: custType === id ? '#eff6ff' : 'white', color: custType === id ? NAVY : '#64748b', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                  {label}
-                </button>
+          {held.length > 0 && (
+            <div className="pos-held">
+              <span style={{ fontSize: 11.5, fontWeight: 800, color: '#0e7490', flex: 'none' }}>ON HOLD</span>
+              {held.map(h => (
+                <span key={h.id} className="h">
+                  <button onClick={() => resumeBill(h)} title={`Held at ${new Date(h.at).toLocaleTimeString('en-IN', { timeStyle: 'short' })} — tap to resume`}>⏸ {h.label} · ₹{n(h.total)}</button>
+                  <button className="x" onClick={() => dropHeld(h)} aria-label="Discard held bill">×</button>
+                </span>
               ))}
             </div>
-            {custType === 'student' ? (
-              student ? (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '8px 12px' }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: NAVY }}>{student.name}</div>
-                    <div style={{ fontSize: 11, color: '#64748b' }}>GCC-{student.gcc_no} · {student.course || '—'} · {student.hostel_type || '—'}</div>
-                  </div>
-                  <button onClick={() => { setStudent(null); setStudentQ('') }} style={btn('white', '#64748b', { border: '1px solid #e2e8f0', padding: '4px 10px' })}>Change</button>
-                </div>
-              ) : (
-                <div style={{ position: 'relative' }}>
-                  <input value={studentQ} onChange={e => setStudentQ(e.target.value)} placeholder="Student name or GCC No…" style={inp} />
-                  {studentHits.length > 0 && (
-                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #d1d5db', borderRadius: 8, zIndex: 50, boxShadow: '0 4px 12px rgba(0,0,0,.12)' }}>
-                      {studentHits.map(s => (
-                        <div key={s.id} onClick={() => { setStudent(s); setStudentQ('') }}
-                          style={{ padding: '9px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: 12.5 }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'} onMouseLeave={e => e.currentTarget.style.background = 'white'}>
-                          <strong>{s.name}</strong> <span style={{ color: '#64748b' }}>GCC-{s.gcc_no} · {s.course || '—'}</span>
-                        </div>
-                      ))}
+          )}
+
+          <div className="pos-cats">
+            {catList.map(c => <button key={c.id} className={`pos-cat${!q && String(cat) === String(c.id) ? ' on' : ''}`} onClick={() => { setCat(c.id); setQ('') }}>{c.name}</button>)}
+            {activeKits.map(k => <button key={'k' + k.id} className="pos-cat kit" onClick={() => addKit(k)} title="Adds every item in this kit">🎒 {k.name}</button>)}
+          </div>
+
+          <div className="pos-grid">
+            {filtered.map(p => {
+              const out = p.stock <= 0, low = !out && p.stock <= (p.reorder_level ?? 5)
+              const price = effPrice(p), onSale = price < Number(p.price), qty = inCart[p.id] || 0
+              return (
+                <div key={p.id} role="button" tabIndex={0} aria-disabled={out} className={`pos-tile${qty ? ' in' : ''}${out ? ' out' : ''}`} style={flash === p.id ? { transform: 'scale(.96)' } : undefined}
+                  onClick={() => !out && addToCart(p)} onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !out) { e.preventDefault(); addToCart(p) } }}>
+                  <div className="img">{p.image_url ? <img src={p.image_url} alt="" loading="lazy" /> : '📦'}</div>
+                  {qty > 0 && <span key={qty} className="qty">{qty}</span>}
+                  {qty > 0 ? <button className="minus" onClick={e => { e.stopPropagation(); setQty(p.id, qty - 1) }} aria-label={`Remove one ${p.name}`}>−</button> : onSale && <span className="tag">SALE</span>}
+                  <div className="b">
+                    <div className="nm">{p.name}{p.size && <span className="sz">{p.size}</span>}</div>
+                    <div className="pr">
+                      <b className={onSale ? 'sale' : ''}>₹{n(price)}</b>
+                      <span className="st" style={{ color: out ? 'var(--red)' : low ? 'var(--amber)' : 'var(--green)' }}>{out ? 'Sold out' : `${p.stock} left`}</span>
                     </div>
-                  )}
+                  </div>
                 </div>
               )
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <input value={custName} onChange={e => setCustName(e.target.value)} placeholder="Name (optional)" style={inp} />
-                <input value={custPhone} onChange={e => setCustPhone(e.target.value)} placeholder="Phone (optional)" style={inp} />
-              </div>
-            )}
+            })}
+            {filtered.length === 0 && <div className="pos-empty"><div style={{ fontSize: 36 }}>🔍</div><b style={{ display: 'block', color: 'var(--ink)', marginTop: 6 }}>No items found</b>{q ? `Nothing matches “${q}”.` : 'No items in this category.'}</div>}
           </div>
+          <div className="pos-hints">
+            {[['Tap', 'add item'], ['F2', 'search'], ['Enter', 'add match / scanned code'], ['F8', 'hold bill'], ['F9', 'pay']].map(([k, l]) => <span key={k}><kbd>{k}</kbd>{l}</span>)}
+          </div>
+        </section>
 
-          {/* Promo code */}
-          <div style={{ marginTop: 14 }}>
-            <label style={lbl}>Promo code</label>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input value={promoCode} onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoResult(null) }}
-                onKeyDown={e => e.key === 'Enter' && checkPromo()} placeholder="e.g. WELCOME10" style={{ ...inp, flex: 1 }} />
-              <button onClick={checkPromo} disabled={checkingPromo || !promoCode.trim()} style={btn(NAVY, 'white', { padding: '9px 14px' })}>{checkingPromo ? '…' : 'Apply'}</button>
+        {/* ── Bill ── */}
+        <aside className="pos-bill" aria-label="Current bill" ref={billRef}>
+          <div className="pos-bhead">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+              <b style={{ fontSize: 17 }}>Current sale</b>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,.55)' }}>{count ? `${count} item${count > 1 ? 's' : ''}` : 'Empty'}</span>
             </div>
-            {promoResult?.valid && (
-              <div style={{ marginTop: 5, fontSize: 12, fontWeight: 700, color: '#16a34a', display: 'flex', justifyContent: 'space-between' }}>
-                <span>✓ {promoResult.code} applied</span>
-                <button onClick={() => { setPromoCode(''); setPromoResult(null) }} style={{ background: 'none', border: 'none', color: '#dc2626', fontWeight: 700, cursor: 'pointer', fontSize: 11 }}>Remove</button>
-              </div>
-            )}
-          </div>
-
-          {/* Loyalty points */}
-          {custType === 'student' && student && loyaltyBalance != null && (
-            <div style={{ marginTop: 10, background: '#fefce8', border: '1px solid #fde047', borderRadius: 8, padding: '8px 12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, fontWeight: 700, color: '#854d0e' }}>
-                <span>⭐ {loyaltyBalance} points available</span>
-                {willEarnPts > 0 && <span style={{ color: '#16a34a' }}>+{willEarnPts} pts on this bill</span>}
-              </div>
-              {maxRedeemablePts > 0 && (
-                <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
-                  <input type="number" min={0} max={maxRedeemablePts} value={redeemPts} onChange={e => setRedeemPts(e.target.value)}
-                    placeholder="Redeem points" style={{ ...inp, padding: '6px 10px', fontSize: 12 }} />
-                  <button onClick={() => setRedeemPts(String(maxRedeemablePts))} style={btn('#fde047', '#854d0e', { padding: '6px 10px', fontSize: 11 })}>Max</button>
+            <div className="pos-seg">
+              {[['walkin', '🚶 Walk-in'], ['student', '🎓 Student']].map(([id, l]) => (
+                <button key={id} className={custType === id ? 'on' : ''} onClick={() => { setCustType(id); if (id === 'walkin') { setStudent(null); setStudentQ(''); setPartPay(false) } }}>{l}</button>
+              ))}
+            </div>
+            <div style={{ marginTop: 10, position: 'relative' }}>
+              {custType === 'student' ? (student ? (
+                <div className="pos-stu">
+                  <div className="av">{initials(student.name)}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name}</div>
+                    <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.6)' }}>GCC-{student.gcc_no} · {student.course || '—'}{loyaltyBalance != null ? ` · ⭐ ${loyaltyBalance} pts` : ''}</div>
+                  </div>
+                  <button onClick={() => { setStudent(null); setStudentQ('') }} style={{ border: 'none', background: 'rgba(255,255,255,.1)', color: '#fff', borderRadius: 8, height: 30, padding: '0 10px', fontSize: 12, fontWeight: 700 }}>Change</button>
+                </div>
+              ) : (
+                <>
+                  <input className="pos-din" autoFocus value={studentQ} onChange={e => { setStudentQ(e.target.value); setStuHi(0) }} placeholder="Type student name or GCC No."
+                    onKeyDown={e => {
+                      if (e.key === 'ArrowDown') { e.preventDefault(); setStuHi(h => Math.min(h + 1, studentHits.length - 1)) }
+                      else if (e.key === 'ArrowUp') { e.preventDefault(); setStuHi(h => Math.max(h - 1, 0)) }
+                      else if (e.key === 'Enter' && studentHits[stuHi]) { setStudent(studentHits[stuHi]); setStudentQ('') }
+                    }} />
+                  {studentHits.length > 0 && (
+                    <div className="pos-drop">
+                      {studentHits.map((s, i) => <button key={s.id} className={i === stuHi ? 'on' : ''} onMouseEnter={() => setStuHi(i)} onClick={() => { setStudent(s); setStudentQ('') }}><b>{s.name}</b> <span style={{ color: '#64748b' }}>· GCC-{s.gcc_no} · {s.course || '—'}</span></button>)}
+                    </div>
+                  )}
+                </>
+              )) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <input className="pos-din" value={custName} onChange={e => setCustName(e.target.value)} placeholder="Name (optional)" />
+                  <input className="pos-din" value={custPhone} onChange={e => setCustPhone(e.target.value)} placeholder="Phone (optional)" inputMode="tel" />
                 </div>
               )}
             </div>
+          </div>
+
+          {lines.length === 0 ? (
+            <div className="pos-bempty"><div><div className="i">🛍️</div>Tap a product or scan a barcode<br />to start the bill.</div></div>
+          ) : (
+            <div className="pos-lines">
+              {lines.map(l => {
+                const price = effPrice(l.p)
+                return (
+                  <div key={l.id} className="pos-line">
+                    <div className="th">{l.p.image_url ? <img src={l.p.image_url} alt="" /> : '📦'}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="nm">{l.p.name}{l.p.size ? ` · ${l.p.size}` : ''}</div>
+                      <div className="sub">₹{n(price)} each{price < Number(l.p.price) ? ' · sale' : ''}</div>
+                      <div className="pos-step">
+                        <button onClick={() => setQty(l.id, l.qty - 1)} aria-label="Decrease">{l.qty === 1 ? '🗑' : '−'}</button>
+                        <span>{l.qty}</span>
+                        <button onClick={() => setQty(l.id, l.qty + 1)} aria-label="Increase">+</button>
+                      </div>
+                    </div>
+                    <div className="amt">₹{n(price * l.qty)}</div>
+                  </div>
+                )
+              })}
+            </div>
           )}
 
-          {/* Totals + payment */}
-          <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div>
-              <label style={lbl}>Discount ₹{!isAdmin && ' (admin)'}</label>
-              <input type="number" min={0} value={discount} disabled={!isAdmin} onChange={e => setDiscount(e.target.value)} placeholder="0" style={{ ...inp, background: isAdmin ? 'white' : '#f1f5f9' }} />
-            </div>
-            <div>
-              <label style={lbl}>Amount paid ₹</label>
-              <input type="number" min={0} value={paidAmt} onChange={e => setPaidAmt(e.target.value)} placeholder={String(total)} style={inp} />
-            </div>
-            <div>
-              <label style={lbl}>Mode</label>
-              <select value={payMode} onChange={e => setPayMode(e.target.value)} style={inp}>{PAY_MODES.map(m => <option key={m}>{m}</option>)}</select>
-            </div>
-            <div>
-              <label style={lbl}>Txn ref{payMode !== 'Cash' ? ' *' : ''}</label>
-              <input value={txnRef} onChange={e => setTxnRef(e.target.value)} placeholder={payMode !== 'Cash' ? 'Required' : 'Optional'} style={inp} />
-            </div>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <label style={lbl}>Collected by *</label>
-            <input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Staff name" style={{ ...inp, borderColor: collectedBy.trim() ? '#d1d5db' : '#fca5a5' }} />
-          </div>
-
-          {/* Cash tendered → change */}
-          {payMode === 'Cash' && paidNum > 0 && (
-            <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, alignItems: 'end' }}>
-              <div>
-                <label style={lbl}>Cash tendered ₹</label>
-                <input type="number" min={0} value={tendered} onChange={e => setTendered(e.target.value)} placeholder="Optional" style={inp} />
+          {lines.length > 0 && (
+            <>
+              <div className="pos-adj">
+                <button className={adj === 'promo' || promoResult?.valid ? 'on' : ''} onClick={() => setAdj(a => a === 'promo' ? null : 'promo')}>🏷 {promoResult?.valid ? promoResult.code : 'Promo code'}</button>
+                {isAdmin && <button className={adj === 'discount' || discNum > 0 ? 'on' : ''} onClick={() => setAdj(a => a === 'discount' ? null : 'discount')}>₹ {discNum > 0 ? `−₹${n(discNum)}` : 'Discount'}</button>}
+                {maxRedeemablePts > 0 && <button className={adj === 'points' || redeemPtsNum > 0 ? 'on' : ''} onClick={() => setAdj(a => a === 'points' ? null : 'points')}>⭐ {redeemPtsNum > 0 ? `${redeemPtsNum} pts used` : `Use points (${loyaltyBalance})`}</button>}
               </div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                {[...new Set([Math.ceil(paidNum / 100) * 100, Math.ceil(paidNum / 500) * 500, 2000].filter(v => v >= paidNum))].slice(0, 3).map(v => (
-                  <button key={v} onClick={() => setTendered(String(v))} style={btn('#f1f5f9', '#334155', { padding: '6px 8px', fontSize: 11, border: '1px solid #e2e8f0' })}>₹{n(v)}</button>
+              {adj === 'promo' && (
+                <div className="pos-adjrow">
+                  <input className="pos-din" autoFocus value={promoCode} onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoResult(null) }} onKeyDown={e => e.key === 'Enter' && checkPromo()} placeholder="Enter code" />
+                  {promoResult?.valid ? <button onClick={() => { setPromoCode(''); setPromoResult(null) }} style={{ background: 'rgba(255,255,255,.12)', color: '#fff' }}>Remove</button> : <button onClick={checkPromo} disabled={checkingPromo || !promoCode.trim()}>{checkingPromo ? '…' : 'Apply'}</button>}
+                </div>
+              )}
+              {adj === 'discount' && isAdmin && (
+                <div className="pos-adjrow">
+                  <input className="pos-din" autoFocus type="number" min={0} value={discount} onChange={e => setDiscount(e.target.value)} onKeyDown={e => e.key === 'Enter' && setAdj(null)} placeholder="Discount in ₹" />
+                  {[5, 10].map(p => <button key={p} onClick={() => { setDiscount(String(Math.round(subtotal * p / 100))); setAdj(null) }}>{p}%</button>)}
+                </div>
+              )}
+              {adj === 'points' && maxRedeemablePts > 0 && (
+                <div className="pos-adjrow">
+                  <input className="pos-din" autoFocus type="number" min={0} max={maxRedeemablePts} value={redeemPts} onChange={e => setRedeemPts(e.target.value)} onKeyDown={e => e.key === 'Enter' && setAdj(null)} placeholder={`Up to ${maxRedeemablePts} points`} />
+                  <button onClick={() => { setRedeemPts(String(maxRedeemablePts)); setAdj(null) }}>Use max</button>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="pos-tot">
+            {lines.length > 0 && (
+              <>
+                <div className="r"><span>Subtotal</span><span>₹{n(subtotal)}</span></div>
+                {discNum > 0 && <div className="r g"><span>Discount</span><span>− ₹{n(discNum)}</span></div>}
+                {promoOff > 0 && <div className="r g"><span>Promo {promoResult.code}</span><span>− ₹{n(promoOff)}</span></div>}
+                {redeemVal > 0 && <div className="r y"><span>Points ({redeemPtsNum})</span><span>− ₹{n(redeemVal)}</span></div>}
+              </>
+            )}
+            <div className="big"><span>Total</span><b>₹{n(total)}</b></div>
+            {savings > 0 && <div style={{ fontSize: 12, color: '#86efac', fontWeight: 700, marginTop: -8, marginBottom: 10, textAlign: 'right' }}>Customer saves ₹{n(Math.round(savings))}</div>}
+            <div className="pos-sec">
+              <button onClick={holdBill} disabled={!lines.length}>⏸ Hold <span style={{ opacity: .5 }}>F8</span></button>
+              <button onClick={clearBill} disabled={!lines.length}>✕ Clear</button>
+            </div>
+            <button className="pos-pay" onClick={openPay} disabled={!lines.length}>
+              {lines.length ? <>Pay ₹{n(total)} <kbd>F9</kbd></> : 'Add items to pay'}
+            </button>
+          </div>
+        </aside>
+      </div>
+
+      {isMobile && lines.length > 0 && !payOpen && !done && (
+        <button onClick={() => billRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          style={{ position: 'fixed', left: 12, right: 12, bottom: 12, zIndex: 60, height: 56, borderRadius: 16, border: 'none', background: '#132a4f', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 18px', fontSize: 15, fontWeight: 800, boxShadow: '0 10px 30px rgba(0,0,0,.25)', fontFamily: 'inherit' }}>
+          <span>🛒 {count} item{count > 1 ? 's' : ''} · Review bill</span><span style={{ background: '#b8923a', color: '#132a4f', borderRadius: 10, padding: '6px 12px' }}>₹{n(total)}</span>
+        </button>
+      )}
+
+      {/* ── Pay screen ── */}
+      {payOpen && (
+        <div className="pos-ov" data-store-pos-pay="1" onClick={() => !saving && setPayOpen(false)}>
+          <div className="pos-sheet" ref={sheetRef} tabIndex={-1} style={{ outline: 'none' }} onClick={e => e.stopPropagation()} role="dialog" aria-label="Take payment">
+            <div className="pos-sl">
+              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.1em', color: 'var(--gold2,#e9d9b0)' }}>AMOUNT TO PAY</div>
+              <div style={{ fontSize: 50, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1.05 }}>₹{n(paidNum)}</div>
+              {dueNum > 0 && <div style={{ fontSize: 13, color: '#fca5a5', fontWeight: 700 }}>₹{n(dueNum)} goes to {student?.name?.split(' ')[0]}'s dues</div>}
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,.65)', marginTop: 4 }}>{count} item{count > 1 ? 's' : ''} · {student ? student.name : custName || 'Walk-in customer'}</div>
+              <div style={{ flex: 1, overflowY: 'auto', margin: '14px 0', maxHeight: 260 }}>
+                {lines.map(l => (
+                  <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
+                    <span style={{ color: 'rgba(255,255,255,.85)' }}>{l.p.name}{l.p.size ? ` · ${l.p.size}` : ''} <span style={{ color: 'rgba(255,255,255,.45)' }}>× {l.qty}</span></span><span>₹{n(effPrice(l.p) * l.qty)}</span>
+                  </div>
                 ))}
               </div>
-              {changeDue !== null && (
-                <div style={{ gridColumn: '1/-1', display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 900, padding: '8px 12px', borderRadius: 8, background: changeDue >= 0 ? '#f0fdf4' : '#fef2f2', color: changeDue >= 0 ? '#166534' : '#b91c1c' }}>
-                  <span>{changeDue >= 0 ? 'Return change' : 'Short by'}</span><span>₹{n(Math.abs(changeDue))}</span>
-                </div>
-              )}
+              {willEarnPts > 0 && <div style={{ fontSize: 12.5, color: 'var(--gold2,#e9d9b0)', fontWeight: 700 }}>⭐ Earns {willEarnPts} loyalty point{willEarnPts > 1 ? 's' : ''}</div>}
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,.55)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                Billed by <input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} style={{ flex: 1, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,.18)', background: 'rgba(255,255,255,.06)', color: '#fff', padding: '0 8px', fontSize: 12.5, fontFamily: 'inherit' }} />
+              </div>
             </div>
-          )}
 
-          <div style={{ marginTop: 14, fontSize: 13, color: '#475569' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span>Subtotal</span><span>₹{n(subtotal)}</span></div>
-            {discNum > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span>Discount</span><span>− ₹{n(discNum)}</span></div>}
-            {promoOff > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#16a34a' }}><span>Promo ({promoResult.code})</span><span>− ₹{n(promoOff)}</span></div>}
-            {redeemVal > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#854d0e' }}><span>Points redeemed ({redeemPtsNum})</span><span>− ₹{n(redeemVal)}</span></div>}
-            {dueNum > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', color: '#b91c1c', fontWeight: 700 }}><span>Goes to student dues</span><span>₹{n(dueNum)}</span></div>}
+            <div className="pos-sr">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <b style={{ fontSize: 18 }}>How is the customer paying?</b>
+                <button onClick={() => setPayOpen(false)} disabled={saving} aria-label="Back" style={{ width: 36, height: 36, borderRadius: 99, border: 'none', background: '#f3f0e9', fontSize: 18 }}>×</button>
+              </div>
+              <div className="pos-methods">
+                {PAY_TILES.map(([m, ic]) => <button key={m} className={`pos-m${payMode === m ? ' on' : ''}`} onMouseDown={e => e.preventDefault()} onClick={() => { setPayMode(m); setTendered(''); if (m === 'Cash') sheetRef.current?.focus() }}><span>{ic}</span>{m === 'Bank Transfer' ? 'Bank' : m}</button>)}
+              </div>
+
+              {custType === 'student' && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: '#334155' }}>
+                  <input type="checkbox" checked={partPay} onChange={e => { setPartPay(e.target.checked); setPaidAmt('') }} /> Part payment — put the rest on the student's dues
+                </label>
+              )}
+              {partPay && (
+                <div><div className="pos-lbl">Paying now ₹</div><input className="pos-in" type="number" min={0} max={total} value={paidAmt} onChange={e => setPaidAmt(e.target.value)} placeholder={`Up to ₹${n(total)} (0 = all on dues)`} /></div>
+              )}
+
+              {paidNum > 0 && (payMode === 'Cash' ? (
+                <>
+                  <div>
+                    <div className="pos-lbl">Cash received</div>
+                    <div className="pos-cashin"><span>₹{tendered ? n(tenderedNum) : <span style={{ color: '#cbd5e1' }}>0</span>}</span><small>type or tap</small></div>
+                  </div>
+                  <div className="pos-quick">
+                    {quickCash.map((v, i) => <button key={v} className={i === 0 ? 'ex' : ''} onMouseDown={e => e.preventDefault()} onClick={() => setTendered(String(v))}>{i === 0 ? 'Exact' : `₹${n(v)}`}</button>)}
+                  </div>
+                  <div className="pos-pad">
+                    {['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', '⌫'].map(k => (
+                      <button key={k} onMouseDown={e => e.preventDefault()} onClick={() => setTendered(t => k === '⌫' ? t.slice(0, -1) : (t + k).replace(/^0+/, '').slice(0, 7))}>{k}</button>
+                    ))}
+                  </div>
+                  {changeDue !== null && (
+                    <div className="pos-change" style={{ background: changeDue >= 0 ? '#ecfdf3' : '#fef2f2', color: changeDue >= 0 ? '#15803d' : '#dc2626' }}>
+                      <span>{changeDue >= 0 ? 'Give change' : 'Short by'}</span><b>₹{n(Math.abs(changeDue))}</b>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div>
+                  <div className="pos-lbl">{payMode} reference / UTR *</div>
+                  <input className="pos-in" autoFocus value={txnRef} onChange={e => setTxnRef(e.target.value)} placeholder={payMode === 'UPI' ? 'e.g. 12-digit UPI ref' : payMode === 'Card' ? 'Approval code / last 4 digits' : payMode === 'Cheque' ? 'Cheque number' : 'Transfer reference'} />
+                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>Check the payment has arrived before completing.</div>
+                </div>
+              ))}
+
+              <button className="pos-done" onClick={checkout} disabled={saving || (paidNum > 0 && payMode !== 'Cash' && !txnRef.trim()) || (changeDue !== null && changeDue < 0)}>
+                {saving ? 'Completing…' : <>✓ Complete sale · ₹{n(paidNum)} <kbd>Enter</kbd></>}
+              </button>
+            </div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 17, fontWeight: 900, color: 'white', background: NAVY, padding: '12px 14px', borderRadius: 10, marginTop: 8 }}>
-            <span>Total</span><span>₹{n(total)}</span>
-          </div>
-          <button onClick={checkout} disabled={saving || !lines.length}
-            style={{ ...btn(saving || !lines.length ? '#e2e8f0' : '#16a34a', saving || !lines.length ? '#94a3b8' : 'white'), width: '100%', padding: 14, fontSize: 15, marginTop: 10, cursor: saving || !lines.length ? 'not-allowed' : 'pointer' }}>
-            {saving ? 'Processing…' : `Charge ₹${n(paidNum)} & print bill`}
-          </button>
         </div>
-      </div>
+      )}
+
+      {/* ── Success ── */}
+      {done && (
+        <div className="pos-ov" onClick={() => { setDone(null); searchRef.current?.focus() }}>
+          <div className="pos-ok" onClick={e => e.stopPropagation()} role="dialog" aria-label="Sale complete">
+            <div className="pos-okc">✓</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#15803d', letterSpacing: '.08em' }}>SALE COMPLETE</div>
+            <div style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-.03em', margin: '4px 0' }}>₹{n(done.amount_paid)}</div>
+            <div style={{ fontSize: 13.5, color: '#64748b' }}>{done.bill_no} · {done.items} item{done.items > 1 ? 's' : ''}{done.mode ? ` · ${done.mode}` : ''}{done.customer_name ? ` · ${done.customer_name}` : ''}</div>
+            {Number(done.change) > 0 && <div className="pos-change" style={{ background: '#ecfdf3', color: '#15803d', margin: '16px 0 0' }}><span>Give change</span><b>₹{n(done.change)}</b></div>}
+            {done.due > 0 && <div className="pos-change" style={{ background: '#fef2f2', color: '#dc2626', margin: '12px 0 0', fontSize: 14 }}><span>Added to student dues</span><b style={{ fontSize: 22 }}>₹{n(done.due)}</b></div>}
+            {done.points > 0 && <div style={{ fontSize: 13, color: '#b45309', fontWeight: 700, marginTop: 10 }}>⭐ +{done.points} loyalty points earned</div>}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 8, marginTop: 20 }}>
+              <button onClick={() => printBill(done)} style={{ height: 52, borderRadius: 14, border: '1.5px solid #e7e3da', background: '#fff', fontWeight: 800, fontSize: 14 }}>🖨 {autoPrint ? 'Print again' : 'Print bill'}</button>
+              <button onClick={() => { setDone(null); searchRef.current?.focus() }} autoFocus style={{ height: 52, borderRadius: 14, border: 'none', background: '#132a4f', color: '#fff', fontWeight: 800, fontSize: 15 }}>New sale ↵</button>
+            </div>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: '#64748b', marginTop: 14, cursor: 'pointer' }}>
+              <input type="checkbox" checked={autoPrint} onChange={e => { setAutoPrint(e.target.checked); try { localStorage.setItem(AUTOPRINT_KEY, e.target.checked ? 'on' : 'off') } catch {} }} /> Print the bill automatically after every sale
+            </label>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
