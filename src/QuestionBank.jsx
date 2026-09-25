@@ -436,6 +436,99 @@ const tdS = { padding:'10px 12px', color:C.slate, fontSize:13 }
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 const today = () => new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })
 
+// Fisher–Yates shuffle (returns a new array). `arr.sort(() => Math.random()-.5)`
+// is NOT a uniform shuffle — some orderings come up far more often than
+// others — which skews which questions land in papers and tests.
+function shuffled(arr) {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
+// jsPDF's built-in Helvetica only covers WinAnsi (Latin-1 + a few extras).
+// Characters outside it (√, π, ≤, ₹, …) come out as garbage in the PDF,
+// so common math/currency symbols are spelled out and anything else
+// outside the set is replaced with '?' instead of silently corrupting.
+const PDF_SYMBOL_MAP = {
+  '√':'sqrt', '∛':'cbrt', 'π':'pi', '≤':'<=', '≥':'>=', '≠':'!=', '≈':'~=',
+  '₹':'Rs.', '∠':'angle ', '△':'triangle ', '∆':'triangle ', 'Δ':'Delta', '∞':'infinity',
+  '−':'-', '–':'-', '—':'-', '‘':"'", '’':"'", '“':'"', '”':'"', '…':'...',
+  '⁴':'^4', '⁵':'^5', '⁶':'^6', '⁷':'^7', '⁸':'^8', '⁹':'^9', '⁰':'^0', 'ⁿ':'^n',
+  '₀':'0', '₁':'1', '₂':'2', '₃':'3', '₄':'4', '₅':'5', '₆':'6', '₇':'7', '₈':'8', '₉':'9',
+  '⅓':'1/3', '⅔':'2/3', '⅛':'1/8', '⅜':'3/8', '⅝':'5/8', '⅞':'7/8', '⅕':'1/5',
+  'θ':'theta', 'α':'alpha', 'β':'beta', '∴':'therefore', '∵':'because', '∶':':', '→':'->',
+}
+// Chars jsPDF's WinAnsi encoding can render beyond plain ASCII/Latin-1.
+const WINANSI_EXTRA = new Set('€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ')
+function pdfSafe(text) {
+  let out = ''
+  for (const ch of String(text ?? '')) {
+    const code = ch.codePointAt(0)
+    if (code < 0x100 || WINANSI_EXTRA.has(ch)) out += ch
+    else if (PDF_SYMBOL_MAP[ch] !== undefined) out += PDF_SYMBOL_MAP[ch]
+    else out += '?'
+  }
+  return out
+}
+
+// ── DIAGRAM UPLOAD VALIDATION ────────────────────────────────────────────────
+// `accept="image/*"` is only a hint to the file picker. Validate type and
+// size before upload, and derive the extension from the MIME type rather
+// than the user-supplied filename. SVG is deliberately excluded: it can
+// carry script and is served from a public URL.
+const DIAGRAM_MIME_EXT = { 'image/png':'png', 'image/jpeg':'jpg', 'image/webp':'webp', 'image/gif':'gif' }
+const DIAGRAM_MAX_BYTES = 5 * 1024 * 1024
+
+// Returns the storage object path for a public URL in DIAGRAM_BUCKET, or
+// null if the URL isn't one of ours (never try to delete a foreign file).
+function diagramPathFromUrl(url) {
+  if (!url) return null
+  const marker = `/storage/v1/object/public/${DIAGRAM_BUCKET}/`
+  const i = url.indexOf(marker)
+  if (i === -1) return null
+  return decodeURIComponent(url.slice(i + marker.length).split('?')[0])
+}
+
+// Best-effort cleanup so replaced/deleted diagrams don't pile up in storage.
+async function removeDiagrams(urls) {
+  const paths = urls.map(diagramPathFromUrl).filter(Boolean)
+  if (!paths.length) return
+  const { error } = await supabase.storage.from(DIAGRAM_BUCKET).remove(paths)
+  if (error) console.warn('Diagram cleanup failed:', error.message)
+}
+
+// ── CSV PARSING ──────────────────────────────────────────────────────────────
+// Quote-aware CSV → array of rows (array of trimmed cells). Unlike splitting
+// on newlines first, this keeps line breaks and commas that sit inside a
+// quoted cell as part of that cell.
+function parseCSV(text) {
+  const rows = []
+  let row = [], cur = '', inQuotes = false
+  const src = String(text || '')
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i]
+    if (inQuotes) {
+      if (ch === '"' && src[i+1] === '"') { cur += '"'; i++ }
+      else if (ch === '"') inQuotes = false
+      else cur += ch
+    } else if (ch === '"') inQuotes = true
+    else if (ch === ',') { row.push(cur); cur = '' }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && src[i+1] === '\n') i++
+      row.push(cur); cur = ''
+      rows.push(row); row = []
+    } else cur += ch
+  }
+  row.push(cur)
+  rows.push(row)
+  return rows
+    .map(r => r.map(c => c.trim()))
+    .filter(r => r.some(c => c !== ''))
+}
+
 function Badge({ text, color, bg, border }) {
   return (
     <span style={{ padding:'2px 9px', borderRadius:99, fontSize:10, fontWeight:700,
@@ -643,21 +736,22 @@ function CastButton({ url, presentTargetId, title, showToast, small }) {
 }
 
 // ── SMART PPT: .pptx EXPORT ─────────────────────────────────────────────────
-// Uses PptxGenJS (lazy-loaded from CDN, same pattern as jsPDF above) to
-// generate a real, downloadable .pptx that opens in PowerPoint/Keynote/
-// Google Slides/LibreOffice — not an HTML mockup.
-async function ensurePptxGenLoaded() {
-  if (window.PptxGenJS) return
-  await new Promise((res, rej) => {
-    const s = document.createElement('script')
-    s.src = 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js'
-    s.onload = res; s.onerror = rej; document.head.appendChild(s)
-  })
+// Uses PptxGenJS (bundled npm dependency, code-split via dynamic import —
+// no runtime CDN script, so it works offline in the app and can't be
+// swapped out by a compromised CDN) to generate a real, downloadable .pptx
+// that opens in PowerPoint/Keynote/Google Slides/LibreOffice.
+//
+// A .pptx can't embed the BMEI04 font, so BMEI04-encoded Mayek text is
+// converted to real Unicode Meetei Mayek here and set in Noto Sans Meetei
+// Mayek (which the viewer's machine needs installed to display it).
+function slideMayekUnicode(text, fontTag) {
+  if (!text) return ''
+  return fontTag === 'bmei04' ? romanToMeetei(text) : text
 }
 
 async function generateQuestionPPTX({ title, subject, chapter, slides, withAnswers }) {
-  await ensurePptxGenLoaded()
-  const pres = new window.PptxGenJS()
+  const { default: PptxGenJS } = await import('pptxgenjs')
+  const pres = new PptxGenJS()
   pres.defineLayout({ name: 'GNSI16x9', width: 10, height: 5.63 })
   pres.layout = 'GNSI16x9'
 
@@ -677,7 +771,9 @@ async function generateQuestionPPTX({ title, subject, chapter, slides, withAnswe
     slide.addText(q.title, { x:0.4, y:0.75, w:9.2, h:1.6, fontSize:20, bold:true, color:NAVY, valign:'top' })
 
     if (q.title_mayek) {
-      slide.addText(q.title_mayek, { x:0.4, y:2.15, w:9.2, h:0.6, fontSize:14, color:'374151' })
+      slide.addText(slideMayekUnicode(q.title_mayek, q.title_mayek_font), {
+        x:0.4, y:2.15, w:9.2, h:0.6, fontSize:14, color:'374151', fontFace:'Noto Sans Meetei Mayek',
+      })
     }
 
     const optY = q.title_mayek ? 2.85 : 2.35
@@ -874,11 +970,23 @@ function needsDiagram(questionText) {
 function extractOptionsFromLine(line) {
   const norm = line.replace(/\t+/g, ' ').replace(/  +/g, ' ').trim()
   const result = {}
-  const markerRe = /\(([a-dA-D])\)[ ]|([a-dA-D])[.)]\s/g
+  // A marker must start the line or follow whitespace — otherwise the last
+  // letter of a word ("Kolkata. (d) …" → "a. ") was read as a marker and
+  // truncated the option. Markers must also appear in A→D order, so a
+  // stray standalone letter inside an option ("(a) Vitamin A. (b) …")
+  // can't restart the sequence.
+  // The trailing whitespace is a lookahead, not consumed, so it can still
+  // serve as the leading whitespace of the next marker.
+  const markerRe = /(^|\s)(?:\(([a-dA-D])\)|([a-dA-D])[.)](?=\s))/g
   const positions = []
+  let lastLetter = ''
   let mm
   while ((mm = markerRe.exec(norm)) !== null) {
-    positions.push({ letter: (mm[1] || mm[2]).toUpperCase(), start: mm.index, end: mm.index + mm[0].length })
+    const letter = (mm[2] || mm[3]).toUpperCase()
+    if (lastLetter && letter <= lastLetter) continue
+    lastLetter = letter
+    const start = mm.index + mm[1].length
+    positions.push({ letter, start, end: mm.index + mm[0].length })
   }
   positions.forEach((pos, idx) => {
     const valueStart = pos.end
@@ -911,6 +1019,30 @@ const ENGLISH_SIGNAL_WORDS = new Set([
   'system','numeral','write','find','that','this','can','divisible',
   'remainder','symbol','symbols','correct','incorrect','always','never',
   'not','less','more','equal','before','after','there','only',
+  // Instruction verbs / common exam vocabulary — short English prompts
+  // like "Simplify: 3/4 + 1/2" or "Evaluate 15 × 4" have none of the
+  // function words above and were being misread as transliteration.
+  'simplify','evaluate','solve','calculate','compute','convert','express',
+  'arrange','complete','choose','select','identify','fill','blank','given',
+  'below','above','answer','question','statement','statements','true','false',
+  'option','options','word','words','meaning','opposite','similar','sentence',
+  'figure','series','next','missing','odd','out','largest','total','average',
+  'ratio','percent','percentage','profit','loss','area','perimeter','speed',
+  'distance','price','cost','its','his','her','their','be','has','have','will',
+  // Number words, pronouns and common verbs — measured against the
+  // English/BMEI04 line pairs in question_bank.json + extracted_mayek.json,
+  // these almost never occur as tokens in BMEI04 lines. Units (km, cm, kg,
+  // Rs) are deliberately NOT here: BMEI04 lines keep them in Latin too.
+  'one','two','three','four','five','six','seven','eight','nine','ten',
+  'twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety',
+  'hundred','thousand','lakh','crore','million','tenths','hundredths',
+  'thousandths','ones','into','he','she','they','we','you','him','them',
+  'our','your','these','those','did','does','do','had','get','add','every',
+  'than','much','some','all','any','other','between','same','different',
+  'still','left','but','so','because','about','made','make','would',
+  'should','could','must','may','none','when','where','who','whom','whose',
+  'why','name','having','rate','month','gain','money','amount','long',
+  'wide','high','greater','negative','respectively','start','numerals',
 ])
 function englishWordScore(line) {
   const words = (line.match(/[A-Za-z']+/g) || []).map(w => w.toLowerCase())
@@ -923,6 +1055,11 @@ function isLikelyMayekTransliteration(line) {
   // all — this function is only meaningful for actual continuation text,
   // callers already filter those out before reaching here.
   if (!line.trim()) return false
+  // Lines with fewer than two words ("3/4 + 1/2 = ?", "x = 5") carry too
+  // little signal to call either way — treat them as English so they stay
+  // in the question text instead of being rendered in the BMEI04 font.
+  const wordCount = (line.match(/[A-Za-z']+/g) || []).length
+  if (wordCount < 2) return false
   return englishWordScore(line) < 0.25
 }
 
@@ -947,7 +1084,10 @@ function parseQuestions(rawText) {
   }
 
   const isQuestionStart = (line) => /^(Q?\s*\d+[\.\)]\s+|Q\s*\d+\s+)/i.test(line.trim())
-  const hasOptionMarker = (line) => /\(?\s*[a-dA-D]\s*[.)]\s*.{1,}/i.test(line.trim())
+  // Anchored to the start of the line: an unanchored match fired on any
+  // sentence containing a word ending in a–d followed by "." (e.g. "He
+  // walked. Then …"), which ended the question early and dropped text.
+  const hasOptionMarker = (line) => /^\(?\s*[a-dA-D]\s*[.)]\s*\S/.test(line.trim())
 
   while (i < lines.length) {
     const line = lines[i].trim()
@@ -1009,8 +1149,11 @@ function parseQuestions(rawText) {
       i = k
 
       if (i < lines.length && isAnswerLine(lines[i].trim())) {
-        const ans = lines[i].match(/[a-dA-D]/i)
-        if (ans) correctOption = ans[0].toUpperCase()
+        // Take the letter AFTER the "Ans"/"Answer" label — matching the
+        // first a–d anywhere picked up the "A" of "Answer", so every
+        // "Answer: B" line was saved as A.
+        const ans = lines[i].trim().match(/^(?:ans(?:wer)?\s*[:.-]?\s*)?\(?([a-d])\)?/i)
+        if (ans) correctOption = ans[1].toUpperCase()
         i++
       }
 
@@ -1057,8 +1200,11 @@ function parseQuestions(rawText) {
 
 function parseAnswerKey(keyText) {
   const map = {}
-  const matches = keyText.matchAll(/Q?(\d+)[.\-\)\s:]+([a-dA-D])/gi)
-  for (const m of matches) { map[parseInt(m[1])] = m[2].toUpperCase() }
+  // Optional "Ans"/"Answer" label and optional brackets around the letter;
+  // the letter must stand alone (not the "A" of "Ans", not the start of a
+  // word), which is what made "Q12 : Ans c" parse as A.
+  const re = /Q?\s*(\d+)\s*[.)\s:-]*\s*(?:ans(?:wer)?\s*[:.-]?\s*)?\(?([a-dA-D])\)?(?![A-Za-z])/gi
+  for (const m of keyText.matchAll(re)) { map[parseInt(m[1])] = m[2].toUpperCase() }
   return map
 }
 
@@ -1099,6 +1245,10 @@ function normalizeQuestionText(text) {
 // Returns the matched existing row's id alongside isDuplicate (not just
 // a boolean) — the Replace-on-duplicate flow needs to know which
 // existing row to update, and normalized text alone doesn't carry that.
+//
+// Also flags repeats WITHIN the candidate batch (the same question pasted
+// twice): those carry batchDupOf (index of the first copy) and no
+// existingId, so they can only be skipped or saved as new, not "replaced".
 function findDuplicates(candidateRows, existingQuestions) {
   const byScope = new Map() // "subject|chapter" -> Map<normalizedText, existingId>
   const untaggedMap = new Map()
@@ -1113,14 +1263,47 @@ function findDuplicates(candidateRows, existingQuestions) {
     }
   }
 
+  const seenInBatch = new Map() // "scope|norm" -> first index
   return candidateRows.map((r, i) => {
     const norm = normalizeQuestionText(r.question)
     const scopeKey = r.subject && r.chapter ? `${r.subject}|${r.chapter}` : null
     const scopeMap = scopeKey ? byScope.get(scopeKey) : null
     const matchMap = scopeMap || untaggedMap
     const existingId = matchMap.get(norm)
-    return { index: i, isDuplicate: existingId !== undefined, existingId }
+    const batchKey = `${scopeKey || ''}|${norm}`
+    const batchDupOf = seenInBatch.get(batchKey)
+    if (batchDupOf === undefined) seenInBatch.set(batchKey, i)
+    return {
+      index: i,
+      isDuplicate: existingId !== undefined || batchDupOf !== undefined,
+      existingId,
+      batchDupOf: existingId === undefined ? batchDupOf : undefined,
+    }
   }).filter(r => r.isDuplicate)
+}
+
+// Fetches the CURRENT bank rows (id/question/subject/chapter only) for the
+// chapters a batch is about to be saved into. The in-memory question list
+// can be up to QBANK_CACHE_TTL_MS stale and never includes other users'
+// recent inserts, so saves re-check duplicates against this live slice.
+// Returns null if the lookup fails (caller falls back to the cached list).
+async function fetchLiveDupPool(rows) {
+  const chapters = [...new Set(rows.map(r => r.chapter).filter(Boolean))]
+  if (!chapters.length) return []
+  const PAGE = 1000
+  let all = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from('qbank_questions')
+      .select('id, question, subject, chapter')
+      .in('chapter', chapters)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) return null
+    all = all.concat(data || [])
+    if (!data || data.length < PAGE) break
+  }
+  return all
 }
 
 // ── SHARED: auto-download a JSON backup before a destructive delete ────────
@@ -1149,35 +1332,16 @@ function downloadQuestionsBackup(rows, label) {
 // ── CSV IMPORT ─────────────────────────────────────────────────────────────
 // Expected header row (case-insensitive, order-independent):
 // question, option_a, option_b, option_c, option_d, correct_option, subject, chapter, subsection, difficulty, marks
-function parseCSVLine(line) {
-  const cells = []
-  let cur = '', inQuotes = false
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]
-    if (inQuotes) {
-      if (ch === '"' && line[i+1] === '"') { cur += '"'; i++ }
-      else if (ch === '"') inQuotes = false
-      else cur += ch
-    } else {
-      if (ch === '"') inQuotes = true
-      else if (ch === ',') { cells.push(cur); cur = '' }
-      else cur += ch
-    }
-  }
-  cells.push(cur)
-  return cells.map(c => c.trim())
-}
-
+// Parsed with parseCSV (quote-aware across line breaks) — see helpers above.
 function parseCSVQuestions(csvText, defaultCourse, defaultSubject, defaultChapter) {
-  const lines = csvText.split(/\r?\n/).filter(l => l.trim())
-  if (lines.length < 2) return []
-  const header = parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/\s+/g,'_'))
+  const rows = parseCSV(csvText)
+  if (rows.length < 2) return []
+  const header = rows[0].map(h => h.toLowerCase().replace(/\s+/g,'_'))
   const colIdx = (name) => header.indexOf(name)
   const qi = colIdx('question')
   if (qi === -1) return []
 
-  return lines.slice(1).map((line, i) => {
-    const cells = parseCSVLine(line)
+  return rows.slice(1).map((cells, i) => {
     const get = (name) => { const idx = colIdx(name); return idx>=0 ? (cells[idx]||'').trim() : '' }
     const question = get('question')
     if (!question) return null
@@ -1194,7 +1358,7 @@ function parseCSVQuestions(csvText, defaultCourse, defaultSubject, defaultChapte
       chapter: get('chapter') || defaultChapter || '',
       subsection: get('subsection') || '',
       difficulty: ['Easy','Medium','Hard'].includes(get('difficulty')) ? get('difficulty') : 'Medium',
-      marks: parseInt(get('marks')) || 1,
+      marks: MARKS_OPTIONS.includes(parseInt(get('marks'))) ? parseInt(get('marks')) : 1,
       diagram_url: '',
       _subsectionHint: '',
       _needsDiagram: needsDiagram(question),
@@ -1404,22 +1568,50 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     })
   }, [questions, filterCourse, filterSubject, filterChapter, filterSubsection, filterDiff, filterDiagram, search])
 
+  // One pass over the bank for the subject cards, instead of a full
+  // filter per subject on every render.
+  const subjectCounts = useMemo(() => {
+    const m = new Map()
+    for (const q of questions) {
+      if (filterCourse !== 'All' && (q.course || '') !== filterCourse) continue
+      m.set(q.subject, (m.get(q.subject) || 0) + 1)
+    }
+    return m
+  }, [questions, filterCourse])
+
   const totalPages   = Math.max(1, Math.ceil(filtered.length / PAGE))
   const paginated    = filtered.slice((page-1)*PAGE, page*PAGE)
+
+  // A selection only ever covers what the admin can currently see: changing
+  // any filter or the search clears it, so a bulk delete can't include
+  // rows hidden by a filter picked after they were checked.
+  useEffect(() => { setSelected(new Set()) },
+    [filterCourse, filterSubject, filterChapter, filterSubsection, filterDiff, filterDiagram, search])
 
   const toggleSelect = (id) => setSelected(prev => {
     const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
   })
-  const toggleAll = () => {
-    if (selected.size === paginated.length) setSelected(new Set())
-    else setSelected(new Set(paginated.map(q => q.id)))
-  }
+  const allOnPageSelected = paginated.length > 0 && paginated.every(q => selected.has(q.id))
+  const toggleAll = () => setSelected(prev => {
+    const n = new Set(prev)
+    if (allOnPageSelected) paginated.forEach(q => n.delete(q.id))
+    else paginated.forEach(q => n.add(q.id))
+    return n
+  })
 
   const handleDelete = async (id) => {
     if (!confirm('Delete this question?')) return
-    const { error } = await supabase.from('qbank_questions').delete().eq('id', id)
+    const row = questions.find(q => q.id === id)
+    // count: row-level security silently filters out rows the user may not
+    // delete (no error), so check that the row was really removed.
+    const { error, count } = await supabase.from('qbank_questions').delete({ count:'exact' }).eq('id', id)
     if (error) showToast('Delete failed: ' + error.message, C.rose)
-    else { showToast('Deleted ✓', C.rose); refetch(true) }
+    else if (!count) showToast('Nothing was deleted — the question is already gone, or you lack permission', C.amber)
+    else {
+      if (row?.diagram_url) removeDiagrams([row.diagram_url])
+      setSelected(prev => { const n = new Set(prev); n.delete(id); return n })
+      showToast('Deleted ✓', C.rose); refetch(true)
+    }
   }
 
   const handleBulkDelete = async () => {
@@ -1427,18 +1619,42 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     // Auto-backup: download the full content of every row about to be
     // deleted, BEFORE the delete call fires — see downloadQuestionsBackup's
     // own comment for why this runs synchronously ahead of the request.
+    // Diagram images are kept on bulk delete (not removed from storage)
+    // so the backup's diagram_url links stay restorable.
     const rowsToDelete = questions.filter(q => selected.has(q.id))
     downloadQuestionsBackup(rowsToDelete, `bulk_${selected.size}`)
-    const { error } = await supabase.from('qbank_questions').delete().in('id', [...selected])
-    if (error) showToast('Bulk delete failed', C.rose)
-    else { showToast(`${selected.size} questions deleted (backup downloaded)`, C.rose); setSelected(new Set()); refetch(true) }
+    const { error, count } = await supabase.from('qbank_questions').delete({ count:'exact' }).in('id', [...selected])
+    if (error) showToast('Bulk delete failed: ' + error.message, C.rose)
+    else if (!count) showToast('Nothing was deleted — you may lack permission', C.amber)
+    else { showToast(`${count} questions deleted (backup downloaded)`, C.rose); setSelected(new Set()); refetch(true) }
+  }
+
+  const startEdit = (q) => setEditQ({ ...q, _savedDiagramUrl: q.diagram_url || '' })
+  const cancelEdit = () => {
+    // Drop a diagram uploaded during this edit that is now being discarded.
+    if (editQ?.diagram_url && editQ.diagram_url !== editQ._savedDiagramUrl) removeDiagrams([editQ.diagram_url])
+    setEditQ(null)
   }
 
   const handleEditSave = async (updatedQ) => {
-    const { id, _id, _qNum, _subsectionHint, _needsDiagram, ...payload } = updatedQ
-    const { error } = await supabase.from('qbank_questions').update(payload).eq('id', id)
+    const { id, _id, _qNum, _subsectionHint, _needsDiagram, _savedDiagramUrl, ...payload } = updatedQ
+    // Same required fields as Manual Add — an edit must not be able to
+    // save a question with no text, too few options, or no answer.
+    const missing = []
+    if (!payload.course) missing.push('course')
+    if (!payload.subject) missing.push('subject')
+    if (!payload.chapter) missing.push('chapter')
+    if (!payload.question?.trim()) missing.push('question')
+    if (!payload.option_a?.trim() || !payload.option_b?.trim()) missing.push('options A and B')
+    if (!['A','B','C','D'].includes(payload.correct_option)) missing.push('correct answer')
+    if (missing.length) { showToast(`Fill in: ${missing.join(', ')}`, C.amber); return }
+    const { data, error } = await supabase.from('qbank_questions').update(payload).eq('id', id).select('id')
     if (error) showToast('Update failed: ' + error.message, C.rose)
-    else { showToast('Updated ✓', C.green); setEditQ(null); refetch(true) }
+    else if (!data?.length) showToast('Nothing was updated — the question no longer exists, or you lack permission', C.amber)
+    else {
+      if (_savedDiagramUrl && _savedDiagramUrl !== payload.diagram_url) removeDiagrams([_savedDiagramUrl])
+      showToast('Updated ✓', C.green); setEditQ(null); refetch(true)
+    }
   }
 
   return (
@@ -1469,7 +1685,7 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
       <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:20 }}>
         {courseSubjectList.map(s => {
           const sc = SC[s] || SC.Mathematics
-          const count = questions.filter(q => q.subject === s && (filterCourse === 'All' || (q.course || '') === filterCourse)).length
+          const count = subjectCounts.get(s) || 0
           return (
             <div key={s} onClick={() => { setFilterSubject(s); setFilterChapter('All'); setFilterSubsection('All'); setPage(1) }}
               style={{ flex:1, minWidth:130, padding:'13px 15px', borderRadius:10,
@@ -1545,7 +1761,7 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
             onRemove={null} showImageUpload showToast={showToast} />
           <div style={{ display:'flex', gap:8, marginTop:12 }}>
             <button onClick={() => handleEditSave(editQ)} style={btn(C.green)}>✅ Save Changes</button>
-            <button onClick={() => setEditQ(null)} style={btn(C.slate)}>Cancel</button>
+            <button onClick={cancelEdit} style={btn(C.slate)}>Cancel</button>
           </div>
         </div>
       )}
@@ -1560,7 +1776,7 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
             <>
               {isAdmin && (
                 <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
-                  <input type="checkbox" checked={selected.size===paginated.length && paginated.length>0}
+                  <input type="checkbox" checked={allOnPageSelected}
                     onChange={toggleAll} />
                   <span style={{ fontSize:12, color:C.slate }}>Select all on page</span>
                 </div>
@@ -1569,7 +1785,7 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
                 <QCard key={q.id} q={q} index={(page-1)*PAGE+i}
                   selectable={isAdmin} selected={selected.has(q.id)}
                   onToggle={isAdmin ? toggleSelect : undefined}
-                  onEdit={isAdmin ? setEditQ : undefined}
+                  onEdit={isAdmin ? startEdit : undefined}
                   onDelete={isAdmin ? handleDelete : undefined} />
               ))}
             </>
@@ -1602,12 +1818,22 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0]
+    e.target.value = '' // allow re-picking the same file after an error
     if (!file) return
-    const ext  = file.name.split('.').pop()
-    const path = `q_${Date.now()}_${index}.${ext}`
-    const { error } = await supabase.storage.from(DIAGRAM_BUCKET).upload(path, file, { upsert:true })
+    const ext = DIAGRAM_MIME_EXT[file.type]
+    if (!ext) { showToast('Diagram must be a PNG, JPEG, WebP or GIF image', C.amber); return }
+    if (file.size > DIAGRAM_MAX_BYTES) { showToast('Diagram is larger than 5 MB — please compress it', C.amber); return }
+    const rand = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)
+    const path = `q_${Date.now()}_${rand}.${ext}`
+    const { error } = await supabase.storage.from(DIAGRAM_BUCKET)
+      .upload(path, file, { upsert:false, contentType: file.type })
     if (error) { showToast('Image upload failed: ' + error.message, C.rose); return }
     const { data } = supabase.storage.from(DIAGRAM_BUCKET).getPublicUrl(path)
+    // A diagram uploaded earlier in this same unsaved form (not yet on any
+    // saved question) would be orphaned by this change — remove it. The
+    // saved question's original diagram is only removed once the edit is
+    // actually saved (see handleEditSave), so Cancel never loses it.
+    if (row.diagram_url && row.diagram_url !== row._savedDiagramUrl) removeDiagrams([row.diagram_url])
     onChange(index, 'diagram_url', data.publicUrl)
     showToast('Diagram uploaded ✓', C.green)
   }
@@ -1753,7 +1979,7 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
                   style={{ fontSize:11, color:C.green }}>✅ View</a>
               )}
             </div>
-            <input ref={fileRef} type="file" accept="image/*"
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif"
               style={{ display:'none' }} onChange={handleImageUpload} />
           </div>
         )}
@@ -1766,6 +1992,37 @@ function QuestionRowForm({ row, index, onChange, onRemove, showImageUpload, show
 // TAB 2: MANUAL ADD
 // Patch: StudyMaterialsRefPanel + emit QUESTION_SAVED after save
 // ══════════════════════════════════════════════════════════════════════════════
+// Emits one QUESTION_SAVED per distinct subject+chapter actually saved —
+// a single event carrying only the first row's (or the batch-level,
+// possibly blank) chapter left StudyMaterial badges for every other
+// chapter in the batch stale.
+function emitQuestionsSaved(rows) {
+  const groups = new Map()
+  for (const r of rows) {
+    const key = `${r.subject}|${r.chapter}`
+    const g = groups.get(key) || { subject: r.subject, chapter: r.chapter, count: 0 }
+    g.count++
+    groups.set(key, g)
+  }
+  for (const g of groups.values()) EventBus.emit(GNSI_EVENTS.QUESTION_SAVED, g)
+}
+
+// Fields a bulk-paste "Replace Existing" is allowed to write. Pasted rows
+// carry blanks for anything the paste didn't contain (diagram_url: '',
+// question_mayek: '', unmarked correct_option: '' …); writing those blanks
+// over the existing row wiped its diagram, Mayek text and answer. Only
+// non-empty values from the paste are applied.
+function replacePayload(row) {
+  const out = {}
+  for (const [k, v] of Object.entries(row)) {
+    if (v === '' || v === null || v === undefined) continue
+    out[k] = v
+  }
+  // question_mayek_font only makes sense alongside the text it describes.
+  if (!out.question_mayek) delete out.question_mayek_font
+  return out
+}
+
 const emptyRow = () => ({
   course:'', subject:'', chapter:'', subsection:'', question:'', question_mayek:'',
   option_a:'', option_b:'', option_c:'', option_d:'',
@@ -1780,7 +2037,16 @@ function TabManualAdd({ questions, refetch, showToast, onNavigate }) {
   const updateRow = (i, key, val) =>
     setRows(prev => prev.map((r, idx) => idx===i ? {...r,[key]:val} : r))
   const addRow    = () => setRows(prev => [...prev, emptyRow()])
-  const removeRow = (i) => setRows(prev => prev.filter((_,idx) => idx!==i))
+  // Diagrams uploaded for rows that are discarded before saving would
+  // otherwise sit in storage forever with nothing pointing at them.
+  const removeRow = (i) => {
+    if (rows[i]?.diagram_url) removeDiagrams([rows[i].diagram_url])
+    setRows(prev => prev.filter((_,idx) => idx!==i))
+  }
+  const clearAll = () => {
+    removeDiagrams(rows.map(r => r.diagram_url).filter(Boolean))
+    setRows([emptyRow()])
+  }
 
   // Subject and chapter of first row — drives the reference panel
   const refSubject = rows[0]?.subject
@@ -1790,14 +2056,23 @@ function TabManualAdd({ questions, refetch, showToast, onNavigate }) {
     const invalid = rows.filter(r => !r.course || !r.subject || !r.chapter || !r.question || !r.option_a || !r.option_b || !r.correct_option)
     if (invalid.length) { showToast(`${invalid.length} row(s) incomplete — fill all required fields`, C.amber); return }
 
+    setSaving(true)
     // ── Duplicate check — feature #6 ──
-    const dupes = findDuplicates(rows, questions || [])
+    // Checked against the live bank for these chapters (falls back to the
+    // cached list if that lookup fails), and also catches the same
+    // question entered twice in this form.
+    const live = await fetchLiveDupPool(rows)
+    const dupes = findDuplicates(rows, live || questions || [])
     if (dupes.length) {
-      const go = confirm(`${dupes.length} question(s) look identical to ones already in the bank (Q${dupes.map(d=>d.index+1).join(', Q')}). Save anyway?`)
-      if (!go) return
+      const inBank  = dupes.filter(d => d.existingId !== undefined).map(d => d.index + 1)
+      const inForm  = dupes.filter(d => d.batchDupOf !== undefined).map(d => d.index + 1)
+      const parts = []
+      if (inBank.length) parts.push(`${inBank.length} look identical to ones already in the bank (Q${inBank.join(', Q')})`)
+      if (inForm.length) parts.push(`${inForm.length} repeat an earlier row in this form (Q${inForm.join(', Q')})`)
+      const go = confirm(`${parts.join('; ')}. Save anyway?`)
+      if (!go) { setSaving(false); return }
     }
 
-    setSaving(true)
     const payload = rows.map(r => ({
       ...r,
       subsection: r.subsection || detectSubsection(r.question, r.subject),
@@ -1805,8 +2080,8 @@ function TabManualAdd({ questions, refetch, showToast, onNavigate }) {
     const { error } = await supabase.from('qbank_questions').insert(payload)
     if (error) { showToast('Save failed: ' + error.message, C.rose); setSaving(false); return }
     showToast(`✅ ${rows.length} question(s) saved!`, C.green)
-    // ── PATCH: notify StudyMaterial badge to refresh ──
-    EventBus.emit(GNSI_EVENTS.QUESTION_SAVED, { subject: refSubject, chapter: refChapter, count: rows.length })
+    // ── PATCH: notify StudyMaterial badges (one event per chapter saved) ──
+    emitQuestionsSaved(rows)
     setRows([emptyRow()]); refetch(true)
     setSaving(false)
   }
@@ -1836,7 +2111,7 @@ function TabManualAdd({ questions, refetch, showToast, onNavigate }) {
         <button onClick={handleSave} disabled={saving} style={btn(C.navy, saving)}>
           {saving ? '⏳ Saving…' : `✅ Save ${rows.length} Question${rows.length>1?'s':''}`}
         </button>
-        <button onClick={() => setRows([emptyRow()])} style={btn(C.slate)}>🔄 Clear All</button>
+        <button onClick={clearAll} style={btn(C.slate)}>🔄 Clear All</button>
       </div>
     </div>
   )
@@ -1859,15 +2134,26 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
   const bulkSubjectList = bulkCourse ? Object.keys(COURSES[bulkCourse]?.subjects || {}) : []
   const chapters = bulkCourse ? (COURSES[bulkCourse]?.subjects[bulkSubject] || []) : []
 
-  // dupeByIndex: Map<row index, existingId> for every row findDuplicates
-  // flagged — carries the matched existing row's id forward so a
-  // per-row "Replace" action knows exactly which bank row to update.
+  // Extra existing rows fetched live at save time (see fetchLiveDupPool) —
+  // merged into the duplicate pool so matches the cached list missed
+  // surface in the review UI.
+  const [liveExisting, setLiveExisting] = useState([])
+  // Bumped whenever a NEW batch replaces the review list (extract, CSV,
+  // partial-save cleanup) so per-row duplicate choices reset then — and
+  // only then, not on every answer/tag edit to a row.
+  const [batchId, setBatchId] = useState(0)
+
+  // dupeByIndex: Map<row index, { existingId, batchDupOf }> for every row
+  // findDuplicates flagged — carries the matched existing row's id forward
+  // so a per-row "Replace" action knows exactly which bank row to update.
   const dupeByIndex = useMemo(() => {
     if (!extracted.length) return new Map()
+    const known = new Set((questions || []).map(q => q.id))
+    const pool = [...(questions || []), ...liveExisting.filter(q => !known.has(q.id))]
     const map = new Map()
-    findDuplicates(extracted, questions || []).forEach(d => map.set(d.index, d.existingId))
+    findDuplicates(extracted, pool).forEach(d => map.set(d.index, { existingId: d.existingId, batchDupOf: d.batchDupOf }))
     return map
-  }, [extracted, questions])
+  }, [extracted, questions, liveExisting])
   const dupeIndexSet = useMemo(() => new Set(dupeByIndex.keys()), [dupeByIndex])
 
   // Per-row action for flagged duplicates: 'ask' (default, unresolved),
@@ -1877,15 +2163,20 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
   // dupeIndexSet flags — non-duplicate rows are always saved as new
   // regardless of what (if anything) is in this map.
   const [dupeActions, setDupeActions] = useState({})
-  // Reset per-row choices whenever the flagged set changes (new extract,
+  // Reset per-row choices whenever a new batch is loaded (new extract,
   // re-paste, CSV re-upload) so a stale choice from a previous batch
   // never silently carries over onto a different set of rows.
-  useEffect(() => { setDupeActions({}) }, [extracted])
+  useEffect(() => { setDupeActions({}); setLiveExisting([]) }, [batchId])
+  const loadBatch = (rows) => { setExtracted(rows); setBatchId(b => b + 1) }
 
   const setDupeAction = (idx, action) => setDupeActions(prev => ({ ...prev, [idx]: action }))
   const setAllDupeActions = action => {
     const next = {}
-    dupeIndexSet.forEach(idx => { next[idx] = action })
+    dupeIndexSet.forEach(idx => {
+      // A repeat inside this paste has no existing bank row to replace —
+      // "Replace All" skips it (the first copy is still saved/replaced).
+      next[idx] = action === 'replace' && !dupeByIndex.get(idx)?.existingId ? 'skip' : action
+    })
     setDupeActions(next)
   }
 
@@ -1907,7 +2198,7 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
         ? q._subsectionHint
         : (bulkSubject ? detectSubsection(q.question, bulkSubject) : ''),
     }))
-    setExtracted(tagged)
+    loadBatch(tagged)
     setStep(2)
     showToast(`✨ ${tagged.length} questions extracted!`, C.green)
   }
@@ -1925,7 +2216,7 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
         ...q,
         subsection: q.subsection || (q.subject ? detectSubsection(q.question, q.subject) : ''),
       }))
-      setExtracted(tagged)
+      loadBatch(tagged)
       setStep(2)
       showToast(`✨ ${tagged.length} questions imported from CSV!`, C.green)
     }
@@ -1978,19 +2269,37 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
     }
 
     setSaving(true)
+
+    // Re-check duplicates against the LIVE bank for these chapters — the
+    // cached list can be minutes old and never has other users' inserts.
+    // Any newly found duplicate goes back to the review list for a
+    // Skip / New / Replace choice instead of being saved blind.
+    const live = await fetchLiveDupPool(extracted)
+    if (live) {
+      const known = new Set((questions || []).map(q => q.id))
+      const newlyFound = findDuplicates(extracted, [...(questions || []), ...live.filter(q => !known.has(q.id))])
+        .filter(d => !dupeIndexSet.has(d.index))
+      if (newlyFound.length) {
+        setLiveExisting(live)
+        showToast(`${newlyFound.length} more duplicate(s) found in the live bank — choose Skip / New / Replace for them`, C.amber)
+        setSaving(false)
+        return
+      }
+    }
+
     const strip = ({ _id, _qNum, _subsectionHint, _needsDiagram, ...rest }) => ({
       ...rest,
       subsection: rest.subsection || detectSubsection(rest.question, rest.subject) || 'General',
     })
 
-    const toInsert = []
-    const toReplace = [] // { id, payload }
+    const toInsert = []  // { idx, payload }
+    const toReplace = [] // { idx, id, payload }
     extracted.forEach((q, i) => {
       const action = dupeIndexSet.has(i) ? dupeActions[i] : null
       if (action === 'skip') return
-      const payload = strip(q)
-      if (action === 'replace') toReplace.push({ id: dupeByIndex.get(i), payload })
-      else toInsert.push(payload) // covers 'new' and every non-duplicate row
+      const existingId = dupeByIndex.get(i)?.existingId
+      if (action === 'replace' && existingId) toReplace.push({ idx: i, id: existingId, payload: replacePayload(strip(q)) })
+      else toInsert.push({ idx: i, payload: strip(q) }) // covers 'new' and every non-duplicate row
     })
 
     if (toInsert.length === 0 && toReplace.length === 0) {
@@ -1999,17 +2308,39 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
       return
     }
 
+    // Indices of rows that are now in the bank. If a later step fails,
+    // these are removed from the review list so pressing Save again can't
+    // insert them a second time.
+    const savedIdx = new Set()
+    const failPartway = (msg) => {
+      const savedRows = extracted.filter((_, i) => savedIdx.has(i))
+      if (savedRows.length) emitQuestionsSaved(savedRows)
+      loadBatch(extracted.filter((_, i) => !savedIdx.has(i)))
+      refetch(true)
+      showToast(
+        savedIdx.size
+          ? `${msg} — ${savedIdx.size} question(s) were already saved and removed from this list; review the rest and save again`
+          : msg,
+        C.rose
+      )
+      setSaving(false)
+    }
+
     if (toInsert.length) {
-      const { error } = await supabase.from('qbank_questions').insert(toInsert)
+      // A single insert call is atomic: either every row lands or none do.
+      const { error } = await supabase.from('qbank_questions').insert(toInsert.map(t => t.payload))
       if (error) { showToast('Save failed: ' + error.message, C.rose); setSaving(false); return }
+      toInsert.forEach(t => savedIdx.add(t.idx))
     }
     // Replacements go one at a time (not a single batch update) since
     // each row targets a DIFFERENT existing id with different content —
     // Supabase's .update() applies one payload to a filtered set, so N
     // distinct replacements genuinely need N distinct calls.
-    for (const { id, payload } of toReplace) {
-      const { error } = await supabase.from('qbank_questions').update(payload).eq('id', id)
-      if (error) { showToast(`Replace failed for one question: ${error.message}`, C.rose); setSaving(false); return }
+    for (const { idx, id, payload } of toReplace) {
+      const { data, error } = await supabase.from('qbank_questions').update(payload).eq('id', id).select('id')
+      if (error) { failPartway(`Replace failed for Q${extracted[idx]._qNum || idx + 1}: ${error.message}`); return }
+      if (!data?.length) { failPartway(`Q${extracted[idx]._qNum || idx + 1}: the question it was meant to replace no longer exists, or you don't have permission to edit it`); return }
+      savedIdx.add(idx)
     }
 
     const savedCount = toInsert.length + toReplace.length
@@ -2018,9 +2349,9 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
       `✅ ${toInsert.length} added${toReplace.length ? `, ${toReplace.length} replaced` : ''}${skippedCount ? `, ${skippedCount} skipped` : ''}`,
       C.green
     )
-    // ── PATCH: notify StudyMaterial badge to refresh ──
-    EventBus.emit(GNSI_EVENTS.QUESTION_SAVED, { subject: bulkSubject, chapter: bulkChapter, count: savedCount })
-    setExtracted([]); setRawText(''); setAnswerKeyText(''); setStep(1); setDupeActions({}); refetch(true)
+    // ── PATCH: notify StudyMaterial badges (one event per chapter saved) ──
+    emitQuestionsSaved(extracted.filter((_, i) => savedIdx.has(i)))
+    loadBatch([]); setRawText(''); setAnswerKeyText(''); setStep(1); refetch(true)
     setSaving(false)
   }
 
@@ -2161,7 +2492,9 @@ Answer: B`} />
               <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8, flexWrap:'wrap' }}>
                 <span style={{ fontSize:12, fontWeight:700, color:C.slate }}>Q{q._qNum || i+1}</span>
                 {dupeIndexSet.has(i) && (
-                  <Badge text="⚠️ Possible duplicate — already in bank" color="#92400e" bg="#fef3c7" />
+                  dupeByIndex.get(i)?.existingId
+                    ? <Badge text="⚠️ Possible duplicate — already in bank" color="#92400e" bg="#fef3c7" />
+                    : <Badge text={`⚠️ Repeated in this paste — same as Q${extracted[dupeByIndex.get(i).batchDupOf]?._qNum || dupeByIndex.get(i).batchDupOf + 1}`} color="#92400e" bg="#fef3c7" />
                 )}
                 {q._needsDiagram && (
                   <Badge text="⚠️ Needs Diagram — add image later via Bank tab" color="#92400e" bg="#fef3c7" />
@@ -2180,7 +2513,9 @@ Answer: B`} />
                   {[
                     { key:'skip',    label:'Skip' },
                     { key:'new',     label:'Save as New' },
-                    { key:'replace', label:'Replace Existing' },
+                    // Only a match against an existing bank row can be
+                    // replaced; a repeat within this paste has nothing to replace.
+                    ...(dupeByIndex.get(i)?.existingId ? [{ key:'replace', label:'Replace Existing (fills in non-blank fields)' }] : []),
                   ].map(({key, label}) => (
                     <button key={key} onClick={() => setDupeAction(i, key)}
                       style={{
@@ -2297,20 +2632,18 @@ Answer: B`} />
 // https://github.com/notofonts/meetei-mayek
 import { NotoSansMeeteiMayek } from './NotoSansMeeteiMayek-normal.js'
 
-let mayekFontRegistered = false
-async function ensureMayekFont(doc) {
-  if (!mayekFontRegistered) {
-    doc.addFileToVFS('NotoSansMeeteiMayek.ttf', NotoSansMeeteiMayek)
-    doc.addFont('NotoSansMeeteiMayek.ttf', 'NotoMayek', 'normal')
-    mayekFontRegistered = true
-  } else {
-    // Font data is per-instance in some jsPDF versions — re-register safely if needed
-    try {
-      doc.addFileToVFS('NotoSansMeeteiMayek.ttf', NotoSansMeeteiMayek)
-      doc.addFont('NotoSansMeeteiMayek.ttf', 'NotoMayek', 'normal')
-    } catch (e) { /* already registered on this doc instance */ }
-  }
+// jsPDF's virtual file system is per document, so the font is registered
+// on every new doc.
+function registerMayekFonts(doc) {
+  doc.addFileToVFS('NotoSansMeeteiMayek.ttf', NotoSansMeeteiMayek)
+  doc.addFont('NotoSansMeeteiMayek.ttf', 'NotoMayek', 'normal')
 }
+// BMEI04 rows (question_mayek_font === 'bmei04') are stored as legacy
+// keystroke text. Drawing that raw text in the Unicode Noto font printed
+// Latin garbage, and the BMEI04 TTF itself can't be embedded (jsPDF
+// rejects it: it has no Unicode cmap). So it is converted to Unicode
+// Meetei Mayek with the same converter the Mayek Tool uses.
+const pdfMayekText = (text, fontTag) => slideMayekUnicode(text, fontTag)
 
 // Fetches a diagram image URL and converts it to a base64 data URL so jsPDF's
 // addImage() can embed it (addImage cannot fetch remote URLs itself). Returns
@@ -2330,16 +2663,16 @@ async function fetchImageAsDataURL(url) {
 }
 
 async function generatePDF({ title, subject, chapter, questions, withAnswers, timeMinutes, instructions }) {
-  if (!window.jspdf) {
-    await new Promise((res, rej) => {
-      const s = document.createElement('script')
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
-      s.onload = res; s.onerror = rej; document.head.appendChild(s)
-    })
-  }
-  const { jsPDF } = window.jspdf
+  // Bundled npm dependency (same one Reports.jsx etc. use), loaded lazily —
+  // no runtime CDN script, so PDFs work offline and can't be tampered with
+  // by a compromised CDN.
+  const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
-  await ensureMayekFont(doc)
+  registerMayekFonts(doc)
+  // Helvetica text goes through pdfSafe (see helper) so symbols outside
+  // its character set are spelled out instead of printing as garbage.
+  title = pdfSafe(title); subject = pdfSafe(subject); chapter = pdfSafe(chapter)
+  instructions = instructions ? pdfSafe(instructions) : instructions
 
   // Pre-fetch diagram images so they can be embedded synchronously during layout
   const diagramCache = {}
@@ -2444,7 +2777,7 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers, ti
   questions.forEach((q,i) => {
     checkPage(26)
     doc.setFontSize(10.5); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
-    const qText = `Q${i+1}. ${q.question}`
+    const qText = pdfSafe(`Q${i+1}. ${q.question}`)
     const qLines = doc.splitTextToSize(qText, contentW)
     checkPage(qLines.length*5 + 24)
     doc.text(qLines, margin, y)
@@ -2455,7 +2788,7 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers, ti
     if (q.question_mayek) {
       checkPage(9)
       doc.setFontSize(10.5); doc.setFont('NotoMayek','normal'); doc.setTextColor(55,65,81)
-      const mLines = doc.splitTextToSize(q.question_mayek, contentW)
+      const mLines = doc.splitTextToSize(pdfMayekText(q.question_mayek, q.question_mayek_font), contentW)
       checkPage(mLines.length*5+8)
       doc.text(mLines, margin, y); y += mLines.length*5 + 2
     }
@@ -2477,7 +2810,7 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers, ti
       let maxRowH = 6
       ;[[l1, margin], [l2, margin + optColW + 12]].forEach(([l, x]) => {
         const isCorrect = withAnswers && q.correct_option === l
-        const optText = `${l}.  ${q[`option_${l.toLowerCase()}`] || '—'}`
+        const optText = pdfSafe(`${l}.  ${q[`option_${l.toLowerCase()}`] || '-'}`)
         doc.setFontSize(9.5); doc.setFont('helvetica', isCorrect?'bold':'normal')
         doc.setTextColor(isCorrect?21:51, isCorrect?128:65, isCorrect?61:85)
         const lines = doc.splitTextToSize(optText, optColW)
@@ -2492,7 +2825,7 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers, ti
         const mayek = q[`option_${l.toLowerCase()}_mayek`]
         if (mayek) {
           doc.setFontSize(9); doc.setFont('NotoMayek','normal')
-          const mLines = doc.splitTextToSize(mayek, optColW)
+          const mLines = doc.splitTextToSize(pdfMayekText(mayek, q.question_mayek_font), optColW)
           doc.text(mLines, x, rowY + lines.length*4.6)
           maxRowH = Math.max(maxRowH, lines.length*4.6 + mLines.length*4.6 + 2)
         }
@@ -2579,20 +2912,29 @@ function TabTranslit({ questions, refetch, showToast }) {
     if (mode !== 'toMayek' || !output.trim()) {
       showToast('Switch to Roman to Mayek mode first', C.amber); return
     }
-    const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-    const needle = norm(input).slice(0, 40)
+    // The typed keystrokes must match a saved BMEI04 question_mayek IN FULL
+    // (whitespace-insensitive only). A prefix/substring match used to
+    // overwrite the whole stored text with the conversion of just the
+    // fragment typed, losing the rest. Case and punctuation are kept:
+    // in BMEI04 they are distinct keystrokes (capitals are Lonsum forms,
+    // ':' etc. map to glyphs), so stripping them made unrelated rows match.
+    const norm = s => (s || '').replace(/\s+/g, ' ').trim()
+    const needle = norm(input)
+    if (!needle) { showToast('Type the full BMEI04 text of the question first', C.amber); return }
     const candidates = (questions || []).filter(q =>
       q.question_mayek_font === 'bmei04' &&
       q.question_mayek &&
-      norm(q.question_mayek).includes(needle)
+      norm(q.question_mayek) === needle
     )
-    if (!candidates.length) { showToast('No matching BMEI04 question found', C.amber); return }
+    if (!candidates.length) { showToast('No saved BMEI04 question has exactly this text — paste its full Mayek line', C.amber); return }
     if (candidates.length > 1) { showToast(candidates.length + ' matches - edit manually', C.amber); return }
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('qbank_questions')
       .update({ question_mayek: output, question_mayek_font: 'unicode' })
       .eq('id', candidates[0].id)
+      .select('id')
     if (error) { showToast('Update failed: ' + error.message, C.rose); return }
+    if (!data?.length) { showToast('Nothing was updated — you may lack permission', C.amber); return }
     showToast('Converted BMEI04 to Unicode', C.green)
     refetch && refetch(true)
   }
@@ -2678,7 +3020,7 @@ function TabTranslit({ questions, refetch, showToast }) {
         Capital letters are mostly the Lonsum (word-final) form of the same consonant &mdash;
         type the capital yourself where a syllable ends (e.g. <code>boL</code> for &ldquo;ball&rdquo;).
         Lowercase <code>a</code> is the Atap vowel sign (&ldquo;aa&rdquo;), not the vowel letter &mdash; that's capital <code>A</code>.
-        The Save button converts a BMEI04-encoded question_mayek to real Unicode.
+        The Save button converts a saved BMEI04 question_mayek to real Unicode — paste that question's full Mayek line exactly as stored.
       </div>
     </div>
   )
@@ -2692,7 +3034,7 @@ function TabTranslit({ questions, refetch, showToast }) {
 // real English words/sentences to Meetei Mayek, using a Supabase table
 // (mayek_dictionary) that grows as entries are added — never machine-translated,
 // so a missing word is shown as [?word?] rather than guessed.
-function TabDictionary({ showToast, currentStaffId, questions }) {
+function TabDictionary({ showToast, currentStaffId, questions, isAdmin }) {
   const [subView, setSubView] = useState('translate') // translate | add | bulk | wordlist | coverage | browse
 
   return (
@@ -2728,7 +3070,7 @@ function TabDictionary({ showToast, currentStaffId, questions }) {
       {subView === 'bulk' && <DictBulkImportPanel showToast={showToast} currentStaffId={currentStaffId} />}
       {subView === 'wordlist' && <DictSeedWordlistPanel showToast={showToast} currentStaffId={currentStaffId} />}
       {subView === 'coverage' && <DictCoveragePanel showToast={showToast} questions={questions} currentStaffId={currentStaffId} />}
-      {subView === 'browse' && <DictBrowsePanel showToast={showToast} />}
+      {subView === 'browse' && <DictBrowsePanel showToast={showToast} isAdmin={isAdmin} />}
     </div>
   )
 }
@@ -3168,12 +3510,13 @@ function DictBulkImportPanel({ showToast, currentStaffId }) {
     if (!csvText.trim()) return
     setImporting(true); setResult(null)
     try {
-      const lines = csvText.trim().split('\n')
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
-      const rows = lines.slice(1).map(line => {
-        const cells = line.split(',')
+      // Quote-aware: a sentence entry containing a comma must be quoted in
+      // the CSV ("find x, then y") — a plain split(',') cut it apart.
+      const [headerRow = [], ...dataRows] = parseCSV(csvText)
+      const headers = headerRow.map(h => h.toLowerCase())
+      const rows = dataRows.map(cells => {
         const row = {}
-        headers.forEach((h, i) => { row[h] = (cells[i] || '').trim() })
+        headers.forEach((h, i) => { row[h] = cells[i] || '' })
         return row
       })
       const res = await bulkImportEntries(rows, { defaultSource:'bulk_import', createdBy: currentStaffId || null })
@@ -3192,6 +3535,7 @@ function DictBulkImportPanel({ showToast, currentStaffId }) {
         Paste CSV with columns: <code>entry_type,english,bmei04,category</code> (entry_type and category are optional —
         entry_type auto-detects as "sentence" if the English text has more than one word). Rows with a blank
         bmei04 are skipped, so a wordlist CSV with empty bmei04 cells is safe to re-import as you fill it in.
+        Put double quotes around any cell that contains a comma.
       </div>
       <textarea value={csvText} onChange={e => setCsvText(e.target.value)} rows={9}
         placeholder={'entry_type,english,bmei04,category\nword,apple,AepL,general\nsentence,find the value of x,...,math'}
@@ -3220,35 +3564,50 @@ function DictBulkImportPanel({ showToast, currentStaffId }) {
   )
 }
 
-function DictBrowsePanel({ showToast }) {
+function DictBrowsePanel({ showToast, isAdmin }) {
   const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
   const [entryType, setEntryType] = useState(null)
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [editBmei04, setEditBmei04] = useState('')
+  const searchSeq = useRef(0)
+
+  // Debounced: one request after typing pauses, not one per keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 300)
+    return () => clearTimeout(t)
+  }, [query])
 
   const runSearch = useCallback(async () => {
+    // Only the newest request may update the list — an older, slower
+    // response arriving last used to overwrite the current results.
+    const seq = ++searchSeq.current
     setLoading(true)
     try {
-      const data = await searchDictionary({ query, entryType })
-      setRows(data)
+      const data = await searchDictionary({ query: debouncedQuery, entryType })
+      if (seq === searchSeq.current) setRows(data)
     } catch (err) {
-      showToast('Search failed: ' + err.message, C.rose)
+      if (seq === searchSeq.current) showToast('Search failed: ' + err.message, C.rose)
     } finally {
-      setLoading(false)
+      if (seq === searchSeq.current) setLoading(false)
     }
-  }, [query, entryType])
+  }, [debouncedQuery, entryType]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { runSearch() }, [runSearch])
 
+  // Deleting entries is admin-only, like deleting questions (the RLS
+  // migration enforces the same rule server-side).
   const handleDelete = async (id) => {
+    if (!isAdmin) return
     if (!window.confirm('Delete this dictionary entry?')) return
     try { await deleteDictionaryEntry(id); showToast('Deleted', C.rose); runSearch() }
     catch (err) { showToast('Delete failed: ' + err.message, C.rose) }
   }
 
   const handleEditSave = async (row) => {
+    if (!editBmei04.trim()) { showToast('BMEI04 keystrokes cannot be blank', C.amber); return }
     try {
       await saveDictionaryEntry({ entryType: row.entry_type, english: row.english, bmei04: editBmei04, category: row.category, source: row.source })
       showToast('Updated', C.green); setEditingId(null); runSearch()
@@ -3303,7 +3662,7 @@ function DictBrowsePanel({ showToast }) {
                 ) : (
                   <>
                     <button onClick={() => { setEditingId(row.id); setEditBmei04(row.bmei04) }} style={btnSm(C.teal)}>Edit</button>
-                    <button onClick={() => handleDelete(row.id)} style={btnSm(C.rose)}>Delete</button>
+                    {isAdmin && <button onClick={() => handleDelete(row.id)} style={btnSm(C.rose)}>Delete</button>}
                   </>
                 )}
               </div>
@@ -3350,8 +3709,14 @@ function TabPaper({ questions, showToast }) {
       return n
     })
   }
-  const updateCount = (sub, val) => setSelSubs(prev => ({...prev, [sub]: parseInt(val)||1}))
-  const totalSelected = Object.values(selSubs).reduce((a,b)=>a+b,0)
+  // Clamped to what the subsection actually has, so the "Total" shown and
+  // the paper's real length agree.
+  const updateCount = (sub, val) => setSelSubs(prev => ({
+    ...prev, [sub]: Math.max(1, Math.min(availableSubs[sub] || 1, parseInt(val) || 1)),
+  }))
+  // Capped per subsection by what's available under the current difficulty
+  // filter (which can shrink after a count was picked).
+  const totalSelected = Object.entries(selSubs).reduce((a,[sub,n]) => a + Math.min(n, availableSubs[sub] || 0), 0)
 
   const handlePreview = () => {
     if (!course || !subject || !chapter) { showToast('Select course, subject and chapter', C.amber); return }
@@ -3359,11 +3724,11 @@ function TabPaper({ questions, showToast }) {
     if (!selected.length) { showToast('Select at least one subsection', C.amber); return }
     let pool = []
     selected.forEach(sub => {
-      const subQs = questions.filter(q =>
+      const subQs = shuffled(questions.filter(q =>
         (q.course||'')===course && q.subject===subject && q.chapter===chapter &&
         (q.subsection||'General')===sub &&
         (difficulty==='All' || q.difficulty===difficulty)
-      ).sort(() => Math.random()-.5)
+      ))
       pool = pool.concat(subQs.slice(0, selSubs[sub]||5))
     })
     if (!pool.length) { showToast('No questions available for selected subsections', C.amber); return }
@@ -3666,34 +4031,44 @@ function TabTest({ questions, showToast }) {
     return [...ss].sort()
   }, [questions, course, subject, chapter])
 
+  // Latest questions/answers for handleSubmit, which can fire from the
+  // timer effect. Read through refs so the scoring + DB insert happen
+  // exactly once, outside any state updater — React may call updater
+  // functions twice (StrictMode does in dev), which previously saved every
+  // test result twice.
+  const testQsRef = useRef(null)
+  const answersRef = useRef({})
+  const submittedRef = useRef(false)
+  useEffect(() => { testQsRef.current = testQs }, [testQs])
+  useEffect(() => { answersRef.current = answers }, [answers])
+
   const handleSubmit = useCallback(() => {
-    setTestQs(prevQs => {
-      if (!prevQs) return prevQs
-      setTimerActive(false)
-      setAnswers(prevAnswers => {
-        const correct = prevQs.filter(q => prevAnswers[q._testIdx] === q.correct_option).length
-        const wrong   = prevQs.filter(q => prevAnswers[q._testIdx] && prevAnswers[q._testIdx] !== q.correct_option).length
-        const skipped = prevQs.filter(q => !prevAnswers[q._testIdx]).length
-        const score   = prevQs.reduce((a, q) => prevAnswers[q._testIdx] === q.correct_option ? a + (q.marks||1) : a, 0)
-        const maxScore= prevQs.reduce((a, q) => a + (q.marks||1), 0)
-        const pct     = maxScore ? Math.round((score/maxScore)*100) : 0
-        setResult({ correct, wrong, skipped, score, maxScore, pct })
-        setSubmitted(true)
-        // Persist attempt — best-effort, doesn't block showing the result
-        supabase.from('qbank_test_results').insert({
-          student_name: studentName,
-          subject, chapter,
-          question_count: prevQs.length,
-          correct, wrong, skipped,
-          score, max_score: maxScore, percent: pct,
-        }).then(({ error }) => {
-          if (error) console.error('Failed to save test result:', error.message)
-          else supabase.from('qbank_test_results').select('*').order('created_at', { ascending: false }).limit(20)
-            .then(({ data }) => setHistory(data || []))
-        })
-        return prevAnswers
-      })
-      return prevQs
+    const qs = testQsRef.current
+    // Guard: the timer hitting 0 while a "Submit test?" confirm is open
+    // must not produce a second submission.
+    if (!qs || submittedRef.current) return
+    submittedRef.current = true
+    const ans = answersRef.current
+    setTimerActive(false)
+    const correct = qs.filter(q => ans[q._testIdx] === q.correct_option).length
+    const wrong   = qs.filter(q => ans[q._testIdx] && ans[q._testIdx] !== q.correct_option).length
+    const skipped = qs.filter(q => !ans[q._testIdx]).length
+    const score   = qs.reduce((a, q) => ans[q._testIdx] === q.correct_option ? a + (q.marks||1) : a, 0)
+    const maxScore= qs.reduce((a, q) => a + (q.marks||1), 0)
+    const pct     = maxScore ? Math.round((score/maxScore)*100) : 0
+    setResult({ correct, wrong, skipped, score, maxScore, pct })
+    setSubmitted(true)
+    // Persist attempt — best-effort, doesn't block showing the result
+    supabase.from('qbank_test_results').insert({
+      student_name: studentName,
+      subject, chapter,
+      question_count: qs.length,
+      correct, wrong, skipped,
+      score, max_score: maxScore, percent: pct,
+    }).then(({ error }) => {
+      if (error) console.error('Failed to save test result:', error.message)
+      else supabase.from('qbank_test_results').select('*').order('created_at', { ascending: false }).limit(20)
+        .then(({ data }) => setHistory(data || []))
     })
   }, [studentName, subject, chapter])
 
@@ -3710,12 +4085,13 @@ function TabTest({ questions, showToast }) {
     if (!studentName.trim()) { showToast('Enter student name', C.amber); return }
     if (!course || !subject || !chapter) { showToast('Select course, subject and chapter', C.amber); return }
     const subFilter = selSubs.size > 0 ? [...selSubs] : availableSubs
-    let pool = questions.filter(q =>
+    const pool = shuffled(questions.filter(q =>
       (q.course||'')===course && q.subject===subject && q.chapter===chapter &&
       subFilter.includes(q.subsection||'General')
-    ).sort(() => Math.random()-.5).slice(0, count)
+    )).slice(0, count)
     if (!pool.length) { showToast('No questions available — add questions first', C.amber); return }
     const indexedPool = pool.map((q,i) => ({...q, _testIdx: i}))
+    submittedRef.current = false
     setTestQs(indexedPool); setAnswers({}); setSubmitted(false); setResult(null)
     setTimeLeft(pool.length * 90); setTimerActive(true)
     setCastOpen(false); setCastQIndex(0)
@@ -3915,7 +4291,7 @@ function TabTest({ questions, showToast }) {
       {subject && chapter && (
         <div style={{ padding:'10px 14px', borderRadius:8, background:'#f0f9ff',
           border:'1px solid #bae6fd', fontSize:12, color:'#0369a1', marginBottom:14 }}>
-          📊 <strong>{questions.filter(q=>q.subject===subject&&q.chapter===chapter).length}</strong> questions available · Timer: ~{Math.round(count*1.5)} minutes
+          📊 <strong>{questions.filter(q=>(q.course||'')===course&&q.subject===subject&&q.chapter===chapter).length}</strong> questions available · Timer: ~{Math.round(count*1.5)} minutes
         </div>
       )}
       <button onClick={handleStart} disabled={!subject||!chapter||!studentName.trim()}
@@ -4146,8 +4522,10 @@ function TabStats({ questions, refetch, showToast, isAdmin, onNavigate }) {
   const [deleteAllInput, setDeleteAllInput] = useState('')
   const [deletingAll, setDeletingAll] = useState(false)
 
-  const courseSubjects = COURSES[filterCourse]?.subjects || {}
-  const courseSubjectList = Object.keys(courseSubjects)
+  // Memoized on filterCourse — rebuilt every render, these made the stats
+  // useMemo below recompute over the whole bank on every keystroke.
+  const courseSubjects = useMemo(() => COURSES[filterCourse]?.subjects || {}, [filterCourse])
+  const courseSubjectList = useMemo(() => Object.keys(courseSubjects), [courseSubjects])
 
   const stats = useMemo(() => {
     const result = {}
@@ -4226,13 +4604,17 @@ function TabStats({ questions, refetch, showToast, isAdmin, onNavigate }) {
     // .neq('id', <impossible value>) is the standard Supabase pattern for
     // "delete every row" — the client requires SOME filter on delete, it
     // won't run an unconditional DELETE FROM with none at all.
-    const { error } = await supabase.from('qbank_questions').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+    const { error, count } = await supabase.from('qbank_questions').delete({ count:'exact' }).neq('id', '00000000-0000-0000-0000-000000000000')
     if (error) {
       showToast('Delete all failed: ' + error.message, C.rose)
+    } else if (!count) {
+      showToast('Nothing was deleted — you may lack permission (backup was still downloaded)', C.amber)
     } else {
-      showToast(`🗑 Entire question bank deleted — backup downloaded (${questions.length} questions)`, C.rose)
+      showToast(`🗑 Entire question bank deleted — backup downloaded (${count} questions)`, C.rose)
       setDeleteAllInput('')
-      refetch?.()
+      // force=true: without it the still-fresh module cache was served and
+      // every deleted question stayed on screen for up to 5 minutes.
+      refetch?.(true)
     }
     setDeletingAll(false)
   }
@@ -4341,10 +4723,15 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
   // initialFilter drives TabBank's pre-filtered view; updated by EventBus
   const [initialFilter, setInitialFilter] = useState(initialFilterProp || null)
 
+  // One timer at a time: an earlier toast's timer no longer hides a newer
+  // toast early.
+  const toastTimerRef = useRef(null)
   const showToast = (msg, color=C.navy) => {
     setToast({ msg, color })
-    setTimeout(() => setToast(null), 3500)
+    clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = setTimeout(() => setToast(null), 3500)
   }
+  useEffect(() => () => clearTimeout(toastTimerRef.current), [])
 
   const refetch = useCallback(async (force = false) => {
     // Skip the query entirely for non-staff — no data should ever leave
@@ -4497,7 +4884,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
       {tab === 'manual' && <TabManualAdd questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'bulk'   && <TabBulkPaste questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'translit' && <TabTranslit questions={questions} refetch={refetch} showToast={showToast} />}
-      {tab === 'dictionary' && <TabDictionary showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} questions={questions} />}
+      {tab === 'dictionary' && <TabDictionary showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} questions={questions} isAdmin={isAdmin} />}
       {isAdmin && tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'smartppt' && <TabSmartPPT questions={questions} showToast={showToast} />}
