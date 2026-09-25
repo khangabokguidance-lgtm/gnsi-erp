@@ -193,14 +193,14 @@ function ExportBar({ rows, filename, label = '' }) {
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
       <button onClick={() => setOpen(o => !o)}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e3a5f', color: 'white', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+        style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e3a6e', color: 'white', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
         ⬇ Export {label && `(${rows.length})`}
       </button>
       {open && (
         <div style={{ position: 'absolute', right: 0, top: '110%', background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.12)', zIndex: 300, minWidth: 160 }}
           onMouseLeave={() => setOpen(false)}>
           <button onClick={() => { exportCSV(rows, filename); setOpen(false) }}
-            style={{ width: '100%', padding: '10px 16px', border: 'none', background: 'none', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#1e3a5f', cursor: 'pointer' }}
+            style={{ width: '100%', padding: '10px 16px', border: 'none', background: 'none', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#1e3a6e', cursor: 'pointer' }}
             onMouseEnter={e => e.currentTarget.style.background='#f1f5f9'}
             onMouseLeave={e => e.currentTarget.style.background='none'}>
             📄 Export CSV
@@ -229,9 +229,9 @@ function exportXLS(rows, filename, sheetTitle='Report') {
   if (!rows?.length) { alert('No data.'); return }
   const H=Object.keys(rows[0])
   const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-  const hdr=H.map(h=>`<th style="background:#1e3a5f;color:white;font-weight:bold;padding:6px 10px;border:1px solid #ccc">${esc(h)}</th>`).join('')
+  const hdr=H.map(h=>`<th style="background:#1e3a6e;color:white;font-weight:bold;padding:6px 10px;border:1px solid #ccc">${esc(h)}</th>`).join('')
   const bdy=rows.map((r,i)=>{const bg=i%2===0?'#fff':'#f8fafc';return `<tr>${H.map(h=>`<td style="padding:5px 10px;border:1px solid #ddd;background:${bg}">${esc(r[h])}</td>`).join('')}</tr>`}).join('')
-  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"/><title>${sheetTitle}</title><style>table{border-collapse:collapse;font-family:Arial,sans-serif;font-size:12px}</style></head><body><h3 style="font-family:Arial;color:#1e3a5f">Guidance Navodaya &amp; Sainik Institute — ${sheetTitle}</h3><table><thead><tr>${hdr}</tr></thead><tbody>${bdy}</tbody></table></body></html>`
+  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"/><title>${sheetTitle}</title><style>table{border-collapse:collapse;font-family:Arial,sans-serif;font-size:12px}</style></head><body><h3 style="font-family:Arial;color:#1e3a6e">Guidance Navodaya &amp; Sainik Institute — ${sheetTitle}</h3><table><thead><tr>${hdr}</tr></thead><tbody>${bdy}</tbody></table></body></html>`
   _dl(new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel;charset=utf-8'}),filename+'.xls')
 }
 function exportPrintHTML(rows, filename, title, meta={}) {
@@ -241,7 +241,7 @@ function exportPrintHTML(rows, filename, title, meta={}) {
   const hdr=H.map(h=>`<th>${esc(h)}</th>`).join('')
   const bdy=rows.map((r,i)=>`<tr class="${i%2===0?'':'ev'}">${H.map(h=>`<td>${esc(r[h])}</td>`).join('')}</tr>`).join('')
   const metaRows=Object.entries(meta).map(([k,v])=>`<div class="mi"><span class="mk">${esc(k)}</span><span class="mv">${esc(String(v))}</span></div>`).join('')
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${esc(title)}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#0f172a;background:white;padding:12mm 14mm}.inst{font-size:18px;font-weight:900;color:#1e3a5f;font-family:Georgia,serif}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px double #1e3a5f;padding-bottom:8px;margin-bottom:10px}.rtype{font-size:11px;font-weight:900;color:white;background:#1e3a5f;padding:2px 10px;border-radius:4px;display:inline-block}.rdate{font-size:10px;color:#64748b;display:block;margin-top:3px}.meta{display:flex;gap:20px;flex-wrap:wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;margin-bottom:10px}.mi{display:flex;flex-direction:column}.mk{font-size:8px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}.mv{font-size:11px;font-weight:700;color:#1e3a5f}table{width:100%;border-collapse:collapse;font-size:10.5px}thead tr{background:#1e3a5f;color:white}th{padding:6px 8px;text-align:left;font-weight:700;font-size:10px;white-space:nowrap}tbody tr{border-bottom:1px solid #f1f5f9}tbody tr.ev{background:#f8fafc}td{padding:5px 8px}.foot{margin-top:10px;display:flex;justify-content:space-between;font-size:8.5px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:5px}@media print{body{padding:0}.np{display:none}}@media screen{body{background:#e2e8f0;padding:20px}.wrap{background:white;padding:20mm;box-shadow:0 4px 20px rgba(0,0,0,.12);max-width:297mm;margin:0 auto}.pbtn{position:fixed;top:16px;right:16px;background:#1e3a5f;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}.cbtn{position:fixed;top:16px;right:170px;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}}</style></head><body><button class="pbtn np" onclick="window.print()">Print / PDF</button><button class="cbtn np" onclick="window.close()">Close</button><div class="wrap"><div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div></div><div><span class="rtype">${esc(title)}</span><span class="rdate">Generated: ${new Date().toLocaleString('en-IN')}</span></div></div><div class="meta">${metaRows}</div><table><thead><tr>${hdr}</tr></thead><tbody>${bdy}</tbody></table><div class="foot"><span>GNSI Portal</span><span>Total records: ${rows.length}</span><span>CONFIDENTIAL</span></div></div></body></html>`
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${esc(title)}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:11px;color:#0f172a;background:white;padding:12mm 14mm}.inst{font-size:18px;font-weight:900;color:#1e3a6e;font-family:Georgia,serif}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px double #1e3a6e;padding-bottom:8px;margin-bottom:10px}.rtype{font-size:11px;font-weight:900;color:white;background:#1e3a6e;padding:2px 10px;border-radius:4px;display:inline-block}.rdate{font-size:10px;color:#64748b;display:block;margin-top:3px}.meta{display:flex;gap:20px;flex-wrap:wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;margin-bottom:10px}.mi{display:flex;flex-direction:column}.mk{font-size:8px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}.mv{font-size:11px;font-weight:700;color:#1e3a6e}table{width:100%;border-collapse:collapse;font-size:10.5px}thead tr{background:#1e3a6e;color:white}th{padding:6px 8px;text-align:left;font-weight:700;font-size:10px;white-space:nowrap}tbody tr{border-bottom:1px solid #f1f5f9}tbody tr.ev{background:#f8fafc}td{padding:5px 8px}.foot{margin-top:10px;display:flex;justify-content:space-between;font-size:8.5px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:5px}@media print{body{padding:0}.np{display:none}}@media screen{body{background:#e2e8f0;padding:20px}.wrap{background:white;padding:20mm;box-shadow:0 4px 20px rgba(0,0,0,.12);max-width:297mm;margin:0 auto}.pbtn{position:fixed;top:16px;right:16px;background:#1e3a6e;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}.cbtn{position:fixed;top:16px;right:170px;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}}</style></head><body><button class="pbtn np" onclick="window.print()">Print / PDF</button><button class="cbtn np" onclick="window.close()">Close</button><div class="wrap"><div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div></div><div><span class="rtype">${esc(title)}</span><span class="rdate">Generated: ${new Date().toLocaleString('en-IN')}</span></div></div><div class="meta">${metaRows}</div><table><thead><tr>${hdr}</tr></thead><tbody>${bdy}</tbody></table><div class="foot"><span>GNSI Portal</span><span>Total records: ${rows.length}</span><span>CONFIDENTIAL</span></div></div></body></html>`
   const win=window.open('','_blank','width=1000,height=700,scrollbars=yes');win.document.write(html);win.document.close()
 }
 
@@ -267,13 +267,13 @@ function DailyIncomeReport({date,transactions=[],generatedBy='Admin'}){
     const byStudent={};transactions.forEach(r=>{const k=String(r.gcc_no||r.name);if(!byStudent[k])byStudent[k]={gcc_no:r.gcc_no,name:r.name,rows:[]};byStudent[k].rows.push(r)})
     const groups=Object.values(byStudent).sort((a,b)=>(a.name||'').localeCompare(b.name||''))
     let tRows='',serial=0
-    groups.forEach(sg=>{const sub=sg.rows.reduce((s,r)=>s+(Number(r.amount)||0),0);sg.rows.forEach(r=>{serial++;const tc=r.type==='Admission Fee'?'#3730a3':r.type==='Flat Fee'?'#166534':'#6d28d9',tb=r.type==='Admission Fee'?'#eef2ff':r.type==='Flat Fee'?'#dcfce7':'#f5f3ff';tRows+=`<tr style="background:${serial%2===0?'#f8fafc':'white'}"><td style="padding:5px 8px;text-align:center;font-family:monospace;font-size:10px">${serial}</td><td style="padding:5px 8px;text-align:center;font-family:monospace;font-size:10px;color:#1e3a5f;font-weight:700">${r.gcc_no?'GCC-'+r.gcc_no:'—'}</td><td style="padding:5px 8px;font-weight:700">${r.name||'—'}</td><td style="padding:5px 8px"><span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:9.5px;font-weight:700;background:${tb};color:${tc}">${r.type}</span></td><td style="padding:5px 8px;font-size:10px;color:#64748b">${r.description||'—'}</td><td style="padding:5px 8px;text-align:center">${r.pay_mode||'—'}</td><td style="padding:5px 8px;text-align:center;font-family:monospace;font-size:10px">${r.ref&&r.ref!=='—'?r.ref:'—'}</td><td style="padding:5px 8px;text-align:right;font-weight:800;color:#16a34a">Rs.${_inr(r.amount)}</td></tr>`});if(sg.rows.length>1)tRows+=`<tr style="background:#f1f5f9"><td colspan="7" style="padding:3px 8px;text-align:right;font-size:9.5px;color:#64748b">Sub-total — ${sg.name}</td><td style="padding:3px 8px;text-align:right;font-weight:700;color:#1e3a5f">Rs.${_inr(sub)}</td></tr>`})
+    groups.forEach(sg=>{const sub=sg.rows.reduce((s,r)=>s+(Number(r.amount)||0),0);sg.rows.forEach(r=>{serial++;const tc=r.type==='Admission Fee'?'#3730a3':r.type==='Flat Fee'?'#166534':'#6d28d9',tb=r.type==='Admission Fee'?'#eef2ff':r.type==='Flat Fee'?'#dcfce7':'#f5f3ff';tRows+=`<tr style="background:${serial%2===0?'#f8fafc':'white'}"><td style="padding:5px 8px;text-align:center;font-family:monospace;font-size:10px">${serial}</td><td style="padding:5px 8px;text-align:center;font-family:monospace;font-size:10px;color:#1e3a6e;font-weight:700">${r.gcc_no?'GCC-'+r.gcc_no:'—'}</td><td style="padding:5px 8px;font-weight:700">${r.name||'—'}</td><td style="padding:5px 8px"><span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:9.5px;font-weight:700;background:${tb};color:${tc}">${r.type}</span></td><td style="padding:5px 8px;font-size:10px;color:#64748b">${r.description||'—'}</td><td style="padding:5px 8px;text-align:center">${r.pay_mode||'—'}</td><td style="padding:5px 8px;text-align:center;font-family:monospace;font-size:10px">${r.ref&&r.ref!=='—'?r.ref:'—'}</td><td style="padding:5px 8px;text-align:right;font-weight:800;color:#16a34a">Rs.${_inr(r.amount)}</td></tr>`});if(sg.rows.length>1)tRows+=`<tr style="background:#f1f5f9"><td colspan="7" style="padding:3px 8px;text-align:right;font-size:9.5px;color:#64748b">Sub-total — ${sg.name}</td><td style="padding:3px 8px;text-align:right;font-weight:700;color:#1e3a6e">Rs.${_inr(sub)}</td></tr>`})
     if(!transactions.length)tRows=`<tr><td colspan="8" style="padding:40px;text-align:center;color:#94a3b8;font-style:italic">No transactions recorded.</td></tr>`
-    const modeRows=Object.entries(modes).map(([m,a])=>`<tr><td style="padding:5px 8px;font-weight:700">${m}</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:#1e3a5f">Rs.${_inr(a)}</td><td style="padding:5px 8px;text-align:right;font-size:10px;color:#64748b">${grand>0?Math.round(a/grand*100):0}%</td></tr>`).join('')
-    const courseRows=Object.entries(courses).map(([c,a])=>`<tr><td style="padding:5px 8px;font-weight:700">${c}</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:#1e3a5f">Rs.${_inr(a)}</td></tr>`).join('')
+    const modeRows=Object.entries(modes).map(([m,a])=>`<tr><td style="padding:5px 8px;font-weight:700">${m}</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:#1e3a6e">Rs.${_inr(a)}</td><td style="padding:5px 8px;text-align:right;font-size:10px;color:#64748b">${grand>0?Math.round(a/grand*100):0}%</td></tr>`).join('')
+    const courseRows=Object.entries(courses).map(([c,a])=>`<tr><td style="padding:5px 8px;font-weight:700">${c}</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:#1e3a6e">Rs.${_inr(a)}</td></tr>`).join('')
     const reportNo=`GNSI/DIR/${(reportDate||'').replace(/-/g,'')}`
     const generated=new Date().toLocaleString('en-IN',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'})
-    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${reportTitle}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#0f172a;background:white}@page{size:A4;margin:12mm 14mm}table{width:100%;border-collapse:collapse}@media screen{body{background:#e2e8f0;padding:20px}.page{background:white;padding:18mm;box-shadow:0 4px 20px rgba(0,0,0,.12);max-width:210mm;margin:0 auto}.pbtn{position:fixed;top:16px;right:16px;background:#1e3a5f;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}.cbtn{position:fixed;top:16px;right:170px;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}}@media print{body{padding:0}.np{display:none!important}tr{page-break-inside:avoid}}</style></head><body><button class="pbtn np" onclick="window.print()">Print / Save PDF</button><button class="cbtn np" onclick="window.close()">Close</button><div class="page"><div style="border-bottom:3px double #1e3a5f;padding-bottom:10px;margin-bottom:10px;display:flex;align-items:center;gap:14px"><div style="width:58px;height:58px;border-radius:50%;background:#1e3a5f;color:white;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">GNSI</div><div style="flex:1"><div style="font-size:20px;font-weight:900;color:#1e3a5f">Guidance Navodaya &amp; Sainik Institute</div><div style="font-size:9px;color:#b45309;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-top:2px">Premier Coaching for NVS · Sainik School · RMS</div><div style="font-size:10px;color:#475569;margin-top:2px">Khangabok Sorok Wangma, Thoubal District, Manipur – 795 131</div></div><div style="text-align:right"><span style="font-size:11px;font-weight:900;color:white;background:#1e3a5f;padding:3px 10px;border-radius:4px;display:inline-block">${reportTitle||'Daily Income Report'}</span><div style="font-size:9.5px;color:#64748b;margin-top:3px">Ref: ${reportNo}</div><div style="font-size:11px;font-weight:700;color:#1e3a5f;margin-top:2px">${_fday(reportDate)}, ${_fdate(reportDate)}</div></div></div><div style="display:grid;grid-template-columns:repeat(4,1fr);border:1.5px solid #1e3a5f;border-radius:6px;overflow:hidden;margin-bottom:10px"><div style="padding:7px 10px;border-right:1px solid #cbd5e1"><div style="font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase">Report Date</div><div style="font-size:12px;font-weight:700;color:#1e3a5f;margin-top:2px">${_fdate(reportDate)}</div></div><div style="padding:7px 10px;border-right:1px solid #cbd5e1"><div style="font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase">Transactions</div><div style="font-size:12px;font-weight:700;color:#1e3a5f;margin-top:2px">${transactions.length}</div></div><div style="padding:7px 10px;border-right:1px solid #cbd5e1"><div style="font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase">Offline Receipt No.</div><div style="font-size:12px;font-weight:700;color:#1e3a5f;margin-top:2px">${offlineRcpt||'—'}</div></div><div style="padding:7px 10px"><div style="font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase">Generated By</div><div style="font-size:12px;font-weight:700;color:#1e3a5f;margin-top:2px">${generatedBy||'Admin'}</div></div></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px"><div style="border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;border-top:3px solid #1e3a5f"><div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase">Grand Total</div><div style="font-size:16px;font-weight:900;color:#1e3a5f;margin-top:3px">Rs.${_inr(grand)}</div></div><div style="border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;border-top:3px solid #3730a3"><div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase">Admission Fees</div><div style="font-size:16px;font-weight:900;color:#3730a3;margin-top:3px">Rs.${_inr(transactions.filter(r=>r.type==='Admission Fee').reduce((s,r)=>s+r.amount,0))}</div></div><div style="border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;border-top:3px solid #166534"><div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase">Flat Fees</div><div style="font-size:16px;font-weight:900;color:#166534;margin-top:3px">Rs.${_inr(transactions.filter(r=>r.type==='Flat Fee').reduce((s,r)=>s+r.amount,0))}</div></div><div style="border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;border-top:3px solid #6d28d9"><div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase">Course Fees</div><div style="font-size:16px;font-weight:900;color:#6d28d9;margin-top:3px">Rs.${_inr(transactions.filter(r=>r.type==='Course Fee').reduce((s,r)=>s+r.amount,0))}</div></div></div><div style="font-size:11px;font-weight:900;color:#1e3a5f;text-transform:uppercase;letter-spacing:.5px;border-left:4px solid #1e3a5f;padding:2px 8px;margin:12px 0 6px;background:#f8fafc">Detailed Transaction Register</div><table><thead><tr style="background:#1e3a5f;color:white"><th style="padding:6px 8px;text-align:center;font-size:10px;width:28px">#</th><th style="padding:6px 8px;font-size:10px;width:72px">GCC No.</th><th style="padding:6px 8px;font-size:10px">Student</th><th style="padding:6px 8px;font-size:10px;width:90px">Fee Type</th><th style="padding:6px 8px;font-size:10px">Description</th><th style="padding:6px 8px;font-size:10px;text-align:center;width:58px">Mode</th><th style="padding:6px 8px;font-size:10px;text-align:center;width:68px">Ref No.</th><th style="padding:6px 8px;font-size:10px;text-align:right;width:78px">Amount</th></tr></thead><tbody>${tRows}</tbody><tfoot><tr style="background:#1e3a5f;color:white"><td colspan="7" style="padding:8px;text-align:right;font-size:11px">TOTAL COLLECTED</td><td style="padding:8px;text-align:right;font-weight:900;font-size:12px">Rs.${_inr(grand)}</td></tr></tfoot></table><div style="border:2px solid #1e3a5f;border-radius:8px;padding:12px 16px;margin:12px 0;background:linear-gradient(135deg,#eff6ff,#f5f3ff);display:flex;align-items:center;justify-content:space-between"><div><div style="font-size:13px;font-weight:800;color:#1e3a5f">Total Income for ${_fdate(reportDate)}</div><div style="font-size:10px;color:#64748b;font-style:italic;margin-top:2px">Rupees ${_toWords(grand)}</div></div><div style="font-size:24px;font-weight:900;color:#1e3a5f">Rs. ${_inr(grand)}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px"><div><div style="font-size:11px;font-weight:900;color:#1e3a5f;text-transform:uppercase;border-left:4px solid #334155;padding:2px 8px;margin-bottom:6px;background:#f8fafc">Collection by Mode</div><table><thead><tr style="background:#334155;color:white"><th style="padding:5px 8px;font-size:10px">Mode</th><th style="padding:5px 8px;font-size:10px;text-align:right">Amount</th><th style="padding:5px 8px;font-size:10px;text-align:right">Share</th></tr></thead><tbody>${modeRows||'<tr><td colspan="3" style="padding:8px;text-align:center;color:#94a3b8">No data</td></tr>'}</tbody><tfoot><tr style="background:#f1f5f9;border-top:1.5px solid #334155"><td style="padding:5px 8px;font-weight:700">Total</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:#1e3a5f">Rs.${_inr(grand)}</td><td style="padding:5px 8px;text-align:right;font-size:10px;color:#64748b">100%</td></tr></tfoot></table></div><div><div style="font-size:11px;font-weight:900;color:#1e3a5f;text-transform:uppercase;border-left:4px solid #334155;padding:2px 8px;margin-bottom:6px;background:#f8fafc">Collection by Course</div><table><thead><tr style="background:#334155;color:white"><th style="padding:5px 8px;font-size:10px">Course</th><th style="padding:5px 8px;font-size:10px;text-align:right">Amount</th></tr></thead><tbody>${courseRows||'<tr><td colspan="2" style="padding:8px;text-align:center;color:#94a3b8">No data</td></tr>'}</tbody><tfoot><tr style="background:#f1f5f9;border-top:1.5px solid #334155"><td style="padding:5px 8px;font-weight:700">Total</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:#1e3a5f">Rs.${_inr(grand)}</td></tr></tfoot></table></div></div><div style="border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin-bottom:14px"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:6px">Remarks / Notes</div><div style="height:36px;border-bottom:1px dashed #cbd5e1;width:100%"></div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:20px;margin-bottom:10px"><div style="text-align:center"><div style="border-top:1.5px solid #1e3a5f;margin:0 auto;width:80%;margin-top:36px;margin-bottom:4px"></div><div style="font-size:11px;font-weight:700;color:#1e3a5f">${generatedBy||'Fee In-Charge'}</div><div style="font-size:9.5px;color:#64748b">Fee In-Charge / Prepared By</div></div><div style="text-align:center"><div style="border-top:1.5px solid #1e3a5f;margin:0 auto;width:80%;margin-top:36px;margin-bottom:4px"></div><div style="font-size:11px;font-weight:700;color:#1e3a5f">Vice Principal</div><div style="font-size:9.5px;color:#64748b">Verified and Checked</div></div><div style="text-align:center"><div style="border-top:1.5px solid #1e3a5f;margin:0 auto;width:80%;margin-top:36px;margin-bottom:4px"></div><div style="font-size:11px;font-weight:700;color:#1e3a5f">Moirangthem Himan Singh</div><div style="font-size:9.5px;color:#64748b">Founder and Administrator</div></div></div><div style="border-top:1px solid #e2e8f0;padding-top:6px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:9px;color:#94a3b8">Generated: ${generated} · GNSI Portal</span><span style="font-size:8.5px;color:#b45309;font-weight:700">Guidance Navodaya &amp; Sainik Institute · Estd. 2016</span><span style="font-size:9px;color:#94a3b8;text-align:right">Ref: ${reportNo}<br>CONFIDENTIAL</span></div></div></body></html>`
+    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${reportTitle}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#0f172a;background:white}@page{size:A4;margin:12mm 14mm}table{width:100%;border-collapse:collapse}@media screen{body{background:#e2e8f0;padding:20px}.page{background:white;padding:18mm;box-shadow:0 4px 20px rgba(0,0,0,.12);max-width:210mm;margin:0 auto}.pbtn{position:fixed;top:16px;right:16px;background:#1e3a6e;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}.cbtn{position:fixed;top:16px;right:170px;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}}@media print{body{padding:0}.np{display:none!important}tr{page-break-inside:avoid}}</style></head><body><button class="pbtn np" onclick="window.print()">Print / Save PDF</button><button class="cbtn np" onclick="window.close()">Close</button><div class="page"><div style="border-bottom:3px double #1e3a6e;padding-bottom:10px;margin-bottom:10px;display:flex;align-items:center;gap:14px"><div style="width:58px;height:58px;border-radius:50%;background:#1e3a6e;color:white;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0">GNSI</div><div style="flex:1"><div style="font-size:20px;font-weight:900;color:#1e3a6e">Guidance Navodaya &amp; Sainik Institute</div><div style="font-size:9px;color:#b45309;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-top:2px">Premier Coaching for NVS · Sainik School · RMS</div><div style="font-size:10px;color:#475569;margin-top:2px">Khangabok Sorok Wangma, Thoubal District, Manipur – 795 131</div></div><div style="text-align:right"><span style="font-size:11px;font-weight:900;color:white;background:#1e3a6e;padding:3px 10px;border-radius:4px;display:inline-block">${reportTitle||'Daily Income Report'}</span><div style="font-size:9.5px;color:#64748b;margin-top:3px">Ref: ${reportNo}</div><div style="font-size:11px;font-weight:700;color:#1e3a6e;margin-top:2px">${_fday(reportDate)}, ${_fdate(reportDate)}</div></div></div><div style="display:grid;grid-template-columns:repeat(4,1fr);border:1.5px solid #1e3a6e;border-radius:6px;overflow:hidden;margin-bottom:10px"><div style="padding:7px 10px;border-right:1px solid #cbd5e1"><div style="font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase">Report Date</div><div style="font-size:12px;font-weight:700;color:#1e3a6e;margin-top:2px">${_fdate(reportDate)}</div></div><div style="padding:7px 10px;border-right:1px solid #cbd5e1"><div style="font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase">Transactions</div><div style="font-size:12px;font-weight:700;color:#1e3a6e;margin-top:2px">${transactions.length}</div></div><div style="padding:7px 10px;border-right:1px solid #cbd5e1"><div style="font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase">Offline Receipt No.</div><div style="font-size:12px;font-weight:700;color:#1e3a6e;margin-top:2px">${offlineRcpt||'—'}</div></div><div style="padding:7px 10px"><div style="font-size:8.5px;font-weight:700;color:#64748b;text-transform:uppercase">Generated By</div><div style="font-size:12px;font-weight:700;color:#1e3a6e;margin-top:2px">${generatedBy||'Admin'}</div></div></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px"><div style="border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;border-top:3px solid #1e3a6e"><div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase">Grand Total</div><div style="font-size:16px;font-weight:900;color:#1e3a6e;margin-top:3px">Rs.${_inr(grand)}</div></div><div style="border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;border-top:3px solid #3730a3"><div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase">Admission Fees</div><div style="font-size:16px;font-weight:900;color:#3730a3;margin-top:3px">Rs.${_inr(transactions.filter(r=>r.type==='Admission Fee').reduce((s,r)=>s+r.amount,0))}</div></div><div style="border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;border-top:3px solid #166534"><div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase">Flat Fees</div><div style="font-size:16px;font-weight:900;color:#166534;margin-top:3px">Rs.${_inr(transactions.filter(r=>r.type==='Flat Fee').reduce((s,r)=>s+r.amount,0))}</div></div><div style="border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;border-top:3px solid #6d28d9"><div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase">Course Fees</div><div style="font-size:16px;font-weight:900;color:#6d28d9;margin-top:3px">Rs.${_inr(transactions.filter(r=>r.type==='Course Fee').reduce((s,r)=>s+r.amount,0))}</div></div></div><div style="font-size:11px;font-weight:900;color:#1e3a6e;text-transform:uppercase;letter-spacing:.5px;border-left:4px solid #1e3a6e;padding:2px 8px;margin:12px 0 6px;background:#f8fafc">Detailed Transaction Register</div><table><thead><tr style="background:#1e3a6e;color:white"><th style="padding:6px 8px;text-align:center;font-size:10px;width:28px">#</th><th style="padding:6px 8px;font-size:10px;width:72px">GCC No.</th><th style="padding:6px 8px;font-size:10px">Student</th><th style="padding:6px 8px;font-size:10px;width:90px">Fee Type</th><th style="padding:6px 8px;font-size:10px">Description</th><th style="padding:6px 8px;font-size:10px;text-align:center;width:58px">Mode</th><th style="padding:6px 8px;font-size:10px;text-align:center;width:68px">Ref No.</th><th style="padding:6px 8px;font-size:10px;text-align:right;width:78px">Amount</th></tr></thead><tbody>${tRows}</tbody><tfoot><tr style="background:#1e3a6e;color:white"><td colspan="7" style="padding:8px;text-align:right;font-size:11px">TOTAL COLLECTED</td><td style="padding:8px;text-align:right;font-weight:900;font-size:12px">Rs.${_inr(grand)}</td></tr></tfoot></table><div style="border:2px solid #1e3a6e;border-radius:8px;padding:12px 16px;margin:12px 0;background:linear-gradient(135deg,#eff6ff,#f5f3ff);display:flex;align-items:center;justify-content:space-between"><div><div style="font-size:13px;font-weight:800;color:#1e3a6e">Total Income for ${_fdate(reportDate)}</div><div style="font-size:10px;color:#64748b;font-style:italic;margin-top:2px">Rupees ${_toWords(grand)}</div></div><div style="font-size:24px;font-weight:900;color:#1e3a6e">Rs. ${_inr(grand)}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px"><div><div style="font-size:11px;font-weight:900;color:#1e3a6e;text-transform:uppercase;border-left:4px solid #334155;padding:2px 8px;margin-bottom:6px;background:#f8fafc">Collection by Mode</div><table><thead><tr style="background:#334155;color:white"><th style="padding:5px 8px;font-size:10px">Mode</th><th style="padding:5px 8px;font-size:10px;text-align:right">Amount</th><th style="padding:5px 8px;font-size:10px;text-align:right">Share</th></tr></thead><tbody>${modeRows||'<tr><td colspan="3" style="padding:8px;text-align:center;color:#94a3b8">No data</td></tr>'}</tbody><tfoot><tr style="background:#f1f5f9;border-top:1.5px solid #334155"><td style="padding:5px 8px;font-weight:700">Total</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:#1e3a6e">Rs.${_inr(grand)}</td><td style="padding:5px 8px;text-align:right;font-size:10px;color:#64748b">100%</td></tr></tfoot></table></div><div><div style="font-size:11px;font-weight:900;color:#1e3a6e;text-transform:uppercase;border-left:4px solid #334155;padding:2px 8px;margin-bottom:6px;background:#f8fafc">Collection by Course</div><table><thead><tr style="background:#334155;color:white"><th style="padding:5px 8px;font-size:10px">Course</th><th style="padding:5px 8px;font-size:10px;text-align:right">Amount</th></tr></thead><tbody>${courseRows||'<tr><td colspan="2" style="padding:8px;text-align:center;color:#94a3b8">No data</td></tr>'}</tbody><tfoot><tr style="background:#f1f5f9;border-top:1.5px solid #334155"><td style="padding:5px 8px;font-weight:700">Total</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:#1e3a6e">Rs.${_inr(grand)}</td></tr></tfoot></table></div></div><div style="border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin-bottom:14px"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:6px">Remarks / Notes</div><div style="height:36px;border-bottom:1px dashed #cbd5e1;width:100%"></div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:20px;margin-bottom:10px"><div style="text-align:center"><div style="border-top:1.5px solid #1e3a6e;margin:0 auto;width:80%;margin-top:36px;margin-bottom:4px"></div><div style="font-size:11px;font-weight:700;color:#1e3a6e">${generatedBy||'Fee In-Charge'}</div><div style="font-size:9.5px;color:#64748b">Fee In-Charge / Prepared By</div></div><div style="text-align:center"><div style="border-top:1.5px solid #1e3a6e;margin:0 auto;width:80%;margin-top:36px;margin-bottom:4px"></div><div style="font-size:11px;font-weight:700;color:#1e3a6e">Vice Principal</div><div style="font-size:9.5px;color:#64748b">Verified and Checked</div></div><div style="text-align:center"><div style="border-top:1.5px solid #1e3a6e;margin:0 auto;width:80%;margin-top:36px;margin-bottom:4px"></div><div style="font-size:11px;font-weight:700;color:#1e3a6e">Moirangthem Himan Singh</div><div style="font-size:9.5px;color:#64748b">Founder and Administrator</div></div></div><div style="border-top:1px solid #e2e8f0;padding-top:6px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:9px;color:#94a3b8">Generated: ${generated} · GNSI Portal</span><span style="font-size:8.5px;color:#b45309;font-weight:700">Guidance Navodaya &amp; Sainik Institute · Estd. 2016</span><span style="font-size:9px;color:#94a3b8;text-align:right">Ref: ${reportNo}<br>CONFIDENTIAL</span></div></div></body></html>`
     const win=window.open('','_blank','width=960,height=750,scrollbars=yes');win.document.write(html);win.document.close()
   }
   return(
@@ -281,13 +281,13 @@ function DailyIncomeReport({date,transactions=[],generatedBy='Admin'}){
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
         <span style={{fontSize:22}}>🖨️</span>
         <div style={{flex:1}}><div style={{fontSize:14,fontWeight:900,color:'#92400e'}}>Print Daily Income Report</div><div style={{fontSize:11,color:'#b45309',marginTop:2}}>For Vice-Principal &amp; Founder / Administrator · {_fdate(reportDate)}</div></div>
-        <div style={{fontSize:13,fontWeight:800,color:'#1e3a5f',background:'#eff6ff',padding:'6px 14px',borderRadius:8,border:'1px solid #bfdbfe'}}>{transactions.length} txns · ₹{_inr(grand)}</div>
+        <div style={{fontSize:13,fontWeight:800,color:'#1e3a6e',background:'#eff6ff',padding:'6px 14px',borderRadius:8,border:'1px solid #bfdbfe'}}>{transactions.length} txns · ₹{_inr(grand)}</div>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
         <div><div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:4,textTransform:'uppercase'}}>Report Title</div><input value={reportTitle} onChange={e=>setReportTitle(e.target.value)} style={{width:'100%',padding:'8px 11px',borderRadius:7,border:'1.5px solid #fcd34d',fontSize:12,fontWeight:600,outline:'none',background:'white',color:'#92400e'}} /></div>
-        <div><div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:4,textTransform:'uppercase'}}>Offline Receipt No. <span style={{fontWeight:400}}>(optional)</span></div><input value={offlineRcpt} onChange={e=>setOfflineRcpt(e.target.value)} placeholder="GNSI/RCP/2025-26/001" style={{width:'100%',padding:'8px 11px',borderRadius:7,border:'1.5px solid #fcd34d',fontSize:12,fontWeight:700,outline:'none',background:'white',color:'#1e3a5f',fontFamily:'monospace'}} /></div>
+        <div><div style={{fontSize:10,fontWeight:700,color:'#92400e',marginBottom:4,textTransform:'uppercase'}}>Offline Receipt No. <span style={{fontWeight:400}}>(optional)</span></div><input value={offlineRcpt} onChange={e=>setOfflineRcpt(e.target.value)} placeholder="GNSI/RCP/2025-26/001" style={{width:'100%',padding:'8px 11px',borderRadius:7,border:'1.5px solid #fcd34d',fontSize:12,fontWeight:700,outline:'none',background:'white',color:'#1e3a6e',fontFamily:'monospace'}} /></div>
       </div>
-      <button onClick={handlePrint} disabled={transactions.length===0} style={{width:'100%',padding:'12px',borderRadius:9,background:transactions.length===0?'#94a3b8':'linear-gradient(135deg,#1e3a5f,#3730a3)',color:'white',border:'none',fontSize:14,fontWeight:800,cursor:transactions.length===0?'not-allowed':'pointer'}}>
+      <button onClick={handlePrint} disabled={transactions.length===0} style={{width:'100%',padding:'12px',borderRadius:9,background:transactions.length===0?'#94a3b8':'linear-gradient(135deg,#1e3a6e,#3730a3)',color:'white',border:'none',fontSize:14,fontWeight:800,cursor:transactions.length===0?'not-allowed':'pointer'}}>
         {transactions.length===0?'No transactions — select a date range above':`Print Preview — ₹${_inr(grand)} · ${transactions.length} receipt${transactions.length!==1?'s':''}`}
       </button>
       <div style={{fontSize:10,color:'#92400e',marginTop:8,textAlign:'center',opacity:.75}}>Opens in new tab · Ctrl+P to save as PDF</div>
@@ -787,10 +787,10 @@ function AuditWarningsTab({ students, isAdmin }) {
       ) : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}>No underpayment warnings for the current filters</div>
       ) : (
-        <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
+        <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 8px 24px -12px rgba(19,42,79,.18)', overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ background: '#1e3a5f' }}>
+              <tr style={{ background: 'linear-gradient(135deg,#132a4f,#1e3a6e)' }}>
                 {['Type', 'GCC', 'Student', 'Period', 'Standard', 'Collected', 'Shortfall', 'Reason', 'Staff', 'Time'].map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 11 }}>{h}</th>
                 ))}
@@ -803,7 +803,7 @@ function AuditWarningsTab({ students, isAdmin }) {
                 return (
                   <tr key={e.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '9px 12px' }}><span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 4, background: '#fef2f2', color: '#991B1B' }}>{feeLabel}</span></td>
-                    <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a5f', fontWeight: 700 }}>{v.gcc ? `GCC-${v.gcc}` : '—'}</td>
+                    <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>{v.gcc ? `GCC-${v.gcc}` : '—'}</td>
                     <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>{v.student_name || '—'}</td>
                     <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 12 }}>{v.month || ''} {v.year || ''}</td>
                     <td style={{ padding: '9px 12px', color: '#475569' }}>₹{Number(v.standard_amount || 0).toLocaleString('en-IN')}</td>
@@ -833,7 +833,7 @@ function PendingApprovalsTab({ isAdmin, currentUser, adminCount, onRefresh }) {
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState(null)
   const [toast, setToast] = useState(null)
-  const showToast = (msg, color = '#1e3a5f') => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
+  const showToast = (msg, color = '#1e3a6e') => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
 
   const myName = currentUser?.userName || currentUser?.name || 'Admin'
   const [myId, setMyId] = useState(null)   // secure-login user id
@@ -912,7 +912,7 @@ function PendingApprovalsTab({ isAdmin, currentUser, adminCount, onRefresh }) {
         </div>
       )}
       <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: 12, padding: '14px 18px', marginBottom: 18 }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f' }}>🔏 Pending Approvals</div>
+        <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>🔏 Pending Approvals</div>
         <div style={{ fontSize: 12, color: '#1e40af', marginTop: 2 }}>Revert/delete requests filed by any admin, waiting for a different admin to approve or reject. {adminCount === 1 ? 'Only one admin account exists, so requests self-approve automatically when filed.' : ''}</div>
       </div>
 
@@ -921,10 +921,10 @@ function PendingApprovalsTab({ isAdmin, currentUser, adminCount, onRefresh }) {
       ) : parsed.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 48, color: '#94a3b8' }}>No pending requests</div>
       ) : (
-        <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
+        <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 8px 24px -12px rgba(19,42,79,.18)', overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ background: '#1e3a5f' }}>
+              <tr style={{ background: 'linear-gradient(135deg,#132a4f,#1e3a6e)' }}>
                 {['Type', 'Student / Record', 'Amount', 'Reason', 'Requested By', 'Requested At', ''].map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 11 }}>{h}</th>
                 ))}
@@ -1039,7 +1039,7 @@ function AnomalyMonitor({adm_fee_collections,adm_flat_fees,adm_course_fees,stude
   const pendingCount=flags.filter(f=>(reviews[f.id]?.verdict||'pending')==='pending').length
   return(
     <div style={{fontFamily:'system-ui,sans-serif'}}>
-      <div style={{background:critCount>0?'linear-gradient(135deg,#7f1d1d,#991b1b)':highCount>0?'linear-gradient(135deg,#7c2d12,#9a3412)':'linear-gradient(135deg,#1e3a5f,#1e40af)',borderRadius:14,padding:'20px 24px',marginBottom:20,color:'white'}}>
+      <div style={{background:critCount>0?'linear-gradient(135deg,#7f1d1d,#991b1b)':highCount>0?'linear-gradient(135deg,#7c2d12,#9a3412)':'linear-gradient(135deg,#1e3a6e,#1e40af)',borderRadius:14,padding:'20px 24px',marginBottom:20,color:'white'}}>
         <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
           <div style={{fontSize:40}}>{critCount>0?'🚨':highCount>0?'⚠️':'✅'}</div>
           <div style={{flex:1}}><div style={{fontSize:20,fontWeight:900}}>Fee Collection Anomaly Monitor</div><div style={{fontSize:12,opacity:.8,marginTop:3}}>{flags.length===0?'No anomalies detected — all fee records look clean.':`${flags.length} anomal${flags.length!==1?'ies':'y'} detected · ${pendingCount} pending review · Admin eyes only`}</div></div>
@@ -1048,10 +1048,10 @@ function AnomalyMonitor({adm_fee_collections,adm_flat_fees,adm_course_fees,stude
       </div>
       <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
         <span style={{fontSize:11,fontWeight:700,color:'#64748b',marginRight:2}}>SEVERITY:</span>
-        {sevs.map(s=>{const c=SEV_COLOR[s]||{},isActive=sevFilter===s;return(<button key={s} onClick={()=>setSevFilter(s)} style={{padding:'5px 12px',borderRadius:6,border:`1.5px solid ${isActive?(c.border||'#1e3a5f'):'#e2e8f0'}`,background:isActive?(s==='ALL'?'#1e3a5f':(c.badge||'#64748b')):'white',color:isActive?'white':(s==='ALL'?'#1e3a5f':(c.text||'#64748b')),fontSize:11,fontWeight:700,cursor:'pointer'}}>{s==='ALL'?'All':SEV_ICON[s]+' '+s}</button>)})}
+        {sevs.map(s=>{const c=SEV_COLOR[s]||{},isActive=sevFilter===s;return(<button key={s} onClick={()=>setSevFilter(s)} style={{padding:'5px 12px',borderRadius:6,border:`1.5px solid ${isActive?(c.border||'#1e3a6e'):'#e2e8f0'}`,background:isActive?(s==='ALL'?'#1e3a6e':(c.badge||'#64748b')):'white',color:isActive?'white':(s==='ALL'?'#1e3a6e':(c.text||'#64748b')),fontSize:11,fontWeight:700,cursor:'pointer'}}>{s==='ALL'?'All':SEV_ICON[s]+' '+s}</button>)})}
         <span style={{width:1,height:18,background:'#e2e8f0',margin:'0 2px',display:'inline-block'}}/>
         <span style={{fontSize:11,fontWeight:700,color:'#64748b',marginRight:2}}>CATEGORY:</span>
-        {cats.map(c=>(<button key={c} onClick={()=>setCatFilter(c)} style={{padding:'5px 12px',borderRadius:6,border:`1.5px solid ${catFilter===c?'#1e3a5f':'#e2e8f0'}`,background:catFilter===c?'#1e3a5f':'white',color:catFilter===c?'white':'#64748b',fontSize:11,fontWeight:700,cursor:'pointer'}}>{c}</button>))}
+        {cats.map(c=>(<button key={c} onClick={()=>setCatFilter(c)} style={{padding:'5px 12px',borderRadius:6,border:`1.5px solid ${catFilter===c?'#1e3a6e':'#e2e8f0'}`,background:catFilter===c?'#1e3a6e':'white',color:catFilter===c?'white':'#64748b',fontSize:11,fontWeight:700,cursor:'pointer'}}>{c}</button>))}
       </div>
       {flags.length===0&&(<div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:12,padding:40,textAlign:'center'}}><div style={{fontSize:48,marginBottom:12}}>✅</div><div style={{fontSize:18,fontWeight:800,color:'#16a34a',marginBottom:6}}>All Clear</div><div style={{fontSize:13,color:'#16a34a',opacity:.7}}>No anomalies detected.</div></div>)}
       <div style={{display:'flex',flexDirection:'column',gap:10}}>
@@ -1113,7 +1113,7 @@ function AnomalyMonitor({adm_fee_collections,adm_flat_fees,adm_course_fees,stude
         )})}
       </div>
       {visible.length===0&&flags.length>0&&(<div style={{textAlign:'center',padding:32,color:'#94a3b8',fontSize:13}}>No anomalies match the current filters.</div>)}
-      {flags.length>0&&(<div style={{marginTop:20,background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:10,padding:'12px 16px',fontSize:11,color:'#64748b',lineHeight:1.6}}><strong style={{color:'#1e3a5f'}}>Action guide —</strong> <strong>CRITICAL</strong>: fix immediately using Revert in Fee Payment. <strong>HIGH</strong>: verify against physical receipts before end of day. <strong>MEDIUM</strong>: review at next audit. <strong>LOW</strong>: address during month-end reconciliation. Use the <strong>Verdict</strong> buttons above to record whether each anomaly was checked and found legitimate, or flagged as suspected fraud — this is saved and visible to all admins.</div>)}
+      {flags.length>0&&(<div style={{marginTop:20,background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:10,padding:'12px 16px',fontSize:11,color:'#64748b',lineHeight:1.6}}><strong style={{color:'#1e3a6e'}}>Action guide —</strong> <strong>CRITICAL</strong>: fix immediately using Revert in Fee Payment. <strong>HIGH</strong>: verify against physical receipts before end of day. <strong>MEDIUM</strong>: review at next audit. <strong>LOW</strong>: address during month-end reconciliation. Use the <strong>Verdict</strong> buttons above to record whether each anomaly was checked and found legitimate, or flagged as suspected fraud — this is saved and visible to all admins.</div>)}
     </div>
   )
 }
@@ -1229,7 +1229,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
     setSaving(true)
     try{
       const result=await fileFeeActionRequest({actionType:'revert',table:row._table,id:row.id,reason,currentUser,adminCount})
-      showToast(result.selfApproved?`↩️ Reverted: ${row._desc}`:'📝 Revert requested — waiting for another admin to approve.',result.selfApproved?'#dc2626':'#1e3a5f')
+      showToast(result.selfApproved?`↩️ Reverted: ${row._desc}`:'📝 Revert requested — waiting for another admin to approve.',result.selfApproved?'#dc2626':'#1e3a6e')
       onRefresh()
     }catch(err){showToast('Revert request failed: '+err.message,'#dc2626')}
     setSaving(false)
@@ -1245,7 +1245,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
       if(row._table==='adm_course_fees'){aType='course_fee';aRef=sourceRef.courseFee(gcc,row.for_month,row.year)}
       if(row._table==='adm_fee_collections'){aType=row.fee_type==='advance'?'advance_fee':'adm_fee';aRef=row.fee_type==='admission'?sourceRef.admission(gcc):row.fee_type==='advance'?row.id:null}
       await correctFeeCollectionDate({table:row._table,id:row.id,newDate,accountSourceRef:aRef,accountSourceType:aType,correctedBy:currentUser?.userName||currentUser?.name||'Admin',staffId:currentUser?.userName||currentUser?.name||null})
-      showToast(`📅 Date corrected to ${newDate}`,'#1e3a5f');onRefresh()
+      showToast(`📅 Date corrected to ${newDate}`,'#1e3a6e');onRefresh()
     }catch(err){showToast('Date fix failed: '+err.message,'#dc2626')}
     setSaving(false)
   }
@@ -1253,7 +1253,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
   return(
     <div style={{background:'white',border:'1px solid #e2e8f0',borderRadius:14,overflow:'hidden',boxShadow:'0 4px 16px rgba(0,0,0,.08)'}}>
       {toast&&<div style={{position:'fixed',top:20,right:20,zIndex:99999,background:'white',border:`1px solid #e2e8f0`,borderLeft:`3px solid ${toast.color}`,borderRadius:10,padding:'11px 16px',fontSize:13,fontWeight:600,boxShadow:'0 8px 32px rgba(0,0,0,.12)',maxWidth:320,color:'#1e293b'}}>{toast.msg}</div>}
-      <div style={{background:'linear-gradient(135deg,#1e3a5f,#1e40af)',padding:'18px 20px',color:'white'}}>
+      <div style={{background:'linear-gradient(135deg,#1e3a6e,#1e40af)',padding:'18px 20px',color:'white'}}>
         <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
           <div style={{width:52,height:52,borderRadius:'50%',background:'rgba(255,255,255,.2)',border:'2px solid rgba(255,255,255,.4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:900,flexShrink:0}}>{(student.name||'?').split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase()}</div>
           <div style={{flex:1}}>
@@ -1267,7 +1267,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
         </div>
       </div>
       <div style={{display:'flex',borderBottom:'2px solid #f1f5f9',background:'#f8fafc'}}>
-        {[{id:'history',l:'📋 Fee History'},{id:'dues',l:'📌 Dues'},{id:'activity',l:isAdmin?'🕒 Activity Log':'🔒 Admin Only'},{id:'revert',l:isAdmin?'↩️ Revert / Fix (Admin)':'🔒 Admin Only'}].map(t=>(<button key={t.id} onClick={()=>isAdmin||t.id==='history'||t.id==='dues'?setTab(t.id):null} style={{padding:'10px 18px',border:'none',borderBottom:tab===t.id?'2px solid #1e3a5f':'2px solid transparent',background:'none',cursor:isAdmin||t.id==='history'||t.id==='dues'?'pointer':'not-allowed',fontSize:12,fontWeight:tab===t.id?800:500,color:tab===t.id?'#1e3a5f':isAdmin||t.id==='history'||t.id==='dues'?'#64748b':'#cbd5e1',marginBottom:-2}}>{t.l}</button>))}
+        {[{id:'history',l:'📋 Fee History'},{id:'dues',l:'📌 Dues'},{id:'activity',l:isAdmin?'🕒 Activity Log':'🔒 Admin Only'},{id:'revert',l:isAdmin?'↩️ Revert / Fix (Admin)':'🔒 Admin Only'}].map(t=>(<button key={t.id} onClick={()=>isAdmin||t.id==='history'||t.id==='dues'?setTab(t.id):null} style={{padding:'10px 18px',border:'none',borderBottom:tab===t.id?'2px solid #1e3a6e':'2px solid transparent',background:'none',cursor:isAdmin||t.id==='history'||t.id==='dues'?'pointer':'not-allowed',fontSize:12,fontWeight:tab===t.id?800:500,color:tab===t.id?'#1e3a6e':isAdmin||t.id==='history'||t.id==='dues'?'#64748b':'#cbd5e1',marginBottom:-2}}>{t.l}</button>))}
       </div>
       {tab==='history'&&(
         <div style={{padding:'0 0 4px'}}>
@@ -1276,11 +1276,11 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                 <thead><tr style={{background:'#f8fafc',borderBottom:'1px solid #e2e8f0'}}>{['#','Type','Description','Amount','Date','Mode','Ref','By'].map(h=>(<th key={h} style={{padding:'9px 12px',textAlign:'left',fontWeight:700,color:'#374151',fontSize:11,whiteSpace:'nowrap'}}>{h}</th>))}</tr></thead>
                 <tbody>{timeline.map((r,i)=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table} style={{borderBottom:'1px solid #f8fafc'}} onMouseEnter={e=>e.currentTarget.style.background='#f8fafc'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'8px 12px',color:'#94a3b8',fontSize:10}}>{i+1}</td><td style={{padding:'8px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'8px 12px',color:'#1e293b',fontWeight:600}}>{r._desc}</td><td style={{padding:'8px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'8px 12px',color:'#64748b',fontFamily:'monospace',fontSize:11}}>{r._date||'—'}</td><td style={{padding:'8px 12px',color:'#475569'}}>{r.pay_mode||'—'}</td><td style={{padding:'8px 12px',color:'#94a3b8',fontFamily:'monospace',fontSize:10}}>{r.txn_ref||'—'}</td><td style={{padding:'8px 12px',color:'#64748b',fontSize:11}}>{r.collected_by||'—'}</td></tr>)})}</tbody>
-                <tfoot><tr style={{background:'#1e3a5f'}}><td colSpan={3} style={{padding:'10px 12px',fontWeight:800,color:'white',fontSize:12}}>Total Paid</td><td style={{padding:'10px 12px',fontWeight:900,color:'#6ee7b7',fontSize:13}}>₹{n(grandTotal)}</td><td colSpan={4}/></tr></tfoot>
+                <tfoot><tr style={{background:'#1e3a6e'}}><td colSpan={3} style={{padding:'10px 12px',fontWeight:800,color:'white',fontSize:12}}>Total Paid</td><td style={{padding:'10px 12px',fontWeight:900,color:'#6ee7b7',fontSize:13}}>₹{n(grandTotal)}</td><td colSpan={4}/></tr></tfoot>
               </table>
             </div>
           )}
-          <div style={{padding:'12px 16px',borderTop:'1px solid #f1f5f9'}}><button onClick={()=>onCollect(student)} style={{width:'100%',padding:'10px',borderRadius:8,background:'linear-gradient(135deg,#1e3a5f,#3730a3)',color:'white',border:'none',fontSize:13,fontWeight:800,cursor:'pointer'}}>💳 Collect Fee for {student.name.split(' ')[0]}</button></div>
+          <div style={{padding:'12px 16px',borderTop:'1px solid #f1f5f9'}}><button onClick={()=>onCollect(student)} style={{width:'100%',padding:'10px',borderRadius:8,background:'linear-gradient(135deg,#1e3a6e,#3730a3)',color:'white',border:'none',fontSize:13,fontWeight:800,cursor:'pointer'}}>💳 Collect Fee for {student.name.split(' ')[0]}</button></div>
         </div>
       )}
       {tab==='dues'&&(
@@ -1360,7 +1360,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                 <thead><tr style={{background:'#f8fafc',borderBottom:'1px solid #e2e8f0'}}>{['Type','Description','Amount','Date','Mode','Actions'].map(h=>(<th key={h} style={{padding:'9px 12px',textAlign:'left',fontWeight:700,color:'#374151',fontSize:11,whiteSpace:'nowrap'}}>{h}</th>))}</tr></thead>
-                <tbody>{timeline.map((r,i)=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table+'-rv'} style={{borderBottom:'1px solid #f8fafc'}} onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'9px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'9px 12px',color:'#1e293b',fontWeight:600}}>{r._desc}</td><td style={{padding:'9px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'9px 12px',color:'#64748b',fontFamily:'monospace',fontSize:11}}>{r._date||<span style={{color:'#fca5a5',fontWeight:700}}>Missing!</span>}</td><td style={{padding:'9px 12px',color:'#475569'}}>{r.pay_mode||'—'}</td><td style={{padding:'9px 12px'}}><div style={{display:'flex',gap:6}}><button onClick={()=>doFixDate(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #bfdbfe',background:'#eff6ff',color:'#1e3a5f',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>📅 Fix Date</button><button onClick={()=>doRevert(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>↩️ Revert</button></div></td></tr>)})}</tbody>
+                <tbody>{timeline.map((r,i)=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table+'-rv'} style={{borderBottom:'1px solid #f8fafc'}} onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'9px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'9px 12px',color:'#1e293b',fontWeight:600}}>{r._desc}</td><td style={{padding:'9px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'9px 12px',color:'#64748b',fontFamily:'monospace',fontSize:11}}>{r._date||<span style={{color:'#fca5a5',fontWeight:700}}>Missing!</span>}</td><td style={{padding:'9px 12px',color:'#475569'}}>{r.pay_mode||'—'}</td><td style={{padding:'9px 12px'}}><div style={{display:'flex',gap:6}}><button onClick={()=>doFixDate(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #bfdbfe',background:'#eff6ff',color:'#1e3a6e',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>📅 Fix Date</button><button onClick={()=>doRevert(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>↩️ Revert</button></div></td></tr>)})}</tbody>
               </table>
             </div>
           )}
@@ -1390,7 +1390,7 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
       <div style={{flex:'0 0 340px',minWidth:280}}>
         <div style={{background:'white',border:'1px solid #e2e8f0',borderRadius:12,overflow:'hidden',boxShadow:'0 2px 8px rgba(0,0,0,.06)'}}>
           <div style={{padding:'14px 14px 10px',borderBottom:'1px solid #f1f5f9',background:'#f8fafc'}}>
-            <div style={{fontWeight:800,fontSize:13,color:'#1e3a5f',marginBottom:10}}>👨‍🎓 Select Student</div>
+            <div style={{fontWeight:800,fontSize:13,color:'#1e3a6e',marginBottom:10}}>👨‍🎓 Select Student</div>
             <input placeholder="Search name or GCC No…" value={search} onChange={e=>setSearch(e.target.value)} style={inp2}/>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginTop:8}}>
               <select value={courseF} onChange={e=>setCourseF(e.target.value)} style={{...inp2,padding:'5px 6px',fontSize:11}}><option value="All">All Courses</option>{['Sainik','Navodaya','Foundation','Combined Course'].map(c=><option key={c}>{c}</option>)}</select>
@@ -1402,7 +1402,7 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
           <div style={{maxHeight:520,overflowY:'auto'}}>
             {filtered.length===0&&<div style={{padding:24,textAlign:'center',color:'#94a3b8',fontSize:12}}>No students found</div>}
             {filtered.map(s=>{const isSel=selected?.id===s.id,sc=s.liveStatus==='Paid'?'#16a34a':s.liveStatus==='Partial'?'#d97706':s.liveStatus==='Underpaid'?'#c2410c':'#dc2626',sb=s.liveStatus==='Paid'?'#dcfce7':s.liveStatus==='Partial'?'#fef9c3':s.liveStatus==='Underpaid'?'#ffedd5':'#fee2e2';return(
-              <div key={s.id} onClick={()=>setSelected(s)} style={{padding:'11px 14px',cursor:'pointer',borderBottom:'1px solid #f8fafc',background:isSel?'#eff6ff':'white',borderLeft:isSel?'3px solid #1e3a5f':'3px solid transparent'}} onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background='#f8fafc'}} onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background='white'}}>
+              <div key={s.id} onClick={()=>setSelected(s)} style={{padding:'11px 14px',cursor:'pointer',borderBottom:'1px solid #f8fafc',background:isSel?'#eff6ff':'white',borderLeft:isSel?'3px solid #1e3a6e':'3px solid transparent'}} onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background='#f8fafc'}} onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background='white'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
                   <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,color:'#1e293b',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>{s.name}{s.is_repeater&&<span style={{fontSize:8,fontWeight:800,color:'#92400e',background:'#fef3c7',padding:'1px 4px',borderRadius:2,border:'1px solid #fcd34d'}}>RPT</span>}</div><div style={{fontSize:10,color:'#64748b',marginTop:2}}>GCC-{s.gcc_no} · {s.class_name||s.batch||'—'} · {s.course||'—'}</div><div style={{fontSize:10,color:'#94a3b8',marginTop:1}}>{s.hostel_type||'—'}</div></div>
                   <div style={{textAlign:'right',flexShrink:0}}><div style={{fontSize:13,fontWeight:900,color:s.grandTotal>0?'#16a34a':'#94a3b8'}}>{s.grandTotal>0?`₹${n(s.grandTotal)}`:'₹0'}</div><span style={{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:99,background:sb,color:sc,marginTop:3,display:'inline-block'}}>{s.liveStatus}</span></div>
@@ -1453,7 +1453,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
   const grandTotal=liveRows.reduce((s,r)=>s+r.grandTotal,0),admTotal=adm_fee_collections.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0),flatTotal=adm_flat_fees.filter(r=>r.paid).reduce((s,r)=>s+(r.amount||0),0),crsfTotal=adm_course_fees.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
   const inp3={padding:'8px 11px',borderRadius:7,border:'1px solid #d1d5db',fontSize:12,outline:'none',background:'white',width:'100%'}
   const REPORT_GROUPS=[
-    {group:'Student Reports',icon:'👨‍🎓',color:'#1e3a5f',reports:[
+    {group:'Student Reports',icon:'👨‍🎓',color:'#1e3a6e',reports:[
       {id:'fee_status',name:'Fee Status Summary',desc:'All students with admission, flat, course fees and overall status',rows:()=>reports.feeStatusRows,meta:()=>({'Total Students':students.length,'Grand Total':`₹${n(grandTotal)}`,'Generated':todayStr})},
       {id:'pending',name:'Pending Fee Students',desc:'Students who have not made any payment yet',rows:()=>reports.pendingRows,meta:()=>({'Pending Count':reports.pendingRows.length,'Generated':todayStr})},
     ]},
@@ -1474,7 +1474,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
   const FmtBtn=({format,label,color,onClick})=>(<button onClick={onClick} style={{padding:'6px 10px',borderRadius:6,border:`1.5px solid ${color}20`,background:`${color}10`,color,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}} onMouseEnter={e=>{e.currentTarget.style.background=color;e.currentTarget.style.color='white'}} onMouseLeave={e=>{e.currentTarget.style.background=`${color}10`;e.currentTarget.style.color=color}}>{label}</button>)
   return(
     <div style={{fontFamily:'system-ui,sans-serif'}}>
-      <div style={{background:'linear-gradient(135deg,#1e3a5f,#1e40af)',borderRadius:14,padding:'20px 24px',color:'white',marginBottom:20}}>
+      <div style={{background:'linear-gradient(135deg,#1e3a6e,#1e40af)',borderRadius:14,padding:'20px 24px',color:'white',marginBottom:20}}>
         <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
           <div style={{fontSize:36}}>📤</div>
           <div style={{flex:1}}><div style={{fontSize:20,fontWeight:900}}>Reports &amp; Export Centre</div><div style={{fontSize:12,opacity:.8,marginTop:3}}>Export any fee report in CSV · TSV · XLS · JSON · Print/PDF format</div></div>
@@ -1482,7 +1482,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
         </div>
       </div>
       <div style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:12,padding:'14px 18px',marginBottom:20}}>
-        <div style={{fontSize:12,fontWeight:800,color:'#1e3a5f',marginBottom:12}}>🔧 Report Filters</div>
+        <div style={{fontSize:12,fontWeight:800,color:'#1e3a6e',marginBottom:12}}>🔧 Report Filters</div>
         <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr 1fr':'repeat(5,1fr)',gap:10}}>
           <div><div style={{fontSize:10,fontWeight:700,color:'#64748b',marginBottom:4,textTransform:'uppercase'}}>Course</div><select value={courseF} onChange={e=>setCourseF(e.target.value)} style={inp3}><option value="All">All Courses</option>{['Sainik','Navodaya','Foundation','Combined Course'].map(c=><option key={c}>{c}</option>)}</select></div>
           <div><div style={{fontSize:10,fontWeight:700,color:'#64748b',marginBottom:4,textTransform:'uppercase'}}>Hostel Type</div><select value={hostelF} onChange={e=>setHostelF(e.target.value)} style={inp3}><option value="All">All Types</option>{['Boarder','Day Boarder','Day Scholar'].map(h=><option key={h}>{h}</option>)}</select></div>
@@ -1491,7 +1491,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
           <div><div style={{fontSize:10,fontWeight:700,color:'#64748b',marginBottom:4,textTransform:'uppercase'}}>Date To</div><input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inp3}/></div>
         </div>
         <div style={{display:'flex',gap:8,marginTop:10,flexWrap:'wrap'}}>
-          <button onClick={()=>{setDateFrom(todayStr);setDateTo(todayStr)}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid #bfdbfe',background:'#eff6ff',color:'#1e3a5f',fontSize:11,fontWeight:700,cursor:'pointer'}}>📅 Today</button>
+          <button onClick={()=>{setDateFrom(todayStr);setDateTo(todayStr)}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid #bfdbfe',background:'#eff6ff',color:'#1e3a6e',fontSize:11,fontWeight:700,cursor:'pointer'}}>📅 Today</button>
           <button onClick={()=>{const d=new Date();d.setDate(1);setDateFrom(d.toLocaleDateString('en-CA'));setDateTo(todayStr)}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid #d1fae5',background:'#ecfdf5',color:'#059669',fontSize:11,fontWeight:700,cursor:'pointer'}}>📅 This Month</button>
           <button onClick={()=>{const d=new Date();d.setDate(d.getDate()-30);setDateFrom(d.toLocaleDateString('en-CA'));setDateTo(todayStr)}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid #ede9fe',background:'#f5f3ff',color:'#7c3aed',fontSize:11,fontWeight:700,cursor:'pointer'}}>📅 Last 30 Days</button>
           <button onClick={()=>{setCourseF('All');setHostelF('All');setStatusF('All');setDateFrom('');setDateTo('')}} style={{padding:'5px 12px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',fontSize:11,fontWeight:700,cursor:'pointer'}}>✕ Clear All</button>
@@ -1500,7 +1500,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
       {lastExport&&(<div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'10px 16px',marginBottom:16,fontSize:12,fontWeight:700,color:'#16a34a',display:'flex',justifyContent:'space-between',alignItems:'center'}}>{lastExport}<button onClick={()=>setLastExport(null)} style={{background:'none',border:'none',color:'#16a34a',cursor:'pointer',fontSize:16,fontWeight:900}}>×</button></div>)}
       <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:16,padding:'10px 14px',background:'#f8fafc',borderRadius:8,border:'1px solid #e2e8f0'}}>
         <span style={{fontSize:11,fontWeight:700,color:'#64748b',marginRight:4}}>FORMAT GUIDE:</span>
-        {[{l:'📄 CSV',d:'Excel / Google Sheets',c:'#1e3a5f'},{l:'📋 TSV',d:'Tab-separated',c:'#059669'},{l:'📊 XLS',d:'Microsoft Excel',c:'#166534'},{l:'{ } JSON',d:'For developers',c:'#7c3aed'},{l:'🖨 Print',d:'A4 printout / PDF',c:'#d97706'}].map(f=>(<div key={f.l} style={{display:'flex',alignItems:'center',gap:4}}><span style={{fontSize:11,fontWeight:800,color:f.c}}>{f.l}</span><span style={{fontSize:10,color:'#94a3b8'}}>— {f.d}</span></div>))}
+        {[{l:'📄 CSV',d:'Excel / Google Sheets',c:'#1e3a6e'},{l:'📋 TSV',d:'Tab-separated',c:'#059669'},{l:'📊 XLS',d:'Microsoft Excel',c:'#166534'},{l:'{ } JSON',d:'For developers',c:'#7c3aed'},{l:'🖨 Print',d:'A4 printout / PDF',c:'#d97706'}].map(f=>(<div key={f.l} style={{display:'flex',alignItems:'center',gap:4}}><span style={{fontSize:11,fontWeight:800,color:f.c}}>{f.l}</span><span style={{fontSize:10,color:'#94a3b8'}}>— {f.d}</span></div>))}
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:20}}>
         {REPORT_GROUPS.map(group=>(<div key={group.group} style={{background:'white',border:'1px solid #e2e8f0',borderRadius:14,overflow:'hidden',boxShadow:'0 2px 8px rgba(0,0,0,.05)'}}>
@@ -1510,7 +1510,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
               <div key={report.id} style={{padding:'14px 12px',borderBottom:ri<group.reports.length-1?'1px solid #f1f5f9':'none'}}>
                 <div style={{display:'flex',alignItems:'flex-start',gap:14,flexWrap:'wrap'}}>
                   <div style={{flex:1,minWidth:200}}><div style={{fontSize:13,fontWeight:800,color:'#1e293b',marginBottom:3}}>{report.name}</div><div style={{fontSize:11,color:'#64748b',marginBottom:6}}>{report.desc}</div><div style={{display:'flex',gap:12,flexWrap:'wrap'}}>{Object.entries(meta).map(([k,v])=>(<div key={k} style={{fontSize:10}}><span style={{color:'#94a3b8',fontWeight:600}}>{k}: </span><span style={{color:'#1e293b',fontWeight:800}}>{String(v)}</span></div>))}</div></div>
-                  <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',flexShrink:0}}><span style={{fontSize:10,color:'#94a3b8',fontWeight:700,marginRight:4}}>{rows.length} rows</span><FmtBtn format="csv" label="📄 CSV" color="#1e3a5f" onClick={()=>doExport(report,'csv')}/><FmtBtn format="tsv" label="📋 TSV" color="#059669" onClick={()=>doExport(report,'tsv')}/><FmtBtn format="xls" label="📊 XLS" color="#166534" onClick={()=>doExport(report,'xls')}/><FmtBtn format="json" label="{} JSON" color="#7c3aed" onClick={()=>doExport(report,'json')}/><FmtBtn format="print" label="🖨 Print" color="#d97706" onClick={()=>doExport(report,'print')}/></div>
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',flexShrink:0}}><span style={{fontSize:10,color:'#94a3b8',fontWeight:700,marginRight:4}}>{rows.length} rows</span><FmtBtn format="csv" label="📄 CSV" color="#1e3a6e" onClick={()=>doExport(report,'csv')}/><FmtBtn format="tsv" label="📋 TSV" color="#059669" onClick={()=>doExport(report,'tsv')}/><FmtBtn format="xls" label="📊 XLS" color="#166534" onClick={()=>doExport(report,'xls')}/><FmtBtn format="json" label="{} JSON" color="#7c3aed" onClick={()=>doExport(report,'json')}/><FmtBtn format="print" label="🖨 Print" color="#d97706" onClick={()=>doExport(report,'print')}/></div>
                 </div>
               </div>
             )})}
@@ -1518,21 +1518,22 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
         </div>))}
       </div>
       <div style={{marginTop:20,background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:12,padding:'16px 18px'}}>
-        <div style={{fontSize:13,fontWeight:800,color:'#1e3a5f',marginBottom:10}}>⚡ Quick Export All Reports as CSV</div>
-        <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{REPORT_GROUPS.flatMap(g=>g.reports).map(r=>(<button key={r.id} onClick={()=>doExport(r,'csv')} style={{padding:'7px 14px',borderRadius:7,border:'1px solid #e2e8f0',background:'white',color:'#1e3a5f',fontSize:12,fontWeight:700,cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='#eff6ff'} onMouseLeave={e=>e.currentTarget.style.background='white'}>📄 {r.name}</button>))}</div>
+        <div style={{fontSize:13,fontWeight:800,color:'#1e3a6e',marginBottom:10}}>⚡ Quick Export All Reports as CSV</div>
+        <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{REPORT_GROUPS.flatMap(g=>g.reports).map(r=>(<button key={r.id} onClick={()=>doExport(r,'csv')} style={{padding:'7px 14px',borderRadius:7,border:'1px solid #e2e8f0',background:'white',color:'#1e3a6e',fontSize:12,fontWeight:700,cursor:'pointer'}} onMouseEnter={e=>e.currentTarget.style.background='#eff6ff'} onMouseLeave={e=>e.currentTarget.style.background='white'}>📄 {r.name}</button>))}</div>
       </div>
     </div>
   )
 }
 
 const inp = {
-  width: '100%', padding: '10px 14px', borderRadius: '8px',
-  border: '1px solid #d1d5db', fontSize: '14px',
-  outline: 'none', boxSizing: 'border-box', backgroundColor: 'white',
+  width: '100%', padding: '10px 14px', borderRadius: '10px',
+  border: '1px solid #d9d2c2', fontSize: '14px', minHeight: 42, color: '#0f1b2e',
+  outline: 'none', boxSizing: 'border-box', backgroundColor: 'white', fontFamily: 'inherit',
+  transition: 'border-color .15s, box-shadow .15s',
 }
 const lbl = {
-  display: 'block', fontSize: '13px', fontWeight: '600',
-  color: '#374151', marginBottom: '6px',
+  display: 'block', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '.07em',
+  color: '#5d6b82', marginBottom: '6px',
 }
 
 // ── Fee payment screen — shared neutral card/section tokens ──────────────
@@ -1540,12 +1541,47 @@ const lbl = {
 // for admission, green for flat, purple for course, etc.) with one
 // consistent neutral surface, so the screen reads as a single coherent
 // document rather than a stack of differently-themed panels.
-const feeCard = { background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }
-const feeCardHead = { padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }
-const feeCardTitle = { flex: 1, fontWeight: 700, fontSize: 14, color: '#0f172a' }
-const feeCardSub = { fontSize: 11, color: '#64748b', marginTop: 2 }
-const feePillDone = { fontSize: 11, padding: '2px 9px', borderRadius: 99, background: '#f0fdf4', color: '#166534', fontWeight: 600, border: '1px solid #bbf7d0' }
-const feeTotalRow = { display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: '#0f172a', background: '#f8fafc', padding: '9px 12px', borderRadius: 8, border: '1px solid #e2e8f0' }
+const feeCard = { background: 'white', border: '1px solid #e8e3d8', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 6px 18px -10px rgba(19,42,79,.14)' }
+const feeCardHead = { padding: '13px 18px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #e8e3d8', background: 'linear-gradient(180deg,#faf8f3,#fff)' }
+const feeCardTitle = { flex: 1, fontWeight: 600, fontSize: 16, color: '#132a4f', fontFamily: "'Fraunces',Georgia,serif" }
+const feeCardSub = { fontSize: 11.5, color: '#5d6b82', marginTop: 2 }
+const feePillDone = { fontSize: 11, padding: '3px 10px', borderRadius: 99, background: '#f0fdf4', color: '#166534', fontWeight: 700, border: '1px solid #bbf7d0' }
+const feeTotalRow = { display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: '#132a4f', background: '#f6efdc', padding: '10px 14px', borderRadius: 10, border: '1px solid #e9d9b0' }
+
+const FEES_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap');
+.fe-root{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#f7f5f0;color:#0f1b2e;min-height:100vh;-webkit-font-smoothing:antialiased}
+.fe-root *{box-sizing:border-box}
+.fe-root input:not([type=checkbox]):not([type=radio]):not([type=file]):focus,.fe-root select:focus,.fe-root textarea:focus{outline:none;border-color:#1e3a6e!important;box-shadow:0 0 0 3px rgba(30,58,110,.14)!important}
+.fe-root button{font-family:inherit}
+.fe-root button:not(:disabled){transition:transform .12s,filter .12s,box-shadow .15s,background-color .15s}
+.fe-root button:not(:disabled):hover{filter:brightness(.97)}
+.fe-root button:not(:disabled):active{transform:scale(.98)}
+.fe-root button:focus-visible{outline:2px solid #b8923a;outline-offset:2px}
+.fe-root thead th{font-size:11px!important;text-transform:uppercase;letter-spacing:.07em;font-weight:700!important;white-space:nowrap}
+.fe-root ::selection{background:#e9d9b0;color:#132a4f}
+.fe-root ::-webkit-scrollbar{width:6px;height:6px}
+.fe-root ::-webkit-scrollbar-thumb{background:#d9d2c2;border-radius:6px}
+.fe-hero{position:relative;overflow:hidden;border-radius:22px;color:#fff;background:radial-gradient(90% 140% at 100% 0%,rgba(184,146,58,.28) 0%,transparent 55%),linear-gradient(135deg,#0e203f 0%,#132a4f 45%,#1e3a6e 100%);box-shadow:0 24px 48px -24px rgba(19,42,79,.55)}
+.fe-hero::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.07) 1px,transparent 1px);background-size:14px 14px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 70%);mask-image:linear-gradient(90deg,transparent,#000 70%);pointer-events:none}
+.fe-hero::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,#b8923a,transparent)}
+.fe-hero>*{position:relative}
+.fe-hbtn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:40px;padding:0 16px;border-radius:12px;font:650 13px/1 'Plus Jakarta Sans',system-ui,sans-serif;cursor:pointer;white-space:nowrap;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.22)}
+.fe-hbtn:hover{background:rgba(255,255,255,.16)!important;filter:none!important}
+.fe-hbtn.gold{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;border-color:#a37f2e;box-shadow:0 1px 0 rgba(255,255,255,.35) inset,0 8px 18px -8px rgba(184,146,58,.8)}
+.fe-hbtn.gold:hover{background:linear-gradient(180deg,#dcb863,#c29a42)!important}
+.fe-hstat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px 14px;min-width:0}
+.fe-tabs{display:flex;gap:4px;padding:5px;background:#fff;border:1px solid #e8e3d8;border-radius:14px;box-shadow:0 1px 2px rgba(19,42,79,.05);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;margin-bottom:22px}
+.fe-tabs::-webkit-scrollbar{display:none}
+.fe-tab{display:flex;align-items:center;gap:6px;padding:9px 15px;border:none;border-radius:10px;background:none;cursor:pointer;font:600 13px/1 'Plus Jakarta Sans',system-ui,sans-serif;color:#5d6b82;white-space:nowrap}
+.fe-tab:hover{color:#0f1b2e;background:#f3f0e8!important;filter:none!important}
+.fe-tab.on{background:linear-gradient(180deg,#1e3a6e,#132a4f)!important;color:#fff;box-shadow:0 6px 14px -6px rgba(19,42,79,.6)}
+.fe-kpi{position:relative;overflow:hidden;background:#fff;border:1px solid #e8e3d8;border-radius:16px;padding:16px 18px 15px 20px;cursor:pointer;box-shadow:0 1px 2px rgba(19,42,79,.05),0 6px 18px -10px rgba(19,42,79,.14);transition:transform .15s,box-shadow .15s;text-align:left;min-width:0}
+.fe-kpi:hover{transform:translateY(-2px);box-shadow:0 12px 28px -14px rgba(19,42,79,.3)}
+@keyframes feUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+.fe-anim{animation:feUp .25s ease both}
+@media (prefers-reduced-motion:reduce){.fe-anim{animation:none}.fe-kpi:hover{transform:none}}
+`
 
 const sStyle = status => ({
   padding: '4px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '600',
@@ -1876,7 +1912,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
           needs to see. */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : (isAdmin ? 'repeat(6, 1fr)' : 'repeat(2, 1fr)'), gap: 14 }}>
         {[
-          ...(isAdmin ? [{ icon: '💰', label: 'Total Collected', value: `₹${n(totalCollected)}`, color: '#1e3a5f', bg: '#eff6ff', sub: `${students.length} students` }] : []),
+          ...(isAdmin ? [{ icon: '💰', label: 'Total Collected', value: `₹${n(totalCollected)}`, color: '#1e3a6e', bg: '#eff6ff', sub: `${students.length} students` }] : []),
           { icon: '📅', label: 'This Month', value: `₹${n(thisMonthTotal)}`, color: '#059669', bg: '#f0fdf4',
             sub: monthChange !== null ? `${monthChange >= 0 ? '▲' : '▼'} ${Math.abs(monthChange)}% vs last month` : 'First month data' },
           { icon: '🌅', label: "Today's Fee Collection", value: `₹${n(todayTotal)}`, color: '#7c3aed', bg: '#f5f3ff', sub: todayStr + ' · fee payments only' },
@@ -1888,12 +1924,13 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             { icon: '🟠', label: 'Underpaid Students', value: underpaidStudents.length, color: '#c2410c', bg: '#ffedd5', sub: 'tap to see who', onClick: () => setShowUnderpaid(v => !v) },
           ] : []),
         ].map(c => (
-          <div key={c.label} onClick={c.onClick}
-            style={{ background: c.bg, borderRadius: 12, padding: '16px 18px', borderLeft: `4px solid ${c.color}`, boxShadow: '0 2px 8px rgba(0,0,0,.06)', cursor: c.onClick ? 'pointer' : 'default', outline: c.onClick && showUnderpaid ? `2px solid ${c.color}` : 'none' }}>
-            <div style={{ fontSize: 24, marginBottom: 6 }}>{c.icon}</div>
-            <div style={{ fontSize: 12, color: c.color, fontWeight: 600, marginBottom: 4 }}>{c.label}</div>
-            <div style={{ fontSize: 22, fontWeight: 900, color: c.color }}>{c.value}</div>
-            <div style={{ fontSize: 11, color: c.color, opacity: .7, marginTop: 4 }}>{c.sub}{c.onClick ? (showUnderpaid ? ' ▲' : ' ▼') : ''}</div>
+          <div key={c.label} onClick={c.onClick} className="fe-anim"
+            style={{ position: 'relative', overflow: 'hidden', background: 'white', border: `1px solid ${c.onClick && showUnderpaid ? c.color : '#e8e3d8'}`, borderRadius: 16, padding: '16px 18px 15px 20px', boxShadow: c.onClick && showUnderpaid ? `0 0 0 3px ${c.color}22` : '0 1px 2px rgba(19,42,79,.05), 0 6px 18px -10px rgba(19,42,79,.14)', cursor: c.onClick ? 'pointer' : 'default', minWidth: 0 }}>
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: c.color }} />
+            <div style={{ width: 34, height: 34, borderRadius: 11, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, marginBottom: 12 }}>{c.icon}</div>
+            <div style={{ fontSize: 11, color: '#5d6b82', fontWeight: 700, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.06em', lineHeight: 1.25 }}>{c.label}</div>
+            <div style={{ fontSize: 24, fontWeight: 600, color: c.color, fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums', lineHeight: 1.05 }}>{c.value}</div>
+            <div style={{ fontSize: 11, color: '#98a2b3', marginTop: 6 }}>{c.sub}{c.onClick ? (showUnderpaid ? ' ▲' : ' ▼') : ''}</div>
           </div>
         ))}
       </div>
@@ -1929,7 +1966,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                     </button>
                     {onFix && (
                       <button onClick={() => onFix(s)}
-                        style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, border: '1px solid #1e3a5f', background: 'white', color: '#1e3a5f', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, border: '1px solid #1e3a6e', background: 'white', color: '#1e3a6e', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                         Fix
                       </button>
                     )}
@@ -1949,11 +1986,13 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
           { icon: '📚', label: 'Course Fees', value: `₹${n(crsfTotal)}`, color: '#7c3aed', bg: '#f5f3ff' },
           { icon: '✅', label: 'Fully Paid', value: fullyPaid.length, color: '#059669', bg: '#dcfce7', sub: 'flat + course both paid' },
         ].map(c => (
-          <div key={c.label} style={{ background: c.bg, borderRadius: 12, padding: '14px 16px', borderLeft: `4px solid ${c.color}`, boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
-            <div style={{ fontSize: 20, marginBottom: 4 }}>{c.icon}</div>
-            <div style={{ fontSize: 11, color: c.color, fontWeight: 600, marginBottom: 3 }}>{c.label}</div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: c.color }}>{c.value}</div>
-            {c.sub && <div style={{ fontSize: 10, color: c.color, opacity: .7, marginTop: 3 }}>{c.sub}</div>}
+          <div key={c.label} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'white', border: '1px solid #e8e3d8', borderRadius: 14, padding: '13px 16px', boxShadow: '0 1px 2px rgba(19,42,79,.05)', minWidth: 0 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 12, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, flexShrink: 0 }}>{c.icon}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10.5, color: '#5d6b82', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>{c.label}</div>
+              <div style={{ fontSize: 20, fontWeight: 600, color: c.color, fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>{c.value}</div>
+              {c.sub && <div style={{ fontSize: 10.5, color: '#98a2b3', marginTop: 2 }}>{c.sub}</div>}
+            </div>
           </div>
         ))}
       </div>
@@ -1963,12 +2002,12 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
         {/* ── Monthly trend bar chart ── */}
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 4 }}>📈 Monthly Collection Trend</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e', marginBottom: 4 }}>📈 Monthly Collection Trend</div>
           <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 16 }}>Last 6 months — flat + course fees</div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 140 }}>
             {last6.map(m => (
               <div key={m.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: '#1e3a5f' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#1e3a6e' }}>
                   {m.total > 0 ? `₹${Math.round(m.total / 1000)}k` : '—'}
                 </div>
                 <div style={{
@@ -2001,7 +2040,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
         {/* ── Hostel breakdown ── */}
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 4 }}>🏠 Hostel Breakdown</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e', marginBottom: 4 }}>🏠 Hostel Breakdown</div>
           <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 16 }}>Collection by hostel type</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {hostelBreakdown.map(h => (
@@ -2073,7 +2112,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                 )}
                 {isAdmin && onFix && (
                   <button onClick={() => onFix(x.student)}
-                    style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, border: '1px solid #1e3a5f', background: 'white', color: '#1e3a5f', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, border: '1px solid #1e3a6e', background: 'white', color: '#1e3a6e', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                     Fix
                   </button>
                 )}
@@ -2121,11 +2160,11 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             <>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', gap: 8 }}>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f' }}>🗓️ Month-wise Dues (Flat + Course Fee)</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>🗓️ Month-wise Dues (Flat + Course Fee)</div>
             <div style={{ fontSize: 11, color: '#94a3b8' }}>Expected vs collected — tap a month to see who still owes</div>
           </div>
           <button onClick={() => setDuesExpanded(e => !e)}
-            style={{ fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 7, border: '1px solid #e2e8f0', background: duesExpanded ? '#1e3a5f' : 'white', color: duesExpanded ? 'white' : '#1e3a5f', cursor: 'pointer' }}>
+            style={{ fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 7, border: '1px solid #e2e8f0', background: duesExpanded ? '#1e3a6e' : 'white', color: duesExpanded ? 'white' : '#1e3a6e', cursor: 'pointer' }}>
             {duesExpanded ? '↕ Collapse' : '↕ Expand All'}
           </button>
         </div>
@@ -2150,7 +2189,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                   boxShadow: isSel ? '0 2px 8px rgba(0,0,0,.08)' : 'none', transition: 'all .15s',
                 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: '#1e3a5f' }}>{m.label}{m.isCurrent ? ' •' : ''}</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#1e3a6e' }}>{m.label}{m.isCurrent ? ' •' : ''}</span>
                   {hasDue && <span style={{ fontSize: 9, fontWeight: 800, background: '#dc2626', color: 'white', padding: '1px 6px', borderRadius: 99 }}>{m.defaulterCount}</span>}
                 </div>
                 <div style={{ fontSize: 9, fontWeight: 700, color: m.headlineType === 'Flat Fee' ? '#059669' : '#7c3aed', marginTop: 3 }}>
@@ -2178,7 +2217,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             {monthwiseDues.map(md => (
               <div key={md.label + md.year}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 800, color: '#1e3a5f' }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: '#1e3a6e' }}>
                     {md.fullMon} {md.year} — {md.defaulterCount} student{md.defaulterCount !== 1 ? 's' : ''} due
                   </div>
                   <div style={{ fontSize: 12, fontWeight: 800, color: md.dueTotal > 0 ? '#dc2626' : '#059669' }}>
@@ -2194,7 +2233,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         ) : selectedDues && (
           <div style={{ marginTop: 16, borderTop: '1px solid #f1f5f9', paddingTop: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 800, color: '#1e3a5f' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: '#1e3a6e' }}>
                 {selectedDues.fullMon} {selectedDues.year} — {selectedDues.defaulterCount} student{selectedDues.defaulterCount !== 1 ? 's' : ''} due
               </div>
               <div style={{ fontSize: 12, fontWeight: 800, color: selectedDues.dueTotal > 0 ? '#dc2626' : '#059669' }}>
@@ -2213,7 +2252,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
       {/* ── Course-wise breakdown ── */}
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 4 }}>📚 Course-wise Collection</div>
+        <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e', marginBottom: 4 }}>📚 Course-wise Collection</div>
         <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 16 }}>Total collected per course</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {courseBreakdown.map(c => (
@@ -2342,7 +2381,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
       {/* ── Session progress bars ── */}
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 16 }}>📊 Session Progress</div>
+        <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e', marginBottom: 16 }}>📊 Session Progress</div>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : is2Col ? '1fr 1fr' : '1fr 1fr 1fr', gap: 20 }}>
           {[
             { label: 'Paid Admission', count: paidAdmGccs.size,  color: '#4f46e5', bg: '#eef2ff' },
@@ -2621,7 +2660,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     setSaving(true)
     try {
       const result = await fileFeeActionRequest({ actionType: 'revert', table, id, reason, currentUser, adminCount })
-      showToast(result.selfApproved ? `↩️ Reverted: ${label}` : '📝 Revert requested — waiting for another admin to approve.', result.selfApproved ? '#dc2626' : '#1e3a5f')
+      showToast(result.selfApproved ? `↩️ Reverted: ${label}` : '📝 Revert requested — waiting for another admin to approve.', result.selfApproved ? '#dc2626' : '#1e3a6e')
       onRefresh()
     } catch (err) {
       showToast('Revert request failed: ' + err.message, '#dc2626')
@@ -2669,7 +2708,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     setSaving(true)
     try {
       await correctFeeCollectionDate({ table, id, newDate, accountSourceRef, accountSourceType, correctedBy: currentUser?.userName || currentUser?.name || 'Admin', staffId: currentUser?.userName || currentUser?.name || null })
-      showToast(`📅 Date corrected to ${newDate}`, '#1e3a5f')
+      showToast(`📅 Date corrected to ${newDate}`, '#1e3a6e')
       onRefresh()
     } catch (err) {
       showToast('Date fix failed: ' + err.message, '#dc2626')
@@ -2881,7 +2920,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
             contact: getParentPhone(student) ? getParentPhone(student).replace(/^91/, '') : '',
           },
           notes: { gcc, student_id: String(student.id) },
-          theme: { color: '#1e3a5f' },
+          theme: { color: '#1e3a6e' },
           handler: async (response) => {
             try {
               // Server-side signature verification — MUST happen before we
@@ -4055,13 +4094,65 @@ export default function Fees() {
   }, [adm_fee_collections, adm_flat_fees, adm_course_fees, students, afDateFrom, afDateTo, todayStr])
 
   return (
-    <div style={{ padding: isMobile ? '16px 12px' : 24, fontFamily: 'system-ui,sans-serif' }}>
+    <div className="fe-root" style={{ padding: isMobile ? '12px 12px 80px' : '22px 28px 48px' }}>
+      <style>{FEES_CSS}</style>
       <PersonalAccountantButton supabase={supabase} moduleKey="fees" isAdmin={isAdmin} currentUser={currentUser} isMobile={isMobile} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <h1 style={{ fontSize: 26, fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>💰 Fee Management</h1>
-          <p style={{ color: '#64748b', fontSize: 14, margin: '4px 0 0' }}>Dashboard · Collect · Invoice · Live summary · Admin view</p>
+
+      {/* ── Header ── */}
+      <section className="fe-hero" style={{ padding: isMobile ? '18px 16px 16px' : '26px 28px 22px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 16, minWidth: 0 }}>
+            <div style={{ width: isMobile ? 46 : 56, height: isMobile ? 46 : 56, borderRadius: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(145deg,rgba(233,217,176,.28),rgba(233,217,176,.06))', border: '1px solid rgba(233,217,176,.35)', color: '#e9d9b0', fontFamily: "'Fraunces',Georgia,serif", fontSize: isMobile ? 22 : 26, fontWeight: 600 }}>₹</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.2em', color: '#e9d9b0', marginBottom: 6 }}>GNSI · Fee Office</div>
+              <h1 style={{ fontSize: isMobile ? 26 : 34, fontWeight: 600, color: '#fff', margin: 0, lineHeight: 1, fontFamily: "'Fraunces',Georgia,serif" }}>Fee Management</h1>
+              <p style={{ color: 'rgba(255,255,255,.7)', fontSize: 13, margin: '9px 0 0' }}>Collect · Receipts · Ledgers · Live summary · {new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button className="fe-hbtn" onClick={() => loadAll()} title="Refresh">⟳{!isMobile && ' Refresh'}</button>
+            {tab !== 'payment' && <button className="fe-hbtn gold" onClick={() => { setTab('payment'); setSearch('') }}>＋ Collect Fee</button>}
+          </div>
         </div>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,minmax(0,1fr))' : `repeat(${isAdmin ? 4 : 2},minmax(0,1fr))`, gap: isMobile ? 8 : 12, marginTop: isMobile ? 16 : 22 }}>
+          {(() => {
+            // Same definition as the Dashboard tab's "Today's Fee Collection"
+            // (active students, local date) so the two numbers always agree.
+            const dStr = new Date().toLocaleDateString('en-CA')
+            const tFlat = activeAdmFlatFees.filter(r => r.paid && r.pay_date === dStr)
+            const tCrsf = activeAdmCourseFees.filter(r => !r.reverted && r.pay_date === dStr)
+            const tAdm  = activeAdmFeeCollections.filter(r => !r.reverted && r.pay_date === dStr)
+            const todayTotal = tFlat.reduce((a, r) => a + (r.amount || 0), 0) + tCrsf.reduce((a, r) => a + (Number(r.amount_paid) || 0), 0) + tAdm.reduce((a, r) => a + (Number(r.amount_paid) || 0), 0)
+            const todayCount = tFlat.length + tCrsf.length + tAdm.length
+            // Total collected / pending are admin-level figures (same gate as
+            // the Dashboard tab) — other roles only see today + roster size.
+            return [
+              { l: isMobile ? 'Today' : "Today's collection", v: loading ? '—' : `₹${n(todayTotal)}`, sub: `${todayCount} payment${todayCount === 1 ? '' : 's'} today`, tone: '#86efac' },
+              ...(isAdmin ? [
+                { l: 'Total collected', v: loading ? '—' : `₹${n(liveTtl)}`, sub: 'Active students, live', tone: '#fff' },
+                { l: 'Fees pending', v: loading ? '—' : liveP, sub: 'Students yet to pay', tone: liveP ? '#fcd34d' : '#86efac' },
+              ] : []),
+              { l: 'Students', v: loading ? '—' : activeStudents.length, sub: 'Active roster', tone: '#fff' },
+            ].map(h => (
+              <div key={h.l} className="fe-hstat">
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: 'rgba(255,255,255,.6)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.l}</div>
+                <div style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: isMobile ? 20 : 26, fontWeight: 600, color: h.tone, marginTop: 6, lineHeight: 1.05, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.v}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', marginTop: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.sub}</div>
+              </div>
+            ))
+          })()}
+        </div>
+      </section>
+
+      {/* ── Tabs + context export ── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
+        <nav className="fe-tabs" role="tablist" style={{ marginBottom: 0, maxWidth: '100%' }}>
+          {TABS.map(t => (
+            <button key={t.id} role="tab" aria-selected={tab === t.id} className={'fe-tab' + (tab === t.id ? ' on' : '')} onClick={() => { setTab(t.id); setSearch('') }}>
+              {t.label}
+            </button>
+          ))}
+        </nav>
         {tab === 'live' && (
           <ExportBar
             rows={advFilteredLive.map(s => ({ gcc_no: s.gcc_no, name: s.name, batch: s.class_name || s.batch || '', course: s.course || '', hostel_type: s.hostel_type || '', adm_fee: s.admTotal, flat_fee: s.flatTotal, course_fee: s.crsfTotal, total_paid: s.grandTotal, status: s.liveStatus }))}
@@ -4070,15 +4161,6 @@ export default function Fees() {
         {tab === 'admin' && (
           <ExportBar rows={rangeTransactions} filename={`GNSI_Transactions_${afDateFrom||todayStr}_to_${afDateTo||todayStr}`} label="Txns" />
         )}
-      </div>
-
-      <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: 24, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => { setTab(t.id); setSearch('') }}
-            style={{ padding: '9px 20px', border: 'none', borderBottom: tab === t.id ? '3px solid #1e3a5f' : '3px solid transparent', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: tab === t.id ? 700 : 500, color: tab === t.id ? '#1e3a5f' : '#64748b', marginBottom: -2, whiteSpace: 'nowrap' }}>
-            {t.label}
-          </button>
-        ))}
       </div>
 
       {tab === 'dashboard' && (
@@ -4118,18 +4200,19 @@ export default function Fees() {
               // building a separate drilldown view. "Total students" and
               // "Total collected" have no single matching status, so they
               // just reset the filter to show everyone.
-              { label: 'Total students',  value: students.length,  color: '#1e3a5f', bg: '#eff6ff', icon: '👨‍🎓', status: 'All' },
+              { label: 'Total students',  value: students.length,  color: '#1e3a6e', bg: '#eff6ff', icon: '👨‍🎓', status: 'All' },
               { label: 'Total collected', value: `₹${n(liveTtl)}`, color: '#16a34a', bg: '#dcfce7', icon: '✅', status: 'All' },
               { label: 'Fees pending',    value: liveP,            color: '#dc2626', bg: '#fee2e2', icon: '⚠️', status: 'Pending' },
               { label: 'Underpaid (hostel)', value: liveUnderpaid, color: '#c2410c', bg: '#ffedd5', icon: '🏠', status: 'Underpaid' },
               { label: 'Fully paid',      value: liveP2,           color: '#7c3aed', bg: '#f5f3ff', icon: '🎉', status: 'Paid' },
             ].map(c => (
-              <div key={c.label} onClick={() => setAfStatus(c.status)}
-                style={{ backgroundColor: c.bg, borderRadius: 12, padding: 18, boxShadow: '0 2px 8px rgba(0,0,0,.06)', borderLeft: `4px solid ${c.color}`, cursor: 'pointer', outline: afStatus === c.status ? `2px solid ${c.color}` : 'none' }}>
-                <div style={{ fontSize: 22, marginBottom: 6 }}>{c.icon}</div>
-                <p style={{ fontSize: 13, color: c.color, fontWeight: 600, margin: 0 }}>{c.label}</p>
-                <h2 style={{ fontSize: 22, fontWeight: 'bold', color: c.color, margin: '4px 0 0' }}>{c.value}</h2>
-                <p style={{ fontSize: 10, color: c.color, opacity: .65, margin: '4px 0 0' }}>tap to filter below</p>
+              <div key={c.label} className="fe-kpi fe-anim" role="button" tabIndex={0} onClick={() => setAfStatus(c.status)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAfStatus(c.status) } }}
+                style={{ borderColor: afStatus === c.status && c.status !== 'All' ? c.color : undefined, boxShadow: afStatus === c.status && c.status !== 'All' ? `0 0 0 3px ${c.color}22` : undefined }}>
+                <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: c.color }} />
+                <div style={{ width: 34, height: 34, borderRadius: 11, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, marginBottom: 12 }}>{c.icon}</div>
+                <p style={{ fontSize: 11, color: '#5d6b82', fontWeight: 700, margin: 0, textTransform: 'uppercase', letterSpacing: '.06em', lineHeight: 1.25 }}>{c.label}</p>
+                <h2 style={{ fontSize: 26, fontWeight: 600, color: c.color, margin: '6px 0 0', fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums', lineHeight: 1.05 }}>{c.value}</h2>
+                <p style={{ fontSize: 10.5, color: '#98a2b3', margin: '6px 0 0' }}>Tap to filter below</p>
               </div>
             ))}
           </div>
@@ -4139,7 +4222,7 @@ export default function Fees() {
               <option value="All">All Status</option><option>Paid</option><option>Partial</option><option>Underpaid</option><option>Pending</option>
             </select>
             <button onClick={() => setAfShowFilters(f => !f)}
-              style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: afShowFilters ? '#1e3a5f' : 'white', color: afShowFilters ? 'white' : '#64748b', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+              style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: afShowFilters ? '#1e3a6e' : 'white', color: afShowFilters ? 'white' : '#64748b', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
               ⚙ Filters {(afCourse!=='All'||afHostel!=='All'||afBatch!=='All') ? '●' : ''}
             </button>
           </div>
@@ -4174,13 +4257,13 @@ export default function Fees() {
             </div>
           )}
           {loading ? <div style={{ textAlign: 'center', padding: 48, color: '#64748b' }}>⏳ Loading…</div> : (
-            <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
+            <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 8px 24px -12px rgba(19,42,79,.18)', overflow: 'auto' }}>
               <div style={{ padding: '10px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>{advFilteredLive.length} students</span>
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 900 }}>
                 <thead>
-                  <tr style={{ background: '#1e3a5f' }}>
+                  <tr style={{ background: 'linear-gradient(135deg,#132a4f,#1e3a6e)' }}>
                     {['#','GCC','Student','Class','Course','Hostel','Adm fee','Flat','Course','Total','Status','Sync'].map(h => (
                       <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 12, whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
@@ -4192,7 +4275,7 @@ export default function Fees() {
                       onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                       onMouseLeave={e => e.currentTarget.style.background = 'white'}>
                       <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 11 }}>{i + 1}</td>
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a5f', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
+                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                       <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1e293b' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           {s.name}
@@ -4210,7 +4293,7 @@ export default function Fees() {
                       <td style={{ padding: '10px 14px', fontWeight: 800, color: s.grandTotal > 0 ? '#16a34a' : '#94a3b8' }}>{s.grandTotal > 0 ? `₹${n(s.grandTotal)}` : '—'}</td>
                       <td style={{ padding: '10px 14px' }}><span style={sStyle(s.liveStatus)}>{s.liveStatus}</span></td>
                       <td style={{ padding: '10px 14px' }}>
-                        {s.hasFees && <button onClick={() => handleSync(s)} style={{ background: '#eff6ff', color: '#1e3a5f', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>⇄</button>}
+                        {s.hasFees && <button onClick={() => handleSync(s)} style={{ background: '#eff6ff', color: '#1e3a6e', border: '1px solid #bfdbfe', borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>⇄</button>}
                       </td>
                     </tr>
                   ))}
@@ -4232,7 +4315,7 @@ export default function Fees() {
               { icon: '📅', label: 'Flat Fees Today', value: `₹${n(todayTransactions.filter(r=>r.type==='Flat Fee').reduce((s,r)=>s+r.amount,0))}`, color: '#059669', bg: '#f0fdf4', sub: `${todayTransactions.filter(r=>r.type==='Flat Fee').length} entries` },
               { icon: '📚', label: 'Course Fees Today', value: `₹${n(todayTransactions.filter(r=>r.type==='Course Fee').reduce((s,r)=>s+r.amount,0))}`, color: '#d97706', bg: '#fffbeb', sub: `${todayTransactions.filter(r=>r.type==='Course Fee').length} entries` },
             ].map(c => (
-              <div key={c.label} style={{ background: c.bg, borderRadius: 12, padding: '14px 16px', borderLeft: `4px solid ${c.color}`, boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+              <div key={c.label} style={{ background: c.bg, borderRadius: 12, padding: '14px 16px', borderLeft: `4px solid ${c.color}`, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)' }}>
                 <div style={{ fontSize: 20, marginBottom: 4 }}>{c.icon}</div>
                 <div style={{ fontSize: 11, color: c.color, fontWeight: 600, marginBottom: 3 }}>{c.label}</div>
                 <div style={{ fontSize: 20, fontWeight: 900, color: c.color }}>{c.value}</div>
@@ -4243,7 +4326,7 @@ export default function Fees() {
 
           {/* ── Filters + date range ── */}
           <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '14px 16px', marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: '#1e3a5f', marginBottom: 10 }}>🔍 Filter & Search Transactions</div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: '#1e3a6e', marginBottom: 10 }}>🔍 Filter & Search Transactions</div>
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5,1fr)', gap: 10, marginBottom: 10 }}>
               <div>
                 <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', marginBottom: 3 }}>COURSE</div>
@@ -4277,7 +4360,7 @@ export default function Fees() {
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <input placeholder="🔍 Search name or GCC…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 2, minWidth: 180, fontSize: 12, padding: '7px 12px' }} />
               <button onClick={() => { setAfDateFrom(todayStr); setAfDateTo(todayStr) }}
-                style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1e3a5f', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1e3a6e', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 📅 Today
               </button>
               <button onClick={() => { const d = new Date(); d.setDate(d.getDate()-7); setAfDateFrom(d.toLocaleDateString('en-CA')); setAfDateTo(todayStr) }}
@@ -4322,11 +4405,11 @@ export default function Fees() {
           {!afDateFrom && !afDateTo ? (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: '#1e3a5f' }}>📋 Today's Transactions — {todayStr}</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#1e3a6e' }}>📋 Today's Transactions — {todayStr}</div>
                 <ExportBar rows={todayTransactions} filename={`GNSI_Today_${todayStr}`} label="Today" />
               </div>
               {loading ? <div style={{ textAlign: 'center', padding: 48, color: '#64748b' }}>⏳ Loading…</div> : (
-                <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
+                <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 8px 24px -12px rgba(19,42,79,.18)', overflow: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 900 }}>
                     <thead>
                       <tr style={{ background: '#7c3aed' }}>
@@ -4345,7 +4428,7 @@ export default function Fees() {
                           onMouseEnter={e => e.currentTarget.style.background='#faf5ff'}
                           onMouseLeave={e => e.currentTarget.style.background='white'}>
                           <td style={{ padding: '9px 12px', color: '#94a3b8', fontSize: 11 }}>{i+1}</td>
-                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a5f', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
+                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
                           <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>{r.name}</td>
                           <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 12 }}>{r.batch}</td>
                           <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 12 }}>{r.course}</td>
@@ -4367,7 +4450,7 @@ export default function Fees() {
                     </tbody>
                     <tfoot>
                       <tr style={{ background: '#f8fafc', borderTop: '2px solid #e2e8f0' }}>
-                        <td colSpan={8} style={{ padding: '10px 12px', fontWeight: 800, color: '#1e3a5f', fontSize: 13 }}>Today's Total</td>
+                        <td colSpan={8} style={{ padding: '10px 12px', fontWeight: 800, color: '#1e3a6e', fontSize: 13 }}>Today's Total</td>
                         <td style={{ padding: '10px 12px', fontWeight: 900, color: '#16a34a', fontSize: 14 }}>₹{n(todayTransactions.reduce((s,r)=>s+r.amount,0))}</td>
                         <td colSpan={4} />
                       </tr>
@@ -4380,16 +4463,16 @@ export default function Fees() {
             /* ── Date-range transactions table ── */
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: '#1e3a5f' }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#1e3a6e' }}>
                   📋 Transactions: {afDateFrom || '…'} → {afDateTo || '…'} · <span style={{ color: '#7c3aed' }}>{rangeTransactions.length} records · ₹{n(rangeTransactions.reduce((s,r)=>s+r.amount,0))}</span>
                 </div>
                 <ExportBar rows={rangeTransactions} filename={`GNSI_Transactions_${afDateFrom}_${afDateTo}`} label="Range" />
               </div>
               {loading ? <div style={{ textAlign: 'center', padding: 48, color: '#64748b' }}>⏳ Loading…</div> : (
-                <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
+                <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 8px 24px -12px rgba(19,42,79,.18)', overflow: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 900 }}>
                     <thead>
-                      <tr style={{ background: '#1e3a5f' }}>
+                      <tr style={{ background: 'linear-gradient(135deg,#132a4f,#1e3a6e)' }}>
                         {['#','GCC','Student','Batch','Course','Hostel','Type','Description','Amount','Date','Mode','Collected By','Ref'].map(h => (
                           <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 11, whiteSpace: 'nowrap' }}>{h}</th>
                         ))}
@@ -4405,7 +4488,7 @@ export default function Fees() {
                           onMouseEnter={e => e.currentTarget.style.background='#f8fafc'}
                           onMouseLeave={e => e.currentTarget.style.background='white'}>
                           <td style={{ padding: '9px 12px', color: '#94a3b8', fontSize: 11 }}>{i+1}</td>
-                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a5f', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
+                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
                           <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>{r.name}</td>
                           <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 12 }}>{r.batch}</td>
                           <td style={{ padding: '9px 12px', color: '#64748b', fontSize: 12 }}>{r.course}</td>
@@ -4427,7 +4510,7 @@ export default function Fees() {
                     </tbody>
                     <tfoot>
                       <tr style={{ background: '#f8fafc', borderTop: '2px solid #e2e8f0' }}>
-                        <td colSpan={8} style={{ padding: '10px 12px', fontWeight: 800, color: '#1e3a5f', fontSize: 13 }}>Range Total</td>
+                        <td colSpan={8} style={{ padding: '10px 12px', fontWeight: 800, color: '#1e3a6e', fontSize: 13 }}>Range Total</td>
                         <td style={{ padding: '10px 12px', fontWeight: 900, color: '#16a34a', fontSize: 14 }}>₹{n(rangeTransactions.reduce((s,r)=>s+r.amount,0))}</td>
                         <td colSpan={4} />
                       </tr>
@@ -4441,15 +4524,15 @@ export default function Fees() {
           {/* ── All-students fee status grid (admin view) ── */}
           <div style={{ marginTop: 28 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: '#1e3a5f' }}>👨‍🎓 All Students Fee Status</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#1e3a6e' }}>👨‍🎓 All Students Fee Status</div>
               <ExportBar
                 rows={advFilteredLive.map(s => ({ gcc_no: s.gcc_no, name: s.name, batch: s.class_name||s.batch||'', course: s.course||'', hostel_type: s.hostel_type||'', adm_fee: s.admTotal, flat_fee: s.flatTotal, course_fee: s.crsfTotal, total_paid: s.grandTotal, status: s.liveStatus }))}
                 filename={`GNSI_Students_FeeStatus_${todayStr}`} label="Students" />
             </div>
-            <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'auto' }}>
+            <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 8px 24px -12px rgba(19,42,79,.18)', overflow: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 800 }}>
                 <thead>
-                  <tr style={{ background: '#1e3a5f' }}>
+                  <tr style={{ background: 'linear-gradient(135deg,#132a4f,#1e3a6e)' }}>
                     {['#','GCC','Student','Batch','Course','Hostel','Adm','Flat','Course','Total','Status'].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: 'white', fontSize: 11 }}>{h}</th>
                     ))}
@@ -4461,7 +4544,7 @@ export default function Fees() {
                       onMouseEnter={e => e.currentTarget.style.background='#f8fafc'}
                       onMouseLeave={e => e.currentTarget.style.background='white'}>
                       <td style={{ padding: '9px 12px', color: '#94a3b8', fontSize: 11 }}>{i+1}</td>
-                      <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a5f', fontWeight: 700 }}>GCC-{s.gcc_no}</td>
+                      <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{s.gcc_no}</td>
                       <td style={{ padding: '9px 12px', fontWeight: 600, color: '#1e293b' }}>
                         {s.name}
                         {s.is_repeater && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: 3, border: '1px solid #fcd34d' }}>RPT</span>}
@@ -4480,7 +4563,7 @@ export default function Fees() {
                 </tbody>
                 <tfoot>
                   <tr style={{ background: '#f8fafc', borderTop: '2px solid #e2e8f0' }}>
-                    <td colSpan={9} style={{ padding: '10px 12px', fontWeight: 800, color: '#1e3a5f', fontSize: 13 }}>Grand Total ({advFilteredLive.length} students)</td>
+                    <td colSpan={9} style={{ padding: '10px 12px', fontWeight: 800, color: '#1e3a6e', fontSize: 13 }}>Grand Total ({advFilteredLive.length} students)</td>
                     <td style={{ padding: '10px 12px', fontWeight: 900, color: '#16a34a', fontSize: 14 }}>₹{n(advFilteredLive.reduce((s,r)=>s+r.grandTotal,0))}</td>
                     <td />
                   </tr>
