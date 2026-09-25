@@ -2,38 +2,43 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Read-only Question Bank browser, built as a "view module" on top of
 // StudyMaterial.jsx's course → subject → chapter drill-down UI — same
-// BASE_COURSES structure, same color tokens (C), same custom-subject/
-// chapter merge pattern (mergedCourses from study_course_structure) — but
+// color tokens (C), same custom-subject/chapter merge pattern
+// (study_course_structure, as in StudyMaterial's mergedCourses) — but
 // instead of listing uploaded files, this queries qbank_questions directly
 // and renders the actual questions for the selected subject+chapter.
 //
 // Deliberately NOT the same file as QuestionBank.jsx: that file is the
 // full CRUD workspace (add/edit/delete/bulk-paste/create paper/online
 // test) gated to admin + Computer Staffs. This is a lighter, read-only
-// lens for browsing what's already in the bank via the course/subject/
-// chapter mental model teachers already use in Study Material — no
-// selection checkboxes, no edit/delete, no test builder. Column names
-// (subject, chapter, subsection, question, question_mayek,
-// question_mayek_font, option_a..d, option_a_mayek..d_mayek,
-// correct_option, difficulty, marks, diagram_url) confirmed directly from
-// QuestionBank.jsx's own QCard renderer rather than assumed, so this reads
-// the same real schema that file writes.
+// lens for browsing what's already in the bank — no selection checkboxes,
+// no edit/delete, no test builder. Column names (course, subject, chapter,
+// subsection, question, question_mayek, question_mayek_font,
+// option_a..d, option_a_mayek..d_mayek, correct_option, difficulty,
+// marks, diagram_url) are the ones QuestionBank.jsx writes.
+//
+// The course → subject → chapter list comes from qbankTaxonomy.js — the
+// same module QuestionBank.jsx saves questions with — so the subject names
+// queried here are the ones actually stored in qbank_questions.subject.
+// (A hand-copied list here had drifted: e.g. Navodaya "Arithmetic" was
+// being queried as "Mathematics", so questions saved under Navodaya's own
+// subject names never showed up.)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { supabase } from './supabase'
-import { normalizeToQBank } from './StudyMaterialBridge'
+import { normalizeToQBank, fetchAllPages } from './StudyMaterialBridge'
+import { EventBus, GNSI_EVENTS } from './EventBus'
+import { isAdminRole } from './roles'
+import { COURSES } from './qbankTaxonomy'
 // ── BMEI04 font support — ported from QuestionBank.jsx ──────────────────────
 // Some question_mayek / option_x_mayek text is stored in the BMEI04
 // transliteration encoding (plain Latin letters that only resolve to actual
 // Meetei Mayek glyphs when rendered with this specific embedded font), not
 // real Unicode Meetei Mayek. Rendering that text with the Noto Sans Meetei
 // Mayek font (which only maps real Unicode Meetei Mayek codepoints) shows
-// the raw Latin transliteration instead of the script — this file was
-// missing this entirely, which is why BMEI04-tagged questions showed
-// literal Latin text like "43861 d 4 gi fes velu Asi:" instead of Meetei
-// Mayek script. See QuestionBank.jsx's own BmeiFontFace/mayekFontFamily
-// for the source of truth this is ported from.
+// the raw Latin transliteration instead of the script. See QuestionBank.jsx's
+// own BmeiFontFace/mayekFontFamily for the source of truth this is ported from.
 import { BMEI04_BASE64 } from './bmei04_font_base64'
 
 function BmeiFontFace() {
@@ -57,66 +62,23 @@ function mayekFontFamily(fontTag) {
   return fontTag === 'bmei04' ? "'BMEI04', sans-serif" : "'Noto Sans Meetei Mayek', sans-serif"
 }
 
-// ── Same base course/subject/chapter taxonomy as StudyMaterial.jsx and
-// QuestionBank.jsx (kept in sync manually — all three files currently
-// define this independently; a shared import would be the next cleanup
-// if these ever drift). ──
-const BASE_COURSES = {
-  sainik: {
-    label: 'Sainik School', short: 'AISSEE', exam: 'AISSEE · Class 6 & 9',
-    color: '#16a34a', bg: '#dcfce7', border: '#86efac', text: '#15803d',
-    subjects: {
-      Mathematics: { icon: '📐', chapters: ['Natural Numbers','LCM and HCF','Fractions','Decimal Numbers','Ratio and Proportion','Percentage','Profit and Loss','Simple Interest','Average','Unitary Method','Area and Perimeter','Volume of Cube and Cuboids','Speed and Time','Lines and Angles','Types of Angles','Circle','Prime and Composite Numbers','Roman Numerals','Simplification','Conversion of Units','Operation on Numbers','Temperature','Plane Figures','Arranging of Fractions','Complementary and Supplementary Angles','Rounding Off Numbers','Measurement','Squares, Cubes and Roots','Data Handling','Time and Work'] },
-      Intelligence: { icon: '🧠', chapters: ['Analogies','Venn Diagram','Paper Folding','Embedded Figure','Geometrical Figure Completion','Space Visualisation','Order and Ranking','Coding Decoding','Mathematical Operations','Blood Relations','Sitting Arrangement','Mirror Image','Figure Matching','Figure Series','Odd Man Out','Pattern Completion','Classification','Word Formation','Dictionary Word Order','Series Completion','Direction Test','Clock and Calendar'] },
-      'English Language': { icon: '📖', chapters: ['Comprehension Passage','Preposition','Article','Vocabulary','Verbs and Type','Confusing Words','Question Tags','Types of Sentences','Tense Forms','Kinds of Nouns','Kinds of Pronouns','Correct Spelling','Ordering of Words in Sentence','Sentence Formation','Antonyms','Synonyms','Adjectives','Interjection','Idioms and Phrases','Collective Nouns','Number','Gender','Adverbs','Rhyming Words'] },
-      'General Knowledge': { icon: '🌍', chapters: ['Scientific Devices','Icons and Symbols of India','Major Religions of India','Art and Culture','Defence Awareness','Sports and Games','Relationship Animals and Humans','Taste and Digestion','Cooking and Preserving','Germination and Seed Dispersal','Traditional Water Harvesting','Water Pollution','Mountain Terrain','Historical Monuments','Shape of Earth','Non-Renewable Energy','Food Culture and Habitat','Young Ones of Animals','Functions of Body Parts','International Organizations','Indian Literary Awards','Natural Calamities','Evaporation and Water Cycle','Life of Farmers','Tribal Communities'] },
-      'Social Studies': { icon: '🗺️', chapters: ['Ancient India','Medieval India','Modern India','Indian Constitution','Physical Geography of India','Resources and Industries','Economic Geography','Disaster Management'] },
-    },
-  },
-  navodaya: {
-    label: 'Navodaya Vidyalaya', short: 'JNVST', exam: 'JNVST · Class 6 & 9',
-    color: '#2563eb', bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8',
-    // Updated to JNVST 2027 pattern (NVS Final Prospectus): Section 1 is now
-    // MAT (20Q) + Environmental Studies (20Q, new subject) — see EVS entry
-    // below. Language Test is comprehension-only (4 passages x 5 questions),
-    // no standalone grammar items. Kept in sync with QuestionBank.jsx COURSES.navodaya.
-    subjects: {
-      'Mental Ability': { icon: '🧩', chapters: ['Pattern Completion','Figure Series Completion','Geometrical Figure Completion','Mirror Image','Water Image','Embedded Figures'] },
-      'Environmental Studies (EVS)': { icon: '🌱', chapters: ['Transportation','Rivers and Mountains','Plants and Animals — Land and Water','Natural Disasters','Types of Houses and Shelters','Water Cycle','Food and Nutrients','Hygiene and Cleanliness','Super Senses of Animals','Digestive System','Circulatory System','Respiratory System','Food Preservation Methods','Water and Air Pollution','Conservation of Water and Soil','Environmental Protection','Superlatives of India','States and Capitals','National Symbols of India','Landscapes of India','Festivals of India','Seasons','Forests','Crops and Agriculture','Clothes and Fibres'] },
-      Arithmetic: { icon: '🔢', chapters: ['Number System — Place Value and Face Value','Ascending and Descending Order','Four Fundamental Operations','Factors and Multiples','LCM and HCF','Prime Factorization','Fractions — Addition and Subtraction of Like Fractions','Multiplication of Fractions','Measurement — Length, Mass, Capacity, Time, Money','Conversion of Units','Simplification (BODMAS)','Perimeter of Polygon','Area of Square, Rectangle and Triangle','Types of Angles','Directions and Basic Mapping','Data Handling — Bar Diagrams, Tables and Pictographs','Averages'] },
-      'English Language': { icon: '📗', chapters: ['Reading Comprehension — Direct Questions','Synonyms in Context','Antonyms in Context','Inference from Passage','Cause and Effect in Passage'] },
-      'Hindi Language': { icon: '📕', chapters: ['Gadhyansh Bodh','Paryayvachi Shabd','Vilom Shabd','Bhavarth aur Nishkarsh','Karan aur Prabhav'] },
-    },
-  },
-  foundation: {
-    label: 'Foundation Course', short: 'Class 5–8', exam: 'Board + Competitive base',
-    color: '#d97706', bg: '#fef9c3', border: '#fde68a', text: '#b45309',
-    subjects: {
-      Mathematics: { icon: '📐', chapters: ['Number Systems','Factors and Multiples','Fractions and Decimals','Integers','Algebra — Expressions and Equations','Ratio and Proportion','Percentage and Its Applications','Profit, Loss and Discount','Simple and Compound Interest','Lines, Angles and Triangles','Quadrilaterals and Polygons','Area and Perimeter','Surface Area and Volume','Statistics and Data Handling','Exponents and Powers','Symmetry and Transformations','Coordinate Geometry Basics','Mensuration','Speed, Time, Distance','Probability Basics'] },
-      Science: { icon: '🔬', chapters: ['Food and Nutrition','Materials and Their Properties','The Living World — Plants','The Living World — Animals','Force, Motion and Energy','Light and Sound','Heat and Temperature','Electricity and Magnetism','Acids, Bases and Salts','Chemical Reactions Basics','Cell — The Unit of Life','Reproduction in Plants and Animals','Human Body Systems','Soil and Water','Air and Atmosphere','Environment and Ecology','Natural Resources','Disaster Management'] },
-      English: { icon: '📘', chapters: ['Parts of Speech','Tenses','Voice — Active and Passive','Narration — Direct and Indirect','Articles and Prepositions','Subject-Verb Agreement','Comprehension Passages','Letter Writing','Essay Writing','Vocabulary Development','Synonyms, Antonyms and Homophones','Idioms and Phrases','One-word Substitution','Punctuation','Sentence Transformation'] },
-      'Social Science': { icon: '🗺️', chapters: ['Ancient Civilisations','Medieval India','Mughal Empire','British Rule and Freedom Struggle','Post-Independence India','Physical Features of India','Climate of India','Natural Vegetation and Wildlife','Population and Urbanisation','Resources — Land, Water, Minerals','Agriculture and Industries','Indian Constitution','Panchayati Raj','Democracy and Elections','Economic Concepts','Globalisation'] },
-      Hindi: { icon: '📙', chapters: ['Gadhya Bodh','Padhya Bodh','Vyakaran — Sangya, Sarvanam','Visheshan and Kriya','Kal aur Vachya','Sandhi aur Samas','Muhavare aur Lokokti','Patra Lekhan','Nibandh Lekhan','Anuchhed Lekhan'] },
-    },
-  },
-  rms: {
-    label: 'Rashtriya Military School', short: 'RMS CET', exam: 'RMS CET · Class 6 & 9',
-    color: '#be123c', bg: '#ffe4e6', border: '#fda4af', text: '#9f1239',
-    // Chapter data ported from QuestionBank.jsx's COURSES.rms — RMS CET
-    // Class 6 + Class 9 (Paper-I) syllabus, Class 6 based on CBSE Class 5,
-    // Class 9 Paper-I on CBSE Class 8, combined into one course-wide
-    // chapter list per subject (same pattern the other three courses use
-    // here rather than splitting by admission class). Kept in sync with
-    // StudyMaterial.jsx's own rms block.
-    subjects: {
-      Mathematics: { icon: '📐', chapters: ['Whole Numbers','Natural Numbers','Playing with Numbers','Square Root and Cube Root','Unitary Method','Percentage','Time and Work','Profit and Loss','Simple Interest','Arithmetic Mean','Decimals and Fractions','Ratio and Proportion','Roman Numerals','Algebra','Place Value and Face Value','Temperature Measurement','Area and Volume','Volume of Cube and Cuboid','Area of Circle','Classification of Angles','Angles, Triangles and Circles','Triangles, Quadrilaterals and Polygons','Conversion of Units of Area and Volume','Angle Sum Property','Distance and Displacement','Geometry'] },
-      Intelligence: { icon: '🧠', chapters: ['Blood Relation','Analogy','Classification (Odd Man Out)','Series','Coding-Decoding','Inserting Numbers','Puzzle','Decision Making','Non-Verbal Reasoning'] },
-      'English Language': { icon: '📗', chapters: ['Antonyms','Synonyms','Prepositions','Composition','Framing Questions','Articles','Comprehension Passages','Affirmative and Interrogative Sentences','Fill in the Blanks','Spelling Check','Para Jumbled','Construction of Sentences','Error Correction','Grammatical Structure','Vocabulary','Homonyms','One Word Substitution','Grammar — Verb, Adjective, Noun, Pronoun, Gender'] },
-      'General Knowledge': { icon: '🌍', chapters: ['History','Geography','Indian Polity','Sports','Awards','Science and Health','Committee and Commission','States of India','Our Defence Forces','Atomic Power Stations in India','Classical Dances of India','Books and Authors','International Organizations','Environment and Pollution','General Science','Countries, Capitals and Currencies','National Parks and Wildlife Sanctuaries in India','Union Territories','Famous Rivers'] },
-      'Social Science': { icon: '🗺️', chapters: ['General (NCERT Class 8 basis)'] },
-    },
-  },
+// ── Display-only metadata (colors, labels, icons). The subject/chapter
+// lists themselves come from qbankTaxonomy.js. ──
+const COURSE_DISPLAY = {
+  sainik:     { label: 'Sainik School',             short: 'AISSEE',    color: '#16a34a', bg: '#dcfce7', text: '#15803d' },
+  navodaya:   { label: 'Navodaya Vidyalaya',        short: 'JNVST',     color: '#2563eb', bg: '#dbeafe', text: '#1d4ed8' },
+  foundation: { label: 'Foundation Course',         short: 'Class 5–8', color: '#d97706', bg: '#fef9c3', text: '#b45309' },
+  rms:        { label: 'Rashtriya Military School', short: 'RMS CET',   color: '#be123c', bg: '#ffe4e6', text: '#9f1239' },
 }
+const SUBJECT_ICONS = {
+  Mathematics: '📐', Intelligence: '🧠', Language: '📖', 'English Language': '📗',
+  'General Knowledge': '🌍', 'Social Studies': '🗺️', 'Mental Ability': '🧩',
+  'Environmental Studies (EVS)': '🌱', Arithmetic: '🔢', 'Hindi Language': '📕',
+  Science: '🔬', English: '📘', 'Social Science': '🗺️', Hindi: '📙',
+}
+
+const PAGE_STEP = 50 // questions rendered per "Show more" step
+const QUESTION_COLUMNS = 'id, course, subject, chapter, subsection, question, question_mayek, question_mayek_font, option_a, option_a_mayek, option_b, option_b_mayek, option_c, option_c_mayek, option_d, option_d_mayek, correct_option, difficulty, marks, diagram_url, created_at'
 
 const C = {
   navy: '#1e3a5f', slate: '#64748b', border: '#e2e8f0',
@@ -126,6 +88,36 @@ const C = {
 const iS = { width: '100%', padding: '8px 11px', borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 13, background: C.white, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }
 const cardS = { background: C.white, borderRadius: 12, boxShadow: '0 1px 6px rgba(0,0,0,.07)', padding: '18px 20px', marginBottom: 14 }
 const btnSm = (bg, color = '#fff') => ({ padding: '4px 10px', borderRadius: 6, background: bg, color, border: 'none', fontSize: 11, fontWeight: 700, cursor: 'pointer' })
+
+// Subject names a question for (course, subject) may be stored under: the
+// exact taxonomy name, plus the old flat bucket name (Mathematics /
+// Intelligence / Language / General Knowledge) that questions saved before
+// courses existed — and TabSourceCollector today — still use.
+function subjectCandidates(subject) {
+  return [...new Set([subject, normalizeToQBank(subject)])]
+}
+
+// Course taxonomy + custom subjects/chapters added in Study Material's
+// course editor (study_course_structure), merged the same way as
+// StudyMaterial.jsx's mergedCourses. A custom row whose subject is a Study
+// Material name (e.g. Sainik "English Language") is attached to the Question
+// Bank subject it maps to (Sainik "Language") when that one exists, so it
+// extends the right chapter list instead of creating an empty duplicate.
+function mergeTaxonomy(structure) {
+  const result = {}
+  for (const [courseKey, course] of Object.entries(COURSES)) {
+    const subjects = {}
+    for (const [s, chapters] of Object.entries(course.subjects)) subjects[s] = [...chapters]
+    const target = (s) => (subjects[s] || !subjects[normalizeToQBank(s)]) ? s : normalizeToQBank(s)
+    for (const r of structure.filter(r => r.course === courseKey && r.subject)) {
+      const s = target(r.subject)
+      if (!subjects[s]) subjects[s] = []
+      if (r.chapter && !subjects[s].includes(r.chapter)) subjects[s].push(r.chapter)
+    }
+    result[courseKey] = subjects
+  }
+  return result
+}
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(() => window.innerWidth < 768)
@@ -146,32 +138,45 @@ function Badge({ text, color, bg, border }) {
   )
 }
 
+// Print rules, rendered once (they used to be repeated inside every card).
+// Printed copies show the correct answer highlighted regardless of the
+// on-screen reveal toggle — unless "Print questions only" is used, which
+// adds .qbv-hide-answers to the print root for a blank question sheet.
+function PrintStyles() {
+  return (
+    <style>{`
+      @media print {
+        body * { visibility: hidden; }
+        .qbv-print-root, .qbv-print-root * { visibility: visible; }
+        .qbv-print-root { position: absolute; left: 0; top: 0; width: 100%; }
+        .qbv-no-print { display: none !important; }
+        .qbv-print-only { display: block !important; margin-bottom: 14px; }
+        .qbv-correct-opt {
+          background: #dcfce7 !important;
+          border-color: #86efac !important;
+          color: #15803d !important;
+          font-weight: 700 !important;
+        }
+        .qbv-answer-mark { display: inline !important; }
+        .qbv-hide-answers .qbv-opt {
+          background: #f8fafc !important;
+          border-color: #e2e8f0 !important;
+          color: #374151 !important;
+          font-weight: 400 !important;
+        }
+        .qbv-hide-answers .qbv-answer-mark { display: none !important; }
+      }
+    `}</style>
+  )
+}
+
 // Read-only question card — same visual language as QuestionBank.jsx's
 // QCard (badges, options grid, reveal-answer toggle) but with no
-// selection checkbox and no edit/delete actions, since this view has no
-// write access to qbank_questions at all.
+// selection checkbox and no edit/delete actions.
 function ViewOnlyQCard({ q, index, subjectColor }) {
   const [reveal, setReveal] = useState(false)
   return (
     <div style={{ ...cardS, marginBottom: 8, padding: '12px 16px' }}>
-      {/* Printed copies always show the correct answer highlighted,
-          independent of the on-screen reveal toggle — a printout is a
-          reference/answer-key artifact, not an interactive quiz, so there's
-          no reason to print a blank options grid just because nobody had
-          clicked Show Answer on screen first. .qbv-correct-opt is the hook
-          this print rule targets; qbv-answer-mark is hidden on screen when
-          not revealed and forced visible in print. */}
-      <style>{`
-        @media print {
-          .qbv-correct-opt {
-            background: #dcfce7 !important;
-            border-color: #86efac !important;
-            color: #15803d !important;
-            font-weight: 700 !important;
-          }
-          .qbv-answer-mark { display: inline !important; }
-        }
-      `}</style>
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 7, alignItems: 'center' }}>
         <span style={{ fontSize: 11, color: C.slate, fontWeight: 700 }}>Q{index + 1}</span>
         {q.subsection && <Badge text={q.subsection} color="#0369a1" bg="#e0f2fe" />}
@@ -180,6 +185,11 @@ function ViewOnlyQCard({ q, index, subjectColor }) {
           bg={q.difficulty === 'Easy' ? '#dcfce7' : q.difficulty === 'Hard' ? '#fee2e2' : '#fef9c3'} />
         <Badge text={`${q.marks || 1}M`} color={C.indigo} bg="#eff6ff" />
         {q.diagram_url && <Badge text="🖼 Diagram" color="#065f46" bg="#d1fae5" />}
+        {!q.course && (
+          <span className="qbv-no-print" title="Saved before course tagging (or by a tool that doesn't set a course) — shown in every course that uses this subject">
+            <Badge text="No course tag" color="#92400e" bg="#fef3c7" />
+          </span>
+        )}
       </div>
       <div style={{ fontSize: 14, color: '#1e293b', fontWeight: 500, lineHeight: 1.6, marginBottom: q.question_mayek ? 4 : 8 }}>
         {q.question}
@@ -195,7 +205,7 @@ function ViewOnlyQCard({ q, index, subjectColor }) {
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginBottom: 8 }}>
         {['A', 'B', 'C', 'D'].map(l => (
-          <div key={l} className={q.correct_option === l ? 'qbv-correct-opt' : ''}
+          <div key={l} className={`qbv-opt${q.correct_option === l ? ' qbv-correct-opt' : ''}`}
             style={{ padding: '5px 10px', borderRadius: 6, fontSize: 12,
             background: reveal && q.correct_option === l ? '#dcfce7' : '#f8fafc',
             border: `1px solid ${reveal && q.correct_option === l ? '#86efac' : C.border}`,
@@ -223,8 +233,7 @@ function ViewOnlyQCard({ q, index, subjectColor }) {
 
 // Chapter picker row — mirrors StudyMaterial's SubjectPanel chapter list
 // visually, but each row shows a live question count for that chapter
-// (from the same qbankData already fetched for the whole subject) and
-// selecting one loads that chapter's questions below.
+// (from the questions already fetched for the whole subject).
 function ChapterList({ chapters, activeChapter, onSelect, countsByChapter }) {
   if (chapters.length === 0) {
     return <div style={{ ...cardS, textAlign: 'center', padding: 32, color: '#94a3b8' }}>No chapters defined for this subject.</div>
@@ -255,27 +264,46 @@ function ChapterList({ chapters, activeChapter, onSelect, countsByChapter }) {
   )
 }
 
-export default function QuestionBankViewer({ currentUser, onNavigate }) {
-  // Same convention as QuestionBank.jsx: role is stored lowercase as
-  // literal 'admin' — Computer Staffs (who also pass isStaffAllowed at the
-  // StudyMaterial.jsx call site) get the read-only preview but not the
-  // print/export action, since printing/distributing question papers is
-  // treated as an admin-level action here, distinct from just viewing
-  // what's in the bank.
-  const roleLower = (currentUser?.role || '').toLowerCase()
-  const isAdmin = roleLower === 'admin'
+export default function QuestionBankViewer({ currentUser }) {
+  // Printing/distributing question papers is an admin-level action here,
+  // distinct from just viewing what's in the bank. Uses the shared
+  // isAdminRole() (Admin / Administrator / Co-Admin) — an exact
+  // role === 'admin' check hid Print from real "Administrator" accounts.
+  const isAdmin = isAdminRole(currentUser?.role)
 
   const [activeCourse, setActiveCourse] = useState('sainik')
   const [activeSubject, setActiveSubject] = useState(null)
   const [activeChapter, setActiveChapter] = useState(null)
-  const [subjectQuestions, setSubjectQuestions] = useState([])
+  // Questions for `loadedFor` — kept together so data from a previous
+  // subject is never mistaken for the current one while a load is running.
+  const [loaded, setLoaded] = useState({ subject: null, rows: [] })
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [structure, setStructure] = useState([])
   const [search, setSearch] = useState('')
   const [difficultyFilter, setDifficultyFilter] = useState('All')
+  const [includeUntagged, setIncludeUntagged] = useState(true)
+  // { key, n }: how many cards of view `key` are shown (see viewKey below).
+  const [visible, setVisible] = useState({ key: '', n: PAGE_STEP })
+  const [printHideAnswers, setPrintHideAnswers] = useState(false)
   const isMobile = useIsMobile()
+  const loadSeq = useRef(0)
 
-  const courseData = BASE_COURSES[activeCourse]
-  const subjectList = Object.keys(courseData.subjects)
+  // Custom subjects/chapters from Study Material's course editor.
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('study_course_structure').select('course, subject, chapter').then(({ data, error }) => {
+      if (cancelled) return
+      if (error) console.error('QuestionBankViewer: course structure load failed —', error.message)
+      else setStructure(data || [])
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  const taxonomy = useMemo(() => mergeTaxonomy(structure), [structure])
+  const courseData = COURSE_DISPLAY[activeCourse]
+  const courseSubjects = useMemo(() => taxonomy[activeCourse] || {}, [taxonomy, activeCourse])
+  const subjectList = Object.keys(courseSubjects)
 
   useEffect(() => {
     if (!subjectList.includes(activeSubject)) {
@@ -283,40 +311,62 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
       setActiveChapter(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCourse])
+  }, [activeCourse, subjectList.join('|')])
 
-  // Fetches every question for the ACTIVE SUBJECT (not chapter) in one
-  // query, so chapter switching within the same subject is instant and
-  // the chapter-list counts (ChapterList's countsByChapter) come from
-  // data already in hand rather than a second round-trip per click.
-  //
-  // normalizeToQBank(subject) before querying: this viewer uses
-  // StudyMaterial's rich subject names (English Language, Hindi Language,
-  // Arithmetic, Mental Ability, Science, Social Science, etc.) for its
-  // course/subject picker, but qbank_questions itself is keyed by
-  // QuestionBank.jsx's flat canonical buckets (Mathematics, Intelligence,
-  // Language, General Knowledge) — see StudyMaterialBridge.js's own
-  // header comment for why these are deliberately different vocabularies.
-  // Querying with the raw StudyMaterial subject name would silently
-  // return zero rows for every subject except the two whose names
-  // happen to already match (Mathematics, Intelligence).
+  // Fetches every question for the ACTIVE SUBJECT (not chapter), so chapter
+  // switching is instant and chapter counts come from data already in hand.
+  // - Paged: a single request is silently capped at 1000 rows.
+  // - Sequenced: only the newest request may update state, so switching
+  //   subjects quickly can't leave an older subject's questions on screen.
   const loadSubjectQuestions = useCallback(async subject => {
-    if (!subject) { setSubjectQuestions([]); return }
+    const seq = ++loadSeq.current
+    if (!subject) { setLoaded({ subject: null, rows: [] }); setLoading(false); setLoadError(''); return }
     setLoading(true)
-    const qbankSubject = normalizeToQBank(subject)
-    const { data, error } = await supabase
+    setLoadError('')
+    const { data, error } = await fetchAllPages(() => supabase
       .from('qbank_questions')
-      .select('id, subject, chapter, subsection, question, question_mayek, question_mayek_font, option_a, option_a_mayek, option_b, option_b_mayek, option_c, option_c_mayek, option_d, option_d_mayek, correct_option, difficulty, marks, diagram_url, created_at')
-      .eq('subject', qbankSubject)
+      .select(QUESTION_COLUMNS)
+      .in('subject', subjectCandidates(subject))
       .order('created_at', { ascending: false })
-    if (error) { console.error('QuestionBankViewer: load failed —', error.message); setSubjectQuestions([]) }
-    else setSubjectQuestions(data || [])
+      .order('id', { ascending: true }))
+    if (seq !== loadSeq.current) return
+    if (error) {
+      console.error('QuestionBankViewer: load failed —', error.message)
+      setLoaded({ subject: null, rows: [] })
+      setLoadError(error.message || 'Could not load questions')
+    } else {
+      setLoaded({ subject, rows: data || [] })
+    }
     setLoading(false)
   }, [])
 
   useEffect(() => { loadSubjectQuestions(activeSubject) }, [activeSubject, loadSubjectQuestions])
 
-  const knownChapters = courseData.subjects[activeSubject]?.chapters || []
+  // Refresh when questions are saved anywhere in the app (debounced — a
+  // multi-chapter save emits one event per chapter).
+  useEffect(() => {
+    let t = null
+    const unsub = EventBus.on(GNSI_EVENTS.QUESTION_SAVED, () => {
+      clearTimeout(t)
+      t = setTimeout(() => loadSubjectQuestions(activeSubject), 400)
+    })
+    return () => { clearTimeout(t); unsub?.() }
+  }, [activeSubject, loadSubjectQuestions])
+
+  // Course scoping: a question tagged with a DIFFERENT course never shows
+  // here (previously Sainik "Mathematics" also listed Foundation/RMS
+  // Mathematics). Questions with no course tag can't be attributed to a
+  // course, so they're shown (with a "No course tag" badge) unless hidden
+  // with the toggle — hiding them by default would make them unreachable.
+  const loadedCurrent = loaded.subject === activeSubject
+  const rawQuestions = useMemo(() => (loadedCurrent ? loaded.rows : []), [loadedCurrent, loaded])
+  const untaggedCount = useMemo(() => rawQuestions.filter(q => !q.course).length, [rawQuestions])
+  const subjectQuestions = useMemo(
+    () => rawQuestions.filter(q => q.course === activeCourse || (!q.course && includeUntagged)),
+    [rawQuestions, activeCourse, includeUntagged]
+  )
+
+  const knownChapters = useMemo(() => courseSubjects[activeSubject] || [], [courseSubjects, activeSubject])
 
   const countsByChapter = useMemo(() => {
     const map = {}
@@ -330,17 +380,11 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
     return map
   }, [subjectQuestions])
 
-  // Full chapter list = this course's known/curated chapters (in their
-  // defined order) PLUS any chapter name that actually exists in the
-  // fetched data but isn't in that list. Necessary because the "Language"
-  // QBank bucket pools questions tagged under every course's own chapter
-  // names (Sainik's, Navodaya's, Foundation's — see StudyMaterialBridge's
-  // many-to-one SUBJECT_TO_QBANK map), so a chapter list built only from
-  // the CURRENT course's own curated list would silently hide whichever
-  // fraction of the 10,220 questions were tagged under a different
-  // course's chapter names. Extra chapters are appended after the known
-  // ones, sorted by count descending, so the visible total always equals
-  // subjectQuestions.length exactly.
+  // Full chapter list = this course's known chapters (in their defined
+  // order, incl. custom ones) PLUS any chapter that exists in the data but
+  // isn't in that list (e.g. untagged older questions filed under a
+  // chapter name from another course), sorted by count, so the visible
+  // total always equals subjectQuestions.length exactly.
   const chapters = useMemo(() => {
     const extra = Object.keys(countsByChapter)
       .filter(ch => !knownChapters.includes(ch))
@@ -349,15 +393,16 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
   }, [knownChapters, countsByChapter])
 
   // Auto-select the first chapter that actually has questions when the
-  // subject changes and nothing's picked yet — otherwise a subject whose
-  // chapters are all in a different order than the questions land on an
-  // empty first chapter for no reason.
+  // subject changes and nothing's picked yet. Waits until this subject's
+  // questions have loaded: choosing earlier saw every chapter as empty,
+  // picked the first one, and then stayed on it after the data arrived.
   useEffect(() => {
+    if (!loadedCurrent) return
     if (activeChapter && chapters.includes(activeChapter)) return
     const firstWithQuestions = chapters.find(ch => countsByChapter[ch] > 0)
     setActiveChapter(firstWithQuestions || chapters[0] || null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSubject, chapters, countsByChapter])
+  }, [activeSubject, chapters, countsByChapter, loadedCurrent])
 
   const chapterQuestions = useMemo(() => {
     // "Uncategorized" is a synthetic bucket (see countsByChapter) for rows
@@ -368,17 +413,46 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
     if (difficultyFilter !== 'All') list = list.filter(q => q.difficulty === difficultyFilter)
     if (search.trim()) {
       const s = search.trim().toLowerCase()
-      list = list.filter(q => (q.question || '').toLowerCase().includes(s) || (q.subsection || '').toLowerCase().includes(s))
+      // Searches the question in both scripts, its options, and subsection.
+      const fields = ['question', 'question_mayek', 'subsection',
+        'option_a', 'option_b', 'option_c', 'option_d',
+        'option_a_mayek', 'option_b_mayek', 'option_c_mayek', 'option_d_mayek']
+      list = list.filter(q => fields.some(f => (q[f] || '').toLowerCase().includes(s)))
     }
     return list
   }, [subjectQuestions, activeChapter, difficultyFilter, search])
 
+  // Large chapters render in steps instead of hundreds of cards at once.
+  // The step count belongs to one view (course/subject/chapter/filters);
+  // any change to the view starts again from the first step.
+  const viewKey = [activeCourse, activeSubject, activeChapter, difficultyFilter, search, includeUntagged].join('|')
+  const visibleCount = visible.key === viewKey ? visible.n : PAGE_STEP
+  const shownQuestions = chapterQuestions.slice(0, visibleCount)
+
+  // Printing always covers the whole filtered chapter, not just the cards
+  // revealed so far. flushSync commits the full list (and the answers
+  // mode) to the DOM before the browser's print snapshot is taken.
+  // Reset on 'afterprint' rather than right after window.print(): on some
+  // mobile browsers print() doesn't block, and resetting immediately would
+  // change the page before the print snapshot is taken.
+  const printChapter = (hideAnswers) => {
+    const shownBefore = visibleCount
+    flushSync(() => { setPrintHideAnswers(hideAnswers); setVisible({ key: viewKey, n: Infinity }) })
+    window.addEventListener('afterprint', () => {
+      setPrintHideAnswers(false)
+      setVisible({ key: viewKey, n: shownBefore })
+    }, { once: true })
+    window.print()
+  }
+  const canPrint = !!activeChapter && chapterQuestions.length > 0
+
   return (
     <div style={{ fontFamily: 'inherit' }}>
       <BmeiFontFace />
+      <PrintStyles />
       {/* Course tabs */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-        {Object.entries(BASE_COURSES).map(([key, c]) => (
+        {Object.entries(COURSE_DISPLAY).map(([key, c]) => (
           <button key={key} onClick={() => setActiveCourse(key)}
             style={{
               padding: '9px 16px', borderRadius: 9, border: `1.5px solid ${activeCourse === key ? c.color : C.border}`,
@@ -393,7 +467,6 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
       {/* Subject tabs */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
         {subjectList.map(s => {
-          const sd = courseData.subjects[s]
           const active = s === activeSubject
           return (
             <button key={s} onClick={() => { setActiveSubject(s); setActiveChapter(null) }}
@@ -402,7 +475,7 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
                 background: active ? courseData.bg : C.white, color: active ? courseData.text : '#374151',
                 fontWeight: active ? 700 : 500, fontSize: 12.5, cursor: 'pointer',
               }}>
-              {sd.icon} {s}
+              {SUBJECT_ICONS[s] || '📁'} {s}
             </button>
           )
         })}
@@ -417,24 +490,8 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
         </div>
 
         <div>
-          {/* Print-only styles: hides everything except the active
-              question list when printing, and undoes the on-screen
-              answer-hidden/reveal toggle so a printed copy always shows
-              full options (never mid-interaction reveal state, and never
-              blank if nobody had clicked Show Answer). Scoped to this
-              component's own print root via .qbv-print-root so it doesn't
-              affect printing elsewhere in the portal. */}
-          <style>{`
-            @media print {
-              body * { visibility: hidden; }
-              .qbv-print-root, .qbv-print-root * { visibility: visible; }
-              .qbv-print-root { position: absolute; left: 0; top: 0; width: 100%; }
-              .qbv-no-print { display: none !important; }
-            }
-          `}</style>
-
           <div style={{ ...cardS, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }} className="qbv-no-print">
-            <input style={{ ...iS, flex: 1, minWidth: 180 }} placeholder="Search this chapter's questions…"
+            <input style={{ ...iS, flex: 1, minWidth: 180 }} placeholder="Search questions, options, Mayek text…"
               value={search} onChange={e => setSearch(e.target.value)} />
             <select style={{ ...iS, width: 'auto' }} value={difficultyFilter} onChange={e => setDifficultyFilter(e.target.value)}>
               <option value="All">All difficulties</option>
@@ -443,18 +500,25 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
               <option value="Hard">Hard</option>
             </select>
             {isAdmin ? (
-              <button
-                onClick={() => window.print()}
-                disabled={!activeChapter || !chapterQuestions.length}
-                title={!activeChapter ? 'Select a chapter first' : 'Print this chapter\'s questions'}
-                style={{
-                  padding: '8px 14px', borderRadius: 7, border: 'none', fontSize: 12.5, fontWeight: 700,
-                  cursor: (!activeChapter || !chapterQuestions.length) ? 'default' : 'pointer',
-                  color: (!activeChapter || !chapterQuestions.length) ? '#94a3b8' : '#fff',
-                  background: (!activeChapter || !chapterQuestions.length) ? '#f1f5f9' : courseData.color,
-                }}>
-                🖨️ Print Chapter
-              </button>
+              <>
+                {[
+                  { hide: false, label: '🖨️ Print with Answers', title: "Print this chapter's questions with answers marked" },
+                  { hide: true,  label: '🖨️ Print Questions Only', title: 'Print a blank question sheet (no answers marked)' },
+                ].map(({ hide, label, title }) => (
+                  <button key={label}
+                    onClick={() => printChapter(hide)}
+                    disabled={!canPrint}
+                    title={!activeChapter ? 'Select a chapter first' : title}
+                    style={{
+                      padding: '8px 14px', borderRadius: 7, border: 'none', fontSize: 12.5, fontWeight: 700,
+                      cursor: canPrint ? 'pointer' : 'default',
+                      color: canPrint ? '#fff' : '#94a3b8',
+                      background: canPrint ? courseData.color : '#f1f5f9',
+                    }}>
+                    {label}
+                  </button>
+                ))}
+              </>
             ) : (
               <span
                 title="Question Bank is preview-only for your account — printing is available to admin accounts"
@@ -462,11 +526,23 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
                 👁 Preview only
               </span>
             )}
+            {untaggedCount > 0 && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.slate, cursor: 'pointer', width: '100%' }}>
+                <input type="checkbox" checked={includeUntagged} onChange={e => setIncludeUntagged(e.target.checked)} />
+                Include {untaggedCount} question{untaggedCount !== 1 ? 's' : ''} with no course tag
+              </label>
+            )}
           </div>
 
-          <div className="qbv-print-root">
+          <div className={`qbv-print-root${printHideAnswers ? ' qbv-hide-answers' : ''}`}>
 
-          {!activeChapter ? (
+          {loadError ? (
+            <div style={{ ...cardS, textAlign: 'center', padding: 32, color: C.rose }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Couldn't load questions for {activeSubject}.</div>
+              <div style={{ fontSize: 12, color: C.slate, marginBottom: 12 }}>{loadError}</div>
+              <button onClick={() => loadSubjectQuestions(activeSubject)} style={btnSm(C.navy)}>↻ Retry</button>
+            </div>
+          ) : !activeChapter ? (
             <div style={{ ...cardS, textAlign: 'center', padding: 32, color: '#94a3b8' }}>Select a chapter to view its questions.</div>
           ) : loading ? (
             <div style={{ ...cardS, textAlign: 'center', padding: 32, color: '#94a3b8' }}>Loading…</div>
@@ -477,20 +553,25 @@ export default function QuestionBankViewer({ currentUser, onNavigate }) {
           ) : (
             <>
               {/* Print-only heading — the on-screen title line below is
-                  hidden via qbv-no-print when printing, since a printed
-                  page needs a clear letterhead-style title rather than the
-                  small in-app label. */}
+                  hidden via qbv-no-print when printing. */}
               <div className="qbv-print-only" style={{ display: 'none' }}>
-                <style>{`@media print { .qbv-print-only { display: block !important; margin-bottom: 14px; } }`}</style>
                 <div style={{ fontSize: 18, fontWeight: 800 }}>{courseData.label} — {activeSubject}</div>
                 <div style={{ fontSize: 13, color: '#475569', marginTop: 2 }}>{activeChapter} · {chapterQuestions.length} question{chapterQuestions.length !== 1 ? 's' : ''}</div>
               </div>
               <div className="qbv-no-print" style={{ fontSize: 12, color: C.slate, marginBottom: 8, fontWeight: 600 }}>
                 {chapterQuestions.length} question{chapterQuestions.length !== 1 ? 's' : ''} — {activeSubject} › {activeChapter}
               </div>
-              {chapterQuestions.map((q, i) => (
+              {shownQuestions.map((q, i) => (
                 <ViewOnlyQCard key={q.id} q={q} index={i} subjectColor={courseData.color} />
               ))}
+              {shownQuestions.length < chapterQuestions.length && (
+                <div className="qbv-no-print" style={{ textAlign: 'center', padding: '8px 0 16px' }}>
+                  <button onClick={() => setVisible({ key: viewKey, n: visibleCount + PAGE_STEP })} style={{ ...btnSm(courseData.color), padding: '8px 16px', fontSize: 12.5 }}>
+                    Show {Math.min(PAGE_STEP, chapterQuestions.length - shownQuestions.length)} more
+                    <span style={{ opacity: .8, fontWeight: 500 }}> ({shownQuestions.length} of {chapterQuestions.length})</span>
+                  </button>
+                </div>
+              )}
             </>
           )}
           </div>
