@@ -50,6 +50,22 @@ export function normalizeToQBank(subject) {
   return SUBJECT_TO_QBANK[subject] || subject
 }
 
+// ── Paged fetch ────────────────────────────────────────────────────────────────
+// Supabase/PostgREST returns at most 1000 rows per request, silently. A
+// single .select() over qbank_questions (≈10k rows) therefore dropped
+// everything past row 1000 without any error. buildQuery must return a
+// fresh query each call (with a deterministic .order()) so pages don't
+// overlap or skip. Returns { data, error }, like a normal query.
+export async function fetchAllPages(buildQuery, pageSize = 1000) {
+  let all = []
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await buildQuery().range(from, from + pageSize - 1)
+    if (error) return { data: null, error }
+    all = all.concat(data || [])
+    if (!data || data.length < pageSize) return { data: all, error: null }
+  }
+}
+
 // ── HOOK: Q-Bank question counts by chapter ────────────────────────────────────
 // Returns: { counts: { [chapter]: number }, loading, refetch }
 // Use in StudyMaterial to show Q badges on chapter rows.
@@ -61,10 +77,11 @@ export function useQBankCountsByChapter(subject) {
     if (!subject) { setCounts({}); return }
     setLoading(true)
     const qbankSubject = normalizeToQBank(subject)
-    const { data, error } = await supabase
+    const { data, error } = await fetchAllPages(() => supabase
       .from('qbank_questions')
       .select('chapter')
       .eq('subject', qbankSubject)
+      .order('id', { ascending: true }))
     if (!error && data) {
       const map = {}
       data.forEach(r => { map[r.chapter] = (map[r.chapter] || 0) + 1 })
