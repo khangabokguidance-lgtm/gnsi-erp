@@ -23,7 +23,7 @@ const INCOME_CATEGORIES  = ['Admission', 'Fees', 'Hostel', 'Advance', 'Donation'
 const EXPENSE_CATEGORIES = ['Salary', 'Electricity', 'Stationery', 'Maintenance', 'Transport', 'Event', 'Other']
 const PAYMENT_MODES      = ['Cash', 'Bank', 'UPI', 'Card']
 const ACCOUNT_TYPES      = ['Cash A/c', '2026-27 A/c', '2025-26 A/c']
-const CHART_COLORS       = ['#1e3a5f','#16a34a','#dc2626','#f59e0b','#7c3aed','#0891b2','#be185d','#047857']
+const CHART_COLORS       = ['#1e3a6e','#16a34a','#dc2626','#f59e0b','#7c3aed','#0891b2','#be185d','#047857']
 const STATUS_OPTIONS     = ['Confirmed', 'Pending']
 const PAGE_SIZES         = [25, 50, 100]
 const RECEIPT_BUCKET     = 'account-receipts'
@@ -225,11 +225,14 @@ function groupByDate(entries, getDate=(e)=>e.entry_date){
 // ── sub-components ─────────────────────────────────────────────────────────
 function StatCard({label,value,color,bg,icon,isCurrency=true,sub}){
   return(
-    <div style={{backgroundColor:bg,borderRadius:12,padding:18,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',borderLeft:`4px solid ${color}`}}>
-      <div style={{fontSize:22,marginBottom:6}}>{icon}</div>
-      <p style={{fontSize:13,color,fontWeight:600,margin:0}}>{label}</p>
-      <h2 style={{fontSize:22,fontWeight:'bold',color,marginTop:4,marginBottom:0}}>{isCurrency?fmt(value):value}</h2>
-      {sub&&<p style={{fontSize:11,color,opacity:0.7,marginTop:2,marginBottom:0}}>{sub}</p>}
+    <div className="ac-anim" style={{position:'relative',overflow:'hidden',backgroundColor:'white',borderRadius:16,padding:'16px 18px',border:`1px solid ${AC.line}`,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)'}}>
+      <div style={{position:'absolute',left:0,top:0,bottom:0,width:3,background:color}}/>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:10}}>
+        <p style={{fontSize:11,color:AC.muted,fontWeight:700,margin:0,letterSpacing:'.08em',textTransform:'uppercase'}}>{label}</p>
+        <span style={{width:32,height:32,borderRadius:10,background:bg,display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:15,flexShrink:0}}>{icon}</span>
+      </div>
+      <h2 style={{fontSize:24,fontWeight:600,color,margin:0,fontFamily:AC.serif,fontVariantNumeric:'tabular-nums',letterSpacing:'-.01em'}}>{isCurrency?fmt(value):value}</h2>
+      {sub&&<p style={{fontSize:11,color:AC.muted,marginTop:5,marginBottom:0}}>{sub}</p>}
     </div>
   )
 }
@@ -243,13 +246,56 @@ function SeverityBadge({severity}){
 // ── shared style helpers (module scope, declared before the component so
 // they can never be affected by build-tool scope-hoisting/minification
 // reordering relative to where Accounts() is defined) ──────────────────────
-const iStyle     = {width:'100%',padding:'11px 14px',borderRadius:8,border:'1px solid #e5e7eb',fontSize:13,backgroundColor:'white',boxSizing:'border-box',transition:'all 0.2s cubic-bezier(0.4,0,0.2,1)'}
-const lStyle     = {display:'block',fontSize:12,fontWeight:700,color:'#374151',marginBottom:7,letterSpacing:'0.2px',textTransform:'capitalize'}
-const tdS        = {padding:'13px 14px',color:'#64748b',fontSize:'13px',fontWeight:500}
-const chartCard  = {backgroundColor:'white',borderRadius:14,padding:24,boxShadow:'0 4px 16px rgba(0,0,0,0.08)',border:'1px solid #f3f4f6',transition:'all 0.3s cubic-bezier(0.4,0,0.2,1)'}
-const chartTitle = {fontSize:17,fontWeight:800,color:'#1e3a5f',marginBottom:20,marginTop:0,letterSpacing:'-0.4px'}
-const smallBtn   = (bg,color)=>({backgroundColor:bg,color,border:'none',borderRadius:6,padding:'6px 11px',fontSize:12,fontWeight:700,cursor:'pointer',transition:'all 0.25s ease',boxShadow:'0 2px 4px rgba(0,0,0,0.05)'})
-const pgBtn      = (disabled)=>({padding:'7px 13px',borderRadius:7,border:'1px solid #e5e7eb',cursor:disabled?'not-allowed':'pointer',fontSize:13,fontWeight:600,backgroundColor:'#f8fafc',color:disabled?'#cbd5e1':'#64748b',transition:'all 0.2s ease',boxShadow:'0 1px 2px rgba(0,0,0,0.04)'})
+// Premium palette — navy + antique gold on ivory (shared with Store / POS / Students)
+const AC = { navy:'#132a4f', navy2:'#1e3a6e', gold:'#b8923a', goldLight:'#f6efdc', goldBorder:'#e9d9b0', ivory:'#f7f5f0', line:'#e8e3d8', line2:'#d9d2c2', ink:'#0f1b2e', muted:'#5d6b82', serif:"'Fraunces',Georgia,serif" }
+const iStyle     = {width:'100%',padding:'11px 14px',borderRadius:10,border:`1px solid ${AC.line2}`,fontSize:13.5,backgroundColor:'white',color:AC.ink,boxSizing:'border-box',fontFamily:'inherit',minHeight:44,transition:'border-color .15s, box-shadow .15s'}
+const lStyle     = {display:'block',fontSize:11,fontWeight:700,color:AC.muted,marginBottom:7,letterSpacing:'.08em',textTransform:'uppercase'}
+const tdS        = {padding:'13px 14px',color:'#475569',fontSize:'13px',fontWeight:500}
+const chartCard  = {backgroundColor:'white',borderRadius:18,padding:24,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 8px 24px -12px rgba(19,42,79,.16)',border:`1px solid ${AC.line}`,transition:'box-shadow .2s'}
+const chartTitle = {fontSize:18,fontWeight:600,color:AC.navy,marginBottom:20,marginTop:0,letterSpacing:'-0.01em',fontFamily:AC.serif}
+const smallBtn   = (bg,color)=>({backgroundColor:bg,color,border:`1px solid ${color}22`,borderRadius:8,padding:'6px 12px',fontSize:12,fontWeight:700,cursor:'pointer',transition:'transform .12s, filter .12s',fontFamily:'inherit'})
+const pgBtn      = (disabled)=>({padding:'7px 13px',borderRadius:9,border:`1px solid ${AC.line}`,cursor:disabled?'not-allowed':'pointer',fontSize:13,fontWeight:600,backgroundColor:'white',color:disabled?'#cbd5e1':AC.navy2,transition:'all .15s ease',fontFamily:'inherit'})
+
+const AC_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap');
+.ac-root{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:${AC.ivory};color:${AC.ink};min-height:100vh;-webkit-font-smoothing:antialiased}
+.ac-root *{box-sizing:border-box}
+.ac-root h1,.ac-root h2,.ac-root h3{letter-spacing:-.01em}
+.ac-root input:not([type=checkbox]):not([type=radio]):not([type=file]):focus,.ac-root select:focus,.ac-root textarea:focus{outline:none;border-color:${AC.navy2}!important;box-shadow:0 0 0 3px rgba(30,58,110,.14)!important}
+.ac-root button{font-family:inherit}
+.ac-root button:not(:disabled){transition:transform .12s,filter .12s,box-shadow .15s,background-color .15s}
+.ac-root button:not(:disabled):hover{filter:brightness(.97)}
+.ac-root button:not(:disabled):active{transform:scale(.98)}
+.ac-root button:focus-visible{outline:2px solid ${AC.gold};outline-offset:2px}
+.ac-root table{border-collapse:separate;border-spacing:0}
+.ac-root thead th{font-size:11px!important;text-transform:uppercase;letter-spacing:.07em;font-weight:700!important;white-space:nowrap}
+.ac-root tbody tr{transition:background-color .12s}
+.ac-root tbody tr:hover{background-color:#faf8f3}
+.ac-root ::selection{background:${AC.goldBorder};color:${AC.navy}}
+.ac-root ::-webkit-scrollbar{width:6px;height:6px}
+.ac-root ::-webkit-scrollbar-thumb{background:${AC.line2};border-radius:6px}
+.ac-hero{position:relative;overflow:hidden;border-radius:22px;color:#fff;background:radial-gradient(90% 140% at 100% 0%,rgba(184,146,58,.28) 0%,transparent 55%),linear-gradient(135deg,#0e203f 0%,${AC.navy} 45%,${AC.navy2} 100%);box-shadow:0 24px 48px -24px rgba(19,42,79,.55)}
+.ac-hero::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.07) 1px,transparent 1px);background-size:14px 14px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 70%);mask-image:linear-gradient(90deg,transparent,#000 70%);pointer-events:none}
+.ac-hero::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,${AC.gold},transparent)}
+.ac-hero>*{position:relative}
+.ac-hbtn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:40px;padding:0 15px;border-radius:12px;font:650 13px/1 'Plus Jakarta Sans',system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+.ac-hbtn.ghost{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.2)}
+.ac-hbtn.ghost:hover{background:rgba(255,255,255,.16)!important;filter:none!important}
+.ac-hbtn.on{background:rgba(233,217,176,.18);border-color:rgba(233,217,176,.5);color:${AC.goldBorder}}
+.ac-hbtn.gold{background:linear-gradient(180deg,#d4ae58,${AC.gold});color:#1a1406;border:1px solid #a37f2e;box-shadow:0 1px 0 rgba(255,255,255,.35) inset,0 8px 18px -8px rgba(184,146,58,.8)}
+.ac-hstat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px 14px;min-width:0}
+.ac-tabs{display:flex;gap:4px;padding:5px;background:#fff;border:1px solid ${AC.line};border-radius:14px;box-shadow:0 1px 2px rgba(19,42,79,.05);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;margin-bottom:20px;position:sticky;top:0;z-index:50}
+.ac-tabs::-webkit-scrollbar{display:none}
+.ac-tab{display:flex;align-items:center;gap:6px;padding:9px 14px;border:none;border-radius:10px;background:none;cursor:pointer;font:600 13px/1 'Plus Jakarta Sans',system-ui,sans-serif;color:${AC.muted};white-space:nowrap}
+.ac-tab:hover{color:${AC.ink};background:#f3f0e8!important;filter:none!important}
+.ac-tab.on{background:linear-gradient(180deg,${AC.navy2},${AC.navy})!important;color:#fff;box-shadow:0 6px 14px -6px rgba(19,42,79,.6)}
+.ac-tab .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.ac-tab.on .dot{background:${AC.gold}!important}
+.ac-card{background:#fff;border:1px solid ${AC.line};border-radius:18px;box-shadow:0 1px 2px rgba(19,42,79,.05),0 8px 24px -12px rgba(19,42,79,.16)}
+@keyframes acUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+.ac-anim{animation:acUp .25s ease both}
+@media (prefers-reduced-motion:reduce){.ac-anim{animation:none}}
+`
 
 // ══════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
@@ -1385,11 +1431,11 @@ function Accounts({role,userId}){
       body{font-family:Arial,sans-serif;padding:24px;font-size:12px;color:#1a2535}
       h1{font-size:18px;margin-bottom:4px}p{color:#666;margin:0 0 16px}
       table{width:100%;border-collapse:collapse;margin-bottom:20px}
-      th{background:#1e3a5f;color:#fff;padding:7px 10px;text-align:left;font-size:11px}
+      th{background:#1e3a6e;color:#fff;padding:7px 10px;text-align:left;font-size:11px}
       td{padding:7px 10px;border-bottom:1px solid #eee}
       .day-header{background:#e8f0fa;font-weight:bold;padding:6px 10px}
       .subtotal{background:#f7fafd;font-weight:bold}
-      .grand{background:#1e3a5f;color:#fff;font-weight:bold}
+      .grand{background:#1e3a6e;color:#fff;font-weight:bold}
       .amt{text-align:right;color:${dailyAmtColor};font-weight:600}
       .total-amt{text-align:right;font-weight:bold}
       @page{margin:15mm}
@@ -1413,10 +1459,10 @@ function Accounts({role,userId}){
     const isIncome=item.type==='Income'
     w.document.write(`<html><head><title>Voucher Memo - ${item.id||''}</title><style>
       body{font-family:Arial,sans-serif;padding:36px;color:#1e293b}
-      .head{text-align:center;border-bottom:2px solid #1e3a5f;padding-bottom:12px;margin-bottom:20px}
-      .head h1{font-size:18px;color:#1e3a5f;margin:0 0 4px}
+      .head{text-align:center;border-bottom:2px solid #1e3a6e;padding-bottom:12px;margin-bottom:20px}
+      .head h1{font-size:18px;color:#1e3a6e;margin:0 0 4px}
       .head p{font-size:12px;color:#64748b;margin:2px 0}
-      h2{font-size:15px;color:#1e3a5f;margin:20px 0 10px;text-align:center;text-decoration:underline}
+      h2{font-size:15px;color:#1e3a6e;margin:20px 0 10px;text-align:center;text-decoration:underline}
       table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px}
       td{padding:8px 12px;border-bottom:1px solid #f1f5f9}
       td.label{color:#64748b;font-weight:600;width:40%}
@@ -1470,7 +1516,7 @@ function Accounts({role,userId}){
     ${plDatewise.map(d=>`<tr><td>${d.date}</td><td class="green">${fmt(d.income)}</td><td class="red">${fmt(d.expense)}</td><td class="${d.income-d.expense>=0?'green':'red'}">${fmt(d.income-d.expense)}</td></tr>`).join('')}
     <tr class="total"><td>Total</td><td class="green">${fmt(totalThisInc)}</td><td class="red">${fmt(totalThisExp)}</td><td class="${net>=0?'green':'red'}">${fmt(net)}</td></tr>
     </table>`:''
-    w.document.write(`<html><head><title>P&L - ${plPeriodLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#1e293b}h1{font-size:22px}h2{font-size:15px;font-weight:600;margin:20px 0 8px;color:#1e3a5f}p{font-size:13px;color:#64748b;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#f8fafc;padding:8px 12px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f1f5f9}.total{font-weight:bold;background:#f8fafc}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
+    w.document.write(`<html><head><title>P&L - ${plPeriodLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#1e293b}h1{font-size:22px}h2{font-size:15px;font-weight:600;margin:20px 0 8px;color:#1e3a6e}p{font-size:13px;color:#64748b;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#f8fafc;padding:8px 12px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f1f5f9}.total{font-weight:bold;background:#f8fafc}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
     <h1>Income & Expenditure Statement</h1>
     <p>Period: ${plPeriodLabel}${advLabel} | Generated: ${new Date().toLocaleString('en-IN')}</p>
     ${plShowDatewise?datewiseSection:`<h2>Income</h2><table><tr><th>Category</th><th>Amount</th></tr>
@@ -2223,7 +2269,7 @@ function Accounts({role,userId}){
       .card{flex:1;border-radius:8px;padding:10px 14px}
       .card.income{background:#dcfce7;border-left:3px solid #16a34a}
       .card.expense{background:#fee2e2;border-left:3px solid #dc2626}
-      .card.net{background:#eff6ff;border-left:3px solid #1e3a5f}
+      .card.net{background:#eff6ff;border-left:3px solid #1e3a6e}
       .card p{margin:0}.card .lbl{font-size:11px;color:#475569;font-weight:600}.card .val{font-size:16px;font-weight:800;color:#0f172a}
       @page{margin:15mm}
     </style></head><body>
@@ -2434,16 +2480,16 @@ function Accounts({role,userId}){
     const win=window.open('','_blank')
     win.document.write(`<html><head><title>Daily Expenditure Register</title><style>
       body{font-family:Arial,sans-serif;padding:24px;color:#1e293b}
-      h1{font-size:16px;color:#1e3a5f;margin-bottom:2px}
+      h1{font-size:16px;color:#1e3a6e;margin-bottom:2px}
       p{font-size:11px;color:#64748b;margin:2px 0}
       table{width:100%;border-collapse:collapse;margin-top:14px;font-size:11px}
-      th{background:#1e3a5f;color:white;padding:6px 8px;text-align:left}
+      th{background:#1e3a6e;color:white;padding:6px 8px;text-align:left}
       td{padding:5px 8px;border-bottom:1px solid #f1f5f9}
       .day-header{background:#f0f9ff;font-weight:bold;color:#0369a1}
       .subtotal{background:#f8fafc;font-weight:bold}
       .amt{text-align:right;color:#c0392b;font-weight:600}
       .total-amt{text-align:right;font-weight:bold}
-      .grand{background:#1e3a5f;color:white;font-weight:bold}
+      .grand{background:#1e3a6e;color:white;font-weight:bold}
     </style></head><body>
     <h1>${INSTITUTE_INFO.name}</h1>
     <p>${INSTITUTE_INFO.tagline} · ${INSTITUTE_INFO.address}</p>
@@ -3098,10 +3144,10 @@ function Accounts({role,userId}){
     padding: isMobile ? '7px 12px' : '8px 18px',
     borderRadius:8, border:'none', cursor:'pointer', fontWeight:600,
     fontSize: isMobile ? 12 : 13,
-    backgroundColor:activeTab===t?'#1e3a5f':'#f1f5f9',
+    backgroundColor:activeTab===t?'#1e3a6e':'#f1f5f9',
     color:activeTab===t?'white':'#64748b', transition:'all .15s',
   })
-  const qBtn=(key)=>({padding: isMobile ? '5px 10px' : '5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,transition:'all .15s',backgroundColor:activeQuick===key?'#1e3a5f':'#f1f5f9',color:activeQuick===key?'white':'#64748b'})
+  const qBtn=(key)=>({padding: isMobile ? '5px 10px' : '5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,transition:'all .15s',backgroundColor:activeQuick===key?'#1e3a6e':'#f1f5f9',color:activeQuick===key?'white':'#64748b'})
 
   // ── responsive grid columns ────────────────────────────────────────────
   const statCardCols    = isMobile ? 'repeat(2,1fr)' : isTablet ? 'repeat(3,1fr)' : 'repeat(5,1fr)'
@@ -3117,34 +3163,52 @@ function Accounts({role,userId}){
 
   // ══════════════════════════════════════════════════════════════════════
   return(
-  <div style={{padding: isMobile ? 12 : 24, fontFamily:'inherit'}}>
+  <div className="ac-root" style={{padding: isMobile ? '12px 12px 80px' : '22px 28px 48px'}}>
+    <style>{AC_CSS}</style>
 
     {/* ── header ── */}
-    <div style={{
-      display:'flex',
-      flexDirection: isMobile ? 'column' : 'row',
-      justifyContent:'space-between',
-      alignItems: isMobile ? 'flex-start' : 'center',
-      gap: isMobile ? 12 : 0,
-      marginBottom:24,
-    }}>
-      <div>
-        <h1 style={{fontSize: isMobile ? 20 : 26, fontWeight:'bold',color:'#1e3a5f',margin:0}}>💼 Accounts</h1>
-        <p style={{color:'#64748b',fontSize:14,margin:'4px 0 0'}}>Manage income &amp; expense transactions</p>
+    <section className="ac-hero" style={{padding: isMobile ? '18px 16px 16px' : '26px 28px 22px', marginBottom:18}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:16}}>
+        <div style={{display:'flex',alignItems:'center',gap: isMobile ? 12 : 16,minWidth:0}}>
+          <div style={{width: isMobile ? 46 : 56,height: isMobile ? 46 : 56,borderRadius:16,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(145deg,rgba(233,217,176,.28),rgba(233,217,176,.06))',border:'1px solid rgba(233,217,176,.35)',color:AC.goldBorder}}>
+            <svg viewBox="0 0 24 24" width={isMobile?22:26} height={isMobile?22:26} fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18M16 14.5h2"/><path d="M7 6V4.5A1.5 1.5 0 0 1 8.5 3h7A1.5 1.5 0 0 1 17 4.5V6"/></svg>
+          </div>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:10.5,fontWeight:700,textTransform:'uppercase',letterSpacing:'.2em',color:AC.goldBorder,marginBottom:6}}>GNSI · Finance Ledger</div>
+            <h1 style={{fontSize: isMobile ? 26 : 34,fontWeight:600,color:'#fff',margin:0,lineHeight:1,fontFamily:AC.serif}}>Accounts</h1>
+            <p style={{color:'rgba(255,255,255,.7)',fontSize:13,margin:'9px 0 0'}}>Income, expenditure &amp; approvals · {new Date().toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}</p>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap', width: isMobile ? '100%' : 'auto'}}>
+          <button className={'ac-hbtn ghost'+(showStatCards?' on':'')} onClick={()=>setShowStatCards(s=>!s)} style={{flex: isMobile ? '1' : 'none'}}>{showStatCards?'▲ Summary':'▼ Summary'}</button>
+          <button className="ac-hbtn ghost" onClick={()=>setShowPL(true)} style={{flex: isMobile ? '1' : 'none'}}>📋 P&amp;L</button>
+          <button className="ac-hbtn ghost" onClick={exportCSV} style={{flex: isMobile ? '1' : 'none'}}>⬇ Export</button>
+          {canAddEntry&&<button className="ac-hbtn gold" onClick={()=>(showForm&&!editEntry)?setShowForm(false):openAdd()} style={{flex: isMobile ? '1 1 100%' : 'none'}}>{showForm&&!editEntry?'✖ Cancel':canAddIncome?'＋ New Entry':'＋ Add Expenditure'}</button>}
+        </div>
       </div>
-      <div style={{display:'flex',gap:8,flexWrap:'wrap', width: isMobile ? '100%' : 'auto'}}>
-        <button onClick={()=>setShowStatCards(s=>!s)} style={{backgroundColor:'#f8fafc',color:'#475569',border:'1px solid #e2e8f0',borderRadius:8,padding: isMobile ? '8px 12px' : '10px 16px',fontWeight:600,cursor:'pointer',fontSize: isMobile ? 12 : 13, flex: isMobile ? '1' : 'none'}}>{showStatCards?'▲ Hide Summary':'▼ Show Summary'}</button>
-        <button onClick={()=>setShowPL(true)} style={{backgroundColor:'#f0f9ff',color:'#0369a1',border:'1px solid #bae6fd',borderRadius:8,padding: isMobile ? '8px 12px' : '10px 16px',fontWeight:600,cursor:'pointer',fontSize: isMobile ? 12 : 13, flex: isMobile ? '1' : 'none'}}>📋 P&L</button>
-        <button onClick={exportCSV} style={{backgroundColor:'#f0fdf4',color:'#16a34a',border:'1px solid #bbf7d0',borderRadius:8,padding: isMobile ? '8px 12px' : '10px 16px',fontWeight:600,cursor:'pointer',fontSize: isMobile ? 12 : 13, flex: isMobile ? '1' : 'none'}}>⬇ Export</button>
-        {canAddEntry&&<button onClick={()=>(showForm&&!editEntry)?setShowForm(false):openAdd()} style={{backgroundColor:'#1e3a5f',color:'white',border:'none',borderRadius:8,padding: isMobile ? '8px 12px' : '10px 20px',fontWeight:600,cursor:'pointer',fontSize: isMobile ? 12 : 14, flex: isMobile ? '1' : 'none'}}>{showForm&&!editEntry?'✖ Cancel':canAddIncome?'➕ Add':'➕ Add Expenditure'}</button>}
+
+      {/* hero quick figures */}
+      <div style={{display:'grid',gridTemplateColumns: isMobile ? 'repeat(2,minmax(0,1fr))' : 'repeat(4,minmax(0,1fr))',gap: isMobile ? 8 : 12,marginTop: isMobile ? 16 : 22}}>
+        {[
+          {l:'Net balance',v:fmt(totalIncome-totalExpense),sub:'Confirmed, all-time',tone:(totalIncome-totalExpense)>=0?'#fff':'#fca5a5'},
+          {l:'Total income',v:fmt(totalIncome),sub:`Today ${fmt(todayIncome)}`,tone:'#86efac'},
+          {l:'Total expense',v:fmt(totalExpense),sub:`Today ${fmt(todayExpense)}`,tone:'#fca5a5'},
+          {l:'Pending',v:pendingCount,sub:isAdmin&&pendingApprovals.length?`${pendingApprovals.length} awaiting approval`:pendingCount?'Uncleared entries':'All confirmed',tone:pendingCount?'#fcd34d':'#fff'},
+        ].map(h=>(
+          <div key={h.l} className="ac-hstat">
+            <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.12em',color:'rgba(255,255,255,.6)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{h.l}</div>
+            <div style={{fontFamily:AC.serif,fontSize: isMobile ? 19 : 25,fontWeight:600,color:h.tone,marginTop:6,lineHeight:1.05,fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{h.v}</div>
+            <div style={{fontSize:11,color:'rgba(255,255,255,.55)',marginTop:5,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{h.sub}</div>
+          </div>
+        ))}
       </div>
-    </div>
+    </section>
 
     {/* ── Expenditure v2: always-visible pending-approval widget (admin only) ──
         Deliberately NOT gated behind a tab — the whole point is that a pending
         approval is never just sitting quietly somewhere unnoticed. */}
     {isAdmin&&pendingApprovals.length>0&&(
-      <div style={{backgroundColor:'#fffbeb',border:'1.5px solid #fde68a',borderRadius:12,padding:'12px 18px',marginBottom:20,cursor:'pointer'}} onClick={()=>setShowApprovalQueue(s=>!s)}>
+      <div className="ac-anim" style={{background:`linear-gradient(135deg,#fffbeb,${AC.goldLight})`,border:`1px solid ${AC.goldBorder}`,borderLeft:`4px solid ${AC.gold}`,borderRadius:16,padding:'14px 18px',marginBottom:18,cursor:'pointer',boxShadow:'0 6px 18px -10px rgba(184,146,58,.5)'}} onClick={()=>setShowApprovalQueue(s=>!s)}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
           <div style={{display:'flex',alignItems:'center',gap:10}}>
             <span style={{fontSize:20}}>🔏</span>
@@ -3183,26 +3247,28 @@ function Accounts({role,userId}){
     <div style={{display:'grid',gridTemplateColumns:statCardCols,gap: isMobile ? 10 : 14,marginBottom:16}}>
       <StatCard label={isFiltered?'Income (filtered)':'Total Income'} value={isFiltered?filteredIncome:totalIncome} color="#16a34a" bg="#dcfce7" icon="📈" sub={isFiltered?`All-time: ${fmt(totalIncome)}`:null}/>
       <StatCard label={isFiltered?'Expense (filtered)':'Total Expense'} value={isFiltered?filteredExpense:totalExpense} color="#dc2626" bg="#fee2e2" icon="📉" sub={isFiltered?`All-time: ${fmt(totalExpense)}`:null}/>
-      <StatCard label={isFiltered?'Net (filtered)':'Net Balance'} value={isFiltered?filteredNet:totalIncome-totalExpense} color="#1e3a5f" bg="#eff6ff" icon="💼"/>
+      <StatCard label={isFiltered?'Net (filtered)':'Net Balance'} value={isFiltered?filteredNet:totalIncome-totalExpense} color="#1e3a6e" bg="#eff6ff" icon="💼"/>
       <StatCard label="Transactions" value={entries.length} color="#7c3aed" bg="#f3e8ff" icon="🧾" isCurrency={false}/>
       <StatCard label="Pending" value={pendingCount} color="#f59e0b" bg="#fffbeb" icon="⏳" isCurrency={false} sub={pendingCount>0?'Uncleared entries':'All confirmed'}/>
     </div>
     )}
 
     {/* ── today summary ── */}
-    <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? '12px 14px' : '14px 20px',marginBottom:24,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',borderTop:'3px solid #1e3a5f'}}>
-      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}}>
-        <span style={{fontSize:16}}>📅</span>
-        <span style={{fontSize:14,fontWeight:700,color:'#1e3a5f'}}>Today's Summary</span>
+    <div className="ac-card" style={{padding: isMobile ? '14px' : '18px 20px',marginBottom:20}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+        <span style={{width:30,height:30,borderRadius:9,background:AC.goldLight,border:`1px solid ${AC.goldBorder}`,display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:14}}>📅</span>
+        <span style={{fontSize:17,fontWeight:600,color:AC.navy,fontFamily:AC.serif}}>Today's Summary</span>
         {!isMobile && <span style={{fontSize:12,color:'#94a3b8'}}>{new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</span>}
         {todayCount===0&&<span style={{marginLeft:'auto',fontSize:12,color:'#94a3b8',fontStyle:'italic'}}>No transactions today</span>}
       </div>
       <div style={{display:'grid',gridTemplateColumns:todayCols,gap: isMobile ? 10 : 12}}>
-        {[{label:"Today's Income",value:todayIncome,color:'#16a34a',bg:'#f0fdf4',icon:'⬆️'},{label:"Today's Expense",value:todayExpense,color:'#dc2626',bg:'#fff5f5',icon:'⬇️'},{label:"Today's Net",value:todayNet,color:todayNet>=0?'#1e3a5f':'#dc2626',bg:'#eff6ff',icon:todayNet>=0?'✅':'⚠️'},{label:"Today's Entries",value:todayCount,color:'#7c3aed',bg:'#faf5ff',icon:'🔢',isCurrency:false}].map(card=>(
-          <div key={card.label} style={{backgroundColor:card.bg,borderRadius:10,padding: isMobile ? '10px 12px' : '12px 16px',borderLeft:`3px solid ${card.color}`}}>
-            <div style={{fontSize: isMobile ? 16 : 18,marginBottom:4}}>{card.icon}</div>
-            <p style={{fontSize: isMobile ? 11 : 12,color:card.color,fontWeight:600,margin:'0 0 4px'}}>{card.label}</p>
-            <p style={{fontSize: isMobile ? 16 : 20,fontWeight:800,color:card.color,margin:0}}>{card.isCurrency===false?card.value:fmt(card.value)}</p>
+        {[{label:"Today's Income",value:todayIncome,color:'#16a34a',bg:'#f0fdf4',icon:'⬆️'},{label:"Today's Expense",value:todayExpense,color:'#dc2626',bg:'#fff5f5',icon:'⬇️'},{label:"Today's Net",value:todayNet,color:todayNet>=0?'#1e3a6e':'#dc2626',bg:'#eff6ff',icon:todayNet>=0?'✅':'⚠️'},{label:"Today's Entries",value:todayCount,color:'#7c3aed',bg:'#faf5ff',icon:'🔢',isCurrency:false}].map(card=>(
+          <div key={card.label} style={{backgroundColor:card.bg,borderRadius:12,padding: isMobile ? '11px 12px' : '13px 16px',border:`1px solid ${card.color}1f`,position:'relative',overflow:'hidden'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6,marginBottom:6}}>
+              <p style={{fontSize:11,color:card.color,fontWeight:700,margin:0,letterSpacing:'.04em'}}>{card.label}</p>
+              <span style={{fontSize: isMobile ? 13 : 15}}>{card.icon}</span>
+            </div>
+            <p style={{fontSize: isMobile ? 18 : 22,fontWeight:600,color:card.color,margin:0,fontFamily:AC.serif,fontVariantNumeric:'tabular-nums'}}>{card.isCurrency===false?card.value:fmt(card.value)}</p>
           </div>
         ))}
       </div>
@@ -3210,16 +3276,17 @@ function Accounts({role,userId}){
 
     {/* ── add/edit form ── */}
     {showForm&&(editEntry?canEditExpenditure:canAddEntry)&&(
-      <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 16 : 24,marginBottom:24,boxShadow:'0 2px 8px rgba(0,0,0,0.08)',borderLeft:'4px solid #1e3a5f'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}}>
-          <h2 style={{fontSize: isMobile ? 16 : 18,fontWeight:600,color:'#1e3a5f',margin:0}}>{editEntry?'✏️ Edit Entry':`➕ Add ${rows.length>1?`${rows.length} Entries`:'Entry'}`}</h2>
-          {!editEntry&&<button onClick={addRow} style={{backgroundColor:'#eff6ff',color:'#1e3a5f',border:'1px solid #bfdbfe',borderRadius:8,padding:'7px 14px',fontWeight:600,cursor:'pointer',fontSize:13}}>+ Add Row</button>}
+      <div className="ac-card ac-anim" style={{position:'relative',overflow:'hidden',padding: isMobile ? 16 : 24,marginBottom:22,boxShadow:'0 1px 2px rgba(19,42,79,.06), 0 18px 40px -18px rgba(19,42,79,.3)'}}>
+        <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${AC.navy},${AC.navy2} 60%,${AC.gold})`}}/>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18,flexWrap:'wrap',gap:10}}>
+          <h2 style={{fontSize: isMobile ? 19 : 22,fontWeight:600,color:AC.navy,margin:0,fontFamily:AC.serif}}>{editEntry?'✏️ Edit Entry':`➕ Add ${rows.length>1?`${rows.length} Entries`:'Entry'}`}</h2>
+          {!editEntry&&<button onClick={addRow} style={{backgroundColor:'#eff6ff',color:'#1e3a6e',border:'1px solid #bfdbfe',borderRadius:8,padding:'7px 14px',fontWeight:600,cursor:'pointer',fontSize:13}}>+ Add Row</button>}
         </div>
         {!canAddIncome&&<div style={{backgroundColor:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'8px 14px',marginBottom:14,fontSize:13,color:'#92400e'}}>⚠️ You can only add <strong>Expense</strong> entries.</div>}
         <form onSubmit={handleSubmit}>
           {rows.map((row,i)=>(
             <div key={i} style={{border:rows.length>1?'1px solid #e2e8f0':'none',borderRadius:10,padding:rows.length>1?16:0,marginBottom:rows.length>1?14:0}}>
-              {rows.length>1&&<div style={{display:'flex',justifyContent:'space-between',marginBottom:10,alignItems:'center'}}><span style={{fontSize:13,fontWeight:600,color:'#1e3a5f'}}>Row {i+1}</span>{i>0&&<button type="button" onClick={()=>removeRow(i)} style={{backgroundColor:'#fee2e2',color:'#dc2626',border:'none',borderRadius:6,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>✖ Remove</button>}</div>}
+              {rows.length>1&&<div style={{display:'flex',justifyContent:'space-between',marginBottom:10,alignItems:'center'}}><span style={{fontSize:13,fontWeight:600,color:'#1e3a6e'}}>Row {i+1}</span>{i>0&&<button type="button" onClick={()=>removeRow(i)} style={{backgroundColor:'#fee2e2',color:'#dc2626',border:'none',borderRadius:6,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>✖ Remove</button>}</div>}
               <div style={{display:'grid',gridTemplateColumns:formCols,gap:14}}>
                 <div><label style={lStyle}>Date {row.type==='Income'?'(Entered)':''} <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.entry_date} max={today} onChange={e=>updateRow(i,'entry_date',e.target.value)} required style={iStyle}/></div>
                 {row.type==='Income'&&<div><label style={lStyle}>💰 Actual Payment Date <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.payment_date||row.entry_date} max={today} onChange={e=>updateRow(i,'payment_date',e.target.value)} required style={iStyle}/></div>}
@@ -3313,22 +3380,22 @@ function Accounts({role,userId}){
             <label style={lStyle}>🧾 Receipt / Attachment <span style={{fontWeight:400,color:'#94a3b8'}}>(optional)</span></label>
             <div style={{display:'flex',gap:10,alignItems:'center',marginTop:6,flexWrap:'wrap'}}>
               <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={e=>setReceiptFile(e.target.files[0]||null)} style={{fontSize:13,maxWidth:'100%'}}/>
-              {(rows[0]?.receipt_url||receiptFile)&&<button type="button" onClick={()=>setViewReceipt(receiptFile?URL.createObjectURL(receiptFile):rows[0].receipt_url)} style={{backgroundColor:'#eff6ff',color:'#1e3a5f',border:'1px solid #bfdbfe',borderRadius:6,padding:'5px 12px',fontSize:12,cursor:'pointer',fontWeight:500}}>👁 Preview</button>}
+              {(rows[0]?.receipt_url||receiptFile)&&<button type="button" onClick={()=>setViewReceipt(receiptFile?URL.createObjectURL(receiptFile):rows[0].receipt_url)} style={{backgroundColor:'#eff6ff',color:'#1e3a6e',border:'1px solid #bfdbfe',borderRadius:6,padding:'5px 12px',fontSize:12,cursor:'pointer',fontWeight:500}}>👁 Preview</button>}
               {rows[0]?.receipt_url&&!receiptFile&&<span style={{fontSize:12,color:'#16a34a'}}>✅ Receipt on file</span>}
             </div>
           </div>
           <div style={{display:'flex',gap:12,marginTop:20,flexWrap:'wrap'}}>
-            <button type="submit" disabled={saving||uploadingReceipt} style={{backgroundColor:(saving||uploadingReceipt)?'#94a3b8':'#1e3a5f',color:'white',border:'none',borderRadius:8,padding:'10px 24px',fontWeight:600,cursor:(saving||uploadingReceipt)?'not-allowed':'pointer',fontSize:14,flex: isMobile ? '1' : 'none'}}>
+            <button type="submit" disabled={saving||uploadingReceipt} style={{background:(saving||uploadingReceipt)?'#94a3b8':`linear-gradient(180deg,${AC.navy2},${AC.navy})`,color:'white',border:`1px solid ${AC.navy}`,borderRadius:12,padding:'12px 28px',fontWeight:700,cursor:(saving||uploadingReceipt)?'not-allowed':'pointer',fontSize:14,flex: isMobile ? '1' : 'none',boxShadow:'0 8px 18px -8px rgba(19,42,79,.6)'}}>
               {uploadingReceipt?'⏳ Uploading…':saving?'⏳ Saving…':editEntry?'✅ Update':'✅ Save'}
             </button>
-            <button type="button" onClick={()=>{setShowForm(false);setEditEntry(null);setRows([{...emptyRow}])}} style={{backgroundColor:'#f1f5f9',color:'#64748b',border:'none',borderRadius:8,padding:'10px 20px',fontWeight:600,cursor:'pointer',fontSize:14}}>Cancel</button>
+            <button type="button" onClick={()=>{setShowForm(false);setEditEntry(null);setRows([{...emptyRow}])}} style={{backgroundColor:'white',color:AC.muted,border:`1px solid ${AC.line2}`,borderRadius:12,padding:'12px 22px',fontWeight:600,cursor:'pointer',fontSize:14}}>Cancel</button>
           </div>
         </form>
       </div>
     )}
 
     {/* ── tabs ── */}
-    <div style={{display:'flex',gap: isMobile ? 6 : 8,marginBottom:20,flexWrap:'wrap'}}>
+    <nav className="ac-tabs" role="tablist">
       {[
         ['transactions','🧾 Transactions'],
         ['analytics','📊 Analytics'],
@@ -3359,18 +3426,15 @@ function Accounts({role,userId}){
         // Activity Timeline shows every user's inserts/edits/deletes — admin-only visibility.
         // Entries are still logged the same way for everyone; this only restricts who can view the log.
         ...(isAdmin?[['timeline','🕐 Activity']]:[] ),
-      ].map(([id,label])=>(
-        <button key={id} style={{
-          ...tabStyle(id),
-          ...(id==='fraud'?{backgroundColor:activeTab===id?'#7c3aed':'#faf5ff',color:activeTab===id?'white':'#7c3aed',border:'1px solid #e9d5ff'}:{}),
-          ...(id==='daily'?{backgroundColor:activeTab===id?'#0369a1':'#f0f9ff',color:activeTab===id?'white':'#0369a1',border:'1px solid #bae6fd'}:{}),
-          ...(id==='expenditure'?{backgroundColor:activeTab===id?'#b91c1c':'#fef2f2',color:activeTab===id?'white':'#b91c1c',border:'1px solid #fecaca'}:{}),
-          ...(id==='reports'?{backgroundColor:activeTab===id?'#be185d':'#fdf2f8',color:activeTab===id?'white':'#be185d',border:'1px solid #fbcfe8'}:{}),
-          ...(id==='balancesheet'?{backgroundColor:activeTab===id?'#047857':'#f0fdf4',color:activeTab===id?'white':'#047857',border:'1px solid #bbf7d0'}:{}),
-          ...(id==='audit'?{backgroundColor:activeTab===id?'#312e81':'#eef2ff',color:activeTab===id?'white':'#312e81',border:'1px solid #c7d2fe'}:{}),
-        }} onClick={()=>setActiveTab(id)}>{label}</button>
-      ))}
-    </div>
+      ].map(([id,label])=>{
+        const dot={fraud:'#7c3aed',daily:'#0369a1',expenditure:'#b91c1c',reports:'#be185d',balancesheet:'#047857',audit:'#312e81',approvals:AC.gold}[id]
+        return (
+          <button key={id} role="tab" aria-selected={activeTab===id} className={'ac-tab'+(activeTab===id?' on':'')} onClick={()=>setActiveTab(id)}>
+            {dot&&<span className="dot" style={{background:dot}}/>}{label}
+          </button>
+        )
+      })}
+    </nav>
 
     {/* ══ TAB: TRANSACTIONS ══ */}
 {activeTab==='transactions'&&(
@@ -3393,7 +3457,7 @@ function Accounts({role,userId}){
 
     {activeTab==='daily'&&(
       <div>
-        <div style={{backgroundColor:'#1e3a5f',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+        <div className="ac-hero" style={{borderRadius:18,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:10}}>
             <div>
               <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📊 Daily {dailyLabelWord} Register</h2>
@@ -3423,8 +3487,8 @@ function Accounts({role,userId}){
             <>
               <span style={{width:1,height:20,backgroundColor:'#e2e8f0',margin:'0 4px'}}/>
               <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Filter by:</span>
-              <button onClick={()=>setDailyDateMode('payment')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyDateMode==='payment'?'#1e3a5f':'#cbd5e1',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='payment'?'#1e3a5f':'#f1f5f9',color:dailyDateMode==='payment'?'white':'#64748b'}}>💰 Payment Date</button>
-              <button onClick={()=>setDailyDateMode('entry')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyDateMode==='entry'?'#1e3a5f':'#cbd5e1',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='entry'?'#1e3a5f':'#f1f5f9',color:dailyDateMode==='entry'?'white':'#64748b'}}>🗓 Entry Date</button>
+              <button onClick={()=>setDailyDateMode('payment')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyDateMode==='payment'?'#1e3a6e':'#cbd5e1',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='payment'?'#1e3a6e':'#f1f5f9',color:dailyDateMode==='payment'?'white':'#64748b'}}>💰 Payment Date</button>
+              <button onClick={()=>setDailyDateMode('entry')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyDateMode==='entry'?'#1e3a6e':'#cbd5e1',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='entry'?'#1e3a6e':'#f1f5f9',color:dailyDateMode==='entry'?'white':'#64748b'}}>🗓 Entry Date</button>
             </>
           )}
           <span style={{width:1,height:20,backgroundColor:'#e2e8f0',margin:'0 4px'}}/>
@@ -3475,7 +3539,7 @@ function Accounts({role,userId}){
     {/* ══ TAB: DAILY EXPENDITURE (dedicated — separate from the combined Daily register) ══ */}
     {activeTab==='expenditure'&&(
       <div>
-        <div style={{backgroundColor:'#7f1d1d',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+        <div style={{backgroundColor:'#7f1d1d',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:10}}>
             <div>
               <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>💵 Daily Expenditure</h2>
@@ -3498,7 +3562,7 @@ function Accounts({role,userId}){
         </div>
 
         {/* ── one-click Expenditure Report — reuses the same letterheaded PDF/DOCX/Excel export as the Reports tab ── */}
-        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
+        <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:10}}>
             <div>
               <h3 style={{...chartTitle,fontSize:15,margin:0}}>📑 Expenditure Report</h3>
@@ -3547,7 +3611,7 @@ function Accounts({role,userId}){
               <div style={{display:'flex',gap: isMobile?10:18,flexWrap:'wrap'}}>
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Categories</div>
-                  <div style={{fontSize:18,fontWeight:800,color:'#1e3a5f'}}>{allExpenseCategorySummary.length}</div>
+                  <div style={{fontSize:18,fontWeight:800,color:'#1e3a6e'}}>{allExpenseCategorySummary.length}</div>
                 </div>
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Spend</div>
@@ -3555,7 +3619,7 @@ function Accounts({role,userId}){
                 </div>
                 {topCat&&<div style={{textAlign:'right'}}>
                   <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Top Category</div>
-                  <div style={{fontSize:14,fontWeight:800,color:'#1e3a5f'}}>{catIcons[topCat.category]||'🏷️'} {topCat.category}</div>
+                  <div style={{fontSize:14,fontWeight:800,color:'#1e3a6e'}}>{catIcons[topCat.category]||'🏷️'} {topCat.category}</div>
                 </div>}
               </div>
             </div>
@@ -3580,7 +3644,7 @@ function Accounts({role,userId}){
                         <span style={{fontSize:14,color:'#cbd5e1',flexShrink:0,marginLeft:6}}>{expanded?'▾':'▸'}</span>
                       </div>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
-                        <strong style={{fontSize:17,fontWeight:800,color:'#1e3a5f'}}>{fmt(c.total)}</strong>
+                        <strong style={{fontSize:17,fontWeight:800,color:'#1e3a6e'}}>{fmt(c.total)}</strong>
                         <span style={{fontSize:11,fontWeight:700,color:'#94a3b8'}}>{pct.toFixed(1)}% of total</span>
                       </div>
                       <div style={{height:6,borderRadius:999,backgroundColor:'#f1f5f9',overflow:'hidden'}}>
@@ -3614,7 +3678,7 @@ function Accounts({role,userId}){
 
         {/* ── Expenditure v2: vendor spend summary + drilldown ── */}
         {vendorSpendSummary.length>0&&(
-          <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
+          <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)'}}>
             <h3 style={{...chartTitle,fontSize:15,marginBottom:12}}>🏷️ Vendor / Payee Spend</h3>
             <div style={{display:'flex',flexDirection:'column',gap:8}}>
               {vendorSpendSummary.map(v=>{
@@ -3680,13 +3744,13 @@ function Accounts({role,userId}){
     {/* ══ TAB: REPORT GENERATOR ══ */}
     {activeTab==='reports'&&(
       <div>
-        <div style={{backgroundColor:'#831843',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+        <div style={{backgroundColor:'#831843',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📑 Professional Report Generator</h2>
           <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Build a filtered financial report and export it as a letterheaded PDF, Word (DOCX), or Excel file — ready to print and sign.</p>
         </div>
 
         {/* ── Accounts v3: one-click Monthly Report — pick any past month ── */}
-        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',borderLeft:'4px solid #0c4a6e'}}>
+        <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)',borderLeft:'4px solid #0c4a6e'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexWrap:'wrap',gap:10}}>
             <div>
               <h3 style={{...chartTitle,fontSize:15,margin:0}}>🗓️ Monthly Report — pick any month</h3>
@@ -3708,15 +3772,15 @@ function Accounts({role,userId}){
               <p style={{fontSize:11,color:'#dc2626',fontWeight:600,margin:'0 0 2px'}}>Expense</p>
               <p style={{fontSize:16,fontWeight:800,color:'#dc2626',margin:0}}>{fmt(monthlyRptTotals.expense)}</p>
             </div>
-            <div style={{backgroundColor:'#eff6ff',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid #1e3a5f'}}>
-              <p style={{fontSize:11,color:'#1e3a5f',fontWeight:600,margin:'0 0 2px'}}>Net</p>
-              <p style={{fontSize:16,fontWeight:800,color:'#1e3a5f',margin:0}}>{fmt(monthlyRptTotals.net)}</p>
+            <div style={{backgroundColor:'#eff6ff',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid #1e3a6e'}}>
+              <p style={{fontSize:11,color:'#1e3a6e',fontWeight:600,margin:'0 0 2px'}}>Net</p>
+              <p style={{fontSize:16,fontWeight:800,color:'#1e3a6e',margin:0}}>{fmt(monthlyRptTotals.net)}</p>
             </div>
           </div>
         </div>
 
         {/* ── Weekly Report for Admin's PA — one-click, always last 7 days ── */}
-        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',borderLeft:'4px solid #831843'}}>
+        <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)',borderLeft:'4px solid #831843'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexWrap:'wrap',gap:10}}>
             <div>
               <h3 style={{...chartTitle,fontSize:15,margin:0}}>🗓️ Weekly Report — for Admin's PA</h3>
@@ -3738,15 +3802,15 @@ function Accounts({role,userId}){
               <p style={{fontSize:11,color:'#dc2626',fontWeight:600,margin:'0 0 2px'}}>Expense (7 days)</p>
               <p style={{fontSize:16,fontWeight:800,color:'#dc2626',margin:0}}>{fmt(weeklyTotals.expense)}</p>
             </div>
-            <div style={{backgroundColor:'#eff6ff',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid #1e3a5f'}}>
-              <p style={{fontSize:11,color:'#1e3a5f',fontWeight:600,margin:'0 0 2px'}}>Net</p>
-              <p style={{fontSize:16,fontWeight:800,color:'#1e3a5f',margin:0}}>{fmt(weeklyTotals.net)}</p>
+            <div style={{backgroundColor:'#eff6ff',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid #1e3a6e'}}>
+              <p style={{fontSize:11,color:'#1e3a6e',fontWeight:600,margin:'0 0 2px'}}>Net</p>
+              <p style={{fontSize:16,fontWeight:800,color:'#1e3a6e',margin:0}}>{fmt(weeklyTotals.net)}</p>
             </div>
           </div>
         </div>
 
         {/* ── report type ── */}
-        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
+        <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)'}}>
           <label style={lStyle}>Report Title</label>
           <select value={rptReportType} onChange={e=>setRptReportType(e.target.value)} style={{...iStyle,maxWidth: isMobile ? '100%' : 360,fontWeight:600}}>
             {REPORT_TYPES.map(t=><option key={t}>{t}</option>)}
@@ -3822,12 +3886,12 @@ function Accounts({role,userId}){
         <div style={{display:'grid',gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)',gap: isMobile ? 10 : 14,marginBottom:16}}>
           <StatCard label="Income (matched)" value={reportTotals.income} color="#16a34a" bg="#dcfce7" icon="📈"/>
           <StatCard label="Expense (matched)" value={reportTotals.expense} color="#dc2626" bg="#fee2e2" icon="📉"/>
-          <StatCard label="Net" value={reportTotals.net} color="#1e3a5f" bg="#eff6ff" icon="💼"/>
+          <StatCard label="Net" value={reportTotals.net} color="#1e3a6e" bg="#eff6ff" icon="💼"/>
           <StatCard label="Entries Matched" value={reportTotals.count} color="#7c3aed" bg="#f3e8ff" icon="🧾" isCurrency={false}/>
         </div>
 
         {/* ── export actions ── */}
-        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
+        <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)'}}>
           <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 12px',fontWeight:600}}>EXPORT — every file includes the GNSI letterhead, applied filters, print date, and signature lines for "Prepared By" &amp; "Authorized Signature".</p>
           <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
             <button onClick={()=>generateReportPDF()} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='pdf'?'#94a3b8':'#dc2626',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='pdf'?'⏳ Generating…':'📄 Generate PDF'}</button>
@@ -3837,15 +3901,15 @@ function Accounts({role,userId}){
         </div>
 
         {/* ── preview table ── */}
-        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',overflowX:'auto'}}>
+        <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)',overflowX:'auto'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:12}}>
             <h3 style={{...chartTitle,fontSize:15,margin:0}}>{rptViewMode==='datewise'?`Date-wise (${reportByDate.length} day${reportByDate.length===1?'':'s'})`:`Preview ${reportEntries.length>8?`(first 8 of ${reportEntries.length})`:`(${reportEntries.length} entries)`}`}</h3>
             <div style={{display:'flex',gap:8,alignItems:'center'}}>
               <div style={{display:'flex',borderRadius:8,overflow:'hidden',border:'1px solid #e5e7eb'}}>
-                <button onClick={()=>setRptViewMode('list')} style={{padding:'6px 12px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:rptViewMode==='list'?'#1e3a5f':'#f8fafc',color:rptViewMode==='list'?'white':'#64748b'}}>List</button>
-                <button onClick={()=>setRptViewMode('datewise')} style={{padding:'6px 12px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:rptViewMode==='datewise'?'#1e3a5f':'#f8fafc',color:rptViewMode==='datewise'?'white':'#64748b'}}>Date-wise</button>
+                <button onClick={()=>setRptViewMode('list')} style={{padding:'6px 12px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:rptViewMode==='list'?'#1e3a6e':'#f8fafc',color:rptViewMode==='list'?'white':'#64748b'}}>List</button>
+                <button onClick={()=>setRptViewMode('datewise')} style={{padding:'6px 12px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:rptViewMode==='datewise'?'#1e3a6e':'#f8fafc',color:rptViewMode==='datewise'?'white':'#64748b'}}>Date-wise</button>
               </div>
-              {rptViewMode==='datewise'&&<button onClick={printDatewise} style={{backgroundColor:'#1e3a5f',color:'white',border:'none',borderRadius:8,padding:'6px 14px',fontWeight:600,cursor:'pointer',fontSize:12}}>🖨 Print</button>}
+              {rptViewMode==='datewise'&&<button onClick={printDatewise} style={{backgroundColor:'#1e3a6e',color:'white',border:'none',borderRadius:8,padding:'6px 14px',fontWeight:600,cursor:'pointer',fontSize:12}}>🖨 Print</button>}
             </div>
           </div>
 
@@ -3877,7 +3941,7 @@ function Accounts({role,userId}){
                       </Fragment>
                     )
                   })}
-                  <tr style={{borderTop:'2px solid #1e3a5f'}}>
+                  <tr style={{borderTop:'2px solid #1e3a6e'}}>
                     <td style={{...tdS,fontWeight:800,color:'#1e293b'}}>Total</td>
                     <td style={{...tdS,fontWeight:800,color:'#16a34a'}}>{fmt(reportTotals.income)}</td>
                     <td style={{...tdS,fontWeight:800,color:'#dc2626'}}>{fmt(reportTotals.expense)}</td>
@@ -3917,16 +3981,16 @@ function Accounts({role,userId}){
     {/* ══ TAB: ANALYTICS ══ */}
     {activeTab==='analytics'&&(
       <div>
-        <div style={{backgroundColor:'#eff6ff',borderRadius:12,padding: isMobile ? 14 : 20,marginBottom:24,borderLeft:'4px solid #1e3a5f'}}>
+        <div style={{backgroundColor:'#eff6ff',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:24,borderLeft:'4px solid #1e3a6e'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:insights?12:0,flexWrap:'wrap',gap:10}}>
-            <h3 style={{fontSize: isMobile ? 14 : 16,fontWeight:600,color:'#1e3a5f',margin:0}}>🤖 AI Financial Insights</h3>
-            <button onClick={getInsights} disabled={loadingAI} style={{backgroundColor:'#1e3a5f',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:loadingAI?'not-allowed':'pointer',fontSize:13}}>{loadingAI?'⏳ Analysing…':'✨ Get Insights'}</button>
+            <h3 style={{fontSize: isMobile ? 14 : 16,fontWeight:600,color:'#1e3a6e',margin:0}}>🤖 AI Financial Insights</h3>
+            <button onClick={getInsights} disabled={loadingAI} style={{backgroundColor:'#1e3a6e',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:loadingAI?'not-allowed':'pointer',fontSize:13}}>{loadingAI?'⏳ Analysing…':'✨ Get Insights'}</button>
           </div>
-          {insights&&<div style={{fontSize:14,color:'#1e3a5f',lineHeight:1.7,whiteSpace:'pre-wrap'}}>{insights}</div>}
+          {insights&&<div style={{fontSize:14,color:'#1e3a6e',lineHeight:1.7,whiteSpace:'pre-wrap'}}>{insights}</div>}
         </div>
         <div style={{display:'grid',gridTemplateColumns:chartGridCols,gap:20,marginBottom:20}}>
           <div style={chartCard}><h3 style={chartTitle}>Monthly Income vs Expense</h3><ResponsiveContainer width="100%" height={isMobile?200:250}><BarChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="month" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/><Tooltip formatter={v=>fmt(v)}/><Legend/><Bar dataKey="Income" fill="#16a34a" radius={[4,4,0,0]}/><Bar dataKey="Expense" fill="#dc2626" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
-          <div style={chartCard}><h3 style={chartTitle}>Net Balance Trend</h3><ResponsiveContainer width="100%" height={isMobile?200:250}><LineChart data={monthlyData.map(m=>({...m,Net:m.Income-m.Expense}))}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="month" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/><Tooltip formatter={v=>fmt(v)}/><Line dataKey="Net" stroke="#1e3a5f" strokeWidth={2} dot={{r:4}}/></LineChart></ResponsiveContainer></div>
+          <div style={chartCard}><h3 style={chartTitle}>Net Balance Trend</h3><ResponsiveContainer width="100%" height={isMobile?200:250}><LineChart data={monthlyData.map(m=>({...m,Net:m.Income-m.Expense}))}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="month" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/><Tooltip formatter={v=>fmt(v)}/><Line dataKey="Net" stroke="#1e3a6e" strokeWidth={2} dot={{r:4}}/></LineChart></ResponsiveContainer></div>
         </div>
         <div style={{display:'grid',gridTemplateColumns:chartGridCols,gap:20,marginBottom:20}}>
           <div style={chartCard}><h3 style={chartTitle}>Top Categories</h3><ResponsiveContainer width="100%" height={isMobile?200:250}><PieChart><Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={isMobile?70:90} label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>{categoryData.map((_,idx)=><Cell key={idx} fill={CHART_COLORS[idx%CHART_COLORS.length]}/>)}</Pie><Tooltip formatter={v=>fmt(v)}/></PieChart></ResponsiveContainer></div>
@@ -3996,7 +4060,7 @@ function Accounts({role,userId}){
                 <p style={{fontSize:12,color:'#94a3b8',margin:0}}>{thisMonthLabel} vs {lastMonthLabel} — by category</p>
               </div>
               <div style={{display:'flex',gap:8}}>
-                <span style={{padding:'4px 12px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#eff6ff',color:'#1e3a5f'}}>{thisMonthLabel}</span>
+                <span style={{padding:'4px 12px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#eff6ff',color:'#1e3a6e'}}>{thisMonthLabel}</span>
                 <span style={{padding:'4px 12px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#f8fafc',color:'#94a3b8'}}>{lastMonthLabel}</span>
               </div>
             </div>
@@ -4015,7 +4079,7 @@ function Accounts({role,userId}){
             <Section label="Expense" sectionRows={expenseRows} totalThis={plData.totalThisExp} totalPrev={plData.totalPrevExp} accent="#dc2626" icon="💸"/>
 
             {/* ── Net result — headline card ── */}
-            <div style={{marginTop:8,padding: isMobile?16:20,borderRadius:12,background:netThis>=0?'linear-gradient(135deg,#0f3d2e,#16653f)':'linear-gradient(135deg,#5c1414,#7f1d1d)',color:'white'}}>
+            <div style={{marginTop:8,padding: isMobile?16:20,borderRadius:16,background:netThis>=0?'linear-gradient(135deg,#0f3d2e,#16653f)':'linear-gradient(135deg,#5c1414,#7f1d1d)',color:'white'}}>
               <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr 1fr':'repeat(4,1fr)',gap: isMobile?14:20}}>
                 <div>
                   <div style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,0.65)',textTransform:'uppercase',letterSpacing:'0.4px',marginBottom:4}}>Net — {thisMonthLabel}</div>
@@ -4049,7 +4113,7 @@ function Accounts({role,userId}){
             <p style={{color:'#64748b',fontSize:14,margin:0}}>Monthly budget limits per expense category</p>
             {budgetMeta?.edited_by&&<p style={{fontSize:11,color:'#f59e0b',margin:'4px 0 0',fontWeight:600}}>✎ Last edited by <strong>{budgetMeta.edited_by}</strong></p>}
           </div>
-          {!editBudgets?canWrite&&<button onClick={()=>{setEditBudgets(true);setBudgetDraft(budgets)}} style={{backgroundColor:'#1e3a5f',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>✏️ Edit Budgets</button>
+          {!editBudgets?canWrite&&<button onClick={()=>{setEditBudgets(true);setBudgetDraft(budgets)}} style={{backgroundColor:'#1e3a6e',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>✏️ Edit Budgets</button>
           :<div style={{display:'flex',gap:10,flexWrap:'wrap'}}><button onClick={saveBudgets} style={{backgroundColor:'#16a34a',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>✅ Save</button><button onClick={()=>setEditBudgets(false)} style={{backgroundColor:'#f1f5f9',color:'#64748b',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>Cancel</button></div>}
         </div>
         {(()=>{
@@ -4069,7 +4133,7 @@ function Accounts({role,userId}){
                 </div>
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Budgeted</div>
-                  <div style={{fontSize:18,fontWeight:800,color:'#1e3a5f'}}>{totalLimit>0?fmt(totalLimit):'—'}</div>
+                  <div style={{fontSize:18,fontWeight:800,color:'#1e3a6e'}}>{totalLimit>0?fmt(totalLimit):'—'}</div>
                 </div>
               </div>
             </div>
@@ -4088,7 +4152,7 @@ function Accounts({role,userId}){
             const avgEntry=catEntries.length>0?spent/catEntries.length:0
             const accent=CHART_COLORS[idx%CHART_COLORS.length]
             return(
-            <div key={cat} style={{backgroundColor:'white',borderRadius:12,padding:20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',border:'1px solid #f1f5f9',borderTop:`3px solid ${over?'#dc2626':accent}`}}>
+            <div key={cat} style={{backgroundColor:'white',borderRadius:16,padding:20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)',border:'1px solid #f1f5f9',borderTop:`3px solid ${over?'#dc2626':accent}`}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:14}}>
                 <div style={{display:'flex',alignItems:'center',gap:10}}>
                   <span style={{fontSize:20,width:38,height:38,borderRadius:10,backgroundColor:`${accent}1a`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcons[cat]||'🏷️'}</span>
@@ -4126,7 +4190,7 @@ function Accounts({role,userId}){
                 <div style={{fontSize:11,color:'#cbd5e1',fontStyle:'italic',padding:'4px 0'}}>No budget limit set for this category</div>
               )}
 
-              <button onClick={()=>setExpandedBudgetCat(isExpanded?null:cat)} style={{marginTop:14,width:'100%',backgroundColor:isExpanded?'#eff6ff':'#f8fafc',color:'#1e3a5f',border:'1px solid #e2e8f0',borderRadius:8,padding:'8px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+              <button onClick={()=>setExpandedBudgetCat(isExpanded?null:cat)} style={{marginTop:14,width:'100%',backgroundColor:isExpanded?'#eff6ff':'#f8fafc',color:'#1e3a6e',border:'1px solid #e2e8f0',borderRadius:8,padding:'8px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
                 {isExpanded?'▲ Hide transactions':`▼ Where it was spent (${catEntries.length})`}
               </button>
               {isExpanded&&(
@@ -4161,7 +4225,7 @@ function Accounts({role,userId}){
     {activeTab==='fraud'&&isAdmin&&(
       <div>
         {/* ══ For Admin: what needs your attention right now ══ */}
-        <div style={{backgroundColor:'#1e293b',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+        <div style={{backgroundColor:'#1e293b',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📌 For Admin — Today's Digest</h2>
           <p style={{fontSize:12,color:'rgba(255,255,255,0.6)',margin:'4px 0 0'}}>Everything across the portal that needs your attention, in one glance — no need to check every tab.</p>
         </div>
@@ -4192,8 +4256,8 @@ function Accounts({role,userId}){
         </div>
 
         <div style={{display:'grid',gridTemplateColumns:fraudGridCols,gap: isMobile ? 10 : 14,marginBottom:24}}>
-          {[{label:'High Risk',value:fraudSummary.high||0,color:'#dc2626',bg:'#fee2e2',icon:'🚨'},{label:'Medium Risk',value:fraudSummary.medium||0,color:'#d97706',bg:'#fef3c7',icon:'⚠️'},{label:'Deleted Today',value:fraudSummary.phantoms?.length||0,color:'#7c3aed',bg:'#f3e8ff',icon:'👻'},{label:'CSV Exports',value:exportLog.length,color:'#1e3a5f',bg:'#eff6ff',icon:'📤'}].map(c=>(
-            <div key={c.label} style={{backgroundColor:c.bg,borderRadius:12,padding:16,borderLeft:`4px solid ${c.color}`}}>
+          {[{label:'High Risk',value:fraudSummary.high||0,color:'#dc2626',bg:'#fee2e2',icon:'🚨'},{label:'Medium Risk',value:fraudSummary.medium||0,color:'#d97706',bg:'#fef3c7',icon:'⚠️'},{label:'Deleted Today',value:fraudSummary.phantoms?.length||0,color:'#7c3aed',bg:'#f3e8ff',icon:'👻'},{label:'CSV Exports',value:exportLog.length,color:'#1e3a6e',bg:'#eff6ff',icon:'📤'}].map(c=>(
+            <div key={c.label} style={{backgroundColor:c.bg,borderRadius:16,padding:16,borderLeft:`4px solid ${c.color}`}}>
               <div style={{fontSize:20,marginBottom:4}}>{c.icon}</div>
               <p style={{fontSize:12,color:c.color,fontWeight:600,margin:0}}>{c.label}</p>
               <h2 style={{fontSize:28,fontWeight:'bold',color:c.color,margin:'4px 0 0'}}>{c.value}</h2>
@@ -4296,7 +4360,7 @@ function Accounts({role,userId}){
     {/* ══ TAB: SAVINGS TRACKER (admin only) ══ */}
     {activeTab==='forecast'&&isAdmin&&(
       <div>
-        <div style={{backgroundColor:'#0c4a6e',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+        <div style={{backgroundColor:'#0c4a6e',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📈 Cash Flow & Forecast</h2>
           <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Where this month is headed, what recurring items are still outstanding, and a trend-based estimate for next month.</p>
         </div>
@@ -4318,7 +4382,7 @@ function Accounts({role,userId}){
         <div style={{...chartCard,marginBottom:20}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,flexWrap:'wrap',gap:8}}>
             <h3 style={{...chartTitle,fontSize:15,marginBottom:0}}>🔁 Recurring Items — This Month</h3>
-            <button onClick={()=>setShowAddRecurringTpl(v=>!v)} style={{...smallBtn('#eff6ff','#1e3a5f'),fontSize:12}}>{showAddRecurringTpl?'✖ Cancel':'+ Add Recurring Item'}</button>
+            <button onClick={()=>setShowAddRecurringTpl(v=>!v)} style={{...smallBtn('#eff6ff','#1e3a6e'),fontSize:12}}>{showAddRecurringTpl?'✖ Cancel':'+ Add Recurring Item'}</button>
           </div>
 
           {showAddRecurringTpl&&(
@@ -4378,7 +4442,7 @@ function Accounts({role,userId}){
 
     {activeTab==='reconciliation'&&isAdmin&&(
       <div>
-        <div style={{backgroundColor:'#374151',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+        <div style={{backgroundColor:'#374151',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>🔒 Reconciliation & Closing</h2>
           <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Match entries against your bank statement, close a month once it's settled, and check for backdated changes to closed history.</p>
         </div>
@@ -4455,7 +4519,7 @@ function Accounts({role,userId}){
 
     {activeTab==='savings'&&isAdmin&&(
       <div>
-        <div style={{backgroundColor:'#064e3b',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+        <div style={{backgroundColor:'#064e3b',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>💹 Savings Tracker</h2>
           <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Daily and weekly income vs. expense, and which categories to watch for future saving.</p>
         </div>
@@ -4465,7 +4529,7 @@ function Accounts({role,userId}){
           <StatCard label="Total Income (All Time)" value={savingsTracker?.totalIncomeAll||0} color="#16a34a" bg="#dcfce7" icon="💰"/>
           <StatCard label="Total Expense (All Time)" value={savingsTracker?.totalExpenseAll||0} color="#dc2626" bg="#fee2e2" icon="💸"/>
           <StatCard label="Net Savings (All Time)" value={savingsTracker?.netSavings||0} color={savingsTracker?.netSavings>=0?'#16a34a':'#dc2626'} bg={savingsTracker?.netSavings>=0?'#dcfce7':'#fee2e2'} icon="🏦"/>
-          <StatCard label="Savings Rate" value={`${(savingsTracker?.savingsRate||0).toFixed(1)}%`} color="#1e3a5f" bg="#eff6ff" icon="📈" isCurrency={false} sub="of total income saved"/>
+          <StatCard label="Savings Rate" value={`${(savingsTracker?.savingsRate||0).toFixed(1)}%`} color="#1e3a6e" bg="#eff6ff" icon="📈" isCurrency={false} sub="of total income saved"/>
         </div>
 
         {/* ── this week vs last week ── */}
@@ -4477,7 +4541,7 @@ function Accounts({role,userId}){
                 <p style={{fontSize:12,color:'#64748b',fontWeight:600,margin:'0 0 8px'}}>{label}</p>
                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{fontSize:12,color:'#16a34a'}}>Income</span><strong style={{fontSize:13,color:'#16a34a'}}>{fmt(data?.Income||0)}</strong></div>
                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{fontSize:12,color:'#dc2626'}}>Expense</span><strong style={{fontSize:13,color:'#dc2626'}}>{fmt(data?.Expense||0)}</strong></div>
-                <div style={{display:'flex',justifyContent:'space-between',paddingTop:6,borderTop:'1px solid #e2e8f0'}}><span style={{fontSize:12,color:'#1e3a5f',fontWeight:700}}>Net</span><strong style={{fontSize:14,color:data?.Net>=0?'#16a34a':'#dc2626'}}>{fmt(data?.Net||0)}</strong></div>
+                <div style={{display:'flex',justifyContent:'space-between',paddingTop:6,borderTop:'1px solid #e2e8f0'}}><span style={{fontSize:12,color:'#1e3a6e',fontWeight:700}}>Net</span><strong style={{fontSize:14,color:data?.Net>=0?'#16a34a':'#dc2626'}}>{fmt(data?.Net||0)}</strong></div>
               </div>
             ))}
           </div>
@@ -4496,7 +4560,7 @@ function Accounts({role,userId}){
                 <Legend/>
                 <Line type="monotone" dataKey="Income" stroke="#16a34a" strokeWidth={2} dot={false}/>
                 <Line type="monotone" dataKey="Expense" stroke="#dc2626" strokeWidth={2} dot={false}/>
-                <Line type="monotone" dataKey="Net" stroke="#1e3a5f" strokeWidth={2} strokeDasharray="4 4" dot={false}/>
+                <Line type="monotone" dataKey="Net" stroke="#1e3a6e" strokeWidth={2} strokeDasharray="4 4" dot={false}/>
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -4554,7 +4618,7 @@ function Accounts({role,userId}){
         {loadingFinancials?<div style={{textAlign:'center',padding:48,color:'#64748b'}}>⏳ Loading financials…</div>:(
           <>
             {/* Trial Balance */}
-            <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile?14:20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',marginBottom:20,borderLeft:'4px solid #047857'}}>
+            <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile?14:20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)',marginBottom:20,borderLeft:'4px solid #047857'}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
                 <h3 style={{fontSize:16,fontWeight:700,color:'#047857',margin:0}}>📊 Trial Balance</h3>
                 <button onClick={fetchFinancials} style={{...smallBtn('#f0fdf4','#047857'),padding:'6px 14px',fontSize:12}}>↻ Refresh</button>
@@ -4579,11 +4643,11 @@ function Accounts({role,userId}){
                           <td style={{...tdS,fontWeight:500,color:'#1e293b'}}>{row.account_head}</td>
                           <td style={tdS}><span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,
                             backgroundColor:row.account_type==='Income'?'#dcfce7':row.account_type==='Expense'?'#fee2e2':row.account_type==='Asset'?'#eff6ff':row.account_type==='Liability'?'#fef3c7':'#f3e8ff',
-                            color:row.account_type==='Income'?'#16a34a':row.account_type==='Expense'?'#dc2626':row.account_type==='Asset'?'#1e3a5f':row.account_type==='Liability'?'#92400e':'#7c3aed'
+                            color:row.account_type==='Income'?'#16a34a':row.account_type==='Expense'?'#dc2626':row.account_type==='Asset'?'#1e3a6e':row.account_type==='Liability'?'#92400e':'#7c3aed'
                           }}>{row.account_type}</span></td>
                           <td style={{...tdS,textAlign:'right',color:'#16a34a',fontWeight:600}}>{fmt(row.total_debit)}</td>
                           <td style={{...tdS,textAlign:'right',color:'#dc2626',fontWeight:600}}>{fmt(row.total_credit)}</td>
-                          <td style={{...tdS,textAlign:'right',fontWeight:700,color:Number(row.net_balance)>=0?'#1e3a5f':'#dc2626'}}>{fmt(Math.abs(row.net_balance))}<span style={{fontSize:10,marginLeft:4,opacity:0.7}}>{Number(row.net_balance)<0?'Cr':'Dr'}</span></td>
+                          <td style={{...tdS,textAlign:'right',fontWeight:700,color:Number(row.net_balance)>=0?'#1e3a6e':'#dc2626'}}>{fmt(Math.abs(row.net_balance))}<span style={{fontSize:10,marginLeft:4,opacity:0.7}}>{Number(row.net_balance)<0?'Cr':'Dr'}</span></td>
                         </tr>
                       ))}
                       <tr style={{backgroundColor:'#f8fafc',fontWeight:700,borderTop:'2px solid #e2e8f0'}}>
@@ -4619,13 +4683,13 @@ function Accounts({role,userId}){
             {/* Balance Sheet — Assets vs Liabilities & Equity */}
             <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'1fr 1fr',gap:16,marginBottom:20}}>
               {[
-                {title:'Assets',filterFn:(r)=>r.account_type==='Asset',color:'#1e3a5f',bg:'#eff6ff',border:'#bfdbfe'},
+                {title:'Assets',filterFn:(r)=>r.account_type==='Asset',color:'#1e3a6e',bg:'#eff6ff',border:'#bfdbfe'},
                 {title:'Liabilities & Equity',filterFn:(r)=>r.account_type==='Liability'||r.account_type==='Equity',color:'#7c3aed',bg:'#f3e8ff',border:'#e9d5ff'},
               ].map(sec=>{
                 const rows=balanceSheet.filter(sec.filterFn)
                 const total=rows.reduce((s,r)=>s+Number(r.balance),0)
                 return(
-                  <div key={sec.title} style={{backgroundColor:'white',borderRadius:12,padding:18,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',borderLeft:`4px solid ${sec.color}`}}>
+                  <div key={sec.title} style={{backgroundColor:'white',borderRadius:16,padding:18,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)',borderLeft:`4px solid ${sec.color}`}}>
                     <h3 style={{fontSize:14,fontWeight:700,color:sec.color,marginBottom:14,borderBottom:`2px solid ${sec.bg}`,paddingBottom:8}}>{sec.title}</h3>
                     {rows.length===0
                       ?<p style={{color:'#94a3b8',fontSize:13,fontStyle:'italic'}}>No entries yet</p>
@@ -4678,7 +4742,7 @@ function Accounts({role,userId}){
               <div style={{display:'flex',gap: isMobile?10:18,flexWrap:'wrap'}}>
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Categories</div>
-                  <div style={{fontSize:18,fontWeight:800,color:'#1e3a5f'}}>{allIncomeCategorySummary.length}</div>
+                  <div style={{fontSize:18,fontWeight:800,color:'#1e3a6e'}}>{allIncomeCategorySummary.length}</div>
                 </div>
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Collected</div>
@@ -4686,7 +4750,7 @@ function Accounts({role,userId}){
                 </div>
                 {topCat&&<div style={{textAlign:'right'}}>
                   <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Top Category</div>
-                  <div style={{fontSize:14,fontWeight:800,color:'#1e3a5f'}}>{catIcons[topCat.category]||'🏷️'} {topCat.category}</div>
+                  <div style={{fontSize:14,fontWeight:800,color:'#1e3a6e'}}>{catIcons[topCat.category]||'🏷️'} {topCat.category}</div>
                 </div>}
               </div>
             </div>
@@ -4713,7 +4777,7 @@ function Accounts({role,userId}){
                           <span style={{fontSize:14,color:'#cbd5e1',flexShrink:0,marginLeft:6}}>{expanded?'▾':'▸'}</span>
                         </div>
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
-                          <strong style={{fontSize:17,fontWeight:800,color:'#1e3a5f'}}>{fmt(c.total)}</strong>
+                          <strong style={{fontSize:17,fontWeight:800,color:'#1e3a6e'}}>{fmt(c.total)}</strong>
                           <span style={{fontSize:11,fontWeight:700,color:'#94a3b8'}}>{pct.toFixed(1)}% of total</span>
                         </div>
                         <div style={{height:6,borderRadius:999,backgroundColor:'#f1f5f9',overflow:'hidden'}}>
@@ -4772,7 +4836,7 @@ function Accounts({role,userId}){
         {/* ── Accounts v3: payer / source spend summary + drilldown
             (mirrors the expenditure Vendor/Payee Spend panel) ── */}
         {payerSpendSummary.length>0&&(
-          <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
+          <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)'}}>
             <h3 style={{...chartTitle,fontSize:15,marginBottom:12}}>🧑‍🤝‍🧑 Payer / Source Collection</h3>
             <div style={{display:'flex',flexDirection:'column',gap:8}}>
               {payerSpendSummary.map(p=>{
@@ -4812,8 +4876,8 @@ function Accounts({role,userId}){
     {/* ══ TAB: TIMELINE ══ */}
     {activeTab==='timeline'&&isAdmin&&(
       <div>
-        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)',marginBottom:20}}>
-          <h3 style={{fontSize:16,fontWeight:700,color:'#1e3a5f',marginBottom:16}}>🕐 Activity Timeline</h3>
+        <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)',marginBottom:20}}>
+          <h3 style={{fontSize:16,fontWeight:700,color:'#1e3a6e',marginBottom:16}}>🕐 Activity Timeline</h3>
           {auditLog.length===0
             ? <p style={{color:'#94a3b8',textAlign:'center',padding:32}}>No activity recorded yet.</p>
             : auditLog.map((log,i)=>{
@@ -4842,7 +4906,7 @@ function Accounts({role,userId}){
             diff (old_values vs new_values) instead of a flat activity feed —
             for someone specifically reviewing expenditure history rather
             than scanning everything the whole portal logs. */}
-        <div style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,boxShadow:'0 2px 8px rgba(0,0,0,0.06)'}}>
+        <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6,flexWrap:'wrap',gap:8}}>
             <h3 style={{fontSize:16,fontWeight:700,color:'#7f1d1d',margin:0}}>💵 Expenditure Audit Trail</h3>
             <button onClick={fetchExpAuditLog} style={{...smallBtn('#fef2f2','#7f1d1d'),fontSize:12}}>↻ Refresh</button>
@@ -4885,7 +4949,7 @@ function Accounts({role,userId}){
         Pending queue + "approval list for the day" (everything decided today). ══ */}
     {activeTab==='approvals'&&isAdmin&&(
       <div>
-        <div style={{backgroundColor:'#92400e',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+        <div style={{backgroundColor:'#92400e',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>🔏 Expenditure Approvals</h2>
           <p style={{fontSize:12,color:'rgba(255,255,255,0.7)',margin:'4px 0 0'}}>Entries flagged for approval by amount threshold or submitter role — pending queue and today's decisions.</p>
         </div>
@@ -4939,10 +5003,10 @@ function Accounts({role,userId}){
         </div>
 
         {/* ── "approval list for the day": everything DECIDED today ── */}
-        <div style={{...chartCard,borderLeft:'4px solid #1e3a5f',overflowX:'auto'}}>
+        <div style={{...chartCard,borderLeft:'4px solid #1e3a6e',overflowX:'auto'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4,flexWrap:'wrap',gap:8}}>
             <h3 style={{...chartTitle,margin:0}}>📅 Today's Approval List — {new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</h3>
-            <button onClick={()=>fetchApprovalHistoryToday(today)} style={{...smallBtn('#eff6ff','#1e3a5f'),fontSize:12}}>↻ Refresh</button>
+            <button onClick={()=>fetchApprovalHistoryToday(today)} style={{...smallBtn('#eff6ff','#1e3a6e'),fontSize:12}}>↻ Refresh</button>
           </div>
           <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 14px'}}>Every expenditure approval decision made today, approved or rejected — regardless of when it was originally submitted.</p>
           {approvalHistory.length===0?<p style={{color:'#94a3b8',fontSize:14}}>No approval decisions made today yet.</p>:(
@@ -4968,7 +5032,7 @@ function Accounts({role,userId}){
     {/* ══ TAB: PER-STAFF EXPENDITURE DASHBOARD (admin only) ══ */}
     {activeTab==='staffspend'&&isAdmin&&(
       <div>
-        <div style={{backgroundColor:'#1e3a5f',borderRadius:12,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+        <div className="ac-hero" style={{borderRadius:18,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>🧑‍💼 Per-Staff Expenditure Dashboard</h2>
           <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Who is entering how much, how often, and where — helps spot a sudden change in someone's entry pattern.</p>
         </div>
@@ -5023,7 +5087,7 @@ function Accounts({role,userId}){
       <div onClick={()=>setReceiptMemoEntry(null)} style={{position:'fixed',inset:0,backgroundColor:'rgba(0,0,0,0.55)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999,padding: isMobile ? 12 : 0}}>
         <div onClick={e=>e.stopPropagation()} style={{backgroundColor:'white',borderRadius:14,padding: isMobile ? 20 : 28,width: isMobile ? '100%' : 420,maxWidth:'95vw',boxShadow:'0 20px 60px rgba(0,0,0,0.3)',textAlign:'center'}}>
           <div style={{fontSize:36,marginBottom:8}}>✅</div>
-          <h2 style={{fontSize:17,fontWeight:800,color:'#1e3a5f',margin:'0 0 6px'}}>Entry Saved</h2>
+          <h2 style={{fontSize:17,fontWeight:800,color:'#1e3a6e',margin:'0 0 6px'}}>Entry Saved</h2>
           <p style={{fontSize:13,color:'#64748b',margin:'0 0 20px'}}>
             {receiptMemoEntry.type} of <strong>{fmt(receiptMemoEntry.amount)}</strong> recorded for <strong>{receiptMemoEntry.voucher_head||'-'}</strong>.
           </p>
@@ -5040,9 +5104,9 @@ function Accounts({role,userId}){
       <div onClick={()=>setShowPL(false)} style={{position:'fixed',inset:0,backgroundColor:'rgba(0,0,0,0.55)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999,padding: isMobile ? 12 : 0}}>
         <div onClick={e=>e.stopPropagation()} style={{backgroundColor:'white',borderRadius:14,padding: isMobile ? 16 : 28,width: isMobile ? '100%' : 680,maxWidth:'95vw',maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}}>
-            <div><h2 style={{fontSize: isMobile ? 16 : 20,fontWeight:700,color:'#1e3a5f',margin:0}}>📋 P&L Statement</h2><p style={{fontSize:13,color:'#64748b',margin:'4px 0 0'}}>Income &amp; Expenditure Report · {plPeriodLabel}</p></div>
+            <div><h2 style={{fontSize: isMobile ? 16 : 20,fontWeight:700,color:'#1e3a6e',margin:0}}>📋 P&L Statement</h2><p style={{fontSize:13,color:'#64748b',margin:'4px 0 0'}}>Income &amp; Expenditure Report · {plPeriodLabel}</p></div>
             <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-              <button onClick={printPL} style={{backgroundColor:'#1e3a5f',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>🖨 Print</button>
+              <button onClick={printPL} style={{backgroundColor:'#1e3a6e',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>🖨 Print</button>
               <button onClick={()=>setShowPL(false)} style={{backgroundColor:'#fee2e2',color:'#dc2626',border:'none',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:13}}>✖</button>
             </div>
           </div>
@@ -5050,8 +5114,8 @@ function Accounts({role,userId}){
           {/* ── period selector: Month vs Custom Range ── */}
           <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:12}}>
             <div style={{display:'flex',borderRadius:8,overflow:'hidden',border:'1px solid #e5e7eb'}}>
-              <button onClick={()=>setPlRangeMode('month')} style={{padding:'8px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plRangeMode==='month'?'#1e3a5f':'#f8fafc',color:plRangeMode==='month'?'white':'#64748b'}}>Month</button>
-              <button onClick={()=>setPlRangeMode('range')} style={{padding:'8px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plRangeMode==='range'?'#1e3a5f':'#f8fafc',color:plRangeMode==='range'?'white':'#64748b'}}>Custom Range</button>
+              <button onClick={()=>setPlRangeMode('month')} style={{padding:'8px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plRangeMode==='month'?'#1e3a6e':'#f8fafc',color:plRangeMode==='month'?'white':'#64748b'}}>Month</button>
+              <button onClick={()=>setPlRangeMode('range')} style={{padding:'8px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plRangeMode==='range'?'#1e3a6e':'#f8fafc',color:plRangeMode==='range'?'white':'#64748b'}}>Custom Range</button>
             </div>
             {plRangeMode==='month'
               ? <input type="month" value={plMonth} onChange={e=>setPlMonth(e.target.value)} style={{...iStyle,width: isMobile ? '100%' : 160}}/>
@@ -5097,7 +5161,7 @@ function Accounts({role,userId}){
           )}
 
           <div style={{display:'grid',gridTemplateColumns:plModalCols,gap:12,marginBottom:20}}>
-            {[{label:'Total Income',value:plData.totalThisInc,color:'#16a34a',bg:'#dcfce7'},{label:'Total Expense',value:plData.totalThisExp,color:'#dc2626',bg:'#fee2e2'},{label:'Net Surplus/Deficit',value:plData.totalThisInc-plData.totalThisExp,color:'#1e3a5f',bg:'#eff6ff'}].map(c=>(
+            {[{label:'Total Income',value:plData.totalThisInc,color:'#16a34a',bg:'#dcfce7'},{label:'Total Expense',value:plData.totalThisExp,color:'#dc2626',bg:'#fee2e2'},{label:'Net Surplus/Deficit',value:plData.totalThisInc-plData.totalThisExp,color:'#1e3a6e',bg:'#eff6ff'}].map(c=>(
               <div key={c.label} style={{backgroundColor:c.bg,borderRadius:10,padding:'14px 16px',borderLeft:`3px solid ${c.color}`}}>
                 <p style={{fontSize:12,color:c.color,fontWeight:600,margin:'0 0 4px'}}>{c.label}</p>
                 <p style={{fontSize: isMobile ? 18 : 22,fontWeight:800,color:c.color,margin:0}}>{fmt(c.value)}</p>
@@ -5129,14 +5193,14 @@ function Accounts({role,userId}){
 
           <div style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}>
             <div style={{display:'flex',borderRadius:8,overflow:'hidden',border:'1px solid #e5e7eb'}}>
-              <button onClick={()=>setPlShowDatewise(false)} style={{padding:'6px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:!plShowDatewise?'#1e3a5f':'#f8fafc',color:!plShowDatewise?'white':'#64748b'}}>By Category</button>
-              <button onClick={()=>setPlShowDatewise(true)} style={{padding:'6px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plShowDatewise?'#1e3a5f':'#f8fafc',color:plShowDatewise?'white':'#64748b'}}>Date-wise</button>
+              <button onClick={()=>setPlShowDatewise(false)} style={{padding:'6px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:!plShowDatewise?'#1e3a6e':'#f8fafc',color:!plShowDatewise?'white':'#64748b'}}>By Category</button>
+              <button onClick={()=>setPlShowDatewise(true)} style={{padding:'6px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plShowDatewise?'#1e3a6e':'#f8fafc',color:plShowDatewise?'white':'#64748b'}}>Date-wise</button>
             </div>
           </div>
 
           {plShowDatewise?(
             <div>
-              <h3 style={{fontSize:14,fontWeight:700,color:'#1e3a5f',marginBottom:10,borderBottom:'2px solid #eff6ff',paddingBottom:6}}>Date-wise Income &amp; Expenditure — {plPeriodLabel}</h3>
+              <h3 style={{fontSize:14,fontWeight:700,color:'#1e3a6e',marginBottom:10,borderBottom:'2px solid #eff6ff',paddingBottom:6}}>Date-wise Income &amp; Expenditure — {plPeriodLabel}</h3>
               {plDatewise.length===0?(
                 <p style={{color:'#94a3b8',textAlign:'center',padding:20}}>No entries in this period.</p>
               ):(
@@ -5154,7 +5218,7 @@ function Accounts({role,userId}){
                         </tr>
                       )
                     })}
-                    <tr style={{borderTop:'2px solid #1e3a5f'}}>
+                    <tr style={{borderTop:'2px solid #1e3a6e'}}>
                       <td style={{padding:'8px 10px',fontWeight:700,color:'#1e293b'}}>Total</td>
                       <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:'#16a34a'}}>{fmt(plData.totalThisInc)}</td>
                       <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:'#dc2626'}}>{fmt(plData.totalThisExp)}</td>
@@ -5187,11 +5251,11 @@ function Accounts({role,userId}){
     {/* ══ RECEIPT MODAL ══ */}
     {viewReceipt&&(
       <div onClick={()=>setViewReceipt(null)} style={{position:'fixed',inset:0,backgroundColor:'rgba(0,0,0,0.65)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999,padding: isMobile ? 8 : 0}}>
-        <div onClick={e=>e.stopPropagation()} style={{backgroundColor:'white',borderRadius:12,padding: isMobile ? 14 : 20,maxWidth:720,width:'100%',maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
+        <div onClick={e=>e.stopPropagation()} style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,maxWidth:720,width:'100%',maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-            <h3 style={{fontSize:16,fontWeight:600,color:'#1e3a5f',margin:0}}>🧾 Receipt Preview</h3>
+            <h3 style={{fontSize:16,fontWeight:600,color:'#1e3a6e',margin:0}}>🧾 Receipt Preview</h3>
             <div style={{display:'flex',gap:10}}>
-              <a href={viewReceipt} target="_blank" rel="noopener noreferrer" style={{backgroundColor:'#eff6ff',color:'#1e3a5f',borderRadius:6,padding:'6px 14px',fontSize:13,fontWeight:600,textDecoration:'none'}}>↗ Open</a>
+              <a href={viewReceipt} target="_blank" rel="noopener noreferrer" style={{backgroundColor:'#eff6ff',color:'#1e3a6e',borderRadius:6,padding:'6px 14px',fontSize:13,fontWeight:600,textDecoration:'none'}}>↗ Open</a>
               <button onClick={()=>setViewReceipt(null)} style={{backgroundColor:'#fee2e2',color:'#dc2626',border:'none',borderRadius:6,padding:'6px 12px',fontSize:13,fontWeight:600,cursor:'pointer'}}>✖</button>
             </div>
           </div>
