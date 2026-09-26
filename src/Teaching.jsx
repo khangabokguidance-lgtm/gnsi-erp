@@ -52,6 +52,7 @@ import { PremiumStyles, PremiumHero, PremiumTabs, PIcon, PX } from './premiumUI'
 // Teaching hub: the study-material modules open as Teaching tabs and share
 // chapter context through StudyMaterialBridge (useChapterFocus/openChapterIn).
 import ChapterHub from './ChapterHub'
+import MaterialStudio from './MaterialStudio'
 import StudyMaterial from './StudyMaterial'
 import QuestionBank from './QuestionBank'
 import StudyLockers from './StudyLockers'
@@ -84,12 +85,13 @@ const TAB_ROLES = {
   // Teaching hub — same audiences as the standalone pages
   hub:            ['admin','manager','teacher','superintendent','computer staffs'],
   studymaterial:  ['admin','manager','teacher','superintendent','house master','computer staffs'],
-  questionbank:   ['admin','computer staffs'],                // QuestionBank.jsx's own gate
+  questionbank:   ['admin','teacher','computer staffs'],      // teachers edit, only admins delete
+  studio:         ['admin','manager','teacher','superintendent','house master','computer staffs'],
   studylockers:   ['admin','manager','teacher','superintendent','computer staffs'],
   syllabusmgr:    ['admin','manager'],
 }
 // Tabs that host another module; links between them stay inside Teaching.
-const HUB_TABS = ['hub','studymaterial','questionbank','studylockers','syllabusmgr','logs']
+const HUB_TABS = ['hub','studio','studymaterial','questionbank','studylockers','syllabusmgr','logs']
 
 // Map-pin icon in the same stroke style as premiumUI's PIcon set.
 const PinIcon = p => (
@@ -101,6 +103,7 @@ const PinIcon = p => (
 const ALL_TABS = [
   { key:'logs',        label:'Daily Logs',       icon:PIcon.list },
   { key:'hub',         label:'Chapter Hub',      icon:PIcon.cap },
+  { key:'studio',      label:'Material Studio',  icon:PIcon.file },
   { key:'studymaterial', label:'Study Materials', icon:PIcon.folder },
   { key:'questionbank',  label:'Question Bank',   icon:PIcon.report },
   { key:'studylockers',  label:'Study Lockers',   icon:PIcon.users },
@@ -3908,6 +3911,7 @@ useEffect(() => {
 
       {/* ── Teaching hub: study-material modules as tabs ── */}
       {has(activeTab) && activeTab==='hub'           && <ChapterHub focus={hubFocus} onNavigate={hubNavigate} canSeeQuestions={canSeeQuestions} isMobile={isMobile}/>}
+      {has(activeTab) && activeTab==='studio'        && <MaterialStudio currentUser={currentUser} onNavigate={hubNavigate}/>}
       {has(activeTab) && activeTab==='studymaterial' && <StudyMaterial currentUser={currentUser} onNavigate={hubNavigate} embedded/>}
       {has(activeTab) && activeTab==='questionbank'  && <QuestionBank currentUser={currentUser} onNavigate={hubNavigate} embedded/>}
       {has(activeTab) && activeTab==='studylockers'  && <StudyLockers currentUser={currentUser} onNavigate={hubNavigate} embedded/>}

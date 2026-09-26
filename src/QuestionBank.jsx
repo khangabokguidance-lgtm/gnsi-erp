@@ -1326,7 +1326,7 @@ function StudyMaterialsRefPanel({ course, subject, chapter, onNavigate }) {
 // TAB 1: QUESTION BANK
 // Patch: applies initialFilter on mount + listens for NAVIGATE_TO event
 // ══════════════════════════════════════════════════════════════════════════════
-function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmin, onNavigate }) {
+function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmin, canEdit = isAdmin, onNavigate }) {
   const [filterCourse,     setFilterCourse]     = useState('All')
   const [filterSubject,    setFilterSubject]    = useState('All')
   const [filterChapter,    setFilterChapter]    = useState('All')
@@ -1622,8 +1622,8 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
         )}
       </div>
 
-      {/* Edit inline panel — admin only */}
-      {isAdmin && editQ && (
+      {/* Edit inline panel — teaching staff and admins; delete stays admin-only */}
+      {canEdit && editQ && (
         <div className="qb-fade" style={{ ...cardS, border:`1.5px solid ${T.indigo}`, boxShadow:`0 0 0 4px ${T.indigoSoft}, ${T.shadow}`, marginBottom:16 }}>
           <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
             <span style={{ width:30, height:30, borderRadius:9, background:T.indigoSoft, display:'flex', alignItems:'center', justifyContent:'center' }}>✏️</span>
@@ -1658,7 +1658,7 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
               <QCard key={q.id} q={q} index={(page-1)*PAGE+i}
                 selectable={isAdmin} selected={selected.has(q.id)}
                 onToggle={isAdmin ? toggleSelect : undefined}
-                onEdit={isAdmin ? startEdit : undefined}
+                onEdit={canEdit ? startEdit : undefined}
                 onDelete={isAdmin ? handleDelete : undefined} />
             ))
       }
@@ -4597,12 +4597,16 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
   // 'Co-Admin']) that every other module already checks against.
   const roleLower = (currentUser?.role || '').toLowerCase()
   const isAdmin = isAdminRole(currentUser?.role)
-  // Question Bank is restricted to admin + Computer Staffs — every other
-  // role (Teacher, Receptionist, Accountant, Superintendent, House Master)
-  // gets no access at all, not even read-only viewing. "Computer Staffs"
-  // itself isn't an admin role, so it still needs its own explicit,
-  // case-insensitive check here.
-  const isStaffAllowed = isAdmin || roleLower === 'computer staffs'
+  // Question Bank is open to admins, Computer Staffs and teaching staff;
+  // every other role (Receptionist, Accountant, Superintendent, House
+  // Master) gets no access at all, not even read-only viewing. Neither
+  // "Computer Staffs" nor "Teaching" is an admin role, so each needs its
+  // own explicit, case-insensitive check here.
+  // Teaching staff ('Teaching', 'Teaching + …') may browse, add and edit
+  // questions for material preparation; deleting stays admin-only (the
+  // delete buttons below check isAdmin, and row-level security enforces it).
+  const isTeachingStaff = roleLower.startsWith('teaching')
+  const isStaffAllowed = isAdmin || roleLower === 'computer staffs' || isTeachingStaff
 
   const [tab,           setTab]           = useState('bank')
   const [questions,     setQuestions]     = useState([])
@@ -4733,8 +4737,8 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
             background:T.navySoft, fontSize:26 }}>🔒</div>
           <div style={{ fontSize:18, fontWeight:700, color:T.ink, marginBottom:8, letterSpacing:'-.01em' }}>Question Bank is restricted</div>
           <div style={{ fontSize:13, color:C.slate, lineHeight:1.6 }}>
-            This module is only available to admin and Computer Staffs accounts.
-            If you need access to questions or papers for a class, please ask
+            This module is only available to admin, Computer Staffs and teaching
+            accounts. If you need access to questions or papers for a class, please ask
             an admin to prepare it or check <strong>Study Materials</strong> for
             teaching content.
           </div>
@@ -4824,7 +4828,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
         })}
       </div>
 
-      {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} initialFilter={initialFilter} isAdmin={isAdmin} onNavigate={onNavigate} />}
+      {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} initialFilter={initialFilter} isAdmin={isAdmin} canEdit={isStaffAllowed} onNavigate={onNavigate} />}
       {tab === 'manual' && <TabManualAdd questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'bulk'   && <TabBulkPaste questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'translit' && <TabTranslit questions={questions} refetch={refetch} showToast={showToast} />}
