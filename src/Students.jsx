@@ -14,6 +14,7 @@ import { getActiveStudents, getAllStudents } from './studentQueries'
 import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
 import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen } from './monthLock'
+import { courseOf, batchOf, handoffToAttendance, takeStudentsHandoff } from './courseMap'
 
 // ── Live-refresh listener for the Attendance module's save event ──────────
 // Attendance.jsx dispatches window CustomEvent 'gnsi:attendance-updated'
@@ -4560,25 +4561,16 @@ const CDB_COURSES = [
   { key:'Combined Course', exam:'AISSEE + JNVST', batches:[],                                  accent:'#A7771F', tint:'#FBF3E0' },
   { key:'Unassigned',      exam:'Course not set',  batches:[],                                 accent:'#64748B', tint:'#F1F5F9' },
 ]
-const CDB_BATCH_TO_COURSE = (() => {
-  const m = {}
-  CDB_COURSES.forEach(c => c.batches.forEach(b => { m[b.toLowerCase()] = c.key }))
-  return m
-})()
-function cdbCourseOf(s) {
-  const raw = String(s.course || '').trim().toLowerCase()
-  if (raw.startsWith('sainik')) return 'Sainik'
-  if (raw.startsWith('navodaya')) return 'Navodaya'
-  if (raw.startsWith('found')) return 'Foundation'
-  if (raw.startsWith('combined')) return 'Combined Course'
-  const b = String(s.batch || s.class_name || '').trim().toLowerCase()
-  return CDB_BATCH_TO_COURSE[b] || 'Unassigned'
-}
-const cdbBatchOf = s => (s.batch || s.class_name || '').trim() || 'No batch'
+// Course / batch come from courseMap.js — the same rule Attendance's roll
+// call uses, so a student is in the same class in both modules.
+const cdbCourseOf = courseOf
+const cdbBatchOf = batchOf
 const cdbEsc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]))
 const cdbInr = n => '₹' + Number(n || 0).toLocaleString('en-IN')
 
-function CourseDatabase({ students, attData, examData, feeData, can, isMobile, onOpenDetail, onOpenFee, onEdit, showToast }) {
+function CourseDatabase({ students, attData, examData, feeData, can, isMobile, onOpenDetail, onOpenFee, onEdit, showToast, onNavigate }) {
+  // ATTENDANCE LINK: open Attendance on this course/batch (roll call) or on one student's 360.
+  const openAttendance = (payload) => { handoffToAttendance(payload); if (typeof onNavigate === 'function') onNavigate('attendance'); else showToast?.('Open Attendance from the sidebar', T.amber) }
   const [course, setCourse] = useState(() => { try { return localStorage.getItem('gnsi_cdb_course') || 'Sainik' } catch { return 'Sainik' } })
   const [batch, setBatch] = useState('All')
   const [q, setQ] = useState('')
@@ -4832,6 +4824,7 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
             </div>
           </div>
           <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            {course !== 'Unassigned' && <button className="st-hbtn ghost" onClick={() => openAttendance({ page:'mark', course, subtype: batch !== 'All' ? batch : '' })}><SIcon.check size={15}/> Mark attendance{batch !== 'All' ? ` · ${batch}` : ''}</button>}
             <button className="st-hbtn ghost" onClick={printRegister}><SIcon.fileText size={15}/> Print register</button>
             {can?.export && <button className="st-hbtn gold" onClick={exportCSV}><SIcon.download size={15}/> Export CSV</button>}
           </div>
@@ -4943,6 +4936,9 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
                     <tr style={{ cursor:'default' }}><td colSpan={can?.viewPII ? 11 : 10} style={{ padding:0 }}>
                       <div className="cdb-grp">{g.title}
                         <span style={{ fontFamily:'inherit', fontSize:12, color:T.text3, fontWeight:600 }}>{g.list.length} student{g.list.length > 1 ? 's' : ''}</span>
+                        {groupBy === 'batch' && course !== 'Unassigned' && g.title !== 'No batch' && (
+                          <button className="cdb-act" style={{ fontFamily:'inherit' }} onClick={() => openAttendance({ page:'mark', course, subtype: g.title })}>Mark attendance →</button>
+                        )}
                         <span style={{ marginLeft:'auto', fontFamily:'inherit', fontSize:12, color:T.text3, fontWeight:600 }}>
                           ♂ {g.list.filter(s => s.gender === 'Male').length} · ♀ {g.list.filter(s => s.gender === 'Female').length} · 🏠 {g.list.filter(s => s.hostel_type === 'Boarder').length}
                         </span>
@@ -4967,7 +4963,7 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
                         <td>{s.house || <span style={{ color:T.text4 }}>—</span>}</td>
                         <td><span style={{ fontSize:11.5, fontWeight:700, padding:'3px 9px', borderRadius:99, background: s.hostel_type === 'Boarder' ? T.brandLight : T.surface2, color: s.hostel_type === 'Boarder' ? T.navy2 : T.text3 }}>{s.hostel_type || 'Day Scholar'}</span></td>
                         {can?.viewPII && <td><div style={{ color:T.text2 }}>{s.father_name || '—'}</div><div style={{ fontSize:11.5, color:T.text3 }}>{s.phone || ''}</div></td>}
-                        <td><AttBar v={attData?.[s.id]} /></td>
+                        <td onClick={e => { e.stopPropagation(); openAttendance({ page:'student360', gcc: s.gcc_no }) }} title="Open in Attendance 360" style={{ cursor:'pointer' }}><AttBar v={attData?.[s.id]} /></td>
                         <td style={{ textAlign:'right', fontWeight:700, color:T.text1, fontVariantNumeric:'tabular-nums' }}>{score ?? <span style={{ color:T.text4, fontWeight:400 }}>—</span>}</td>
                         <td style={{ textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{dues > 0 ? <span style={{ fontWeight:800, color:T.red }}>{cdbInr(dues)}</span> : <span style={{ color:T.green, fontWeight:700 }}>✓</span>}</td>
                         <td><StatusPill status={s.status || 'Active'} /></td>
@@ -5327,6 +5323,17 @@ const effectiveCols = visibleCols.filter(col => {
     if(typeof goToModule==='function')goToModule('admissions')
     else showToast('Open Admissions from the sidebar to add a new student',T.brand)
   }
+  // ATTENDANCE LINK: Attendance's Student 360 → "Student record" opens that student here.
+  const studentsHandoff=useRef(takeStudentsHandoff())
+  useEffect(()=>{
+    const h=studentsHandoff.current
+    if(!h||!students.length)return
+    const hit=students.find(x=>String(x.gcc_no)===String(h.gcc))
+    studentsHandoff.current=null
+    if(hit)setDetailPanel(hit)
+    else showToast(`GCC ${h.gcc} is not an active student`,T.amber)
+  },[students])
+
   const handleClone=()=>{
     if(!can.write){showToast('No permission',T.red);return}
     showToast('New students are added from Admissions → Enroll',T.amber);goToAdmissions()
@@ -5679,6 +5686,7 @@ const effectiveCols = visibleCols.filter(col => {
             onOpenFee={setFeePanel}
             onEdit={s=>{setEditing(s);setFormOpen(true);setPageTab('students')}}
             showToast={showToast}
+            onNavigate={goToModule}
           />
         )}
 

@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
 import { getActiveStudents, getAllStudents, getActiveStudentCount } from './studentQueries'
+import { courseOf, takeAttendanceHandoff, handoffToStudents } from './courseMap'
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend, RadarChart, Radar, PolarGrid,
@@ -27,10 +28,10 @@ const HOSTEL_TYPES = ['Boarder', 'Day Boarder', 'Day Scholar']
 const T = {
   // Primary palette
   ink:     '#0f1923',   // near-black, text
-  navy:    '#1a3a5c',   // primary brand
-  navyMid: '#24527a',
-  blue:    '#2563eb',   // interactive
-  blueSoft:'#dbeafe',
+  navy:    '#132a4f',   // primary brand (portal navy)
+  navyMid: '#1e3a6e',
+  blue:    '#1e3a6e',   // interactive
+  blueSoft:'#eef2f9',
 
   // Status
   green:   '#16a34a',
@@ -39,22 +40,22 @@ const T = {
   amberSoft:'#fef3c7',
   red:     '#dc2626',
   redSoft: '#fee2e2',
-  violet:  '#7c3aed',
-  violetSoft:'#ede9fe',
+  violet:  '#a7771f',   // Leave — antique gold
+  violetSoft:'#fbf3e0',
 
   // Neutrals — refined scale
   white:   '#ffffff',
-  gray50:  '#f8fafc',
-  gray100: '#f1f5f9',
-  gray150: '#e9eef5',
-  gray200: '#e2e8f0',
-  gray300: '#cbd5e1',
-  gray400: '#94a3b8',
-  gray500: '#64748b',
-  gray600: '#475569',
-  gray700: '#334155',
-  gray800: '#1e293b',
-  gray900: '#0f172a',
+  gray50:  '#faf8f3',
+  gray100: '#f3f0e8',
+  gray150: '#ece7db',
+  gray200: '#e8e3d8',
+  gray300: '#d9d2c2',
+  gray400: '#8a93a6',
+  gray500: '#5d6b82',
+  gray600: '#4b5870',
+  gray700: '#2e3b52',
+  gray800: '#14213d',
+  gray900: '#0f1b2e',
 
   // Shadows
   shadowSm: '0 1px 3px rgba(15,25,35,.08), 0 1px 2px rgba(15,25,35,.04)',
@@ -62,8 +63,8 @@ const T = {
   shadowLg: '0 8px 24px rgba(15,25,35,.10), 0 3px 8px rgba(15,25,35,.06)',
 
   // Border
-  border: '#e2e8f0',
-  borderMid: '#cbd5e1',
+  border: '#e8e3d8',
+  borderMid: '#d9d2c2',
 }
 
 const font    = "'Inter', system-ui, -apple-system, sans-serif"
@@ -75,27 +76,31 @@ const fontMono= "'JetBrains Mono', 'Fira Code', monospace"
 // legacy `T` tokens above until they're restyled in stage 2.
 
 const C = {
-  bg:        '#FAFAF9',   // warm-white app background
+  bg:        '#F7F5F0',   // warm ivory app background (portal-wide)
   surface:   '#FFFFFF',   // card background
-  border:    '#E7E5E4',
-  borderStrong: '#D6D3D1',
-  ink:       '#0F172A',   // primary text
-  inkMuted:  '#64748B',
-  inkFaint:  '#94A3B8',
-  sidebar:   '#0F172A',   // sidebar background (dark, contrasts with light content)
-  sidebarText: '#CBD5E1',
+  border:    '#E8E3D8',
+  borderStrong: '#D9D2C2',
+  ink:       '#0F1B2E',   // primary text
+  inkMuted:  '#5D6B82',
+  inkFaint:  '#8A93A6',
+  sidebar:   '#0B1E3D',   // deep navy shell
+  sidebarText: '#B9C3D6',
   sidebarTextActive: '#FFFFFF',
-  sidebarHover: '#1E293B',
-  indigo:    '#4F46E5',   // primary accent — active states, primary actions
-  indigoSoft:'#EEF2FF',
+  sidebarHover: '#132B52',
+  indigo:    '#1E3A6E',   // primary accent — navy (was indigo)
+  indigoSoft:'#EEF2F9',
+  gold:      '#B8923A',
+  goldLt:    '#E9D9B0',
+  goldSoft:  '#F6EFDC',
+  serif:     "'Fraunces','Playfair Display',Georgia,serif",
   green:     '#10B981',   // present / good / paid
   greenSoft: '#ECFDF5',
   amber:     '#F59E0B',   // late / warning / due-soon
   amberSoft: '#FFFBEB',
   red:       '#EF4444',   // absent / risk / overdue
   redSoft:   '#FEF2F2',
-  violet:    '#8B5CF6',   // leave / misc category
-  violetSoft:'#F5F3FF',
+  violet:    '#A7771F',   // leave / misc category — antique gold
+  violetSoft:'#FBF3E0',
   shadowSm:  '0 1px 2px rgba(15,23,42,.04), 0 1px 3px rgba(15,23,42,.06)',
   shadowMd:  '0 2px 8px rgba(15,23,42,.06), 0 8px 24px rgba(15,23,42,.06)',
   radius:    12,
@@ -185,7 +190,7 @@ function SkeletonRow() {
   )
 }
 
-const CHART_TONE = { good: '#10B981', warn: '#F59E0B', bad: '#EF4444', indigo: '#4F46E5' }
+const CHART_TONE = { good: '#10B981', warn: '#F59E0B', bad: '#EF4444', indigo: '#1E3A6E' }
 
 function ConsoleTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
@@ -268,7 +273,7 @@ function StatusDonut({ counts, size = 140 }) {
     { name: 'Present', value: counts.Present || 0, color: CHART_TONE.good },
     { name: 'Late',    value: counts.Late    || 0, color: CHART_TONE.warn },
     { name: 'Absent',  value: counts.Absent  || 0, color: CHART_TONE.bad },
-    { name: 'Leave',   value: counts.Leave   || 0, color: '#8B5CF6' },
+    { name: 'Leave',   value: counts.Leave   || 0, color: '#b8923a' },
   ].filter(d => d.value > 0)
   const total = data.reduce((s,d) => s+d.value, 0)
   if (!total) return <div style={{ height: size, display:'flex', alignItems:'center', justifyContent:'center', color: C.inkFaint, fontSize: 12.5 }}>No data</div>
@@ -408,17 +413,17 @@ function riskLevel({ attendancePct, disciplineOpen, feeOverdueDays, hostelStatus
 
 // Course accent palette — more refined
 const COURSE_ACCENT = {
-  Sainik:            { color: '#1d4ed8', bg: '#eff6ff', pill: '#dbeafe', text: '#1e40af' },
+  Sainik:            { color: '#1e3a6e', bg: '#eef2f9', pill: '#dbeafe', text: '#132a4f' },
   Navodaya:          { color: '#15803d', bg: '#f0fdf4', pill: '#dcfce7', text: '#166534' },
   Foundation:        { color: '#b45309', bg: '#fffbeb', pill: '#fef3c7', text: '#92400e' },
-  'Combined Course': { color: '#6d28d9', bg: '#f5f3ff', pill: '#ede9fe', text: '#5b21b6' },
+  'Combined Course': { color: '#8a6118', bg: '#fbf3e0', pill: '#f6ecd2', text: '#5b21b6' },
 }
 
 const STATUS_META = {
   Present: { bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0', icon: '✓', label: 'Present', dot: '#22c55e' },
   Absent:  { bg: '#fff1f2', color: '#e11d48', border: '#fecdd3', icon: '✕', label: 'Absent',  dot: '#f43f5e' },
   Late:    { bg: '#fffbeb', color: '#b45309', border: '#fde68a', icon: '◷', label: 'Late',    dot: '#f59e0b' },
-  Leave:   { bg: '#f5f3ff', color: '#7c3aed', border: '#ddd6fe', icon: '↗', label: 'Leave',   dot: '#8b5cf6' },
+  Leave:   { bg: '#fbf3e0', color: '#a7771f', border: '#eadbb2', icon: '↗', label: 'Leave',   dot: '#b8923a' },
 }
 const STATUSES = ['Present', 'Absent', 'Late', 'Leave']
 
@@ -671,9 +676,9 @@ function Btn({ children, onClick, disabled, variant = 'primary', small, icon, st
       border: `1.5px solid #bbf7d0`,
     },
     blue: {
-      background: '#eff6ff',
-      color: '#1d4ed8',
-      border: `1.5px solid #bfdbfe`,
+      background: '#eef2f9',
+      color: '#1e3a6e',
+      border: `1.5px solid #c9d5ea`,
     },
   }
   return (
@@ -780,7 +785,7 @@ function SectionDivider({ label }) {
 
 function Alert({ type = 'info', children, onClose }) {
   const map = {
-    info:    { bg: '#eff6ff', border: '#bfdbfe', color: '#1e40af', icon: 'ℹ' },
+    info:    { bg: '#eef2f9', border: '#c9d5ea', color: '#132a4f', icon: 'ℹ' },
     success: { bg: '#f0fdf4', border: '#bbf7d0', color: '#15803d', icon: '✓' },
     warn:    { bg: '#fffbeb', border: '#fde68a', color: '#92400e', icon: '!' },
     error:   { bg: '#fff1f2', border: '#fecdd3', color: '#be123c', icon: '✕' },
@@ -932,12 +937,12 @@ const STATUS_GRADIENT = {
   Present: 'linear-gradient(135deg, #22c55e, #16a34a)',
   Absent:  'linear-gradient(135deg, #f43f5e, #e11d48)',
   Late:    'linear-gradient(135deg, #fbbf24, #f59e0b)',
-  Leave:   'linear-gradient(135deg, #a78bfa, #7c3aed)',
+  Leave:   'linear-gradient(135deg, #a78bfa, #a7771f)',
 }
 
 const AVATAR_GRAD = [
   'linear-gradient(135deg,#f9a8d4,#c084fc)',
-  'linear-gradient(135deg,#93c5fd,#6366f1)',
+  'linear-gradient(135deg,#93c5fd,#2f4f86)',
   'linear-gradient(135deg,#6ee7b7,#3b82f6)',
   'linear-gradient(135deg,#fde68a,#fb923c)',
   'linear-gradient(135deg,#a5f3fc,#818cf8)',
@@ -1139,8 +1144,8 @@ function TabHome({ onNavigate }) {
               display: 'flex', alignItems: 'center', gap: 10,
               padding: isMobile ? '10px 12px' : '11px 14px',
               borderRadius: 10,
-              border: `1.5px solid ${s.done ? T.gray150 : '#bfdbfe'}`,
-              background: s.done ? T.gray50 : '#eff6ff',
+              border: `1.5px solid ${s.done ? T.gray150 : '#c9d5ea'}`,
+              background: s.done ? T.gray50 : '#eef2f9',
               opacity: s.done ? .65 : 1,
             }}>
               <StatusDot status={s.done ? 'Present' : 'Absent'} size={7} />
@@ -1287,7 +1292,7 @@ function ConsoleLabel({ children, required, hint }) {
 
 function ConsoleAlert({ type = 'info', children, onClose }) {
   const map = {
-    info:    { bg: C.indigoSoft, color: '#3730A3' },
+    info:    { bg: C.indigoSoft, color: '#132a4f' },
     success: { bg: C.greenSoft, color: '#047857' },
     warn:    { bg: C.amberSoft, color: '#92400E' },
     error:   { bg: C.redSoft, color: '#B91C1C' },
@@ -1455,12 +1460,18 @@ function TabMark({ staff, prefill }) {
     // counting as "active" in Students.jsx/Hostel.jsx. If roll call should
     // stay Active-only, tell me and I'll special-case it instead of using
     // getActiveStudents' broader rule.
+    // STUDENTS LINK: course is resolved with courseMap.courseOf — the exact
+    // rule the Students module's Courses tab uses. Filtering on the raw
+    // `course` column dropped every student whose course was blank (older
+    // records only have `batch`), so they were in Students but never on the
+    // roll call. Batch is filtered server-side; course is resolved here.
     let q = supabase.from('students')
       .select('id,name,gcc_no,course,batch,class_name,hostel_type,status,deleted_at,phone')
-      .is('deleted_at', null).neq('status', 'Inactive').neq('status', 'Dropout').eq('course', form.course)
+      .is('deleted_at', null).neq('status', 'Inactive').neq('status', 'Dropout')
     if (form.subtype)   q = q.eq('batch', form.subtype)
     if (form.class_name) q = q.eq('class_name', form.class_name)
-    const { data } = await q.order('name')
+    const { data: raw } = await q.order('name')
+    const data = (raw || []).filter(s => courseOf(s) === form.course)
     // Map to the field names the rest of this component (and the save/
     // WhatsApp-report/notify code below) already expects, so nothing
     // downstream needs to change: student_id/student_name/gcc_no/hostel_type.
@@ -1912,39 +1923,39 @@ function downloadDataUrl(dataUrl, filename) {
 
 function buildReportHTML({ students, absentStudents, records, sessionInfo, counts }) {
   const { classLine, rows } = buildAttendanceReportRows({ students, absentStudents, records, sessionInfo, counts })
-  const statusColor = st => st === 'Late' ? '#b45309' : st === 'Leave' ? '#7c3aed' : '#dc2626'
+  const statusColor = st => st === 'Late' ? '#b45309' : st === 'Leave' ? '#a7771f' : '#dc2626'
   const rowsHtml = rows.length
     ? rows.map(r => `<tr>
-        <td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;">${r.sl}</td>
-        <td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;font-weight:600;">${r.name}</td>
-        <td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;">${r.gcc}</td>
-        <td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;">${r.hostel}</td>
-        <td style="padding:7px 10px;border-bottom:1px solid #f1f5f9;color:${statusColor(r.status)};font-weight:700;">${r.status}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f3f0e8;">${r.sl}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f3f0e8;font-weight:600;">${r.name}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f3f0e8;">${r.gcc}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f3f0e8;">${r.hostel}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #f3f0e8;color:${statusColor(r.status)};font-weight:700;">${r.status}</td>
       </tr>`).join('')
-    : `<tr><td colspan="5" style="padding:16px;text-align:center;color:#94a3b8;">🎉 Full attendance — no absentees.</td></tr>`
+    : `<tr><td colspan="5" style="padding:16px;text-align:center;color:#8a93a6;">🎉 Full attendance — no absentees.</td></tr>`
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Attendance Report</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;background:white;padding:16mm 18mm}
-    .inst{font-size:19px;font-weight:900;color:#1a3a5c;font-family:Georgia,serif}
-    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px double #1a3a5c;padding-bottom:10px;margin-bottom:12px}
-    .rtype{font-size:11px;font-weight:900;color:white;background:#1a3a5c;padding:3px 12px;border-radius:5px;display:inline-block}
-    .meta{display:flex;gap:22px;flex-wrap:wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#0f1b2e;background:white;padding:16mm 18mm}
+    .inst{font-size:19px;font-weight:900;color:#132a4f;font-family:Georgia,serif}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px double #132a4f;padding-bottom:10px;margin-bottom:12px}
+    .rtype{font-size:11px;font-weight:900;color:white;background:#132a4f;padding:3px 12px;border-radius:5px;display:inline-block}
+    .meta{display:flex;gap:22px;flex-wrap:wrap;background:#faf8f3;border:1px solid #e8e3d8;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px}
     .mi{display:flex;flex-direction:column}
-    .mk{font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}
-    .mv{font-size:12.5px;font-weight:700;color:#1a3a5c}
+    .mk{font-size:9px;font-weight:700;color:#5d6b82;text-transform:uppercase;letter-spacing:.4px}
+    .mv{font-size:12.5px;font-weight:700;color:#132a4f}
     .counts{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px}
     .cbox{flex:1;min-width:90px;text-align:center;border-radius:8px;padding:10px;font-weight:800}
     table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:14px}
-    thead tr{background:#1a3a5c;color:white}
+    thead tr{background:#132a4f;color:white}
     th{padding:8px 10px;text-align:left;font-weight:700;font-size:11.5px}
-    .foot{text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px}
+    .foot{text-align:center;font-size:10px;color:#8a93a6;border-top:1px solid #e8e3d8;padding-top:8px}
     @media print{body{padding:0}.np{display:none}}
-    @media screen{body{background:#e2e8f0;padding:20px}
+    @media screen{body{background:#e8e3d8;padding:20px}
       .wrap{background:white;padding:16mm 18mm;box-shadow:0 4px 20px rgba(0,0,0,.12);max-width:210mm;margin:0 auto}
-      .pbtn{position:fixed;top:16px;right:16px;background:#1a3a5c;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}
-      .cbtn{position:fixed;top:16px;right:170px;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}}
+      .pbtn{position:fixed;top:16px;right:16px;background:#132a4f;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}
+      .cbtn{position:fixed;top:16px;right:170px;background:#5d6b82;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}}
   </style></head><body>
   <button class="pbtn np" onclick="window.print()">Print / Save PDF</button>
   <button class="cbtn np" onclick="window.close()">Close</button>
@@ -1964,7 +1975,7 @@ function buildReportHTML({ students, absentStudents, records, sessionInfo, count
       <div class="cbox" style="background:#dcfce7;color:#15803d;">✅ Present<br/>${counts.Present || 0}</div>
       <div class="cbox" style="background:#fee2e2;color:#dc2626;">❌ Absent<br/>${counts.Absent || 0}</div>
       <div class="cbox" style="background:#fef3c7;color:#b45309;">⏱ Late<br/>${counts.Late || 0}</div>
-      <div class="cbox" style="background:#ede9fe;color:#7c3aed;">📝 Leave<br/>${counts.Leave || 0}</div>
+      <div class="cbox" style="background:#f6ecd2;color:#a7771f;">📝 Leave<br/>${counts.Leave || 0}</div>
     </div>
     <table>
       <thead><tr><th>#</th><th>Student Name</th><th>GCC No.</th><th>Hostel Type</th><th>Status</th></tr></thead>
@@ -1990,23 +2001,23 @@ function drawReportToCanvas({ students, absentStudents, records, sessionInfo, co
   ctx.fillRect(0, 0, W, H)
 
   // Header
-  ctx.fillStyle = '#1a3a5c'
+  ctx.fillStyle = '#132a4f'
   ctx.font = '700 24px Georgia, serif'
   ctx.fillText('Guidance Navodaya & Sainik Institute', 30, 40)
   ctx.font = '700 12px Segoe UI, Arial'
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(W - 190, 20, 160, 26)
-  ctx.fillStyle = '#1a3a5c'
+  ctx.fillStyle = '#132a4f'
   ctx.fillRect(W - 190, 20, 160, 26)
   ctx.fillStyle = '#ffffff'
   ctx.fillText('ATTENDANCE REPORT', W - 178, 37)
 
-  ctx.strokeStyle = '#1a3a5c'
+  ctx.strokeStyle = '#132a4f'
   ctx.lineWidth = 2
   ctx.beginPath(); ctx.moveTo(30, 55); ctx.lineTo(W - 30, 55); ctx.stroke()
 
   // Meta
-  ctx.fillStyle = '#334155'
+  ctx.fillStyle = '#2e3b52'
   ctx.font = '600 14px Segoe UI, Arial'
   const metaParts = [
     `Date: ${fmtDate(sessionInfo.session_date)}`,
@@ -2021,7 +2032,7 @@ function drawReportToCanvas({ students, absentStudents, records, sessionInfo, co
     { label: '✅ Present', val: counts.Present || 0, bg: '#dcfce7', fg: '#15803d' },
     { label: '❌ Absent', val: counts.Absent || 0, bg: '#fee2e2', fg: '#dc2626' },
     { label: '⏱ Late', val: counts.Late || 0, bg: '#fef3c7', fg: '#b45309' },
-    { label: '📝 Leave', val: counts.Leave || 0, bg: '#ede9fe', fg: '#7c3aed' },
+    { label: '📝 Leave', val: counts.Leave || 0, bg: '#f6ecd2', fg: '#a7771f' },
   ]
   const boxW = (W - 60 - 30) / 4
   boxes.forEach((b, i) => {
@@ -2037,7 +2048,7 @@ function drawReportToCanvas({ students, absentStudents, records, sessionInfo, co
 
   // Table header
   let y = 160
-  ctx.fillStyle = '#1a3a5c'
+  ctx.fillStyle = '#132a4f'
   ctx.fillRect(30, y, W - 60, 28)
   ctx.fillStyle = '#ffffff'
   ctx.font = '700 12px Segoe UI, Arial'
@@ -2048,30 +2059,30 @@ function drawReportToCanvas({ students, absentStudents, records, sessionInfo, co
 
   if (rows.length) {
     rows.forEach((r, i) => {
-      ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#f8fafc'
+      ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#faf8f3'
       ctx.fillRect(30, y, W - 60, rowH)
-      ctx.fillStyle = '#0f172a'
+      ctx.fillStyle = '#0f1b2e'
       ctx.font = '600 13px Segoe UI, Arial'
       ctx.fillText(String(r.sl), 40, y + 20)
       ctx.fillText(r.name, 80, y + 20)
       ctx.font = '400 13px Segoe UI, Arial'
       ctx.fillText(r.gcc, 400, y + 20)
       ctx.fillText(r.hostel, 520, y + 20)
-      ctx.fillStyle = r.status === 'Late' ? '#b45309' : r.status === 'Leave' ? '#7c3aed' : '#dc2626'
+      ctx.fillStyle = r.status === 'Late' ? '#b45309' : r.status === 'Leave' ? '#a7771f' : '#dc2626'
       ctx.font = '700 13px Segoe UI, Arial'
       ctx.fillText(r.status, 720, y + 20)
       y += rowH
     })
   } else {
-    ctx.fillStyle = '#94a3b8'
+    ctx.fillStyle = '#8a93a6'
     ctx.font = '600 14px Segoe UI, Arial'
     ctx.fillText('🎉 Full attendance — no absentees.', 30, y + 20)
     y += rowH
   }
 
-  ctx.strokeStyle = '#e2e8f0'
+  ctx.strokeStyle = '#e8e3d8'
   ctx.beginPath(); ctx.moveTo(30, y + 10); ctx.lineTo(W - 30, y + 10); ctx.stroke()
-  ctx.fillStyle = '#94a3b8'
+  ctx.fillStyle = '#8a93a6'
   ctx.font = '400 11px Segoe UI, Arial'
   ctx.fillText(`GNSI Portal · Generated ${new Date().toLocaleString('en-IN')}`, 30, y + 28)
 
@@ -2121,7 +2132,7 @@ function AttendanceAnimStyles() {
 }
 
 function ConfettiBurst() {
-  const colors = ['#fd1d1d', '#fcb045', '#833ab4', '#16a34a', '#2563eb', '#f472b6']
+  const colors = ['#fd1d1d', '#fcb045', '#833ab4', '#16a34a', '#1e3a6e', '#f472b6']
   const pieces = useMemo(() => Array.from({ length: 36 }, (_, i) => ({
     id: i,
     left: Math.random() * 100,
@@ -2212,11 +2223,11 @@ function ReceiptSuccessModal({ count, absentCount, onClose }) {
               <div style={{ fontSize: 10.5, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: '.03em' }}>Present</div>
             </div>
             <div style={{
-              flex: 1, background: absentCount ? '#fee2e2' : '#f1f5f9', borderRadius: 12, padding: '12px 8px',
+              flex: 1, background: absentCount ? '#fee2e2' : '#f3f0e8', borderRadius: 12, padding: '12px 8px',
               textAlign: 'center', animation: 'gnsi-slide-up-fade .4s ease .6s both',
             }}>
-              <div style={{ fontSize: 22, fontWeight: 900, color: absentCount ? '#dc2626' : '#94a3b8' }}>{absentCount}</div>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: absentCount ? '#dc2626' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '.03em' }}>Absent</div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: absentCount ? '#dc2626' : '#8a93a6' }}>{absentCount}</div>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: absentCount ? '#dc2626' : '#8a93a6', textTransform: 'uppercase', letterSpacing: '.03em' }}>Absent</div>
             </div>
           </div>
 
@@ -2224,7 +2235,7 @@ function ReceiptSuccessModal({ count, absentCount, onClose }) {
             onClick={onClose}
             style={{
               width: '100%', minHeight: 46, borderRadius: 12, border: 'none',
-              background: 'linear-gradient(135deg, #1a3a5c, #24527a)', color: '#fff',
+              background: 'linear-gradient(135deg, #132a4f, #1e3a6e)', color: '#fff',
               fontWeight: 800, fontSize: 14, cursor: 'pointer', letterSpacing: '.02em',
               animation: 'gnsi-slide-up-fade .4s ease .7s both',
             }}
@@ -2289,7 +2300,7 @@ function WhatsAppReportPanel({ students, absentStudents, records, sessionInfo, c
       }}>
         {/* Receipt header strip */}
         <div style={{
-          background: 'linear-gradient(135deg, #1a3a5c 0%, #24527a 100%)',
+          background: 'linear-gradient(135deg, #132a4f 0%, #1e3a6e 100%)',
           padding: '18px 22px 16px', textAlign: 'center', color: '#fff', position: 'relative',
         }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.15em', opacity: .8, marginBottom: 3 }}>GNSI · OFFICIAL</div>
@@ -2406,7 +2417,7 @@ function NotifyPanel({ students, records, sessionInfo, onClose }) {
   }
 
   return (
-    <Card style={{ border: `1.5px solid #bfdbfe` }}>
+    <Card style={{ border: `1.5px solid #c9d5ea` }}>
       <CardHeader
         icon="📲"
         title="Notify parents"
@@ -3006,7 +3017,7 @@ function HeatmapRow({ row, month }) {
     Present: { bg: '#dcfce7', color: '#15803d' },
     Absent:  { bg: '#fee2e2', color: '#e11d48' },
     Late:    { bg: '#fef9c3', color: '#b45309' },
-    Leave:   { bg: '#ede9fe', color: '#7c3aed' },
+    Leave:   { bg: '#f6ecd2', color: '#a7771f' },
   }
 
   const streak = (() => {
@@ -3513,7 +3524,7 @@ function drawAwardCertificateToCanvas({ studentName, gcc, course, className, mon
   ctx.font = '700 20px Georgia, serif'
   ctx.fillText('GUIDANCE NAVODAYA & SAINIK INSTITUTE', W/2, 118)
   ctx.font = '400 13px Georgia, serif'
-  ctx.fillStyle = '#64748b'
+  ctx.fillStyle = '#5d6b82'
   ctx.fillText('Khangabok · Thoubal · Manipur', W/2, 140)
 
   ctx.strokeStyle = CERT_BORDER
@@ -3525,11 +3536,11 @@ function drawAwardCertificateToCanvas({ studentName, gcc, course, className, mon
   ctx.fillText('Certificate of Excellence', W/2, 230)
 
   ctx.font = '400 17px Georgia, serif'
-  ctx.fillStyle = '#475569'
+  ctx.fillStyle = '#4b5870'
   ctx.fillText('Best Student of the Month — Attendance', W/2, 262)
 
   ctx.font = '400 16px Georgia, serif'
-  ctx.fillStyle = '#334155'
+  ctx.fillStyle = '#2e3b52'
   ctx.fillText('This is to certify that', W/2, 330)
 
   ctx.font = '700 44px Georgia, serif'
@@ -3541,7 +3552,7 @@ function drawAwardCertificateToCanvas({ studentName, gcc, course, className, mon
   ctx.beginPath(); ctx.moveTo(W/2 - nameW/2 - 10, 402); ctx.lineTo(W/2 + nameW/2 + 10, 402); ctx.stroke()
 
   ctx.font = '400 16px Georgia, serif'
-  ctx.fillStyle = '#334155'
+  ctx.fillStyle = '#2e3b52'
   const bodyLines = [
     `${gcc ? `GCC No. ${gcc} · ` : ''}${[course, className].filter(Boolean).join(' · ') || scopeLabel}`,
     `has achieved an outstanding attendance record of ${pct}% for ${monthLabel},`,
@@ -3562,15 +3573,15 @@ function drawAwardCertificateToCanvas({ studentName, gcc, course, className, mon
 
   ctx.textAlign = 'left'
   ctx.font = '400 13px Georgia, serif'
-  ctx.fillStyle = '#64748b'
+  ctx.fillStyle = '#5d6b82'
   ctx.fillText(`Issued: ${new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })}`, 90, H - 100)
 
-  ctx.strokeStyle = '#94a3b8'
+  ctx.strokeStyle = '#8a93a6'
   ctx.lineWidth = 1
   ctx.beginPath(); ctx.moveTo(W - 340, H - 110); ctx.lineTo(W - 90, H - 110); ctx.stroke()
   ctx.textAlign = 'center'
   ctx.font = '600 13px Georgia, serif'
-  ctx.fillStyle = '#334155'
+  ctx.fillStyle = '#2e3b52'
   ctx.fillText('Principal, GNSI', W - 215, H - 90)
 
   return canvas
@@ -4041,7 +4052,15 @@ function Student360Profile({ student, month, onClose }) {
             <div style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>{student.name}</div>
             <div style={{ fontSize: 12, color: C.inkMuted }}>{student.course}{student.className ? ` · ${student.className}` : ''}{student.gcc ? ` · GCC-${student.gcc}` : ''}</div>
           </div>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 18, cursor: 'pointer', color: C.inkMuted }}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {student.gcc != null && (
+              <button onClick={() => openInStudents(student.gcc)} title="Open the full student record"
+                style={{ border: `1px solid ${C.border}`, background: C.surface, borderRadius: 8, padding: '6px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', color: C.indigo, fontFamily: font }}>
+                Student record ↗
+              </button>
+            )}
+            <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 18, cursor: 'pointer', color: C.inkMuted }}>✕</button>
+          </div>
         </div>
 
         <div style={{ padding: '14px 20px' }}>
@@ -4142,13 +4161,21 @@ function Student360Profile({ student, month, onClose }) {
   )
 }
 
-function Student360Page() {
+function Student360Page({ initialGcc = null }) {
   const isMobile = useIsMobile()
   const [month, setMonth] = useState(monthOptions()[0])
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
   const { rows, loading, degraded } = useStudentSignals(month)
   const [openStudent, setOpenStudent] = useState(null)
+  // Opened from Students ("Attendance 360") — select that student once rows load.
+  const handoffDone = useRef(false)
+  useEffect(() => {
+    if (handoffDone.current || initialGcc == null || !rows.length) return
+    const hit = rows.find(r => String(r.gcc) === String(initialGcc))
+    handoffDone.current = true
+    if (hit) setOpenStudent(hit)
+  }, [rows, initialGcc])
   const [waSent, setWaSent] = useState({})
 
   const filtered = rows.filter(r => {
@@ -4479,10 +4506,10 @@ function useBatchHealth() {
 // makes it visually distinct from Dashboard's teal/amber theme, even though
 // both reuse the shared ConsoleCard chrome underneath.
 const OV = {
-  grad: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 55%, #A855F7 100%)',
-  ink: '#312E81',
-  soft: '#EEF2FF',
-  ring: '#6366F1',
+  grad: 'linear-gradient(135deg, #0e203f 0%, #132a4f 50%, #1e3a6e 100%)',
+  ink: '#132a4f',
+  soft: '#eef2f9',
+  ring: '#2f4f86',
 }
 
 function HomeV2({ onNavigate, isAdmin }) {
@@ -4522,24 +4549,8 @@ function HomeV2({ onNavigate, isAdmin }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }} className="gnsi-fade-in">
       <ConsoleAnimStyles />
 
-      {/* Bold hero banner — establishes Overview's own color identity up front */}
-      <div style={{
-        background: OV.grad, borderRadius: 16, padding: isMobile ? '18px 20px' : '22px 26px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
-        boxShadow: '0 8px 24px rgba(79,70,229,.25)',
-      }}>
-        <div>
-          <div style={{ fontSize: isMobile ? 20 : 23, fontWeight: 800, color: '#fff', letterSpacing: '-.02em' }}>Overview</div>
-          <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.85)', marginTop: 2 }}>{fmtDate(today())} · {todayDay()}</div>
-        </div>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.16)',
-          padding: '8px 14px', borderRadius: 999, backdropFilter: 'blur(4px)',
-        }}>
-          <span style={{ fontSize: 20, fontWeight: 800, color: '#fff', fontFamily: fontMono }}>{avgAttendance}%</span>
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,.85)' }}>avg. attendance</span>
-        </div>
-      </div>
+      {/* (Overview banner removed — the module header above already shows today's figures;
+          the month average is in the "Avg. attendance" card below.) */}
 
       {period1Missing.length > 0 && (
         <div style={{
@@ -4582,10 +4593,10 @@ function HomeV2({ onNavigate, isAdmin }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10 }}>
         {loading ? [0,1,2,3].map(i => <SkeletonStatCard key={i} />) : [
-          { label: 'Students enrolled', value: enrolledCount ?? '…', icon: Icon.users, color: '#4F46E5', bg: '#EEF2FF' },
+          { label: 'Students enrolled', value: enrolledCount ?? '…', icon: Icon.users, color: '#1e3a6e', bg: '#eef2f9' },
           { label: 'Avg. attendance', value: `${avgAttendance}%`, icon: Icon.check, color: avgAttendance>=75?'#059669':'#D97706', bg: avgAttendance>=75?'#ECFDF5':'#FFFBEB' },
           { label: 'High risk', value: highRiskCount, icon: Icon.bell, color: '#DC2626', bg: '#FEF2F2' },
-          { label: 'On track', value: rows.filter(r=>r.risk==='low').length, icon: Icon.award, color: '#7C3AED', bg: '#F5F3FF' },
+          { label: 'On track', value: rows.filter(r=>r.risk==='low').length, icon: Icon.award, color: '#a7771f', bg: '#fbf3e0' },
         ].map((k,i) => (
           <ConsoleCard key={i} style={{ padding: '16px 18px', borderTop: `3px solid ${k.color}` }} padded={false}>
             <div className="gnsi-hover-lift" style={{ borderRadius: C.radius }}>
@@ -4665,7 +4676,7 @@ function HomeV2({ onNavigate, isAdmin }) {
           </div>
           <button onClick={() => onNavigate('dashboard')} style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 9,
-            border: 'none', background: '#fff', color: '#4F46E5', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: font,
+            border: 'none', background: '#fff', color: '#1e3a6e', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: font,
           }}>
             Open dashboard <Icon.chevron size={12} />
           </button>
@@ -4683,7 +4694,7 @@ function HomeV2({ onNavigate, isAdmin }) {
 
 const WEEKDAY_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
 const COURSE_LINE_COLOR = {
-  Sainik: '#1d4ed8', Navodaya: '#15803d', Foundation: '#b45309', 'Combined Course': '#6d28d9',
+  Sainik: '#1e3a6e', Navodaya: '#15803d', Foundation: '#b45309', 'Combined Course': '#8a6118',
 }
 
 function useDashboardData(monthsBack = 6) {
@@ -4879,7 +4890,7 @@ function StatusSplitBars({ counts, height = 110 }) {
     { key: 'Present', color: CHART_TONE.good },
     { key: 'Absent',  color: CHART_TONE.bad },
     { key: 'Late',    color: CHART_TONE.warn },
-    { key: 'Leave',   color: '#8B5CF6' },
+    { key: 'Leave',   color: '#b8923a' },
   ]
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '2px 0' }}>
@@ -4967,9 +4978,9 @@ function DashboardPage() {
           padding: '9px 14px', borderRadius: 999, border: 'none', background: 'rgba(255,255,255,.18)',
           color: '#fff', fontWeight: 700, fontSize: 12.5, fontFamily: font, cursor: 'pointer', backdropFilter: 'blur(4px)',
         }}>
-          <option value={3} style={{ color: '#0f172a' }}>Last 3 months</option>
-          <option value={6} style={{ color: '#0f172a' }}>Last 6 months</option>
-          <option value={12} style={{ color: '#0f172a' }}>Last 12 months</option>
+          <option value={3} style={{ color: '#0f1b2e' }}>Last 3 months</option>
+          <option value={6} style={{ color: '#0f1b2e' }}>Last 6 months</option>
+          <option value={12} style={{ color: '#0f1b2e' }}>Last 12 months</option>
         </select>
       </div>
 
@@ -5519,8 +5530,8 @@ function TabStudentDB({ isAdmin }) {
         {toast && <Alert type={toast.type} onClose={() => setToast(null)}>{toast.msg}</Alert>}
 
         {isAdmin && viewMode === 'active' && unassignedStudents.length > 0 && selectedIds.size === 0 && (
-          <div style={{ background: T.blueSoft, border: `1.5px solid #bfdbfe`, borderRadius: 10, padding: '10px 14px' }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1e40af', marginBottom: unassignedStudents.length <= 3 ? 8 : 0 }}>
+          <div style={{ background: T.blueSoft, border: `1.5px solid #c9d5ea`, borderRadius: 10, padding: '10px 14px' }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#132a4f', marginBottom: unassignedStudents.length <= 3 ? 8 : 0 }}>
               📋 {unassignedStudents.length} student(s) have no course/batch — not in any Mark roll call.
               {unassignedStudents.length > 3 && (
                 <Btn small variant="ghost" onClick={selectAllUnassigned} style={{ marginLeft: 8 }}>Select all {unassignedStudents.length}</Btn>
@@ -5547,8 +5558,8 @@ function TabStudentDB({ isAdmin }) {
             same as the earlier per-row "↔ Move batch" but for many
             students at once instead of one at a time. */}
         {isAdmin && viewMode === 'active' && selectedIds.size > 0 && (
-          <div style={{ background: T.indigoSoft ?? '#EEF2FF', border: `1.5px solid #c7d2fe`, borderRadius: 10, padding: '12px 14px' }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#3730a3', marginBottom: 8 }}>
+          <div style={{ background: T.indigoSoft ?? '#eef2f9', border: `1.5px solid #c7d2fe`, borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#132a4f', marginBottom: 8 }}>
               ✓ {selectedIds.size} student{selectedIds.size===1?'':'s'} selected
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: '#fff', borderRadius: 8, padding: '8px 10px' }}>
@@ -5617,7 +5628,7 @@ function TabStudentDB({ isAdmin }) {
                             onChange={e => handleQuickBatchChange(s.id, e.target.value)}
                             style={{
                               fontSize: 11, fontWeight: 600, color: T.blue, background: T.blueSoft,
-                              border: `1px solid #bfdbfe`, borderRadius: 6, padding: '3px 6px', cursor: 'pointer',
+                              border: `1px solid #c9d5ea`, borderRadius: 6, padding: '3px 6px', cursor: 'pointer',
                             }}
                           >
                             <option value="">{quickFixingId === s.id ? 'Moving…' : 'Move to…'}</option>
@@ -5665,7 +5676,7 @@ function TabStudentDB({ isAdmin }) {
         )}
 
         {!isAdmin && viewMode !== 'dropout' && (
-          <div style={{ background: T.blueSoft, border: `1px solid #bfdbfe`, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#1e40af' }}>
+          <div style={{ background: T.blueSoft, border: `1px solid #c9d5ea`, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#132a4f' }}>
             🔒 Parent contact numbers are hidden for non-admin accounts. Deleting a student here moves them to trash — only an admin can permanently remove a record.
           </div>
         )}
@@ -5786,7 +5797,7 @@ function TabStudentDB({ isAdmin }) {
                         title="Move this student to a different batch"
                         style={{
                           fontSize: 10.5, fontWeight: 600, color: T.blue, background: T.blueSoft,
-                          border: `1px solid #bfdbfe`, borderRadius: 6, padding: '2px 5px', cursor: 'pointer',
+                          border: `1px solid #c9d5ea`, borderRadius: 6, padding: '2px 5px', cursor: 'pointer',
                         }}
                       >
                         <option value="">{quickFixingId === s.id ? 'Moving…' : '↔ Move batch'}</option>
@@ -5967,7 +5978,7 @@ function MobileBottomNav({ route, onNavigate, onMore, moreActive }) {
             <div style={{
               width: 30, height: 22, borderRadius: 8,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: active ? C.indigo : 'transparent', transition: 'background .12s',
+              background: active ? C.gold : 'transparent', transition: 'background .12s',
             }}>
               <item.icon size={17} />
             </div>
@@ -5988,7 +5999,7 @@ function MobileBottomNav({ route, onNavigate, onMore, moreActive }) {
         <div style={{
           width: 30, height: 22, borderRadius: 8,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: moreActive ? C.indigo : 'transparent', transition: 'background .12s',
+          background: moreActive ? C.gold : 'transparent', transition: 'background .12s',
         }}>
           <svg viewBox="0 0 24 24" width={17} height={17} fill="none" stroke="currentColor" strokeWidth="1.8">
             <circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none" />
@@ -6002,11 +6013,74 @@ function MobileBottomNav({ route, onNavigate, onMore, moreActive }) {
   )
 }
 
-export default function Attendance({ currentUser, isAdmin }) {
+// Set by the root component each render so deep components (Student 360
+// profile) can jump to the Students module without prop-drilling.
+let ATT_NAV = null
+function openInStudents(gcc) {
+  handoffToStudents({ gcc })
+  if (typeof ATT_NAV === 'function') ATT_NAV('students')
+}
+
+function AttendanceHero({ isMobile, onMark, onStudents, route }) {
+  const { counts, loading } = useTodayStatusCounts()
+  const total = counts.Present + counts.Absent + counts.Late + counts.Leave
+  const rate = total ? Math.round((counts.Present + counts.Late) / total * 100) : null
+  const dateStr = new Date().toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' })
+  const stat = (label, value, sub, tone) => (
+    <div style={{ background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.12)', borderRadius:14, padding: isMobile ? '10px 12px' : '12px 14px', minWidth:0 }}>
+      <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.12em', textTransform:'uppercase', color:'rgba(255,255,255,.58)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{label}</div>
+      <div style={{ fontFamily:C.serif, fontSize: isMobile ? 21 : 26, fontWeight:600, color: tone || '#fff', marginTop:5, lineHeight:1, fontVariantNumeric:'tabular-nums' }}>{loading ? '—' : value}</div>
+      <div style={{ fontSize:11, color:'rgba(255,255,255,.5)', marginTop:4, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{sub}</div>
+    </div>
+  )
+  return (
+    <section style={{ position:'relative', overflow:'hidden', borderRadius: isMobile ? 18 : 22, color:'#fff', padding: isMobile ? '18px 16px 16px' : '24px 28px 22px', marginBottom:16,
+      background:'radial-gradient(90% 140% at 100% 0%,rgba(184,146,58,.28) 0%,transparent 55%),linear-gradient(135deg,#0e203f 0%,#132a4f 45%,#1e3a6e 100%)', boxShadow:'0 24px 48px -24px rgba(19,42,79,.55)' }}>
+      <div style={{ position:'absolute', left:0, right:0, bottom:0, height:2, background:'linear-gradient(90deg,transparent,#b8923a,transparent)' }} />
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:14, flexWrap:'wrap', position:'relative' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:14, minWidth:0 }}>
+          <div style={{ width: isMobile ? 44 : 52, height: isMobile ? 44 : 52, borderRadius:14, flexShrink:0, background:'rgba(255,255,255,.08)', border:'1px solid rgba(233,217,176,.45)', display:'flex', alignItems:'center', justifyContent:'center', color:C.goldLt }}>
+            <Icon.calendar size={isMobile ? 20 : 24} />
+          </div>
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:10.5, fontWeight:800, letterSpacing:'.18em', textTransform:'uppercase', color:C.goldLt }}>GNSI · Roll call</div>
+            <div style={{ fontFamily:C.serif, fontSize: isMobile ? 24 : 30, fontWeight:600, lineHeight:1.1, marginTop:2 }}>Attendance</div>
+            <div style={{ fontSize:12.5, color:'rgba(255,255,255,.62)', marginTop:4 }}>{dateStr}</div>
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          {onStudents && (
+            <button onClick={onStudents} style={{ display:'inline-flex', alignItems:'center', gap:7, height:40, padding:'0 14px', borderRadius:12, cursor:'pointer', fontFamily:font, fontWeight:700, fontSize:13, background:'rgba(255,255,255,.08)', color:'#fff', border:'1px solid rgba(255,255,255,.22)' }}>
+              <Icon.users size={15} /> Students
+            </button>
+          )}
+          {route !== 'mark' && (
+            <button onClick={onMark} style={{ display:'inline-flex', alignItems:'center', gap:7, height:40, padding:'0 16px', borderRadius:12, cursor:'pointer', fontFamily:font, fontWeight:800, fontSize:13, background:'linear-gradient(180deg,#d4ae58,#b8923a)', color:'#1a1406', border:'1px solid #a37f2e', boxShadow:'0 8px 18px -8px rgba(184,146,58,.8)' }}>
+              <Icon.check size={15} /> Mark attendance
+            </button>
+          )}
+        </div>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,minmax(0,1fr))' : 'repeat(5,minmax(0,1fr))', gap:10, marginTop:18, position:'relative' }}>
+        {stat("Today's rate", rate == null ? '—' : `${rate}%`, total ? `${total} marks today` : 'No roll call yet', rate == null ? null : rate >= 85 ? '#86efac' : rate >= 75 ? '#fcd34d' : '#fca5a5')}
+        {stat('Present', counts.Present, 'marked present', '#86efac')}
+        {stat('Absent', counts.Absent, counts.Absent ? 'parents to inform' : 'none today', counts.Absent ? '#fca5a5' : '#fff')}
+        {stat('Late', counts.Late, 'arrived late', counts.Late ? '#fcd34d' : '#fff')}
+        {!isMobile && stat('Leave', counts.Leave, 'on approved leave', C.goldLt)}
+      </div>
+    </section>
+  )
+}
+
+export default function Attendance({ currentUser, isAdmin, onNavigate: goToModule }) {
   const isMobile  = useIsMobile()
   const [staff,       setStaff]       = useState([])
-  const [markPrefill, setMarkPrefill] = useState(null)
-  const [route, setRoute]             = useState('home')
+  // STUDENTS LINK: Students → "Mark attendance" / "Attendance 360" hands
+  // over a course + batch (or a student) — read it once on open.
+  const [handoff] = useState(() => takeAttendanceHandoff())
+  const [markPrefill, setMarkPrefill] = useState(() => handoff?.page === 'mark' ? { course: handoff.course || '', subtype: handoff.subtype || '' } : null)
+  const [route, setRoute]             = useState(() => handoff?.page || 'home')
+  ATT_NAV = goToModule || null
   const [navOpen, setNavOpen]         = useState(false)
   const moreRoutes = useMemo(() => NAV_ITEMS.slice(5).map(i => i.key), [])
   const isMoreActive = isMobile && moreRoutes.includes(route)
@@ -6033,7 +6107,7 @@ export default function Attendance({ currentUser, isAdmin }) {
     switch (route) {
       case 'home':       return <HomeV2 onNavigate={navigateTo} isAdmin={isAdmin} />
       case 'studentdb':  return <TabStudentDB isAdmin={isAdmin} />
-      case 'student360': return <Student360Page />
+      case 'student360': return <Student360Page initialGcc={handoff?.page === 'student360' ? handoff.gcc : null} />
       case 'dashboard':  return <DashboardPage />
       case 'mark':       return <TabMark staff={staff} prefill={markPrefill} />
       case 'view':       return <TabView />
@@ -6048,73 +6122,51 @@ export default function Attendance({ currentUser, isAdmin }) {
 
   return (
     <div style={{ fontFamily: font, background: C.bg, minHeight: '100vh' }}>
-      {/* Top bar */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: isMobile ? '12px 14px' : '12px 24px', background: C.sidebar,
-        position: 'sticky', top: 0, zIndex: 50, gap: 12,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#64748B' }}>
-              GNSI Portal
-            </div>
-            <div style={{ fontSize: isMobile ? 15 : 16, fontWeight: 700, color: '#fff', letterSpacing: '-.01em' }}>
-              Attendance
-            </div>
-          </div>
-        </div>
-
-        {/* Nav dropdown trigger — on mobile this becomes the "More" menu
-            for the tabs that don't fit in the bottom bar (Reports, Leaves,
-            Awards); on desktop it remains the full primary nav. */}
-        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
-          <button onClick={() => setNavOpen(v => !v)} style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '8px 14px', borderRadius: 9, border: 'none',
-            background: C.sidebarHover, color: '#fff', fontFamily: font,
-            fontWeight: 600, fontSize: 13.5, cursor: 'pointer',
-          }}>
-            {activeItem && <activeItem.icon size={15} />}
-            {activeItem?.label || 'Menu'}
-            <Icon.chevron size={12} style={{ transform: navOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .15s' }} />
-          </button>
-
-          {navOpen && (
-            <div style={{
-              position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 60,
-              background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
-              boxShadow: C.shadowMd, minWidth: 200, padding: 6,
-            }}>
-              {(isMobile ? NAV_ITEMS.slice(5) : NAV_ITEMS).map(item => {
-                const active = route === item.key
-                return (
-                  <button key={item.key} onClick={() => navigateTo(item.key)} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-                    padding: '9px 12px', borderRadius: 7, border: 'none',
-                    background: active ? C.indigoSoft : 'transparent',
-                    color: active ? C.indigo : C.ink,
-                    fontFamily: font, fontWeight: 600, fontSize: 13.5,
-                    cursor: 'pointer', textAlign: 'left',
-                  }}
-                  onMouseEnter={e => { if (!active) e.currentTarget.style.background = C.bg }}
-                  onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
-                  >
-                    <item.icon size={16} />
-                    {item.label}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
+      <style>{`
+        .att-tabs{display:flex;gap:4px;padding:5px;background:#fff;border:1px solid ${C.border};border-radius:14px;box-shadow:0 1px 2px rgba(19,42,79,.05);overflow-x:auto;scrollbar-width:none;margin-bottom:22px}
+        .att-tabs::-webkit-scrollbar{display:none}
+        .att-tab{display:flex;align-items:center;gap:7px;padding:9px 15px;border:none;border-radius:10px;background:none;cursor:pointer;font:600 13.5px/1 ${font};color:${C.inkMuted};white-space:nowrap;transition:background .15s,color .15s}
+        .att-tab:hover{color:${C.ink};background:#f3f0e8}
+        .att-tab.on{background:linear-gradient(180deg,#1e3a6e,#132a4f);color:#fff;box-shadow:0 6px 14px -6px rgba(19,42,79,.6)}
+        .att-tab.on svg{color:${C.goldLt}}
+      `}</style>
       {/* Main content */}
       <div style={{
-        padding: isMobile ? '16px 14px' : '28px 32px', maxWidth: 1200, margin: '0 auto',
+        padding: isMobile ? '14px 12px' : '24px 28px', maxWidth: 1240, margin: '0 auto',
         paddingBottom: isMobile ? 84 : 28,
       }}>
+        <AttendanceHero isMobile={isMobile} route={route}
+          onMark={() => navigateTo('mark')}
+          onStudents={goToModule ? () => goToModule('students') : null} />
+
+        {!isMobile && (
+          <nav className="att-tabs" role="tablist">
+            {NAV_ITEMS.map(item => (
+              <button key={item.key} role="tab" aria-selected={route === item.key} className={'att-tab' + (route === item.key ? ' on' : '')} onClick={() => navigateTo(item.key)}>
+                <item.icon size={15} /> {item.label}
+              </button>
+            ))}
+          </nav>
+        )}
+
+        {/* Mobile: the bottom bar holds 5 pages; the rest open from "More". */}
+        {isMobile && navOpen && (
+          <div onClick={e => e.stopPropagation()} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, boxShadow: C.shadowMd, padding: 6, marginBottom: 14 }}>
+            {NAV_ITEMS.slice(5).map(item => {
+              const active = route === item.key
+              return (
+                <button key={item.key} onClick={() => navigateTo(item.key)} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '11px 12px', borderRadius: 10, border: 'none',
+                  background: active ? C.indigoSoft : 'transparent', color: active ? C.indigo : C.ink,
+                  fontFamily: font, fontWeight: 600, fontSize: 14, cursor: 'pointer', textAlign: 'left',
+                }}>
+                  <item.icon size={16} /> {item.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {renderPage()}
       </div>
 

@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import ExcelJS from 'exceljs'
+import { PremiumStyles, PremiumHero, PIcon, PX } from './premiumUI'
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
@@ -200,7 +201,7 @@ const BUILTIN_PRESETS = [
 ]
 
 const DEFAULT_INSTITUTE = { name: 'Guidance Navodaya & Sainik Institute', address: 'Khangabok Sorok Wangma, Thoubal, Manipur', phone: '+91-8974298074' }
-const CHART_COLORS = ['#1e3a5f','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316']
+const CHART_COLORS = ['#132a4f','#2f4f86','#10b981','#f59e0b','#ef4444','#b8923a','#06b6d4','#f97316']
 const POSITIVE = new Set(['Confirmed','Paid','Present','Passed','Occupied','Approved','Active','Enrolled','Completed','Income'])
 const NEGATIVE  = new Set(['Pending','Absent','Vacant','Rejected','Unpaid','Failed','Cancelled','Dropped','Overdue','Expense'])
 
@@ -213,7 +214,7 @@ function fmt(v) {
 }
 
 function StatusBadge({ value }) {
-  if (!value) return <span style={{ color: '#94a3b8' }}>—</span>
+  if (!value) return <span style={{ color: '#8a93a6' }}>—</span>
   const isPos = POSITIVE.has(value), isNeg = NEGATIVE.has(value)
   return (
     <span style={{
@@ -226,47 +227,47 @@ function StatusBadge({ value }) {
 }
 
 function SortIcon({ col, sortCol, sortDir }) {
-  if (sortCol !== col) return <span style={{ color: '#cbd5e1', marginLeft: 4, fontSize: 10 }}>↕</span>
-  return <span style={{ color: '#3b82f6', marginLeft: 4, fontSize: 10 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>
+  if (sortCol !== col) return <span style={{ color: '#d9d2c2', marginLeft: 4, fontSize: 10 }}>↕</span>
+  return <span style={{ color: '#2f4f86', marginLeft: 4, fontSize: 10 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>
 }
 
 // ─── CSS ──────────────────────────────────────────────────────
 const CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
   .rpt-root * { box-sizing: border-box; }
-  .rpt-root { font-family: 'DM Sans', system-ui, sans-serif; background: #f0f4f8; min-height: 100vh; }
+  .rpt-root { font-family: 'Plus Jakarta Sans','Inter',system-ui,sans-serif; background: #f7f5f0; min-height: 100vh; color: #0f1b2e; }
   .rpt-root input, .rpt-root select, .rpt-root textarea, .rpt-root button { font-family: inherit; }
-  .rpt-root input:focus, .rpt-root select:focus { outline: 2px solid #1e3a5f; outline-offset: 1px; }
-  .rpt-card { background: white; border-radius: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04); border: 1px solid #e8edf2; }
-  .rpt-input { width: 100%; padding: 10px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; font-size: 14px; background: #fafbfc; color: #1e293b; transition: border-color .15s; }
-  .rpt-input:focus { border-color: #1e3a5f; background: white; }
-  .rpt-btn-primary { background: linear-gradient(135deg,#1e3a5f,#2d5490); color: white; border: none; border-radius: 10px; padding: 11px 20px; font-weight: 700; font-size: 14px; cursor: pointer; transition: all .15s; white-space: nowrap; }
+  .rpt-root input:focus, .rpt-root select:focus { outline: none; border-color: #b8923a !important; box-shadow: 0 0 0 4px rgba(184,146,58,.16); }
+  .rpt-card { background: white; border-radius: 18px; box-shadow: 0 1px 2px rgba(19,42,79,.05), 0 12px 32px -22px rgba(19,42,79,.35); border: 1px solid #e8e3d8; }
+  .rpt-input { width: 100%; padding: 10px 14px; border: 1.5px solid #e8e3d8; border-radius: 10px; font-size: 14px; background: #ffffff; color: #14213d; transition: border-color .15s; }
+  .rpt-input:focus { border-color: #132a4f; background: white; }
+  .rpt-btn-primary { background: linear-gradient(135deg,#132a4f,#1e3a6e); color: white; border: none; border-radius: 10px; padding: 11px 20px; font-weight: 700; font-size: 14px; cursor: pointer; transition: all .15s; white-space: nowrap; }
   .rpt-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(30,58,95,.3); }
   .rpt-btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
-  .rpt-src-btn { padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; border: 1.5px solid transparent; white-space: nowrap; background: #f1f5f9; color: #475569; }
-  .rpt-src-btn:hover { background: #e2e8f0; }
-  .rpt-src-btn.active { background: #1e3a5f; color: white; border-color: #1e3a5f; box-shadow: 0 2px 8px rgba(30,58,95,.25); }
-  .rpt-preset-btn { padding: 7px 13px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1.5px solid #f59e0b44; background: #fffbeb; color: #92400e; transition: all .15s; white-space: nowrap; }
-  .rpt-preset-btn:hover { background: #fef3c7; border-color: #f59e0b; }
-  .rpt-preset-btn.custom { border-color: #e2e8f0; background: #f8fafc; color: #475569; }
-  .rpt-preset-btn.custom:hover { background: #f1f5f9; }
+  .rpt-src-btn { padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; border: 1.5px solid transparent; white-space: nowrap; background: #f3f0e8; color: #4b5870; }
+  .rpt-src-btn:hover { background: #e8e3d8; }
+  .rpt-src-btn.active { background: linear-gradient(180deg,#1e3a6e,#132a4f); color: white; border-color: #132a4f; box-shadow: 0 6px 14px -6px rgba(19,42,79,.6); }
+  .rpt-preset-btn { padding: 7px 13px; border-radius: 99px; font-size: 12px; font-weight: 700; cursor: pointer; border: 1px solid #eadbb2; background: #f6efdc; color: #6b4e0f; transition: all .15s; white-space: nowrap; }
+  .rpt-preset-btn:hover { background: #efe2bf; border-color: #b8923a; }
+  .rpt-preset-btn.custom { border-color: #e8e3d8; background: #faf8f3; color: #4b5870; }
+  .rpt-preset-btn.custom:hover { background: #f3f0e8; }
   .rpt-col-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: grab; user-select: none; transition: all .15s; border: 1.5px solid transparent; }
-  .rpt-col-chip.on { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
-  .rpt-col-chip.off { background: #f8fafc; color: #94a3b8; border-color: #e2e8f0; }
+  .rpt-col-chip.on { background: #eef2f9; color: #1e3a6e; border-color: #c9d5ea; }
+  .rpt-col-chip.off { background: #faf8f3; color: #8a93a6; border-color: #e8e3d8; }
   .rpt-col-chip:active { cursor: grabbing; opacity: .6; transform: scale(.95); }
   .rpt-export-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 9px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; transition: all .15s; white-space: nowrap; }
   .rpt-export-btn:hover { transform: translateY(-1px); }
   .rpt-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .rpt-table th { padding: 11px 14px; text-align: left; font-weight: 700; font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .04em; background: #f8fafc; border-bottom: 1.5px solid #e8edf2; white-space: nowrap; cursor: pointer; user-select: none; }
-  .rpt-table th:hover { color: #1e3a5f; }
-  .rpt-table td { padding: 11px 14px; border-bottom: 1px solid #f1f5f9; color: #374151; vertical-align: middle; }
-  .rpt-table tr:hover td { background: #f8fafc; }
+  .rpt-table th { padding: 11px 14px; text-align: left; font-weight: 700; font-size: 11px; color: #5d6b82; text-transform: uppercase; letter-spacing: .04em; background: #faf8f3; border-bottom: 1.5px solid #e8e3d8; white-space: nowrap; cursor: pointer; user-select: none; }
+  .rpt-table th:hover { color: #132a4f; }
+  .rpt-table td { padding: 11px 14px; border-bottom: 1px solid #f3f0e8; color: #2e3b52; vertical-align: middle; }
+  .rpt-table tr:hover td { background: #faf8f3; }
   .rpt-table tr:last-child td { border-bottom: none; }
-  .rpt-stat-card { background: white; border-radius: 14px; padding: 18px 20px; border: 1px solid #e8edf2; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
-  .rpt-group-hdr { background: linear-gradient(90deg,#f0f4f8,#f8fafc); padding: 9px 16px; font-size: 11px; font-weight: 800; color: #1e3a5f; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid #e8edf2; display: flex; justify-content: space-between; align-items: center; }
-  .rpt-tab { padding: 9px 18px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; background: none; transition: all .15s; border-radius: 8px; color: #64748b; }
-  .rpt-tab.active { background: #1e3a5f; color: white; }
-  .rpt-section-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: #94a3b8; margin-bottom: 8px; display: block; }
+  .rpt-stat-card { background: white; border-radius: 14px; padding: 18px 20px; border: 1px solid #e8e3d8; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .rpt-group-hdr { background: #f6efdc; border-top: 1px solid #eadbb2; padding: 9px 16px; font-size: 11px; font-weight: 800; color: #132a4f; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid #e8e3d8; display: flex; justify-content: space-between; align-items: center; }
+  .rpt-tab { padding: 9px 18px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; background: none; transition: all .15s; border-radius: 8px; color: #5d6b82; }
+  .rpt-tab.active { background: linear-gradient(180deg,#1e3a6e,#132a4f); color: white; box-shadow: 0 6px 14px -6px rgba(19,42,79,.6); }
+  .rpt-section-label { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .14em; color: #b8923a; margin-bottom: 8px; display: block; }
   .rpt-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 99px; font-size: 11px; font-weight: 700; }
   .rpt-mono { font-family: 'DM Mono', monospace; }
   @media (max-width: 768px) {
@@ -475,74 +476,72 @@ export default function Reports() {
   }
 
   const exportWord = () => {
-    const headers=['#',...activeCols.map(c=>c.label)].map(h=>`<th style="border:1px solid #cbd5e1;padding:8px 12px;background:#1e3a5f;color:#fff;font-size:12px;">${h}</th>`).join('')
-    const body=rows.map((row,i)=>`<tr>${[i+1,...activeCols.map(c=>fmt(row[c.key]))].map(v=>`<td style="border:1px solid #e2e8f0;padding:8px 12px;font-size:12px;">${v}</td>`).join('')}</tr>`).join('')
-    const html=`<html><head><meta charset="utf-8"/></head><body style="font-family:Arial,sans-serif;margin:30px;"><div style="border-bottom:2px solid #1e3a5f;padding-bottom:12px;margin-bottom:16px;"><div style="font-size:18px;font-weight:700;color:#1e3a5f;">${institute.name}</div><div style="font-size:12px;color:#475569;">${institute.address} | ${institute.phone}</div><div style="font-size:12px;color:#475569;">Report: ${source.label} | Date: ${generatedText} | Total: ${rows.length}</div></div><table style="width:100%;border-collapse:collapse;"><thead><tr>${headers}</tr></thead><tbody>${body}</tbody></table></body></html>`
+    const headers=['#',...activeCols.map(c=>c.label)].map(h=>`<th style="border:1px solid #d9d2c2;padding:8px 12px;background:#132a4f;color:#fff;font-size:12px;">${h}</th>`).join('')
+    const body=rows.map((row,i)=>`<tr>${[i+1,...activeCols.map(c=>fmt(row[c.key]))].map(v=>`<td style="border:1px solid #e8e3d8;padding:8px 12px;font-size:12px;">${v}</td>`).join('')}</tr>`).join('')
+    const html=`<html><head><meta charset="utf-8"/></head><body style="font-family:Arial,sans-serif;margin:30px;"><div style="border-bottom:2px solid #132a4f;padding-bottom:12px;margin-bottom:16px;"><div style="font-size:18px;font-weight:700;color:#132a4f;">${institute.name}</div><div style="font-size:12px;color:#4b5870;">${institute.address} | ${institute.phone}</div><div style="font-size:12px;color:#4b5870;">Report: ${source.label} | Date: ${generatedText} | Total: ${rows.length}</div></div><table style="width:100%;border-collapse:collapse;"><thead><tr>${headers}</tr></thead><tbody>${body}</tbody></table></body></html>`
     const blob=new Blob([html],{type:'application/msword'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`GNSI-${source.label}-Report-${fileStamp}.doc`; a.click(); URL.revokeObjectURL(url)
   }
 
   const handlePrint = () => {
-    const headers=['#',...activeCols.map(c=>c.label)].map(h=>`<th style="border:1px solid #cbd5e1;padding:8px 10px;background:#1e3a5f;color:#fff;font-size:11px;">${h}</th>`).join('')
-    const body=rows.map((row,i)=>`<tr>${[i+1,...activeCols.map(c=>fmt(row[c.key]))].map(v=>`<td style="border:1px solid #e2e8f0;padding:8px 10px;font-size:11px;">${v}</td>`).join('')}</tr>`).join('')
+    const headers=['#',...activeCols.map(c=>c.label)].map(h=>`<th style="border:1px solid #d9d2c2;padding:8px 10px;background:#132a4f;color:#fff;font-size:11px;">${h}</th>`).join('')
+    const body=rows.map((row,i)=>`<tr>${[i+1,...activeCols.map(c=>fmt(row[c.key]))].map(v=>`<td style="border:1px solid #e8e3d8;padding:8px 10px;font-size:11px;">${v}</td>`).join('')}</tr>`).join('')
     const win=window.open('','_blank','width=1050,height=750'); if(!win)return
-    win.document.write(`<html><head><meta charset="utf-8"/><style>body{font-family:Arial,sans-serif;padding:22px;}table{width:100%;border-collapse:collapse;}@page{margin:14mm;}</style></head><body><div style="border-bottom:2px solid #1e3a5f;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;"><div><div style="font-size:18px;font-weight:700;color:#1e3a5f;">${institute.name}</div><div style="font-size:11px;color:#475569;">${institute.address} | ${institute.phone}</div></div><div style="text-align:right;font-size:11px;color:#475569;"><strong>${source.label} Report</strong><br/>Date: ${generatedText}<br/>Total: ${rows.length}</div></div><table><thead><tr>${headers}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();setTimeout(()=>window.close(),400)}<\/script></body></html>`)
+    win.document.write(`<html><head><meta charset="utf-8"/><style>body{font-family:Arial,sans-serif;padding:22px;}table{width:100%;border-collapse:collapse;}@page{margin:14mm;}</style></head><body><div style="border-bottom:2px solid #132a4f;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;"><div><div style="font-size:18px;font-weight:700;color:#132a4f;">${institute.name}</div><div style="font-size:11px;color:#4b5870;">${institute.address} | ${institute.phone}</div></div><div style="text-align:right;font-size:11px;color:#4b5870;"><strong>${source.label} Report</strong><br/>Date: ${generatedText}<br/>Total: ${rows.length}</div></div><table><thead><tr>${headers}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();setTimeout(()=>window.close(),400)}<\/script></body></html>`)
     win.document.close()
   }
 
   // ── Render ─────────────────────────────────────────────────────
   return (
-    <div className="rpt-root">
+    <div className="rpt-root px-root">
+      <PremiumStyles />
       <style>{CSS}</style>
 
       <div style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 16px' }}>
 
         {/* ── Header ── */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <h1 style={{ fontSize: 24, fontWeight: 800, color: '#1e3a5f', margin: 0, letterSpacing: '-.02em' }}>
-              📈 Report Generator
-            </h1>
-            <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0' }}>
-              {SOURCES.length} modules · PDF · Excel · CSV · Word · Print
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => setShowInstHdr(v => !v)}
-              style={{ padding: '8px 14px', borderRadius: 9, border: '1.5px solid #e2e8f0', background: showInstHdr ? '#1e3a5f' : 'white', color: showInstHdr ? 'white' : '#475569', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-              🏫 Header
-            </button>
-            <button onClick={() => setShowLog(v => !v)}
-              style={{ padding: '8px 14px', borderRadius: 9, border: '1.5px solid #e2e8f0', background: showLog ? '#1e3a5f' : 'white', color: showLog ? 'white' : '#475569', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-              📋 Log ({reportLog.length})
-            </button>
-          </div>
-        </div>
+        <PremiumHero
+          isMobile={typeof window !== 'undefined' && window.innerWidth < 640}
+          icon={<PIcon.report size={24} />}
+          eyebrow="GNSI · Reports"
+          title="Report Generator"
+          subtitle="Any module → a letterheaded PDF, Excel, CSV, Word or print report"
+          actions={<>
+            <button className={'px-hbtn' + (showInstHdr ? ' on' : '')} onClick={() => setShowInstHdr(v => !v)}><PIcon.settings size={15} /> Letterhead</button>
+            <button className={'px-hbtn' + (showLog ? ' on' : '')} onClick={() => setShowLog(v => !v)}><PIcon.clock size={15} /> History ({reportLog.length})</button>
+          </>}
+          stats={[
+            { label: 'Data sources', value: SOURCES.length, sub: 'modules available' },
+            { label: 'Current source', value: SOURCES.find(x => x.key === sourceKey)?.label || sourceKey, sub: generated ? `${rows.length} rows ready` : 'not generated yet', tone: PX.goldLt },
+            { label: 'Saved presets', value: savedPresets.length + BUILTIN_PRESETS.length, sub: `${savedPresets.length} of your own` },
+            { label: 'Reports made', value: reportLog.length, sub: 'on this device' },
+          ]}
+        />
 
         {/* ── Institute Header (collapsible) ── */}
         {showInstHdr && (
           <div className="rpt-card rpt-fade-in" style={{ padding: 20, marginBottom: 16 }}>
-            <h2 style={{ fontSize: 12, fontWeight: 800, color: '#1e3a5f', textTransform: 'uppercase', letterSpacing: '.06em', margin: '0 0 14px' }}>🏫 Institute Header</h2>
+            <h2 style={{ fontSize: 12, fontWeight: 800, color: '#132a4f', textTransform: 'uppercase', letterSpacing: '.06em', margin: '0 0 14px' }}>🏫 Institute Header</h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 16 }} className="rpt-grid-3">
               {[{ label: 'Institute Name', key: 'name' }, { label: 'Address', key: 'address' }, { label: 'Phone', key: 'phone' }].map(f => (
                 <div key={f.key}>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>{f.label}</label>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>{f.label}</label>
                   <input className="rpt-input" value={institute[f.key]} onChange={e => setInstitute({ ...institute, [f.key]: e.target.value })} />
                 </div>
               ))}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>Upload Logo</label>
-                <input ref={fileRef} type="file" accept="image/*" onChange={handleLogo} style={{ fontSize: 12, color: '#64748b' }} />
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>Upload Logo</label>
+                <input ref={fileRef} type="file" accept="image/*" onChange={handleLogo} style={{ fontSize: 12, color: '#5d6b82' }} />
               </div>
               {logoDataUrl
                 ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <img src={logoDataUrl} alt="Logo" style={{ width: 52, height: 52, borderRadius: 10, objectFit: 'contain', border: '1.5px solid #e2e8f0' }} />
+                    <img src={logoDataUrl} alt="Logo" style={{ width: 52, height: 52, borderRadius: 10, objectFit: 'contain', border: '1.5px solid #e8e3d8' }} />
                     <button onClick={() => setLogoDataUrl('')} style={{ fontSize: 11, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
                   </div>
-                : <div style={{ width: 52, height: 52, borderRadius: 10, background: '#1e3a5f', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 20 }}>G</div>}
+                : <div style={{ width: 52, height: 52, borderRadius: 10, background: '#132a4f', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: 20 }}>G</div>}
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>Watermark</label>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>Watermark</label>
                 <select className="rpt-input" style={{ width: 'auto' }} value={watermark} onChange={e => setWatermark(e.target.value)}>
                   <option value="">None</option>
                   <option value="CONFIDENTIAL">CONFIDENTIAL</option>
@@ -558,12 +557,12 @@ export default function Reports() {
         {showLog && (
           <div className="rpt-card rpt-fade-in" style={{ padding: 20, marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h2 style={{ fontSize: 13, fontWeight: 800, color: '#1e3a5f', margin: 0 }}>📋 Report History</h2>
+              <h2 style={{ fontSize: 13, fontWeight: 800, color: '#132a4f', margin: 0 }}>📋 Report History</h2>
               <button onClick={() => { setReportLog([]); localStorage.removeItem('gnsi_report_log') }}
                 style={{ fontSize: 12, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Clear All</button>
             </div>
             {reportLog.length === 0
-              ? <p style={{ fontSize: 13, color: '#94a3b8' }}>No reports generated yet.</p>
+              ? <p style={{ fontSize: 13, color: '#8a93a6' }}>No reports generated yet.</p>
               : <div style={{ overflowX: 'auto' }}>
                   <table className="rpt-table">
                     <thead><tr><th>Source</th><th>Status</th><th>Records</th><th>Generated At</th></tr></thead>
@@ -572,8 +571,8 @@ export default function Reports() {
                         <tr key={e.id}>
                           <td style={{ fontWeight: 600 }}>{e.source}</td>
                           <td>{e.filters.statusFilter}</td>
-                          <td style={{ fontWeight: 700, color: '#1e3a5f' }} className="rpt-mono">{e.total}</td>
-                          <td style={{ color: '#94a3b8', fontSize: 12 }}>{e.at}</td>
+                          <td style={{ fontWeight: 700, color: '#132a4f' }} className="rpt-mono">{e.total}</td>
+                          <td style={{ color: '#8a93a6', fontSize: 12 }}>{e.at}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -585,9 +584,9 @@ export default function Reports() {
         {/* ── Presets ── */}
         <div className="rpt-card" style={{ padding: 18, marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: '#1e3a5f', textTransform: 'uppercase', letterSpacing: '.06em' }}>⚡ Quick Presets</span>
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#132a4f', textTransform: 'uppercase', letterSpacing: '.06em' }}>⚡ Quick Presets</span>
             <button onClick={() => setShowPresetBox(v => !v)}
-              style={{ fontSize: 12, fontWeight: 700, padding: '6px 12px', borderRadius: 8, background: '#1e3a5f', color: 'white', border: 'none', cursor: 'pointer' }}>
+              style={{ fontSize: 12, fontWeight: 700, padding: '6px 12px', borderRadius: 8, background: '#132a4f', color: 'white', border: 'none', cursor: 'pointer' }}>
               + Save Preset
             </button>
           </div>
@@ -596,7 +595,7 @@ export default function Reports() {
               <input className="rpt-input" style={{ flex: 1, minWidth: 160 }} placeholder="Preset name…" value={presetName}
                 onChange={e => setPresetName(e.target.value)} onKeyDown={e => e.key === 'Enter' && savePreset()} />
               <button onClick={savePreset} style={{ padding: '10px 16px', borderRadius: 9, background: '#16a34a', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>Save</button>
-              <button onClick={() => setShowPresetBox(false)} style={{ padding: '10px 14px', borderRadius: 9, background: '#f1f5f9', color: '#64748b', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Cancel</button>
+              <button onClick={() => setShowPresetBox(false)} style={{ padding: '10px 14px', borderRadius: 9, background: '#f3f0e8', color: '#5d6b82', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Cancel</button>
             </div>
           )}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -615,10 +614,10 @@ export default function Reports() {
         {/* ── Source & Filters ── */}
         <div className="rpt-card" style={{ marginBottom: 16 }}>
           {/* Card header */}
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: '#1e3a5f', textTransform: 'uppercase', letterSpacing: '.06em' }}>📂 Report Source & Filters</span>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid #f3f0e8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#132a4f', textTransform: 'uppercase', letterSpacing: '.06em' }}>📂 Report Source & Filters</span>
             <button onClick={() => setShowFilters(v => !v)}
-              style={{ fontSize: 12, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+              style={{ fontSize: 12, color: '#5d6b82', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
               {showFilters ? '▲ Collapse' : '▼ Expand'}
             </button>
           </div>
@@ -645,12 +644,12 @@ export default function Reports() {
               {/* Filters */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 16 }} className="rpt-grid-3">
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>Search</label>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>Search</label>
                   <input className="rpt-input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search any field…" />
                 </div>
                 {source.statusCol && (
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>Status</label>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>Status</label>
                     <select className="rpt-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
                       {availableStatuses.map(s => <option key={s}>{s}</option>)}
                     </select>
@@ -659,18 +658,18 @@ export default function Reports() {
                 {source.dateCol && (
                   <>
                     <div>
-                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>Date From</label>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>Date From</label>
                       <input type="date" className="rpt-input" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
                     </div>
                     <div>
-                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>Date To</label>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>Date To</label>
                       <input type="date" className="rpt-input" value={dateTo} onChange={e => setDateTo(e.target.value)} />
                     </div>
                   </>
                 )}
                 {source.groupCols?.length > 0 && (
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>Group By</label>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.04em' }}>Group By</label>
                     <select className="rpt-input" value={groupBy} onChange={e => setGroupBy(e.target.value)}>
                       <option value="">— No Grouping —</option>
                       {source.groupCols.map(c => <option key={c} value={c}>{c}</option>)}
@@ -686,8 +685,8 @@ export default function Reports() {
 
               {/* Column toggles */}
               <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                  Columns <span style={{ fontWeight: 400, textTransform: 'none', color: '#94a3b8' }}>— drag to reorder</span>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#5d6b82', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                  Columns <span style={{ fontWeight: 400, textTransform: 'none', color: '#8a93a6' }}>— drag to reorder</span>
                 </label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {(selectedCols.length ? selectedCols : source.columns.map(c => c.key)).map((key, i) => {
@@ -700,8 +699,8 @@ export default function Reports() {
                         onDragStart={() => handleDragStart(i)}
                         onDragOver={e => handleDragOver(e, i)}
                         onDragEnd={handleDragEnd}>
-                        <span style={{ color: '#cbd5e1', fontSize: 11 }}>⠿</span>
-                        <input type="checkbox" checked={on} onChange={() => toggleCol(key)} style={{ accentColor: '#1e3a5f', width: 12, height: 12 }} />
+                        <span style={{ color: '#d9d2c2', fontSize: 11 }}>⠿</span>
+                        <input type="checkbox" checked={on} onChange={() => toggleCol(key)} style={{ accentColor: '#132a4f', width: 12, height: 12 }} />
                         <span style={{ fontSize: 12 }}>{col.label}</span>
                       </div>
                     )
@@ -722,24 +721,24 @@ export default function Reports() {
         {/* ── Stats ── */}
         {generated && (
           <div className="rpt-fade-in" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }} >
-            <div className="rpt-stat-card" style={{ borderLeft: '4px solid #3b82f6' }}>
-              <p style={{ fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', margin: 0 }}>Total Records</p>
-              <p className="rpt-mono" style={{ fontSize: 30, fontWeight: 800, color: '#1e3a5f', margin: '4px 0 0', lineHeight: 1 }}>{rows.length}</p>
-              {allRows.length !== rows.length && <p style={{ fontSize: 11, color: '#94a3b8', margin: '4px 0 0' }}>of {allRows.length} fetched</p>}
+            <div className="rpt-stat-card" style={{ borderLeft: '4px solid #2f4f86' }}>
+              <p style={{ fontSize: 10, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.06em', margin: 0 }}>Total Records</p>
+              <p className="rpt-mono" style={{ fontSize: 30, fontWeight: 800, color: '#132a4f', margin: '4px 0 0', lineHeight: 1 }}>{rows.length}</p>
+              {allRows.length !== rows.length && <p style={{ fontSize: 11, color: '#8a93a6', margin: '4px 0 0' }}>of {allRows.length} fetched</p>}
             </div>
             <div className="rpt-stat-card" style={{ borderLeft: '4px solid #22c55e' }}>
-              <p style={{ fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', margin: 0 }}>Positive</p>
+              <p style={{ fontSize: 10, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.06em', margin: 0 }}>Positive</p>
               <p className="rpt-mono" style={{ fontSize: 30, fontWeight: 800, color: '#16a34a', margin: '4px 0 0', lineHeight: 1 }}>{positiveCount}</p>
             </div>
             <div className="rpt-stat-card" style={{ borderLeft: '4px solid #f87171' }}>
-              <p style={{ fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', margin: 0 }}>Pending / Other</p>
+              <p style={{ fontSize: 10, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.06em', margin: 0 }}>Pending / Other</p>
               <p className="rpt-mono" style={{ fontSize: 30, fontWeight: 800, color: '#ef4444', margin: '4px 0 0', lineHeight: 1 }}>{negativeCount}</p>
             </div>
             {source.aggregates.map(col => {
               const colDef = source.columns.find(c => c.key === col)
               return (
                 <div key={col} className="rpt-stat-card" style={{ borderLeft: '4px solid #f59e0b' }}>
-                  <p style={{ fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em', margin: 0 }}>Total {colDef?.label || col}</p>
+                  <p style={{ fontSize: 10, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.06em', margin: 0 }}>Total {colDef?.label || col}</p>
                   <p className="rpt-mono" style={{ fontSize: 22, fontWeight: 800, color: '#d97706', margin: '4px 0 0', lineHeight: 1 }}>₹{(aggregates[col] || 0).toLocaleString('en-IN')}</p>
                 </div>
               )
@@ -754,13 +753,13 @@ export default function Reports() {
               { label: '📄 PDF',   fn: exportPdf,   bg: '#dc2626' },
               { label: '📊 Excel', fn: exportExcel, bg: '#16a34a' },
               { label: '📁 CSV',   fn: exportCsv,   bg: '#0891b2' },
-              { label: '📝 Word',  fn: exportWord,  bg: '#1d4ed8' },
-              { label: '🖨️ Print', fn: handlePrint, bg: '#475569' },
+              { label: '📝 Word',  fn: exportWord,  bg: '#1e3a6e' },
+              { label: '🖨️ Print', fn: handlePrint, bg: '#4b5870' },
             ].map(({ label, fn, bg }) => (
               <button key={label} className="rpt-export-btn" onClick={fn}
                 style={{ background: bg, color: 'white' }}>{label}</button>
             ))}
-            <div style={{ marginLeft: 'auto', display: 'flex', background: '#f1f5f9', borderRadius: 10, padding: 3, gap: 2 }}>
+            <div style={{ marginLeft: 'auto', display: 'flex', background: '#f3f0e8', borderRadius: 10, padding: 3, gap: 2 }}>
               {['table', 'charts'].map(t => (
                 <button key={t} className={`rpt-tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>
                   {t === 'table' ? '📋 Table' : '📊 Charts'}
@@ -775,7 +774,7 @@ export default function Reports() {
           <div className="rpt-fade-in" style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 16, marginBottom: 16 }}>
             {chartData.length > 0 && (
               <div className="rpt-card" style={{ padding: 20 }}>
-                <h3 style={{ fontSize: 13, fontWeight: 700, color: '#1e3a5f', margin: '0 0 14px' }}>Status Distribution</h3>
+                <h3 style={{ fontSize: 13, fontWeight: 700, color: '#132a4f', margin: '0 0 14px' }}>Status Distribution</h3>
                 <ResponsiveContainer width="100%" height={220}>
                   <PieChart>
                     <Pie data={chartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}
@@ -789,7 +788,7 @@ export default function Reports() {
             )}
             {groupChartData.length > 0 && (
               <div className="rpt-card" style={{ padding: 20 }}>
-                <h3 style={{ fontSize: 13, fontWeight: 700, color: '#1e3a5f', margin: '0 0 14px' }}>Records by {groupBy}</h3>
+                <h3 style={{ fontSize: 13, fontWeight: 700, color: '#132a4f', margin: '0 0 14px' }}>Records by {groupBy}</h3>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={groupChartData} margin={{ bottom: 30 }}>
                     <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-30} textAnchor="end" />
@@ -809,18 +808,18 @@ export default function Reports() {
         {activeTab === 'table' && (
           <div className="rpt-card rpt-fade-in" style={{ overflow: 'hidden' }}>
             {/* Table header */}
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid #f3f0e8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 15, fontWeight: 800, color: '#1e3a5f' }}>{source.icon} {source.label} Report</span>
-                {generated && <span style={{ fontSize: 11, color: '#94a3b8' }}>{rows.length} records</span>}
+                <span style={{ fontSize: 15, fontWeight: 800, color: '#132a4f' }}>{source.icon} {source.label} Report</span>
+                {generated && <span style={{ fontSize: 11, color: '#8a93a6' }}>{rows.length} records</span>}
               </div>
               {generated && totalPages > 1 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                    style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontSize: 13, opacity: page === 1 ? .4 : 1 }}>‹</button>
-                  <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>{page} / {totalPages}</span>
+                    style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #e8e3d8', background: 'white', cursor: 'pointer', fontSize: 13, opacity: page === 1 ? .4 : 1 }}>‹</button>
+                  <span style={{ fontSize: 12, color: '#5d6b82', fontWeight: 600 }}>{page} / {totalPages}</span>
                   <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                    style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontSize: 13, opacity: page === totalPages ? .4 : 1 }}>›</button>
+                    style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #e8e3d8', background: 'white', cursor: 'pointer', fontSize: 13, opacity: page === totalPages ? .4 : 1 }}>›</button>
                 </div>
               )}
             </div>
@@ -831,7 +830,7 @@ export default function Reports() {
                   <div key={group}>
                     <div className="rpt-group-hdr">
                       <span>{groupBy}: {group}</span>
-                      <span style={{ color: '#94a3b8', fontWeight: 500, fontSize: 11 }}>{gRows.length} records</span>
+                      <span style={{ color: '#8a93a6', fontWeight: 500, fontSize: 11 }}>{gRows.length} records</span>
                     </div>
                     <table className="rpt-table">
                       <thead><tr>
@@ -843,7 +842,7 @@ export default function Reports() {
                       <tbody>
                         {gRows.map((row, i) => (
                           <tr key={row.id || i}>
-                            <td style={{ color: '#94a3b8', fontSize: 11 }} className="rpt-mono">{i + 1}</td>
+                            <td style={{ color: '#8a93a6', fontSize: 11 }} className="rpt-mono">{i + 1}</td>
                             {activeCols.map(col => (
                               <td key={col.key}>{col.key === source.statusCol ? <StatusBadge value={row[col.key]} /> : <span>{fmt(row[col.key])}</span>}</td>
                             ))}
@@ -863,15 +862,15 @@ export default function Reports() {
                   </tr></thead>
                   <tbody>
                     {!generated ? (
-                      <tr><td colSpan={activeCols.length + 1} style={{ padding: '48px 20px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
-                        Select a source and click <strong style={{ color: '#1e3a5f' }}>Generate Report</strong>
+                      <tr><td colSpan={activeCols.length + 1} style={{ padding: '48px 20px', textAlign: 'center', color: '#8a93a6', fontSize: 14 }}>
+                        Select a source and click <strong style={{ color: '#132a4f' }}>Generate Report</strong>
                       </td></tr>
                     ) : pagedRows.length === 0 ? (
-                      <tr><td colSpan={activeCols.length + 1} style={{ padding: '48px 20px', textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>No records found</td></tr>
+                      <tr><td colSpan={activeCols.length + 1} style={{ padding: '48px 20px', textAlign: 'center', color: '#8a93a6', fontSize: 14 }}>No records found</td></tr>
                     ) : (
                       pagedRows.map((row, i) => (
                         <tr key={row.id || (page - 1) * PAGE_SIZE + i}>
-                          <td style={{ color: '#94a3b8', fontSize: 11 }} className="rpt-mono">{(page - 1) * PAGE_SIZE + i + 1}</td>
+                          <td style={{ color: '#8a93a6', fontSize: 11 }} className="rpt-mono">{(page - 1) * PAGE_SIZE + i + 1}</td>
                           {activeCols.map(col => (
                             <td key={col.key}>{col.key === source.statusCol ? <StatusBadge value={row[col.key]} /> : <span>{fmt(row[col.key])}</span>}</td>
                           ))}
@@ -885,8 +884,8 @@ export default function Reports() {
 
             {/* Pagination footer */}
             {generated && totalPages > 1 && !groupedRows && (
-              <div style={{ padding: '12px 18px', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                <span style={{ fontSize: 12, color: '#64748b' }}>
+              <div style={{ padding: '12px 18px', borderTop: '1px solid #f3f0e8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <span style={{ fontSize: 12, color: '#5d6b82' }}>
                   Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, rows.length)} of {rows.length}
                 </span>
                 <div style={{ display: 'flex', gap: 4 }}>
@@ -901,7 +900,7 @@ export default function Reports() {
                     { label: '»', fn: () => setPage(totalPages), dis: page === totalPages },
                   ].map((btn, i) => (
                     <button key={i} onClick={btn.fn} disabled={btn.dis}
-                      style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid #e2e8f0', background: btn.active ? '#1e3a5f' : 'white', color: btn.active ? 'white' : '#374151', fontSize: 12, fontWeight: 600, cursor: btn.dis ? 'not-allowed' : 'pointer', opacity: btn.dis ? .4 : 1, minWidth: 32 }}>
+                      style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid #e8e3d8', background: btn.active ? '#132a4f' : 'white', color: btn.active ? 'white' : '#2e3b52', fontSize: 12, fontWeight: 600, cursor: btn.dis ? 'not-allowed' : 'pointer', opacity: btn.dis ? .4 : 1, minWidth: 32 }}>
                       {btn.label}
                     </button>
                   ))}

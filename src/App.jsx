@@ -876,7 +876,8 @@ export default function App() {
     // FIX: removed feeledger duplicate alias
     courses:           <Courses           currentUser={currentUser} perms={perms('courses')}           />,
     teaching:          <Teaching          currentUser={currentUser} perms={perms('teaching')}          />,
-    attendance:        <Attendance        currentUser={currentUser} isAdmin={isAdmin} perms={perms('attendance')} />,
+    // onNavigate: Attendance ⇄ Students links (see courseMap.js hand-off)
+    attendance:        <Attendance        currentUser={currentUser} isAdmin={isAdmin} perms={perms('attendance')} onNavigate={setActive} />,
     exams:             <Exams             currentUser={currentUser} perms={perms('exams')}             />,
     timetable:         <Timetable         currentUser={currentUser} perms={perms('timetable')}         />,
     // FIX: feesetup now admin-only explicitly (was hidden but reachable)

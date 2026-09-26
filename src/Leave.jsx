@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import { staffDB } from './staffDB'
 import { useCurrentUser } from './useCurrentUser'
+import { isAdminRole } from './roles'
+import { PremiumStyles, PremiumHero, PremiumCard, PIcon, PX } from './premiumUI'
 
 // ─── Mobile hook ──────────────────────────────────────────────────────────────
 function useMobile() {
@@ -51,13 +53,13 @@ const emptyForm = {
 }
 
 const iStyle = {
-  width: '100%', padding: '10px 14px', borderRadius: '8px',
-  border: '1px solid #d1d5db', fontSize: '14px', backgroundColor: 'white',
+  width: '100%', padding: '10px 13px', borderRadius: '11px',
+  border: '1px solid #e8e3d8', fontSize: '13.5px', backgroundColor: 'white', color: '#0f1b2e',
   boxSizing: 'border-box', fontFamily: 'inherit'
 }
 const lStyle = {
-  display: 'block', fontSize: '13px', fontWeight: '600',
-  color: '#374151', marginBottom: '6px'
+  display: 'block', fontSize: '10.5px', fontWeight: '700', letterSpacing: '.08em', textTransform: 'uppercase',
+  color: '#5d6b82', marginBottom: '6px'
 }
 
 const statusStyle = (status) => {
@@ -66,7 +68,7 @@ const statusStyle = (status) => {
     Approved: { bg: '#dcfce7', color: '#16a34a' },
     Rejected: { bg: '#fee2e2', color: '#dc2626' }
   }
-  const s = map[status] || { bg: '#e5e7eb', color: '#374151' }
+  const s = map[status] || { bg: '#e8e3d8', color: '#2e3b52' }
   return {
     padding: '4px 10px', borderRadius: '999px', fontSize: '12px',
     fontWeight: '600', backgroundColor: s.bg, color: s.color, display: 'inline-block'
@@ -110,7 +112,9 @@ function Leave({ currentUser: currentUserProp }) {
   const mobile = useMobile()
   const { currentUser, userLoading } = useCurrentUser(currentUserProp)
 
-  const canManage     = useMemo(() => currentUser?.role === 'Admin' || currentUser?.role === 'Teaching + Admin', [currentUser])
+  // Was an exact 'Admin' match — 'Administrator' / 'Co-Admin' (the real admin
+  // roles) could neither apply nor approve leave. Same fix as other modules.
+  const canManage     = useMemo(() => isAdminRole(currentUser?.role) || ['admin', 'administrator', 'co-admin'].includes(String(currentUser?.role || '').toLowerCase()) || currentUser?.role === 'Teaching + Admin', [currentUser])
   const isLimitedUser = useMemo(() => currentUser?.role === 'Teaching' || currentUser?.role === 'Non-Teaching', [currentUser])
 
   const [staff,          setStaff]          = useState([])
@@ -366,7 +370,7 @@ function Leave({ currentUser: currentUserProp }) {
 
   // ─── Guards ────────────────────────────────────────────────────────────────
   if (userLoading) return (
-    <div style={{ textAlign: 'center', padding: '64px', color: '#64748b' }}>⏳ Loading user...</div>
+    <div className="px-root"><PremiumStyles /><div style={{ textAlign: 'center', padding: '64px', color: PX.sub }}>Loading…</div></div>
   )
   if (!currentUser) return (
     <div style={{ textAlign: 'center', padding: '64px', color: '#dc2626' }}>⚠️ Could not identify current user. Please log in again.</div>
@@ -374,81 +378,52 @@ function Leave({ currentUser: currentUserProp }) {
 
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: mobile ? '14px 12px' : '24px', maxWidth: '1400px', margin: '0 auto' }}>
+    <div className="px-root">
+    <PremiumStyles />
+    <div className="px-wrap" style={{ maxWidth: 1240 }}>
 
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', gap: 10, flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: mobile ? '20px' : '26px', fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>🏖️ Leave Management</h1>
-          {!mobile && (
-            <p style={{ color: '#64748b', fontSize: '14px', margin: '4px 0 0' }}>
-              {canManage
-                ? 'Manage staff leave applications · 12 days leave per session (Jan 10 – Jan 9)'
-                : `Your leave records — ${currentUser.name}`}
-            </p>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button onClick={() => setViewMode(v => v === 'list' ? 'calendar' : 'list')}
-            style={{ backgroundColor: '#f1f5f9', color: '#374151', border: 'none', borderRadius: '8px', padding: '10px 16px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
-            {viewMode === 'list' ? '📅 Calendar' : '📋 List'}
+      <PremiumHero
+        isMobile={mobile}
+        icon={<PIcon.leaf size={mobile ? 21 : 24} />}
+        eyebrow="GNSI · Staff leave"
+        title="Leave Management"
+        subtitle={canManage ? '12 days per session · Jan 10 – Jan 9 · resets every January 10' : `Your leave records — ${currentUser.name}`}
+        actions={<>
+          <button className="px-hbtn" onClick={() => setViewMode(v => v === 'list' ? 'calendar' : 'list')}>
+            {viewMode === 'list' ? <><PIcon.calendar size={15} /> Calendar</> : <><PIcon.list size={15} /> List</>}
           </button>
+          {canManage && <button className="px-hbtn" onClick={handleExport}><PIcon.download size={15} /> Export</button>}
           {canManage && (
-            <button onClick={handleExport}
-              style={{ backgroundColor: '#f1f5f9', color: '#374151', border: 'none', borderRadius: '8px', padding: '10px 16px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
-              📥 Export CSV
+            <button className="px-hbtn gold" onClick={() => setShowForm(v => !v)}>
+              {showForm ? 'Close form' : <><PIcon.plus size={15} /> Apply leave</>}
             </button>
           )}
-          {canManage && (
-            <button onClick={() => setShowForm(v => !v)}
-              style={{ backgroundColor: '#1e3a5f', color: 'white', border: 'none', borderRadius: '8px', padding: mobile ? '9px 14px' : '10px 20px', fontWeight: '600', cursor: 'pointer', fontSize: mobile ? '13px' : '14px', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-              {showForm ? '✖ Cancel' : '➕ Apply Leave'}
-            </button>
-          )}
-        </div>
-      </div>
+        </>}
+        stats={[
+          { label: 'Pending', value: stats.pending, sub: 'awaiting approval', tone: stats.pending ? '#fcd34d' : null, active: statusFilter === 'Pending', onClick: () => setStatusFilter(statusFilter === 'Pending' ? 'All' : 'Pending') },
+          { label: 'Approved', value: stats.approved, sub: `${stats.ayTotal} this session`, tone: '#86efac', active: statusFilter === 'Approved', onClick: () => setStatusFilter(statusFilter === 'Approved' ? 'All' : 'Approved') },
+          ...(canManage ? [
+            { label: 'Deduction · month', value: `\u20B9${stats.monthlyDeduction.toLocaleString('en-IN')}`, sub: 'unpaid leave (LWP)', tone: stats.monthlyDeduction ? '#fca5a5' : null },
+            { label: 'Deduction · total', value: `\u20B9${stats.totalDeduction.toLocaleString('en-IN')}`, sub: 'all approved LWP' },
+          ] : [
+            { label: 'Rejected', value: stats.rejected, sub: 'requests', active: statusFilter === 'Rejected', onClick: () => setStatusFilter(statusFilter === 'Rejected' ? 'All' : 'Rejected') },
+            { label: 'Balance', value: leaveBalanceInfo ? leaveBalanceInfo.remaining : 12, sub: 'days left this session', tone: PX.goldLt },
+          ]),
+          ...(mobile ? [] : [{ label: 'All requests', value: stats.total, sub: 'on record' }]),
+        ]}
+      />
 
       {/* Limited user banner */}
       {isLimitedUser && (
-        <div style={{ marginBottom: '16px', padding: '10px 16px', background: '#eff6ff', borderRadius: '8px', fontSize: '13px', color: '#1e40af', fontWeight: '600', border: '1px solid #bfdbfe' }}>
-          👤 You are viewing your own leave records only. Contact admin to apply or modify leave.
+        <div style={{ marginBottom: '16px', padding: '11px 16px', background: '#eef2f9', borderRadius: '12px', fontSize: '13px', color: PX.navy2, fontWeight: '600', border: '1px solid #c9d5ea' }}>
+          You are viewing your own leave records. Contact the admin to apply for or change leave.
         </div>
       )}
 
-      {/* Accrual info banner */}
-      <div style={{ marginBottom: '16px', padding: '10px 16px', background: '#f0fdf4', borderRadius: '8px', fontSize: '13px', color: '#166534', border: '1px solid #bbf7d0', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-  <span>📅 Session: Jan 10 → Jan 9</span>
-  <span>🏖️ Total Leave: 12 days per session</span>
-  <span>🔄 Resets every January 10</span>
-  <span style={{ fontWeight: '700' }}>✅ {leaveBalanceInfo ? `${leaveBalanceInfo.remaining} days remaining` : '12 days available'}</span>
-</div>
-
-      {/* Stats Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : canManage ? 'repeat(6, 1fr)' : 'repeat(4, 1fr)', gap: mobile ? '10px' : '12px', marginBottom: '20px' }}>
-        {[
-          { label: 'Total',          value: stats.total,    color: '#1e3a5f', bg: '#eff6ff', icon: '📋' },
-          { label: 'This Session', value: stats.ayTotal, color: '#0369a1', bg: '#e0f2fe', icon: '📆' },
-          { label: 'Pending',        value: stats.pending,  color: '#ca8a04', bg: '#fef9c3', icon: '⏳' },
-          { label: 'Approved',       value: stats.approved, color: '#16a34a', bg: '#dcfce7', icon: '✅' },
-          ...(canManage ? [
-            { label: 'Monthly Deduction', value: `\u20B9${stats.monthlyDeduction.toLocaleString()}`, color: '#dc2626', bg: '#fee2e2', icon: '💸' },
-            { label: 'Total Deduction',   value: `\u20B9${stats.totalDeduction.toLocaleString()}`,   color: '#7c3aed', bg: '#ede9fe', icon: '💰' },
-          ] : [
-            { label: 'Rejected', value: stats.rejected, color: '#dc2626', bg: '#fee2e2', icon: '❌' },
-          ])
-        ].map(card => (
-          <div key={card.label} style={{ backgroundColor: card.bg, borderRadius: '12px', padding: mobile ? '12px' : '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${card.color}` }}>
-            <div style={{ fontSize: mobile ? '16px' : '20px', marginBottom: '4px' }}>{card.icon}</div>
-            <p style={{ fontSize: '11px', color: card.color, fontWeight: '600', margin: 0 }}>{card.label}</p>
-            <h2 style={{ fontSize: mobile ? '18px' : '22px', fontWeight: 'bold', color: card.color, margin: '2px 0 0' }}>{card.value}</h2>
-          </div>
-        ))}
-      </div>
-
       {/* Apply Leave Form */}
       {showForm && canManage && (
-        <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: mobile ? '16px' : '24px', marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f', marginBottom: '16px' }}>📝 Apply Leave</h2>
+        <div className="px-card" style={{ padding: mobile ? '16px' : '22px 24px', marginBottom: '18px' }}>
+          <div className="px-section" style={{ marginTop: 0 }}><span className="px-eyebrow">New request</span><span className="px-h2" style={{ fontSize: 19 }}>Apply leave</span></div>
           <form onSubmit={handleAdd}>
             <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: '14px' }}>
               <div>
@@ -500,8 +475,8 @@ function Leave({ currentUser: currentUserProp }) {
               <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
 
                 {/* Leave Balance */}
-                <div style={{ background: '#eff6ff', padding: '14px', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e40af', marginBottom: '10px' }}>
+                <div style={{ background: '#eef2f9', padding: '14px', borderRadius: '10px', border: '1px solid #c9d5ea' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#132a4f', marginBottom: '10px' }}>
                     📊 {form.leave_type} Balance
                   </div>
                   {leaveBalanceInfo ? (
@@ -511,14 +486,14 @@ function Leave({ currentUser: currentUserProp }) {
       <span>Used: <strong style={{ color: '#dc2626' }}>{leaveBalanceInfo.used}</strong></span>
       <span>Remaining: <strong style={{ color: leaveBalanceInfo.remaining > 0 ? '#16a34a' : '#dc2626' }}>{leaveBalanceInfo.remaining}</strong></span>
     </div>
-    <div style={{ background: '#dbeafe', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
+    <div style={{ background: '#e4ebf6', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
       <div style={{
         height: '100%', borderRadius: '4px',
         width: `${Math.min((leaveBalanceInfo.used / leaveBalanceInfo.total) * 100, 100)}%`,
-        background: leaveBalanceInfo.remaining === 0 ? '#dc2626' : '#3b82f6'
+        background: leaveBalanceInfo.remaining === 0 ? '#dc2626' : '#2f4f86'
       }} />
     </div>
-    <div style={{ marginTop: '6px', fontSize: '11px', color: '#64748b' }}>
+    <div style={{ marginTop: '6px', fontSize: '11px', color: '#5d6b82' }}>
       {leaveBalanceInfo.used} of {leaveBalanceInfo.total} days used this session
     </div>
     {duration > leaveBalanceInfo.remaining && (
@@ -528,7 +503,7 @@ function Leave({ currentUser: currentUserProp }) {
     )}
   </>
 ) : (
-  <span style={{ fontSize: '13px', color: '#64748b' }}>Select staff to see balance</span>
+  <span style={{ fontSize: '13px', color: '#5d6b82' }}>Select staff to see balance</span>
 )}
                 </div>
 
@@ -560,8 +535,8 @@ function Leave({ currentUser: currentUserProp }) {
             )}
 
             <button type="submit" disabled={saving || !!dateError}
-              style={{ marginTop: '16px', backgroundColor: saving || dateError ? '#94a3b8' : '#1e3a5f', color: 'white', border: 'none', borderRadius: '8px', padding: '12px 28px', fontWeight: '600', cursor: saving || dateError ? 'not-allowed' : 'pointer', fontSize: '14px', fontFamily: 'inherit' }}>
-              {saving ? '⏳ Saving...' : '✅ Submit Leave Request'}
+              className="px-btn" style={{ marginTop: '18px', padding: '12px 26px' }}>
+              {saving ? 'Saving…' : 'Submit leave request'}
             </button>
           </form>
         </div>
@@ -580,24 +555,24 @@ function Leave({ currentUser: currentUserProp }) {
 
       {/* Bulk Actions */}
       {canManage && selectedItems.size > 0 && (
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', padding: '12px', background: '#f8fafc', borderRadius: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '13px', fontWeight: '600', color: '#374151' }}>{selectedItems.size} selected</span>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', padding: '12px', background: '#faf8f3', borderRadius: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '13px', fontWeight: '600', color: '#2e3b52' }}>{selectedItems.size} selected</span>
           <button onClick={() => handleBulkStatus('Approved')} style={{ background: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: '6px', padding: '6px 14px', fontSize: '13px', cursor: 'pointer', fontWeight: '600' }}>✅ Approve All</button>
           <button onClick={() => handleBulkStatus('Rejected')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', padding: '6px 14px', fontSize: '13px', cursor: 'pointer', fontWeight: '600' }}>❌ Reject All</button>
-          <button onClick={handleBulkDelete} style={{ background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '6px', padding: '6px 14px', fontSize: '13px', cursor: 'pointer', fontWeight: '600' }}>🗑 Delete All</button>
-          <button onClick={() => setSelectedItems(new Set())} style={{ background: 'transparent', color: '#64748b', border: '1px solid #d1d5db', borderRadius: '6px', padding: '6px 14px', fontSize: '13px', cursor: 'pointer' }}>Clear</button>
+          <button onClick={handleBulkDelete} style={{ background: '#f3f0e8', color: '#5d6b82', border: 'none', borderRadius: '6px', padding: '6px 14px', fontSize: '13px', cursor: 'pointer', fontWeight: '600' }}>🗑 Delete All</button>
+          <button onClick={() => setSelectedItems(new Set())} style={{ background: 'transparent', color: '#5d6b82', border: '1px solid #d9d2c2', borderRadius: '6px', padding: '6px 14px', fontSize: '13px', cursor: 'pointer' }}>Clear</button>
         </div>
       )}
 
       {/* Calendar View */}
       {viewMode === 'calendar' && (
-        <div style={{ background: 'white', borderRadius: '12px', padding: '20px', marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h3 style={{ margin: '0 0 16px', color: '#1e3a5f', fontSize: '16px' }}>
-            📅 {new Date(calendarData.year, calendarData.month).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+        <div className="px-card" style={{ padding: '20px', marginBottom: '20px' }}>
+          <h3 style={{ margin: '0 0 16px', color: PX.ink, fontSize: '19px', fontFamily: PX.serif, fontWeight: 600 }}>
+            {new Date(calendarData.year, calendarData.month).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-              <div key={d} style={{ textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#64748b', padding: '8px' }}>{d}</div>
+              <div key={d} style={{ textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#5d6b82', padding: '8px' }}>{d}</div>
             ))}
             {calendarData.calendarDays.map((day, i) => {
               if (!day) return <div key={i} style={{ padding: '8px' }} />
@@ -606,8 +581,8 @@ function Leave({ currentUser: currentUserProp }) {
                 new Date(dateStr) >= new Date(l.from_date) && new Date(dateStr) <= new Date(l.to_date)
               )
               return (
-                <div key={i} style={{ padding: '6px', minHeight: '60px', border: '1px solid #e2e8f0', borderRadius: '6px', background: dayLeaves.length > 0 ? '#fef9c3' : 'white', fontSize: '12px' }}>
-                  <div style={{ fontWeight: '600', color: '#374151', marginBottom: '4px' }}>{day}</div>
+                <div key={i} style={{ padding: '6px', minHeight: '60px', border: '1px solid #e8e3d8', borderRadius: '6px', background: dayLeaves.length > 0 ? '#fef9c3' : 'white', fontSize: '12px' }}>
+                  <div style={{ fontWeight: '600', color: '#2e3b52', marginBottom: '4px' }}>{day}</div>
                   {dayLeaves.slice(0, 2).map((l, idx) => (
                     <div key={idx} style={{ fontSize: '10px', color: '#92400e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {l.staff_profiles?.name?.split(' ')[0]} ({l.half_day_type === 'Full Day' ? 'F' : 'H'})
@@ -624,7 +599,7 @@ function Leave({ currentUser: currentUserProp }) {
       {/* List View */}
       {viewMode === 'list' && (
         loading ? (
-          <div style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>⏳ Loading…</div>
+          <div style={{ textAlign: 'center', padding: '48px', color: '#5d6b82' }}>⏳ Loading…</div>
         ) : mobile ? (
           <div>
             {filteredLeaves.map(item => (
@@ -634,16 +609,16 @@ function Leave({ currentUser: currentUserProp }) {
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div>
-                        <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>{item.staff_profiles?.name || '—'}</div>
-                        <div style={{ fontSize: '12px', color: '#64748b', marginTop: 2 }}>{item.staff_profiles?.department || '—'} · {item.leave_type}</div>
+                        <div style={{ fontWeight: '700', color: '#14213d', fontSize: '14px' }}>{item.staff_profiles?.name || '—'}</div>
+                        <div style={{ fontSize: '12px', color: '#5d6b82', marginTop: 2 }}>{item.staff_profiles?.department || '—'} · {item.leave_type}</div>
                       </div>
                       <span style={statusStyle(item.status)}>{item.status}</span>
                     </div>
                   </div>
                 </div>
-                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: 8, paddingLeft: canManage ? '24px' : 0 }}>
+                <div style={{ fontSize: '12px', color: '#5d6b82', marginBottom: 8, paddingLeft: canManage ? '24px' : 0 }}>
                   <div>📅 {formatDate(item.from_date)} → {formatDate(item.to_date)} · {item.duration_days} day{item.duration_days !== 1 ? 's' : ''} · {item.half_day_type}</div>
-                  {item.reason && <div style={{ marginTop: 4, color: '#475569' }}>📝 {item.reason}</div>}
+                  {item.reason && <div style={{ marginTop: 4, color: '#4b5870' }}>📝 {item.reason}</div>}
                   <div style={{ marginTop: 4, fontSize: '11px' }}>
                     Applied {formatRelativeTime(item.created_at)} by {item.applied_by || '—'}
                     {item.approved_by && ` · Approved by ${item.approved_by}`}
@@ -663,18 +638,18 @@ function Leave({ currentUser: currentUserProp }) {
                       <button onClick={() => handleStatus(item.id, 'Rejected')} style={{ flex: 1, backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '7px', padding: '7px', fontSize: '13px', cursor: 'pointer', fontWeight: '700' }}>❌ Reject</button>
                     </>
                   )}
-                  <button onClick={() => { setDetailModal(item); fetchHistory(item.id) }} style={{ backgroundColor: '#eff6ff', color: '#1e40af', border: 'none', borderRadius: '7px', padding: '7px 12px', fontSize: '13px', cursor: 'pointer' }}>👁</button>
-                  {canManage && <button onClick={() => handleDelete(item.id)} style={{ backgroundColor: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '7px', padding: '7px 12px', fontSize: '13px', cursor: 'pointer' }}>🗑</button>}
+                  <button onClick={() => { setDetailModal(item); fetchHistory(item.id) }} style={{ backgroundColor: '#eef2f9', color: '#132a4f', border: 'none', borderRadius: '7px', padding: '7px 12px', fontSize: '13px', cursor: 'pointer' }}>👁</button>
+                  {canManage && <button onClick={() => handleDelete(item.id)} style={{ backgroundColor: '#f3f0e8', color: '#5d6b82', border: 'none', borderRadius: '7px', padding: '7px 12px', fontSize: '13px', cursor: 'pointer' }}>🗑</button>}
                 </div>
               </div>
             ))}
-            {filteredLeaves.length === 0 && <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8' }}>No leave requests found</div>}
+            {filteredLeaves.length === 0 && <div style={{ textAlign: 'center', padding: '32px', color: '#8a93a6' }}>No leave requests found</div>}
           </div>
         ) : (
-          <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+          <div className="px-card" style={{ overflowX: 'auto' }}>
+            <table className="px-table">
               <thead>
-                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                <tr>
                   {canManage && (
                     <th style={{ padding: '12px 8px', width: '40px' }}>
                       <input type="checkbox"
@@ -689,27 +664,27 @@ function Leave({ currentUser: currentUserProp }) {
                     ...(canManage ? ['Payment'] : []),
                     'Applied', 'Action'
                   ].map(h => (
-                    <th key={h} style={{ padding: '12px 10px', textAlign: 'left', fontWeight: '600', color: '#374151', fontSize: '12px' }}>{h}</th>
+                    <th key={h}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filteredLeaves.map((item, i) => (
-                  <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <tr key={item.id} style={{ borderBottom: '1px solid #f3f0e8' }}>
                     {canManage && (
                       <td style={{ padding: '10px 8px' }}>
                         <input type="checkbox" checked={selectedItems.has(item.id)} onChange={() => toggleSelection(item.id)} />
                       </td>
                     )}
-                    <td style={{ padding: '10px', color: '#64748b', fontSize: '13px' }}>{i + 1}</td>
-                    <td style={{ padding: '10px', fontWeight: '600', color: '#1e293b', fontSize: '13px' }}>{item.staff_profiles?.name || '-'}</td>
-                    <td style={{ padding: '10px', color: '#64748b', fontSize: '13px' }}>{item.staff_profiles?.department || '-'}</td>
-                    <td style={{ padding: '10px', color: '#64748b', fontSize: '13px' }}>{item.leave_type}</td>
-                    <td style={{ padding: '10px', color: '#374151', fontSize: '13px', fontWeight: '600' }}>
+                    <td style={{ padding: '10px', color: '#5d6b82', fontSize: '13px' }}>{i + 1}</td>
+                    <td style={{ padding: '10px', fontWeight: '600', color: '#14213d', fontSize: '13px' }}>{item.staff_profiles?.name || '-'}</td>
+                    <td style={{ padding: '10px', color: '#5d6b82', fontSize: '13px' }}>{item.staff_profiles?.department || '-'}</td>
+                    <td style={{ padding: '10px', color: '#5d6b82', fontSize: '13px' }}>{item.leave_type}</td>
+                    <td style={{ padding: '10px', color: '#2e3b52', fontSize: '13px', fontWeight: '600' }}>
                       {item.duration_days}d {item.half_day_type !== 'Full Day' && '(H)'}
                     </td>
-                    <td style={{ padding: '10px', color: '#64748b', fontSize: '13px' }}>{formatDate(item.from_date)}</td>
-                    <td style={{ padding: '10px', color: '#64748b', fontSize: '13px' }}>{formatDate(item.to_date)}</td>
+                    <td style={{ padding: '10px', color: '#5d6b82', fontSize: '13px' }}>{formatDate(item.from_date)}</td>
+                    <td style={{ padding: '10px', color: '#5d6b82', fontSize: '13px' }}>{formatDate(item.to_date)}</td>
                     <td style={{ padding: '10px' }}><span style={statusStyle(item.status)}>{item.status}</span></td>
                     {canManage && (
                       <td style={{ padding: '10px' }}>
@@ -718,9 +693,9 @@ function Leave({ currentUser: currentUserProp }) {
                         </span>
                       </td>
                     )}
-                    <td style={{ padding: '10px', color: '#64748b', fontSize: '12px' }}>
+                    <td style={{ padding: '10px', color: '#5d6b82', fontSize: '12px' }}>
                       {formatRelativeTime(item.created_at)}
-                      {canManage && <div style={{ fontSize: '11px', color: '#94a3b8' }}>by {item.applied_by || '—'}</div>}
+                      {canManage && <div style={{ fontSize: '11px', color: '#8a93a6' }}>by {item.applied_by || '—'}</div>}
                     </td>
                     <td style={{ padding: '10px' }}>
                       <div style={{ display: 'flex', gap: '4px' }}>
@@ -730,14 +705,14 @@ function Leave({ currentUser: currentUserProp }) {
                             <button onClick={() => handleStatus(item.id, 'Rejected')} title="Reject" style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer' }}>❌</button>
                           </>
                         )}
-                        <button onClick={() => { setDetailModal(item); fetchHistory(item.id) }} title="View" style={{ backgroundColor: '#eff6ff', color: '#1e40af', border: 'none', borderRadius: '6px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer' }}>👁</button>
-                        {canManage && <button onClick={() => handleDelete(item.id)} title="Delete" style={{ backgroundColor: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: '6px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer' }}>🗑</button>}
+                        <button onClick={() => { setDetailModal(item); fetchHistory(item.id) }} title="View" style={{ backgroundColor: '#eef2f9', color: '#132a4f', border: 'none', borderRadius: '6px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer' }}>👁</button>
+                        {canManage && <button onClick={() => handleDelete(item.id)} title="Delete" style={{ backgroundColor: '#f3f0e8', color: '#5d6b82', border: 'none', borderRadius: '6px', padding: '5px 8px', fontSize: '12px', cursor: 'pointer' }}>🗑</button>}
                       </div>
                     </td>
                   </tr>
                 ))}
                 {filteredLeaves.length === 0 && (
-                  <tr><td colSpan={canManage ? 12 : 10} style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>No leave requests found</td></tr>
+                  <tr><td colSpan={canManage ? 12 : 10} style={{ padding: '32px', textAlign: 'center', color: '#8a93a6' }}>No leave requests found</td></tr>
                 )}
               </tbody>
             </table>
@@ -752,7 +727,7 @@ function Leave({ currentUser: currentUserProp }) {
           <div style={{ background: 'white', borderRadius: '16px', padding: '24px', maxWidth: '500px', width: '100%', maxHeight: '80vh', overflow: 'auto' }}
             onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, color: '#1e3a5f' }}>📝 Leave Details</h3>
+              <h3 style={{ margin: 0, color: PX.ink, fontFamily: PX.serif, fontWeight: 600, fontSize: 19 }}>Leave details</h3>
               <button onClick={() => setDetailModal(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✖</button>
             </div>
             <div style={{ display: 'grid', gap: '10px', marginBottom: '16px' }}>
@@ -767,8 +742,8 @@ function Leave({ currentUser: currentUserProp }) {
                 ['Applied By',  `${detailModal.applied_by || '—'} on ${formatDate(detailModal.created_at)}`],
                 ...(detailModal.approved_by ? [['Approved By', `${detailModal.approved_by} on ${formatDate(detailModal.approved_at)}`]] : []),
               ].map(([label, value]) => (
-                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-                  <span style={{ color: '#64748b' }}>{label}</span>
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f0e8' }}>
+                  <span style={{ color: '#5d6b82' }}>{label}</span>
                   {value === '__status__' ? (
                     <span style={statusStyle(detailModal.status)}>{detailModal.status}</span>
                   ) : value === '__payment__' ? (
@@ -782,23 +757,23 @@ function Leave({ currentUser: currentUserProp }) {
               ))}
               {detailModal.reason && (
                 <div style={{ padding: '8px 0' }}>
-                  <span style={{ color: '#64748b', display: 'block', marginBottom: '4px' }}>Reason</span>
-                  <span style={{ fontWeight: '500', color: '#374151' }}>{detailModal.reason}</span>
+                  <span style={{ color: '#5d6b82', display: 'block', marginBottom: '4px' }}>Reason</span>
+                  <span style={{ fontWeight: '500', color: '#2e3b52' }}>{detailModal.reason}</span>
                 </div>
               )}
             </div>
 
             {history.length > 0 && (
               <div>
-                <h4 style={{ fontSize: '14px', color: '#1e3a5f', marginBottom: '10px' }}>📋 Activity History</h4>
+                <h4 style={{ fontSize: '14px', color: '#132a4f', marginBottom: '10px' }}>📋 Activity History</h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {history.map((h, idx) => (
                     <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '12px' }}>
                       <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: h.action === 'Approved' ? '#16a34a' : h.action === 'Rejected' ? '#dc2626' : '#ca8a04', marginTop: '4px', flexShrink: 0 }} />
                       <div>
-                        <div style={{ fontWeight: '600', color: '#374151' }}>{h.action} by {h.performed_by}</div>
-                        <div style={{ color: '#94a3b8', fontSize: '11px' }}>{formatDate(h.performed_at)} · {formatRelativeTime(h.performed_at)}</div>
-                        {h.notes && <div style={{ color: '#64748b', marginTop: '2px' }}>{h.notes}</div>}
+                        <div style={{ fontWeight: '600', color: '#2e3b52' }}>{h.action} by {h.performed_by}</div>
+                        <div style={{ color: '#8a93a6', fontSize: '11px' }}>{formatDate(h.performed_at)} · {formatRelativeTime(h.performed_at)}</div>
+                        {h.notes && <div style={{ color: '#5d6b82', marginTop: '2px' }}>{h.notes}</div>}
                       </div>
                     </div>
                   ))}
@@ -808,6 +783,7 @@ function Leave({ currentUser: currentUserProp }) {
           </div>
         </div>
       )}
+    </div>
     </div>
   )
 }

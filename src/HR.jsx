@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 import TeacherAttendance from './TeacherAttendance'
 import { useAttendanceRange, classifyRows, currentMonth } from './attendanceData'
+import { PremiumStyles, PremiumHero, PremiumTabs, PIcon, PX } from './premiumUI'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -104,25 +105,26 @@ const getSignedUrl = async (path) => {
 const styles = {
   card: {
     backgroundColor: 'white',
-    borderRadius: '14px',
-    padding: '16px',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.07)',
+    borderRadius: '18px',
+    padding: '18px 20px',
+    border: '1px solid #e8e3d8',
+    boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 12px 32px -22px rgba(19,42,79,.35)',
     marginBottom: '16px',
   },
   select: {
     padding: '10px 12px',
-    borderRadius: '8px',
-    border: '1px solid #d1d5db',
-    fontSize: '14px',
+    borderRadius: '11px',
+    border: '1px solid #e8e3d8',
+    fontSize: '13.5px',
     backgroundColor: 'white',
-    color: '#374151',
+    color: '#0f1b2e',
     width: '100%',
   },
   input: {
     padding: '10px 12px',
-    borderRadius: '8px',
-    border: '1px solid #d1d5db',
-    fontSize: '14px',
+    borderRadius: '11px',
+    border: '1px solid #e8e3d8',
+    fontSize: '13.5px',
     width: '100%',
     boxSizing: 'border-box',
   },
@@ -133,7 +135,8 @@ const styles = {
     cursor: active ? 'pointer' : 'not-allowed',
     fontWeight: '600',
     fontSize: '14px',
-    backgroundColor: !active ? '#94a3b8' : danger ? '#fee2e2' : '#1e3a5f',
+    backgroundColor: !active ? '#d9d2c2' : danger ? '#fee2e2' : '#132a4f',
+    backgroundImage: !active || danger ? 'none' : 'linear-gradient(180deg,#1e3a6e,#132a4f)',
     color: !active ? 'white' : danger ? '#dc2626' : 'white',
     whiteSpace: 'nowrap',
   }),
@@ -173,9 +176,9 @@ function ConfirmDialog({ message, onConfirm, onCancel }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9998, padding: '16px',
     }}>
       <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '24px', maxWidth: '320px', width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
-        <p style={{ margin: '0 0 20px', fontSize: '15px', color: '#1e293b', lineHeight: '1.5' }}>{message}</p>
+        <p style={{ margin: '0 0 20px', fontSize: '15px', color: '#14213d', lineHeight: '1.5' }}>{message}</p>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={onCancel} style={{ ...styles.btn(true, false), flex: 1, backgroundColor: '#f1f5f9', color: '#374151' }}>Cancel</button>
+          <button onClick={onCancel} style={{ ...styles.btn(true, false), flex: 1, backgroundColor: '#f3f0e8', color: '#2e3b52' }}>Cancel</button>
           <button onClick={onConfirm} style={{ ...styles.btn(true, true), flex: 1 }}>Delete</button>
         </div>
       </div>
@@ -188,8 +191,11 @@ function SectionHeader({ icon, title, subtitle, action }) {
     <div style={{ marginBottom: '16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
         <div style={{ minWidth: 0 }}>
-          <h2 style={{ fontSize: '17px', fontWeight: '700', color: '#1e3a5f', margin: 0, lineHeight: '1.3' }}>{icon} {title}</h2>
-          {subtitle && <p style={{ color: '#64748b', fontSize: '12px', margin: '4px 0 0' }}>{subtitle}</p>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ width: 4, height: 22, borderRadius: 4, background: `linear-gradient(180deg,${PX.gold},${PX.goldLt})`, flexShrink: 0 }} />
+            <h2 style={{ fontSize: '17px', fontWeight: 600, color: PX.ink, margin: 0, lineHeight: '1.3', fontFamily: PX.serif }}>{title}</h2>
+          </div>
+          {subtitle && <p style={{ color: PX.sub, fontSize: '12px', margin: '4px 0 0 14px' }}>{subtitle}</p>}
         </div>
         {action && <div style={{ flexShrink: 0 }}>{action}</div>}
       </div>
@@ -200,7 +206,7 @@ function SectionHeader({ icon, title, subtitle, action }) {
 function StaffAvatar({ name, size = 36 }) {
   return (
     <div style={{
-      width: size, height: size, borderRadius: '50%', backgroundColor: '#1e3a5f',
+      width: size, height: size, borderRadius: '50%', backgroundImage: 'linear-gradient(145deg,#1e3a6e,#132a4f)', boxShadow: 'inset 0 0 0 1.5px rgba(233,217,176,.55)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       color: 'white', fontWeight: '700', fontSize: size * 0.42, flexShrink: 0,
     }}>
@@ -231,20 +237,20 @@ function StaffAttendanceSummary({ staffId, staffName }) {
   if (!staffId) return null
 
   return (
-    <div style={{ ...styles.card, backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+    <div style={{ ...styles.card, backgroundColor: '#faf8f3', border: '1px solid #e8e3d8' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '10px', flexWrap: 'wrap' }}>
-        <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e3a5f' }}>
+        <div style={{ fontSize: '13px', fontWeight: '700', color: '#132a4f' }}>
           🧾 Attendance — {staffName}
         </div>
         <input type="month" value={month} onChange={e => setMonth(e.target.value)}
           style={{ ...styles.input, width: 'auto', padding: '6px 10px', fontSize: '12px' }} />
       </div>
       {loading ? (
-        <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>Loading attendance…</p>
+        <p style={{ margin: 0, fontSize: '12px', color: '#8a93a6' }}>Loading attendance…</p>
       ) : error ? (
         <p style={{ margin: 0, fontSize: '12px', color: '#dc2626' }}>⚠️ Could not load attendance: {error}</p>
       ) : totalDays === 0 ? (
-        <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>No attendance recorded this month.</p>
+        <p style={{ margin: 0, fontSize: '12px', color: '#8a93a6' }}>No attendance recorded this month.</p>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '8px' }}>
           {[
@@ -256,12 +262,12 @@ function StaffAttendanceSummary({ staffId, staffName }) {
           ].map(x => (
             <div key={x.label} style={{ textAlign: 'center', backgroundColor: 'white', borderRadius: '8px', padding: '8px 4px' }}>
               <div style={{ fontSize: '16px', fontWeight: '700', color: x.color }}>{x.value}</div>
-              <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '600' }}>{x.label}</div>
+              <div style={{ fontSize: '10px', color: '#5d6b82', fontWeight: '600' }}>{x.label}</div>
             </div>
           ))}
           <div style={{ textAlign: 'center', backgroundColor: 'white', borderRadius: '8px', padding: '8px 4px' }}>
-            <div style={{ fontSize: '16px', fontWeight: '700', color: '#1e3a5f' }}>{rate}%</div>
-            <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '600' }}>Attendance rate</div>
+            <div style={{ fontSize: '16px', fontWeight: '700', color: '#132a4f' }}>{rate}%</div>
+            <div style={{ fontSize: '10px', color: '#5d6b82', fontWeight: '600' }}>Attendance rate</div>
           </div>
         </div>
       )}
@@ -284,7 +290,7 @@ function ProbationAlerts({ records, staff }) {
   if (alerts.length === 0) return (
     <div style={styles.card}>
       <SectionHeader icon="⏳" title="Probation Expiry Alerts" subtitle="Staff whose probation ends within 60 days" />
-      <div style={{ textAlign: 'center', padding: '28px 16px', color: '#94a3b8' }}>
+      <div style={{ textAlign: 'center', padding: '28px 16px', color: '#8a93a6' }}>
         <div style={{ fontSize: '36px', marginBottom: '8px' }}>✅</div>
         <p style={{ margin: 0, fontSize: '13px' }}>No probation periods expiring soon</p>
       </div>
@@ -299,20 +305,20 @@ function ProbationAlerts({ records, staff }) {
           const meta = r.days < 0 ? { bg: '#fee2e2', color: '#dc2626', label: 'Overdue' }
             : r.days <= 7  ? { bg: '#fee2e2', color: '#dc2626', label: `${r.days}d left` }
             : r.days <= 30 ? { bg: '#fef9c3', color: '#ca8a04', label: `${r.days}d left` }
-            : { bg: '#eff6ff', color: '#2563eb', label: `${r.days}d left` }
+            : { bg: '#eef2f9', color: '#1e3a6e', label: `${r.days}d left` }
           const s = staff.find(x => x.id === r.staff_id)
           return (
             <div key={r.id} style={{ borderRadius: '10px', border: `1.5px solid ${meta.color}33`, backgroundColor: meta.bg, padding: '12px 14px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                 <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontWeight: '700', fontSize: '14px', color: '#1e293b' }}>{s?.name || '—'}</p>
-                  <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>{s?.department || '—'} · {s?.designation || '—'}</p>
+                  <p style={{ margin: 0, fontWeight: '700', fontSize: '14px', color: '#14213d' }}>{s?.name || '—'}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#5d6b82' }}>{s?.department || '—'} · {s?.designation || '—'}</p>
                 </div>
                 <span style={{ fontSize: '11px', fontWeight: '700', color: meta.color, backgroundColor: 'white', padding: '4px 10px', borderRadius: '999px', border: `1px solid ${meta.color}44`, whiteSpace: 'nowrap', flexShrink: 0 }}>
                   {meta.label}
                 </span>
               </div>
-              <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#374151' }}>📅 Ends: <strong>{fmtDate(r.probation_end_date)}</strong></p>
+              <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#2e3b52' }}>📅 Ends: <strong>{fmtDate(r.probation_end_date)}</strong></p>
             </div>
           )
         })}
@@ -358,22 +364,22 @@ function DocumentChecklist({ staff, documents }) {
       />
 
       {s && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', backgroundColor: '#f8fafc', marginBottom: '12px', border: '1px solid #e2e8f0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', backgroundColor: '#faf8f3', marginBottom: '12px', border: '1px solid #e8e3d8' }}>
           <StaffAvatar name={s.name} />
           <div style={{ minWidth: 0, flex: 1 }}>
-            <p style={{ margin: 0, fontWeight: '600', color: '#1e293b', fontSize: '13px' }}>{s.name}</p>
-            <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>{s.designation} · {s.department}</p>
+            <p style={{ margin: 0, fontWeight: '600', color: '#14213d', fontSize: '13px' }}>{s.name}</p>
+            <p style={{ margin: 0, fontSize: '11px', color: '#5d6b82' }}>{s.designation} · {s.department}</p>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             <p style={{ margin: 0, fontSize: '12px', fontWeight: '700', color: missing > 0 ? '#dc2626' : '#16a34a' }}>
               {missing > 0 ? `${missing} missing` : 'Complete ✅'}
             </p>
-            <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>{submitted}/{REQUIRED_DOCS.length}</p>
+            <p style={{ margin: 0, fontSize: '11px', color: '#8a93a6' }}>{submitted}/{REQUIRED_DOCS.length}</p>
           </div>
         </div>
       )}
 
-      <div style={{ height: '5px', backgroundColor: '#f1f5f9', borderRadius: '999px', marginBottom: '12px', overflow: 'hidden' }}>
+      <div style={{ height: '5px', backgroundColor: '#f3f0e8', borderRadius: '999px', marginBottom: '12px', overflow: 'hidden' }}>
         <div style={{ height: '100%', borderRadius: '999px', backgroundColor: missing === 0 ? '#16a34a' : '#f59e0b', width: `${(submitted / REQUIRED_DOCS.length) * 100}%`, transition: 'width 0.4s ease' }} />
       </div>
 
@@ -382,8 +388,8 @@ function DocumentChecklist({ staff, documents }) {
           <div key={doc} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '8px', backgroundColor: submitted ? '#f0fdf4' : '#fff7ed', border: `1px solid ${submitted ? '#bbf7d0' : '#fed7aa'}` }}>
             <span style={{ fontSize: '16px' }}>{submitted ? '✅' : '⚠️'}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ margin: 0, fontSize: '13px', fontWeight: '600', color: '#1e293b' }}>{doc}</p>
-              {submitted && record?.document_number && <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>#{record.document_number}</p>}
+              <p style={{ margin: 0, fontSize: '13px', fontWeight: '600', color: '#14213d' }}>{doc}</p>
+              {submitted && record?.document_number && <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#5d6b82' }}>#{record.document_number}</p>}
             </div>
             <span style={{ fontSize: '11px', fontWeight: '600', color: submitted ? '#16a34a' : '#ea580c', flexShrink: 0 }}>
               {submitted ? 'Submitted' : 'Missing'}
@@ -516,8 +522,8 @@ function FileAttachments({ staff, onUploadComplete }) {
       <SectionHeader icon="📎" title="File Attachments" subtitle="Upload and manage staff documents" />
 
       {/* Upload form */}
-      <div style={{ backgroundColor: '#f8fafc', borderRadius: '10px', padding: '14px', marginBottom: '16px', border: '1px dashed #cbd5e1' }}>
-        <p style={{ margin: '0 0 10px', fontSize: '12px', fontWeight: '600', color: '#374151' }}>Upload New Document</p>
+      <div style={{ backgroundColor: '#faf8f3', borderRadius: '10px', padding: '14px', marginBottom: '16px', border: '1px dashed #d9d2c2' }}>
+        <p style={{ margin: '0 0 10px', fontSize: '12px', fontWeight: '600', color: '#2e3b52' }}>Upload New Document</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <select value={selectedStaff} onChange={e => setSelectedStaff(e.target.value)} style={styles.select}>
             <option value="">Select Staff *</option>
@@ -534,7 +540,7 @@ function FileAttachments({ staff, onUploadComplete }) {
               style={styles.input} title="Expiry date (optional)" />
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: 'white', cursor: 'pointer', fontSize: '13px', color: '#374151', minWidth: 0 }}>
+            <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', borderRadius: '8px', border: '1px solid #d9d2c2', backgroundColor: 'white', cursor: 'pointer', fontSize: '13px', color: '#2e3b52', minWidth: 0 }}>
               📁 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file ? file.name : 'Choose file'}</span>
               <input type="file" accept={ALLOWED_EXTENSIONS.join(',')} onChange={e => setFile(e.target.files[0])} style={{ display: 'none' }} />
             </label>
@@ -542,32 +548,32 @@ function FileAttachments({ staff, onUploadComplete }) {
               {uploading ? '⏳' : '⬆️'}
             </button>
           </div>
-          <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>Allowed: PDF, JPG, PNG, DOC, DOCX · Max {MAX_FILE_SIZE_MB}MB</p>
+          <p style={{ margin: 0, fontSize: '11px', color: '#8a93a6' }}>Allowed: PDF, JPG, PNG, DOC, DOCX · Max {MAX_FILE_SIZE_MB}MB</p>
         </div>
       </div>
 
       {/* Attachments list */}
       {loadingAttach ? (
-        <p style={{ color: '#94a3b8', textAlign: 'center', padding: '16px' }}>Loading...</p>
+        <p style={{ color: '#8a93a6', textAlign: 'center', padding: '16px' }}>Loading...</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {attachments.length === 0 && (
-            <p style={{ color: '#94a3b8', textAlign: 'center', padding: '20px' }}>No documents uploaded yet</p>
+            <p style={{ color: '#8a93a6', textAlign: 'center', padding: '20px' }}>No documents uploaded yet</p>
           )}
           {attachments.map(doc => {
             const days = daysUntil(doc.expiry_date)
             const exp = expiryColor(days)
             return (
-              <div key={doc.id} style={{ borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+              <div key={doc.id} style={{ borderRadius: '10px', backgroundColor: '#faf8f3', border: '1px solid #e8e3d8', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px' }}>
                   <span style={{ fontSize: '22px', flexShrink: 0 }}>{doc.file_name?.endsWith('.pdf') ? '📄' : '🖼️'}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: 0, fontWeight: '600', fontSize: '13px', color: '#1e293b' }}>{doc.staff_profiles?.name}</p>
-                    <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>{doc.document_type} · {fmtSize(doc.file_size || 0)}</p>
+                    <p style={{ margin: 0, fontWeight: '600', fontSize: '13px', color: '#14213d' }}>{doc.staff_profiles?.name}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#5d6b82' }}>{doc.document_type} · {fmtSize(doc.file_size || 0)}</p>
                   </div>
                   <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
                     <button onClick={() => handleView(doc)}
-                      style={{ color: '#2563eb', fontSize: '12px', fontWeight: '600', border: 'none', backgroundColor: '#eff6ff', padding: '7px 10px', borderRadius: '6px', cursor: 'pointer' }}>
+                      style={{ color: '#1e3a6e', fontSize: '12px', fontWeight: '600', border: 'none', backgroundColor: '#eef2f9', padding: '7px 10px', borderRadius: '6px', cursor: 'pointer' }}>
                       👁
                     </button>
                     <button onClick={() => setConfirmDelete(doc)}
@@ -577,10 +583,10 @@ function FileAttachments({ staff, onUploadComplete }) {
                   </div>
                 </div>
                 {(exp || doc.expiry_date) && (
-                  <div style={{ padding: '6px 12px 8px', borderTop: '1px solid #e2e8f0' }}>
+                  <div style={{ padding: '6px 12px 8px', borderTop: '1px solid #e8e3d8' }}>
                     {exp
                       ? <span style={{ fontSize: '11px', fontWeight: '700', color: exp.color, backgroundColor: exp.bg, padding: '3px 8px', borderRadius: '999px' }}>{exp.label}</span>
-                      : <span style={{ fontSize: '11px', color: '#64748b' }}>Expires {fmtDate(doc.expiry_date)}</span>
+                      : <span style={{ fontSize: '11px', color: '#5d6b82' }}>Expires {fmtDate(doc.expiry_date)}</span>
                     }
                   </div>
                 )}
@@ -636,30 +642,30 @@ function ExpiryTracker() {
 
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', flexWrap: 'wrap' }}>
         {[
-          { key: 'all',      label: `All (${docs.length})`,          color: '#374151' },
+          { key: 'all',      label: `All (${docs.length})`,          color: '#2e3b52' },
           { key: 'expired',  label: `Expired (${counts.expired})`,   color: '#dc2626' },
           { key: 'critical', label: `Critical (${counts.critical})`, color: '#d97706' },
           { key: 'warning',  label: `Warning (${counts.warning})`,   color: '#ca8a04' },
         ].map(btn => (
           <button key={btn.key} onClick={() => setFilter(btn.key)}
-            style={{ padding: '6px 12px', borderRadius: '999px', border: `1.5px solid ${filter === btn.key ? btn.color : 'transparent'}`, backgroundColor: filter === btn.key ? '#f8fafc' : 'transparent', color: btn.color, fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+            style={{ padding: '6px 12px', borderRadius: '999px', border: `1.5px solid ${filter === btn.key ? btn.color : 'transparent'}`, backgroundColor: filter === btn.key ? '#faf8f3' : 'transparent', color: btn.color, fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
             {btn.label}
           </button>
         ))}
       </div>
 
-      {loading ? <p style={{ color: '#94a3b8', textAlign: 'center' }}>Loading...</p> : (
+      {loading ? <p style={{ color: '#8a93a6', textAlign: 'center' }}>Loading...</p> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
           {filtered.map(doc => {
             const days = daysUntil(doc.expiry_date, now)
             const exp = expiryColor(days)
             return (
-              <div key={doc.id} style={{ padding: '10px 12px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+              <div key={doc.id} style={{ padding: '10px 12px', borderRadius: '8px', backgroundColor: '#faf8f3', border: '1px solid #e8e3d8' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                   <div style={{ minWidth: 0 }}>
-                    <p style={{ margin: 0, fontWeight: '600', fontSize: '13px', color: '#1e293b' }}>{doc.staff_profiles?.name}</p>
-                    <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>{doc.document_type}{doc.document_number ? ` — ${doc.document_number}` : ''}</p>
-                    <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#94a3b8' }}>{doc.staff_profiles?.department} · Exp: {fmtDate(doc.expiry_date)}</p>
+                    <p style={{ margin: 0, fontWeight: '600', fontSize: '13px', color: '#14213d' }}>{doc.staff_profiles?.name}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#5d6b82' }}>{doc.document_type}{doc.document_number ? ` — ${doc.document_number}` : ''}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#8a93a6' }}>{doc.staff_profiles?.department} · Exp: {fmtDate(doc.expiry_date)}</p>
                   </div>
                   {exp
                     ? <span style={{ fontSize: '11px', fontWeight: '700', color: exp.color, backgroundColor: exp.bg, padding: '4px 10px', borderRadius: '999px', flexShrink: 0 }}>{exp.label}</span>
@@ -670,7 +676,7 @@ function ExpiryTracker() {
             )
           })}
           {filtered.length === 0 && (
-            <p style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', margin: 0 }}>No documents match this filter</p>
+            <p style={{ padding: '24px', textAlign: 'center', color: '#8a93a6', margin: 0 }}>No documents match this filter</p>
           )}
         </div>
       )}
@@ -711,15 +717,15 @@ function StatutoryCompliance({ staff, records }) {
       />
 
       {s && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', backgroundColor: '#f8fafc', marginBottom: '12px', border: '1px solid #e2e8f0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', backgroundColor: '#faf8f3', marginBottom: '12px', border: '1px solid #e8e3d8' }}>
           <StaffAvatar name={s.name} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ margin: 0, fontWeight: '600', color: '#1e293b', fontSize: '13px' }}>{s.name}</p>
-            <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>{s.designation} · {s.department}</p>
+            <p style={{ margin: 0, fontWeight: '600', color: '#14213d', fontSize: '13px' }}>{s.name}</p>
+            <p style={{ margin: 0, fontSize: '11px', color: '#5d6b82' }}>{s.designation} · {s.department}</p>
           </div>
-          <div style={{ padding: '6px 12px', backgroundColor: '#eff6ff', borderRadius: '8px', textAlign: 'center', flexShrink: 0 }}>
-            <p style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#1e3a5f' }}>{tenure}</p>
-            <p style={{ margin: 0, fontSize: '10px', color: '#64748b' }}>months</p>
+          <div style={{ padding: '6px 12px', backgroundColor: '#eef2f9', borderRadius: '8px', textAlign: 'center', flexShrink: 0 }}>
+            <p style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#132a4f' }}>{tenure}</p>
+            <p style={{ margin: 0, fontSize: '10px', color: '#5d6b82' }}>months</p>
           </div>
         </div>
       )}
@@ -734,12 +740,12 @@ function StatutoryCompliance({ staff, records }) {
         {STATUTORY_RULES.map(rule => {
           const eligible = tenure >= rule.months
           return (
-            <div key={rule.id} style={{ borderRadius: '10px', padding: '12px 14px', border: `1.5px solid ${eligible ? '#bbf7d0' : '#e2e8f0'}`, backgroundColor: eligible ? '#f0fdf4' : '#f8fafc' }}>
+            <div key={rule.id} style={{ borderRadius: '10px', padding: '12px 14px', border: `1.5px solid ${eligible ? '#bbf7d0' : '#e8e3d8'}`, backgroundColor: eligible ? '#f0fdf4' : '#faf8f3' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <p style={{ margin: 0, fontWeight: '700', fontSize: '13px', color: eligible ? '#15803d' : '#374151' }}>{rule.label}</p>
+                <p style={{ margin: 0, fontWeight: '700', fontSize: '13px', color: eligible ? '#15803d' : '#2e3b52' }}>{rule.label}</p>
                 <span style={{ fontSize: '16px' }}>{eligible ? '✅' : '🔒'}</span>
               </div>
-              <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>{rule.desc}</p>
+              <p style={{ margin: 0, fontSize: '11px', color: '#5d6b82' }}>{rule.desc}</p>
               {!eligible && rule.months > 0 && (
                 <p style={{ margin: '5px 0 0', fontSize: '11px', color: '#f59e0b', fontWeight: '600' }}>
                   {rule.months - tenure} more month{rule.months - tenure !== 1 ? 's' : ''}
@@ -802,14 +808,14 @@ function WarningLetterGenerator({ staff, records }) {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '14px' }}>
         <div>
-          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#374151', marginBottom: '5px' }}>Select Staff</label>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#2e3b52', marginBottom: '5px' }}>Select Staff</label>
           <select value={selectedStaff} onChange={e => { setSelectedStaff(e.target.value); setPreview('') }} style={styles.select}>
             <option value="">Choose employee...</option>
             {staff.map(s => <option key={s.id} value={s.id}>{s.name} — {s.designation || 'Staff'}</option>)}
           </select>
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#374151', marginBottom: '5px' }}>Warning Type</label>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#2e3b52', marginBottom: '5px' }}>Warning Type</label>
           <select value={selectedTemplate} onChange={e => { setSelectedTemplate(e.target.value); setPreview('') }} style={styles.select}>
             <option value="">Choose template...</option>
             {WARNING_TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
@@ -829,17 +835,17 @@ function WarningLetterGenerator({ staff, records }) {
 
       {preview && (
         <div style={{ marginTop: '16px' }}>
-          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#374151', marginBottom: '5px' }}>Subject</label>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#2e3b52', marginBottom: '5px' }}>Subject</label>
           <input value={customSubject} onChange={e => setCustomSubject(e.target.value)} style={{ ...styles.input, marginBottom: '10px' }} />
           <textarea value={preview} onChange={e => setPreview(e.target.value)} rows={12}
             style={{ ...styles.input, lineHeight: '1.7', fontFamily: 'Georgia, serif', backgroundColor: '#fafaf8', resize: 'vertical' }} />
           <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
             <button onClick={copyToClipboard}
-              style={{ padding: '9px 16px', borderRadius: '8px', backgroundColor: copied ? '#dcfce7' : '#eff6ff', color: copied ? '#16a34a' : '#2563eb', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>
+              style={{ padding: '9px 16px', borderRadius: '8px', backgroundColor: copied ? '#dcfce7' : '#eef2f9', color: copied ? '#16a34a' : '#1e3a6e', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>
               {copied ? '✅ Copied!' : '📋 Copy'}
             </button>
             <button onClick={downloadTxt}
-              style={{ padding: '9px 16px', borderRadius: '8px', backgroundColor: '#f8fafc', color: '#374151', border: '1px solid #d1d5db', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>
+              style={{ padding: '9px 16px', borderRadius: '8px', backgroundColor: '#faf8f3', color: '#2e3b52', border: '1px solid #d9d2c2', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>
               ⬇️ Download
             </button>
           </div>
@@ -876,57 +882,64 @@ function HRDocuments() {
   }, [])
 
   const sections = [
-    { key: 'all',       label: '🗂', full: 'All' },
-    { key: 'probation', label: '⏳', full: 'Probation' },
-    { key: 'checklist', label: '📋', full: 'Checklist' },
-    { key: 'files',     label: '📎', full: 'Files' },
-    { key: 'expiry',    label: '📅', full: 'Expiry' },
-    { key: 'statutory', label: '⚖️', full: 'Statutory' },
-    { key: 'warning',   label: '📝', full: 'Letters' },
-    { key: 'attendance',label: '🧑‍🏫', full: 'Attendance' },
+    { key: 'all',       full: 'Overview',   icon: PIcon.layers },
+    { key: 'probation', full: 'Probation',  icon: PIcon.clock },
+    { key: 'checklist', full: 'Checklist',  icon: PIcon.shield },
+    { key: 'files',     full: 'Files',      icon: PIcon.folder },
+    { key: 'expiry',    full: 'Expiry',     icon: PIcon.calendar },
+    { key: 'statutory', full: 'Statutory',  icon: PIcon.scale },
+    { key: 'warning',   full: 'Letters',    icon: PIcon.pen },
+    { key: 'attendance',full: 'Attendance', icon: PIcon.users },
   ]
 
   const show = (key) => activeSection === 'all' || activeSection === key
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640
+
+  // Header figures — computed from data already loaded above (no extra queries).
+  const now = new Date()
+  const probationSoon = records.filter(r => r.employment_status === 'Probation' && r.probation_end_date && daysUntil(r.probation_end_date, now) <= 60).length
+  const staffMissingDocs = staff.filter(st => {
+    const types = new Set(hrDocs.filter(d => String(d.staff_id) === String(st.id)).map(d => d.document_type))
+    return REQUIRED_DOCS.some(d => !types.has(d))
+  }).length
+  const docsOnFile = hrDocs.length
 
   if (loading) return (
-    <div style={{ padding: '48px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
-      ⏳ Loading HR Documents...
+    <div className="px-root"><PremiumStyles />
+      <div style={{ padding: '60px 16px', textAlign: 'center', color: PX.sub, fontSize: '14px' }}>Loading HR records…</div>
     </div>
   )
 
   return (
-    <div style={{ padding: '16px', fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '700px', margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '16px' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: 'bold', color: '#1e3a5f', margin: 0 }}>📂 HR Documents</h1>
-        <p style={{ color: '#64748b', fontSize: '12px', margin: '4px 0 0' }}>Compliance, documents & warning letters</p>
-      </div>
+    <div className="px-root">
+    <PremiumStyles />
+    <div className="px-wrap" style={{ maxWidth: 1100 }}>
+      <PremiumHero
+        isMobile={isMobile}
+        icon={<PIcon.folder size={isMobile ? 21 : 24} />}
+        eyebrow="GNSI · Human resources"
+        title="HR Documents"
+        subtitle="Compliance, staff documents, statutory eligibility and letters"
+        stats={[
+          { label: 'Staff', value: staff.length, sub: 'on record' },
+          { label: 'Probation ending', value: probationSoon, sub: 'within 60 days', tone: probationSoon ? '#fcd34d' : null, onClick: () => setActiveSection('probation'), active: activeSection === 'probation' },
+          { label: 'Missing documents', value: staffMissingDocs, sub: `staff short of the ${REQUIRED_DOCS.length} required`, tone: staffMissingDocs ? '#fca5a5' : '#86efac', onClick: () => setActiveSection('checklist'), active: activeSection === 'checklist' },
+          { label: 'Documents on file', value: docsOnFile, sub: 'uploaded', onClick: () => setActiveSection('files'), active: activeSection === 'files' },
+        ]}
+      />
 
-      {/* Section nav — scrollable on mobile */}
-      <div style={{ overflowX: 'auto', marginBottom: '16px', WebkitOverflowScrolling: 'touch' }}>
-        <div style={{ display: 'flex', gap: '4px', padding: '4px', backgroundColor: '#f1f5f9', borderRadius: '12px', width: 'max-content', minWidth: '100%' }}>
-          {sections.map(sec => (
-            <button key={sec.key} onClick={() => setActiveSection(sec.key)}
-              style={{
-                padding: '8px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-                fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap',
-                backgroundColor: activeSection === sec.key ? 'white' : 'transparent',
-                color: activeSection === sec.key ? '#1e3a5f' : '#64748b',
-                boxShadow: activeSection === sec.key ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
-              }}>
-              {sec.label} {sec.full}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PremiumTabs tabs={sections.map(sec => ({ id: sec.key, label: sec.full, icon: sec.icon }))} active={activeSection} onChange={setActiveSection} />
 
+      <div style={activeSection === 'all' && !isMobile ? { display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 16, alignItems: 'start' } : undefined}>
       {show('probation') && <ProbationAlerts records={records} staff={staff} />}
       {show('checklist') && staff.length > 0 && <DocumentChecklist staff={staff} documents={hrDocs} />}
       {show('files')     && <FileAttachments staff={staff} onUploadComplete={() => {}} />}
       {show('expiry')    && <ExpiryTracker />}
       {show('statutory') && staff.length > 0 && <StatutoryCompliance staff={staff} records={records} />}
       {show('warning')   && staff.length > 0 && <WarningLetterGenerator staff={staff} records={records} />}
-      {show('attendance')&& staff.length > 0 && <TeacherAttendance staff={staff} />}
+      {show('attendance')&& staff.length > 0 && <div style={activeSection === 'all' && !isMobile ? { gridColumn: '1 / -1' } : undefined}><TeacherAttendance staff={staff} /></div>}
+      </div>
+    </div>
     </div>
   )
 }

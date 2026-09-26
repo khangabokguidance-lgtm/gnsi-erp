@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from './supabase';
+import { PremiumStyles, PremiumHero, PremiumCard, PIcon, PX } from './premiumUI';
 
 // ============================================================
 // Grievances.jsx
@@ -9,11 +10,11 @@ import { supabase } from './supabase';
 // tagged 'parent_portal' for triage.
 //
 // Design language: Ledger & Crest
-//   navy  #0B1E3D   |   brass gold #C9A24B   |   serif headers
+//   navy  #0B1E3D   |   brass gold #b8923a   |   serif headers
 // ============================================================
 
 const NAVY = '#0B1E3D';
-const GOLD = '#C9A24B';
+const GOLD = '#b8923a';
 const CREAM = '#FBF8F1';
 
 const STATUS_FLOW = ['Open', 'In Progress', 'Resolved', 'Closed'];
@@ -66,29 +67,39 @@ export default function Grievances({ currentStaff }) {
     setLoading(true);
     setError(null);
     try {
+      // `students` and `staff_profiles` store the person's name in `name`
+      // (every other module reads that column); asking for a non-existent
+      // `full_name` column made this whole page fail to load. Select `*` and
+      // normalise to `full_name` so the rest of this file works either way.
+      const withName = (r) => (r ? { ...r, full_name: r.full_name || r.name || '' } : r);
+      const byName = (a, b) => String(a.full_name).localeCompare(String(b.full_name));
       const [gRes, sRes, stRes] = await Promise.all([
         supabase
           .from('grievances')
           .select(`
             *,
-            student:student_id ( id, full_name, class_name, course ),
-            teacher:teacher_id ( id, full_name ),
-            assigned:assigned_staff_id ( id, full_name ),
-            logger:logged_by_staff_id ( id, full_name )
+            student:student_id ( * ),
+            teacher:teacher_id ( * ),
+            assigned:assigned_staff_id ( * ),
+            logger:logged_by_staff_id ( * )
           `)
           .eq('is_deleted', false)
           .order('created_at', { ascending: false }),
-        supabase.from('staff_profiles').select('id, full_name, role').order('full_name'),
-        supabase.from('students').select('id, full_name, class_name, course').order('full_name'),
+        supabase.from('staff_profiles').select('*'),
+        supabase.from('students').select('*').is('deleted_at', null),
       ]);
 
       if (gRes.error) throw gRes.error;
       if (sRes.error) throw sRes.error;
       if (stRes.error) throw stRes.error;
 
-      setGrievances(gRes.data || []);
-      setStaffList(sRes.data || []);
-      setStudents(stRes.data || []);
+      setGrievances((gRes.data || []).map((g) => ({
+        ...g,
+        student: withName(g.student), teacher: withName(g.teacher),
+        assigned: withName(g.assigned), logger: withName(g.logger),
+      })));
+      setStaffList((sRes.data || []).map(withName).sort(byName));
+      setStudents((stRes.data || []).map(withName).sort(byName));
     } catch (err) {
       console.error('Grievances load error:', err);
       setError(err.message || 'Failed to load grievances.');
@@ -248,10 +259,10 @@ export default function Grievances({ currentStaff }) {
         <title>Grievance Record - ${g.id}</title>
         <style>
           body { font-family: Georgia, 'Times New Roman', serif; color: #0B1E3D; padding: 40px; }
-          .letterhead { text-align: center; border-bottom: 3px solid #C9A24B; padding-bottom: 16px; margin-bottom: 24px; }
+          .letterhead { text-align: center; border-bottom: 3px solid #b8923a; padding-bottom: 16px; margin-bottom: 24px; }
           .letterhead h1 { margin: 0; font-size: 22px; letter-spacing: 1px; }
           .letterhead p { margin: 4px 0 0; font-size: 12px; color: #555; }
-          h2 { font-size: 16px; border-bottom: 1px solid #C9A24B; padding-bottom: 6px; margin-top: 28px; }
+          h2 { font-size: 16px; border-bottom: 1px solid #b8923a; padding-bottom: 6px; margin-top: 28px; }
           table { width: 100%; border-collapse: collapse; margin-top: 10px; }
           td { padding: 6px 8px; vertical-align: top; font-size: 13px; }
           td.label { font-weight: bold; width: 180px; color: #0B1E3D; }
@@ -301,140 +312,142 @@ export default function Grievances({ currentStaff }) {
 
   // ---------------- Render ----------------
 
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: NAVY, fontFamily: 'Georgia, serif' }}>
-        Loading grievance records…
+      <div className="px-root"><PremiumStyles />
+        <div style={{ padding: 60, textAlign: 'center', color: PX.sub }}>Loading grievance records…</div>
       </div>
     );
   }
 
+  const parentPortal = grievances.filter((g) => g.source === 'parent_portal' && (g.status === 'Open' || g.status === 'In Progress')).length;
+  const toneFor = { Open: '#fca5a5', 'In Progress': '#fcd34d', Resolved: '#86efac', Closed: 'rgba(255,255,255,.75)' };
+
   return (
-    <div style={{ fontFamily: 'Georgia, serif', color: NAVY, background: CREAM, minHeight: '100vh', padding: 24 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 26, letterSpacing: 0.5 }}>Grievance Records</h1>
-          <p style={{ margin: '4px 0 0', color: '#666', fontSize: 13 }}>
-            Parent complaints against teachers — logged by staff or submitted via Parents Portal
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={exportTSV} style={btnSecondary}>Export TSV</button>
-          <button onClick={() => setShowForm(true)} style={btnPrimary}>+ Log New Grievance</button>
-        </div>
-      </div>
-
-      {error && (
-        <div style={{ background: '#FDEBEC', border: '1px solid #F3C0C2', color: '#B3261E', padding: 12, borderRadius: 6, marginBottom: 16 }}>
-          {error}
-        </div>
-      )}
-
-      {/* Status summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
-        {STATUS_FLOW.map((s) => (
-          <div
-            key={s}
-            onClick={() => setFilterStatus(filterStatus === s ? 'All' : s)}
-            style={{
-              cursor: 'pointer',
-              background: '#fff',
-              border: `1px solid ${filterStatus === s ? GOLD : '#e5ded0'}`,
-              borderRadius: 8,
-              padding: '14px 16px',
-              boxShadow: filterStatus === s ? '0 0 0 2px rgba(201,162,75,0.25)' : 'none',
-            }}
-          >
-            <div style={{ fontSize: 12, color: STATUS_COLORS[s].text, fontWeight: 'bold' }}>{s}</div>
-            <div style={{ fontSize: 24, fontWeight: 'bold' }}>{counts[s]}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <input
-          placeholder="Search description, student, teacher, parent…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ ...inputStyle, flex: '1 1 260px' }}
+    <div className="px-root">
+      <PremiumStyles />
+      <div className="px-wrap">
+        <PremiumHero
+          isMobile={isMobile}
+          icon={<PIcon.message size={isMobile ? 21 : 24} />}
+          eyebrow="GNSI · Parent relations"
+          title="Grievances"
+          subtitle="Parent concerns about teaching — logged by staff or sent from the Parents Portal"
+          actions={<>
+            <button className="px-hbtn" onClick={exportTSV}><PIcon.download size={15} /> Export</button>
+            <button className="px-hbtn gold" onClick={() => setShowForm(true)}><PIcon.plus size={15} /> Log grievance</button>
+          </>}
+          stats={[
+            ...STATUS_FLOW.map((st) => ({
+              label: st, value: counts[st], tone: counts[st] ? toneFor[st] : null,
+              sub: filterStatus === st ? 'filter on · tap to clear' : 'tap to filter',
+              active: filterStatus === st, onClick: () => setFilterStatus(filterStatus === st ? 'All' : st),
+            })),
+            ...(isMobile ? [] : [{ label: 'From parents', value: parentPortal, sub: 'open, via Parents Portal', tone: parentPortal ? PX.goldLt : null }]),
+          ]}
         />
-        <select value={filterSource} onChange={(e) => setFilterSource(e.target.value)} style={inputStyle}>
-          <option value="All">All Sources</option>
-          <option value="admin_logged">Admin Logged</option>
-          <option value="parent_portal">Parent Portal</option>
-        </select>
-        <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} style={inputStyle}>
-          <option value="All">All Categories</option>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-      </div>
 
-      {/* Table */}
-      <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', border: '1px solid #e5ded0' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr style={{ background: NAVY, color: '#fff' }}>
-              <th style={th}>Date</th>
-              <th style={th}>Student</th>
-              <th style={th}>Teacher</th>
-              <th style={th}>Category</th>
-              <th style={th}>Filed By</th>
-              <th style={th}>Source</th>
-              <th style={th}>Status</th>
-              <th style={th}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={8} style={{ padding: 24, textAlign: 'center', color: '#888' }}>
-                  No grievance records match the current filters.
-                </td>
-              </tr>
-            )}
-            {filtered.map((g) => (
-              <tr key={g.id} style={{ borderTop: '1px solid #eee' }}>
-                <td style={td}>{new Date(g.created_at).toLocaleDateString('en-IN')}</td>
-                <td style={td}>{g.student?.full_name || '—'}</td>
-                <td style={td}>{g.teacher?.full_name || '—'}</td>
-                <td style={td}>{g.category}</td>
-                <td style={td}>{g.filed_by_name || '—'}</td>
-                <td style={td}>
-                  <span style={{
-                    fontSize: 11, padding: '2px 8px', borderRadius: 10,
-                    background: g.source === 'parent_portal' ? '#EAF1FB' : '#F3EFE4',
-                    color: g.source === 'parent_portal' ? '#1E4C8A' : '#7A6A3A',
-                  }}>
-                    {g.source === 'parent_portal' ? 'Parent Portal' : 'Admin Logged'}
-                  </span>
-                </td>
-                <td style={td}>
-                  <select
-                    value={g.status}
-                    onChange={(e) => updateStatus(g.id, e.target.value)}
-                    style={{
-                      ...statusPill(g.status),
-                      border: `1px solid ${STATUS_COLORS[g.status].border}`,
-                    }}
-                  >
-                    {STATUS_FLOW.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                </td>
-                <td style={td}>
-                  <button onClick={() => setSelected(g)} style={linkBtn}>Details</button>
-                  <button onClick={() => printRecord(g)} style={linkBtn}>Print</button>
-                  <button onClick={() => softDelete(g.id)} style={{ ...linkBtn, color: '#B3261E' }}>Remove</button>
-                </td>
-              </tr>
+        {error && (
+          <div style={{ background: PX.badBg, border: '1px solid #f3c0c2', color: PX.bad, padding: 12, borderRadius: 12, marginBottom: 16, fontSize: 13 }}>
+            {error}
+          </div>
+        )}
+
+        {/* Filters */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+          <input
+            className="px-input"
+            placeholder="Search description, student, teacher, parent…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ flex: '1 1 260px', width: 'auto' }}
+          />
+          <select className="px-input" value={filterSource} onChange={(e) => setFilterSource(e.target.value)} style={{ width: 'auto' }}>
+            <option value="All">All sources</option>
+            <option value="admin_logged">Logged by staff</option>
+            <option value="parent_portal">Parents Portal</option>
+          </select>
+          <select className="px-input" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} style={{ width: 'auto' }}>
+            <option value="All">All categories</option>
+            {CATEGORIES.map((c) => (
+              <option key={c} value={c}>{c}</option>
             ))}
-          </tbody>
-        </table>
+          </select>
+        </div>
+
+        {/* Records */}
+        <PremiumCard title="Grievance register" subtitle={`${filtered.length} of ${grievances.length} records`} bodyStyle={{ padding: 0 }}>
+          {filtered.length === 0 ? (
+            <div style={{ padding: 36, textAlign: 'center', color: PX.faint, fontSize: 13 }}>No grievance records match the current filters.</div>
+          ) : isMobile ? (
+            <div>
+              {filtered.map((g) => (
+                <div key={g.id} style={{ padding: '14px 16px', borderBottom: `1px solid ${PX.line}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, color: PX.ink }}>{g.student?.full_name || 'Student not set'}</div>
+                      <div style={{ fontSize: 12, color: PX.sub, marginTop: 2 }}>{g.category}{g.teacher?.full_name ? ` · ${g.teacher.full_name}` : ''}</div>
+                    </div>
+                    <span style={{ ...statusPill(g.status), border: `1px solid ${STATUS_COLORS[g.status]?.border}`, height: 'fit-content', whiteSpace: 'nowrap' }}>{g.status}</span>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: PX.ink2, marginTop: 8, lineHeight: 1.5 }}>{(g.description || '').slice(0, 140)}{(g.description || '').length > 140 ? '…' : ''}</div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    <button className="px-btn" style={{ padding: '7px 12px', fontSize: 12.5 }} onClick={() => setSelected(g)}>Open</button>
+                    <button className="px-btn ghost" style={{ padding: '7px 12px', fontSize: 12.5 }} onClick={() => printRecord(g)}>Print</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="px-table">
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Student</th><th>Teacher</th><th>Category</th><th>Filed by</th><th>Source</th><th>Status</th><th style={{ textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((g) => (
+                    <tr key={g.id}>
+                      <td style={{ whiteSpace: 'nowrap', color: PX.sub }}>{new Date(g.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</td>
+                      <td style={{ fontWeight: 700, color: PX.ink }}>{g.student?.full_name || '—'}{g.student?.class_name ? <div style={{ fontSize: 11.5, color: PX.faint, fontWeight: 500 }}>{g.student.class_name}</div> : null}</td>
+                      <td>{g.teacher?.full_name || '—'}</td>
+                      <td>{g.category}</td>
+                      <td>{g.filed_by_name || '—'}</td>
+                      <td>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 99, whiteSpace: 'nowrap',
+                          background: g.source === 'parent_portal' ? '#eef2f9' : PX.goldBg,
+                          color: g.source === 'parent_portal' ? PX.navy2 : '#7a5b12',
+                        }}>
+                          {g.source === 'parent_portal' ? 'Parents Portal' : 'Staff'}
+                        </span>
+                      </td>
+                      <td>
+                        <select
+                          value={g.status}
+                          onChange={(e) => updateStatus(g.id, e.target.value)}
+                          style={{ ...statusPill(g.status), border: `1px solid ${STATUS_COLORS[g.status]?.border}` }}
+                        >
+                          {STATUS_FLOW.map((st) => (
+                            <option key={st} value={st}>{st}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button onClick={() => setSelected(g)} style={linkBtn}>Open</button>
+                        <button onClick={() => printRecord(g)} style={linkBtn}>Print</button>
+                        <button onClick={() => softDelete(g.id)} style={{ ...linkBtn, color: PX.bad, borderColor: '#f3c0c2' }}>Remove</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </PremiumCard>
       </div>
 
       {/* New grievance form modal */}
@@ -517,7 +530,7 @@ export default function Grievances({ currentStaff }) {
 
 function Field({ label, children, style }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 'bold', ...style }}>
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: PX.sub, ...style }}>
       {label}
       {children}
     </label>
@@ -529,7 +542,7 @@ function Modal({ title, children, onClose }) {
     <div style={overlayStyle} onClick={onClose}>
       <div style={{ ...modalStyle, maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
         <div style={modalHeader}>
-          <h3 style={{ margin: 0 }}>{title}</h3>
+          <h3 style={{ margin: 0, fontFamily: PX.serif, fontWeight: 600, fontSize: 19, color: PX.ink }}>{title}</h3>
           <button onClick={onClose} style={closeBtn}>×</button>
         </div>
         <div style={{ padding: 20 }}>{children}</div>
@@ -548,7 +561,7 @@ function ResolutionModal({ grievance, staffList, onClose, onSave }) {
     <div style={overlayStyle} onClick={onClose}>
       <div style={{ ...modalStyle, maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
         <div style={modalHeader}>
-          <h3 style={{ margin: 0 }}>Grievance GRV-{String(grievance.id).padStart(5, '0')}</h3>
+          <h3 style={{ margin: 0, fontFamily: PX.serif, fontWeight: 600, fontSize: 19, color: PX.ink }}>Grievance GRV-{String(grievance.id).padStart(5, '0')}</h3>
           <button onClick={onClose} style={closeBtn}>×</button>
         </div>
         <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -622,40 +635,40 @@ function ResolutionModal({ grievance, staffList, onClose, onSave }) {
 // ============================================================
 
 const btnPrimary = {
-  background: NAVY, color: '#fff', border: 'none', borderRadius: 6,
-  padding: '9px 16px', fontSize: 13, fontWeight: 'bold', cursor: 'pointer',
+  background: `linear-gradient(180deg, ${PX.navy2}, ${PX.navy})`, color: '#fff', border: 'none', borderRadius: 11,
+  padding: '10px 18px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', boxShadow: '0 6px 14px -8px rgba(19,42,79,.7)',
 };
 const btnSecondary = {
-  background: '#fff', color: NAVY, border: `1px solid ${NAVY}`, borderRadius: 6,
-  padding: '9px 16px', fontSize: 13, fontWeight: 'bold', cursor: 'pointer',
+  background: '#fff', color: PX.ink2, border: `1px solid ${PX.line2}`, borderRadius: 11,
+  padding: '10px 18px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
 };
 const inputStyle = {
-  padding: '8px 10px', border: '1px solid #d8d0bd', borderRadius: 6, fontSize: 13,
-  fontFamily: 'inherit', background: '#fff', color: NAVY,
+  padding: '10px 13px', border: `1px solid ${PX.line}`, borderRadius: 11, fontSize: 13.5,
+  fontFamily: 'inherit', background: '#fff', color: PX.ink, textTransform: 'none', letterSpacing: 0, fontWeight: 500,
 };
-const th = { textAlign: 'left', padding: '10px 12px', fontSize: 12, fontWeight: 'bold', letterSpacing: 0.4 };
-const td = { padding: '10px 12px', verticalAlign: 'top' };
 const linkBtn = {
-  background: 'none', border: 'none', color: NAVY, textDecoration: 'underline',
-  cursor: 'pointer', fontSize: 12, marginRight: 10, padding: 0,
+  background: '#fff', border: `1px solid ${PX.line2}`, color: PX.navy2, borderRadius: 8,
+  cursor: 'pointer', fontSize: 12, fontWeight: 700, marginLeft: 6, padding: '5px 10px',
 };
 const overlayStyle = {
-  position: 'fixed', inset: 0, background: 'rgba(11,30,61,0.45)',
-  display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+  position: 'fixed', inset: 0, background: 'rgba(11,30,61,0.5)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 14,
 };
 const modalStyle = {
-  background: '#fff', borderRadius: 10, width: '90%', maxHeight: '85vh', overflowY: 'auto',
+  background: '#fff', borderRadius: 18, width: '100%', maxHeight: '88vh', overflowY: 'auto',
+  boxShadow: '0 30px 80px -30px rgba(11,30,61,.6)', fontFamily: PX.sans, color: PX.ink,
 };
 const modalHeader = {
   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  padding: '16px 20px', borderBottom: `2px solid ${GOLD}`,
+  padding: '16px 20px', borderBottom: `1px solid ${PX.line}`, background: 'linear-gradient(180deg,#fff,#fcfbf7)',
+  boxShadow: `inset 0 -2px 0 ${PX.gold}`,
 };
-const closeBtn = { background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888' };
+const closeBtn = { background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: PX.faint };
 
 function statusPill(status) {
-  const c = STATUS_COLORS[status];
+  const c = STATUS_COLORS[status] || STATUS_COLORS.Closed;
   return {
-    background: c.bg, color: c.text, borderRadius: 6, padding: '4px 8px',
-    fontSize: 12, fontWeight: 'bold', cursor: 'pointer',
+    background: c.bg, color: c.text, borderRadius: 99, padding: '4px 10px',
+    fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
   };
 }

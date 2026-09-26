@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase.js'
 import { isAdminRole } from './App'
+import { PremiumStyles, PremiumHero, PIcon, PX } from './premiumUI'
 
 // ── Responsive hook (same pattern as Fees.jsx) ────────────────────────────────
 function useWindowWidth() {
@@ -20,35 +21,35 @@ function useWindowWidth() {
 // ── Shared style tokens (mirrors Fees.jsx `inp` / `lbl` pattern) ──────────────
 const inp = {
   width: '100%', padding: '10px 14px', borderRadius: '8px',
-  border: '1px solid #d1d5db', fontSize: '14px',
+  border: '1px solid #d9d2c2', fontSize: '14px',
   outline: 'none', boxSizing: 'border-box', backgroundColor: 'white',
 }
 const inpSm = { ...inp, fontSize: 12, padding: '7px 10px' }
 const lbl = {
   display: 'block', fontSize: '13px', fontWeight: '600',
-  color: '#374151', marginBottom: '6px',
+  color: '#2e3b52', marginBottom: '6px',
 }
 const card = {
-  background: 'white', borderRadius: 12, border: '1px solid #e2e8f0',
+  background: 'white', borderRadius: 12, border: '1px solid #e8e3d8',
   boxShadow: '0 2px 8px rgba(0,0,0,.05)',
 }
 const btnPrimary = (disabled) => ({
   padding: '10px 22px', borderRadius: 8, border: 'none',
-  background: disabled ? '#94a3b8' : 'linear-gradient(135deg,#1e3a5f,#3730a3)',
+  background: disabled ? '#8a93a6' : 'linear-gradient(135deg,#132a4f,#132a4f)',
   color: 'white', fontWeight: 700, fontSize: 14,
   cursor: disabled ? 'not-allowed' : 'pointer',
 })
 const btnGhost = {
-  padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0',
-  background: '#f8fafc', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#64748b',
+  padding: '7px 14px', borderRadius: 8, border: '1px solid #e8e3d8',
+  background: '#faf8f3', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#5d6b82',
 }
 
 // ─── Meal Config ──────────────────────────────────────────────────────────────
 const MEALS = {
   lunch:             { label:'Morning Lunch',       short:'Lunch',   emoji:'🍱', time:'12:30', color:'#059669', soft:'#f0fdf4', border:'#bbf7d0' },
   morning_breakfast: { label:'Afternoon Breakfast', short:'A.Bfast', emoji:'☕', time:'14:30', color:'#d97706', soft:'#fffbeb', border:'#fde68a' },
-  evening_breakfast: { label:'Evening Breakfast',   short:'E.Bfast', emoji:'🌇', time:'16:30', color:'#4f46e5', soft:'#eef2ff', border:'#c7d2fe' },
-  dinner:            { label:'Dinner',              short:'Dinner',  emoji:'🌙', time:'19:30', color:'#1e3a5f', soft:'#eff6ff', border:'#bfdbfe' },
+  evening_breakfast: { label:'Evening Breakfast',   short:'E.Bfast', emoji:'🌇', time:'16:30', color:'#1e3a6e', soft:'#eef2f9', border:'#c7d2fe' },
+  dinner:            { label:'Dinner',              short:'Dinner',  emoji:'🌙', time:'19:30', color:'#132a4f', soft:'#eef2f9', border:'#c9d5ea' },
 }
 const MEAL_KEYS = ['lunch','morning_breakfast','evening_breakfast','dinner']
 
@@ -60,7 +61,7 @@ const COOKS = [
 ]
 const COOK_SHIFTS = {
   morning: { label:'Morning Shift', short:'Morning', emoji:'🌅', time:'06:30–09:00 AM', defaultIn:'06:30', defaultOut:'09:00', color:'#d97706', soft:'#fffbeb', border:'#fde68a' },
-  evening: { label:'Evening Shift', short:'Evening', emoji:'🌇', time:'06:00–09:00 PM', defaultIn:'18:00', defaultOut:'21:00', color:'#7c3aed', soft:'#f5f3ff', border:'#ddd6fe' },
+  evening: { label:'Evening Shift', short:'Evening', emoji:'🌇', time:'06:00–09:00 PM', defaultIn:'18:00', defaultOut:'21:00', color:'#a7771f', soft:'#fbf3e0', border:'#eadbb2' },
 }
 const MANIPURI_PRESETS = {
   lunch:             ['Chak (Rice)','Kangsoi','Eromba','Nga Thongba','Hawai Thongba','Alu Kangmet','Khichdi','Papad','Pickle','Sabzi'],
@@ -75,14 +76,15 @@ const ITEM_CATEGORIES = {
   protein:   { label:'Protein',        emoji:'🍗', color:'#dc2626', soft:'#fef2f2', border:'#fecaca' },
   dairy:     { label:'Dairy',          emoji:'🥛', color:'#0284c7', soft:'#f0f9ff', border:'#bae6fd' },
   spice:     { label:'Spice / Masala', emoji:'🌶️', color:'#db2777', soft:'#fdf2f8', border:'#fbcfe8' },
-  oil:       { label:'Oil / Fat',      emoji:'🫙', color:'#64748b', soft:'#f8fafc', border:'#e2e8f0' },
-  other:     { label:'Other',          emoji:'📦', color:'#94a3b8', soft:'#f8fafc', border:'#e2e8f0' },
+  oil:       { label:'Oil / Fat',      emoji:'🫙', color:'#5d6b82', soft:'#faf8f3', border:'#e8e3d8' },
+  other:     { label:'Other',          emoji:'📦', color:'#8a93a6', soft:'#faf8f3', border:'#e8e3d8' },
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 const today    = () => new Date().toISOString().split('T')[0]
 const monthKey = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
 const dateFmt  = iso => iso ? new Date(iso+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—'
+const inr0     = n => `₹${Math.round(Number(n||0)).toLocaleString('en-IN')}`  // header figures, no paise
 const moneyFmt = n => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`
 const weekStart= () => {
   const d = new Date()
@@ -101,9 +103,9 @@ function Toast({ msg, color = '#16a34a' }) {
   return (
     <div className="no-print" style={{
       position: 'fixed', top: 20, right: 20, zIndex: 99999, background: '#fff',
-      border: '1px solid #e2e8f0', borderLeft: `3px solid ${color}`, borderRadius: 10,
+      border: '1px solid #e8e3d8', borderLeft: `3px solid ${color}`, borderRadius: 10,
       padding: '11px 16px', fontSize: 13, fontWeight: 600, boxShadow: '0 8px 32px rgba(0,0,0,.12)',
-      maxWidth: 320, color: '#1e293b',
+      maxWidth: 320, color: '#14213d',
     }}>
       {msg}
     </div>
@@ -115,7 +117,7 @@ function Field({ label, sub, children, span }) {
     <div style={span ? { gridColumn: '1/-1' } : undefined}>
       <label style={lbl}>
         {label}
-        {sub && <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 6 }}>{sub}</span>}
+        {sub && <span style={{ fontWeight: 400, color: '#8a93a6', marginLeft: 6 }}>{sub}</span>}
       </label>
       {children}
     </div>
@@ -140,7 +142,7 @@ function StarRating({ value, onChange }) {
     <div style={{ display: 'flex', gap: 2 }}>
       {[1,2,3,4,5].map(n => (
         <span key={n} onClick={() => onChange && onChange(n===value?0:n)}
-          style={{ fontSize: 17, cursor: onChange ? 'pointer' : 'default', color: n <= value ? '#d97706' : '#e2e8f0' }}>★</span>
+          style={{ fontSize: 17, cursor: onChange ? 'pointer' : 'default', color: n <= value ? '#d97706' : '#e8e3d8' }}>★</span>
       ))}
     </div>
   )
@@ -148,10 +150,10 @@ function StarRating({ value, onChange }) {
 
 function SectionDivider({ label }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '18px 0 14px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#94a3b8' }}>
-      <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '18px 0 14px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#8a93a6' }}>
+      <div style={{ flex: 1, height: 1, background: '#e8e3d8' }} />
       {label}
-      <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+      <div style={{ flex: 1, height: 1, background: '#e8e3d8' }} />
     </div>
   )
 }
@@ -169,7 +171,7 @@ function StatPill({ label, value, color }) {
 }
 
 function LoadingBlock({ label = '⏳ Loading…' }) {
-  return <div style={{ textAlign: 'center', padding: 40, color: '#64748b', fontSize: 14 }}>{label}</div>
+  return <div style={{ textAlign: 'center', padding: 40, color: '#5d6b82', fontSize: 14 }}>{label}</div>
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -205,7 +207,7 @@ function MealKpiStrip({ entries, dateFilter, cols }) {
           <div key={mk} style={{
             borderRadius: 10, padding: '12px 14px', position: 'relative',
             background: isMissing ? '#fef2f2' : hasEntry ? m.soft : '#fff',
-            border: `1.5px solid ${isMissing ? '#fca5a5' : hasEntry ? m.border : '#e2e8f0'}`,
+            border: `1.5px solid ${isMissing ? '#fca5a5' : hasEntry ? m.border : '#e8e3d8'}`,
             opacity: !hasEntry && !isPast ? .65 : 1,
           }}>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4, color: isMissing ? '#dc2626' : m.color }}>{m.short}</div>
@@ -230,16 +232,16 @@ function BudgetBar({ spent, budget }) {
       <div style={{ fontSize: 20, flexShrink: 0 }}>📊</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Monthly Budget</span>
-          <span style={{ fontSize: 14, fontWeight: 800, color: '#1e293b' }}>
-            {moneyFmt(spent)} <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 11 }}>/ {moneyFmt(budget)}</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#2e3b52' }}>Monthly Budget</span>
+          <span style={{ fontSize: 14, fontWeight: 800, color: '#14213d' }}>
+            {moneyFmt(spent)} <span style={{ color: '#8a93a6', fontWeight: 400, fontSize: 11 }}>/ {moneyFmt(budget)}</span>
             {over && <span style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 999, background: '#fee2e2', color: '#dc2626', fontSize: 10, fontWeight: 700 }}>OVER</span>}
           </span>
         </div>
-        <div style={{ height: 8, borderRadius: 4, background: '#f1f5f9', overflow: 'hidden' }}>
+        <div style={{ height: 8, borderRadius: 4, background: '#f3f0e8', overflow: 'hidden' }}>
           <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 4, transition: 'width .5s' }} />
         </div>
-        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+        <div style={{ fontSize: 11, color: '#8a93a6', marginTop: 6 }}>
           {over ? `${moneyFmt(spent-budget)} over limit` : `${moneyFmt(budget-spent)} remaining · ${(100-pct).toFixed(1)}% left`}
         </div>
       </div>
@@ -263,12 +265,12 @@ function MonthlyChart({ entries }) {
     <div style={{ ...card, padding: '18px 20px', marginBottom: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f' }}>📈 Daily Spend</div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>This month</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#132a4f' }}>📈 Daily Spend</div>
+          <div style={{ fontSize: 11, color: '#8a93a6', marginTop: 2 }}>This month</div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#1e3a5f' }}>{moneyFmt(avg)}</div>
-          <div style={{ fontSize: 10, color: '#94a3b8' }}>daily avg</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#132a4f' }}>{moneyFmt(avg)}</div>
+          <div style={{ fontSize: 10, color: '#8a93a6' }}>daily avg</div>
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height: 100, overflowX: 'auto', paddingBottom: 4 }}>
@@ -277,11 +279,11 @@ function MonthlyChart({ entries }) {
           const h = Math.max((v/max)*84, 4)
           const isToday  = d === today()
           const isPeak   = v === max
-          const color    = isPeak ? '#dc2626' : isToday ? '#3730a3' : '#c7d2fe'
+          const color    = isPeak ? '#dc2626' : isToday ? '#132a4f' : '#c7d2fe'
           return (
             <div key={d} title={`${dateFmt(d)}: ${moneyFmt(v)}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flexShrink: 0, cursor: 'pointer' }}>
               <div style={{ width: 16, borderRadius: '3px 3px 0 0', transition: 'height .3s', height: h, backgroundColor: color }} />
-              <span style={{ fontSize: 8, color: '#cbd5e1', display: 'block', width: 14, textAlign: 'center' }}>
+              <span style={{ fontSize: 8, color: '#d9d2c2', display: 'block', width: 14, textAlign: 'center' }}>
                 {new Date(d+'T00:00:00').getDate()}
               </span>
             </div>
@@ -289,8 +291,8 @@ function MonthlyChart({ entries }) {
         })}
       </div>
       <div style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: 10 }}>
-        {[['Today','#3730a3'],['Peak','#dc2626'],['Other','#c7d2fe']].map(([l,col])=>(
-          <span key={l} style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#94a3b8' }}>
+        {[['Today','#132a4f'],['Peak','#dc2626'],['Other','#c7d2fe']].map(([l,col])=>(
+          <span key={l} style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#8a93a6' }}>
             <span style={{ width: 8, height: 8, borderRadius: 2, display: 'inline-block', background: col }} />{l}
           </span>
         ))}
@@ -309,7 +311,7 @@ function MealPieBreakdown({ entries }) {
   if (!grand) return null
   return (
     <div style={{ ...card, padding: '18px 20px', marginBottom: 16 }}>
-      <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 14 }}>Meal-wise Breakdown</div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: '#132a4f', marginBottom: 14 }}>Meal-wise Breakdown</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {MEAL_KEYS.map(mk => {
           const m   = MEALS[mk]
@@ -317,16 +319,16 @@ function MealPieBreakdown({ entries }) {
           const pct = grand ? ((amt/grand)*100) : 0
           return (
             <div key={mk}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#475569', marginBottom: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#4b5870', marginBottom: 4 }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ width: 8, height: 8, borderRadius: 999, display: 'inline-block', background: m.color }} />
                   {m.label}
                 </span>
                 <span style={{ fontWeight: 700, fontSize: 11 }}>
-                  {moneyFmt(amt)} <span style={{ color: '#94a3b8', fontWeight: 400 }}>({pct.toFixed(1)}%)</span>
+                  {moneyFmt(amt)} <span style={{ color: '#8a93a6', fontWeight: 400 }}>({pct.toFixed(1)}%)</span>
                 </span>
               </div>
-              <div style={{ height: 6, borderRadius: 3, background: '#f1f5f9', overflow: 'hidden' }}>
+              <div style={{ height: 6, borderRadius: 3, background: '#f3f0e8', overflow: 'hidden' }}>
                 <div style={{ height: '100%', width: `${pct}%`, background: m.color, borderRadius: 3, transition: 'width .4s' }} />
               </div>
             </div>
@@ -352,10 +354,10 @@ function CalendarHeatmap({ entries, onDayClick }) {
   const firstDOW= new Date(year, month, 1).getDay()
 
   const getColor = amt => {
-    if (!amt) return '#e2e8f0'
+    if (!amt) return '#e8e3d8'
     const i = amt/max
     if (i > .75) return '#dc2626'
-    if (i > .5)  return '#4f46e5'
+    if (i > .5)  return '#1e3a6e'
     if (i > .25) return '#818cf8'
     return '#c7d2fe'
   }
@@ -369,12 +371,12 @@ function CalendarHeatmap({ entries, onDayClick }) {
 
   return (
     <div style={{ ...card, padding: '18px 20px', marginBottom: 16 }}>
-      <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 12 }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: '#132a4f', marginBottom: 12 }}>
         Spend Heatmap — {now.toLocaleString('en-IN',{month:'long',year:'numeric'})}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 6 }}>
         {['Su','Mo','Tu','We','Th','Fr','Sa'].map((d,i)=>(
-          <div key={i} style={{ textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#94a3b8', paddingBottom: 4 }}>{d}</div>
+          <div key={i} style={{ textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#8a93a6', paddingBottom: 4 }}>{d}</div>
         ))}
         {cells.map((c,i) => c===null
           ? <div key={`e${i}`} />
@@ -383,15 +385,15 @@ function CalendarHeatmap({ entries, onDayClick }) {
               style={{
                 aspectRatio: '1', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 9, fontWeight: 700, transition: 'all .1s',
-                backgroundColor: getColor(c.amt), color: c.amt ? '#fff' : '#94a3b8',
-                border: c.iso===today() ? '2px solid #1e3a5f' : '2px solid transparent',
+                backgroundColor: getColor(c.amt), color: c.amt ? '#fff' : '#8a93a6',
+                border: c.iso===today() ? '2px solid #132a4f' : '2px solid transparent',
               }}>
               {c.d}
             </div>
         )}
       </div>
-      <div style={{ display: 'flex', gap: 14, marginTop: 12, fontSize: 10, color: '#94a3b8' }}>
-        {[['None','#e2e8f0'],['Low','#c7d2fe'],['Mid','#818cf8'],['High','#4f46e5'],['Peak','#dc2626']].map(([l,col])=>(
+      <div style={{ display: 'flex', gap: 14, marginTop: 12, fontSize: 10, color: '#8a93a6' }}>
+        {[['None','#e8e3d8'],['Low','#c7d2fe'],['Mid','#818cf8'],['High','#1e3a6e'],['Peak','#dc2626']].map(([l,col])=>(
           <span key={l} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <span style={{ width: 10, height: 10, borderRadius: 2, display: 'inline-block', background: col }} />{l}
           </span>
@@ -414,19 +416,19 @@ function VendorSummary({ entries }) {
   const maxT = vendors[0][1].total
   return (
     <div style={{ ...card, padding: '18px 20px', marginBottom: 16 }}>
-      <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 14 }}>Top Vendors</div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: '#132a4f', marginBottom: 14 }}>Top Vendors</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {vendors.map(([name, { count, total }], i) => (
           <div key={name}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', width: 14 }}>{i+1}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{name}</span>
-                <span style={{ fontSize: 10, color: '#94a3b8' }}>{count}×</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#8a93a6', width: 14 }}>{i+1}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>{name}</span>
+                <span style={{ fontSize: 10, color: '#8a93a6' }}>{count}×</span>
               </div>
               <span style={{ fontSize: 13, fontWeight: 800, color: '#0284c7' }}>{moneyFmt(total)}</span>
             </div>
-            <div style={{ height: 4, borderRadius: 2, background: '#f1f5f9', overflow: 'hidden' }}>
+            <div style={{ height: 4, borderRadius: 2, background: '#f3f0e8', overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${(total/maxT)*100}%`, background: '#0284c7', borderRadius: 2, transition: 'width .4s' }} />
             </div>
           </div>
@@ -448,7 +450,7 @@ function ItemFrequency({ entries }) {
   if (!freq.length) return null
   return (
     <div style={{ ...card, padding: '18px 20px', marginBottom: 16 }}>
-      <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 12 }}>Most Used Items</div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: '#132a4f', marginBottom: 12 }}>Most Used Items</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {freq.map(([item,count]) => (
           <span key={item} style={{
@@ -503,9 +505,9 @@ function PettyCashWidget({ entries, dateFilter }) {
 
   return (
     <div style={{ ...card, padding: '18px 20px', marginBottom: 16 }}>
-      <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: '#132a4f', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
         💵 Petty Cash Ledger
-        <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 400 }}>— {dateFmt(dateFilter)}</span>
+        <span style={{ fontSize: 10, color: '#8a93a6', fontWeight: 400 }}>— {dateFmt(dateFilter)}</span>
       </div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         <input style={{ ...inp, flex: 1 }} type="number" placeholder="Amount given (₹)" value={given}
@@ -518,7 +520,7 @@ function PettyCashWidget({ entries, dateFilter }) {
         <StatPill label={balance<0?'short':'balance'} value={moneyFmt(Math.abs(balance))} color={balance>=0?'#0284c7':'#dc2626'} />
       </div>
       {cashLog.filter(c=>c.date===dateFilter).map((c,i)=>(
-        <div key={i} style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+        <div key={i} style={{ fontSize: 11, color: '#8a93a6', marginTop: 6 }}>
           ✓ {moneyFmt(c.amount)} added at {c.at}
         </div>
       ))}
@@ -637,10 +639,10 @@ function ItemSetupPanel({ onClose, showToast, isMobile }) {
 
   return (
     <div style={{ ...card, marginBottom: 16, overflow: 'hidden' }}>
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid #e8e3d8', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#faf8f3' }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#1e3a5f' }}>Item Setup</div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Manage kitchen item master list</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#132a4f' }}>Item Setup</div>
+          <div style={{ fontSize: 11, color: '#8a93a6', marginTop: 2 }}>Manage kitchen item master list</div>
         </div>
         <button type="button" style={{ ...btnGhost, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }} onClick={onClose}>✕</button>
       </div>
@@ -686,22 +688,22 @@ function ItemSetupPanel({ onClose, showToast, isMobile }) {
         </div>
         {loading ? <LoadingBlock /> : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
-            {!filtered.length && <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: 20 }}>No items found</div>}
+            {!filtered.length && <div style={{ textAlign: 'center', color: '#8a93a6', fontSize: 12, padding: 20 }}>No items found</div>}
             {filtered.map(it => {
               const cat = ITEM_CATEGORIES[it.category]||ITEM_CATEGORIES.other
               return (
                 <div key={it.id} style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderRadius: 8,
-                  background: it.is_active ? '#fff' : '#f8fafc', border: `1.5px solid ${it.is_active ? cat.border : '#e2e8f0'}`,
+                  background: it.is_active ? '#fff' : '#faf8f3', border: `1.5px solid ${it.is_active ? cat.border : '#e8e3d8'}`,
                   opacity: it.is_active ? 1 : .55,
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{ fontSize: 18, width: 24, textAlign: 'center' }}>{cat.emoji}</span>
                     <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>
-                        {it.name} {it.name_meitei && <span style={{ color: '#94a3b8', fontWeight: 400 }}>· {it.name_meitei}</span>}
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>
+                        {it.name} {it.name_meitei && <span style={{ color: '#8a93a6', fontWeight: 400 }}>· {it.name_meitei}</span>}
                       </div>
-                      <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
+                      <div style={{ fontSize: 10, color: '#8a93a6', marginTop: 2 }}>
                         {cat.label} · {it.unit}{it.default_price?` · ₹${it.default_price}/${it.unit}`:''}
                       </div>
                     </div>
@@ -749,17 +751,17 @@ function AdminMonitorPanel({ entries, budget, cookLog, onClose, isMobile }) {
 
   return (
     <div style={{ ...card, marginBottom: 16, overflow: 'hidden' }}>
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid #e8e3d8', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#faf8f3' }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#1e3a5f' }}>Admin Monitor</div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Live kitchen oversight · {dateFmt(today())}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#132a4f' }}>Admin Monitor</div>
+          <div style={{ fontSize: 11, color: '#8a93a6', marginTop: 2 }}>Live kitchen oversight · {dateFmt(today())}</div>
         </div>
         <button type="button" style={{ ...btnGhost, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }} onClick={onClose}>✕</button>
       </div>
       <div style={{ padding: 20 }}>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10, marginBottom: 16 }}>
           <KpiCard label="Today" value={moneyFmt(todayTotal)} color="#d97706" bg="#fffbeb" icon="💸" />
-          <KpiCard label="Month" value={moneyFmt(monthTotal)} color="#1e3a5f" bg="#eff6ff" icon="🗓" />
+          <KpiCard label="Month" value={moneyFmt(monthTotal)} color="#132a4f" bg="#eef2f9" icon="🗓" />
           {budget && <KpiCard label="Budget Used" value={`${budgetPct.toFixed(1)}%`} color={budgetPct>90?'#dc2626':'#d97706'} bg={budgetPct>90?'#fef2f2':'#fffbeb'} icon="📊" />}
           <KpiCard label="Meals Today" value={`${presentMeals.length}/4`} color={presentMeals.length===4?'#16a34a':'#dc2626'} bg={presentMeals.length===4?'#f0fdf4':'#fef2f2'} icon="🍽" />
         </div>
@@ -780,7 +782,7 @@ function AdminMonitorPanel({ entries, budget, cookLog, onClose, isMobile }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
           {mealStatus.map(({ mk, amt, isDue, isLogged, entries:me }) => {
             const m = MEALS[mk]
-            const statusColor = isLogged ? '#16a34a' : isDue ? '#dc2626' : '#94a3b8'
+            const statusColor = isLogged ? '#16a34a' : isDue ? '#dc2626' : '#8a93a6'
             const statusLabel = isLogged ? '✓ Logged' : isDue ? '⚠ Missing' : '⏳ Upcoming'
             return (
               <div key={mk} style={{ padding: 10, borderRadius: 10, background: m.soft, border: `1.5px solid ${m.border}` }}>
@@ -788,28 +790,28 @@ function AdminMonitorPanel({ entries, budget, cookLog, onClose, isMobile }) {
                   <span style={{ fontSize: 13 }}>{m.emoji} <strong>{m.short}</strong></span>
                   <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: 'rgba(255,255,255,.7)', color: statusColor }}>{statusLabel}</span>
                 </div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{moneyFmt(amt)}</div>
-                <div style={{ fontSize: 10, color: '#64748b', marginTop: 2, opacity: .8 }}>Scheduled: {m.time}</div>
-                {me.length>0 && me[0].prepared_by && <div style={{ fontSize: 10, color: '#64748b', marginTop: 2, opacity: .8 }}>👨‍🍳 {me[0].prepared_by}</div>}
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#14213d' }}>{moneyFmt(amt)}</div>
+                <div style={{ fontSize: 10, color: '#5d6b82', marginTop: 2, opacity: .8 }}>Scheduled: {m.time}</div>
+                {me.length>0 && me[0].prepared_by && <div style={{ fontSize: 10, color: '#5d6b82', marginTop: 2, opacity: .8 }}>👨‍🍳 {me[0].prepared_by}</div>}
               </div>
             )
           })}
         </div>
-        <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10 }}>Cook Activity — Today</div>
+        <div style={{ borderTop: '1px solid #e8e3d8', paddingTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#2e3b52', marginBottom: 10 }}>Cook Activity — Today</div>
           {!todayCookLog.length
-            ? <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', padding: 12 }}>No cook log entries today</div>
+            ? <div style={{ fontSize: 11, color: '#8a93a6', textAlign: 'center', padding: 12 }}>No cook log entries today</div>
             : todayCookLog.map(log => (
-              <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: '#f8fafc', border: '1px solid #f1f5f9', marginBottom: 6 }}>
+              <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: '#faf8f3', border: '1px solid #f3f0e8', marginBottom: 6 }}>
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{log.staff_name}</div>
-                  <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>{log.staff_name}</div>
+                  <div style={{ fontSize: 10, color: '#8a93a6', marginTop: 2, display: 'flex', gap: 8, alignItems: 'center' }}>
                     <MealBadge type={log.meal_type} />
                     {log.arrived_at&&<span>In: {log.arrived_at}</span>}
                     {log.left_at&&<span>Out: {log.left_at}</span>}
                   </div>
                 </div>
-                {log.notes && <div style={{ fontSize: 10, color: '#94a3b8', maxWidth: 150, textAlign: 'right' }}>{log.notes}</div>}
+                {log.notes && <div style={{ fontSize: 10, color: '#8a93a6', maxWidth: 150, textAlign: 'right' }}>{log.notes}</div>}
               </div>
             ))
           }
@@ -959,20 +961,20 @@ function CookAttendancePanel({ onClose, showToast, isMobile }) {
 
   return (
     <div style={{ ...card, border: '1.5px solid #c7d2fe', marginBottom: 16, overflow: 'hidden' }}>
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eef2ff' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid #e8e3d8', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eef2f9' }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#3730a3' }}>Cook Attendance</div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Morning 6:30–9:00 AM · Evening 6:00–9:00 PM</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#132a4f' }}>Cook Attendance</div>
+          <div style={{ fontSize: 11, color: '#8a93a6', marginTop: 2 }}>Morning 6:30–9:00 AM · Evening 6:00–9:00 PM</div>
         </div>
         <button type="button" style={{ ...btnGhost, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }} onClick={onClose}>✕</button>
       </div>
       <div style={{ padding: 20 }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid #e8e3d8' }}>
             {[['mark','📋 Mark'],['monthly','📊 Monthly']].map(([k,l]) => (
               <button key={k} type="button" onClick={()=>setView(k)} style={{
                 padding: '7px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none',
-                background: view===k ? '#3730a3' : '#fff', color: view===k ? '#fff' : '#64748b',
+                background: view===k ? '#132a4f' : '#fff', color: view===k ? '#fff' : '#5d6b82',
               }}>
                 {l}
               </button>
@@ -1016,7 +1018,7 @@ function CookAttendancePanel({ onClose, showToast, isMobile }) {
               return (
                 <div key={cook} style={{
                   marginBottom: 8, padding: '10px 14px', borderRadius: 10,
-                  background: isAbsent ? '#fef2f2' : '#fff', border: `1.5px solid ${isAbsent ? '#fecaca' : '#e2e8f0'}`,
+                  background: isAbsent ? '#fef2f2' : '#fff', border: `1.5px solid ${isAbsent ? '#fecaca' : '#e8e3d8'}`,
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: isAbsent ? 0 : 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1024,8 +1026,8 @@ function CookAttendancePanel({ onClose, showToast, isMobile }) {
                         {cook[0]}
                       </div>
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{cook}</div>
-                        <div style={{ fontSize: 10, color: '#94a3b8' }}>Cook #{ci+1}</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>{cook}</div>
+                        <div style={{ fontSize: 10, color: '#8a93a6' }}>Cook #{ci+1}</div>
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 4 }}>
@@ -1039,11 +1041,11 @@ function CookAttendancePanel({ onClose, showToast, isMobile }) {
                   {!isAbsent && (
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8' }}>IN</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#8a93a6' }}>IN</span>
                         <input type="time" style={{ ...inp, width: 'auto', padding: '5px 8px', fontSize: 12 }} value={rec.check_in||''} onChange={e=>setField(cook,shift,'check_in',e.target.value)} />
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8' }}>OUT</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#8a93a6' }}>OUT</span>
                         <input type="time" style={{ ...inp, width: 'auto', padding: '5px 8px', fontSize: 12 }} value={rec.check_out||''} onChange={e=>setField(cook,shift,'check_out',e.target.value)} />
                       </div>
                       <input style={{ ...inp, flex: 1, minWidth: 120, padding: '5px 8px', fontSize: 11 }} value={rec.notes||''} onChange={e=>setField(cook,shift,'notes',e.target.value)} placeholder="Notes…" />
@@ -1069,25 +1071,25 @@ function CookAttendancePanel({ onClose, showToast, isMobile }) {
                 <div key={cook} style={{ ...card, padding: 14 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 36, height: 36, borderRadius: 999, background: '#eef2ff', border: '1.5px solid #c7d2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#3730a3' }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 999, background: '#eef2f9', border: '1.5px solid #c7d2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800, color: '#132a4f' }}>
                         {cook[0]}
                       </div>
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{cook}</div>
-                        <div style={{ fontSize: 10, color: '#94a3b8' }}>{totalDays} shifts · {viewMonth}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#14213d' }}>{cook}</div>
+                        <div style={{ fontSize: 10, color: '#8a93a6' }}>{totalDays} shifts · {viewMonth}</div>
                       </div>
                     </div>
                     <div style={{ fontSize: 22, fontWeight: 800, color: pctColor }}>{pct}%</div>
                   </div>
-                  <div style={{ height: 6, borderRadius: 3, background: '#f1f5f9', overflow: 'hidden', marginBottom: 10 }}>
+                  <div style={{ height: 6, borderRadius: 3, background: '#f3f0e8', overflow: 'hidden', marginBottom: 10 }}>
                     <div style={{ height: '100%', width: `${pct}%`, background: pctColor, borderRadius: 3, transition: 'width .5s' }} />
                   </div>
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                     <StatPill label="present" value={present} color="#16a34a" />
                     <StatPill label="absent"  value={absent}  color="#dc2626" />
                     <StatPill label="half"    value={half}    color="#d97706" />
-                    <StatPill label="morning" value={mPresent} color="#3730a3" />
-                    <StatPill label="evening" value={ePresent} color="#7c3aed" />
+                    <StatPill label="morning" value={mPresent} color="#132a4f" />
+                    <StatPill label="evening" value={ePresent} color="#a7771f" />
                   </div>
                 </div>
               )
@@ -1095,15 +1097,15 @@ function CookAttendancePanel({ onClose, showToast, isMobile }) {
 
             {monthly.length > 0 && (
               <div style={{ ...card, padding: 18, marginTop: 4, overflowX: 'auto' }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 14 }}>Day-wise Detail — {viewMonth}</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#132a4f', marginBottom: 14 }}>Day-wise Detail — {viewMonth}</div>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 600 }}>
                   <thead>
                     <tr>
-                      <th style={{ padding: '6px 10px', textAlign: 'left', background: '#f8fafc', color: '#475569', fontWeight: 700, borderBottom: '2px solid #f1f5f9', whiteSpace: 'nowrap', fontSize: 10 }}>Cook</th>
+                      <th style={{ padding: '6px 10px', textAlign: 'left', background: '#faf8f3', color: '#4b5870', fontWeight: 700, borderBottom: '2px solid #f3f0e8', whiteSpace: 'nowrap', fontSize: 10 }}>Cook</th>
                       {[...new Set(monthly.map(r=>r.att_date))].sort().map(d=>(
-                        <th key={d} style={{ padding: '4px 4px', textAlign: 'center', background: '#f8fafc', color: '#475569', fontWeight: 700, borderBottom: '2px solid #f1f5f9', whiteSpace: 'nowrap', fontSize: 9 }}>
+                        <th key={d} style={{ padding: '4px 4px', textAlign: 'center', background: '#faf8f3', color: '#4b5870', fontWeight: 700, borderBottom: '2px solid #f3f0e8', whiteSpace: 'nowrap', fontSize: 9 }}>
                           {new Date(d+'T00:00:00').getDate()}<br/>
-                          <span style={{ fontWeight: 400, color: '#94a3b8' }}>{new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short'})}</span>
+                          <span style={{ fontWeight: 400, color: '#8a93a6' }}>{new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short'})}</span>
                         </th>
                       ))}
                     </tr>
@@ -1112,15 +1114,15 @@ function CookAttendancePanel({ onClose, showToast, isMobile }) {
                     {COOKS.map(cook => {
                       const dates = [...new Set(monthly.map(r=>r.att_date))].sort()
                       const cell = (row) => {
-                        if (!row) return <span style={{ color: '#cbd5e1' }}>—</span>
+                        if (!row) return <span style={{ color: '#d9d2c2' }}>—</span>
                         if (row.status==='present')  return <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
                         if (row.status==='absent')   return <span style={{ color: '#dc2626', fontWeight: 800 }}>✗</span>
                         if (row.status==='half_day') return <span style={{ color: '#d97706', fontWeight: 800 }}>½</span>
                         return null
                       }
                       return (
-                        <tr key={cook} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '6px 10px', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', fontSize: 10 }}>
+                        <tr key={cook} style={{ borderBottom: '1px solid #f3f0e8' }}>
+                          <td style={{ padding: '6px 10px', fontWeight: 700, color: '#2e3b52', whiteSpace: 'nowrap', fontSize: 10 }}>
                             {cook.split(' ').slice(0,2).join(' ')}
                           </td>
                           {dates.map(d => {
@@ -1140,7 +1142,7 @@ function CookAttendancePanel({ onClose, showToast, isMobile }) {
                     })}
                   </tbody>
                 </table>
-                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 8 }}>
+                <div style={{ fontSize: 10, color: '#8a93a6', marginTop: 8 }}>
                   Top = 🌅 Morning · Bottom = 🌇 Evening &nbsp;·&nbsp; ✓ Present · ✗ Absent · ½ Half Day
                 </div>
               </div>
@@ -1302,9 +1304,9 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, defaultMealType, ki
             </Field>
 
             <Field label="📎 Receipt / Bill Photo" span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 8, background: '#f8fafc', border: '1.5px dashed #e2e8f0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 8, background: '#faf8f3', border: '1.5px dashed #e8e3d8' }}>
                 <input type="file" accept="image/*,.pdf" onChange={handleFileUpload} style={{ fontSize: 11, flex: 1 }} />
-                {uploading && <span style={{ fontSize: 11, color: '#94a3b8' }}>Uploading…</span>}
+                {uploading && <span style={{ fontSize: 11, color: '#8a93a6' }}>Uploading…</span>}
                 {form.receipt_url && (
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                     <button type="button" style={{ padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, color: '#0284c7', border: '1px solid #bae6fd', background: '#f0f9ff', cursor: 'pointer' }}
@@ -1318,12 +1320,12 @@ function EntryForm({ onSave, onCancel, editing, defaultDate, defaultMealType, ki
             </Field>
           </div>
 
-          <div style={{ display: 'flex', gap: 10, marginTop: 18, paddingTop: 16, borderTop: '1px solid #e2e8f0', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 10, marginTop: 18, paddingTop: 16, borderTop: '1px solid #e8e3d8', alignItems: 'center' }}>
             <button type="button" style={btnPrimary(!valid)} onClick={()=>valid&&onSave(editing?.id||null,form)} disabled={!valid}>
               {editing ? 'Update Entry' : 'Save Entry'}
             </button>
             <button type="button" style={btnGhost} onClick={onCancel}>Cancel</button>
-            {!valid && <span style={{ fontSize: 11, color: '#94a3b8' }}>Fill required fields *</span>}
+            {!valid && <span style={{ fontSize: 11, color: '#8a93a6' }}>Fill required fields *</span>}
           </div>
         </div>
       </div>
@@ -1341,13 +1343,13 @@ function EntryCard({ e, locked, onEdit, onDelete, isAdmin }) {
         <ReceiptViewer url={e.receipt_url} onClose={()=>setViewReceipt(false)} />
       )}
       <div style={{
-        ...card, borderColor: m?.border || '#e2e8f0', padding: 14, display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'start',
+        ...card, borderColor: m?.border || '#e8e3d8', padding: 14, display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'start',
         background: m ? `linear-gradient(135deg,${m.soft},#fff)` : '#fff',
       }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
             <MealBadge type={e.meal_type} size="sm" />
-            <span style={{ fontSize: 18, fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>
+            <span style={{ fontSize: 18, fontWeight: 800, color: '#14213d', lineHeight: 1 }}>
               {moneyFmt(e.amount)}
             </span>
             {e.meal_rating>0 && <StarRating value={e.meal_rating} />}
@@ -1365,7 +1367,7 @@ function EntryCard({ e, locked, onEdit, onDelete, isAdmin }) {
               </button>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 10, fontSize: 11, color: '#64748b', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 10, fontSize: 11, color: '#5d6b82', flexWrap: 'wrap' }}>
             {e.item_details  && <span>🥦 {e.item_details}</span>}
             {e.prepared_by   && <span>👨‍🍳 {e.prepared_by}</span>}
             {e.vendor        && <span>🏪 {e.vendor}</span>}
@@ -1373,7 +1375,7 @@ function EntryCard({ e, locked, onEdit, onDelete, isAdmin }) {
             {e.serving_time  && <span>🕐 {e.serving_time}</span>}
           </div>
           {e.notes && (
-            <div style={{ marginTop: 6, fontSize: 11, color: '#64748b', padding: '4px 10px', background: '#f8fafc', borderRadius: 6, borderLeft: '3px solid #e2e8f0' }}>
+            <div style={{ marginTop: 6, fontSize: 11, color: '#5d6b82', padding: '4px 10px', background: '#faf8f3', borderRadius: 6, borderLeft: '3px solid #e8e3d8' }}>
               {e.notes}
             </div>
           )}
@@ -1402,19 +1404,19 @@ function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlo
       <div onClick={()=>setCollapsed(c=>!c)} style={{
         cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '10px 16px', borderRadius: 10, marginBottom: 8, userSelect: 'none',
-        background: isToday ? '#eff6ff' : '#f8fafc', border: `1.5px solid ${isToday ? '#bfdbfe' : '#e2e8f0'}`,
+        background: isToday ? '#eef2f9' : '#faf8f3', border: `1.5px solid ${isToday ? '#c9d5ea' : '#e8e3d8'}`,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: isToday ? '#1e3a5f' : '#475569' }}>
-            {isToday && <span style={{ color: '#3730a3', marginRight: 4 }}>📌</span>}
+          <span style={{ fontSize: 12, fontWeight: 700, color: isToday ? '#132a4f' : '#4b5870' }}>
+            {isToday && <span style={{ color: '#132a4f', marginRight: 4 }}>📌</span>}
             {dateFmt(dateStr)}
           </span>
-          {isToday && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999, background: '#dbeafe', color: '#1e3a5f', fontWeight: 700 }}>Today</span>}
+          {isToday && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999, background: '#e4ebf6', color: '#132a4f', fontWeight: 700 }}>Today</span>}
           {locked  && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999, background: '#fee2e2', color: '#dc2626', fontWeight: 700 }}>🔒 Locked</span>}
-          <span style={{ fontSize: 11, color: '#94a3b8' }}>{dayE.length} entries</span>
+          <span style={{ fontSize: 11, color: '#8a93a6' }}>{dayE.length} entries</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 800, color: '#1e293b' }}>{moneyFmt(total)}</span>
+          <span style={{ fontSize: 14, fontWeight: 800, color: '#14213d' }}>{moneyFmt(total)}</span>
           {isAdmin && (!locked
             ? <button type="button" onClick={e=>{e.stopPropagation();onLockDay(dateStr)}} style={{ padding: '4px 10px', borderRadius: 8, fontSize: 10, fontWeight: 700, color: '#dc2626', border: '1.5px solid #fecaca', background: '#fef2f2', cursor: 'pointer' }}>
                 🔒 Lock
@@ -1423,7 +1425,7 @@ function DayGroup({ dateStr, entries, locks, onEdit, onDelete, onLockDay, onUnlo
                 🔓 Unlock
               </button>
           )}
-          <span style={{ fontSize: 12, color: '#94a3b8', transition: 'transform .2s', display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none' }}>▾</span>
+          <span style={{ fontSize: 12, color: '#8a93a6', transition: 'transform .2s', display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none' }}>▾</span>
         </div>
       </div>
       {!collapsed && (
@@ -1446,10 +1448,10 @@ function BudgetModal({ current, month, onSave, onClose }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.45)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={onClose}>
-      <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', boxShadow: '0 20px 60px rgba(0,0,0,.2)', width: 400, overflow: 'hidden' }} onClick={e=>e.stopPropagation()}>
-        <div style={{ padding: '18px 22px', borderBottom: '1px solid #e2e8f0', background: '#eff6ff' }}>
-          <div style={{ fontSize: 17, fontWeight: 800, color: '#1e3a5f' }}>Set Monthly Budget</div>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>For {month}</div>
+      <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e8e3d8', boxShadow: '0 20px 60px rgba(0,0,0,.2)', width: 400, overflow: 'hidden' }} onClick={e=>e.stopPropagation()}>
+        <div style={{ padding: '18px 22px', borderBottom: '1px solid #e8e3d8', background: '#eef2f9' }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: '#132a4f' }}>Set Monthly Budget</div>
+          <div style={{ fontSize: 12, color: '#8a93a6', marginTop: 2 }}>For {month}</div>
         </div>
         <div style={{ padding: '20px 22px' }}>
           <Field label="Budget Amount (₹)">
@@ -1484,22 +1486,22 @@ function generatePrintReport(entries, budget, monthLabel) {
 <title>GNSI Kitchen Report — ${monthLabel}</title>
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:system-ui,-apple-system,sans-serif; color:#1e293b; background:#fff; padding:36px 48px; }
-  .header { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:16px; margin-bottom:26px; border-bottom:3px solid #1e3a5f; }
-  .institute { font-size:21px; font-weight:800; color:#1e3a5f; }
-  .sub { font-size:11px; color:#64748b; margin-top:3px; }
-  .title-area { text-align:right; font-size:12px; color:#475569; }
+  body { font-family:system-ui,-apple-system,sans-serif; color:#14213d; background:#fff; padding:36px 48px; }
+  .header { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:16px; margin-bottom:26px; border-bottom:3px solid #132a4f; }
+  .institute { font-size:21px; font-weight:800; color:#132a4f; }
+  .sub { font-size:11px; color:#5d6b82; margin-top:3px; }
+  .title-area { text-align:right; font-size:12px; color:#4b5870; }
   .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:26px; }
-  .kpi { padding:14px 16px; border-radius:10px; background:#fff; border:1.5px solid #e2e8f0; border-left:4px solid #1e3a5f; }
-  .kpi-val { font-size:20px; font-weight:800; color:#1e3a5f; }
-  .kpi-lbl { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; margin-top:4px; }
-  h2 { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#1e3a5f; margin:22px 0 10px; padding-left:10px; border-left:3px solid #1e3a5f; }
+  .kpi { padding:14px 16px; border-radius:10px; background:#fff; border:1.5px solid #e8e3d8; border-left:4px solid #132a4f; }
+  .kpi-val { font-size:20px; font-weight:800; color:#132a4f; }
+  .kpi-lbl { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#8a93a6; margin-top:4px; }
+  h2 { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#132a4f; margin:22px 0 10px; padding-left:10px; border-left:3px solid #132a4f; }
   table { width:100%; border-collapse:collapse; font-size:11px; }
-  th { background:#f8fafc; color:#475569; font-weight:700; padding:8px 10px; text-align:left; border-bottom:2px solid #e2e8f0; text-transform:uppercase; letter-spacing:.04em; font-size:9px; }
-  td { padding:7px 10px; border-bottom:1px solid #f1f5f9; color:#1e293b; font-size:10px; }
+  th { background:#faf8f3; color:#4b5870; font-weight:700; padding:8px 10px; text-align:left; border-bottom:2px solid #e8e3d8; text-transform:uppercase; letter-spacing:.04em; font-size:9px; }
+  td { padding:7px 10px; border-bottom:1px solid #f3f0e8; color:#14213d; font-size:10px; }
   td:first-child { font-size:11px; }
-  .total-row td { font-weight:800; color:#1e3a5f; border-top:2px solid #1e3a5f; border-bottom:none; }
-  .footer { margin-top:30px; padding-top:14px; border-top:1px solid #e2e8f0; font-size:10px; color:#94a3b8; display:flex; justify-content:space-between; }
+  .total-row td { font-weight:800; color:#132a4f; border-top:2px solid #132a4f; border-bottom:none; }
+  .footer { margin-top:30px; padding-top:14px; border-top:1px solid #e8e3d8; font-size:10px; color:#8a93a6; display:flex; justify-content:space-between; }
   @media print { body { padding:20px; } }
 </style></head><body>
   <div class="header">
@@ -1578,11 +1580,11 @@ function LedgerTab({
       {/* Filter Bar */}
       <div style={{ ...card, padding: 12, marginBottom: 14, display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>Date</label>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#5d6b82' }}>Date</label>
           <input type="date" style={{ ...inp, width: 'auto' }} value={filterDate} onChange={e => setFilterDate(e.target.value)} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>Meal</label>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#5d6b82' }}>Meal</label>
           <select style={{ ...inp, width: 'auto' }} value={filterMeal} onChange={e => setFilterMeal(e.target.value)}>
             <option value="all">All Meals</option>
             {MEAL_KEYS.map(mk => (
@@ -1601,11 +1603,11 @@ function LedgerTab({
       {/* Empty State */}
       {!uniqueDates.length ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '56px 0', textAlign: 'center' }}>
-          <div style={{ width: 76, height: 76, borderRadius: 18, background: '#eff6ff', border: '2px dashed #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34, marginBottom: 18 }}>
+          <div style={{ width: 76, height: 76, borderRadius: 18, background: '#eef2f9', border: '2px dashed #c9d5ea', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34, marginBottom: 18 }}>
             🍽
           </div>
-          <div style={{ fontSize: 17, fontWeight: 800, color: '#1e293b', marginBottom: 8 }}>No entries yet</div>
-          <p style={{ fontSize: 13, color: '#94a3b8', maxWidth: '36ch', lineHeight: 1.5, marginBottom: 20 }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: '#14213d', marginBottom: 8 }}>No entries yet</div>
+          <p style={{ fontSize: 13, color: '#8a93a6', maxWidth: '36ch', lineHeight: 1.5, marginBottom: 20 }}>
             Start tracking your kitchen expenses — add your first meal entry for {viewMonth}.
           </p>
           <button type="button" style={btnPrimary(false)} onClick={() => setFormOpen(true)}>
@@ -1657,142 +1659,63 @@ function AnalyticsTab({ entries, setFilterDate, setTab }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function Topbar({ viewMonth, setViewMonth, tab, setTab, isAdmin,
   onBudget, onReport, onCSV, onWhatsApp, onAdd,
-  onItemSetup, onMonitor, onCookLog, onCookAtt, activePanel, isMobile }) {
+  onItemSetup, onMonitor, onCookLog, onCookAtt, activePanel, isMobile, heroStats = [] }) {
 
-  const now     = new Date()
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t) }, [])
   const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-  const dateStr = now.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef(null)
+  const dateStr = now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })
 
-  useEffect(() => {
-    if (!menuOpen) return
-    const onDocClick = e => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false) }
-    document.addEventListener('mousedown', onDocClick)
-    return () => document.removeEventListener('mousedown', onDocClick)
-  }, [menuOpen])
-
-  const ACTIONS = [
-    { id: 'items',      label: 'Items',      emoji: '🧺', fn: onItemSetup, toggle: true,  adminOnly: true  },
-    { id: 'monitor',    label: 'Monitor',    emoji: '🛡',  fn: onMonitor,   toggle: true,  adminOnly: true  },
-    { id: 'cooklog',    label: 'Cook Log',   emoji: '👨‍🍳', fn: onCookLog,   toggle: true,  adminOnly: true  },
-    { id: 'attendance', label: 'Attendance', emoji: '📋', fn: onCookAtt,   toggle: true,  adminOnly: true  },
-    { id: 'budget',     label: 'Budget',     emoji: '💰', fn: onBudget,    toggle: false, adminOnly: false },
-    { id: 'report',     label: 'Report',     emoji: '🖨',  fn: onReport,    toggle: false, adminOnly: false },
-    { id: 'csv',        label: 'CSV',        emoji: '⬇',  fn: onCSV,       toggle: false, adminOnly: false },
-    { id: 'whatsapp',   label: 'WhatsApp',   emoji: '📲', fn: onWhatsApp,  toggle: false, adminOnly: false },
-    { id: 'add',        label: 'Add Entry',  emoji: '+',  fn: onAdd,       toggle: false, adminOnly: false, primary: true },
-  ].filter(a => !a.adminOnly || isAdmin)
-
-  // Menu = the same two ledger/analytics view-tabs plus every action above,
-  // all in one place — a single always-available entry point to everything
-  // in the topbar, independent of screen width.
-  const MENU_TABS = [
-    { id: 'ledger',    label: 'Ledger',    emoji: '📋', fn: () => setTab('ledger'),    active: tab === 'ledger' },
-    { id: 'analytics', label: 'Analytics', emoji: '📊', fn: () => setTab('analytics'), active: tab === 'analytics' },
+  // Admin tools open a panel below; everyday actions run immediately.
+  const TOOLS = [
+    { id: 'items',      label: 'Items',       icon: PIcon.list,     fn: onItemSetup, toggle: true },
+    { id: 'monitor',    label: 'Monitor',     icon: PIcon.shield,   fn: onMonitor,   toggle: true },
+    { id: 'cooklog',    label: 'Cook log',    icon: PIcon.pen,      fn: onCookLog,   toggle: true },
+    { id: 'attendance', label: 'Cook attendance', icon: PIcon.users, fn: onCookAtt,  toggle: true },
   ]
-  const MENU_ACTIONS = ACTIONS.map(a => ({ ...a, active: a.toggle && activePanel === a.id }))
+  const EXPORTS = [
+    { id: 'budget',   label: 'Budget',   icon: PIcon.rupee,    fn: onBudget },
+    { id: 'report',   label: 'Report',   icon: PIcon.print,    fn: onReport },
+    { id: 'csv',      label: 'CSV',      icon: PIcon.download, fn: onCSV },
+    { id: 'whatsapp', label: 'WhatsApp', icon: PIcon.whatsapp, fn: onWhatsApp },
+  ]
+  const chip = (a, on) => (
+    <button key={a.id} type="button" onClick={a.fn} title={a.label}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 36, padding: isMobile ? '0 11px' : '0 13px', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap',
+        border: `1px solid ${on ? PX.gold : PX.line}`, background: on ? PX.goldBg : '#fff', color: on ? '#6b4e0f' : PX.ink2 }}>
+      <a.icon size={15} />{isMobile ? '' : a.label}
+    </button>
+  )
 
   return (
-    <div className="no-print" style={{ background: 'white', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 100 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: isMobile ? '10px 14px' : '12px 22px', flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <h1 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 800, color: '#1e3a5f', margin: 0 }}>🍽 Kitchen Ledger</h1>
-          <p style={{ color: '#64748b', fontSize: 12, margin: '3px 0 0' }}>GNSI · Khangabok, Thoubal</p>
-        </div>
+    <div className="no-print" style={{ padding: isMobile ? '12px 12px 0' : '22px 24px 0' }}>
+      <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+        <PremiumHero
+          isMobile={isMobile}
+          icon={<PIcon.bowl size={isMobile ? 21 : 24} />}
+          eyebrow="GNSI · Mess & kitchen"
+          title="Kitchen Ledger"
+          subtitle={<>{dateStr} · <strong style={{ color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{timeStr}</strong></>}
+          actions={<>
+            <input type="month" value={viewMonth} onChange={e => setViewMonth(e.target.value)}
+              style={{ height: 40, padding: '0 12px', borderRadius: 12, border: '1px solid rgba(255,255,255,.22)', background: 'rgba(255,255,255,.08)', color: '#fff', fontWeight: 700, fontSize: 13, colorScheme: 'dark' }} />
+            <button className="px-hbtn gold" type="button" onClick={onAdd}><PIcon.plus size={15} /> Add entry</button>
+          </>}
+          stats={heroStats}
+        />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', width: isMobile ? '100%' : 'auto' }}>
-          <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0', flex: isMobile ? '1 1 auto' : 'initial' }}>
-            {[['ledger', '📋 Ledger'], ['analytics', '📊 Analytics']].map(([k, l]) => (
-              <button key={k} type="button" onClick={() => setTab(k)} style={{
-                padding: isMobile ? '7px 10px' : '7px 14px', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
-                background: tab === k ? '#1e3a5f' : '#fff', color: tab === k ? '#fff' : '#64748b',
-                flex: isMobile ? 1 : 'initial',
-              }}>
-                {l}
-              </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
+          <nav className="px-tabs" role="tablist" style={{ marginBottom: 0 }}>
+            {[['ledger', 'Ledger', PIcon.list], ['analytics', 'Analytics', PIcon.chart]].map(([k, l, I]) => (
+              <button key={k} role="tab" aria-selected={tab === k} className={'px-tab' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}><I size={15} /> {l}</button>
             ))}
-          </div>
-          <input type="month" style={{ ...inp, width: 'auto', padding: '7px 10px', fontSize: 12 }} value={viewMonth} onChange={e => setViewMonth(e.target.value)} />
-          <div style={{ textAlign: 'right', fontSize: 11, color: '#94a3b8' }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>{timeStr}</div>
-            {dateStr}
-          </div>
-
-          <div ref={menuRef} style={{ position: 'relative' }}>
-            <button
-              type="button"
-              aria-label="Open menu"
-              onClick={() => setMenuOpen(v => !v)}
-              style={{
-                width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderRadius: 8, border: '1.5px solid #e2e8f0', cursor: 'pointer', fontSize: 16,
-                background: menuOpen ? '#1e3a5f' : '#fff', color: menuOpen ? '#fff' : '#374151',
-                flexShrink: 0,
-              }}
-            >
-              ☰
-            </button>
-
-            {menuOpen && (
-              <div style={{
-                position: 'absolute', top: '44px', right: 0, zIndex: 200,
-                background: 'white', borderRadius: 10, border: '1px solid #e2e8f0',
-                boxShadow: '0 12px 32px rgba(0,0,0,.15)', minWidth: 200, overflow: 'hidden',
-                maxHeight: '70vh', overflowY: 'auto',
-              }}>
-                <div style={{ padding: '8px 14px', fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em', background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
-                  View
-                </div>
-                {MENU_TABS.map(t => (
-                  <button key={t.id} type="button" onClick={() => { t.fn(); setMenuOpen(false) }} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
-                    padding: '10px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700,
-                    background: t.active ? '#eff6ff' : '#fff', color: t.active ? '#1e3a5f' : '#374151',
-                  }}>
-                    <span>{t.emoji}</span>{t.label}
-                  </button>
-                ))}
-                <div style={{ padding: '8px 14px', fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em', background: '#f8fafc', borderTop: '1px solid #f1f5f9', borderBottom: '1px solid #f1f5f9' }}>
-                  Actions
-                </div>
-                {MENU_ACTIONS.map(a => (
-                  <button key={a.id} type="button" onClick={() => { a.fn(); setMenuOpen(false) }} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
-                    padding: '10px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700,
-                    background: a.active ? '#eff6ff' : '#fff', color: a.active ? '#1e3a5f' : (a.primary ? '#1e3a5f' : '#374151'),
-                  }}>
-                    <span>{a.emoji}</span>{a.label}
-                  </button>
-                ))}
-              </div>
-            )}
+          </nav>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginLeft: isMobile ? 0 : 'auto' }}>
+            {isAdmin && TOOLS.map(a => chip(a, a.toggle && activePanel === a.id))}
+            {isAdmin && <span style={{ width: 1, alignSelf: 'stretch', background: PX.line, margin: '4px 2px' }} />}
+            {EXPORTS.map(a => chip(a, false))}
           </div>
         </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 8, padding: isMobile ? '0 12px 12px' : '0 22px 12px', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
-        {ACTIONS.map(a => {
-          const isActive = a.toggle && activePanel === a.id
-          return (
-            <button
-              key={a.id}
-              type="button"
-              onClick={a.fn}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: isMobile ? '7px 10px' : '7px 14px', borderRadius: 8,
-                fontSize: 12, fontWeight: 700, cursor: 'pointer', border: '1.5px solid',
-                ...(a.primary
-                  ? { background: 'linear-gradient(135deg,#1e3a5f,#3730a3)', color: '#fff', borderColor: 'transparent' }
-                  : isActive
-                    ? { background: '#eff6ff', color: '#1e3a5f', borderColor: '#bfdbfe' }
-                    : { background: '#fff', color: '#64748b', borderColor: '#e2e8f0' }),
-              }}>
-              <span>{a.emoji}</span>{isMobile ? '' : a.label}
-            </button>
-          )
-        })}
       </div>
     </div>
   )
@@ -2012,12 +1935,13 @@ export default function Kitchen({ currentUser }) {
   )
 
   return (
-    <div style={{ background: '#f8fafc', minHeight: '100vh', color: '#1e293b', fontFamily: 'system-ui,sans-serif' }}>
+    <div className="px-root">
+      <PremiumStyles />
       <style>{`
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        ::-webkit-scrollbar-thumb { background: #d9d2c2; border-radius: 999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #8a93a6; }
         @media print { .no-print { display: none !important; } }
       `}</style>
 
@@ -2027,16 +1951,16 @@ export default function Kitchen({ currentUser }) {
       {showWA && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.45)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={()=>setShowWA(null)}>
-          <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', boxShadow: '0 20px 60px rgba(0,0,0,.2)', width: 420, overflow: 'hidden' }} onClick={e=>e.stopPropagation()}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: '#f0fdf4', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e8e3d8', boxShadow: '0 20px 60px rgba(0,0,0,.2)', width: 420, overflow: 'hidden' }} onClick={e=>e.stopPropagation()}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8e3d8', background: '#f0fdf4', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 20 }}>📲</span>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 800, color: '#16a34a' }}>WhatsApp Message — Copied!</div>
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Paste in any chat</div>
+                <div style={{ fontSize: 11, color: '#8a93a6', marginTop: 2 }}>Paste in any chat</div>
               </div>
             </div>
             <div style={{ padding: '16px 20px' }}>
-              <pre style={{ fontSize: 12, color: '#374151', whiteSpace: 'pre-wrap', background: '#f8fafc', borderRadius: 8, padding: 12, border: '1px solid #f1f5f9', maxHeight: 250, overflowY: 'auto' }}>{showWA}</pre>
+              <pre style={{ fontSize: 12, color: '#2e3b52', whiteSpace: 'pre-wrap', background: '#faf8f3', borderRadius: 8, padding: 12, border: '1px solid #f3f0e8', maxHeight: 250, overflowY: 'auto' }}>{showWA}</pre>
               <button type="button" style={{ ...btnPrimary(false), width: '100%', marginTop: 14, display: 'flex', justifyContent: 'center' }} onClick={()=>setShowWA(null)}>Close</button>
             </div>
           </div>
@@ -2049,6 +1973,15 @@ export default function Kitchen({ currentUser }) {
         isAdmin={isAdmin}
         activePanel={activePanel}
         isMobile={isMobile}
+        heroStats={[
+          { label: 'Today', value: inr0(todayTotal), sub: today(), tone: todayTotal ? PX.goldLt : null },
+          { label: 'This week', value: inr0(weekTotal), sub: 'spent' },
+          { label: 'This month', value: inr0(monthTotal), sub: budget ? `${Math.round(monthTotal / budget * 100)}% of ₹${Number(budget).toLocaleString('en-IN')} budget` : 'no budget set', tone: budget && monthTotal > budget ? '#fca5a5' : null },
+          ...(isMobile ? [] : [
+            { label: 'Daily average', value: inr0(avgPerDay), sub: 'this month' },
+            { label: 'Peak day', value: highDay.d ? dateFmt(highDay.d) : '—', sub: highDay.d ? inr0(highDay.sum) : '' },
+          ]),
+        ]}
         onBudget={()=>setShowBudget(true)}
         onReport={()=>generatePrintReport(entries,budget,viewMonth)}
         onCSV={()=>exportToCSV(entries,viewMonth)}
@@ -2062,14 +1995,6 @@ export default function Kitchen({ currentUser }) {
 
       <div ref={contentRef} style={{ maxWidth: 1080, margin: '0 auto', padding: isMobile ? '16px 12px' : '24px 28px' }}>
         {loading && <LoadingBlock />}
-
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(5,1fr)', gap: 10, marginBottom: 16 }}>
-          <KpiCard label="Today"     value={moneyFmt(todayTotal)} color="#d97706" bg="#fffbeb" icon="🌅" sub={today()} />
-          <KpiCard label="This Week" value={moneyFmt(weekTotal)}  color="#1e3a5f" bg="#eff6ff" icon="📅" />
-          <KpiCard label="Month"     value={moneyFmt(monthTotal)} color="#0284c7" bg="#f0f9ff" icon="🗓" sub={viewMonth} />
-          <KpiCard label="Daily Avg" value={moneyFmt(avgPerDay)}  color="#16a34a" bg="#f0fdf4" icon="📈" />
-          <KpiCard label="Peak Day"  value={highDay.d?dateFmt(highDay.d):'—'} color="#dc2626" bg="#fef2f2" icon="🔺" sub={highDay.d?moneyFmt(highDay.sum):''} />
-        </div>
 
         <BudgetBar spent={monthTotal} budget={budget} />
 

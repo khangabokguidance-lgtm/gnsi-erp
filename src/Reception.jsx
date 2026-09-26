@@ -20,25 +20,27 @@ import * as XLSX from 'xlsx'
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 const C = {
-  navy:    '#1e3a5f',
-  navyMid: '#2a4f7c',
-  gold:    '#c9a84c',
-  goldLight:'#ffd060',
-  indigo:  '#4f46e5',
+  navy:    '#132a4f',
+  navyMid: '#1e3a6e',
+  gold:    '#b8923a',
+  goldLight:'#e9d9b0',
+  goldSoft:'#f6efdc',
+  indigo:  '#1e3a6e',
   emerald: '#059669',
   amber:   '#d97706',
   red:     '#dc2626',
-  violet:  '#7c3aed',
+  violet:  '#a7771f',
   sky:     '#0284c7',
   teal:    '#0f766e',
   slate: {
-    50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0',
-    300: '#cbd5e1', 400: '#94a3b8', 500: '#64748b',
-    600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a',
+    50: '#faf8f3', 100: '#f3f0e8', 200: '#e8e3d8',
+    300: '#d9d2c2', 400: '#8a93a6', 500: '#5d6b82',
+    600: '#4b5870', 700: '#2e3b52', 800: '#14213d', 900: '#0f1b2e',
   },
 }
 
-const font = "'Outfit', system-ui, sans-serif"
+const font  = "'Plus Jakarta Sans','Inter',system-ui,sans-serif"
+const serif = "'Fraunces','Playfair Display',Georgia,serif"
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const fmt     = n => Number(n || 0).toLocaleString('en-IN')
@@ -47,14 +49,34 @@ const today   = () => new Date().toISOString().split('T')[0]
 const gccStr  = g => String(parseInt(g) || g || '')
 const TABS    = ['Student 360°', 'Enquiry', 'Visitor Book', 'Leave Application', 'Gate Pass', 'Parent Items', 'Complaint', 'Monitors']
 
-const TAB_ICONS = {
-  'Student 360°': '🔍',
-  'Enquiry':      '📋',
-  'Visitor Book': '👤',
-  'Gate Pass':    '🪪',
-  'Parent Items': '📦',
-  'Monitors':     '📡',
+const RIcon = {
+  search:  p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>,
+  enquiry: p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M5 4h14v16l-3-2-2 2-2-2-2 2-2-2-3 2Z"/><path d="M9 9h6M9 13h4"/></svg>,
+  visitor: p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-6.5 7-6.5s7 2.6 7 6.5"/></svg>,
+  leave:   p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M7 3h7l5 5v13H7Z"/><path d="M14 3v5h5M10 13h6M10 17h4"/></svg>,
+  gate:    p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.6-1.6 1.7-2.4 3-2.4s2.4.8 3 2.4M14.5 10h4M14.5 13.5h3"/></svg>,
+  items:   p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>,
+  complaint:p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M4 5h16v11H9l-5 4Z"/><path d="M12 8v4M12 14.5v.01"/></svg>,
+  monitor: p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/></svg>,
+  s360:    p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="10" r="2.6"/><path d="M7.5 18c1-2 2.6-3 4.5-3s3.5 1 4.5 3"/></svg>,
+  print:   p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7Z"/></svg>,
+  more:    p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>,
+  bell:    p => <svg viewBox="0 0 24 24" width={p?.size||16} height={p?.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M6 10a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>,
 }
+// Tabs grouped the way a front office actually works.
+const TAB_META = {
+  'Student 360°':      { short:'360°',     icon:RIcon.s360,      group:'Desk',     desc:'Look up any student — profile, contacts, fees, attendance, movement.' },
+  'Monitors':          { short:'Monitors', icon:RIcon.monitor,   group:'Desk',     desc:'Live board of students outside campus, overdue returns and hostel leave.' },
+  'Visitor Book':      { tabLabel:'Visitors', short:'Visitors', icon:RIcon.visitor,   group:'Front office', desc:'Sign visitors in and out, print badges, flag follow-ups.' },
+  'Enquiry':           { short:'Enquiry',  icon:RIcon.enquiry,   group:'Front office', desc:'Admission enquiries, sources and follow-up dates.' },
+  'Complaint':         { tabLabel:'Complaints', short:'Complaint',icon:RIcon.complaint, group:'Front office', desc:'Parent complaints — assign, track and close with a full timeline.' },
+  'Leave Application': { tabLabel:'Leave', short:'Leave',    icon:RIcon.leave,     group:'Student movement', desc:'Parents apply for a student\'s leave; approval issues a gate pass.' },
+  'Gate Pass':         { short:'Gate Pass',icon:RIcon.gate,      group:'Student movement', desc:'Issue passes, mark exit and return, catch late returns.' },
+  'Parent Items':      { short:'Items',    icon:RIcon.items,     group:'Student movement', desc:'Parcels and items left by parents, house by house.' },
+}
+const TAB_GROUPS = ['Desk', 'Front office', 'Student movement']
+const MOBILE_MAIN = ['Student 360°', 'Visitor Book', 'Gate Pass', 'Parent Items']
+const TAB_ICONS = Object.fromEntries(Object.entries(TAB_META).map(([k, v]) => [k, null]))
 
 // ── predefined item catalogue ─────────────────────────────────────────────────
 const DEFAULT_ITEMS = [
@@ -111,24 +133,24 @@ const canTransition = (from, to) => (VALID_TRANSITIONS[from] || []).includes(to)
 
 // ── status pill colours ───────────────────────────────────────────────────────
 const STATUS_COLORS = {
-  New:         { bg:'#dbeafe', color:'#1d4ed8',  border:'#93c5fd' },
+  New:         { bg:'#e4ebf6', color:'#1e3a6e',  border:'#b7c6e0' },
   'Follow Up': { bg:'#fef9c3', color:'#92400e',  border:'#fde68a' },
   Converted:   { bg:'#dcfce7', color:'#166534',  border:'#86efac' },
-  Closed:      { bg:'#f1f5f9', color:'#64748b',  border:'#e2e8f0' },
+  Closed:      { bg:'#f3f0e8', color:'#5d6b82',  border:'#e8e3d8' },
   Issued:      { bg:'#fef3c7', color:'#92400e',  border:'#fde68a' },
   Exited:      { bg:'#fee2e2', color:'#dc2626',  border:'#fca5a5' },
   Returned:    { bg:'#dcfce7', color:'#166534',  border:'#86efac' },
   Pending:     { bg:'#fef9c3', color:'#92400e',  border:'#fde68a' },
   Delivered:   { bg:'#dcfce7', color:'#166534',  border:'#86efac' },
   Active:      { bg:'#dcfce7', color:'#166534',  border:'#86efac' },
-  Inactive:    { bg:'#f1f5f9', color:'#64748b',  border:'#e2e8f0' },
+  Inactive:    { bg:'#f3f0e8', color:'#5d6b82',  border:'#e8e3d8' },
   Out:         { bg:'#fee2e2', color:'#dc2626',  border:'#fca5a5' },
   Overdue:     { bg:'#fde8d8', color:'#9a3412',  border:'#fdba74' },
   Approved:    { bg:'#dcfce7', color:'#166534',  border:'#86efac' },
 }
 
 function Pill({ label }) {
-  const c = STATUS_COLORS[label] || { bg:'#f1f5f9', color:'#475569', border:'#e2e8f0' }
+  const c = STATUS_COLORS[label] || { bg:'#f3f0e8', color:'#4b5870', border:'#e8e3d8' }
   return (
     <span style={{
       background: c.bg, color: c.color,
@@ -144,25 +166,25 @@ function Pill({ label }) {
 
 // ── shared styles ─────────────────────────────────────────────────────────────
 const inp = {
-  width: '100%', padding: '10px 13px', borderRadius: 10,
-  border: `0.5px solid ${C.slate[200]}`, fontSize: 13,
+  width: '100%', padding: '11px 13px', borderRadius: 11,
+  border: `1px solid ${C.slate[200]}`, fontSize: 13.5,
   boxSizing: 'border-box', fontFamily: font, outline: 'none',
-  background: C.slate[50], color: C.slate[800],
+  background: '#fff', color: C.slate[800],
   transition: 'border-color .15s, box-shadow .15s',
 }
 const lbl = {
-  display: 'block', marginBottom: 5, fontSize: 10,
-  fontWeight: 700, color: C.slate[400],
-  textTransform: 'uppercase', letterSpacing: '.07em', fontFamily: font,
+  display: 'block', marginBottom: 6, fontSize: 10.5,
+  fontWeight: 700, color: C.slate[500],
+  textTransform: 'uppercase', letterSpacing: '.09em', fontFamily: font,
 }
 const thS = {
-  padding: '9px 12px', textAlign: 'left', fontSize: 10,
-  fontWeight: 700, color: C.slate[400], borderBottom: `0.5px solid ${C.slate[200]}`,
-  textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap',
-  background: C.slate[50], fontFamily: font,
+  padding: '11px 14px', textAlign: 'left', fontSize: 10.5,
+  fontWeight: 700, color: C.slate[500], borderBottom: `1px solid ${C.slate[200]}`,
+  textTransform: 'uppercase', letterSpacing: '.08em', whiteSpace: 'nowrap',
+  background: C.slate[100], fontFamily: font,
 }
 const tdS = {
-  padding: '10px 12px', color: C.slate[700],
+  padding: '12px 14px', color: C.slate[700], borderBottom: `1px solid ${C.slate[100]}`,
   fontSize: 13, verticalAlign: 'middle', fontFamily: font,
 }
 const delBtn = {
@@ -177,8 +199,8 @@ function Card({ children, style = {} }) {
   return (
     <div style={{
       background: 'white', borderRadius: 18,
-      border: `0.5px solid ${C.slate[200]}`,
-      boxShadow: '0 2px 16px rgba(0,0,0,.05)',
+      border: `1px solid ${C.slate[200]}`,
+      boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 12px 32px -22px rgba(19,42,79,.35)',
       overflow: 'hidden', ...style,
     }}>
       {children}
@@ -189,18 +211,18 @@ function Card({ children, style = {} }) {
 function CardHead({ icon, title, sub, right, accentColor, isMobile }) {
   return (
     <div style={{
-      padding: isMobile ? '13px 16px' : '15px 20px',
-      borderBottom: `0.5px solid ${C.slate[100]}`,
-      display: 'flex', alignItems: 'flex-start',
+      padding: isMobile ? '14px 16px' : '16px 22px',
+      borderBottom: `1px solid ${C.slate[200]}`, background: 'linear-gradient(180deg,#fff,#fcfbf7)',
+      display: 'flex', alignItems: 'center',
       justifyContent: 'space-between', gap: 8,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
-        <div style={{ width: 3, height: 22, background: accentColor || C.navy, borderRadius: 2, flexShrink: 0 }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
+        <div style={{ width: 4, alignSelf: 'stretch', minHeight: 26, background: accentColor || `linear-gradient(180deg,${C.gold},${C.goldLight})`, borderRadius: 4, flexShrink: 0 }} />
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: isMobile ? 13 : 14, fontWeight: 500, color: C.navy, lineHeight: 1.3, fontFamily: font }}>
-            {icon && <span style={{ marginRight: 5 }}>{icon}</span>}{title}
+          <div style={{ fontSize: isMobile ? 15 : 16.5, fontWeight: 600, color: C.slate[900], lineHeight: 1.25, fontFamily: serif }}>
+            {title}
           </div>
-          {sub && <div style={{ fontSize: 10, color: C.slate[400], marginTop: 2 }}>{sub}</div>}
+          {sub && <div style={{ fontSize: 11.5, color: C.slate[500], marginTop: 2, fontFamily: font }}>{sub}</div>}
         </div>
       </div>
       {right && (
@@ -223,12 +245,12 @@ function Btn({ children, onClick, disabled, variant = 'primary', small, style = 
     WebkitTapHighlightColor: 'transparent',
   }
   const vars = {
-    primary:  { background: disabled ? C.slate[200] : C.navy, color: disabled ? C.slate[400] : 'white' },
+    primary:  { background: disabled ? C.slate[200] : `linear-gradient(180deg,${C.navyMid},${C.navy})`, color: disabled ? C.slate[400] : 'white', boxShadow: disabled ? 'none' : '0 6px 14px -8px rgba(19,42,79,.7)' },
     success:  { background: disabled ? C.slate[200] : C.emerald, color: 'white' },
     danger:   { background: '#fee2e2', color: C.red, border: `0.5px solid #fca5a5` },
     ghost:    { background: C.slate[50], color: C.slate[600], border: `0.5px solid ${C.slate[200]}` },
     amber:    { background: '#fef3c7', color: '#92400e', border: `0.5px solid #fde68a` },
-    navy:     { background: C.navy, color: C.gold },
+    navy:     { background: `linear-gradient(180deg,${C.navyMid},${C.navy})`, color: C.goldLight },
     whatsapp: { background: '#25d366', color: 'white' },
   }
   return (
@@ -243,13 +265,13 @@ function SaveBtn({ label, saving }) {
   return (
     <button type="submit" disabled={saving}
       style={{
-        marginTop: 16, background: saving ? C.slate[200] : C.navy,
-        color: saving ? C.slate[400] : 'white', padding: '12px 24px',
+        marginTop: 18, background: saving ? C.slate[200] : `linear-gradient(180deg,${C.navyMid},${C.navy})`,
+        color: saving ? C.slate[400] : 'white', padding: '13px 24px', boxShadow: saving ? 'none' : '0 10px 22px -12px rgba(19,42,79,.8)',
         borderRadius: 12, border: 'none', fontWeight: 700, fontSize: 14,
         cursor: saving ? 'not-allowed' : 'pointer', fontFamily: font,
         width: '100%', minHeight: 46, transition: 'all .15s',
       }}>
-      {saving ? '⏳ Saving…' : label}
+      {saving ? 'Saving…' : label}
     </button>
   )
 }
@@ -315,7 +337,7 @@ function printDailySummary({ enquiries, visitors, gatePasses, parentItems, stude
   const followUpDue  = enquiries.filter(e => e.follow_up_date === t && e.status !== 'Converted' && e.status !== 'Closed')
 
   const tableRows = (arr, cols) => arr.length === 0
-    ? `<tr><td colspan="${cols}" style="text-align:center;color:#94a3b8;padding:12px">No records</td></tr>`
+    ? `<tr><td colspan="${cols}" style="text-align:center;color:#8a93a6;padding:12px">No records</td></tr>`
     : arr.map(r => cols === 4
         ? `<tr><td>${r.student_name || '—'}</td><td>${r.reason || '—'}</td><td>${r.exit_time || '—'}</td><td style="font-weight:700;color:${r.status==='Returned'?'#166534':'#dc2626'}">${r.status}</td></tr>`
         : cols === 3
@@ -324,24 +346,24 @@ function printDailySummary({ enquiries, visitors, gatePasses, parentItems, stude
       ).join('')
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Daily Summary — ${d}</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;padding:32px;color:#1e293b}
-.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:14px;margin-bottom:20px}
-.inst{font-size:17px;font-weight:700;color:#1e3a5f}.sub{font-size:11px;color:#64748b;margin-top:3px}
-.title{font-size:20px;font-weight:800;color:#1e3a5f;margin-bottom:18px}
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;padding:32px;color:#14213d}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #132a4f;padding-bottom:14px;margin-bottom:20px}
+.inst{font-size:17px;font-weight:700;color:#132a4f}.sub{font-size:11px;color:#5d6b82;margin-top:3px}
+.title{font-size:20px;font-weight:800;color:#132a4f;margin-bottom:18px}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
-.stat{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;text-align:center}
-.sl{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
-.sv{font-size:24px;font-weight:800;color:#1e3a5f}
+.stat{background:#faf8f3;border:1px solid #e8e3d8;border-radius:10px;padding:12px 14px;text-align:center}
+.sl{font-size:10px;color:#8a93a6;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
+.sv{font-size:24px;font-weight:800;color:#132a4f}
 .section{margin-bottom:22px}
-.sh{font-size:13px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;border-left:3px solid #1e3a5f;padding-left:10px}
+.sh{font-size:13px;font-weight:800;color:#132a4f;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;border-left:3px solid #132a4f;padding-left:10px}
 table{width:100%;border-collapse:collapse;font-size:12px}
-th{background:#1e3a5f;color:rgba(255,255,255,.8);padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em}
-td{padding:8px 10px;border-bottom:1px solid #f1f5f9}
-.sig{display:flex;justify-content:space-between;margin-top:36px;padding-top:20px;border-top:1px solid #e2e8f0}
-.sb{text-align:center}.sl2{width:140px;border-top:1.5px solid #1e3a5f;margin:0 auto 6px}.st{font-size:11px;color:#64748b}
-.ftr{margin-top:24px;text-align:center;font-size:10px;color:#94a3b8}
+th{background:#132a4f;color:rgba(255,255,255,.8);padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+td{padding:8px 10px;border-bottom:1px solid #f3f0e8}
+.sig{display:flex;justify-content:space-between;margin-top:36px;padding-top:20px;border-top:1px solid #e8e3d8}
+.sb{text-align:center}.sl2{width:140px;border-top:1.5px solid #132a4f;margin:0 auto 6px}.st{font-size:11px;color:#5d6b82}
+.ftr{margin-top:24px;text-align:center;font-size:10px;color:#8a93a6}
 @media print{body{padding:16px}}</style></head><body>
-<div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div><div class="sub">Khangabok, Thoubal, Manipur — 795128</div></div><div style="text-align:right"><div style="font-size:10px;color:#94a3b8">Daily Summary</div><div style="font-weight:700;font-size:14px">${d}</div></div></div>
+<div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div><div class="sub">Khangabok, Thoubal, Manipur — 795128</div></div><div style="text-align:right"><div style="font-size:10px;color:#8a93a6">Daily Summary</div><div style="font-weight:700;font-size:14px">${d}</div></div></div>
 <div class="title">📋 Reception Daily Summary Report</div>
 <div class="stats">
   <div class="stat"><div class="sl">Today's Enquiries</div><div class="sv">${todayEnq.length}</div></div>
@@ -404,7 +426,7 @@ function CampusHeadcount({ students, gatePasses, hlRecords }) {
   const pct        = total > 0 ? Math.round((onCampus / total) * 100) : 100
 
   return (
-    <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, #0f2340 100%)`, borderRadius: 18, padding: '16px 20px', marginBottom: 14, border: `0.5px solid rgba(255,255,255,.1)` }}>
+    <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, #0b1e3d 100%)`, borderRadius: 18, padding: '16px 20px', marginBottom: 14, border: `0.5px solid rgba(255,255,255,.1)` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, color: C.gold, textTransform: 'uppercase', letterSpacing: '.1em', fontFamily: font }}>👥 Campus Headcount</div>
@@ -473,13 +495,13 @@ function printItemInvoice(item) {
   const d = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
   const invoiceNo = `PI-${String(item.id || Date.now()).slice(-8).toUpperCase()}`
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Item Invoice — ${item.student_name}</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#f0f4f8;display:flex;justify-content:center;padding:36px 16px}.page{width:680px;background:white;box-shadow:0 4px 32px rgba(0,0,0,.15);overflow:hidden;position:relative}.wm{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:90px;font-weight:900;color:rgba(30,58,95,.04);pointer-events:none;z-index:0;white-space:nowrap}.hdr{background:#1e3a5f;padding:24px 32px;position:relative;z-index:1;display:flex;justify-content:space-between;align-items:flex-start}.inst{color:white;font-size:18px;font-weight:700}.sub{color:rgba(255,255,255,.5);font-size:11px;margin-top:3px}.inv-l{font-size:10px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em;text-align:right}.inv-no{font-size:20px;font-weight:800;color:#c9a84c;font-family:'Courier New',monospace;margin-top:2px;text-align:right}.accent{height:4px;background:linear-gradient(90deg,#7c3aed,#c9a84c)}.title-row{background:#f8fafc;padding:12px 32px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0}.title{font-size:14px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.06em}.badge{background:#7c3aed;color:white;font-size:10px;font-weight:700;padding:3px 11px;border-radius:99px}.body{padding:24px 32px;position:relative;z-index:1}.meta{display:grid;grid-template-columns:1fr 1fr;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:22px}.mc{padding:11px 14px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}.mc:nth-child(even){border-right:none}.mc:nth-last-child(-n+2){border-bottom:none}.ml{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px}.mv{font-size:13px;font-weight:700;color:#1e293b}.pt{width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:18px}.pt thead{background:#1e3a5f}.pt th{padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.05em}.pt td{padding:11px 14px;font-size:13px;color:#334155;border-bottom:1px solid #f1f5f9}.status-row{display:flex;justify-content:flex-end;margin-bottom:22px}.status-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 18px;text-align:right;min-width:160px}.sl{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}.sv{font-size:14px;font-weight:800;color:#1e293b}.sig{display:flex;justify-content:space-between;padding-top:28px;border-top:1px solid #e2e8f0}.sb{text-align:center}.sl2{width:130px;border-top:1.5px solid #1e3a5f;margin:0 auto 6px}.st{font-size:11px;color:#64748b}.ftr{background:#f8fafc;border-top:1px solid #e2e8f0;padding:11px 32px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8}@media print{body{background:white;padding:0}.page{box-shadow:none;width:100%}}</style></head><body>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#f0f4f8;display:flex;justify-content:center;padding:36px 16px}.page{width:680px;background:white;box-shadow:0 4px 32px rgba(0,0,0,.15);overflow:hidden;position:relative}.wm{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:90px;font-weight:900;color:rgba(30,58,95,.04);pointer-events:none;z-index:0;white-space:nowrap}.hdr{background:#132a4f;padding:24px 32px;position:relative;z-index:1;display:flex;justify-content:space-between;align-items:flex-start}.inst{color:white;font-size:18px;font-weight:700}.sub{color:rgba(255,255,255,.5);font-size:11px;margin-top:3px}.inv-l{font-size:10px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em;text-align:right}.inv-no{font-size:20px;font-weight:800;color:#b8923a;font-family:'Courier New',monospace;margin-top:2px;text-align:right}.accent{height:4px;background:linear-gradient(90deg,#a7771f,#b8923a)}.title-row{background:#faf8f3;padding:12px 32px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e8e3d8}.title{font-size:14px;font-weight:800;color:#132a4f;text-transform:uppercase;letter-spacing:.06em}.badge{background:#a7771f;color:white;font-size:10px;font-weight:700;padding:3px 11px;border-radius:99px}.body{padding:24px 32px;position:relative;z-index:1}.meta{display:grid;grid-template-columns:1fr 1fr;border:1px solid #e8e3d8;border-radius:8px;overflow:hidden;margin-bottom:22px}.mc{padding:11px 14px;border-right:1px solid #e8e3d8;border-bottom:1px solid #e8e3d8}.mc:nth-child(even){border-right:none}.mc:nth-last-child(-n+2){border-bottom:none}.ml{font-size:10px;color:#8a93a6;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px}.mv{font-size:13px;font-weight:700;color:#14213d}.pt{width:100%;border-collapse:collapse;border:1px solid #e8e3d8;border-radius:8px;overflow:hidden;margin-bottom:18px}.pt thead{background:#132a4f}.pt th{padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.05em}.pt td{padding:11px 14px;font-size:13px;color:#2e3b52;border-bottom:1px solid #f3f0e8}.status-row{display:flex;justify-content:flex-end;margin-bottom:22px}.status-box{background:#faf8f3;border:1px solid #e8e3d8;border-radius:8px;padding:12px 18px;text-align:right;min-width:160px}.sl{font-size:10px;color:#8a93a6;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}.sv{font-size:14px;font-weight:800;color:#14213d}.sig{display:flex;justify-content:space-between;padding-top:28px;border-top:1px solid #e8e3d8}.sb{text-align:center}.sl2{width:130px;border-top:1.5px solid #132a4f;margin:0 auto 6px}.st{font-size:11px;color:#5d6b82}.ftr{background:#faf8f3;border-top:1px solid #e8e3d8;padding:11px 32px;display:flex;justify-content:space-between;font-size:10px;color:#8a93a6}@media print{body{background:white;padding:0}.page{box-shadow:none;width:100%}}</style></head><body>
 <div class="page"><div class="wm">GNSI</div>
 <div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div><div class="sub">Khangabok, Thoubal, Manipur — 795128</div></div><div><div class="inv-l">Invoice No.</div><div class="inv-no">${invoiceNo}</div></div></div>
 <div class="accent"></div><div class="title-row"><div class="title">Parent Item Receipt</div><div class="badge">Parent Items</div></div>
 <div class="body"><div class="meta"><div class="mc"><div class="ml">Student Name</div><div class="mv">${item.student_name || '—'}</div></div><div class="mc"><div class="ml">Class / Batch</div><div class="mv">${item.class_name || '—'}</div></div><div class="mc"><div class="ml">Course</div><div class="mv">${item.course || '—'}</div></div><div class="mc"><div class="ml">Hostel Type</div><div class="mv">${item.hostel_type || '—'}</div></div><div class="mc"><div class="ml">Parent Name</div><div class="mv">${item.parent_name || '—'}</div></div><div class="mc"><div class="ml">House / Block</div><div class="mv">${item.house || '—'}</div></div><div class="mc"><div class="ml">Date Received</div><div class="mv">${fmtDate(item.received_date)}</div></div><div class="mc"><div class="ml">Received By</div><div class="mv">${item.received_by || '—'}</div></div></div>
-<table class="pt"><thead><tr><th style="width:32px">#</th><th>Item Description</th><th>Quantity</th><th>Status</th></tr></thead><tbody><tr><td>1</td><td style="font-weight:700">${item.item_name}</td><td>${item.quantity || '1'}</td><td style="font-weight:700;color:#7c3aed">${item.status}</td></tr></tbody></table>
-<div class="status-row"><div class="status-box"><div class="sl">Current Status</div><div class="sv">${item.status}</div>${item.remarks ? `<div style="font-size:11px;color:#64748b;margin-top:4px">${item.remarks}</div>` : ''}</div></div>
+<table class="pt"><thead><tr><th style="width:32px">#</th><th>Item Description</th><th>Quantity</th><th>Status</th></tr></thead><tbody><tr><td>1</td><td style="font-weight:700">${item.item_name}</td><td>${item.quantity || '1'}</td><td style="font-weight:700;color:#a7771f">${item.status}</td></tr></tbody></table>
+<div class="status-row"><div class="status-box"><div class="sl">Current Status</div><div class="sv">${item.status}</div>${item.remarks ? `<div style="font-size:11px;color:#5d6b82;margin-top:4px">${item.remarks}</div>` : ''}</div></div>
 <div class="sig"><div class="sb"><div class="sl2"></div><div class="st">Parent / Guardian</div></div><div class="sb"><div class="sl2"></div><div class="st">Received By (Staff)</div></div><div class="sb"><div class="sl2"></div><div class="st">Warden / HOD</div></div></div></div>
 <div class="ftr"><span>GNSI · Parent Item Invoice · ${item.student_name}</span><span>Printed: ${d}</span></div></div></body></html>`
   const pw = window.open('', '_blank', 'width=760,height=860')
@@ -636,8 +658,8 @@ function sendLeaveApplicationToWhatsApp(item) {
 function printGatePass(item) {
   const d = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Gate Pass</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#fff;padding:32px;color:#1e293b}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1e3a5f;padding-bottom:14px;margin-bottom:18px}.inst{font-size:17px;font-weight:700;color:#1e3a5f}.sub{font-size:11px;color:#64748b;margin-top:3px}.title{font-size:20px;font-weight:800;color:#1e3a5f;margin-bottom:16px;text-transform:uppercase;letter-spacing:.08em}.grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:20px}.cell{padding:11px 14px;border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0}.cell:nth-child(even){border-right:none}.cell:nth-last-child(-n+2){border-bottom:none}.cl{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px}.cv{font-size:13px;font-weight:700;color:#1e293b}.sig{display:flex;justify-content:space-between;margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0}.sb{text-align:center}.sl{width:140px;border-top:1.5px solid #1e3a5f;margin:0 auto 6px}.st{font-size:11px;color:#64748b}.ftr{margin-top:24px;text-align:center;font-size:10px;color:#94a3b8}@media print{body{padding:16px}}</style></head><body>
-<div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div><div class="sub">Khangabok, Thoubal, Manipur — 795128</div></div><div style="text-align:right"><div style="font-size:10px;color:#94a3b8">Printed</div><div style="font-weight:700;font-size:13px">${d}</div></div></div>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#fff;padding:32px;color:#14213d}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #132a4f;padding-bottom:14px;margin-bottom:18px}.inst{font-size:17px;font-weight:700;color:#132a4f}.sub{font-size:11px;color:#5d6b82;margin-top:3px}.title{font-size:20px;font-weight:800;color:#132a4f;margin-bottom:16px;text-transform:uppercase;letter-spacing:.08em}.grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid #e8e3d8;border-radius:8px;overflow:hidden;margin-bottom:20px}.cell{padding:11px 14px;border-right:1px solid #e8e3d8;border-bottom:1px solid #e8e3d8}.cell:nth-child(even){border-right:none}.cell:nth-last-child(-n+2){border-bottom:none}.cl{font-size:10px;color:#8a93a6;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px}.cv{font-size:13px;font-weight:700;color:#14213d}.sig{display:flex;justify-content:space-between;margin-top:32px;padding-top:20px;border-top:1px solid #e8e3d8}.sb{text-align:center}.sl{width:140px;border-top:1.5px solid #132a4f;margin:0 auto 6px}.st{font-size:11px;color:#5d6b82}.ftr{margin-top:24px;text-align:center;font-size:10px;color:#8a93a6}@media print{body{padding:16px}}</style></head><body>
+<div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div><div class="sub">Khangabok, Thoubal, Manipur — 795128</div></div><div style="text-align:right"><div style="font-size:10px;color:#8a93a6">Printed</div><div style="font-weight:700;font-size:13px">${d}</div></div></div>
 <div class="title">🪪 Student Gate Pass</div>
 <div class="grid"><div class="cell"><div class="cl">Student Name</div><div class="cv">${item.student_name}</div></div><div class="cell"><div class="cl">GCC No.</div><div class="cv">${item.gcc_no || '—'}</div></div><div class="cell"><div class="cl">Class</div><div class="cv">${item.class_name || '—'}</div></div><div class="cell"><div class="cl">House</div><div class="cv">${item.house || '—'}</div></div><div class="cell"><div class="cl">Course</div><div class="cv">${item.course || '—'}</div></div><div class="cell"><div class="cl">Reason</div><div class="cv">${item.reason}</div></div><div class="cell"><div class="cl">Exit Date &amp; Time</div><div class="cv">${fmtDate(item.exit_date)} ${item.exit_time ? '· ' + item.exit_time : ''}</div></div><div class="cell"><div class="cl">Return Date</div><div class="cv">${item.return_date ? fmtDate(item.return_date) : '—'}${item.expected_return_time ? ' · ' + item.expected_return_time : ''}</div></div><div class="cell"><div class="cl">Responsible Person</div><div class="cv">${item.responsible_contact || '—'}</div></div><div class="cell"><div class="cl">Approved By</div><div class="cv">${item.approved_by || '—'}</div></div><div class="cell"><div class="cl">Parent Informed</div><div class="cv">${item.parent_informed}</div></div><div class="cell" style="grid-column:1/-1"><div class="cl">Remarks</div><div class="cv">${item.remarks || '—'}</div></div></div>
 <div class="sig"><div class="sb"><div class="sl"></div><div class="st">Student Signature</div></div><div class="sb"><div class="sl"></div><div class="st">Class Teacher</div></div><div class="sb"><div class="sl"></div><div class="st">Principal / Warden</div></div></div>
@@ -664,7 +686,7 @@ function sendGatePassToWhatsApp(item) {
 function printVisitorBadge(item) {
   const d = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Visitor Badge</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#f0f4f8;display:flex;justify-content:center;padding:40px}.badge{width:320px;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.15)}.top{background:#1e3a5f;padding:18px;text-align:center}.inst{color:white;font-size:13px;font-weight:700}.sub{color:rgba(255,255,255,.5);font-size:10px;margin-top:2px}.bl{background:#c9a84c;color:#1e3a5f;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;padding:5px 0;text-align:center}.body{padding:18px}.av{width:56px;height:56px;border-radius:50%;background:#1e3a5f;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#c9a84c;margin:0 auto 12px}.name{text-align:center;font-size:17px;font-weight:800;color:#1e293b;margin-bottom:3px}.purpose{text-align:center;font-size:12px;color:#64748b;margin-bottom:14px}.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:12px}.rk{color:#94a3b8;font-weight:600}.rv{color:#1e293b;font-weight:700}.ftr{background:#f8fafc;padding:9px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0}@media print{body{background:white;padding:0}.badge{box-shadow:none}}</style></head><body>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#f0f4f8;display:flex;justify-content:center;padding:40px}.badge{width:320px;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.15)}.top{background:#132a4f;padding:18px;text-align:center}.inst{color:white;font-size:13px;font-weight:700}.sub{color:rgba(255,255,255,.5);font-size:10px;margin-top:2px}.bl{background:#b8923a;color:#132a4f;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;padding:5px 0;text-align:center}.body{padding:18px}.av{width:56px;height:56px;border-radius:50%;background:#132a4f;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#b8923a;margin:0 auto 12px}.name{text-align:center;font-size:17px;font-weight:800;color:#14213d;margin-bottom:3px}.purpose{text-align:center;font-size:12px;color:#5d6b82;margin-bottom:14px}.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f0e8;font-size:12px}.rk{color:#8a93a6;font-weight:600}.rv{color:#14213d;font-weight:700}.ftr{background:#faf8f3;padding:9px;text-align:center;font-size:10px;color:#8a93a6;border-top:1px solid #e8e3d8}@media print{body{background:white;padding:0}.badge{box-shadow:none}}</style></head><body>
 <div class="badge"><div class="top"><div class="inst">Guidance Navodaya &amp; Sainik Institute</div><div class="sub">Khangabok · Thoubal · Manipur</div></div><div class="bl">Visitor Pass</div>
 <div class="body"><div class="av">${(item.visitor_name || 'V')[0].toUpperCase()}</div><div class="name">${item.visitor_name}</div><div class="purpose">${item.purpose}</div>
 <div class="row"><span class="rk">Meeting With</span><span class="rv">${item.meeting_with || '—'}</span></div><div class="row"><span class="rk">Visit Date</span><span class="rv">${fmtDate(item.visit_date)}</span></div><div class="row"><span class="rk">In Time</span><span class="rv">${item.in_time || '—'}</span></div><div class="row"><span class="rk">Phone</span><span class="rv">${item.phone || '—'}</span></div><div class="row"><span class="rk">ID Proof</span><span class="rv">${item.id_proof || '—'}</span></div></div>
@@ -693,7 +715,7 @@ function elapsedLabel(record) {
 }
 
 // ── HOUSE-WISE GRID ───────────────────────────────────────────────────────────
-const HOUSE_PALETTE = [C.navy, C.violet, C.emerald, '#ca8a04', C.red, C.teal, '#c2410c', '#1d4ed8', '#be185d', C.sky]
+const HOUSE_PALETTE = [C.navy, C.violet, C.emerald, '#ca8a04', C.red, C.teal, '#c2410c', '#1e3a6e', '#8a6118', C.sky]
 
 function HouseWiseGrid({ parentItems, onStatusChange }) {
   const [statusFilter, setStatusFilter] = useState('All')
@@ -735,7 +757,7 @@ function HouseWiseGrid({ parentItems, onStatusChange }) {
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   {pending > 0   && <span style={{ background: '#fef9c3', color: '#92400e', padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 800, fontFamily: font }}>⏳ {pending}</span>}
                   {delivered > 0 && <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 800, fontFamily: font }}>✓ {delivered}</span>}
-                  {returned > 0  && <span style={{ background: '#f1f5f9',  color: C.slate[600], padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 800, fontFamily: font }}>↩ {returned}</span>}
+                  {returned > 0  && <span style={{ background: '#f3f0e8',  color: C.slate[600], padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 800, fontFamily: font }}>↩ {returned}</span>}
                 </div>
               </div>
               <div style={{ maxHeight: 340, overflowY: 'auto' }}>
@@ -756,7 +778,7 @@ function HouseWiseGrid({ parentItems, onStatusChange }) {
                       <div style={{ display: 'flex', gap: 3 }}>
                         <button onClick={() => printItemInvoice(item)} style={{ background: 'transparent', border: `0.5px solid ${hColor}`, color: hColor, borderRadius: 5, padding: '2px 6px', fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>🖨️</button>
                         {item.status === 'Pending'   && onStatusChange && canTransition('Pending', 'Delivered')  && <button onClick={() => onStatusChange(item.id, 'Delivered')} style={{ background: '#dcfce7', color: '#166534', border: 'none', borderRadius: 5, padding: '2px 6px', fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>✓</button>}
-                        {item.status === 'Delivered' && onStatusChange && canTransition('Delivered', 'Returned') && <button onClick={() => onStatusChange(item.id, 'Returned')}  style={{ background: '#f1f5f9',  color: C.slate[600], border: 'none', borderRadius: 5, padding: '2px 6px', fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>↩</button>}
+                        {item.status === 'Delivered' && onStatusChange && canTransition('Delivered', 'Returned') && <button onClick={() => onStatusChange(item.id, 'Returned')}  style={{ background: '#f3f0e8',  color: C.slate[600], border: 'none', borderRadius: 5, padding: '2px 6px', fontSize: 10, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>↩</button>}
                       </div>
                     </div>
                   </div>
@@ -971,7 +993,7 @@ function ItemPicker({ value = [], onChange, customItems, onAddCustom }) {
       {value.length > 0 && (
         <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {value.map(i => (
-            <span key={i} style={{ background: '#dbeafe', color: C.navy, padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, fontFamily: font }}>
+            <span key={i} style={{ background: '#e4ebf6', color: C.navy, padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, fontFamily: font }}>
               {i}
               <button type="button" onClick={() => toggle(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.slate[500], fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
             </span>
@@ -1030,7 +1052,7 @@ function Student360({ students }) {
         const activeGP = gatePasses.filter(g => g.status === 'Issued' || g.status === 'Exited')
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, #0f2340 100%)`, borderRadius: 18, padding: mob ? '14px 16px' : '18px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+            <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, #0b1e3d 100%)`, borderRadius: 18, padding: mob ? '14px 16px' : '18px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 <div style={{ width: 48, height: 48, borderRadius: '50%', background: C.gold, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 900, color: C.navy, flexShrink: 0, fontFamily: font }}>{(selected.name || '?')[0].toUpperCase()}</div>
                 <div>
@@ -1038,7 +1060,7 @@ function Student360({ students }) {
                   <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
                     {selected.gcc_no && <span style={{ fontFamily: 'monospace', fontWeight: 700, color: C.gold, fontSize: 12 }}>GCC-{selected.gcc_no}</span>}
                     {selected.batch  && <span style={{ color: 'rgba(255,255,255,.6)', fontSize: 12, fontFamily: font }}>{selected.batch}</span>}
-                    {selected.course && <span style={{ color: '#93c5fd', fontSize: 12, fontFamily: font }}>{selected.course}</span>}
+                    {selected.course && <span style={{ color: '#b7c6e0', fontSize: 12, fontFamily: font }}>{selected.course}</span>}
                     {selected.house  && <span style={{ color: '#a5b4fc', fontSize: 12, fontFamily: font }}>🏠 {selected.house}</span>}
                   </div>
                 </div>
@@ -1138,9 +1160,9 @@ function Student360({ students }) {
                       { key: 'status', label: 'Status', render: r => <Pill label={r.status} /> },
                       { key: '_a', label: 'Actions', render: r => (
                         <div style={{ display: 'flex', gap: 4 }}>
-                          <button onClick={() => printItemInvoice(r)} style={{ ...delBtn, background: '#f5f3ff', color: C.violet }}>🖨️</button>
+                          <button onClick={() => printItemInvoice(r)} style={{ ...delBtn, background: '#fbf3e0', color: C.violet }}>🖨️</button>
                           {canTransition(r.status, 'Delivered') && <button onClick={() => updatePIStatus(r.id, r.status, 'Delivered')} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>✓</button>}
-                          {canTransition(r.status, 'Returned') && <button onClick={() => updatePIStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#f1f5f9', color: C.slate[600] }}>↩</button>}
+                          {canTransition(r.status, 'Returned') && <button onClick={() => updatePIStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#f3f0e8', color: C.slate[600] }}>↩</button>}
                         </div>
                       )},
                     ]}
@@ -1152,9 +1174,9 @@ function Student360({ students }) {
                       meta:   r => [fmtDate(r.received_date), r.quantity ? `Qty: ${r.quantity}` : null, r.house ? `🏠 ${r.house}` : null],
                       actions: r => (
                         <div style={{ display: 'flex', gap: 5 }}>
-                          <button onClick={() => printItemInvoice(r)} style={{ ...delBtn, background: '#f5f3ff', color: C.violet, fontSize: 11 }}>🖨️</button>
+                          <button onClick={() => printItemInvoice(r)} style={{ ...delBtn, background: '#fbf3e0', color: C.violet, fontSize: 11 }}>🖨️</button>
                           {canTransition(r.status, 'Delivered') && <button onClick={() => updatePIStatus(r.id, r.status, 'Delivered')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>✓ Deliver</button>}
-                          {canTransition(r.status, 'Returned') && <button onClick={() => updatePIStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#f1f5f9', color: C.slate[600], fontSize: 11 }}>↩ Return</button>}
+                          {canTransition(r.status, 'Returned') && <button onClick={() => updatePIStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#f3f0e8', color: C.slate[600], fontSize: 11 }}>↩ Return</button>}
                         </div>
                       ),
                     }}
@@ -1864,7 +1886,7 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                 { key: '_a',         label: 'Actions', render: r => (
                   <div style={{ display: 'flex', gap: 4 }}>
                     {canTransition(r.status, 'Approved') && <button onClick={() => updateStaffStatus(r.id, r.status, 'Approved')}  style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>✓</button>}
-                    {canTransition(r.status, 'Returned') && <button onClick={() => updateStaffStatus(r.id, r.status, 'Returned')}  style={{ ...delBtn, background: '#f1f5f9',  color: C.slate[600] }}>↩</button>}
+                    {canTransition(r.status, 'Returned') && <button onClick={() => updateStaffStatus(r.id, r.status, 'Returned')}  style={{ ...delBtn, background: '#f3f0e8',  color: C.slate[600] }}>↩</button>}
                     <button onClick={() => softDelete('staff_leave_requests', r.id, loadStaff)} style={delBtn}>Archive</button>
                   </div>
                 )},
@@ -1882,7 +1904,7 @@ function MonitorsTab({ students, gatePasses, hlRecordsExternal, onGPStatusChange
                 actions: r => (
                   <div style={{ display: 'flex', gap: 5 }}>
                     {canTransition(r.status, 'Approved') && <button onClick={() => updateStaffStatus(r.id, r.status, 'Approved')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>✓ Approve</button>}
-                    {canTransition(r.status, 'Returned') && <button onClick={() => updateStaffStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#f1f5f9',  color: C.slate[600], fontSize: 11 }}>↩ Return</button>}
+                    {canTransition(r.status, 'Returned') && <button onClick={() => updateStaffStatus(r.id, r.status, 'Returned')} style={{ ...delBtn, background: '#f3f0e8',  color: C.slate[600], fontSize: 11 }}>↩ Return</button>}
                     <button onClick={() => softDelete('staff_leave_requests', r.id, loadStaff)} style={{ ...delBtn, fontSize: 11 }}>Archive</button>
                   </div>
                 ),
@@ -2282,6 +2304,13 @@ export default function ReceptionPage({ currentUser }) {
   const set_la  = (f, v) => setLaForm(p => ({ ...p, [f]: v }))
   const set_co  = (f, v) => setCoForm(p => ({ ...p, [f]: v }))
 
+  // Live clock for the header (ticks every 30 s).
+  const [clock, setClock] = useState(() => new Date())
+  useEffect(() => { const t = setInterval(() => setClock(new Date()), 30000); return () => clearInterval(t) }, [])
+  // Switch tab from anywhere (header stats, quick actions, More sheet).
+  const [moreOpen, setMoreOpen] = useState(false)
+  const goTab = tab => { setActiveTab(tab); setSearch(''); setMoreOpen(false); try { window.scrollTo({ top: 0, behavior: 'smooth' }) } catch (_) {} }
+
   const tabBadges = {
     'Enquiry':           followUpDue,
     'Leave Application': pendingLA,
@@ -2294,62 +2323,104 @@ export default function ReceptionPage({ currentUser }) {
   const pad = mob ? '12px 14px' : '18px 20px'
 
   return (
-    <div style={{ fontFamily: font, background: C.slate[50], minHeight: '100vh', paddingBottom: mob ? 80 : 0 }}>
+    <div style={{ fontFamily: font, background: C.slate[50], minHeight: '100vh', paddingBottom: mob ? 84 : 0, color: C.slate[800] }}>
 
-      {/* ── Page Header ── */}
-      <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, #0f2340 100%)`, padding: mob ? '16px 16px 14px' : '20px 24px 18px', borderBottom: `3px solid ${C.gold}` }}>
-        <div style={{ maxWidth: 1040, margin: '0 auto' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: C.gold, marginBottom: 3, fontFamily: font }}>GNSI Portal</div>
-              <div style={{ fontSize: mob ? 20 : 24, fontWeight: 500, color: 'white', fontFamily: font }}>🛎️ Reception</div>
-              {!mob && <div style={{ fontSize: 12, color: 'rgba(255,255,255,.5)', marginTop: 3, fontFamily: font }}>Enquiries · Visitors · Gate Passes · Parent Items · Student 360°</div>}
-            </div>
-            {/* FEATURE 5: Daily Summary print button */}
-            <button onClick={() => printDailySummary({ enquiries, visitors, gatePasses, parentItems, students })}
-              style={{ padding: '8px 14px', borderRadius: 10, border: '0.5px solid rgba(255,255,255,.25)', background: 'rgba(255,255,255,.08)', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: font, display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-              🖨️ Daily Summary
-            </button>
-          </div>
+      <style>{`
+        .rx-tabs{display:flex;align-items:center;gap:4px;padding:5px;background:#fff;border:1px solid ${C.slate[200]};border-radius:14px;box-shadow:0 1px 2px rgba(19,42,79,.05);overflow-x:auto;scrollbar-width:none}
+        .rx-tabs::-webkit-scrollbar{display:none}
+        .rx-tab{position:relative;display:flex;align-items:center;gap:6px;padding:9px 11px;border:none;border-radius:10px;background:none;cursor:pointer;font:600 13px/1 ${font};color:${C.slate[500]};white-space:nowrap;transition:background .15s,color .15s}
+        .rx-tab:hover{color:${C.slate[900]};background:${C.slate[100]}}
+        .rx-tab.on{background:linear-gradient(180deg,${C.navyMid},${C.navy});color:#fff;box-shadow:0 6px 14px -6px rgba(19,42,79,.6)}
+        .rx-tab.on svg{color:${C.goldLight}}
+        .rx-sep{width:1px;align-self:stretch;margin:6px 4px;background:${C.slate[200]};flex-shrink:0}
+        .rx-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:${C.red};color:#fff;font-size:10.5px;font-weight:800;line-height:1}
+        .rx-tab.on .rx-badge{background:${C.gold};color:#1a1406}
+        .rx-quick{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 14px;border-radius:11px;cursor:pointer;font:700 12.5px/1 ${font};white-space:nowrap;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.2);transition:background .15s,transform .12s}
+        .rx-quick:hover{background:rgba(255,255,255,.16);transform:translateY(-1px)}
+        .rx-quick.gold{background:linear-gradient(180deg,#d4ae58,${C.gold});color:#1a1406;border-color:#a37f2e;box-shadow:0 8px 18px -8px rgba(184,146,58,.8)}
+        .rx-stat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:11px 13px;min-width:0;text-align:left;cursor:pointer;font-family:${font};transition:background .15s}
+        .rx-stat:hover{background:rgba(255,255,255,.11)}
+        form input:focus,form select:focus,form textarea:focus{border-color:${C.gold}!important;box-shadow:0 0 0 4px rgba(184,146,58,.16)!important}
+      `}</style>
 
-          {/* Stat cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: mob ? 'repeat(3,1fr)' : 'repeat(5,1fr)', gap: 10, marginTop: 14 }}>
-            {[
-              { label: 'Enquiries',      value: enquiries.length, color: '#93c5fd', alert: followUpDue > 0 ? `${followUpDue} due` : null },
-              { label: 'Visitors Today', value: visitors.filter(v => v.visit_date === today()).length, color: '#6ee7b7', alert: null },
-              { label: 'Gate Passes',    value: gatePasses.length, color: C.goldLight, alert: stillOutside > 0 ? `${stillOutside} out` : null },
-              { label: 'Pending Items',  value: pendingItems, color: '#c4b5fd', alert: pendingItems > 0 ? 'awaiting' : null },
-              { label: 'Students',       value: students.length, color: 'rgba(255,255,255,.5)', alert: null },
-            ].map((c, i) => (
-              <div key={c.label} style={{ background: 'rgba(255,255,255,.07)', borderRadius: 12, padding: mob ? '10px 10px' : '12px 14px', border: '0.5px solid rgba(255,255,255,.12)', display: mob && i === 4 ? 'none' : 'block' }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: c.color, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 3, fontFamily: font }}>{c.label}</div>
-                <div style={{ fontSize: mob ? 22 : 26, fontWeight: 700, color: 'white', fontFamily: font }}>{c.value}</div>
-                {c.alert && <div style={{ fontSize: 10, color: '#fca5a5', fontWeight: 700, marginTop: 2, fontFamily: font }}>⚠ {c.alert}</div>}
+      {/* ── Front-office header ── */}
+      <div style={{ padding: mob ? '12px 12px 0' : '22px 24px 0' }}>
+        <section style={{ maxWidth: 1180, margin: '0 auto', position: 'relative', overflow: 'hidden', borderRadius: mob ? 18 : 22, color: '#fff',
+          padding: mob ? '16px 14px 14px' : '22px 26px 20px',
+          background: 'radial-gradient(90% 140% at 100% 0%,rgba(184,146,58,.28) 0%,transparent 55%),linear-gradient(135deg,#0e203f 0%,#132a4f 45%,#1e3a6e 100%)',
+          boxShadow: '0 24px 48px -24px rgba(19,42,79,.55)' }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, background: `linear-gradient(90deg,transparent,${C.gold},transparent)` }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14, position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+              <div style={{ width: mob ? 44 : 52, height: mob ? 44 : 52, borderRadius: 14, flexShrink: 0, background: 'rgba(255,255,255,.08)', border: '1px solid rgba(233,217,176,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.goldLight }}>
+                <RIcon.bell size={mob ? 21 : 24} />
               </div>
-            ))}
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: C.goldLight, fontFamily: font }}>GNSI · Front office</div>
+                <div style={{ fontFamily: serif, fontSize: mob ? 24 : 30, fontWeight: 600, lineHeight: 1.1, marginTop: 2 }}>Reception</div>
+                <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.62)', marginTop: 4, fontFamily: font }}>
+                  {clock.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })} · <span style={{ fontVariantNumeric: 'tabular-nums', color: '#fff', fontWeight: 700 }}>{clock.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="rx-quick gold" onClick={() => goTab('Visitor Book')}><RIcon.visitor size={15} /> Sign in visitor</button>
+              {!mob && <button className="rx-quick" onClick={() => goTab('Gate Pass')}><RIcon.gate size={15} /> Gate pass</button>}
+              {!mob && <button className="rx-quick" onClick={() => goTab('Enquiry')}><RIcon.enquiry size={15} /> Enquiry</button>}
+              <button className="rx-quick" onClick={() => printDailySummary({ enquiries, visitors, gatePasses, parentItems, students })}><RIcon.print size={15} /> {mob ? 'Summary' : 'Daily summary'}</button>
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* ── Desktop Tab Bar ── */}
-      {!mob && (
-        <div style={{ background: 'white', borderBottom: `0.5px solid ${C.slate[200]}`, boxShadow: '0 1px 8px rgba(0,0,0,.05)', position: 'sticky', top: 0, zIndex: 100 }}>
-          <div style={{ maxWidth: 1040, margin: '0 auto', display: 'flex', padding: '0 24px', gap: 2 }}>
-            {TABS.map(tab => (
-              <button key={tab} onClick={() => { setActiveTab(tab); setSearch('') }}
-                style={{ padding: '13px 18px', fontWeight: 700, fontSize: 13, cursor: 'pointer', background: 'none', border: 'none', fontFamily: font, color: activeTab === tab ? C.navy : C.slate[400], borderBottom: activeTab === tab ? `2.5px solid ${C.navy}` : '2.5px solid transparent', whiteSpace: 'nowrap', transition: 'color .12s, border-color .12s', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                {TAB_ICONS[tab]} {tab}
-                {tabBadges[tab] > 0 && (
-                  <span style={{ background: '#ef4444', color: 'white', borderRadius: 99, fontSize: 10, padding: '0 5px', fontWeight: 800, fontFamily: font, lineHeight: '18px', display: 'inline-block', minWidth: 18, textAlign: 'center' }}>{tabBadges[tab]}</span>
-                )}
+          <div style={{ display: 'grid', gridTemplateColumns: mob ? 'repeat(3,minmax(0,1fr))' : 'repeat(6,minmax(0,1fr))', gap: 10, marginTop: 18, position: 'relative' }}>
+            {[
+              { m: 'Visitors', label: 'Visitors today', value: visitors.filter(v => v.visit_date === today()).length, sub: `${visitors.filter(v => v.visit_date === today() && !v.out_time).length} still on campus`, tab: 'Visitor Book' },
+              { m: 'Out now', label: 'Students out', value: stillOutside, sub: stillOutside ? 'on gate pass now' : 'everyone in', tone: stillOutside ? '#fca5a5' : '#86efac', tab: 'Monitors' },
+              { m: 'Follow-ups', label: 'Follow-ups due', value: followUpDue, sub: 'enquiries today', tone: followUpDue ? '#fcd34d' : null, tab: 'Enquiry' },
+              { m: 'Leave', label: 'Leave requests', value: pendingLA, sub: 'awaiting approval', tone: pendingLA ? '#fcd34d' : null, tab: 'Leave Application' },
+              { m: 'Parcels', label: 'Parcels pending', value: pendingItems, sub: 'to hand over', tone: pendingItems ? C.goldLight : null, tab: 'Parent Items' },
+              { m: 'Complaints', label: 'Open complaints', value: openComplaints, sub: openComplaints ? 'need action' : 'none open', tone: openComplaints ? '#fca5a5' : null, tab: 'Complaint' },
+            ].map(c => (
+              <button key={c.label} className="rx-stat" onClick={() => goTab(c.tab)} title={`Open ${c.tab}`}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.11em', textTransform: 'uppercase', color: 'rgba(255,255,255,.58)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mob ? c.m : c.label}</div>
+                <div style={{ fontFamily: serif, fontSize: mob ? 21 : 26, fontWeight: 600, color: c.tone || '#fff', marginTop: 5, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{c.value}</div>
+                {!mob && <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.sub}</div>}
               </button>
             ))}
           </div>
+        </section>
+      </div>
+
+      {/* ── Desktop tab bar (grouped: Desk · Front office · Student movement) ── */}
+      {!mob && (
+        <div style={{ position: 'sticky', top: 0, zIndex: 100, padding: '14px 24px 0', background: `linear-gradient(180deg, ${C.slate[50]} 70%, transparent)` }}>
+          <nav className="rx-tabs" role="tablist" style={{ maxWidth: 1180, margin: '0 auto' }}>
+            {TAB_GROUPS.map((g, gi) => (
+              <React.Fragment key={g}>
+                {gi > 0 && <span className="rx-sep" />}
+                {TABS.filter(t => TAB_META[t].group === g).map(tab => {
+                  const M = TAB_META[tab], on = activeTab === tab
+                  return (
+                    <button key={tab} role="tab" aria-selected={on} className={'rx-tab' + (on ? ' on' : '')} onClick={() => goTab(tab)} title={M.desc}>
+                      <M.icon size={15} /> {M.tabLabel || tab}
+                      {tabBadges[tab] > 0 && <span className="rx-badge">{tabBadges[tab]}</span>}
+                    </button>
+                  )
+                })}
+              </React.Fragment>
+            ))}
+          </nav>
         </div>
       )}
 
+      {/* Section intro */}
+      <div style={{ maxWidth: 1180, margin: '0 auto', padding: mob ? '14px 12px 0' : '18px 24px 0', display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: C.gold, fontFamily: font }}>{TAB_META[activeTab]?.group}</span>
+        <span style={{ fontFamily: serif, fontSize: mob ? 19 : 22, fontWeight: 600, color: C.slate[900] }}>{activeTab}</span>
+        {!mob && <span style={{ fontSize: 12.5, color: C.slate[500], fontFamily: font }}>{TAB_META[activeTab]?.desc}</span>}
+      </div>
+
       {/* ── Content ── */}
-      <div style={{ maxWidth: 1040, margin: '0 auto', padding: mob ? '14px 12px' : '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ maxWidth: 1180, margin: '0 auto', padding: mob ? '12px 12px' : '14px 24px 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* FEATURE 10: Campus Headcount on Monitors & Student 360° */}
         {(activeTab === 'Monitors' || activeTab === 'Student 360°') && (
@@ -2359,7 +2430,7 @@ export default function ReceptionPage({ currentUser }) {
         {/* Search bar */}
         {activeTab !== 'Student 360°' && activeTab !== 'Monitors' && (
           <div style={{ position: 'relative' }}>
-            <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: C.slate[300], pointerEvents: 'none' }}>🔍</span>
+            <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: C.slate[400], pointerEvents: 'none', display: 'flex' }}><RIcon.search size={16} /></span>
             <input
               style={{ ...inp, paddingLeft: 38, background: 'white', boxShadow: '0 1px 6px rgba(0,0,0,.05)' }}
               placeholder={`Search ${activeTab.toLowerCase()}…`}
@@ -2639,10 +2710,10 @@ export default function ReceptionPage({ currentUser }) {
                     r.status === 'Pending' ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                         <div style={{ display: 'flex', gap: 4 }}>
-                          <button onClick={() => handlePrintLA(r)} style={{ ...delBtn, background: r.printed_at ? '#f1f5f9' : '#fef3c7', color: r.printed_at ? C.slate[500] : '#92400e' }}>🖨️ {r.printed_at ? 'Reprint' : 'Print'}</button>
+                          <button onClick={() => handlePrintLA(r)} style={{ ...delBtn, background: r.printed_at ? '#f3f0e8' : '#fef3c7', color: r.printed_at ? C.slate[500] : '#92400e' }}>🖨️ {r.printed_at ? 'Reprint' : 'Print'}</button>
                           <button onClick={() => sendLeaveApplicationToWhatsApp(r)} style={{ ...delBtn, background: '#25d366', color: 'white' }}>💬</button>
-                          <button onClick={() => approveLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#dcfce7' : '#f1f5f9', color: r.printed_at ? '#166534' : C.slate[400], cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✓ Approve</button>
-                          <button onClick={() => rejectLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#fee2e2' : '#f1f5f9', color: r.printed_at ? C.red : C.slate[400], cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✕ Reject</button>
+                          <button onClick={() => approveLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#dcfce7' : '#f3f0e8', color: r.printed_at ? '#166534' : C.slate[400], cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✓ Approve</button>
+                          <button onClick={() => rejectLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#fee2e2' : '#f3f0e8', color: r.printed_at ? C.red : C.slate[400], cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✕ Reject</button>
                         </div>
                         {!r.printed_at && <span style={{ fontSize: 10, color: C.amber, fontFamily: font }}>⚠ Print required before approve/reject</span>}
                       </div>
@@ -2669,12 +2740,12 @@ export default function ReceptionPage({ currentUser }) {
                   ],
                   actions: r => (
                     <div style={{ display: 'flex', gap: 5 }}>
-                      <button onClick={() => handlePrintLA(r)} style={{ ...delBtn, background: r.printed_at ? '#f1f5f9' : '#fef3c7', color: r.printed_at ? C.slate[500] : '#92400e', fontSize: 11 }}>🖨️ {r.printed_at ? 'Reprint' : 'Print'}</button>
+                      <button onClick={() => handlePrintLA(r)} style={{ ...delBtn, background: r.printed_at ? '#f3f0e8' : '#fef3c7', color: r.printed_at ? C.slate[500] : '#92400e', fontSize: 11 }}>🖨️ {r.printed_at ? 'Reprint' : 'Print'}</button>
                       <button onClick={() => sendLeaveApplicationToWhatsApp(r)} style={{ ...delBtn, background: '#25d366', color: 'white', fontSize: 11 }}>💬</button>
                       {r.status === 'Pending' && (
                         <>
-                          <button onClick={() => approveLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#dcfce7' : '#f1f5f9', color: r.printed_at ? '#166534' : C.slate[400], fontSize: 11, cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✓ Approve</button>
-                          <button onClick={() => rejectLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#fee2e2' : '#f1f5f9', color: r.printed_at ? C.red : C.slate[400], fontSize: 11, cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✕ Reject</button>
+                          <button onClick={() => approveLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#dcfce7' : '#f3f0e8', color: r.printed_at ? '#166534' : C.slate[400], fontSize: 11, cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✓ Approve</button>
+                          <button onClick={() => rejectLeaveApp(r)} disabled={!r.printed_at} style={{ ...delBtn, background: r.printed_at ? '#fee2e2' : '#f3f0e8', color: r.printed_at ? C.red : C.slate[400], fontSize: 11, cursor: r.printed_at ? 'pointer' : 'not-allowed' }}>✕ Reject</button>
                         </>
                       )}
                     </div>
@@ -3040,9 +3111,9 @@ export default function ReceptionPage({ currentUser }) {
                     { key: 'status',        label: 'Status',  render: r => <Pill label={r.status} /> },
                     { key: '_actions',      label: 'Actions', render: r => (
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <button onClick={() => printItemInvoice(r)} style={{ ...delBtn, background: '#f5f3ff', color: C.violet }}>🖨️</button>
+                        <button onClick={() => printItemInvoice(r)} style={{ ...delBtn, background: '#fbf3e0', color: C.violet }}>🖨️</button>
                         {canTransition(r.status, 'Delivered') && <button onClick={() => updatePIStatus(r.id, r.status, 'Delivered')} style={{ ...delBtn, background: '#dcfce7', color: '#166534' }}>✓</button>}
-                        {canTransition(r.status, 'Returned')  && <button onClick={() => updatePIStatus(r.id, r.status, 'Returned')}  style={{ ...delBtn, background: '#f1f5f9',  color: C.slate[600] }}>↩</button>}
+                        {canTransition(r.status, 'Returned')  && <button onClick={() => updatePIStatus(r.id, r.status, 'Returned')}  style={{ ...delBtn, background: '#f3f0e8',  color: C.slate[600] }}>↩</button>}
                       </div>
                     )},
                   ]}
@@ -3059,9 +3130,9 @@ export default function ReceptionPage({ currentUser }) {
                     ],
                     actions: r => (
                       <div style={{ display: 'flex', gap: 5 }}>
-                        <button onClick={() => printItemInvoice(r)} style={{ ...delBtn, background: '#f5f3ff', color: C.violet, fontSize: 11 }}>🖨️</button>
+                        <button onClick={() => printItemInvoice(r)} style={{ ...delBtn, background: '#fbf3e0', color: C.violet, fontSize: 11 }}>🖨️</button>
                         {canTransition(r.status, 'Delivered') && <button onClick={() => updatePIStatus(r.id, r.status, 'Delivered')} style={{ ...delBtn, background: '#dcfce7', color: '#166534', fontSize: 11 }}>✓ Deliver</button>}
-                        {canTransition(r.status, 'Returned')  && <button onClick={() => updatePIStatus(r.id, r.status, 'Returned')}  style={{ ...delBtn, background: '#f1f5f9',  color: C.slate[600], fontSize: 11 }}>↩ Return</button>}
+                        {canTransition(r.status, 'Returned')  && <button onClick={() => updatePIStatus(r.id, r.status, 'Returned')}  style={{ ...delBtn, background: '#f3f0e8',  color: C.slate[600], fontSize: 11 }}>↩ Return</button>}
                       </div>
                     ),
                   }}
@@ -3072,27 +3143,41 @@ export default function ReceptionPage({ currentUser }) {
         )}
       </div>
 
-      {/* ── Mobile Bottom Tab Bar ── */}
+      {/* ── Mobile bottom bar: four desk essentials + More ── */}
+      {mob && moreOpen && (
+        <div onClick={() => setMoreOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 199, background: 'rgba(11,30,61,.35)' }}>
+          <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', left: 10, right: 10, bottom: 84, background: '#fff', borderRadius: 18, padding: 8, boxShadow: '0 24px 48px -16px rgba(11,30,61,.6)' }}>
+            {TABS.filter(t => !MOBILE_MAIN.includes(t)).map(tab => {
+              const M = TAB_META[tab], on = activeTab === tab
+              return (
+                <button key={tab} onClick={() => goTab(tab)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 12px', borderRadius: 12, border: 'none', background: on ? C.slate[100] : 'transparent', cursor: 'pointer', fontFamily: font, textAlign: 'left' }}>
+                  <span style={{ width: 34, height: 34, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: on ? C.navy : C.slate[100], color: on ? C.goldLight : C.navy }}><M.icon size={17} /></span>
+                  <span style={{ flex: 1 }}>
+                    <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: C.slate[900] }}>{tab}</span>
+                    <span style={{ display: 'block', fontSize: 11.5, color: C.slate[500] }}>{M.group}</span>
+                  </span>
+                  {tabBadges[tab] > 0 && <span className="rx-badge">{tabBadges[tab]}</span>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
       {mob && (
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200, background: 'white', borderTop: `0.5px solid ${C.slate[200]}`, boxShadow: '0 -4px 20px rgba(0,0,0,.1)', display: 'flex', padding: '8px 0 env(safe-area-inset-bottom, 8px)' }}>
-          {TABS.map(tab => {
-            const isActive = activeTab === tab
-            const badge = tabBadges[tab]
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200, background: C.navy, borderTop: '1px solid rgba(255,255,255,.08)', boxShadow: '0 -8px 24px rgba(11,30,61,.3)', display: 'flex', padding: '6px 4px calc(6px + env(safe-area-inset-bottom, 0px))' }}>
+          {[...MOBILE_MAIN, '__more'].map(tab => {
+            const isMore = tab === '__more'
+            const M = isMore ? { short: 'More', icon: RIcon.more } : TAB_META[tab]
+            const isActive = isMore ? (moreOpen || !MOBILE_MAIN.includes(activeTab)) : activeTab === tab
+            const badge = isMore ? TABS.filter(t => !MOBILE_MAIN.includes(t)).reduce((n, t) => n + (tabBadges[t] || 0), 0) : tabBadges[tab]
             return (
-              <button key={tab} onClick={() => { setActiveTab(tab); setSearch('') }}
-                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 2px', fontFamily: font, WebkitTapHighlightColor: 'transparent', position: 'relative' }}>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ fontSize: 18, display: 'block', lineHeight: 1 }}>{TAB_ICONS[tab]}</span>
-                  {badge > 0 && (
-                    <span style={{ position: 'absolute', top: -4, right: -6, background: '#ef4444', color: 'white', borderRadius: 99, fontSize: 8, padding: '1px 4px', fontWeight: 800, fontFamily: font, lineHeight: 1.4, minWidth: 14, textAlign: 'center' }}>{badge}</span>
-                  )}
-                </div>
-                <span style={{ fontSize: 9, fontWeight: isActive ? 700 : 500, color: isActive ? C.navy : C.slate[400], lineHeight: 1, transition: 'color .12s' }}>
-                  {tab === 'Student 360°' ? '360°' : tab === 'Visitor Book' ? 'Visitors' : tab === 'Parent Items' ? 'Items' : tab}
+              <button key={tab} onClick={() => isMore ? setMoreOpen(v => !v) : goTab(tab)}
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: '5px 2px', fontFamily: font, WebkitTapHighlightColor: 'transparent', color: isActive ? '#fff' : 'rgba(255,255,255,.62)' }}>
+                <span style={{ position: 'relative', width: 40, height: 26, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isActive ? C.gold : 'transparent', color: isActive ? '#1a1406' : 'inherit', transition: 'background .15s' }}>
+                  <M.icon size={18} />
+                  {badge > 0 && <span className="rx-badge" style={{ position: 'absolute', top: -5, right: -4, minWidth: 16, height: 16, fontSize: 9.5 }}>{badge}</span>}
                 </span>
-                {isActive && (
-                  <div style={{ position: 'absolute', bottom: -8, left: '50%', transform: 'translateX(-50%)', width: 24, height: 3, background: C.navy, borderRadius: 99 }} />
-                )}
+                <span style={{ fontSize: 10, fontWeight: isActive ? 800 : 600, lineHeight: 1 }}>{M.short}</span>
               </button>
             )
           })}
