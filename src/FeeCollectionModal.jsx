@@ -12,6 +12,7 @@ import {
   checkCourseFeeExists, checkFlatFeeExists,
   saveStudentFlatFeeOverride, getStudentFlatFeeOverride,
 } from './feeEngine'
+import { confirmFeeMonthOpen } from './monthLock'
 
 const FEE_ITEMS = [
   { id: 'admission',  label: 'Admission Fee',  amount: 6000, type: 'admission', icon: '🎓', color: '#4f46e5' },
@@ -205,6 +206,10 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
 
   // ── Admission date (compulsory — Fresher and Repeater both) ────────────────
   const [admissionDate,     setAdmissionDate]     = useState('')
+  // FLOW FIX: null = not checked yet, false = applicant with no student row
+  // yet (opened from Admissions before Enroll), true = enrolled student.
+  const [hasStudentRow,     setHasStudentRow]     = useState(null)
+  const [dbStatus,          setDbStatus]          = useState(null)
   const [admDateSaving,     setAdmDateSaving]     = useState(false)
 
   // ── Rates from DB ─────────────────────────────────────────────────────────
@@ -384,13 +389,16 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     if (gccNumeric === null) return
     supabase
       .from('students')
-      .select('is_repeater, admission_date')
+      .select('is_repeater, admission_date, status')
       .eq('gcc_no', gccNumeric)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) return   // unknown — leave hasStudentRow null so nothing is wrongly blocked
+        setHasStudentRow(!!data)
         if (data) {
           setIsRepeater(!!data.is_repeater)
           setAdmissionDate(data.admission_date || '')
+          setDbStatus(data.status || null)
         }
       })
   }, [gccNumeric])
@@ -594,7 +602,10 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   // would silently disappear from all reporting while still charging real
   // money. Blank/missing status is treated as active, matching the
   // `status:'Active'` default used when students are created.
-  const studentStatus = student?.status || 'Active'
+  // FLOW FIX: opened from Admissions no `student` prop is passed, so a
+  // Dropout/Withdrawn student looked Active here. Fall back to the real
+  // students.status loaded above.
+  const studentStatus = student?.status || dbStatus || 'Active'
   const isStudentActive = studentStatus === 'Active'
   const inactiveStatusMsg = `This student's status is "${studentStatus}", not Active. Fee collection is disabled — reactivate the student in Students first if this is a mistake.`
 
@@ -692,16 +703,31 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     setAdminConfirmOpen(false)
   }
 
+  // ── FLOW FIX: checks every save shares ─────────────────────────────────────
+  //  • Collected By is required (Fees.jsx already required it; this modal
+  //    let it go blank and wrote NULL).
+  //  • Every non-cash mode needs a reference, not only UPI — a bank transfer
+  //    or cheque with no number can't be reconciled in Accounts.
+  //  • A month closed in Accounts blocks collections dated in it.
+  const preflight = async () => {
+    if (!collectedBy.trim()) { alert('Collected By is required — enter the name of the staff collecting this payment.'); return false }
+    if (payMode !== 'Cash' && !txnRef.trim()) { alert(`${payMode === 'UPI' ? 'UPI Txn / UTR No.' : 'Transaction / cheque reference'} is required for ${payMode} payments.`); return false }
+    return await confirmFeeMonthOpen(payDate, { isAdmin })
+  }
+  // Monthly fees belong to an enrolled student — Admissions → Enroll first.
+  const notEnrolledMsg = 'This applicant is not enrolled yet. Collect the Admission Fee, press Enroll in Admissions, then collect monthly fees.'
+
   // ── UNIFIED save — all fee types go through collectFee (feeEngine) ────────────────
   const saveAdmission = async () => {
     if (saving) return
     if (!isStudentActive) return alert(inactiveStatusMsg)
     if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
-    if (!admissionDate) return alert('Admission Date is required before collecting fees. Please set it above.')
+    if (!admissionDate && hasStudentRow !== false) return alert('Admission Date is required before collecting fees. Please set it above.')
     if (isRepeater) return alert('This student is marked as a Repeater — Admission Fee, Dress Fee, and Prospectus Fee are waived. Use the Flat or Course tab instead.')
     if (payMode === 'UPI' && !txnRef.trim()) return alert('UPI Txn / UTR No. is required for UPI payments.')
     const admFeeItems = FEE_ITEMS.filter(f => selected[f.id] && !paidAdmItems.includes(f.label))
     if (!admFeeItems.length) return alert('Select at least one unpaid fee item.')
+    if (!(await preflight())) return
     setSaving(true); setError(null)
     try {
       const rNo = rcptNo()
@@ -730,6 +756,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const saveFlat = async () => {
     if (saving) return
     if (!isStudentActive) return alert(inactiveStatusMsg)
+    if (hasStudentRow === false) return alert(notEnrolledMsg)
     if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
     if (!admissionDate) return alert('Admission Date is required before collecting fees. Please set it above.')
     if (payMode === 'UPI' && !txnRef.trim()) return alert('UPI Txn / UTR No. is required for UPI payments.')
@@ -759,6 +786,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     if (hasUnauthorizedRateChange) {
       return alert('One or more selected months are priced away from the standard rate. An admin must authorize this before saving — click "Authorize rate deviation (admin)" above.')
     }
+    if (!(await preflight())) return
     setSaving(true); setError(null)
     try {
       const rNo = rcptNo()
@@ -809,6 +837,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const saveCourse = async () => {
     if (saving) return
     if (!isStudentActive) return alert(inactiveStatusMsg)
+    if (hasStudentRow === false) return alert(notEnrolledMsg)
     if (!gcc || gcc.toLowerCase() === 'undefined' || gcc.toLowerCase() === 'null') return alert('Student GCC number is missing or invalid. Please close this modal and reopen it from the student list.')
     if (!admissionDate) return alert('Admission Date is required before collecting fees. Please set it above.')
     if (payMode === 'UPI' && !txnRef.trim()) return alert('UPI Txn / UTR No. is required for UPI payments.')
@@ -850,6 +879,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     const anyAdvance = unpaidRun.some(m => isFutureFeeMonth(m.month, m.year))
     if (anyAdvance && !isAdmin) return alert('One or more months in this run haven\'t started yet. Only an admin can authorize collecting an advance payment.')
     if (anyAdvance && !courseAdvanceAuthorized) return alert('One or more months in this run haven\'t started yet. Click "Authorize advance payment (admin)" above first.')
+    if (!(await preflight())) return
     setSaving(true); setError(null)
     try {
       const rNo = rcptNo()
@@ -965,6 +995,11 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
               </div>
               {/* Admission date — compulsory for both Fresher and Repeater. Fee
                   collection is blocked (see saving guards below) until this is set. */}
+              {hasStudentRow === false ? (
+              <div style={{ marginTop:8, fontSize:11, fontWeight:600, color:C.slate[500] }}>
+                Applicant — not enrolled yet. Admission Date is set automatically at Enroll (from this payment's date).
+              </div>
+              ) : (
               <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:8 }}>
                 <span style={{ fontSize:11, fontWeight:700, color: admissionDate ? C.slate[400] : C.red }}>
                   Admission Date{!admissionDate && ' *required'}
@@ -978,6 +1013,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                 />
                 {admDateSaving && <span style={{ fontSize:11, color:C.slate[400] }}>saving…</span>}
               </div>
+              )}
             </div>
             <button type="button" aria-label="Close" onClick={handleClose} style={{ width:34, height:34, borderRadius:'50%', border:`1px solid ${C.slate[200]}`, background:'white', cursor:'pointer', fontSize:18, color:C.slate[500], display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
           </div>
@@ -1612,11 +1648,18 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           // blocks the button.
           const flatRateBlocked = flatFees.some(f => flatSel[f.id] && !isMonthPaid(f) && flatNeedsReasonFor(f)) && !flatRateAuthorized
           const courseRateBlocked = courseAmtNeedsReason && !courseRateAuthorized
-          const blocked = saving || !admissionDate || upiMissingRef
+          // Applicant (no student row yet): admission tab needs no date — Enroll
+          // fills it from this payment; monthly tabs wait until Enroll.
+          const needsAdmDate = !admissionDate && !(tab === 'admission' && hasStudentRow === false)
+          const notEnrolledTab = hasStudentRow === false && tab !== 'admission'
+          const collectorMissing = !collectedBy.trim()
+          const blocked = saving || needsAdmDate || notEnrolledTab || collectorMissing || upiMissingRef
             || (tab==='flat' && (allFlatPaid || flatFutureBlocked || flatReasonMissing || flatRateBlocked)) || (tab==='admission' && (allAdmPaid||isRepeater))
             || (tab==='course' && (courseAllPaidInRun || courseFutureBlocked || courseRateBlocked)) || ratesLoading
           const label = saving ? '⏳ Saving…'
-            : !admissionDate ? '⚠️ Set Admission Date First'
+            : notEnrolledTab ? '⛔ Enroll in Admissions First'
+            : needsAdmDate ? '⚠️ Set Admission Date First'
+            : collectorMissing ? '⚠️ Enter Collected By'
             : upiMissingRef ? '⚠️ Enter UPI Txn / UTR No.'
             : (tab==='course' && courseFutureBlocked) ? '⛔ Authorize Advance First'
             : (tab==='course' && courseRateBlocked) ? '⛔ Authorize Rate Deviation First'

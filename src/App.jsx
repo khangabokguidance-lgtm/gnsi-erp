@@ -841,7 +841,8 @@ export default function App() {
   const perms = (key) => getModulePerms(permMap, key, isAdmin)
 
   const moduleMap = {
-    students:          <Students          currentUser={currentUser} perms={perms('students')}          />,
+    // onNavigate: Students is edit-only now — its "New Admission" button sends staff to Admissions.
+    students:          <Students          currentUser={currentUser} perms={perms('students')} onNavigate={setActive} />,
     admissions:        <Admissions        currentUser={currentUser} perms={perms('admissions')}        />,
     // FIX: sessions/admissionsessions — admin only explicitly
     sessions:          isAdmin ? <Sessions          currentUser={currentUser} perms={perms('sessions')}          /> : <AccessDenied />,

@@ -204,7 +204,20 @@ function validateApplicationData(obj) {
   // format checks above so a clearer "required" message shows rather than
   // a format error when the field is simply empty.
   if (!obj.dob)                                     errors.dob = 'Date of Birth is required'
-  else if (!ValidationRules.dob.test(obj.dob, obj.session)) errors.dob = ValidationRules.dob.msg(obj.session)
+  else {
+    // Official windows for the exam(s) this course prepares for, and the
+    // class applied for (VI / IX). Sainik uses AISSEE's 1 Apr–31 Mar window,
+    // Navodaya JNVST's 1 May–31 Jul one; Combined may satisfy either. Courses
+    // with no exam (Foundation) keep the original JNVST-based GNSI rule.
+    const exams = (typeof EXAM_BY_COURSE !== 'undefined' && EXAM_BY_COURSE[obj.course]) || []
+    const cls = obj.reg?.targetClass === 'IX' ? 'IX' : 'VI'
+    const wins = (exams.length ? exams : ['JNVST']).map(x => ({ x, w: officialDobWindow(x, cls, obj.session) })).filter(o => o.w)
+    if (wins.length && !wins.some(o => obj.dob >= o.w.from && obj.dob <= o.w.to)) {
+      errors.dob = `Date of Birth outside the ${wins.map(o => `${o.x} Class ${cls} window (${o.w.label})`).join(' / ')}`
+    } else if (!wins.length && !ValidationRules.dob.test(obj.dob, obj.session)) {
+      errors.dob = ValidationRules.dob.msg(obj.session)
+    }
+  }
   if (!obj.gender)                                   errors.gender = 'Gender is required'
   if (!obj.course)                                   errors.course = 'Course is required'
   if (!obj.cls)                                      errors.cls = 'Class/Batch is required'
@@ -254,6 +267,10 @@ function sanitizeApplicationData(obj) {
   ;['name','father','mother','address','remarks','prevSchool','emergencyName','emergencyRel','disabilityNotes'].forEach(k => {
     if (safe[k] != null) safe[k] = sanitizeStr(safe[k])
   })
+  // Official registration particulars (reg_details jsonb) — every nested string.
+  const deep = v => typeof v === 'string' ? sanitizeStr(v) : Array.isArray(v) ? v.map(deep)
+    : (v && typeof v === 'object') ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deep(x)])) : v
+  if (safe.reg) safe.reg = deep(safe.reg)
   return safe
 }
 
@@ -979,6 +996,11 @@ function mapToDB(app) {
     remarks:         app.remarks       || null,
     photo_url:       app.photoUrl      || null,
     instalment_plan: app.instalmentPlan|| 'monthly',
+    // Official AISSEE / JNVST registration particulars + enclosures. Left
+    // undefined (so the column is untouched) when the caller has no `reg`,
+    // e.g. CSV import or quick edits.
+    reg_details:     app.reg ? { ...app.reg, docs: app.docs || [] } : undefined,
+    target_exam:     app.reg ? ((EXAM_BY_COURSE[app.course] || []).join('+') || null) : undefined,
   }
 }
 
@@ -1027,7 +1049,11 @@ function mapFromDB(row) {
     remarks:          row.remarks,
     photoUrl:         row.photo_url        || '',
     instalmentPlan:   row.instalment_plan  || 'monthly',
-    docs:             [],
+    reg:              (row.reg_details && Object.keys(row.reg_details).length) ? row.reg_details : null,
+    targetExam:       row.target_exam      || '',
+    // Enclosures were never persisted before (always reset to []); they now
+    // live in reg_details.docs.
+    docs:             Array.isArray(row.reg_details?.docs) ? row.reg_details.docs : [],
     created_at:       row.created_at,
     updated_at:       row.updated_at,
     notes:            [],
@@ -1369,6 +1395,25 @@ function DetailPanel({ a, onClose, onAddNote, darkMode, role, housemastersByHous
           {linkedStudent.admission_date && ` · since ${linkedStudent.admission_date}`}
         </div>
       )}
+      {(() => {
+        // Official AISSEE / JNVST registration at a glance.
+        const exams = EXAM_BY_COURSE[a.course] || []
+        if (!exams.length) return null
+        const rg = mergeReg(a.reg)
+        const chip = (x, st, no) => (
+          <div key={x} style={{ flex:'1 1 240px', borderRadius:12, padding:'10px 14px', background:EXAM_META[x].bg, border:`1px solid ${EXAM_META[x].color}22`, marginBottom:12 }}>
+            <div style={{ fontSize:12, fontWeight:800, color:EXAM_META[x].color }}>{x} · Class {rg.targetClass}{rg.medium ? ` · ${rg.medium}` : ''}</div>
+            <div style={{ fontSize:11.5, color:T.slate[600], marginTop:3 }}>{st}{no ? ` · No. ${no}` : ''}</div>
+          </div>
+        )
+        return (
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginTop:10 }}>
+            {exams.includes('AISSEE') && chip('AISSEE', rg.aissee.status, rg.aissee.appNo)}
+            {exams.includes('JNVST') && chip('JNVST', rg.jnvst.status, rg.jnvst.regNo)}
+            {!a.reg && <div style={{ fontSize:11.5, color:T.amber[700], alignSelf:'center' }}>Official registration details not filled yet — Edit to add them.</div>}
+          </div>
+        )
+      })()}
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(200px,100%),1fr))', gap:16 }}>
         <div>
@@ -1871,6 +1916,20 @@ function printApplicationReceipt(a) {
         ${Row('Application Status', a.status || 'Applied')}
         ${Row('Submitted On', submittedAt)}
       </table>
+      ${(() => {
+        const exams = EXAM_BY_COURSE[a.course] || []
+        if (!exams.length || !a.reg) return ''
+        const rg = mergeReg(a.reg)
+        const e = v => String(v ?? '').replace(/[<>&]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;' }[c]))
+        return `<div class="sectionTitle">Entrance Examination Particulars</div><table>
+          ${Row('Examination', e(exams.join(' + ') + ' · Class ' + rg.targetClass))}
+          ${Row('Medium', e(rg.medium))}
+          ${Row('Category', e([a.category !== '--' ? a.category : '', rg.defence !== 'None' ? 'Defence (' + rg.defence + ')' : '', rg.divyang !== 'None' ? 'PwD' : ''].filter(Boolean).join(' · ')))}
+          ${Row('Domicile / Area', e([rg.domicileState, rg.area].filter(Boolean).join(' · ')))}
+          ${exams.includes('AISSEE') ? Row('AISSEE', e([rg.aissee.status, rg.aissee.appNo && 'App. No. ' + rg.aissee.appNo].filter(Boolean).join(' · '))) : ''}
+          ${exams.includes('JNVST') ? Row('JNVST', e([rg.jnvst.status, rg.jnvst.regNo && 'Reg. No. ' + rg.jnvst.regNo, rg.jnvst.jnv].filter(Boolean).join(' · '))) : ''}
+        </table>`
+      })()}
 
       <div class="note">
         <strong>This receipt confirms your application has been formally received by the Institute.</strong>
@@ -1943,233 +2002,382 @@ function printBulkList(apps) {
   win.document.close()
 }
 
-// ── Application form design system — module-level so these never get
-// redefined on re-render. (Previously GovSection/GovField were defined as
-// `const` INSIDE AdmForm's function body — every keystroke triggered a
-// re-render, which created brand-new function references for them each
-// time. React then treated every <GovSection>/<GovField> as a completely
-// different component type than the previous render, so it unmounted and
-// remounted the entire form body on every keystroke — resetting scroll
-// position to the top and disrupting focus. Moving them out here means
-// their identity is stable across every re-render.)
-const ADM_ACCENT   = '#1E2A5E'
-const ADM_ACCENT_LT= '#EEF0F8'
-const ADM_INK      = '#1A1D29'
-const ADM_INK_SUB  = '#6B7080'
-const ADM_CARD_BG  = '#FFFFFF'
-const ADM_PAGE_BG  = '#F3F1EC'
-const ADM_BORDER   = '#E4E2DC'
-const ADM_DANGER   = '#B91C1C'
-const ADM_SUCCESS  = '#0F7A4C'
-const ADM_SERIF    = "'Georgia','Times New Roman',serif"
+// ═══════════════════════════════════════════════════════════════════════════
+//  PREMIUM APPLICATION FORM — fields mirror the official registration forms
+//  of AISSEE (Sainik Schools, NTA) and JNVST (Navodaya Vidyalaya, NVS),
+//  plus GNSI's own internal particulars.
+//
+//  Storage: every official-form field lives in admissions.reg_details (jsonb)
+//  so no existing column changes meaning. Existing columns keep being filled
+//  exactly as before (address is composed from the structured parts,
+//  prev_school = present school name, etc.), so Students sync, Fees, CSV
+//  import and every report keep working unchanged.
+//  Run the SQL in admissions_reg_details.sql once in Supabase.
+// ═══════════════════════════════════════════════════════════════════════════
 
-// Each section gets a distinct icon + accent color — real category
-// encoding, not arbitrary decoration, so the eye can jump straight to
-// the right part of a long form.
-const SECTION_META = {
-  'Identification Particulars':   { icon:'🪪', color:'#4C5FD5' },
-  'Course & Class Particulars':   { icon:'🎓', color:'#1E2A5E' },
-  'Entrance & Interview':         { icon:'📝', color:'#B5651D' },
-  'Financial Particulars':        { icon:'💰', color:'#0F7A4C' },
-  'Family & Contact Particulars': { icon:'👨‍👩‍👦', color:'#A6335C' },
-  'Emergency Contact':            { icon:'🚨', color:'#B91C1C' },
-  'Enclosures':                   { icon:'📎', color:'#6B5B95' },
+const AF = {
+  navy:'#0B1E3D', navy2:'#132B52', navy3:'#1C3A6B',
+  gold:'#C9A24B', goldLt:'#E2C57E', goldBg:'#FBF6E8', goldLine:'#EADBB2',
+  cream:'#F7F4EC', paper:'#FFFFFF', ink:'#14213D', sub:'#5B6477', faint:'#8A93A6',
+  line:'#E6E1D3', line2:'#D8D1BE',
+  danger:'#B42318', dangerBg:'#FDECEA', ok:'#0F7A4C', okBg:'#E8F5EE', warn:'#9A5B00', warnBg:'#FFF5E0',
+  serif:"'Playfair Display','Source Serif 4',Georgia,serif",
+  sans:"'Inter',system-ui,-apple-system,sans-serif",
 }
 
-// Required-field keys per section, so each card can show real completion —
-// not decorative numbering, an actual signal of what's left to do.
-const SECTION_FIELDS = {
-  'Identification Particulars':  ['dob','gender','blood','category','religion','motherTongue','quota'],
-  'Course & Class Particulars':  ['course','cls','house','hostel_type','subtype','session'],
-  'Financial Particulars':       ['entranceScore','concessionAmt'],
-  'Family & Contact Particulars':['father','mother','phone','whatsapp','address','prevSchool'],
-  'Emergency Contact':           ['emergencyName','emergencyPhone'],
-  'Enclosures':                  ['docs'],
+// Which official exam(s) each GNSI course prepares for.
+const EXAM_BY_COURSE = {
+  Sainik:            ['AISSEE'],
+  Navodaya:          ['JNVST'],
+  'Combined Course': ['AISSEE','JNVST'],
+  Foundation:        [],
+}
+const EXAM_META = {
+  AISSEE: { short:'AISSEE', full:'All India Sainik Schools Entrance Exam', body:'NTA · Sainik Schools Society', color:'#1F6F4A', bg:'#E8F5EE' },
+  JNVST:  { short:'JNVST',  full:'Jawahar Navodaya Vidyalaya Selection Test', body:'Navodaya Vidyalaya Samiti', color:'#1C3A6B', bg:'#E9EEF8' },
 }
 
-function GovSection({ title, done, metaKey, children }) {
-  const meta = SECTION_META[metaKey || title] || { icon:'▪', color:ADM_ACCENT }
+const INDIAN_STATES = [
+  'Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh',
+  'Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha',
+  'Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal',
+  'Andaman and Nicobar Islands','Chandigarh','Dadra and Nagar Haveli and Daman and Diu','Delhi','Jammu and Kashmir',
+  'Ladakh','Lakshadweep','Puducherry',
+]
+const MANIPUR_DISTRICTS = ['Bishnupur','Chandel','Churachandpur','Imphal East','Imphal West','Jiribam','Kakching','Kamjong','Kangpokpi','Noney','Pherzawl','Senapati','Tamenglong','Tengnoupal','Thoubal','Ukhrul']
+const AISSEE_MEDIUMS = ['English','Hindi','Assamese','Bengali','Gujarati','Kannada','Malayalam','Marathi','Odia','Punjabi','Tamil','Telugu','Urdu']
+const JNVST_MEDIUMS  = ['English','Hindi','Assamese','Bengali','Bodo','Garo','Gujarati','Kannada','Khasi','Malayalam','Manipuri (Bengali script)','Manipuri (Meitei Mayek)','Marathi','Mizo','Nepali','Odia','Punjabi','Tamil','Telugu','Urdu']
+const OFFICIAL_CATEGORIES = ['General','OBC-NCL','SC','ST','EWS']
+const DEFENCE_OPTS   = ['None','Serving','Ex-Servicemen']
+const DEFENCE_SERVICES = ['Army','Navy','Air Force']
+const DIVYANG_TYPES  = ['None','Locomotor','Visual','Hearing','Speech & Language','Intellectual','Multiple','Other']
+const ID_TYPES       = ['Aadhaar','School ID Card','Passport','Other Govt Photo ID']
+const SCHOOL_TYPES   = ['Government','Government-aided','Recognised Private','NIOS']
+const OFFICIAL_REG_STATUS = ['Not registered yet','Registered','Admit card issued','Appeared','Qualified','Not qualified']
+const SAINIK_SCHOOL_SUGGESTIONS = ['Sainik School Imphal','Sainik School Goalpara','Sainik School Tezu','Sainik School Punglwa','Sainik School Chhingchhip']
+const AISSEE_CITY_SUGGESTIONS   = ['Imphal','Guwahati','Silchar','Shillong','Dimapur','Kohima','Aizawl','Agartala','Itanagar','Kolkata','Delhi']
+
+// Documents — tagged with which registration asks for them, so the list
+// shows only what is relevant to this applicant.
+const OFFICIAL_DOCS = [
+  { label:'Passport Photo',                          for:['AISSEE','JNVST','GNSI'] },
+  { label:"Candidate's Signature",                   for:['AISSEE','JNVST'] },
+  { label:"Parent's Signature",                      for:['JNVST'] },
+  { label:'Left-hand Thumb Impression',              for:['AISSEE'] },
+  { label:'Birth Certificate',                       for:['AISSEE','JNVST','GNSI'] },
+  { label:'Domicile Certificate',                    for:['AISSEE'] },
+  { label:'Aadhaar Card',                            for:['JNVST','GNSI'] },
+  { label:'Residence Certificate',                   for:['JNVST'] },
+  { label:'NVS Certificate (verified by Head of School)', for:['JNVST'] },
+  { label:'Caste Certificate',                       for:['AISSEE','JNVST'], when: r => r.category && !['General','--'].includes(r.category) },
+  { label:'Defence Service Certificate / PPO',       for:['AISSEE'], when: r => r.defence && r.defence !== 'None' },
+  { label:'Disability Certificate',                  for:['AISSEE','JNVST','GNSI'], when: r => r.divyang && r.divyang !== 'None' },
+  { label:'Mark Sheet',                              for:['GNSI'] },
+  { label:'Transfer Certificate',                    for:['GNSI'] },
+  { label:'Medical Certificate',                     for:['GNSI'] },
+]
+
+// Official DOB windows (admission year = first year of the session).
+//   AISSEE  VI: 1 Apr (Y-12) – 31 Mar (Y-10)   IX: 1 Apr (Y-15) – 31 Mar (Y-13)
+//   JNVST   VI: 1 May (Y-12) – 31 Jul (Y-10)   IX: 1 May (Y-15) – 31 Jul (Y-13)
+function officialDobWindow(exam, cls, sessionName) {
+  const m = /^(\d{4})-\d{4}$/.exec((sessionName || '').trim())
+  if (!m) return null
+  const Y = parseInt(m[1]), k = cls === 'IX' ? 3 : 0
+  const fmtD = s => new Date(s).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })
+  const from = exam === 'AISSEE' ? `${Y-12-k}-04-01` : `${Y-12-k}-05-01`
+  const to   = exam === 'AISSEE' ? `${Y-10-k}-03-31` : `${Y-10-k}-07-31`
+  return { from, to, label:`${fmtD(from)} – ${fmtD(to)}` }
+}
+
+const blankReg = () => ({
+  targetClass:'VI', medium:'',
+  nationality:'Indian', domicileState:'Manipur', area:'',
+  idType:'Aadhaar', idLast4:'',
+  defence:'None', defenceService:'',
+  divyang:'None', divyangPct:'',
+  fatherOcc:'', motherOcc:'', guardianName:'', guardianRel:'', email:'', income:'',
+  corr:{ line:'', village:'', po:'', block:'', district:'', state:'Manipur', pin:'' },
+  permSame:true,
+  perm:{ line:'', village:'', po:'', block:'', district:'', state:'Manipur', pin:'' },
+  school:{ currentClass:'V', udise:'', type:'', block:'', district:'', state:'Manipur', area:'', yearV:'' },
+  hist:{ III:{ year:'', school:'', area:'' }, IV:{ year:'', school:'', area:'' } },
+  aissee:{ status:'Not registered yet', appNo:'', rollNo:'', cities:['','','',''], schools:['','',''] },
+  jnvst:{ status:'Not registered yet', regNo:'', rollNo:'', jnv:'' },
+})
+
+// Deep-merge a saved reg_details onto the blank shape (older records, or
+// ones saved before a field existed, still get every key).
+function mergeReg(saved) {
+  const b = blankReg()
+  if (!saved || typeof saved !== 'object') return b
+  const out = { ...b, ...saved }
+  for (const k of ['corr','perm','school','aissee','jnvst']) out[k] = { ...b[k], ...(saved[k] || {}) }
+  out.hist = { III:{ ...b.hist.III, ...(saved.hist?.III || {}) }, IV:{ ...b.hist.IV, ...(saved.hist?.IV || {}) } }
+  out.aissee.cities  = [0,1,2,3].map(i => saved.aissee?.cities?.[i] || '')
+  out.aissee.schools = [0,1,2].map(i => saved.aissee?.schools?.[i] || '')
+  return out
+}
+
+function composeAddress(c) {
+  if (!c) return ''
+  const parts = [c.line, c.village, c.po && `PO ${c.po}`, c.block, c.district, c.state].map(v => (v || '').trim()).filter(Boolean)
+  const s = parts.join(', ')
+  return c.pin ? `${s}${s ? ' – ' : ''}${c.pin}` : s
+}
+
+// Official-form checks — form only (CSV import keeps using
+// validateApplicationData alone, so older import files still work).
+function validateOfficialFields(form, exams) {
+  const e = {}, r = form.reg || {}
+  const needExam = exams.length > 0
+  if (needExam && !r.targetClass) e['reg.targetClass'] = 'Choose the class applying for'
+  if (needExam && !r.medium)      e['reg.medium'] = 'Medium of examination is required'
+  if (!r.nationality?.trim())     e['reg.nationality'] = 'Nationality is required'
+  if (!r.domicileState)           e['reg.domicileState'] = 'State of domicile is required'
+  if (exams.includes('JNVST') && !r.area) e['reg.area'] = 'Rural / Urban is required for JNVST'
+  if (r.idLast4 && !/^\d{4}$/.test(r.idLast4)) e['reg.idLast4'] = 'Enter exactly 4 digits'
+  if (r.defence && r.defence !== 'None' && !r.defenceService) e['reg.defenceService'] = 'Choose the service'
+  if (r.divyang && r.divyang !== 'None' && !(Number(r.divyangPct) > 0)) e['reg.divyangPct'] = 'Disability % is required'
+  if (r.email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(r.email)) e['reg.email'] = 'Enter a valid email'
+  const c = r.corr || {}
+  if (!(c.line?.trim() || c.village?.trim())) e['reg.corr.line'] = 'House / village is required'
+  if (!c.district?.trim()) e['reg.corr.district'] = 'District is required'
+  if (!c.state)            e['reg.corr.state'] = 'State is required'
+  if (!/^\d{6}$/.test(c.pin || '')) e['reg.corr.pin'] = 'PIN code must be 6 digits'
+  if (!r.permSame) {
+    const p = r.perm || {}
+    if (!p.district?.trim()) e['reg.perm.district'] = 'Permanent district is required'
+    if (p.pin && !/^\d{6}$/.test(p.pin)) e['reg.perm.pin'] = 'PIN code must be 6 digits'
+  }
+  const s = r.school || {}
+  if (exams.includes('JNVST') && !s.district?.trim()) e['reg.school.district'] = "School's district is required for JNVST"
+  if (s.udise && !/^\d{11}$/.test(s.udise)) e['reg.school.udise'] = 'UDISE code is 11 digits'
+  return e
+}
+
+const STEPS = [
+  { id:'programme', title:'Programme',          sub:'Course, exam & house',      icon:'🎯',
+    keys:['course','subtype','cls','session','house','hostel_type','reg.targetClass','reg.medium'] },
+  { id:'candidate', title:'Candidate',          sub:'Personal particulars',      icon:'🪪',
+    keys:['name','gcc','dob','gender','blood','category','religion','motherTongue','quota','reg.nationality','reg.domicileState','reg.area','reg.idLast4','reg.defenceService','reg.divyangPct'] },
+  { id:'family',    title:'Parents & Contact',  sub:'Parents, phone, email',     icon:'👪',
+    keys:['father','mother','phone','whatsapp','emergencyName','emergencyPhone','reg.email'] },
+  { id:'address',   title:'Address',            sub:'Correspondence & permanent', icon:'🏠',
+    keys:['address','reg.corr.line','reg.corr.district','reg.corr.state','reg.corr.pin','reg.perm.district','reg.perm.pin'] },
+  { id:'schooling', title:'Schooling',          sub:'Present school & history',  icon:'🏫',
+    keys:['prevSchool','reg.school.district','reg.school.udise'] },
+  { id:'official',  title:'Exam Registration',  sub:'AISSEE / JNVST portal',     icon:'📜', keys:[] },
+  { id:'gnsi',      title:'GNSI Assessment',    sub:'Scores & fee terms',        icon:'⭐', keys:['entranceScore','concessionAmt'] },
+  { id:'documents', title:'Documents',          sub:'Enclosures & declaration',  icon:'📎', keys:['docs','declared'] },
+]
+
+const afInp = (err) => ({
+  width:'100%', boxSizing:'border-box', padding:'11px 13px', borderRadius:10,
+  border:`1.5px solid ${err ? AF.danger : AF.line}`, background: err ? '#FFFBFA' : AF.paper,
+  fontSize:13.5, color:AF.ink, fontFamily:AF.sans, outline:'none',
+  transition:'border-color .15s, box-shadow .15s',
+})
+const afRO = { background:'#F3F0E7', color:AF.faint, cursor:'not-allowed' }
+
+function AfField({ label, required, error, hint, span, children }) {
   return (
-    <div style={{
-      background:ADM_CARD_BG, borderRadius:16, marginBottom:18, overflow:'hidden',
-      boxShadow: done ? '0 2px 12px rgba(15,122,76,.10)' : '0 2px 12px rgba(26,29,41,.06)',
-      border: `1px solid ${done ? '#CDE8D8' : '#EDEBE4'}`,
-      transition:'box-shadow .2s, transform .15s',
-    }}
-      onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
-      onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
-      <div style={{ height:4, background: done ? ADM_SUCCESS : meta.color }} />
-      <div style={{ padding:'18px 22px 20px' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:18 }}>
-          <div style={{
-            width:38, height:38, borderRadius:11, flexShrink:0,
-            background: done ? '#E8F6EE' : meta.color+'14',
-            display:'flex', alignItems:'center', justifyContent:'center', fontSize:17,
-            transition:'background .2s',
-          }}>
-            {done ? <span style={{ color:ADM_SUCCESS, fontWeight:900 }}>✓</span> : meta.icon}
-          </div>
-          <span style={{ fontWeight:700, fontSize:15, color:ADM_INK, letterSpacing:'-.01em' }}>{title}</span>
-          {done && <span style={{ marginLeft:'auto', fontSize:10.5, fontWeight:700, color:ADM_SUCCESS, background:'#E8F6EE', padding:'3px 10px', borderRadius:99 }}>COMPLETE</span>}
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-}
-
-function GovField({ label, required, children }) {
-  return (
-    <div>
-      <label style={{ display:'block', fontSize:11, fontWeight:700, color:ADM_INK_SUB, marginBottom:7, textTransform:'uppercase', letterSpacing:'.04em' }}>
-        {label}{required && <span style={{ color:ADM_DANGER }}> *</span>}
+    <div style={{ gridColumn: span === 'full' ? '1 / -1' : span ? `span ${span}` : undefined, minWidth:0 }}>
+      <label style={{ display:'block', fontSize:10.5, fontWeight:700, color:AF.sub, marginBottom:6, textTransform:'uppercase', letterSpacing:'.08em' }}>
+        {label}{required && <span style={{ color:AF.gold }}> ✦</span>}
       </label>
       {children}
+      {error
+        ? <div style={{ fontSize:11.5, color:AF.danger, marginTop:5, fontWeight:600 }}>{error}</div>
+        : hint ? <div style={{ fontSize:11.5, color:AF.faint, marginTop:5 }}>{hint}</div> : null}
     </div>
   )
 }
 
-// ─── Application Preview ────────────────────────────────────────────────────────
-// Read-only review screen shown before final submit. Top-level (not nested
-// inside AdmForm) for the same reason GovSection/GovField were hoisted
-// earlier — keeps its identity stable so it's never remounted mid-animation.
-function ApplicationPreview({ form, activeSession, editing, onEdit, onConfirm, submitting }) {
-  const Row = ({ label, value }) => (
-    value !== undefined && value !== null && value !== '' && value !== '--' && (
-      <div style={{ display:'flex', justifyContent:'space-between', gap:12, padding:'8px 0', borderBottom:`1px solid ${ADM_BORDER}` }}>
-        <span style={{ fontSize:12.5, color:ADM_INK_SUB, fontWeight:600 }}>{label}</span>
-        <span style={{ fontSize:13, color:ADM_INK, fontWeight:600, textAlign:'right' }}>{String(value)}</span>
-      </div>
-    )
-  )
-  const Block = ({ icon, title, children }) => (
-    <div style={{ background:ADM_CARD_BG, borderRadius:16, marginBottom:16, overflow:'hidden', border:`1px solid #EDEBE4`, boxShadow:'0 2px 12px rgba(26,29,41,.06)' }}>
-      <div style={{ padding:'16px 20px' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-          <span style={{ fontSize:16 }}>{icon}</span>
-          <span style={{ fontWeight:700, fontSize:14, color:ADM_INK }}>{title}</span>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-
+function AfCard({ title, subtitle, right, children }) {
   return (
-    <div style={{ padding:'26px 28px' }}>
-      <div style={{ textAlign:'center', marginBottom:22 }}>
-        <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
-        <div style={{ fontWeight:700, fontSize:19, color:ADM_INK }}>Review Application</div>
-        <div style={{ fontSize:13, color:ADM_INK_SUB, marginTop:4 }}>Check every detail carefully — you can still go back and edit.</div>
+    <div style={{ background:AF.paper, border:`1px solid ${AF.line}`, borderRadius:18, marginBottom:18, boxShadow:'0 1px 2px rgba(11,30,61,.04), 0 10px 30px -18px rgba(11,30,61,.25)', overflow:'hidden' }}>
+      <div style={{ padding:'16px 22px', borderBottom:`1px solid ${AF.line}`, display:'flex', alignItems:'center', gap:12, background:'linear-gradient(180deg,#FFFFFF,#FCFBF7)' }}>
+        <div style={{ width:4, alignSelf:'stretch', borderRadius:4, background:`linear-gradient(180deg,${AF.gold},${AF.goldLt})` }} />
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontFamily:AF.serif, fontSize:17, fontWeight:700, color:AF.ink }}>{title}</div>
+          {subtitle && <div style={{ fontSize:12, color:AF.sub, marginTop:2 }}>{subtitle}</div>}
+        </div>
+        {right}
+      </div>
+      <div style={{ padding:'20px 22px 22px' }}>{children}</div>
+    </div>
+  )
+}
+
+function AfSeg({ options, value, onChange }) {
+  return (
+    <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+      {options.map(o => {
+        const v = typeof o === 'string' ? o : o.value
+        const l = typeof o === 'string' ? o : o.label
+        const on = value === v
+        return (
+          <button type="button" key={v} onClick={() => onChange(v)}
+            style={{ padding:'9px 14px', borderRadius:10, cursor:'pointer', fontSize:12.5, fontWeight:700, fontFamily:AF.sans,
+              border:`1.5px solid ${on ? AF.navy : AF.line}`, background: on ? AF.navy : AF.paper, color: on ? '#fff' : AF.sub,
+              boxShadow: on ? '0 6px 14px -8px rgba(11,30,61,.7)' : 'none', transition:'all .15s' }}>
+            {on && <span style={{ color:AF.goldLt, marginRight:5 }}>●</span>}{l}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+const afGrid = (min = 210) => ({ display:'grid', gridTemplateColumns:`repeat(auto-fill,minmax(min(${min}px,100%),1fr))`, gap:16 })
+
+// ─── Preview — laid out like a printed registration form ──────────────────
+function ApplicationPreview({ form, exams, editing, onEdit, onConfirm, submitting }) {
+  const r = form.reg || blankReg()
+  const V = v => (v === undefined || v === null || v === '' || v === '--') ? <span style={{ color:'#B8B2A2' }}>—</span> : String(v)
+  const Row = ({ l, v }) => (
+    <div style={{ display:'grid', gridTemplateColumns:'minmax(120px,42%) 1fr', gap:10, padding:'8px 0', borderBottom:`1px dashed ${AF.line}` }}>
+      <span style={{ fontSize:11.5, color:AF.sub, fontWeight:600 }}>{l}</span>
+      <span style={{ fontSize:13, color:AF.ink, fontWeight:600, wordBreak:'break-word' }}>{V(v)}</span>
+    </div>
+  )
+  const Block = ({ n, t, children }) => (
+    <div style={{ marginBottom:18 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+        <span style={{ width:24, height:24, borderRadius:7, background:AF.navy, color:AF.goldLt, fontSize:11, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center' }}>{n}</span>
+        <span style={{ fontFamily:AF.serif, fontSize:15.5, fontWeight:700, color:AF.ink }}>{t}</span>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(300px,100%),1fr))', columnGap:28 }}>{children}</div>
+    </div>
+  )
+  const perm = r.permSame ? r.corr : r.perm
+  return (
+    <div style={{ padding:'22px clamp(14px,3vw,30px) 28px' }}>
+      <div style={{ background:AF.paper, border:`1.5px solid ${AF.navy}`, borderRadius:16, padding:'22px clamp(14px,3vw,28px)', boxShadow:'0 20px 50px -30px rgba(11,30,61,.5)', position:'relative', overflow:'hidden' }}>
+        <div style={{ position:'absolute', inset:0, pointerEvents:'none', backgroundImage:`repeating-linear-gradient(135deg, rgba(201,162,75,.035) 0 2px, transparent 2px 14px)` }} />
+        <div style={{ position:'relative', display:'flex', gap:18, alignItems:'flex-start', borderBottom:`3px double ${AF.navy}`, paddingBottom:14, marginBottom:18, flexWrap:'wrap' }}>
+          <div style={{ flex:1, minWidth:220 }}>
+            <div style={{ fontSize:10.5, letterSpacing:'.18em', color:AF.gold, fontWeight:800, textTransform:'uppercase' }}>Guidance Navodaya &amp; Sainik Institute</div>
+            <div style={{ fontFamily:AF.serif, fontSize:22, fontWeight:700, color:AF.navy, marginTop:4 }}>{editing ? 'Amended Application' : 'Application for Admission'}</div>
+            <div style={{ display:'flex', gap:6, marginTop:8, flexWrap:'wrap' }}>
+              {exams.map(x => <span key={x} style={{ fontSize:10.5, fontWeight:800, padding:'3px 10px', borderRadius:99, background:EXAM_META[x].bg, color:EXAM_META[x].color }}>{x} · Class {r.targetClass}</span>)}
+              <span style={{ fontSize:10.5, fontWeight:800, padding:'3px 10px', borderRadius:99, background:AF.goldBg, color:'#7A5B12' }}>Session {form.session || '—'}</span>
+              <span style={{ fontSize:10.5, fontWeight:800, padding:'3px 10px', borderRadius:99, background:'#EEF1F6', color:AF.navy }}>GCC {form.gcc || '—'}</span>
+            </div>
+          </div>
+          <div style={{ width:92, height:112, borderRadius:8, border:`1.5px solid ${AF.line2}`, overflow:'hidden', background:'#F6F3EA', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:AF.faint, textAlign:'center' }}>
+            {form.photoUrl ? <img src={form.photoUrl} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : 'Photo'}
+          </div>
+        </div>
+
+        <div style={{ position:'relative' }}>
+          <Block n="1" t="Programme & examination">
+            <Row l="Course" v={form.course ? `${form.course}${form.subtype ? ' – ' + form.subtype : ''}` : ''} />
+            <Row l="Class / Batch" v={form.cls} />
+            <Row l="Applying for" v={exams.length ? `${exams.join(' + ')} · Class ${r.targetClass}` : 'GNSI programme only'} />
+            <Row l="Medium of exam" v={r.medium} />
+            <Row l="House / Hostel" v={form.house ? `${form.house} · ${form.hostel_type}` : ''} />
+            <Row l="Bed / Room" v={form.bedNumber} />
+          </Block>
+          <Block n="2" t="Candidate particulars">
+            <Row l="Name" v={form.name} />
+            <Row l="Date of birth" v={form.dob ? new Date(form.dob).toLocaleDateString('en-IN',{ day:'2-digit', month:'long', year:'numeric' }) : ''} />
+            <Row l="Gender" v={form.gender} />
+            <Row l="Category" v={form.category} />
+            <Row l="Defence category" v={r.defence === 'None' ? 'None' : `${r.defence} · ${r.defenceService}`} />
+            <Row l="Divyang (PwD)" v={r.divyang === 'None' ? 'No' : `${r.divyang} · ${r.divyangPct}%`} />
+            <Row l="Nationality" v={r.nationality} />
+            <Row l="State of domicile" v={r.domicileState} />
+            <Row l="Area" v={r.area} />
+            <Row l="Photo ID" v={r.idLast4 ? `${r.idType} ····${r.idLast4}` : r.idType} />
+            <Row l="Blood group" v={form.blood} />
+            <Row l="Religion" v={form.religion} />
+            <Row l="Mother tongue" v={form.motherTongue} />
+            <Row l="Quota" v={form.quota} />
+          </Block>
+          <Block n="3" t="Parents & contact">
+            <Row l="Father" v={[form.father, r.fatherOcc].filter(Boolean).join(' · ')} />
+            <Row l="Mother" v={[form.mother, r.motherOcc].filter(Boolean).join(' · ')} />
+            <Row l="Guardian" v={r.guardianName ? `${r.guardianName}${r.guardianRel ? ' (' + r.guardianRel + ')' : ''}` : ''} />
+            <Row l="Mobile / WhatsApp" v={[form.phone, form.whatsapp].filter(Boolean).join(' / ')} />
+            <Row l="Email" v={r.email} />
+            <Row l="Emergency contact" v={form.emergencyName ? `${form.emergencyName} · ${form.emergencyPhone}${form.emergencyRel ? ' (' + form.emergencyRel + ')' : ''}` : ''} />
+          </Block>
+          <Block n="4" t="Address">
+            <Row l="Correspondence" v={composeAddress(r.corr)} />
+            <Row l="Permanent" v={r.permSame ? 'Same as correspondence' : composeAddress(perm)} />
+          </Block>
+          <Block n="5" t="Schooling">
+            <Row l="Present school" v={form.prevSchool} />
+            <Row l="Class / type" v={[r.school.currentClass && `Class ${r.school.currentClass}`, r.school.type, r.school.area].filter(Boolean).join(' · ')} />
+            <Row l="UDISE code" v={r.school.udise} />
+            <Row l="School location" v={[r.school.block, r.school.district, r.school.state].filter(Boolean).join(', ')} />
+            {exams.includes('JNVST') && <>
+              <Row l="Class III" v={[r.hist.III.year, r.hist.III.school, r.hist.III.area].filter(Boolean).join(' · ')} />
+              <Row l="Class IV" v={[r.hist.IV.year, r.hist.IV.school, r.hist.IV.area].filter(Boolean).join(' · ')} />
+            </>}
+          </Block>
+          {exams.length > 0 && (
+            <Block n="6" t="Official registration">
+              {exams.includes('AISSEE') && <>
+                <Row l="AISSEE status" v={r.aissee.status} />
+                <Row l="AISSEE application no." v={r.aissee.appNo} />
+                <Row l="Exam city choices" v={r.aissee.cities.filter(Boolean).join(' › ')} />
+                <Row l="Sainik School choices" v={r.aissee.schools.filter(Boolean).join(' › ')} />
+              </>}
+              {exams.includes('JNVST') && <>
+                <Row l="JNVST status" v={r.jnvst.status} />
+                <Row l="JNVST registration no." v={r.jnvst.regNo} />
+                <Row l="JNV applied to" v={r.jnvst.jnv} />
+              </>}
+            </Block>
+          )}
+          <Block n={exams.length ? '7' : '6'} t="GNSI assessment & fee terms">
+            <Row l="Entrance / interview" v={[form.entranceScore && `Entrance ${form.entranceScore}`, form.interviewScore && `Interview ${form.interviewScore}`].filter(Boolean).join(' · ')} />
+            <Row l="Scholarship" v={form.scholarshipPct ? `${form.scholarshipPct}%` : ''} />
+            <Row l="Concession (₹/mo)" v={form.concessionAmt} />
+            <Row l="Instalment plan" v={form.instalmentPlan} />
+          </Block>
+          <div style={{ fontSize:12, color:AF.sub }}>
+            <strong style={{ color:AF.ink }}>Enclosures:</strong> {form.docs.length ? form.docs.join(' · ') : '—'}
+          </div>
+        </div>
       </div>
 
-      <Block icon="👤" title="Applicant">
-        <Row label="Name" value={form.name} />
-        <Row label="GCC No." value={form.gcc} />
-        <Row label="Date of Birth" value={form.dob} />
-        <Row label="Gender" value={form.gender} />
-        <Row label="Blood Group" value={form.blood} />
-        <Row label="Category" value={form.category} />
-        <Row label="Religion" value={form.religion} />
-        <Row label="Mother Tongue" value={form.motherTongue} />
-        <Row label="Quota Type" value={form.quota} />
-        <Row label="Disability" value={form.disabilityFlag ? (form.disabilityNotes || 'Yes') : null} />
-        <Row label="Sibling GCC No." value={form.siblingGcc} />
-      </Block>
-
-      <Block icon="🎓" title="Course & Class">
-        <Row label="Course" value={form.course} />
-        <Row label="Subtype / Batch" value={form.subtype} />
-        <Row label="Class / Batch" value={form.cls} />
-        <Row label="Session" value={form.session} />
-        <Row label="House / Block" value={form.house} />
-        <Row label="Hostel Type" value={form.hostel_type} />
-        <Row label="Bed / Room No." value={form.bedNumber} />
-      </Block>
-
-      <Block icon="📝" title="Entrance & Interview">
-        <Row label="Entrance Score" value={form.entranceScore} />
-        <Row label="Interview Score" value={form.interviewScore} />
-        <Row label="Interview Date" value={form.interviewDate} />
-      </Block>
-
-      <Block icon="💰" title="Financial">
-        <Row label="Scholarship %" value={form.scholarshipPct} />
-        <Row label="Concession Amount ₹" value={form.concessionAmt} />
-        <Row label="Security Deposit ₹" value={form.securityDeposit} />
-        <Row label="Transport Fee ₹/mo" value={form.transportFee} />
-        <Row label="Instalment Plan" value={form.instalmentPlan} />
-      </Block>
-
-      <Block icon="👨‍👩‍👦" title="Family & Contact">
-        <Row label="Father's Name" value={form.father} />
-        <Row label="Mother's Name" value={form.mother} />
-        <Row label="Phone" value={form.phone} />
-        <Row label="WhatsApp" value={form.whatsapp} />
-        <Row label="Previous School" value={form.prevSchool} />
-        <Row label="Address" value={form.address} />
-      </Block>
-
-      <Block icon="🚨" title="Emergency Contact">
-        <Row label="Name" value={form.emergencyName} />
-        <Row label="Phone" value={form.emergencyPhone} />
-        <Row label="Relationship" value={form.emergencyRel} />
-      </Block>
-
-      <Block icon="📎" title="Enclosures">
-        <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-          {form.docs.length === 0
-            ? <span style={{ fontSize:12.5, color:ADM_INK_SUB }}>None selected</span>
-            : form.docs.map(d => (
-                <span key={d} style={{ fontSize:12, fontWeight:600, color:ADM_SUCCESS, background:'#EAF7EF', padding:'5px 12px', borderRadius:9 }}>✓ {d}</span>
-              ))}
-        </div>
-      </Block>
-
-      <div style={{ display:'flex', gap:10, flexWrap:'wrap', borderTop:`1px solid ${ADM_BORDER}`, paddingTop:20 }}>
-        <button onClick={onConfirm} disabled={submitting}
-          style={{ padding:'12px 28px', borderRadius:11, background: submitting ? '#C7C5BD' : `linear-gradient(135deg,${ADM_ACCENT},#2E3D7A)`, color:'#fff', border:'none', fontSize:13.5, fontWeight:700, cursor: submitting ? 'not-allowed' : 'pointer', boxShadow: submitting ? 'none' : '0 2px 10px rgba(30,42,94,.25)' }}>
-          {submitting ? 'Submitting…' : (editing ? '✓ Confirm Amendment' : '✓ Confirm & Submit')}
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginTop:20 }}>
+        <button type="button" onClick={onConfirm} disabled={submitting}
+          style={{ padding:'13px 26px', borderRadius:12, border:'none', cursor: submitting ? 'not-allowed' : 'pointer', fontSize:14, fontWeight:800, fontFamily:AF.sans,
+            background: submitting ? '#C9C3B2' : `linear-gradient(135deg,${AF.gold},${AF.goldLt})`, color:AF.navy, boxShadow: submitting ? 'none' : '0 10px 24px -12px rgba(201,162,75,.9)' }}>
+          {submitting ? 'Submitting…' : (editing ? '✓ Save amendment' : '✓ Confirm & submit application')}
         </button>
-        <button onClick={onEdit} disabled={submitting}
-          style={{ padding:'12px 20px', borderRadius:11, border:`1.5px solid ${ADM_BORDER}`, background:'#fff', fontSize:13.5, fontWeight:600, cursor: submitting ? 'not-allowed' : 'pointer', color:ADM_INK_SUB }}>
-          ← Back to Edit
+        <button type="button" onClick={onEdit} disabled={submitting}
+          style={{ padding:'13px 20px', borderRadius:12, border:`1.5px solid ${AF.line2}`, background:AF.paper, cursor:'pointer', fontSize:13.5, fontWeight:700, color:AF.sub, fontFamily:AF.sans }}>
+          ← Back to edit
         </button>
       </div>
     </div>
   )
 }
 
-// ─── Application Form ──────────────────────────────────────────────────────────
+// ─── Application Form ──────────────────────────────────────────────────────
 function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersByHouse={}, sessionOptions=[] }) {
   const def = (k, fb='') => editing ? (editing[k] ?? fb) : fb
   const defaultSession = editing ? def('session') : (activeSession?.session_name || '')
+  const isMob = useMobile()
 
-  // Suggest the next GCC No. (highest GCC on record + 1) for new
-  // applications only — fetched live from Supabase so it stays correct
-  // across every device/staff member, not just the one that last used this
-  // browser. Guarded by a ref (not just checking form.gcc) so a slow network
-  // response can never land after the user has started typing and overwrite
-  // their keystroke — the fill applies at most once, ever, for this form.
+  // Suggested next GCC No. (highest on record + 1), new applications only.
+  // Guarded by refs so a slow response never overwrites what staff typed.
   const [suggestedGcc, setSuggestedGcc] = useState('')
   const gccAutofilledRef = useRef(false)
   const gccTouchedRef = useRef(false)
   useEffect(() => {
     if (editing) return
     let cancelled = false
-    // Fetch all GCC numbers (paginated via fetchAllRows, so this can't be
-    // silently truncated by Supabase's default row cap on a large table)
-    // and compute the true numeric max ourselves — relying on the database
-    // to ORDER BY gcc_no is unsafe if that column is stored as text (very
-    // likely here), since text sorting is lexicographic ("999" sorts above
-    // "1035"), which was suggesting already-used numbers instead of the
-    // real highest one.
     fetchAllRows('admissions', { select: 'gcc_no' })
       .then(data => {
         if (cancelled || !data?.length) return
-        const maxGcc = data.reduce((max, r) => {
-          const n = parseInt(r.gcc_no)
-          return Number.isFinite(n) && n > max ? n : max
-        }, 0)
+        const maxGcc = data.reduce((max, r) => { const n = parseInt(r.gcc_no); return Number.isFinite(n) && n > max ? n : max }, 0)
         if (maxGcc <= 0) return
         const next = String(maxGcc + 1)
         setSuggestedGcc(next)
@@ -2182,60 +2390,51 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
     return () => { cancelled = true }
   }, [editing])
 
+  const initialReg = () => {
+    const reg = mergeReg(editing?.reg)
+    // Older records only have a free-text address — carry it into the
+    // structured form so nothing is lost when they are amended.
+    if (editing && !editing.reg && editing.address) reg.corr.line = editing.address
+    return reg
+  }
+
   const [form, setForm] = useState({
-    name:           def('name'),
-    gcc:            def('gcc'),
-    dob:            def('dob'),
-    gender:         def('gender'),
-    blood:          def('blood'),
-    category:       def('category','--'),
-    religion:       def('religion','--'),
-    motherTongue:   def('motherTongue','--'),
-    quota:          def('quota','--'),
-    referral:       def('referral','--'),
-    disabilityFlag: def('disabilityFlag',false),
-    disabilityNotes:def('disabilityNotes'),
-    scholarshipPct: def('scholarshipPct'),
-    concessionAmt:  def('concessionAmt'),
-    securityDeposit:def('securityDeposit'),
-    transportFee:   def('transportFee'),
-    instalmentPlan: def('instalmentPlan','monthly'),
-    entranceScore:  def('entranceScore'),
-    interviewScore: def('interviewScore'),
-    interviewDate:  def('interviewDate'),
-    followupDate:   def('followupDate'),
-    bedNumber:      def('bedNumber'),
-    emergencyName:  def('emergencyName'),
-    emergencyPhone: def('emergencyPhone'),
-    emergencyRel:   def('emergencyRel'),
-    siblingGcc:     def('siblingGcc'),
-    course:         def('course'),
-    subtype:        def('subtype'),
-    cls:            def('cls'),
-    house:          def('house'),
-    session:        defaultSession,
-    hostel_type:    def('hostel_type','Day Scholar'),
-    status:         def('status','Applied'),
-    father:         def('father'),
-    mother:         def('mother'),
-    phone:          def('phone'),
-    whatsapp:       def('whatsapp'),
-    prevSchool:     def('prevSchool'),
-    address:        def('address'),
-    remarks:        def('remarks'),
-    photoUrl:       def('photoUrl'),
-    docs:           editing?.docs || [],
+    name:def('name'), gcc:def('gcc'), dob:def('dob'), gender:def('gender'), blood:def('blood'),
+    category:def('category','--'), religion:def('religion','--'), motherTongue:def('motherTongue','--'),
+    quota:def('quota','--'), referral:def('referral','--'),
+    disabilityFlag:def('disabilityFlag',false), disabilityNotes:def('disabilityNotes'),
+    scholarshipPct:def('scholarshipPct'), concessionAmt:def('concessionAmt'), securityDeposit:def('securityDeposit'),
+    transportFee:def('transportFee'), instalmentPlan:def('instalmentPlan','monthly'),
+    entranceScore:def('entranceScore'), interviewScore:def('interviewScore'), interviewDate:def('interviewDate'),
+    followupDate:def('followupDate'), bedNumber:def('bedNumber'),
+    emergencyName:def('emergencyName'), emergencyPhone:def('emergencyPhone'), emergencyRel:def('emergencyRel'),
+    siblingGcc:def('siblingGcc'), course:def('course'), subtype:def('subtype'), cls:def('cls'), house:def('house'),
+    session:defaultSession, hostel_type:def('hostel_type','Day Scholar'), status:def('status','Applied'),
+    father:def('father'), mother:def('mother'), phone:def('phone'), whatsapp:def('whatsapp'),
+    prevSchool:def('prevSchool'), address:def('address'), remarks:def('remarks'), photoUrl:def('photoUrl'),
+    docs: editing?.docs || [],
+    reg: initialReg(),
   })
 
-  const set = (k,v) => {
-    setForm(f => {
-      const nf = { ...f, [k]:v }
-      try { localStorage.setItem(DRAFT_KEY, JSON.stringify(nf)) } catch(_) {}
-      return nf
-    })
-  }
-  const toggleDoc = d => set('docs', form.docs.includes(d) ? form.docs.filter(x=>x!==d) : [...form.docs,d])
+  // Draft autosave (new applications only) + an offer to resume one.
+  const [draftOffer, setDraftOffer] = useState(() => {
+    if (editing) return null
+    try { const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); return d && d.name ? d : null } catch { return null }
+  })
+  const persist = nf => { if (!editing) { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(nf)) } catch(_) {} } }
+  const set = (k, v) => setForm(f => { const nf = { ...f, [k]: v }; persist(nf); return nf })
+  // Nested reg setter: setReg('corr.pin', '795138') / setReg('aissee.cities.2', 'Imphal')
+  const setReg = (path, v) => setForm(f => {
+    const reg = JSON.parse(JSON.stringify(f.reg || blankReg()))
+    const ks = path.split('.'); let o = reg
+    for (let i = 0; i < ks.length - 1; i++) o = o[ks[i]]
+    o[ks[ks.length - 1]] = v
+    const nf = { ...f, reg }; persist(nf); return nf
+  })
+  const r = form.reg
+  const toggleDoc = d => set('docs', form.docs.includes(d) ? form.docs.filter(x => x !== d) : [...form.docs, d])
   const subtypes = COURSE_STRUCTURE[form.course]?.subtypes ?? []
+  const exams = EXAM_BY_COURSE[form.course] || []
 
   useEffect(() => {
     if (!form.house) return
@@ -2243,660 +2442,791 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
     else if (form.hostel_type === 'Day Scholar') set('hostel_type','Boarder')
   }, [form.house])
 
+  // Keep the legacy disability columns in step with the official PwD field.
+  useEffect(() => {
+    const on = r.divyang && r.divyang !== 'None'
+    if (!!form.disabilityFlag !== !!on) set('disabilityFlag', !!on)
+    const note = on ? `${r.divyang}${r.divyangPct ? ` (${r.divyangPct}%)` : ''}` : ''
+    if (on && form.disabilityNotes !== note) set('disabilityNotes', note)
+  }, [r.divyang, r.divyangPct])
+
+  // Medium must be valid for the chosen exam(s); clear it if the course changes.
+  const mediums = exams.includes('JNVST') && !exams.includes('AISSEE') ? JNVST_MEDIUMS
+    : exams.includes('AISSEE') && !exams.includes('JNVST') ? AISSEE_MEDIUMS
+    : AISSEE_MEDIUMS.filter(m => JNVST_MEDIUMS.includes(m))
+  // Class IX papers: AISSEE is English only; JNVST IX is English / Hindi.
+  const allowedMediums = r.targetClass === 'IX' ? (exams.includes('AISSEE') ? ['English'] : ['English','Hindi']) : mediums
+  useEffect(() => { if (r.medium && !allowedMediums.includes(r.medium)) setReg('medium', '') }, [form.course, r.targetClass])
+
   const [gccDup, setGccDup] = useState(false)
   useEffect(() => {
     if (!form.gcc || editing) { setGccDup(false); return }
-    const timer = setTimeout(async () => {
+    const t = setTimeout(async () => {
       const { data } = await supabase.from('admissions').select('gcc_no').eq('gcc_no', parseInt(form.gcc))
       setGccDup(!!(data && data.length > 0))
     }, 500)
-    return () => clearTimeout(timer)
+    return () => clearTimeout(t)
   }, [form.gcc, editing])
 
-  // ✦ New feature: live "possible duplicate person" check — same name+DOB
-  // or same phone number already on file under a DIFFERENT GCC. This is a
-  // WARNING only (staff decides), matching the existing duplicateGCCs
-  // warning already shown in the grid — this just surfaces it earlier,
-  // inside the form itself, before submission rather than only after.
+  // Possible duplicate person (same name+DOB or same phone, different GCC) — warning only.
   const [possibleDup, setPossibleDup] = useState(null)
   useEffect(() => {
-    const nameVal = form.name?.trim()
-    const dobVal = form.dob
-    const phoneVal = form.phone?.trim()
+    const nameVal = form.name?.trim(), dobVal = form.dob, phoneVal = form.phone?.trim()
     if ((!nameVal || !dobVal) && !phoneVal) { setPossibleDup(null); return }
-    const timer = setTimeout(async () => {
-      let query = supabase.from('admissions').select('gcc_no, name, dob, phone')
-      if (form.gcc) query = query.neq('gcc_no', parseInt(form.gcc))
-      const { data } = await query
-      if (!data) { setPossibleDup(null); return }
-      const match = data.find(a =>
-        (nameVal && dobVal && a.name?.trim().toLowerCase() === nameVal.toLowerCase() && a.dob === dobVal) ||
-        (phoneVal && a.phone?.trim() === phoneVal)
-      )
-      setPossibleDup(match || null)
-    }, 500)
-    return () => clearTimeout(timer)
+    const t = setTimeout(async () => {
+      // Two narrow queries instead of downloading the whole admissions table
+      // on every pause in typing (the old check did — and it also asked for a
+      // `name` column that doesn't exist, so it never matched anything).
+      const qs = []
+      if (phoneVal) qs.push(supabase.from('admissions').select('gcc_no, applicant_name, dob, phone').eq('phone', phoneVal).limit(5))
+      if (nameVal && dobVal) qs.push(supabase.from('admissions').select('gcc_no, applicant_name, dob, phone').eq('dob', dobVal).limit(50))
+      const res = await Promise.all(qs)
+      const data = res.flatMap(x => x.data || []).filter(a => !form.gcc || String(a.gcc_no) !== String(parseInt(form.gcc)))
+      if (!data.length) { setPossibleDup(null); return }
+      const m = data.find(a =>
+        (nameVal && dobVal && a.applicant_name?.trim().toLowerCase() === nameVal.toLowerCase() && a.dob === dobVal) ||
+        (phoneVal && a.phone?.trim() === phoneVal))
+      setPossibleDup(m ? { ...m, name: m.applicant_name } : null)
+    }, 600)
+    return () => clearTimeout(t)
   }, [form.name, form.dob, form.phone, form.gcc])
 
-  // ✦ New feature: sibling linking — resolves the entered Sibling GCC No.
-  // to the actual record on file (name, course, status), so staff can see
-  // who they're linking to instead of a bare number. Visibility only, per
-  // instruction — no automatic fee discount is applied from this lookup.
   const [siblingRecord, setSiblingRecord] = useState(null)
   useEffect(() => {
     if (!form.siblingGcc) { setSiblingRecord(null); return }
-    const timer = setTimeout(async () => {
-      const { data } = await supabase.from('admissions').select('gcc_no, name, course, subtype, status').eq('gcc_no', parseInt(form.siblingGcc)).maybeSingle()
-      setSiblingRecord(data || 'not_found')
+    const t = setTimeout(async () => {
+      const { data } = await supabase.from('admissions').select('gcc_no, applicant_name, course, subtype, status').eq('gcc_no', parseInt(form.siblingGcc)).maybeSingle()
+      setSiblingRecord(data ? { ...data, name: data.applicant_name } : 'not_found')
     }, 500)
-    return () => clearTimeout(timer)
+    return () => clearTimeout(t)
   }, [form.siblingGcc])
 
-  // 🔗 Live house capacity check — sourced from the real `houses` table +
-  // actual student/admission counts (feeEngine.js's getHouseOccupancy),
-  // not the old hardcoded HOUSE_CAPACITIES guess. This is a WARNING, not a
-  // hard block: staff can still proceed (e.g. a house may legitimately get
-  // an extra bed added), but they'll never be silently unaware of it the
-  // way the old hardcoded-only check allowed. The real enforcement point
-  // is promoteToStudent() at actual enrollment time, which does block.
+  // Live house capacity (warning; real enforcement is at Enroll).
   const [houseCapacityWarning, setHouseCapacityWarning] = useState('')
   useEffect(() => {
     if (!form.house) { setHouseCapacityWarning(''); return }
-    const timer = setTimeout(async () => {
+    const t = setTimeout(async () => {
       const check = await checkHouseCapacity(form.house, editing ? parseInt(form.gcc) : null, form.session)
       setHouseCapacityWarning(check.ok ? (check.warning || '') : check.reason)
     }, 400)
-    return () => clearTimeout(timer)
+    return () => clearTimeout(t)
   }, [form.house, form.gcc, form.session, editing])
 
   const derivedHostelType = deriveHostelType(form.house, form.hostel_type)
-  const hs       = HOSTEL_STYLES[derivedHostelType] || HOSTEL_STYLES['Day Scholar']
-
-  // 🔗 Live flat-fee rate — sourced from fee_structures (via getFeeRates),
-  // not the hardcoded legacy getFlatFeeAmtSync fallback. That sync helper
-  // is meant only for quick dashboard aggregates (see its doc comment in
-  // feeEngine.js); using it here meant this form could silently display a
-  // stale rate (e.g. ₹5,000 hardcoded) even when Fee Setup had a different,
-  // current rate configured (e.g. ₹5,500) — staff had no way to tell the
-  // number on screen wasn't the real one. Seeded with the sync estimate so
-  // the badge isn't blank while the DB call resolves, then corrected.
   const [baseRate, setBaseRate] = useState(() => getFlatFeeAmtSync(derivedHostelType, form.course))
   useEffect(() => {
     let cancelled = false
-    const sessionYear = form.session || getSessionYear()
-    getFeeRates(sessionYear, form.course, form.subtype, derivedHostelType, form.gcc || null)
-      .then(r => { if (!cancelled) setBaseRate(r.flatFee) })
-      .catch(() => { /* keep sync estimate on error */ })
+    getFeeRates(form.session || getSessionYear(), form.course, form.subtype, derivedHostelType, form.gcc || null)
+      .then(x => { if (!cancelled) setBaseRate(x.flatFee) })
+      .catch(() => {})
     return () => { cancelled = true }
   }, [form.session, form.course, form.subtype, derivedHostelType, form.gcc])
-
-  const discRate = form.scholarshipPct > 0 ? Math.round(baseRate*(1-form.scholarshipPct/100)) : baseRate
-  const warden   = getHousemaster(housemastersByHouse, form.house)
+  const discRate = form.scholarshipPct > 0 ? Math.round(baseRate * (1 - form.scholarshipPct / 100)) : baseRate
+  const warden = getHousemaster(housemastersByHouse, form.house)
 
   const [dirty, setDirty] = useState(false)
-  useEffect(() => setDirty(true), [form])
-
+  const firstRender = useRef(true)
+  useEffect(() => { if (firstRender.current) { firstRender.current = false; return } setDirty(true) }, [form])
   const handleCancel = () => {
     if (dirty && !confirm('Discard unsaved changes?')) return
     try { localStorage.removeItem(DRAFT_KEY) } catch(_) {}
     onCancel()
   }
 
-  const [declared, setDeclared] = useState(false)
+  const [declared, setDeclared] = useState(!!editing)
   const [photoUploading, setPhotoUploading] = useState(false)
   const [photoUploadError, setPhotoUploadError] = useState('')
-
   const handlePhotoFileSelect = async (e) => {
     const file = e.target.files?.[0]
-    e.target.value = '' // allow re-selecting the same file later
+    e.target.value = ''
     if (!file) return
-    if (!form.gcc) { setPhotoUploadError('Enter GCC No. before uploading a photo — the file is named by GCC No.'); return }
-    setPhotoUploading(true)
-    setPhotoUploadError('')
+    if (!form.gcc) { setPhotoUploadError('Enter GCC No. first — the photo is filed by GCC No.'); return }
+    setPhotoUploading(true); setPhotoUploadError('')
     try {
-      // Overall safety net on top of requestDriveAccessToken's own internal
-      // timeout — covers a hang anywhere in the chain (folder lookup, the
-      // actual file upload, permission update), not just the OAuth step.
-      const uploadPromise = uploadPhotoToGoogleDrive(file, form.gcc)
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Upload timed out. Please check your connection and try again.')), 60000)
-      )
-      const { url } = await Promise.race([uploadPromise, timeoutPromise])
+      const { url } = await Promise.race([
+        uploadPhotoToGoogleDrive(file, form.gcc),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Upload timed out. Please check your connection and try again.')), 60000)),
+      ])
       set('photoUrl', url)
-    } catch (err) {
-      setPhotoUploadError(err.message || 'Upload failed — please try again.')
-    } finally {
-      setPhotoUploading(false)
-    }
+      if (!form.docs.includes('Passport Photo')) set('docs', [...form.docs, 'Passport Photo'])
+    } catch (err) { setPhotoUploadError(err.message || 'Upload failed — please try again.') }
+    finally { setPhotoUploading(false) }
   }
-  const [step, setStep] = useState('form') // 'form' | 'preview'
+
+  // ── Validation: GNSI rules (shared with CSV import) + official-form rules ──
+  const composedAddress = composeAddress(r.corr)
+  const formForSave = { ...form, address: composedAddress || form.address, hostel_type: derivedHostelType }
+  const baseErr = validateApplicationData({ ...formForSave, hasActiveSession: !!activeSession }) || {}
+  const offErr = validateOfficialFields(form, exams)
+  const errors = { ...baseErr, ...offErr }
+  if (!declared) errors.declared = 'Confirm the declaration'
+  if (gccDup) errors.gcc = `GCC ${form.gcc} already exists`
+  const [touched, setTouched] = useState({})   // steps the user has visited/tried to leave
+  const err = (k, stepId) => (touched[stepId] ? errors[k] : undefined)
+  const stepErrors = s => s.keys.filter(k => errors[k])
+  const stepDone = s => stepErrors(s).length === 0
+
+  const [stepIdx, setStepIdx] = useState(0)
+  const [mode, setMode] = useState('form') // 'form' | 'preview'
   const [submitting, setSubmitting] = useState(false)
-
-  // ── Professional form design system — values sourced from module-level
-  // constants (defined above AdmForm) so GovSection/GovField never get
-  // redefined here; these local aliases just keep the shorter names used
-  // throughout the rest of this component's JSX.
-  const accent    = ADM_ACCENT
-  const accentLt  = ADM_ACCENT_LT
-  const ink       = ADM_INK
-  const inkSub    = ADM_INK_SUB
-  const cardBg    = ADM_CARD_BG
-  const pageBg    = ADM_PAGE_BG
-  const border    = ADM_BORDER
-  const danger    = ADM_DANGER
-  const success   = ADM_SUCCESS
-  const serif     = ADM_SERIF
-  const govInp = {
-    ...styles.inp, borderRadius:10, border:`1.5px solid ${border}`,
-    fontFamily:'system-ui,-apple-system,sans-serif', fontSize:13.5,
-    padding:'10px 13px', background:'#fff', transition:'border-color .15s, box-shadow .15s',
+  const topRef = useRef(null)
+  const goTo = i => {
+    setTouched(t => ({ ...t, [STEPS[stepIdx].id]: true }))
+    setStepIdx(i)
+    try { topRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }) } catch(_) {}
+  }
+  const doneCount = STEPS.filter(stepDone).length
+  const pct = Math.round(doneCount / STEPS.length * 100)
+  const allErrors = Object.values(errors)
+  const openReview = () => {
+    const all = {}; STEPS.forEach(s => { all[s.id] = true }); setTouched(all)
+    const firstBad = STEPS.findIndex(s => !stepDone(s))
+    if (firstBad >= 0) { setStepIdx(firstBad); try { topRef.current?.scrollIntoView({ behavior:'smooth' }) } catch(_) {}; return }
+    setMode('preview')
+    try { topRef.current?.scrollIntoView({ behavior:'smooth' }) } catch(_) {}
   }
 
-  // ✦ Bug fix: sectionComplete previously only checked fields were non-empty
-  // — it never checked they were actually VALID (e.g. Emergency Phone with
-  // non-10-digit input showed a green "COMPLETE" badge while the real
-  // validateApplicationData() check still correctly blocked submission with
-  // "Phone must be 10 digits"). Now delegates to validateApplicationData —
-  // the same single source of truth used for the actual submit-blocking
-  // check — so a section can never show complete while a real error exists
-  // for one of its fields.
-  const sectionComplete = (title) => {
-    const keys = SECTION_FIELDS[title]
-    if (!keys) return true
-    const errors = validateApplicationData({ ...form, hasActiveSession: !!activeSession }) || {}
-    return keys.every(k => {
-      if (errors[k]) return false
-      if (k === 'docs') return form.docs.length > 0
-      if (k === 'subtype') return (COURSE_STRUCTURE[form.course]?.subtypes||[]).length === 0 || !!form.subtype
-      if (k === 'session') return !!activeSession || !!form.session?.trim()
-      if (k === 'category' || k === 'religion' || k === 'motherTongue' || k === 'quota') return form[k] && form[k] !== '--'
-      const v = form[k]
-      return v !== '' && v !== null && v !== undefined && !(typeof v === 'string' && !v.trim())
-    })
+  const step = STEPS[stepIdx]
+  const I = (k, extra = {}) => ({ style:{ ...afInp(err(k, step.id)), ...(extra.style || {}) } })
+  const allSessions = [...new Set([...(activeSession ? [activeSession.session_name] : []), ...sessionOptions])].filter(Boolean)
+  const catOptions = [...new Set([...OFFICIAL_CATEGORIES, ...(form.category && form.category !== '--' ? [form.category] : [])])]
+  const genderOptions = [...new Set(['Male','Female','Transgender', ...(form.gender ? [form.gender] : [])])]
+  const docList = OFFICIAL_DOCS.filter(d => (d.for.includes('GNSI') || d.for.some(x => exams.includes(x))) && (!d.when || d.when({ ...r, category: form.category })))
+  const legacyDocs = form.docs.filter(d => !docList.some(x => x.label === d))
+  const dobWindows = exams.map(x => ({ exam:x, w: officialDobWindow(x, r.targetClass, form.session) }))
+  const districtList = st => st === 'Manipur' ? MANIPUR_DISTRICTS : []
+
+  const Address = ({ which }) => {
+    const a = r[which] || {}, p = `reg.${which}`
+    return (
+      <div style={afGrid(200)}>
+        <AfField label="House no. / street" required={which === 'corr'} error={err(`${p}.line`, 'address')} span={2}>
+          <input {...I(`${p}.line`)} value={a.line} onChange={e => setReg(`${which}.line`, e.target.value)} placeholder="House no., street / leikai" />
+        </AfField>
+        <AfField label="Village / locality">
+          <input {...I(`${p}.village`)} value={a.village} onChange={e => setReg(`${which}.village`, e.target.value)} />
+        </AfField>
+        <AfField label="Post office">
+          <input {...I(`${p}.po`)} value={a.po} onChange={e => setReg(`${which}.po`, e.target.value)} />
+        </AfField>
+        <AfField label="Block / sub-division" hint={which === 'corr' && exams.includes('JNVST') ? 'JNVST checks the block of residence' : undefined}>
+          <input {...I(`${p}.block`)} value={a.block} onChange={e => setReg(`${which}.block`, e.target.value)} />
+        </AfField>
+        <AfField label="State" required={which === 'corr'} error={err(`${p}.state`, 'address')}>
+          <select {...I(`${p}.state`)} value={a.state} onChange={e => setReg(`${which}.state`, e.target.value)}>
+            <option value="">— State / UT —</option>{INDIAN_STATES.map(s => <option key={s}>{s}</option>)}
+          </select>
+        </AfField>
+        <AfField label="District" required error={err(`${p}.district`, 'address')}>
+          <input {...I(`${p}.district`)} list={`dl-${which}-dist`} value={a.district} onChange={e => setReg(`${which}.district`, e.target.value)} />
+          <datalist id={`dl-${which}-dist`}>{districtList(a.state).map(d => <option key={d} value={d} />)}</datalist>
+        </AfField>
+        <AfField label="PIN code" required={which === 'corr'} error={err(`${p}.pin`, 'address')}>
+          <input {...I(`${p}.pin`)} inputMode="numeric" maxLength={6} value={a.pin} onChange={e => setReg(`${which}.pin`, e.target.value.replace(/\D/g,'').slice(0,6))} placeholder="795138" />
+        </AfField>
+      </div>
+    )
   }
-
-  const [activeSectionIdx, setActiveSectionIdx] = useState(0)
-  const SECTION_NAMES = ['Identification Particulars','Course & Class Particulars','Entrance & Interview','Financial Particulars','Family & Contact Particulars','Emergency Contact','Enclosures']
-  const completedCount = SECTION_NAMES.filter(sectionComplete).length
-
-  const progressPct = (completedCount/SECTION_NAMES.length)*100
-  const ringR = 26, ringC = 2*Math.PI*ringR
 
   return (
-    <div className="gnsi-adm-form" style={{ background:pageBg, boxShadow:'0 8px 40px rgba(26,29,41,.14)', borderRadius:22, overflow:'hidden', marginBottom:16, border:`1px solid ${border}` }}>
+    <div ref={topRef} className="afx" style={{ fontFamily:AF.sans, background:AF.cream, borderRadius:24, overflow:'hidden', marginBottom:16, border:`1px solid ${AF.line}`, boxShadow:'0 30px 80px -40px rgba(11,30,61,.45)' }}>
       <style>{`
-        .gnsi-adm-form input, .gnsi-adm-form select, .gnsi-adm-form textarea {
-          outline: none;
-        }
-        .gnsi-adm-form input:focus, .gnsi-adm-form select:focus, .gnsi-adm-form textarea:focus {
-          border-color: ${accent} !important;
-          box-shadow: 0 0 0 3px ${accent}1F;
-        }
-        .gnsi-adm-form input:hover:not(:focus), .gnsi-adm-form select:hover:not(:focus) {
-          border-color: #C7C4BA;
-        }
+        .afx input:focus, .afx select:focus, .afx textarea:focus { border-color:${AF.gold} !important; box-shadow:0 0 0 4px rgba(201,162,75,.18) !important; }
+        .afx input:hover:not(:focus), .afx select:hover:not(:focus), .afx textarea:hover:not(:focus) { border-color:${AF.line2}; }
+        .afx ::placeholder { color:#B3AD9E; }
+        .afx .afstep:hover { background:rgba(255,255,255,.06); }
+        @keyframes afIn { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }
+        .afx .afpane { animation:afIn .22s ease both; }
+        @media (prefers-reduced-motion: reduce) { .afx .afpane { animation:none } }
       `}</style>
 
-      {/* ── Hero header — layered geometric backdrop + circular progress ── */}
-      <div style={{ background:`linear-gradient(120deg, ${accent} 0%, #263B7A 55%, #2E3D7A 100%)`, padding:'28px 30px 24px', position:'relative', overflow:'hidden' }}>
-        {/* Decorative layered peaks — evokes ascent/achievement, fitting an exam-prep institute, not arbitrary shapes */}
-        <svg viewBox="0 0 400 120" preserveAspectRatio="none" style={{ position:'absolute', bottom:0, left:0, width:'100%', height:70, opacity:.5 }}>
-          <path d="M0,120 L0,70 L80,30 L160,60 L240,15 L320,50 L400,25 L400,120 Z" fill="rgba(255,255,255,.06)" />
-          <path d="M0,120 L0,90 L100,55 L200,80 L300,40 L400,65 L400,120 Z" fill="rgba(255,255,255,.05)" />
-        </svg>
-
-        <button onClick={handleCancel} style={{ position:'absolute', top:20, right:24, width:32, height:32, borderRadius:9, border:'1px solid rgba(255,255,255,.25)', background:'rgba(255,255,255,.1)', cursor:'pointer', fontSize:15, color:'#fff', zIndex:1 }}>✕</button>
-
-        <div style={{ display:'flex', alignItems:'center', gap:20, position:'relative', zIndex:1 }}>
-          <div style={{ width:56, height:56, borderRadius:16, background:'rgba(255,255,255,.14)', border:'1px solid rgba(255,255,255,.22)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, flexShrink:0, boxShadow:'0 4px 14px rgba(0,0,0,.15)' }}>🎓</div>
-          <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:11, letterSpacing:'.14em', color:'rgba(255,255,255,.65)', textTransform:'uppercase', fontWeight:600 }}>Guidance Navodaya &amp; Sainik Institute</div>
-            <div style={{ fontFamily:serif, fontWeight:700, fontSize:21, color:'#fff', marginTop:3 }}>{editing ? 'Application Amendment' : 'Application for Admission'}</div>
-            {activeSession && !editing && (
-              <div style={{ fontSize:12, color:'rgba(255,255,255,.72)', marginTop:5, fontWeight:500 }}>
-                {activeSession.session_name} Session {activeSession.is_locked && '· Locked'}
-              </div>
-            )}
+      {/* ── Hero ── */}
+      <div style={{ position:'relative', overflow:'hidden', padding: isMob ? '20px 18px 18px' : '26px 30px 22px', color:'#fff',
+        background:`radial-gradient(120% 140% at 100% 0%, ${AF.navy3} 0%, ${AF.navy2} 42%, ${AF.navy} 80%)` }}>
+        <div style={{ position:'absolute', left:0, right:0, top:0, height:3, background:`linear-gradient(90deg,#B8913F,${AF.goldLt},#B8913F)` }} />
+        <div style={{ position:'absolute', right:-70, top:-90, width:280, height:280, borderRadius:'50%', background:'radial-gradient(circle, rgba(226,197,126,.20), transparent 68%)' }} />
+        <button type="button" onClick={handleCancel} aria-label="Close" style={{ position:'absolute', top:16, right:16, width:34, height:34, borderRadius:10, border:'1px solid rgba(255,255,255,.22)', background:'rgba(255,255,255,.08)', color:'#fff', cursor:'pointer', fontSize:15, zIndex:2 }}>✕</button>
+        <div style={{ position:'relative', display:'flex', alignItems:'center', gap:18, flexWrap:'wrap', paddingRight:40 }}>
+          <div style={{ width:58, height:58, borderRadius:16, flexShrink:0, background:'rgba(255,255,255,.08)', border:`1px solid ${AF.goldLt}66`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke={AF.goldLt} strokeWidth="1.8" strokeLinejoin="round"><path d="M12 2 3 6v6c0 5 3.8 9.3 9 10 5.2-.7 9-5 9-10V6l-9-4Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>
           </div>
-
-          {/* Circular progress ring — same completion signal, more premium execution */}
-          <div style={{ position:'relative', width:64, height:64, flexShrink:0 }}>
-            <svg width="64" height="64" style={{ transform:'rotate(-90deg)' }}>
-              <circle cx="32" cy="32" r={ringR} fill="none" stroke="rgba(255,255,255,.18)" strokeWidth="5" />
-              <circle cx="32" cy="32" r={ringR} fill="none" stroke="#5FE0A0" strokeWidth="5" strokeLinecap="round"
-                strokeDasharray={ringC} strokeDashoffset={ringC - (progressPct/100)*ringC}
-                style={{ transition:'stroke-dashoffset .4s ease' }} />
-            </svg>
-            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:800, color:'#fff' }}>
-              {Math.round(progressPct)}%
+          <div style={{ flex:1, minWidth:200 }}>
+            <div style={{ fontSize:10.5, letterSpacing:'.2em', textTransform:'uppercase', color:AF.goldLt, fontWeight:800 }}>Guidance Navodaya &amp; Sainik Institute</div>
+            <div style={{ fontFamily:AF.serif, fontSize: isMob ? 22 : 27, fontWeight:700, marginTop:4, lineHeight:1.15 }}>{editing ? 'Amend Application' : 'Application for Admission'}</div>
+            <div style={{ display:'flex', gap:6, marginTop:10, flexWrap:'wrap' }}>
+              {exams.length === 0
+                ? <span style={{ fontSize:10.5, fontWeight:800, padding:'4px 10px', borderRadius:99, background:'rgba(255,255,255,.1)', color:'rgba(255,255,255,.8)' }}>{form.course ? `${form.course} programme` : 'Choose a course to begin'}</span>
+                : exams.map(x => <span key={x} title={EXAM_META[x].full} style={{ fontSize:10.5, fontWeight:800, padding:'4px 10px', borderRadius:99, background:'rgba(226,197,126,.16)', color:AF.goldLt, border:`1px solid ${AF.goldLt}55` }}>{x} · Class {r.targetClass}</span>)}
+              {form.session && <span style={{ fontSize:10.5, fontWeight:800, padding:'4px 10px', borderRadius:99, background:'rgba(255,255,255,.1)', color:'rgba(255,255,255,.85)' }}>Session {form.session}{activeSession?.is_locked ? ' · Locked' : ''}</span>}
+              {form.gcc && <span style={{ fontSize:10.5, fontWeight:800, padding:'4px 10px', borderRadius:99, background:'rgba(255,255,255,.1)', color:'rgba(255,255,255,.85)' }}>GCC {form.gcc}</span>}
             </div>
           </div>
-        </div>
-
-        <div style={{ fontSize:11.5, color:'rgba(255,255,255,.7)', marginTop:16, fontWeight:600, position:'relative', zIndex:1 }}>
-          {completedCount} of {SECTION_NAMES.length} sections complete
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <div style={{ position:'relative', width:62, height:62 }}>
+              <svg width="62" height="62" style={{ transform:'rotate(-90deg)' }}>
+                <circle cx="31" cy="31" r="26" fill="none" stroke="rgba(255,255,255,.14)" strokeWidth="5" />
+                <circle cx="31" cy="31" r="26" fill="none" stroke={AF.goldLt} strokeWidth="5" strokeLinecap="round"
+                  strokeDasharray={2*Math.PI*26} strokeDashoffset={2*Math.PI*26*(1-pct/100)} style={{ transition:'stroke-dashoffset .4s ease' }} />
+              </svg>
+              <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:800 }}>{pct}%</div>
+            </div>
+            {!isMob && <div style={{ fontSize:11.5, color:'rgba(255,255,255,.72)', lineHeight:1.4 }}>{doneCount} of {STEPS.length}<br/>sections ready</div>}
+          </div>
         </div>
       </div>
 
-      {/* ── Sliding step track — Instagram-style: both steps sit side by
-          side in a wider track; we translateX the whole track so the
-          active step slides fully into view while the other slides out.
-          overflow:hidden on the outer wrapper clips whichever step isn't
-          currently active. ── */}
-      <div style={{ overflow:'hidden' }}>
-        <div style={{
-          display:'flex', width:'200%',
-          transform: step === 'preview' ? 'translateX(-50%)' : 'translateX(0%)',
-          transition:'transform .38s cubic-bezier(.32,.72,0,1)',
-        }}>
-          <div style={{ width:'50%', flexShrink:0 }}>
-      <div style={{ padding:'26px 28px' }}>
-
-        {/* Photo + name */}
-        <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:18, padding:'16px 18px', border:`1.5px solid ${border}`, borderRadius:14, background:cardBg }}>
-          <Avatar name={form.name} size={58} photoUrl={form.photoUrl} />
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:12, fontWeight:600, color:inkSub, marginBottom:5 }}>Passport Photo</div>
-            <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-              <label style={{
-                padding:'8px 16px', borderRadius:9, border:`1.5px solid ${accent}`, background: photoUploading ? '#E4E2DC' : accentLt,
-                color: accent, fontSize:12.5, fontWeight:700, cursor: photoUploading ? 'not-allowed' : 'pointer', display:'inline-flex', alignItems:'center', gap:6,
-              }}>
-                {photoUploading ? '⏳ Uploading to Drive…' : '📤 Upload to Google Drive'}
-                <input type="file" accept="image/*" onChange={handlePhotoFileSelect} disabled={photoUploading} style={{ display:'none' }} />
-              </label>
-              {form.photoUrl && !photoUploading && (
-                <span style={{ fontSize:11, color:success, fontWeight:600 }}>✓ Photo on file</span>
-              )}
-            </div>
-            {photoUploadError && (
-              <div style={{ fontSize:11, color:danger, marginTop:6, fontWeight:600 }}>⚠ {photoUploadError}</div>
-            )}
-            {/* Fallback for a photo already hosted elsewhere (Supabase Storage, another URL) —
-                the Drive upload above is the primary path; this stays for flexibility. */}
-            <details style={{ marginTop:8 }}>
-              <summary style={{ fontSize:10.5, color:inkSub, cursor:'pointer' }}>Or paste an existing photo URL instead</summary>
-              <input style={{ ...govInp, width:'100%', maxWidth:340, marginTop:6 }} value={form.photoUrl} onChange={e=>set('photoUrl',e.target.value)} placeholder="https:// or Supabase Storage URL" />
-            </details>
-          </div>
+      {draftOffer && mode === 'form' && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', padding:'10px 18px', background:AF.goldBg, borderBottom:`1px solid ${AF.goldLine}`, fontSize:12.5, color:'#6B4E0F' }}>
+          <span style={{ fontWeight:700 }}>Unsaved draft found{draftOffer.name ? ` for ${draftOffer.name}` : ''}.</span>
+          <button type="button" onClick={() => { setForm({ ...draftOffer, reg: mergeReg(draftOffer.reg), docs: draftOffer.docs || [] }); setDraftOffer(null) }}
+            style={{ padding:'5px 12px', borderRadius:8, border:'none', background:AF.navy, color:'#fff', fontWeight:700, fontSize:12, cursor:'pointer' }}>Resume draft</button>
+          <button type="button" onClick={() => { try { localStorage.removeItem(DRAFT_KEY) } catch(_) {}; setDraftOffer(null) }}
+            style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${AF.goldLine}`, background:'transparent', color:'#6B4E0F', fontWeight:700, fontSize:12, cursor:'pointer' }}>Discard</button>
         </div>
+      )}
 
-        <div style={{ marginBottom:22 }}>
-          <GovField label="Full Name of Applicant (as per certificate)" required>
-            <input style={govInp} value={form.name} onChange={e=>set('name',e.target.value)} placeholder="Full name as per certificate" />
-          </GovField>
-          {possibleDup && (
-            <div style={{ fontSize:12, color:'#92400e', background:'#FEF3E2', padding:'8px 12px', borderRadius:8, marginTop:8, fontWeight:600 }}>
-              ⚠ Possible duplicate — GCC-{possibleDup.gcc_no} ({possibleDup.name}) has the same {possibleDup.dob === form.dob ? 'name and date of birth' : 'phone number'} on file. Please confirm this isn't a repeat application.
+      {mode === 'preview' ? (
+        <div className="afpane">
+          <ApplicationPreview form={formForSave} exams={exams} editing={editing} submitting={submitting}
+            onEdit={() => setMode('form')}
+            onConfirm={async () => {
+              setSubmitting(true)
+              try {
+                const ok = await onSave(editing?.id || null, { ...formForSave, reg: { ...r, exams } })
+                if (ok !== false) { try { localStorage.removeItem(DRAFT_KEY) } catch(_) {} }
+              } finally { setSubmitting(false) }
+            }} />
+        </div>
+      ) : (
+      <div style={{ display:'flex', flexDirection: isMob ? 'column' : 'row', alignItems:'stretch' }}>
+        {/* ── Step rail ── */}
+        <nav style={{ width: isMob ? 'auto' : 250, flexShrink:0, background: isMob ? AF.navy : `linear-gradient(180deg,${AF.navy},#0A1830)`, padding: isMob ? '10px 10px' : '18px 12px',
+          display:'flex', flexDirection: isMob ? 'row' : 'column', gap: isMob ? 6 : 2, overflowX: isMob ? 'auto' : 'visible' }}>
+          {STEPS.map((s, i) => {
+            const on = i === stepIdx, done = stepDone(s), bad = touched[s.id] && !done
+            return (
+              <button type="button" key={s.id} className="afstep" onClick={() => goTo(i)}
+                style={{ display:'flex', alignItems:'center', gap:11, textAlign:'left', cursor:'pointer', border:'none', fontFamily:AF.sans,
+                  padding: isMob ? '8px 12px' : '10px 12px', borderRadius:12, flexShrink:0,
+                  background: on ? 'rgba(226,197,126,.14)' : 'transparent', boxShadow: on ? `inset 0 0 0 1px ${AF.goldLt}55` : 'none' }}>
+                <span style={{ width:28, height:28, borderRadius:9, flexShrink:0, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800,
+                  background: done ? AF.gold : bad ? 'rgba(180,35,24,.25)' : 'rgba(255,255,255,.08)', color: done ? AF.navy : bad ? '#FFB4AB' : 'rgba(255,255,255,.7)' }}>
+                  {done ? '✓' : i + 1}
+                </span>
+                <span style={{ minWidth:0, display: isMob && !on ? 'none' : 'block' }}>
+                  <span style={{ display:'block', fontSize:13, fontWeight:700, color: on ? '#fff' : 'rgba(255,255,255,.82)', whiteSpace:'nowrap' }}>{s.title}</span>
+                  {!isMob && <span style={{ display:'block', fontSize:11, color: bad ? '#FFB4AB' : 'rgba(255,255,255,.45)', marginTop:1 }}>{bad ? `${stepErrors(s).length} to fix` : s.sub}</span>}
+                </span>
+              </button>
+            )
+          })}
+          {!isMob && (
+            <div style={{ marginTop:'auto', paddingTop:16 }}>
+              <div style={{ borderRadius:14, padding:'14px 14px', background:'rgba(255,255,255,.05)', border:'1px solid rgba(255,255,255,.08)' }}>
+                <div style={{ fontSize:10, letterSpacing:'.14em', textTransform:'uppercase', color:AF.goldLt, fontWeight:800 }}>Monthly fee</div>
+                <div style={{ fontFamily:AF.serif, fontSize:22, fontWeight:700, color:'#fff', marginTop:4 }}>₹{fmt(discRate)}</div>
+                <div style={{ fontSize:11, color:'rgba(255,255,255,.55)', marginTop:2 }}>
+                  {derivedHostelType}{form.scholarshipPct > 0 ? ` · ${form.scholarshipPct}% scholarship (base ₹${fmt(baseRate)})` : ''}
+                </div>
+              </div>
             </div>
           )}
-        </div>
+        </nav>
 
-        <GovSection title="Identification Particulars" done={sectionComplete("Identification Particulars")}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <GovField label="GCC No." required>
-              <input
-                style={{ ...govInp, borderColor:gccDup?'#b91c1c':govInp.border }}
-                value={form.gcc}
-                onChange={e => { gccTouchedRef.current = true; set('gcc', e.target.value.replace(/[^0-9]/g,'')) }}
-                placeholder="e.g. 729"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                autoComplete="off"
-              />
-              {gccDup && <div style={{ fontSize:11, color:'#b91c1c', marginTop:3, fontWeight:700 }}>⚠ GCC {form.gcc} already exists!</div>}
-              {!editing && !gccDup && form.gcc === suggestedGcc && suggestedGcc && (
-                <div style={{ fontSize:11, color:inkSub, marginTop:3 }}>Suggested next number — edit if different</div>
-              )}
-            </GovField>
-            <GovField label="Admission No.">
-              <input style={{ ...govInp, background:'#F4F3EF', color:'#9CA0AC' }} value="Auto-generated on save" readOnly />
-            </GovField>
-            <GovField label="Date of Birth" required>
-              <input type="date" style={govInp} value={form.dob} onChange={e=>set('dob',e.target.value)}
-                min={getDobWindowForSession(form.session)?.min?.toISOString().slice(0,10)}
-                max={getDobWindowForSession(form.session)?.max?.toISOString().slice(0,10)} />
-              {(() => {
-                const win = getDobWindowForSession(form.session)
-                return win && (
-                  <div style={{ fontSize:11, color:inkSub, marginTop:3 }}>
-                    Eligible: {win.minLabel} – {win.maxLabel} ({form.session} session)
-                  </div>
-                )
-              })()}
-            </GovField>
-            <GovField label="Gender" required>
-              <select style={govInp} value={form.gender} onChange={e=>set('gender',e.target.value)}>
-                <option value="">—</option><option>Male</option><option>Female</option><option>Other</option>
-              </select>
-            </GovField>
-            <GovField label="Blood Group" required>
-              <select style={govInp} value={form.blood} onChange={e=>set('blood',e.target.value)}>
-                <option value="">— Blood Group —</option>
-                {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(b=><option key={b}>{b}</option>)}
-              </select>
-            </GovField>
-            <GovField label="Category" required>
-              <select style={govInp} value={form.category} onChange={e=>set('category',e.target.value)}>
-                {CATEGORIES.map(c=><option key={c}>{c}</option>)}
-              </select>
-            </GovField>
-            <GovField label="Religion" required>
-              <select style={govInp} value={form.religion} onChange={e=>set('religion',e.target.value)}>
-                {RELIGIONS.map(r=><option key={r}>{r}</option>)}
-              </select>
-            </GovField>
-            <GovField label="Mother Tongue" required>
-              <select style={govInp} value={form.motherTongue} onChange={e=>set('motherTongue',e.target.value)}>
-                {MOTHER_TONGUES.map(m=><option key={m}>{m}</option>)}
-              </select>
-            </GovField>
-            <GovField label="Quota Type" required>
-              <select style={govInp} value={form.quota} onChange={e=>set('quota',e.target.value)}>
-                {QUOTA_TYPES.map(q=><option key={q}>{q}</option>)}
-              </select>
-            </GovField>
-            <GovField label="Referral Source">
-              <select style={govInp} value={form.referral} onChange={e=>set('referral',e.target.value)}>
-                {REFERRAL_SOURCES.map(r=><option key={r}>{r}</option>)}
-              </select>
-            </GovField>
-            <GovField label="Disability / Special Needs">
-              <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:4 }}>
-                <input type="checkbox" checked={form.disabilityFlag} onChange={e=>set('disabilityFlag',e.target.checked)} id="disCheck" style={{ width:16, height:16, cursor:'pointer' }} />
-                <label htmlFor="disCheck" style={{ fontSize:13, color:inkSub, cursor:'pointer' }}>Yes</label>
-                {form.disabilityFlag && <input style={{ ...govInp, flex:1 }} value={form.disabilityNotes} onChange={e=>set('disabilityNotes',e.target.value)} placeholder="Describe…" />}
-              </div>
-            </GovField>
-            <GovField label="Sibling GCC No.">
-              <input
-                style={govInp}
-                value={form.siblingGcc}
-                onChange={e => set('siblingGcc', e.target.value.replace(/[^0-9]/g,''))}
-                placeholder="If sibling enrolled at GNSI"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                autoComplete="off"
-              />
-              {siblingRecord === 'not_found' && (
-                <div style={{ fontSize:11, color:danger, marginTop:3, fontWeight:600 }}>⚠ No record found for GCC-{form.siblingGcc}</div>
-              )}
-              {siblingRecord && siblingRecord !== 'not_found' && (
-                <div style={{ fontSize:11, color:T.violet[700], marginTop:3, fontWeight:600 }}>
-                  👫 {siblingRecord.name} — {siblingRecord.course}{siblingRecord.subtype?` · ${siblingRecord.subtype}`:''} ({siblingRecord.status})
-                </div>
-              )}
-            </GovField>
-          </div>
-        </GovSection>
+        {/* ── Step content ── */}
+        <div style={{ flex:1, minWidth:0, padding: isMob ? '16px 12px 18px' : '24px 26px 22px' }}>
+          <div key={step.id} className="afpane">
+            <div style={{ display:'flex', alignItems:'baseline', gap:10, marginBottom:14, flexWrap:'wrap' }}>
+              <span style={{ fontSize:11, fontWeight:800, letterSpacing:'.16em', color:AF.gold, textTransform:'uppercase' }}>Step {stepIdx + 1} of {STEPS.length}</span>
+              <span style={{ fontFamily:AF.serif, fontSize:22, fontWeight:700, color:AF.ink }}>{step.icon} {step.title}</span>
+            </div>
 
-        <GovSection title="Course &amp; Class Particulars" done={sectionComplete("Course & Class Particulars")}>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(200px,100%),1fr))', gap:14 }}>
-            <GovField label="Course" required>
-              <select style={govInp} value={form.course} onChange={e=>set('course',e.target.value)}>
-                <option value="">— Course —</option>
-                {Object.keys(COURSE_STRUCTURE).map(c=><option key={c}>{c}</option>)}
-              </select>
-            </GovField>
-            <GovField label="Subtype / Batch" required>
-              {subtypes.length > 0
-                ? <select style={govInp} value={form.subtype} onChange={e=>set('subtype',e.target.value)}><option value="">—</option>{subtypes.map(s=><option key={s}>{s}</option>)}</select>
-                : <input style={govInp} value={form.subtype} onChange={e=>set('subtype',e.target.value)} placeholder="Subtype" />
-              }
-            </GovField>
-            <GovField label="Class / Batch" required>
-              <select style={govInp} value={form.cls} onChange={e=>set('cls',e.target.value)}>
-                <option value="">— Class —</option>
-                {CLASSES_LIST.map(c=><option key={c}>{c}</option>)}
-              </select>
-            </GovField>
-            <GovField label="Session" required>
-              {(() => {
-                // Combine known sessions (from real applications) with the
-                // current active session, in case it has zero applications
-                // yet (e.g. a session just created in admin). De-duplicated,
-                // newest first.
-                const allSessions = [...new Set([
-                  ...(activeSession ? [activeSession.session_name] : []),
-                  ...sessionOptions,
-                ])]
-                return (
-                  <>
-                    <select
-                      style={{ ...govInp, fontWeight:600 }}
-                      value={allSessions.includes(form.session) ? form.session : '__other__'}
-                      onChange={e => {
-                        if (e.target.value === '__other__') { set('session', '') }
-                        else set('session', e.target.value)
-                      }}
-                    >
+            {/* ════ 1. PROGRAMME ════ */}
+            {step.id === 'programme' && <>
+              <AfCard title="Course at GNSI" subtitle="The course decides which official exam this applicant is registered for.">
+                <div style={afGrid(200)}>
+                  <AfField label="Course" required error={err('course','programme')} span="full">
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(140px,100%),1fr))', gap:10 }}>
+                      {Object.keys(COURSE_STRUCTURE).map(c => {
+                        const on = form.course === c, ex = EXAM_BY_COURSE[c] || []
+                        return (
+                          <button type="button" key={c} onClick={() => { set('course', c); if (!COURSE_STRUCTURE[c].subtypes.includes(form.subtype)) set('subtype','') }}
+                            style={{ textAlign:'left', padding:'14px 14px', borderRadius:14, cursor:'pointer', fontFamily:AF.sans,
+                              border:`1.5px solid ${on ? AF.gold : AF.line}`, background: on ? AF.goldBg : AF.paper,
+                              boxShadow: on ? '0 10px 24px -16px rgba(201,162,75,.9)' : 'none', transition:'all .15s' }}>
+                            <div style={{ fontSize:14, fontWeight:800, color:AF.ink }}>{c}</div>
+                            <div style={{ fontSize:11, color:AF.sub, marginTop:3 }}>{ex.length ? ex.join(' + ') : 'No entrance exam'}</div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </AfField>
+                  <AfField label="Subtype / batch" required={subtypes.length > 0} error={err('subtype','programme')}>
+                    {subtypes.length > 0
+                      ? <select {...I('subtype')} value={form.subtype} onChange={e => set('subtype', e.target.value)}><option value="">— Select —</option>{subtypes.map(s => <option key={s}>{s}</option>)}</select>
+                      : <input {...I('subtype')} value={form.subtype} onChange={e => set('subtype', e.target.value)} placeholder="Optional" />}
+                  </AfField>
+                  <AfField label="Class / batch" required error={err('cls','programme')}>
+                    <select {...I('cls')} value={form.cls} onChange={e => set('cls', e.target.value)}>
+                      <option value="">— Class —</option>{CLASSES_LIST.map(c => <option key={c}>{c}</option>)}
+                    </select>
+                  </AfField>
+                  <AfField label="Session" required error={err('session','programme')}>
+                    <select {...I('session')} value={allSessions.includes(form.session) ? form.session : '__other__'}
+                      onChange={e => set('session', e.target.value === '__other__' ? '' : e.target.value)}>
                       {allSessions.map(s => <option key={s} value={s}>{s}</option>)}
                       <option value="__other__">Other / type manually…</option>
                     </select>
-                    {(!allSessions.includes(form.session)) && (
-                      <input
-                        style={{ ...govInp, marginTop:8 }}
-                        value={form.session}
-                        onChange={e => set('session', e.target.value)}
-                        placeholder="e.g. 2027-2028"
-                        autoFocus
-                      />
+                    {!allSessions.includes(form.session) && (
+                      <input style={{ ...afInp(false), marginTop:8 }} value={form.session} onChange={e => set('session', e.target.value)} placeholder="e.g. 2027-2028" />
                     )}
-                  </>
-                )
-              })()}
-            </GovField>
-            <GovField label="House / Block" required>
-              <select style={govInp} value={form.house} onChange={e=>set('house',e.target.value)}>
-                <option value="">— House —</option>
-                {HOUSES_LIST.map(h=><option key={h}>{h}</option>)}
-              </select>
-              {houseCapacityWarning && (
-                <div style={{ fontSize:11, color:'#92400e', marginTop:3, fontWeight:700 }}>⚠ {houseCapacityWarning}</div>
-              )}
-            </GovField>
-            <GovField label="Hostel Type" required>
-              {/* Previously an independently editable dropdown. Even though
-                  the useEffect above (keyed on form.house) pushed a derived
-                  value into form.hostel_type on every house change, this
-                  select's onChange let staff immediately override that
-                  value afterward — so house="Kombirei" (a boarding house)
-                  could still be saved alongside hostel_type="Day Scholar",
-                  or vice versa. That exact mismatch is what produced
-                  conflicting/duplicate course_enrollments rows for several
-                  students (all created 2026-06-23). hostel_type is now
-                  always derived from house and never independently
-                  editable — disabled + fed from deriveHostelType(), same
-                  rule used everywhere else in this file. */}
-              <select style={{ ...govInp, background:'#F4F3EF', color:'#9CA0AC', cursor:'not-allowed' }}
-                value={deriveHostelType(form.house, form.hostel_type)} disabled>
-                {HOSTEL_TYPES.map(h=><option key={h} value={h}>{h}</option>)}
-              </select>
-              <div style={{ fontSize:11, color:T.slate[500], marginTop:3 }}>Derived from House — select "Day Scholar" as the house to set this to Day Scholar, any other house sets Boarder.</div>
-            </GovField>
-            <GovField label="Bed / Room No.">
-              <input style={govInp} value={form.bedNumber} onChange={e=>set('bedNumber',e.target.value)} placeholder="e.g. K-12" />
-            </GovField>
-            <GovField label="Status">
-              <select style={govInp} value={form.status} onChange={e=>set('status',e.target.value)}>
-                {ADM_STATUSES.map(s=><option key={s}>{s}</option>)}
-              </select>
-            </GovField>
-            <GovField label="Follow-up Date">
-              <input type="date" style={govInp} value={form.followupDate} onChange={e=>set('followupDate',e.target.value)} />
-            </GovField>
-          </div>
-
-          {form.house && !warden && (
-            <div style={{ marginTop:14, display:'inline-flex', alignItems:'center', gap:6, fontSize:12, color:'#92400e', background:'#FEF3E2', padding:'6px 12px', borderRadius:8, fontWeight:600 }}>
-              ⚠ No active housemaster on file for {form.house}
-            </div>
-          )}
-          {warden && (
-            <div style={{ marginTop:14, display:'inline-flex', alignItems:'center', gap:6, fontSize:12, color:inkSub, background:accentLt, padding:'6px 12px', borderRadius:8 }}>
-              👤 {warden.designation || 'Warden'}: <strong style={{ color:ink }}>{warden.name}</strong>{warden.phone ? ` (${warden.phone})` : ''}
-            </div>
-          )}
-          <div style={{ marginTop:14, fontSize:12.5, color:inkSub, borderTop:`1px solid ${border}`, paddingTop:12, fontWeight:500 }}>
-            Classification: <strong style={{ color:ink }}>{derivedHostelType}</strong> &nbsp;·&nbsp; Base Fee: <strong style={{ color:ink }}>₹{fmt(baseRate)}/month</strong>
-            {form.scholarshipPct > 0 && <> &nbsp;·&nbsp; After Scholarship: <strong style={{ color:success }}>₹{fmt(discRate)}/month</strong></>}
-          </div>
-        </GovSection>
-
-        <GovSection title="Entrance &amp; Interview" done={sectionComplete("Entrance & Interview")}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
-            <GovField label="Entrance Score" required>
-              <input style={govInp} type="number" value={form.entranceScore} onChange={e=>set('entranceScore',e.target.value)} placeholder="Out of 100" />
-            </GovField>
-            <GovField label="Interview Score">
-              <input style={govInp} type="number" value={form.interviewScore} onChange={e=>set('interviewScore',e.target.value)} placeholder="Out of 50" />
-            </GovField>
-            <GovField label="Interview Date">
-              <input type="date" style={govInp} value={form.interviewDate} onChange={e=>set('interviewDate',e.target.value)} />
-            </GovField>
-          </div>
-        </GovSection>
-
-        <GovSection title="Financial Particulars" done={sectionComplete("Financial Particulars")}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
-            <GovField label="Scholarship %">
-              <input style={govInp} type="number" min="0" max="100" value={form.scholarshipPct} onChange={e=>set('scholarshipPct',e.target.value)} placeholder="e.g. 25" />
-            </GovField>
-            <GovField label="Concession Amount ₹" required>
-              <input style={govInp} type="number" value={form.concessionAmt} onChange={e=>set('concessionAmt',e.target.value)} placeholder="Fixed ₹ off/mo" />
-            </GovField>
-            <GovField label="Security Deposit ₹">
-              <input style={govInp} type="number" value={form.securityDeposit} onChange={e=>set('securityDeposit',e.target.value)} placeholder="Refundable" />
-            </GovField>
-            <GovField label="Transport Fee ₹/mo">
-              <input style={govInp} type="number" value={form.transportFee} onChange={e=>set('transportFee',e.target.value)} placeholder="Day scholars" />
-            </GovField>
-            <GovField label="Instalment Plan">
-              <select style={govInp} value={form.instalmentPlan} onChange={e=>set('instalmentPlan',e.target.value)}>
-                <option value="monthly">Monthly</option>
-                <option value="quarterly">Quarterly</option>
-                <option value="annual">Annual</option>
-              </select>
-            </GovField>
-          </div>
-        </GovSection>
-
-        <GovSection title="Family &amp; Contact Particulars" done={sectionComplete("Family & Contact Particulars")}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-            <GovField label="Father's Name" required><input style={govInp} value={form.father} onChange={e=>set('father',e.target.value)} /></GovField>
-            <GovField label="Mother's Name" required><input style={govInp} value={form.mother} onChange={e=>set('mother',e.target.value)} /></GovField>
-            <GovField label="Phone" required><input style={govInp} value={form.phone} onChange={e=>set('phone',e.target.value)} /></GovField>
-            <GovField label="WhatsApp" required><input style={govInp} value={form.whatsapp} onChange={e=>set('whatsapp',e.target.value)} /></GovField>
-            <GovField label="Previous School" required><input style={govInp} value={form.prevSchool} onChange={e=>set('prevSchool',e.target.value)} /></GovField>
-            <div style={{ gridColumn:'1/-1' }}>
-              <GovField label="Address" required><input style={govInp} value={form.address} onChange={e=>set('address',e.target.value)} /></GovField>
-            </div>
-            <div style={{ gridColumn:'1/-1' }}>
-              <GovField label="Remarks"><textarea style={{ ...govInp, resize:'vertical' }} rows={2} value={form.remarks} onChange={e=>set('remarks',e.target.value)} /></GovField>
-            </div>
-          </div>
-        </GovSection>
-
-        <GovSection title="Emergency Contact" done={sectionComplete("Emergency Contact")}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
-            <GovField label="Name" required><input style={govInp} value={form.emergencyName} onChange={e=>set('emergencyName',e.target.value)} placeholder="Contact name" /></GovField>
-            <GovField label="Phone" required><input style={govInp} value={form.emergencyPhone} onChange={e=>set('emergencyPhone',e.target.value)} /></GovField>
-            <GovField label="Relationship"><input style={govInp} value={form.emergencyRel} onChange={e=>set('emergencyRel',e.target.value)} placeholder="e.g. Uncle" /></GovField>
-          </div>
-        </GovSection>
-
-        <GovSection title={`Enclosures — at least 1 required (${form.docs.length} of ${ADM_DOCS.length} attached)`} done={sectionComplete("Enclosures")} metaKey="Enclosures">
-          {form.docs.length === 0 && (
-            <div style={{ fontSize:12, color:danger, marginBottom:10, fontWeight:600 }}>⚠ Select at least one document</div>
-          )}
-          <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-            {ADM_DOCS.map(d => (
-              <button key={d} onClick={() => toggleDoc(d)}
-                style={{ padding:'7px 14px', borderRadius:9, border:`1.5px solid ${form.docs.includes(d)?success:border}`, background:form.docs.includes(d)?'#EAF7EF':'#fff', cursor:'pointer', fontSize:12.5, fontWeight:600, color:form.docs.includes(d)?success:inkSub, display:'flex', alignItems:'center', gap:6, transition:'all .15s' }}>
-                {form.docs.includes(d) ? '✓' : '○'} {d}
-              </button>
-            ))}
-          </div>
-        </GovSection>
-
-        {/* ── Declaration ── */}
-        <div style={{ border:`1.5px solid ${accent}`, borderRadius:14, padding:'20px 22px', marginBottom:18, background:accentLt }}>
-          <div style={{ fontWeight:700, fontSize:14, color:accent, marginBottom:10 }}>Declaration</div>
-          <p style={{ fontSize:13, color:inkSub, lineHeight:1.65, marginBottom:14 }}>
-            I hereby declare that the particulars furnished above are true and correct to the best of my knowledge and belief.
-            I understand that any false statement or suppression of material fact may lead to cancellation of admission at any stage.
-            I agree to abide by the rules and regulations of the Institute as applicable from time to time.
-          </p>
-          <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
-            <input type="checkbox" checked={declared} onChange={e=>setDeclared(e.target.checked)} style={{ width:17, height:17, cursor:'pointer', accentColor:accent }} />
-            <span style={{ fontSize:13, color:ink, fontWeight:600 }}>I confirm the above declaration</span>
-          </label>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginTop:24 }}>
-            <div style={{ borderTop:`1.5px solid ${accent}`, paddingTop:7, textAlign:'center', fontSize:11.5, color:inkSub, fontWeight:500 }}>
-              Signature of Parent / Guardian
-            </div>
-            <div style={{ borderTop:`1.5px solid ${accent}`, paddingTop:7, textAlign:'center', fontSize:11.5, color:inkSub, fontWeight:500 }}>
-              Date: {form.followupDate || new Date().toISOString().slice(0,10)}
-            </div>
-          </div>
-        </div>
-
-        {(() => {
-          const missing = validateApplicationData({ ...form, hasActiveSession: !!activeSession })
-          return (
-            <>
-              {missing && (
-                <div style={{ fontSize:12.5, color:danger, marginBottom:14, padding:'10px 14px', borderRadius:10, background:'#FDECEC', fontWeight:500 }}>
-                  <strong>Incomplete:</strong> {Object.values(missing).join(' · ')}
+                  </AfField>
                 </div>
+              </AfCard>
+
+              {exams.length > 0 && (
+                <AfCard title="Entrance examination" subtitle="As asked on the official registration form."
+                  right={<div style={{ display:'flex', gap:6 }}>{exams.map(x => <span key={x} style={{ fontSize:10.5, fontWeight:800, padding:'4px 10px', borderRadius:99, background:EXAM_META[x].bg, color:EXAM_META[x].color }}>{x}</span>)}</div>}>
+                  <div style={afGrid(220)}>
+                    <AfField label="Admission sought in class" required error={err('reg.targetClass','programme')}>
+                      <AfSeg options={[{ value:'VI', label:'Class VI' }, { value:'IX', label:'Class IX' }]} value={r.targetClass} onChange={v => setReg('targetClass', v)} />
+                    </AfField>
+                    <AfField label="Medium of examination" required error={err('reg.medium','programme')}
+                      hint={r.targetClass === 'IX' ? (exams.includes('AISSEE') ? 'Class IX paper is in English only' : 'JNVST Class IX: English or Hindi') : undefined}>
+                      <select {...I('reg.medium')} value={r.medium} onChange={e => setReg('medium', e.target.value)}>
+                        <option value="">— Medium —</option>
+                        {allowedMediums.map(m => <option key={m}>{m}</option>)}
+                      </select>
+                    </AfField>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(260px,100%),1fr))', gap:10, marginTop:16 }}>
+                    {exams.map(x => (
+                      <div key={x} style={{ borderRadius:12, padding:'12px 14px', background:EXAM_META[x].bg, border:`1px solid ${EXAM_META[x].color}22` }}>
+                        <div style={{ fontSize:12.5, fontWeight:800, color:EXAM_META[x].color }}>{EXAM_META[x].full}</div>
+                        <div style={{ fontSize:11.5, color:AF.sub, marginTop:2 }}>{EXAM_META[x].body}</div>
+                      </div>
+                    ))}
+                  </div>
+                </AfCard>
               )}
-              <div style={{ display:'flex', gap:10, flexWrap:'wrap', borderTop:`1px solid ${border}`, paddingTop:20 }}>
-                <button onClick={() => setStep('preview')} disabled={gccDup || !declared || !!missing}
-                  style={{ padding:'12px 28px', borderRadius:11, background:(gccDup||!declared||missing)?'#C7C5BD':`linear-gradient(135deg,${accent},#2E3D7A)`, color:'#fff', border:'none', fontSize:13.5, fontWeight:700, cursor:(gccDup||!declared||missing)?'not-allowed':'pointer', boxShadow: (gccDup||!declared||missing) ? 'none' : '0 2px 10px rgba(30,42,94,.25)', transition:'all .15s' }}>
-                  {editing ? 'Review Amendment →' : 'Review Application →'}
-                </button>
-                <button onClick={handleCancel} style={{ padding:'12px 20px', borderRadius:11, border:`1.5px solid ${border}`, background:'#fff', fontSize:13.5, fontWeight:600, cursor:'pointer', color:inkSub }}>Cancel</button>
-                {editing && (
-                  <button onClick={() => printAdmitCard(editing)}
-                    style={{ padding:'12px 20px', borderRadius:11, border:`1.5px solid ${accent}30`, background:accentLt, color:accent, fontSize:13.5, fontWeight:600, cursor:'pointer' }}>Print Admit Card</button>
-          )}
-        </div>
-        {!declared && (
-          <div style={{ fontSize:12, color:'#92400e', marginTop:10, fontWeight:500 }}>
-            Please confirm the declaration above before submitting.
-          </div>
-        )}
-            </>
-          )
-        })()}
-      </div>
+
+              <AfCard title="House & residence">
+                <div style={afGrid(200)}>
+                  <AfField label="House / block" required error={err('house','programme')}>
+                    <select {...I('house')} value={form.house} onChange={e => set('house', e.target.value)}>
+                      <option value="">— House —</option>{HOUSES_LIST.map(h => <option key={h}>{h}</option>)}
+                    </select>
+                    {houseCapacityWarning && <div style={{ fontSize:11.5, color:AF.warn, marginTop:5, fontWeight:700 }}>⚠ {houseCapacityWarning}</div>}
+                  </AfField>
+                  <AfField label="Hostel type" hint="Set automatically from the house">
+                    <input style={{ ...afInp(false), ...afRO }} value={derivedHostelType} readOnly />
+                  </AfField>
+                  <AfField label="Bed / room no.">
+                    <input {...I('bedNumber')} value={form.bedNumber} onChange={e => set('bedNumber', e.target.value)} placeholder="e.g. K-12" />
+                  </AfField>
+                  <AfField label="Application status" hint={editing?.status === 'Enrolled' ? 'Enrolled — change status in Students' : 'Enrolled is set only by the Enroll button'}>
+                    <select {...I('status')} value={form.status} disabled={editing?.status === 'Enrolled'}
+                      onChange={e => set('status', e.target.value)} style={{ ...afInp(false), ...(editing?.status === 'Enrolled' ? afRO : {}) }}>
+                      {ADM_STATUSES.filter(s => s !== 'Enrolled' || form.status === 'Enrolled').map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </AfField>
+                  <AfField label="Follow-up date">
+                    <input type="date" {...I('followupDate')} value={form.followupDate} onChange={e => set('followupDate', e.target.value)} />
+                  </AfField>
+                </div>
+                {(warden || form.house) && (
+                  <div style={{ marginTop:14, fontSize:12.5, color:AF.sub, display:'flex', gap:14, flexWrap:'wrap' }}>
+                    {warden
+                      ? <span>👤 {warden.designation || 'Housemaster'}: <strong style={{ color:AF.ink }}>{warden.name}</strong>{warden.phone ? ` · ${warden.phone}` : ''}</span>
+                      : <span style={{ color:AF.warn, fontWeight:700 }}>⚠ No active housemaster on file for {form.house}</span>}
+                    <span>Fee: <strong style={{ color:AF.ink }}>₹{fmt(baseRate)}/month</strong>{form.scholarshipPct > 0 && <> → <strong style={{ color:AF.ok }}>₹{fmt(discRate)}</strong></>}</span>
+                  </div>
+                )}
+              </AfCard>
+            </>}
+
+            {/* ════ 2. CANDIDATE ════ */}
+            {step.id === 'candidate' && <>
+              <AfCard title="Candidate" subtitle="Write the name exactly as on the birth certificate / school records.">
+                <div style={{ display:'flex', gap:18, alignItems:'flex-start', flexWrap:'wrap', marginBottom:18 }}>
+                  <div style={{ width:104, flexShrink:0 }}>
+                    <div style={{ width:104, height:126, borderRadius:12, border:`1.5px dashed ${form.photoUrl ? AF.gold : AF.line2}`, background:'#F6F3EA', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', color:AF.faint, fontSize:11, textAlign:'center' }}>
+                      {form.photoUrl ? <img src={form.photoUrl} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <span>Passport<br/>photo</span>}
+                    </div>
+                    <label style={{ display:'block', marginTop:8, textAlign:'center', padding:'7px 0', borderRadius:9, background: photoUploading ? '#E8E3D6' : AF.navy, color:'#fff', fontSize:11.5, fontWeight:700, cursor: photoUploading ? 'not-allowed' : 'pointer' }}>
+                      {photoUploading ? 'Uploading…' : form.photoUrl ? 'Replace' : 'Upload'}
+                      <input type="file" accept="image/*" onChange={handlePhotoFileSelect} disabled={photoUploading} style={{ display:'none' }} />
+                    </label>
+                  </div>
+                  <div style={{ flex:1, minWidth:220, display:'grid', gap:14 }}>
+                    <AfField label="Full name of candidate" required error={err('name','candidate')}>
+                      <input {...I('name')} value={form.name} onChange={e => set('name', e.target.value)} placeholder="As per birth certificate" style={{ ...afInp(err('name','candidate')), fontSize:16, fontWeight:600 }} />
+                    </AfField>
+                    <div style={afGrid(160)}>
+                      <AfField label="GCC No." required error={err('gcc','candidate') || (gccDup ? `GCC ${form.gcc} already exists` : undefined)}
+                        hint={!editing && form.gcc && form.gcc === suggestedGcc ? 'Next free number — edit if needed' : undefined}>
+                        <input {...I('gcc')} value={form.gcc} readOnly={!!editing} inputMode="numeric" autoComplete="off"
+                          style={{ ...afInp(gccDup || err('gcc','candidate')), ...(editing ? afRO : {}) }}
+                          onChange={e => { gccTouchedRef.current = true; set('gcc', e.target.value.replace(/[^0-9]/g,'')) }} placeholder="e.g. 729" />
+                      </AfField>
+                      <AfField label="Admission no.">
+                        <input style={{ ...afInp(false), ...afRO }} value={editing?.admNo || 'Auto on save'} readOnly />
+                      </AfField>
+                    </div>
+                    {photoUploadError && <div style={{ fontSize:11.5, color:AF.danger, fontWeight:600 }}>⚠ {photoUploadError}</div>}
+                    <details>
+                      <summary style={{ fontSize:11.5, color:AF.sub, cursor:'pointer' }}>Or paste an existing photo URL</summary>
+                      <input style={{ ...afInp(false), marginTop:6 }} value={form.photoUrl} onChange={e => set('photoUrl', e.target.value)} placeholder="https://…" />
+                    </details>
+                  </div>
+                </div>
+                {possibleDup && (
+                  <div style={{ fontSize:12.5, color:AF.warn, background:AF.warnBg, padding:'10px 14px', borderRadius:10, marginBottom:14, fontWeight:600 }}>
+                    ⚠ Possible repeat application — GCC-{possibleDup.gcc_no} ({possibleDup.name}) has the same {possibleDup.dob === form.dob ? 'name and date of birth' : 'phone number'}.
+                  </div>
+                )}
+                <div style={afGrid(200)}>
+                  <AfField label="Date of birth" required error={err('dob','candidate')}>
+                    <input type="date" {...I('dob')} value={form.dob} onChange={e => set('dob', e.target.value)} />
+                  </AfField>
+                  <AfField label="Gender" required error={err('gender','candidate')} span={2}>
+                    <AfSeg options={genderOptions.map(g => ({ value:g, label: g === 'Male' ? 'Boy' : g === 'Female' ? 'Girl' : g }))} value={form.gender} onChange={v => set('gender', v)} />
+                  </AfField>
+                </div>
+                {dobWindows.length > 0 && (
+                  <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginTop:14 }}>
+                    {dobWindows.map(({ exam, w }) => {
+                      if (!w) return <span key={exam} style={{ fontSize:12, color:AF.faint }}>{exam}: set a YYYY-YYYY session to check eligibility</span>
+                      const ok = form.dob && form.dob >= w.from && form.dob <= w.to
+                      return (
+                        <div key={exam} style={{ flex:'1 1 240px', borderRadius:12, padding:'10px 14px', border:`1px solid ${!form.dob ? AF.line : ok ? '#BFE3CF' : '#F3C4BE'}`, background: !form.dob ? AF.paper : ok ? AF.okBg : AF.dangerBg }}>
+                          <div style={{ fontSize:12, fontWeight:800, color: !form.dob ? AF.ink : ok ? AF.ok : AF.danger }}>
+                            {!form.dob ? '○' : ok ? '✓' : '✗'} {exam} Class {r.targetClass} {form.dob ? (ok ? 'eligible' : 'not eligible') : 'eligibility'}
+                          </div>
+                          <div style={{ fontSize:11.5, color:AF.sub, marginTop:2 }}>Born {w.label}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </AfCard>
+
+              <AfCard title="Category & eligibility" subtitle="Reservation particulars as declared on the AISSEE / JNVST form.">
+                <div style={afGrid(200)}>
+                  <AfField label="Category" required error={err('category','candidate')} span={2}>
+                    <AfSeg options={catOptions} value={form.category} onChange={v => set('category', v)} />
+                  </AfField>
+                  {exams.includes('JNVST') && (
+                    <AfField label="Area of residence" required error={err('reg.area','candidate')} hint="Rural quota needs Classes III–V in rural schools">
+                      <AfSeg options={['Rural','Urban']} value={r.area} onChange={v => setReg('area', v)} />
+                    </AfField>
+                  )}
+                  {exams.includes('AISSEE') && (
+                    <AfField label="Defence category" hint="Ward of serving / ex-servicemen">
+                      <AfSeg options={DEFENCE_OPTS} value={r.defence} onChange={v => { setReg('defence', v); if (v === 'None') setReg('defenceService','') }} />
+                    </AfField>
+                  )}
+                  {exams.includes('AISSEE') && r.defence !== 'None' && (
+                    <AfField label="Service" required error={err('reg.defenceService','candidate')}>
+                      <AfSeg options={DEFENCE_SERVICES} value={r.defenceService} onChange={v => setReg('defenceService', v)} />
+                    </AfField>
+                  )}
+                  <AfField label="Divyang (PwD)">
+                    <select {...I('reg.divyang')} value={r.divyang} onChange={e => setReg('divyang', e.target.value)}>
+                      {DIVYANG_TYPES.map(d => <option key={d}>{d}</option>)}
+                    </select>
+                  </AfField>
+                  {r.divyang !== 'None' && (
+                    <AfField label="Disability %" required error={err('reg.divyangPct','candidate')}>
+                      <input {...I('reg.divyangPct')} inputMode="numeric" value={r.divyangPct} onChange={e => setReg('divyangPct', e.target.value.replace(/\D/g,'').slice(0,3))} placeholder="e.g. 40" />
+                    </AfField>
+                  )}
+                  <AfField label="Quota at GNSI" required error={err('quota','candidate')}>
+                    <select {...I('quota')} value={form.quota} onChange={e => set('quota', e.target.value)}>{QUOTA_TYPES.map(q => <option key={q}>{q}</option>)}</select>
+                  </AfField>
+                </div>
+              </AfCard>
+
+              <AfCard title="Identity & domicile">
+                <div style={afGrid(200)}>
+                  <AfField label="Nationality" required error={err('reg.nationality','candidate')}>
+                    <input {...I('reg.nationality')} value={r.nationality} onChange={e => setReg('nationality', e.target.value)} />
+                  </AfField>
+                  <AfField label="State of domicile" required error={err('reg.domicileState','candidate')}>
+                    <select {...I('reg.domicileState')} value={r.domicileState} onChange={e => setReg('domicileState', e.target.value)}>
+                      <option value="">— State / UT —</option>{INDIAN_STATES.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </AfField>
+                  <AfField label="Photo ID type">
+                    <select {...I('reg.idType')} value={r.idType} onChange={e => setReg('idType', e.target.value)}>{ID_TYPES.map(t => <option key={t}>{t}</option>)}</select>
+                  </AfField>
+                  <AfField label="ID — last 4 digits" error={err('reg.idLast4','candidate')} hint="Only the last 4 digits are stored">
+                    <input {...I('reg.idLast4')} inputMode="numeric" maxLength={4} value={r.idLast4} onChange={e => setReg('idLast4', e.target.value.replace(/\D/g,'').slice(0,4))} placeholder="••••" />
+                  </AfField>
+                  <AfField label="Blood group" required error={err('blood','candidate')}>
+                    <select {...I('blood')} value={form.blood} onChange={e => set('blood', e.target.value)}>
+                      <option value="">—</option>{['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(b => <option key={b}>{b}</option>)}
+                    </select>
+                  </AfField>
+                  <AfField label="Religion" required error={err('religion','candidate')}>
+                    <select {...I('religion')} value={form.religion} onChange={e => set('religion', e.target.value)}>{RELIGIONS.map(x => <option key={x}>{x}</option>)}</select>
+                  </AfField>
+                  <AfField label="Mother tongue" required error={err('motherTongue','candidate')}>
+                    <select {...I('motherTongue')} value={form.motherTongue} onChange={e => set('motherTongue', e.target.value)}>{MOTHER_TONGUES.map(x => <option key={x}>{x}</option>)}</select>
+                  </AfField>
+                  <AfField label="Sibling at GNSI (GCC)" error={siblingRecord === 'not_found' ? `No record for GCC-${form.siblingGcc}` : undefined}
+                    hint={siblingRecord && siblingRecord !== 'not_found' ? `${siblingRecord.name} — ${siblingRecord.course || ''}${siblingRecord.subtype ? ' · ' + siblingRecord.subtype : ''} (${siblingRecord.status})` : undefined}>
+                    <input {...I('siblingGcc')} inputMode="numeric" value={form.siblingGcc} onChange={e => set('siblingGcc', e.target.value.replace(/[^0-9]/g,''))} placeholder="Optional" />
+                  </AfField>
+                  <AfField label="How did you hear about GNSI?">
+                    <select {...I('referral')} value={form.referral} onChange={e => set('referral', e.target.value)}>{REFERRAL_SOURCES.map(x => <option key={x}>{x}</option>)}</select>
+                  </AfField>
+                </div>
+              </AfCard>
+            </>}
+
+            {/* ════ 3. FAMILY ════ */}
+            {step.id === 'family' && <>
+              <AfCard title="Parents" subtitle="Names as on the candidate's birth certificate.">
+                <div style={afGrid(220)}>
+                  <AfField label="Father's name" required error={err('father','family')}><input {...I('father')} value={form.father} onChange={e => set('father', e.target.value)} /></AfField>
+                  <AfField label="Father's occupation"><input {...I('reg.fatherOcc')} value={r.fatherOcc} onChange={e => setReg('fatherOcc', e.target.value)} /></AfField>
+                  <AfField label="Mother's name" required error={err('mother','family')}><input {...I('mother')} value={form.mother} onChange={e => set('mother', e.target.value)} /></AfField>
+                  <AfField label="Mother's occupation"><input {...I('reg.motherOcc')} value={r.motherOcc} onChange={e => setReg('motherOcc', e.target.value)} /></AfField>
+                  <AfField label="Guardian (if not parent)"><input {...I('reg.guardianName')} value={r.guardianName} onChange={e => setReg('guardianName', e.target.value)} placeholder="Optional" /></AfField>
+                  <AfField label="Guardian's relation"><input {...I('reg.guardianRel')} value={r.guardianRel} onChange={e => setReg('guardianRel', e.target.value)} placeholder="e.g. Uncle" /></AfField>
+                  <AfField label="Annual family income (₹)" hint="Optional — used for scholarship review"><input {...I('reg.income')} inputMode="numeric" value={r.income} onChange={e => setReg('income', e.target.value.replace(/\D/g,''))} /></AfField>
+                </div>
+              </AfCard>
+              <AfCard title="Contact" subtitle="The official portals send OTPs and admit-card alerts to the mobile number and email.">
+                <div style={afGrid(220)}>
+                  <AfField label="Mobile no." required error={err('phone','family')}><input {...I('phone')} inputMode="numeric" value={form.phone} onChange={e => set('phone', e.target.value.replace(/\D/g,'').slice(0,10))} placeholder="10 digits" /></AfField>
+                  <AfField label="WhatsApp no." required error={err('whatsapp','family')}>
+                    <input {...I('whatsapp')} inputMode="numeric" value={form.whatsapp} onChange={e => set('whatsapp', e.target.value.replace(/\D/g,'').slice(0,10))} />
+                    {form.phone && form.whatsapp !== form.phone && <button type="button" onClick={() => set('whatsapp', form.phone)} style={{ marginTop:6, fontSize:11.5, border:'none', background:'none', color:AF.navy3, fontWeight:700, cursor:'pointer', padding:0 }}>Same as mobile</button>}
+                  </AfField>
+                  <AfField label="Email" error={err('reg.email','family')}><input {...I('reg.email')} type="email" value={r.email} onChange={e => setReg('email', e.target.value.trim())} placeholder="parent@email.com" /></AfField>
+                </div>
+              </AfCard>
+              <AfCard title="Emergency contact">
+                <div style={afGrid(200)}>
+                  <AfField label="Name" required error={err('emergencyName','family')}><input {...I('emergencyName')} value={form.emergencyName} onChange={e => set('emergencyName', e.target.value)} /></AfField>
+                  <AfField label="Phone" required error={err('emergencyPhone','family')}><input {...I('emergencyPhone')} inputMode="numeric" value={form.emergencyPhone} onChange={e => set('emergencyPhone', e.target.value.replace(/\D/g,'').slice(0,10))} /></AfField>
+                  <AfField label="Relationship"><input {...I('emergencyRel')} value={form.emergencyRel} onChange={e => set('emergencyRel', e.target.value)} placeholder="e.g. Uncle" /></AfField>
+                </div>
+              </AfCard>
+            </>}
+
+            {/* ════ 4. ADDRESS ════ */}
+            {step.id === 'address' && <>
+              <AfCard title="Address for correspondence" subtitle="Admit cards and letters are posted here.">
+                {Address({ which:'corr' })}
+                {errors.address && touched.address && <div style={{ fontSize:11.5, color:AF.danger, marginTop:8, fontWeight:600 }}>{errors.address}</div>}
+              </AfCard>
+              <AfCard title="Permanent address"
+                right={<label style={{ display:'flex', alignItems:'center', gap:8, fontSize:12.5, fontWeight:700, color:AF.sub, cursor:'pointer' }}>
+                  <input type="checkbox" checked={r.permSame} onChange={e => setReg('permSame', e.target.checked)} style={{ width:16, height:16, accentColor:AF.navy }} /> Same as above
+                </label>}>
+                {r.permSame
+                  ? <div style={{ fontSize:13, color:AF.sub }}>{composedAddress || 'Fill in the correspondence address above.'}</div>
+                  : Address({ which:'perm' })}
+              </AfCard>
+            </>}
+
+            {/* ════ 5. SCHOOLING ════ */}
+            {step.id === 'schooling' && <>
+              <AfCard title="Present school" subtitle={exams.includes('JNVST') ? 'JNVST: the school where the candidate is studying Class V (or VIII for Class IX).' : 'The school the candidate currently attends.'}>
+                <div style={afGrid(200)}>
+                  <AfField label="Name of school" required error={err('prevSchool','schooling')} span={2}><input {...I('prevSchool')} value={form.prevSchool} onChange={e => set('prevSchool', e.target.value)} /></AfField>
+                  <AfField label="Class studying">
+                    <AfSeg options={['IV','V','VII','VIII']} value={r.school.currentClass} onChange={v => setReg('school.currentClass', v)} />
+                  </AfField>
+                  <AfField label="UDISE code" error={err('reg.school.udise','schooling')} hint="11 digits — on the school's records">
+                    <input {...I('reg.school.udise')} inputMode="numeric" value={r.school.udise} onChange={e => setReg('school.udise', e.target.value.replace(/\D/g,'').slice(0,11))} />
+                  </AfField>
+                  <AfField label="Type of school">
+                    <select {...I('reg.school.type')} value={r.school.type} onChange={e => setReg('school.type', e.target.value)}><option value="">—</option>{SCHOOL_TYPES.map(t => <option key={t}>{t}</option>)}</select>
+                  </AfField>
+                  <AfField label="School area"><AfSeg options={['Rural','Urban']} value={r.school.area} onChange={v => setReg('school.area', v)} /></AfField>
+                  <AfField label="Block"><input {...I('reg.school.block')} value={r.school.block} onChange={e => setReg('school.block', e.target.value)} /></AfField>
+                  <AfField label="District" required={exams.includes('JNVST')} error={err('reg.school.district','schooling')}>
+                    <input {...I('reg.school.district')} list="dl-school-dist" value={r.school.district} onChange={e => setReg('school.district', e.target.value)} />
+                    <datalist id="dl-school-dist">{districtList(r.school.state).map(d => <option key={d} value={d} />)}</datalist>
+                  </AfField>
+                  <AfField label="State">
+                    <select {...I('reg.school.state')} value={r.school.state} onChange={e => setReg('school.state', e.target.value)}><option value="">—</option>{INDIAN_STATES.map(s => <option key={s}>{s}</option>)}</select>
+                  </AfField>
+                </div>
+              </AfCard>
+              {exams.includes('JNVST') && (
+                <AfCard title="Classes III & IV" subtitle="Asked by JNVST to decide rural-quota eligibility — each class must be passed from a rural school for the rural quota.">
+                  {['III','IV'].map(c => (
+                    <div key={c} style={{ ...afGrid(170), marginBottom: c === 'III' ? 16 : 0 }}>
+                      <AfField label={`Class ${c} — year passed`}><input {...I(`reg.hist.${c}.year`)} inputMode="numeric" value={r.hist[c].year} onChange={e => setReg(`hist.${c}.year`, e.target.value.replace(/\D/g,'').slice(0,4))} placeholder="YYYY" /></AfField>
+                      <AfField label={`Class ${c} — school`} span={2}><input {...I(`reg.hist.${c}.school`)} value={r.hist[c].school} onChange={e => setReg(`hist.${c}.school`, e.target.value)} /></AfField>
+                      <AfField label="Area"><AfSeg options={['Rural','Urban']} value={r.hist[c].area} onChange={v => setReg(`hist.${c}.area`, v)} /></AfField>
+                    </div>
+                  ))}
+                </AfCard>
+              )}
+            </>}
+
+            {/* ════ 6. OFFICIAL REGISTRATION ════ */}
+            {step.id === 'official' && (exams.length === 0 ? (
+              <AfCard title="No entrance exam for this course">
+                <div style={{ fontSize:13, color:AF.sub }}>{form.course ? `${form.course} does not register for AISSEE or JNVST.` : 'Choose a course in Step 1 first.'} Nothing to fill here.</div>
+              </AfCard>
+            ) : <>
+              {exams.includes('AISSEE') && (
+                <AfCard title="AISSEE — Sainik Schools" subtitle="Track the NTA online application for this candidate."
+                  right={<span style={{ fontSize:10.5, fontWeight:800, padding:'4px 10px', borderRadius:99, background:EXAM_META.AISSEE.bg, color:EXAM_META.AISSEE.color }}>NTA</span>}>
+                  <div style={afGrid(200)}>
+                    <AfField label="Registration status" span="full"><AfSeg options={OFFICIAL_REG_STATUS} value={r.aissee.status} onChange={v => setReg('aissee.status', v)} /></AfField>
+                    <AfField label="NTA application no."><input {...I('reg.aissee.appNo')} value={r.aissee.appNo} onChange={e => setReg('aissee.appNo', e.target.value.trim())} /></AfField>
+                    <AfField label="Roll no. (admit card)"><input {...I('reg.aissee.rollNo')} value={r.aissee.rollNo} onChange={e => setReg('aissee.rollNo', e.target.value.trim())} /></AfField>
+                  </div>
+                  <div style={{ fontSize:10.5, fontWeight:700, color:AF.sub, textTransform:'uppercase', letterSpacing:'.08em', margin:'18px 0 8px' }}>Exam city choices (priority order)</div>
+                  <div style={afGrid(160)}>
+                    {[0,1,2,3].map(i => (
+                      <div key={i} style={{ position:'relative' }}>
+                        <span style={{ position:'absolute', left:10, top:11, fontSize:11, fontWeight:800, color:AF.gold }}>{i + 1}</span>
+                        <input style={{ ...afInp(false), paddingLeft:26 }} list="dl-aissee-city" value={r.aissee.cities[i]} onChange={e => setReg(`aissee.cities.${i}`, e.target.value)} placeholder={i === 0 ? 'e.g. Imphal' : 'City'} />
+                      </div>
+                    ))}
+                    <datalist id="dl-aissee-city">{AISSEE_CITY_SUGGESTIONS.map(c => <option key={c} value={c} />)}</datalist>
+                  </div>
+                  <div style={{ fontSize:10.5, fontWeight:700, color:AF.sub, textTransform:'uppercase', letterSpacing:'.08em', margin:'18px 0 8px' }}>Sainik School choices</div>
+                  <div style={afGrid(200)}>
+                    {[0,1,2].map(i => (
+                      <div key={i} style={{ position:'relative' }}>
+                        <span style={{ position:'absolute', left:10, top:11, fontSize:11, fontWeight:800, color:AF.gold }}>{i + 1}</span>
+                        <input style={{ ...afInp(false), paddingLeft:26 }} list="dl-sainik" value={r.aissee.schools[i]} onChange={e => setReg(`aissee.schools.${i}`, e.target.value)} placeholder={i === 0 ? 'e.g. Sainik School Imphal' : 'School'} />
+                      </div>
+                    ))}
+                    <datalist id="dl-sainik">{SAINIK_SCHOOL_SUGGESTIONS.map(c => <option key={c} value={c} />)}</datalist>
+                  </div>
+                </AfCard>
+              )}
+              {exams.includes('JNVST') && (
+                <AfCard title="JNVST — Navodaya Vidyalaya" subtitle="Track the NVS online registration for this candidate."
+                  right={<span style={{ fontSize:10.5, fontWeight:800, padding:'4px 10px', borderRadius:99, background:EXAM_META.JNVST.bg, color:EXAM_META.JNVST.color }}>NVS</span>}>
+                  <div style={afGrid(200)}>
+                    <AfField label="Registration status" span="full"><AfSeg options={OFFICIAL_REG_STATUS} value={r.jnvst.status} onChange={v => setReg('jnvst.status', v)} /></AfField>
+                    <AfField label="NVS registration no."><input {...I('reg.jnvst.regNo')} value={r.jnvst.regNo} onChange={e => setReg('jnvst.regNo', e.target.value.trim())} /></AfField>
+                    <AfField label="Roll no. (admit card)"><input {...I('reg.jnvst.rollNo')} value={r.jnvst.rollNo} onChange={e => setReg('jnvst.rollNo', e.target.value.trim())} /></AfField>
+                    <AfField label="JNV applied to" hint="The JNV of the district where Class V is studied">
+                      <input {...I('reg.jnvst.jnv')} list="dl-jnv" value={r.jnvst.jnv} onChange={e => setReg('jnvst.jnv', e.target.value)} placeholder={r.school.district ? `JNV ${r.school.district}` : 'JNV …'} />
+                      <datalist id="dl-jnv">{MANIPUR_DISTRICTS.map(d => <option key={d} value={`JNV ${d}`} />)}</datalist>
+                    </AfField>
+                  </div>
+                </AfCard>
+              )}
+            </>)}
+
+            {/* ════ 7. GNSI ASSESSMENT ════ */}
+            {step.id === 'gnsi' && <>
+              <AfCard title="GNSI entrance & interview">
+                <div style={afGrid(180)}>
+                  <AfField label="Entrance score" required error={err('entranceScore','gnsi')}><input {...I('entranceScore')} type="number" value={form.entranceScore} onChange={e => set('entranceScore', e.target.value)} placeholder="Out of 100" /></AfField>
+                  <AfField label="Interview score"><input {...I('interviewScore')} type="number" value={form.interviewScore} onChange={e => set('interviewScore', e.target.value)} placeholder="Out of 50" /></AfField>
+                  <AfField label="Interview date"><input type="date" {...I('interviewDate')} value={form.interviewDate} onChange={e => set('interviewDate', e.target.value)} /></AfField>
+                </div>
+              </AfCard>
+              <AfCard title="Fee terms" subtitle="Fee rates themselves come from Fee Setup.">
+                <div style={afGrid(180)}>
+                  <AfField label="Scholarship %"><input {...I('scholarshipPct')} type="number" min="0" max="100" value={form.scholarshipPct} onChange={e => set('scholarshipPct', e.target.value)} placeholder="e.g. 25" /></AfField>
+                  <AfField label="Concession ₹ / month" required error={err('concessionAmt','gnsi')} hint="Enter 0 if none"><input {...I('concessionAmt')} type="number" value={form.concessionAmt} onChange={e => set('concessionAmt', e.target.value)} /></AfField>
+                  <AfField label="Security deposit ₹"><input {...I('securityDeposit')} type="number" value={form.securityDeposit} onChange={e => set('securityDeposit', e.target.value)} placeholder="Refundable" /></AfField>
+                  <AfField label="Transport fee ₹ / month"><input {...I('transportFee')} type="number" value={form.transportFee} onChange={e => set('transportFee', e.target.value)} placeholder="Day scholars" /></AfField>
+                  <AfField label="Instalment plan"><AfSeg options={[{ value:'monthly', label:'Monthly' }, { value:'quarterly', label:'Quarterly' }, { value:'annual', label:'Annual' }]} value={form.instalmentPlan} onChange={v => set('instalmentPlan', v)} /></AfField>
+                </div>
+                <div style={{ marginTop:16, display:'flex', gap:12, flexWrap:'wrap' }}>
+                  <div style={{ flex:'1 1 180px', borderRadius:12, padding:'12px 14px', background:AF.cream, border:`1px solid ${AF.line}` }}>
+                    <div style={{ fontSize:10.5, fontWeight:800, color:AF.sub, letterSpacing:'.08em', textTransform:'uppercase' }}>Base fee</div>
+                    <div style={{ fontFamily:AF.serif, fontSize:20, fontWeight:700, color:AF.ink }}>₹{fmt(baseRate)}<span style={{ fontSize:12, color:AF.sub, fontFamily:AF.sans }}> /month</span></div>
+                  </div>
+                  <div style={{ flex:'1 1 180px', borderRadius:12, padding:'12px 14px', background:AF.okBg, border:'1px solid #BFE3CF' }}>
+                    <div style={{ fontSize:10.5, fontWeight:800, color:AF.ok, letterSpacing:'.08em', textTransform:'uppercase' }}>After scholarship</div>
+                    <div style={{ fontFamily:AF.serif, fontSize:20, fontWeight:700, color:AF.ok }}>₹{fmt(discRate)}<span style={{ fontSize:12, fontFamily:AF.sans }}> /month</span></div>
+                  </div>
+                </div>
+              </AfCard>
+              <AfCard title="Office remarks">
+                <textarea {...I('remarks')} rows={3} value={form.remarks} onChange={e => set('remarks', e.target.value)} style={{ ...afInp(false), resize:'vertical' }} placeholder="Internal notes" />
+              </AfCard>
+            </>}
+
+            {/* ════ 8. DOCUMENTS ════ */}
+            {step.id === 'documents' && <>
+              <AfCard title="Documents received" subtitle={exams.length ? `Tick what the parent has handed over — list tailored to ${exams.join(' + ')}.` : 'Tick what the parent has handed over.'}
+                right={<span style={{ fontSize:12, fontWeight:800, color: form.docs.length ? AF.ok : AF.danger }}>{form.docs.length} received</span>}>
+                {err('docs','documents') && <div style={{ fontSize:12, color:AF.danger, fontWeight:700, marginBottom:10 }}>{errors.docs}</div>}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(240px,100%),1fr))', gap:8 }}>
+                  {[...docList.map(d => ({ label:d.label, tags:d.for })), ...legacyDocs.map(l => ({ label:l, tags:[] }))].map(d => {
+                    const on = form.docs.includes(d.label)
+                    return (
+                      <button type="button" key={d.label} onClick={() => toggleDoc(d.label)}
+                        style={{ display:'flex', alignItems:'center', gap:10, textAlign:'left', padding:'11px 12px', borderRadius:12, cursor:'pointer', fontFamily:AF.sans,
+                          border:`1.5px solid ${on ? '#9FD3B6' : AF.line}`, background: on ? AF.okBg : AF.paper, transition:'all .15s' }}>
+                        <span style={{ width:20, height:20, borderRadius:6, flexShrink:0, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:900,
+                          background: on ? AF.ok : '#fff', color:'#fff', border:`1.5px solid ${on ? AF.ok : AF.line2}` }}>{on ? '✓' : ''}</span>
+                        <span style={{ flex:1, minWidth:0 }}>
+                          <span style={{ display:'block', fontSize:12.5, fontWeight:700, color:AF.ink }}>{d.label}</span>
+                          <span style={{ display:'block', fontSize:10.5, color:AF.faint, marginTop:1 }}>{d.tags.filter(t => t === 'GNSI' || exams.includes(t)).join(' · ') || 'Previously recorded'}</span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </AfCard>
+              <div style={{ borderRadius:18, padding:'20px 22px', marginBottom:18, background:`linear-gradient(135deg,${AF.navy},${AF.navy2})`, color:'#fff', boxShadow:'0 20px 40px -26px rgba(11,30,61,.8)' }}>
+                <div style={{ fontFamily:AF.serif, fontSize:17, fontWeight:700, color:AF.goldLt }}>Declaration by parent / guardian</div>
+                <p style={{ fontSize:13, lineHeight:1.7, color:'rgba(255,255,255,.82)', margin:'10px 0 14px' }}>
+                  I declare that the particulars given above are true and complete to the best of my knowledge and match the candidate's
+                  birth certificate and school records.{exams.length ? ` I understand that eligibility for ${exams.join(' and ')} is decided by the conducting body and that any wrong information may lead to cancellation of the candidature.` : ''}
+                  {' '}I agree to abide by the rules of Guidance Navodaya &amp; Sainik Institute.
+                </p>
+                <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', fontSize:13.5, fontWeight:700 }}>
+                  <input type="checkbox" checked={declared} onChange={e => setDeclared(e.target.checked)} style={{ width:18, height:18, accentColor:AF.gold }} />
+                  I confirm this declaration
+                </label>
+              </div>
+            </>}
           </div>
 
-          <div style={{ width:'50%', flexShrink:0 }}>
-            <ApplicationPreview
-              form={form}
-              activeSession={activeSession}
-              editing={editing}
-              submitting={submitting}
-              onEdit={() => setStep('form')}
-              onConfirm={async () => {
-                setSubmitting(true)
-                // Belt-and-braces: re-derive hostel_type from house right at
-                // the save boundary rather than trusting form.hostel_type to
-                // already be correct. The useEffect above keeps them in sync
-                // on every house change, but forcing it again here means a
-                // stale/pre-fix draft (e.g. one restored from the
-                // localStorage DRAFT_KEY autosave, written before this fix
-                // existed) can never write a mismatched pair to the database.
-                try { await onSave(editing?.id||null, { ...form, hostel_type: deriveHostelType(form.house, form.hostel_type) }) }
-                finally { setSubmitting(false) }
-              }}
-            />
+          {/* ── Footer nav ── */}
+          {touched[step.id] && stepErrors(step).length > 0 && (
+            <div style={{ fontSize:12.5, color:AF.danger, background:AF.dangerBg, padding:'10px 14px', borderRadius:12, marginBottom:12 }}>
+              <strong>To finish this step:</strong> {stepErrors(step).map(k => errors[k]).join(' · ')}
+            </div>
+          )}
+          <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap', borderTop:`1px solid ${AF.line}`, paddingTop:16 }}>
+            {stepIdx > 0 && (
+              <button type="button" onClick={() => goTo(stepIdx - 1)} style={{ padding:'12px 18px', borderRadius:12, border:`1.5px solid ${AF.line2}`, background:AF.paper, color:AF.sub, fontSize:13.5, fontWeight:700, cursor:'pointer', fontFamily:AF.sans }}>← Back</button>
+            )}
+            <button type="button" onClick={handleCancel} style={{ padding:'12px 16px', borderRadius:12, border:'none', background:'transparent', color:AF.faint, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:AF.sans }}>Cancel</button>
+            <div style={{ flex:1 }} />
+            {editing && (
+              <button type="button" onClick={() => printAdmitCard(editing)} style={{ padding:'12px 16px', borderRadius:12, border:`1.5px solid ${AF.line2}`, background:AF.paper, color:AF.navy, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:AF.sans }}>Admit card</button>
+            )}
+            {stepIdx < STEPS.length - 1 ? (
+              <button type="button" onClick={() => goTo(stepIdx + 1)}
+                style={{ padding:'12px 24px', borderRadius:12, border:'none', background:`linear-gradient(135deg,${AF.navy2},${AF.navy})`, color:'#fff', fontSize:13.5, fontWeight:800, cursor:'pointer', fontFamily:AF.sans, boxShadow:'0 10px 22px -12px rgba(11,30,61,.8)' }}>
+                Next: {STEPS[stepIdx + 1].title} →
+              </button>
+            ) : (
+              <button type="button" onClick={openReview}
+                style={{ padding:'12px 24px', borderRadius:12, border:'none', background:`linear-gradient(135deg,${AF.gold},${AF.goldLt})`, color:AF.navy, fontSize:13.5, fontWeight:800, cursor:'pointer', fontFamily:AF.sans, boxShadow:'0 10px 22px -12px rgba(201,162,75,.9)' }}>
+                Review application →
+              </button>
+            )}
           </div>
+          {stepIdx === STEPS.length - 1 && allErrors.length > 0 && (
+            <div style={{ fontSize:11.5, color:AF.faint, marginTop:10 }}>{allErrors.length} item{allErrors.length > 1 ? 's' : ''} still to complete — Review takes you to the first one.</div>
+          )}
         </div>
       </div>
+      )}
     </div>
   )
 }
@@ -4131,6 +4461,19 @@ export default function Admissions() {
   const clearSelection = () => setSelectedIds(new Set())
   const selectedApps = filtered.filter(a=>selectedIds.has(a.id))
 
+  // ── FLOW FIX: Enrolled is reached ONLY through the Enroll button ─────────
+  // (admission fee check → promoteToStudent → student row). Setting it by
+  // quick edit, bulk status or the edit form produced "Enrolled" admissions
+  // with no student record; moving an enrolled record back to another status
+  // left a live student whose application no longer said Enrolled.
+  const hasLiveFees = app => cols.some(c => String(parseInt(c.adm_app_id)) === String(parseInt(app?.gcc ?? app?.id)) && !c.reverted)
+  const statusChangeError = (app, next) => {
+    if (!app || !next || next === app.status) return null
+    if (next === 'Enrolled') return 'Use the Enroll button — it checks the admission fee and creates the student record.'
+    if (app.status === 'Enrolled') return `${app.name || 'This applicant'} is already enrolled — change their status in Students (Dropout / Withdrawn), not here.`
+    return null
+  }
+
   const handleSave = async (eid, obj) => {
     // 🔒 Authorization
     if (!checkPermission(userRole, eid ? 'update' : 'create')) {
@@ -4149,9 +4492,26 @@ export default function Admissions() {
     const sessionName = (!eid && activeSession) ? activeSession.session_name : cleanObj.session
     const dbRow = mapToDB({ ...cleanObj, session: sessionName })
 
+    // reg_details / target_exam are new columns (admissions_reg_details.sql).
+    // If they aren't there yet, save everything else and say so, instead of
+    // failing the whole application.
+    const regColMissing = e => !!e && /reg_details|target_exam/i.test(e.message || '')
+    const withoutReg = row => { const { reg_details, target_exam, ...rest } = row; return rest }
+    const regWarn = () => showToast('Saved — but exam registration details need the new database columns. Run admissions_reg_details.sql in Supabase.', T.amber[600])
+
     if (eid) {
-      const { error } = await updateAdmissionsRows({ match: { gcc_no: parseInt(eid) }, patch: dbRow })
+      const before = apps.find(a => String(a.id) === String(eid))
+      const stErr = statusChangeError(before, cleanObj.status)
+      if (stErr) { showToast('🚫 ' + stErr, T.rose[600]); return false }
+      // GCC No. is the key Students, every fee table and Accounts use.
+      if (before && String(parseInt(cleanObj.gcc)) !== String(parseInt(eid)) && (before.status === 'Enrolled' || hasLiveFees(before))) {
+        showToast('🚫 GCC No. can\'t be changed after enrollment or fee collection — it links the student, fees and accounts.', T.rose[600]); return false
+      }
+      let { error } = await updateAdmissionsRows({ match: { gcc_no: parseInt(eid) }, patch: dbRow })
+      let regSkipped = false
+      if (regColMissing(error)) { ({ error } = await updateAdmissionsRows({ match: { gcc_no: parseInt(eid) }, patch: withoutReg(dbRow) })); regSkipped = !error }
       if (error) { showToast('Update failed: '+error.message, T.rose[600]); return false }
+      if (regSkipped) setTimeout(regWarn, 1600)
       logAudit('UPDATE', eid, dbRow, userRole)
       try {
         const log = JSON.parse(localStorage.getItem('gnsi_audit_'+eid)||'[]')
@@ -4161,7 +4521,11 @@ export default function Admissions() {
       setApps(prev => prev.map(a => String(a.id)===String(eid) ? { ...a, ...cleanObj, id:parseInt(eid), hostel_type:dbRow.hostel_type } : a))
       showToast('Application updated', T.amber[600])
     } else {
-      const { data, error } = await supabase.from('admissions').insert(dbRow).select().single()
+      let { data, error } = await supabase.from('admissions').insert(dbRow).select().single()
+      if (regColMissing(error)) {
+        ({ data, error } = await supabase.from('admissions').insert(withoutReg(dbRow)).select().single())
+        if (!error) setTimeout(regWarn, 1600)
+      }
       if (error) {
         if (error.code==='23505') showToast(`GCC No. ${cleanObj.gcc} already exists`, T.rose[600])
         else showToast('Save failed: '+error.message, T.rose[600])
@@ -4196,7 +4560,11 @@ export default function Admissions() {
   const handleEnroll = async id => {
     const a = apps.find(x => String(x.id)===String(id))
     if (!a) return
-    const admPaid = cols.some(c=>String(parseInt(c.adm_app_id))===String(parseInt(a.gcc))&&c.fee_type==='admission')
+    // FLOW FIX: `cols` holds every adm_fee_collections row, reverted ones
+    // included — a reverted (refunded/undone) admission fee still counted as
+    // "paid" and let the student be enrolled without an admission fee on the books.
+    const admFeeRow = cols.find(c=>String(parseInt(c.adm_app_id))===String(parseInt(a.gcc))&&c.fee_type==='admission'&&!c.reverted)
+    const admPaid = !!admFeeRow
     if (!admPaid) { showToast('⚠ Collect admission fee first', T.rose[600]); setFeePanel(a); return }
     if (!confirm(`Enroll ${a.name} as a student?`)) return
     try {
@@ -4214,6 +4582,17 @@ export default function Admissions() {
       const { error: admErr } = await supabase.from('admissions').update({ status:'Enrolled' }).eq('gcc_no', parseInt(id))
       if (admErr) throw admErr
 
+      // FLOW FIX: Students → Fees. Fees refuses to collect anything until the
+      // student has an Admission Date, and a freshly enrolled student often
+      // had none — so the very first monthly fee was blocked. Fill it from the
+      // admission-fee payment date (falls back to today). Only fills a blank;
+      // never overwrites a date someone already set.
+      try {
+        const admDate = (admFeeRow?.pay_date && String(admFeeRow.pay_date).slice(0, 10)) || new Date().toLocaleDateString('en-CA')
+        await supabase.from('students').update({ admission_date: admDate })
+          .eq('gcc_no', parseInt(a.gcc)).is('admission_date', null)
+      } catch (e) { console.warn('Enroll: could not set admission_date —', e?.message || e) }
+
       setApps(prev => prev.map(x => String(x.id)===String(id) ? { ...x, status:'Enrolled' } : x))
       showToast(created ? `✅ ${a.name} enrolled & student record created!` : `✅ ${a.name} enrolled (student already existed)`, T.emerald[600])
       if (houseWarning) showToast(`⚠ ${houseWarning}`, T.amber[600])
@@ -4228,6 +4607,17 @@ export default function Admissions() {
       showToast('🚫 You do not have permission to delete applications', T.rose[600]); return
     }
     const a = apps.find(x => String(x.id)===String(id))
+    // FLOW FIX: this is a hard delete. Removing the admission of an enrolled
+    // student, or one with fees already on the books, orphans the student
+    // (Fees then says "No admission record") and leaves fee + Accounts rows
+    // pointing at nothing. Those must be Rejected / marked Dropout instead.
+    const hasFees = cols.some(c => String(parseInt(c.adm_app_id)) === String(parseInt(a?.gcc ?? id)) && !c.reverted)
+    if (a?.status === 'Enrolled' || hasFees) {
+      showToast(a?.status === 'Enrolled'
+        ? '🚫 Enrolled — can\'t delete. Mark the student Dropout/Withdrawn in Students instead.'
+        : '🚫 Fees already collected — revert them in Fees first, or set status to Rejected.', T.rose[600])
+      return
+    }
     if (!confirm(`Delete admission for ${a?.name}?`)) return
     const snapshot = { ...a }
     setApps(prev => prev.filter(x => String(x.id)!==String(id)))
@@ -4247,6 +4637,8 @@ export default function Admissions() {
   }
 
   const handleQuickEdit = async (id, changes) => {
+    const stErr = statusChangeError(apps.find(a => String(a.id) === String(id)), changes.status)
+    if (stErr) { showToast('🚫 ' + stErr, T.rose[600]); return }
     const hostelType = deriveHostelType(changes.house, changes.hostel_type)
     const { error } = await updateAdmissionsRows({ match: { gcc_no: parseInt(id) }, patch: {
       status: changes.status,
@@ -4276,6 +4668,11 @@ export default function Admissions() {
     if (!checkPermission(userRole, 'bulk')) { showToast('🚫 You do not have permission for bulk actions', T.rose[600]); return }
     try { RateLimiter.check('bulk_status', 8, 60000) } catch(e) { showToast(e.message, T.rose[600]); return }
     if (selectedIds.size > MAX_BULK_OPERATION_SIZE) { showToast(`Max ${MAX_BULK_OPERATION_SIZE} records per bulk action`, T.rose[600]); return }
+    if (status === 'Enrolled') { showToast('🚫 Enroll students one at a time with the Enroll button — it checks the admission fee and creates the student record.', T.rose[600]); return }
+    const skipped = apps.filter(a => selectedIds.has(a.id) && statusChangeError(a, status))
+    if (skipped.length) {
+      showToast(`🚫 ${skipped.length} selected ${skipped.length > 1 ? 'are' : 'is'} already enrolled — untick them and change their status in Students.`, T.rose[600]); return
+    }
     if (!confirm(`Set ${selectedIds.size} applicants to "${status}"?`)) return
     const ids = [...selectedIds]
     const { error } = await supabase.from('admissions').update({ status }).in('gcc_no', ids.map(Number))
@@ -4306,6 +4703,13 @@ export default function Admissions() {
     }
     try { RateLimiter.check('bulk_delete', 5, 60000) } catch(e) { showToast(e.message, T.rose[600]); return }
     if (selectedIds.size > MAX_BULK_OPERATION_SIZE) { showToast(`Max ${MAX_BULK_OPERATION_SIZE} records per bulk delete`, T.rose[600]); return }
+    // FLOW FIX: same rule as single delete — never hard-delete an enrolled
+    // applicant or one with fees on the books.
+    const blocked = apps.filter(a => selectedIds.has(a.id) && (a.status === 'Enrolled' || cols.some(c => String(parseInt(c.adm_app_id)) === String(parseInt(a.gcc ?? a.id)) && !c.reverted)))
+    if (blocked.length) {
+      showToast(`🚫 ${blocked.length} selected ${blocked.length > 1 ? 'are' : 'is'} enrolled or already paid fees (${blocked.slice(0, 3).map(b => b.name).join(', ')}${blocked.length > 3 ? '…' : ''}) — untick them first.`, T.rose[600])
+      return
+    }
     if (!confirm(`Delete ${selectedIds.size} selected applicants? You will have 5 seconds to undo.`)) return
     const ids = [...selectedIds]
     const snapshots = apps.filter(a => selectedIds.has(a.id))
@@ -4472,16 +4876,18 @@ export default function Admissions() {
         <div style={{ paddingTop: isMobile?'14px':'20px', marginBottom:'12px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', flexWrap:'wrap' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
             <div style={{
-              width:40, height:40, borderRadius:'10px',
-              background:'linear-gradient(135deg, #1D1D1F 0%, #3A3A3C 100%)',
+              width:44, height:44, borderRadius:'12px',
+              background:'linear-gradient(145deg, #1C3A6B 0%, #0B1E3D 100%)',
+              boxShadow:'inset 0 0 0 1px rgba(226,197,126,.45), 0 8px 18px -10px rgba(11,30,61,.8)',
               display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
             }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" style={{ width:20, height:20 }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#E2C57E" strokeWidth="2" style={{ width:21, height:21 }}>
                 <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
             <div>
-              <p style={{ fontSize:16, fontWeight:600, lineHeight:1.3, margin:0, color:tx }}>GNSI Admissions</p>
+              <p style={{ fontSize:10.5, fontWeight:800, letterSpacing:'.18em', textTransform:'uppercase', margin:0, color:'#A87A1F' }}>AISSEE · JNVST · Foundation</p>
+              <p style={{ fontSize:21, fontWeight:700, lineHeight:1.2, margin:'1px 0 1px', color: darkMode ? '#fff' : '#0B1E3D', fontFamily:"'Playfair Display',Georgia,serif" }}>GNSI Admissions</p>
               <p style={{ fontSize:13, color:T.slate[400], lineHeight:1.3, margin:0 }}>
                 {moduleView==='ledger' ? 'Application ↔ Student ↔ Fee ledger'
                   : moduleView==='newApplication' ? 'New applicant admission form'
@@ -4493,9 +4899,9 @@ export default function Admissions() {
             {[['newApplication','📝 New Application'],['applications','📋 Applications'],['ledger','🔗 Student Ledger'],['sessions','📅 Sessions']].map(([key,label]) => (
               <button key={key} onClick={()=>setModuleView(key)}
                 style={{ padding:'7px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:12, fontWeight:700,
-                  background: moduleView===key ? N.bg : 'transparent',
-                  color: moduleView===key ? N.text : N.muted,
-                  boxShadow: moduleView===key ? N.shadow('sm') : 'none' }}>
+                  background: moduleView===key ? '#0B1E3D' : 'transparent',
+                  color: moduleView===key ? '#fff' : N.muted,
+                  boxShadow: moduleView===key ? 'inset 0 -2px 0 #C9A24B, 0 6px 14px -8px rgba(11,30,61,.7)' : 'none' }}>
                 {label}
               </button>
             ))}
@@ -4521,9 +4927,10 @@ export default function Admissions() {
         <div style={{
           position:'relative', borderRadius:16, padding:isMobile?'16px':'20px 24px', marginBottom:18,
           color:'#fff', overflow:'hidden',
-          background:'linear-gradient(135deg, #1D1D1F 0%, #2C2C2E 50%, #1D1D1F 100%)',
+          background:'radial-gradient(120% 140% at 100% 0%, #1C3A6B 0%, #132B52 42%, #0B1E3D 80%)',
           boxShadow:'0 1px 2px rgba(0,0,0,0.05), 0 8px 24px rgba(0,0,0,0.10)',
         }}>
+          <div style={{ position:'absolute', left:0, right:0, top:0, height:3, background:'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
           <div style={{ position:'absolute', top:'-60%', right:'-20%', width:'60%', height:'220%', pointerEvents:'none',
             background:'linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%)', transform:'rotate(8deg)' }} />
           <div style={{ position:'relative', zIndex:1 }}>
@@ -4922,4 +5329,4 @@ export default function Admissions() {
       </div>
     </>
   )
-}
+}

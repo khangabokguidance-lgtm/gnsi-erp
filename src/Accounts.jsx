@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useRef, useCallback, Fragment } from 'react'
 import { supabase } from './supabase'
+import { isAdminRole } from './roles'
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -23,7 +24,7 @@ const INCOME_CATEGORIES  = ['Admission', 'Fees', 'Hostel', 'Advance', 'Donation'
 const EXPENSE_CATEGORIES = ['Salary', 'Electricity', 'Stationery', 'Maintenance', 'Transport', 'Event', 'Other']
 const PAYMENT_MODES      = ['Cash', 'Bank', 'UPI', 'Card']
 const ACCOUNT_TYPES      = ['Cash A/c', '2026-27 A/c', '2025-26 A/c']
-const CHART_COLORS       = ['#1e3a6e','#16a34a','#dc2626','#f59e0b','#7c3aed','#0891b2','#be185d','#047857']
+const CHART_COLORS       = ['#1e3a6e','#16a34a','#dc2626','#f59e0b','#a7771f','#0891b2','#8a6118','#047857']
 const STATUS_OPTIONS     = ['Confirmed', 'Pending']
 const PAGE_SIZES         = [25, 50, 100]
 const RECEIPT_BUCKET     = 'account-receipts'
@@ -238,7 +239,7 @@ function StatCard({label,value,color,bg,icon,isCurrency=true,sub}){
 }
 
 function SeverityBadge({severity}){
-  const map={high:{bg:'#fee2e2',color:'#dc2626',label:'High'},medium:{bg:'#fef3c7',color:'#d97706',label:'Med'},low:{bg:'#f1f5f9',color:'#64748b',label:'Low'}}
+  const map={high:{bg:'#fee2e2',color:'#dc2626',label:'High'},medium:{bg:'#fef3c7',color:'#d97706',label:'Med'},low:{bg:'#f3f0e8',color:'#5d6b82',label:'Low'}}
   const s=map[severity]||map.low
   return <span style={{padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:700,backgroundColor:s.bg,color:s.color}}>{s.label}</span>
 }
@@ -254,7 +255,7 @@ const tdS        = {padding:'13px 14px',color:'#475569',fontSize:'13px',fontWeig
 const chartCard  = {backgroundColor:'white',borderRadius:18,padding:24,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 8px 24px -12px rgba(19,42,79,.16)',border:`1px solid ${AC.line}`,transition:'box-shadow .2s'}
 const chartTitle = {fontSize:18,fontWeight:600,color:AC.navy,marginBottom:20,marginTop:0,letterSpacing:'-0.01em',fontFamily:AC.serif}
 const smallBtn   = (bg,color)=>({backgroundColor:bg,color,border:`1px solid ${color}22`,borderRadius:8,padding:'6px 12px',fontSize:12,fontWeight:700,cursor:'pointer',transition:'transform .12s, filter .12s',fontFamily:'inherit'})
-const pgBtn      = (disabled)=>({padding:'7px 13px',borderRadius:9,border:`1px solid ${AC.line}`,cursor:disabled?'not-allowed':'pointer',fontSize:13,fontWeight:600,backgroundColor:'white',color:disabled?'#cbd5e1':AC.navy2,transition:'all .15s ease',fontFamily:'inherit'})
+const pgBtn      = (disabled)=>({padding:'7px 13px',borderRadius:9,border:`1px solid ${AC.line}`,cursor:disabled?'not-allowed':'pointer',fontSize:13,fontWeight:600,backgroundColor:'white',color:disabled?'#d9d2c2':AC.navy2,transition:'all .15s ease',fontFamily:'inherit'})
 
 const AC_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap');
@@ -290,6 +291,16 @@ const AC_CSS = `
 .ac-tab:hover{color:${AC.ink};background:#f3f0e8!important;filter:none!important}
 .ac-tab.on{background:linear-gradient(180deg,${AC.navy2},${AC.navy})!important;color:#fff;box-shadow:0 6px 14px -6px rgba(19,42,79,.6)}
 .ac-tab .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.ac-groups{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.ac-group{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;padding:13px 16px;border-radius:16px;border:1px solid ${AC.line};background:#fff;cursor:pointer;font-family:inherit;box-shadow:0 1px 2px rgba(19,42,79,.05);transition:border-color .15s,box-shadow .15s,transform .15s;min-width:0}
+.ac-group:hover{transform:translateY(-1px);box-shadow:0 12px 26px -18px rgba(19,42,79,.45)}
+.ac-group.on{background:linear-gradient(135deg,#0e203f,${AC.navy} 60%,${AC.navy2});border-color:${AC.navy};box-shadow:0 14px 28px -16px rgba(19,42,79,.7)}
+.ac-group-t{font-size:14.5px;font-weight:800;color:${AC.ink};letter-spacing:-.01em}
+.ac-group.on .ac-group-t{color:#fff}
+.ac-group-s{font-size:11.5px;color:${AC.muted};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.ac-group.on .ac-group-s{color:rgba(255,255,255,.6)}
+.ac-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 6px;border-radius:99px;background:${AC.gold};color:#fff;font-size:10.5px;font-weight:800}
+@media (max-width:760px){.ac-groups{grid-template-columns:repeat(2,minmax(0,1fr))}.ac-group-s{display:none}}
 .ac-tab.on .dot{background:${AC.gold}!important}
 .ac-card{background:#fff;border:1px solid ${AC.line};border-radius:18px;box-shadow:0 1px 2px rgba(19,42,79,.05),0 8px 24px -12px rgba(19,42,79,.16)}
 @keyframes acUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
@@ -300,8 +311,27 @@ const AC_CSS = `
 // ══════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════
+// ── FLOW FIX: Fees → Accounts ────────────────────────────────────────────
+// Rows written by collectFee()/upsertAccount() carry source_type/source_ref
+// (adm_fee, flat_fee, course_fee, advance_fee, …). They are the Accounts
+// side of a fee record — editing or deleting them here left Fees showing a
+// payment the books no longer had (the same kind of drift as the earlier
+// ~₹86K mismatch). They can only be changed from Fees (Revert / Fix Date),
+// which updates both sides together.
+const isLinkedEntry = e => !!(e && (e.source_type || e.source_ref))
+const linkedEntryMsg = e => {
+  const t = String(e?.source_type || '')
+  const from = /fee/.test(t) ? 'Fees' : 'the module that created it'
+  return `This entry was created automatically by ${from}${t ? ` (${t})` : ''}.
+
+To keep Fees and Accounts matching, change it from ${from === 'Fees' ? 'Fees → Student Ledger → Revert / Fix Date' : from}, not here.`
+}
+
 function Accounts({role,userId}){
-  const isAdmin      = role==='admin'
+  // FLOW FIX: App passes role lower-cased, so 'Administrator' → 'administrator'
+  // and 'Co-Admin' → 'co-admin' never equalled 'admin' — real admins were
+  // treated as non-admins here (no delete, no month close, no income entry).
+  const isAdmin      = role==='admin'||role==='administrator'||role==='co-admin'||isAdminRole(role)
   // Named users authorized to edit expenditure entries regardless of their
   // generic `role` string — matched against staff.id (see currentStaff below).
   // Add/remove staff.id values here as authorized editors change.
@@ -888,6 +918,7 @@ function Accounts({role,userId}){
   }
 
   const openEdit=(item)=>{
+    if(isLinkedEntry(item)){alert(linkedEntryMsg(item));return}
     setEditEntry(item)
     setRows([{
       entry_date:item.entry_date,payment_date:item.payment_date||item.entry_date,type:item.type,category:item.category,
@@ -903,6 +934,8 @@ function Accounts({role,userId}){
   }
 
   const openDuplicate=(item)=>{
+    // A manual copy of fee income would count the same money twice.
+    if(isLinkedEntry(item)){alert(linkedEntryMsg(item)+'\n\nDuplicating it would record the same fee twice.');return}
     setEditEntry(null)
     setRows([{
       entry_date:today,payment_date:today,type:item.type,category:item.category,
@@ -957,6 +990,7 @@ function Accounts({role,userId}){
     }
     setSaving(true)
     const enteredByName = currentStaff?.name || role
+    if(editEntry&&isLinkedEntry(editEntry)){alert(linkedEntryMsg(editEntry));setSaving(false);return}
     if(editEntry){
       let editReason=''
       if(isSuperintendent){
@@ -1093,8 +1127,9 @@ function Accounts({role,userId}){
 
   const handleDelete=async(id)=>{
     if(!isAdmin){alert('Only admin can delete transactions.');return}
-    if(!window.confirm('Delete this transaction?'))return
     const original=entries.find(e=>e.id===id)
+    if(isLinkedEntry(original)){alert(linkedEntryMsg(original));return}
+    if(!window.confirm('Delete this transaction?'))return
     const ok=await mutateAccountsTable(
       ()=>supabase.from('accounts').update({is_soft_deleted:true,deleted_by:role,deleted_at:new Date().toISOString()}).eq('id',id),
       {errorContext:'Delete'}
@@ -1120,6 +1155,7 @@ function Accounts({role,userId}){
   const handlePermanentDelete=async(id)=>{
     if(!isAdmin)return
     const item=deletedRows.find(e=>e.id===id)
+    if(isLinkedEntry(item)){alert(linkedEntryMsg(item)+'\n\nUse Restore instead if it was deleted by mistake.');return}
     if(!window.confirm(`Permanently delete this entry?\n\n"${item?.category||''} — ${item?.type||''} — ₹${Number(item?.amount||0).toLocaleString('en-IN')}"\n\nThis CANNOT be undone.`))return
     if(item?.receipt_url){
       const path=item.receipt_url.split('/').pop()
@@ -1137,6 +1173,11 @@ function Accounts({role,userId}){
   const handleBulkDelete=async()=>{
     if(!isAdmin){alert('Only admin can delete transactions.');return}
     if(!selected.size)return
+    const linkedSel=[...selected].map(id=>entries.find(e=>e.id===id)).filter(isLinkedEntry)
+    if(linkedSel.length){
+      alert(`${linkedSel.length} of the selected entries were created by Fees and can't be deleted here.\n\nUntick them (or revert them from Fees → Student Ledger) and try again.`)
+      return
+    }
     if(!window.confirm(`Delete ${selected.size} selected transaction(s)?`))return
     // PHASE 6 FIX: previously no error check per-row — one failed row in the
     // loop would silently continue to the next, and the audit log could end
@@ -1458,17 +1499,17 @@ function Accounts({role,userId}){
     const w=window.open('','_blank');if(!w)return
     const isIncome=item.type==='Income'
     w.document.write(`<html><head><title>Voucher Memo - ${item.id||''}</title><style>
-      body{font-family:Arial,sans-serif;padding:36px;color:#1e293b}
+      body{font-family:Arial,sans-serif;padding:36px;color:#14213d}
       .head{text-align:center;border-bottom:2px solid #1e3a6e;padding-bottom:12px;margin-bottom:20px}
       .head h1{font-size:18px;color:#1e3a6e;margin:0 0 4px}
-      .head p{font-size:12px;color:#64748b;margin:2px 0}
+      .head p{font-size:12px;color:#5d6b82;margin:2px 0}
       h2{font-size:15px;color:#1e3a6e;margin:20px 0 10px;text-align:center;text-decoration:underline}
       table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px}
-      td{padding:8px 12px;border-bottom:1px solid #f1f5f9}
-      td.label{color:#64748b;font-weight:600;width:40%}
+      td{padding:8px 12px;border-bottom:1px solid #f3f0e8}
+      td.label{color:#5d6b82;font-weight:600;width:40%}
       .amt{font-size:20px;font-weight:800;text-align:center;padding:14px;border:2px solid ${isIncome?'#16a34a':'#dc2626'};border-radius:8px;color:${isIncome?'#16a34a':'#dc2626'};margin:16px 0}
       .sig{display:flex;justify-content:space-between;margin-top:60px}
-      .sig div{width:45%;text-align:center;border-top:1px solid #1e293b;padding-top:6px;font-size:12px;color:#374151}
+      .sig div{width:45%;text-align:center;border-top:1px solid #14213d;padding-top:6px;font-size:12px;color:#2e3b52}
     </style></head><body>
     <div class="head">
       <h1>${INSTITUTE_INFO.name}</h1>
@@ -1516,7 +1557,7 @@ function Accounts({role,userId}){
     ${plDatewise.map(d=>`<tr><td>${d.date}</td><td class="green">${fmt(d.income)}</td><td class="red">${fmt(d.expense)}</td><td class="${d.income-d.expense>=0?'green':'red'}">${fmt(d.income-d.expense)}</td></tr>`).join('')}
     <tr class="total"><td>Total</td><td class="green">${fmt(totalThisInc)}</td><td class="red">${fmt(totalThisExp)}</td><td class="${net>=0?'green':'red'}">${fmt(net)}</td></tr>
     </table>`:''
-    w.document.write(`<html><head><title>P&L - ${plPeriodLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#1e293b}h1{font-size:22px}h2{font-size:15px;font-weight:600;margin:20px 0 8px;color:#1e3a6e}p{font-size:13px;color:#64748b;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#f8fafc;padding:8px 12px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f1f5f9}.total{font-weight:bold;background:#f8fafc}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
+    w.document.write(`<html><head><title>P&L - ${plPeriodLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#14213d}h1{font-size:22px}h2{font-size:15px;font-weight:600;margin:20px 0 8px;color:#1e3a6e}p{font-size:13px;color:#5d6b82;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#faf8f3;padding:8px 12px;text-align:left;border-bottom:1px solid #e8e3d8;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f3f0e8}.total{font-weight:bold;background:#faf8f3}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
     <h1>Income & Expenditure Statement</h1>
     <p>Period: ${plPeriodLabel}${advLabel} | Generated: ${new Date().toLocaleString('en-IN')}</p>
     ${plShowDatewise?datewiseSection:`<h2>Income</h2><table><tr><th>Category</th><th>Amount</th></tr>
@@ -1539,7 +1580,7 @@ function Accounts({role,userId}){
   const printDatewise=()=>{
     const w=window.open('','_blank')
     const periodLabel=`${rptDateFrom||'Beginning'} to ${rptDateTo||'Present'}`
-    w.document.write(`<html><head><title>Date-wise Income &amp; Expenditure - ${periodLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#1e293b}h1{font-size:22px}p{font-size:13px;color:#64748b;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#f8fafc;padding:8px 12px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f1f5f9}.total{font-weight:bold;background:#f8fafc}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
+    w.document.write(`<html><head><title>Date-wise Income &amp; Expenditure - ${periodLabel}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#14213d}h1{font-size:22px}p{font-size:13px;color:#5d6b82;margin:0 0 16px}table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}th{background:#faf8f3;padding:8px 12px;text-align:left;border-bottom:1px solid #e8e3d8;font-size:12px}td{padding:8px 12px;border-bottom:1px solid #f3f0e8}.total{font-weight:bold;background:#faf8f3}.green{color:#16a34a}.red{color:#dc2626}</style></head><body>
     <h1>Date-wise Income &amp; Expenditure</h1>
     <p>Period: ${periodLabel} | Generated: ${new Date().toLocaleString('en-IN')}</p>
     <table><tr><th>Date</th><th>Income</th><th>Expense</th><th>Net</th></tr>
@@ -1594,10 +1635,10 @@ function Accounts({role,userId}){
     }
 
     // gridlines + y-axis labels (4 steps)
-    ctx.strokeStyle = '#E2E8F0'
+    ctx.strokeStyle = '#e8e3d8'
     ctx.lineWidth = 1
     ctx.font = '11px Arial, sans-serif'
-    ctx.fillStyle = '#94A3B8'
+    ctx.fillStyle = '#8a93a6'
     ctx.textAlign = 'right'
     const steps = 4
     for (let i = 0; i <= steps; i++) {
@@ -1630,7 +1671,7 @@ function Accounts({role,userId}){
       ctx.fill()
 
       // value label above bar
-      ctx.fillStyle = '#1E293B'
+      ctx.fillStyle = '#14213d'
       ctx.font = 'bold 11px Arial, sans-serif'
       ctx.textAlign = 'center'
       ctx.fillText('₹' + Math.round(b.value).toLocaleString('en-IN'), x + barW / 2, y - 6)
@@ -1645,7 +1686,7 @@ function Accounts({role,userId}){
     })
 
     // baseline
-    ctx.strokeStyle = '#CBD5E1'
+    ctx.strokeStyle = '#d9d2c2'
     ctx.lineWidth = 1.4
     ctx.beginPath()
     ctx.moveTo(padLeft, padTop + chartH)
@@ -2256,11 +2297,11 @@ function Accounts({role,userId}){
       body{font-family:Arial,sans-serif;padding:24px;font-size:12px;color:#1a2535}
       h1{font-size:18px;margin-bottom:4px}p{color:#666;margin:0 0 16px}
       table{width:100%;border-collapse:collapse;margin-bottom:20px}
-      th{background:#831843;color:#fff;padding:7px 10px;text-align:left;font-size:11px}
+      th{background:#6b4a12;color:#fff;padding:7px 10px;text-align:left;font-size:11px}
       td{padding:7px 10px;border-bottom:1px solid #eee}
       .day-header{background:#fdf2f8;font-weight:bold;padding:6px 10px}
       .subtotal{background:#fdf7fa;font-weight:bold}
-      .grand{background:#831843;color:#fff;font-weight:bold}
+      .grand{background:#6b4a12;color:#fff;font-weight:bold}
       .type-income{color:#16a34a;font-weight:600}
       .type-expense{color:#dc2626;font-weight:600}
       .amt{text-align:right;font-weight:600}
@@ -2269,8 +2310,8 @@ function Accounts({role,userId}){
       .card{flex:1;border-radius:8px;padding:10px 14px}
       .card.income{background:#dcfce7;border-left:3px solid #16a34a}
       .card.expense{background:#fee2e2;border-left:3px solid #dc2626}
-      .card.net{background:#eff6ff;border-left:3px solid #1e3a6e}
-      .card p{margin:0}.card .lbl{font-size:11px;color:#475569;font-weight:600}.card .val{font-size:16px;font-weight:800;color:#0f172a}
+      .card.net{background:#eef2f9;border-left:3px solid #1e3a6e}
+      .card p{margin:0}.card .lbl{font-size:11px;color:#475569;font-weight:600}.card .val{font-size:16px;font-weight:800;color:#0f1b2e}
       @page{margin:15mm}
     </style></head><body>
     <h1>🗓️ Weekly Income &amp; Expenditure Report — GNSI Portal</h1>
@@ -2479,14 +2520,14 @@ function Accounts({role,userId}){
     const totalAmt=filtered.reduce((s,e)=>s+Number(e.amount),0)
     const win=window.open('','_blank')
     win.document.write(`<html><head><title>Daily Expenditure Register</title><style>
-      body{font-family:Arial,sans-serif;padding:24px;color:#1e293b}
+      body{font-family:Arial,sans-serif;padding:24px;color:#14213d}
       h1{font-size:16px;color:#1e3a6e;margin-bottom:2px}
-      p{font-size:11px;color:#64748b;margin:2px 0}
+      p{font-size:11px;color:#5d6b82;margin:2px 0}
       table{width:100%;border-collapse:collapse;margin-top:14px;font-size:11px}
       th{background:#1e3a6e;color:white;padding:6px 8px;text-align:left}
-      td{padding:5px 8px;border-bottom:1px solid #f1f5f9}
-      .day-header{background:#f0f9ff;font-weight:bold;color:#0369a1}
-      .subtotal{background:#f8fafc;font-weight:bold}
+      td{padding:5px 8px;border-bottom:1px solid #f3f0e8}
+      .day-header{background:#f0f9ff;font-weight:bold;color:#1e3a6e}
+      .subtotal{background:#faf8f3;font-weight:bold}
       .amt{text-align:right;color:#c0392b;font-weight:600}
       .total-amt{text-align:right;font-weight:bold}
       .grand{background:#1e3a6e;color:white;font-weight:bold}
@@ -3144,10 +3185,10 @@ function Accounts({role,userId}){
     padding: isMobile ? '7px 12px' : '8px 18px',
     borderRadius:8, border:'none', cursor:'pointer', fontWeight:600,
     fontSize: isMobile ? 12 : 13,
-    backgroundColor:activeTab===t?'#1e3a6e':'#f1f5f9',
-    color:activeTab===t?'white':'#64748b', transition:'all .15s',
+    backgroundColor:activeTab===t?'#1e3a6e':'#f3f0e8',
+    color:activeTab===t?'white':'#5d6b82', transition:'all .15s',
   })
-  const qBtn=(key)=>({padding: isMobile ? '5px 10px' : '5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,transition:'all .15s',backgroundColor:activeQuick===key?'#1e3a6e':'#f1f5f9',color:activeQuick===key?'white':'#64748b'})
+  const qBtn=(key)=>({padding: isMobile ? '5px 10px' : '5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,transition:'all .15s',backgroundColor:activeQuick===key?'#1e3a6e':'#f3f0e8',color:activeQuick===key?'white':'#5d6b82'})
 
   // ── responsive grid columns ────────────────────────────────────────────
   const statCardCols    = isMobile ? 'repeat(2,1fr)' : isTablet ? 'repeat(3,1fr)' : 'repeat(5,1fr)'
@@ -3227,8 +3268,8 @@ function Accounts({role,userId}){
             {pendingApprovals.slice(0,5).map(req=>(
               <div key={req.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,backgroundColor:'white',borderRadius:8,padding:'8px 12px',fontSize:12}}>
                 <div style={{minWidth:0}}>
-                  <strong style={{color:'#1e293b'}}>{fmt(req.amount)}</strong> — {req.accounts?.category||'—'}{req.accounts?.note?` · ${req.accounts.note}`:''}
-                  <div style={{fontSize:11,color:'#94a3b8'}}>by {req.requested_by} · {req.reason==='both'?'role + amount':req.reason==='role'?'role':'amount'}</div>
+                  <strong style={{color:'#14213d'}}>{fmt(req.amount)}</strong> — {req.accounts?.category||'—'}{req.accounts?.note?` · ${req.accounts.note}`:''}
+                  <div style={{fontSize:11,color:'#8a93a6'}}>by {req.requested_by} · {req.reason==='both'?'role + amount':req.reason==='role'?'role':'amount'}</div>
                 </div>
                 <div style={{display:'flex',gap:6,flexShrink:0}}>
                   <button disabled={approvalBusyId===req.id} onClick={()=>approveExpenditure(req)} style={{...smallBtn('#f0fdf4','#16a34a'),fontSize:11}}>✓ Approve</button>
@@ -3247,8 +3288,8 @@ function Accounts({role,userId}){
     <div style={{display:'grid',gridTemplateColumns:statCardCols,gap: isMobile ? 10 : 14,marginBottom:16}}>
       <StatCard label={isFiltered?'Income (filtered)':'Total Income'} value={isFiltered?filteredIncome:totalIncome} color="#16a34a" bg="#dcfce7" icon="📈" sub={isFiltered?`All-time: ${fmt(totalIncome)}`:null}/>
       <StatCard label={isFiltered?'Expense (filtered)':'Total Expense'} value={isFiltered?filteredExpense:totalExpense} color="#dc2626" bg="#fee2e2" icon="📉" sub={isFiltered?`All-time: ${fmt(totalExpense)}`:null}/>
-      <StatCard label={isFiltered?'Net (filtered)':'Net Balance'} value={isFiltered?filteredNet:totalIncome-totalExpense} color="#1e3a6e" bg="#eff6ff" icon="💼"/>
-      <StatCard label="Transactions" value={entries.length} color="#7c3aed" bg="#f3e8ff" icon="🧾" isCurrency={false}/>
+      <StatCard label={isFiltered?'Net (filtered)':'Net Balance'} value={isFiltered?filteredNet:totalIncome-totalExpense} color="#1e3a6e" bg="#eef2f9" icon="💼"/>
+      <StatCard label="Transactions" value={entries.length} color="#a7771f" bg="#fbf3e0" icon="🧾" isCurrency={false}/>
       <StatCard label="Pending" value={pendingCount} color="#f59e0b" bg="#fffbeb" icon="⏳" isCurrency={false} sub={pendingCount>0?'Uncleared entries':'All confirmed'}/>
     </div>
     )}
@@ -3258,11 +3299,11 @@ function Accounts({role,userId}){
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
         <span style={{width:30,height:30,borderRadius:9,background:AC.goldLight,border:`1px solid ${AC.goldBorder}`,display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:14}}>📅</span>
         <span style={{fontSize:17,fontWeight:600,color:AC.navy,fontFamily:AC.serif}}>Today's Summary</span>
-        {!isMobile && <span style={{fontSize:12,color:'#94a3b8'}}>{new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</span>}
-        {todayCount===0&&<span style={{marginLeft:'auto',fontSize:12,color:'#94a3b8',fontStyle:'italic'}}>No transactions today</span>}
+        {!isMobile && <span style={{fontSize:12,color:'#8a93a6'}}>{new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</span>}
+        {todayCount===0&&<span style={{marginLeft:'auto',fontSize:12,color:'#8a93a6',fontStyle:'italic'}}>No transactions today</span>}
       </div>
       <div style={{display:'grid',gridTemplateColumns:todayCols,gap: isMobile ? 10 : 12}}>
-        {[{label:"Today's Income",value:todayIncome,color:'#16a34a',bg:'#f0fdf4',icon:'⬆️'},{label:"Today's Expense",value:todayExpense,color:'#dc2626',bg:'#fff5f5',icon:'⬇️'},{label:"Today's Net",value:todayNet,color:todayNet>=0?'#1e3a6e':'#dc2626',bg:'#eff6ff',icon:todayNet>=0?'✅':'⚠️'},{label:"Today's Entries",value:todayCount,color:'#7c3aed',bg:'#faf5ff',icon:'🔢',isCurrency:false}].map(card=>(
+        {[{label:"Today's Income",value:todayIncome,color:'#16a34a',bg:'#f0fdf4',icon:'⬆️'},{label:"Today's Expense",value:todayExpense,color:'#dc2626',bg:'#fff5f5',icon:'⬇️'},{label:"Today's Net",value:todayNet,color:todayNet>=0?'#1e3a6e':'#dc2626',bg:'#eef2f9',icon:todayNet>=0?'✅':'⚠️'},{label:"Today's Entries",value:todayCount,color:'#a7771f',bg:'#fbf6e8',icon:'🔢',isCurrency:false}].map(card=>(
           <div key={card.label} style={{backgroundColor:card.bg,borderRadius:12,padding: isMobile ? '11px 12px' : '13px 16px',border:`1px solid ${card.color}1f`,position:'relative',overflow:'hidden'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6,marginBottom:6}}>
               <p style={{fontSize:11,color:card.color,fontWeight:700,margin:0,letterSpacing:'.04em'}}>{card.label}</p>
@@ -3280,18 +3321,18 @@ function Accounts({role,userId}){
         <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${AC.navy},${AC.navy2} 60%,${AC.gold})`}}/>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18,flexWrap:'wrap',gap:10}}>
           <h2 style={{fontSize: isMobile ? 19 : 22,fontWeight:600,color:AC.navy,margin:0,fontFamily:AC.serif}}>{editEntry?'✏️ Edit Entry':`➕ Add ${rows.length>1?`${rows.length} Entries`:'Entry'}`}</h2>
-          {!editEntry&&<button onClick={addRow} style={{backgroundColor:'#eff6ff',color:'#1e3a6e',border:'1px solid #bfdbfe',borderRadius:8,padding:'7px 14px',fontWeight:600,cursor:'pointer',fontSize:13}}>+ Add Row</button>}
+          {!editEntry&&<button onClick={addRow} style={{backgroundColor:'#eef2f9',color:'#1e3a6e',border:'1px solid #bfdbfe',borderRadius:8,padding:'7px 14px',fontWeight:600,cursor:'pointer',fontSize:13}}>+ Add Row</button>}
         </div>
         {!canAddIncome&&<div style={{backgroundColor:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'8px 14px',marginBottom:14,fontSize:13,color:'#92400e'}}>⚠️ You can only add <strong>Expense</strong> entries.</div>}
         <form onSubmit={handleSubmit}>
           {rows.map((row,i)=>(
-            <div key={i} style={{border:rows.length>1?'1px solid #e2e8f0':'none',borderRadius:10,padding:rows.length>1?16:0,marginBottom:rows.length>1?14:0}}>
+            <div key={i} style={{border:rows.length>1?'1px solid #e8e3d8':'none',borderRadius:10,padding:rows.length>1?16:0,marginBottom:rows.length>1?14:0}}>
               {rows.length>1&&<div style={{display:'flex',justifyContent:'space-between',marginBottom:10,alignItems:'center'}}><span style={{fontSize:13,fontWeight:600,color:'#1e3a6e'}}>Row {i+1}</span>{i>0&&<button type="button" onClick={()=>removeRow(i)} style={{backgroundColor:'#fee2e2',color:'#dc2626',border:'none',borderRadius:6,padding:'3px 10px',fontSize:12,cursor:'pointer'}}>✖ Remove</button>}</div>}
               <div style={{display:'grid',gridTemplateColumns:formCols,gap:14}}>
                 <div><label style={lStyle}>Date {row.type==='Income'?'(Entered)':''} <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.entry_date} max={today} onChange={e=>updateRow(i,'entry_date',e.target.value)} required style={iStyle}/></div>
                 {row.type==='Income'&&<div><label style={lStyle}>💰 Actual Payment Date <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.payment_date||row.entry_date} max={today} onChange={e=>updateRow(i,'payment_date',e.target.value)} required style={iStyle}/></div>}
                 <div><label style={lStyle}>Type <span style={{color:'#dc2626'}}>*</span></label>
-                  <select value={row.type} disabled={!canAddIncome} onChange={e=>{updateRow(i,'type',e.target.value);updateRow(i,'category','')}} required style={{...iStyle,backgroundColor:!canAddIncome?'#f8fafc':'white'}}>
+                  <select value={row.type} disabled={!canAddIncome} onChange={e=>{updateRow(i,'type',e.target.value);updateRow(i,'category','')}} required style={{...iStyle,backgroundColor:!canAddIncome?'#faf8f3':'white'}}>
                     {canAddIncome&&<option>Income</option>}<option>Expense</option>
                   </select>
                 </div>
@@ -3306,11 +3347,11 @@ function Accounts({role,userId}){
                   </select>
                 </div>
                 {row.type==='Expense'&&(
-                  <div><label style={lStyle}>Sub-category <span style={{fontWeight:400,color:'#94a3b8'}}>(optional)</span></label>
+                  <div><label style={lStyle}>Sub-category <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
                     <select value={row.sub_category||''} onChange={e=>{
                       if(e.target.value==='__add_new_sub__'){addCustomSubCategory(i,row.category);return}
                       updateRow(i,'sub_category',e.target.value)
-                    }} disabled={!row.category} style={{...iStyle,backgroundColor:!row.category?'#f8fafc':'white'}}>
+                    }} disabled={!row.category} style={{...iStyle,backgroundColor:!row.category?'#faf8f3':'white'}}>
                       <option value="">{row.category?'None':'Select a category first'}</option>
                       {subCategoryOptionsFor(row.category).map(c=><option key={c}>{c}</option>)}
                       {row.category&&<option value="__add_new_sub__">+ Add New Sub-category…</option>}
@@ -3318,7 +3359,7 @@ function Accounts({role,userId}){
                   </div>
                 )}
                 {row.type==='Expense'&&(
-                  <div><label style={lStyle}>Vendor / Payee <span style={{fontWeight:400,color:'#94a3b8'}}>(optional)</span></label>
+                  <div><label style={lStyle}>Vendor / Payee <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
                     <select value={row.vendor_id||''} onChange={e=>{
                       if(e.target.value==='__add_vendor__'){addNewVendor(i);return}
                       updateRow(i,'vendor_id',e.target.value)
@@ -3330,7 +3371,7 @@ function Accounts({role,userId}){
                   </div>
                 )}
                 {row.type==='Income'&&(
-                  <div><label style={lStyle}>Payer / Source <span style={{fontWeight:400,color:'#94a3b8'}}>(optional)</span></label>
+                  <div><label style={lStyle}>Payer / Source <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
                     <select value={row.payer_id||''} onChange={e=>{
                       if(e.target.value==='__add_payer__'){addNewPayer(i);return}
                       updateRow(i,'payer_id',e.target.value)
@@ -3354,7 +3395,7 @@ function Accounts({role,userId}){
                     {ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}
                   </select>
                 </div>
-                <div><label style={lStyle}>Voucher Head <span style={{fontWeight:400,color:'#94a3b8'}}>(who takes it)</span> <span style={{color:'#dc2626'}}>*</span></label>
+                <div><label style={lStyle}>Voucher Head <span style={{fontWeight:400,color:'#8a93a6'}}>(who takes it)</span> <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.voucher_head||''} onChange={e=>{
                     if(e.target.value==='__add_staff__'){addNewStaffMember(i);return}
                     updateRow(i,'voucher_head',e.target.value)
@@ -3365,7 +3406,7 @@ function Accounts({role,userId}){
                   </select>
                 </div>
                 <div><label style={lStyle}>Entered By</label>
-                  <input type="text" value={currentStaff?.name||role||'Unknown'} readOnly disabled style={{...iStyle,backgroundColor:'#f8fafc',color:'#64748b',fontWeight:600,cursor:'not-allowed'}}/>
+                  <input type="text" value={currentStaff?.name||role||'Unknown'} readOnly disabled style={{...iStyle,backgroundColor:'#faf8f3',color:'#5d6b82',fontWeight:600,cursor:'not-allowed'}}/>
                 </div>
                 <div><label style={lStyle}>Status <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.status} onChange={e=>updateRow(i,'status',e.target.value)} required style={iStyle}>
@@ -3377,15 +3418,15 @@ function Accounts({role,userId}){
             </div>
           ))}
           <div style={{marginTop:16}}>
-            <label style={lStyle}>🧾 Receipt / Attachment <span style={{fontWeight:400,color:'#94a3b8'}}>(optional)</span></label>
+            <label style={lStyle}>🧾 Receipt / Attachment <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
             <div style={{display:'flex',gap:10,alignItems:'center',marginTop:6,flexWrap:'wrap'}}>
               <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={e=>setReceiptFile(e.target.files[0]||null)} style={{fontSize:13,maxWidth:'100%'}}/>
-              {(rows[0]?.receipt_url||receiptFile)&&<button type="button" onClick={()=>setViewReceipt(receiptFile?URL.createObjectURL(receiptFile):rows[0].receipt_url)} style={{backgroundColor:'#eff6ff',color:'#1e3a6e',border:'1px solid #bfdbfe',borderRadius:6,padding:'5px 12px',fontSize:12,cursor:'pointer',fontWeight:500}}>👁 Preview</button>}
+              {(rows[0]?.receipt_url||receiptFile)&&<button type="button" onClick={()=>setViewReceipt(receiptFile?URL.createObjectURL(receiptFile):rows[0].receipt_url)} style={{backgroundColor:'#eef2f9',color:'#1e3a6e',border:'1px solid #bfdbfe',borderRadius:6,padding:'5px 12px',fontSize:12,cursor:'pointer',fontWeight:500}}>👁 Preview</button>}
               {rows[0]?.receipt_url&&!receiptFile&&<span style={{fontSize:12,color:'#16a34a'}}>✅ Receipt on file</span>}
             </div>
           </div>
           <div style={{display:'flex',gap:12,marginTop:20,flexWrap:'wrap'}}>
-            <button type="submit" disabled={saving||uploadingReceipt} style={{background:(saving||uploadingReceipt)?'#94a3b8':`linear-gradient(180deg,${AC.navy2},${AC.navy})`,color:'white',border:`1px solid ${AC.navy}`,borderRadius:12,padding:'12px 28px',fontWeight:700,cursor:(saving||uploadingReceipt)?'not-allowed':'pointer',fontSize:14,flex: isMobile ? '1' : 'none',boxShadow:'0 8px 18px -8px rgba(19,42,79,.6)'}}>
+            <button type="submit" disabled={saving||uploadingReceipt} style={{background:(saving||uploadingReceipt)?'#8a93a6':`linear-gradient(180deg,${AC.navy2},${AC.navy})`,color:'white',border:`1px solid ${AC.navy}`,borderRadius:12,padding:'12px 28px',fontWeight:700,cursor:(saving||uploadingReceipt)?'not-allowed':'pointer',fontSize:14,flex: isMobile ? '1' : 'none',boxShadow:'0 8px 18px -8px rgba(19,42,79,.6)'}}>
               {uploadingReceipt?'⏳ Uploading…':saving?'⏳ Saving…':editEntry?'✅ Update':'✅ Save'}
             </button>
             <button type="button" onClick={()=>{setShowForm(false);setEditEntry(null);setRows([{...emptyRow}])}} style={{backgroundColor:'white',color:AC.muted,border:`1px solid ${AC.line2}`,borderRadius:12,padding:'12px 22px',fontWeight:600,cursor:'pointer',fontSize:14}}>Cancel</button>
@@ -3394,47 +3435,66 @@ function Accounts({role,userId}){
       </div>
     )}
 
-    {/* ── tabs ── */}
-    <nav className="ac-tabs" role="tablist">
-      {[
-        ['transactions','🧾 Transactions'],
-        ['analytics','📊 Analytics'],
-        ['budgets','💰 Budgets'],
-        ['daily','📋 Daily'],
-        ['expenditure','💵 Expenditure'],
-        ['reports','📑 Reports'],
-        ...(isAdmin?[['fraud',digestItems.length>0?`📌 For Admin (${digestItems.length})`:'📌 For Admin']]:[] ),
-        // Expenditure v2: approval queue is admin-only to ACT on, but the
-        // pending count itself is meaningful to canWrite roles too (they can
-        // see their own team's requests move through review) — restricted to
-        // isAdmin here since only admin can actually approve/reject.
-        ...(isAdmin?[['approvals',pendingApprovals.length>0?`🔏 Approvals (${pendingApprovals.length})`:'🔏 Approvals']]:[] ),
-        ...(isAdmin?[['staffspend','🧑‍💼 Staff Spend']]:[] ),
-        ...(isAdmin?[['savings','💹 Savings Tracker']]:[] ),
-        ...(isAdmin?[['forecast','📈 Forecast']]:[] ),
-        ...(isAdmin?[['reconciliation','🔒 Reconciliation']]:[] ),
-        // PHASE 4: Balance Sheet tab (admin only)
-        ...(isAdmin?[['balancesheet','📒 Balance Sheet']]:[] ),
-        // Course-wise fee collection + automated anomaly detection for the
-        // specific patterns found in this ledger's audit (duplicate
-        // recurring entries, fee-rate mismatches, missing voucher heads,
-        // outlier amounts, category label fragmentation). Admin only —
-        // this surfaces amounts and per-student detail across the whole
-        // ledger that other roles shouldn't see.
-        ...(isAdmin?[['audit','🛡️ Audit Monitor']]:[] ),
-        ['income','💰 Income Analysis'],
-        // Activity Timeline shows every user's inserts/edits/deletes — admin-only visibility.
-        // Entries are still logged the same way for everyone; this only restricts who can view the log.
-        ...(isAdmin?[['timeline','🕐 Activity']]:[] ),
-      ].map(([id,label])=>{
-        const dot={fraud:'#7c3aed',daily:'#0369a1',expenditure:'#b91c1c',reports:'#be185d',balancesheet:'#047857',audit:'#312e81',approvals:AC.gold}[id]
-        return (
-          <button key={id} role="tab" aria-selected={activeTab===id} className={'ac-tab'+(activeTab===id?' on':'')} onClick={()=>setActiveTab(id)}>
-            {dot&&<span className="dot" style={{background:dot}}/>}{label}
-          </button>
-        )
-      })}
-    </nav>
+    {/* ── tabs — grouped into Books / Analysis / Controls / Reports so 16
+         screens read as four clear areas instead of one long strip ── */}
+    {(()=>{
+      const all=[
+        {id:'transactions',label:'Transactions',group:'books'},
+        {id:'daily',label:'Daily Book',group:'books'},
+        {id:'expenditure',label:'Expenditure',group:'books'},
+        ...(isAdmin?[{id:'reconciliation',label:'Reconciliation',group:'books'}]:[]),
+        ...(isAdmin?[{id:'balancesheet',label:'Balance Sheet',group:'books'}]:[]),
+        {id:'analytics',label:'Analytics',group:'analysis'},
+        {id:'income',label:'Income Analysis',group:'analysis'},
+        ...(isAdmin?[{id:'forecast',label:'Forecast',group:'analysis'}]:[]),
+        ...(isAdmin?[{id:'staffspend',label:'Staff Spend',group:'analysis'}]:[]),
+        ...(isAdmin?[{id:'savings',label:'Savings Tracker',group:'analysis'}]:[]),
+        {id:'budgets',label:'Budgets',group:'controls'},
+        // Approval queue: admin-only to act on, so only admins see it.
+        ...(isAdmin?[{id:'approvals',label:'Approvals',group:'controls',badge:pendingApprovals.length}]:[]),
+        ...(isAdmin?[{id:'fraud',label:'For Admin',group:'controls',badge:digestItems.length}]:[]),
+        // Course-wise fee collection + anomaly detection across the whole ledger.
+        ...(isAdmin?[{id:'audit',label:'Audit Monitor',group:'controls'}]:[]),
+        // Every user's inserts/edits/deletes — admin-only visibility.
+        ...(isAdmin?[{id:'timeline',label:'Activity Log',group:'controls'}]:[]),
+        {id:'reports',label:'Reports & Exports',group:'reports'},
+      ]
+      const GROUPS=[
+        {id:'books',label:'Books',sub:'Day-to-day entries'},
+        {id:'analysis',label:'Analysis',sub:'Trends & insight'},
+        {id:'controls',label:'Controls',sub:'Budgets, approvals, audit'},
+        {id:'reports',label:'Reports',sub:'Statements & exports'},
+      ].filter(g=>all.some(t=>t.group===g.id))
+      const current=all.find(t=>t.id===activeTab)||all[0]
+      const grp=current.group
+      const groupBadge=g=>all.filter(t=>t.group===g).reduce((n,t)=>n+(t.badge||0),0)
+      return (
+        <div style={{marginBottom:18}}>
+          <div className="ac-groups" role="tablist" aria-label="Accounts areas">
+            {GROUPS.map(g=>{
+              const on=g.id===grp, b=groupBadge(g.id)
+              return (
+                <button key={g.id} role="tab" aria-selected={on} className={'ac-group'+(on?' on':'')}
+                  onClick={()=>{ if(!on) setActiveTab(all.find(t=>t.group===g.id).id) }}>
+                  <span style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span className="ac-group-t">{g.label}</span>
+                    {b>0&&<span className="ac-badge">{b}</span>}
+                  </span>
+                  <span className="ac-group-s">{g.sub}</span>
+                </button>
+              )
+            })}
+          </div>
+          <nav className="ac-tabs" role="tablist" style={{marginTop:10}}>
+            {all.filter(t=>t.group===grp).map(t=>(
+              <button key={t.id} role="tab" aria-selected={activeTab===t.id} className={'ac-tab'+(activeTab===t.id?' on':'')} onClick={()=>setActiveTab(t.id)}>
+                {t.label}{t.badge>0&&<span className="ac-badge" style={{marginLeft:6}}>{t.badge}</span>}
+              </button>
+            ))}
+          </nav>
+        </div>
+      )
+    })()}
 
     {/* ══ TAB: TRANSACTIONS ══ */}
 {activeTab==='transactions'&&(
@@ -3480,19 +3540,19 @@ function Accounts({role,userId}){
 
         {/* PAYMENT-DATE FILTER FIX: Income/Expense toggle + quick date range, so you can instantly see "how many paid on date X" */}
         <div style={{display:'flex',gap: isMobile ? 6 : 8,marginBottom:12,alignItems:'center',flexWrap:'wrap'}}>
-          <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Showing:</span>
+          <span style={{fontSize:12,color:'#8a93a6',fontWeight:600}}>Showing:</span>
           <button onClick={()=>setDailyTypeFilter('Income')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyIsIncome?'#16a34a':'#bbf7d0',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyIsIncome?'#16a34a':'#f0fdf4',color:dailyIsIncome?'white':'#16a34a'}}>📈 Income / Payments</button>
           <button onClick={()=>setDailyTypeFilter('Expense')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:!dailyIsIncome?'#dc2626':'#fecaca',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:!dailyIsIncome?'#dc2626':'#fef2f2',color:!dailyIsIncome?'white':'#dc2626'}}>📉 Expense</button>
           {dailyIsIncome&&(
             <>
-              <span style={{width:1,height:20,backgroundColor:'#e2e8f0',margin:'0 4px'}}/>
-              <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Filter by:</span>
-              <button onClick={()=>setDailyDateMode('payment')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyDateMode==='payment'?'#1e3a6e':'#cbd5e1',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='payment'?'#1e3a6e':'#f1f5f9',color:dailyDateMode==='payment'?'white':'#64748b'}}>💰 Payment Date</button>
-              <button onClick={()=>setDailyDateMode('entry')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyDateMode==='entry'?'#1e3a6e':'#cbd5e1',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='entry'?'#1e3a6e':'#f1f5f9',color:dailyDateMode==='entry'?'white':'#64748b'}}>🗓 Entry Date</button>
+              <span style={{width:1,height:20,backgroundColor:'#e8e3d8',margin:'0 4px'}}/>
+              <span style={{fontSize:12,color:'#8a93a6',fontWeight:600}}>Filter by:</span>
+              <button onClick={()=>setDailyDateMode('payment')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyDateMode==='payment'?'#1e3a6e':'#d9d2c2',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='payment'?'#1e3a6e':'#f3f0e8',color:dailyDateMode==='payment'?'white':'#5d6b82'}}>💰 Payment Date</button>
+              <button onClick={()=>setDailyDateMode('entry')} style={{padding: isMobile ? '5px 10px' : '5px 14px',borderRadius:6,border:'1px solid',borderColor:dailyDateMode==='entry'?'#1e3a6e':'#d9d2c2',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:700,backgroundColor:dailyDateMode==='entry'?'#1e3a6e':'#f3f0e8',color:dailyDateMode==='entry'?'white':'#5d6b82'}}>🗓 Entry Date</button>
             </>
           )}
-          <span style={{width:1,height:20,backgroundColor:'#e2e8f0',margin:'0 4px'}}/>
-          <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Quick:</span>
+          <span style={{width:1,height:20,backgroundColor:'#e8e3d8',margin:'0 4px'}}/>
+          <span style={{fontSize:12,color:'#8a93a6',fontWeight:600}}>Quick:</span>
           {[['today','Today'],['week','Week'],['month','Month'],['lastmonth','Last Mo.'],['year','Year']].map(([k,l])=>(
             <button key={k} style={qBtn(k)} onClick={()=>activeQuick===k?clearQuick():applyQuick(k)}>{l}</button>
           ))}
@@ -3510,7 +3570,7 @@ function Accounts({role,userId}){
             <button onClick={()=>{setDailySearch('');setDailyAcctFilter('All');setDailyModeFilter('All');setVoucherHead('');setDateFrom('');setDateTo('');setActiveQuick('')}} style={{...smallBtn('#fee2e2','#dc2626'),padding:'9px 14px',fontSize:12, gridColumn: isMobile ? 'span 2' : 'auto'}}>✖ Clear</button>}
         </div>
 
-        {dailyGroups.length===0?<div style={{textAlign:'center',padding:48,color:'#94a3b8',backgroundColor:'white',borderRadius:12}}>No {dailyTypeFilter.toLowerCase()} entries found for this date range.</div>:(
+        {dailyGroups.length===0?<div style={{textAlign:'center',padding:48,color:'#8a93a6',backgroundColor:'white',borderRadius:12}}>No {dailyTypeFilter.toLowerCase()} entries found for this date range.</div>:(
           <TransactionsViewBanking
             dayRows={dailyFilteredEntries}
             dailyIsIncome={dailyIsIncome}
@@ -3566,12 +3626,12 @@ function Accounts({role,userId}){
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:10}}>
             <div>
               <h3 style={{...chartTitle,fontSize:15,margin:0}}>📑 Expenditure Report</h3>
-              <p style={{fontSize:12,color:'#94a3b8',margin:'4px 0 0'}}>Generates the same letterheaded report as the Reports tab, pre-filtered to Expense entries using the filters below.</p>
+              <p style={{fontSize:12,color:'#8a93a6',margin:'4px 0 0'}}>Generates the same letterheaded report as the Reports tab, pre-filtered to Expense entries using the filters below.</p>
             </div>
             <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-              <button onClick={()=>generateReportPDF({entries:expenditureFilteredEntries,totals:expenditureTotals,byCategory:expenditureByCategory,title:'Expenditure Statement',filterSummary:expenditureFilterSummary,setBusy:setGeneratingExpReport,logLabel:`Report (PDF): Expenditure Statement / Expense`,dateFrom:expDateFrom,dateTo:expDateTo})} disabled={!!generatingExpReport} style={{backgroundColor:generatingExpReport==='pdf'?'#94a3b8':'#dc2626',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingExpReport?'not-allowed':'pointer',fontSize:13}}>{generatingExpReport==='pdf'?'⏳ Generating…':'📄 PDF'}</button>
-              <button onClick={()=>generateReportDOCX({entries:expenditureFilteredEntries,totals:expenditureTotals,title:'Expenditure Statement',filterSummary:expenditureFilterSummary,setBusy:setGeneratingExpReport,logLabel:`Report (DOCX): Expenditure Statement / Expense`,dateFrom:expDateFrom,dateTo:expDateTo})} disabled={!!generatingExpReport} style={{backgroundColor:generatingExpReport==='docx'?'#94a3b8':'#1d4ed8',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingExpReport?'not-allowed':'pointer',fontSize:13}}>{generatingExpReport==='docx'?'⏳ Generating…':'📝 DOCX'}</button>
-              <button onClick={()=>generateReportExcel({entries:expenditureFilteredEntries,totals:expenditureTotals,title:'Expenditure Statement',filterSummary:expenditureFilterSummary,setBusy:setGeneratingExpReport,logLabel:`Report (Excel): Expenditure Statement / Expense`,dateFrom:expDateFrom,dateTo:expDateTo})} disabled={!!generatingExpReport} style={{backgroundColor:generatingExpReport==='excel'?'#94a3b8':'#16a34a',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingExpReport?'not-allowed':'pointer',fontSize:13}}>{generatingExpReport==='excel'?'⏳ Generating…':'📊 Excel'}</button>
+              <button onClick={()=>generateReportPDF({entries:expenditureFilteredEntries,totals:expenditureTotals,byCategory:expenditureByCategory,title:'Expenditure Statement',filterSummary:expenditureFilterSummary,setBusy:setGeneratingExpReport,logLabel:`Report (PDF): Expenditure Statement / Expense`,dateFrom:expDateFrom,dateTo:expDateTo})} disabled={!!generatingExpReport} style={{backgroundColor:generatingExpReport==='pdf'?'#8a93a6':'#dc2626',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingExpReport?'not-allowed':'pointer',fontSize:13}}>{generatingExpReport==='pdf'?'⏳ Generating…':'📄 PDF'}</button>
+              <button onClick={()=>generateReportDOCX({entries:expenditureFilteredEntries,totals:expenditureTotals,title:'Expenditure Statement',filterSummary:expenditureFilterSummary,setBusy:setGeneratingExpReport,logLabel:`Report (DOCX): Expenditure Statement / Expense`,dateFrom:expDateFrom,dateTo:expDateTo})} disabled={!!generatingExpReport} style={{backgroundColor:generatingExpReport==='docx'?'#8a93a6':'#1e3a6e',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingExpReport?'not-allowed':'pointer',fontSize:13}}>{generatingExpReport==='docx'?'⏳ Generating…':'📝 DOCX'}</button>
+              <button onClick={()=>generateReportExcel({entries:expenditureFilteredEntries,totals:expenditureTotals,title:'Expenditure Statement',filterSummary:expenditureFilterSummary,setBusy:setGeneratingExpReport,logLabel:`Report (Excel): Expenditure Statement / Expense`,dateFrom:expDateFrom,dateTo:expDateTo})} disabled={!!generatingExpReport} style={{backgroundColor:generatingExpReport==='excel'?'#8a93a6':'#16a34a',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingExpReport?'not-allowed':'pointer',fontSize:13}}>{generatingExpReport==='excel'?'⏳ Generating…':'📊 Excel'}</button>
             </div>
           </div>
 
@@ -3579,7 +3639,7 @@ function Accounts({role,userId}){
           <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr 1fr' : isTablet ? 'repeat(3,1fr)' : 'repeat(6,1fr)',gap:12}}>
             <input placeholder="🔍 Search…" value={expSearch} onChange={e=>setExpSearch(e.target.value)} style={{...iStyle, gridColumn: isMobile ? 'span 2' : 'auto'}}/>
             <select value={expCategory} onChange={e=>{setExpCategory(e.target.value);setExpSubCategory('All')}} style={iStyle}><option value="All">All Categories</option>{expenseCategoryOptions.map(c=><option key={c}>{c}</option>)}</select>
-            <select value={expSubCategory} onChange={e=>setExpSubCategory(e.target.value)} disabled={expCategory==='All'} style={{...iStyle,backgroundColor:expCategory==='All'?'#f8fafc':'white'}}><option value="All">All Sub-categories</option>{expCategory!=='All'&&subCategoryOptionsFor(expCategory).map(c=><option key={c}>{c}</option>)}</select>
+            <select value={expSubCategory} onChange={e=>setExpSubCategory(e.target.value)} disabled={expCategory==='All'} style={{...iStyle,backgroundColor:expCategory==='All'?'#faf8f3':'white'}}><option value="All">All Sub-categories</option>{expCategory!=='All'&&subCategoryOptionsFor(expCategory).map(c=><option key={c}>{c}</option>)}</select>
             <select value={expVendorFilter} onChange={e=>setExpVendorFilter(e.target.value)} style={iStyle}><option value="All">All Vendors</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select>
             <select value={expAcctFilter} onChange={e=>setExpAcctFilter(e.target.value)} style={iStyle}><option value="All">All Accounts</option>{ACCOUNT_TYPES.map(a=><option key={a}>{a}</option>)}</select>
             <select value={expModeFilter} onChange={e=>setExpModeFilter(e.target.value)} style={iStyle}><option value="All">All Modes</option>{PAYMENT_MODES.map(m=><option key={m}>{m}</option>)}</select>
@@ -3587,9 +3647,9 @@ function Accounts({role,userId}){
             <input type="date" value={expDateTo} onChange={e=>{setExpDateTo(e.target.value);setExpQuick('')}} title="Entry date to" style={iStyle}/>
           </div>
           <div style={{display:'flex',gap:8,marginTop:12,alignItems:'center',flexWrap:'wrap'}}>
-            <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Quick:</span>
+            <span style={{fontSize:12,color:'#8a93a6',fontWeight:600}}>Quick:</span>
             {[['today','Today'],['week','Week'],['month','Month'],['lastmonth','Last Mo.'],['year','Year']].map(([k,l])=>(
-              <button key={k} style={{padding: isMobile?'5px 10px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,backgroundColor:expQuick===k?'#7f1d1d':'#f1f5f9',color:expQuick===k?'white':'#64748b'}} onClick={()=>expQuick===k?clearExpQuick():applyExpQuick(k)}>{l}</button>
+              <button key={k} style={{padding: isMobile?'5px 10px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,backgroundColor:expQuick===k?'#7f1d1d':'#f3f0e8',color:expQuick===k?'white':'#5d6b82'}} onClick={()=>expQuick===k?clearExpQuick():applyExpQuick(k)}>{l}</button>
             ))}
             {(expSearch||expAcctFilter!=='All'||expModeFilter!=='All'||expCategory!=='All'||expSubCategory!=='All'||expVendorFilter!=='All'||expDateFrom||expDateTo)&&
               <button onClick={resetExpFilters} style={{...smallBtn('#fee2e2','#dc2626'),padding:'5px 12px',fontSize:12}}>✖ Reset</button>}
@@ -3606,19 +3666,19 @@ function Accounts({role,userId}){
             <div style={{display:'flex',justifyContent:'space-between',alignItems: isMobile?'flex-start':'center',flexDirection: isMobile?'column':'row',gap:10,marginBottom:18}}>
               <div>
                 <h3 style={{...chartTitle,marginBottom:3}}>📂 All Expense Categories</h3>
-                <p style={{fontSize:12,color:'#94a3b8',margin:0}}>Every category ever used across your expense entries, ranked by total spend</p>
+                <p style={{fontSize:12,color:'#8a93a6',margin:0}}>Every category ever used across your expense entries, ranked by total spend</p>
               </div>
               <div style={{display:'flex',gap: isMobile?10:18,flexWrap:'wrap'}}>
                 <div style={{textAlign:'right'}}>
-                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Categories</div>
+                  <div style={{fontSize:10,fontWeight:700,color:'#8a93a6',textTransform:'uppercase',letterSpacing:'0.4px'}}>Categories</div>
                   <div style={{fontSize:18,fontWeight:800,color:'#1e3a6e'}}>{allExpenseCategorySummary.length}</div>
                 </div>
                 <div style={{textAlign:'right'}}>
-                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Spend</div>
+                  <div style={{fontSize:10,fontWeight:700,color:'#8a93a6',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Spend</div>
                   <div style={{fontSize:18,fontWeight:800,color:'#7f1d1d'}}>{fmt(grandTotal)}</div>
                 </div>
                 {topCat&&<div style={{textAlign:'right'}}>
-                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Top Category</div>
+                  <div style={{fontSize:10,fontWeight:700,color:'#8a93a6',textTransform:'uppercase',letterSpacing:'0.4px'}}>Top Category</div>
                   <div style={{fontSize:14,fontWeight:800,color:'#1e3a6e'}}>{catIcons[topCat.category]||'🏷️'} {topCat.category}</div>
                 </div>}
               </div>
@@ -3631,32 +3691,32 @@ function Accounts({role,userId}){
                 const color=CHART_COLORS[idx%CHART_COLORS.length]
                 const catEntries=expanded?entries.filter(e=>e.type==='Expense'&&isConfirmed(e)&&(e.category||'Uncategorized')===c.category).sort((a,b)=>b.entry_date<a.entry_date?-1:b.entry_date>a.entry_date?1:0):[]
                 return (
-                  <div key={c.category} style={{border:'1px solid #f1f5f9',borderRadius:10,overflow:'hidden',backgroundColor:expanded?'#fafbfc':'white',transition:'background-color 0.2s ease',gridColumn: expanded&&!isMobile?'1 / -1':undefined}}>
+                  <div key={c.category} style={{border:'1px solid #f3f0e8',borderRadius:10,overflow:'hidden',backgroundColor:expanded?'#fafbfc':'white',transition:'background-color 0.2s ease',gridColumn: expanded&&!isMobile?'1 / -1':undefined}}>
                     <div onClick={()=>setCatAllDrilldown(expanded?null:c.category)} style={{padding:'14px 16px',cursor:'pointer'}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
                         <div style={{display:'flex',alignItems:'center',gap:9,minWidth:0}}>
                           <span style={{fontSize:20,width:34,height:34,borderRadius:9,backgroundColor:`${color}1a`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcons[c.category]||'🏷️'}</span>
                           <div style={{minWidth:0}}>
-                            <div style={{fontWeight:700,color:'#1e293b',fontSize:14,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{c.category}</div>
-                            <div style={{fontSize:11,color:'#94a3b8'}}>{c.count} entr{c.count===1?'y':'ies'} · last {c.lastDate}</div>
+                            <div style={{fontWeight:700,color:'#14213d',fontSize:14,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{c.category}</div>
+                            <div style={{fontSize:11,color:'#8a93a6'}}>{c.count} entr{c.count===1?'y':'ies'} · last {c.lastDate}</div>
                           </div>
                         </div>
-                        <span style={{fontSize:14,color:'#cbd5e1',flexShrink:0,marginLeft:6}}>{expanded?'▾':'▸'}</span>
+                        <span style={{fontSize:14,color:'#d9d2c2',flexShrink:0,marginLeft:6}}>{expanded?'▾':'▸'}</span>
                       </div>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
                         <strong style={{fontSize:17,fontWeight:800,color:'#1e3a6e'}}>{fmt(c.total)}</strong>
-                        <span style={{fontSize:11,fontWeight:700,color:'#94a3b8'}}>{pct.toFixed(1)}% of total</span>
+                        <span style={{fontSize:11,fontWeight:700,color:'#8a93a6'}}>{pct.toFixed(1)}% of total</span>
                       </div>
-                      <div style={{height:6,borderRadius:999,backgroundColor:'#f1f5f9',overflow:'hidden'}}>
+                      <div style={{height:6,borderRadius:999,backgroundColor:'#f3f0e8',overflow:'hidden'}}>
                         <div style={{height:'100%',width:`${Math.max(pct,2)}%`,borderRadius:999,backgroundColor:color,transition:'width 0.3s ease'}}/>
                       </div>
                     </div>
                     {expanded&&(
-                      <div style={{padding:'0 16px 14px',borderTop:'1px solid #f1f5f9',marginTop:2}}>
+                      <div style={{padding:'0 16px 14px',borderTop:'1px solid #f3f0e8',marginTop:2}}>
                         <div style={{display:'flex',flexDirection:'column',gap:0,marginTop:10}}>
                           {(showAllDrilldown.has(`expcat:${c.category}`)?catEntries:catEntries.slice(0,10)).map(e=>(
-                            <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',fontSize:12,borderBottom:'1px solid #f8fafc'}}>
-                              <span style={{color:'#64748b'}}>{e.entry_date}{e.sub_category?` · ${e.sub_category}`:''}{e.voucher_head?` · ${e.voucher_head}`:''}{e.note?` — ${e.note}`:''}</span>
+                            <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',fontSize:12,borderBottom:'1px solid #faf8f3'}}>
+                              <span style={{color:'#5d6b82'}}>{e.entry_date}{e.sub_category?` · ${e.sub_category}`:''}{e.voucher_head?` · ${e.voucher_head}`:''}{e.note?` — ${e.note}`:''}</span>
                               <strong style={{color:'#dc2626',flexShrink:0,marginLeft:8}}>{fmt(e.amount)}</strong>
                             </div>
                           ))}
@@ -3684,19 +3744,19 @@ function Accounts({role,userId}){
               {vendorSpendSummary.map(v=>{
                 const expanded=vendorDrilldown===v.vendor_id
                 return (
-                  <div key={v.vendor_id} style={{border:'1px solid #f1f5f9',borderRadius:8}}>
+                  <div key={v.vendor_id} style={{border:'1px solid #f3f0e8',borderRadius:8}}>
                     <div onClick={()=>setVendorDrilldown(expanded?null:v.vendor_id)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',cursor:'pointer'}}>
                       <div>
-                        <strong style={{color:'#1e293b'}}>{expanded?'▾':'▸'} {v.vendorName}</strong>
-                        <span style={{fontSize:11,color:'#94a3b8',marginLeft:8}}>{v.count} payment{v.count===1?'':'s'} · last on {v.lastDate}</span>
+                        <strong style={{color:'#14213d'}}>{expanded?'▾':'▸'} {v.vendorName}</strong>
+                        <span style={{fontSize:11,color:'#8a93a6',marginLeft:8}}>{v.count} payment{v.count===1?'':'s'} · last on {v.lastDate}</span>
                       </div>
                       <strong style={{color:'#7f1d1d'}}>{fmt(v.total)}</strong>
                     </div>
                     {expanded&&(
-                      <div style={{padding:'0 14px 12px',borderTop:'1px solid #f8fafc'}}>
+                      <div style={{padding:'0 14px 12px',borderTop:'1px solid #faf8f3'}}>
                         {(showAllDrilldown.has(`vendor:${v.vendor_id}`)?v.entries:v.entries.slice(0,10)).map(e=>(
-                          <div key={e.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',fontSize:12,borderBottom:'1px solid #f8fafc'}}>
-                            <span style={{color:'#64748b'}}>{e.entry_date} · {e.category}{e.note?` — ${e.note}`:''}</span>
+                          <div key={e.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',fontSize:12,borderBottom:'1px solid #faf8f3'}}>
+                            <span style={{color:'#5d6b82'}}>{e.entry_date} · {e.category}{e.note?` — ${e.note}`:''}</span>
                             <strong style={{color:'#dc2626'}}>{fmt(e.amount)}</strong>
                           </div>
                         ))}
@@ -3715,7 +3775,7 @@ function Accounts({role,userId}){
         )}
 
         {/* ── separate daily expenditure table ── */}
-        {expenditureGroups.length===0?<div style={{textAlign:'center',padding:48,color:'#94a3b8',backgroundColor:'white',borderRadius:12}}>No expenditure entries found for this date range.</div>:(
+        {expenditureGroups.length===0?<div style={{textAlign:'center',padding:48,color:'#8a93a6',backgroundColor:'white',borderRadius:12}}>No expenditure entries found for this date range.</div>:(
           <TransactionsViewBanking
             dayRows={expenditureFilteredEntries}
             dailyIsIncome={false}
@@ -3744,7 +3804,7 @@ function Accounts({role,userId}){
     {/* ══ TAB: REPORT GENERATOR ══ */}
     {activeTab==='reports'&&(
       <div>
-        <div style={{backgroundColor:'#831843',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+        <div style={{backgroundColor:'#6b4a12',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📑 Professional Report Generator</h2>
           <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Build a filtered financial report and export it as a letterheaded PDF, Word (DOCX), or Excel file — ready to print and sign.</p>
         </div>
@@ -3754,13 +3814,13 @@ function Accounts({role,userId}){
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexWrap:'wrap',gap:10}}>
             <div>
               <h3 style={{...chartTitle,fontSize:15,margin:0}}>🗓️ Monthly Report — pick any month</h3>
-              <p style={{fontSize:12,color:'#94a3b8',margin:'4px 0 0'}}>{monthlyRptLabel} · {monthlyRptTotals.count} entries · no filters needed, one click</p>
+              <p style={{fontSize:12,color:'#8a93a6',margin:'4px 0 0'}}>{monthlyRptLabel} · {monthlyRptTotals.count} entries · no filters needed, one click</p>
             </div>
             <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
               <input type="month" value={monthlyRptMonth} max={today.slice(0,7)} onChange={e=>setMonthlyRptMonth(e.target.value)} style={{...iStyle,width:'auto'}}/>
-              <button onClick={()=>generateMonthlyReport('PDF')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='pdf'?'#94a3b8':'#dc2626',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='pdf'?'⏳ Generating…':'📄 PDF'}</button>
-              <button onClick={()=>generateMonthlyReport('DOCX')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='docx'?'#94a3b8':'#1d4ed8',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='docx'?'⏳ Generating…':'📝 DOCX'}</button>
-              <button onClick={()=>generateMonthlyReport('Excel')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='excel'?'#94a3b8':'#16a34a',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='excel'?'⏳ Generating…':'📊 Excel'}</button>
+              <button onClick={()=>generateMonthlyReport('PDF')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='pdf'?'#8a93a6':'#dc2626',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='pdf'?'⏳ Generating…':'📄 PDF'}</button>
+              <button onClick={()=>generateMonthlyReport('DOCX')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='docx'?'#8a93a6':'#1e3a6e',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='docx'?'⏳ Generating…':'📝 DOCX'}</button>
+              <button onClick={()=>generateMonthlyReport('Excel')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='excel'?'#8a93a6':'#16a34a',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='excel'?'⏳ Generating…':'📊 Excel'}</button>
             </div>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginTop:8}}>
@@ -3772,7 +3832,7 @@ function Accounts({role,userId}){
               <p style={{fontSize:11,color:'#dc2626',fontWeight:600,margin:'0 0 2px'}}>Expense</p>
               <p style={{fontSize:16,fontWeight:800,color:'#dc2626',margin:0}}>{fmt(monthlyRptTotals.expense)}</p>
             </div>
-            <div style={{backgroundColor:'#eff6ff',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid #1e3a6e'}}>
+            <div style={{backgroundColor:'#eef2f9',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid #1e3a6e'}}>
               <p style={{fontSize:11,color:'#1e3a6e',fontWeight:600,margin:'0 0 2px'}}>Net</p>
               <p style={{fontSize:16,fontWeight:800,color:'#1e3a6e',margin:0}}>{fmt(monthlyRptTotals.net)}</p>
             </div>
@@ -3780,17 +3840,17 @@ function Accounts({role,userId}){
         </div>
 
         {/* ── Weekly Report for Admin's PA — one-click, always last 7 days ── */}
-        <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)',borderLeft:'4px solid #831843'}}>
+        <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)',borderLeft:'4px solid #6b4a12'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexWrap:'wrap',gap:10}}>
             <div>
               <h3 style={{...chartTitle,fontSize:15,margin:0}}>🗓️ Weekly Report — for Admin's PA</h3>
-              <p style={{fontSize:12,color:'#94a3b8',margin:'4px 0 0'}}>{weeklyRange.from} to {weeklyRange.to} · {weeklyTotals.count} entries · always the last 7 days, no filters needed</p>
+              <p style={{fontSize:12,color:'#8a93a6',margin:'4px 0 0'}}>{weeklyRange.from} to {weeklyRange.to} · {weeklyTotals.count} entries · always the last 7 days, no filters needed</p>
             </div>
             <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-              <button onClick={printWeeklyReport} style={{backgroundColor:'rgba(131,24,67,0.08)',color:'#831843',border:'1px solid #fbcfe8',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:12}}>🖨 Print</button>
-              <button onClick={()=>generateWeeklyReport('PDF')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='pdf'?'#94a3b8':'#dc2626',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='pdf'?'⏳ Generating…':'📄 PDF'}</button>
-              <button onClick={()=>generateWeeklyReport('DOCX')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='docx'?'#94a3b8':'#1d4ed8',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='docx'?'⏳ Generating…':'📝 DOCX'}</button>
-              <button onClick={()=>generateWeeklyReport('Excel')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='excel'?'#94a3b8':'#16a34a',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='excel'?'⏳ Generating…':'📊 Excel'}</button>
+              <button onClick={printWeeklyReport} style={{backgroundColor:'rgba(131,24,67,0.08)',color:'#6b4a12',border:'1px solid #fbcfe8',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:12}}>🖨 Print</button>
+              <button onClick={()=>generateWeeklyReport('PDF')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='pdf'?'#8a93a6':'#dc2626',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='pdf'?'⏳ Generating…':'📄 PDF'}</button>
+              <button onClick={()=>generateWeeklyReport('DOCX')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='docx'?'#8a93a6':'#1e3a6e',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='docx'?'⏳ Generating…':'📝 DOCX'}</button>
+              <button onClick={()=>generateWeeklyReport('Excel')} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='excel'?'#8a93a6':'#16a34a',color:'white',border:'none',borderRadius:8,padding:'9px 18px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13}}>{generatingReport==='excel'?'⏳ Generating…':'📊 Excel'}</button>
             </div>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginTop:8}}>
@@ -3802,7 +3862,7 @@ function Accounts({role,userId}){
               <p style={{fontSize:11,color:'#dc2626',fontWeight:600,margin:'0 0 2px'}}>Expense (7 days)</p>
               <p style={{fontSize:16,fontWeight:800,color:'#dc2626',margin:0}}>{fmt(weeklyTotals.expense)}</p>
             </div>
-            <div style={{backgroundColor:'#eff6ff',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid #1e3a6e'}}>
+            <div style={{backgroundColor:'#eef2f9',borderRadius:8,padding:'10px 14px',borderLeft:'3px solid #1e3a6e'}}>
               <p style={{fontSize:11,color:'#1e3a6e',fontWeight:600,margin:'0 0 2px'}}>Net</p>
               <p style={{fontSize:16,fontWeight:800,color:'#1e3a6e',margin:0}}>{fmt(weeklyTotals.net)}</p>
             </div>
@@ -3874,9 +3934,9 @@ function Accounts({role,userId}){
 
           {/* ── quick range + reset ── */}
           <div style={{display:'flex',gap:8,marginTop:14,alignItems:'center',flexWrap:'wrap'}}>
-            <span style={{fontSize:12,color:'#94a3b8',fontWeight:600}}>Quick:</span>
+            <span style={{fontSize:12,color:'#8a93a6',fontWeight:600}}>Quick:</span>
             {[['today','Today'],['week','Week'],['month','Month'],['lastmonth','Last Mo.'],['year','Year']].map(([k,l])=>(
-              <button key={k} style={{padding: isMobile?'5px 10px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,backgroundColor:rptQuick===k?'#831843':'#f1f5f9',color:rptQuick===k?'white':'#64748b'}} onClick={()=>rptQuick===k?clearRptQuick():applyRptQuick(k)}>{l}</button>
+              <button key={k} style={{padding: isMobile?'5px 10px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:isMobile?11:12,fontWeight:600,backgroundColor:rptQuick===k?'#6b4a12':'#f3f0e8',color:rptQuick===k?'white':'#5d6b82'}} onClick={()=>rptQuick===k?clearRptQuick():applyRptQuick(k)}>{l}</button>
             ))}
             <button onClick={resetRptFilters} style={{...smallBtn('#fee2e2','#dc2626'),padding:'5px 12px',fontSize:12}}>✖ Reset Filters</button>
           </div>
@@ -3886,17 +3946,17 @@ function Accounts({role,userId}){
         <div style={{display:'grid',gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)',gap: isMobile ? 10 : 14,marginBottom:16}}>
           <StatCard label="Income (matched)" value={reportTotals.income} color="#16a34a" bg="#dcfce7" icon="📈"/>
           <StatCard label="Expense (matched)" value={reportTotals.expense} color="#dc2626" bg="#fee2e2" icon="📉"/>
-          <StatCard label="Net" value={reportTotals.net} color="#1e3a6e" bg="#eff6ff" icon="💼"/>
-          <StatCard label="Entries Matched" value={reportTotals.count} color="#7c3aed" bg="#f3e8ff" icon="🧾" isCurrency={false}/>
+          <StatCard label="Net" value={reportTotals.net} color="#1e3a6e" bg="#eef2f9" icon="💼"/>
+          <StatCard label="Entries Matched" value={reportTotals.count} color="#a7771f" bg="#fbf3e0" icon="🧾" isCurrency={false}/>
         </div>
 
         {/* ── export actions ── */}
         <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:16,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)'}}>
-          <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 12px',fontWeight:600}}>EXPORT — every file includes the GNSI letterhead, applied filters, print date, and signature lines for "Prepared By" &amp; "Authorized Signature".</p>
+          <p style={{fontSize:12,color:'#8a93a6',margin:'0 0 12px',fontWeight:600}}>EXPORT — every file includes the GNSI letterhead, applied filters, print date, and signature lines for "Prepared By" &amp; "Authorized Signature".</p>
           <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-            <button onClick={()=>generateReportPDF()} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='pdf'?'#94a3b8':'#dc2626',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='pdf'?'⏳ Generating…':'📄 Generate PDF'}</button>
-            <button onClick={()=>generateReportDOCX()} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='docx'?'#94a3b8':'#1d4ed8',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='docx'?'⏳ Generating…':'📝 Generate Word (DOCX)'}</button>
-            <button onClick={()=>generateReportExcel()} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='excel'?'#94a3b8':'#16a34a',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='excel'?'⏳ Generating…':'📊 Generate Excel'}</button>
+            <button onClick={()=>generateReportPDF()} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='pdf'?'#8a93a6':'#dc2626',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='pdf'?'⏳ Generating…':'📄 Generate PDF'}</button>
+            <button onClick={()=>generateReportDOCX()} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='docx'?'#8a93a6':'#1e3a6e',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='docx'?'⏳ Generating…':'📝 Generate Word (DOCX)'}</button>
+            <button onClick={()=>generateReportExcel()} disabled={!!generatingReport} style={{backgroundColor:generatingReport==='excel'?'#8a93a6':'#16a34a',color:'white',border:'none',borderRadius:8,padding: isMobile ? '10px 16px' : '11px 22px',fontWeight:700,cursor:generatingReport?'not-allowed':'pointer',fontSize:13,flex: isMobile ? '1 1 100%' : 'none'}}>{generatingReport==='excel'?'⏳ Generating…':'📊 Generate Excel'}</button>
           </div>
         </div>
 
@@ -3906,8 +3966,8 @@ function Accounts({role,userId}){
             <h3 style={{...chartTitle,fontSize:15,margin:0}}>{rptViewMode==='datewise'?`Date-wise (${reportByDate.length} day${reportByDate.length===1?'':'s'})`:`Preview ${reportEntries.length>8?`(first 8 of ${reportEntries.length})`:`(${reportEntries.length} entries)`}`}</h3>
             <div style={{display:'flex',gap:8,alignItems:'center'}}>
               <div style={{display:'flex',borderRadius:8,overflow:'hidden',border:'1px solid #e5e7eb'}}>
-                <button onClick={()=>setRptViewMode('list')} style={{padding:'6px 12px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:rptViewMode==='list'?'#1e3a6e':'#f8fafc',color:rptViewMode==='list'?'white':'#64748b'}}>List</button>
-                <button onClick={()=>setRptViewMode('datewise')} style={{padding:'6px 12px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:rptViewMode==='datewise'?'#1e3a6e':'#f8fafc',color:rptViewMode==='datewise'?'white':'#64748b'}}>Date-wise</button>
+                <button onClick={()=>setRptViewMode('list')} style={{padding:'6px 12px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:rptViewMode==='list'?'#1e3a6e':'#faf8f3',color:rptViewMode==='list'?'white':'#5d6b82'}}>List</button>
+                <button onClick={()=>setRptViewMode('datewise')} style={{padding:'6px 12px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:rptViewMode==='datewise'?'#1e3a6e':'#faf8f3',color:rptViewMode==='datewise'?'white':'#5d6b82'}}>Date-wise</button>
               </div>
               {rptViewMode==='datewise'&&<button onClick={printDatewise} style={{backgroundColor:'#1e3a6e',color:'white',border:'none',borderRadius:8,padding:'6px 14px',fontWeight:600,cursor:'pointer',fontSize:12}}>🖨 Print</button>}
             </div>
@@ -3915,24 +3975,24 @@ function Accounts({role,userId}){
 
           {rptViewMode==='datewise'?(
             reportByDate.length===0?(
-              <p style={{color:'#94a3b8',textAlign:'center',padding:24}}>No entries match the selected filters.</p>
+              <p style={{color:'#8a93a6',textAlign:'center',padding:24}}>No entries match the selected filters.</p>
             ):(
               <table style={{width:'100%',borderCollapse:'collapse',fontSize: isMobile ? 12 : 13}}>
-                <thead><tr style={{backgroundColor:'#f8fafc'}}>{['Date','Income','Expense','Net',''].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
+                <thead><tr style={{backgroundColor:'#faf8f3'}}>{['Date','Income','Expense','Net',''].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#2e3b52',fontSize:12,borderBottom:'1px solid #e8e3d8'}}>{h}</th>)}</tr></thead>
                 <tbody>
                   {reportByDate.map(d=>{
                     const net=d.income-d.expense, expanded=rptExpandedDate===d.date
                     return (
                       <Fragment key={d.date}>
-                        <tr onClick={()=>setRptExpandedDate(expanded?null:d.date)} style={{borderBottom:'1px solid #f1f5f9',cursor:'pointer',backgroundColor:expanded?'#f8fafc':'transparent'}}>
-                          <td style={{...tdS,color:'#1e293b',fontWeight:600}}>{expanded?'▾':'▸'} {d.date}</td>
+                        <tr onClick={()=>setRptExpandedDate(expanded?null:d.date)} style={{borderBottom:'1px solid #f3f0e8',cursor:'pointer',backgroundColor:expanded?'#faf8f3':'transparent'}}>
+                          <td style={{...tdS,color:'#14213d',fontWeight:600}}>{expanded?'▾':'▸'} {d.date}</td>
                           <td style={{...tdS,fontWeight:700,color:'#16a34a'}}>{fmt(d.income)}</td>
                           <td style={{...tdS,fontWeight:700,color:'#dc2626'}}>{fmt(d.expense)}</td>
                           <td style={{...tdS,fontWeight:700,color:net>=0?'#16a34a':'#dc2626'}}>{fmt(net)}</td>
-                          <td style={{...tdS,color:'#94a3b8',fontSize:11}}>{d.entries.length} entr{d.entries.length===1?'y':'ies'}</td>
+                          <td style={{...tdS,color:'#8a93a6',fontSize:11}}>{d.entries.length} entr{d.entries.length===1?'y':'ies'}</td>
                         </tr>
                         {expanded&&d.entries.map((e,i)=>(
-                          <tr key={i} style={{borderBottom:'1px solid #f1f5f9',backgroundColor:'#fafbfc'}}>
+                          <tr key={i} style={{borderBottom:'1px solid #f3f0e8',backgroundColor:'#fafbfc'}}>
                             <td style={{...tdS,paddingLeft:28,fontSize:12}} colSpan={2}>{e.category}{e.note?` — ${e.note}`:''}</td>
                             <td style={{...tdS,fontSize:12}}>{e.payment_mode}</td>
                             <td colSpan={2} style={{...tdS,textAlign:'right',fontWeight:600,fontSize:12,color:e.type==='Income'?'#16a34a':'#dc2626'}}>{fmt(e.amount)}</td>
@@ -3942,7 +4002,7 @@ function Accounts({role,userId}){
                     )
                   })}
                   <tr style={{borderTop:'2px solid #1e3a6e'}}>
-                    <td style={{...tdS,fontWeight:800,color:'#1e293b'}}>Total</td>
+                    <td style={{...tdS,fontWeight:800,color:'#14213d'}}>Total</td>
                     <td style={{...tdS,fontWeight:800,color:'#16a34a'}}>{fmt(reportTotals.income)}</td>
                     <td style={{...tdS,fontWeight:800,color:'#dc2626'}}>{fmt(reportTotals.expense)}</td>
                     <td style={{...tdS,fontWeight:800,color:reportTotals.net>=0?'#16a34a':'#dc2626'}}>{fmt(reportTotals.net)}</td>
@@ -3953,16 +4013,16 @@ function Accounts({role,userId}){
             )
           ):(
           reportEntries.length===0?(
-            <p style={{color:'#94a3b8',textAlign:'center',padding:24}}>No entries match the selected filters.</p>
+            <p style={{color:'#8a93a6',textAlign:'center',padding:24}}>No entries match the selected filters.</p>
           ):(
             <table style={{width:'100%',borderCollapse:'collapse',fontSize: isMobile ? 12 : 13}}>
-              <thead><tr style={{backgroundColor:'#f8fafc'}}>{['Date','Type','Category','Account','Mode','Voucher Head','Status','Amount'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
+              <thead><tr style={{backgroundColor:'#faf8f3'}}>{['Date','Type','Category','Account','Mode','Voucher Head','Status','Amount'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#2e3b52',fontSize:12,borderBottom:'1px solid #e8e3d8'}}>{h}</th>)}</tr></thead>
               <tbody>
                 {reportEntries.slice(0,8).map((e,i)=>(
-                  <tr key={i} style={{borderBottom:'1px solid #f1f5f9'}}>
+                  <tr key={i} style={{borderBottom:'1px solid #f3f0e8'}}>
                     <td style={tdS}>{e.entry_date}</td>
                     <td style={tdS}><span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:e.type==='Income'?'#dcfce7':'#fee2e2',color:e.type==='Income'?'#16a34a':'#dc2626'}}>{e.type}</span></td>
-                    <td style={{...tdS,color:'#1e293b',fontWeight:500}}>{e.category}</td>
+                    <td style={{...tdS,color:'#14213d',fontWeight:500}}>{e.category}</td>
                     <td style={tdS}>{e.account_type||'Cash A/c'}</td>
                     <td style={tdS}>{e.payment_mode}</td>
                     <td style={tdS}>{e.voucher_head||'-'}</td>
@@ -3981,7 +4041,7 @@ function Accounts({role,userId}){
     {/* ══ TAB: ANALYTICS ══ */}
     {activeTab==='analytics'&&(
       <div>
-        <div style={{backgroundColor:'#eff6ff',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:24,borderLeft:'4px solid #1e3a6e'}}>
+        <div style={{backgroundColor:'#eef2f9',borderRadius:16,padding: isMobile ? 14 : 20,marginBottom:24,borderLeft:'4px solid #1e3a6e'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:insights?12:0,flexWrap:'wrap',gap:10}}>
             <h3 style={{fontSize: isMobile ? 14 : 16,fontWeight:600,color:'#1e3a6e',margin:0}}>🤖 AI Financial Insights</h3>
             <button onClick={getInsights} disabled={loadingAI} style={{backgroundColor:'#1e3a6e',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:loadingAI?'not-allowed':'pointer',fontSize:13}}>{loadingAI?'⏳ Analysing…':'✨ Get Insights'}</button>
@@ -3989,8 +4049,8 @@ function Accounts({role,userId}){
           {insights&&<div style={{fontSize:14,color:'#1e3a6e',lineHeight:1.7,whiteSpace:'pre-wrap'}}>{insights}</div>}
         </div>
         <div style={{display:'grid',gridTemplateColumns:chartGridCols,gap:20,marginBottom:20}}>
-          <div style={chartCard}><h3 style={chartTitle}>Monthly Income vs Expense</h3><ResponsiveContainer width="100%" height={isMobile?200:250}><BarChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="month" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/><Tooltip formatter={v=>fmt(v)}/><Legend/><Bar dataKey="Income" fill="#16a34a" radius={[4,4,0,0]}/><Bar dataKey="Expense" fill="#dc2626" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
-          <div style={chartCard}><h3 style={chartTitle}>Net Balance Trend</h3><ResponsiveContainer width="100%" height={isMobile?200:250}><LineChart data={monthlyData.map(m=>({...m,Net:m.Income-m.Expense}))}><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="month" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/><Tooltip formatter={v=>fmt(v)}/><Line dataKey="Net" stroke="#1e3a6e" strokeWidth={2} dot={{r:4}}/></LineChart></ResponsiveContainer></div>
+          <div style={chartCard}><h3 style={chartTitle}>Monthly Income vs Expense</h3><ResponsiveContainer width="100%" height={isMobile?200:250}><BarChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" stroke="#f3f0e8"/><XAxis dataKey="month" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/><Tooltip formatter={v=>fmt(v)}/><Legend/><Bar dataKey="Income" fill="#16a34a" radius={[4,4,0,0]}/><Bar dataKey="Expense" fill="#dc2626" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
+          <div style={chartCard}><h3 style={chartTitle}>Net Balance Trend</h3><ResponsiveContainer width="100%" height={isMobile?200:250}><LineChart data={monthlyData.map(m=>({...m,Net:m.Income-m.Expense}))}><CartesianGrid strokeDasharray="3 3" stroke="#f3f0e8"/><XAxis dataKey="month" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/><Tooltip formatter={v=>fmt(v)}/><Line dataKey="Net" stroke="#1e3a6e" strokeWidth={2} dot={{r:4}}/></LineChart></ResponsiveContainer></div>
         </div>
         <div style={{display:'grid',gridTemplateColumns:chartGridCols,gap:20,marginBottom:20}}>
           <div style={chartCard}><h3 style={chartTitle}>Top Categories</h3><ResponsiveContainer width="100%" height={isMobile?200:250}><PieChart><Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={isMobile?70:90} label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>{categoryData.map((_,idx)=><Cell key={idx} fill={CHART_COLORS[idx%CHART_COLORS.length]}/>)}</Pie><Tooltip formatter={v=>fmt(v)}/></PieChart></ResponsiveContainer></div>
@@ -4026,15 +4086,15 @@ function Accounts({role,userId}){
                   return(
                     <div key={cat} style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'1.4fr 100px 100px 90px 70px',gap: isMobile?6:14,alignItems:'center',padding:'9px 10px',borderRadius:8,transition:'background-color 0.15s ease'}}>
                       <div style={{minWidth:0}}>
-                        <div style={{fontSize:13,fontWeight:600,color:'#1e293b',marginBottom:4}}>{cat}</div>
-                        <div style={{height:4,borderRadius:999,backgroundColor:'#f1f5f9',overflow:'hidden',maxWidth:220}}>
+                        <div style={{fontSize:13,fontWeight:600,color:'#14213d',marginBottom:4}}>{cat}</div>
+                        <div style={{height:4,borderRadius:999,backgroundColor:'#f3f0e8',overflow:'hidden',maxWidth:220}}>
                           <div style={{height:'100%',width:`${Math.max((thisVal/maxVal)*100,thisVal>0?2:0)}%`,borderRadius:999,backgroundColor:accent,transition:'width 0.3s ease'}}/>
                         </div>
                       </div>
                       <div style={{textAlign: isMobile?'left':'right',fontSize:13,fontWeight:700,color:accent}}>{fmt(thisVal)}</div>
-                      <div style={{textAlign: isMobile?'left':'right',fontSize:12,color:'#94a3b8'}}>{fmt(prevVal)}</div>
-                      <div style={{textAlign: isMobile?'left':'right',fontSize:12,fontWeight:700,color:hasHistory?(favorable?'#16a34a':'#dc2626'):'#94a3b8'}}>{diff>=0?'+':''}{fmt(diff)}</div>
-                      <div style={{display:'flex',alignItems:'center',gap:3,justifyContent: isMobile?'flex-start':'flex-end',fontSize:12,fontWeight:800,color:!hasHistory||prevVal===0?'#94a3b8':(favorable?'#16a34a':'#dc2626')}}>
+                      <div style={{textAlign: isMobile?'left':'right',fontSize:12,color:'#8a93a6'}}>{fmt(prevVal)}</div>
+                      <div style={{textAlign: isMobile?'left':'right',fontSize:12,fontWeight:700,color:hasHistory?(favorable?'#16a34a':'#dc2626'):'#8a93a6'}}>{diff>=0?'+':''}{fmt(diff)}</div>
+                      <div style={{display:'flex',alignItems:'center',gap:3,justifyContent: isMobile?'flex-start':'flex-end',fontSize:12,fontWeight:800,color:!hasHistory||prevVal===0?'#8a93a6':(favorable?'#16a34a':'#dc2626')}}>
                         {prevVal>0&&!trendFlat&&(trendUp?'▲':'▼')}
                         {prevVal>0?`${Math.abs(pct).toFixed(1)}%`:'—'}
                       </div>
@@ -4044,7 +4104,7 @@ function Accounts({role,userId}){
                 <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'1.4fr 100px 100px 90px 70px',gap: isMobile?6:14,alignItems:'center',padding:'10px',marginTop:4,backgroundColor:`${accent}0d`,borderRadius:8}}>
                   <div style={{fontSize:12,fontWeight:800,color:accent,textTransform:'uppercase',letterSpacing:'0.3px'}}>Total {label}</div>
                   <div style={{textAlign: isMobile?'left':'right',fontSize:14,fontWeight:800,color:accent}}>{fmt(totalThis)}</div>
-                  <div style={{textAlign: isMobile?'left':'right',fontSize:12,fontWeight:700,color:'#64748b'}}>{fmt(totalPrev)}</div>
+                  <div style={{textAlign: isMobile?'left':'right',fontSize:12,fontWeight:700,color:'#5d6b82'}}>{fmt(totalPrev)}</div>
                   <div style={{textAlign: isMobile?'left':'right',fontSize:12,fontWeight:800,color:(label==='Income'?totalThis>=totalPrev:totalThis<=totalPrev)?'#16a34a':'#dc2626'}}>{totalThis-totalPrev>=0?'+':''}{fmt(totalThis-totalPrev)}</div>
                   <div/>
                 </div>
@@ -4057,16 +4117,16 @@ function Accounts({role,userId}){
             <div style={{display:'flex',justifyContent:'space-between',alignItems: isMobile?'flex-start':'center',flexDirection: isMobile?'column':'row',gap:10,marginBottom:6}}>
               <div>
                 <h3 style={{...chartTitle,marginBottom:3}}>📑 Profit &amp; Loss Statement</h3>
-                <p style={{fontSize:12,color:'#94a3b8',margin:0}}>{thisMonthLabel} vs {lastMonthLabel} — by category</p>
+                <p style={{fontSize:12,color:'#8a93a6',margin:0}}>{thisMonthLabel} vs {lastMonthLabel} — by category</p>
               </div>
               <div style={{display:'flex',gap:8}}>
-                <span style={{padding:'4px 12px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#eff6ff',color:'#1e3a6e'}}>{thisMonthLabel}</span>
-                <span style={{padding:'4px 12px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#f8fafc',color:'#94a3b8'}}>{lastMonthLabel}</span>
+                <span style={{padding:'4px 12px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#eef2f9',color:'#1e3a6e'}}>{thisMonthLabel}</span>
+                <span style={{padding:'4px 12px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#faf8f3',color:'#8a93a6'}}>{lastMonthLabel}</span>
               </div>
             </div>
 
             {!isMobile&&(
-              <div style={{display:'grid',gridTemplateColumns:'1.4fr 100px 100px 90px 70px',gap:14,padding:'14px 10px 8px',fontSize:11,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.3px',borderBottom:'1px solid #f1f5f9',marginBottom:8}}>
+              <div style={{display:'grid',gridTemplateColumns:'1.4fr 100px 100px 90px 70px',gap:14,padding:'14px 10px 8px',fontSize:11,fontWeight:700,color:'#8a93a6',textTransform:'uppercase',letterSpacing:'0.3px',borderBottom:'1px solid #f3f0e8',marginBottom:8}}>
                 <div>Category</div>
                 <div style={{textAlign:'right'}}>This Month</div>
                 <div style={{textAlign:'right'}}>Last Month</div>
@@ -4110,11 +4170,11 @@ function Accounts({role,userId}){
       <div>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,flexWrap:'wrap',gap:10}}>
           <div>
-            <p style={{color:'#64748b',fontSize:14,margin:0}}>Monthly budget limits per expense category</p>
+            <p style={{color:'#5d6b82',fontSize:14,margin:0}}>Monthly budget limits per expense category</p>
             {budgetMeta?.edited_by&&<p style={{fontSize:11,color:'#f59e0b',margin:'4px 0 0',fontWeight:600}}>✎ Last edited by <strong>{budgetMeta.edited_by}</strong></p>}
           </div>
           {!editBudgets?canWrite&&<button onClick={()=>{setEditBudgets(true);setBudgetDraft(budgets)}} style={{backgroundColor:'#1e3a6e',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>✏️ Edit Budgets</button>
-          :<div style={{display:'flex',gap:10,flexWrap:'wrap'}}><button onClick={saveBudgets} style={{backgroundColor:'#16a34a',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>✅ Save</button><button onClick={()=>setEditBudgets(false)} style={{backgroundColor:'#f1f5f9',color:'#64748b',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>Cancel</button></div>}
+          :<div style={{display:'flex',gap:10,flexWrap:'wrap'}}><button onClick={saveBudgets} style={{backgroundColor:'#16a34a',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>✅ Save</button><button onClick={()=>setEditBudgets(false)} style={{backgroundColor:'#f3f0e8',color:'#5d6b82',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>Cancel</button></div>}
         </div>
         {(()=>{
           const totalSpent=EXPENSE_CATEGORIES.reduce((s,cat)=>s+(monthlyExpenses[cat]||0),0)
@@ -4124,15 +4184,15 @@ function Accounts({role,userId}){
             <div style={{display:'flex',justifyContent:'space-between',alignItems: isMobile?'flex-start':'center',flexDirection: isMobile?'column':'row',gap:10,marginBottom:4}}>
               <div>
                 <h3 style={{...chartTitle,marginBottom:3}}>💰 Monthly Budgets</h3>
-                <p style={{fontSize:12,color:'#94a3b8',margin:0}}>Spend limits per expense category, with month-over-month comparison and full transaction detail</p>
+                <p style={{fontSize:12,color:'#8a93a6',margin:0}}>Spend limits per expense category, with month-over-month comparison and full transaction detail</p>
               </div>
               <div style={{display:'flex',gap: isMobile?10:18,flexWrap:'wrap'}}>
                 <div style={{textAlign:'right'}}>
-                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Spent</div>
+                  <div style={{fontSize:10,fontWeight:700,color:'#8a93a6',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Spent</div>
                   <div style={{fontSize:18,fontWeight:800,color:'#7f1d1d'}}>{fmt(totalSpent)}</div>
                 </div>
                 <div style={{textAlign:'right'}}>
-                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Budgeted</div>
+                  <div style={{fontSize:10,fontWeight:700,color:'#8a93a6',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Budgeted</div>
                   <div style={{fontSize:18,fontWeight:800,color:'#1e3a6e'}}>{totalLimit>0?fmt(totalLimit):'—'}</div>
                 </div>
               </div>
@@ -4152,13 +4212,13 @@ function Accounts({role,userId}){
             const avgEntry=catEntries.length>0?spent/catEntries.length:0
             const accent=CHART_COLORS[idx%CHART_COLORS.length]
             return(
-            <div key={cat} style={{backgroundColor:'white',borderRadius:16,padding:20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)',border:'1px solid #f1f5f9',borderTop:`3px solid ${over?'#dc2626':accent}`}}>
+            <div key={cat} style={{backgroundColor:'white',borderRadius:16,padding:20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)',border:'1px solid #f3f0e8',borderTop:`3px solid ${over?'#dc2626':accent}`}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:14}}>
                 <div style={{display:'flex',alignItems:'center',gap:10}}>
                   <span style={{fontSize:20,width:38,height:38,borderRadius:10,backgroundColor:`${accent}1a`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcons[cat]||'🏷️'}</span>
                   <div>
-                    <div style={{fontWeight:700,color:'#1e293b',fontSize:15}}>{cat}</div>
-                    <div style={{fontSize:11,color:'#94a3b8'}}>{catEntries.length} entr{catEntries.length===1?'y':'ies'} this month{avgEntry>0?` · avg ${fmt(avgEntry)}`:''}</div>
+                    <div style={{fontWeight:700,color:'#14213d',fontSize:15}}>{cat}</div>
+                    <div style={{fontSize:11,color:'#8a93a6'}}>{catEntries.length} entr{catEntries.length===1?'y':'ies'} this month{avgEntry>0?` · avg ${fmt(avgEntry)}`:''}</div>
                   </div>
                 </div>
                 {over&&<span style={{fontSize:11,fontWeight:800,color:'#dc2626',backgroundColor:'#fee2e2',padding:'3px 9px',borderRadius:999,flexShrink:0}}>⚠ OVER</span>}
@@ -4168,8 +4228,8 @@ function Accounts({role,userId}){
 
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:8}}>
                 <div>
-                  <span style={{fontSize:20,fontWeight:800,color:over?'#dc2626':'#1e293b'}}>{fmt(spent)}</span>
-                  <span style={{fontSize:12,color:'#94a3b8',marginLeft:6}}>of {limit>0?fmt(limit):'no limit set'}</span>
+                  <span style={{fontSize:20,fontWeight:800,color:over?'#dc2626':'#14213d'}}>{fmt(spent)}</span>
+                  <span style={{fontSize:12,color:'#8a93a6',marginLeft:6}}>of {limit>0?fmt(limit):'no limit set'}</span>
                 </div>
                 {momPct!==0&&(
                   <span style={{fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:2,color:momDiff>=0?'#dc2626':'#16a34a'}}>
@@ -4180,29 +4240,29 @@ function Accounts({role,userId}){
 
               {limit>0?(
                 <>
-                  <div style={{backgroundColor:'#f1f5f9',borderRadius:999,height:8,overflow:'hidden'}}><div style={{width:`${pct}%`,height:'100%',backgroundColor:barColor,borderRadius:999,transition:'width .4s'}}/></div>
-                  <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'#94a3b8',marginTop:5}}>
+                  <div style={{backgroundColor:'#f3f0e8',borderRadius:999,height:8,overflow:'hidden'}}><div style={{width:`${pct}%`,height:'100%',backgroundColor:barColor,borderRadius:999,transition:'width .4s'}}/></div>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'#8a93a6',marginTop:5}}>
                     <span>{pct.toFixed(0)}% used</span>
                     <span>{over?`${fmt(spent-limit)} over budget`:`${fmt(limit-spent)} remaining`}</span>
                   </div>
                 </>
               ):(
-                <div style={{fontSize:11,color:'#cbd5e1',fontStyle:'italic',padding:'4px 0'}}>No budget limit set for this category</div>
+                <div style={{fontSize:11,color:'#d9d2c2',fontStyle:'italic',padding:'4px 0'}}>No budget limit set for this category</div>
               )}
 
-              <button onClick={()=>setExpandedBudgetCat(isExpanded?null:cat)} style={{marginTop:14,width:'100%',backgroundColor:isExpanded?'#eff6ff':'#f8fafc',color:'#1e3a6e',border:'1px solid #e2e8f0',borderRadius:8,padding:'8px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+              <button onClick={()=>setExpandedBudgetCat(isExpanded?null:cat)} style={{marginTop:14,width:'100%',backgroundColor:isExpanded?'#eef2f9':'#faf8f3',color:'#1e3a6e',border:'1px solid #e8e3d8',borderRadius:8,padding:'8px 10px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
                 {isExpanded?'▲ Hide transactions':`▼ Where it was spent (${catEntries.length})`}
               </button>
               {isExpanded&&(
-                <div style={{marginTop:10,maxHeight:260,overflowY:'auto',borderTop:'1px solid #f1f5f9',paddingTop:8}}>
+                <div style={{marginTop:10,maxHeight:260,overflowY:'auto',borderTop:'1px solid #f3f0e8',paddingTop:8}}>
                   {catEntries.length===0?(
-                    <p style={{fontSize:12,color:'#94a3b8',textAlign:'center',padding:'12px 0'}}>No expense entries for {cat} this month.</p>
+                    <p style={{fontSize:12,color:'#8a93a6',textAlign:'center',padding:'12px 0'}}>No expense entries for {cat} this month.</p>
                   ):(
                     catEntries.map(e=>(
-                      <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,padding:'8px 0',borderBottom:'1px solid #f8fafc'}}>
+                      <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,padding:'8px 0',borderBottom:'1px solid #faf8f3'}}>
                         <div style={{minWidth:0}}>
-                          <p style={{margin:0,fontSize:12.5,fontWeight:600,color:'#1e293b',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{e.note||e.voucher_head||'—'}</p>
-                          <p style={{margin:'2px 0 0',fontSize:11,color:'#94a3b8'}}>{e.entry_date} · {e.payment_mode}{e.account_type?` · ${e.account_type}`:''}{e.sub_category?` · ${e.sub_category}`:''}</p>
+                          <p style={{margin:0,fontSize:12.5,fontWeight:600,color:'#14213d',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{e.note||e.voucher_head||'—'}</p>
+                          <p style={{margin:'2px 0 0',fontSize:11,color:'#8a93a6'}}>{e.entry_date} · {e.payment_mode}{e.account_type?` · ${e.account_type}`:''}{e.sub_category?` · ${e.sub_category}`:''}</p>
                         </div>
                         <span style={{fontSize:12.5,fontWeight:700,color:'#dc2626',flexShrink:0}}>{fmt(e.amount)}</span>
                       </div>
@@ -4215,8 +4275,8 @@ function Accounts({role,userId}){
         </div>
         <div style={chartCard}>
           <h3 style={chartTitle}>Budget vs Actual — Last 6 Months</h3>
-          <ResponsiveContainer width="100%" height={isMobile?200:280}><BarChart data={budgetChartData} barCategoryGap="20%"><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/><XAxis dataKey="month" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/><Tooltip formatter={v=>fmt(v)}/><Legend/>{EXPENSE_CATEGORIES.filter(cat=>Number(budgets[cat])>0).map((cat,idx)=><Bar key={cat} dataKey={cat} fill={CHART_COLORS[idx%CHART_COLORS.length]} radius={[3,3,0,0]}/>)}</BarChart></ResponsiveContainer>
-          {EXPENSE_CATEGORIES.filter(cat=>Number(budgets[cat])>0).length===0&&<p style={{textAlign:'center',color:'#94a3b8',fontSize:14,padding:32}}>Set budget limits above to see this chart</p>}
+          <ResponsiveContainer width="100%" height={isMobile?200:280}><BarChart data={budgetChartData} barCategoryGap="20%"><CartesianGrid strokeDasharray="3 3" stroke="#f3f0e8"/><XAxis dataKey="month" tick={{fontSize:10}}/><YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/><Tooltip formatter={v=>fmt(v)}/><Legend/>{EXPENSE_CATEGORIES.filter(cat=>Number(budgets[cat])>0).map((cat,idx)=><Bar key={cat} dataKey={cat} fill={CHART_COLORS[idx%CHART_COLORS.length]} radius={[3,3,0,0]}/>)}</BarChart></ResponsiveContainer>
+          {EXPENSE_CATEGORIES.filter(cat=>Number(budgets[cat])>0).length===0&&<p style={{textAlign:'center',color:'#8a93a6',fontSize:14,padding:32}}>Set budget limits above to see this chart</p>}
         </div>
       </div>
     )}
@@ -4225,7 +4285,7 @@ function Accounts({role,userId}){
     {activeTab==='fraud'&&isAdmin&&(
       <div>
         {/* ══ For Admin: what needs your attention right now ══ */}
-        <div style={{backgroundColor:'#1e293b',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+        <div style={{backgroundColor:'#14213d',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>📌 For Admin — Today's Digest</h2>
           <p style={{fontSize:12,color:'rgba(255,255,255,0.6)',margin:'4px 0 0'}}>Everything across the portal that needs your attention, in one glance — no need to check every tab.</p>
         </div>
@@ -4238,14 +4298,14 @@ function Accounts({role,userId}){
           ):(
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
               {digestItems.map((item,i)=>{
-                const sevColor={high:'#dc2626',medium:'#d97706',low:'#64748b'}[item.severity]
-                const sevBg={high:'#fee2e2',medium:'#fef3c7',low:'#f1f5f9'}[item.severity]
+                const sevColor={high:'#dc2626',medium:'#d97706',low:'#5d6b82'}[item.severity]
+                const sevBg={high:'#fee2e2',medium:'#fef3c7',low:'#f3f0e8'}[item.severity]
                 return(
                   <div key={i} onClick={()=>setActiveTab(item.tab)} style={{display:'flex',gap:12,alignItems:'flex-start',padding:'12px 14px',backgroundColor:sevBg,borderRadius:10,borderLeft:`4px solid ${sevColor}`,cursor:'pointer'}}>
                     <span style={{fontSize:20,flexShrink:0}}>{item.icon}</span>
                     <div style={{flex:1,minWidth:0}}>
-                      <p style={{margin:0,fontSize:13,fontWeight:700,color:'#1e293b'}}>{item.title}</p>
-                      <p style={{margin:'2px 0 0',fontSize:12,color:'#64748b'}}>{item.detail}</p>
+                      <p style={{margin:0,fontSize:13,fontWeight:700,color:'#14213d'}}>{item.title}</p>
+                      <p style={{margin:'2px 0 0',fontSize:12,color:'#5d6b82'}}>{item.detail}</p>
                     </div>
                     <span style={{fontSize:11,fontWeight:700,color:sevColor,textTransform:'uppercase',flexShrink:0,paddingTop:2}}>{item.severity}</span>
                   </div>
@@ -4256,7 +4316,7 @@ function Accounts({role,userId}){
         </div>
 
         <div style={{display:'grid',gridTemplateColumns:fraudGridCols,gap: isMobile ? 10 : 14,marginBottom:24}}>
-          {[{label:'High Risk',value:fraudSummary.high||0,color:'#dc2626',bg:'#fee2e2',icon:'🚨'},{label:'Medium Risk',value:fraudSummary.medium||0,color:'#d97706',bg:'#fef3c7',icon:'⚠️'},{label:'Deleted Today',value:fraudSummary.phantoms?.length||0,color:'#7c3aed',bg:'#f3e8ff',icon:'👻'},{label:'CSV Exports',value:exportLog.length,color:'#1e3a6e',bg:'#eff6ff',icon:'📤'}].map(c=>(
+          {[{label:'High Risk',value:fraudSummary.high||0,color:'#dc2626',bg:'#fee2e2',icon:'🚨'},{label:'Medium Risk',value:fraudSummary.medium||0,color:'#d97706',bg:'#fef3c7',icon:'⚠️'},{label:'Deleted Today',value:fraudSummary.phantoms?.length||0,color:'#a7771f',bg:'#fbf3e0',icon:'👻'},{label:'CSV Exports',value:exportLog.length,color:'#1e3a6e',bg:'#eef2f9',icon:'📤'}].map(c=>(
             <div key={c.label} style={{backgroundColor:c.bg,borderRadius:16,padding:16,borderLeft:`4px solid ${c.color}`}}>
               <div style={{fontSize:20,marginBottom:4}}>{c.icon}</div>
               <p style={{fontSize:12,color:c.color,fontWeight:600,margin:0}}>{c.label}</p>
@@ -4266,17 +4326,17 @@ function Accounts({role,userId}){
         </div>
         <div style={{...chartCard,marginBottom:20,borderLeft:'4px solid #d97706',overflowX:'auto'}}>
           <h3 style={{...chartTitle,color:'#d97706'}}>🛡️ Superintendent Edits — Pending Verification</h3>
-          <p style={{fontSize:12,color:'#94a3b8',margin:'-8px 0 12px'}}>Superintendent role can edit existing entries only (no add/delete). Every such edit is logged here permanently; mark it Verified once you've reviewed it.</p>
-          {superintendentFlags.filter(f=>!f.verified).length===0?<p style={{color:'#94a3b8',fontSize:14}}>No pending superintendent edits.</p>:(
+          <p style={{fontSize:12,color:'#8a93a6',margin:'-8px 0 12px'}}>Superintendent role can edit existing entries only (no add/delete). Every such edit is logged here permanently; mark it Verified once you've reviewed it.</p>
+          {superintendentFlags.filter(f=>!f.verified).length===0?<p style={{color:'#8a93a6',fontSize:14}}>No pending superintendent edits.</p>:(
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
               <thead><tr style={{backgroundColor:'#fffbeb'}}>{['Edited At','Edited By','Entry ID','Old Amount','New Amount','Reason','Verify'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#92400e',fontSize:12,borderBottom:'1px solid #fde68a'}}>{h}</th>)}</tr></thead>
               <tbody>{superintendentFlags.filter(f=>!f.verified).map(f=>(<tr key={f.id} style={{borderBottom:'1px solid #fffbeb'}}>
                 <td style={tdS}>{f.edited_at?new Date(f.edited_at).toLocaleString('en-IN'):''}</td>
                 <td style={tdS}><strong>{f.edited_by}</strong></td>
-                <td style={{...tdS,fontSize:11,color:'#94a3b8'}}>{f.entry_id}</td>
-                <td style={{...tdS,color:'#94a3b8'}}>{f.old_values?.amount!=null?fmt(f.old_values.amount):'-'}</td>
+                <td style={{...tdS,fontSize:11,color:'#8a93a6'}}>{f.entry_id}</td>
+                <td style={{...tdS,color:'#8a93a6'}}>{f.old_values?.amount!=null?fmt(f.old_values.amount):'-'}</td>
                 <td style={{...tdS,fontWeight:600}}>{f.new_values?.amount!=null?fmt(f.new_values.amount):'-'}</td>
-                <td style={{...tdS,maxWidth:220,whiteSpace:'normal'}}>{f.reason||<span style={{color:'#cbd5e1'}}>—</span>}</td>
+                <td style={{...tdS,maxWidth:220,whiteSpace:'normal'}}>{f.reason||<span style={{color:'#d9d2c2'}}>—</span>}</td>
                 <td style={tdS}><button onClick={async()=>{
                   const ok=await mutateAccountsTable(
                     ()=>supabase.from('superintendent_edit_flags').update({verified:true,verified_by:role,verified_at:new Date().toISOString()}).eq('id',f.id),
@@ -4290,7 +4350,7 @@ function Accounts({role,userId}){
         </div>
         <div style={{...chartCard,marginBottom:20,borderLeft:'4px solid #dc2626',overflowX:'auto'}}>
           <h3 style={{...chartTitle,color:'#dc2626'}}>🚨 Flagged Transactions</h3>
-          {(fraudSummary.flaggedEntries||[]).length===0?<p style={{color:'#94a3b8',fontSize:14}}>No flagged transactions.</p>:(
+          {(fraudSummary.flaggedEntries||[]).length===0?<p style={{color:'#8a93a6',fontSize:14}}>No flagged transactions.</p>:(
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
               <thead><tr style={{backgroundColor:'#fef2f2'}}>{['Date','Type','Category','Amount','Added by','Flags'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#991b1b',fontSize:12,borderBottom:'1px solid #fecaca'}}>{h}</th>)}</tr></thead>
               <tbody>{(fraudSummary.flaggedEntries||[]).map(item=>(<tr key={item.id} style={{borderBottom:'1px solid #fff1f2'}}>
@@ -4303,7 +4363,7 @@ function Accounts({role,userId}){
                 <td style={tdS}><div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
                   {(fraudFlags[item.id]||[]).map((f,i)=>(
                     <span key={i} style={{display:'flex',alignItems:'center',gap:4}}>
-                      <span style={{fontSize:11,color:'#374151'}}>{f.label}</span>
+                      <span style={{fontSize:11,color:'#2e3b52'}}>{f.label}</span>
                       <SeverityBadge severity={f.severity}/>
                       {f.alertId&&<button onClick={async()=>{
                         const ok=await mutateAccountsTable(
@@ -4319,20 +4379,20 @@ function Accounts({role,userId}){
             </table>
           )}
         </div>
-        <div style={{...chartCard,marginBottom:20,borderLeft:'4px solid #7c3aed',overflowX:'auto'}}>
+        <div style={{...chartCard,marginBottom:20,borderLeft:'4px solid #a7771f',overflowX:'auto'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
-            <h3 style={{...chartTitle,color:'#7c3aed',margin:0}}>👻 Deleted Entries</h3>
-            <button onClick={fetchDeletedRows} style={{...smallBtn('#f3e8ff','#7c3aed'),fontSize:12}}>↻ Refresh</button>
+            <h3 style={{...chartTitle,color:'#a7771f',margin:0}}>👻 Deleted Entries</h3>
+            <button onClick={fetchDeletedRows} style={{...smallBtn('#fbf3e0','#a7771f'),fontSize:12}}>↻ Refresh</button>
           </div>
-          {deletedRows.length===0?<p style={{color:'#94a3b8',fontSize:14}}>No deleted entries.</p>:(
+          {deletedRows.length===0?<p style={{color:'#8a93a6',fontSize:14}}>No deleted entries.</p>:(
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-              <thead><tr style={{backgroundColor:'#faf5ff'}}>{['Date','Type','Category','Amount','Deleted by','Deleted at','Restore','Purge'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#6d28d9',fontSize:12,borderBottom:'1px solid #e9d5ff'}}>{h}</th>)}</tr></thead>
-              <tbody>{deletedRows.map(item=>(<tr key={item.id} style={{borderBottom:'1px solid #faf5ff'}}>
+              <thead><tr style={{backgroundColor:'#fbf6e8'}}>{['Date','Type','Category','Amount','Deleted by','Deleted at','Restore','Purge'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#8a6118',fontSize:12,borderBottom:'1px solid #eadbb2'}}>{h}</th>)}</tr></thead>
+              <tbody>{deletedRows.map(item=>(<tr key={item.id} style={{borderBottom:'1px solid #fbf6e8'}}>
                 <td style={tdS}>{item.entry_date}</td>
                 <td style={tdS}><span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:item.type==='Income'?'#dcfce7':'#fee2e2',color:item.type==='Income'?'#16a34a':'#dc2626'}}>{item.type}</span></td>
                 <td style={{...tdS,fontWeight:500}}>{item.category}</td>
                 <td style={{...tdS,fontWeight:600,color:item.type==='Income'?'#16a34a':'#dc2626'}}>{fmt(item.amount)}</td>
-                <td style={{...tdS,color:'#7c3aed',fontWeight:600}}>{item.deleted_by||'—'}</td>
+                <td style={{...tdS,color:'#a7771f',fontWeight:600}}>{item.deleted_by||'—'}</td>
                 <td style={tdS}>{item.deleted_at?new Date(item.deleted_at).toLocaleString('en-IN'):'—'}</td>
                 <td style={tdS}><button onClick={()=>handleRestore(item.id)} style={smallBtn('#f0fdf4','#16a34a')}>↩ Restore</button></td>
                 <td style={tdS}><button onClick={()=>handlePermanentDelete(item.id)} style={smallBtn('#fee2e2','#dc2626')} title="Permanently delete — cannot be undone">🗑 Purge</button></td>
@@ -4340,13 +4400,13 @@ function Accounts({role,userId}){
             </table>
           )}
         </div>
-        <div style={{...chartCard,borderLeft:'4px solid #be185d',overflowX:'auto'}}>
-          <h3 style={{...chartTitle,color:'#be185d'}}>📤 CSV Export Activity</h3>
-          {exportLog.length===0?<p style={{color:'#94a3b8',fontSize:14}}>No exports recorded.</p>:(
+        <div style={{...chartCard,borderLeft:'4px solid #8a6118',overflowX:'auto'}}>
+          <h3 style={{...chartTitle,color:'#8a6118'}}>📤 CSV Export Activity</h3>
+          {exportLog.length===0?<p style={{color:'#8a93a6',fontSize:14}}>No exports recorded.</p>:(
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
               <thead><tr style={{backgroundColor:'#fdf2f8'}}>{['Exported by','Date/Time','Filter','Rows'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#9d174d',fontSize:12,borderBottom:'1px solid #fbcfe8'}}>{h}</th>)}</tr></thead>
               <tbody>{exportLog.map((log,i)=>(<tr key={i} style={{borderBottom:'1px solid #fdf2f8'}}>
-                <td style={{...tdS,fontWeight:600,color:'#be185d'}}>{log.exported_by}</td>
+                <td style={{...tdS,fontWeight:600,color:'#8a6118'}}>{log.exported_by}</td>
                 <td style={tdS}>{log.created_at?new Date(log.created_at).toLocaleString('en-IN'):'—'}</td>
                 <td style={tdS}>{log.filter_type||'All'}</td>
                 <td style={{...tdS,fontWeight:600}}>{log.row_count}</td>
@@ -4374,7 +4434,7 @@ function Accounts({role,userId}){
               <StatCard label="Still Outstanding" value={monthEndProjection.outstandingIncome-monthEndProjection.outstandingExpense} color="#f59e0b" bg="#fffbeb" icon="⏳" sub={`${fmt(monthEndProjection.outstandingIncome)} in · ${fmt(monthEndProjection.outstandingExpense)} out`}/>
               <StatCard label="Projected Month-End" value={monthEndProjection.projectedNet} color={monthEndProjection.projectedNet>=0?'#16a34a':'#dc2626'} bg={monthEndProjection.projectedNet>=0?'#dcfce7':'#fee2e2'} icon="🎯" sub={`${fmt(monthEndProjection.projectedIncome)} in · ${fmt(monthEndProjection.projectedExpense)} out`}/>
             </div>
-            <p style={{fontSize:11,color:'#94a3b8',margin:0}}>"Still Outstanding" is drawn from recurring items below that haven't been fully logged yet this month — set these up so the projection reflects reality.</p>
+            <p style={{fontSize:11,color:'#8a93a6',margin:0}}>"Still Outstanding" is drawn from recurring items below that haven't been fully logged yet this month — set these up so the projection reflects reality.</p>
           </div>
         )}
 
@@ -4382,11 +4442,11 @@ function Accounts({role,userId}){
         <div style={{...chartCard,marginBottom:20}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,flexWrap:'wrap',gap:8}}>
             <h3 style={{...chartTitle,fontSize:15,marginBottom:0}}>🔁 Recurring Items — This Month</h3>
-            <button onClick={()=>setShowAddRecurringTpl(v=>!v)} style={{...smallBtn('#eff6ff','#1e3a6e'),fontSize:12}}>{showAddRecurringTpl?'✖ Cancel':'+ Add Recurring Item'}</button>
+            <button onClick={()=>setShowAddRecurringTpl(v=>!v)} style={{...smallBtn('#eef2f9','#1e3a6e'),fontSize:12}}>{showAddRecurringTpl?'✖ Cancel':'+ Add Recurring Item'}</button>
           </div>
 
           {showAddRecurringTpl&&(
-            <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'1fr 1fr 1fr 1fr auto',gap:8,marginBottom:16,padding:12,backgroundColor:'#f8fafc',borderRadius:8}}>
+            <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'1fr 1fr 1fr 1fr auto',gap:8,marginBottom:16,padding:12,backgroundColor:'#faf8f3',borderRadius:8}}>
               <select value={newRecurringTpl.type} onChange={e=>setNewRecurringTpl(p=>({...p,type:e.target.value,category:''}))} style={iStyle}>
                 <option value="Expense">Expense</option>
                 <option value="Income">Income</option>
@@ -4402,14 +4462,14 @@ function Accounts({role,userId}){
           )}
 
           {recurringForecast.length===0?(
-            <p style={{color:'#94a3b8',textAlign:'center',padding:24,fontSize:13}}>No recurring items set up yet. Add rent, salary, or standing donations here so the month-end projection knows what's still expected.</p>
+            <p style={{color:'#8a93a6',textAlign:'center',padding:24,fontSize:13}}>No recurring items set up yet. Add rent, salary, or standing donations here so the month-end projection knows what's still expected.</p>
           ):(
             <div style={{display:'flex',flexDirection:'column',gap:8}}>
               {recurringForecast.map(t=>(
-                <div key={t.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',border:'1px solid #f1f5f9',borderRadius:8}}>
+                <div key={t.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',border:'1px solid #f3f0e8',borderRadius:8}}>
                   <div>
-                    <strong style={{color:'#1e293b',fontSize:13}}>{t.label}</strong>
-                    <span style={{fontSize:11,color:'#94a3b8',marginLeft:8}}>{t.type} · {t.category}{t.day_of_month?` · around day ${t.day_of_month}`:''}</span>
+                    <strong style={{color:'#14213d',fontSize:13}}>{t.label}</strong>
+                    <span style={{fontSize:11,color:'#8a93a6',marginLeft:8}}>{t.type} · {t.category}{t.day_of_month?` · around day ${t.day_of_month}`:''}</span>
                   </div>
                   <div style={{display:'flex',alignItems:'center',gap:10}}>
                     {t.isLogged?(
@@ -4429,7 +4489,7 @@ function Accounts({role,userId}){
         {trendProjection&&(
           <div style={{...chartCard,marginBottom:20}}>
             <h3 style={{...chartTitle,fontSize:15}}>📊 Trend Projection — {trendProjection.nextMonthLabel}</h3>
-            <p style={{fontSize:11,color:'#94a3b8',margin:'0 0 14px'}}>Based on the average of the last {trendProjection.monthsUsed} month{trendProjection.monthsUsed===1?'':'s'} with recorded activity.</p>
+            <p style={{fontSize:11,color:'#8a93a6',margin:'0 0 14px'}}>Based on the average of the last {trendProjection.monthsUsed} month{trendProjection.monthsUsed===1?'':'s'} with recorded activity.</p>
             <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr 1fr':'repeat(3,1fr)',gap: isMobile?10:14}}>
               <StatCard label="Projected Income" value={trendProjection.projectedIncome} color="#16a34a" bg="#dcfce7" icon="💰"/>
               <StatCard label="Projected Expense" value={trendProjection.projectedExpense} color="#dc2626" bg="#fee2e2" icon="💸"/>
@@ -4442,7 +4502,7 @@ function Accounts({role,userId}){
 
     {activeTab==='reconciliation'&&isAdmin&&(
       <div>
-        <div style={{backgroundColor:'#374151',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
+        <div style={{backgroundColor:'#2e3b52',borderRadius:16,padding: isMobile ? '16px' : '20px 24px',marginBottom:20}}>
           <h2 style={{fontSize: isMobile ? 15 : 18,fontWeight:800,color:'white',margin:0}}>🔒 Reconciliation & Closing</h2>
           <p style={{fontSize:12,color:'rgba(255,255,255,0.65)',margin:'4px 0 0'}}>Match entries against your bank statement, close a month once it's settled, and check for backdated changes to closed history.</p>
         </div>
@@ -4463,14 +4523,14 @@ function Accounts({role,userId}){
             </select>
           </div>
           {reconEntries.length===0?(
-            <p style={{color:'#94a3b8',textAlign:'center',padding:24,fontSize:13}}>No confirmed entries for {reconAcctType} this month.</p>
+            <p style={{color:'#8a93a6',textAlign:'center',padding:24,fontSize:13}}>No confirmed entries for {reconAcctType} this month.</p>
           ):(
             <div style={{display:'flex',flexDirection:'column',gap:0,maxHeight:420,overflowY:'auto'}}>
               {reconEntries.map(e=>(
-                <label key={e.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 4px',borderBottom:'1px solid #f8fafc',cursor:reconBusyId===e.id?'wait':'pointer',opacity:reconBusyId===e.id?0.6:1}}>
+                <label key={e.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 4px',borderBottom:'1px solid #faf8f3',cursor:reconBusyId===e.id?'wait':'pointer',opacity:reconBusyId===e.id?0.6:1}}>
                   <input type="checkbox" checked={!!e.reconciled} disabled={reconBusyId===e.id} onChange={()=>toggleReconciled(e)}/>
-                  <span style={{fontSize:12,color:'#64748b',minWidth:80}}>{e.entry_date}</span>
-                  <span style={{fontSize:12,color:'#1e293b',flex:1,minWidth:0,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{e.category}{e.note?` — ${e.note}`:''}</span>
+                  <span style={{fontSize:12,color:'#5d6b82',minWidth:80}}>{e.entry_date}</span>
+                  <span style={{fontSize:12,color:'#14213d',flex:1,minWidth:0,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{e.category}{e.note?` — ${e.note}`:''}</span>
                   <strong style={{fontSize:13,color:e.type==='Income'?'#16a34a':'#dc2626',flexShrink:0}}>{e.type==='Income'?'+':'−'}{fmt(e.amount)}</strong>
                 </label>
               ))}
@@ -4481,14 +4541,14 @@ function Accounts({role,userId}){
         {/* ── month-end close / lock ── */}
         <div style={{...chartCard,marginBottom:20}}>
           <h3 style={{...chartTitle,fontSize:15}}>📅 Month-End Close</h3>
-          <p style={{fontSize:11,color:'#94a3b8',margin:'0 0 14px'}}>Closing a month blocks non-admin staff from adding or editing entries dated in it. You can always reopen it here.</p>
+          <p style={{fontSize:11,color:'#8a93a6',margin:'0 0 14px'}}>Closing a month blocks non-admin staff from adding or editing entries dated in it. You can always reopen it here.</p>
           {monthLockGrid.map(g=>(
             <div key={g.account_type} style={{marginBottom:16}}>
-              <div style={{fontSize:12,fontWeight:700,color:'#374151',marginBottom:8}}>{g.account_type}</div>
+              <div style={{fontSize:12,fontWeight:700,color:'#2e3b52',marginBottom:8}}>{g.account_type}</div>
               <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
                 {g.months.map(m=>(
                   <button key={m.month} onClick={()=>m.isLocked?reopenMonth(g.account_type,m.month):closeMonth(g.account_type,m.month)}
-                    style={{padding:'6px 12px',borderRadius:999,border:'1px solid',borderColor:m.isLocked?'#fecaca':'#e2e8f0',backgroundColor:m.isLocked?'#fef2f2':'#f8fafc',color:m.isLocked?'#b91c1c':'#64748b',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                    style={{padding:'6px 12px',borderRadius:999,border:'1px solid',borderColor:m.isLocked?'#fecaca':'#e8e3d8',backgroundColor:m.isLocked?'#fef2f2':'#faf8f3',color:m.isLocked?'#b91c1c':'#5d6b82',fontSize:11,fontWeight:700,cursor:'pointer'}}>
                     {m.isLocked?'🔒':'🔓'} {m.month}
                   </button>
                 ))}
@@ -4512,7 +4572,7 @@ function Accounts({role,userId}){
               ))}
             </div>
           )}
-          <p style={{fontSize:11,color:'#94a3b8',margin:'12px 0 0'}}>This check only compares months that have been closed at least once (closing a month records its balance snapshot above).</p>
+          <p style={{fontSize:11,color:'#8a93a6',margin:'12px 0 0'}}>This check only compares months that have been closed at least once (closing a month records its balance snapshot above).</p>
         </div>
       </div>
     )}
@@ -4529,7 +4589,7 @@ function Accounts({role,userId}){
           <StatCard label="Total Income (All Time)" value={savingsTracker?.totalIncomeAll||0} color="#16a34a" bg="#dcfce7" icon="💰"/>
           <StatCard label="Total Expense (All Time)" value={savingsTracker?.totalExpenseAll||0} color="#dc2626" bg="#fee2e2" icon="💸"/>
           <StatCard label="Net Savings (All Time)" value={savingsTracker?.netSavings||0} color={savingsTracker?.netSavings>=0?'#16a34a':'#dc2626'} bg={savingsTracker?.netSavings>=0?'#dcfce7':'#fee2e2'} icon="🏦"/>
-          <StatCard label="Savings Rate" value={`${(savingsTracker?.savingsRate||0).toFixed(1)}%`} color="#1e3a6e" bg="#eff6ff" icon="📈" isCurrency={false} sub="of total income saved"/>
+          <StatCard label="Savings Rate" value={`${(savingsTracker?.savingsRate||0).toFixed(1)}%`} color="#1e3a6e" bg="#eef2f9" icon="📈" isCurrency={false} sub="of total income saved"/>
         </div>
 
         {/* ── this week vs last week ── */}
@@ -4537,11 +4597,11 @@ function Accounts({role,userId}){
           <h3 style={chartTitle}>This Week vs Last Week</h3>
           <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',gap:16}}>
             {[{label:'Last Week',data:savingsTracker?.lastWeek},{label:'This Week',data:savingsTracker?.thisWeek}].map(({label,data})=>(
-              <div key={label} style={{backgroundColor:'#f8fafc',borderRadius:10,padding:16}}>
-                <p style={{fontSize:12,color:'#64748b',fontWeight:600,margin:'0 0 8px'}}>{label}</p>
+              <div key={label} style={{backgroundColor:'#faf8f3',borderRadius:10,padding:16}}>
+                <p style={{fontSize:12,color:'#5d6b82',fontWeight:600,margin:'0 0 8px'}}>{label}</p>
                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{fontSize:12,color:'#16a34a'}}>Income</span><strong style={{fontSize:13,color:'#16a34a'}}>{fmt(data?.Income||0)}</strong></div>
                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{fontSize:12,color:'#dc2626'}}>Expense</span><strong style={{fontSize:13,color:'#dc2626'}}>{fmt(data?.Expense||0)}</strong></div>
-                <div style={{display:'flex',justifyContent:'space-between',paddingTop:6,borderTop:'1px solid #e2e8f0'}}><span style={{fontSize:12,color:'#1e3a6e',fontWeight:700}}>Net</span><strong style={{fontSize:14,color:data?.Net>=0?'#16a34a':'#dc2626'}}>{fmt(data?.Net||0)}</strong></div>
+                <div style={{display:'flex',justifyContent:'space-between',paddingTop:6,borderTop:'1px solid #e8e3d8'}}><span style={{fontSize:12,color:'#1e3a6e',fontWeight:700}}>Net</span><strong style={{fontSize:14,color:data?.Net>=0?'#16a34a':'#dc2626'}}>{fmt(data?.Net||0)}</strong></div>
               </div>
             ))}
           </div>
@@ -4550,10 +4610,10 @@ function Accounts({role,userId}){
         {/* ── daily trend (last 14 days) ── */}
         <div style={{...chartCard,marginBottom:24}}>
           <h3 style={chartTitle}>📅 Daily Income vs Expense — Last 14 Days</h3>
-          {dailyTrend.length===0?<p style={{textAlign:'center',color:'#94a3b8',fontSize:14,padding:32}}>No entries yet.</p>:(
+          {dailyTrend.length===0?<p style={{textAlign:'center',color:'#8a93a6',fontSize:14,padding:32}}>No entries yet.</p>:(
             <ResponsiveContainer width="100%" height={isMobile?220:280}>
               <LineChart data={dailyTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f0e8"/>
                 <XAxis dataKey="date" tick={{fontSize:10}} tickFormatter={d=>d.slice(5)}/>
                 <YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/>
                 <Tooltip formatter={v=>fmt(v)}/>
@@ -4569,10 +4629,10 @@ function Accounts({role,userId}){
         {/* ── weekly trend (last 8 weeks) ── */}
         <div style={{...chartCard,marginBottom:24}}>
           <h3 style={chartTitle}>🗓️ Weekly Income vs Expense — Last 8 Weeks</h3>
-          {weeklyTrend.length===0?<p style={{textAlign:'center',color:'#94a3b8',fontSize:14,padding:32}}>No entries yet.</p>:(
+          {weeklyTrend.length===0?<p style={{textAlign:'center',color:'#8a93a6',fontSize:14,padding:32}}>No entries yet.</p>:(
             <ResponsiveContainer width="100%" height={isMobile?220:280}>
               <BarChart data={weeklyTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f0e8"/>
                 <XAxis dataKey="week" tick={{fontSize:10}} tickFormatter={d=>d.slice(5)}/>
                 <YAxis tick={{fontSize:10}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/>
                 <Tooltip formatter={v=>fmt(v)}/>
@@ -4587,21 +4647,21 @@ function Accounts({role,userId}){
         {/* ── category trend flags: what to watch for future saving ── */}
         <div style={{...chartCard,marginBottom:20}}>
           <h3 style={chartTitle}>🔍 Categories to Watch — This Week vs Last Week</h3>
-          {categoryTrendFlags.length===0?<p style={{color:'#94a3b8',fontSize:14}}>Not enough weekly data yet to compare trends.</p>:(
+          {categoryTrendFlags.length===0?<p style={{color:'#8a93a6',fontSize:14}}>Not enough weekly data yet to compare trends.</p>:(
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-              <thead><tr style={{backgroundColor:'#f8fafc'}}>{['Category','Last Week','This Week','Change','Signal'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
+              <thead><tr style={{backgroundColor:'#faf8f3'}}>{['Category','Last Week','This Week','Change','Signal'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#2e3b52',fontSize:12,borderBottom:'1px solid #e8e3d8'}}>{h}</th>)}</tr></thead>
               <tbody>{categoryTrendFlags.map(r=>{
                 const rising=r.change>20,falling=r.change<-20
                 return(
-                  <tr key={r.category} style={{borderBottom:'1px solid #f1f5f9'}}>
-                    <td style={{...tdS,fontWeight:600,color:'#1e293b'}}>{r.category}</td>
+                  <tr key={r.category} style={{borderBottom:'1px solid #f3f0e8'}}>
+                    <td style={{...tdS,fontWeight:600,color:'#14213d'}}>{r.category}</td>
                     <td style={tdS}>{fmt(r.previous)}</td>
                     <td style={{...tdS,fontWeight:600}}>{fmt(r.current)}</td>
-                    <td style={{...tdS,fontWeight:700,color:rising?'#dc2626':falling?'#16a34a':'#64748b'}}>{r.change>0?'+':''}{r.change.toFixed(0)}%</td>
+                    <td style={{...tdS,fontWeight:700,color:rising?'#dc2626':falling?'#16a34a':'#5d6b82'}}>{r.change>0?'+':''}{r.change.toFixed(0)}%</td>
                     <td style={tdS}>
                       {rising&&<span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#fee2e2',color:'#dc2626'}}>⬆ Trending up — consider cutting back</span>}
                       {falling&&<span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:'#dcfce7',color:'#16a34a'}}>⬇ Trending down</span>}
-                      {!rising&&!falling&&<span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:'#f1f5f9',color:'#64748b'}}>Stable</span>}
+                      {!rising&&!falling&&<span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,backgroundColor:'#f3f0e8',color:'#5d6b82'}}>Stable</span>}
                     </td>
                   </tr>
                 )
@@ -4615,7 +4675,7 @@ function Accounts({role,userId}){
     {/* ══ TAB: BALANCE SHEET (PHASE 4) ══ */}
     {activeTab==='balancesheet'&&isAdmin&&(
       <div>
-        {loadingFinancials?<div style={{textAlign:'center',padding:48,color:'#64748b'}}>⏳ Loading financials…</div>:(
+        {loadingFinancials?<div style={{textAlign:'center',padding:48,color:'#5d6b82'}}>⏳ Loading financials…</div>:(
           <>
             {/* Trial Balance */}
             <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile?14:20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)',marginBottom:20,borderLeft:'4px solid #047857'}}>
@@ -4626,32 +4686,32 @@ function Accounts({role,userId}){
               {trialBalance.length===0
                 ?<div style={{backgroundColor:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'14px 18px'}}>
                   <p style={{color:'#047857',fontSize:13,margin:0,fontWeight:500}}>📋 No journal entries yet.</p>
-                  <p style={{color:'#64748b',fontSize:12,margin:'6px 0 0'}}>Run the Phase 4 SQL migration in your Supabase SQL editor. New transactions added after migration will auto-generate DR/CR journal lines via the <code>sync_journal_entry</code> trigger.</p>
+                  <p style={{color:'#5d6b82',fontSize:12,margin:'6px 0 0'}}>Run the Phase 4 SQL migration in your Supabase SQL editor. New transactions added after migration will auto-generate DR/CR journal lines via the <code>sync_journal_entry</code> trigger.</p>
                 </div>
                 :<div style={{overflowX:'auto'}}>
                   <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                     <thead>
-                      <tr style={{backgroundColor:'#f8fafc'}}>
+                      <tr style={{backgroundColor:'#faf8f3'}}>
                         {['Account Head','Type','Total Debit','Total Credit','Net Balance'].map(h=>(
-                          <th key={h} style={{padding:'10px 14px',textAlign:h.includes('Total')||h.includes('Net')?'right':'left',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>
+                          <th key={h} style={{padding:'10px 14px',textAlign:h.includes('Total')||h.includes('Net')?'right':'left',fontWeight:600,color:'#2e3b52',fontSize:12,borderBottom:'1px solid #e8e3d8'}}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {trialBalance.map((row,i)=>(
-                        <tr key={i} style={{borderBottom:'1px solid #f1f5f9'}}>
-                          <td style={{...tdS,fontWeight:500,color:'#1e293b'}}>{row.account_head}</td>
+                        <tr key={i} style={{borderBottom:'1px solid #f3f0e8'}}>
+                          <td style={{...tdS,fontWeight:500,color:'#14213d'}}>{row.account_head}</td>
                           <td style={tdS}><span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600,
-                            backgroundColor:row.account_type==='Income'?'#dcfce7':row.account_type==='Expense'?'#fee2e2':row.account_type==='Asset'?'#eff6ff':row.account_type==='Liability'?'#fef3c7':'#f3e8ff',
-                            color:row.account_type==='Income'?'#16a34a':row.account_type==='Expense'?'#dc2626':row.account_type==='Asset'?'#1e3a6e':row.account_type==='Liability'?'#92400e':'#7c3aed'
+                            backgroundColor:row.account_type==='Income'?'#dcfce7':row.account_type==='Expense'?'#fee2e2':row.account_type==='Asset'?'#eef2f9':row.account_type==='Liability'?'#fef3c7':'#fbf3e0',
+                            color:row.account_type==='Income'?'#16a34a':row.account_type==='Expense'?'#dc2626':row.account_type==='Asset'?'#1e3a6e':row.account_type==='Liability'?'#92400e':'#a7771f'
                           }}>{row.account_type}</span></td>
                           <td style={{...tdS,textAlign:'right',color:'#16a34a',fontWeight:600}}>{fmt(row.total_debit)}</td>
                           <td style={{...tdS,textAlign:'right',color:'#dc2626',fontWeight:600}}>{fmt(row.total_credit)}</td>
                           <td style={{...tdS,textAlign:'right',fontWeight:700,color:Number(row.net_balance)>=0?'#1e3a6e':'#dc2626'}}>{fmt(Math.abs(row.net_balance))}<span style={{fontSize:10,marginLeft:4,opacity:0.7}}>{Number(row.net_balance)<0?'Cr':'Dr'}</span></td>
                         </tr>
                       ))}
-                      <tr style={{backgroundColor:'#f8fafc',fontWeight:700,borderTop:'2px solid #e2e8f0'}}>
-                        <td style={{...tdS,fontWeight:700,color:'#1e293b'}} colSpan={2}>Totals</td>
+                      <tr style={{backgroundColor:'#faf8f3',fontWeight:700,borderTop:'2px solid #e8e3d8'}}>
+                        <td style={{...tdS,fontWeight:700,color:'#14213d'}} colSpan={2}>Totals</td>
                         <td style={{...tdS,textAlign:'right',fontWeight:700,color:'#16a34a'}}>{fmt(trialBalance.reduce((s,r)=>s+Number(r.total_debit),0))}</td>
                         <td style={{...tdS,textAlign:'right',fontWeight:700,color:'#dc2626'}}>{fmt(trialBalance.reduce((s,r)=>s+Number(r.total_credit),0))}</td>
                         <td/>
@@ -4683,8 +4743,8 @@ function Accounts({role,userId}){
             {/* Balance Sheet — Assets vs Liabilities & Equity */}
             <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'1fr 1fr',gap:16,marginBottom:20}}>
               {[
-                {title:'Assets',filterFn:(r)=>r.account_type==='Asset',color:'#1e3a6e',bg:'#eff6ff',border:'#bfdbfe'},
-                {title:'Liabilities & Equity',filterFn:(r)=>r.account_type==='Liability'||r.account_type==='Equity',color:'#7c3aed',bg:'#f3e8ff',border:'#e9d5ff'},
+                {title:'Assets',filterFn:(r)=>r.account_type==='Asset',color:'#1e3a6e',bg:'#eef2f9',border:'#bfdbfe'},
+                {title:'Liabilities & Equity',filterFn:(r)=>r.account_type==='Liability'||r.account_type==='Equity',color:'#a7771f',bg:'#fbf3e0',border:'#eadbb2'},
               ].map(sec=>{
                 const rows=balanceSheet.filter(sec.filterFn)
                 const total=rows.reduce((s,r)=>s+Number(r.balance),0)
@@ -4692,17 +4752,17 @@ function Accounts({role,userId}){
                   <div key={sec.title} style={{backgroundColor:'white',borderRadius:16,padding:18,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)',borderLeft:`4px solid ${sec.color}`}}>
                     <h3 style={{fontSize:14,fontWeight:700,color:sec.color,marginBottom:14,borderBottom:`2px solid ${sec.bg}`,paddingBottom:8}}>{sec.title}</h3>
                     {rows.length===0
-                      ?<p style={{color:'#94a3b8',fontSize:13,fontStyle:'italic'}}>No entries yet</p>
+                      ?<p style={{color:'#8a93a6',fontSize:13,fontStyle:'italic'}}>No entries yet</p>
                       :<table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                         <tbody>
                           {rows.map((r,i)=>(
-                            <tr key={i} style={{borderBottom:'1px solid #f1f5f9'}}>
-                              <td style={{padding:'7px 0',color:'#374151'}}>{r.account_head}</td>
+                            <tr key={i} style={{borderBottom:'1px solid #f3f0e8'}}>
+                              <td style={{padding:'7px 0',color:'#2e3b52'}}>{r.account_head}</td>
                               <td style={{padding:'7px 0',textAlign:'right',fontWeight:600,color:sec.color}}>{fmt(Math.abs(Number(r.balance)))}</td>
                             </tr>
                           ))}
                           <tr style={{borderTop:`2px solid ${sec.color}`}}>
-                            <td style={{padding:'8px 0',fontWeight:700,color:'#1e293b'}}>Total {sec.title}</td>
+                            <td style={{padding:'8px 0',fontWeight:700,color:'#14213d'}}>Total {sec.title}</td>
                             <td style={{padding:'8px 0',textAlign:'right',fontWeight:700,color:sec.color}}>{fmt(Math.abs(total))}</td>
                           </tr>
                         </tbody>
@@ -4737,19 +4797,19 @@ function Accounts({role,userId}){
             <div style={{display:'flex',justifyContent:'space-between',alignItems: isMobile?'flex-start':'center',flexDirection: isMobile?'column':'row',gap:10,marginBottom:18}}>
               <div>
                 <h3 style={{...chartTitle,marginBottom:3}}>📂 All Income Categories</h3>
-                <p style={{fontSize:12,color:'#94a3b8',margin:0}}>Every category ever used across your income entries, with this month's collection target</p>
+                <p style={{fontSize:12,color:'#8a93a6',margin:0}}>Every category ever used across your income entries, with this month's collection target</p>
               </div>
               <div style={{display:'flex',gap: isMobile?10:18,flexWrap:'wrap'}}>
                 <div style={{textAlign:'right'}}>
-                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Categories</div>
+                  <div style={{fontSize:10,fontWeight:700,color:'#8a93a6',textTransform:'uppercase',letterSpacing:'0.4px'}}>Categories</div>
                   <div style={{fontSize:18,fontWeight:800,color:'#1e3a6e'}}>{allIncomeCategorySummary.length}</div>
                 </div>
                 <div style={{textAlign:'right'}}>
-                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Collected</div>
+                  <div style={{fontSize:10,fontWeight:700,color:'#8a93a6',textTransform:'uppercase',letterSpacing:'0.4px'}}>Total Collected</div>
                   <div style={{fontSize:18,fontWeight:800,color:'#047857'}}>{fmt(grandTotal)}</div>
                 </div>
                 {topCat&&<div style={{textAlign:'right'}}>
-                  <div style={{fontSize:10,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.4px'}}>Top Category</div>
+                  <div style={{fontSize:10,fontWeight:700,color:'#8a93a6',textTransform:'uppercase',letterSpacing:'0.4px'}}>Top Category</div>
                   <div style={{fontSize:14,fontWeight:800,color:'#1e3a6e'}}>{catIcons[topCat.category]||'🏷️'} {topCat.category}</div>
                 </div>}
               </div>
@@ -4763,43 +4823,43 @@ function Accounts({role,userId}){
                 const catEntries=expanded?entries.filter(e=>e.type==='Income'&&isConfirmed(e)&&(e.category||'Uncategorized')===c.category).sort((a,b)=>b.entry_date<a.entry_date?-1:b.entry_date>a.entry_date?1:0):[]
                 const editingTarget=editIncTarget===c.category
                 return (
-                  <div key={c.category} style={{border:'1px solid #f1f5f9',borderRadius:10,overflow:'hidden',backgroundColor:expanded?'#fafbfc':'white',transition:'background-color 0.2s ease',gridColumn: expanded&&!isMobile?'1 / -1':undefined}}>
+                  <div key={c.category} style={{border:'1px solid #f3f0e8',borderRadius:10,overflow:'hidden',backgroundColor:expanded?'#fafbfc':'white',transition:'background-color 0.2s ease',gridColumn: expanded&&!isMobile?'1 / -1':undefined}}>
                     <div style={{padding:'14px 16px'}}>
                       <div onClick={()=>setCatAllIncDrilldown(expanded?null:c.category)} style={{cursor:'pointer'}}>
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
                           <div style={{display:'flex',alignItems:'center',gap:9,minWidth:0}}>
                             <span style={{fontSize:20,width:34,height:34,borderRadius:9,backgroundColor:`${color}1a`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{catIcons[c.category]||'🏷️'}</span>
                             <div style={{minWidth:0}}>
-                              <div style={{fontWeight:700,color:'#1e293b',fontSize:14,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{c.category}</div>
-                              <div style={{fontSize:11,color:'#94a3b8'}}>{c.count} entr{c.count===1?'y':'ies'} · last {c.lastDate}</div>
+                              <div style={{fontWeight:700,color:'#14213d',fontSize:14,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{c.category}</div>
+                              <div style={{fontSize:11,color:'#8a93a6'}}>{c.count} entr{c.count===1?'y':'ies'} · last {c.lastDate}</div>
                             </div>
                           </div>
-                          <span style={{fontSize:14,color:'#cbd5e1',flexShrink:0,marginLeft:6}}>{expanded?'▾':'▸'}</span>
+                          <span style={{fontSize:14,color:'#d9d2c2',flexShrink:0,marginLeft:6}}>{expanded?'▾':'▸'}</span>
                         </div>
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
                           <strong style={{fontSize:17,fontWeight:800,color:'#1e3a6e'}}>{fmt(c.total)}</strong>
-                          <span style={{fontSize:11,fontWeight:700,color:'#94a3b8'}}>{pct.toFixed(1)}% of total</span>
+                          <span style={{fontSize:11,fontWeight:700,color:'#8a93a6'}}>{pct.toFixed(1)}% of total</span>
                         </div>
-                        <div style={{height:6,borderRadius:999,backgroundColor:'#f1f5f9',overflow:'hidden'}}>
+                        <div style={{height:6,borderRadius:999,backgroundColor:'#f3f0e8',overflow:'hidden'}}>
                           <div style={{height:'100%',width:`${Math.max(pct,2)}%`,borderRadius:999,backgroundColor:color,transition:'width 0.3s ease'}}/>
                         </div>
                       </div>
 
                       {/* ── collection target vs actual, this month ── */}
-                      <div style={{marginTop:12,paddingTop:10,borderTop:'1px dashed #f1f5f9'}} onClick={e=>e.stopPropagation()}>
+                      <div style={{marginTop:12,paddingTop:10,borderTop:'1px dashed #f3f0e8'}} onClick={e=>e.stopPropagation()}>
                         {editingTarget?(
                           <div style={{display:'flex',gap:6,alignItems:'center'}}>
                             <input type="number" min="0" step="1" autoFocus value={incTargetDraft} onChange={e=>setIncTargetDraft(e.target.value)} placeholder="Target ₹" style={{...iStyle,padding:'6px 9px',fontSize:12}}/>
                             <button onClick={()=>saveIncTarget(c.category,incTargetDraft)} style={{...smallBtn('#dcfce7','#16a34a'),fontSize:11}}>✔</button>
-                            <button onClick={()=>setEditIncTarget(null)} style={{...smallBtn('#f1f5f9','#64748b'),fontSize:11}}>✖</button>
+                            <button onClick={()=>setEditIncTarget(null)} style={{...smallBtn('#f3f0e8','#5d6b82'),fontSize:11}}>✖</button>
                           </div>
                         ):c.target>0?(
                           <div>
-                            <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'#64748b',marginBottom:4}}>
+                            <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'#5d6b82',marginBottom:4}}>
                               <span>This month: {fmt(c.monthTotal)} of {fmt(c.target)} target</span>
                               <button onClick={()=>{setEditIncTarget(c.category);setIncTargetDraft(String(c.target))}} style={{background:'none',border:'none',color:'#0891b2',fontSize:11,fontWeight:700,cursor:'pointer',padding:0}}>Edit</button>
                             </div>
-                            <div style={{height:5,borderRadius:999,backgroundColor:'#f1f5f9',overflow:'hidden'}}>
+                            <div style={{height:5,borderRadius:999,backgroundColor:'#f3f0e8',overflow:'hidden'}}>
                               <div style={{height:'100%',width:`${Math.min(c.pctOfTarget||0,100)}%`,borderRadius:999,backgroundColor:(c.pctOfTarget||0)>=100?'#16a34a':(c.pctOfTarget||0)>=60?'#f59e0b':'#dc2626',transition:'width 0.3s ease'}}/>
                             </div>
                           </div>
@@ -4809,11 +4869,11 @@ function Accounts({role,userId}){
                       </div>
                     </div>
                     {expanded&&(
-                      <div style={{padding:'0 16px 14px',borderTop:'1px solid #f1f5f9',marginTop:2}}>
+                      <div style={{padding:'0 16px 14px',borderTop:'1px solid #f3f0e8',marginTop:2}}>
                         <div style={{display:'flex',flexDirection:'column',gap:0,marginTop:10}}>
                           {(showAllDrilldown.has(`inccat:${c.category}`)?catEntries:catEntries.slice(0,10)).map(e=>(
-                            <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',fontSize:12,borderBottom:'1px solid #f8fafc'}}>
-                              <span style={{color:'#64748b'}}>{e.entry_date}{e.note?` — ${e.note}`:''}</span>
+                            <div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',fontSize:12,borderBottom:'1px solid #faf8f3'}}>
+                              <span style={{color:'#5d6b82'}}>{e.entry_date}{e.note?` — ${e.note}`:''}</span>
                               <strong style={{color:'#16a34a',flexShrink:0,marginLeft:8}}>{fmt(e.amount)}</strong>
                             </div>
                           ))}
@@ -4842,19 +4902,19 @@ function Accounts({role,userId}){
               {payerSpendSummary.map(p=>{
                 const expanded=payerDrilldown===p.payer_id
                 return (
-                  <div key={p.payer_id} style={{border:'1px solid #f1f5f9',borderRadius:8}}>
+                  <div key={p.payer_id} style={{border:'1px solid #f3f0e8',borderRadius:8}}>
                     <div onClick={()=>setPayerDrilldown(expanded?null:p.payer_id)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',cursor:'pointer'}}>
                       <div>
-                        <strong style={{color:'#1e293b'}}>{expanded?'▾':'▸'} {p.payerName}</strong>
-                        <span style={{fontSize:11,color:'#94a3b8',marginLeft:8}}>{p.count} payment{p.count===1?'':'s'} · last on {p.lastDate}</span>
+                        <strong style={{color:'#14213d'}}>{expanded?'▾':'▸'} {p.payerName}</strong>
+                        <span style={{fontSize:11,color:'#8a93a6',marginLeft:8}}>{p.count} payment{p.count===1?'':'s'} · last on {p.lastDate}</span>
                       </div>
                       <strong style={{color:'#047857'}}>{fmt(p.total)}</strong>
                     </div>
                     {expanded&&(
-                      <div style={{padding:'0 14px 12px',borderTop:'1px solid #f8fafc'}}>
+                      <div style={{padding:'0 14px 12px',borderTop:'1px solid #faf8f3'}}>
                         {(showAllDrilldown.has(`payer:${p.payer_id}`)?p.entries:p.entries.slice(0,10)).map(e=>(
-                          <div key={e.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',fontSize:12,borderBottom:'1px solid #f8fafc'}}>
-                            <span style={{color:'#64748b'}}>{e.entry_date} · {e.category}{e.note?` — ${e.note}`:''}</span>
+                          <div key={e.id} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',fontSize:12,borderBottom:'1px solid #faf8f3'}}>
+                            <span style={{color:'#5d6b82'}}>{e.entry_date} · {e.category}{e.note?` — ${e.note}`:''}</span>
                             <strong style={{color:'#16a34a'}}>{fmt(e.amount)}</strong>
                           </div>
                         ))}
@@ -4879,20 +4939,20 @@ function Accounts({role,userId}){
         <div style={{backgroundColor:'white',borderRadius:16,padding: isMobile ? 14 : 20,boxShadow:'0 1px 2px rgba(19,42,79,.05), 0 6px 18px -8px rgba(19,42,79,.14)',marginBottom:20}}>
           <h3 style={{fontSize:16,fontWeight:700,color:'#1e3a6e',marginBottom:16}}>🕐 Activity Timeline</h3>
           {auditLog.length===0
-            ? <p style={{color:'#94a3b8',textAlign:'center',padding:32}}>No activity recorded yet.</p>
+            ? <p style={{color:'#8a93a6',textAlign:'center',padding:32}}>No activity recorded yet.</p>
             : auditLog.map((log,i)=>{
-                const actionColor={insert:'#16a34a',update:'#f59e0b',delete:'#dc2626',restore:'#7c3aed',bulk_delete:'#dc2626',budget_edit:'#0891b2',expenditure_approved:'#16a34a',expenditure_rejected:'#dc2626'}[log.action]||'#64748b'
+                const actionColor={insert:'#16a34a',update:'#f59e0b',delete:'#dc2626',restore:'#a7771f',bulk_delete:'#dc2626',budget_edit:'#0891b2',expenditure_approved:'#16a34a',expenditure_rejected:'#dc2626'}[log.action]||'#5d6b82'
                 const actionIcon={insert:'➕',update:'✏️',delete:'🗑',restore:'↩️',bulk_delete:'🗑',budget_edit:'💰',expenditure_approved:'✅',expenditure_rejected:'🚫'}[log.action]||'•'
                 return(
-                  <div key={i} style={{display:'flex',gap:14,paddingBottom:16,borderBottom:'1px solid #f1f5f9',marginBottom:16}}>
+                  <div key={i} style={{display:'flex',gap:14,paddingBottom:16,borderBottom:'1px solid #f3f0e8',marginBottom:16}}>
                     <div style={{width:36,height:36,borderRadius:'50%',backgroundColor:actionColor+'20',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>{actionIcon}</div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:4}}>
-                        <span style={{fontWeight:700,fontSize:13,color:'#1e293b',textTransform:'capitalize'}}>{log.action.replace(/_/g,' ')}</span>
-                        <span style={{fontSize:11,color:'#94a3b8'}}>{log.created_at?new Date(log.created_at).toLocaleString('en-IN'):''}</span>
+                        <span style={{fontWeight:700,fontSize:13,color:'#14213d',textTransform:'capitalize'}}>{log.action.replace(/_/g,' ')}</span>
+                        <span style={{fontSize:11,color:'#8a93a6'}}>{log.created_at?new Date(log.created_at).toLocaleString('en-IN'):''}</span>
                       </div>
-                      <div style={{fontSize:12,color:'#64748b',marginTop:2}}>By <strong style={{color:actionColor}}>{log.changed_by||'system'}</strong>{log.target_id?` · ID: ${log.target_id}`:''}</div>
-                      {log.new_values&&<div style={{fontSize:11,color:'#94a3b8',marginTop:4,fontFamily:'monospace',background:'#f8fafc',padding:'4px 8px',borderRadius:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{log.new_values}</div>}
+                      <div style={{fontSize:12,color:'#5d6b82',marginTop:2}}>By <strong style={{color:actionColor}}>{log.changed_by||'system'}</strong>{log.target_id?` · ID: ${log.target_id}`:''}</div>
+                      {log.new_values&&<div style={{fontSize:11,color:'#8a93a6',marginTop:4,fontFamily:'monospace',background:'#faf8f3',padding:'4px 8px',borderRadius:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{log.new_values}</div>}
                     </div>
                   </div>
                 )
@@ -4911,8 +4971,8 @@ function Accounts({role,userId}){
             <h3 style={{fontSize:16,fontWeight:700,color:'#7f1d1d',margin:0}}>💵 Expenditure Audit Trail</h3>
             <button onClick={fetchExpAuditLog} style={{...smallBtn('#fef2f2','#7f1d1d'),fontSize:12}}>↻ Refresh</button>
           </div>
-          <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 16px'}}>Every insert/edit/delete/restore touching an Expense entry, with a before/after diff for edits.</p>
-          {expAuditLog.length===0?<p style={{color:'#94a3b8',textAlign:'center',padding:24}}>No expenditure edits/deletes recorded yet.</p>:(
+          <p style={{fontSize:12,color:'#8a93a6',margin:'0 0 16px'}}>Every insert/edit/delete/restore touching an Expense entry, with a before/after diff for edits.</p>
+          {expAuditLog.length===0?<p style={{color:'#8a93a6',textAlign:'center',padding:24}}>No expenditure edits/deletes recorded yet.</p>:(
             expAuditLog.map((log,i)=>{
               let ov=null,nv=null
               try{ov=log.old_values?JSON.parse(log.old_values):null}catch{}
@@ -4922,21 +4982,21 @@ function Accounts({role,userId}){
                 <div key={i} style={{borderBottom:'1px solid #fef2f2',paddingBottom:14,marginBottom:14}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:4}}>
                     <span style={{fontWeight:700,fontSize:13,color:'#7f1d1d',textTransform:'capitalize'}}>{log.action.replace(/_/g,' ')}</span>
-                    <span style={{fontSize:11,color:'#94a3b8'}}>{log.created_at?new Date(log.created_at).toLocaleString('en-IN'):''}</span>
+                    <span style={{fontSize:11,color:'#8a93a6'}}>{log.created_at?new Date(log.created_at).toLocaleString('en-IN'):''}</span>
                   </div>
-                  <div style={{fontSize:12,color:'#64748b',margin:'2px 0 6px'}}>By <strong>{log.changed_by||'system'}</strong> · ID: {log.target_id}</div>
+                  <div style={{fontSize:12,color:'#5d6b82',margin:'2px 0 6px'}}>By <strong>{log.changed_by||'system'}</strong> · ID: {log.target_id}</div>
                   {changedFields.length>0?(
                     <div style={{display:'flex',flexDirection:'column',gap:4}}>
                       {changedFields.map(f=>(
                         <div key={f} style={{fontSize:12,display:'flex',gap:8,alignItems:'center'}}>
-                          <span style={{fontWeight:600,color:'#374151',minWidth:90}}>{f}:</span>
+                          <span style={{fontWeight:600,color:'#2e3b52',minWidth:90}}>{f}:</span>
                           <span style={{color:'#dc2626',textDecoration:'line-through'}}>{f==='amount'?fmt(ov[f]):String(ov[f]??'—')}</span>
                           <span>→</span>
                           <span style={{color:'#16a34a',fontWeight:600}}>{f==='amount'?fmt(nv[f]):String(nv[f]??'—')}</span>
                         </div>
                       ))}
                     </div>
-                  ):(nv&&<div style={{fontSize:12,color:'#64748b'}}>{nv.category} — {fmt(nv.amount)}{nv.note?` · ${nv.note}`:''}</div>)}
+                  ):(nv&&<div style={{fontSize:12,color:'#5d6b82'}}>{nv.category} — {fmt(nv.amount)}{nv.note?` · ${nv.note}`:''}</div>)}
                 </div>
               )
             })
@@ -4959,7 +5019,7 @@ function Accounts({role,userId}){
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
             <div>
               <h3 style={{...chartTitle,fontSize:15,margin:0}}>Approval Threshold</h3>
-              <p style={{fontSize:12,color:'#94a3b8',margin:'4px 0 0'}}>Any Expense entry at or above this amount needs approval, regardless of who enters it. Superintendent and general staff entries always need approval, regardless of amount.</p>
+              <p style={{fontSize:12,color:'#8a93a6',margin:'4px 0 0'}}>Any Expense entry at or above this amount needs approval, regardless of who enters it. Superintendent and general staff entries always need approval, regardless of amount.</p>
             </div>
             {!editThreshold?(
               <div style={{display:'flex',alignItems:'center',gap:10}}>
@@ -4970,7 +5030,7 @@ function Accounts({role,userId}){
               <div style={{display:'flex',alignItems:'center',gap:8}}>
                 <input type="number" min="0" value={thresholdDraft} onChange={e=>setThresholdDraft(e.target.value)} style={{...iStyle,width:140}}/>
                 <button onClick={saveApprovalThreshold} style={{...smallBtn('#f0fdf4','#16a34a')}}>✅ Save</button>
-                <button onClick={()=>setEditThreshold(false)} style={{...smallBtn('#f1f5f9','#64748b')}}>Cancel</button>
+                <button onClick={()=>setEditThreshold(false)} style={{...smallBtn('#f3f0e8','#5d6b82')}}>Cancel</button>
               </div>
             )}
           </div>
@@ -4979,7 +5039,7 @@ function Accounts({role,userId}){
         {/* ── pending queue ── */}
         <div style={{...chartCard,marginBottom:20,borderLeft:'4px solid #d97706',overflowX:'auto'}}>
           <h3 style={{...chartTitle,color:'#d97706'}}>⏳ Pending Queue ({pendingApprovals.length})</h3>
-          {pendingApprovals.length===0?<p style={{color:'#94a3b8',fontSize:14}}>Nothing waiting on approval.</p>:(
+          {pendingApprovals.length===0?<p style={{color:'#8a93a6',fontSize:14}}>Nothing waiting on approval.</p>:(
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
               <thead><tr style={{backgroundColor:'#fffbeb'}}>{['Requested','Amount','Category','Note','Requested By','Reason','Actions'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#92400e',fontSize:12,borderBottom:'1px solid #fde68a'}}>{h}</th>)}</tr></thead>
               <tbody>{pendingApprovals.map(req=>(
@@ -5006,14 +5066,14 @@ function Accounts({role,userId}){
         <div style={{...chartCard,borderLeft:'4px solid #1e3a6e',overflowX:'auto'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4,flexWrap:'wrap',gap:8}}>
             <h3 style={{...chartTitle,margin:0}}>📅 Today's Approval List — {new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</h3>
-            <button onClick={()=>fetchApprovalHistoryToday(today)} style={{...smallBtn('#eff6ff','#1e3a6e'),fontSize:12}}>↻ Refresh</button>
+            <button onClick={()=>fetchApprovalHistoryToday(today)} style={{...smallBtn('#eef2f9','#1e3a6e'),fontSize:12}}>↻ Refresh</button>
           </div>
-          <p style={{fontSize:12,color:'#94a3b8',margin:'0 0 14px'}}>Every expenditure approval decision made today, approved or rejected — regardless of when it was originally submitted.</p>
-          {approvalHistory.length===0?<p style={{color:'#94a3b8',fontSize:14}}>No approval decisions made today yet.</p>:(
+          <p style={{fontSize:12,color:'#8a93a6',margin:'0 0 14px'}}>Every expenditure approval decision made today, approved or rejected — regardless of when it was originally submitted.</p>
+          {approvalHistory.length===0?<p style={{color:'#8a93a6',fontSize:14}}>No approval decisions made today yet.</p>:(
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-              <thead><tr style={{backgroundColor:'#f8fafc'}}>{['Decided At','Decision','Amount','Category','Requested By','Decided By','Note'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
+              <thead><tr style={{backgroundColor:'#faf8f3'}}>{['Decided At','Decision','Amount','Category','Requested By','Decided By','Note'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#2e3b52',fontSize:12,borderBottom:'1px solid #e8e3d8'}}>{h}</th>)}</tr></thead>
               <tbody>{approvalHistory.map(h=>(
-                <tr key={h.id} style={{borderBottom:'1px solid #f1f5f9'}}>
+                <tr key={h.id} style={{borderBottom:'1px solid #f3f0e8'}}>
                   <td style={tdS}>{h.decided_at?new Date(h.decided_at).toLocaleString('en-IN'):''}</td>
                   <td style={tdS}><span style={{padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:700,backgroundColor:h.status==='approved'?'#dcfce7':'#fee2e2',color:h.status==='approved'?'#16a34a':'#dc2626'}}>{h.status==='approved'?'✓ Approved':'✗ Rejected'}</span></td>
                   <td style={{...tdS,fontWeight:600}}>{fmt(h.amount)}</td>
@@ -5040,13 +5100,13 @@ function Accounts({role,userId}){
         {spendVelocityAlerts.length>0&&(
           <div style={{...chartCard,marginBottom:20,borderLeft:'4px solid #dc2626'}}>
             <h3 style={{...chartTitle,color:'#dc2626'}}>📈 Spend-Velocity Alerts</h3>
-            <p style={{fontSize:12,color:'#94a3b8',margin:'-8px 0 12px'}}>A category or voucher head running well above its own recent average — independent of any fixed budget limit.</p>
+            <p style={{fontSize:12,color:'#8a93a6',margin:'-8px 0 12px'}}>A category or voucher head running well above its own recent average — independent of any fixed budget limit.</p>
             <div style={{display:'flex',flexDirection:'column',gap:8}}>
               {spendVelocityAlerts.map((a,i)=>(
                 <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',backgroundColor:'#fef2f2',borderRadius:8,padding:'10px 14px'}}>
                   <div>
-                    <strong style={{color:'#1e293b'}}>{a.label}</strong>
-                    <span style={{fontSize:11,color:'#94a3b8',marginLeft:8}}>{a.scope==='category'?'category · this month vs prior 3-month avg':'voucher head · this week vs prior 4-week avg'}</span>
+                    <strong style={{color:'#14213d'}}>{a.label}</strong>
+                    <span style={{fontSize:11,color:'#8a93a6',marginLeft:8}}>{a.scope==='category'?'category · this month vs prior 3-month avg':'voucher head · this week vs prior 4-week avg'}</span>
                   </div>
                   <div style={{textAlign:'right'}}>
                     <div style={{fontWeight:800,color:'#dc2626'}}>{fmt(a.current)} <span style={{fontSize:11,fontWeight:600}}>vs avg {fmt(a.baseline)}</span></div>
@@ -5060,14 +5120,14 @@ function Accounts({role,userId}){
 
         <div style={{...chartCard,overflowX:'auto'}}>
           <h3 style={chartTitle}>By Staff Member</h3>
-          {perStaffExpenditure.length===0?<p style={{color:'#94a3b8',fontSize:14}}>No expenditure entries yet.</p>:(
+          {perStaffExpenditure.length===0?<p style={{color:'#8a93a6',fontSize:14}}>No expenditure entries yet.</p>:(
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-              <thead><tr style={{backgroundColor:'#f8fafc'}}>{['Staff','Total (All Time)','Entries','This Month','Last Month','Change','Top Category'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
+              <thead><tr style={{backgroundColor:'#faf8f3'}}>{['Staff','Total (All Time)','Entries','This Month','Last Month','Change','Top Category'].map(h=><th key={h} style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'#2e3b52',fontSize:12,borderBottom:'1px solid #e8e3d8'}}>{h}</th>)}</tr></thead>
               <tbody>{perStaffExpenditure.map(s=>{
                 const spiking=s.momChange>50&&s.thisMonthTotal>1000
                 return(
-                <tr key={s.staff} style={{borderBottom:'1px solid #f1f5f9',backgroundColor:spiking?'#fff7ed':'transparent'}}>
-                  <td style={{...tdS,fontWeight:700,color:'#1e293b'}}>{s.staff}{spiking&&<span style={{marginLeft:6,fontSize:11,color:'#c2410c'}}>⚠ spiking</span>}</td>
+                <tr key={s.staff} style={{borderBottom:'1px solid #f3f0e8',backgroundColor:spiking?'#fff7ed':'transparent'}}>
+                  <td style={{...tdS,fontWeight:700,color:'#14213d'}}>{s.staff}{spiking&&<span style={{marginLeft:6,fontSize:11,color:'#c2410c'}}>⚠ spiking</span>}</td>
                   <td style={{...tdS,fontWeight:600}}>{fmt(s.total)}</td>
                   <td style={tdS}>{s.count}</td>
                   <td style={tdS}>{fmt(s.thisMonthTotal)}</td>
@@ -5088,11 +5148,11 @@ function Accounts({role,userId}){
         <div onClick={e=>e.stopPropagation()} style={{backgroundColor:'white',borderRadius:14,padding: isMobile ? 20 : 28,width: isMobile ? '100%' : 420,maxWidth:'95vw',boxShadow:'0 20px 60px rgba(0,0,0,0.3)',textAlign:'center'}}>
           <div style={{fontSize:36,marginBottom:8}}>✅</div>
           <h2 style={{fontSize:17,fontWeight:800,color:'#1e3a6e',margin:'0 0 6px'}}>Entry Saved</h2>
-          <p style={{fontSize:13,color:'#64748b',margin:'0 0 20px'}}>
+          <p style={{fontSize:13,color:'#5d6b82',margin:'0 0 20px'}}>
             {receiptMemoEntry.type} of <strong>{fmt(receiptMemoEntry.amount)}</strong> recorded for <strong>{receiptMemoEntry.voucher_head||'-'}</strong>.
           </p>
           <div style={{display:'flex',gap:10}}>
-            <button onClick={()=>setReceiptMemoEntry(null)} style={{backgroundColor:'#f1f5f9',color:'#64748b',border:'none',borderRadius:8,padding:'10px 16px',fontWeight:600,cursor:'pointer',fontSize:14,flex:1}}>Close</button>
+            <button onClick={()=>setReceiptMemoEntry(null)} style={{backgroundColor:'#f3f0e8',color:'#5d6b82',border:'none',borderRadius:8,padding:'10px 16px',fontWeight:600,cursor:'pointer',fontSize:14,flex:1}}>Close</button>
             <button onClick={()=>{printReceiptMemo(receiptMemoEntry);setReceiptMemoEntry(null)}} style={{backgroundColor:'#16a34a',color:'white',border:'none',borderRadius:8,padding:'10px 16px',fontWeight:600,cursor:'pointer',fontSize:14,flex:1}}>🧾 Print Receipt Memo</button>
           </div>
         </div>
@@ -5104,7 +5164,7 @@ function Accounts({role,userId}){
       <div onClick={()=>setShowPL(false)} style={{position:'fixed',inset:0,backgroundColor:'rgba(0,0,0,0.55)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999,padding: isMobile ? 12 : 0}}>
         <div onClick={e=>e.stopPropagation()} style={{backgroundColor:'white',borderRadius:14,padding: isMobile ? 16 : 28,width: isMobile ? '100%' : 680,maxWidth:'95vw',maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}}>
-            <div><h2 style={{fontSize: isMobile ? 16 : 20,fontWeight:700,color:'#1e3a6e',margin:0}}>📋 P&L Statement</h2><p style={{fontSize:13,color:'#64748b',margin:'4px 0 0'}}>Income &amp; Expenditure Report · {plPeriodLabel}</p></div>
+            <div><h2 style={{fontSize: isMobile ? 16 : 20,fontWeight:700,color:'#1e3a6e',margin:0}}>📋 P&L Statement</h2><p style={{fontSize:13,color:'#5d6b82',margin:'4px 0 0'}}>Income &amp; Expenditure Report · {plPeriodLabel}</p></div>
             <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
               <button onClick={printPL} style={{backgroundColor:'#1e3a6e',color:'white',border:'none',borderRadius:8,padding:'8px 16px',fontWeight:600,cursor:'pointer',fontSize:13}}>🖨 Print</button>
               <button onClick={()=>setShowPL(false)} style={{backgroundColor:'#fee2e2',color:'#dc2626',border:'none',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:13}}>✖</button>
@@ -5114,23 +5174,23 @@ function Accounts({role,userId}){
           {/* ── period selector: Month vs Custom Range ── */}
           <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:12}}>
             <div style={{display:'flex',borderRadius:8,overflow:'hidden',border:'1px solid #e5e7eb'}}>
-              <button onClick={()=>setPlRangeMode('month')} style={{padding:'8px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plRangeMode==='month'?'#1e3a6e':'#f8fafc',color:plRangeMode==='month'?'white':'#64748b'}}>Month</button>
-              <button onClick={()=>setPlRangeMode('range')} style={{padding:'8px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plRangeMode==='range'?'#1e3a6e':'#f8fafc',color:plRangeMode==='range'?'white':'#64748b'}}>Custom Range</button>
+              <button onClick={()=>setPlRangeMode('month')} style={{padding:'8px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plRangeMode==='month'?'#1e3a6e':'#faf8f3',color:plRangeMode==='month'?'white':'#5d6b82'}}>Month</button>
+              <button onClick={()=>setPlRangeMode('range')} style={{padding:'8px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plRangeMode==='range'?'#1e3a6e':'#faf8f3',color:plRangeMode==='range'?'white':'#5d6b82'}}>Custom Range</button>
             </div>
             {plRangeMode==='month'
               ? <input type="month" value={plMonth} onChange={e=>setPlMonth(e.target.value)} style={{...iStyle,width: isMobile ? '100%' : 160}}/>
               : <>
                   <input type="date" value={plDateFrom} onChange={e=>setPlDateFrom(e.target.value)} style={{...iStyle,width: isMobile ? '48%' : 150}}/>
-                  <span style={{color:'#94a3b8',fontSize:13}}>to</span>
+                  <span style={{color:'#8a93a6',fontSize:13}}>to</span>
                   <input type="date" value={plDateTo} onChange={e=>setPlDateTo(e.target.value)} style={{...iStyle,width: isMobile ? '48%' : 150}}/>
                 </>
             }
-            <button onClick={()=>setShowPlFilters(s=>!s)} style={{backgroundColor: showPlFilters?'#eef2ff':'#f8fafc',color:'#312e81',border:'1px solid #e0e7ff',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:12}}>⚙ Advanced Filters{(plAccountType!=='All'||plPaymentMode!=='All'||plStatus!=='All')?' •':''}</button>
+            <button onClick={()=>setShowPlFilters(s=>!s)} style={{backgroundColor: showPlFilters?'#eef2f9':'#faf8f3',color:'#132a4f',border:'1px solid #e0e7ff',borderRadius:8,padding:'8px 12px',fontWeight:600,cursor:'pointer',fontSize:12}}>⚙ Advanced Filters{(plAccountType!=='All'||plPaymentMode!=='All'||plStatus!=='All')?' •':''}</button>
           </div>
 
           {/* ── advanced filters panel ── */}
           {showPlFilters&&(
-            <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)',gap:10,marginBottom:16,backgroundColor:'#f8fafc',borderRadius:10,padding:14,border:'1px solid #e2e8f0'}}>
+            <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)',gap:10,marginBottom:16,backgroundColor:'#faf8f3',borderRadius:10,padding:14,border:'1px solid #e8e3d8'}}>
               <div>
                 <label style={lStyle}>Account Type</label>
                 <select value={plAccountType} onChange={e=>setPlAccountType(e.target.value)} style={iStyle}>
@@ -5161,7 +5221,7 @@ function Accounts({role,userId}){
           )}
 
           <div style={{display:'grid',gridTemplateColumns:plModalCols,gap:12,marginBottom:20}}>
-            {[{label:'Total Income',value:plData.totalThisInc,color:'#16a34a',bg:'#dcfce7'},{label:'Total Expense',value:plData.totalThisExp,color:'#dc2626',bg:'#fee2e2'},{label:'Net Surplus/Deficit',value:plData.totalThisInc-plData.totalThisExp,color:'#1e3a6e',bg:'#eff6ff'}].map(c=>(
+            {[{label:'Total Income',value:plData.totalThisInc,color:'#16a34a',bg:'#dcfce7'},{label:'Total Expense',value:plData.totalThisExp,color:'#dc2626',bg:'#fee2e2'},{label:'Net Surplus/Deficit',value:plData.totalThisInc-plData.totalThisExp,color:'#1e3a6e',bg:'#eef2f9'}].map(c=>(
               <div key={c.label} style={{backgroundColor:c.bg,borderRadius:10,padding:'14px 16px',borderLeft:`3px solid ${c.color}`}}>
                 <p style={{fontSize:12,color:c.color,fontWeight:600,margin:'0 0 4px'}}>{c.label}</p>
                 <p style={{fontSize: isMobile ? 18 : 22,fontWeight:800,color:c.color,margin:0}}>{fmt(c.value)}</p>
@@ -5183,7 +5243,7 @@ function Accounts({role,userId}){
                 const diffColor=diff===0?'#16a34a':'#dc2626'
                 return (
                   <div style={{flex:'1 1 180px',backgroundColor:'white',borderRadius:8,padding:'10px 14px',border:`1px solid ${diffColor}33`}}>
-                    <p style={{fontSize:11,color:'#64748b',margin:'0 0 2px'}}>Difference (Manual − System)</p>
+                    <p style={{fontSize:11,color:'#5d6b82',margin:'0 0 2px'}}>Difference (Manual − System)</p>
                     <p style={{fontSize:16,fontWeight:800,color:diffColor,margin:0}}>{diff>=0?'+':''}{fmt(diff)}</p>
                   </div>
                 )
@@ -5193,25 +5253,25 @@ function Accounts({role,userId}){
 
           <div style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}>
             <div style={{display:'flex',borderRadius:8,overflow:'hidden',border:'1px solid #e5e7eb'}}>
-              <button onClick={()=>setPlShowDatewise(false)} style={{padding:'6px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:!plShowDatewise?'#1e3a6e':'#f8fafc',color:!plShowDatewise?'white':'#64748b'}}>By Category</button>
-              <button onClick={()=>setPlShowDatewise(true)} style={{padding:'6px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plShowDatewise?'#1e3a6e':'#f8fafc',color:plShowDatewise?'white':'#64748b'}}>Date-wise</button>
+              <button onClick={()=>setPlShowDatewise(false)} style={{padding:'6px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:!plShowDatewise?'#1e3a6e':'#faf8f3',color:!plShowDatewise?'white':'#5d6b82'}}>By Category</button>
+              <button onClick={()=>setPlShowDatewise(true)} style={{padding:'6px 14px',fontSize:12,fontWeight:600,cursor:'pointer',border:'none',backgroundColor:plShowDatewise?'#1e3a6e':'#faf8f3',color:plShowDatewise?'white':'#5d6b82'}}>Date-wise</button>
             </div>
           </div>
 
           {plShowDatewise?(
             <div>
-              <h3 style={{fontSize:14,fontWeight:700,color:'#1e3a6e',marginBottom:10,borderBottom:'2px solid #eff6ff',paddingBottom:6}}>Date-wise Income &amp; Expenditure — {plPeriodLabel}</h3>
+              <h3 style={{fontSize:14,fontWeight:700,color:'#1e3a6e',marginBottom:10,borderBottom:'2px solid #eef2f9',paddingBottom:6}}>Date-wise Income &amp; Expenditure — {plPeriodLabel}</h3>
               {plDatewise.length===0?(
-                <p style={{color:'#94a3b8',textAlign:'center',padding:20}}>No entries in this period.</p>
+                <p style={{color:'#8a93a6',textAlign:'center',padding:20}}>No entries in this period.</p>
               ):(
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-                  <thead><tr style={{backgroundColor:'#f8fafc'}}>{['Date','Income','Expenditure','Net'].map(h=><th key={h} style={{padding:'8px 10px',textAlign:h==='Date'?'left':'right',fontWeight:600,color:'#374151',fontSize:12,borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}</tr></thead>
+                  <thead><tr style={{backgroundColor:'#faf8f3'}}>{['Date','Income','Expenditure','Net'].map(h=><th key={h} style={{padding:'8px 10px',textAlign:h==='Date'?'left':'right',fontWeight:600,color:'#2e3b52',fontSize:12,borderBottom:'1px solid #e8e3d8'}}>{h}</th>)}</tr></thead>
                   <tbody>
                     {plDatewise.map(d=>{
                       const net=d.income-d.expense
                       return (
-                        <tr key={d.date} style={{borderBottom:'1px solid #f1f5f9'}}>
-                          <td style={{padding:'7px 10px',color:'#374151'}}>{d.date}</td>
+                        <tr key={d.date} style={{borderBottom:'1px solid #f3f0e8'}}>
+                          <td style={{padding:'7px 10px',color:'#2e3b52'}}>{d.date}</td>
                           <td style={{padding:'7px 10px',textAlign:'right',fontWeight:600,color:'#16a34a'}}>{fmt(d.income)}</td>
                           <td style={{padding:'7px 10px',textAlign:'right',fontWeight:600,color:'#dc2626'}}>{fmt(d.expense)}</td>
                           <td style={{padding:'7px 10px',textAlign:'right',fontWeight:600,color:net>=0?'#16a34a':'#dc2626'}}>{fmt(net)}</td>
@@ -5219,7 +5279,7 @@ function Accounts({role,userId}){
                       )
                     })}
                     <tr style={{borderTop:'2px solid #1e3a6e'}}>
-                      <td style={{padding:'8px 10px',fontWeight:700,color:'#1e293b'}}>Total</td>
+                      <td style={{padding:'8px 10px',fontWeight:700,color:'#14213d'}}>Total</td>
                       <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:'#16a34a'}}>{fmt(plData.totalThisInc)}</td>
                       <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:'#dc2626'}}>{fmt(plData.totalThisExp)}</td>
                       <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:(plData.totalThisInc-plData.totalThisExp)>=0?'#16a34a':'#dc2626'}}>{fmt(plData.totalThisInc-plData.totalThisExp)}</td>
@@ -5235,9 +5295,9 @@ function Accounts({role,userId}){
                 <h3 style={{fontSize:14,fontWeight:700,color:sec.color,marginBottom:10,borderBottom:`2px solid ${sec.bg}`,paddingBottom:6}}>{sec.title}</h3>
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                   <tbody>
-                    {Object.entries(sec.data).map(([k,v])=><tr key={k} style={{borderBottom:'1px solid #f1f5f9'}}><td style={{padding:'7px 0',color:'#374151'}}>{k}</td><td style={{padding:'7px 0',textAlign:'right',fontWeight:600,color:sec.color}}>{fmt(v)}</td></tr>)}
-                    {Object.keys(sec.data).length===0&&<tr><td colSpan={2} style={{padding:'12px 0',color:'#94a3b8',textAlign:'center'}}>No {sec.title.toLowerCase()} in this period</td></tr>}
-                    <tr style={{borderTop:`2px solid ${sec.color}`}}><td style={{padding:'8px 0',fontWeight:700,color:'#1e293b'}}>Total</td><td style={{padding:'8px 0',textAlign:'right',fontWeight:700,color:sec.color}}>{fmt(sec.total)}</td></tr>
+                    {Object.entries(sec.data).map(([k,v])=><tr key={k} style={{borderBottom:'1px solid #f3f0e8'}}><td style={{padding:'7px 0',color:'#2e3b52'}}>{k}</td><td style={{padding:'7px 0',textAlign:'right',fontWeight:600,color:sec.color}}>{fmt(v)}</td></tr>)}
+                    {Object.keys(sec.data).length===0&&<tr><td colSpan={2} style={{padding:'12px 0',color:'#8a93a6',textAlign:'center'}}>No {sec.title.toLowerCase()} in this period</td></tr>}
+                    <tr style={{borderTop:`2px solid ${sec.color}`}}><td style={{padding:'8px 0',fontWeight:700,color:'#14213d'}}>Total</td><td style={{padding:'8px 0',textAlign:'right',fontWeight:700,color:sec.color}}>{fmt(sec.total)}</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -5255,7 +5315,7 @@ function Accounts({role,userId}){
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
             <h3 style={{fontSize:16,fontWeight:600,color:'#1e3a6e',margin:0}}>🧾 Receipt Preview</h3>
             <div style={{display:'flex',gap:10}}>
-              <a href={viewReceipt} target="_blank" rel="noopener noreferrer" style={{backgroundColor:'#eff6ff',color:'#1e3a6e',borderRadius:6,padding:'6px 14px',fontSize:13,fontWeight:600,textDecoration:'none'}}>↗ Open</a>
+              <a href={viewReceipt} target="_blank" rel="noopener noreferrer" style={{backgroundColor:'#eef2f9',color:'#1e3a6e',borderRadius:6,padding:'6px 14px',fontSize:13,fontWeight:600,textDecoration:'none'}}>↗ Open</a>
               <button onClick={()=>setViewReceipt(null)} style={{backgroundColor:'#fee2e2',color:'#dc2626',border:'none',borderRadius:6,padding:'6px 12px',fontSize:13,fontWeight:600,cursor:'pointer'}}>✖</button>
             </div>
           </div>
@@ -5268,4 +5328,4 @@ function Accounts({role,userId}){
   )
 }
 
-export default Accounts
+export default Accounts

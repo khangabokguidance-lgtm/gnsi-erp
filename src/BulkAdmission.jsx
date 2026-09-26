@@ -1,8 +1,18 @@
 // BulkAdmissionFee.jsx
 // ─────────────────────────────────────────────────────────────────────────────
 //  Bulk admission fee collection for migrated / enrolled students.
-//  Writes to: adm_fee_collections, accounts (via upsertAccount).
-//  All columns: snake_case. accounts: always upserted, never plain insert.
+//
+//  FLOW FIX (Admissions → Students → Fees → Accounts):
+//  • Every save now goes through collectFee() — the same single path Fees,
+//    the Fee Collection modal and Students' Bulk Fee use. The old code wrote
+//    adm_fee_collections + accounts by hand with source_type 'admission' and
+//    one lumped Accounts row per student, so Fees → Revert / Fix Date could
+//    never find the matching Accounts entry (their keys are 'adm_fee' /
+//    sourceRef.admission) and the two drifted apart on every correction.
+//  • Receipts printed via an undefined buildReceiptHTML() — Print crashed.
+//  • Reverted admission fees counted as paid, hiding those students here.
+//  • Collected By is required, non-cash payments need a reference, and a
+//    month closed in Accounts blocks collections dated in it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -10,9 +20,11 @@ import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import {
   fmt, today, gccStr, rcptNo,
-  upsertAccount,
-  PAY_MODES, CURRENT_YEAR,
+  collectFee,
+  PAY_MODES,
 } from './feeEngine'
+import { isAdminRole } from './roles'
+import { confirmFeeMonthOpen } from './monthLock'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -61,6 +73,34 @@ function amountInWords(n) {
   return result.trim() + ' Rupees Only'
 }
 
+// ─── Receipt HTML (was referenced but never defined) ─────────────────────────
+
+const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+
+function buildReceiptHTML(r) {
+  const rows = (r.items || []).map((it, i) =>
+    `<tr><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0">${i + 1}</td><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0">${esc(it.label)}</td><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right">₹${fmt(it.amount)}</td></tr>`
+  ).join('')
+  return `<div style="max-width:640px;margin:0 auto 18px;background:#fff;border:1.5px solid #0f2744;border-radius:8px;padding:22px 26px;font-family:Georgia,serif;color:#0f172a">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px double #0f2744;padding-bottom:10px;margin-bottom:12px">
+      <div><div style="font-size:19px;font-weight:700;color:#0f2744">Guidance Navodaya &amp; Sainik Institute</div>
+      <div style="font-size:10.5px;color:#64748b;margin-top:2px">Khangabok, Thoubal, Manipur</div></div>
+      <div style="text-align:right"><div style="font-size:11px;font-weight:700;background:#0f2744;color:#fff;padding:3px 10px;border-radius:4px">FEE RECEIPT</div>
+      <div style="font-size:11px;margin-top:5px">No. <b>${esc(r.receipt_no)}</b></div><div style="font-size:11px">Date: ${esc(r.pay_date)}</div></div>
+    </div>
+    <table style="width:100%;font-size:12.5px;margin-bottom:12px"><tr>
+      <td>Student: <b>${esc(r.student_name)}</b></td><td>GCC: <b>${esc(r.gcc_no)}</b></td></tr><tr>
+      <td>Adm. No: ${esc(r.adm_no || '--')}</td><td>Class: ${esc(r.class_name || '')} ${r.course ? '· ' + esc(r.course) : ''}</td></tr></table>
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#0f2744;color:#fff">
+      <th style="padding:6px 8px;text-align:left;width:34px">#</th><th style="padding:6px 8px;text-align:left">Particulars</th><th style="padding:6px 8px;text-align:right">Amount</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td></td><td style="padding:8px;text-align:right;font-weight:700">Total</td><td style="padding:8px;text-align:right;font-weight:700">₹${fmt(r.total)}</td></tr></tfoot></table>
+    <div style="font-size:11.5px;font-style:italic;margin:6px 0 12px">${esc(amountInWords(r.total))}</div>
+    <div style="display:flex;justify-content:space-between;font-size:11.5px;color:#334155">
+      <span>Mode: ${esc(r.pay_mode)}${r.txn_ref ? ' · Ref: ' + esc(r.txn_ref) : ''}</span><span>Collected by: <b>${esc(r.collected_by || '—')}</b></span></div>
+  </div>`
+}
+
 // ─── Receipt Printer ──────────────────────────────────────────────────────────
 
 function ReceiptPrinter({ receipts, onClose }) {
@@ -85,7 +125,7 @@ function ReceiptPrinter({ receipts, onClose }) {
           course:       r.course,
           items:        r.items,
           total:        r.total,
-        }).replace(/<!DOCTYPE html>[\s\S]*?<body>/, '').replace(/<\/body>[\s\S]*$/, '')}
+        })}
       </div>`).join('')}
     </body></html>`
 
@@ -138,7 +178,8 @@ function ReceiptPrinter({ receipts, onClose }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function BulkAdmissionFee() {
+export default function BulkAdmissionFee({ currentUser = null } = {}) {
+  const isAdmin = isAdminRole(currentUser?.role) || ['admin', 'administrator', 'co-admin'].includes(String(currentUser?.role || '').toLowerCase())
   const [students,  setStudents]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState(null)
@@ -149,7 +190,7 @@ export default function BulkAdmissionFee() {
 
   const [payMode,     setPayMode]     = useState('Cash')
   const [payDate,     setPayDate]     = useState(today())
-  const [collectedBy, setCollectedBy] = useState('')
+  const [collectedBy, setCollectedBy] = useState(currentUser?.name || currentUser?.userName || '')
   const [txnRef,      setTxnRef]      = useState('')
 
   const [saving,     setSaving]     = useState(false)
@@ -177,6 +218,7 @@ export default function BulkAdmissionFee() {
         .from('adm_fee_collections')
         .select('adm_app_id, fee_type')
         .eq('fee_type', 'admission')
+        .eq('reverted', false)
       if (e2) throw e2
 
       const paidSet = new Set((paid || []).map(p => gccStr(p.adm_app_id)))
@@ -237,12 +279,17 @@ export default function BulkAdmissionFee() {
   // ── Save all selected ─────────────────────────────────────────────────────
   const saveAll = async () => {
     if (!selectedList.length) return alert('Select at least one student.')
+    if (!collectedBy.trim()) return alert('Collected By is required — enter the name of the staff collecting these payments.')
+    if (payMode !== 'Cash' && !txnRef.trim()) return alert(`A transaction / cheque reference is required for ${payMode} payments.`)
+    if (!(await confirmFeeMonthOpen(payDate, { isAdmin }))) return
     if (!window.confirm(`Record admission fees for ${selectedList.length} students?\nTotal: ₹${fmt(totalAmount)}`)) return
 
     setSaving(true); setSaveError(null)
     setProgress({ done: 0, total: selectedList.length })
     const newReceipts = []
     const failed = []
+    const skippedAll = []
+    const staffId = currentUser?.userName || currentUser?.name || null
 
     for (let i = 0; i < selectedList.length; i++) {
       const s     = selectedList[i]
@@ -250,67 +297,47 @@ export default function BulkAdmissionFee() {
       const its   = feeItems[gc] || {}
       const amts  = feeEdits[gc] || {}
       const name  = s.applicant_name
-      const admNo = s.adm_no || null
-      const batch = s.batch  || null
+      const admNo = s.adm_no || '--'
+      const batch = s.batch  || ''
 
-      const lineItems = [
-        its.admission  && { id: 'admission',  label: 'Admission Fee',  type: 'admission', amount: amts.admission  || DEFAULT_ADM_FEE },
-        its.dress      && { id: 'dress',      label: 'Dress Fee',       type: 'item',      amount: amts.dress      || DEFAULT_DRESS   },
-        its.prospectus && { id: 'prospectus', label: 'Prospectus Fee',  type: 'item',      amount: amts.prospectus || DEFAULT_PROSP   },
+      // Same kinds/labels as FeeCollectionModal, so collectFee writes the
+      // standard fee rows AND their Accounts entries with the keys Fees uses.
+      const items = [
+        its.admission  && { kind: 'admission', label: 'Admission Fee',  amount: amts.admission  || DEFAULT_ADM_FEE },
+        its.dress      && { kind: 'item',      label: 'Dress Fee',      amount: amts.dress      || DEFAULT_DRESS   },
+        its.prospectus && { kind: 'item',      label: 'Prospectus Fee', amount: amts.prospectus || DEFAULT_PROSP   },
       ].filter(Boolean)
 
-      if (!lineItems.length) { setProgress(p => ({ ...p, done: p.done + 1 })); continue }
+      if (!items.length) { setProgress(p => ({ ...p, done: p.done + 1 })); continue }
 
-      const rcpt  = rcptNo()
-      const total = lineItems.reduce((s, it) => s + it.amount, 0)
-
+      const rcpt = rcptNo()
       try {
-        for (const item of lineItems) {
-          const { error: e } = await supabase.from('adm_fee_collections').insert({
-            id:           `${rcpt}-${item.id}`,
-            adm_app_id:   gc,
-            fee_type:     item.type,
-            amount_paid:  item.amount,    // ← snake_case
-            pay_date:     payDate,         // ← snake_case
-            pay_mode:     payMode,         // ← snake_case
-            txn_ref:      txnRef || null,
-            description:  item.label,
-            receipt_no:   rcpt,            // ← snake_case
+        const { total, skipped } = await collectFee({
+          gcc: gc, studentName: name, admNo,
+          className: batch, course: s.course || '',
+          hostelType: s.hostel_type || 'Day Scholar',
+          payDate, payMode, txnRef: txnRef || null,
+          collectedBy: collectedBy.trim(), staffId,
+          receiptNo: rcpt, items,
+        })
+        if (skipped?.length) skippedAll.push(`GCC-${gc}: ${skipped.join(', ')}`)
+        const recorded = items.filter(it => !(skipped || []).includes(it.label))
+        if (recorded.length && Number(total) > 0) {
+          newReceipts.push({
+            receipt_no:   rcpt,
             student_name: name,
+            gcc:          gc,
+            course:       s.course,
+            batch,
+            pay_mode:     payMode,
+            pay_date:     payDate,
+            txn_ref:      txnRef || null,
+            collected_by: collectedBy.trim(),
             adm_no:       admNo,
-            class_name:   batch,
-            collected_by: collectedBy || null,
+            items:        recorded.map(it => ({ label: it.label, amount: it.amount })),
+            total:        Number(total),
           })
-          if (e) throw e
         }
-
-        // accounts: upsert (not plain insert) to prevent duplicates on re-run
-        await upsertAccount({
-          entry_date:   payDate,
-          type:         'Income',
-          category:     'Admission',
-          amount:       total,
-          payment_mode: payMode,
-          note:         `Admission fees — ${name} (GCC-${gc})`,
-          source_ref:   `${gc}_admission`,   // ← deterministic key per student
-          source_type:  'admission',
-        })
-
-        newReceipts.push({
-          receipt_no:   rcpt,
-          student_name: name,
-          gcc:          gc,
-          course:       s.course,
-          batch,
-          pay_mode:     payMode,
-          pay_date:     payDate,
-          txn_ref:      txnRef || null,
-          collected_by: collectedBy || null,
-          adm_no:       admNo,
-          items:        lineItems.map(it => ({ label: it.label, amount: it.amount })),
-          total,
-        })
-
       } catch (err) {
         console.error(`Failed for GCC-${gc}:`, err)
         failed.push({ name, gc, error: err.message })
@@ -324,16 +351,16 @@ export default function BulkAdmissionFee() {
     setSavedCount(prev => prev + newReceipts.length)
     setReceipts(newReceipts)
 
-    if (failed.length) {
-      setSaveError(`${failed.length} failed: ${failed.map(f => `GCC-${f.gc}`).join(', ')}`)
-    }
+    const msgs = []
+    if (failed.length) msgs.push(`${failed.length} failed: ${failed.map(f => `GCC-${f.gc} (${f.error})`).join(', ')}`)
+    if (skippedAll.length) msgs.push(`Already collected, skipped — ${skippedAll.join(' · ')}`)
+    if (msgs.length) setSaveError(msgs.join('  |  '))
 
-    if (newReceipts.length) {
-      setShowPrint(true)
-      const savedGccs = new Set(newReceipts.map(r => r.gcc))
-      setStudents(p => p.filter(s => !savedGccs.has(gccStr(s.gcc_no))))
-      setSelected({})
-    }
+    if (newReceipts.length) setShowPrint(true)
+    // Reload rather than guess: a student whose admission fee was skipped
+    // as already-paid should also drop off the pending list.
+    setSelected({})
+    load()
   }
 
   const courses = ['All', ...new Set(students.map(s => s.course).filter(Boolean))]

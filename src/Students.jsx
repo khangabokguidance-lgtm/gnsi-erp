@@ -12,6 +12,8 @@ import { PersonalAccountantButton } from './personalAccountant'
 import { staffDB } from './staffDB'
 import { getActiveStudents, getAllStudents } from './studentQueries'
 import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
+import { isAdminRole } from './roles'
+import { confirmFeeMonthOpen } from './monthLock'
 
 // ── Live-refresh listener for the Attendance module's save event ──────────
 // Attendance.jsx dispatches window CustomEvent 'gnsi:attendance-updated'
@@ -130,6 +132,8 @@ const T = {
 // replace emoji with a consistent, professional stroke-icon look. Emoji stay
 // inside student-facing cards/badges where they read as friendly, not chrome.
 const SIcon = {
+  layers:   (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg>,
+  search:   (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>,
   home:     (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg>,
   users:    (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/><circle cx="17" cy="9" r="2.6"/><path d="M15 14.3c2.7.4 4.6 2.3 5 5.7"/></svg>,
   check:    (p={}) => <svg viewBox="0 0 24 24" width={p.size||16} height={p.size||16} fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 11.5l2.4 2.5L16 8.5"/></svg>,
@@ -774,17 +778,21 @@ function usePermissions() {
   const { user } = useAuth()
   const role = user?.role || user?.app_metadata?.role || user?.user_metadata?.role || 'viewer'
   const namedWriteOverride = useNamedWriteOverride(user)
-  const roleWrite = ['admin','manager','Admin','Manager'].includes(role)
+  // FLOW FIX: the old string lists never matched 'Administrator' or
+  // 'Co-Admin' (same stale-role bug fixed in Fees/Hostel/QuestionBank), so
+  // real admins fell through to read-only unless named in an override.
+  const isAdm = isAdminRole(role) || ['admin','administrator','co-admin'].includes(String(role).toLowerCase())
+  const roleWrite = isAdm || ['admin','manager','Admin','Manager'].includes(role)
   return {
     role,
     user,
     can: {
       write:   roleWrite || namedWriteOverride,
-      fees:    ['admin','manager','accounts','Admin','Manager','Accounts'].includes(role),
-      exams:   ['admin','manager','teacher','Admin','Manager','Teacher'].includes(role),
-      attend:  ['admin','manager','teacher','hostel','Admin','Manager','Teacher','Hostel'].includes(role),
-      export:  ['admin','manager','accounts','Admin','Manager','Accounts'].includes(role),
-      viewPII: ['admin','manager','Admin','Manager'].includes(role), // ← phone, father, address
+      fees:    isAdm || ['admin','manager','accounts','Admin','Manager','Accounts'].includes(role),
+      exams:   isAdm || ['admin','manager','teacher','Admin','Manager','Teacher'].includes(role),
+      attend:  isAdm || ['admin','manager','teacher','hostel','Admin','Manager','Teacher','Hostel'].includes(role),
+      export:  isAdm || ['admin','manager','accounts','Admin','Manager','Accounts'].includes(role),
+      viewPII: isAdm || ['admin','manager','Admin','Manager'].includes(role), // ← phone, father, address
       view:    true,
     }
   }
@@ -1821,7 +1829,7 @@ function SessionRolloverWizard({ students, can, onClose, onRefresh, showToast })
 }
 
 // ─── Bulk Fee Modal ───────────────────────────────────────────────────────────
-function BulkFeeModal({ students, selectedIds, can, onClose, onSaved, showToast }) {
+function BulkFeeModal({ students, selectedIds, can, currentUser, isAdmin, onClose, onSaved, showToast }) {
   const [amount,setAmount]=useState('')
   const [monthFor,setMonthFor]=useState('')
   const [method,setMethod]=useState('Cash')
@@ -1836,6 +1844,11 @@ function BulkFeeModal({ students, selectedIds, can, onClose, onSaved, showToast 
     if(selected.length>MAX_BULK_OPERATION_SIZE){showToast(`Max ${MAX_BULK_OPERATION_SIZE} students per bulk fee action`,T.red);return}
     try{RateLimiter.check('students_bulk_fee',5,60000)}catch(e){showToast(e.message,T.red);return}
     if(!window.confirm(`Collect ₹${total.toLocaleString('en-IN')} total across ${selected.length} students?`))return
+    const payDate=new Date().toISOString().slice(0,10)
+    // FLOW FIX: a closed Accounts month must also stop fee collections dated in it.
+    if(!(await confirmFeeMonthOpen(payDate,{isAdmin})))return
+    // FLOW FIX: was hardcoded 'Admin' — every bulk receipt now records who actually collected it.
+    const collectorName=currentUser?.name||currentUser?.userName||currentUser?.username||'Admin'
     setSaving(true)
     try{
       // Parse month for course fee — expects format like "January" or "Jan 2026"
@@ -1853,15 +1866,15 @@ function BulkFeeModal({ students, selectedIds, can, onClose, onSaved, showToast 
             className:s.batch||s.class_name||'',
             course:s.course||'',
             hostelType:s.hostel_type||'Day Scholar',
-            payDate:new Date().toISOString().slice(0,10),
+            payDate,
             payMode:method,
-            collectedBy:'Admin',
+            collectedBy:collectorName,
             receiptNo:rcptNo('BULK'),
             items:[{kind:'course',course:s.course||'',subtype:s.batch||'',month:monthName,year:yr,amount:Number(amount)}],
           })
         }catch(e){console.error('collectFee failed for',s.name,e);errors++}
       }
-      await auditLog('bulk_fee_collection',{count:selected.length,errors,amount:Number(amount),monthFor,method})
+      await auditLog('bulk_fee_collection',{count:selected.length,errors,amount:Number(amount),monthFor,method,collected_by:collectorName})
       const msg=errors>0?`Collected for ${selected.length-errors}/${selected.length} students (${errors} failed)`:
         `Fee collected for ${selected.length} students`
       showToast(msg,errors>0?T.amber:T.green);onSaved();onClose()
@@ -2986,14 +2999,14 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
         <Divider label="Identification"/>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12,marginBottom:4}}>
           <FieldRow label="GCC No. *" error={errors.gcc_no}>
-            <input style={errors.gcc_no?INP_ERR:INP} type="number" value={form.gcc_no} onChange={e=>{set('gcc_no',e.target.value);setErrors(v=>({...v,gcc_no:''}))}}/>
+            <input style={{...(errors.gcc_no?INP_ERR:INP),...(editing?{opacity:.65,cursor:'not-allowed'}:{})}} type="number" value={form.gcc_no} readOnly={!!editing} title={editing?'GCC No. links this student to their admission and fee records — it cannot be changed here.':undefined} onChange={e=>{if(editing)return;set('gcc_no',e.target.value);setErrors(v=>({...v,gcc_no:''}))}}/>
             {gccDup&&!errors.gcc_no&&<div style={{fontSize:11,color:T.amber,marginTop:3,fontWeight:600}}>⚠ Used by {gccDup.name}</div>}
           </FieldRow>
           <FieldRow label="Date of Birth"><input type="date" style={INP} value={form.dob} onChange={e=>set('dob',e.target.value)}/></FieldRow>
           <FieldRow label="Gender"><select style={SEL} value={form.gender} onChange={e=>set('gender',e.target.value)}><option value="">—</option><option>Male</option><option>Female</option><option>Other</option></select></FieldRow>
           <FieldRow label="Status"><select style={SEL} value={form.status} onChange={e=>set('status',e.target.value)}>{STATUSES.filter(s=>s!=='All').map(s=><option key={s}>{s}</option>)}</select></FieldRow>
           <FieldRow label="Admission Date"><input type="date" style={INP} value={form.admission_date} onChange={e=>set('admission_date',e.target.value)}/></FieldRow>
-          {form.status==='Withdrawn'&&<FieldRow label="Left Date"><input type="date" style={INP} value={form.left_date} onChange={e=>set('left_date',e.target.value)}/></FieldRow>}
+          {form.status&&form.status!=='Active'&&<FieldRow label="Left Date"><input type="date" style={INP} value={form.left_date} onChange={e=>set('left_date',e.target.value)}/></FieldRow>}
         </div>
 
         <Divider label="Course & Class"/>
@@ -3080,7 +3093,6 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
     {l:'Fee',icon:'💰',fn:()=>onOpenFee(s),show:can.fees},
     {l:'Exams',icon:'📚',fn:()=>onExamEntry(s),show:can.exams},
     {l:'Attendance',icon:'📅',fn:()=>onQuickAttend(s),show:can.attend},
-    {l:'Clone',icon:'📋',fn:()=>onClone(s),show:can.write},
     {l:'Delete',icon:'🗑️',fn:()=>onDelete(s),show:can.write,danger:true},
   ].filter(a=>a.show)
 
@@ -4530,7 +4542,453 @@ function ScholarshipWaiverBook({ isAdmin, currentUser, showToast, students }) {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function Students() {
+// ═══════════════════════════════════════════════════════════════════════════
+//  COURSE DATABASE — course-wise student register
+//  Sainik → Navodaya → Foundation → Combined Course, each broken down by
+//  batch, with a course summary, house / hostel / gender mix, attendance,
+//  latest score and fee dues per student, and a printable register.
+//
+//  Course comes from students.course. Many older rows have it blank, so it
+//  falls back to the batch name (Achiever/Leader/Champion → Sainik,
+//  Lakshya/Umeed → Navodaya, Elite/Prime → Foundation). Anything still
+//  unknown is listed under "Unassigned" so nobody silently disappears.
+// ═══════════════════════════════════════════════════════════════════════════
+const CDB_COURSES = [
+  { key:'Sainik',          exam:'AISSEE', batches:['Achiever','Leader','Champion'],            accent:'#1F6F4A', tint:'#E8F5EE' },
+  { key:'Navodaya',        exam:'JNVST',  batches:['Lakshya','Lakshya A','Lakshya B','Umeed'], accent:'#1E3A6E', tint:'#E9EEF8' },
+  { key:'Foundation',      exam:'School foundation', batches:['Elite','Prime'],                accent:'#6D28D9', tint:'#F3EEFF' },
+  { key:'Combined Course', exam:'AISSEE + JNVST', batches:[],                                  accent:'#A7771F', tint:'#FBF3E0' },
+  { key:'Unassigned',      exam:'Course not set',  batches:[],                                 accent:'#64748B', tint:'#F1F5F9' },
+]
+const CDB_BATCH_TO_COURSE = (() => {
+  const m = {}
+  CDB_COURSES.forEach(c => c.batches.forEach(b => { m[b.toLowerCase()] = c.key }))
+  return m
+})()
+function cdbCourseOf(s) {
+  const raw = String(s.course || '').trim().toLowerCase()
+  if (raw.startsWith('sainik')) return 'Sainik'
+  if (raw.startsWith('navodaya')) return 'Navodaya'
+  if (raw.startsWith('found')) return 'Foundation'
+  if (raw.startsWith('combined')) return 'Combined Course'
+  const b = String(s.batch || s.class_name || '').trim().toLowerCase()
+  return CDB_BATCH_TO_COURSE[b] || 'Unassigned'
+}
+const cdbBatchOf = s => (s.batch || s.class_name || '').trim() || 'No batch'
+const cdbEsc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]))
+const cdbInr = n => '₹' + Number(n || 0).toLocaleString('en-IN')
+
+function CourseDatabase({ students, attData, examData, feeData, can, isMobile, onOpenDetail, onOpenFee, onEdit, showToast }) {
+  const [course, setCourse] = useState(() => { try { return localStorage.getItem('gnsi_cdb_course') || 'Sainik' } catch { return 'Sainik' } })
+  const [batch, setBatch] = useState('All')
+  const [q, setQ] = useState('')
+  const [hostelF, setHostelF] = useState('All')
+  const [genderF, setGenderF] = useState('All')
+  const [houseF, setHouseF] = useState('All')
+  const [sessionF, setSessionF] = useState('All')
+  const [duesOnly, setDuesOnly] = useState(false)
+  const [groupBy, setGroupBy] = useState('batch')   // batch | house | none
+  const [sortBy, setSortBy] = useState('gcc')       // gcc | name | att | score | dues
+  const [includePast, setIncludePast] = useState(false)
+  const [pastRows, setPastRows] = useState(null)
+
+  useEffect(() => { try { localStorage.setItem('gnsi_cdb_course', course) } catch {} ; setBatch('All'); setHouseF('All') }, [course])
+
+  // Past students (Dropout / Withdrawn / Passed Out / Inactive) load only on request.
+  useEffect(() => {
+    if (!includePast || pastRows) return
+    getAllStudents('*').then(all => setPastRows((all || []).filter(s => !s.deleted_at && s.status && s.status !== 'Active')))
+      .catch(e => { showToast?.('Could not load past students: ' + e.message, T.red); setIncludePast(false) })
+  }, [includePast, pastRows])
+
+  const roster = useMemo(() => {
+    const base = (students || []).filter(s => !s.deleted_at)
+    return includePast && pastRows ? [...base, ...pastRows.filter(p => !base.some(b => b.id === p.id))] : base
+  }, [students, includePast, pastRows])
+
+  const byCourse = useMemo(() => {
+    const m = {}
+    CDB_COURSES.forEach(c => { m[c.key] = [] })
+    roster.forEach(s => { m[cdbCourseOf(s)].push(s) })
+    return m
+  }, [roster])
+
+  const stats = list => {
+    const active = list.filter(s => (s.status || 'Active') === 'Active')
+    const att = active.map(s => attData?.[s.id]).filter(v => v != null)
+    const scores = active.map(s => examData?.[s.id]?.[0]?.total).filter(v => v != null)
+    const dues = active.map(s => Number(feeData?.[s.id]?.dues || 0))
+    return {
+      total: list.length, active: active.length,
+      boys: active.filter(s => s.gender === 'Male').length,
+      girls: active.filter(s => s.gender === 'Female').length,
+      boarders: active.filter(s => s.hostel_type === 'Boarder').length,
+      dayBoarders: active.filter(s => s.hostel_type === 'Day Boarder').length,
+      day: active.filter(s => (s.hostel_type || 'Day Scholar') === 'Day Scholar').length,
+      att: att.length ? att.reduce((a, b) => a + b, 0) / att.length : null,
+      score: scores.length ? scores.reduce((a, b) => a + Number(b || 0), 0) / scores.length : null,
+      duesCount: dues.filter(d => d > 0).length,
+      duesSum: dues.reduce((a, b) => a + b, 0),
+    }
+  }
+
+  const meta = CDB_COURSES.find(c => c.key === course) || CDB_COURSES[0]
+  const courseList = byCourse[course] || []
+  const cs = stats(courseList)
+
+  // Batches present in this course: the known order first, then anything else found.
+  const batchCounts = useMemo(() => {
+    const m = {}
+    courseList.forEach(s => { const b = cdbBatchOf(s); m[b] = (m[b] || 0) + 1 })
+    const known = meta.batches.filter(b => m[b])
+    const other = Object.keys(m).filter(b => !meta.batches.includes(b)).sort()
+    return [...known, ...other].map(b => ({ b, n: m[b] }))
+  }, [courseList, meta])
+
+  const houses = useMemo(() => [...new Set(courseList.map(s => s.house).filter(Boolean))].sort(), [courseList])
+  const sessions = useMemo(() => [...new Set(roster.map(s => s.session).filter(Boolean))].sort().reverse(), [roster])
+
+  const rows = useMemo(() => {
+    const t = q.trim().toLowerCase()
+    const list = courseList.filter(s => {
+      if (batch !== 'All' && cdbBatchOf(s) !== batch) return false
+      if (hostelF !== 'All' && (s.hostel_type || 'Day Scholar') !== hostelF) return false
+      if (genderF !== 'All' && s.gender !== genderF) return false
+      if (houseF !== 'All' && s.house !== houseF) return false
+      if (sessionF !== 'All' && s.session !== sessionF) return false
+      if (duesOnly && !(Number(feeData?.[s.id]?.dues || 0) > 0)) return false
+      if (t && ![s.name, s.gcc_no, s.father_name, s.mother_name, s.phone, s.house, s.batch].some(v => String(v ?? '').toLowerCase().includes(t))) return false
+      return true
+    })
+    const key = {
+      gcc:   s => Number(s.gcc_no) || 0,
+      name:  s => String(s.name || '').toLowerCase(),
+      att:   s => -(attData?.[s.id] ?? -1),
+      score: s => -(examData?.[s.id]?.[0]?.total ?? -1),
+      dues:  s => -Number(feeData?.[s.id]?.dues || 0),
+    }[sortBy]
+    return [...list].sort((a, b) => { const x = key(a), y = key(b); return x < y ? -1 : x > y ? 1 : 0 })
+  }, [courseList, batch, hostelF, genderF, houseF, sessionF, duesOnly, q, sortBy, attData, examData, feeData])
+
+  const groups = useMemo(() => {
+    if (groupBy === 'none') return [{ title: null, list: rows }]
+    const keyOf = groupBy === 'house' ? (s => s.house || 'No house') : cdbBatchOf
+    const order = groupBy === 'batch' ? batchCounts.map(x => x.b) : [...new Set(rows.map(keyOf))].sort()
+    return order.map(k => ({ title: k, list: rows.filter(s => keyOf(s) === k) })).filter(g => g.list.length)
+  }, [rows, groupBy, batchCounts])
+
+  const filtersOn = batch !== 'All' || hostelF !== 'All' || genderF !== 'All' || houseF !== 'All' || sessionF !== 'All' || duesOnly || q
+  const clearFilters = () => { setBatch('All'); setHostelF('All'); setGenderF('All'); setHouseF('All'); setSessionF('All'); setDuesOnly(false); setQ('') }
+
+  const exportCSV = () => {
+    const out = rows.map((s, i) => ({
+      'Sl': i + 1, 'GCC No.': s.gcc_no ?? '', 'Name': s.name || '', 'Course': course, 'Batch': cdbBatchOf(s),
+      'Session': s.session || '', 'Gender': s.gender || '', 'DOB': s.dob || '', 'House': s.house || '', 'Hostel': s.hostel_type || '',
+      ...(can?.viewPII ? { 'Father': s.father_name || '', 'Mother': s.mother_name || '', 'Phone': s.phone || '' } : {}),
+      'Admission Date': s.admission_date || '', 'Status': s.status || 'Active',
+      'Attendance %': attData?.[s.id] != null ? attData[s.id].toFixed(1) : '',
+      'Latest Score': examData?.[s.id]?.[0]?.total ?? '', 'Fee Dues': feeData?.[s.id]?.dues ?? '',
+    }))
+    if (!out.length) { showToast?.('Nothing to export', T.amber); return }
+    downloadCSV(out, `${course.replace(/\s+/g,'_').toLowerCase()}_${batch === 'All' ? 'all' : batch.replace(/\s+/g,'_').toLowerCase()}_${new Date().toISOString().slice(0,10)}.csv`)
+    showToast?.(`${out.length} students exported`, T.green)
+  }
+
+  const printRegister = () => {
+    const w = window.open('', '_blank', 'width=1100,height=800')
+    if (!w) { showToast?.('Allow pop-ups to print the register', T.amber); return }
+    const pii = !!can?.viewPII
+    const today = new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })
+    const head = `<tr><th>#</th><th>GCC</th><th>Name</th><th>Gender</th>${pii ? '<th>Father</th><th>Phone</th>' : ''}<th>House</th><th>Hostel</th><th>Adm. date</th><th>Att.</th><th>Dues</th><th>Status</th></tr>`
+    const body = groups.map(g => `
+      ${g.title ? `<div class="grp">${cdbEsc(g.title)} <span>${g.list.length} student${g.list.length > 1 ? 's' : ''}</span></div>` : ''}
+      <table><thead>${head}</thead><tbody>${g.list.map((s, i) => `<tr>
+        <td class="c">${i + 1}</td><td class="c b">${cdbEsc(s.gcc_no)}</td><td class="b">${cdbEsc(s.name)}</td><td class="c">${cdbEsc(s.gender === 'Male' ? 'M' : s.gender === 'Female' ? 'F' : s.gender || '')}</td>
+        ${pii ? `<td>${cdbEsc(s.father_name)}</td><td>${cdbEsc(s.phone)}</td>` : ''}
+        <td>${cdbEsc(s.house)}</td><td>${cdbEsc(s.hostel_type)}</td><td class="c">${cdbEsc(s.admission_date || '')}</td>
+        <td class="r">${attData?.[s.id] != null ? attData[s.id].toFixed(0) + '%' : '—'}</td>
+        <td class="r">${Number(feeData?.[s.id]?.dues || 0) > 0 ? cdbInr(feeData[s.id].dues) : '—'}</td>
+        <td class="c">${cdbEsc(s.status || 'Active')}</td></tr>`).join('')}</tbody></table>`).join('')
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${cdbEsc(course)} register</title><style>
+      @page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;margin:0;padding:18px;font-size:11px}
+      .lh{display:flex;align-items:center;gap:14px;border-bottom:3px double #132a4f;padding-bottom:10px;margin-bottom:12px}
+      .crest{width:52px;height:52px;border-radius:50%;background:#132a4f;color:#e9d9b0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;border:2px solid #b8923a}
+      .t1{font-size:19px;font-weight:800;color:#132a4f;font-family:Georgia,serif}.t2{font-size:10px;color:#b8923a;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
+      .ttl{margin-left:auto;text-align:right}.ttl b{display:inline-block;background:#132a4f;color:#fff;padding:4px 12px;border-radius:4px;font-size:12px}
+      .sum{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap}.sum div{border:1px solid #e2e8f0;border-top:3px solid #b8923a;border-radius:6px;padding:6px 10px;min-width:110px}.sum small{display:block;font-size:9px;color:#64748b;text-transform:uppercase;font-weight:700}.sum strong{font-size:15px;color:#132a4f}
+      .grp{margin:14px 0 5px;font-weight:800;color:#132a4f;font-size:13px;border-left:4px solid #b8923a;padding-left:8px}.grp span{font-weight:600;color:#64748b;font-size:11px;margin-left:6px}
+      table{width:100%;border-collapse:collapse}th{background:#132a4f;color:#fff;padding:6px 6px;font-size:10px;text-align:left}td{padding:5px 6px;border-bottom:1px solid #e2e8f0}tr:nth-child(even) td{background:#f8fafc}
+      .c{text-align:center}.r{text-align:right}.b{font-weight:700}.ft{margin-top:26px;display:flex;justify-content:space-between;font-size:10px;color:#64748b}.sig{border-top:1px solid #132a4f;width:180px;text-align:center;padding-top:4px;color:#132a4f;font-weight:700}
+      @media print{tr{page-break-inside:avoid}}</style></head><body>
+      <div class="lh"><div class="crest">GNSI</div><div><div class="t1">Guidance Navodaya &amp; Sainik Institute</div><div class="t2">Khangabok, Thoubal · Manipur</div></div>
+      <div class="ttl"><b>${cdbEsc(course)} — Student Register</b><div style="margin-top:4px;color:#64748b">${cdbEsc(meta.exam)}${batch !== 'All' ? ' · ' + cdbEsc(batch) : ''}${sessionF !== 'All' ? ' · Session ' + cdbEsc(sessionF) : ''} · ${today}</div></div></div>
+      <div class="sum"><div><small>Students</small><strong>${rows.length}</strong></div><div><small>Boys / Girls</small><strong>${rows.filter(s => s.gender === 'Male').length} / ${rows.filter(s => s.gender === 'Female').length}</strong></div>
+      <div><small>Boarders</small><strong>${rows.filter(s => s.hostel_type === 'Boarder').length}</strong></div><div><small>Day scholars</small><strong>${rows.filter(s => (s.hostel_type || 'Day Scholar') === 'Day Scholar').length}</strong></div>
+      <div><small>With fee dues</small><strong>${rows.filter(s => Number(feeData?.[s.id]?.dues || 0) > 0).length}</strong></div></div>
+      ${body}
+      <div class="ft"><span>Generated from GNSI Portal · ${today}</span><span class="sig">Principal</span></div>
+      <script>window.onload=()=>setTimeout(()=>window.print(),300)</script></body></html>`)
+    w.document.close()
+  }
+
+  const Stat = ({ label, value, sub, tone }) => (
+    <div className="cdb-stat">
+      <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.12em', textTransform:'uppercase', color:'rgba(255,255,255,.58)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{label}</div>
+      <div style={{ fontFamily:T.serif, fontSize: isMobile ? 21 : 25, fontWeight:600, color: tone || '#fff', marginTop:5, lineHeight:1, fontVariantNumeric:'tabular-nums' }}>{value}</div>
+      {sub && <div style={{ fontSize:11, color:'rgba(255,255,255,.52)', marginTop:4, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{sub}</div>}
+    </div>
+  )
+  const Mix = ({ items }) => {
+    const total = items.reduce((a, b) => a + b.n, 0) || 1
+    return (
+      <div>
+        <div style={{ display:'flex', height:8, borderRadius:99, overflow:'hidden', background:T.surface2 }}>
+          {items.filter(i => i.n).map(i => <div key={i.l} title={`${i.l}: ${i.n}`} style={{ width:`${i.n / total * 100}%`, background:i.c }} />)}
+        </div>
+        <div style={{ display:'flex', gap:12, flexWrap:'wrap', marginTop:8 }}>
+          {items.map(i => (
+            <span key={i.l} style={{ fontSize:12, color:T.text3, display:'inline-flex', alignItems:'center', gap:6 }}>
+              <span style={{ width:8, height:8, borderRadius:3, background:i.c }} />{i.l} <strong style={{ color:T.text1 }}>{i.n}</strong>
+            </span>
+          ))}
+        </div>
+      </div>
+    )
+  }
+  const sel = { boxSizing:'border-box', padding:'8px 10px', borderRadius:10, border:`1px solid ${T.border2}`, fontSize:12.5, height:36, fontFamily:'inherit', background:T.surface, color:T.text1 }
+  const houseMix = houses.map((h, i) => ({ l:h, n: courseList.filter(s => s.house === h && (s.status || 'Active') === 'Active').length, c: ['#132a4f','#b8923a','#1F6F4A','#6D28D9','#0284C7','#E11D48','#0D9488','#EA580C','#64748B','#A7771F'][i % 10] }))
+
+  const AttBar = ({ v }) => v == null ? <span style={{ color:T.text4 }}>—</span> : (
+    <div style={{ display:'flex', alignItems:'center', gap:7, minWidth:92 }}>
+      <div style={{ flex:1, height:6, borderRadius:99, background:T.surface2, overflow:'hidden' }}>
+        <div style={{ width:`${Math.min(100, v)}%`, height:'100%', background: v >= 85 ? T.green : v >= 75 ? T.amber : T.red }} />
+      </div>
+      <span style={{ fontSize:12, fontWeight:700, color: v >= 75 ? T.text1 : T.red, fontVariantNumeric:'tabular-nums' }}>{v.toFixed(0)}%</span>
+    </div>
+  )
+
+  return (
+    <div className="cdb">
+      <style>{`
+        .cdb-courses{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+        .cdb-course{position:relative;text-align:left;border-radius:18px;padding:16px 16px 14px;cursor:pointer;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow);transition:transform .15s,box-shadow .15s,border-color .15s;font-family:inherit;overflow:hidden}
+        .cdb-course:hover{transform:translateY(-2px);box-shadow:var(--shadow2)}
+        .cdb-course.on{border-color:${T.gold};box-shadow:0 0 0 2px ${T.goldBorder},0 16px 32px -18px rgba(19,42,79,.45)}
+        .cdb-hero{position:relative;overflow:hidden;border-radius:20px;color:#fff;padding:20px 22px;margin-bottom:16px;background:radial-gradient(90% 140% at 100% 0%,rgba(184,146,58,.26) 0%,transparent 55%),linear-gradient(135deg,#0e203f 0%,${T.navy} 45%,${T.navy2} 100%);box-shadow:0 24px 48px -26px rgba(19,42,79,.6)}
+        .cdb-hero::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,${T.gold},transparent)}
+        .cdb-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:16px}
+        .cdb-stat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:11px 13px;min-width:0}
+        .cdb-pills{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px}
+        .cdb-pills::-webkit-scrollbar{display:none}
+        .cdb-pill{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:99px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);font-weight:600;font-size:13px;line-height:1;cursor:pointer;white-space:nowrap;font-family:inherit}
+        .cdb-pill.on{background:linear-gradient(180deg,${T.navy2},${T.navy});color:#fff;border-color:${T.navy}}
+        .cdb-pill .n{font-size:11px;padding:2px 7px;border-radius:99px;background:var(--surface2);color:var(--text3)}
+        .cdb-pill.on .n{background:rgba(255,255,255,.16);color:${T.goldBorder}}
+        .cdb-table{width:100%;border-collapse:separate;border-spacing:0}
+        .cdb-table th{position:sticky;top:0;z-index:1;background:var(--surface2);text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+        .cdb-table td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text2);vertical-align:middle}
+        .cdb-table tbody tr{cursor:pointer;transition:background .12s}
+        .cdb-table tbody tr:hover td{background:var(--surface-hover)}
+        .cdb-grp{display:flex;align-items:center;gap:10px;padding:12px 16px;background:${T.goldLight};border-top:1px solid ${T.goldBorder};border-bottom:1px solid ${T.goldBorder};font-family:${T.serif};font-weight:600;color:${T.navy};font-size:15px}
+        .cdb-act{border:1px solid var(--border2);background:var(--surface);border-radius:8px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;color:var(--text2);font-family:inherit}
+        .cdb-act:hover{border-color:${T.gold};color:${T.navy}}
+        @media (max-width:640px){.cdb-courses{grid-template-columns:1fr 1fr;gap:10px}.cdb-course{padding:13px 12px 11px}.cdb-stats{grid-template-columns:1fr 1fr}}
+      `}</style>
+
+      {/* ── Course cards ── */}
+      <div className="cdb-courses">
+        {CDB_COURSES.filter(c => c.key !== 'Unassigned' || byCourse.Unassigned.length).map(c => {
+          const list = byCourse[c.key] || [], st = stats(list), on = course === c.key
+          return (
+            <button key={c.key} className={'cdb-course' + (on ? ' on' : '')} onClick={() => setCourse(c.key)}>
+              <div style={{ position:'absolute', left:0, top:0, bottom:0, width:4, background:c.accent }} />
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                <span style={{ fontSize:10, fontWeight:800, letterSpacing:'.14em', textTransform:'uppercase', color:c.accent, background:c.tint, padding:'3px 8px', borderRadius:99 }}>{c.exam}</span>
+                {on && <span style={{ fontSize:11, color:T.gold, fontWeight:800 }}>● Viewing</span>}
+              </div>
+              <div style={{ fontFamily:T.serif, fontSize:19, fontWeight:600, color:T.text1, marginTop:10 }}>{c.key}</div>
+              <div style={{ display:'flex', alignItems:'baseline', gap:6, marginTop:4 }}>
+                <span style={{ fontFamily:T.serif, fontSize:30, fontWeight:600, color:T.navy, lineHeight:1, fontVariantNumeric:'tabular-nums' }}>{st.active}</span>
+                <span style={{ fontSize:12, color:T.text3 }}>active{st.total > st.active ? ` · ${st.total - st.active} past` : ''}</span>
+              </div>
+              <div style={{ display:'flex', gap:10, marginTop:10, fontSize:11.5, color:T.text3, flexWrap:'wrap' }}>
+                <span>🏠 {st.boarders}</span><span>🏫 {st.day + st.dayBoarders}</span>
+                <span>♂ {st.boys} · ♀ {st.girls}</span>
+                {st.duesCount > 0 && <span style={{ color:T.red, fontWeight:700 }}>{st.duesCount} dues</span>}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ── Course summary ── */}
+      <section className="cdb-hero">
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, flexWrap:'wrap', position:'relative' }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:10.5, fontWeight:700, letterSpacing:'.18em', textTransform:'uppercase', color:T.goldBorder }}>{meta.exam} · Course database</div>
+            <h2 style={{ margin:'6px 0 0', fontFamily:T.serif, fontSize: isMobile ? 24 : 30, fontWeight:600, lineHeight:1.1 }}>{course}</h2>
+            <div style={{ fontSize:13, color:'rgba(255,255,255,.65)', marginTop:6 }}>
+              {batchCounts.length} batch{batchCounts.length === 1 ? '' : 'es'}{houses.length ? ` · ${houses.length} house${houses.length === 1 ? '' : 's'}` : ''}{sessions.length ? ` · sessions ${sessions.slice(0, 3).join(', ')}` : ''}
+            </div>
+          </div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            <button className="st-hbtn ghost" onClick={printRegister}><SIcon.fileText size={15}/> Print register</button>
+            {can?.export && <button className="st-hbtn gold" onClick={exportCSV}><SIcon.download size={15}/> Export CSV</button>}
+          </div>
+        </div>
+        <div className="cdb-stats">
+          <Stat label="Active students" value={cs.active} sub={cs.total > cs.active ? `${cs.total - cs.active} past shown` : `${cs.boys} boys · ${cs.girls} girls`} />
+          <Stat label="Boarders" value={cs.boarders} sub={`${cs.day} day scholar${cs.dayBoarders ? ` · ${cs.dayBoarders} day boarder` : ''}`} />
+          <Stat label="Avg. attendance" value={cs.att == null ? '—' : `${cs.att.toFixed(0)}%`} tone={cs.att == null ? null : cs.att >= 75 ? '#86efac' : '#fca5a5'} sub="active students" />
+          <Stat label="Avg. latest score" value={cs.score == null ? '—' : cs.score.toFixed(1)} sub="most recent exam" />
+          <Stat label="Fee dues" value={cs.duesCount} tone={cs.duesCount ? '#fcd34d' : '#86efac'} sub={cs.duesCount ? `${cdbInr(cs.duesSum)} outstanding` : 'All clear'} />
+        </div>
+      </section>
+
+      {/* ── Mix ── */}
+      {courseList.length > 0 && (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(min(280px,100%),1fr))', gap:12, marginBottom:16 }}>
+          <Card style={{ padding:'14px 16px' }}>
+            <div style={{ fontSize:10.5, fontWeight:700, letterSpacing:'.12em', textTransform:'uppercase', color:T.gold, marginBottom:10 }}>Batches</div>
+            <Mix items={batchCounts.map((x, i) => ({ l:x.b, n:x.n, c:[T.navy, T.gold, '#1F6F4A', '#6D28D9', '#0284C7', '#E11D48', '#64748B'][i % 7] }))} />
+          </Card>
+          <Card style={{ padding:'14px 16px' }}>
+            <div style={{ fontSize:10.5, fontWeight:700, letterSpacing:'.12em', textTransform:'uppercase', color:T.gold, marginBottom:10 }}>Residence</div>
+            <Mix items={[{ l:'Boarder', n:cs.boarders, c:T.navy }, { l:'Day Boarder', n:cs.dayBoarders, c:T.gold }, { l:'Day Scholar', n:cs.day, c:'#94A3B8' }]} />
+          </Card>
+          {houseMix.length > 0 && (
+            <Card style={{ padding:'14px 16px' }}>
+              <div style={{ fontSize:10.5, fontWeight:700, letterSpacing:'.12em', textTransform:'uppercase', color:T.gold, marginBottom:10 }}>Houses</div>
+              <Mix items={houseMix} />
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* ── Batch tabs + filters ── */}
+      <div className="st-filter" style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        <div className="cdb-pills">
+          <button className={'cdb-pill' + (batch === 'All' ? ' on' : '')} onClick={() => setBatch('All')}>All batches <span className="n">{courseList.length}</span></button>
+          {batchCounts.map(x => (
+            <button key={x.b} className={'cdb-pill' + (batch === x.b ? ' on' : '')} onClick={() => setBatch(x.b)}>{x.b} <span className="n">{x.n}</span></button>
+          ))}
+        </div>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+          <div style={{ position:'relative', flex:'1 1 220px', minWidth:0 }}>
+            <span style={{ position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', color:T.text4, display:'flex' }}><SIcon.search size={15}/></span>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder={`Search ${course} — name, GCC, parent, phone…`} style={{ ...sel, width:'100%', paddingLeft:34 }} />
+          </div>
+          <select value={houseF} onChange={e => setHouseF(e.target.value)} style={sel}><option value="All">All houses</option>{houses.map(h => <option key={h}>{h}</option>)}</select>
+          <select value={hostelF} onChange={e => setHostelF(e.target.value)} style={sel}>{['All','Boarder','Day Boarder','Day Scholar'].map(h => <option key={h} value={h}>{h === 'All' ? 'All residence' : h}</option>)}</select>
+          <select value={genderF} onChange={e => setGenderF(e.target.value)} style={sel}>{['All','Male','Female'].map(g => <option key={g} value={g}>{g === 'All' ? 'All genders' : g}</option>)}</select>
+          {sessions.length > 1 && <select value={sessionF} onChange={e => setSessionF(e.target.value)} style={sel}><option value="All">All sessions</option>{sessions.map(s => <option key={s}>{s}</option>)}</select>}
+          <select value={groupBy} onChange={e => setGroupBy(e.target.value)} style={sel}><option value="batch">Group: batch</option><option value="house">Group: house</option><option value="none">No grouping</option></select>
+          <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={sel}><option value="gcc">Sort: GCC</option><option value="name">Sort: name</option><option value="att">Sort: attendance</option><option value="score">Sort: score</option><option value="dues">Sort: dues</option></select>
+          <label style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:12.5, color:T.text2, fontWeight:600, cursor:'pointer' }}>
+            <input type="checkbox" checked={duesOnly} onChange={e => setDuesOnly(e.target.checked)} style={{ accentColor:T.navy }} /> Dues only
+          </label>
+          <label style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:12.5, color:T.text2, fontWeight:600, cursor:'pointer' }}>
+            <input type="checkbox" checked={includePast} onChange={e => setIncludePast(e.target.checked)} style={{ accentColor:T.navy }} /> Include past students
+          </label>
+          {filtersOn && <button className="cdb-act" onClick={clearFilters}>Clear</button>}
+          <span style={{ marginLeft:'auto', fontSize:12.5, color:T.text3 }}>{rows.length} of {courseList.length}</span>
+        </div>
+      </div>
+
+      {/* ── Register ── */}
+      {rows.length === 0 ? (
+        <Card style={{ padding:'48px 20px', textAlign:'center' }}>
+          <div style={{ fontFamily:T.serif, fontSize:20, color:T.text1, fontWeight:600 }}>{courseList.length ? 'No students match these filters' : `No students in ${course} yet`}</div>
+          <p style={{ fontSize:13, color:T.text3, margin:'8px 0 16px' }}>{courseList.length ? 'Try clearing a filter.' : 'Students appear here once enrolled from Admissions.'}</p>
+          {filtersOn && <Btn onClick={clearFilters}>Clear filters</Btn>}
+        </Card>
+      ) : isMobile ? (
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          {groups.map(g => (
+            <div key={g.title || 'all'}>
+              {g.title && <div style={{ fontFamily:T.serif, fontSize:16, fontWeight:600, color:T.navy, margin:'4px 2px 8px', display:'flex', justifyContent:'space-between' }}>{g.title}<span style={{ fontFamily:'inherit', fontSize:12, color:T.text3 }}>{g.list.length}</span></div>}
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {g.list.map(s => {
+                  const dues = Number(feeData?.[s.id]?.dues || 0)
+                  return (
+                    <Card key={s.id} onClick={() => onOpenDetail?.(s)} style={{ padding:'12px 14px', cursor:'pointer' }}>
+                      <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+                        <Avatar name={s.name} photoUrl={s.photo_url} size={42} />
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontWeight:700, color:T.text1, fontSize:14, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{s.name}</div>
+                          <div style={{ fontSize:11.5, color:T.text3, marginTop:2 }}>GCC {s.gcc_no} · {cdbBatchOf(s)}{s.house ? ` · ${s.house}` : ''}</div>
+                        </div>
+                        {(s.status || 'Active') !== 'Active' ? <StatusPill status={s.status} /> : dues > 0 && <span style={{ fontSize:12, fontWeight:800, color:T.red }}>{cdbInr(dues)}</span>}
+                      </div>
+                      <div style={{ marginTop:10 }}><AttBar v={attData?.[s.id]} /></div>
+                    </Card>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Card style={{ padding:0, overflow:'hidden' }}>
+          <div style={{ overflowX:'auto' }}>
+            <table className="cdb-table">
+              <thead><tr>
+                <th style={{ width:44 }}>#</th><th>Student</th><th>Batch</th><th>House</th><th>Residence</th>
+                {can?.viewPII && <th>Parent / phone</th>}
+                <th>Attendance</th><th style={{ textAlign:'right' }}>Score</th><th style={{ textAlign:'right' }}>Dues</th><th>Status</th><th style={{ textAlign:'right' }}></th>
+              </tr></thead>
+              {groups.map(g => (
+                <tbody key={g.title || 'all'}>
+                  {g.title && (
+                    <tr style={{ cursor:'default' }}><td colSpan={can?.viewPII ? 11 : 10} style={{ padding:0 }}>
+                      <div className="cdb-grp">{g.title}
+                        <span style={{ fontFamily:'inherit', fontSize:12, color:T.text3, fontWeight:600 }}>{g.list.length} student{g.list.length > 1 ? 's' : ''}</span>
+                        <span style={{ marginLeft:'auto', fontFamily:'inherit', fontSize:12, color:T.text3, fontWeight:600 }}>
+                          ♂ {g.list.filter(s => s.gender === 'Male').length} · ♀ {g.list.filter(s => s.gender === 'Female').length} · 🏠 {g.list.filter(s => s.hostel_type === 'Boarder').length}
+                        </span>
+                      </div>
+                    </td></tr>
+                  )}
+                  {g.list.map((s, i) => {
+                    const dues = Number(feeData?.[s.id]?.dues || 0), score = examData?.[s.id]?.[0]?.total
+                    return (
+                      <tr key={s.id} onClick={() => onOpenDetail?.(s)}>
+                        <td style={{ color:T.text4, fontVariantNumeric:'tabular-nums' }}>{i + 1}</td>
+                        <td>
+                          <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:200 }}>
+                            <Avatar name={s.name} photoUrl={s.photo_url} size={34} />
+                            <div style={{ minWidth:0 }}>
+                              <div style={{ fontWeight:700, color:T.text1 }}>{s.name}</div>
+                              <div style={{ fontSize:11.5, color:T.text3 }}>GCC {s.gcc_no}{s.gender ? ` · ${s.gender === 'Male' ? 'Boy' : s.gender === 'Female' ? 'Girl' : s.gender}` : ''}{s.session ? ` · ${s.session}` : ''}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td>{cdbBatchOf(s)}</td>
+                        <td>{s.house || <span style={{ color:T.text4 }}>—</span>}</td>
+                        <td><span style={{ fontSize:11.5, fontWeight:700, padding:'3px 9px', borderRadius:99, background: s.hostel_type === 'Boarder' ? T.brandLight : T.surface2, color: s.hostel_type === 'Boarder' ? T.navy2 : T.text3 }}>{s.hostel_type || 'Day Scholar'}</span></td>
+                        {can?.viewPII && <td><div style={{ color:T.text2 }}>{s.father_name || '—'}</div><div style={{ fontSize:11.5, color:T.text3 }}>{s.phone || ''}</div></td>}
+                        <td><AttBar v={attData?.[s.id]} /></td>
+                        <td style={{ textAlign:'right', fontWeight:700, color:T.text1, fontVariantNumeric:'tabular-nums' }}>{score ?? <span style={{ color:T.text4, fontWeight:400 }}>—</span>}</td>
+                        <td style={{ textAlign:'right', fontVariantNumeric:'tabular-nums' }}>{dues > 0 ? <span style={{ fontWeight:800, color:T.red }}>{cdbInr(dues)}</span> : <span style={{ color:T.green, fontWeight:700 }}>✓</span>}</td>
+                        <td><StatusPill status={s.status || 'Active'} /></td>
+                        <td style={{ textAlign:'right', whiteSpace:'nowrap' }} onClick={e => e.stopPropagation()}>
+                          {can?.fees && (s.status || 'Active') === 'Active' && <button className="cdb-act" onClick={() => onOpenFee?.(s)}>Fee</button>}{' '}
+                          {can?.write && <button className="cdb-act" onClick={() => onEdit?.(s)}>Edit</button>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              ))}
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+export default function Students({ onNavigate: goToModule } = {}) {
   const { role, can, user }=usePermissions()
   const isMobile=useIsMobile()
 
@@ -4557,7 +5015,8 @@ export default function Students() {
   const [toast,setToast]=useState(null)
   const [page,setPage]=useState(1)
   const [viewMode,setViewMode]=useState('list')
-  const [pageTab,setPageTab]=useState('students')
+  const [pageTab,setPageTab]=useState(()=>{try{return localStorage.getItem('gnsi_students_tab')||'courses'}catch{return 'courses'}})
+  useEffect(()=>{try{localStorage.setItem('gnsi_students_tab',pageTab)}catch{}},[pageTab])
   const [showBulkOps,setShowBulkOps]=useState(false)
   const [showRollover,setShowRollover]=useState(false)
   const [showBulkFee,setShowBulkFee]=useState(false)
@@ -4796,6 +5255,19 @@ const effectiveCols = visibleCols.filter(col => {
     // overwrite what those helpers just wrote.
     const payload={gcc_no:parseInt(obj.gcc_no),name:obj.name,dob:obj.dob||null,gender:obj.gender||null,course:obj.course||null,batch:obj.batch||null,session:obj.session||null,hostel_type:obj.hostel_type||'Day Scholar',status:obj.status||'Active',father_name:obj.father_name||null,mother_name:obj.mother_name||null,phone:obj.phone||null,address:obj.address||null,remarks:obj.remarks||null,fee_waiver:Number(obj.fee_waiver)||0,scholarship:Number(obj.scholarship)||0,fee_waiver_note:obj.fee_waiver_note||null,emergency_contact:obj.emergency_contact||null,prev_school:obj.prev_school||null,referral_source:obj.referral_source||null,admission_date:obj.admission_date||null,left_date:obj.left_date||null,medical_notes:obj.medical_notes||null,academic_remarks:obj.academic_remarks||null}
     const houseChosen=obj.house||null
+    // FLOW FIX: Students is edit-only. A student created here had no
+    // admissions row, so Fees refused payment ("No admission record") and
+    // the Admissions → Students → Fees → Accounts chain broke at step one.
+    // New students now come ONLY from Admissions → Enroll (promoteToStudent).
+    if(!eid){
+      showToast('New students are added from Admissions → Enroll',T.amber)
+      setFormOpen(false);setEditing(null)
+      goToAdmissions()
+      return
+    }
+    // GCC No. is the key Admissions and every fee table use — never let an edit change it.
+    const original=students.find(x=>x.id===eid)
+    if(original?.gcc_no!=null)payload.gcc_no=original.gcc_no
     if(eid){
       const{error}=await updateStudentsRows({match:{id:eid},patch:payload})
       if(error){showToast('Update failed: '+error.message,T.red);return}
@@ -4849,12 +5321,15 @@ const effectiveCols = visibleCols.filter(col => {
     if('course' in payload || 'class_name' in payload || 'status' in payload) broadcastStudentsUpdate({type:'quick_update',student_id:studentId})
   }
 
-  const handleClone=student=>{
+  // FLOW FIX: cloning created a student with no admission record. Kept as
+  // a redirect so any old caller still lands somewhere sensible.
+  const goToAdmissions=()=>{
+    if(typeof goToModule==='function')goToModule('admissions')
+    else showToast('Open Admissions from the sidebar to add a new student',T.brand)
+  }
+  const handleClone=()=>{
     if(!can.write){showToast('No permission',T.red);return}
-    const cloned={...student};delete cloned.id;delete cloned.created_at;delete cloned.deleted_at
-    cloned.name+=' (Clone)';cloned.gcc_no='';cloned.status='Active';cloned.admission_date=new Date().toISOString().slice(0,10)
-    setEditing(null);setFormOpen(true);localStorage.setItem(DRAFT_KEY,JSON.stringify(sanitiseDraftForStorage(cloned)))
-    showToast('Clone ready — GCC No. and personal details must be re-entered',T.brand)
+    showToast('New students are added from Admissions → Enroll',T.amber);goToAdmissions()
   }
 
   const handleDelete=s=>{
@@ -5063,7 +5538,7 @@ const effectiveCols = visibleCols.filter(col => {
       {feeViewer&&<FeeViewerModal student={feeViewer} feeData={feeData} feeHistory={feeHistory} onClose={()=>setFeeViewer(null)}/>}
       {showBulkOps&&<BulkOperationsModal students={students} selectedIds={selected} can={can} onClose={()=>setShowBulkOps(false)} onRefresh={loadAll} showToast={showToast}/>}
       {showRollover&&<SessionRolloverWizard students={students} can={can} onClose={()=>setShowRollover(false)} onRefresh={loadAll} showToast={showToast}/>}
-      {showBulkFee&&<BulkFeeModal students={students} selectedIds={selected} can={can} onClose={()=>setShowBulkFee(false)} onSaved={loadAll} showToast={showToast}/>}
+      {showBulkFee&&<BulkFeeModal students={students} selectedIds={selected} can={can} currentUser={user} isAdmin={isAdminRole(role)||['admin','administrator','co-admin'].includes(String(role).toLowerCase())} onClose={()=>setShowBulkFee(false)} onSaved={loadAll} showToast={showToast}/>}
       {showBulkScholarship&&<BulkScholarshipWaiverModal students={students} selectedIds={selected} currentUser={user} onClose={()=>setShowBulkScholarship(false)} onSubmitted={clearSel} showToast={showToast}/>}
       {showHouseReassign&&<HouseReassignmentModal students={students} selectedIds={selected} can={can} onClose={()=>setShowHouseReassign(false)} onRefresh={loadAll} showToast={showToast} houseOptions={houseOptions}/>}
       {showMergeDups&&<MergeDuplicatesModal students={students} can={can} onClose={()=>setShowMergeDups(false)} onRefresh={loadAll} showToast={showToast}/>}
@@ -5122,7 +5597,7 @@ const effectiveCols = visibleCols.filter(col => {
             <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
               <button className="st-hbtn ghost" onClick={loadAll} title="Refresh"><span style={{display:'inline-flex',animation:loading?'spin .8s linear infinite':'none'}}><SIcon.refresh size={15}/></span>{!isMobile&&'Refresh'}</button>
               <IfCan can={can.write}>
-                <button className="st-hbtn gold" onClick={()=>{setEditing(null);setFormOpen(true);setPageTab('students')}}><SIcon.plus size={15}/> {isMobile?'Add':'New Student'}</button>
+                <button className="st-hbtn gold" onClick={goToAdmissions} title="New students are added through Admissions"><SIcon.plus size={15}/> {isMobile?'Admit':'New Admission'}</button>
               </IfCan>
             </div>
           </div>
@@ -5153,7 +5628,7 @@ const effectiveCols = visibleCols.filter(col => {
         {/* Page-level tabs — Dashboard / Students / Scholarship / Data Quality */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:16}}>
           <nav className="st-tabs" role="tablist" style={{maxWidth:'100%'}}>
-            {[{key:'dashboard',label:'Dashboard',icon:SIcon.home},{key:'students',label:'Students',icon:SIcon.users},{key:'scholarship',label:'Scholarship/Waiver',icon:SIcon.fileText},{key:'dataQuality',label:'Data Quality',icon:SIcon.check}].map(t=>{
+            {[{key:'courses',label:'Courses',icon:SIcon.layers},{key:'dashboard',label:'Dashboard',icon:SIcon.home},{key:'students',label:'All Students',icon:SIcon.users},{key:'scholarship',label:'Scholarship/Waiver',icon:SIcon.fileText},{key:'dataQuality',label:'Data Quality',icon:SIcon.check}].map(t=>{
               const active=pageTab===t.key
               return (
                 <button key={t.key} role="tab" aria-selected={active} className={'st-tab'+(active?' on':'')} onClick={()=>setPageTab(t.key)}>
@@ -5191,6 +5666,21 @@ const effectiveCols = visibleCols.filter(col => {
         </div>
         )}
         </div>
+
+        {pageTab==='courses'&&(
+          <CourseDatabase
+            students={students}
+            attData={attData}
+            examData={examData}
+            feeData={feeData}
+            can={can}
+            isMobile={isMobile}
+            onOpenDetail={setDetailPanel}
+            onOpenFee={setFeePanel}
+            onEdit={s=>{setEditing(s);setFormOpen(true);setPageTab('students')}}
+            showToast={showToast}
+          />
+        )}
 
         {pageTab==='dashboard'&&(
           <StudentDashboard
@@ -5249,7 +5739,7 @@ const effectiveCols = visibleCols.filter(col => {
         </div>
 
         {/* Form */}
-        {formOpen&&can.write&&<StudentForm onSave={handleSave} onCancel={()=>{setFormOpen(false);setEditing(null)}} editing={editing} allStudents={students} houseOptions={houseOptions}/>}
+        {formOpen&&editing&&can.write&&<StudentForm onSave={handleSave} onCancel={()=>{setFormOpen(false);setEditing(null)}} editing={editing} allStudents={students} houseOptions={houseOptions}/>}
 
         {/* Selection bar */}
         {selected.size>0&&(
@@ -5368,8 +5858,8 @@ const effectiveCols = visibleCols.filter(col => {
           <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'60px 20px',textAlign:'center'}}>
             <div style={{width:76,height:76,borderRadius:22,background:`linear-gradient(145deg,${T.goldLight},${T.surface})`,border:`1px solid ${T.goldBorder}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:34,marginBottom:16,boxShadow:T.shadow}}>🎓</div>
             <div style={{fontSize:20,fontWeight:600,color:T.text1,marginBottom:6,fontFamily:T.serif}}>{students.length===0?'No students yet':'No results'}</div>
-            <p style={{fontSize:13,color:T.text3,maxWidth:'30ch',lineHeight:1.7,margin:'0 0 20px'}}>{students.length===0?'Click "+ New Student" to add the first student.':'Try adjusting your search or filters.'}</p>
-            {can.write&&students.length===0&&<Btn onClick={()=>{setEditing(null);setFormOpen(true)}} variant='primary'>+ New Student</Btn>}
+            <p style={{fontSize:13,color:T.text3,maxWidth:'30ch',lineHeight:1.7,margin:'0 0 20px'}}>{students.length===0?'Students appear here once they are enrolled from Admissions.':'Try adjusting your search or filters.'}</p>
+            {can.write&&students.length===0&&<Btn onClick={goToAdmissions} variant='primary'>Go to Admissions</Btn>}
             {students.length>0&&hasFilters&&<Btn onClick={clearAllFilters}>Clear all filters</Btn>}
           </div>
         ):(
@@ -5405,4 +5895,4 @@ const effectiveCols = visibleCols.filter(col => {
       </div>
     </>
   )
-}
+}
