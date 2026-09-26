@@ -254,6 +254,30 @@ const LS = {
 const SIDEBAR_FULL = 262
 const SIDEBAR_MINI = 62
 
+// ─────────────────────────────────────────────────────────────
+//  FIX 4: Mobile drawer stacking
+// ─────────────────────────────────────────────────────────────
+// Module screens use sticky/fixed tab bars and floating buttons with
+// their own (often very high) z-index values. Because those elements
+// sat in the root stacking context alongside the mobile drawer (z 299),
+// any with a higher z-index painted over the open sidebar.
+//
+// While the drawer is open, Sidebar adds DRAWER_OPEN_CLASS to <body>,
+// and the rule below turns <main> into an isolated stacking context at
+// z-index 0 — so nothing inside any module can rise above the drawer or
+// its backdrop, whatever z-index it uses. It's applied ONLY while the
+// drawer is open, so module modals/overlays behave exactly as before at
+// all other times (they still sit above the top bar / desktop sidebar).
+const DRAWER_OPEN_CLASS = 'gnsi-drawer-open'
+const SHELL_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap');
+body.${DRAWER_OPEN_CLASS} main.app-content {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+}
+`
+
 function useIsMobile() {
   const [mobile, setMobile] = useState(() => window.innerWidth <= 768)
   useEffect(() => {
@@ -502,9 +526,17 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
   }, [permMap, isAdmin, currentUser])
 
   useEffect(() => { setDrawerOpen(false) }, [activePage])
+  // Close the drawer if the viewport grows past the mobile breakpoint
+  // while it's open, so the body lock/class don't get stuck on desktop.
+  useEffect(() => { if (!isMobile) setDrawerOpen(false) }, [isMobile])
   useEffect(() => {
     document.body.style.overflow = drawerOpen ? 'hidden' : ''
-    return () => { document.body.style.overflow = '' }
+    // FIX 4: isolate <main> while the drawer is open (see SHELL_CSS)
+    document.body.classList.toggle(DRAWER_OPEN_CLASS, drawerOpen)
+    return () => {
+      document.body.style.overflow = ''
+      document.body.classList.remove(DRAWER_OPEN_CLASS)
+    }
   }, [drawerOpen])
 
   const sidebarStyles = {
@@ -881,7 +913,7 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', fontFamily: UI_FONT, minHeight: '100vh', background: '#F4F1EA' }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap');`}</style>
+      <style>{SHELL_CSS}</style>
       <Sidebar
         activePage={active}
         setActivePage={setActive}
@@ -913,7 +945,7 @@ export default function App() {
           </div>
         </div>
       )}
-      <main style={{ flex: 1, overflowY: 'auto', minHeight: '100vh', paddingLeft: isMobile ? 0 : sidebarW, paddingTop: isMobile ? 56 : 60, transition: 'padding-left 0.22s cubic-bezier(0.4,0,0.2,1)' }}>
+      <main className="app-content" style={{ flex: 1, overflowY: 'auto', minHeight: '100vh', paddingLeft: isMobile ? 0 : sidebarW, paddingTop: isMobile ? 56 : 60, transition: 'padding-left 0.22s cubic-bezier(0.4,0,0.2,1)' }}>
         {renderContent()}
       </main>
     </div>
