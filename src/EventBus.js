@@ -63,6 +63,10 @@ export const GNSI_EVENTS = {
   QUESTION_SAVED:      'gnsi:question_saved',    // { subject, chapter, count }
   LOCKER_UNLOCKED:     'gnsi:locker_unlocked',   // { lockerId }
   NAVIGATE_TO:         'gnsi:navigate_to',       // { module, params: { subject?, chapter? } }
+  // Teaching hub: "open this chapter in <target>" — see focusChapter() in
+  // StudyMaterialBridge.js. { target, course, subject, chapter }
+  CHAPTER_FOCUS:       'gnsi:chapter_focus',
+  TEACHING_LOG_SAVED:  'gnsi:teaching_log_saved', // { subject, date }
 
   // ── Teaching module events ────────────────────────────────────────────────────
   TEACHING_LOG_LATE:      'teaching:log_late',      // { staffId, logId, teachingDate, subtype }

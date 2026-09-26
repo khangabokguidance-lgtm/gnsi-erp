@@ -5,7 +5,7 @@
 // USAGE:
 //   import { useQBankCountsByChapter, useStudyMaterialsByChapter, useMaterialCountsByChapter, useTeachingLogsByChapter } from './StudyMaterialBridge'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 
@@ -64,6 +64,57 @@ export async function fetchAllPages(buildQuery, pageSize = 1000) {
     all = all.concat(data || [])
     if (!data || data.length < pageSize) return { data: all, error: null }
   }
+}
+
+// ── CHAPTER FOCUS (Teaching hub navigation) ───────────────────────────────────
+// "Open this chapter in <target module>". The old pattern —
+//   onNavigate('questionbank'); EventBus.emit(NAVIGATE_TO, {...})
+// — lost the chapter: the emit ran synchronously before React had mounted the
+// target page, so nobody was listening and it opened unfiltered. A focus is
+// now also kept as a pending value that the target takes when it mounts
+// (useChapterFocus), and broadcast for a target that is already on screen.
+//
+// Targets: 'hub' (Teaching → Chapter Hub), 'questionbank', 'studymaterial',
+// 'studylockers', 'syllabusmgr', 'logs' (Teaching → Daily Logs).
+// ctx: { course, subject, chapter } using the qbankTaxonomy names.
+let pendingFocus = null
+const FOCUS_TTL_MS = 30 * 1000
+
+export function focusChapter(target, ctx = {}) {
+  pendingFocus = { target, course: ctx.course || '', subject: ctx.subject || '', chapter: ctx.chapter || '', at: Date.now() }
+  EventBus.emit(GNSI_EVENTS.CHAPTER_FOCUS, pendingFocus)
+}
+
+// Focus + navigate in one call. `navigate` is the module's onNavigate
+// (App page switch, or the Teaching hub's tab switch when embedded).
+export function openChapterIn(target, ctx, navigate) {
+  focusChapter(target, ctx)
+  navigate?.(target)
+}
+
+export function takeChapterFocus(target) {
+  if (pendingFocus && pendingFocus.target === target && Date.now() - pendingFocus.at < FOCUS_TTL_MS) {
+    const f = pendingFocus
+    pendingFocus = null
+    return f
+  }
+  return null
+}
+
+// Calls onFocus(ctx) with a focus meant for `target` — once on mount if one
+// is pending, and again whenever a new one arrives while mounted.
+export function useChapterFocus(target, onFocus) {
+  const cb = useRef(onFocus)
+  useEffect(() => { cb.current = onFocus })
+  useEffect(() => {
+    const f = takeChapterFocus(target)
+    if (f) cb.current(f)
+    return EventBus.on(GNSI_EVENTS.CHAPTER_FOCUS, f2 => {
+      if (f2?.target !== target) return
+      takeChapterFocus(target)
+      cb.current(f2)
+    })
+  }, [target])
 }
 
 // ── HOOK: Q-Bank question counts by chapter ────────────────────────────────────

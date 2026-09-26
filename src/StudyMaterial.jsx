@@ -4,9 +4,21 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
-import { useQBankCountsByChapter } from './StudyMaterialBridge'
+import { useQBankCountsByChapter, openChapterIn, useChapterFocus, normalizeToQBank } from './StudyMaterialBridge'
 import { EventBus, GNSI_EVENTS } from './EventBus'
+import { isAdminRole } from './roles'
+import { COURSES as QB_COURSES } from './qbankTaxonomy'
 import QuestionBankViewer from './QuestionBankViewer'
+
+// Study Material keeps its own subject names (existing materials are saved
+// under them); the Teaching hub uses the Question Bank taxonomy. Maps e.g.
+// Sainik "English Language" → "Language" for hub links.
+function hubSubject(course, subject) {
+  const qbSubjects = QB_COURSES[course]?.subjects || {}
+  if (qbSubjects[subject]) return subject
+  const mapped = normalizeToQBank(subject)
+  return qbSubjects[mapped] ? mapped : subject
+}
 
 // ── HARDCODED BASE COURSE DATA ────────────────────────────────────────────────
 // Custom subjects/chapters from Supabase are merged in at runtime.
@@ -847,8 +859,21 @@ function MaterialCard({ mat, onDelete, showToast, isAdmin }) {
 }
 
 // ── SUBJECT PANEL ─────────────────────────────────────────────────────────────
-function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, materials, onRefetch, showToast, customChapters, onStructureChange, onNavigate, isAdmin, isStaffAllowed }) {
-  const [expandedChapter, setExpandedChapter] = useState(null)
+function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, materials, onRefetch, showToast, customChapters, onStructureChange, onNavigate, isAdmin, isStaffAllowed, focusChapter }) {
+  // A chapter focused from the Teaching hub / another module opens expanded
+  // and is scrolled into view.
+  const [expandedChapter, setExpandedChapter] = useState(focusChapter || null)
+  const [seenFocus, setSeenFocus] = useState(focusChapter)
+  if (focusChapter !== seenFocus) {   // new focus → expand it (render-time adjust, no effect)
+    setSeenFocus(focusChapter)
+    if (focusChapter) setExpandedChapter(focusChapter)
+  }
+  const focusRowRef = useRef(null)
+  useEffect(() => {
+    if (!focusChapter) return
+    const t = setTimeout(() => focusRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60)
+    return () => clearTimeout(t)
+  }, [focusChapter])
   const [showUpload,      setShowUpload]      = useState(false)
   const [uploadChapter,   setUploadChapter]   = useState('')
   const [filterType,      setFilterType]      = useState('all')
@@ -928,7 +953,7 @@ function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, mater
         const isCustomCh = !baseChapterSet.has(ch.toLowerCase())
 
         return (
-          <div key={ch} style={{ background: C.white, borderRadius: 10, border: `1px solid ${C.border}`, marginBottom: 6, overflow: 'hidden' }}>
+          <div key={ch} ref={ch === focusChapter ? focusRowRef : undefined} style={{ background: C.white, borderRadius: 10, border: `1px solid ${ch === focusChapter ? courseData.color : C.border}`, marginBottom: 6, overflow: 'hidden' }}>
             <div onClick={() => setExpandedChapter(isExpanded ? null : ch)}
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', cursor: 'pointer', background: isExpanded ? courseData.bg : C.white, transition: 'background .12s' }}>
               <span style={{ fontSize: 13, color: isExpanded ? courseData.text : C.navy, fontWeight: isExpanded ? 700 : 500, flex: 1 }}>
@@ -943,8 +968,7 @@ function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, mater
   <span
     onClick={e => {
       e.stopPropagation()
-      onNavigate?.('questionbank')
-      EventBus.emit(GNSI_EVENTS.NAVIGATE_TO, { module: 'questionbank', params: { subject: subjectName, chapter: ch } })
+      openChapterIn('questionbank', { course, subject: subjectName, chapter: ch }, onNavigate)
     }}
     title={`${qCounts[ch]} questions in QBank — click to open`}
     style={{ padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 700, color: '#7c3aed', background: '#ede9fe', cursor: 'pointer', whiteSpace: 'nowrap' }}
@@ -952,6 +976,9 @@ function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, mater
     📚 {qCounts[ch]} Q
   </span>
 )}
+              <button onClick={e => { e.stopPropagation(); openChapterIn('hub', { course, subject: hubSubject(course, subjectName), chapter: ch }, onNavigate) }}
+                title="Open this chapter in the Teaching hub — syllabus, materials, questions, lockers and teaching logs together"
+                style={btnSm('#fff', C.navy)}>🎯 Hub</button>
               <button onClick={e => { e.stopPropagation(); handleUploadForChapter(ch) }} style={btnSm(courseData.bg, courseData.text)}>+ Add</button>
               {isAdmin && isCustomCh && (
                 <button onClick={e => { e.stopPropagation(); deleteCustomChapter(course, subjectName, ch, showToast, onStructureChange) }}
@@ -1111,10 +1138,7 @@ function LessonPrepChapterRow({ course, subject, subjectData, chapter, materials
         )}
         {isStaffAllowed && hasQuestions && (
           <button
-            onClick={() => {
-              onNavigate?.('questionbank')
-              EventBus.emit(GNSI_EVENTS.NAVIGATE_TO, { module: 'questionbank', params: { subject, chapter } })
-            }}
+            onClick={() => openChapterIn('questionbank', { course, subject, chapter }, onNavigate)}
             style={{ ...btnSm('#ede9fe', '#7c3aed'), whiteSpace: 'nowrap' }}>
             Open in QBank →
           </button>
@@ -1336,13 +1360,15 @@ function SubjectDrawer({ open, onClose, course, subjects, customSubjectSet, cour
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
-export default function StudyMaterial({ currentUser, perms, onNavigate }) {
+export default function StudyMaterial({ currentUser, perms, onNavigate, embedded = false }) {
   // Confirmed via SQL against portal_users.role — full list: Receptionist,
   // Teacher, Accountant, Superintendent, House Master, admin, Computer
   // Staffs. "admin" is lowercase (not "Administrator"/"Teaching + Admin" —
   // those were earlier incorrect guesses).
   const roleLower = (currentUser?.role || '').toLowerCase()
-  const isAdmin = roleLower === 'admin'
+  // isAdminRole covers the real admin roles ('Administrator', 'Co-Admin');
+  // the lowercase 'admin' check alone locked those accounts out of editing.
+  const isAdmin = isAdminRole(currentUser?.role) || roleLower === 'admin'
   // Question Bank access (used to gate the "N Q" badges and cross-nav
   // buttons in this file that link over to it) matches QuestionBank.jsx's
   // own gate exactly — admin + Computer Staffs.
@@ -1358,6 +1384,8 @@ export default function StudyMaterial({ currentUser, perms, onNavigate }) {
   const [toast,          setToast]          = useState(null)
   const [drawerOpen,     setDrawerOpen]     = useState(false)
   const [showAddSubject, setShowAddSubject] = useState(false)
+  const [focusChapterName, setFocusChapterName] = useState(null)
+  const pendingSubjectRef = useRef(null)
   const isMobile = useIsMobile()
 
   const showToast = (msg, color = C.navy) => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
@@ -1430,11 +1458,31 @@ export default function StudyMaterial({ currentUser, perms, onNavigate }) {
   }, [structure, activeCourse])
 
   useEffect(() => {
-    const firstSubject = Object.keys(mergedCourses[activeCourse].subjects)[0]
-    setActiveSubject(firstSubject)
+    // A subject chosen by a chapter focus (below) wins over "first subject".
+    const subjectsForCourse = mergedCourses[activeCourse].subjects
+    const pending = pendingSubjectRef.current
+    pendingSubjectRef.current = null
+    setActiveSubject(pending && subjectsForCourse[pending] ? pending : Object.keys(subjectsForCourse)[0])
     setActiveView('subjects')
     setSearch('')
-  }, [activeCourse])
+  }, [activeCourse]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Open this chapter in Study Materials" from the Teaching hub or another
+  // module. The hub speaks Question Bank subject names, so pick this
+  // course's Study Material subject that is the same subject (exact name
+  // first, then the one that maps to it, e.g. Language → English Language).
+  useChapterFocus('studymaterial', f => {
+    const course = BASE_COURSES[f.course] ? f.course : activeCourse
+    const names = Object.keys(mergedCourses[course].subjects)
+    const subject = names.find(n => n === f.subject)
+      || names.find(n => normalizeToQBank(n) === normalizeToQBank(f.subject))
+      || null
+    setFocusChapterName(f.chapter || null)
+    setSearch('')
+    setActiveView('subjects')
+    if (course !== activeCourse) { pendingSubjectRef.current = subject; setActiveCourse(course) }
+    else if (subject) setActiveSubject(subject)
+  })
 
   const courseData  = mergedCourses[activeCourse]
   const subjects    = courseData.subjects
@@ -1457,7 +1505,7 @@ export default function StudyMaterial({ currentUser, perms, onNavigate }) {
   const existingSubjectNames = subjectList
 
   return (
-    <div style={{ padding: isMobile ? '16px 12px' : 24, fontFamily: 'system-ui,sans-serif', background: C.bg, minHeight: '100vh' }}>
+    <div style={embedded ? { fontFamily: 'inherit' } : { padding: isMobile ? '16px 12px' : 24, fontFamily: 'system-ui,sans-serif', background: C.bg, minHeight: '100vh' }}>
       {toast && <Toast msg={toast.msg} color={toast.color} />}
 
       {isAdmin && showAddSubject && (
@@ -1471,12 +1519,12 @@ export default function StudyMaterial({ currentUser, perms, onNavigate }) {
         />
       )}
 
-      {/* Header */}
-      <div style={{ marginBottom: 18 }}>
+      {/* Header — hidden inside the Teaching hub, which has its own */}
+      {!embedded && <div style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: C.slate, marginBottom: 4 }}>GNSI Portal</div>
         <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 900, color: C.navy, letterSpacing: '-.02em' }}>Study Materials</div>
         <div style={{ fontSize: 12, color: C.slate, marginTop: 3 }}>Navodaya · Sainik · Foundation</div>
-      </div>
+      </div>}
 
       {/* Course tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 18, overflowX: isMobile ? 'auto' : 'visible', flexWrap: isMobile ? 'nowrap' : 'wrap', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', paddingBottom: 2 }}>
@@ -1572,6 +1620,7 @@ export default function StudyMaterial({ currentUser, perms, onNavigate }) {
               customChapters={customChaptersBySubject[activeSubject] || []}
               onRefetch={refetchMaterials} onStructureChange={refetchStructure} showToast={showToast}
               onNavigate={onNavigate} isAdmin={isAdmin} isStaffAllowed={isStaffAllowed}
+              focusChapter={focusChapterName}
             />
           ) : (
             <div style={{ ...cardS, textAlign: 'center', padding: 40, color: '#94a3b8' }}>Select a subject above</div>
@@ -1619,6 +1668,7 @@ export default function StudyMaterial({ currentUser, perms, onNavigate }) {
                 customChapters={customChaptersBySubject[activeSubject] || []}
                 onRefetch={refetchMaterials} onStructureChange={refetchStructure} showToast={showToast}
                 onNavigate={onNavigate} isAdmin={isAdmin} isStaffAllowed={isStaffAllowed}
+                focusChapter={focusChapterName}
               />
             ) : (
               <div style={{ ...cardS, textAlign: 'center', padding: 48, color: '#94a3b8' }}>Select a subject from the sidebar</div>

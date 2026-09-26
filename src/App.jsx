@@ -669,6 +669,9 @@ export default function App() {
     }
     return 'dashboard'
   })
+  // Teaching hub links (StudyMaterialBridge.openChapterIn) name hub targets
+  // rather than pages: 'hub' / 'logs' / 'syllabusmgr' live inside Teaching.
+  const navigateTo = useCallback(id => setActive(({ hub: 'teaching', logs: 'teaching', syllabusmgr: 'teaching' })[id] || id), [])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => LS.get('gnsi_sidebar_collapsed', false))
   const [showLogin,        setShowLogin]        = useState(false)
   const [permMap,          setPermMap]          = useState({})
@@ -862,11 +865,11 @@ export default function App() {
     reception:         <Reception         currentUser={currentUser} perms={perms('reception')}         />,
     notice:            <Notice            currentUser={currentUser} perms={perms('notice')}            />,
     social:            <Social            currentUser={currentUser} perms={perms('social')}            />,
-    questionbank:      <QuestionBank      currentUser={currentUser} perms={perms('questionbank')} onNavigate={setActive} />,
+    questionbank:      <QuestionBank      currentUser={currentUser} perms={perms('questionbank')} onNavigate={navigateTo} />,
     questionbankviewer:<QuestionBankViewer currentUser={currentUser} onNavigate={setActive} />,
-    studymaterial:     <StudyMaterial     currentUser={currentUser} perms={perms('studymaterial')} onNavigate={setActive} />,
+    studymaterial:     <StudyMaterial     currentUser={currentUser} perms={perms('studymaterial')} onNavigate={navigateTo} />,
     teachingaids:      <TeachingAids      currentUser={currentUser} perms={perms('teachingaids')}  />,
-    studylockers:      <StudyLockers      currentUser={currentUser} perms={perms('studylockers')}  onNavigate={setActive} />,
+    studylockers:      <StudyLockers      currentUser={currentUser} perms={perms('studylockers')}  onNavigate={navigateTo} />,
     connect:           <Connect           currentUser={currentUser} perms={perms('connect')}           />,
     website:           <WebsiteTab        />,
     reports:           <Reports           currentUser={currentUser} perms={perms('reports')}           />,
@@ -875,7 +878,7 @@ export default function App() {
     studentfeeledger:  <StudentFeeLedger  currentUser={currentUser} perms={perms('studentfeeledger')}  />,
     // FIX: removed feeledger duplicate alias
     courses:           <Courses           currentUser={currentUser} perms={perms('courses')}           />,
-    teaching:          <Teaching          currentUser={currentUser} perms={perms('teaching')}          />,
+    teaching:          <Teaching          currentUser={currentUser} perms={perms('teaching')} onNavigate={navigateTo} />,
     // onNavigate: Attendance ⇄ Students links (see courseMap.js hand-off)
     attendance:        <Attendance        currentUser={currentUser} isAdmin={isAdmin} perms={perms('attendance')} onNavigate={setActive} />,
     exams:             <Exams             currentUser={currentUser} perms={perms('exams')}             />,

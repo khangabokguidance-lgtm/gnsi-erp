@@ -5,7 +5,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
-import { normalizeToQBank } from './StudyMaterialBridge'
+import { normalizeToQBank, useChapterFocus } from './StudyMaterialBridge'
+import { isAdminRole } from './roles'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
@@ -88,7 +89,7 @@ function AdminLockerPanel({ lockers, onRefetch, showToast, currentUser }) {
   const [newPwd, setNewPwd] = useState('')
   const [resetting, setResetting] = useState(false)
 
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = (isAdminRole(currentUser?.role) || (currentUser?.role || '').toLowerCase() === 'admin')
   if (!isAdmin) return (
     <div style={{ ...cardS, textAlign: 'center', padding: 40, color: C.slate }}>
       🔐 Admin access required to manage lockers.
@@ -779,7 +780,7 @@ function LockerView({ locker, isUnlocked, onLock, showToast, currentUser }) {
   const [filterType, setFilterType] = useState('all')
   const [search,     setSearch]     = useState('')
 
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = (isAdminRole(currentUser?.role) || (currentUser?.role || '').toLowerCase() === 'admin')
 
   const fetchMaterials = useCallback(async () => {
     setLoading(true)
@@ -903,7 +904,7 @@ function LockerView({ locker, isUnlocked, onLock, showToast, currentUser }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
-export default function StudyLockers({ currentUser, perms, onNavigate }) {
+export default function StudyLockers({ currentUser, perms, onNavigate, embedded = false }) {
   const [lockers,       setLockers]       = useState([])
   const [loading,       setLoading]       = useState(true)
   const [unlockedIds,   setUnlockedIds]   = useState({}) // { lockerId: timestamp }
@@ -911,9 +912,13 @@ export default function StudyLockers({ currentUser, perms, onNavigate }) {
   const [unlockTarget,  setUnlockTarget]  = useState(null)
   const [activeTab,     setActiveTab]     = useState('lockers') // 'lockers' | 'admin'
   const [filterCourse,  setFilterCourse]  = useState('all')
+  // Set by a chapter focus from the Teaching hub: lockers for this subject
+  // are listed first and marked. (A locker can't be opened for the user —
+  // each one is password-protected.)
+  const [focusSubject,  setFocusSubject]  = useState(null)
   const [toast,         setToast]         = useState(null)
   const isMobile = useIsMobile()
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+  const isAdmin = (isAdminRole(currentUser?.role) || (currentUser?.role || '').toLowerCase() === 'admin')
 
   const showToast = (msg, color = C.navy) => { setToast({ msg, color }); setTimeout(() => setToast(null), 3500) }
 
@@ -947,6 +952,7 @@ export default function StudyLockers({ currentUser, perms, onNavigate }) {
   const handleUnlocked = (lockerId) => {
     setUnlockedIds(p => ({ ...p, [lockerId]: Date.now() }))
     setActiveLocker(lockerId)
+    setActiveTab('view') // open it — previously you had to find the extra tab
     showToast('🔓 Locker unlocked! Auto-locks in 30 min.', C.green)
     EventBus.emit(GNSI_EVENTS.LOCKER_UNLOCKED, { lockerId })
   }
@@ -957,19 +963,27 @@ export default function StudyLockers({ currentUser, perms, onNavigate }) {
   }
 
   const handleLockerClick = (locker) => {
-    if (isUnlocked(locker.id)) { setActiveLocker(locker.id); return }
+    if (isUnlocked(locker.id)) { setActiveLocker(locker.id); setActiveTab('view'); return }
     setUnlockTarget(locker)
   }
 
-  const filtered = useMemo(() =>
-    filterCourse === 'all' ? lockers : lockers.filter(l => l.course === filterCourse),
-    [lockers, filterCourse]
-  )
+  useChapterFocus('studylockers', f => {
+    if (COURSES.includes(f.course)) setFilterCourse(f.course)
+    setFocusSubject(f.subject || null)
+    setActiveTab('lockers')
+  })
+  const matchesFocus = l => !!focusSubject && !!l.subject &&
+    (l.subject === focusSubject || normalizeToQBank(l.subject) === normalizeToQBank(focusSubject))
+
+  const filtered = useMemo(() => {
+    const list = filterCourse === 'all' ? lockers : lockers.filter(l => l.course === filterCourse)
+    return focusSubject ? [...list].sort((a, b) => matchesFocus(b) - matchesFocus(a)) : list
+  }, [lockers, filterCourse, focusSubject]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeLockerData = lockers.find(l => l.id === activeLocker)
 
   return (
-    <div style={{ padding: isMobile ? '16px 12px' : 24, fontFamily: 'system-ui,sans-serif', background: C.bg, minHeight: '100vh' }}>
+    <div style={embedded ? { fontFamily: 'inherit' } : { padding: isMobile ? '16px 12px' : 24, fontFamily: 'system-ui,sans-serif', background: C.bg, minHeight: '100vh' }}>
       {toast && <Toast msg={toast.msg} color={toast.color} />}
       {unlockTarget && (
         <UnlockModal
@@ -979,12 +993,20 @@ export default function StudyLockers({ currentUser, perms, onNavigate }) {
         />
       )}
 
-      {/* Header */}
-      <div style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: C.slate, marginBottom: 4 }}>GNSI Portal</div>
-        <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 900, color: C.navy, letterSpacing: '-.02em' }}>Study Lockers</div>
-        <div style={{ fontSize: 12, color: C.slate, marginTop: 3 }}>Teacher-owned subject lockers · Password protected · Practice paper generator</div>
-      </div>
+      {/* Header — hidden inside the Teaching hub, which has its own */}
+      {!embedded && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: C.slate, marginBottom: 4 }}>GNSI Portal</div>
+          <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 900, color: C.navy, letterSpacing: '-.02em' }}>Study Lockers</div>
+          <div style={{ fontSize: 12, color: C.slate, marginTop: 3 }}>Teacher-owned subject lockers · Password protected · Practice paper generator</div>
+        </div>
+      )}
+      {focusSubject && activeTab === 'lockers' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', marginBottom: 14, borderRadius: 10, background: '#eff6ff', border: '1px solid #bfdbfe', fontSize: 12.5, color: C.navy, fontWeight: 600 }}>
+          <span style={{ flex: 1 }}>Showing {focusSubject} lockers first</span>
+          <button onClick={() => setFocusSubject(null)} style={{ background: 'none', border: 'none', color: C.navy, cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>✕ Clear</button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
@@ -1049,6 +1071,7 @@ export default function StudyLockers({ currentUser, perms, onNavigate }) {
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
                       <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: COURSE_BG[locker.course] || '#eff6ff', color: COURSE_TEXT[locker.course] || C.navy }}>{COURSE_LABELS[locker.course]}</span>
                       {unlocked && <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: '#dcfce7', color: C.green }}>🔓 Unlocked</span>}
+                      {matchesFocus(locker) && <span style={{ padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: '#fef9c3', color: '#b45309' }}>🎯 {focusSubject}</span>}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: 11, color: '#94a3b8' }}>Click to {unlocked ? 'open' : 'unlock'}</span>
