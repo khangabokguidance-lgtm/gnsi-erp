@@ -14,7 +14,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
-import { useStudyMaterialsByChapter, useMaterialCountsByChapter, normalizeToQBank } from './StudyMaterialBridge'
+import { useStudyMaterialsByChapter, useMaterialCountsByChapter, normalizeToQBank, openChapterIn, useChapterFocus } from './StudyMaterialBridge'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 import { isAdminRole } from './roles'
 // Course → subject → chapter taxonomy (shared with QuestionBankViewer.jsx).
@@ -1269,7 +1269,7 @@ function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onD
 // ── STUDY MATERIALS REFERENCE PANEL ──────────────────────────────────────────
 // Shows existing study materials for the selected subject+chapter.
 // Used inside TabManualAdd and TabBulkPaste as a reference sidebar.
-function StudyMaterialsRefPanel({ subject, chapter, onNavigate }) {
+function StudyMaterialsRefPanel({ course, subject, chapter, onNavigate }) {
   const qbankSubject = normalizeToQBank(subject)
   const { materials, loading } = useStudyMaterialsByChapter(qbankSubject, chapter)
 
@@ -1287,11 +1287,19 @@ function StudyMaterialsRefPanel({ subject, chapter, onNavigate }) {
         <span style={{ fontSize:12, fontWeight:700, color:'#0369a1' }}>
           📖 Study Materials — {chapter}
         </span>
-        <button
-          onClick={() => onNavigate?.('studymaterial')}
-          style={{ fontSize:10, color:'#0369a1', background:'none', border:'none', cursor:'pointer', fontWeight:700 }}>
-          Open Study Materials →
-        </button>
+        <span style={{ display:'flex', gap:10 }}>
+          <button
+            onClick={() => openChapterIn('hub', { course, subject, chapter }, onNavigate)}
+            title="Open this chapter in the Teaching hub"
+            style={{ fontSize:10, color:'#0369a1', background:'none', border:'none', cursor:'pointer', fontWeight:700 }}>
+            🎯 Chapter hub
+          </button>
+          <button
+            onClick={() => openChapterIn('studymaterial', { course, subject, chapter }, onNavigate)}
+            style={{ fontSize:10, color:'#0369a1', background:'none', border:'none', cursor:'pointer', fontWeight:700 }}>
+            Open Study Materials →
+          </button>
+        </span>
       </div>
       {loading
         ? <div style={{ fontSize:11, color:'#94a3b8' }}>Loading…</div>
@@ -1347,16 +1355,21 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
   // ── PATCH: apply initialFilter from cross-module navigation ────────────────
   useEffect(() => {
     if (!initialFilter) return
-    if (initialFilter.subject) {
-      // Normalize: StudyMaterial subjects may differ from QBank subjects
-      const qbankSubject = normalizeToQBank(initialFilter.subject)
-      if (SUBJECTS[qbankSubject]) {
-        setFilterSubject(qbankSubject)
-      }
-    }
-    if (initialFilter.chapter) {
-      setFilterChapter(initialFilter.chapter)
-    }
+    // Course-aware: previously only Sainik's four subject names were
+    // accepted, so a focus on e.g. Navodaya "Arithmetic" was dropped.
+    const course = COURSES[initialFilter.course] ? initialFilter.course : 'All'
+    const subjectsHere = course === 'All'
+      ? Object.assign({}, ...COURSE_LIST.map(c => COURSES[c].subjects))
+      : COURSES[course].subjects
+    const subject = !initialFilter.subject ? 'All'
+      : subjectsHere[initialFilter.subject] ? initialFilter.subject
+      : subjectsHere[normalizeToQBank(initialFilter.subject)] ? normalizeToQBank(initialFilter.subject)
+      : 'All'
+    setFilterCourse(course)
+    setFilterSubject(subject)
+    setFilterChapter(subject !== 'All' && initialFilter.chapter ? initialFilter.chapter : 'All')
+    setFilterSubsection('All')
+    setSearch('')
     setPage(1)
   }, [initialFilter])
 
@@ -1508,7 +1521,7 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
           Manual Add / Bulk Paste forms already render, so both entry points
           stay visually and behaviourally consistent. */}
       {filterSubject !== 'All' && filterChapter !== 'All' && (
-        <StudyMaterialsRefPanel subject={filterSubject} chapter={filterChapter} onNavigate={onNavigate} />
+        <StudyMaterialsRefPanel course={filterCourse !== 'All' ? filterCourse : ''} subject={filterSubject} chapter={filterChapter} onNavigate={onNavigate} />
       )}
 
       {/* Subject cards — click to filter */}
@@ -1963,7 +1976,7 @@ function TabManualAdd({ questions, refetch, showToast, onNavigate }) {
       </div>
 
       {/* ── PATCH: reference panel shows study materials for the active chapter ── */}
-      <StudyMaterialsRefPanel subject={refSubject} chapter={refChapter} onNavigate={onNavigate} />
+      <StudyMaterialsRefPanel course={rows[0]?.course} subject={refSubject} chapter={refChapter} onNavigate={onNavigate} />
 
       {rows.map((row, i) => (
         <QuestionRowForm key={i} row={row} index={i}
@@ -2259,7 +2272,7 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
           </div>
 
           {/* ── PATCH: reference panel ── */}
-          <StudyMaterialsRefPanel subject={bulkSubject} chapter={bulkChapter} onNavigate={onNavigate} />
+          <StudyMaterialsRefPanel course={bulkCourse} subject={bulkSubject} chapter={bulkChapter} onNavigate={onNavigate} />
 
           <label style={lS}>Paste Question Paper Text *</label>
           <textarea value={rawText} onChange={e => setRawText(e.target.value)} rows={14}
@@ -4322,7 +4335,7 @@ function TabSmartPPT({ questions, showToast }) {
 // either direction (questions with no materials, or materials with no
 // questions) are visible at a glance instead of requiring a trip to the
 // other module.
-function SubjectStatsCard({ subj, chapData, chapters, countColor, countBg, countLabel, onNavigate }) {
+function SubjectStatsCard({ course, subj, chapData, chapters, countColor, countBg, countLabel, onNavigate }) {
   const sc = SC[subj] || SC.Mathematics
   const totalSubj = Object.values(chapData).reduce((a,b)=>a+b.total,0)
   const { counts: materialCounts } = useMaterialCountsByChapter(subj)
@@ -4359,7 +4372,7 @@ function SubjectStatsCard({ subj, chapData, chapters, countColor, countBg, count
                   {chData.total}
                 </span>
                 <span
-                  onClick={() => onNavigate?.('studymaterial')}
+                  onClick={() => openChapterIn('studymaterial', { course, subject: subj, chapter: ch }, onNavigate)}
                   title={matCount > 0 ? `${matCount} study material${matCount>1?'s':''} for this chapter — click to open` : 'No study materials yet for this chapter — click to add one'}
                   style={{ padding:'2px 8px', borderRadius:99, fontSize:11, fontWeight:700, whiteSpace:'nowrap', cursor: onNavigate ? 'pointer' : 'default',
                     color: matCount > 0 ? T.teal : T.faint, background: matCount > 0 ? T.tealSoft : T.surfaceAlt }}>
@@ -4516,6 +4529,7 @@ function TabStats({ questions, refetch, showToast, isAdmin, onNavigate }) {
       {subjects.map(subj => (
         <SubjectStatsCard
           key={subj}
+          course={filterCourse}
           subj={subj}
           chapData={stats[subj] || {}}
           chapters={courseSubjects[subj]}
@@ -4569,7 +4583,7 @@ function TabStats({ questions, refetch, showToast, isAdmin, onNavigate }) {
 let _qbankCache = null       // { data, fetchedAt } | null
 const QBANK_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 
-export default function QuestionBank({ currentUser, perms, onNavigate, initialFilter: initialFilterProp }) {
+export default function QuestionBank({ currentUser, perms, onNavigate, initialFilter: initialFilterProp, embedded = false }) {
   // BUGFIX: this used to check roleLower === 'admin' (exact lowercase
   // match only) based on a one-off SQL check against portal_users.role
   // that a prior pass here concluded meant "admin" was the only real
@@ -4675,6 +4689,15 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
     return unsub
   }, [])
 
+  // Chapter focus (StudyMaterialBridge.openChapterIn) — works even when this
+  // page wasn't mounted yet at the moment of the click, which the
+  // NAVIGATE_TO emit above can't. A fresh object each time so the same
+  // chapter can be re-focused.
+  useChapterFocus('questionbank', f => {
+    setInitialFilter({ course: f.course, subject: f.subject, chapter: f.chapter })
+    setTab('bank')
+  })
+
   // ── ACCESS GUARD ─────────────────────────────────────────────────────────
   // Non-admins get view (Bank, read-only) + upload (Manual Add, Bulk Paste)
   // only. Create Paper / Online Test / Stats are admin-only.
@@ -4738,12 +4761,13 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
   const fmt = n => n.toLocaleString('en-IN')
 
   return (
-    <div className="qbx qb-page" style={{ padding:24, background:C.bg, minHeight:'100vh' }}>
+    <div className="qbx qb-page" style={embedded ? { background:'transparent' } : { padding:24, background:C.bg, minHeight:'100vh' }}>
       <QBThemeStyles />
       <BmeiFontFace />
       {toast && <Toast msg={toast.msg} color={toast.color} />}
 
-      {/* ── Header ── */}
+      {/* ── Header — the Teaching hub shows its own when embedded ── */}
+      {!embedded && (<>
       <div className="qb-hero" style={{ ...heroStyle, marginBottom:16 }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:20, flexWrap:'wrap' }}>
           <div style={{ minWidth:0 }}>
@@ -4767,6 +4791,8 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
           </div>
         </div>
       </div>
+
+      </>)}
 
       {/* ── Tab bar ── */}
       <div role="tablist" aria-label="Question Bank sections" className="qb-tabs"

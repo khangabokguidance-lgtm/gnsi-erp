@@ -49,6 +49,15 @@ import GeoAttendance from './GeoAttendance'
 import TabReportCards from './TabReportCards'
 import { isAdminRole } from './roles'
 import { PremiumStyles, PremiumHero, PremiumTabs, PIcon, PX } from './premiumUI'
+// Teaching hub: the study-material modules open as Teaching tabs and share
+// chapter context through StudyMaterialBridge (useChapterFocus/openChapterIn).
+import ChapterHub from './ChapterHub'
+import StudyMaterial from './StudyMaterial'
+import QuestionBank from './QuestionBank'
+import StudyLockers from './StudyLockers'
+import SyllabusManager from './SyllabusManager'
+import { useChapterFocus } from './StudyMaterialBridge'
+import { EventBus, GNSI_EVENTS } from './EventBus'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -72,7 +81,15 @@ const TAB_ROLES = {
   attendance:     ['admin','manager','teacher','hostel','house master','superintendent'],
   geoattendance:  ['admin','manager','teacher','hostel','house master','superintendent'],
   reportcards:    ['admin','manager','teacher','superintendent'],
+  // Teaching hub — same audiences as the standalone pages
+  hub:            ['admin','manager','teacher','superintendent','computer staffs'],
+  studymaterial:  ['admin','manager','teacher','superintendent','house master','computer staffs'],
+  questionbank:   ['admin','computer staffs'],                // QuestionBank.jsx's own gate
+  studylockers:   ['admin','manager','teacher','superintendent','computer staffs'],
+  syllabusmgr:    ['admin','manager'],
 }
+// Tabs that host another module; links between them stay inside Teaching.
+const HUB_TABS = ['hub','studymaterial','questionbank','studylockers','syllabusmgr','logs']
 
 // Map-pin icon in the same stroke style as premiumUI's PIcon set.
 const PinIcon = p => (
@@ -83,6 +100,10 @@ const PinIcon = p => (
 
 const ALL_TABS = [
   { key:'logs',        label:'Daily Logs',       icon:PIcon.list },
+  { key:'hub',         label:'Chapter Hub',      icon:PIcon.cap },
+  { key:'studymaterial', label:'Study Materials', icon:PIcon.folder },
+  { key:'questionbank',  label:'Question Bank',   icon:PIcon.report },
+  { key:'studylockers',  label:'Study Lockers',   icon:PIcon.users },
   { key:'calendar',    label:'Calendar',          icon:PIcon.calendar },
   { key:'syllabus',    label:'Syllabus',          icon:PIcon.layers },
   { key:'reports',     label:'Reports',           icon:PIcon.chart },
@@ -90,7 +111,8 @@ const ALL_TABS = [
   { key:'hmdash',      label:'HM Dashboard',      icon:PIcon.users },
   { key:'attendance',  label:'Attendance',        icon:PIcon.shield },
   { key:'geoattendance', label:'Geo Check-In',    icon:PinIcon },
-  { key:'reportcards', label:'Report Cards',      icon:PIcon.cap },
+  { key:'reportcards', label:'Report Cards',      icon:PIcon.pen },
+  { key:'syllabusmgr', label:'Syllabus Manager',  icon:PIcon.settings },
 ]
 
 // TAB_ROLES uses short role keys, but portal accounts carry the real role
@@ -3716,7 +3738,7 @@ function TabRemediation({ logs, courseData }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-function Teaching({ currentUser }) {
+function Teaching({ currentUser, onNavigate }) {
   const userRole = teachingRoleKey(currentUser?.role)
   const isAdmin  = userRole === 'admin'
   const TABS = ALL_TABS.filter(t => (TAB_ROLES[t.key]||[]).includes(userRole))
@@ -3761,11 +3783,28 @@ useEffect(() => {
     try { localStorage.setItem('gnsi_teaching_tab', key) } catch {}
   }
 
+  // ── Teaching hub navigation ────────────────────────────────────────────
+  // Modules inside the hub call onNavigate(target) after openChapterIn();
+  // targets Teaching hosts become a tab switch (the module then picks the
+  // chapter up on mount), anything else goes to the App page as before.
+  const hubNavigate = target => {
+    if (HUB_TABS.includes(target) && TABS.some(t => t.key === target)) handleTabChange(target)
+    else onNavigate?.(target)
+  }
+  // Focus targets Teaching handles itself (the other hosted modules consume
+  // their own focus when their tab mounts).
+  const [hubFocus, setHubFocus] = useState(null)
+  const [syllabusFocus, setSyllabusFocus] = useState(null)
+  useChapterFocus('hub', f => { setHubFocus(f); handleTabChange('hub') })
+  useChapterFocus('syllabusmgr', f => { setSyllabusFocus(f); handleTabChange('syllabusmgr') })
+  useChapterFocus('logs', () => handleTabChange('logs'))
+  const canSeeQuestions = TABS.some(t => t.key === 'questionbank')
+
   const fetchLogs = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase.from('teaching_logs').select('*').order('teaching_date',{ascending:false})
     if (error) showToast('Logs load failed: '+error.message, '#dc2626')
-    if (data) setLogs(data)
+    if (data) { setLogs(data); EventBus.emit(GNSI_EVENTS.TEACHING_LOG_SAVED, {}) } // hub "taught" counts refresh
     setLoading(false)
   }, [])
 
@@ -3826,7 +3865,7 @@ useEffect(() => {
         icon={<PIcon.cap size={isMobile ? 21 : 24} />}
         eyebrow="GNSI · Academics"
         title="Teaching"
-        subtitle={isMobile ? undefined : 'Daily logs · syllabus · timetable · class tests · HM follow-up · report cards'}
+        subtitle={isMobile ? undefined : 'Daily logs · chapter hub · study materials · question bank · lockers · syllabus · class tests · report cards'}
         actions={currentUser ? (
           <span className="px-hbtn" style={{ cursor:'default', height:34, fontSize:12, textTransform:'capitalize' }} title="Your access level in this module">
             <PIcon.shield size={14} /> {currentUser.role || userRole}
@@ -3866,6 +3905,13 @@ useEffect(() => {
       {has(activeTab) && activeTab==='attendance'  && <Attendance currentUser={currentUser} isAdmin={isAdmin}/>}
       {has(activeTab) && activeTab==='geoattendance' && <GeoAttendance currentStaff={staff.find(s => s.name===currentUser?.name)} isAdmin={isAdmin} allStaff={staff}/>}
       {has(activeTab) && activeTab==='reportcards' && <TabReportCards courseData={courseData} staff={staff} currentUser={currentUser}/>}
+
+      {/* ── Teaching hub: study-material modules as tabs ── */}
+      {has(activeTab) && activeTab==='hub'           && <ChapterHub focus={hubFocus} onNavigate={hubNavigate} canSeeQuestions={canSeeQuestions} isMobile={isMobile}/>}
+      {has(activeTab) && activeTab==='studymaterial' && <StudyMaterial currentUser={currentUser} onNavigate={hubNavigate} embedded/>}
+      {has(activeTab) && activeTab==='questionbank'  && <QuestionBank currentUser={currentUser} onNavigate={hubNavigate} embedded/>}
+      {has(activeTab) && activeTab==='studylockers'  && <StudyLockers currentUser={currentUser} onNavigate={hubNavigate} embedded/>}
+      {has(activeTab) && activeTab==='syllabusmgr'   && <SyllabusManager embedded onNavigate={hubNavigate} focus={syllabusFocus}/>}
       </div>
     </div>
   )
