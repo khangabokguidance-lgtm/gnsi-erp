@@ -25,7 +25,7 @@ function useLiveCourseSubjects() {
     supabase.from('system_settings').select('value').eq('key', 'course_subjects').single()
       .then(({ data }) => {
         try { setCourseSubjects(data?.value ? JSON.parse(data.value) : {}) }
-        catch (e) { setCourseSubjects({}) }
+        catch { setCourseSubjects({}) }
         setLoading(false)
       })
   }, [])
@@ -42,6 +42,10 @@ const gradeFor = pct => {
   const p = Number(pct)
   return (GRADE_SCALE.find(g => p >= g.min) || GRADE_SCALE[GRADE_SCALE.length-1]).grade
 }
+// Percentage for one subject, or null when no mark has been entered (a
+// blank mark must not count as 0 — that printed a red "E" on empty rows).
+const isBlankMark = v => v === '' || v === null || v === undefined
+const pctOf = m => (!m || isBlankMark(m.marks_obtained) || !Number(m.max_marks)) ? null : (Number(m.marks_obtained) / Number(m.max_marks)) * 100
 const gradeColor = grade => {
   if (['A1','A2'].includes(grade)) return '#16a34a'
   if (['B1','B2'].includes(grade)) return '#0891b2'
@@ -65,7 +69,7 @@ const S = {
 // the SAME marks already entered in Exams.jsx's Mark Entry / CSV import,
 // instead of asking someone to re-type every subject's marks from scratch.
 
-export default function TabReportCards({ courseData, staff, currentUser }) {
+export default function TabReportCards({ currentUser }) {
   const { courseSubjects, loading: loadingCourseSubjects } = useLiveCourseSubjects()
   const courses = useMemo(() => Object.keys(courseSubjects), [courseSubjects])
 
@@ -75,7 +79,6 @@ export default function TabReportCards({ courseData, staff, currentUser }) {
   const [examDates, setExamDates] = useState([])
   const [examDate, setExamDate]   = useState('')
   const [students, setStudents] = useState([])
-  const [secondaryBatchMap, setSecondaryBatchMap] = useState({}) // { student_id: [batch, ...] } — same dual-appearing model as Exams.jsx
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [subjects, setSubjects] = useState([]) // [{ subject, examId, maxMarks }]
   const [marks, setMarks] = useState({}) // { subject_name: { marks_obtained, max_marks, remarks } }
@@ -100,6 +103,7 @@ export default function TabReportCards({ courseData, staff, currentUser }) {
   // marks, and exam_id linkage all come from the same source Bulk Report
   // Cards uses, so a subject added/renamed in Exams shows up here too.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loads from the server when the selection changes
     if (!course || !examType) { setSubjects([]); return }
     setLoadingSubjects(true)
     supabase.from('exam_schedule').select('id, subject, total_marks, exam_date')
@@ -122,6 +126,7 @@ export default function TabReportCards({ courseData, staff, currentUser }) {
   // comparison here was part of why this tab silently showed 0 students for
   // any mixed-case batch name like "Combined Navodaya Course(ENG)").
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loads from the server when the selection changes
     if (!course) { setStudents([]); return }
     setLoadingStudents(true)
     Promise.all([
@@ -130,7 +135,6 @@ export default function TabReportCards({ courseData, staff, currentUser }) {
     ]).then(([{ data: allStudents }, { data: secRows }]) => {
       const secMap = {}
       ;(secRows || []).forEach(r => { (secMap[r.student_id] = secMap[r.student_id] || []).push(r.batch) })
-      setSecondaryBatchMap(secMap)
       const target = course.trim().toUpperCase()
       // A student matches this batch either as their PRIMARY class_name, or
       // via a secondary-batch tag (dual-appearing students, e.g. a Sainik
@@ -145,77 +149,68 @@ export default function TabReportCards({ courseData, staff, currentUser }) {
     })
   }, [course])
 
-  // Real marks prefill: once a student + exam sitting is selected, pull
-  // whatever's already in exam_marks for THIS batch's scheduled exam_ids —
-  // scoped exactly the same way the fixed ReportCards/BulkReports in
-  // Exams.jsx are (by exam_id, never by exam_type_id alone), so a
-  // dual-appearing student's marks from a DIFFERENT batch can never bleed in
-  // here. This only overwrites a subject's fields if nothing has been typed
-  // here yet — an in-progress manual edit is never silently clobbered by a
-  // background refetch.
+  // Marks for the selected student + exam sitting, rebuilt from scratch every
+  // time the student, batch, exam type or date changes (the old version
+  // merged into whatever was on screen, so a previous student's marks stuck
+  // to the next student, and two parallel loads raced each other).
+  //   1. live marks from exam_marks for THIS batch's scheduled exam_ids —
+  //      scoped by exam_id, never exam_type_id alone, so a dual-appearing
+  //      student's marks from a DIFFERENT batch can't bleed in
+  //   2. a previously saved OFFICIAL report card (report_cards /
+  //      report_card_subjects), which can carry remarks and finalized marks
+  // A saved mark wins over the live one, but a blank saved mark never hides
+  // a real live mark.
+  const [liveInfo, setLiveInfo] = useState(null) // { withMarks, total } from the Exams module
   useEffect(() => {
     if (!selectedStudent || !subjects.length) return
+    let live = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loads from the server when the selection changes
     setLoadingRealMarks(true)
-    const examIds = subjects.map(s => s.examId)
-    supabase.from('exam_marks').select('exam_id, marks_obtained')
-      .eq('student_id', selectedStudent.id).in('exam_id', examIds)
-      .then(({ data }) => {
-        const bySubject = {}
-        subjects.forEach(s => {
-          const row = (data || []).find(r => r.exam_id === s.examId)
-          if (row) bySubject[s.subject] = row.marks_obtained
-        })
-        setMarks(prev => {
-          const next = { ...prev }
-          subjects.forEach(s => {
-            const already = next[s.subject]
-            const isUntouched = !already || already.marks_obtained === '' || already.marks_obtained === undefined
-            if (isUntouched && bySubject[s.subject] !== undefined) {
-              next[s.subject] = { marks_obtained: bySubject[s.subject], max_marks: s.maxMarks, remarks: already?.remarks || '' }
-            }
-          })
-          return next
-        })
-        setLoadingRealMarks(false)
-      })
-  }, [selectedStudent, subjects])
-
-  // Load any previously saved OFFICIAL report card for this student + exam
-  // sitting (report_cards/report_card_subjects — a separate record from the
-  // raw exam_marks pulled above, since a report card can carry remarks and a
-  // finalized/edited mark that differs from the live exam entry). Keyed on
-  // exam type name + date, replacing the old free-text `term` field so a
-  // report card is always traceable back to one real exam sitting.
-  useEffect(() => {
-    if (!selectedStudent || !examType || !examDate) return
+    setMarks(Object.fromEntries(subjects.map(sub => [sub.subject, { marks_obtained:'', max_marks:sub.maxMarks, remarks:'' }])))
     const examTypeName = examTypes.find(t => t.id === examType)?.name || examType
-    supabase.from('report_cards').select('id, report_card_subjects(subject_name,marks_obtained,max_marks,remarks)')
-      .eq('student_id', selectedStudent.id).eq('term', examTypeName).eq('exam_date', examDate).maybeSingle()
-      .then(({ data }) => {
-        if (data) {
-          setSavedId(data.id)
-          const loaded = {}
-          ;(data.report_card_subjects || []).forEach(r => {
-            loaded[r.subject_name] = { marks_obtained:r.marks_obtained ?? '', max_marks:r.max_marks ?? 100, remarks:r.remarks || '' }
-          })
-          setMarks(prev => ({ ...prev, ...loaded }))
-        } else {
-          setSavedId(null)
-        }
+    Promise.all([
+      supabase.from('exam_marks').select('exam_id, marks_obtained')
+        .eq('student_id', selectedStudent.id).in('exam_id', subjects.map(sub => sub.examId)),
+      examDate
+        ? supabase.from('report_cards').select('id, report_card_subjects(subject_name,marks_obtained,max_marks,remarks)')
+            .eq('student_id', selectedStudent.id).eq('term', examTypeName).eq('exam_date', examDate).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]).then(([{ data: liveRows }, { data: saved }]) => {
+      if (!live) return
+      const liveBy = {}
+      subjects.forEach(sub => {
+        const row = (liveRows || []).find(r => r.exam_id === sub.examId)
+        if (row && row.marks_obtained !== null && row.marks_obtained !== undefined) liveBy[sub.subject] = row.marks_obtained
       })
-  }, [selectedStudent, examType, examDate]) // eslint-disable-line
+      const savedBy = {}
+      ;(saved?.report_card_subjects || []).forEach(r => { savedBy[r.subject_name] = r })
+      setMarks(Object.fromEntries(subjects.map(sub => {
+        const sv = savedBy[sub.subject]
+        const savedMark = sv && sv.marks_obtained !== null && sv.marks_obtained !== undefined && sv.marks_obtained !== '' ? sv.marks_obtained : undefined
+        return [sub.subject, {
+          marks_obtained: savedMark ?? liveBy[sub.subject] ?? '',
+          max_marks: sv?.max_marks ?? sub.maxMarks,
+          remarks: sv?.remarks || '',
+        }]
+      })))
+      setSavedId(saved?.id || null)
+      setLiveInfo({ withMarks: Object.keys(liveBy).length, total: subjects.length })
+      setLoadingRealMarks(false)
+    })
+    return () => { live = false }
+  }, [selectedStudent, subjects, examType, examDate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const overall = useMemo(() => {
     let obtained = 0, max = 0
     subjects.forEach(s => {
       const m = marks[s.subject]
-      if (m && m.marks_obtained !== '' && m.max_marks) {
+      if (m && !isBlankMark(m.marks_obtained) && m.max_marks) {
         obtained += Number(m.marks_obtained)
         max += Number(m.max_marks)
       }
     })
     const pct = max > 0 ? Math.round((obtained/max)*1000)/10 : 0
-    return { obtained, max, pct, grade: gradeFor(pct) }
+    return { obtained, max, pct, grade: max > 0 ? gradeFor(pct) : '' }
   }, [marks, subjects])
 
   const updateSubjectField = (subject, field, value) => {
@@ -248,9 +243,9 @@ export default function TabReportCards({ courseData, staff, currentUser }) {
       const subjectRows = subjects.map(s => ({
         report_card_id: reportCardId,
         subject_name: s.subject,
-        marks_obtained: marks[s.subject]?.marks_obtained === '' ? null : Number(marks[s.subject]?.marks_obtained),
+        marks_obtained: isBlankMark(marks[s.subject]?.marks_obtained) ? null : Number(marks[s.subject].marks_obtained),
         max_marks: Number(marks[s.subject]?.max_marks) || s.maxMarks || 100,
-        grade: gradeFor(marks[s.subject]?.max_marks ? (Number(marks[s.subject]?.marks_obtained||0)/Number(marks[s.subject].max_marks))*100 : null),
+        grade: gradeFor(pctOf(marks[s.subject])) || null,
         remarks: marks[s.subject]?.remarks || '',
       }))
       const { error: subErr } = await supabase.from('report_card_subjects').insert(subjectRows)
@@ -284,8 +279,7 @@ export default function TabReportCards({ courseData, staff, currentUser }) {
 
     const rows = subjects.map(s => {
       const m = marks[s.subject] || {}
-      const pct = m.max_marks ? (Number(m.marks_obtained||0)/Number(m.max_marks))*100 : null
-      return [s.subject, m.marks_obtained ?? '—', m.max_marks ?? '—', gradeFor(pct) || '—', m.remarks || '']
+      return [s.subject, isBlankMark(m.marks_obtained) ? '—' : m.marks_obtained, m.max_marks ?? '—', gradeFor(pctOf(m)) || '—', m.remarks || '']
     })
 
     autoTable(doc, {
@@ -366,7 +360,10 @@ export default function TabReportCards({ courseData, staff, currentUser }) {
                 {selectedStudent.roll_number ? ` · Roll ${selectedStudent.roll_number}` : ''}
                 {selectedStudent.house ? ` · ${selectedStudent.house} House` : ''}
               </div>
-              {loadingRealMarks && <div style={{ fontSize:11, color:'#0891b2', marginTop:2 }}>⏳ Pulling marks already entered in Exams…</div>}
+              {loadingRealMarks ? <div style={{ fontSize:11, color:'#0891b2', marginTop:2 }}>⏳ Pulling marks already entered in Exams…</div>
+                : liveInfo && liveInfo.withMarks === 0 ? <div role="status" style={{ fontSize:11.5, color:'#b45309', marginTop:3 }}>⚠ No marks entered in Exams → Mark Entry for this student and exam yet. Type them here, or enter them in Exams first.</div>
+                : liveInfo && liveInfo.withMarks < liveInfo.total ? <div role="status" style={{ fontSize:11.5, color:'#b45309', marginTop:3 }}>Marks found in Exams for {liveInfo.withMarks} of {liveInfo.total} subjects — the rest are blank.</div>
+                : liveInfo ? <div role="status" style={{ fontSize:11.5, color:'#16a34a', marginTop:3 }}>✓ Marks pulled from Exams for all {liveInfo.total} subjects.</div> : null}
             </div>
             <div style={{ display:'flex', gap:8 }}>
               <button onClick={handleSave} disabled={saving} style={S.btn('#16a34a', saving)}>{saving ? 'Saving…' : (savedId ? '✓ Update' : '💾 Save')}</button>
@@ -395,8 +392,7 @@ export default function TabReportCards({ courseData, staff, currentUser }) {
                 <tbody>
                   {subjects.map(s => {
                     const m = marks[s.subject] || { marks_obtained:'', max_marks:s.maxMarks||100, remarks:'' }
-                    const pct = m.max_marks ? (Number(m.marks_obtained||0)/Number(m.max_marks))*100 : null
-                    const g = gradeFor(pct)
+                    const g = gradeFor(pctOf(m))
                     return (
                       <tr key={s.subject} style={{ borderBottom:'1px solid #f1f5f9' }}>
                         <td style={{ padding:'8px 6px', fontWeight:600, color:'#1e293b' }}>{s.subject}</td>
