@@ -22,9 +22,10 @@
 // are not catalogue chapters and are skipped here.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from './supabase'
 import { COURSES as TAXONOMY, COURSE_LIST } from './qbankTaxonomy'
+import { classesForChapter, classesOf, isInCurrentSyllabus, officialSubjects, normName } from './officialSyllabus'
 import { openChapterIn } from './StudyMaterialBridge'
 import { PremiumStyles, PremiumHero, PIcon, PX } from './premiumUI'
 
@@ -277,6 +278,15 @@ function ChapterFields({ form, setForm, rows }) {
 
 // ─── Chapter Row (view + inline edit) ────────────────────────────────────────
 
+// Which admission classes list this chapter in the latest official syllabus,
+// or a flag when it is only kept for existing data.
+function SyllabusBadge({ course, subject, chapter }) {
+  if (!classesOf(course).length) return null
+  if (!isInCurrentSyllabus(course, subject, chapter)) return <span style={S.badge(PX.warn, PX.warnBg)} title="Kept for existing questions and materials">Not in current syllabus</span>
+  const cls = classesForChapter(course, subject, chapter)
+  return <span style={S.badge(PX.ok, PX.okBg)} title="Listed in the latest official syllabus">Class {cls.join(' & ')}</span>
+}
+
 function ChapterRow({ row, rows, onSaved, onDeleted, showToast, onNavigate }) {
   const [editing, setEditing]   = useState(false)
   const [saving,  setSaving]    = useState(false)
@@ -338,6 +348,7 @@ function ChapterRow({ row, rows, onSaved, onDeleted, showToast, onNavigate }) {
           </div>
           <span style={S.badge(t.c, t.bg)}>{courseLabel(row.course)}</span>
           <span style={S.badge(PX.gold, PX.goldBg)}>{row.subject_name}</span>
+          <SyllabusBadge course={courseKey(row.course)} subject={row.subject_name} chapter={row.chapter_name} />
           <div style={{ display:'flex', gap:5 }} onClick={e => e.stopPropagation()}>
             <button type="button" title="Open this chapter in the Teaching hub"
               onClick={() => openChapterIn('hub', { course: courseKey(row.course), subject: row.subject_name, chapter: row.chapter_name }, onNavigate)}
@@ -481,6 +492,7 @@ function SyllabusManager({ embedded = false, onNavigate, focus }) {
     setLoading(false)
   }, [showToast])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the chapter catalogue on open
   useEffect(() => { fetchAll() }, [fetchAll])
 
   const allSubjects = useMemo(() => {
@@ -587,6 +599,16 @@ function SyllabusManager({ embedded = false, onNavigate, focus }) {
               <span style={{ ...S.badge(t.c, t.bg), fontSize:12, padding:'4px 12px' }}>{courseLabel(group.course)}</span>
               <h3 style={{ fontFamily:PX.serif, fontSize:18, fontWeight:600, color:PX.ink, margin:0 }}>{group.subject}</h3>
               <span style={{ fontSize:12, color:PX.faint }}>{group.chapters.length} chapter{group.chapters.length!==1?'s':''}</span>
+              {(() => {
+                const official = officialSubjects(group.course)[group.subject] || []
+                const have = new Set(group.chapters.map(r => normName(r.chapter_name)))
+                const missing = official.filter(c => !have.has(normName(c))).length
+                return official.length > 0 && (
+                  <span style={{ fontSize:12, color: missing ? PX.warn : PX.ok, fontWeight:600 }}>
+                    {missing ? `· ${missing} official chapter${missing === 1 ? '' : 's'} not added yet` : '· all official chapters added'}
+                  </span>
+                )
+              })()}
               <div style={{ flex:1, height:1, background:PX.line, minWidth:40 }}/>
             </div>
             {group.chapters.map(row => (

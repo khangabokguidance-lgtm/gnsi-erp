@@ -24,7 +24,9 @@
 // don't prescribe a detailed topic breakdown for this section beyond
 // "NCERT Class 8", so this list is left as a single placeholder chapter
 // admins can expand later once specific chapters are decided).
-export const COURSES = {
+import { mergeOfficialInto } from './officialSyllabus'
+
+const BASE_COURSES = {
   sainik: {
     label: 'Sainik School', short: 'AISSEE',
     subjects: {
@@ -198,4 +200,11 @@ export const COURSES = {
     },
   },
 }
+// The latest official syllabus (officialSyllabus.js) is merged in on top:
+// new subjects and chapters are ADDED, existing names are never renamed or
+// removed, because questions, materials and topics are saved under them.
+// Pre-merge lists, so screens can tag chapters added by the latest syllabus.
+export const TAXONOMY_BASE = BASE_COURSES
+export const COURSES = Object.fromEntries(Object.entries(BASE_COURSES).map(([key, course]) =>
+  [key, { ...course, subjects: mergeOfficialInto(key, course.subjects) }]))
 export const COURSE_LIST = Object.keys(COURSES)

@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { COURSES, COURSE_LIST } from './qbankTaxonomy'
+import { topicMatchesChapter } from './officialSyllabus'
 import { SUBJECT_TO_QBANK, normalizeToQBank, fetchAllPages, openChapterIn } from './StudyMaterialBridge'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 import { PIcon, PX } from './premiumUI'
@@ -43,18 +44,8 @@ const TEACHING_SUBJECT_BUCKET = {
 }
 const teachingBucket = s => TEACHING_SUBJECT_BUCKET[s] || normalizeToQBank(s)
 
-// teaching_logs has no chapter column — match the chapter by the topic text.
-const STOP = new Set(['and','the','of','for','with','in','on','to','a','an','its','their','types','type'])
-const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-function topicMatchesChapter(topic, chapter) {
-  const t = ` ${norm(topic)} `, c = norm(chapter)
-  if (!c || !t.trim()) return false
-  if (t.includes(` ${c} `)) return true
-  const words = c.split(' ').filter(w => w.length >= 3 && !STOP.has(w))   // keeps LCM / HCF / GK
-  if (!words.length) return false
-  const hits = words.filter(w => t.includes(` ${w}`)).length   // prefix match: "fraction" ~ "fractions"
-  return hits === words.length || (words.length >= 3 && hits >= words.length - 1)
-}
+// teaching_logs has no chapter column — the chapter is matched by the topic
+// text (shared with the Syllabus tab so both count "taught" the same way).
 
 const courseKey = c => String(c || '').trim().toLowerCase()
 const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—'

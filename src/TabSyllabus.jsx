@@ -10,8 +10,10 @@
 //  ✅ SQL migration included at bottom as comment
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
+import { PX } from './premiumUI'
+import SyllabusOfficial from './SyllabusOfficial'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SUBJECTS = [
@@ -54,22 +56,6 @@ function countTeachingDays(fromStr, toStr, teachingDays=ALL_DAYS, holidays=[]) {
   return count
 }
 
-// Given a start date, count forward N teaching days and return the landing date
-function addTeachingDays(fromStr, n, teachingDays=ALL_DAYS, holidays=[]) {
-  if (!fromStr || n <= 0) return fromStr
-  const holidaySet = new Set(holidays)
-  const allowedDow = new Set(teachingDays.map(d => DAY_MAP[d]).filter(Boolean))
-  let count = 0
-  const cur = new Date(fromStr)
-  cur.setDate(cur.getDate() + 1) // start from next day
-  while (count < n) {
-    const dow = cur.getDay()
-    const ds  = cur.toISOString().split('T')[0]
-    if (allowedDow.has(dow) && !holidaySet.has(ds)) count++
-    if (count < n) cur.setDate(cur.getDate() + 1)
-  }
-  return cur.toISOString().split('T')[0]
-}
 
 // ─── Exact Pace Engine ────────────────────────────────────────────────────────
 // Returns rich completion data for a syllabus row given course duration settings
@@ -495,7 +481,7 @@ function CourseDurationForm({ courses, subtypesFor, settings, onSaved, showToast
 // ─── Main TabSyllabus ─────────────────────────────────────────────────────────
 export default function TabSyllabus({ logs=[], courseData, monthlySyllabus=[], currentUser }) {
   const { show: showToast, el: toastEl } = useToast()
-  const { courses=[], subtypesFor=()=>[], classesFor=()=>[], batchIdFor=()=>'' } = courseData || {}
+  const { courses=[], subtypesFor=()=>[], classesFor=()=>[] } = courseData || {}
 
   const _rawRole = (
   currentUser?.role ||
@@ -534,7 +520,7 @@ const staffName = _name
   const [confirmDel,    setConfirmDel]   = useState(null)
   const [dragIdx,       setDragIdx]      = useState(null)
   const [dragOver,      setDragOver]     = useState(null)
-  const [activeSubView, setActiveSubView]= useState('overview')
+  const [activeSubView, setActiveSubView]= useState('official')
   const [csvText,       setCsvText]      = useState('')
   const [csvSyllabusId, setCsvSyllabusId]= useState('')
   const [copyFrom,      setCopyFrom]     = useState('')
@@ -553,7 +539,7 @@ const staffName = _name
     const { data, error } = await supabase.from('course_duration_settings').select('*').order('course')
     if (error) showToast('Duration settings: '+error.message, '#d97706')
     if (data) setDurationSettings(data)
-  }, [])
+  }, [showToast])
 
   const fetchSyllabus = useCallback(async () => {
     setLoading(true)
@@ -570,8 +556,9 @@ const staffName = _name
       }
     } catch(e) { showToast('syllabus_topics: '+e.message, '#d97706') }
     setLoading(false)
-  }, [])
+  }, [showToast])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads syllabus rows and course durations on open
   useEffect(() => { fetchSyllabus(); fetchDurationSettings() }, [fetchSyllabus, fetchDurationSettings])
 
   // ── Duration setting lookup per syllabus row ──
@@ -589,7 +576,7 @@ const staffName = _name
   // ── Computed ──
   const allCourses  = [...new Set(syllabus.map(s => s.course).filter(Boolean))].sort()
   const allBatches  = [...new Set(syllabus.map(s => s.subtype).filter(Boolean))]
-  const allSubjects = [...new Set(syllabus.map(s => s.subject_name).filter(Boolean))]
+  const allSubjects = useMemo(() => [...new Set(syllabus.map(s => s.subject_name).filter(Boolean))], [syllabus])
 
   // For staff: only show rows matching their logged subjects
   const staffSubjects = useMemo(() => {
@@ -639,7 +626,7 @@ const staffName = _name
     const complete = syllabus.filter(r => r.total_topics>0 && getCompleted(r)>=r.total_topics).length
     const noSetting= syllabus.filter(r => !getDurationSetting(r)).length
     return { avgPct, offTrack, critical, complete, noSetting }
-  }, [syllabus, logs, getDurationSetting])
+  }, [syllabus, logs, getDurationSetting, getCompleted])
 
   // ── CRUD (admin only) ──
   const handleSave = async e => {
@@ -863,29 +850,50 @@ const staffName = _name
 
   // ─── Render ───────────────────────────────────────────────────────────────────
   const subNavItems = [
-    ['overview','📋 Overview'],
-    ['heatmap','🌡️ Heatmap'],
-    ['schedule','📅 Schedule'],
-    ['digest','📧 Digest'],
-    ...(isAdmin ? [['settings','⚙️ Course Duration'],['import','📥 Import'],['copy','📋 Copy']] : []),
+    ['official','Official Syllabus'],
+    ['overview','Batch Tracker'],
+    ['heatmap','Heatmap'],
+    ['schedule','Schedule'],
+    ['digest','Digest'],
+    ...(isAdmin ? [['settings','Course Duration'],['import','Import'],['copy','Copy']] : []),
   ]
+  const isTracker = activeSubView !== 'official'
 
   return (
     <>
       {toastEl}
       {confirmDel && <ConfirmModal title="Delete Syllabus" message="Delete this syllabus entry and all its topics?" confirmLabel="Delete" danger onConfirm={()=>handleDelete(confirmDel)} onCancel={()=>setConfirmDel(null)}/>}
 
+      {/* ── Sub-nav ── */}
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center', marginBottom:16 }}>
+        <nav className="px-tabs" role="tablist" aria-label="Syllabus views" style={{ marginBottom:0, flexWrap:'wrap' }}>
+          {subNavItems.map(([key,label]) => (
+            <button key={key} type="button" role="tab" aria-selected={activeSubView===key} className={'px-tab'+(activeSubView===key?' on':'')} onClick={()=>setActiveSubView(key)}>
+              {label}
+            </button>
+          ))}
+        </nav>
+        {isTracker && (
+          <div style={{ marginLeft:'auto', display:'flex', gap:6 }}>
+            <button onClick={exportCSV} className="px-btn ghost" style={{ padding:'8px 14px', fontSize:12.5 }}>Export CSV</button>
+            <button onClick={()=>window.print()} className="px-btn ghost" style={{ padding:'8px 14px', fontSize:12.5 }}>Print</button>
+          </div>
+        )}
+      </div>
+
+      {activeSubView==='official' && <SyllabusOfficial logs={logs} />}
+
       {/* Role badge */}
-      <div style={{ marginBottom:12, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+      {isTracker && <div style={{ marginBottom:12, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
         {isAdmin && <span style={{ ...S.badge('white','#132a4f'), padding:'4px 10px', fontSize:12 }}>🛡️ Admin — full access</span>}
         {isStaff && <span style={{ ...S.badge('white','#16a34a'), padding:'4px 10px', fontSize:12 }}>👨‍🏫 Staff — {staffName} — add/edit topics for your own subjects</span>}
        {durationSettings.length===0 && isAdmin && (
-  <span style={{ ...S.badge('#dc2626','#fee2e2'), padding:'4px 10px', fontSize:12 }}>⚠️ No course durations set — go to ⚙️ Course Duration</span>
+  <span style={{ ...S.badge('#dc2626','#fee2e2'), padding:'4px 10px', fontSize:12 }}>⚠️ No course durations set — go to Course Duration</span>
 )}
-</div>
+</div>}
 
       {/* ── Stats ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))', gap:12, marginBottom:20 }}>
+      {isTracker && <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:12, marginBottom:20 }}>
         {[
           { label:'Subjects',    value:syllabus.length,    color:'#132a4f', bg:'#eef2f9', icon:'📚' },
           { label:'Complete',    value:stats.complete,     color:'#16a34a', bg:'#dcfce7', icon:'✅' },
@@ -894,27 +902,12 @@ const staffName = _name
           { label:'Critical',    value:stats.critical,     color:'#dc2626', bg:'#fee2e2', icon:'🔴' },
           ...(isAdmin ? [{ label:'No duration set', value:stats.noSetting, color:'#5d6b82', bg:'#f3f0e8', icon:'⚙️' }] : []),
         ].map(c => (
-          <div key={c.label} style={{ background:c.bg, borderRadius:12, padding:14, borderLeft:`4px solid ${c.color}` }}>
-            <div style={{ fontSize:16, marginBottom:3 }}>{c.icon}</div>
-            <p style={{ fontSize:10, color:c.color, fontWeight:700, margin:0, textTransform:'uppercase' }}>{c.label}</p>
-            <h2 style={{ fontSize:22, fontWeight:800, color:c.color, margin:'2px 0 0', fontFamily:"'JetBrains Mono',monospace" }}>{c.value}</h2>
+          <div key={c.label} style={{ background:'#fff', borderRadius:16, padding:'14px 16px', border:`1px solid ${PX.line}`, borderTop:`3px solid ${c.color}`, boxShadow:'0 1px 2px rgba(19,42,79,.05)' }}>
+            <p style={{ fontSize:10.5, color:PX.sub, fontWeight:800, margin:0, textTransform:'uppercase', letterSpacing:'.1em' }}>{c.label}</p>
+            <h2 style={{ fontFamily:PX.serif, fontSize:26, fontWeight:600, color:c.color, margin:'4px 0 0' }}>{c.value}</h2>
           </div>
         ))}
-      </div>
-
-      {/* ── Sub-nav ── */}
-      <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:16 }}>
-        {subNavItems.map(([key,label]) => (
-          <button key={key} onClick={()=>setActiveSubView(key)}
-            style={{ ...S.btnSm(activeSubView===key?'#132a4f':key==='settings'?'#b8923a33':'#e8e3d8'), color:activeSubView===key?'white':key==='settings'?'#a7771f':'#2e3b52', fontSize:12, border:key==='settings'&&activeSubView!==key?'1px dashed #a7771f':'none' }}>
-            {label}
-          </button>
-        ))}
-        <div style={{ marginLeft:'auto', display:'flex', gap:6 }}>
-          <button onClick={exportCSV} style={S.btnSm('#16a34a')}>📥 CSV</button>
-          <button onClick={()=>window.print()} style={S.btnSm('#a7771f')}>🖨️ Print</button>
-        </div>
-      </div>
+      </div>}
 
       {/* ════ SETTINGS (Admin only) ════ */}
       {activeSubView==='settings' && isAdmin && (
@@ -1443,7 +1436,7 @@ const staffName = _name
                 ))}
               </div>
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {weeklyDigest.map((row,i) => (
+                {weeklyDigest.map(row => (
                   <div key={row.id} style={{ display:'flex', gap:12, alignItems:'center', padding:'10px 14px', border:`1px solid ${row.pace?.critical?'#fecaca':row.pace?.onTrack===false?'#fde68a':'#e8e3d8'}`, borderRadius:8, background:row.p>=100?'#f0fdf4':row.pace?.critical?'#fff1f2':'white', flexWrap:'wrap' }}>
                     <div style={{ flex:1, minWidth:150 }}>
                       <div style={{ fontWeight:700, color:'#14213d', fontSize:13 }}>{row.subject_name}</div>
