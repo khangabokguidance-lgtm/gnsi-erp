@@ -579,7 +579,40 @@ function CastButton({ url, presentTargetId, title, showToast, small }) {
 // Mayek (which the viewer's machine needs installed to display it).
 function slideMayekUnicode(text, fontTag) {
   if (!text) return ''
-  return fontTag === 'bmei04' ? romanToMeetei(text) : text
+  return fontTag === 'bmei04' ? bmeiToUnicodeKeepEnglish(text) : text
+}
+
+// A BMEI04 line often ends with the English number name it asks about
+// ("… suPngi mapN Two million three hundred eight thousand nine").
+// Converting those words letter by letter printed nonsense Mayek and
+// "[?S?]" markers, so English words stay in Latin: any word the BMEI04
+// table can't map, and runs of two or more English number words.
+const EN_NUMBER_WORDS = new Set('zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand lakh lakhs lac crore crores million millions billion billions and'.split(' '))
+function bmeiToUnicodeKeepEnglish(text) {
+  const parts = String(text).split(/(\s+)/)
+  const conv = parts.map(t => (/\S/.test(t) ? romanToMeetei(t) : t))
+  const english = parts.map((t, i) => {
+    if (!/\S/.test(t)) return null
+    const core = t.replace(/[^A-Za-z]/g, '').toLowerCase()
+    return { num: !!core && EN_NUMBER_WORDS.has(core), bad: conv[i].includes('[?') }
+  })
+  const keep = new Array(parts.length).fill(false)
+  for (let i = 0; i < parts.length; i++) {
+    const e = english[i]
+    if (!e) continue
+    if (e.bad) { keep[i] = true; continue }
+    if (!e.num) continue
+    // collect the run of number words this one belongs to
+    const run = []
+    for (let j = i; j < parts.length; j++) {
+      if (!english[j]) continue
+      if (english[j].num || english[j].bad) run.push(j); else break
+    }
+    const words = run.filter(j => parts[j].replace(/[^A-Za-z]/g, '').toLowerCase() !== 'and')
+    if (words.length >= 2) run.forEach(j => { keep[j] = true })
+    i = run[run.length - 1]
+  }
+  return parts.map((t, i) => (keep[i] ? t : conv[i])).join('')
 }
 
 async function generateQuestionPPTX({ title, subject, chapter, slides, withAnswers }) {
@@ -2563,6 +2596,28 @@ function registerMayekFonts(doc) {
 // Meetei Mayek with the same converter the Mayek Tool uses.
 const pdfMayekText = (text, fontTag) => slideMayekUnicode(text, fontTag)
 
+// The Noto Meetei Mayek font has no Latin letters, digits or ASCII
+// punctuation. jsPDF silently dropped the rest of a line after the first
+// such character ("ꯍꯤꯟꯗꯨ-ꯑꯔꯥꯕꯤꯛ …" printed as just "ꯍꯤꯟꯗꯨ"), so each line
+// is drawn in runs: Meetei Mayek in NotoMayek, everything else in Helvetica.
+const MAYEK_CHAR = /[\uAAE0-\uAAFF\uABC0-\uABFF]/
+function drawMayekLines(doc, lines, x, y, size, lineH) {
+  lines.forEach((line, i) => {
+    const runs = []
+    for (const ch of line) {
+      const kind = /\s/.test(ch) ? (runs.length ? runs[runs.length - 1].kind : 'm') : MAYEK_CHAR.test(ch) ? 'm' : 'l'
+      if (runs.length && runs[runs.length - 1].kind === kind) runs[runs.length - 1].text += ch
+      else runs.push({ kind, text: ch })
+    }
+    let cx = x
+    runs.forEach(r => {
+      doc.setFontSize(size); doc.setFont(r.kind === 'm' ? 'NotoMayek' : 'helvetica', 'normal')
+      doc.text(r.kind === 'l' ? pdfSafe(r.text) : r.text, cx, y + i * lineH)
+      cx += doc.getTextWidth(r.kind === 'l' ? pdfSafe(r.text) : r.text)
+    })
+  })
+}
+
 // Fetches a diagram image URL and converts it to a base64 data URL so jsPDF's
 // addImage() can embed it (addImage cannot fetch remote URLs itself). Returns
 // null on any failure so the caller can skip the image without breaking the PDF.
@@ -2811,8 +2866,8 @@ async function generatePDF({ title, subject, chapter, questions, sets, withAnswe
         doc.text(`[${marksOf(q, O)}M]`, x + colW, y, { align:'right' })
         y += qH
         if (mLines.length) {
-          doc.setFontSize(qSize); doc.setFont('NotoMayek','normal'); doc.setTextColor(55,65,81)
-          doc.text(mLines, x, y); y += mH
+          doc.setTextColor(55,65,81)
+          drawMayekLines(doc, mLines, x, y, qSize, lh(qSize)); y += mH
         }
         if (diagramData) {
           try { doc.addImage(diagramData, x, y - 2, dW, dH); y += dH2 } catch { /* image failed to embed — skip, question text still stands */ }
@@ -2831,8 +2886,8 @@ async function generatePDF({ title, subject, chapter, questions, sets, withAnswe
             doc.setTextColor(isCorrect?21:51, isCorrect?128:65, isCorrect?61:85)
             doc.text(o.lines, cx, rowY)
             if (o.ml.length) {
-              doc.setFontSize(oSize - 0.5); doc.setFont('NotoMayek','normal'); doc.setTextColor(55,65,81)
-              doc.text(o.ml, cx, rowY + o.lines.length * lh(oSize))
+              doc.setTextColor(55,65,81)
+              drawMayekLines(doc, o.ml, cx, rowY + o.lines.length * lh(oSize), oSize - 0.5, lh(oSize - 0.5))
             }
           })
           y += rowH + rowGap
@@ -3859,7 +3914,9 @@ function TabPaper({ questions: bankQuestions, showToast }) {
     setDownloading(false)
   }
   const downloadWord = () => {
-    const html = paperWordHtml({ title: paperTitle, subject, chapterLabel, sets, o: opts, timeMinutes: minutes, instructions })
+    // Word can't use the BMEI04 font, so Mayek goes out as Unicode script.
+    const wordSets = sets.map(st => ({ ...st, questions: st.questions.map(q => ({ ...q, question_mayek: slideMayekUnicode(q.question_mayek, q.question_mayek_font) })) }))
+    const html = paperWordHtml({ title: paperTitle, subject, chapterLabel, sets: wordSets, o: opts, timeMinutes: minutes, instructions })
     const url = URL.createObjectURL(new Blob(['﻿', html], { type: 'application/msword' }))
     const a = document.createElement('a'); a.href = url; a.download = `${paperTitle.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') || 'Question_Paper'}.doc`
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1500)
