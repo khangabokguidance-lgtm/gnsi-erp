@@ -2237,7 +2237,7 @@ window.submitGrievance = async () => {
     </div>
   </div>
   {/* NAV */}
-  <nav>
+  <nav className="lp-nav">
     <div className="nav-inner">
       <a className="brand" href="#home" onClick={(e) => { e.preventDefault(); goToTab('home'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
         <span className="nv-crest">
