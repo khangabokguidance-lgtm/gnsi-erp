@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 import { normalizeToQBank, useChapterFocus } from './StudyMaterialBridge'
 import { isAdminRole } from './roles'
 import { EventBus, GNSI_EVENTS } from './EventBus'
@@ -995,11 +996,15 @@ export default function StudyLockers({ currentUser, perms, onNavigate, embedded 
 
       {/* Header — hidden inside the Teaching hub, which has its own */}
       {!embedded && (
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: C.slate, marginBottom: 4 }}>GNSI Portal</div>
-          <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 900, color: C.navy, letterSpacing: '-.02em' }}>Study Lockers</div>
-          <div style={{ fontSize: 12, color: C.slate, marginTop: 3 }}>Teacher-owned subject lockers · Password protected · Practice paper generator</div>
-        </div>
+        <>
+          <PremiumStyles />
+          <PremiumHero isMobile={isMobile} eyebrow="GNSI · Academics" title="Study Lockers"
+            subtitle="Teacher-owned subject lockers · password protected · practice paper generator"
+            icon={<span style={{ fontSize: isMobile ? 20 : 24 }}>🗃️</span>}
+            stats={[
+              { label: 'Lockers', value: lockers.length, sub: 'All courses' },
+            ]} />
+        </>
       )}
       {focusSubject && activeTab === 'lockers' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', marginBottom: 14, borderRadius: 10, background: '#eff6ff', border: '1px solid #bfdbfe', fontSize: 12.5, color: C.navy, fontWeight: 600 }}>

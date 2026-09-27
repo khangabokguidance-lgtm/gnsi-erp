@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { supabase } from "./supabase";
+import { PremiumStyles, PremiumHero } from "./premiumUI";
 
 const ROLE_MAP = {
   admin:"admin", administrator:"admin", "super admin":"admin", superadmin:"admin",
@@ -1167,40 +1168,34 @@ function TopNav({ currentUser, activeTab, setActiveTab, onRefresh, users, setCur
     ...(PERMS.canViewMonitor(currentUser)?[{ id:"monitor", label:"Monitor", icon:"📊" }]:[]),
   ];
   return (
-    <div style={{ background:"white", borderBottom:`1px solid ${C.border}`, boxShadow:"0 2px 8px rgba(0,0,0,.05)", position:"sticky", top:0, zIndex:100 }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 24px", height:54, borderBottom:`1px solid ${C.border}` }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <div style={{ background:`linear-gradient(135deg,${C.brand},${C.brandMid})`, borderRadius:9, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>🏫</div>
-          <div>
-            <div style={{ fontSize:F.md, fontWeight:800, color:C.text }}>GNSI Checklist System</div>
-            <div style={{ fontSize:F.xs, color:C.textMid }}>Exams · Events · Records</div>
-          </div>
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          {totalPending>0 && <button onClick={()=>setActiveTab(examPending>=eventPending?"exams":"events")} style={{ ...s.btnSm(C.warn), fontSize:F.xs }}>⏳ {totalPending} Pending</button>}
+    <div style={{ padding:"20px 26px 0", maxWidth:1200, margin:"0 auto", width:"100%" }}>
+      <PremiumStyles />
+      <PremiumHero eyebrow="GNSI · Quality Control" title="Checklist System" subtitle="Exams · events · records — every step signed off"
+        icon={<span style={{ fontSize:24 }}>🏫</span>}
+        actions={<>
+          {totalPending>0 && <button className="px-hbtn gold" onClick={()=>setActiveTab(examPending>=eventPending?"exams":"events")}>⏳ {totalPending} Pending</button>}
           {PERMS.canSwitchUser(currentUser) && users.length>1 && (
-            <select style={{ ...s.input, width:"auto", padding:"6px 10px", fontSize:F.xs, borderRadius:8 }} value={currentUser.id} onChange={e=>setCurrentUser(users.find(u=>u.id===+e.target.value)||users[0])}>
-              {users.map(u=><option key={u.id} value={u.id}>{u.name} ({ROLE_DISPLAY[resolveRole(u.role)]?.label||u.role})</option>)}
+            <select className="px-hbtn" style={{ padding:"0 10px" }} value={currentUser.id} onChange={e=>setCurrentUser(users.find(u=>u.id===+e.target.value)||users[0])}>
+              {users.map(u=><option key={u.id} value={u.id} style={{ color:"#0f1b2e" }}>{u.name} ({ROLE_DISPLAY[resolveRole(u.role)]?.label||u.role})</option>)}
             </select>
           )}
-          <div style={{ display:"flex", alignItems:"center", gap:8, background:C.surface2, border:`1.5px solid ${C.border}`, borderRadius:9, padding:"6px 11px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, background:"rgba(255,255,255,.08)", border:"1px solid rgba(255,255,255,.22)", borderRadius:12, padding:"5px 11px" }}>
             <Avatar name={currentUser.name} role={currentUser.role} size={24} />
             <div>
-              <div style={{ fontSize:F.xs, fontWeight:700, color:C.text }}>{currentUser.name}</div>
+              <div style={{ fontSize:F.xs, fontWeight:700, color:"#fff" }}>{currentUser.name}</div>
               <RoleBadge role={currentUser.role} />
             </div>
           </div>
-          <button onClick={onRefresh} style={{ ...s.btnGhost, padding:"7px 11px" }}>🔄</button>
-        </div>
-      </div>
-      <div style={{ display:"flex", alignItems:"center", padding:"0 24px", gap:2 }}>
+          <button className="px-hbtn" onClick={onRefresh} aria-label="Refresh">🔄</button>
+        </>} />
+      <nav className="px-tabs" role="tablist">
         {tabs.map(t=>(
-          <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{ display:"flex", alignItems:"center", gap:6, padding:"11px 16px", border:"none", background:"none", cursor:"pointer", fontFamily:"inherit", fontSize:F.sm, fontWeight:activeTab===t.id?700:500, color:activeTab===t.id?C.brand:C.textMid, borderBottom:activeTab===t.id?`2.5px solid ${C.brand}`:"2.5px solid transparent", marginBottom:-1, whiteSpace:"nowrap" }}>
+          <button key={t.id} role="tab" aria-selected={activeTab===t.id} className={"px-tab"+(activeTab===t.id?" on":"")} onClick={()=>setActiveTab(t.id)}>
             <span style={{ fontSize:14 }}>{t.icon}</span>{t.label}
-            {t.badge>0 && <span style={{ background:C.warn, color:"white", borderRadius:99, fontSize:10, fontWeight:800, padding:"1px 6px", marginLeft:2 }}>{t.badge}</span>}
+            {t.badge>0 && <span className="px-badge">{t.badge}</span>}
           </button>
         ))}
-      </div>
+      </nav>
     </div>
   );
 }
@@ -1350,27 +1345,22 @@ export default function Checklist({ currentUser: portalUser }) {
       <Toast msg={toast.msg} type={toast.type} />
       {isMobile ? (
         <div style={{ display:"flex", flexDirection:"column", minHeight:"100vh" }}>
-          <div style={{ background:C.surface, borderBottom:`1.5px solid ${C.border}`, position:"sticky", top:0, zIndex:100, boxShadow:"0 2px 8px rgba(0,0,0,.06)" }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px" }}>
-              <div>
-                <div style={{ fontSize:F.xs, color:C.brand, fontWeight:700, textTransform:"uppercase", letterSpacing:.5 }}>GNSI</div>
-                <div style={{ fontSize:F.xl, fontWeight:800, color:C.text, lineHeight:1.2 }}>
-                  {{dashboard:"Dashboard",exams:"Exams",events:"Events",records:"Records",monitor:"Monitor"}[activeTab]||"Dashboard"}
-                </div>
-              </div>
-              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <div style={{ padding:"12px 12px 0" }}>
+            <PremiumStyles />
+            <PremiumHero isMobile eyebrow="GNSI · Checklist" title={{dashboard:"Dashboard",exams:"Exams",events:"Events",records:"Records",monitor:"Monitor"}[activeTab]||"Dashboard"}
+              icon={<span style={{ fontSize:20 }}>🏫</span>}
+              actions={<>
                 <Avatar name={activeUser.name} role={activeUser.role} size={30} />
-                <button onClick={()=>fetchAll(activeUser)} style={{ ...s.btnGhost, padding:"8px 11px" }}>🔄</button>
-              </div>
-            </div>
+                <button className="px-hbtn" onClick={()=>fetchAll(activeUser)} aria-label="Refresh">🔄</button>
+              </>} />
           </div>
-          <div style={{ flex:1, padding:"14px 14px", paddingBottom:86 }}>{renderTab()}</div>
+          <div style={{ flex:1, padding:"0 12px", paddingBottom:86 }}>{renderTab()}</div>
           <BottomNav currentUser={activeUser} activeTab={activeTab} setActiveTab={setActiveTab} />
         </div>
       ) : (
         <div style={{ display:"flex", flexDirection:"column", minHeight:"100vh" }}>
           <TopNav currentUser={activeUser} activeTab={activeTab} setActiveTab={setActiveTab} onRefresh={()=>fetchAll(activeUser)} users={staffList} setCurrentUser={handleSwitchUser} checklists={checklists} events={events} />
-          <div style={{ flex:1, padding:26, maxWidth:1200, margin:"0 auto", width:"100%" }}>{renderTab()}</div>
+          <div style={{ flex:1, padding:"0 26px 26px", maxWidth:1200, margin:"0 auto", width:"100%" }}>{renderTab()}</div>
         </div>
       )}
       {openItem && (

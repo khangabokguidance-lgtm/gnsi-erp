@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { supabase } from './supabase'
 import { staffDB } from './staffDB'
+import { isAdminRole } from './roles'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 
 // ══════════════════════════════════════════════════════════════════════════════
 // DESIGN SYSTEM — "Ledger & Crest"
@@ -912,7 +914,7 @@ function AdminSetup({ entries, onRefresh, showToast }) {
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
 export default function Timetable({ currentUser }) {
-  const isAdmin = currentUser?.role === 'Admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const [entries, setEntries] = useState([])
   const [subs, setSubs] = useState([])
   const [staffList, setStaffList] = useState([])
@@ -974,7 +976,7 @@ export default function Timetable({ currentUser }) {
   ]
 
   return (
-    <div style={{ padding: 24, background: C.navy50, minHeight: '100vh', fontFamily: SANS }}>
+    <div className="px-root" style={{ padding: 'clamp(12px,3vw,24px)', background: C.navy50, minHeight: '100vh', fontFamily: SANS }}>
       <Toast toast={toast} />
       {showPinModal && (
         <PinModal onClose={() => setShowPinModal(false)} onSuccess={() => { setAdminUnlocked(true); setShowPinModal(false); setTab('admin') }} />
@@ -983,14 +985,11 @@ export default function Timetable({ currentUser }) {
         <EditEntryModal entry={editingEntry} staffList={staffList} onClose={() => setEditingEntry(null)} onSave={handleSaveEntry} onDelete={handleDeleteEntry} />
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22, flexWrap: 'wrap', gap: 12, background: C.navy900, borderRadius: 10, padding: '16px 22px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <Crest size={40} />
-          <div>
-            <div style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 700, color: 'white', letterSpacing: '.02em' }}>Time Table</div>
-            <div style={{ fontSize: 12, color: C.navy100 }}>{INSTITUTE.short} · Monday–Saturday recurring schedule</div>
-          </div>
-        </div>
+      <PremiumStyles />
+      <PremiumHero eyebrow={`${INSTITUTE.short} · Academic`} title="Time Table"
+        subtitle="Monday–Saturday recurring schedule"
+        icon={<Crest size={34} />}
+        actions={
         <div style={{ display: 'flex', gap: 0, background: 'rgba(255,255,255,.08)', padding: 4, borderRadius: 8 }}>
           {navTabs.map(t => (
             <button key={t.id}
@@ -1006,7 +1005,7 @@ export default function Timetable({ currentUser }) {
             </button>
           ))}
         </div>
-      </div>
+        } />
 
       {loading ? (
         <div style={{ background: 'white', borderRadius: 10, padding: 60, textAlign: 'center', color: C.inkFaint }}>

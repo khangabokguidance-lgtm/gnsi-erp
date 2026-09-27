@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
+import { isAdminRole } from './roles'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 
 // ─── Mobile hook ──────────────────────────────────────────────────────────────
 function useMobile() {
@@ -732,7 +734,7 @@ function SettingsSection({ quota, setQuota, mobile }) {
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function Connect({ currentUser, perms }) {
   const mobile = useMobile()
-  const isAdmin = currentUser?.role === 'Admin'
+  const isAdmin = isAdminRole(currentUser?.role)
   const [activeTab, setActiveTab] = useState('compose')
   const [quota, setQuota] = useState(200)
   const [quotaLeft, setQuotaLeft] = useState(200)
@@ -769,68 +771,31 @@ export default function Connect({ currentUser, perms }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: mobile ? 'column' : 'row', minHeight: '100vh', background: '#f8fafc', fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="px-root" style={{ padding: mobile ? '12px 12px 90px' : '22px 24px 36px' }}>
       <style>{CSS}</style>
+      <PremiumStyles />
+      <PremiumHero isMobile={mobile} eyebrow="GNSI · Communication Hub" title="Connect"
+        subtitle={`${currentTabLabel?.icon || ''} ${currentTabLabel?.label || ''} · broadcasts, replies and grievances in one place`}
+        icon={<span style={{ fontSize: mobile ? 20 : 24 }}>🔗</span>}
+        stats={[
+          { label: 'Quota left', value: `${quotaLeft}/${quota}`, sub: 'Messages this cycle', tone: quotaLeft < 20 ? '#fca5a5' : '#86efac' },
+          { label: 'Unread replies', value: unreadReplies, sub: 'In the inbox', onClick: () => setActiveTab('inbox') },
+          { label: 'Open grievances', value: openGrievances, sub: 'Awaiting action', tone: openGrievances ? '#fcd34d' : undefined, onClick: () => setActiveTab('grievance') },
+        ]} />
 
-      {/* Desktop sidebar */}
-      {!mobile && (
-        <div style={{ width: 220, background: '#fff', borderRight: '1px solid #e2e8f0', padding: '20px 12px', flexShrink: 0 }}>
-          <div style={{ padding: '0 6px 16px', borderBottom: '1px solid #f1f5f9', marginBottom: 12 }}>
-            <div style={{ fontWeight: 800, fontSize: 16, color: '#0f2744' }}>🔗 Connect</div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>GNSI Communication Hub</div>
-          </div>
-          {visibleTabs.map(t => {
-            const n = notifBadge(t.id)
-            return (
-              <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: activeTab === t.id ? 700 : 500, display: 'flex', alignItems: 'center', gap: 10, borderRadius: 8, marginBottom: 2, background: activeTab === t.id ? '#ebf2ff' : 'transparent', color: activeTab === t.id ? '#1a56db' : '#334155', transition: 'all .15s' }}>
-                <span>{t.icon}</span>
-                <span style={{ flex: 1 }}>{t.label}</span>
-                {n > 0 && <span style={{ background: t.id === 'inbox' ? '#c81e1e' : '#b45309', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{n}</span>}
-              </button>
-            )
-          })}
-          <div style={{ marginTop: 16, padding: '12px 10px', background: '#f8fafc', borderRadius: 8, fontSize: 11, color: '#64748b' }}>
-            <strong style={{ color: '#334155' }}>Quota</strong><br />
-            <span style={{ fontWeight: 800, fontSize: 18, color: quotaLeft < 20 ? '#c81e1e' : '#057a55' }}>{quotaLeft}</span> / {quota}
-          </div>
-        </div>
-      )}
+      <nav className="px-tabs" role="tablist">
+        {visibleTabs.map(t => {
+          const n = notifBadge(t.id)
+          return (
+            <button key={t.id} role="tab" aria-selected={activeTab === t.id} className={'px-tab' + (activeTab === t.id ? ' on' : '')} onClick={() => setActiveTab(t.id)}>
+              <span>{t.icon}</span>{t.label}
+              {n > 0 && <span className="px-badge">{n}</span>}
+            </button>
+          )
+        })}
+      </nav>
 
-      {/* Mobile top nav — horizontal scroll */}
-      {mobile && (
-        <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0' }}>
-          <div style={{ padding: '12px 14px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 15, color: '#0f2744' }}>🔗 Connect</div>
-              <div style={{ fontSize: 10, color: '#94a3b8' }}>GNSI Communication Hub</div>
-            </div>
-            <div style={{ fontSize: 11, color: quotaLeft < 20 ? '#c81e1e' : '#057a55', fontWeight: 700 }}>Quota: {quotaLeft}/{quota}</div>
-          </div>
-          <div className="conn-mob-nav">
-            {visibleTabs.map(t => {
-              const n = notifBadge(t.id)
-              return (
-                <button key={t.id} className={`conn-mob-nav-btn ${activeTab === t.id ? 'active' : ''}`} onClick={() => setActiveTab(t.id)}>
-                  {n > 0 && <span style={{ position: 'absolute', top: 4, right: 4, width: 14, height: 14, borderRadius: '50%', background: '#c81e1e', color: '#fff', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{n}</span>}
-                  <span className="icon">{t.icon}</span>
-                  <span className="label">{t.label}</span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Main content */}
-      <div style={{ flex: 1, padding: mobile ? '16px 12px' : '24px 28px', overflowY: 'auto' }}>
-        {!mobile && (
-          <div style={{ marginBottom: 20 }}>
-            <h1 style={{ fontSize: 20, fontWeight: 800, color: '#0f2744' }}>{currentTabLabel?.icon} {currentTabLabel?.label}</h1>
-            <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>GNSI Portal · Khangabok, Manipur</p>
-          </div>
-        )}
-        {renderSection()}
-      </div>
+      {renderSection()}
     </div>
   )
 }

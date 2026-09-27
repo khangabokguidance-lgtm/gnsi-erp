@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 import { getActiveStudents } from './studentQueries'
 import { isAdminRole } from './roles'
 import { gccStr } from './feeEngine'
@@ -3378,16 +3379,21 @@ export default function Store() {
   ]
 
   return (
-    <div style={{ padding: isMobile ? '16px 12px' : 24, fontFamily: 'system-ui,sans-serif' }}>
+    <div className="px-root" style={{ padding: isMobile ? '12px 12px 90px' : '22px 24px 36px' }}>
       <Toast toast={toast} />
-      <div style={{ marginBottom: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: 26, fontWeight: 'bold', color: NAVY, margin: 0 }}>🏬 GNSI Store</h1>
-          <p style={{ color: '#64748b', fontSize: 14, margin: '4px 0 0' }}>Uniforms · Books · Hostel items — counter billing, stock, online orders</p>
-        </div>
-        <button onClick={toggleAlerts} title="Sound + desktop notification for new online orders"
-          style={btn(alertsOn ? '#eff6ff' : '#f1f5f9', alertsOn ? '#1d4ed8' : '#64748b', { border: `1px solid ${alertsOn ? '#bfdbfe' : '#e2e8f0'}` })}>{alertsOn ? '🔔 Order alerts on' : '🔕 Order alerts off'}</button>
-      </div>
+      <PremiumStyles />
+      <PremiumHero isMobile={isMobile} eyebrow="GNSI · Campus Store" title="GNSI Store"
+        subtitle="Uniforms · books · hostel items — counter billing, stock, online orders"
+        icon={<span style={{ fontSize: isMobile ? 20 : 24 }}>🏬</span>}
+        actions={
+          <button className={'px-hbtn' + (alertsOn ? ' on' : '')} onClick={toggleAlerts} title="Sound + desktop notification for new online orders">
+            {alertsOn ? '🔔 Order alerts on' : '🔕 Order alerts off'}
+          </button>
+        }
+        stats={[
+          { label: 'New orders', value: newOrders, sub: 'Online, to confirm', tone: newOrders ? '#fcd34d' : undefined, onClick: () => setTab('orders') },
+          { label: 'Low stock', value: lowStockCount, sub: 'Low or out of stock', tone: lowStockCount ? '#fca5a5' : undefined, onClick: () => setTab('reports') },
+        ]} />
 
       {!loading && !loadError && (newOrders > 0 || lowStockCount > 0 || restocked.length > 0) && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -3409,14 +3415,13 @@ export default function Store() {
         </div>
       )}
 
-      <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: 22, overflowX: 'auto' }}>
+      <nav className="px-tabs" role="tablist">
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ padding: '9px 20px', border: 'none', borderBottom: tab === t.id ? `3px solid ${NAVY}` : '3px solid transparent', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: tab === t.id ? 700 : 500, color: tab === t.id ? NAVY : '#64748b', marginBottom: -2, whiteSpace: 'nowrap' }}>
+          <button key={t.id} role="tab" aria-selected={tab === t.id} className={'px-tab' + (tab === t.id ? ' on' : '')} onClick={() => setTab(t.id)}>
             {t.label}
           </button>
         ))}
-      </div>
+      </nav>
 
       {loadError ? (
         <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 12, padding: 24, color: '#991B1B' }}>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabase'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 import CreateAuthUser from './CreateAuthUser'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 
@@ -166,7 +167,7 @@ export default function AdminLinkStaff() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding:24, maxWidth:960, margin:'0 auto', fontFamily:"'Outfit',system-ui,sans-serif" }}>
+    <div style={{ padding:'clamp(12px,3vw,24px)', maxWidth:1080, margin:'0 auto', fontFamily:"'Outfit',system-ui,sans-serif" }}>
       <style>{`
         @keyframes slideUp { from{transform:translateX(-50%) translateY(12px);opacity:0} to{transform:translateX(-50%) translateY(0);opacity:1} }
         @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:.35} }
@@ -192,32 +193,11 @@ export default function AdminLinkStaff() {
       )}
 
       {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20, flexWrap:'wrap', gap:12 }}>
-        <div>
-          <h1 style={{ fontSize:24, fontWeight:800, color:'#1e3a5f', margin:0, letterSpacing:'-.02em' }}>
-            🔗 Link Staff to Auth Users
-          </h1>
-          <div style={{ fontSize:13, color:'#64748b', marginTop:6, display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
-            <span>👥 {staff.length} total</span>
-            <span style={{ color:'#16a34a', fontWeight:700 }}>✅ {linked.length} linked</span>
-            <span style={{ color:'#dc2626', fontWeight:700 }}>⚠️ {unlinked.length} unlinked</span>
-            {/* Live sync badge */}
-            <span style={{
-              display:'inline-flex', alignItems:'center', gap:5,
-              padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:700,
-              background: liveStatus==='live'?'#dcfce7':liveStatus==='error'?'#fee2e2':'#fef3c7',
-              color:       liveStatus==='live'?'#16a34a':liveStatus==='error'?'#dc2626':'#b45309',
-            }}>
-              <span style={{
-                width:6, height:6, borderRadius:'50%', display:'inline-block',
-                background: liveStatus==='live'?'#16a34a':liveStatus==='error'?'#dc2626':'#f59e0b',
-                animation: liveStatus==='live'?'pulse 2s infinite':'none',
-              }}/>
-              {liveStatus==='live'?'Live sync ON':liveStatus==='error'?'Sync error':'Connecting…'}
-            </span>
-          </div>
-        </div>
-        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+      <PremiumStyles />
+      <PremiumHero eyebrow="GNSI · Admin" title="Link Staff to Auth Users"
+        subtitle={liveStatus==='live' ? '● Live sync on — staff logins update as they change' : liveStatus==='error' ? 'Sync error — use Refresh' : 'Connecting to live sync…'}
+        icon={<span style={{ fontSize:24 }}>🔗</span>}
+        actions={<>
           <button onClick={loadData} style={Btn('#64748b')}>🔄 Refresh</button>
           <button onClick={() => setShowCreate(true)} style={Btn('#16a34a')}>➕ Create User</button>
           <button
@@ -227,8 +207,12 @@ export default function AdminLinkStaff() {
           >
             {bulkCreating?'⏳ Creating…':`⚡ Create All (${unlinked.length})`}
           </button>
-        </div>
-      </div>
+        </>}
+        stats={[
+          { label:'Staff', value:staff.length, sub:'Total' },
+          { label:'Linked', value:linked.length, sub:'Have a login', tone:'#86efac' },
+          { label:'Unlinked', value:unlinked.length, sub:'Need a login', tone: unlinked.length ? '#fca5a5' : undefined },
+        ]} />
 
       {/* Create modal */}
       {showCreate && (

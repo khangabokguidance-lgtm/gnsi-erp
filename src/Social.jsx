@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 
 // ─── Mobile hook ──────────────────────────────────────────────────────────────
 function useMobile() {
@@ -400,52 +401,34 @@ function Social() {
     return posts.filter(i => (i.title+i.platform+i.content_type+i.status).toLowerCase().includes(q))
   }, [activeTab, campaigns, leads, posts, search])
 
-  const tabStyle = (tab) => ({
-    padding: mobile ? '8px 12px' : '10px 16px', borderRadius: '8px', border: 'none',
-    cursor: 'pointer', fontWeight: '700', fontSize: mobile ? '12px' : '14px',
-    backgroundColor: activeTab === tab ? '#1e3a5f' : '#e2e8f0',
-    color: activeTab === tab ? '#fff' : '#334155',
-    position: 'relative', whiteSpace: 'nowrap', fontFamily: 'inherit',
-  })
 
   const grid2 = { display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr', gap: '14px' }
   const grid3 = { display: 'grid', gridTemplateColumns: mobile ? '1fr' : '1fr 1fr 1fr', gap: '14px' }
 
   return (
-    <div style={{ padding: mobile ? '16px 14px' : '24px' }}>
-      <div style={{ marginBottom: '16px' }}>
-        <h1 style={{ fontSize: mobile ? '22px' : '28px', color: '#1e3a5f', marginBottom: '4px', fontWeight: 800 }}>📣 Social</h1>
-        <p style={{ color: '#64748b', fontSize: '13px' }}>Campaigns · Leads · Posts</p>
-      </div>
+    <div className="px-root" style={{ padding: mobile ? '12px 12px 90px' : '22px 24px 36px' }}>
+      <PremiumStyles />
+      <PremiumHero isMobile={mobile} eyebrow="GNSI · Outreach" title="Social"
+        subtitle="Campaigns · leads · posts"
+        icon={<span style={{ fontSize: mobile ? 20 : 24 }}>📣</span>}
+        stats={[
+          { label: 'Campaigns', value: stats.campaigns, sub: 'Running & past' },
+          { label: 'Leads', value: stats.leads, sub: 'All sources' },
+          { label: 'Posts', value: stats.posts, sub: 'Published & planned' },
+          { label: 'Converted', value: stats.converted, sub: 'Leads won', tone: stats.converted ? '#86efac' : undefined },
+        ]} />
 
-      {/* Stats — 2-col on mobile */}
-      <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
-        {[
-          { label: 'Campaigns', val: stats.campaigns, color: '#2563eb' },
-          { label: 'Leads', val: stats.leads, color: '#0f766e' },
-          { label: 'Posts', val: stats.posts, color: '#7c3aed' },
-          { label: 'Converted', val: stats.converted, color: '#ca8a04' },
-        ].map(s => (
-          <div key={s.label} style={{ ...card(), borderLeft: `4px solid ${s.color}`, padding: '12px 14px' }}>
-            <div style={{ fontSize: '12px', color: '#64748b' }}>{s.label}</div>
-            <div style={{ fontSize: mobile ? '22px' : '26px', fontWeight: '800', color: '#1e3a5f' }}>{s.val}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Tabs — horizontal scroll on mobile */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch' }}>
-        {tabs.map(tab => (
-          <button key={tab} onClick={() => { setActiveTab(tab); setShowForm(false) }} style={tabStyle(tab)}>
-            {tab === 'Daily' && '🌅 '}{tab}
-            {tab === 'Daily' && leads.filter(l => l.follow_up_date && l.follow_up_date <= new Date().toISOString().split('T')[0] && !['Converted','Closed'].includes(l.status)).length > 0 && (
-              <span style={{ position: 'absolute', top: -4, right: -4, width: 15, height: 15, borderRadius: '50%', background: '#dc2626', color: '#fff', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
-                {leads.filter(l => l.follow_up_date && l.follow_up_date <= new Date().toISOString().split('T')[0] && !['Converted','Closed'].includes(l.status)).length}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      <nav className="px-tabs" role="tablist">
+        {tabs.map(tab => {
+          const due = tab === 'Daily' ? leads.filter(l => l.follow_up_date && l.follow_up_date <= new Date().toISOString().split('T')[0] && !['Converted','Closed'].includes(l.status)).length : 0
+          return (
+            <button key={tab} role="tab" aria-selected={activeTab === tab} className={'px-tab' + (activeTab === tab ? ' on' : '')} onClick={() => { setActiveTab(tab); setShowForm(false) }}>
+              {tab === 'Daily' && '🌅 '}{tab}
+              {due > 0 && <span className="px-badge">{due}</span>}
+            </button>
+          )
+        })}
+      </nav>
 
       {/* Daily tab */}
       {activeTab === 'Daily' && !loading && <DailyDashboard leads={leads} campaigns={campaigns} posts={posts} fetchAllData={fetchAllData} />}

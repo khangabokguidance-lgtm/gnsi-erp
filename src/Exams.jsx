@@ -26,6 +26,7 @@ import ToppersCertificate from './ToppersCertificate'
 import ExamDashboard from './ExamDashboard'
 import './mobile.css';
 import ExamCSVImport from './lib/ExamCSVImport';
+import { isAdminRole } from './roles'
 
 // ─── Load Chart.js + SheetJS from CDN ────────────────────────────────────────
 function loadScript(src, id) {
@@ -539,7 +540,7 @@ function usePerm(currentUser, perms) {
     }
   }
   const role = currentUser?.role
-  if (role === 'Admin')    return { canEdit:true,  canDelete:true,  canImport:true,  canPrint:true  }
+  if (isAdminRole(role))   return { canEdit:true,  canDelete:true,  canImport:true,  canPrint:true  }
   if (role === 'Manager')  return { canEdit:true,  canDelete:false, canImport:true,  canPrint:true  }
   if (role === 'Accounts' || role === 'Accountant') return { canEdit:true,  canDelete:false, canImport:true,  canPrint:true  }
   return                          { canEdit:true,  canDelete:false, canImport:false, canPrint:true  }
@@ -821,7 +822,7 @@ function TabNav({ active, onSelect, perms, isAdmin, currentUser }) {
         {/* Full-screen drawer */}
         {menuOpen && (
           <div style={{
-            position: "fixed", inset: 0, zIndex: 200,
+            position: "fixed", inset: 0, zIndex: 1000,
             display: "flex", flexDirection: "column",
           }}>
             {/* Backdrop */}
@@ -10455,7 +10456,7 @@ export default function Exams({ currentUser, perms }) {
   return (
     <div className="exams-root" style={{ minHeight: "100vh", background: "#F7F6F1", fontFamily: "'DM Sans','Inter',sans-serif" }}>
       <ExamHubHeader institute={institute} students={students} courses={courses} examTypes={examTypes} currentUser={currentUser} />
-      <TabNav active={tab} onSelect={setTab} perms={perms} isAdmin={currentUser?.role === 'Admin'} currentUser={currentUser} />
+      <TabNav active={tab} onSelect={setTab} perms={perms} isAdmin={isAdminRole(currentUser?.role)} currentUser={currentUser} />
       <div style={{ padding: isMobile ? "14px 12px" : "24px 28px", maxWidth: 1400 }}>
         <div style={{ marginBottom: 18 }}>
           <h2 style={{ margin: 0, fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 400, color: "#1C1A16" }}>

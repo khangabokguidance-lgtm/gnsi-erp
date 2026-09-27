@@ -280,7 +280,7 @@ export function PersonalAccountantButton({ supabase, moduleKey, isAdmin, current
         onClick={() => setOpen(true)}
         title="Personal Accountant"
         style={{
-          position: 'fixed', zIndex: 99990,
+          position: 'fixed', zIndex: 90,
           right: isMobile ? 14 : 24, bottom: isMobile ? 84 : 24,
           width: 52, height: 52, borderRadius: '50%',
           background: INK, color: GOLD, border: `1px solid ${GOLD}`,

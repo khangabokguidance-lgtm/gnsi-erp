@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 
 // ─── Mobile hook ──────────────────────────────────────────────────────────────
 function useMobile() {
@@ -257,35 +258,24 @@ function Notice() {
   }
 
   return (
-    <div style={{ padding: mobile ? '14px 12px' : '24px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <h1 style={{ fontSize: mobile ? 20 : 28, fontWeight: 800, color: '#1e3a5f' }}>📢 Notices</h1>
-          {!mobile && <p style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>Publish circulars and announcements · 🌐 Public notices appear on the website</p>}
-        </div>
-        <button onClick={() => { setEditNotice(null); setShowForm(v => !v) }} style={{ ...btnBase, background: '#1e3a5f', color: '#fff', padding: '9px 16px', fontSize: 13 }}>
-          {showForm ? '✖ Cancel' : '➕ Add Notice'}
-        </button>
-      </div>
-
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: mobile ? 'repeat(3, 1fr)' : 'repeat(7, 1fr)', gap: mobile ? 8 : 12, marginBottom: 16 }}>
-        {[
-          { label: 'Total', val: stats.total, color: '#2563eb' },
-          { label: 'Live', val: stats.published, color: '#059669' },
-          { label: 'Draft', val: stats.draft, color: '#6b7280' },
-          { label: 'Urgent', val: stats.urgent, color: '#dc2626' },
-          { label: 'Expiring', val: stats.expiringSoon, color: '#d97706' },
-          { label: 'Pinned', val: stats.pinned, color: '#7c3aed' },
-          { label: '🌐 Public', val: stats.public, color: '#059669' },
-        ].map(s => (
-          <div key={s.label} style={{ background: '#fff', borderRadius: '10px', padding: mobile ? '10px' : '14px 16px', borderLeft: `3px solid ${s.color}`, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-            <div style={{ fontSize: mobile ? 10 : 12, color: '#64748b' }}>{s.label}</div>
-            <div style={{ fontSize: mobile ? 18 : 22, fontWeight: 800, color: s.color }}>{s.val}</div>
-          </div>
-        ))}
-      </div>
+    <div className="px-root" style={{ padding: mobile ? '12px 12px 90px' : '22px 24px 36px' }}>
+      <PremiumStyles />
+      <PremiumHero isMobile={mobile} eyebrow="GNSI · Circulars" title="Notices"
+        subtitle="Publish circulars and announcements · public notices appear on the website"
+        icon={<span style={{ fontSize: mobile ? 20 : 24 }}>📢</span>}
+        actions={
+          <button className={'px-hbtn' + (showForm ? '' : ' gold')} onClick={() => { setEditNotice(null); setShowForm(v => !v) }}>
+            {showForm ? '✖ Cancel' : '➕ Add Notice'}
+          </button>
+        }
+        stats={[
+          { label: 'Total', value: stats.total, sub: `${stats.pinned} pinned` },
+          { label: 'Live', value: stats.published, sub: 'Published', tone: '#86efac' },
+          { label: 'Draft', value: stats.draft, sub: 'Not published' },
+          { label: 'Urgent', value: stats.urgent, sub: 'High priority', tone: stats.urgent ? '#fca5a5' : undefined },
+          { label: 'Expiring', value: stats.expiringSoon, sub: 'Within 3 days', tone: stats.expiringSoon ? '#fcd34d' : undefined },
+          { label: 'Public', value: stats.public, sub: 'On the website' },
+        ]} />
 
       {/* Public notices info banner */}
       {stats.public > 0 && (

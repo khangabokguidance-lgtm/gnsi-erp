@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from './supabase'
+import { isAdminRole } from './roles'
 
 // ─── Internal cache ───────────────────────────────────────────────────────────
 let _cache       = null
@@ -41,7 +42,7 @@ async function _get(force = false, isAdmin = false) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const isTeaching    = s => s.role === 'Teaching' || s.role === 'Teaching + Admin'
-const isAdmin       = s => s.role === 'Admin'    || s.role === 'Teaching + Admin'
+const isAdmin       = s => isAdminRole(s.role) || s.role === 'Teaching + Admin'
 const isNonTeaching = s => s.role === 'Non-Teaching'
 const isActive      = s => s.status === 'Active'
 const isHostel      = s => s.department === 'Hostel'

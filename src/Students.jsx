@@ -5521,7 +5521,7 @@ const effectiveCols = visibleCols.filter(col => {
       {undoItem&&<UndoBanner student={undoItem} onUndo={handleUndo} onDismiss={()=>setUndoItem(null)}/>}
       {confirmModal&&<ConfirmModal title={confirmModal.title} message={confirmModal.message} confirmLabel={confirmModal.confirmLabel} danger={confirmModal.danger} onConfirm={confirmModal.onConfirm} onCancel={()=>setConfirmModal(null)}/>}
 
-      <PersonalAccountantButton supabase={supabase} moduleKey="students" isAdmin={['admin','Admin'].includes(role)} currentUser={user} isMobile={isMobile} />
+      <PersonalAccountantButton supabase={supabase} moduleKey="students" isAdmin={isAdminRole(role) || ['admin','Admin'].includes(role)} currentUser={user} isMobile={isMobile} />
 
       {/* Column picker */}
       {showColPicker&&(
@@ -5537,7 +5537,7 @@ const effectiveCols = visibleCols.filter(col => {
       )}
 
       {/* Modals */}
-      {detailPanel&&<StudentDetailDrawer student={detailPanel} allStudents={students} attData={attData} examData={examData} feeData={feeData} feeHistory={feeHistory} can={can} isAdmin={['admin','Admin'].includes(role)} currentUser={user} onClose={()=>setDetailPanel(null)} onEdit={s=>{setEditing(s);setFormOpen(true);setDetailPanel(null);setPageTab('students')}} showToast={showToast}/>}
+      {detailPanel&&<StudentDetailDrawer student={detailPanel} allStudents={students} attData={attData} examData={examData} feeData={feeData} feeHistory={feeHistory} can={can} isAdmin={isAdminRole(role) || ['admin','Admin'].includes(role)} currentUser={user} onClose={()=>setDetailPanel(null)} onEdit={s=>{setEditing(s);setFormOpen(true);setDetailPanel(null);setPageTab('students')}} showToast={showToast}/>}
       {feePanel&&<FeeCollectionModal app={feePanel} isAdmin={can.write} currentUser={user} onClose={()=>setFeePanel(null)} onSaved={()=>{setFeePanel(null);loadAll();showToast('Payment recorded!',T.green)}}/>}
       {examEntry&&<ExamScoreModal student={examEntry} can={can} onClose={()=>setExamEntry(null)} onSaved={()=>{setExamEntry(null);loadExamData(students.map(s=>s.id))}} showToast={showToast}/>}
       {attViewer&&<AttendanceViewerModal student={attViewer} onClose={()=>setAttViewer(null)}/>}
@@ -5707,7 +5707,7 @@ const effectiveCols = visibleCols.filter(col => {
         )}
 
         {pageTab==='scholarship'&&(
-          <ScholarshipWaiverBook isAdmin={['admin','Admin'].includes(role)} currentUser={user} showToast={showToast} students={students}/>
+          <ScholarshipWaiverBook isAdmin={isAdminRole(role) || ['admin','Admin'].includes(role)} currentUser={user} showToast={showToast} students={students}/>
         )}
 
         {pageTab==='students'&&(<>
@@ -5903,4 +5903,4 @@ const effectiveCols = visibleCols.filter(col => {
       </div>
     </>
   )
-}
+}

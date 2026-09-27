@@ -4040,7 +4040,7 @@ function Student360Profile({ student, month, onClose }) {
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(15,23,42,.5)',
+      position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,.5)',
       display: 'flex', justifyContent: isMobile ? 'stretch' : 'flex-end',
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{

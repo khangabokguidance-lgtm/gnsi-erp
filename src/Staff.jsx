@@ -7,6 +7,7 @@ import { staffDB } from './staffDB'
 import { useCurrentUser } from './useCurrentUser'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 import { StaffAvatar, PremiumHero, PREMIUM_CSS, goldBtn } from './staffPhotos'
+import { isAdminRole } from './roles'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -768,7 +769,7 @@ function Staff({ currentUser: currentUserProp, perms, staff: staffProp, onStaffC
   useEffect(() => { fetchFaceEnrolledIds() }, [fetchFaceEnrolledIds, staff.length])
 
   const loggedInStaff = useMemo(() => {
-  if (currentUser?.role === 'Admin') return null
+  if (isAdminRole(currentUser?.role)) return null
   if (currentUser?.staff_profile_id)
     return staff.find(s => s.id === currentUser.staff_profile_id) || null
   return null

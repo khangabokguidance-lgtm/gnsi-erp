@@ -81,6 +81,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
+import { PremiumStyles, PremiumHero } from './premiumUI'
+import { isAdminRole } from './roles'
 
 // Tracks group related batches for the tab UI. "All Courses" is a special
 // pseudo-batch (not a real value in teaching_aids.batch) that means "don't
@@ -1442,7 +1444,7 @@ export default function TeachingAids({ currentUser, perms }) {
   const [subjectFilter, setSubjectFilter] = useState('')
   const isMobile = useIsMobile()
 
-  const isAdmin  = currentUser?.role === 'Admin'
+  const isAdmin  = isAdminRole(currentUser?.role)
   const canView  = isAdmin || perms?.read === true
   const canAdd   = isAdmin
   const canDelete = isAdmin
@@ -1533,11 +1535,10 @@ export default function TeachingAids({ currentUser, perms }) {
       )}
 
       {/* Header */}
-      <div style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: C.slate, marginBottom: 4 }}>GNSI Portal · Sainik · Navodaya · Foundation · Combined</div>
-        <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 900, color: C.navy, letterSpacing: '-.02em' }}>🔒 Teaching Aids</div>
-        <div style={{ fontSize: 12, color: C.slate, marginTop: 3 }}>View-only library · bookmarks, highlights, and notes save automatically</div>
-      </div>
+      <PremiumStyles />
+      <PremiumHero isMobile={isMobile} eyebrow="GNSI · Sainik · Navodaya · Foundation · Combined" title="Teaching Aids"
+        subtitle="View-only library · bookmarks, highlights and notes save automatically"
+        icon={<span style={{ fontSize: isMobile ? 20 : 24 }}>🔒</span>} />
 
       {/* All Courses + track-grouped batch tabs */}
       <div style={{ marginBottom: 18 }}>

@@ -208,14 +208,14 @@ export default function RegistrationCard({ row, tableKey, tableLabel, isMobile, 
 
   if (isMobile) {
     return (
-      <div style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 100, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
         {panelContent}
       </div>
     )
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', justifyContent: 'flex-end' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', justifyContent: 'flex-end' }}>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,.35)' }} />
       <div style={{ position: 'relative', width: 460, maxWidth: '92vw', height: '100%', background: '#fff', boxShadow: '-8px 0 32px rgba(0,0,0,.18)', display: 'flex', flexDirection: 'column' }}>
         {panelContent}

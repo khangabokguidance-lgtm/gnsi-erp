@@ -11,7 +11,9 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { supabase } from './supabase'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 import { EventBus, GNSI_EVENTS } from './EventBus'
+import { isAdminRole } from './roles'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -1421,7 +1423,7 @@ function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
   const [loading, setLoading] = useState(true)
   const [activeSection, setActiveSection] = useState('dashboard')
   const currentUser = appUser || { id: 1, role: 'Admin' }
-  const canOperate  = ['Admin', 'Vice Principal', 'Principal'].includes(currentUser?.role)
+  const canOperate  = isAdminRole(currentUser?.role) || ['Vice Principal', 'Principal'].includes(currentUser?.role)
 
   const loadData = useCallback(async () => {
     // FIX-D1: limit logs to last 3 months — prevents unbounded growth
@@ -1477,14 +1479,16 @@ function DailyAttendanceTracker({ currentUser: appUser, staffProp }) {
   )
 
   return (
-    <div style={{ padding: 16, fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: 1000, margin: '0 auto' }}>
-      <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800, color: '#1e3a5f', margin: 0 }}>📊 Attendance Tracker</h1>
-          <p style={{ color: '#64748b', fontSize: 12, margin: '4px 0 0' }}>{staff.length} staff · {logs.length} records (last 3 months) · {fmtDate(new Date())}</p>
-        </div>
-        <span style={{ padding: '5px 12px', borderRadius: 999, fontSize: 11, fontWeight: 700, backgroundColor: '#dcfce7', color: '#15803d' }}>● Live</span>
-      </div>
+    <div className="px-root" style={{ padding: 16, maxWidth: 1080, margin: '0 auto', minHeight: 'auto', background: 'transparent' }}>
+      <PremiumStyles />
+      <PremiumHero eyebrow="GNSI · HR" title="Staff Attendance"
+        subtitle={`Attendance tracker · ${fmtDate(new Date())}`}
+        icon={<span style={{ fontSize: 24 }}>📊</span>}
+        actions={<span className="px-hbtn" style={{ cursor: 'default', color: '#86efac' }}>● Live</span>}
+        stats={[
+          { label: 'Staff', value: staff.length, sub: 'On record' },
+          { label: 'Records', value: logs.length, sub: 'Last 3 months' },
+        ]} />
 
       {!canOperate && (
         <div style={{ display: 'flex', gap: 10, padding: '10px 14px', borderRadius: 10, marginBottom: 16, backgroundColor: '#fef9c3', border: '1px solid #fde68a' }}>

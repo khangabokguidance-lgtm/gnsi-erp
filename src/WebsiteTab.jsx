@@ -20,6 +20,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { PremiumStyles, PremiumHero, PX } from "./premiumUI";
 import {
   getAllEnquiries, markEnquiryReplied, deleteEnquiry,
   getAllNotices, saveNotice, archiveNotice, deleteNotice,
@@ -342,7 +343,7 @@ function EnquiriesSection() {
 
   return (
     <div>
-      <div style={{...s.g3,gridTemplateColumns:"repeat(5,1fr)",marginBottom:"1.2rem"}}>
+      <div style={{...s.g3,gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",marginBottom:"1.2rem"}}>
         {[["Total",stats.total,C.goldLL],["Today",stats.today,"#16a34a"],["This Week",stats.week,C.goldL],["Unread",stats.unread,"#dc2626"],["Grievances",stats.grievances,"#ea580c"]].map(([l,v,c])=>(
           <div key={l} style={s.stat}><strong style={{...s.statN,color:c}}>{v}</strong><span style={s.statL}>{l}</span></div>
         ))}
@@ -2218,6 +2219,8 @@ function FaqSection(){
 // ════════════════════════════════════════════════════════════
 export default function WebsiteTab() {
   const [tab,setTab]=useState("enquiries");
+  const [narrow,setNarrow]=useState(()=>window.matchMedia("(max-width: 640px)").matches);
+  useEffect(()=>{ const mq=window.matchMedia("(max-width: 640px)"); const on=e=>setNarrow(e.matches); mq.addEventListener("change",on); return ()=>mq.removeEventListener("change",on) },[]);
 
   const SECTIONS={
     enquiries: <EnquiriesSection/>,
@@ -2241,23 +2244,20 @@ export default function WebsiteTab() {
   };
 
   return(
-    <div style={{...s.wrap,background:"#f8fafc",minHeight:"100vh"}}>
-      {/* Header */}
-      <div style={{marginBottom:"1.4rem",paddingBottom:"1rem",borderBottom:"1px solid #e2e8f0"}}>
-        <h2 style={{fontFamily:"inherit",color:"#1e3a5f",fontSize:"1.6rem",fontWeight:700,marginBottom:".3rem"}}>🌐 Website Manager</h2>
-        <p style={{color:"rgba(71,85,105,.35)",fontFamily:"inherit",fontSize:".75rem",letterSpacing:"0",textTransform:"none"}}>
-          guidancekhangabok.in — {SUB_TABS.length} management sections · All data syncs live to landing page
-        </p>
-      </div>
+    <div className="px-root" style={{...s.wrap,background:PX.cream,minHeight:"100vh",padding:narrow?"12px 12px 90px":"22px 24px 36px"}}>
+      <PremiumStyles />
+      <PremiumHero isMobile={narrow} eyebrow="GNSI · Public Website" title="Website Manager"
+        subtitle={`guidancekhangabok.in · ${SUB_TABS.length} management sections · all data syncs live to the landing page`}
+        icon={<span style={{ fontSize: narrow ? 20 : 24 }}>🌐</span>} />
 
-      {/* Sub-tab nav */}
-      <div style={s.subNav}>
+      {/* Sub-tab nav — wraps on desktop, scrolls sideways on phones */}
+      <nav className="px-tabs" role="tablist" style={narrow ? undefined : { flexWrap: "wrap" }}>
         {SUB_TABS.map(t=>(
-          <button key={t.id} style={s.subBtn(tab===t.id)} onClick={()=>setTab(t.id)}>
+          <button key={t.id} role="tab" aria-selected={tab===t.id} className={"px-tab"+(tab===t.id?" on":"")} onClick={()=>setTab(t.id)}>
             <span>{t.icon}</span>{t.label}
           </button>
         ))}
-      </div>
+      </nav>
 
       {SECTIONS[tab]}
 
