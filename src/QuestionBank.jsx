@@ -806,7 +806,11 @@ function extractOptionsFromLine(line) {
   // can't restart the sequence.
   // The trailing whitespace is a lookahead, not consumed, so it can still
   // serve as the leading whitespace of the next marker.
-  const markerRe = /(^|\s)(?:\(([a-dA-D])\)|([a-dA-D])[.)](?=\s))/g
+  // "D)3946400" (no space after the bracket) is a marker too — papers are
+  // often typed that way, and requiring a space there merged option D into
+  // option C ("3996400 D)3946400"). The "D." form still needs a following
+  // space, so abbreviations like "c.f." are not read as markers.
+  const markerRe = /(^|\s)(?:\(([a-dA-D])\)|([a-dA-D])(?:\.(?=\s)|\)))/g
   const positions = []
   let lastLetter = ''
   let mm
@@ -824,6 +828,27 @@ function extractOptionsFromLine(line) {
     if (value) result[pos.letter] = value
   })
   return result
+}
+
+// Questions saved before the "D)3946400" fix can hold two options in one
+// field ("3996400 D)3946400" in option C, option D empty). Returns the
+// update that splits them, or null. Never overwrites an option that
+// already has a value.
+function splitMergedOptions(q) {
+  const patch = {}
+  for (const L of ['A', 'B', 'C']) {
+    const key = `option_${L.toLowerCase()}`
+    const v = (patch[key] ?? q[key] ?? '').trim()
+    if (!v) continue
+    const parsed = extractOptionsFromLine(`${L}) ${v}`)
+    const extra = Object.keys(parsed).filter(k => k > L)
+    if (!extra.length || !parsed[L]) continue
+    const blank = k => { const cur = (patch[`option_${k.toLowerCase()}`] ?? q[`option_${k.toLowerCase()}`] ?? '').trim(); return !cur || cur === '—' || cur === '-' }
+    if (!extra.every(blank)) continue
+    patch[key] = parsed[L]
+    for (const k of extra) patch[`option_${k.toLowerCase()}`] = parsed[k]
+  }
+  return Object.keys(patch).length ? patch : null
 }
 
 // Detects whether a line is romanized Meetei Mayek transliteration (the
@@ -1196,8 +1221,9 @@ function parseCSVQuestions(csvText, defaultCourse, defaultSubject, defaultChapte
 }
 
 // ── QUESTION CARD ─────────────────────────────────────────────────────────────
-function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onDelete, onEdit }) {
+function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onDelete, onEdit, onFixOptions }) {
   const [reveal, setReveal] = useState(showAnswer)
+  const merged = onFixOptions ? splitMergedOptions(q) : null
   const sc = SC[q.subject] || SC.Mathematics
   const diffTone = q.difficulty==='Easy' ? [T.green, T.greenSoft] : q.difficulty==='Hard' ? [T.rose, T.roseSoft] : [T.amber, T.amberSoft]
   return (
@@ -1222,6 +1248,8 @@ function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onD
             <Badge text={`${q.marks||1} mark${(q.marks||1)===1?'':'s'}`} color={T.indigo} bg={T.indigoSoft} />
             {q._needsDiagram && <Badge text="Needs diagram" color={T.amber} bg={T.amberSoft} border={T.amberLine} />}
             {q.diagram_url && <Badge text="🖼 Diagram" color={T.green} bg={T.greenSoft} />}
+            {merged && <button onClick={() => onFixOptions(q, merged)} style={btnSm(T.amberSoft, T.amber)}
+              title={`Two options were saved in one box — split into ${Object.entries(merged).map(([k, v]) => `${k.slice(-1).toUpperCase()}: ${v}`).join(' · ')}`}>⚠ Fix options</button>}
             <span style={{ marginLeft:'auto', display:'flex', gap:6 }}>
               {onEdit && <button onClick={() => onEdit(q)} style={btnSm('#fff', T.indigo)} title="Edit question">✏️ Edit</button>}
               {onDelete && <button onClick={() => onDelete(q.id)} style={btnSm('#fff', T.rose)} title="Delete question">🗑 Delete</button>}
@@ -1472,6 +1500,14 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
     else { showToast(`${count} questions deleted (backup downloaded)`, C.rose); setSelected(new Set()); refetch(true) }
   }
 
+  // One-click repair for a question whose options were merged on paste.
+  const fixOptions = async (q, patch) => {
+    const { data, error } = await supabase.from('qbank_questions').update(patch).eq('id', q.id).select('id')
+    if (error) showToast('Fix failed: ' + error.message, C.rose)
+    else if (!data?.length) showToast('Nothing was updated — you may lack permission', C.amber)
+    else { showToast('Options split ✓', C.green); refetch(true) }
+  }
+
   const startEdit = (q) => setEditQ({ ...q, _savedDiagramUrl: q.diagram_url || '' })
   const cancelEdit = () => {
     // Drop a diagram uploaded during this edit that is now being discarded.
@@ -1659,6 +1695,7 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
                 selectable={isAdmin} selected={selected.has(q.id)}
                 onToggle={isAdmin ? toggleSelect : undefined}
                 onEdit={canEdit ? startEdit : undefined}
+                onFixOptions={canEdit ? fixOptions : undefined}
                 onDelete={isAdmin ? handleDelete : undefined} />
             ))
       }
@@ -4402,6 +4439,20 @@ function TabStats({ questions, refetch, showToast, isAdmin, onNavigate }) {
   const [filterSubject, setFilterSubject] = useState('All')
   const [deleteAllInput, setDeleteAllInput] = useState('')
   const [deletingAll, setDeletingAll] = useState(false)
+  const [repairing, setRepairing] = useState(false)
+  const merged = useMemo(() => questions.map(q => ({ q, patch: splitMergedOptions(q) })).filter(x => x.patch), [questions])
+  const repairAll = async () => {
+    if (!merged.length || !confirm(`Split the options of ${merged.length} question(s)?`)) return
+    setRepairing(true)
+    let done = 0, failed = 0
+    for (let i = 0; i < merged.length; i += 20) {
+      const res = await Promise.all(merged.slice(i, i + 20).map(({ q, patch }) => supabase.from('qbank_questions').update(patch).eq('id', q.id).select('id')))
+      res.forEach(r => { if (r.error || !r.data?.length) failed++; else done++ })
+    }
+    setRepairing(false)
+    showToast(failed ? `Repaired ${done}, ${failed} failed` : `Repaired ${done} question(s) ✓`, failed ? C.amber : C.green)
+    refetch(true)
+  }
 
   // Memoized on filterCourse — rebuilt every render, these made the stats
   // useMemo below recompute over the whole bank on every keystroke.
@@ -4537,6 +4588,24 @@ function TabStats({ questions, refetch, showToast, isAdmin, onNavigate }) {
           onNavigate={onNavigate}
         />
       ))}
+
+      {isAdmin && (
+        <div style={{ ...cardS, marginTop:24 }}>
+          <div style={{ fontSize:14, fontWeight:800, color:T.ink, marginBottom:6 }}>🔧 Repair merged options</div>
+          <div style={{ fontSize:12.5, color:T.muted, marginBottom:10, lineHeight:1.6 }}>
+            Questions pasted with an option marker and no space after it (e.g. <code>C) 3996400 D)3946400</code>) were saved
+            with two options in one box. {merged.length ? <><strong>{merged.length}</strong> question{merged.length > 1 ? 's' : ''} found.</> : 'None found — the bank is clean.'}
+          </div>
+          {merged.slice(0, 5).map(({ q, patch }) => (
+            <div key={q.id} style={{ fontSize:12, padding:'6px 10px', borderRadius:8, background:T.surfaceAlt, marginBottom:6 }}>
+              <div style={{ fontWeight:600, color:T.ink, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{q.question}</div>
+              <div style={{ color:T.muted }}>{Object.entries(patch).map(([k, v]) => `${k.slice(-1).toUpperCase()}: ${v}`).join('  ·  ')}</div>
+            </div>
+          ))}
+          {merged.length > 5 && <div style={{ fontSize:12, color:T.muted, marginBottom:6 }}>…and {merged.length - 5} more</div>}
+          {merged.length > 0 && <button onClick={repairAll} disabled={repairing} style={btn(C.green, repairing)}>{repairing ? '⏳ Repairing…' : `✓ Split options in ${merged.length} question${merged.length > 1 ? 's' : ''}`}</button>}
+        </div>
+      )}
 
       {isAdmin && (
         <div style={{ ...cardS, marginTop:24, border:'2px solid #fecaca', background:'#fef2f2' }}>
