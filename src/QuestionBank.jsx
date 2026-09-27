@@ -3809,8 +3809,20 @@ function DictBrowsePanel({ showToast, isAdmin }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // Same bank row, made print-ready: merged options split ("65594 D)65494"
 // in C with D empty), answer letter normalised, whitespace tidied.
+// Rows typed or imported as "sainik school", "mathematics ", "natural
+// numbers" should still land on the taxonomy names the picker uses.
+const normName = v => String(v ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
+function canonicalPlace(q) {
+  const ck = COURSE_LIST.find(k => normName(k) === normName(q.course) || normName(COURSES[k].label) === normName(q.course))
+  const course = ck || q.course
+  const subs = COURSES[course]?.subjects || {}
+  const subject = Object.keys(subs).find(x => normName(x) === normName(q.subject)) || q.subject
+  const chapter = (subs[subject] || []).find(c => normName(c) === normName(q.chapter)) || q.chapter
+  return { course, subject, chapter }
+}
+
 function paperReady(q) {
-  const out = { ...q, ...(splitMergedOptions(q) || {}) }
+  const out = { ...q, ...canonicalPlace(q), ...(splitMergedOptions(q) || {}) }
   for (const k of ['question', 'question_mayek', 'option_a', 'option_b', 'option_c', 'option_d']) if (out[k] != null) out[k] = tidyText(out[k])
   out.correct_option = normalizeAnswer(q.correct_option)
   return out
@@ -3874,6 +3886,19 @@ function TabPaper({ questions: bankQuestions, showToast }) {
     const want = new Set(chapterSel)
     return questions.filter(q => (q.course||'')===course && q.subject===subject && want.has(q.chapter)).length
   }, [questions, course, subject, chapterSel])
+
+  // When nothing is in scope: where do questions with these chapter names live?
+  const elsewhere = useMemo(() => {
+    if (!chapterSel.length || inScope) return []
+    const want = new Set(chapterSel.map(normName))
+    const map = new Map()
+    questions.forEach(q => {
+      if (!want.has(normName(q.chapter))) return
+      const key = `${q.course || ''}\u241f${q.subject || ''}`
+      map.set(key, (map.get(key) || 0) + 1)
+    })
+    return [...map.entries()].map(([k, n]) => { const [c, sj] = k.split('\u241f'); return { course: c, subject: sj, n } }).sort((x, y) => y.n - x.n)
+  }, [questions, chapterSel, inScope])
 
   const toggleSub = key => setSelSubs(prev => { const n = { ...prev }; if (n[key] !== undefined) delete n[key]; else n[key] = Math.min(10, availableSubs[key] || 5); return n })
   const updateCount = (key, val) => setSelSubs(prev => ({ ...prev, [key]: Math.max(1, Math.min(availableSubs[key] || 1, parseInt(val) || 1)) }))
@@ -4079,7 +4104,18 @@ function TabPaper({ questions: bankQuestions, showToast }) {
         {chapterSel.length > 0 && Object.keys(availableSubs).length === 0 && (
           <div style={{ padding:'12px 16px', borderRadius:8, background:'#fef9c3', border:'1px solid #fde68a', fontSize:13, color:'#92400e', marginBottom:14 }}>
             {inScope === 0 ? (
-              <>⚠️ No questions found for the chosen chapter(s). Add questions using Manual Add or Bulk Paste.</>
+              elsewhere.length ? (
+                <>
+                  ⚠️ No questions are saved under {COURSES[course]?.label || course} · {subject} for {chapterLabel}, but questions with {chapterSel.length > 1 ? 'these chapter names' : 'this chapter name'} exist elsewhere:
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:8 }}>
+                    {elsewhere.map(e => COURSES[e.course]?.subjects?.[e.subject]
+                      ? <button key={e.course + e.subject} type="button" style={btnSm('#fff', C.navy)} onClick={() => { setCourse(e.course); setSubject(e.subject); setSelSubs({}) }}>Switch to {COURSES[e.course].label} · {e.subject} ({e.n})</button>
+                      : <span key={e.course + e.subject} style={{ fontSize:12 }}>{e.n} saved with {e.course ? `course “${e.course}”` : 'no course'}{e.subject ? ` and subject “${e.subject}”` : ''} — fix them in the Question Bank tab (✏️ Edit).</span>)}
+                  </div>
+                </>
+              ) : (
+                <>⚠️ No questions found for the chosen chapter(s). Add questions using Manual Add or Bulk Paste.</>
+              )
             ) : (
               <>
                 ⚠️ {inScope} question{inScope === 1 ? ' is' : 's are'} in {chapterSel.length > 1 ? 'these chapters' : 'this chapter'}, but none match the current filters:
