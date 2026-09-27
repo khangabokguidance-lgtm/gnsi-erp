@@ -40,7 +40,7 @@
 //  PATCH-7 housemasters table fallback comment added
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import TabSyllabus from './TabSyllabus'
 import { EnhancedLogForm, HMDoubtSessionPanel } from './EnhancedLogEntry'
@@ -100,7 +100,66 @@ const PinIcon = p => (
   </svg>
 )
 
-// Distinct icons so every tab is recognisable in the icon-only phone bar
+// ── Phone section menu ─────────────────────────────────────────────────────
+// A bar with the current section and a ☰ button; the menu lists every
+// section the user can open (with badges). Closes on pick, on a tap
+// outside, or with Escape.
+function TeachingMenu({ tabs, active, onChange, badgeOf }) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef(null)
+  const btnRef = useRef(null)
+  const current = tabs.find(t => t.key === active) || tabs[0]
+  const CurIcon = current?.icon
+  const total = tabs.reduce((n, t) => n + (t.key !== active ? (badgeOf(t.key) || 0) : 0), 0)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
+    const onKey = e => { if (e.key === 'Escape') { setOpen(false); btnRef.current?.focus() } }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    wrapRef.current?.querySelector('.tch-menu-item.on, .tch-menu-item')?.focus()
+    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [open])
+
+  const pick = key => { onChange(key); setOpen(false); btnRef.current?.focus() }
+
+  return (
+    <div className="tch-menu-wrap" ref={wrapRef}>
+      <button ref={btnRef} type="button" className="tch-menu-bar" aria-haspopup="true" aria-expanded={open} aria-controls="tch-menu-list"
+        aria-label={`Section: ${current?.label}. Open the Teaching menu`} onClick={() => setOpen(o => !o)}>
+        <span className="tch-menu-cur">
+          {CurIcon && <span className="tch-menu-cur-ic"><CurIcon size={17} /></span>}
+          <span className="tch-menu-cur-lbl">{current?.label}</span>
+        </span>
+        <span className="tch-menu-burger" aria-hidden="true">
+          {open
+            ? <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            : <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>}
+          {!open && total > 0 && <span className="tch-menu-dot">{total > 99 ? '99+' : total}</span>}
+        </span>
+      </button>
+      {open && (
+        <nav id="tch-menu-list" className="tch-menu-list" aria-label="Teaching sections">
+          {tabs.map(t => {
+            const I = t.icon
+            const on = t.key === active
+            const badge = badgeOf(t.key) || 0
+            return (
+              <button key={t.key} type="button" className={'tch-menu-item' + (on ? ' on' : '')} aria-current={on ? 'page' : undefined} onClick={() => pick(t.key)}>
+                <I size={17} />
+                <span className="tch-menu-item-lbl">{t.label}</span>
+                {badge > 0 && <span className="tch-menu-badge">{badge > 99 ? '99+' : badge}</span>}
+              </button>
+            )
+          })}
+        </nav>
+      )}
+    </div>
+  )
+}
+
+// Distinct icons so every section is recognisable at a glance
 // (Question Bank and Class Test Scores, Study Lockers and HM Dashboard
 // used to share icons).
 const tabSvg = (p, children) => (
@@ -140,6 +199,7 @@ function teachingRoleKey(role) {
 }
 
 const today            = () => new Date().toISOString().split('T')[0]
+const isoDaysAgo       = n => new Date(Date.now() - n * 86400000).toISOString().split('T')[0]
 const currentYearMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` }
 const fmtDate          = d => { if (!d) return '-'; return new Date(d).toLocaleDateString('en-IN',{ day:'2-digit', month:'short', year:'numeric' }) }
 const pct              = (s,m) => m > 0 ? Math.round((s/m)*100) : 0
@@ -167,13 +227,6 @@ function exportScoresCSV(rows) {
   URL.revokeObjectURL(url)
 }
 
-const emptyLog = {
-  course:'', subtype:'', class_name:'', batch_id:'',
-  subject_name:'', teacher_name:'', staff_id:'',
-  teaching_date: today(), topic_taught:'', classwork:'',
-  homework:'', remarks:'', period_number:'',
-  needs_doubt_session: false,
-}
 
 // ─── Mobile Hook ─────────────────────────────────────────────────────────────
 
@@ -190,7 +243,9 @@ function useIsMobile() {
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
 function Toast({ msg, color=PX.navy, onDone }) {
-  useEffect(() => { const t = setTimeout(onDone, 3500); return () => clearTimeout(t) }, [])
+  // One timer per toast (the parent keys each toast); onDone is a new
+  // function every render, so it is deliberately not a dependency.
+  useEffect(() => { const t = setTimeout(onDone, 3500); return () => clearTimeout(t) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div role="status" aria-live="polite" style={{
       position:'fixed', bottom:22, left:'50%', transform:'translateX(-50%)',
@@ -277,16 +332,26 @@ const globalCSS = `
   @media (max-width:1320px) { .tch-tabs .px-tab { padding:9px 7px; font-size:12.5px; gap:5px } }
   @media (max-width:1100px) { .tch-tabs .px-tab svg { display:none } .tch-tabs .px-tab { padding:9px 6px; font-size:12px } }
   @media (max-width:760px)  { .tch-tabs .px-tab svg { display:inline } .tch-tabs .px-tab { padding:9px 12px; font-size:13px } }
-  /* Phones: icon bar — all sections visible, the selected one expands. */
-  .tch-icons { display:flex; flex-wrap:wrap; justify-content:center; gap:6px; padding:8px; margin-bottom:16px; background:#fff; border:1px solid ${PX.line}; border-radius:16px; box-shadow:0 1px 2px rgba(19,42,79,.05) }
-  .tch-ic { position:relative; display:inline-flex; align-items:center; justify-content:center; gap:7px; width:42px; height:42px; padding:0; border:none; border-radius:12px; background:${PX.tint}; color:${PX.sub}; cursor:pointer; font:700 13px/1 ${PX.sans}; transition:background .2s, color .2s, padding .2s; -webkit-tap-highlight-color:transparent }
-  .tch-ic:active { transform:scale(.94) }
-  .tch-ic.on { width:auto; padding:0 14px; background:linear-gradient(180deg,${PX.navy2},${PX.navy}); color:#fff; box-shadow:0 6px 14px -6px rgba(19,42,79,.6) }
-  .tch-ic.on svg { color:${PX.goldLt} }
-  .tch-ic-lbl { white-space:nowrap; animation:tchLbl .22s ease-out }
-  .tch-ic-badge { position:absolute; top:-4px; right:-4px; min-width:17px; height:17px; padding:0 4px; border-radius:99px; background:#dc2626; color:#fff; font:800 10px/17px ${PX.sans}; text-align:center; border:2px solid #fff }
-  .tch-ic.on .tch-ic-badge { background:${PX.gold}; color:#1a1406 }
-  @keyframes tchLbl { from { opacity:0; max-width:0 } to { opacity:1; max-width:180px } }
+  /* Phones: hamburger section menu. */
+  .tch-menu-wrap { position:relative; margin-bottom:16px; z-index:30 }
+  .tch-menu-bar { width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 8px 8px 10px; background:#fff; border:1px solid ${PX.line}; border-radius:16px; box-shadow:0 1px 2px rgba(19,42,79,.05),0 10px 24px -18px rgba(19,42,79,.4); cursor:pointer; font:inherit; color:${PX.ink}; -webkit-tap-highlight-color:transparent }
+  .tch-menu-bar:focus { outline:none } .tch-menu-bar:focus-visible { outline:2px solid ${PX.gold}; outline-offset:2px }
+  .tch-menu-cur { display:flex; align-items:center; gap:10px; min-width:0 }
+  .tch-menu-cur-ic { width:36px; height:36px; border-radius:11px; display:inline-flex; align-items:center; justify-content:center; background:linear-gradient(180deg,${PX.navy2},${PX.navy}); color:${PX.goldLt}; flex-shrink:0 }
+  .tch-menu-cur-lbl { font:600 17px/1.2 ${PX.serif}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .tch-menu-burger { position:relative; width:42px; height:42px; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; background:${PX.tint}; border:1px solid ${PX.line}; color:${PX.navy}; flex-shrink:0 }
+  .tch-menu-bar[aria-expanded="true"] .tch-menu-burger { background:${PX.navy}; color:#fff; border-color:${PX.navy} }
+  .tch-menu-dot { position:absolute; top:-5px; right:-5px; min-width:17px; height:17px; padding:0 4px; border-radius:99px; background:#dc2626; color:#fff; font:800 10px/17px ${PX.sans}; text-align:center; border:2px solid #fff }
+  .tch-menu-list { position:absolute; left:0; right:0; top:calc(100% + 8px); display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:10px; background:#fff; border:1px solid ${PX.line}; border-radius:18px; box-shadow:0 24px 48px -20px rgba(19,42,79,.55); max-height:70vh; overflow-y:auto; animation:tchMenuIn .16s ease-out }
+  .tch-menu-item { display:flex; align-items:center; gap:9px; min-height:46px; padding:8px 10px; border:1px solid transparent; border-radius:12px; background:${PX.tint}; color:${PX.ink2}; font:600 13px/1.2 ${PX.sans}; text-align:left; cursor:pointer }
+  .tch-menu-item svg { flex-shrink:0; color:${PX.sub} }
+  .tch-menu-item:focus-visible { outline:2px solid ${PX.gold}; outline-offset:1px }
+  .tch-menu-item.on { background:linear-gradient(180deg,${PX.navy2},${PX.navy}); color:#fff }
+  .tch-menu-item.on svg { color:${PX.goldLt} }
+  .tch-menu-item-lbl { flex:1; min-width:0 }
+  .tch-menu-badge { min-width:18px; height:18px; padding:0 5px; border-radius:99px; background:#dc2626; color:#fff; font:800 10.5px/18px ${PX.sans}; text-align:center }
+  .tch-menu-item.on .tch-menu-badge { background:${PX.gold}; color:#1a1406 }
+  @keyframes tchMenuIn { from { opacity:0; transform:translateY(-6px) } to { opacity:1; transform:none } }
   /* Tablets: tabs scroll sideways — fade the right edge so it's clear more
      tabs are there; compact hero on phones so the content starts higher. */
   @media (max-width:900px)  { .tch-tabs .px-tabs { -webkit-mask-image:linear-gradient(90deg,#000 86%,transparent); mask-image:linear-gradient(90deg,#000 86%,transparent); padding-right:28px } }
@@ -343,7 +408,7 @@ function useDoubtSessions(logIds) {
 
   const refetch = useCallback(async () => {
     if (!logIds.length) return
-    const { data, error } = await supabase.from('doubt_sessions').select('*').in('log_id', logIds)
+    const { data } = await supabase.from('doubt_sessions').select('*').in('log_id', logIds)
     if (data) {
       const map = {}
       data.forEach(s => { if (!map[s.log_id]) map[s.log_id]=[]; map[s.log_id].push(s) })
@@ -351,6 +416,7 @@ function useDoubtSessions(logIds) {
     }
   }, [depKey]) // eslint-disable-line
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads doubt sessions for the visible logs
   useEffect(() => { refetch() }, [refetch])
   return { sessions, refetch }
 }
@@ -404,63 +470,6 @@ function CoursePicker({ form, setForm, courseData }) {
   )
 }
 
-// ─── Doubt Session Sub-Row ────────────────────────────────────────────────────
-
-function DoubtSessionSubRow({ logId, sessions, onRefetch, currentUser }) {
-  const [resolvingId, setResolvingId] = useState(null)
-  const [note, setNote]               = useState('')
-  const list = sessions[logId] || []
-  if (!list.length) return null
-
-  const resolverName = currentUser?.name || 'Staff'
-
-  const handleResolve = async session => {
-    if (!note.trim()) { alert('Please enter a resolution note.'); return }
-    setResolvingId(session.id)
-    const { error } = await supabase.from('doubt_sessions').update({
-      status:'resolved', resolved_by: resolverName,
-      resolved_at: new Date().toISOString(), resolution_note: note,
-    }).eq('id', session.id)
-    if (error) alert('Error: '+error.message)
-    else { onRefetch(); setNote('') }
-    setResolvingId(null)
-  }
-
-  return (
-    <tr>
-      <td colSpan={11} style={{ padding:'0 12px 12px 40px', background:'#fffbeb' }}>
-        <div style={{ borderLeft:'3px solid #f59e0b', paddingLeft:12 }}>
-          <div style={{ fontSize:11, fontWeight:700, color:'#b45309', marginBottom:6 }}>🔁 Doubt Sessions</div>
-          {list.map(s => (
-            <div key={s.id} style={{ display:'flex', alignItems:'flex-start', gap:10, flexWrap:'wrap', padding:'8px 12px', marginBottom:5, borderRadius:8, background: s.status==='resolved'?'#f0fdf4':'#fef9c3', border:`1px solid ${s.status==='resolved'?'#bbf7d0':'#fde68a'}` }}>
-              <div style={{ minWidth:120 }}>
-                <div style={{ fontSize:12, fontWeight:700, color:'#14213d' }}>🏠 {s.house_name||s.batch_name||'—'}</div>
-                <div style={{ fontSize:11, color:'#5d6b82' }}>HM: {s.hm_name||s.staff_name||'—'}</div>
-              </div>
-              <div style={{ flex:1, minWidth:120 }}>
-                <div style={{ fontSize:12, color:'#2e3b52' }}>📖 {s.topic}</div>
-                <div style={{ fontSize:11, color:'#8a93a6' }}>{s.subject_name||s.subject}</div>
-              </div>
-              <div style={{ minWidth:90 }}>
-                {s.status==='resolved'
-                  ? <span style={S.badge('#16a34a','#dcfce7')}>✅ Resolved</span>
-                  : <span style={S.badge('#b45309','#fef9c3')}>⏳ Open</span>}
-                {s.resolved_by && <div style={{ fontSize:10, color:'#5d6b82', marginTop:2 }}>by {s.resolved_by}</div>}
-              </div>
-              {s.status==='resolved' && s.resolution_note && <div style={{ fontSize:11, color:'#5d6b82', flex:1 }}>📝 {s.resolution_note}</div>}
-              {s.status==='open' && (
-                <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
-                  <input value={resolvingId===s.id?note:''} onChange={e => setNote(e.target.value)} onFocus={() => setResolvingId(s.id)} placeholder="Resolution note..." style={{ padding:'6px 10px', borderRadius:6, border:'1px solid #d9d2c2', fontSize:12, minWidth:160, minHeight:36 }}/>
-                  <button onClick={() => handleResolve(s)} style={S.btnSm('#16a34a')}>✓ Resolve</button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </td>
-    </tr>
-  )
-}
 
 // ─── Log Form ─────────────────────────────────────────────────────────────────
 
@@ -564,8 +573,6 @@ function downloadCSV(rows, filename) {
 
 function TabLogs({ logs, loading, fetchLogs, timetable, staff, courseData, currentUser }) {
   const [showForm, setShowForm]       = useState(false)
-  const [form, setForm]               = useState({ ...emptyLog, teaching_date: today() })
-  const [saving, setSaving]           = useState(false)
   const [editId, setEditId]           = useState(null)
   const [editForm, setEditForm]       = useState(null)
   const [editSaving, setEditSaving]   = useState(false)
@@ -618,21 +625,6 @@ useEffect(() => {
     homework:f.homework||null, remarks:f.remarks||null, period_number:f.period_number||null,
     needs_doubt_session:f.needs_doubt_session||false,
   })
-
-  const handleAdd = async e => {
-    e.preventDefault()
-    if (checkDuplicate(form)) {
-      setDupWarn(`⚠️ Duplicate log: ${form.subject_name} on ${form.teaching_date} already exists for this batch.`)
-      setDupBlocked(true)
-      return
-    }
-    setDupWarn(''); setDupBlocked(false); setSaving(true)
-    const { data: logData, error } = await supabase.from('teaching_logs').insert([buildPayload(form)]).select().single()
-    if (error) { showToast('Error: '+error.message, '#dc2626'); setSaving(false); return }
-    
-    setForm({ ...emptyLog, teaching_date:today() }); setShowForm(false); fetchLogs(); setSaving(false)
-    showToast('Log saved', '#16a34a')
-  }
 
   const handleEdit = async e => {
     e.preventDefault()
@@ -814,7 +806,7 @@ useEffect(() => {
         : (
           <>
            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(340px,1fr))', gap:16 }}>
-  {paginated.map((item, i) => {
+  {paginated.map(item => {
     const hasDoubt = sessions[item.id]?.length > 0
     const doubtOpen = sessions[item.id]?.some(s => s.status==='open')
     const feedback = hmFeedback[item.id] || []
@@ -1009,8 +1001,8 @@ function TabCalendar({ logs, missed }) {
   const daysInMonth = new Date(year, mon, 0).getDate()
   const blanks      = firstDay===0 ? 6 : firstDay-1
 
-  const allSubjects = [...new Set(logs.map(l => l.subject_name).filter(Boolean))]
-  const allTeachers = [...new Set(logs.map(l => l.teacher_name).filter(Boolean))]
+  const allSubjects = useMemo(() => [...new Set(logs.map(l => l.subject_name).filter(Boolean))], [logs])
+  const allTeachers = useMemo(() => [...new Set(logs.map(l => l.teacher_name).filter(Boolean))], [logs])
 
   const filteredLogs = useMemo(() => logs.filter(l =>
     (subjectFilter==='All'||l.subject_name===subjectFilter) &&
@@ -1203,288 +1195,10 @@ function TabCalendar({ logs, missed }) {
   )
 }
 
-// ─── Tab: Timetable ───────────────────────────────────────────────────────────
-
-function TabTimetable({ timetable, fetchTimetable, staff, courseData }) {
-  const [form, setForm]           = useState({ course:'', subtype:'', class_name:'', batch_id:'', subject_name:'', teacher_name:'', day_of_week:'Monday', period_number:1, start_time:'', end_time:'' })
-  const [saving, setSaving]       = useState(false)
-  const [showForm, setShowForm]   = useState(false)
-  const [viewCourse, setViewCourse]   = useState('')
-  const [viewSubtype, setViewSubtype] = useState('')
-  const [subMode, setSubMode]     = useState(null)
-  const [subTeacher, setSubTeacher]   = useState('')
-  const [subDate, setSubDate]     = useState(today())
-  const [substitutes, setSubstitutes] = useState([])
-  const [confirmDel, setConfirmDel]   = useState(null)
-  const { show: showToast, el: toastEl } = useToast()
-  const { courses, subtypesFor, classesFor } = courseData
-
-  useEffect(() => {
-    if (courses.length && !viewCourse) {
-      const c = courses[0]
-      const s = subtypesFor(c)[0]||''
-      setViewCourse(c); setViewSubtype(s)
-    }
-  }, [courses]) // eslint-disable-line
-
-  useEffect(() => {
-    supabase.from('timetable_substitutes').select('*').order('sub_date',{ascending:false})
-      .then(({ data }) => { if (data) setSubstitutes(data) })
-      .catch(()=>{})
-  }, [])
-
-  const conflictMap = useMemo(() => {
-    const map = {}
-    timetable.forEach(t => {
-      if (!t.teacher_name) return
-      const key = `${t.teacher_name}||${t.day_name}||${t.period_name}`
-      if (!map[key]) map[key]=[]
-      map[key].push(t)
-    })
-    return Object.entries(map).filter(([,slots]) => slots.length>1).map(([,slots]) => ({
-      teacher:slots[0].teacher_name, day:slots[0].day_name, period:slots[0].period_name, slots
-    }))
-  }, [timetable])
-
-  const handleSave = async e => {
-    e.preventDefault(); setSaving(true)
-    const { error } = await supabase.from('timetable_entries').insert([{
-      class_name: form.subtype||form.class_name,
-      subject_name: form.subject_name,
-      teacher_name: form.teacher_name||null,
-      day_name: form.day_of_week,
-      period_name: String(form.period_number),
-      start_time: form.start_time||null,
-      end_time: form.end_time||null,
-    }])
-    if (error) showToast('Error: '+error.message, '#dc2626')
-    else { setShowForm(false); fetchTimetable(); showToast('Period saved', '#16a34a') }
-    setSaving(false)
-  }
-
-  const handleDelete = async id => {
-    const { error } = await supabase.from('timetable_entries').delete().eq('id', id)
-    if (error) showToast('Delete failed: '+error.message, '#dc2626')
-    else { setConfirmDel(null); fetchTimetable(); showToast('Period deleted', '#dc2626') }
-  }
-
-  const handleSaveSubstitute = async () => {
-    if (!subTeacher||!subMode) return
-    const slot = timetable.find(t => t.id===subMode.slotId)
-    const { error } = await supabase.from('timetable_substitutes').insert([{
-      original_slot_id:subMode.slotId, original_teacher:slot?.teacher_name||'',
-      substitute_teacher:subTeacher, sub_date:subDate,
-      day_name:subMode.day, period_name:String(subMode.period),
-      class_name:subMode.subtype, subject_name:slot?.subject_name||'',
-    }])
-    if (error) showToast('Error: '+error.message, '#dc2626')
-    else {
-      const { data } = await supabase.from('timetable_substitutes').select('*').order('sub_date',{ascending:false})
-      if (data) setSubstitutes(data)
-      setSubMode(null); setSubTeacher('')
-      showToast('Substitute assigned', '#16a34a')
-    }
-  }
-
-  const handleDeleteSub = async id => {
-    await supabase.from('timetable_substitutes').delete().eq('id', id)
-    const { data } = await supabase.from('timetable_substitutes').select('*').order('sub_date',{ascending:false})
-    if (data) setSubstitutes(data)
-    showToast('Substitute removed', '#dc2626')
-  }
-
-  const getSlot = (day, period) => timetable.find(t => t.class_name===viewSubtype && t.day_name===day && t.period_name===String(period))
-  const getSub  = (day, period) => substitutes.find(s => s.class_name===viewSubtype && s.day_name===day && s.period_name===String(period) && s.sub_date===subDate)
-
-  const viewSubtypes = viewCourse ? subtypesFor(viewCourse) : []
-
-  const teacherWorkload = useMemo(() => {
-    const map = {}
-    timetable.forEach(t => {
-      if (!t.teacher_name) return
-      if (!map[t.teacher_name]) map[t.teacher_name] = { periods:0, batches:new Set(), days:new Set() }
-      map[t.teacher_name].periods++
-      map[t.teacher_name].batches.add(t.class_name)
-      map[t.teacher_name].days.add(t.day_name)
-    })
-    return Object.entries(map).map(([name,d]) => ({ name, periods:d.periods, batches:d.batches.size, days:d.days.size })).sort((a,b) => b.periods-a.periods)
-  }, [timetable])
-
-  return (
-    <>
-      {toastEl}
-      {confirmDel && <ConfirmModal title="Delete Period" message="Remove this period from the timetable?" confirmLabel="Delete" danger onConfirm={() => handleDelete(confirmDel)} onCancel={() => setConfirmDel(null)}/>}
-
-      {conflictMap.length > 0 && (
-        <div style={{ padding:'12px 16px', background:'#fff1f2', border:'1px solid #fecaca', borderRadius:10, marginBottom:14 }}>
-          <div style={{ fontWeight:800, color:'#dc2626', fontSize:14, marginBottom:6 }}>⚠️ {conflictMap.length} Teacher Conflict{conflictMap.length>1?'s':''}</div>
-          {conflictMap.map((c,i) => (
-            <div key={i} style={{ fontSize:12, color:'#b91c1c', marginBottom:2 }}>
-              👨‍🏫 {c.teacher} · {c.day} · P{c.period} → {c.slots.map(s=>s.class_name).join(' & ')}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div style={S.card}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, flexWrap:'wrap', gap:8 }}>
-          <h2 style={{ fontSize:16, fontWeight:800, color:'#132a4f', margin:0 }}>🕐 Timetable</h2>
-          <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
-            <select value={viewCourse} onChange={e => { setViewCourse(e.target.value); setViewSubtype('') }} style={{ ...S.select, width:'auto' }}>{courses.map(c=><option key={c} value={c}>{c}</option>)}</select>
-            <select value={viewSubtype} onChange={e => setViewSubtype(e.target.value)} style={{ ...S.select, width:'auto' }}>
-              <option value="">Select Batch</option>
-              {viewSubtypes.map(s=><option key={s} value={s}>{s}</option>)}
-            </select>
-            <span style={{ fontSize:12, color:'#5d6b82' }}>Sub date:</span>
-            <input type="date" value={subDate} onChange={e => setSubDate(e.target.value)} style={{ ...S.input, width:140, fontSize:12, padding:'6px 10px' }}/>
-            <button onClick={() => setShowForm(!showForm)} style={S.btn(showForm?'#5d6b82':'#132a4f')}>{showForm?'✖ Cancel':'➕ Add Period'}</button>
-          </div>
-        </div>
-
-        {showForm && (
-          <form onSubmit={handleSave} className="form-grid" style={{ ...S.formGrid, marginBottom:20, padding:14, background:'#faf8f3', borderRadius:8 }}>
-            <CoursePicker form={form} setForm={setForm} courseData={courseData}/>
-            <div><label style={S.label}>Day</label><select value={form.day_of_week} onChange={e=>setForm(f=>({...f,day_of_week:e.target.value}))} required style={S.select}>{DAYS.map(d=><option key={d} value={d}>{d}</option>)}</select></div>
-            <div><label style={S.label}>Period</label><select value={form.period_number} onChange={e=>setForm(f=>({...f,period_number:e.target.value}))} required style={S.select}>{PERIODS.map(p=><option key={p} value={p}>Period {p}</option>)}</select></div>
-            <div><label style={S.label}>Subject</label><select value={form.subject_name} onChange={e=>setForm(f=>({...f,subject_name:e.target.value}))} required style={S.select}><option value="">Select</option>{SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}</select></div>
-            <div><label style={S.label}>Teacher</label><select value={form.teacher_name} onChange={e=>setForm(f=>({...f,teacher_name:e.target.value}))} style={S.select}><option value="">Select</option>{staff.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select></div>
-            <div><label style={S.label}>Start Time</label><input type="time" value={form.start_time} onChange={e=>setForm(f=>({...f,start_time:e.target.value}))} style={S.input}/></div>
-            <div><label style={S.label}>End Time</label><input type="time" value={form.end_time} onChange={e=>setForm(f=>({...f,end_time:e.target.value}))} style={S.input}/></div>
-            <div style={{ gridColumn:'1/-1' }}><button type="submit" disabled={saving} style={S.btn('#16a34a',saving)}>{saving?'⏳ Saving...':'✅ Save Period'}</button></div>
-          </form>
-        )}
-
-        <div className="table-wrap">
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, minWidth:560 }}>
-            <thead>
-              <tr style={{ background:'#132a4f', color:'white' }}>
-                <th style={{ padding:'9px 10px', textAlign:'center', fontWeight:700, minWidth:40 }}>P</th>
-                {DAYS.map(d => <th key={d} style={{ padding:'9px 10px', textAlign:'center', fontWeight:700, minWidth:100 }}>{d}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {PERIODS.map(p => (
-                <tr key={p} style={{ borderBottom:'1px solid #e8e3d8' }}>
-                  <td style={{ padding:'7px 10px', textAlign:'center', fontWeight:800, color:'#132a4f', background:'#faf8f3', fontSize:13 }}>P{p}</td>
-                  {DAYS.map(day => {
-                    const slot = getSlot(day, p)
-                    const sub  = getSub(day, p)
-                    const isConflict = conflictMap.some(c => c.teacher===slot?.teacher_name && c.day===day && c.period===String(p))
-                    return (
-                      <td key={day} style={{ padding:5, textAlign:'center', background:sub?'#fef9c3':slot?'#f0fdf4':isConflict?'#fff1f2':'white', border:isConflict?'1px solid #fecaca':'none' }}>
-                        {slot ? (
-                          <div>
-                            <div style={{ fontWeight:700, color:'#15803d', fontSize:11 }}>{slot.subject_name}</div>
-                            {sub
-                              ? <div style={{ fontSize:10, color:'#b45309', fontWeight:600 }}>🔄 {sub.substitute_teacher}</div>
-                              : <div style={{ fontSize:10, color:'#5d6b82' }}>{slot.teacher_name||'-'}</div>}
-                            {slot.start_time && <div style={{ fontSize:9, color:'#8a93a6' }}>{slot.start_time}–{slot.end_time}</div>}
-                            {isConflict && <div style={{ fontSize:9, color:'#dc2626', fontWeight:700 }}>⚠️ conflict</div>}
-                            <div style={{ display:'flex', gap:2, justifyContent:'center', marginTop:3 }}>
-                              <button onClick={() => setSubMode({ slotId:slot.id, day, period:p, subtype:viewSubtype })} style={{ ...S.btnSm('#f59e0b'), padding:'2px 5px', fontSize:9 }}>🔄</button>
-                              <button onClick={() => setConfirmDel(slot.id)} style={{ ...S.btnSm('#dc2626'), padding:'2px 5px', fontSize:9 }}>🗑</button>
-                            </div>
-                          </div>
-                        ) : <span style={{ color:'#e8e3d8', fontSize:14 }}>—</span>}
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {subMode && (
-          <div style={{ marginTop:14, padding:'14px 16px', background:'#fef9c3', border:'1px solid #f59e0b', borderRadius:10 }}>
-            <div style={{ fontWeight:700, color:'#b45309', marginBottom:10, fontSize:13 }}>🔄 Assign Substitute — {subMode.day} P{subMode.period} · {subMode.subtype}</div>
-            <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
-              <select value={subTeacher} onChange={e=>setSubTeacher(e.target.value)} style={{ ...S.select, width:200 }}>
-                <option value="">Select teacher</option>
-                {staff.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}
-              </select>
-              <input type="date" value={subDate} onChange={e=>setSubDate(e.target.value)} style={{ ...S.input, width:150 }}/>
-              <button onClick={handleSaveSubstitute} style={S.btn('#f59e0b')}>✅ Assign</button>
-              <button onClick={() => { setSubMode(null); setSubTeacher('') }} style={S.btn('#5d6b82')}>✖</button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {substitutes.length > 0 && (
-        <div style={S.card}>
-          <h3 style={{ fontSize:14, fontWeight:800, color:'#132a4f', marginTop:0 }}>🔄 Substitute History</h3>
-          <div className="table-wrap">
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, minWidth:400 }}>
-              <thead>
-                <tr style={{ background:'#faf8f3', borderBottom:'1px solid #e8e3d8' }}>
-                  {['Date','Batch','Day','Period','Subject','Original','Substitute',''].map(h => (
-                    <th key={h} style={{ padding:'8px 10px', textAlign:'left', fontWeight:700, color:'#2e3b52', fontSize:11 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {substitutes.slice(0,20).map(s => (
-                  <tr key={s.id} style={{ borderBottom:'1px solid #f3f0e8' }}>
-                    <td style={{ padding:'8px 10px', color:'#5d6b82' }}>{fmtDate(s.sub_date)}</td>
-                    <td style={{ padding:'8px 10px' }}><span style={S.badge('#132a4f','#eef2f9')}>{s.class_name||'-'}</span></td>
-                    <td style={{ padding:'8px 10px', color:'#5d6b82' }}>{s.day_name}</td>
-                    <td style={{ padding:'8px 10px', color:'#5d6b82' }}>P{s.period_name}</td>
-                    <td style={{ padding:'8px 10px', fontWeight:600, color:'#14213d' }}>{s.subject_name}</td>
-                    <td style={{ padding:'8px 10px', color:'#5d6b82' }}>{s.original_teacher}</td>
-                    <td style={{ padding:'8px 10px', fontWeight:700, color:'#b45309' }}>{s.substitute_teacher}</td>
-                    <td style={{ padding:'8px 10px' }}><button onClick={() => handleDeleteSub(s.id)} style={S.btnSm('#dc2626')}>🗑</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      <div style={S.card}>
-        <h3 style={{ fontSize:14, fontWeight:800, color:'#132a4f', marginTop:0 }}>👨‍🏫 Teacher Workload</h3>
-        <div className="table-wrap">
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, minWidth:360 }}>
-            <thead>
-              <tr style={{ background:'#faf8f3', borderBottom:'1px solid #e8e3d8' }}>
-                {['Teacher','Periods/Week','Batches','Active Days','Load'].map(h => (
-                  <th key={h} style={{ padding:'9px 10px', textAlign:'left', fontWeight:700, color:'#2e3b52', fontSize:12 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {teacherWorkload.map((t,i) => {
-                const lp = Math.round((t.periods/(DAYS.length*PERIODS.length))*100)
-                return (
-                  <tr key={t.name} style={{ borderBottom:'1px solid #f3f0e8', background:i<3?'#fafffe':'white' }}>
-                    <td style={{ padding:'9px 10px', fontWeight:600, color:'#14213d' }}>{i===0?'🥇':i===1?'🥈':i===2?'🥉':'👨‍🏫'} {t.name}</td>
-                    <td style={{ padding:'9px 10px', fontWeight:700, color:'#132a4f', fontFamily:"'Fraunces','Playfair Display',Georgia,serif" }}>{t.periods}</td>
-                    <td style={{ padding:'9px 10px', color:'#5d6b82' }}>{t.batches}</td>
-                    <td style={{ padding:'9px 10px', color:'#5d6b82' }}>{t.days}</td>
-                    <td style={{ padding:'9px 10px', minWidth:110 }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                        <div style={{ flex:1, height:6, background:'#e8e3d8', borderRadius:3, overflow:'hidden' }}>
-                          <div style={{ width:`${Math.min(lp,100)}%`, height:'100%', background:lp>70?'#dc2626':lp>40?'#d97706':'#16a34a', borderRadius:3 }}/>
-                        </div>
-                        <span style={{ fontSize:11, color:'#5d6b82', minWidth:28 }}>{lp}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-              {teacherWorkload.length===0 && <tr><td colSpan={5} style={{ padding:24, textAlign:'center', color:'#8a93a6' }}>No timetable data.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
-  )
-}
 
 // ─── Tab: Reports ─────────────────────────────────────────────────────────────
 
-function TabReports({ logs, missed, staff, courseData }) {
+function TabReports({ logs, missed, courseData }) {
   const [month, setMonth]     = useState(currentYearMonth())
   const [teacher, setTeacher] = useState('All')
   const [course, setCourse]   = useState('All')
@@ -1575,97 +1289,13 @@ function TabReports({ logs, missed, staff, courseData }) {
   )
 }
 
-// ─── Tab: Search ──────────────────────────────────────────────────────────────
-
-function TabSearch({ logs, monthlySyllabus=[], onNavigateTab }) {
-  const [query, setQuery]         = useState('')
-  const [marking, setMarking]     = useState(null)
-  const [localSyllabus, setLocalSyllabus] = useState(monthlySyllabus)
-  useEffect(() => { setLocalSyllabus(monthlySyllabus) }, [monthlySyllabus])
-
-  const findSyllabusMatch = useCallback(logItem => {
-    if (!localSyllabus.length || !logItem.topic_taught) return null
-    const topicLower = (logItem.topic_taught||'').toLowerCase()
-    return localSyllabus.find(s => {
-      const sLower = s.topic.toLowerCase()
-      if (sLower.length < 4 || topicLower.length < 4) return false
-      const fragment = sLower.slice(0, Math.min(20, sLower.length))
-      return topicLower.includes(fragment) || sLower.includes(topicLower.slice(0, Math.min(20, topicLower.length)))
-    }) || null
-  }, [localSyllabus])
-
-  const results = useMemo(() => {
-    if (!query.trim()) return []
-    const q = query.toLowerCase()
-    return logs.filter(l =>
-      (l.topic_taught||'').toLowerCase().includes(q) ||
-      (l.classwork||'').toLowerCase().includes(q) ||
-      (l.homework||'').toLowerCase().includes(q)
-    ).sort((a,b) => (b.teaching_date ?? '').localeCompare(a.teaching_date ?? ''))
-  }, [logs, query])
-
-  const handleMarkDone = async syllabusItem => {
-    setMarking(syllabusItem.id)
-    const completed_at = new Date().toISOString()
-    const { error } = await supabase.from('monthly_syllabus').update({ completed:true, completed_at }).eq('id', syllabusItem.id)
-    if (!error) setLocalSyllabus(prev => prev.map(s => s.id===syllabusItem.id?{...s,completed:true,completed_at}:s))
-    else alert('Error: '+error.message)
-    setMarking(null)
-  }
-
-  const matchCount   = useMemo(() => results.filter(r => findSyllabusMatch(r)).length, [results, findSyllabusMatch])
-  const pendingCount = useMemo(() => results.filter(r => { const m=findSyllabusMatch(r); return m&&!m.completed }).length, [results, findSyllabusMatch])
-
-  return (
-    <div style={S.card}>
-      <h2 style={{ fontSize:16, fontWeight:800, color:'#132a4f', marginTop:0 }}>🔍 Topic Search</h2>
-      <p style={{ color:'#5d6b82', fontSize:13, marginBottom:14 }}>Search across all topics, classwork, and homework with live Monthly Syllabus matching.</p>
-      <input value={query} onChange={e => setQuery(e.target.value)} placeholder="e.g. Pythagoras, Photosynthesis, LCM..." style={{ ...S.input, fontSize:15, padding:'12px 16px', marginBottom:14 }} autoFocus/>
-      {query && results.length>0 && (
-        <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:14, padding:'10px 14px', background:'#faf8f3', borderRadius:10, border:'1px solid #e8e3d8', fontSize:12 }}>
-          <span style={{ color:'#132a4f', fontWeight:700 }}>📋 {results.length} log{results.length!==1?'s':''} found</span>
-          {matchCount>0 && <span style={{ color:'#a7771f', fontWeight:700 }}>📆 {matchCount} match syllabus</span>}
-          {pendingCount>0 && <span style={{ color:'#b45309', fontWeight:700 }}>⏳ {pendingCount} pending</span>}
-          {matchCount>0 && <button onClick={() => onNavigateTab?.('monthly')} style={{ marginLeft:'auto', ...S.btnSm('#132a4f') }}>→ Monthly Syllabus</button>}
-        </div>
-      )}
-      {query && <div style={{ fontSize:12, color:'#5d6b82', marginBottom:10 }}>{results.length} result{results.length!==1?'s':''}</div>}
-      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-        {results.map(l => {
-          const match = findSyllabusMatch(l)
-          return (
-            <div key={l.id} style={{ border:`1px solid ${match?(match.completed?'#bbf7d0':'#fde68a'):'#e8e3d8'}`, borderRadius:10, padding:'14px 16px', background:match?(match.completed?'#fafffe':'#fffdf0'):'white' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5, flexWrap:'wrap', gap:4 }}>
-                <span style={{ fontWeight:700, color:'#14213d' }}>{l.topic_taught}</span>
-                <span style={{ fontSize:12, color:'#5d6b82' }}>{fmtDate(l.teaching_date)}</span>
-              </div>
-              <div style={{ fontSize:13, color:'#5d6b82' }}>{l.course}/{l.subtype}/{l.class_name} · {l.subject_name} · 👨‍🏫 {l.teacher_name||'-'}</div>
-              {l.classwork && <div style={{ fontSize:12, color:'#8a93a6', marginTop:4 }}>📝 {l.classwork}</div>}
-              {l.homework  && <div style={{ fontSize:12, color:'#8a93a6', marginTop:2 }}>📚 HW: {l.homework}</div>}
-              {match && (
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:8, padding:'7px 12px', background:match.completed?'#f0fdf4':'#fefce8', border:`1px solid ${match.completed?'#bbf7d0':'#fde68a'}`, borderRadius:8, flexWrap:'wrap' }}>
-                  <span style={S.badge('#132a4f','#eef2f9')}>{match.admit_type}</span>
-                  <span style={S.badge('#a7771f','#fbf3e0')}>{match.subject_name}</span>
-                  {match.completed
-                    ? <span style={S.badge('#16a34a','#dcfce7')}>✅ Done</span>
-                    : <span style={S.badge('#b45309','#fef9c3')}>⏳ Pending</span>}
-                  <span style={{ fontSize:11, color:'#5d6b82', flex:1 }}>📆 {match.topic}</span>
-                  {!match.completed && <button onClick={() => handleMarkDone(match)} disabled={marking===match.id} style={S.btnSm('#16a34a')}>✓ Mark Done</button>}
-                </div>
-              )}
-            </div>
-          )
-        })}
-        {query && results.length===0 && <div style={{ textAlign:'center', padding:32, color:'#8a93a6' }}>No results for "{query}"</div>}
-      </div>
-    </div>
-  )
-}
 
 // ─── Tab: Student Performance ─────────────────────────────────────────────────
 
-function TabStudentPerformance({ courseData, logs, currentUser }) {
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin'
+function TabStudentPerformance({ courseData, currentUser }) {
+  // 'Administrator' and 'Co-Admin' are admins too (the old check only
+  // matched the lowercase role 'admin').
+  const isAdmin = isAdminRole(currentUser?.role) || (currentUser?.role || '').toLowerCase() === 'admin'
   const [scores, setScores]           = useState([])
   const [students, setStudents]       = useState([])
   const [studentsErr, setStudentsErr] = useState('')
@@ -1781,6 +1411,7 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
     setBulkSaving(false)
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- load scores once on open
   useEffect(() => { fetchScores() }, [])
 
   const handleCourseChange  = c  => { setForm(f => ({ ...f, course:c, subtype:'', class_name:'', batch_id:'', student_id:'', student_name:'' })); setStudents([]) }
@@ -2026,8 +1657,7 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
     const map = {}
     Object.values(groups).forEach(group => {
       const sorted = [...group].sort((a,b) => pct(b.score,b.max_score)-pct(a.score,a.max_score))
-      sorted.forEach((s,i) => {
-        const tied = sorted.filter(x => pct(x.score,x.max_score)===pct(s.score,s.max_score))
+      sorted.forEach(s => {
         const rank = sorted.findIndex(x => pct(x.score,x.max_score)===pct(s.score,s.max_score)) + 1
         map[s.id] = { rank, outOf: group.length, percentile: Math.round((1 - (rank-1)/group.length)*100) }
       })
@@ -2597,7 +2227,7 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
           {filterStudent==='All'?<div style={{ textAlign:'center', padding:32, color:'#8a93a6' }}>Select a student from the filter above.</div>:trendData.length===0?<div style={{ textAlign:'center', padding:32, color:'#8a93a6' }}>No scores for {filterStudent.name}.</div>:(
             <>
               <div style={{ display:'flex', gap:8, alignItems:'flex-end', height:160, padding:'0 6px', borderBottom:'2px solid #e8e3d8', overflowX:'auto', marginTop:14, marginBottom:14 }}>
-                {trendData.map((s,i) => { const p = pct(s.score, s.max_score); return (
+                {trendData.map(s => { const p = pct(s.score, s.max_score); return (
                   <div key={s.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, minWidth:54 }}>
                     <span style={{ fontSize:11, fontWeight:700, color:scoreColor(p), fontFamily:"'Fraunces','Playfair Display',Georgia,serif" }}>{p}%</span>
                     <div title={`${s.topic}: ${s.score}/${s.max_score}`} style={{ width:38, height:`${Math.max(p*1.4,4)}px`, background:scoreColor(p), borderRadius:'4px 4px 0 0', transition:'height .3s' }}/>
@@ -2879,24 +2509,20 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
 function TabHMDashboard({ currentUser }) {
   const [allDoubt, setAllDoubt]       = useState([])
   const [allScores, setAllScores]     = useState([])
-  const [houses, setHouses]           = useState([])
+  const [, setHouses]                = useState([])
   const [teachingLogs, setTeachingLogs] = useState([])
   const [warnings, setWarnings]         = useState([])
   const [expandedWarningTeacher, setExpandedWarningTeacher] = useState(null) // teacher name currently showing full history
   const [excellentLogs, setExcellentLogs] = useState([])
   const [confirmDel, setConfirmDel]   = useState(null)
   const [photoView, setPhotoView]     = useState(null)
-  const isAdmin = currentUser?.role?.toLowerCase() === 'admin'
+  const isAdmin = isAdminRole(currentUser?.role) || currentUser?.role?.toLowerCase() === 'admin'
   const [selectedHouse, setSelectedHouse] = useState('All')
   const [selectedDay, setSelectedDay]     = useState('All')
   const [loading, setLoading]     = useState(true)
-  const [noteFor, setNoteFor]     = useState(null)
-  const [note, setNote]           = useState('')
-  const [resolvingId, setResolvingId] = useState(null)
   const [page, setPage]           = useState(1)
   const { show: showToast, el: toastEl } = useToast()
 
-  const resolverName = currentUser?.name || 'HM'
 
   const handleDeleteLog = async id => {
     await supabase.from('teaching_logs').delete().eq('id', id)
@@ -2940,13 +2566,14 @@ function TabHMDashboard({ currentUser }) {
     setLoading(false)
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- load once on open
   useEffect(() => { fetchAll() }, [])
 
   const filteredDoubt = useMemo(() => {
     const todayStr     = today()
-    const yesterdayStr = new Date(Date.now()-86400000).toISOString().split('T')[0]
-    const last7Str     = new Date(Date.now()-7*86400000).toISOString().split('T')[0]
-    const last30Str    = new Date(Date.now()-30*86400000).toISOString().split('T')[0]
+    const yesterdayStr = isoDaysAgo(1)
+    const last7Str     = isoDaysAgo(7)
+    const last30Str    = isoDaysAgo(30)
     return allDoubt.filter(d => {
       const hmMatch  = selectedHouse==='All' || d.hm_name===selectedHouse || d.resolved_by===selectedHouse
       let dayMatch   = true
@@ -2982,17 +2609,7 @@ function TabHMDashboard({ currentUser }) {
     return map
   }, [allDoubt])
 
-  const handleResolve = async session => {
-    if (!note.trim()) { showToast('Enter resolution note.', '#d97706'); return }
-    setResolvingId(session.id)
-    const { error } = await supabase.from('doubt_sessions').update({
-      status:'resolved', resolved_by:resolverName,
-      resolved_at:new Date().toISOString(), resolution_note:note,
-    }).eq('id', session.id)
-    if (error) showToast('Error: '+error.message, '#dc2626')
-    else { fetchAll(); setNote(''); setNoteFor(null); showToast('Marked resolved', '#16a34a') }
-    setResolvingId(null)
-  }
+
 
   const HIST_PAGE = 10
   const histPages = Math.ceil(doneSessions.length/HIST_PAGE)
@@ -3403,378 +3020,7 @@ function TabHMDashboard({ currentUser }) {
   )
 }
 
-// ─── Tab: Admin Monitor ───────────────────────────────────────────────────────
 
-function TabAdminMonitor({ logs, missed, timetable, staff, courseData }) {
-  const [allDoubt, setAllDoubt]     = useState([])
-  const [allScores, setAllScores]   = useState([])
-  const [alerts, setAlerts]         = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [generating, setGenerating] = useState(false)
-  const [alertFilter, setAlertFilter] = useState('All')
-  const { show: showToast, el: toastEl } = useToast()
-  const { courses } = courseData
-
-  const fetchAll = async () => {
-    setLoading(true)
-    const [d,s,a] = await Promise.all([
-      supabase.from('doubt_sessions').select('*'),
-      supabase.from('student_scores').select('*'),
-      supabase.from('admin_alerts').select('*').order('created_at',{ascending:false}).limit(50),
-    ])
-    if (d.error) showToast('Doubts: '+d.error.message, '#dc2626')
-    if (s.error) showToast('Scores: '+s.error.message, '#dc2626')
-    if (a.error) showToast('Alerts: '+a.error.message, '#dc2626')
-    if (d.data) setAllDoubt(d.data)
-    if (s.data) setAllScores(s.data)
-    if (a.data) setAlerts(a.data)
-    setLoading(false)
-  }
-  useEffect(() => { fetchAll() }, [])
-
-  const currMonth = currentYearMonth()
-
-  const batchHealth = useMemo(() => {
-    const result = []
-    const subtypes = [...new Set(logs.map(l => l.subtype).filter(Boolean))]
-    subtypes.forEach(subtype => {
-      const bl = logs.filter(l => l.subtype===subtype && l.teaching_date?.startsWith(currMonth))
-      const bd = allDoubt.filter(d => d.subtype===subtype)
-      const open = bd.filter(d => d.status==='open').length
-      const bs = allScores.filter(s => s.subtype===subtype)
-      const avg = bs.length > 0 ? Math.round(bs.reduce((a,s)=>a+pct(s.score,s.max_score),0)/bs.length) : null
-      const sub = new Set(bl.map(l => l.subject_name)).size
-      const resRate = bd.length > 0 ? Math.round(((bd.length-open)/bd.length)*100) : 100
-      result.push({ subtype, course:logs.find(l=>l.subtype===subtype)?.course||'', logsThisMonth:bl.length, subjectsCovered:sub, openDoubt:open, doubtResRate:resRate, avgScore:avg, health:Math.round((Math.min(bl.length/20,1)*40)+(resRate*.3)+((avg||50)/100*30)) })
-    })
-    return result.sort((a,b) => a.health-b.health)
-  }, [logs, allDoubt, allScores, currMonth])
-
-  const teacherBoard = useMemo(() => {
-    const map = {}
-    logs.filter(l => l.teaching_date?.startsWith(currMonth)).forEach(l => {
-      if (!l.teacher_name) return
-      if (!map[l.teacher_name]) map[l.teacher_name] = { name:l.teacher_name, logs:0, doubts:0, subjects:new Set() }
-      map[l.teacher_name].logs++; map[l.teacher_name].subjects.add(l.subject_name)
-    })
-    allDoubt.filter(d => d.teacher_name&&d.status==='open').forEach(d => { if (map[d.teacher_name]) map[d.teacher_name].doubts++ })
-    return Object.values(map).sort((a,b) => b.logs-a.logs)
-  }, [logs, allDoubt, currMonth])
-
-  const gaps = useMemo(() => {
-    const threshold = new Date(); threshold.setDate(threshold.getDate()-3)
-    const threshStr = threshold.toISOString().split('T')[0]
-    const result = []
-    const pairs = [...new Set(logs.map(l => `${l.subtype}||${l.subject_name}`))]
-    pairs.forEach(pair => {
-      const [subtype,subject] = pair.split('||')
-      const recent = logs.filter(l => l.subtype===subtype && l.subject_name===subject && l.teaching_date>=threshStr)
-      if (!recent.length) {
-        const last = logs.filter(l => l.subtype===subtype && l.subject_name===subject).sort((a,b) => (b.teaching_date ?? '').localeCompare(a.teaching_date ?? ''))[0]
-        result.push({ subtype, subject, lastLogged:last?.teaching_date||'never', teacher:last?.teacher_name||'-' })
-      }
-    })
-    return result
-  }, [logs])
-
-  const staleDoubt = useMemo(() => {
-    const threshold = new Date(); threshold.setDate(threshold.getDate()-2)
-    const threshStr = threshold.toISOString().split('T')[0]
-    return allDoubt.filter(d => d.status==='open' && d.teaching_date && d.teaching_date<=threshStr)
-  }, [allDoubt])
-
-  const generateAlerts = async () => {
-    setGenerating(true)
-    const newAlerts = []
-    gaps.forEach(g => {
-      if (!alerts.find(a => a.alert_type==='gap' && a.subtype===g.subtype && a.subject_name===g.subject && !a.is_read))
-        // PATCH-5: added is_read:false so alerts are correctly identified as unread
-        newAlerts.push({ alert_type:'gap', course:'', subtype:g.subtype, subject_name:g.subject, teacher_name:g.teacher, message:`No log for ${g.subject} (${g.subtype}) in 3+ days. Last: ${fmtDate(g.lastLogged)}`, severity:'medium', is_read:false })
-    })
-    staleDoubt.forEach(d => {
-      if (!alerts.find(a => a.alert_type==='doubt_stale' && a.subtype===d.subtype && a.subject_name===d.subject_name && !a.is_read))
-        // PATCH-5: added is_read:false so alerts are correctly identified as unread
-        newAlerts.push({ alert_type:'doubt_stale', course:d.course||'', subtype:d.subtype||'', subject_name:d.subject_name, teacher_name:d.teacher_name||'', message:`Unresolved doubt for ${d.subject_name} (${d.house_name}) since ${fmtDate(d.teaching_date)}`, severity:'high', is_read:false })
-    })
-    if (newAlerts.length > 0) {
-      const { error } = await supabase.from('admin_alerts').insert(newAlerts)
-      if (error) showToast('Error saving alerts: '+error.message, '#dc2626')
-      else { await fetchAll(); showToast(`${newAlerts.length} new alerts generated`, '#16a34a') }
-    } else {
-      showToast('✅ No new alerts needed!', '#16a34a')
-    }
-    setGenerating(false)
-  }
-
-  const markRead = async id => {
-    await supabase.from('admin_alerts').update({ is_read:true }).eq('id', id)
-    setAlerts(prev => prev.map(a => a.id===id?{...a,is_read:true}:a))
-  }
-
-  const unreadAlerts  = alerts.filter(a => !a.is_read)
-  const alertTypes    = [...new Set(alerts.map(a => a.alert_type))]
-  const shownAlerts   = alertFilter==='All' ? alerts : alerts.filter(a => a.alert_type===alertFilter)
-
-  if (loading) return <div style={{ textAlign:'center', padding:48, color:'#5d6b82' }}>⏳ Loading admin monitor...</div>
-
-  return (
-    <>
-      {toastEl}
-      <div className="stat-grid-4" style={S.statGrid(4)}>
-        {[
-          { label:'Unread Alerts',    value:unreadAlerts.length,           color:'#dc2626', bg:'#fee2e2', icon:'🔔' },
-          { label:'Open Doubts',      value:allDoubt.filter(d=>d.status==='open').length, color:'#d97706', bg:'#fef9c3', icon:'⏳' },
-          { label:'Syllabus Gaps',    value:gaps.length,                   color:'#a7771f', bg:'#fbf3e0', icon:'📚' },
-          { label:'Stale (2d+)',      value:staleDoubt.length,             color:'#dc2626', bg:'#fff1f2', icon:'⚠️' },
-        ].map(c => (
-          <div key={c.label} style={S.statCard(c.color, c.bg)}>
-            <div style={{ fontSize:20, marginBottom:4 }}>{c.icon}</div>
-            <p style={{ fontSize:12, color:c.color, fontWeight:700, margin:0 }}>{c.label}</p>
-            <h2 style={{ fontSize:26, fontWeight:800, color:c.color, margin:'2px 0 0', fontFamily:"'Fraunces','Playfair Display',Georgia,serif" }}>{c.value}</h2>
-          </div>
-        ))}
-      </div>
-
-      <div style={S.card}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, flexWrap:'wrap', gap:8 }}>
-          <h3 style={{ fontSize:15, fontWeight:800, color:'#132a4f', margin:0 }}>
-            🔔 Alerts {unreadAlerts.length>0 && <span style={{ ...S.badge('white','#dc2626'), marginLeft:8 }}>{unreadAlerts.length} new</span>}
-          </h3>
-          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-            <select value={alertFilter} onChange={e => setAlertFilter(e.target.value)} style={{ ...S.select, width:'auto', fontSize:12 }}>
-              <option value="All">All Types</option>
-              {alertTypes.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-            <button onClick={generateAlerts} disabled={generating} style={S.btn('#a7771f',generating)}>{generating?'⏳ Generating...':'⚡ Generate Alerts'}</button>
-          </div>
-        </div>
-        {shownAlerts.length===0
-          ? <div style={{ textAlign:'center', padding:24, color:'#8a93a6' }}>No alerts. Click "Generate Alerts" to scan.</div>
-          : shownAlerts.slice(0,20).map(a => (
-            <div key={a.id} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'10px 12px', marginBottom:7, borderRadius:8, border:`1px solid ${a.severity==='high'?'#fecaca':a.severity==='medium'?'#fde68a':'#e8e3d8'}`, background:a.is_read?'white':(a.severity==='high'?'#fff1f2':a.severity==='medium'?'#fffbeb':'#faf8f3'), opacity:a.is_read?.6:1 }}>
-              <span style={{ fontSize:14, marginTop:2 }}>{a.severity==='high'?'🔴':a.severity==='medium'?'🟡':'🔵'}</span>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:13, color:'#14213d', fontWeight:a.is_read?400:600 }}>{a.message}</div>
-                <div style={{ fontSize:11, color:'#8a93a6', marginTop:2 }}>{a.alert_type} · {fmtDate(a.created_at?.split('T')[0])}</div>
-              </div>
-              {!a.is_read && <button onClick={() => markRead(a.id)} style={S.btnSm('#8a93a6')}>✓ Read</button>}
-            </div>
-          ))
-        }
-      </div>
-
-      <div style={S.card}>
-        <h3 style={{ fontSize:15, fontWeight:800, color:'#132a4f', marginTop:0 }}>🏫 Batch Health — {new Date().toLocaleString('default',{month:'long',year:'numeric'})}</h3>
-        {batchHealth.length===0 && <div style={{ textAlign:'center', padding:24, color:'#8a93a6' }}>No batch data.</div>}
-        {batchHealth.map((b,i) => (
-          <div key={i} style={{ border:'1px solid #e8e3d8', borderRadius:10, padding:'14px 16px', marginBottom:10 }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, flexWrap:'wrap', gap:6 }}>
-              <div><span style={{ fontWeight:800, color:'#14213d', fontSize:14 }}>{b.subtype}</span><span style={{ marginLeft:8, fontSize:12, color:'#5d6b82' }}>{b.course}</span></div>
-              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                {b.openDoubt>0 && <span style={S.badge('#b45309','#fef9c3')}>⏳ {b.openDoubt}</span>}
-                {b.avgScore!=null && <span style={{ ...S.badge(scoreColor(b.avgScore), scoreBg(b.avgScore)) }}>{b.avgScore}%</span>}
-                <span style={{ fontSize:18, fontWeight:800, color:scoreColor(b.health), fontFamily:"'Fraunces','Playfair Display',Georgia,serif" }}>{b.health}%</span>
-              </div>
-            </div>
-            <div style={{ height:7, background:'#e8e3d8', borderRadius:4, overflow:'hidden', marginBottom:6 }}>
-              <div style={{ width:`${b.health}%`, height:'100%', background:scoreColor(b.health), borderRadius:4, transition:'width .4s' }}/>
-            </div>
-            <div style={{ display:'flex', gap:14, fontSize:12, color:'#5d6b82', flexWrap:'wrap' }}>
-              <span>📋 {b.logsThisMonth} logs</span><span>📚 {b.subjectsCovered} subjects</span><span>🔁 {b.doubtResRate}% resolved</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div style={S.card}>
-        <h3 style={{ fontSize:15, fontWeight:800, color:'#132a4f', marginTop:0 }}>🏆 Teacher Activity — This Month</h3>
-        {teacherBoard.length===0 && <div style={{ textAlign:'center', padding:24, color:'#8a93a6' }}>No teacher logs this month.</div>}
-        {teacherBoard.map((t,i) => (
-          <div key={t.name} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 12px', border:'1px solid #e8e3d8', borderRadius:8, background:i<3?'#f0fdf4':'white', marginBottom:6, flexWrap:'wrap' }}>
-            <span style={{ fontWeight:800, color:i===0?'#ca8a04':i===1?'#8a93a6':i===2?'#b45309':'#8a93a6', fontSize:14, minWidth:24 }}>#{i+1}</span>
-            <span style={{ flex:1, fontWeight:600, color:'#14213d', fontSize:13 }}>👨‍🏫 {t.name}</span>
-            <span style={S.pill('#132a4f','#eef2f9')}>{t.logs} logs</span>
-            <span style={S.pill('#a7771f','#fbf3e0')}>{t.subjects.size} subj</span>
-            {t.doubts>0 && <span style={S.pill('#b45309','#fef9c3')}>⏳ {t.doubts}</span>}
-          </div>
-        ))}
-      </div>
-
-      {gaps.length > 0 && (
-        <div style={S.card}>
-          <h3 style={{ fontSize:15, fontWeight:800, color:'#a7771f', marginTop:0 }}>📚 Syllabus Gaps (3+ days no log)</h3>
-          {gaps.map((g,i) => (
-            <div key={i} style={{ display:'flex', gap:10, alignItems:'center', padding:'8px 12px', border:'1px solid #eadbb2', borderRadius:8, background:'#faf5ff', fontSize:13, marginBottom:5, flexWrap:'wrap' }}>
-              <span style={S.badge('#a7771f','#fbf3e0')}>{g.subtype}</span>
-              <span style={{ flex:1, color:'#2e3b52' }}>{g.subject}</span>
-              <span style={{ color:'#8a93a6' }}>Last: {fmtDate(g.lastLogged)}</span>
-              <span style={{ color:'#5d6b82' }}>👨‍🏫 {g.teacher}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </>
-  )
-}
-
-// ─── Tab: Remediation ─────────────────────────────────────────────────────────
-
-function TabRemediation({ logs, courseData }) {
-  const [allDoubt, setAllDoubt]   = useState([])
-  const [allScores, setAllScores] = useState([])
-  const [ttFull, setTtFull]       = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [filterBatch, setFilterBatch] = useState('All')
-  const { show: showToast, el: toastEl } = useToast()
-
-  useEffect(() => {
-    const fetchAll = async () => {
-      setLoading(true)
-      const [d,s,t] = await Promise.all([
-        supabase.from('doubt_sessions').select('*').eq('status','open'),
-        supabase.from('student_scores').select('*'),
-        // PATCH-2: was 'teaching_timetable' — corrected to match all other references in this file
-        supabase.from('timetable_entries').select('*'),
-      ])
-      if (d.error) showToast('Doubts: '+d.error.message, '#dc2626')
-      if (s.error) showToast('Scores: '+s.error.message, '#dc2626')
-      if (t.error) showToast('Timetable: '+t.error.message, '#dc2626')
-      if (d.data) setAllDoubt(d.data)
-      if (s.data) setAllScores(s.data)
-      if (t.data) setTtFull(t.data)
-      setLoading(false)
-    }
-    fetchAll()
-  }, [])
-
-  const doubtGroups = useMemo(() => {
-    const map = {}
-    allDoubt.forEach(d => {
-      const key = `${d.subtype}||${d.subject_name}`
-      if (!map[key]) map[key] = { subtype:d.subtype, subject:d.subject_name, course:d.course, sessions:[], houses:new Set() }
-      map[key].sessions.push(d)
-      if (d.house_name) map[key].houses.add(d.house_name)
-    })
-    return Object.values(map).sort((a,b) => b.sessions.length-a.sessions.length)
-  }, [allDoubt])
-
-  const suggestions = useMemo(() => {
-    return doubtGroups.map(g => {
-      const batchScores = allScores.filter(s => s.subtype===g.subtype && s.subject_name===g.subject)
-      const studentMap  = {}
-      batchScores.forEach(s => {
-        if (!studentMap[s.student_name]) studentMap[s.student_name]=[]
-        studentMap[s.student_name].push(pct(s.score, s.max_score))
-      })
-      const weakStudents = Object.entries(studentMap)
-        .map(([name,scores]) => ({ name, avg:Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) }))
-        .filter(s => s.avg<60).sort((a,b) => a.avg-b.avg)
-
-      const usedSlots = new Set(
-        ttFull.filter(t => (t.subtype===g.subtype||t.class_name===g.subtype))
-          .map(t => `${t.day_of_week||t.day_name}||${t.period_number||t.period_name}`)
-      )
-      const freeSlots = []
-      DAYS.forEach(day => {
-        PERIODS.forEach(p => {
-          if (!usedSlots.has(`${day}||${p}`) && freeSlots.length < 4) {
-            freeSlots.push({ day, period:`Period ${p}`, type:'Free Slot' })
-          }
-        })
-      })
-      const suggestedSlots = freeSlots.length > 0 ? freeSlots : [
-        { day:'Monday',    period:'06:30–07:20', type:'Morning Doubt' },
-        { day:'Wednesday', period:'06:30–07:20', type:'Morning Doubt' },
-        { day:'Friday',    period:'17:30–18:20', type:'Evening Doubt' },
-      ]
-
-      return { ...g, weakStudents, suggestedSlots }
-    })
-  }, [doubtGroups, allScores, ttFull])
-
-  const filtered  = filterBatch==='All' ? suggestions : suggestions.filter(s => s.subtype===filterBatch)
-  const allBatches= [...new Set(suggestions.map(s => s.subtype).filter(Boolean))]
-
-  if (loading) return <div style={{ textAlign:'center', padding:48, color:'#5d6b82' }}>⏳ Loading remediation data...</div>
-
-  return (
-    <>
-      {toastEl}
-      <div className="stat-grid-3" style={S.statGrid(3)}>
-        {[
-          { label:'Open Doubt Groups',   value:suggestions.length, color:'#d97706', bg:'#fef9c3', icon:'🔁' },
-          { label:'Weak Student Flags',  value:suggestions.reduce((a,s)=>a+s.weakStudents.length,0), color:'#dc2626', bg:'#fee2e2', icon:'⚠️' },
-          { label:'Free Slots Available',value:suggestions.reduce((a,s)=>a+s.suggestedSlots.length,0), color:'#16a34a', bg:'#dcfce7', icon:'🕐' },
-        ].map(c => (
-          <div key={c.label} style={S.statCard(c.color, c.bg)}>
-            <div style={{ fontSize:20, marginBottom:4 }}>{c.icon}</div>
-            <p style={{ fontSize:12, color:c.color, fontWeight:700, margin:0 }}>{c.label}</p>
-            <h2 style={{ fontSize:26, fontWeight:800, color:c.color, margin:'2px 0 0', fontFamily:"'Fraunces','Playfair Display',Georgia,serif" }}>{c.value}</h2>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center', flexWrap:'wrap' }}>
-        <select value={filterBatch} onChange={e => setFilterBatch(e.target.value)} style={{ ...S.select, width:'auto' }}>
-          <option value="All">All Batches</option>
-          {allBatches.map(b => <option key={b} value={b}>{b}</option>)}
-        </select>
-      </div>
-
-      {filtered.length===0 && <div style={{ ...S.card, textAlign:'center', padding:48, color:'#16a34a', fontWeight:600 }}>✅ No open doubt sessions needing remediation.</div>}
-
-      {filtered.map((s,i) => (
-        <div key={i} style={S.card}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, flexWrap:'wrap', gap:8 }}>
-            <div>
-              <h3 style={{ fontSize:15, fontWeight:800, color:'#14213d', margin:'0 0 4px' }}>
-                {s.subject} — <span style={{ color:'#132a4f' }}>{s.subtype}</span>
-              </h3>
-              <div style={{ fontSize:13, color:'#5d6b82' }}>{s.sessions.length} open session{s.sessions.length!==1?'s':''} · Houses: {[...s.houses].join(', ')||'—'}</div>
-            </div>
-            <span style={S.badge('#b45309','#fef9c3')}>⏳ {s.sessions.length}</span>
-          </div>
-
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:14 }}>
-            <div>
-              <div style={{ fontWeight:700, color:'#2e3b52', fontSize:13, marginBottom:7 }}>⚠️ Students needing help</div>
-              {s.weakStudents.length===0
-                ? <div style={{ fontSize:13, color:'#16a34a' }}>✅ No weak students (no score data).</div>
-                : s.weakStudents.map((st,j) => (
-                  <div key={j} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 10px', background:'#fff1f2', border:'1px solid #fecaca', borderRadius:6, marginBottom:4 }}>
-                    <span style={{ flex:1, fontSize:13, color:'#14213d', fontWeight:600 }}>{st.name}</span>
-                    <span style={{ fontWeight:800, color:scoreColor(st.avg), fontSize:13, fontFamily:"'Fraunces','Playfair Display',Georgia,serif" }}>{st.avg}%</span>
-                  </div>
-                ))
-              }
-            </div>
-            <div>
-              <div style={{ fontWeight:700, color:'#2e3b52', fontSize:13, marginBottom:7 }}>🕐 Available Doubt Slots</div>
-              {s.suggestedSlots.map((slot,j) => (
-                <div key={j} style={{ display:'flex', gap:10, alignItems:'center', padding:'6px 10px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:6, marginBottom:4 }}>
-                  <span style={{ fontSize:11, fontWeight:700, color:'#16a34a', minWidth:60 }}>{slot.day}</span>
-                  <span style={{ fontSize:12, color:'#2e3b52' }}>{slot.period}</span>
-                  <span style={S.badge('#0891b2','#e0f2fe')}>{slot.type}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {s.sessions.length > 0 && (
-            <div style={{ marginTop:12, borderTop:'1px solid #f3f0e8', paddingTop:10 }}>
-              <div style={{ fontWeight:600, color:'#2e3b52', fontSize:12, marginBottom:5 }}>Open sessions:</div>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
-                {s.sessions.map((d,j) => (
-                  <span key={j} style={{ ...S.badge('#b45309','#fef9c3'), padding:'4px 10px' }}>🏠 {d.house_name||'?'} · {fmtDate(d.teaching_date)}</span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      ))}
-    </>
-  )
-}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -3820,7 +3066,7 @@ useEffect(() => {
   const handleTabChange = key => {
     if (!TABS.find(t => t.key===key)) return
     setActiveTab(key)
-    try { localStorage.setItem('gnsi_teaching_tab', key) } catch {}
+    try { localStorage.setItem('gnsi_teaching_tab', key) } catch { /* private mode — the tab just isn't remembered */ }
   }
 
   // ── Teaching hub navigation ────────────────────────────────────────────
@@ -3846,35 +3092,37 @@ useEffect(() => {
     if (error) showToast('Logs load failed: '+error.message, '#dc2626')
     if (data) { setLogs(data); EventBus.emit(GNSI_EVENTS.TEACHING_LOG_SAVED, {}) } // hub "taught" counts refresh
     setLoading(false)
-  }, [])
+  }, [showToast])
 
   const fetchMissed = useCallback(async () => {
     const { data, error } = await supabase.from('teaching_missed').select('*').order('missed_date',{ascending:false})
     if (error) showToast('Missed load failed: '+error.message, '#dc2626')
     if (data) setMissed(data)
-  }, [])
+  }, [showToast])
 
   const fetchTimetable = useCallback(async () => {
     const { data, error } = await supabase.from('timetable_entries').select('*').order('period_name')
     if (error) showToast('Timetable load failed: '+error.message, '#dc2626')
     if (data) setTimetable(data)
-  }, [])
+  }, [showToast])
 
   const fetchStaff = useCallback(async () => {
     const { data, error } = await supabase.from('staff_profiles').select('id,name,designation').eq('status','Active').order('name')
     if (error) showToast('Staff load failed: '+error.message, '#dc2626')
     if (data) setStaff(data)
-  }, [])
+  }, [showToast])
 
   const fetchMonthlySyllabus = useCallback(async () => {
     const { data, error } = await supabase.from('monthly_syllabus').select('id,admit_type,subject_name,topic,month,completed,completed_at').order('month')
     if (error) showToast('Monthly syllabus load failed: '+error.message, '#dc2626')
     if (data) setMonthlySyllabus(data)
-  }, [])
+  }, [showToast])
 
+  // Initial load of logs, missed classes, timetable, staff and syllabus.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loads from the server on open
     fetchLogs(); fetchMissed(); fetchTimetable(); fetchStaff(); fetchMonthlySyllabus()
-  }, []) // eslint-disable-line
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const todayStr  = today()
   const currMonth = currentYearMonth()
@@ -3929,23 +3177,10 @@ useEffect(() => {
         </div>
       ) : (
         isMobile ? (
-          // Phones: every section as an icon button, all visible at once;
-          // the selected one expands to show its name.
-          <nav className="tch-icons" role="tablist" aria-label="Teaching sections">
-            {TABS.map(t => {
-              const I = t.icon
-              const on = activeTab === t.key
-              const badge = t.key==='logs' ? badges.todayLogs : t.key==='hmdash' ? hmNotifCount : t.key==='reports' ? badges.monthMissed : 0
-              return (
-                <button key={t.key} type="button" role="tab" aria-selected={on} aria-label={t.label} title={t.label}
-                  className={'tch-ic' + (on ? ' on' : '')} onClick={() => handleTabChange(t.key)}>
-                  <I size={19} />
-                  {on && <span className="tch-ic-lbl">{t.label}</span>}
-                  {badge > 0 && <span className="tch-ic-badge" aria-hidden="true">{badge > 99 ? '99+' : badge}</span>}
-                </button>
-              )
-            })}
-          </nav>
+          // Phones: a hamburger bar showing the current section; ☰ opens
+          // the full list of sections.
+          <TeachingMenu tabs={TABS} active={activeTab} onChange={handleTabChange}
+            badgeOf={key => key==='logs' ? badges.todayLogs : key==='hmdash' ? hmNotifCount : key==='reports' ? badges.monthMissed : 0} />
         ) : (
         <div className="tch-tabs"><PremiumTabs
           tabs={TABS.map(t => ({
