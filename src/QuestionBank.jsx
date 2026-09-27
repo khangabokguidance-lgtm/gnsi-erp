@@ -44,6 +44,8 @@ import {
 // which stores raw BMEI04 text as-is and renders it with the embedded
 // BMEI04 font rather than converting it.
 import { romanToMeetei, meeteiToRoman, getAllCharacters } from './meetei_mayek'
+import { bmeiToUnicode } from './mayekSegments'
+import MayekText from './MayekText'
 import {
   translateText, saveDictionaryEntry, deleteDictionaryEntry, bulkImportEntries, searchDictionary,
   seedWordlist, getUnfilledEntries, getNeedsReviewEntries, findCoverageGaps,
@@ -579,41 +581,9 @@ function CastButton({ url, presentTargetId, title, showToast, small }) {
 // Mayek (which the viewer's machine needs installed to display it).
 function slideMayekUnicode(text, fontTag) {
   if (!text) return ''
-  return fontTag === 'bmei04' ? bmeiToUnicodeKeepEnglish(text) : text
+  return fontTag === 'bmei04' ? bmeiToUnicode(text) : text
 }
 
-// A BMEI04 line often ends with the English number name it asks about
-// ("… suPngi mapN Two million three hundred eight thousand nine").
-// Converting those words letter by letter printed nonsense Mayek and
-// "[?S?]" markers, so English words stay in Latin: any word the BMEI04
-// table can't map, and runs of two or more English number words.
-const EN_NUMBER_WORDS = new Set('zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand lakh lakhs lac crore crores million millions billion billions and'.split(' '))
-function bmeiToUnicodeKeepEnglish(text) {
-  const parts = String(text).split(/(\s+)/)
-  const conv = parts.map(t => (/\S/.test(t) ? romanToMeetei(t) : t))
-  const english = parts.map((t, i) => {
-    if (!/\S/.test(t)) return null
-    const core = t.replace(/[^A-Za-z]/g, '').toLowerCase()
-    return { num: !!core && EN_NUMBER_WORDS.has(core), bad: conv[i].includes('[?') }
-  })
-  const keep = new Array(parts.length).fill(false)
-  for (let i = 0; i < parts.length; i++) {
-    const e = english[i]
-    if (!e) continue
-    if (e.bad) { keep[i] = true; continue }
-    if (!e.num) continue
-    // collect the run of number words this one belongs to
-    const run = []
-    for (let j = i; j < parts.length; j++) {
-      if (!english[j]) continue
-      if (english[j].num || english[j].bad) run.push(j); else break
-    }
-    const words = run.filter(j => parts[j].replace(/[^A-Za-z]/g, '').toLowerCase() !== 'and')
-    if (words.length >= 2) run.forEach(j => { keep[j] = true })
-    i = run[run.length - 1]
-  }
-  return parts.map((t, i) => (keep[i] ? t : conv[i])).join('')
-}
 
 async function generateQuestionPPTX({ title, subject, chapter, slides, withAnswers }) {
   const { default: PptxGenJS } = await import('pptxgenjs')
@@ -742,7 +712,7 @@ function SlideViewer({ slides, title, subject, chapter, onClose, showToast }) {
         </div>
         {slide.title_mayek && (
           <div style={{ fontSize:'clamp(16px,1.9vw,24px)', color:'#cbd5e1', maxWidth:1000, marginTop:16, fontFamily:mayekFontFamily(slide.title_mayek_font) }}>
-            {slide.title_mayek}
+            <MayekText text={slide.title_mayek} font={slide.title_mayek_font} />
           </div>
         )}
         {slide.diagram_url && (
@@ -1297,7 +1267,7 @@ function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onD
           </div>
           {q.question_mayek && (
             <div style={{ fontSize:15, color:'#374151', lineHeight:1.7, marginBottom:12, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
-              {q.question_mayek}
+              <MayekText text={q.question_mayek} font={q.question_mayek_font} />
             </div>
           )}
           {q.diagram_url && (
@@ -1314,7 +1284,7 @@ function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onD
                     {q[`option_${l.toLowerCase()}`] || <span style={{ color:T.faint }}>—</span>}
                     {q[`option_${l.toLowerCase()}_mayek`] && (
                       <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font), fontWeight:400, marginTop:2 }}>
-                        {q[`option_${l.toLowerCase()}_mayek`]}
+                        <MayekText text={q[`option_${l.toLowerCase()}_mayek`]} font={q.question_mayek_font} />
                       </div>
                     )}
                   </div>
@@ -2488,7 +2458,7 @@ Answer: B`} />
               </div>
               {q.question_mayek && (
                 <div style={{ fontSize:14, color:'#374151', marginBottom:10, lineHeight:1.7, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
-                  {q.question_mayek}
+                  <MayekText text={q.question_mayek} font={q.question_mayek_font} />
                 </div>
               )}
               <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:10 }}>
@@ -2501,7 +2471,7 @@ Answer: B`} />
                     {q.correct_option===l && ' ✓'}
                     {q[`option_${l.toLowerCase()}_mayek`] && (
                       <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font), marginTop:2 }}>
-                        {q[`option_${l.toLowerCase()}_mayek`]}
+                        <MayekText text={q[`option_${l.toLowerCase()}_mayek`]} font={q.question_mayek_font} />
                       </div>
                     )}
                   </div>
@@ -4295,7 +4265,7 @@ function TabPaper({ questions: bankQuestions, showToast }) {
                         </span>
                       </span>
                     </div>
-                    {opts.showMayek && q.question_mayek && <div style={{ fontSize:13, color:'#374151', marginBottom:6, fontFamily:mayekFontFamily(q.question_mayek_font) }}>{q.question_mayek}</div>}
+                    {opts.showMayek && q.question_mayek && <div style={{ fontSize:13, color:'#374151', marginBottom:6, fontFamily:mayekFontFamily(q.question_mayek_font) }}><MayekText text={q.question_mayek} font={q.question_mayek_font} /></div>}
                     {q.diagram_url && <img src={q.diagram_url} alt="diagram" style={{ maxWidth:200, maxHeight:140, borderRadius:6, marginBottom:6, display:'block' }} />}
                     <div style={{ display:'grid', gridTemplateColumns:`repeat(${optCols},minmax(0,1fr))`, gap: layout.spacing === 'compact' ? 1 : 4 }}>
                       {['A','B','C','D'].map(l => (
@@ -4303,7 +4273,7 @@ function TabPaper({ questions: bankQuestions, showToast }) {
                           <span style={{ fontWeight:700, color:C.slate, marginRight:4 }}>{l}.</span>
                           {q[`option_${l.toLowerCase()}`]||'—'}
                           {opts.answerKey === 'inline' && q.correct_option===l && <span style={{ color:C.green, marginLeft:6, fontWeight:700 }}>✓</span>}
-                          {opts.showMayek && q[`option_${l.toLowerCase()}_mayek`] && <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font) }}>{q[`option_${l.toLowerCase()}_mayek`]}</div>}
+                          {opts.showMayek && q[`option_${l.toLowerCase()}_mayek`] && <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font) }}><MayekText text={q[`option_${l.toLowerCase()}_mayek`]} font={q.question_mayek_font} /></div>}
                         </div>
                       ))}
                     </div>
@@ -4398,7 +4368,7 @@ function CastQuestionOverlay({ questions, index, onIndexChange, onClose }) {
         </div>
         {q.question_mayek && (
           <div style={{ fontSize:'clamp(18px, 2.4vw, 28px)', color:'#cbd5e1', textAlign:'center', maxWidth:1000, marginTop:20, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
-            {q.question_mayek}
+            <MayekText text={q.question_mayek} font={q.question_mayek_font} />
           </div>
         )}
         {q.diagram_url && (
@@ -4559,7 +4529,7 @@ function TabTest({ questions, showToast }) {
               </div>
               {q.question_mayek && (
                 <div style={{ fontSize:13, color:'#374151', marginBottom:5, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
-                  {q.question_mayek}
+                  <MayekText text={q.question_mayek} font={q.question_mayek_font} />
                 </div>
               )}
               <div style={{ fontSize:12 }}>
@@ -4616,7 +4586,7 @@ function TabTest({ questions, showToast }) {
             </div>
             {q.question_mayek && (
               <div style={{ fontSize:14, color:'#374151', marginBottom:10, lineHeight:1.6, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
-                {q.question_mayek}
+                <MayekText text={q.question_mayek} font={q.question_mayek_font} />
               </div>
             )}
             {q.diagram_url && (
@@ -4640,7 +4610,7 @@ function TabTest({ questions, showToast }) {
                     {q[`option_${l.toLowerCase()}`]||'—'}
                     {q[`option_${l.toLowerCase()}_mayek`] && (
                       <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font), fontSize:12 }}>
-                        {q[`option_${l.toLowerCase()}_mayek`]}
+                        <MayekText text={q[`option_${l.toLowerCase()}_mayek`]} font={q.question_mayek_font} />
                       </div>
                     )}
                   </div>

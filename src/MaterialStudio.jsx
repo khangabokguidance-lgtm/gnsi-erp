@@ -33,6 +33,7 @@ import {
   outOfScope, scopeLabel, pickByChapter, searchTerms,
 } from './studioTools'
 import StudioPresenter from './StudioPresenter'
+import MayekText from './MayekText'
 
 const PAGE = 30
 const Q_FIELDS = 'id,question,question_mayek,question_mayek_font,option_a,option_b,option_c,option_d,option_a_mayek,option_b_mayek,option_c_mayek,option_d_mayek,correct_option,subject,chapter,subsection,difficulty,diagram_url,course,marks'
@@ -379,7 +380,7 @@ function QuestionItem({ q, on, onToggle, onEdit, onDelete, onNavigate, onLike })
         <input type="checkbox" checked={on} onChange={onToggle} aria-label="Add question to tray" style={{ marginTop: 4, width: 17, height: 17, accentColor: PX.gold }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, color: PX.ink, whiteSpace: 'pre-wrap' }}>{q.question}</div>
-          {q.question_mayek && <div style={{ fontSize: 13.5, color: PX.ink2, marginTop: 2, fontFamily: q.question_mayek_font === 'bmei04' ? "'BMEI04',sans-serif" : "'Noto Sans Meetei Mayek',sans-serif" }}>{q.question_mayek}</div>}
+          {q.question_mayek && <div style={{ fontSize: 13.5, color: PX.ink2, marginTop: 2, fontFamily: q.question_mayek_font === 'bmei04' ? "'BMEI04',sans-serif" : "'Noto Sans Meetei Mayek',sans-serif" }}><MayekText text={q.question_mayek} font={q.question_mayek_font} /></div>}
           {q.diagram_url && <img src={q.diagram_url} alt="" style={{ maxHeight: 90, maxWidth: '100%', marginTop: 6, borderRadius: 8 }} />}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 4, marginTop: 6 }}>
             {['a', 'b', 'c', 'd'].filter(k => q[`option_${k}`]).map(k => (

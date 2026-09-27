@@ -15,6 +15,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react'
 import { supabase } from './supabase'
+import { bmeiToUnicode } from './mayekSegments'
 
 const C = {
   navy: '#1e3a5f', slate: '#64748b', green: '#16a34a',
@@ -38,7 +39,9 @@ async function fetchQuestionSlides(subject, chapter) {
   return data.map(q => ({
     kind: 'question',
     title: q.question,
-    title_mayek: q.question_mayek || '',
+    // The receiver draws in Noto Sans Meetei Mayek, so BMEI04 keystrokes are
+    // converted to Unicode first (Latin runs like CCCIV stay as typed).
+    title_mayek: q.question_mayek_font === 'bmei04' ? bmeiToUnicode(q.question_mayek) : (q.question_mayek || ''),
     options: ['A','B','C','D'].map(l => ({
       letter: l,
       text: q[`option_${l.toLowerCase()}`] || '',

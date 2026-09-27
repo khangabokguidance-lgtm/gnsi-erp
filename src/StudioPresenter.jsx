@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BMEI04_BASE64 } from './bmei04_font_base64'
 import { MATERIAL_TYPES, hasMayek } from './studioDesigns'
+import MayekText from './MayekText'
 
 const OPTS = ['a', 'b', 'c', 'd']
 const TIMERS = [0, 15, 30, 60, 90]
@@ -54,7 +55,7 @@ export default function StudioPresenter({ tray, options, onClose }) {
 
   const text = (en, mm, q) => {
     if (lang === 'en' || !mm) return en
-    const m = <span style={{ fontFamily: mmFont(q) }}>{mm}</span>
+    const m = <span style={{ fontFamily: mmFont(q) }}><MayekText text={mm} font={q.question_mayek_font} /></span>
     return lang === 'mm' ? m : <>{en}<div style={{ fontSize: '.85em', opacity: .85, marginTop: 4 }}>{m}</div></>
   }
 

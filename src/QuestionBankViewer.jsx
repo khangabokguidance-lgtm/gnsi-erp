@@ -31,6 +31,7 @@ import { normalizeToQBank, fetchAllPages } from './StudyMaterialBridge'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 import { isAdminRole } from './roles'
 import { COURSES } from './qbankTaxonomy'
+import MayekText from './MayekText'
 import { T, heroStyle, optionStyle } from './qbankTheme'
 import { QBThemeStyles, HeroStat, OptionLetter } from './QBTheme'
 // ── BMEI04 font support — ported from QuestionBank.jsx ──────────────────────
@@ -194,7 +195,7 @@ function ViewOnlyQCard({ q, index, subjectColor }) {
       </div>
       {q.question_mayek && (
         <div style={{ fontSize: 15, color: '#374151', lineHeight: 1.7, marginBottom: 12, fontFamily: mayekFontFamily(q.question_mayek_font) }}>
-          {q.question_mayek}
+          <MayekText text={q.question_mayek} font={q.question_mayek_font} />
         </div>
       )}
       {q.diagram_url && (
@@ -214,7 +215,7 @@ function ViewOnlyQCard({ q, index, subjectColor }) {
                 )}
                 {q[`option_${l.toLowerCase()}_mayek`] && (
                   <div style={{ fontFamily: mayekFontFamily(q.question_mayek_font), fontWeight: 400, marginTop: 2 }}>
-                    {q[`option_${l.toLowerCase()}_mayek`]}
+                    <MayekText text={q[`option_${l.toLowerCase()}_mayek`]} font={q.question_mayek_font} />
                   </div>
                 )}
               </div>
