@@ -32,6 +32,10 @@ import { HeroStat, QBThemeStyles, OptionLetter } from './QBTheme'
 // singleton guard is needed the way the jsPDF font registration below
 // required.
 import { BMEI04_BASE64 } from './bmei04_font_base64'
+import {
+  PAPER_OPTIONS_DEFAULT, marksOf, groupSections, sectionLetter, blueprint, blueprint as paperBlueprint, isComplete as isCompleteQ, pickPaper, swapCandidate, sortPaper, buildSets,
+  loadTemplates, saveTemplates, loadPaperHistory, pushPaperHistory, recentlyUsedIds, answerKeyText, paperText, paperWordHtml,
+} from './paperTools'
 
 // BMEI04 keystroke <-> Unicode Meetei Mayek conversion table, verified
 // against real GNSI documents (see Eeyek converter tool / QuestionBank
@@ -2583,35 +2587,40 @@ const PAPER_LAYOUT_DEFAULT = { columns: 1, optionCols: 'auto', spacing: 'normal'
 const PAPER_FONT_CSS = { helvetica: 'Helvetica, Arial, sans-serif', times: "'Times New Roman', Times, serif", courier: "'Courier New', Courier, monospace" }
 const PAPER_SIZE_PT = { S: 9, M: 10.5, L: 12 }
 
-async function generatePDF({ title, subject, chapter, questions, withAnswers, timeMinutes, instructions, layout = PAPER_LAYOUT_DEFAULT }) {
+async function generatePDF({ title, subject, chapter, questions, sets, withAnswers, timeMinutes, instructions, layout = PAPER_LAYOUT_DEFAULT, options = {}, fileName }) {
   // Bundled npm dependency (same one Reports.jsx etc. use), loaded lazily —
   // no runtime CDN script, so PDFs work offline and can't be tampered with
   // by a compromised CDN.
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' })
   registerMayekFonts(doc)
+  const O = { ...PAPER_OPTIONS_DEFAULT, ...options }
+  if (withAnswers) O.answerKey = 'inline'
+  const SETS = sets?.length ? sets : [{ code: 'A', questions: questions || [] }]
+  const multi = SETS.length > 1
+  const allQs = SETS[0].questions
   // Helvetica text goes through pdfSafe (see helper) so symbols outside
   // its character set are spelled out instead of printing as garbage.
   title = pdfSafe(title); subject = pdfSafe(subject); chapter = pdfSafe(chapter)
   instructions = instructions ? pdfSafe(instructions) : instructions
+  const dateText = O.paperDate ? new Date(O.paperDate).toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' }) : today()
 
   // Pre-fetch diagram images so they can be embedded synchronously during layout
   const diagramCache = {}
   await Promise.all(
-    questions.filter(q => q.diagram_url).map(async q => {
+    allQs.filter(q => q.diagram_url).map(async q => {
       diagramCache[q.id || q._id] = await fetchImageAsDataURL(q.diagram_url)
     })
   )
 
   const W = 210, H = 297, margin = 16
   const contentW = W - margin*2
-  const totalMarks = questions.reduce((s,q)=>s+(q.marks||1),0)
   const HEADER_H = 40   // letterhead block height, repeated on every page
   const FOOTER_Y = H - 12
+  const inline = O.answerKey === 'inline'
 
   // ── Letterhead — drawn identically on every page ──────────────────────────
   const drawLetterhead = (pageLabel) => {
-    // Navy band with institute name + crest circle
     doc.setFillColor(30,58,95); doc.rect(0, 0, W, 26, 'F')
     doc.setDrawColor(201,162,75); doc.setLineWidth(1)
     doc.line(0, 26, W, 26)
@@ -2625,16 +2634,29 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers, ti
 
     doc.setTextColor(255,255,255)
     doc.setFontSize(15); doc.setFont('helvetica','bold')
-    doc.text('Guidance Navodaya & Sainik Institute', margin+16, 11)
+    doc.text(pdfSafe(O.institute || 'Guidance Navodaya & Sainik Institute'), margin+16, 11)
     doc.setFontSize(8.5); doc.setFont('helvetica','normal')
-    doc.text('Khangabok, Thoubal, Manipur  ·  Est. 2016', margin+16, 16.5)
+    doc.text(pdfSafe(O.tagline || ''), margin+16, 16.5)
     doc.setFontSize(7.5)
     doc.text('AISSEE · JNVST · RMS Entrance Preparation', margin+16, 21.5)
 
-    doc.setFontSize(8); doc.setFont('helvetica','normal')
-    doc.text(pageLabel || '', W-margin, 11, { align:'right' })
-    doc.setFontSize(7.5)
-    doc.text(`Date: ${today()}`, W-margin, 16.5, { align:'right' })
+    if (pageLabel) {
+      doc.setFontSize(multi && /^SET/.test(pageLabel) ? 13 : 8); doc.setFont('helvetica','bold')
+      doc.text(pageLabel, W-margin, 11.5, { align:'right' })
+    }
+    doc.setFontSize(7.5); doc.setFont('helvetica','normal')
+    doc.text(`Date: ${dateText}`, W-margin, 18, { align:'right' })
+  }
+
+  // Diagonal watermark, drawn last on every page so it sits over the page
+  // but in a very light tint.
+  const drawWatermark = () => {
+    if (!O.watermark) return
+    doc.saveGraphicsState?.()
+    try { doc.setGState?.(new doc.GState({ opacity: 0.08 })) } catch { /* old jsPDF — plain light grey */ }
+    doc.setTextColor(150,160,175); doc.setFont('helvetica','bold'); doc.setFontSize(64)
+    doc.text(pdfSafe(O.watermark), W/2, H/2 + 10, { align:'center', angle: 32 })
+    doc.restoreGraphicsState?.()
   }
 
   // ── Footer — drawn identically on every page ──────────────────────────────
@@ -2646,48 +2668,7 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers, ti
     doc.text(`Page ${pageNum} of ${pageCount}`, W-margin, FOOTER_Y, { align:'right' })
   }
 
-  let y = HEADER_H
-  drawLetterhead()
-
-  // ── Paper title block ───────────────────────────────────────────────────
-  doc.setFontSize(15); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
-  doc.text(title, W/2, y, { align:'center' }); y += 6
-  doc.setFontSize(9.5); doc.setFont('helvetica','normal'); doc.setTextColor(100,116,139)
-  doc.text(`Subject: ${subject}   |   Chapter: ${chapter}`, W/2, y, { align:'center' }); y += 7
-
-  // ── Student info line — real exam-blank fields ─────────────────────────
-  doc.setDrawColor(148,163,184); doc.setLineWidth(.3)
-  const infoY = y
-  doc.setFontSize(9.5); doc.setFont('helvetica','normal'); doc.setTextColor(30,41,59)
-  doc.text('Name:', margin, infoY)
-  doc.line(margin+16, infoY+0.8, margin+78, infoY+0.8)
-  doc.text('Roll No.:', margin+84, infoY)
-  doc.line(margin+100, infoY+0.8, margin+130, infoY+0.8)
-  doc.text('Class:', margin+136, infoY)
-  doc.line(margin+148, infoY+0.8, W-margin, infoY+0.8)
-  y += 9
-
-  // ── Marks / time / instructions box ────────────────────────────────────
-  doc.setFillColor(240,246,255); doc.setDrawColor(191,219,254); doc.setLineWidth(.3)
-  const boxTop = y
-  const instrLines = doc.splitTextToSize(instructions || 'Attempt all questions. Each question carries the marks shown against it. No negative marking unless stated.', contentW-8)
-  const boxH = 14 + instrLines.length*4.2
-  doc.roundedRect(margin, boxTop, contentW, boxH, 1.5, 1.5, 'FD')
-  doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
-  doc.text(`Time Allowed: ${timeMinutes || Math.max(15, Math.round(questions.length*1.5))} minutes`, margin+4, boxTop+6)
-  doc.text(`Maximum Marks: ${totalMarks}`, margin+contentW-4, boxTop+6, { align:'right' })
-  doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(51,65,85)
-  doc.text('General Instructions:', margin+4, boxTop+11.5)
-  doc.setFont('helvetica','normal'); doc.setTextColor(71,85,105)
-  doc.text(instrLines, margin+4, boxTop+16)
-  y = boxTop + boxH + 8
-
-  doc.setDrawColor(30,58,95); doc.setLineWidth(.6)
-  doc.line(margin, y, W-margin, y); y += 7
-
-  // ── Questions ──────────────────────────────────────────────────────────
-  // Flows down one or two page columns. Each question (text, Mayek line,
-  // diagram and options) is measured first and kept together in a column.
+  // ── Layout ─────────────────────────────────────────────────────────────
   const L = { ...PAPER_LAYOUT_DEFAULT, ...layout }
   const FONT = ['helvetica', 'times', 'courier'].includes(L.font) ? L.font : 'helvetica'
   const qSize = PAPER_SIZE_PT[L.size] || 10.5
@@ -2698,114 +2679,222 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers, ti
   const gutter = 8
   const colW = twoCol ? (contentW - gutter) / 2 : contentW
   const marksW = 14
-  let col = 0, colTop = y
-  const colTops = twoCol ? [{ page: doc.getNumberOfPages(), top: y }] : []
-  const colX = () => margin + col * (colW + gutter)
-  const place = h => {
-    if (y + h <= FOOTER_Y - 6) return
-    if (twoCol && col === 0) { col = 1; y = colTop; return }
-    doc.addPage(); drawLetterhead(); y = HEADER_H; colTop = y; col = 0
-    if (twoCol) colTops.push({ page: doc.getNumberOfPages(), top: y })
-  }
   const LETTERS = ['A', 'B', 'C', 'D']
-  // Options per row: fixed, or "auto" — 4 across when every option is
-  // short, 2×2 when they fit half a column, otherwise one per line.
   const optColsFor = q => {
     const present = LETTERS.filter(l => q[`option_${l.toLowerCase()}`])
     if (L.optionCols !== 'auto') return Math.max(1, Math.min(4, Number(L.optionCols) || 2))
     doc.setFontSize(oSize); doc.setFont(FONT, 'normal')
     const widest = Math.max(0, ...present.map(l => doc.getTextWidth(pdfSafe(`${l}.  ${q[`option_${l.toLowerCase()}`]}`))))
-    const hasMayek = present.some(l => q[`option_${l.toLowerCase()}_mayek`])
+    const hasMayek = O.showMayek && present.some(l => q[`option_${l.toLowerCase()}_mayek`])
     if (!hasMayek && widest <= colW / 4 - 3) return 4
     if (widest <= colW / 2 - 4) return 2
     return 1
   }
 
-  questions.forEach((q,i) => {
-    const x0 = colX
-    // ── measure ──
-    doc.setFontSize(qSize); doc.setFont(FONT, 'bold')
-    const qLines = doc.splitTextToSize(pdfSafe(`Q${i+1}. ${q.question}`), colW - marksW)
-    let mLines = []
-    if (q.question_mayek) {
-      doc.setFontSize(qSize); doc.setFont('NotoMayek', 'normal')
-      mLines = doc.splitTextToSize(pdfMayekText(q.question_mayek, q.question_mayek_font), colW)
-    }
-    const diagramData = q.diagram_url ? diagramCache[q.id || q._id] : null
-    const dW = Math.min(compact ? 40 : 50, colW), dH = dW * 0.64
-    const nCols = optColsFor(q)
-    const cellW = (colW - (nCols - 1) * 4) / nCols
-    const opts = LETTERS.map(l => {
-      doc.setFontSize(oSize); doc.setFont(FONT, 'normal')
-      const lines = doc.splitTextToSize(pdfSafe(`${l}.  ${q[`option_${l.toLowerCase()}`] || '-'}`), cellW - 2)
-      const mayek = q[`option_${l.toLowerCase()}_mayek`]
-      let ml = []
-      if (mayek) { doc.setFontSize(oSize - 0.5); doc.setFont('NotoMayek', 'normal'); ml = doc.splitTextToSize(pdfMayekText(mayek, q.question_mayek_font), cellW - 2) }
-      return { l, lines, ml, h: lines.length * lh(oSize) + ml.length * lh(oSize - 0.5) + (compact ? 1 : 2) }
-    })
-    const rows = []
-    for (let r = 0; r < opts.length; r += nCols) rows.push(opts.slice(r, r + nCols))
-    const rowGap = compact ? 0.5 : 1.5
-    const optH = rows.reduce((t, row) => t + Math.max(...row.map(o => o.h)) + rowGap, 0)
-    const qH = qLines.length * lh(qSize) + (compact ? 1 : 2)
-    const mH = mLines.length ? mLines.length * lh(qSize) + (compact ? 1 : 2) : 0
-    const dH2 = diagramData ? dH + 3 : 0
-    const tail = compact ? 3 : 8.5
-    place(Math.min(qH + mH + dH2 + optH + tail, FOOTER_Y - 6 - HEADER_H - 1))
+  let y = HEADER_H
+  const renderSet = (set, first) => {
+    const label = multi ? `SET ${set.code}` : ''
+    if (!first) doc.addPage()
+    drawLetterhead(label)
+    y = HEADER_H
+    const qs = set.questions
+    const totalMarks = qs.reduce((s,q) => s + marksOf(q, O), 0)
 
-    // ── draw ──
-    let x = x0()
-    doc.setFontSize(qSize); doc.setFont(FONT, 'bold'); doc.setTextColor(30,58,95)
-    doc.text(qLines, x, y)
-    doc.setFontSize(Math.max(7, oSize - 2)); doc.setFont(FONT, 'normal'); doc.setTextColor(100,116,139)
-    doc.text(`[${q.marks||1}M]`, x + colW, y, { align:'right' })
-    y += qH
-    if (mLines.length) {
-      doc.setFontSize(qSize); doc.setFont('NotoMayek','normal'); doc.setTextColor(55,65,81)
-      doc.text(mLines, x, y); y += mH
-    }
-    if (diagramData) {
-      try { doc.addImage(diagramData, x, y - 2, dW, dH); y += dH2 } catch { /* image failed to embed — skip, question text still stands */ }
-    }
-    rows.forEach(row => {
-      const rowY = y
-      const rowH = Math.max(...row.map(o => o.h))
-      row.forEach((o, k) => {
-        const cx = x + k * (cellW + 4)
-        const isCorrect = withAnswers && q.correct_option === o.l
-        if (isCorrect) {
-          doc.setFillColor(220,252,231)
-          doc.roundedRect(cx - 1.5, rowY - lh(oSize) + 0.6, cellW, rowH, 1, 1, 'F')
-        }
-        doc.setFontSize(oSize); doc.setFont(FONT, isCorrect ? 'bold' : 'normal')
-        doc.setTextColor(isCorrect?21:51, isCorrect?128:65, isCorrect?61:85)
-        doc.text(o.lines, cx, rowY)
-        if (o.ml.length) {
-          doc.setFontSize(oSize - 0.5); doc.setFont('NotoMayek','normal'); doc.setTextColor(55,65,81)
-          doc.text(o.ml, cx, rowY + o.lines.length * lh(oSize))
-        }
+    // ── Paper title block ─────────────────────────────────────────────────
+    doc.setFontSize(15); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
+    doc.text(title, W/2, y, { align:'center' }); y += 6
+    doc.setFontSize(9.5); doc.setFont('helvetica','normal'); doc.setTextColor(100,116,139)
+    doc.text(`Subject: ${subject}   |   Chapter: ${chapter}`, W/2, y, { align:'center' }); y += 5
+    if (O.examLine) { doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95); doc.text(pdfSafe(O.examLine), W/2, y, { align:'center' }); y += 5 }
+    y += 2
+
+    // ── Student info — only the chosen fields, spread across the width ────
+    const FIELDS = [['name','Name',3], ['roll','Roll No.',1.4], ['cls','Class',1.2], ['section','Section',1.2], ['date','Date',1.4], ['sign','Signature',2]].filter(([k]) => O.fields?.[k])
+    if (FIELDS.length) {
+      const weight = FIELDS.reduce((t, f) => t + f[2], 0)
+      doc.setDrawColor(148,163,184); doc.setLineWidth(.3)
+      doc.setFontSize(9.5); doc.setFont('helvetica','normal'); doc.setTextColor(30,41,59)
+      let fx = margin
+      FIELDS.forEach(([, lab, w]) => {
+        const span = (contentW - (FIELDS.length - 1) * 4) * w / weight
+        const lw = doc.getTextWidth(`${lab}:`) + 2
+        doc.text(`${lab}:`, fx, y)
+        doc.line(fx + lw, y + 0.8, fx + span, y + 0.8)
+        fx += span + 4
       })
-      y += rowH + rowGap
-    })
-    y += compact ? 0.5 : 3
-    doc.setDrawColor(226,232,240); doc.setLineWidth(.15)
-    doc.line(x, y, x + colW, y)
-    y += compact ? 3.5 : 5.5
-  })
+      y += 9
+    }
 
-  // Column divider on every two-column page.
-  if (twoCol && questions.length) {
-    const last = doc.getNumberOfPages()
-    colTops.forEach(({ page, top }) => {
-      doc.setPage(page)
-      doc.setDrawColor(203,213,225); doc.setLineWidth(.2)
-      doc.line(margin + colW + gutter / 2, top - 4, margin + colW + gutter / 2, FOOTER_Y - 8)
+    // ── Marks / time / instructions box ──────────────────────────────────
+    doc.setFillColor(240,246,255); doc.setDrawColor(191,219,254); doc.setLineWidth(.3)
+    const boxTop = y
+    let baseRules = instructions || 'Attempt all questions. Each question carries the marks shown against it. No negative marking unless stated.'
+    if (Number(O.negative) > 0) baseRules = baseRules.replace(/\s*No negative marking unless stated\.?/i, '')
+    const rules = [baseRules]
+    if (Number(O.negative) > 0) rules.push(pdfSafe(`${O.negative} mark(s) will be deducted for every wrong answer.`))
+    const instrLines = doc.splitTextToSize(rules.join(' '), contentW-8)
+    const boxH = 14 + instrLines.length*4.2
+    doc.roundedRect(margin, boxTop, contentW, boxH, 1.5, 1.5, 'FD')
+    doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
+    doc.text(`Time Allowed: ${timeMinutes || Math.max(15, Math.round(qs.length*1.5))} minutes`, margin+4, boxTop+6)
+    doc.text(`Maximum Marks: ${totalMarks}`, margin+contentW-4, boxTop+6, { align:'right' })
+    doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(51,65,85)
+    doc.text('General Instructions:', margin+4, boxTop+11.5)
+    doc.setFont('helvetica','normal'); doc.setTextColor(71,85,105)
+    doc.text(instrLines, margin+4, boxTop+16)
+    y = boxTop + boxH + 8
+
+    doc.setDrawColor(30,58,95); doc.setLineWidth(.6)
+    doc.line(margin, y, W-margin, y); y += 7
+
+    // ── Questions: one or two page columns, each question kept whole ─────
+    let col = 0, colTop = y
+    const colTops = twoCol ? [{ page: doc.getNumberOfPages(), top: y }] : []
+    const colX = () => margin + col * (colW + gutter)
+    const place = h => {
+      if (y + h <= FOOTER_Y - 6) return
+      if (twoCol && col === 0) { col = 1; y = colTop; return }
+      doc.addPage(); drawLetterhead(label); y = HEADER_H; colTop = y; col = 0
+      if (twoCol) colTops.push({ page: doc.getNumberOfPages(), top: y })
+    }
+
+    let n = 0
+    groupSections(qs, O.sections).forEach((g, gi) => {
+      if (g.name) {
+        place(14)
+        const x = colX()
+        doc.setFillColor(30,58,95); doc.rect(x, y - 4.2, colW, 6.4, 'F')
+        doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(255,255,255)
+        const secMarks = g.items.reduce((t, q) => t + marksOf(q, O), 0)
+        doc.text(pdfSafe(`SECTION ${sectionLetter(gi)} — ${g.name}`).slice(0, twoCol ? 42 : 90), x + 2, y)
+        doc.text(`${g.items.length} Q · ${secMarks} marks`, x + colW - 2, y, { align:'right' })
+        y += 7
+      }
+      g.items.forEach(q => {
+        n++
+        // ── measure ──
+        doc.setFontSize(qSize); doc.setFont(FONT, 'bold')
+        const qLines = doc.splitTextToSize(pdfSafe(`Q${n}. ${q.question}`), colW - marksW)
+        let mLines = []
+        if (O.showMayek && q.question_mayek) {
+          doc.setFontSize(qSize); doc.setFont('NotoMayek', 'normal')
+          mLines = doc.splitTextToSize(pdfMayekText(q.question_mayek, q.question_mayek_font), colW)
+        }
+        const diagramData = q.diagram_url ? diagramCache[q.id || q._id] : null
+        const dW = Math.min(compact ? 40 : 50, colW), dH = dW * 0.64
+        const nCols = optColsFor(q)
+        const cellW = (colW - (nCols - 1) * 4) / nCols
+        const opts = LETTERS.map(l => {
+          doc.setFontSize(oSize); doc.setFont(FONT, 'normal')
+          const lines = doc.splitTextToSize(pdfSafe(`${l}.  ${q[`option_${l.toLowerCase()}`] || '-'}`), cellW - 2)
+          const mayek = O.showMayek ? q[`option_${l.toLowerCase()}_mayek`] : ''
+          let ml = []
+          if (mayek) { doc.setFontSize(oSize - 0.5); doc.setFont('NotoMayek', 'normal'); ml = doc.splitTextToSize(pdfMayekText(mayek, q.question_mayek_font), cellW - 2) }
+          return { l, lines, ml, h: lines.length * lh(oSize) + ml.length * lh(oSize - 0.5) + (compact ? 1 : 2) }
+        })
+        const rows = []
+        for (let r = 0; r < opts.length; r += nCols) rows.push(opts.slice(r, r + nCols))
+        const rowGap = compact ? 0.5 : 1.5
+        const optH = rows.reduce((t, row) => t + Math.max(...row.map(o => o.h)) + rowGap, 0)
+        const qH = qLines.length * lh(qSize) + (compact ? 1 : 2)
+        const mH = mLines.length ? mLines.length * lh(qSize) + (compact ? 1 : 2) : 0
+        const dH2 = diagramData ? dH + 3 : 0
+        const spaceH = (Number(O.answerSpace) || 0) * 7
+        const tail = compact ? 3 : 8.5
+        place(Math.min(qH + mH + dH2 + optH + spaceH + tail, FOOTER_Y - 6 - HEADER_H - 1))
+
+        // ── draw ──
+        const x = colX()
+        doc.setFontSize(qSize); doc.setFont(FONT, 'bold'); doc.setTextColor(30,58,95)
+        doc.text(qLines, x, y)
+        doc.setFontSize(Math.max(7, oSize - 2)); doc.setFont(FONT, 'normal'); doc.setTextColor(100,116,139)
+        doc.text(`[${marksOf(q, O)}M]`, x + colW, y, { align:'right' })
+        y += qH
+        if (mLines.length) {
+          doc.setFontSize(qSize); doc.setFont('NotoMayek','normal'); doc.setTextColor(55,65,81)
+          doc.text(mLines, x, y); y += mH
+        }
+        if (diagramData) {
+          try { doc.addImage(diagramData, x, y - 2, dW, dH); y += dH2 } catch { /* image failed to embed — skip, question text still stands */ }
+        }
+        rows.forEach(row => {
+          const rowY = y
+          const rowH = Math.max(...row.map(o => o.h))
+          row.forEach((o, k) => {
+            const cx = x + k * (cellW + 4)
+            const isCorrect = inline && q.correct_option === o.l
+            if (isCorrect) {
+              doc.setFillColor(220,252,231)
+              doc.roundedRect(cx - 1.5, rowY - lh(oSize) + 0.6, cellW, rowH, 1, 1, 'F')
+            }
+            doc.setFontSize(oSize); doc.setFont(FONT, isCorrect ? 'bold' : 'normal')
+            doc.setTextColor(isCorrect?21:51, isCorrect?128:65, isCorrect?61:85)
+            doc.text(o.lines, cx, rowY)
+            if (o.ml.length) {
+              doc.setFontSize(oSize - 0.5); doc.setFont('NotoMayek','normal'); doc.setTextColor(55,65,81)
+              doc.text(o.ml, cx, rowY + o.lines.length * lh(oSize))
+            }
+          })
+          y += rowH + rowGap
+        })
+        if (spaceH) {
+          doc.setDrawColor(203,213,225); doc.setLineWidth(.15)
+          for (let k = 0; k < O.answerSpace; k++) { y += 7; doc.line(x, y - 1, x + colW, y - 1) }
+        }
+        // rows advance to the next baseline, so pull back most of that empty line before the divider
+        y += (compact ? 0.5 : 3) - lh(oSize) * 0.6
+        doc.setDrawColor(226,232,240); doc.setLineWidth(.15)
+        doc.line(x, y, x + colW, y)
+        y += compact ? 3.5 : 5.5
+      })
     })
-    doc.setPage(last)
+
+    if (O.endMarker && qs.length) {
+      place(8)
+      doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(100,116,139)
+      doc.text('*** End of paper ***', twoCol ? colX() + colW / 2 : W / 2, y + 1, { align:'center' })
+      y += 8
+    }
+
+    // Column divider on every two-column page.
+    if (twoCol && qs.length) {
+      const last = doc.getNumberOfPages()
+      colTops.forEach(({ page, top }) => {
+        doc.setPage(page)
+        doc.setDrawColor(203,213,225); doc.setLineWidth(.2)
+        doc.line(margin + colW + gutter / 2, top - 4, margin + colW + gutter / 2, FOOTER_Y - 8)
+      })
+      doc.setPage(last)
+    }
+
+    // ── OMR bubble sheet for this set ────────────────────────────────────
+    if (O.omr && qs.length) {
+      doc.addPage(); drawLetterhead(multi ? `SET ${set.code} · OMR` : 'OMR Sheet'); y = HEADER_H
+      doc.setFontSize(13); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
+      doc.text(`OMR Answer Sheet${multi ? `  ·  Set ${set.code}` : ''}`, W/2, y, { align:'center' }); y += 7
+      doc.setFontSize(9.5); doc.setFont('helvetica','normal'); doc.setTextColor(30,41,59)
+      doc.text('Name: ______________________________   Roll No.: ____________   Set: ____', margin, y); y += 5
+      doc.setFontSize(8); doc.setTextColor(100,116,139)
+      doc.text('Darken ONE circle per question completely with a blue/black ball-point pen.', margin, y); y += 7
+      const perCol = 25, colsN = 4, cw = contentW / colsN
+      qs.forEach((_, i) => {
+        const c = Math.floor(i / perCol) % colsN, r = i % perCol
+        if (i > 0 && i % (perCol * colsN) === 0) { doc.addPage(); drawLetterhead('OMR Sheet — contd.'); y = HEADER_H }
+        const bx = margin + c * cw, by = y + r * 7.6
+        doc.setFontSize(8.5); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
+        doc.text(String(i + 1), bx + 7, by, { align:'right' })
+        LETTERS.forEach((l, k) => {
+          doc.setDrawColor(30,58,95); doc.setLineWidth(.3); doc.circle(bx + 12 + k * 7, by - 1.2, 2.4)
+          doc.setFontSize(6.5); doc.setFont('helvetica','normal'); doc.text(l, bx + 12 + k * 7, by - 0.1, { align:'center' })
+        })
+      })
+    }
   }
 
-  // ── Answer key on its own clean, boxed page ────────────────────────────
-  if (!withAnswers) {
+  SETS.forEach((s, i) => renderSet(s, i === 0))
+
+  // ── Answer key: every set on clean, boxed pages ──────────────────────────
+  if (O.answerKey === 'page') {
     doc.addPage()
     drawLetterhead('Answer Key')
     y = HEADER_H
@@ -2813,38 +2902,58 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers, ti
     doc.text('Answer Key', W/2, y, { align:'center' }); y += 4
     doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(100,116,139)
     doc.text(`${title}  ·  ${subject} — ${chapter}`, W/2, y, { align:'center' }); y += 8
-
     const cols = 6, cellW = contentW/cols, cellH = 9
-    const rowsPerPage = Math.floor((FOOTER_Y - 10 - y) / cellH)
-    doc.setDrawColor(191,219,254); doc.setLineWidth(.3)
-    let pageStartY = y
-    questions.forEach((q,i) => {
-      const posOnPage = i % (cols * rowsPerPage)
-      const col = posOnPage % cols
-      const row = Math.floor(posOnPage / cols)
-      if (posOnPage === 0 && i > 0) {
-        doc.addPage(); drawLetterhead('Answer Key — contd.')
-        pageStartY = HEADER_H
+    SETS.forEach(set => {
+      if (multi) {
+        if (y + 16 > FOOTER_Y - 10) { doc.addPage(); drawLetterhead('Answer Key — contd.'); y = HEADER_H }
+        doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
+        doc.text(`Set ${set.code}`, margin, y + 3); y += 7
       }
-      const cx = margin + col*cellW
-      const cy = pageStartY + row*cellH
-      doc.setFillColor(240,246,255)
-      doc.roundedRect(cx, cy, cellW-2, cellH-2, 1, 1, 'F')
-      doc.setFontSize(9.5); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
-      doc.text(`Q${i+1}`, cx+3, cy+5.5)
-      doc.setFont('helvetica','normal'); doc.setTextColor(21,128,61)
-      doc.text(q.correct_option || '—', cx+cellW-6, cy+5.5, { align:'right' })
+      set.questions.forEach((q, i) => {
+        const col = i % cols
+        if (col === 0 && i > 0) y += cellH
+        if (y + cellH > FOOTER_Y - 10) { doc.addPage(); drawLetterhead('Answer Key — contd.'); y = HEADER_H }
+        const cx = margin + col*cellW
+        doc.setFillColor(240,246,255)
+        doc.roundedRect(cx, y, cellW-2, cellH-2, 1, 1, 'F')
+        doc.setFontSize(9.5); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
+        doc.text(`Q${i+1}`, cx+3, y+5.5)
+        doc.setFont('helvetica','normal'); doc.setTextColor(21,128,61)
+        doc.text(q.correct_option || '—', cx+cellW-6, y+5.5, { align:'right' })
+      })
+      y += cellH + 6
     })
   }
 
-  // ── Footer on every page ────────────────────────────────────────────────
+  // ── Teacher blueprint: chapter × difficulty ──────────────────────────────
+  if (O.blueprint && allQs.length) {
+    const bp = blueprint(allQs, O)
+    doc.addPage(); drawLetterhead('Blueprint'); y = HEADER_H
+    doc.setFontSize(14); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
+    doc.text('Paper Blueprint', W/2, y, { align:'center' }); y += 9
+    const colsX = [margin, margin + 88, margin + 106, margin + 124, margin + 142, margin + 162]
+    const head = ['Chapter', 'Easy', 'Medium', 'Hard', 'Total', 'Marks']
+    const row = (cells, bold, fill) => {
+      if (fill) { doc.setFillColor(240,246,255); doc.rect(margin, y - 5, contentW, 7.5, 'F') }
+      doc.setFontSize(9); doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setTextColor(30,41,59)
+      cells.forEach((c, i) => doc.text(pdfSafe(String(c)).slice(0, i === 0 ? 48 : 10), colsX[i], y))
+      doc.setDrawColor(226,232,240); doc.setLineWidth(.15); doc.line(margin, y + 2.5, W - margin, y + 2.5)
+      y += 7.5
+    }
+    row(head, true, true)
+    bp.rows.forEach(r => row([r.chapter, r.Easy, r.Medium, r.Hard, r.total, r.marks]))
+    row(['Total', bp.total.Easy, bp.total.Medium, bp.total.Hard, bp.total.total, bp.total.marks], true, true)
+  }
+
+  // ── Footer + watermark on every page ─────────────────────────────────────
   const pages = doc.getNumberOfPages()
   for (let p=1; p<=pages; p++) {
     doc.setPage(p)
     drawFooter(p, pages)
+    drawWatermark()
   }
 
-  doc.save(`${title.replace(/\s+/g,'_')}.pdf`)
+  doc.save(`${(fileName || title).replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g,'_') || 'Question_Paper'}.pdf`)
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -3640,182 +3749,270 @@ function DictBrowsePanel({ showToast, isAdmin }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// TAB 4: CREATE PAPER (unchanged)
+// TAB 4: CREATE PAPER
 // ══════════════════════════════════════════════════════════════════════════════
 function TabPaper({ questions, showToast }) {
+  const persisted = (k, d) => { try { return { ...d, ...JSON.parse(localStorage.getItem(k) || '{}') } } catch { return d } }
+  const persist = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* private mode */ } }
   const [course,       setCourse]       = useState('')
   const [subject,      setSubject]      = useState('')
-  const [chapter,      setChapter]      = useState('')
-  const [selSubs,      setSelSubs]      = useState({})
+  const [chapterSel,   setChapterSel]   = useState([])        // several chapters per paper
+  const [selSubs,      setSelSubs]      = useState({})        // { "chapter␟sub": count }
   const [difficulty,   setDifficulty]   = useState('All')
+  const [useMix,       setUseMix]       = useState(false)
+  const [mix,          setMix]          = useState({ Easy: 30, Medium: 50, Hard: 20 })
+  const [skipRecent,   setSkipRecent]   = useState(false)
+  const [quality,      setQuality]      = useState(true)
   const [title,        setTitle]        = useState('')
-  const [withAnswers,  setWithAnswers]  = useState(false)
   const [timeMinutes,  setTimeMinutes]  = useState('')
   const [instructions, setInstructions] = useState('Attempt all questions. Each question carries the marks shown against it. No negative marking unless stated.')
-  const [layout,       setLayout]       = useState(() => { try { return { ...PAPER_LAYOUT_DEFAULT, ...JSON.parse(localStorage.getItem('gnsi_paper_layout') || '{}') } } catch { return PAPER_LAYOUT_DEFAULT } })
-  const setLay = patch => setLayout(l => { const n = { ...l, ...patch }; try { localStorage.setItem('gnsi_paper_layout', JSON.stringify(n)) } catch { /* private mode */ } return n })
+  const [layout,       setLayout]       = useState(() => persisted('gnsi_paper_layout', PAPER_LAYOUT_DEFAULT))
+  const setLay = patch => setLayout(l => { const n = { ...l, ...patch }; persist('gnsi_paper_layout', n); return n })
+  const [opts,         setOpts]         = useState(() => { const o = persisted('gnsi_paper_options', PAPER_OPTIONS_DEFAULT); return { ...o, fields: { ...PAPER_OPTIONS_DEFAULT.fields, ...o.fields }, weights: { ...PAPER_OPTIONS_DEFAULT.weights, ...o.weights } } })
+  const setOpt = patch => setOpts(o => { const n = { ...o, ...patch }; persist('gnsi_paper_options', n); return n })
   const [preview,      setPreview]      = useState(null)
   const [downloading,  setDownloading]  = useState(false)
+  const [templates,    setTemplates]    = useState(loadTemplates)
+  const [history,      setHistory]      = useState(loadPaperHistory)
+  const [tplName,      setTplName]      = useState('')
+  const SEP = '␟'
   const courseSubjectList = course ? Object.keys(COURSES[course]?.subjects || {}) : []
   const chapters = (course && subject) ? (COURSES[course]?.subjects[subject] || []) : []
+  const chapterLabel = chapterSel.length > 2 ? `${chapterSel.length} chapters` : chapterSel.join(', ')
 
+  // Subsections available per chosen chapter (under the difficulty filter).
   const availableSubs = useMemo(() => {
-    if (!course || !subject || !chapter) return {}
     const map = {}
-    questions.filter(q => (q.course||'')===course && q.subject===subject && q.chapter===chapter &&
-      (difficulty==='All' || q.difficulty===difficulty))
-      .forEach(q => { const s=q.subsection||'General'; map[s]=(map[s]||0)+1 })
+    if (!course || !subject || !chapterSel.length) return map
+    const want = new Set(chapterSel)
+    questions.filter(q => (q.course||'')===course && q.subject===subject && want.has(q.chapter) &&
+      (difficulty==='All' || q.difficulty===difficulty) && (!quality || isCompleteQ(q)))
+      .forEach(q => { const k = `${q.chapter}${SEP}${q.subsection||'General'}`; map[k] = (map[k]||0)+1 })
     return map
-  }, [questions, course, subject, chapter, difficulty])
+  }, [questions, course, subject, chapterSel, difficulty, quality, SEP])
 
-  const toggleSub = (sub) => {
-    setSelSubs(prev => {
-      const n = {...prev}
-      if (n[sub] !== undefined) delete n[sub]
-      else n[sub] = Math.min(10, availableSubs[sub]||5)
-      return n
-    })
-  }
-  // Clamped to what the subsection actually has, so the "Total" shown and
-  // the paper's real length agree.
-  const updateCount = (sub, val) => setSelSubs(prev => ({
-    ...prev, [sub]: Math.max(1, Math.min(availableSubs[sub] || 1, parseInt(val) || 1)),
-  }))
-  // Capped per subsection by what's available under the current difficulty
-  // filter (which can shrink after a count was picked).
-  const totalSelected = Object.entries(selSubs).reduce((a,[sub,n]) => a + Math.min(n, availableSubs[sub] || 0), 0)
+  const toggleSub = key => setSelSubs(prev => { const n = { ...prev }; if (n[key] !== undefined) delete n[key]; else n[key] = Math.min(10, availableSubs[key] || 5); return n })
+  const updateCount = (key, val) => setSelSubs(prev => ({ ...prev, [key]: Math.max(1, Math.min(availableSubs[key] || 1, parseInt(val) || 1)) }))
+  const selectAllSubs = () => setSelSubs(Object.fromEntries(Object.entries(availableSubs).map(([k, c]) => [k, Math.min(5, c)])))
+  const totalSelected = Object.entries(selSubs).reduce((a,[k,n]) => a + Math.min(n, availableSubs[k] || 0), 0)
+  const toggleChapter = c => { setChapterSel(cs => cs.includes(c) ? cs.filter(x => x !== c) : [...cs, c]); setSelSubs(s => Object.fromEntries(Object.entries(s).filter(([k]) => !k.startsWith(c + SEP)))) }
 
   const handlePreview = () => {
-    if (!course || !subject || !chapter) { showToast('Select course, subject and chapter', C.amber); return }
-    const selected = Object.keys(selSubs)
-    if (!selected.length) { showToast('Select at least one subsection', C.amber); return }
-    let pool = []
-    selected.forEach(sub => {
-      const subQs = shuffled(questions.filter(q =>
-        (q.course||'')===course && q.subject===subject && q.chapter===chapter &&
-        (q.subsection||'General')===sub &&
-        (difficulty==='All' || q.difficulty===difficulty)
-      ))
-      pool = pool.concat(subQs.slice(0, selSubs[sub]||5))
-    })
-    if (!pool.length) { showToast('No questions available for selected subsections', C.amber); return }
-    setPreview(pool)
-    if (!title) setTitle(`${subject} — ${chapter}`)
+    if (!course || !subject || !chapterSel.length) { showToast('Select course, subject and at least one chapter', C.amber); return }
+    const blocks = Object.entries(selSubs).map(([k, count]) => { const [chapter, sub] = k.split(SEP); return { chapter, sub, count } })
+    if (!blocks.length) { showToast('Select at least one subsection', C.amber); return }
+    const { picked, shortfalls } = pickPaper(questions, { course, subject, blocks, difficulty, mix: useMix ? mix : null, exclude: skipRecent ? recentlyUsedIds(5) : new Set(), quality, dedupe: quality })
+    if (!picked.length) { showToast('No questions available for the selected subsections', C.amber); return }
+    setPreview(picked)
+    if (!title) setTitle(`${subject} — ${chapterLabel}`)
+    if (shortfalls.length) showToast(`Short by ${shortfalls.reduce((t, s) => t + s.count - s.got, 0)}: ${shortfalls.map(s => `${s.sub} ${s.got}/${s.count}`).join(', ')}`, C.amber)
   }
+
+  // ── Preview editing ────────────────────────────────────────────────────
+  const move = (i, d) => setPreview(p => { const a = [...p]; const j = i + d; if (j < 0 || j >= a.length) return a;[a[i], a[j]] = [a[j], a[i]]; return a })
+  const removeQ = i => setPreview(p => p.filter((_, j) => j !== i))
+  const swapQ = i => {
+    const next = swapCandidate(questions, preview[i], preview, { exclude: skipRecent ? recentlyUsedIds(5) : new Set(), quality })
+    if (!next) { showToast('No other question available in this subsection', C.amber); return }
+    setPreview(p => p.map((q, j) => (j === i ? next : q)))
+  }
+  const sortBy = by => by && setPreview(p => sortPaper(p, by))
+
+  // ── Build + export ──────────────────────────────────────────────────────
+  const paperTitle = title || 'Question Paper'
+  const seed = `${paperTitle}|${(preview || []).map(q => q.id).join(',')}`
+  const sets = useMemo(() => (preview ? buildSets(preview, opts, seed) : []), [preview, opts, seed])
+  const minutes = parseInt(timeMinutes) || Math.max(15, Math.round((preview?.length || 0) * 1.5))
+  const record = what => setHistory(pushPaperHistory({ what, title: paperTitle, course, subject, chapters: chapterSel, questionIds: preview.map(q => q.id), n: preview.length, opts, layout, instructions, timeMinutes }))
 
   const handleDownload = async () => {
     if (!preview?.length) return
     setDownloading(true)
     try {
       await generatePDF({
-        title: title||'Question Paper', subject, chapter, questions:preview, withAnswers,
-        timeMinutes: parseInt(timeMinutes) || undefined,
-        instructions: instructions.trim() || undefined,
-        layout,
+        title: paperTitle, subject, chapter: chapterLabel, sets, timeMinutes: parseInt(timeMinutes) || undefined,
+        instructions: instructions.trim() || undefined, layout, options: opts,
+        fileName: sets.length > 1 ? `${paperTitle} Sets ${sets.map(s => s.code).join('')}` : paperTitle,
       })
-      showToast('📄 PDF downloaded!', C.green)
+      record('PDF')
+      showToast(sets.length > 1 ? `📄 PDF with ${sets.length} sets downloaded!` : '📄 PDF downloaded!', C.green)
     } catch(e) { showToast('PDF failed: '+e.message, C.rose) }
     setDownloading(false)
   }
+  const downloadWord = () => {
+    const html = paperWordHtml({ title: paperTitle, subject, chapterLabel, sets, o: opts, timeMinutes: minutes, instructions })
+    const url = URL.createObjectURL(new Blob(['﻿', html], { type: 'application/msword' }))
+    const a = document.createElement('a'); a.href = url; a.download = `${paperTitle.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') || 'Question_Paper'}.doc`
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1500)
+    record('Word'); showToast('Word file downloaded', C.green)
+  }
+  const copy = async (text, label) => {
+    try { await navigator.clipboard.writeText(text); showToast(`${label} copied`, C.green) } catch { showToast('Copy failed — clipboard blocked', C.rose) }
+  }
+
+  // ── Templates & history ────────────────────────────────────────────────
+  const saveTemplate = () => {
+    const name = tplName.trim(); if (!name) return
+    const list = [{ id: `t${Date.now()}`, name, opts, layout, instructions, timeMinutes, useMix, mix, quality }, ...templates.filter(t => t.name !== name)].slice(0, 20)
+    setTemplates(list); saveTemplates(list); setTplName(''); showToast(`Template "${name}" saved`, C.green)
+  }
+  const applyTemplate = id => {
+    const t = templates.find(x => x.id === id); if (!t) return
+    setOpt(t.opts || {}); setLay(t.layout || {}); setInstructions(t.instructions || instructions); setTimeMinutes(t.timeMinutes || '')
+    setUseMix(!!t.useMix); if (t.mix) setMix(t.mix); setQuality(t.quality !== false)
+    showToast(`Template "${t.name}" applied`, C.green)
+  }
+  const deleteTemplate = id => { const list = templates.filter(t => t.id !== id); setTemplates(list); saveTemplates(list) }
+  const reopen = h => {
+    const byId = new Map(questions.map(q => [q.id, q]))
+    const qs = (h.questionIds || []).map(id => byId.get(id)).filter(Boolean)
+    if (!qs.length) { showToast('Those questions are no longer in the bank', C.amber); return }
+    setCourse(h.course || ''); setSubject(h.subject || ''); setChapterSel(h.chapters || []); setTitle(h.title || '')
+    if (h.opts) setOpt(h.opts); if (h.layout) setLay(h.layout); if (h.instructions) setInstructions(h.instructions); setTimeMinutes(h.timeMinutes || '')
+    setPreview(qs)
+    showToast(qs.length < h.n ? `Reopened — ${h.n - qs.length} question(s) no longer exist` : `Reopened "${h.title}"`, qs.length < h.n ? C.amber : C.green)
+  }
+
+  const bp = useMemo(() => (preview ? paperBlueprint(preview, opts) : null), [preview, opts])
+  const F = [['name','Name'],['roll','Roll No.'],['cls','Class'],['section','Section'],['date','Date'],['sign','Signature']]
+  const sub = { fontSize:12, fontWeight:800, color:C.navy, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:8 }
+  const panel = { border:`1px solid ${C.border}`, borderRadius:10, padding:'12px 14px', marginBottom:14, background:'#fafbfc' }
+  const grid = { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:10 }
+  const chk = (label, v, on, aria) => (
+    <label style={{ display:'flex', alignItems:'center', gap:7, cursor:'pointer', fontSize:12.5, color:C.navy, fontWeight:600 }}>
+      <input type="checkbox" checked={!!v} onChange={e => on(e.target.checked)} aria-label={aria || label} />{label}
+    </label>
+  )
 
   return (
     <>
       <div style={cardS}>
-        <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:16 }}>📄 Create Question Paper</div>
-        <div className="qb-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:12, marginBottom:14 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, flexWrap:'wrap', marginBottom:16 }}>
+          <div style={{ fontSize:16, fontWeight:800, color:C.navy }}>📄 Create Question Paper</div>
+          {templates.length > 0 && (
+            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+              <select style={{ ...iS, width:'auto', padding:'6px 10px' }} value="" onChange={e => applyTemplate(e.target.value)} aria-label="Apply template">
+                <option value="">Apply a template…</option>{templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+        <div className="qb-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:14 }}>
           <div>
             <label style={lS}>Course *</label>
-            <select style={iS} value={course}
-              onChange={e => { setCourse(e.target.value); setSubject(''); setChapter(''); setSelSubs({}) }}>
+            <select style={iS} value={course} aria-label="Course"
+              onChange={e => { setCourse(e.target.value); setSubject(''); setChapterSel([]); setSelSubs({}) }}>
               <option value="">Select</option>
               {COURSE_LIST.map(c => <option key={c} value={c}>{COURSES[c].label}</option>)}
             </select>
           </div>
           <div>
             <label style={lS}>Subject *</label>
-            <select style={{ ...iS, opacity:course?1:.5 }} value={subject}
-              onChange={e => { setSubject(e.target.value); setChapter(''); setSelSubs({}) }} disabled={!course}>
+            <select style={{ ...iS, opacity:course?1:.5 }} value={subject} aria-label="Subject"
+              onChange={e => { setSubject(e.target.value); setChapterSel([]); setSelSubs({}) }} disabled={!course}>
               <option value="">Select</option>
               {courseSubjectList.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
-            <label style={lS}>Chapter *</label>
-            <select style={{ ...iS, opacity:subject?1:.5 }} value={chapter}
-              onChange={e => { setChapter(e.target.value); setSelSubs({}) }} disabled={!subject}>
-              <option value="">Select</option>
-              {chapters.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
             <label style={lS}>Difficulty Filter</label>
-            <select style={iS} value={difficulty} onChange={e => setDifficulty(e.target.value)}>
+            <select style={iS} value={difficulty} onChange={e => setDifficulty(e.target.value)} aria-label="Difficulty filter">
               <option value="All">All Difficulties</option>
               {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
+          {chapters.length > 0 && (
+            <div style={{ gridColumn:'1/-1' }}>
+              <label style={lS}>Chapters * <span style={{ fontWeight:400, textTransform:'none' }}>({chapterSel.length} selected — pick one or several)</span></label>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                {chapters.map(c => (
+                  <button key={c} type="button" onClick={() => toggleChapter(c)} aria-pressed={chapterSel.includes(c)}
+                    style={{ ...btnSm(chapterSel.includes(c) ? C.navy : '#fff', chapterSel.includes(c) ? '#fff' : C.slate), border:`1px solid ${chapterSel.includes(c) ? C.navy : C.border}` }}>
+                    {chapterSel.includes(c) ? '✓ ' : ''}{c}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div style={{ gridColumn:'1/-1' }}>
             <label style={lS}>Paper Title</label>
-            <input style={iS} value={title} onChange={e => setTitle(e.target.value)}
-              placeholder="e.g. Fractions — Unit Test" />
+            <input style={iS} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Fractions — Unit Test" aria-label="Paper title" />
           </div>
           <div>
-            <label style={lS}>Time Allowed <span style={{ fontWeight:400, textTransform:'none' }}>(minutes, optional)</span></label>
-            <input type="number" min={1} style={iS} value={timeMinutes}
-              onChange={e => setTimeMinutes(e.target.value)}
-              placeholder="Auto (1.5 min/question)" />
+            <label style={lS}>Time Allowed <span style={{ fontWeight:400, textTransform:'none' }}>(minutes)</span></label>
+            <input type="number" min={1} style={iS} value={timeMinutes} onChange={e => setTimeMinutes(e.target.value)} placeholder="Auto (1.5 min/question)" />
           </div>
           <div style={{ gridColumn:'2/-1' }}>
-            <label style={lS}>General Instructions <span style={{ fontWeight:400, textTransform:'none' }}>(shown on the paper)</span></label>
-            <textarea style={{ ...iS, resize:'vertical' }} rows={2} value={instructions}
-              onChange={e => setInstructions(e.target.value)} />
+            <label style={lS}>General Instructions</label>
+            <textarea style={{ ...iS, resize:'vertical' }} rows={2} value={instructions} onChange={e => setInstructions(e.target.value)} />
           </div>
         </div>
 
         {Object.keys(availableSubs).length > 0 && (
           <div style={{ marginBottom:16 }}>
-            <label style={{ ...lS, marginBottom:8 }}>
-              Select Subsections & Question Count
-              <span style={{ fontWeight:400, marginLeft:6, textTransform:'none' }}>(Total: {totalSelected} questions)</span>
-            </label>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
-              {Object.entries(availableSubs).map(([sub, count]) => (
-                <div key={sub} onClick={() => toggleSub(sub)}
-                  style={{ padding:'10px 14px', borderRadius:9, cursor:'pointer',
-                    border:`2px solid ${selSubs[sub]!==undefined?C.navy:C.border}`,
-                    background: selSubs[sub]!==undefined ? '#eff6ff' : '#f8fafc',
-                    display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <div>
-                    <div style={{ fontSize:13, fontWeight:600, color:selSubs[sub]!==undefined?C.navy:C.slate }}>
-                      {selSubs[sub]!==undefined ? '☑' : '☐'} {sub}
-                    </div>
-                    <div style={{ fontSize:11, color:C.slate }}>{count} questions available</div>
-                  </div>
-                  {selSubs[sub]!==undefined && (
-                    <div onClick={e=>e.stopPropagation()} style={{ display:'flex', alignItems:'center', gap:4 }}>
-                      <span style={{ fontSize:11, color:C.slate }}>Pick:</span>
-                      <input type="number" min={1} max={count} value={selSubs[sub]}
-                        onChange={e => updateCount(sub, e.target.value)}
-                        style={{ width:50, padding:'3px 6px', borderRadius:5,
-                          border:`1px solid ${C.border}`, fontSize:12, textAlign:'center' }} />
-                    </div>
-                  )}
-                </div>
-              ))}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, gap:8, flexWrap:'wrap' }}>
+              <label style={{ ...lS, margin:0 }}>Subsections & question count <span style={{ fontWeight:400, marginLeft:6, textTransform:'none' }}>(Total: {totalSelected})</span></label>
+              <div style={{ display:'flex', gap:6 }}>
+                <button type="button" onClick={selectAllSubs} style={btnSm('#fff', C.navy)}>Select all (5 each)</button>
+                <button type="button" onClick={() => setSelSubs({})} style={btnSm('#fff', C.slate)}>Clear</button>
+              </div>
             </div>
+            {chapterSel.map(ch => {
+              const entries = Object.entries(availableSubs).filter(([k]) => k.startsWith(ch + SEP))
+              if (!entries.length) return <div key={ch} style={{ fontSize:12, color:C.amber, margin:'6px 0' }}>⚠ {ch}: no questions{difficulty !== 'All' ? ` at ${difficulty}` : ''}</div>
+              return (
+                <div key={ch} style={{ marginBottom:10 }}>
+                  {chapterSel.length > 1 && <div style={{ fontSize:12, fontWeight:700, color:C.navy, margin:'4px 0 6px' }}>{ch}</div>}
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))', gap:8 }}>
+                    {entries.map(([key, count]) => {
+                      const subName = key.split(SEP)[1], on = selSubs[key] !== undefined
+                      return (
+                        <div key={key} onClick={() => toggleSub(key)} role="checkbox" aria-checked={on} aria-label={`${ch} ${subName}`}
+                          style={{ padding:'9px 12px', borderRadius:9, cursor:'pointer', border:`2px solid ${on?C.navy:C.border}`, background:on?'#eff6ff':'#f8fafc', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                          <div>
+                            <div style={{ fontSize:13, fontWeight:600, color:on?C.navy:C.slate }}>{on ? '☑' : '☐'} {subName}</div>
+                            <div style={{ fontSize:11, color:C.slate }}>{count} available</div>
+                          </div>
+                          {on && (
+                            <div onClick={e=>e.stopPropagation()} style={{ display:'flex', alignItems:'center', gap:4 }}>
+                              <span style={{ fontSize:11, color:C.slate }}>Pick:</span>
+                              <input type="number" min={1} max={count} value={selSubs[key]} onChange={e => updateCount(key, e.target.value)} aria-label={`${subName} count`}
+                                style={{ width:50, padding:'3px 6px', borderRadius:5, border:`1px solid ${C.border}`, fontSize:12, textAlign:'center' }} />
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 
-        {chapter && Object.keys(availableSubs).length === 0 && (
-          <div style={{ padding:'12px 16px', borderRadius:8, background:'#fef9c3', border:'1px solid #fde68a',
-            fontSize:13, color:'#92400e', marginBottom:14 }}>
-            ⚠️ No questions found for this chapter. Add questions using Manual Add or Bulk Paste.
+        {chapterSel.length > 0 && Object.keys(availableSubs).length === 0 && (
+          <div style={{ padding:'12px 16px', borderRadius:8, background:'#fef9c3', border:'1px solid #fde68a', fontSize:13, color:'#92400e', marginBottom:14 }}>
+            ⚠️ No questions found for the chosen chapter(s). Add questions using Manual Add or Bulk Paste.
           </div>
         )}
 
-        <div style={{ border:`1px solid ${C.border}`, borderRadius:10, padding:'12px 14px', marginBottom:14, background:'#fafbfc' }}>
-          <div style={{ fontSize:12, fontWeight:800, color:C.navy, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:8 }}>Layout</div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:10 }}>
+        <div style={panel}>
+          <div style={sub}>Picking</div>
+          <div style={{ display:'flex', gap:16, flexWrap:'wrap', alignItems:'center' }}>
+            {chk('Balance difficulty', useMix, setUseMix)}
+            {useMix && DIFFICULTIES.map(d => (
+              <span key={d} style={{ display:'flex', alignItems:'center', gap:4, fontSize:12, color:C.slate }}>{d}
+                <input type="number" min={0} max={100} value={mix[d]} onChange={e => setMix(m => ({ ...m, [d]: Number(e.target.value) || 0 }))} aria-label={`${d} %`}
+                  style={{ width:52, padding:'3px 6px', borderRadius:5, border:`1px solid ${C.border}`, fontSize:12 }} />%</span>
+            ))}
+            {chk('Skip questions used in my last 5 papers', skipRecent, setSkipRecent)}
+            {chk('Only complete questions, no near-duplicates', quality, setQuality)}
+          </div>
+        </div>
+
+        <div style={panel}>
+          <div style={sub}>Layout</div>
+          <div style={grid}>
             <div><label style={lS}>Page columns</label>
               <select style={iS} value={layout.columns} onChange={e=>setLay({ columns:Number(e.target.value) })} aria-label="Page columns">
                 <option value={1}>One column</option><option value={2}>Two columns</option></select></div>
@@ -3831,106 +4028,195 @@ function TabPaper({ questions, showToast }) {
             <div><label style={lS}>Text size</label>
               <select style={iS} value={layout.size} onChange={e=>setLay({ size:e.target.value })} aria-label="Text size">
                 <option value="S">Small</option><option value="M">Medium</option><option value="L">Large</option></select></div>
+            <div><label style={lS}>Answer lines</label>
+              <select style={iS} value={opts.answerSpace} onChange={e=>setOpt({ answerSpace:Number(e.target.value) })} aria-label="Answer lines">
+                <option value={0}>None (MCQ)</option><option value={2}>2 lines</option><option value={3}>3 lines</option><option value={5}>5 lines</option></select></div>
           </div>
-          <div style={{ fontSize:11.5, color:C.slate, marginTop:8 }}>Two columns + compact + auto options fits about twice as many questions per page. Your layout is remembered.</div>
         </div>
 
-        <div style={{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap', marginBottom:14 }}>
-          <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:C.navy, fontWeight:600 }}>
-            <input type="checkbox" checked={withAnswers} onChange={e=>setWithAnswers(e.target.checked)} />
-            Include answers in PDF
-          </label>
+        <div style={panel}>
+          <div style={sub}>Paper</div>
+          <div style={grid}>
+            <div><label style={lS}>Marks</label>
+              <select style={iS} value={opts.marksMode} onChange={e=>setOpt({ marksMode:e.target.value })} aria-label="Marks scheme">
+                <option value="bank">As saved in the bank</option><option value="flat">Same for every question</option><option value="difficulty">By difficulty</option></select></div>
+            {opts.marksMode === 'flat' && <div><label style={lS}>Marks each</label><input type="number" min={0} step={0.5} style={iS} value={opts.marksFlat} onChange={e=>setOpt({ marksFlat:e.target.value })} aria-label="Marks each" /></div>}
+            {opts.marksMode === 'difficulty' && DIFFICULTIES.map(d => <div key={d}><label style={lS}>{d} marks</label><input type="number" min={0} step={0.5} style={iS} value={opts.weights[d]} onChange={e=>setOpt({ weights:{ ...opts.weights, [d]: e.target.value } })} aria-label={`${d} marks`} /></div>)}
+            <div><label style={lS}>− per wrong</label><input type="number" min={0} step={0.25} style={iS} value={opts.negative} onChange={e=>setOpt({ negative:e.target.value })} aria-label="Negative marks" /></div>
+            <div><label style={lS}>Sections</label>
+              <select style={iS} value={opts.sections} onChange={e=>setOpt({ sections:e.target.value })} aria-label="Sections">
+                <option value="none">No sections</option><option value="chapter">By chapter</option><option value="subsection">By subsection</option></select></div>
+            <div><label style={lS}>Sets</label>
+              <select style={iS} value={opts.sets} onChange={e=>setOpt({ sets:Number(e.target.value) })} aria-label="Sets">
+                {[1,2,3,4].map(n => <option key={n} value={n}>{'ABCD'.slice(0,n).split('').join(' · ')}</option>)}</select></div>
+            <div><label style={lS}>Answer key</label>
+              <select style={iS} value={opts.answerKey} onChange={e=>setOpt({ answerKey:e.target.value })} aria-label="Answer key">
+                <option value="page">Separate page</option><option value="inline">Marked on the paper</option><option value="none">None</option></select></div>
+            <div><label style={lS}>Language</label>
+              <select style={iS} value={opts.showMayek ? 'both' : 'en'} onChange={e=>setOpt({ showMayek:e.target.value === 'both' })} aria-label="Language">
+                <option value="both">English + Meitei Mayek</option><option value="en">English only</option></select></div>
+          </div>
+          <div style={{ display:'flex', gap:16, flexWrap:'wrap', marginTop:10 }}>
+            {opts.sets > 1 && chk('Shuffle options in sets B–D', opts.shuffleOptions, v => setOpt({ shuffleOptions:v }))}
+            {chk('OMR answer sheet', opts.omr, v => setOpt({ omr:v }))}
+            {chk('Teacher blueprint page', opts.blueprint, v => setOpt({ blueprint:v }))}
+            {chk('"End of paper" line', opts.endMarker, v => setOpt({ endMarker:v }))}
+          </div>
         </div>
 
-        <button onClick={handlePreview} disabled={!subject||!chapter||!totalSelected}
-          style={btn(C.navy, !subject||!chapter||!totalSelected)}>
-          👁 Preview Paper ({totalSelected} questions)
-        </button>
+        <div style={panel}>
+          <div style={sub}>Header & student details</div>
+          <div style={grid}>
+            <div><label style={lS}>Institute</label><input style={iS} value={opts.institute} onChange={e=>setOpt({ institute:e.target.value })} aria-label="Institute" /></div>
+            <div><label style={lS}>Tagline</label><input style={iS} value={opts.tagline} onChange={e=>setOpt({ tagline:e.target.value })} aria-label="Tagline" /></div>
+            <div><label style={lS}>Exam / class line</label><input style={iS} value={opts.examLine} onChange={e=>setOpt({ examLine:e.target.value })} placeholder="e.g. Class 6 · Unit Test 2" aria-label="Exam line" /></div>
+            <div><label style={lS}>Paper date</label><input type="date" style={iS} value={opts.paperDate} onChange={e=>setOpt({ paperDate:e.target.value })} aria-label="Paper date" /></div>
+            <div><label style={lS}>Watermark</label><input style={iS} value={opts.watermark} onChange={e=>setOpt({ watermark:e.target.value })} placeholder="e.g. CONFIDENTIAL" aria-label="Watermark" /></div>
+          </div>
+          <div style={{ display:'flex', gap:14, flexWrap:'wrap', marginTop:10 }}>
+            <span style={{ fontSize:12, color:C.slate, fontWeight:600 }}>Student fields:</span>
+            {F.map(([k, l]) => <span key={k}>{chk(l, opts.fields[k], v => setOpt({ fields:{ ...opts.fields, [k]: v } }), `Field ${l}`)}</span>)}
+          </div>
+        </div>
+
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+          <button onClick={handlePreview} disabled={!subject||!chapterSel.length||!totalSelected} style={btn(C.navy, !subject||!chapterSel.length||!totalSelected)}>
+            👁 Preview Paper ({totalSelected} questions)
+          </button>
+          <span style={{ flex:1 }} />
+          <input style={{ ...iS, width:190 }} value={tplName} onChange={e=>setTplName(e.target.value)} placeholder="Template name…" aria-label="Template name" />
+          <button onClick={saveTemplate} disabled={!tplName.trim()} style={btn(C.slate, !tplName.trim())}>💾 Save settings as template</button>
+        </div>
+        {templates.length > 0 && (
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:8 }}>
+            {templates.map(t => (
+              <span key={t.id} style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11.5, padding:'3px 8px', borderRadius:99, background:T.surfaceAlt, border:`1px solid ${T.border}` }}>
+                {t.name}<button onClick={() => deleteTemplate(t.id)} aria-label={`Delete template ${t.name}`} style={{ border:'none', background:'none', cursor:'pointer', color:C.rose, padding:0 }}>✕</button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {preview && (
         <div style={cardS}>
-          <div id="qbank-paper-preview" style={{ border:`2px solid ${C.navy}`, borderRadius:10, padding:'20px 24px', marginBottom:16, background:'#fff' }}>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', marginBottom:12 }}>
+            <strong style={{ color:C.navy }}>{preview.length} questions · {preview.reduce((t, q) => t + marksOf(q, opts), 0)} marks{sets.length > 1 ? ` · ${sets.length} sets` : ''}</strong>
+            {bp && <span style={{ fontSize:12, color:C.slate }}>Easy {bp.total.Easy} · Medium {bp.total.Medium} · Hard {bp.total.Hard} · {bp.rows.length} chapter{bp.rows.length > 1 ? 's' : ''}</span>}
+            <span style={{ flex:1 }} />
+            <select style={{ ...iS, width:'auto', padding:'6px 10px' }} value="" onChange={e => sortBy(e.target.value)} aria-label="Sort questions">
+              <option value="">Sort…</option><option value="chapter">By chapter</option><option value="difficulty">By difficulty</option><option value="shuffle">Shuffle</option>
+            </select>
+          </div>
+          <div id="qbank-paper-preview" style={{ position:'relative', border:`2px solid ${C.navy}`, borderRadius:10, padding:'20px 24px', marginBottom:16, background:'#fff', overflow:'hidden' }}>
+            {opts.watermark && <div aria-hidden style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'none', fontSize:64, fontWeight:800, color:'rgba(100,116,139,.08)', transform:'rotate(-28deg)' }}>{opts.watermark}</div>}
             <div style={{ textAlign:'center', borderBottom:`1px solid ${C.border}`, paddingBottom:12, marginBottom:14 }}>
-              <div style={{ fontSize:18, fontWeight:800, color:C.navy }}>Guidance Navodaya & Sainik Institute</div>
-              <div style={{ fontSize:11, color:C.slate }}>Khangabok, Thoubal, Manipur · Est. 2016</div>
-              <div style={{ fontSize:14, fontWeight:700, color:C.navy, marginTop:8 }}>{title}</div>
-              <div style={{ fontSize:12, color:C.slate, marginTop:4 }}>
-                Subject: {subject} | Chapter: {chapter} | Date: {today()}
-              </div>
+              <div style={{ fontSize:18, fontWeight:800, color:C.navy }}>{opts.institute}</div>
+              <div style={{ fontSize:11, color:C.slate }}>{opts.tagline}</div>
+              <div style={{ fontSize:14, fontWeight:700, color:C.navy, marginTop:8 }}>{paperTitle}</div>
+              <div style={{ fontSize:12, color:C.slate, marginTop:4 }}>Subject: {subject} | Chapter: {chapterLabel} | Date: {opts.paperDate ? new Date(opts.paperDate).toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' }) : today()}</div>
+              {opts.examLine && <div style={{ fontSize:12, fontWeight:700, color:C.navy, marginTop:2 }}>{opts.examLine}</div>}
             </div>
-
-            <div style={{ display:'flex', gap:20, fontSize:12, color:'#374151', marginBottom:12 }}>
-              <span>Name: <span style={{ display:'inline-block', width:110, borderBottom:`1px solid ${C.border}` }}>&nbsp;</span></span>
-              <span>Roll No.: <span style={{ display:'inline-block', width:70, borderBottom:`1px solid ${C.border}` }}>&nbsp;</span></span>
-              <span>Class: <span style={{ display:'inline-block', width:60, borderBottom:`1px solid ${C.border}` }}>&nbsp;</span></span>
+            <div style={{ display:'flex', gap:16, flexWrap:'wrap', fontSize:12, color:'#374151', marginBottom:12 }}>
+              {F.filter(([k]) => opts.fields[k]).map(([k, l]) => <span key={k}>{l}: <span style={{ display:'inline-block', width:80, borderBottom:`1px solid ${C.border}` }}>&nbsp;</span></span>)}
             </div>
-
             <div style={{ padding:'10px 14px', borderRadius:8, background:'#f0f6ff', border:'1px solid #bfdbfe', marginBottom:14 }}>
               <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, fontWeight:700, color:C.navy, marginBottom:6 }}>
-                <span>Time Allowed: {timeMinutes || Math.max(15, Math.round(preview.length*1.5))} minutes</span>
-                <span>Maximum Marks: {preview.reduce((s,q)=>s+(q.marks||1),0)}</span>
+                <span>Time Allowed: {minutes} minutes</span>
+                <span>Maximum Marks: {preview.reduce((s,q)=>s+marksOf(q, opts),0)}</span>
               </div>
-              <div style={{ fontSize:11, color:'#475569' }}>
-                <strong>General Instructions:</strong> {instructions}
-              </div>
+              <div style={{ fontSize:11, color:'#475569' }}><strong>General Instructions:</strong> {instructions}{Number(opts.negative) > 0 && ` ${opts.negative} mark(s) will be deducted for every wrong answer.`}</div>
             </div>
 
             <div style={{ columnCount: layout.columns === 2 ? 2 : 1, columnGap: 28, columnRule: layout.columns === 2 ? `1px solid ${C.border}` : undefined,
               fontFamily: PAPER_FONT_CSS[layout.font], fontSize: `${(PAPER_SIZE_PT[layout.size] || 10.5) + 2}px` }}>
-            {preview.map((q,i) => {
-              const optCols = layout.optionCols === 'auto'
-                ? (['a','b','c','d'].every(k => String(q[`option_${k}`] || '').length <= (layout.columns === 2 ? 7 : 16) && !q[`option_${k}_mayek`]) ? 4
-                  : ['a','b','c','d'].every(k => String(q[`option_${k}`] || '').length <= (layout.columns === 2 ? 18 : 40)) ? 2 : 1)
-                : Number(layout.optionCols)
-              return (
-              <div key={q.id||i} style={{ marginBottom: layout.spacing === 'compact' ? 6 : 14, breakInside:'avoid' }}>
-                <div style={{ fontSize:'1.08em', fontWeight:600, color:'#1e293b', marginBottom:q.question_mayek ? 2 : (layout.spacing === 'compact' ? 3 : 6) }}>
-                  <span style={{ color:C.slate, marginRight:6 }}>Q{i+1}.</span>{q.question}
-                  <span style={{ float:'right', fontSize:11, color:C.slate }}>[{q.marks||1}M]</span>
-                </div>
-                {q.question_mayek && (
-                  <div style={{ fontSize:13, color:'#374151', marginBottom:6, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
-                    {q.question_mayek}
-                  </div>
-                )}
-                {q.diagram_url && (
-                  <img src={q.diagram_url} alt="diagram"
-                    style={{ maxWidth:200, maxHeight:140, borderRadius:6, marginBottom:6, display:'block' }} />
-                )}
-                <div style={{ display:'grid', gridTemplateColumns:`repeat(${optCols},minmax(0,1fr))`, gap: layout.spacing === 'compact' ? 1 : 4 }}>
-                  {['A','B','C','D'].map(l => (
-                    <div key={l} style={{ fontSize:'1em', padding: layout.spacing === 'compact' ? '1px 6px' : '3px 8px', color:'#374151' }}>
-                      <span style={{ fontWeight:700, color:C.slate, marginRight:4 }}>{l}.</span>
-                      {q[`option_${l.toLowerCase()}`]||'—'}
-                      {withAnswers && q.correct_option===l && <span style={{ color:C.green, marginLeft:6, fontWeight:700 }}>✓</span>}
-                      {q[`option_${l.toLowerCase()}_mayek`] && (
-                        <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font) }}>
-                          {q[`option_${l.toLowerCase()}_mayek`]}
-                        </div>
-                      )}
+            {(() => { let n = 0; const idx = new Map(preview.map((q, i) => [q, i])); return groupSections(preview, opts.sections).map((g, gi) => (
+              <div key={gi}>
+                {g.name && <div style={{ background:C.navy, color:'#fff', fontSize:11.5, fontWeight:700, padding:'4px 8px', borderRadius:4, margin:'4px 0 8px', breakInside:'avoid' }}>SECTION {sectionLetter(gi)} — {g.name}</div>}
+                {g.items.map(q => {
+                  const i = idx.get(q); n++
+                  const optCols = layout.optionCols === 'auto'
+                    ? (['a','b','c','d'].every(k => String(q[`option_${k}`] || '').length <= (layout.columns === 2 ? 7 : 16) && !(opts.showMayek && q[`option_${k}_mayek`])) ? 4
+                      : ['a','b','c','d'].every(k => String(q[`option_${k}`] || '').length <= (layout.columns === 2 ? 18 : 40)) ? 2 : 1)
+                    : Number(layout.optionCols)
+                  return (
+                  <div key={q.id||i} style={{ marginBottom: layout.spacing === 'compact' ? 6 : 14, breakInside:'avoid' }} className="qb-paper-q">
+                    <div style={{ fontSize:'1.08em', fontWeight:600, color:'#1e293b', marginBottom:(opts.showMayek && q.question_mayek) ? 2 : (layout.spacing === 'compact' ? 3 : 6) }}>
+                      <span style={{ color:C.slate, marginRight:6 }}>Q{n}.</span>{q.question}
+                      <span style={{ float:'right', fontSize:11, color:C.slate }}>
+                        [{marksOf(q, opts)}M]
+                        <span style={{ marginLeft:6, whiteSpace:'nowrap' }}>
+                          <button onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move question ${n} up`} style={miniB}>↑</button>
+                          <button onClick={() => move(i, 1)} disabled={i === preview.length - 1} aria-label={`Move question ${n} down`} style={miniB}>↓</button>
+                          <button onClick={() => swapQ(i)} aria-label={`Swap question ${n}`} title="Swap for another question from the same subsection" style={miniB}>⇄</button>
+                          <button onClick={() => removeQ(i)} aria-label={`Remove question ${n}`} style={{ ...miniB, color:C.rose }}>✕</button>
+                        </span>
+                      </span>
                     </div>
-                  ))}
-                </div>
-                {i<preview.length-1 && <div style={{ height:1, background:C.border, marginTop: layout.spacing === 'compact' ? 5 : 10 }} />}
+                    {opts.showMayek && q.question_mayek && <div style={{ fontSize:13, color:'#374151', marginBottom:6, fontFamily:mayekFontFamily(q.question_mayek_font) }}>{q.question_mayek}</div>}
+                    {q.diagram_url && <img src={q.diagram_url} alt="diagram" style={{ maxWidth:200, maxHeight:140, borderRadius:6, marginBottom:6, display:'block' }} />}
+                    <div style={{ display:'grid', gridTemplateColumns:`repeat(${optCols},minmax(0,1fr))`, gap: layout.spacing === 'compact' ? 1 : 4 }}>
+                      {['A','B','C','D'].map(l => (
+                        <div key={l} style={{ fontSize:'1em', padding: layout.spacing === 'compact' ? '1px 6px' : '3px 8px', color:'#374151', background: opts.answerKey === 'inline' && q.correct_option===l ? '#dcfce7' : undefined, borderRadius:4 }}>
+                          <span style={{ fontWeight:700, color:C.slate, marginRight:4 }}>{l}.</span>
+                          {q[`option_${l.toLowerCase()}`]||'—'}
+                          {opts.answerKey === 'inline' && q.correct_option===l && <span style={{ color:C.green, marginLeft:6, fontWeight:700 }}>✓</span>}
+                          {opts.showMayek && q[`option_${l.toLowerCase()}_mayek`] && <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font) }}>{q[`option_${l.toLowerCase()}_mayek`]}</div>}
+                        </div>
+                      ))}
+                    </div>
+                    {Array.from({ length: Number(opts.answerSpace) || 0 }).map((_, k) => <div key={k} style={{ borderBottom:'1px dotted #94a3b8', height:18 }} />)}
+                    <div style={{ height:1, background:C.border, marginTop: layout.spacing === 'compact' ? 5 : 10 }} />
+                  </div>
+                  )
+                })}
               </div>
-              )
-            })}
+            )) })()}
             </div>
+            {opts.endMarker && <div style={{ textAlign:'center', fontSize:12, fontWeight:700, color:C.slate, marginTop:8 }}>*** End of paper ***</div>}
           </div>
+
+          {opts.blueprint && bp && (
+            <div style={{ marginBottom:14, overflowX:'auto' }}>
+              <div style={sub}>Blueprint</div>
+              <table style={{ borderCollapse:'collapse', fontSize:12, width:'100%' }}>
+                <thead><tr>{['Chapter','Easy','Medium','Hard','Total','Marks'].map(h => <th key={h} style={{ textAlign:h==='Chapter'?'left':'center', padding:'5px 8px', background:'#f0f6ff', border:`1px solid ${C.border}` }}>{h}</th>)}</tr></thead>
+                <tbody>{[...bp.rows, { chapter:'Total', ...bp.total }].map(r => (
+                  <tr key={r.chapter} style={r.chapter === 'Total' ? { fontWeight:700 } : undefined}>{[r.chapter, r.Easy, r.Medium, r.Hard, r.total, r.marks].map((c, k) => <td key={k} style={{ textAlign:k?'center':'left', padding:'5px 8px', border:`1px solid ${C.border}` }}>{c}</td>)}</tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+
           <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-            <button onClick={handleDownload} disabled={downloading} style={btn(C.green, downloading)}>
-              {downloading ? '⏳ Generating PDF…' : '⬇ Download PDF'}
+            <button onClick={handleDownload} disabled={downloading || !preview.length} style={btn(C.green, downloading || !preview.length)}>
+              {downloading ? '⏳ Generating PDF…' : `⬇ Download PDF${sets.length > 1 ? ` (${sets.length} sets)` : ''}`}
             </button>
-            <button onClick={handlePreview} style={btn(C.navy)}>🔀 Reshuffle</button>
-            <CastButton presentTargetId="qbank-paper-preview" title={title} showToast={showToast} />
+            <button onClick={downloadWord} disabled={!preview.length} style={btn(C.navy, !preview.length)}>📝 Word</button>
+            <button onClick={() => copy(answerKeyText(sets, paperTitle), 'Answer key')} style={btn(C.slate)}>🔑 Copy answer key</button>
+            <button onClick={() => copy(paperText(preview, paperTitle, opts), 'Paper text')} style={btn(C.slate)}>💬 Copy for WhatsApp</button>
+            <button onClick={handlePreview} style={btn(C.navy)}>🔀 Re-pick</button>
+            <CastButton presentTargetId="qbank-paper-preview" title={paperTitle} showToast={showToast} />
             <button onClick={() => setPreview(null)} style={btn(C.slate)}>✕ Close</button>
           </div>
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div style={cardS}>
+          <div style={sub}>Recent papers</div>
+          {history.slice(0, 8).map(h => (
+            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:`1px solid ${C.border}`, fontSize:12.5 }}>
+              <span style={{ flex:1, minWidth:0 }}><strong style={{ color:C.navy }}>{h.title}</strong> <span style={{ color:C.slate }}>· {h.n} Q · {h.what} · {new Date(h.at).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</span></span>
+              <button onClick={() => reopen(h)} style={btnSm('#fff', C.navy)}>Reopen</button>
+            </div>
+          ))}
         </div>
       )}
     </>
   )
 }
+const miniB = { border:'1px solid #e2e8f0', background:'#fff', borderRadius:5, padding:'0 5px', fontSize:11, cursor:'pointer', marginLeft:2, lineHeight:'16px' }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // TAB 5: ONLINE TEST (unchanged)
