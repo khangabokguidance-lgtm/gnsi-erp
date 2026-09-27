@@ -52,14 +52,14 @@ const gradeColor = grade => {
   if (['C1','C2'].includes(grade)) return '#d97706'
   if (grade === 'D') return '#ea580c'
   if (grade === 'E') return '#dc2626'
-  return '#94a3b8'
+  return '#8a93a6'
 }
 
 const S = {
-  card: { background:'white', border:'1px solid #e2e8f0', borderRadius:12, padding:20, marginBottom:16 },
-  input: { padding:'8px 12px', borderRadius:8, border:'1.5px solid #e2e8f0', fontSize:13, width:'100%', boxSizing:'border-box', outline:'none' },
-  label: { fontSize:11.5, fontWeight:700, color:'#374151', marginBottom:5, display:'block' },
-  btn: (bg, disabled) => ({ padding:'9px 16px', borderRadius:8, border:'none', background:disabled?'#e2e8f0':bg, color:disabled?'#94a3b8':'white', fontWeight:700, fontSize:13, cursor:disabled?'not-allowed':'pointer' }),
+  card: { background:'white', border:'1px solid #e8e3d8', borderRadius:18, boxShadow:'0 1px 2px rgba(19,42,79,.05),0 12px 32px -22px rgba(19,42,79,.35)', padding:20, marginBottom:16 },
+  input: { padding:'9px 12px', borderRadius:11, border:'1px solid #d9d2c2', fontSize:13, width:'100%', boxSizing:'border-box', outline:'none', background:'#fff', color:'#0f1b2e', fontFamily:'inherit', minHeight:40 },
+  label: { fontSize:10.5, fontWeight:800, color:'#5d6b82', marginBottom:5, display:'block', textTransform:'uppercase', letterSpacing:'.1em' },
+  btn: (bg, disabled) => ({ padding:'9px 16px', borderRadius:8, border:'none', background:disabled?'#e8e3d8':bg, color:disabled?'#8a93a6':'white', fontWeight:700, fontSize:13, cursor:disabled?'not-allowed':'pointer' }),
   btnSm: bg => ({ padding:'5px 10px', borderRadius:6, border:'none', background:bg, color:'white', fontWeight:700, fontSize:11.5, cursor:'pointer' }),
 }
 
@@ -312,8 +312,8 @@ export default function TabReportCards({ currentUser }) {
       )}
 
       <div style={S.card}>
-        <div style={{ fontWeight:800, fontSize:16, color:'#1e293b', marginBottom:4 }}>🎓 Report Card Generator</div>
-        <div style={{ fontSize:12.5, color:'#64748b', marginBottom:16 }}>
+        <div style={{ fontFamily:"'Fraunces','Playfair Display',Georgia,serif", fontWeight:600, fontSize:19, color:'#0f1b2e', marginBottom:4 }}>🎓 Report Card Generator</div>
+        <div style={{ fontSize:12.5, color:'#5d6b82', marginBottom:16 }}>
           Batches and marks are pulled live from the Exams module — the same source Bulk Report Cards uses — so both stay in sync.
         </div>
 
@@ -354,8 +354,8 @@ export default function TabReportCards({ currentUser }) {
         <div style={S.card}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:10 }}>
             <div>
-              <div style={{ fontWeight:800, fontSize:15, color:'#1e293b' }}>{selectedStudent.name}</div>
-              <div style={{ fontSize:12, color:'#64748b' }}>
+              <div style={{ fontWeight:800, fontSize:15, color:'#14213d' }}>{selectedStudent.name}</div>
+              <div style={{ fontSize:12, color:'#5d6b82' }}>
                 {course} · {examTypes.find(t => t.id === examType)?.name || ''}{examDate ? ` · ${examDate}` : ''}
                 {selectedStudent.roll_number ? ` · Roll ${selectedStudent.roll_number}` : ''}
                 {selectedStudent.house ? ` · ${selectedStudent.house} House` : ''}
@@ -367,26 +367,26 @@ export default function TabReportCards({ currentUser }) {
             </div>
             <div style={{ display:'flex', gap:8 }}>
               <button onClick={handleSave} disabled={saving} style={S.btn('#16a34a', saving)}>{saving ? 'Saving…' : (savedId ? '✓ Update' : '💾 Save')}</button>
-              <button onClick={handleDownloadPDF} style={S.btn('#1e3a5f')}>⬇️ Download PDF</button>
+              <button onClick={handleDownloadPDF} style={S.btn('#132a4f')}>⬇️ Download PDF</button>
             </div>
           </div>
 
           {loadingSubjects ? (
-            <div style={{ textAlign:'center', padding:24, color:'#64748b', fontSize:13 }}>⏳ Loading subjects…</div>
+            <div style={{ textAlign:'center', padding:24, color:'#5d6b82', fontSize:13 }}>⏳ Loading subjects…</div>
           ) : subjects.length === 0 ? (
-            <div style={{ textAlign:'center', padding:24, color:'#94a3b8', fontSize:13 }}>
+            <div style={{ textAlign:'center', padding:24, color:'#8a93a6', fontSize:13 }}>
               No exam schedule found for {course} under this exam type yet — set it up in Exams → Schedule first.
             </div>
           ) : (
             <div style={{ overflowX:'auto' }}>
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
                 <thead>
-                  <tr style={{ borderBottom:'2px solid #e2e8f0' }}>
-                    <th style={{ textAlign:'left', padding:'8px 6px', color:'#64748b', fontSize:11.5 }}>SUBJECT</th>
-                    <th style={{ textAlign:'left', padding:'8px 6px', color:'#64748b', fontSize:11.5, width:110 }}>MARKS</th>
-                    <th style={{ textAlign:'left', padding:'8px 6px', color:'#64748b', fontSize:11.5, width:110 }}>MAX MARKS</th>
-                    <th style={{ textAlign:'center', padding:'8px 6px', color:'#64748b', fontSize:11.5, width:70 }}>GRADE</th>
-                    <th style={{ textAlign:'left', padding:'8px 6px', color:'#64748b', fontSize:11.5 }}>REMARKS</th>
+                  <tr style={{ borderBottom:'2px solid #e8e3d8' }}>
+                    <th style={{ textAlign:'left', padding:'8px 6px', color:'#5d6b82', fontSize:11.5 }}>SUBJECT</th>
+                    <th style={{ textAlign:'left', padding:'8px 6px', color:'#5d6b82', fontSize:11.5, width:110 }}>MARKS</th>
+                    <th style={{ textAlign:'left', padding:'8px 6px', color:'#5d6b82', fontSize:11.5, width:110 }}>MAX MARKS</th>
+                    <th style={{ textAlign:'center', padding:'8px 6px', color:'#5d6b82', fontSize:11.5, width:70 }}>GRADE</th>
+                    <th style={{ textAlign:'left', padding:'8px 6px', color:'#5d6b82', fontSize:11.5 }}>REMARKS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -394,8 +394,8 @@ export default function TabReportCards({ currentUser }) {
                     const m = marks[s.subject] || { marks_obtained:'', max_marks:s.maxMarks||100, remarks:'' }
                     const g = gradeFor(pctOf(m))
                     return (
-                      <tr key={s.subject} style={{ borderBottom:'1px solid #f1f5f9' }}>
-                        <td style={{ padding:'8px 6px', fontWeight:600, color:'#1e293b' }}>{s.subject}</td>
+                      <tr key={s.subject} style={{ borderBottom:'1px solid #f3f0e8' }}>
+                        <td style={{ padding:'8px 6px', fontWeight:600, color:'#14213d' }}>{s.subject}</td>
                         <td style={{ padding:'8px 6px' }}>
                           <input type="number" min="0" value={m.marks_obtained}
                             onChange={e => updateSubjectField(s.subject, 'marks_obtained', e.target.value)}
@@ -420,8 +420,8 @@ export default function TabReportCards({ currentUser }) {
                 </tbody>
               </table>
 
-              <div style={{ marginTop:16, padding:'12px 16px', background:'#f8fafc', borderRadius:10, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10 }}>
-                <div style={{ fontSize:13, color:'#374151' }}>
+              <div style={{ marginTop:16, padding:'12px 16px', background:'#faf8f3', borderRadius:10, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10 }}>
+                <div style={{ fontSize:13, color:'#2e3b52' }}>
                   Overall: <strong>{overall.obtained} / {overall.max}</strong> &nbsp;({overall.pct}%)
                 </div>
                 {overall.grade && (

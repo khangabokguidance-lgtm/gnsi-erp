@@ -259,6 +259,24 @@ const globalCSS = `
   .px-root ::-webkit-scrollbar-thumb { background:${PX.line2}; border-radius:99px }
   .px-root select { cursor:pointer }
   .px-root table th { color:${PX.sub} }
+  /* Section tabs: always two rows in reading order (first half on top),
+     sharing the full width so all 15 fit without scrolling on a desktop.
+     The column count (half the visible tabs) is set inline. */
+  .tch-tabs .px-tabs { display:grid; grid-auto-flow:row; gap:4px; overflow-x:auto }
+  .tch-tabs .px-tab { justify-content:center; padding:9px 10px; font-size:13px }
+  .tch-tabs .px-tab svg { flex-shrink:0 }
+  @media (max-width:1320px) { .tch-tabs .px-tab { padding:9px 7px; font-size:12.5px; gap:5px } }
+  @media (max-width:1100px) { .tch-tabs .px-tab svg { display:none } .tch-tabs .px-tab { padding:9px 6px; font-size:12px } }
+  @media (max-width:760px)  { .tch-tabs .px-tab svg { display:inline } .tch-tabs .px-tab { padding:9px 12px; font-size:13px } }
+  /* Phones: tabs scroll sideways — fade the right edge so it's clear more
+     tabs are there; compact hero so the content starts higher. */
+  @media (max-width:900px)  { .tch-tabs .px-tabs { -webkit-mask-image:linear-gradient(90deg,#000 86%,transparent); mask-image:linear-gradient(90deg,#000 86%,transparent); padding-right:28px } }
+  @media (max-width:640px)  {
+    .tch-hero .px-hero { padding:14px 14px 12px !important; margin-bottom:12px }
+    .tch-hero .px-hstat { padding:8px 11px }
+    .tch-hero .px-hstat > div:nth-child(2) { font-size:20px !important; margin-top:3px !important }
+    .tch-hero .px-hstat > div:nth-child(3) { display:none }
+  }
   @media (max-width:1024px) {
     .doubt-grid { grid-template-columns: repeat(2,1fr) !important }
   }
@@ -2489,7 +2507,7 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
         <select value={filterBatch} onChange={e => setFilterBatch(e.target.value)} style={{ ...S.select, width:'auto', flex:'0 1 130px' }}><option value="All">All Batches</option>{allBatches.map(b=><option key={b} value={b}>{b}</option>)}</select>
         <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} style={{ ...S.select, width:'auto', flex:'0 1 130px' }}><option value="All">All Subjects</option>{allSubjects.map(s=><option key={s} value={s}>{s}</option>)}</select>
         <select value={filterStudent==='All'?'All':(filterStudent.id||filterStudent.name)} onChange={e => { const v=e.target.value; setFilterStudent(v==='All'?'All':(allStudents.find(s=>(s.id||s.name)===v)||'All')) }} style={{ ...S.select, width:'auto', flex:'0 1 150px' }}><option value="All">All Students</option>{allStudents.map(s=><option key={s.id||s.name} value={s.id||s.name}>{s.name}</option>)}</select>
-        <div style={{ display:'flex', gap:4, marginLeft:'auto' }}>
+        <div style={{ display:'flex', gap:4, marginLeft:'auto', flexWrap:'wrap' }}>
           {[['table','📋','Table'],['weak','⚠️','Weak'],['trend','📈','Trend'],['analytics','🧮','Analytics'],['insights','💡','Insights'],['tests','🗂️','Tests'],['classwise','🏫','Class Wise']].map(([key,icon,label]) => (
             <button key={key} title={label} onClick={() => setViewMode(key)} style={{ ...S.btnSm(viewMode===key?'#132a4f':'#e8e3d8'), color:viewMode===key?'white':'#2e3b52' }}>{icon}</button>
           ))}
@@ -2499,7 +2517,7 @@ function TabStudentPerformance({ courseData, logs, currentUser }) {
       </div>
 
       {viewMode==='table' && (loading ? <div style={{ textAlign:'center', padding:48, color:'#5d6b82' }}>⏳ Loading...</div> : (
-        <div className="table-wrap" style={{ borderRadius:12, overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.07)' }}>
+        <div className="table-wrap" style={{ borderRadius:14, overflowX:'auto', overflowY:'hidden', WebkitOverflowScrolling:'touch', border:'1px solid #e8e3d8', boxShadow:'0 1px 2px rgba(19,42,79,.05)' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, background:'white', minWidth:760 }}>
             <thead><tr style={{ background:'#faf8f3', borderBottom:'1px solid #e8e3d8' }}>
               {[['date','Date'],['student','Student'],['batch','Batch'],['subject','Subject'],['topic','Topic'],['score','Score'],['pct','%'],['rank','Rank'],['trend','Trend'],['grade','Grade'],['actions','Actions']].map(([col,h]) => {
@@ -3863,6 +3881,7 @@ useEffect(() => {
       {toastEl}
       <div className="px-wrap" style={{ maxWidth:1320 }}>
 
+      <div className="tch-hero">
       <PremiumHero
         isMobile={isMobile}
         icon={<PIcon.cap size={isMobile ? 21 : 24} />}
@@ -3882,6 +3901,7 @@ useEffect(() => {
           ...(isMobile ? [] : [{ label:'Batches', value: fmt(badges.batches), sub:'in the timetable' }]),
         ]}
       />
+      </div>
 
       {TABS.length === 0 ? (
         <div className="px-card" style={{ padding:'40px 24px', textAlign:'center' }}>
@@ -3889,14 +3909,15 @@ useEffect(() => {
           <div style={{ fontSize:13.5, color:PX.sub, marginTop:6 }}>Ask an administrator if you need access to teaching logs or reports.</div>
         </div>
       ) : (
-        <PremiumTabs
+        <div className="tch-tabs"><PremiumTabs
           tabs={TABS.map(t => ({
             id: t.key, label: t.label, icon: t.icon,
             badge: t.key==='logs' ? badges.todayLogs : t.key==='hmdash' ? hmNotifCount : t.key==='reports' ? badges.monthMissed : 0,
           }))}
           active={activeTab}
           onChange={handleTabChange}
-        />
+          style={{ gridTemplateColumns:`repeat(${Math.ceil(TABS.length / 2)}, auto)` }}
+        /></div>
       )}
 
       {has(activeTab) && activeTab==='logs'        && <TabLogs logs={logs} loading={loading} fetchLogs={fetchLogs} timetable={timetable} staff={staff} courseData={courseData} currentUser={currentUser}/>}
