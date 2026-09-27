@@ -58,7 +58,9 @@ export function tidyText(v) {
 }
 
 // ── Quality filter ───────────────────────────────────────────────────────────
-export const isComplete = q => !!(String(q.question || '').trim() && String(q.option_a || '').trim() && String(q.option_b || '').trim() && LETTERS.includes(q.correct_option))
+// A question can go on a paper without an answer marked (its key entry
+// prints "—"); it only needs its text and at least options A and B.
+export const isComplete = q => !!(String(q.question || '').trim() && String(q.option_a || '').trim() && String(q.option_b || '').trim())
 
 // ── Picking ──────────────────────────────────────────────────────────────────
 // blocks: [{ chapter, sub, count }]. For each block, pick `count` from the
@@ -191,7 +193,7 @@ export const recentlyUsedIds = (n = 5) => new Set(loadPaperHistory().slice(0, n)
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
 export function answerKeyText(sets, title) {
-  return [`${title} — Answer key`, ...sets.map(s => `${sets.length > 1 ? `Set ${s.code}: ` : ''}${s.questions.map((q, i) => `${i + 1}-${q.correct_option || '?'}`).join(', ')}`)].join('\n')
+  return [`${title} — Answer key`, ...sets.map(s => `${sets.length > 1 ? `Set ${s.code}: ` : ''}${s.questions.map((q, i) => `${i + 1}-${q.correct_option || '—'}`).join(', ')}`)].join('\n')
 }
 
 export function paperText(qs, title, o) {
@@ -220,6 +222,6 @@ export function paperWordHtml({ title, subject, chapterLabel, sets, o, timeMinut
       ${secs.map((g, gi) => `${g.name ? `<h3>Section ${sectionLetter(gi)} — ${esc(g.name)}</h3>` : ''}${g.items.map(q => `<p><b>${++n}.</b> ${esc(q.question)} <span style="color:#666">[${marksOf(q, o)}]</span>${o.showMayek && q.question_mayek ? `<br><span style="font-family:'Noto Sans Meetei Mayek','Nirmala UI',sans-serif">${esc(q.question_mayek)}</span>` : ''}<br>${LETTERS.filter(l => q[`option_${l.toLowerCase()}`]).map(l => `(${l}) ${esc(q[`option_${l.toLowerCase()}`])}${o.answerKey === 'inline' && q.correct_option === l ? ' ✓' : ''}`).join(' &nbsp;&nbsp; ')}</p>`).join('')}`).join('')}
       ${o.endMarker ? '<p style="text-align:center">*** End of paper ***</p>' : ''}</div>`
   }).join('')
-  const keys = o.answerKey === 'page' ? `<h2>Answer key</h2>${sets.map(s => `<p><b>${sets.length > 1 ? `Set ${s.code}: ` : ''}</b>${s.questions.map((q, i) => `${i + 1}-${esc(q.correct_option || '?')}`).join(', ')}</p>`).join('')}` : ''
+  const keys = o.answerKey === 'page' ? `<h2>Answer key</h2>${sets.map(s => `<p><b>${sets.length > 1 ? `Set ${s.code}: ` : ''}</b>${s.questions.map((q, i) => `${i + 1}-${esc(q.correct_option || '—')}`).join(', ')}</p>`).join('')}` : ''
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${esc(title)}</title></head><body style="font-family:Calibri,Arial,sans-serif;font-size:11pt">${body}${keys}</body></html>`
 }

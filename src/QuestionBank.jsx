@@ -3857,12 +3857,22 @@ function TabPaper({ questions: bankQuestions, showToast }) {
     return map
   }, [questions, course, subject, chapterSel, difficulty, quality, SEP])
 
-  // Rows in the chosen chapters with no answer letter: left out by the
-  // quality filter, and shown as "—" in the key when that filter is off.
-  const noAnswer = useMemo(() => {
+  // Rows in the chosen chapters with no answer letter (they still go on the
+  // paper; the key shows "—"), and rows missing their text or options A/B
+  // (left out while "Only complete questions" is ticked).
+  const { noAnswer, incomplete } = useMemo(() => {
+    if (!course || !subject || !chapterSel.length) return { noAnswer: 0, incomplete: 0 }
+    const want = new Set(chapterSel)
+    const rows = questions.filter(q => (q.course||'')===course && q.subject===subject && want.has(q.chapter))
+    return { noAnswer: rows.filter(q => !q.correct_option).length, incomplete: rows.filter(q => !isCompleteQ(q)).length }
+  }, [questions, course, subject, chapterSel])
+
+  // Everything in the chosen chapters, before the difficulty and quality
+  // filters, so an empty pick can say which filter emptied it.
+  const inScope = useMemo(() => {
     if (!course || !subject || !chapterSel.length) return 0
     const want = new Set(chapterSel)
-    return questions.filter(q => (q.course||'')===course && q.subject===subject && want.has(q.chapter) && !q.correct_option).length
+    return questions.filter(q => (q.course||'')===course && q.subject===subject && want.has(q.chapter)).length
   }, [questions, course, subject, chapterSel])
 
   const toggleSub = key => setSelSubs(prev => { const n = { ...prev }; if (n[key] !== undefined) delete n[key]; else n[key] = Math.min(10, availableSubs[key] || 5); return n })
@@ -4068,7 +4078,21 @@ function TabPaper({ questions: bankQuestions, showToast }) {
 
         {chapterSel.length > 0 && Object.keys(availableSubs).length === 0 && (
           <div style={{ padding:'12px 16px', borderRadius:8, background:'#fef9c3', border:'1px solid #fde68a', fontSize:13, color:'#92400e', marginBottom:14 }}>
-            ⚠️ No questions found for the chosen chapter(s). Add questions using Manual Add or Bulk Paste.
+            {inScope === 0 ? (
+              <>⚠️ No questions found for the chosen chapter(s). Add questions using Manual Add or Bulk Paste.</>
+            ) : (
+              <>
+                ⚠️ {inScope} question{inScope === 1 ? ' is' : 's are'} in {chapterSel.length > 1 ? 'these chapters' : 'this chapter'}, but none match the current filters:
+                <ul style={{ margin:'6px 0 8px 18px', padding:0 }}>
+                  {quality && incomplete > 0 && <li>{incomplete === inScope ? 'All of them are' : `${incomplete} of them are`} missing the question text or options A/B, and “Only complete questions” leaves those out.</li>}
+                  {difficulty !== 'All' && <li>Difficulty is set to {difficulty}.</li>}
+                </ul>
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                  {quality && incomplete > 0 && <button type="button" style={btnSm('#fff', C.navy)} onClick={() => setQuality(false)}>Include incomplete questions</button>}
+                  {difficulty !== 'All' && <button type="button" style={btnSm('#fff', C.navy)} onClick={() => setDifficulty('All')}>Any difficulty</button>}
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -4086,7 +4110,7 @@ function TabPaper({ questions: bankQuestions, showToast }) {
             {noAnswer > 0 && (
               <div role="status" style={{ fontSize:11.5, color:'#92400e', background:'#fffbeb', border:'1px solid #fde68a', borderRadius:6, padding:'6px 8px', marginTop:6 }}>
                 ⚠ {noAnswer} question{noAnswer === 1 ? '' : 's'} in {chapterSel.length > 1 ? 'these chapters' : 'this chapter'} {noAnswer === 1 ? 'has' : 'have'} no correct answer set.
-                {quality ? ' They are left out of the paper.' : ' The answer key will show “—” for them.'} Set answers in the Question Bank tab (✏️ Edit) or re-upload with the answer key.
+                {' They are still included; the answer key shows “—” for them.'} To fill the key, set answers in the Question Bank tab (✏️ Edit) or re-upload with the answer key.
               </div>
             )}
           </div>
