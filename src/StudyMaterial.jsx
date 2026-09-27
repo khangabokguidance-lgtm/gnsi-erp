@@ -2,13 +2,16 @@
 // Multi-course study material manager
 // Supabase tables: study_materials, study_course_structure
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
 import { useQBankCountsByChapter, openChapterIn, useChapterFocus, normalizeToQBank } from './StudyMaterialBridge'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 import { isAdminRole } from './roles'
 import { COURSES as QB_COURSES } from './qbankTaxonomy'
 import QuestionBankViewer from './QuestionBankViewer'
+import { PX, PremiumStyles, PremiumHero, PIcon } from './premiumUI'
+import TeachingEnhancer, { Stars } from './TeachingEnhancer'
+import { useMaterialFeedback, useMaterialRequests } from './enhancerHooks'
 
 // Study Material keeps its own subject names (existing materials are saved
 // under them); the Teaching hub uses the Question Bank taxonomy. Maps e.g.
@@ -100,16 +103,18 @@ const MATERIAL_TYPES = [
 const ICON_OPTIONS = ['📁','📐','🧠','📖','🌍','🗺️','🧩','🔢','📗','📕','📘','📙','🔬','⚗️','🏛️','🎨','🎵','💻','🏃','🌱','🔭','📊','🗣️','✍️']
 
 // ── COLORS & STYLES ───────────────────────────────────────────────────────────
+// Premium "Ledger & Crest" palette (navy · antique gold · ivory), shared
+// with Teaching, Material Studio and the other premium modules.
 const C = {
-  navy: '#1e3a5f', slate: '#64748b', border: '#e2e8f0',
-  white: '#ffffff', bg: '#f8fafc', green: '#16a34a',
-  rose: '#dc2626', amber: '#d97706', indigo: '#4f46e5',
+  navy: PX.navy, slate: PX.sub, border: PX.line,
+  white: '#ffffff', bg: PX.cream, green: PX.ok,
+  rose: PX.bad, amber: PX.warn, indigo: PX.navy2, gold: PX.gold,
 }
-const iS = { width: '100%', padding: '8px 11px', borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 13, background: C.white, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }
-const lS = { display: 'block', fontSize: 11, fontWeight: 700, color: C.slate, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.05em' }
-const cardS = { background: C.white, borderRadius: 12, boxShadow: '0 1px 6px rgba(0,0,0,.07)', padding: '18px 20px', marginBottom: 14 }
-const btn = (bg, dis = false) => ({ padding: '8px 16px', borderRadius: 8, background: dis ? '#94a3b8' : bg, color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: dis ? 'not-allowed' : 'pointer', opacity: dis ? .7 : 1 })
-const btnSm = (bg, color = '#fff') => ({ padding: '4px 10px', borderRadius: 6, background: bg, color, border: 'none', fontSize: 11, fontWeight: 700, cursor: 'pointer' })
+const iS = { width: '100%', padding: '9px 12px', borderRadius: 11, border: `1px solid ${C.border}`, fontSize: 13, background: C.white, color: PX.ink, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }
+const lS = { display: 'block', fontSize: 10.5, fontWeight: 800, color: C.slate, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.1em' }
+const cardS = { background: C.white, borderRadius: 18, border: `1px solid ${C.border}`, boxShadow: '0 1px 2px rgba(19,42,79,.05),0 12px 32px -22px rgba(19,42,79,.35)', padding: '18px 20px', marginBottom: 14 }
+const btn = (bg, dis = false) => ({ padding: '9px 16px', borderRadius: 11, background: dis ? PX.line2 : bg === C.navy ? `linear-gradient(180deg,${PX.navy2},${PX.navy})` : bg, color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: dis ? 'not-allowed' : 'pointer', opacity: dis ? .7 : 1, boxShadow: dis ? 'none' : '0 6px 14px -8px rgba(19,42,79,.55)', fontFamily: 'inherit' })
+const btnSm = (bg, color = '#fff') => ({ padding: '5px 10px', borderRadius: 8, background: bg, color, border: bg === '#fff' ? `1px solid ${PX.line2}` : 'none', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' })
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function useIsMobile() {
@@ -143,13 +148,9 @@ function Toast({ msg, color }) {
 //    present via an HDMI/physical mirroring setup with a clean, chrome-free
 //    view instead of the whole app UI.
 function useCast() {
-  const [available, setAvailable] = useState(false)
+  const [available] = useState(() => typeof window !== 'undefined' && 'PresentationRequest' in window)
   const [casting, setCasting] = useState(false)
   const connectionRef = useRef(null)
-
-  useEffect(() => {
-    setAvailable(typeof window !== 'undefined' && 'PresentationRequest' in window)
-  }, [])
 
   const startCast = useCallback(async (url, { onFallback, showToast } = {}) => {
     if (available) {
@@ -191,7 +192,7 @@ function openFullscreenPresentation(url, title) {
     iframe{width:100%;height:100%;border:none;}</style></head>
     <body><iframe src="${url}#toolbar=0&navpanes=0" allowfullscreen></iframe></body></html>`)
   win.document.close()
-  try { win.document.documentElement.requestFullscreen?.() } catch (e) { /* fullscreen may be blocked by browser policy — window still opens */ }
+  try { win.document.documentElement.requestFullscreen?.() } catch { /* fullscreen may be blocked by browser policy — window still opens */ }
   return true
 }
 
@@ -789,7 +790,7 @@ function BulkPasteModal({ course, subject, chapter, onClose, onSaved, showToast 
 }
 
 // ── MATERIAL CARD ─────────────────────────────────────────────────────────────
-function MaterialCard({ mat, onDelete, showToast, isAdmin }) {
+function MaterialCard({ mat, onDelete, showToast, isAdmin, feedback }) {
   const [deleting, setDeleting] = useState(false)
   const [viewingOnly, setViewingOnly] = useState(false)
   const courseData = BASE_COURSES[mat.course]
@@ -819,14 +820,18 @@ function MaterialCard({ mat, onDelete, showToast, isAdmin }) {
   // link rather than falsely promising view-only protection.
   const isDirectFileUrl = !!mat.file_url && /\.(pdf|docx?|pptx?|xlsx?)(\?|#|$)/i.test(mat.file_url)
   const isDownloadableFile = !isVideo && (mat.file_name || isDirectFileUrl)
+  const fb = feedback?.available ? (feedback.byId[String(mat.id)] || { avg: 0, count: 0, mine: 0, bookmarked: false }) : null
+  const rate = async n => { const { error } = await feedback.rate(mat.id, n); if (error) showToast(error.message, C.rose) }
+  const bookmark = async () => { const { error } = await feedback.toggleBookmark(mat.id); if (error) showToast(error.message, C.rose); else showToast(fb.bookmarked ? 'Removed from saved' : 'Saved to your shelf', C.green) }
 
   return (
-    <div style={{ background: C.white, borderRadius: 10, border: `1px solid ${C.border}`, padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-      <div style={{ fontSize: 22, flexShrink: 0, marginTop: 2 }}>{MATERIAL_TYPES.find(t => t.key === mat.material_type)?.icon || '📄'}</div>
+    <div style={{ background: C.white, borderRadius: 14, border: `1px solid ${C.border}`, padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <div style={{ fontSize: 20, flexShrink: 0, width: 40, height: 40, borderRadius: 12, background: PX.tint, border: `1px solid ${PX.line}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{MATERIAL_TYPES.find(t => t.key === mat.material_type)?.icon || '📄'}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 5 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{mat.title}</span>
           <MaterialTypeBadge typeKey={mat.material_type} />
+          {fb && fb.count > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: C.slate }}><Stars value={fb.avg} size={12} /> {fb.avg} ({fb.count})</span>}
         </div>
         {mat.description && <div style={{ fontSize: 12, color: C.slate, marginBottom: 5 }}>{mat.description}</div>}
         <div style={{ fontSize: 11, color: C.slate }}>
@@ -851,6 +856,13 @@ function MaterialCard({ mat, onDelete, showToast, isAdmin }) {
               {deleting ? '…' : '🗑 Delete'}
             </button>
           )}
+          {fb && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+              <Stars value={fb.mine} onRate={rate} size={15} labelText={`Your rating for ${mat.title}`} />
+              <button type="button" onClick={bookmark} aria-pressed={fb.bookmarked} aria-label={fb.bookmarked ? `Unsave ${mat.title}` : `Save ${mat.title}`}
+                style={btnSm(fb.bookmarked ? PX.goldBg : '#fff', fb.bookmarked ? '#8a6118' : C.slate)}>{fb.bookmarked ? '🔖 Saved' : '🔖 Save'}</button>
+            </span>
+          )}
         </div>
         {viewingOnly && <ViewOnlyModal mat={mat} onClose={() => setViewingOnly(false)} showToast={showToast} />}
       </div>
@@ -859,7 +871,7 @@ function MaterialCard({ mat, onDelete, showToast, isAdmin }) {
 }
 
 // ── SUBJECT PANEL ─────────────────────────────────────────────────────────────
-function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, materials, onRefetch, showToast, customChapters, onStructureChange, onNavigate, isAdmin, isStaffAllowed, focusChapter }) {
+function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, materials, onRefetch, showToast, customChapters, onStructureChange, onNavigate, isAdmin, isStaffAllowed, focusChapter, feedback }) {
   // A chapter focused from the Teaching hub / another module opens expanded
   // and is scrolled into view.
   const [expandedChapter, setExpandedChapter] = useState(focusChapter || null)
@@ -993,7 +1005,7 @@ function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, mater
                       No materials yet.
                       <button onClick={() => handleUploadForChapter(ch)} style={{ ...btnSm(courseData.bg, courseData.text), marginLeft: 10 }}>📋 Paste now</button>
                     </div>
-                  : <div style={{ display: 'grid', gap: 8 }}>{chMats.map(m => <MaterialCard key={m.id} mat={m} onDelete={onRefetch} showToast={showToast} isAdmin={isAdmin} />)}</div>
+                  : <div style={{ display: 'grid', gap: 8 }}>{chMats.map(m => <MaterialCard key={m.id} mat={m} onDelete={onRefetch} showToast={showToast} isAdmin={isAdmin} feedback={feedback} />)}</div>
                 }
               </div>
             )}
@@ -1078,7 +1090,7 @@ function CourseStats({ course, materials, mergedCourses }) {
 // A teacher opens this before class: pick a chapter, see materials AND
 // QBank question count side by side, with a clear warning when there's
 // practice content but nothing to teach from first (or vice versa).
-function LessonPrepChapterRow({ course, subject, subjectData, chapter, materials, onNavigate, qCounts, qLoading, isStaffAllowed }) {
+function LessonPrepChapterRow({ course, subject, chapter, materials, onNavigate, qCounts, qLoading, isStaffAllowed }) {
   const qCount = qCounts?.[chapter] || 0
 
   const chapterMats = useMemo(
@@ -1166,15 +1178,13 @@ function LessonPrepChapterRow({ course, subject, subjectData, chapter, materials
 
 function LessonPrep({ course, courseData, materials, onNavigate, isStaffAllowed }) {
   const subjectList = Object.keys(courseData.subjects)
-  const [subject, setSubject] = useState(subjectList[0] || '')
+  const [subjectPick, setSubject] = useState(subjectList[0] || '')
   const [gapFilter, setGapFilter] = useState('all') // all | warn | empty
-
-  useEffect(() => {
-    if (!subjectList.includes(subject)) setSubject(subjectList[0] || '')
-  }, [course]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Falls back to the first subject when the course changes.
+  const subject = subjectList.includes(subjectPick) ? subjectPick : (subjectList[0] || '')
 
   const subjectData = courseData.subjects[subject]
-  const chapters = subjectData?.chapters || []
+  const chapters = useMemo(() => subjectData?.chapters || [], [subjectData])
 
   // Called once per subject — every chapter row reads from this shared map
   // instead of each row independently re-subscribing to the same query.
@@ -1239,17 +1249,16 @@ function LessonPrep({ course, courseData, materials, onNavigate, isStaffAllowed 
 }
 
 // ── SMART PPT MAKER (materials) ─────────────────────────────────────────────
-function TabSmartPPTMaterials({ course, courseData, materials, showToast }) {
+function TabSmartPPTMaterials({ courseData, materials, showToast }) {
   const subjectList = Object.keys(courseData.subjects)
-  const [subject, setSubject] = useState(subjectList[0] || '')
+  const [subjectPick, setSubject] = useState(subjectList[0] || '')
+  // Falls back to the first subject when the course changes.
+  const subject = subjectList.includes(subjectPick) ? subjectPick : (subjectList[0] || '')
   const [chapter, setChapter] = useState('')
   const [title,   setTitle]   = useState('')
   const [viewing,   setViewing]   = useState(false)
   const [exporting, setExporting] = useState(false)
 
-  useEffect(() => {
-    if (!subjectList.includes(subject)) setSubject(subjectList[0] || '')
-  }, [course]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const subjectData = courseData.subjects[subject]
   const chapters = subjectData?.chapters || []
@@ -1360,7 +1369,7 @@ function SubjectDrawer({ open, onClose, course, subjects, customSubjectSet, cour
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
-export default function StudyMaterial({ currentUser, perms, onNavigate, embedded = false }) {
+export default function StudyMaterial({ currentUser, onNavigate, embedded = false }) {
   // Confirmed via SQL against portal_users.role — full list: Receptionist,
   // Teacher, Accountant, Superintendent, House Master, admin, Computer
   // Staffs. "admin" is lowercase (not "Administrator"/"Teaching + Admin" —
@@ -1409,6 +1418,7 @@ export default function StudyMaterial({ currentUser, perms, onNavigate, embedded
     setLoading(false)
   }, [refetchMaterials, refetchStructure])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads materials and structure from the server on open
   useEffect(() => { refetch() }, [refetch])
 
   // ── MERGE BASE + CUSTOM STRUCTURE ─────────────────────────────────────────
@@ -1504,8 +1514,36 @@ export default function StudyMaterial({ currentUser, perms, onNavigate, embedded
 
   const existingSubjectNames = subjectList
 
-  return (
-    <div style={embedded ? { fontFamily: 'inherit' } : { padding: isMobile ? '16px 12px' : 24, fontFamily: 'system-ui,sans-serif', background: C.bg, minHeight: '100vh' }}>
+  // ── Teaching Enhancer data (ratings, bookmarks, requests) ────────────────
+  const feedback    = useMaterialFeedback(currentUser?.name || currentUser?.username || '')
+  const requestsApi = useMaterialRequests()
+  // Teachers use Question Bank counts and quizzes in the enhancer; the
+  // read-only Question Bank viewer tab keeps its admin/Computer Staffs gate.
+  const canTeach = isStaffAllowed || /^(teach|faculty)/.test(roleLower)
+
+  const coverage = useMemo(() => {
+    let total = 0, covered = 0
+    Object.entries(subjects).forEach(([s, d]) => (d.chapters || []).forEach(ch => {
+      total++
+      if (courseMaterials.some(m => m.subject === s && m.chapter === ch)) covered++
+    }))
+    return { total, covered, pct: total ? Math.round((covered / total) * 100) : 0 }
+  }, [subjects, courseMaterials])
+  const openRequests = requestsApi.requests.filter(r => r.course === activeCourse && ['open', 'in_progress'].includes(r.status)).length
+  const savedMaterials = feedback.available ? courseMaterials.filter(m => feedback.byId[String(m.id)]?.bookmarked) : []
+
+  const VIEWS = [
+    { id: 'subjects',   label: 'Library',           icon: PIcon.folder },
+    { id: 'enhancer',   label: 'Teaching Enhancer', icon: PIcon.cap, badge: openRequests },
+    ...(feedback.available ? [{ id: 'saved', label: 'Saved', icon: PIcon.list, badge: 0 }] : []),
+    { id: 'lessonprep', label: 'Lesson Prep',       icon: PIcon.layers },
+    { id: 'smartppt',   label: 'Smart PPT',         icon: PIcon.file },
+    { id: 'stats',      label: 'Stats',             icon: PIcon.chart },
+    ...(isStaffAllowed ? [{ id: 'qbank', label: 'Question Bank', icon: PIcon.report }] : []),
+  ]
+
+  const content = (
+    <>
       {toast && <Toast msg={toast.msg} color={toast.color} />}
 
       {isAdmin && showAddSubject && (
@@ -1519,60 +1557,77 @@ export default function StudyMaterial({ currentUser, perms, onNavigate, embedded
         />
       )}
 
-      {/* Header — hidden inside the Teaching hub, which has its own */}
-      {!embedded && <div style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: C.slate, marginBottom: 4 }}>GNSI Portal</div>
-        <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 900, color: C.navy, letterSpacing: '-.02em' }}>Study Materials</div>
-        <div style={{ fontSize: 12, color: C.slate, marginTop: 3 }}>Navodaya · Sainik · Foundation</div>
-      </div>}
+      {/* Hero — hidden inside the Teaching hub, which has its own */}
+      {!embedded && (
+        <PremiumHero
+          eyebrow="GNSI Portal · Academics"
+          title="Study Materials"
+          subtitle={`${courseData.label} · ${courseData.exam} · ${subjectList.length} subjects`}
+          icon={<PIcon.folder size={26} />}
+          isMobile={isMobile}
+          actions={<>
+            <button type="button" className={'px-hbtn' + (activeView === 'enhancer' ? ' on' : '')} onClick={() => setActiveView('enhancer')}><PIcon.cap size={15} /> Teaching Enhancer</button>
+            {isAdmin && <button type="button" className="px-hbtn gold" onClick={() => setShowAddSubject(true)}><PIcon.plus size={15} /> Add Subject</button>}
+          </>}
+          stats={[
+            { label: 'Materials', value: courseMaterials.length, sub: `${materials.length} across all courses` },
+            { label: 'Chapters covered', value: `${coverage.covered}/${coverage.total}`, sub: `${coverage.pct}% coverage`, tone: coverage.pct >= 70 ? '#9fe2bf' : coverage.pct >= 40 ? PX.goldLt : '#f7b4ab' },
+            { label: 'Open requests', value: requestsApi.available ? openRequests : '—', sub: requestsApi.available ? 'Missing material asked for' : 'Needs database update', onClick: () => setActiveView('enhancer') },
+            { label: 'Saved by you', value: feedback.available ? savedMaterials.length : '—', sub: 'Bookmarked materials', onClick: feedback.available ? () => setActiveView('saved') : undefined },
+          ]}
+        />
+      )}
 
-      {/* Course tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 18, overflowX: isMobile ? 'auto' : 'visible', flexWrap: isMobile ? 'nowrap' : 'wrap', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', paddingBottom: 2 }}>
-        {Object.entries(BASE_COURSES).map(([key, c]) => (
-          <button key={key} onClick={() => setActiveCourse(key)}
-            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: isMobile ? '8px 14px' : '10px 20px', borderRadius: 10, fontSize: 12, fontWeight: 700, border: activeCourse === key ? `2px solid ${c.color}` : `2px solid ${C.border}`, background: activeCourse === key ? c.bg : C.white, color: activeCourse === key ? c.text : C.slate, cursor: 'pointer', transition: 'all .12s', flexShrink: 0, whiteSpace: 'nowrap' }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, display: 'inline-block' }} />
-            {isMobile ? c.short : c.label}
-            <span style={{ padding: '1px 6px', borderRadius: 99, fontSize: 10, fontWeight: 700, background: activeCourse === key ? 'rgba(0,0,0,.08)' : '#f1f5f9', color: activeCourse === key ? c.text : C.slate }}>
-              {materialCountByCourse[key] ?? 0}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* Course banner */}
-      <div style={{ ...cardS, marginBottom: 16, display: 'flex', gap: 14, alignItems: 'center', borderLeft: `4px solid ${courseData.color}`, borderRadius: '0 12px 12px 0', padding: '12px 16px' }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: C.navy }}>{courseData.label}</div>
-          <div style={{ fontSize: 11, color: C.slate, marginTop: 2 }}>{courseData.exam} · {subjectList.length} subjects</div>
-        </div>
-        {isAdmin && (
-          <button onClick={() => setShowAddSubject(true)} style={btn(courseData.color)}>
-            ➕ Add Subject
-          </button>
-        )}
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={() => setActiveView('subjects')} style={btn(activeView === 'subjects' ? courseData.color : C.slate)}>
-            📚 Subjects
-          </button>
-          <button onClick={() => setActiveView('lessonprep')} style={btn(activeView === 'lessonprep' ? courseData.color : C.slate)}>
-            🧑‍🏫 Lesson Prep
-          </button>
-          <button onClick={() => setActiveView('smartppt')} style={btn(activeView === 'smartppt' ? courseData.color : C.slate)}>
-            🎬 Smart PPT
-          </button>
-          <button onClick={() => setActiveView('stats')} style={btn(activeView === 'stats' ? courseData.color : C.slate)}>
-            📊 Stats
-          </button>
-          {isStaffAllowed && (
-            <button onClick={() => setActiveView('qbank')} style={btn(activeView === 'qbank' ? courseData.color : C.slate)}>
-              🗂️ Question Bank
+      {/* Course pills */}
+      <div role="tablist" aria-label="Course" style={{ display: 'flex', gap: 8, marginBottom: 12, overflowX: isMobile ? 'auto' : 'visible', flexWrap: isMobile ? 'nowrap' : 'wrap', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', paddingBottom: 2, alignItems: 'center' }}>
+        {Object.entries(BASE_COURSES).map(([key, c]) => {
+          const on = activeCourse === key
+          return (
+            <button key={key} role="tab" aria-selected={on} onClick={() => setActiveCourse(key)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: isMobile ? '8px 14px' : '9px 16px', borderRadius: 12, fontSize: 12.5, fontWeight: 700, border: `1.5px solid ${on ? PX.gold : PX.line}`, background: on ? PX.goldBg : '#fff', color: on ? PX.ink : PX.sub, cursor: 'pointer', transition: 'all .12s', flexShrink: 0, whiteSpace: 'nowrap', fontFamily: 'inherit', boxShadow: on ? '0 6px 16px -10px rgba(184,146,58,.9)' : 'none' }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, display: 'inline-block' }} />
+              {isMobile ? c.short : c.label}
+              <span style={{ padding: '1px 7px', borderRadius: 99, fontSize: 10.5, fontWeight: 800, background: on ? '#fff' : PX.tint, color: on ? PX.navy : PX.faint }}>
+                {materialCountByCourse[key] ?? 0}
+              </span>
             </button>
-          )}
-        </div>
+          )
+        })}
+        {embedded && isAdmin && <button type="button" onClick={() => setShowAddSubject(true)} style={{ ...btn(C.navy), marginLeft: 'auto' }}>➕ Add Subject</button>}
       </div>
 
-      {activeView === 'qbank' ? (
+      {/* Views */}
+      <nav className="px-tabs" role="tablist" aria-label="Study Materials views">
+        {VIEWS.map(t => {
+          const I = t.icon
+          return (
+            <button key={t.id} type="button" role="tab" aria-selected={activeView === t.id} className={'px-tab' + (activeView === t.id ? ' on' : '')} onClick={() => setActiveView(t.id)}>
+              <I size={15} />{t.label}{t.badge > 0 && <span className="px-badge">{t.badge}</span>}
+            </button>
+          )
+        })}
+      </nav>
+
+      {activeView === 'enhancer' ? (
+        <TeachingEnhancer
+          course={activeCourse} courseData={courseData} courseLabel={courseData.label}
+          materials={courseMaterials} currentUser={currentUser} isAdmin={isAdmin} canTeach={canTeach}
+          feedback={feedback} requestsApi={requestsApi} showToast={showToast}
+        />
+      ) : activeView === 'saved' ? (
+        <div style={cardS}>
+          <div style={{ fontFamily: PX.serif, fontSize: 18, color: PX.ink, fontWeight: 600, marginBottom: 4 }}>🔖 Your saved materials</div>
+          <div style={{ fontSize: 12.5, color: C.slate, marginBottom: 14 }}>{courseData.label} · bookmarked with “Save” on any material</div>
+          {savedMaterials.length === 0
+            ? <div style={{ fontSize: 13, color: PX.faint, padding: '16px 0' }}>Nothing saved yet. Open a chapter in the Library and click 🔖 Save on a material you use often.</div>
+            : <div style={{ display: 'grid', gap: 8 }}>{savedMaterials.map(m => (
+                <div key={m.id}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.slate, margin: '0 0 4px 2px' }}>{m.subject} · {m.chapter}</div>
+                  <MaterialCard mat={m} onDelete={refetchMaterials} showToast={showToast} isAdmin={isAdmin} feedback={feedback} />
+                </div>
+              ))}</div>}
+        </div>
+      ) : activeView === 'qbank' ? (
         // Study Material acts as a read-only viewer onto QuestionBank.jsx's
         // data here — same course/subject/chapter drill-down, no write
         // access. isStaffAllowed re-checked (not just relying on the
@@ -1620,7 +1675,7 @@ export default function StudyMaterial({ currentUser, perms, onNavigate, embedded
               customChapters={customChaptersBySubject[activeSubject] || []}
               onRefetch={refetchMaterials} onStructureChange={refetchStructure} showToast={showToast}
               onNavigate={onNavigate} isAdmin={isAdmin} isStaffAllowed={isStaffAllowed}
-              focusChapter={focusChapterName}
+              focusChapter={focusChapterName} feedback={feedback}
             />
           ) : (
             <div style={{ ...cardS, textAlign: 'center', padding: 40, color: '#94a3b8' }}>Select a subject above</div>
@@ -1668,7 +1723,7 @@ export default function StudyMaterial({ currentUser, perms, onNavigate, embedded
                 customChapters={customChaptersBySubject[activeSubject] || []}
                 onRefetch={refetchMaterials} onStructureChange={refetchStructure} showToast={showToast}
                 onNavigate={onNavigate} isAdmin={isAdmin} isStaffAllowed={isStaffAllowed}
-                focusChapter={focusChapterName}
+                focusChapter={focusChapterName} feedback={feedback}
               />
             ) : (
               <div style={{ ...cardS, textAlign: 'center', padding: 48, color: '#94a3b8' }}>Select a subject from the sidebar</div>
@@ -1676,6 +1731,14 @@ export default function StudyMaterial({ currentUser, perms, onNavigate, embedded
           </div>
         </div>
       )}
+    </>
+  )
+
+  if (embedded) return <div style={{ fontFamily: 'inherit' }}>{content}</div>
+  return (
+    <div className="px-root">
+      <PremiumStyles />
+      <div className="px-wrap">{content}</div>
     </div>
   )
 }
