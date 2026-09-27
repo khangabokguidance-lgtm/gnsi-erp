@@ -100,7 +100,66 @@ const PinIcon = p => (
   </svg>
 )
 
-// Distinct icons so every tab is recognisable in the icon-only phone bar
+// ── Phone section menu ─────────────────────────────────────────────────────
+// A bar with the current section and a ☰ button; the menu lists every
+// section the user can open (with badges). Closes on pick, on a tap
+// outside, or with Escape.
+function TeachingMenu({ tabs, active, onChange, badgeOf }) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef(null)
+  const btnRef = useRef(null)
+  const current = tabs.find(t => t.key === active) || tabs[0]
+  const CurIcon = current?.icon
+  const total = tabs.reduce((n, t) => n + (t.key !== active ? (badgeOf(t.key) || 0) : 0), 0)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false) }
+    const onKey = e => { if (e.key === 'Escape') { setOpen(false); btnRef.current?.focus() } }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    wrapRef.current?.querySelector('.tch-menu-item.on, .tch-menu-item')?.focus()
+    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [open])
+
+  const pick = key => { onChange(key); setOpen(false); btnRef.current?.focus() }
+
+  return (
+    <div className="tch-menu-wrap" ref={wrapRef}>
+      <button ref={btnRef} type="button" className="tch-menu-bar" aria-haspopup="true" aria-expanded={open} aria-controls="tch-menu-list"
+        aria-label={`Section: ${current?.label}. Open the Teaching menu`} onClick={() => setOpen(o => !o)}>
+        <span className="tch-menu-cur">
+          {CurIcon && <span className="tch-menu-cur-ic"><CurIcon size={17} /></span>}
+          <span className="tch-menu-cur-lbl">{current?.label}</span>
+        </span>
+        <span className="tch-menu-burger" aria-hidden="true">
+          {open
+            ? <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            : <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>}
+          {!open && total > 0 && <span className="tch-menu-dot">{total > 99 ? '99+' : total}</span>}
+        </span>
+      </button>
+      {open && (
+        <nav id="tch-menu-list" className="tch-menu-list" aria-label="Teaching sections">
+          {tabs.map(t => {
+            const I = t.icon
+            const on = t.key === active
+            const badge = badgeOf(t.key) || 0
+            return (
+              <button key={t.key} type="button" className={'tch-menu-item' + (on ? ' on' : '')} aria-current={on ? 'page' : undefined} onClick={() => pick(t.key)}>
+                <I size={17} />
+                <span className="tch-menu-item-lbl">{t.label}</span>
+                {badge > 0 && <span className="tch-menu-badge">{badge > 99 ? '99+' : badge}</span>}
+              </button>
+            )
+          })}
+        </nav>
+      )}
+    </div>
+  )
+}
+
+// Distinct icons so every section is recognisable at a glance
 // (Question Bank and Class Test Scores, Study Lockers and HM Dashboard
 // used to share icons).
 const tabSvg = (p, children) => (
@@ -277,16 +336,26 @@ const globalCSS = `
   @media (max-width:1320px) { .tch-tabs .px-tab { padding:9px 7px; font-size:12.5px; gap:5px } }
   @media (max-width:1100px) { .tch-tabs .px-tab svg { display:none } .tch-tabs .px-tab { padding:9px 6px; font-size:12px } }
   @media (max-width:760px)  { .tch-tabs .px-tab svg { display:inline } .tch-tabs .px-tab { padding:9px 12px; font-size:13px } }
-  /* Phones: icon bar — all sections visible, the selected one expands. */
-  .tch-icons { display:flex; flex-wrap:wrap; justify-content:center; gap:6px; padding:8px; margin-bottom:16px; background:#fff; border:1px solid ${PX.line}; border-radius:16px; box-shadow:0 1px 2px rgba(19,42,79,.05) }
-  .tch-ic { position:relative; display:inline-flex; align-items:center; justify-content:center; gap:7px; width:42px; height:42px; padding:0; border:none; border-radius:12px; background:${PX.tint}; color:${PX.sub}; cursor:pointer; font:700 13px/1 ${PX.sans}; transition:background .2s, color .2s, padding .2s; -webkit-tap-highlight-color:transparent }
-  .tch-ic:active { transform:scale(.94) }
-  .tch-ic.on { width:auto; padding:0 14px; background:linear-gradient(180deg,${PX.navy2},${PX.navy}); color:#fff; box-shadow:0 6px 14px -6px rgba(19,42,79,.6) }
-  .tch-ic.on svg { color:${PX.goldLt} }
-  .tch-ic-lbl { white-space:nowrap; animation:tchLbl .22s ease-out }
-  .tch-ic-badge { position:absolute; top:-4px; right:-4px; min-width:17px; height:17px; padding:0 4px; border-radius:99px; background:#dc2626; color:#fff; font:800 10px/17px ${PX.sans}; text-align:center; border:2px solid #fff }
-  .tch-ic.on .tch-ic-badge { background:${PX.gold}; color:#1a1406 }
-  @keyframes tchLbl { from { opacity:0; max-width:0 } to { opacity:1; max-width:180px } }
+  /* Phones: hamburger section menu. */
+  .tch-menu-wrap { position:relative; margin-bottom:16px; z-index:30 }
+  .tch-menu-bar { width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 8px 8px 10px; background:#fff; border:1px solid ${PX.line}; border-radius:16px; box-shadow:0 1px 2px rgba(19,42,79,.05),0 10px 24px -18px rgba(19,42,79,.4); cursor:pointer; font:inherit; color:${PX.ink}; -webkit-tap-highlight-color:transparent }
+  .tch-menu-bar:focus { outline:none } .tch-menu-bar:focus-visible { outline:2px solid ${PX.gold}; outline-offset:2px }
+  .tch-menu-cur { display:flex; align-items:center; gap:10px; min-width:0 }
+  .tch-menu-cur-ic { width:36px; height:36px; border-radius:11px; display:inline-flex; align-items:center; justify-content:center; background:linear-gradient(180deg,${PX.navy2},${PX.navy}); color:${PX.goldLt}; flex-shrink:0 }
+  .tch-menu-cur-lbl { font:600 17px/1.2 ${PX.serif}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .tch-menu-burger { position:relative; width:42px; height:42px; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; background:${PX.tint}; border:1px solid ${PX.line}; color:${PX.navy}; flex-shrink:0 }
+  .tch-menu-bar[aria-expanded="true"] .tch-menu-burger { background:${PX.navy}; color:#fff; border-color:${PX.navy} }
+  .tch-menu-dot { position:absolute; top:-5px; right:-5px; min-width:17px; height:17px; padding:0 4px; border-radius:99px; background:#dc2626; color:#fff; font:800 10px/17px ${PX.sans}; text-align:center; border:2px solid #fff }
+  .tch-menu-list { position:absolute; left:0; right:0; top:calc(100% + 8px); display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:10px; background:#fff; border:1px solid ${PX.line}; border-radius:18px; box-shadow:0 24px 48px -20px rgba(19,42,79,.55); max-height:70vh; overflow-y:auto; animation:tchMenuIn .16s ease-out }
+  .tch-menu-item { display:flex; align-items:center; gap:9px; min-height:46px; padding:8px 10px; border:1px solid transparent; border-radius:12px; background:${PX.tint}; color:${PX.ink2}; font:600 13px/1.2 ${PX.sans}; text-align:left; cursor:pointer }
+  .tch-menu-item svg { flex-shrink:0; color:${PX.sub} }
+  .tch-menu-item:focus-visible { outline:2px solid ${PX.gold}; outline-offset:1px }
+  .tch-menu-item.on { background:linear-gradient(180deg,${PX.navy2},${PX.navy}); color:#fff }
+  .tch-menu-item.on svg { color:${PX.goldLt} }
+  .tch-menu-item-lbl { flex:1; min-width:0 }
+  .tch-menu-badge { min-width:18px; height:18px; padding:0 5px; border-radius:99px; background:#dc2626; color:#fff; font:800 10.5px/18px ${PX.sans}; text-align:center }
+  .tch-menu-item.on .tch-menu-badge { background:${PX.gold}; color:#1a1406 }
+  @keyframes tchMenuIn { from { opacity:0; transform:translateY(-6px) } to { opacity:1; transform:none } }
   /* Tablets: tabs scroll sideways — fade the right edge so it's clear more
      tabs are there; compact hero on phones so the content starts higher. */
   @media (max-width:900px)  { .tch-tabs .px-tabs { -webkit-mask-image:linear-gradient(90deg,#000 86%,transparent); mask-image:linear-gradient(90deg,#000 86%,transparent); padding-right:28px } }
@@ -3929,23 +3998,10 @@ useEffect(() => {
         </div>
       ) : (
         isMobile ? (
-          // Phones: every section as an icon button, all visible at once;
-          // the selected one expands to show its name.
-          <nav className="tch-icons" role="tablist" aria-label="Teaching sections">
-            {TABS.map(t => {
-              const I = t.icon
-              const on = activeTab === t.key
-              const badge = t.key==='logs' ? badges.todayLogs : t.key==='hmdash' ? hmNotifCount : t.key==='reports' ? badges.monthMissed : 0
-              return (
-                <button key={t.key} type="button" role="tab" aria-selected={on} aria-label={t.label} title={t.label}
-                  className={'tch-ic' + (on ? ' on' : '')} onClick={() => handleTabChange(t.key)}>
-                  <I size={19} />
-                  {on && <span className="tch-ic-lbl">{t.label}</span>}
-                  {badge > 0 && <span className="tch-ic-badge" aria-hidden="true">{badge > 99 ? '99+' : badge}</span>}
-                </button>
-              )
-            })}
-          </nav>
+          // Phones: a hamburger bar showing the current section; ☰ opens
+          // the full list of sections.
+          <TeachingMenu tabs={TABS} active={activeTab} onChange={handleTabChange}
+            badgeOf={key => key==='logs' ? badges.todayLogs : key==='hmdash' ? hmNotifCount : key==='reports' ? badges.monthMissed : 0} />
         ) : (
         <div className="tch-tabs"><PremiumTabs
           tabs={TABS.map(t => ({
