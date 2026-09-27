@@ -24,7 +24,7 @@
 // subject names never showed up.)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import { supabase } from './supabase'
 import { normalizeToQBank, fetchAllPages } from './StudyMaterialBridge'
@@ -319,6 +319,8 @@ export default function QuestionBankViewer({ currentUser }) {
 
   useEffect(() => {
     if (!subjectList.includes(activeSubject)) {
+      // Keeps the picked subject valid when the course changes.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveSubject(subjectList[0] || null)
       setActiveChapter(null)
     }
@@ -352,6 +354,7 @@ export default function QuestionBankViewer({ currentUser }) {
     setLoading(false)
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the subject's questions from the server
   useEffect(() => { loadSubjectQuestions(activeSubject) }, [activeSubject, loadSubjectQuestions])
 
   // Refresh when questions are saved anywhere in the app (debounced — a
@@ -412,6 +415,7 @@ export default function QuestionBankViewer({ currentUser }) {
     if (!loadedCurrent) return
     if (activeChapter && chapters.includes(activeChapter)) return
     const firstWithQuestions = chapters.find(ch => countsByChapter[ch] > 0)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- runs once the subject's data has loaded
     setActiveChapter(firstWithQuestions || chapters[0] || null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSubject, chapters, countsByChapter, loadedCurrent])

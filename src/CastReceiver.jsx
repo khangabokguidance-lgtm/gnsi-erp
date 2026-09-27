@@ -13,7 +13,7 @@
 // live slide index (written by the presenter via `castSessionUpdate`) so
 // slide navigation on the presenter's device advances the cast screen too.
 
-import React, { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from './supabase'
 import { bmeiToUnicode } from './mayekSegments'
 
@@ -96,7 +96,7 @@ function getQueryParams() {
 }
 
 export default function CastReceiver() {
-  const { course, subject, chapter, source, session, showAnswers } = useMemo(getQueryParams, [])
+  const { subject, chapter, source, session, showAnswers } = useMemo(() => getQueryParams(), [])
   const [slides, setSlides] = useState(null)
   const [index, setIndex] = useState(0)
   const [error, setError] = useState('')
