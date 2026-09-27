@@ -3865,6 +3865,14 @@ function TabPaper({ questions: bankQuestions, showToast }) {
     return questions.filter(q => (q.course||'')===course && q.subject===subject && want.has(q.chapter) && !q.correct_option).length
   }, [questions, course, subject, chapterSel])
 
+  // Everything in the chosen chapters, before the difficulty and quality
+  // filters, so an empty pick can say which filter emptied it.
+  const inScope = useMemo(() => {
+    if (!course || !subject || !chapterSel.length) return 0
+    const want = new Set(chapterSel)
+    return questions.filter(q => (q.course||'')===course && q.subject===subject && want.has(q.chapter)).length
+  }, [questions, course, subject, chapterSel])
+
   const toggleSub = key => setSelSubs(prev => { const n = { ...prev }; if (n[key] !== undefined) delete n[key]; else n[key] = Math.min(10, availableSubs[key] || 5); return n })
   const updateCount = (key, val) => setSelSubs(prev => ({ ...prev, [key]: Math.max(1, Math.min(availableSubs[key] || 1, parseInt(val) || 1)) }))
   const selectAllSubs = () => setSelSubs(Object.fromEntries(Object.entries(availableSubs).map(([k, c]) => [k, Math.min(5, c)])))
@@ -4068,7 +4076,22 @@ function TabPaper({ questions: bankQuestions, showToast }) {
 
         {chapterSel.length > 0 && Object.keys(availableSubs).length === 0 && (
           <div style={{ padding:'12px 16px', borderRadius:8, background:'#fef9c3', border:'1px solid #fde68a', fontSize:13, color:'#92400e', marginBottom:14 }}>
-            ⚠️ No questions found for the chosen chapter(s). Add questions using Manual Add or Bulk Paste.
+            {inScope === 0 ? (
+              <>⚠️ No questions found for the chosen chapter(s). Add questions using Manual Add or Bulk Paste.</>
+            ) : (
+              <>
+                ⚠️ {inScope} question{inScope === 1 ? ' is' : 's are'} in {chapterSel.length > 1 ? 'these chapters' : 'this chapter'}, but none match the current filters:
+                <ul style={{ margin:'6px 0 8px 18px', padding:0 }}>
+                  {quality && noAnswer > 0 && <li>{noAnswer === inScope ? 'None of them has a' : `${noAnswer} of them have no`} correct answer set, and “Only complete questions” leaves those out.</li>}
+                  {difficulty !== 'All' && <li>Difficulty is set to {difficulty}.</li>}
+                </ul>
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                  {quality && noAnswer > 0 && <button type="button" style={btnSm('#fff', C.navy)} onClick={() => setQuality(false)}>Include questions without answers</button>}
+                  {difficulty !== 'All' && <button type="button" style={btnSm('#fff', C.navy)} onClick={() => setDifficulty('All')}>Any difficulty</button>}
+                </div>
+                {quality && noAnswer > 0 && <div style={{ marginTop:8, fontSize:12 }}>Without answers the answer key shows “—”. To fix it for good, set answers in the Question Bank tab (✏️ Edit) or re-upload with the answer key.</div>}
+              </>
+            )}
           </div>
         )}
 
