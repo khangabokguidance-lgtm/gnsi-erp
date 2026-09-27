@@ -114,7 +114,7 @@ const iS = { width: '100%', padding: '9px 12px', borderRadius: 11, border: `1px 
 const lS = { display: 'block', fontSize: 10.5, fontWeight: 800, color: C.slate, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.1em' }
 const cardS = { background: C.white, borderRadius: 18, border: `1px solid ${C.border}`, boxShadow: '0 1px 2px rgba(19,42,79,.05),0 12px 32px -22px rgba(19,42,79,.35)', padding: '18px 20px', marginBottom: 14 }
 const btn = (bg, dis = false) => ({ padding: '9px 16px', borderRadius: 11, background: dis ? PX.line2 : bg === C.navy ? `linear-gradient(180deg,${PX.navy2},${PX.navy})` : bg, color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: dis ? 'not-allowed' : 'pointer', opacity: dis ? .7 : 1, boxShadow: dis ? 'none' : '0 6px 14px -8px rgba(19,42,79,.55)', fontFamily: 'inherit' })
-const btnSm = (bg, color = '#fff') => ({ padding: '5px 10px', borderRadius: 8, background: bg, color, border: bg === '#fff' ? `1px solid ${PX.line2}` : 'none', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' })
+const btnSm = (bg, color = '#fff') => ({ padding: '6px 11px', minHeight: 30, borderRadius: 8, background: bg, color, border: bg === '#fff' ? `1px solid ${PX.line2}` : 'none', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' })
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function useIsMobile() {

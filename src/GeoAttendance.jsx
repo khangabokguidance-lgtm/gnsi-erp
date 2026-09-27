@@ -222,21 +222,23 @@ const td = ledger.td
 // Same token shape/keys as before so every consumer using `dark` /
 // GPAY.* / gpayPress / gpayBtnStyle keeps working unchanged — only the
 // actual colors and button geometry changed.
+// Portal premium palette (navy · antique gold · ivory) — same tokens as
+// premiumUI.jsx, so Geo Check-In matches Teaching and the other modules.
 const GPAY = {
-  bg:        '#F6F6F6',
+  bg:        '#f7f5f0',
   bgRaised:  '#ffffff',
   panel:     '#ffffff',
-  panelHover:'#F1F3F4',
-  panelBorder: '#E8EAED',
-  goldBorder:  '#E8EAED',
-  gold:      '#1A73E8',
-  goldDeep:  '#1558B0',
-  textPrimary: '#202124',
-  textMuted:   '#5f6368',
-  textFaint:   '#80868b',
-  ok:        '#1E8E3E',
-  warn:      '#EA8600',
-  danger:    '#D93025',
+  panelHover:'#faf8f3',
+  panelBorder: '#e8e3d8',
+  goldBorder:  '#e8e3d8',
+  gold:      '#1e3a6e',
+  goldDeep:  '#132a4f',
+  textPrimary: '#0f1b2e',
+  textMuted:   '#5d6b82',
+  textFaint:   '#8a93a6',
+  ok:        '#0f7a4c',
+  warn:      '#9a5b00',
+  danger:    '#b42318',
 }
 
 // Shared press animation for every button on the check-in screen. GPay's
@@ -298,7 +300,7 @@ function gpayBtnStyle({ bg, color = '#ffffff', disabled = false, size = 'md', va
     border: 'none', borderRadius: 28, padding: pad,
     fontWeight: 600, fontFamily: FONT.body, cursor: disabled ? 'not-allowed' : 'pointer',
     transition: 'transform 0.12s ease, box-shadow 0.15s, background 0.15s', position: 'relative', overflow: 'hidden',
-    boxShadow: disabled ? 'none' : '0 1px 3px rgba(0,0,0,0.15), 0 2px 6px -2px rgba(26,115,232,0.35)',
+    boxShadow: disabled ? 'none' : '0 1px 3px rgba(0,0,0,0.15), 0 2px 6px -2px rgba(19,42,79,0.4)',
   }
 }
 
@@ -2472,12 +2474,12 @@ export default function GeoAttendance({ currentStaff, isAdmin: isAdminProp, allS
 
             {'Notification' in window && Notification.permission === 'default' && (
               <div style={{ background: 'rgba(93,202,165,0.08)', border: `1px solid ${GPAY.ok}44`, borderRadius: 12,
-                padding: '11px 16px', marginBottom: 14, display: 'flex',
+                padding: '11px 16px', marginBottom: 14, display: 'flex', gap: 12, flexWrap: 'wrap',
                 justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontSize: 13, color: GPAY.ok, fontWeight: 600 }}>
                   Enable push notifications to get shift alerts
                 </div>
-                <button onClick={gpayRipple(subscribe)} style={gpayBtnStyle({ bg: GPAY.ok, size: 'sm' })} {...gpayPress}>Enable</button>
+                <button onClick={gpayRipple(subscribe)} style={{ ...gpayBtnStyle({ bg: GPAY.ok, size: 'sm' }), flexShrink: 0 }} {...gpayPress}>Enable</button>
               </div>
             )}
 
