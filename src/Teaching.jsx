@@ -100,13 +100,22 @@ const PinIcon = p => (
   </svg>
 )
 
+// Distinct icons so every tab is recognisable in the icon-only phone bar
+// (Question Bank and Class Test Scores, Study Lockers and HM Dashboard
+// used to share icons).
+const tabSvg = (p, children) => (
+  <svg viewBox="0 0 24 24" width={p?.size || 16} height={p?.size || 16} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
+)
+const QuestionIcon = p => tabSvg(p, <><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.8M12 16.6v.01"/></>)
+const LockIcon = p => tabSvg(p, <><rect x="5" y="10.5" width="14" height="10" rx="2.2"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7M12 14.5v2.5"/></>)
+
 const ALL_TABS = [
   { key:'logs',        label:'Daily Logs',       icon:PIcon.list },
   { key:'hub',         label:'Chapter Hub',      icon:PIcon.cap },
   { key:'studio',      label:'Material Studio',  icon:PIcon.file },
   { key:'studymaterial', label:'Study Materials', icon:PIcon.folder },
-  { key:'questionbank',  label:'Question Bank',   icon:PIcon.report },
-  { key:'studylockers',  label:'Study Lockers',   icon:PIcon.users },
+  { key:'questionbank',  label:'Question Bank',   icon:QuestionIcon },
+  { key:'studylockers',  label:'Study Lockers',   icon:LockIcon },
   { key:'calendar',    label:'Calendar',          icon:PIcon.calendar },
   { key:'syllabus',    label:'Syllabus',          icon:PIcon.layers },
   { key:'reports',     label:'Reports',           icon:PIcon.chart },
@@ -268,8 +277,18 @@ const globalCSS = `
   @media (max-width:1320px) { .tch-tabs .px-tab { padding:9px 7px; font-size:12.5px; gap:5px } }
   @media (max-width:1100px) { .tch-tabs .px-tab svg { display:none } .tch-tabs .px-tab { padding:9px 6px; font-size:12px } }
   @media (max-width:760px)  { .tch-tabs .px-tab svg { display:inline } .tch-tabs .px-tab { padding:9px 12px; font-size:13px } }
-  /* Phones: tabs scroll sideways — fade the right edge so it's clear more
-     tabs are there; compact hero so the content starts higher. */
+  /* Phones: icon bar — all sections visible, the selected one expands. */
+  .tch-icons { display:flex; flex-wrap:wrap; justify-content:center; gap:6px; padding:8px; margin-bottom:16px; background:#fff; border:1px solid ${PX.line}; border-radius:16px; box-shadow:0 1px 2px rgba(19,42,79,.05) }
+  .tch-ic { position:relative; display:inline-flex; align-items:center; justify-content:center; gap:7px; width:42px; height:42px; padding:0; border:none; border-radius:12px; background:${PX.tint}; color:${PX.sub}; cursor:pointer; font:700 13px/1 ${PX.sans}; transition:background .2s, color .2s, padding .2s; -webkit-tap-highlight-color:transparent }
+  .tch-ic:active { transform:scale(.94) }
+  .tch-ic.on { width:auto; padding:0 14px; background:linear-gradient(180deg,${PX.navy2},${PX.navy}); color:#fff; box-shadow:0 6px 14px -6px rgba(19,42,79,.6) }
+  .tch-ic.on svg { color:${PX.goldLt} }
+  .tch-ic-lbl { white-space:nowrap; animation:tchLbl .22s ease-out }
+  .tch-ic-badge { position:absolute; top:-4px; right:-4px; min-width:17px; height:17px; padding:0 4px; border-radius:99px; background:#dc2626; color:#fff; font:800 10px/17px ${PX.sans}; text-align:center; border:2px solid #fff }
+  .tch-ic.on .tch-ic-badge { background:${PX.gold}; color:#1a1406 }
+  @keyframes tchLbl { from { opacity:0; max-width:0 } to { opacity:1; max-width:180px } }
+  /* Tablets: tabs scroll sideways — fade the right edge so it's clear more
+     tabs are there; compact hero on phones so the content starts higher. */
   @media (max-width:900px)  { .tch-tabs .px-tabs { -webkit-mask-image:linear-gradient(90deg,#000 86%,transparent); mask-image:linear-gradient(90deg,#000 86%,transparent); padding-right:28px } }
   @media (max-width:640px)  {
     .tch-hero .px-hero { padding:14px 14px 12px !important; margin-bottom:12px }
@@ -3909,6 +3928,25 @@ useEffect(() => {
           <div style={{ fontSize:13.5, color:PX.sub, marginTop:6 }}>Ask an administrator if you need access to teaching logs or reports.</div>
         </div>
       ) : (
+        isMobile ? (
+          // Phones: every section as an icon button, all visible at once;
+          // the selected one expands to show its name.
+          <nav className="tch-icons" role="tablist" aria-label="Teaching sections">
+            {TABS.map(t => {
+              const I = t.icon
+              const on = activeTab === t.key
+              const badge = t.key==='logs' ? badges.todayLogs : t.key==='hmdash' ? hmNotifCount : t.key==='reports' ? badges.monthMissed : 0
+              return (
+                <button key={t.key} type="button" role="tab" aria-selected={on} aria-label={t.label} title={t.label}
+                  className={'tch-ic' + (on ? ' on' : '')} onClick={() => handleTabChange(t.key)}>
+                  <I size={19} />
+                  {on && <span className="tch-ic-lbl">{t.label}</span>}
+                  {badge > 0 && <span className="tch-ic-badge" aria-hidden="true">{badge > 99 ? '99+' : badge}</span>}
+                </button>
+              )
+            })}
+          </nav>
+        ) : (
         <div className="tch-tabs"><PremiumTabs
           tabs={TABS.map(t => ({
             id: t.key, label: t.label, icon: t.icon,
@@ -3918,6 +3956,7 @@ useEffect(() => {
           onChange={handleTabChange}
           style={{ gridTemplateColumns:`repeat(${Math.ceil(TABS.length / 2)}, auto)` }}
         /></div>
+        )
       )}
 
       {has(activeTab) && activeTab==='logs'        && <TabLogs logs={logs} loading={loading} fetchLogs={fetchLogs} timetable={timetable} staff={staff} courseData={courseData} currentUser={currentUser}/>}
