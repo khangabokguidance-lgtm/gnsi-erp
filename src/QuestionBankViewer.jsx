@@ -24,13 +24,14 @@
 // subject names never showed up.)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import { supabase } from './supabase'
 import { normalizeToQBank, fetchAllPages } from './StudyMaterialBridge'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 import { isAdminRole } from './roles'
 import { COURSES } from './qbankTaxonomy'
+import MayekText from './MayekText'
 import { T, heroStyle, optionStyle } from './qbankTheme'
 import { QBThemeStyles, HeroStat, OptionLetter } from './QBTheme'
 // ── BMEI04 font support — ported from QuestionBank.jsx ──────────────────────
@@ -194,7 +195,7 @@ function ViewOnlyQCard({ q, index, subjectColor }) {
       </div>
       {q.question_mayek && (
         <div style={{ fontSize: 15, color: '#374151', lineHeight: 1.7, marginBottom: 12, fontFamily: mayekFontFamily(q.question_mayek_font) }}>
-          {q.question_mayek}
+          <MayekText text={q.question_mayek} font={q.question_mayek_font} />
         </div>
       )}
       {q.diagram_url && (
@@ -214,7 +215,7 @@ function ViewOnlyQCard({ q, index, subjectColor }) {
                 )}
                 {q[`option_${l.toLowerCase()}_mayek`] && (
                   <div style={{ fontFamily: mayekFontFamily(q.question_mayek_font), fontWeight: 400, marginTop: 2 }}>
-                    {q[`option_${l.toLowerCase()}_mayek`]}
+                    <MayekText text={q[`option_${l.toLowerCase()}_mayek`]} font={q.question_mayek_font} />
                   </div>
                 )}
               </div>
@@ -318,6 +319,8 @@ export default function QuestionBankViewer({ currentUser }) {
 
   useEffect(() => {
     if (!subjectList.includes(activeSubject)) {
+      // Keeps the picked subject valid when the course changes.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveSubject(subjectList[0] || null)
       setActiveChapter(null)
     }
@@ -351,6 +354,7 @@ export default function QuestionBankViewer({ currentUser }) {
     setLoading(false)
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the subject's questions from the server
   useEffect(() => { loadSubjectQuestions(activeSubject) }, [activeSubject, loadSubjectQuestions])
 
   // Refresh when questions are saved anywhere in the app (debounced — a
@@ -411,6 +415,7 @@ export default function QuestionBankViewer({ currentUser }) {
     if (!loadedCurrent) return
     if (activeChapter && chapters.includes(activeChapter)) return
     const firstWithQuestions = chapters.find(ch => countsByChapter[ch] > 0)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- runs once the subject's data has loaded
     setActiveChapter(firstWithQuestions || chapters[0] || null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSubject, chapters, countsByChapter, loadedCurrent])

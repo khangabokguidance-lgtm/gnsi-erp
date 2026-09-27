@@ -12,6 +12,7 @@
 import QRCode from 'qrcode'
 import { BMEI04_BASE64 } from './bmei04_font_base64'
 import { PATTERN_PRESETS, EXAM_TYPE_COURSE } from './entranceCore'
+import { bmeiSegments } from './mayekSegments'
 
 // ── Exam formats ─────────────────────────────────────────────────────────────
 // The same official patterns the Entrance module uses (entranceCore
@@ -128,17 +129,21 @@ export function permuteOptions(q, rand) {
 
 // ── Language: English / Meitei Mayek / both ──────────────────────────────────
 const mmClass = q => (q.question_mayek_font === 'bmei04' ? 'mm mm-b' : 'mm mm-u')
+// BMEI04 lines keep Roman numerals / English number names in a Latin font.
+const mmHtml = (text, q) => (q.question_mayek_font === 'bmei04'
+  ? bmeiSegments(text).map(s => (s.latin ? `<span class="mm-l">${esc(s.text)}</span>` : esc(s.text))).join('')
+  : esc(text))
 const hasMayek = q => !!(q.question_mayek || OPTS.some(k => q[`option_${k}_mayek`]))
 function qText(q, o) {
   const en = esc(q.question)
   if (o.lang === 'en' || !q.question_mayek) return en
-  const mm = `<span class="${mmClass(q)}">${esc(q.question_mayek)}</span>`
+  const mm = `<span class="${mmClass(q)}">${mmHtml(q.question_mayek, q)}</span>`
   return o.lang === 'mm' ? mm : `${en}<div>${mm}</div>`
 }
 function optText(q, k, o) {
   const en = esc(q[`option_${k}`]), m = q[`option_${k}_mayek`]
   if (o.lang === 'en' || !m) return en
-  const mm = `<span class="${mmClass(q)}">${esc(m)}</span>`
+  const mm = `<span class="${mmClass(q)}">${mmHtml(m, q)}</span>`
   return o.lang === 'mm' ? mm : `${en} / ${mm}`
 }
 
@@ -161,7 +166,7 @@ function css(o, { mayek = false } = {}) {
   body { font-family: ${t.body}; color: ${t.ink}; margin: 0; font-size: ${size}px; line-height: 1.45 }
   .page { page-break-after: always; position: relative } .page:last-child { page-break-after: auto }
   .sheet2 { display:grid; grid-template-columns:1fr 1fr; gap:10mm } .sheet2 .half { min-width:0 } .sheet2 .half + .half { border-left:1px dashed #9aa3b2; padding-left:5mm }
-  .mm { font-size: 1.08em } .mm-b { font-family: 'BMEI04', sans-serif } .mm-u { font-family: 'Noto Sans Meetei Mayek', sans-serif }
+  .mm { font-size: 1.08em } .mm-b { font-family: 'BMEI04', sans-serif } .mm-u { font-family: 'Noto Sans Meetei Mayek', sans-serif } .mm-l { font-family: 'Inter', 'Segoe UI', Roboto, Arial, sans-serif }
   .wm { position: fixed; top: 42%; left: 0; right: 0; text-align: center; transform: rotate(-28deg); font-size: 72px; font-weight: 800; color: ${t.primary}; opacity: .06; letter-spacing: .12em; pointer-events: none; z-index: 0 }
   .head { display:flex; justify-content:space-between; align-items:flex-end; gap:10px; border-bottom:3px solid ${t.primary}; padding-bottom:8px; margin-bottom:4px }
   .head .brand { font-family:${t.head}; font-weight:700; font-size:1.5em; color:${t.primary}; letter-spacing:.04em; line-height:1.1 }

@@ -44,10 +44,12 @@ import {
 // which stores raw BMEI04 text as-is and renders it with the embedded
 // BMEI04 font rather than converting it.
 import { romanToMeetei, meeteiToRoman, getAllCharacters } from './meetei_mayek'
+import { bmeiToUnicode } from './mayekSegments'
+import MayekText from './MayekText'
 import {
   translateText, saveDictionaryEntry, deleteDictionaryEntry, bulkImportEntries, searchDictionary,
   seedWordlist, getUnfilledEntries, getNeedsReviewEntries, findCoverageGaps,
-  COMMON_QUESTION_PHRASES, getPhraseTemplateStatus,
+  getPhraseTemplateStatus,
 } from './mayekDictionary'
 
 function BmeiFontFace() {
@@ -229,7 +231,6 @@ const SC = {
   'Social Science':     { color: '#c2410c', bg: '#fff7ed', border: '#fed7aa' },
   Hindi:                { color: '#be185d', bg: '#fdf2f8', border: '#fbcfe8' },
 }
-const CHART_COLORS = ['#1e3a5f','#16a34a','#dc2626','#d97706','#7c3aed','#0891b2']
 
 // ── SHARED STYLES ─────────────────────────────────────────────────────────────
 // Hover/focus states, select chevrons and responsive collapse for these
@@ -256,7 +257,6 @@ const btnSm = (bg, color='#fff') => ({
   color, border: color === '#fff' ? 'none' : `1px solid ${T.border}`,
   fontSize:11.5, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap',
 })
-const tdS = { padding:'10px 12px', color:C.slate, fontSize:13 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 const today = () => new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })
@@ -498,13 +498,9 @@ function useSlideCast({ subject, chapter, source = 'qbank' }) {
 // and real wireless casting works immediately; until then, CastButton uses
 // the full-screen fallback, which works today with no new route required.
 function useCast() {
-  const [available, setAvailable] = useState(false)
+  const [available] = useState(() => typeof window !== 'undefined' && 'PresentationRequest' in window)
   const [casting, setCasting] = useState(false)
   const connectionRef = useRef(null)
-
-  useEffect(() => {
-    setAvailable(typeof window !== 'undefined' && 'PresentationRequest' in window)
-  }, [])
 
   const startCast = useCallback(async (url, { onFallback, showToast } = {}) => {
     if (available && url) {
@@ -546,7 +542,7 @@ function presentElementFullscreen(elementId, showToast) {
 // `url`: pass the /cast-receiver URL once that route exists, for real wireless
 // casting via the Presentation API. `presentTargetId`: DOM id of the element
 // to full-screen as the fallback (works today with no new route).
-function CastButton({ url, presentTargetId, title, showToast, small }) {
+function CastButton({ url, presentTargetId, showToast, small }) {
   const { castAvailable, casting, startCast, stopCast } = useCast()
 
   const handleClick = () => {
@@ -579,41 +575,9 @@ function CastButton({ url, presentTargetId, title, showToast, small }) {
 // Mayek (which the viewer's machine needs installed to display it).
 function slideMayekUnicode(text, fontTag) {
   if (!text) return ''
-  return fontTag === 'bmei04' ? bmeiToUnicodeKeepEnglish(text) : text
+  return fontTag === 'bmei04' ? bmeiToUnicode(text) : text
 }
 
-// A BMEI04 line often ends with the English number name it asks about
-// ("… suPngi mapN Two million three hundred eight thousand nine").
-// Converting those words letter by letter printed nonsense Mayek and
-// "[?S?]" markers, so English words stay in Latin: any word the BMEI04
-// table can't map, and runs of two or more English number words.
-const EN_NUMBER_WORDS = new Set('zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand lakh lakhs lac crore crores million millions billion billions and'.split(' '))
-function bmeiToUnicodeKeepEnglish(text) {
-  const parts = String(text).split(/(\s+)/)
-  const conv = parts.map(t => (/\S/.test(t) ? romanToMeetei(t) : t))
-  const english = parts.map((t, i) => {
-    if (!/\S/.test(t)) return null
-    const core = t.replace(/[^A-Za-z]/g, '').toLowerCase()
-    return { num: !!core && EN_NUMBER_WORDS.has(core), bad: conv[i].includes('[?') }
-  })
-  const keep = new Array(parts.length).fill(false)
-  for (let i = 0; i < parts.length; i++) {
-    const e = english[i]
-    if (!e) continue
-    if (e.bad) { keep[i] = true; continue }
-    if (!e.num) continue
-    // collect the run of number words this one belongs to
-    const run = []
-    for (let j = i; j < parts.length; j++) {
-      if (!english[j]) continue
-      if (english[j].num || english[j].bad) run.push(j); else break
-    }
-    const words = run.filter(j => parts[j].replace(/[^A-Za-z]/g, '').toLowerCase() !== 'and')
-    if (words.length >= 2) run.forEach(j => { keep[j] = true })
-    i = run[run.length - 1]
-  }
-  return parts.map((t, i) => (keep[i] ? t : conv[i])).join('')
-}
 
 async function generateQuestionPPTX({ title, subject, chapter, slides, withAnswers }) {
   const { default: PptxGenJS } = await import('pptxgenjs')
@@ -621,7 +585,7 @@ async function generateQuestionPPTX({ title, subject, chapter, slides, withAnswe
   pres.defineLayout({ name: 'GNSI16x9', width: 10, height: 5.63 })
   pres.layout = 'GNSI16x9'
 
-  const NAVY = '1E3A5F', GOLD = 'C9A24B', GREEN = '15803D', GREEN_BG = 'DCFCE7', SLATE = '64748B'
+  const NAVY = '1E3A5F', GOLD = 'C9A24B', GREEN = '15803D', GREEN_BG = 'DCFCE7'
 
   // Title slide
   const titleSlide = pres.addSlide()
@@ -742,7 +706,7 @@ function SlideViewer({ slides, title, subject, chapter, onClose, showToast }) {
         </div>
         {slide.title_mayek && (
           <div style={{ fontSize:'clamp(16px,1.9vw,24px)', color:'#cbd5e1', maxWidth:1000, marginTop:16, fontFamily:mayekFontFamily(slide.title_mayek_font) }}>
-            {slide.title_mayek}
+            <MayekText text={slide.title_mayek} font={slide.title_mayek_font} />
           </div>
         )}
         {slide.diagram_url && (
@@ -962,7 +926,7 @@ function parseQuestions(rawText) {
 
   const isAnswerLine = (line) => {
     const t = line.trim()
-    return /^ans(wer)?\s*[:.\-]?\s*[a-d]/i.test(t) ||
+    return /^ans(wer)?\s*[:.-]?\s*[a-d]/i.test(t) ||
            /^\([a-d]\)\s*$/i.test(t) ||
            /^[a-d]\s*$/i.test(t)
   }
@@ -974,7 +938,7 @@ function parseQuestions(rawText) {
            !t.match(/^\d+\.\s+(which|what|find|how|if |the |a |an |select|choose|write|fill|solve|express|by |in |from |simplif)/i)
   }
 
-  const isQuestionStart = (line) => /^(Q?\s*\d+[\.\)]\s+|Q\s*\d+\s+)/i.test(line.trim())
+  const isQuestionStart = (line) => /^(Q?\s*\d+[.)]\s+|Q\s*\d+\s+)/i.test(line.trim())
   // Anchored to the start of the line: an unanchored match fired on any
   // sentence containing a word ending in a–d followed by "." (e.g. "He
   // walked. Then …"), which ended the question early and dropped text.
@@ -990,7 +954,7 @@ function parseQuestions(rawText) {
 
     if (isQuestionStart(line)) {
       const qNum   = line.match(/^Q?\s*(\d+)/i)?.[1]
-      let qText    = line.replace(/^Q?\s*\d+[\.\)]\s*/i, '').trim()
+      let qText    = line.replace(/^Q?\s*\d+[.)]\s*/i, '').trim()
 
       // First line of a question block is classified too — the GNSI
       // bilingual papers put the transliteration BEFORE the English line
@@ -1297,7 +1261,7 @@ function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onD
           </div>
           {q.question_mayek && (
             <div style={{ fontSize:15, color:'#374151', lineHeight:1.7, marginBottom:12, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
-              {q.question_mayek}
+              <MayekText text={q.question_mayek} font={q.question_mayek_font} />
             </div>
           )}
           {q.diagram_url && (
@@ -1314,7 +1278,7 @@ function QCard({ q, index, showAnswer=false, selectable, selected, onToggle, onD
                     {q[`option_${l.toLowerCase()}`] || <span style={{ color:T.faint }}>—</span>}
                     {q[`option_${l.toLowerCase()}_mayek`] && (
                       <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font), fontWeight:400, marginTop:2 }}>
-                        {q[`option_${l.toLowerCase()}_mayek`]}
+                        <MayekText text={q[`option_${l.toLowerCase()}_mayek`]} font={q.question_mayek_font} />
                       </div>
                     )}
                   </div>
@@ -1430,6 +1394,8 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
       : subjectsHere[initialFilter.subject] ? initialFilter.subject
       : subjectsHere[normalizeToQBank(initialFilter.subject)] ? normalizeToQBank(initialFilter.subject)
       : 'All'
+    // Applying a filter handed in by another module (a navigation event).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFilterCourse(course)
     setFilterSubject(subject)
     setFilterChapter(subject !== 'All' && initialFilter.chapter ? initialFilter.chapter : 'All')
@@ -1493,8 +1459,9 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
   // A selection only ever covers what the admin can currently see: changing
   // any filter or the search clears it, so a bulk delete can't include
   // rows hidden by a filter picked after they were checked.
-  useEffect(() => { setSelected(new Set()) },
-    [filterCourse, filterSubject, filterChapter, filterSubsection, filterDiff, filterDiagram, search])
+  const filterKey = [filterCourse, filterSubject, filterChapter, filterSubsection, filterDiff, filterDiagram, search].join('\u241f')
+  const [selectionKey, setSelectionKey] = useState(filterKey)
+  if (selectionKey !== filterKey) { setSelectionKey(filterKey); setSelected(new Set()) }
 
   const toggleSelect = (id) => setSelected(prev => {
     const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
@@ -1553,6 +1520,7 @@ function TabBank({ questions, loading, refetch, showToast, initialFilter, isAdmi
   }
 
   const handleEditSave = async (updatedQ) => {
+    // eslint-disable-next-line no-unused-vars -- the _fields are dropped on purpose
     const { id, _id, _qNum, _subsectionHint, _needsDiagram, _savedDiagramUrl, ...payload } = updatedQ
     // Same required fields as Manual Add — an edit must not be able to
     // save a question with no text, too few options, or no answer.
@@ -2089,10 +2057,6 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
   // merged into the duplicate pool so matches the cached list missed
   // surface in the review UI.
   const [liveExisting, setLiveExisting] = useState([])
-  // Bumped whenever a NEW batch replaces the review list (extract, CSV,
-  // partial-save cleanup) so per-row duplicate choices reset then — and
-  // only then, not on every answer/tag edit to a row.
-  const [batchId, setBatchId] = useState(0)
 
   // dupeByIndex: Map<row index, { existingId, batchDupOf }> for every row
   // findDuplicates flagged — carries the matched existing row's id forward
@@ -2117,8 +2081,10 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
   // Reset per-row choices whenever a new batch is loaded (new extract,
   // re-paste, CSV re-upload) so a stale choice from a previous batch
   // never silently carries over onto a different set of rows.
-  useEffect(() => { setDupeActions({}); setLiveExisting([]) }, [batchId])
-  const loadBatch = (rows) => { setExtracted(rows); setBatchId(b => b + 1) }
+  // A NEW batch replacing the review list (extract, CSV, partial-save
+  // cleanup) resets per-row duplicate choices — and only then, not on
+  // every answer/tag edit to a row.
+  const loadBatch = (rows) => { setExtracted(rows); setDupeActions({}); setLiveExisting([]) }
 
   const setDupeAction = (idx, action) => setDupeActions(prev => ({ ...prev, [idx]: action }))
   const setAllDupeActions = action => {
@@ -2238,6 +2204,7 @@ function TabBulkPaste({ questions, refetch, showToast, onNavigate }) {
       }
     }
 
+    // eslint-disable-next-line no-unused-vars -- the _fields are dropped on purpose
     const strip = ({ _id, _qNum, _subsectionHint, _needsDiagram, ...rest }) => ({
       ...rest,
       subsection: rest.subsection || detectSubsection(rest.question, rest.subject) || 'General',
@@ -2488,7 +2455,7 @@ Answer: B`} />
               </div>
               {q.question_mayek && (
                 <div style={{ fontSize:14, color:'#374151', marginBottom:10, lineHeight:1.7, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
-                  {q.question_mayek}
+                  <MayekText text={q.question_mayek} font={q.question_mayek_font} />
                 </div>
               )}
               <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:10 }}>
@@ -2501,7 +2468,7 @@ Answer: B`} />
                     {q.correct_option===l && ' ✓'}
                     {q[`option_${l.toLowerCase()}_mayek`] && (
                       <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font), marginTop:2 }}>
-                        {q[`option_${l.toLowerCase()}_mayek`]}
+                        <MayekText text={q[`option_${l.toLowerCase()}_mayek`]} font={q.question_mayek_font} />
                       </div>
                     )}
                   </div>
@@ -2632,7 +2599,7 @@ async function fetchImageAsDataURL(url) {
       reader.onerror = () => resolve(null)
       reader.readAsDataURL(blob)
     })
-  } catch (e) { return null }
+  } catch { return null }
 }
 
 // Paper layout options (Create Paper → Layout):
@@ -3024,13 +2991,9 @@ async function generatePDF({ title, subject, chapter, questions, sets, withAnswe
 function TabTranslit({ questions, refetch, showToast }) {
   const [mode, setMode] = useState('toMayek')
   const [input, setInput] = useState('')
-  const [output, setOutput] = useState('')
+  const output = useMemo(() => (mode === 'toMayek' ? romanToMeetei(input) : meeteiToRoman(input)), [input, mode])
   const [showPicker, setShowPicker] = useState(false)
 
-  const convert = useCallback(() => {
-    setOutput(mode === 'toMayek' ? romanToMeetei(input) : meeteiToRoman(input))
-  }, [input, mode])
-  useEffect(() => { convert() }, [convert])
 
   const handleCopy = async () => {
     if (!output) return
@@ -3082,7 +3045,7 @@ function TabTranslit({ questions, refetch, showToast }) {
 
       <div style={{ display:'flex', gap:6, marginBottom:14, padding:4, background:'#f1f5f9', borderRadius:9, width:'fit-content' }}>
         {[{ k:'toMayek', label:'Roman - Meetei Mayek' }, { k:'toRoman', label:'Meetei Mayek - Roman' }].map(({ k, label }) => (
-          <button key={k} onClick={() => { setMode(k); setInput(''); setOutput('') }}
+          <button key={k} onClick={() => { setMode(k); setInput('') }}
             style={{ padding:'8px 16px', borderRadius:7, border:'none', fontSize:12, fontWeight:700,
               cursor:'pointer', fontFamily:'inherit',
               background: mode === k ? C.navy : 'transparent',
@@ -3114,7 +3077,7 @@ function TabTranslit({ questions, refetch, showToast }) {
 
       <div style={{ display:'flex', gap:8, marginTop:14, flexWrap:'wrap' }}>
         <button onClick={handleCopy} style={btn(C.navy)}>Copy Output</button>
-        <button onClick={() => { setInput(''); setOutput('') }} style={btn(C.slate)}>Clear</button>
+        <button onClick={() => setInput('')} style={btn(C.slate)}>Clear</button>
         <button onClick={() => setShowPicker(v => !v)} style={btn(C.teal)}>
           {showPicker ? 'Hide' : 'Show'} Character Picker
         </button>
@@ -3297,8 +3260,10 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
     } finally {
       setLoadingQueues(false)
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- showToast is a new function each render; adding it would reload in a loop
 
+  // Loads from the server on open; setLoading inside is the intended effect.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadQueues() }, [loadQueues])
 
   const runScan = async () => {
@@ -3725,6 +3690,7 @@ function DictBrowsePanel({ showToast, isAdmin }) {
     }
   }, [debouncedQuery, entryType]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- server search on query change
   useEffect(() => { runSearch() }, [runSearch])
 
   // Deleting entries is admin-only, like deleting questions (the RLS
@@ -4295,7 +4261,7 @@ function TabPaper({ questions: bankQuestions, showToast }) {
                         </span>
                       </span>
                     </div>
-                    {opts.showMayek && q.question_mayek && <div style={{ fontSize:13, color:'#374151', marginBottom:6, fontFamily:mayekFontFamily(q.question_mayek_font) }}>{q.question_mayek}</div>}
+                    {opts.showMayek && q.question_mayek && <div style={{ fontSize:13, color:'#374151', marginBottom:6, fontFamily:mayekFontFamily(q.question_mayek_font) }}><MayekText text={q.question_mayek} font={q.question_mayek_font} /></div>}
                     {q.diagram_url && <img src={q.diagram_url} alt="diagram" style={{ maxWidth:200, maxHeight:140, borderRadius:6, marginBottom:6, display:'block' }} />}
                     <div style={{ display:'grid', gridTemplateColumns:`repeat(${optCols},minmax(0,1fr))`, gap: layout.spacing === 'compact' ? 1 : 4 }}>
                       {['A','B','C','D'].map(l => (
@@ -4303,7 +4269,7 @@ function TabPaper({ questions: bankQuestions, showToast }) {
                           <span style={{ fontWeight:700, color:C.slate, marginRight:4 }}>{l}.</span>
                           {q[`option_${l.toLowerCase()}`]||'—'}
                           {opts.answerKey === 'inline' && q.correct_option===l && <span style={{ color:C.green, marginLeft:6, fontWeight:700 }}>✓</span>}
-                          {opts.showMayek && q[`option_${l.toLowerCase()}_mayek`] && <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font) }}>{q[`option_${l.toLowerCase()}_mayek`]}</div>}
+                          {opts.showMayek && q[`option_${l.toLowerCase()}_mayek`] && <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font) }}><MayekText text={q[`option_${l.toLowerCase()}_mayek`]} font={q.question_mayek_font} /></div>}
                         </div>
                       ))}
                     </div>
@@ -4398,7 +4364,7 @@ function CastQuestionOverlay({ questions, index, onIndexChange, onClose }) {
         </div>
         {q.question_mayek && (
           <div style={{ fontSize:'clamp(18px, 2.4vw, 28px)', color:'#cbd5e1', textAlign:'center', maxWidth:1000, marginTop:20, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
-            {q.question_mayek}
+            <MayekText text={q.question_mayek} font={q.question_mayek_font} />
           </div>
         )}
         {q.diagram_url && (
@@ -4559,7 +4525,7 @@ function TabTest({ questions, showToast }) {
               </div>
               {q.question_mayek && (
                 <div style={{ fontSize:13, color:'#374151', marginBottom:5, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
-                  {q.question_mayek}
+                  <MayekText text={q.question_mayek} font={q.question_mayek_font} />
                 </div>
               )}
               <div style={{ fontSize:12 }}>
@@ -4616,7 +4582,7 @@ function TabTest({ questions, showToast }) {
             </div>
             {q.question_mayek && (
               <div style={{ fontSize:14, color:'#374151', marginBottom:10, lineHeight:1.6, fontFamily:mayekFontFamily(q.question_mayek_font) }}>
-                {q.question_mayek}
+                <MayekText text={q.question_mayek} font={q.question_mayek_font} />
               </div>
             )}
             {q.diagram_url && (
@@ -4640,7 +4606,7 @@ function TabTest({ questions, showToast }) {
                     {q[`option_${l.toLowerCase()}`]||'—'}
                     {q[`option_${l.toLowerCase()}_mayek`] && (
                       <div style={{ fontFamily:mayekFontFamily(q.question_mayek_font), fontSize:12 }}>
-                        {q[`option_${l.toLowerCase()}_mayek`]}
+                        <MayekText text={q[`option_${l.toLowerCase()}_mayek`]} font={q.question_mayek_font} />
                       </div>
                     )}
                   </div>
@@ -5165,7 +5131,10 @@ function TabStats({ questions, refetch, showToast, isAdmin, onNavigate }) {
 let _qbankCache = null       // { data, fetchedAt } | null
 const QBANK_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 
-export default function QuestionBank({ currentUser, perms, onNavigate, initialFilter: initialFilterProp, embedded = false }) {
+// Create Paper / Online Test / Stats / Smart PPT are admin-only.
+const ADMIN_ONLY_TABS = ['paper', 'test', 'stats', 'smartppt']
+
+export default function QuestionBank({ currentUser, onNavigate, initialFilter: initialFilterProp, embedded = false }) {
   // BUGFIX: this used to check roleLower === 'admin' (exact lowercase
   // match only) based on a one-off SQL check against portal_users.role
   // that a prior pass here concluded meant "admin" was the only real
@@ -5190,7 +5159,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
   const isTeachingStaff = roleLower.startsWith('teaching')
   const isStaffAllowed = isAdmin || roleLower === 'computer staffs' || isTeachingStaff
 
-  const [tab,           setTab]           = useState('bank')
+  const [tabState,      setTab]           = useState('bank')
   const [questions,     setQuestions]     = useState([])
   const [loading,       setLoading]       = useState(true)
   const [toast,         setToast]         = useState(null)
@@ -5258,6 +5227,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
     setLoading(false)
   }, [isStaffAllowed])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the bank from the server on open
   useEffect(() => { refetch() }, [refetch])
 
   // ── PATCH: listen for cross-module NAVIGATE_TO events ─────────────────────
@@ -5287,13 +5257,7 @@ export default function QuestionBank({ currentUser, perms, onNavigate, initialFi
   // ── ACCESS GUARD ─────────────────────────────────────────────────────────
   // Non-admins get view (Bank, read-only) + upload (Manual Add, Bulk Paste)
   // only. Create Paper / Online Test / Stats are admin-only.
-  const ADMIN_ONLY_TABS = ['paper', 'test', 'stats', 'smartppt']
-
-  useEffect(() => {
-    if (!isAdmin && ADMIN_ONLY_TABS.includes(tab)) {
-      setTab('bank')
-    }
-  }, [isAdmin, tab])
+  const tab = !isAdmin && ADMIN_ONLY_TABS.includes(tabState) ? 'bank' : tabState
 
   // Headline numbers for the page header.
   const bankStats = useMemo(() => {
