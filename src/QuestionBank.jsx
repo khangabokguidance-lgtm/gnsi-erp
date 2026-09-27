@@ -2576,7 +2576,14 @@ async function fetchImageAsDataURL(url) {
   } catch (e) { return null }
 }
 
-async function generatePDF({ title, subject, chapter, questions, withAnswers, timeMinutes, instructions }) {
+// Paper layout options (Create Paper → Layout):
+//   columns 1 | 2 · optionCols 'auto' | 4 | 2 | 1 · spacing 'normal' | 'compact'
+//   font 'helvetica' | 'times' | 'courier' · size 'S' | 'M' | 'L'
+const PAPER_LAYOUT_DEFAULT = { columns: 1, optionCols: 'auto', spacing: 'normal', font: 'helvetica', size: 'M' }
+const PAPER_FONT_CSS = { helvetica: 'Helvetica, Arial, sans-serif', times: "'Times New Roman', Times, serif", courier: "'Courier New', Courier, monospace" }
+const PAPER_SIZE_PT = { S: 9, M: 10.5, L: 12 }
+
+async function generatePDF({ title, subject, chapter, questions, withAnswers, timeMinutes, instructions, layout = PAPER_LAYOUT_DEFAULT }) {
   // Bundled npm dependency (same one Reports.jsx etc. use), loaded lazily —
   // no runtime CDN script, so PDFs work offline and can't be tampered with
   // by a compromised CDN.
@@ -2642,14 +2649,6 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers, ti
   let y = HEADER_H
   drawLetterhead()
 
-  const checkPage = (need=10) => {
-    if (y + need > FOOTER_Y - 6) {
-      doc.addPage()
-      drawLetterhead()
-      y = HEADER_H
-    }
-  }
-
   // ── Paper title block ───────────────────────────────────────────────────
   doc.setFontSize(15); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
   doc.text(title, W/2, y, { align:'center' }); y += 6
@@ -2686,72 +2685,124 @@ async function generatePDF({ title, subject, chapter, questions, withAnswers, ti
   doc.setDrawColor(30,58,95); doc.setLineWidth(.6)
   doc.line(margin, y, W-margin, y); y += 7
 
-  // ── Questions — two-column option layout (A/B on one row, C/D on next) ──
-  const optColW = (contentW - 12) / 2
+  // ── Questions ──────────────────────────────────────────────────────────
+  // Flows down one or two page columns. Each question (text, Mayek line,
+  // diagram and options) is measured first and kept together in a column.
+  const L = { ...PAPER_LAYOUT_DEFAULT, ...layout }
+  const FONT = ['helvetica', 'times', 'courier'].includes(L.font) ? L.font : 'helvetica'
+  const qSize = PAPER_SIZE_PT[L.size] || 10.5
+  const oSize = qSize - 1
+  const lh = pt => pt * 0.44                      // line height (mm) for a font size (pt)
+  const compact = L.spacing === 'compact'
+  const twoCol = Number(L.columns) === 2
+  const gutter = 8
+  const colW = twoCol ? (contentW - gutter) / 2 : contentW
+  const marksW = 14
+  let col = 0, colTop = y
+  const colTops = twoCol ? [{ page: doc.getNumberOfPages(), top: y }] : []
+  const colX = () => margin + col * (colW + gutter)
+  const place = h => {
+    if (y + h <= FOOTER_Y - 6) return
+    if (twoCol && col === 0) { col = 1; y = colTop; return }
+    doc.addPage(); drawLetterhead(); y = HEADER_H; colTop = y; col = 0
+    if (twoCol) colTops.push({ page: doc.getNumberOfPages(), top: y })
+  }
+  const LETTERS = ['A', 'B', 'C', 'D']
+  // Options per row: fixed, or "auto" — 4 across when every option is
+  // short, 2×2 when they fit half a column, otherwise one per line.
+  const optColsFor = q => {
+    const present = LETTERS.filter(l => q[`option_${l.toLowerCase()}`])
+    if (L.optionCols !== 'auto') return Math.max(1, Math.min(4, Number(L.optionCols) || 2))
+    doc.setFontSize(oSize); doc.setFont(FONT, 'normal')
+    const widest = Math.max(0, ...present.map(l => doc.getTextWidth(pdfSafe(`${l}.  ${q[`option_${l.toLowerCase()}`]}`))))
+    const hasMayek = present.some(l => q[`option_${l.toLowerCase()}_mayek`])
+    if (!hasMayek && widest <= colW / 4 - 3) return 4
+    if (widest <= colW / 2 - 4) return 2
+    return 1
+  }
+
   questions.forEach((q,i) => {
-    checkPage(26)
-    doc.setFontSize(10.5); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
-    const qText = pdfSafe(`Q${i+1}. ${q.question}`)
-    const qLines = doc.splitTextToSize(qText, contentW)
-    checkPage(qLines.length*5 + 24)
-    doc.text(qLines, margin, y)
-    doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(100,116,139)
-    doc.text(`[${q.marks||1} ${(q.marks||1)===1?'mark':'marks'}]`, W-margin, y, { align:'right' })
-    y += qLines.length*5 + 2
-
+    const x0 = colX
+    // ── measure ──
+    doc.setFontSize(qSize); doc.setFont(FONT, 'bold')
+    const qLines = doc.splitTextToSize(pdfSafe(`Q${i+1}. ${q.question}`), colW - marksW)
+    let mLines = []
     if (q.question_mayek) {
-      checkPage(9)
-      doc.setFontSize(10.5); doc.setFont('NotoMayek','normal'); doc.setTextColor(55,65,81)
-      const mLines = doc.splitTextToSize(pdfMayekText(q.question_mayek, q.question_mayek_font), contentW)
-      checkPage(mLines.length*5+8)
-      doc.text(mLines, margin, y); y += mLines.length*5 + 2
+      doc.setFontSize(qSize); doc.setFont('NotoMayek', 'normal')
+      mLines = doc.splitTextToSize(pdfMayekText(q.question_mayek, q.question_mayek_font), colW)
     }
+    const diagramData = q.diagram_url ? diagramCache[q.id || q._id] : null
+    const dW = Math.min(compact ? 40 : 50, colW), dH = dW * 0.64
+    const nCols = optColsFor(q)
+    const cellW = (colW - (nCols - 1) * 4) / nCols
+    const opts = LETTERS.map(l => {
+      doc.setFontSize(oSize); doc.setFont(FONT, 'normal')
+      const lines = doc.splitTextToSize(pdfSafe(`${l}.  ${q[`option_${l.toLowerCase()}`] || '-'}`), cellW - 2)
+      const mayek = q[`option_${l.toLowerCase()}_mayek`]
+      let ml = []
+      if (mayek) { doc.setFontSize(oSize - 0.5); doc.setFont('NotoMayek', 'normal'); ml = doc.splitTextToSize(pdfMayekText(mayek, q.question_mayek_font), cellW - 2) }
+      return { l, lines, ml, h: lines.length * lh(oSize) + ml.length * lh(oSize - 0.5) + (compact ? 1 : 2) }
+    })
+    const rows = []
+    for (let r = 0; r < opts.length; r += nCols) rows.push(opts.slice(r, r + nCols))
+    const rowGap = compact ? 0.5 : 1.5
+    const optH = rows.reduce((t, row) => t + Math.max(...row.map(o => o.h)) + rowGap, 0)
+    const qH = qLines.length * lh(qSize) + (compact ? 1 : 2)
+    const mH = mLines.length ? mLines.length * lh(qSize) + (compact ? 1 : 2) : 0
+    const dH2 = diagramData ? dH + 3 : 0
+    const tail = compact ? 3 : 8.5
+    place(Math.min(qH + mH + dH2 + optH + tail, FOOTER_Y - 6 - HEADER_H - 1))
 
-    const diagramData = diagramCache[q.id || q._id]
-    if (q.diagram_url && diagramData) {
-      checkPage(36)
-      try {
-        doc.addImage(diagramData, margin, y, 50, 32)
-        y += 35
-      } catch(e) { /* image failed to embed — skip silently, question text still stands */ }
+    // ── draw ──
+    let x = x0()
+    doc.setFontSize(qSize); doc.setFont(FONT, 'bold'); doc.setTextColor(30,58,95)
+    doc.text(qLines, x, y)
+    doc.setFontSize(Math.max(7, oSize - 2)); doc.setFont(FONT, 'normal'); doc.setTextColor(100,116,139)
+    doc.text(`[${q.marks||1}M]`, x + colW, y, { align:'right' })
+    y += qH
+    if (mLines.length) {
+      doc.setFontSize(qSize); doc.setFont('NotoMayek','normal'); doc.setTextColor(55,65,81)
+      doc.text(mLines, x, y); y += mH
     }
-
-    // Options in a 2×2 grid: A B on one row, C D on next
-    const pairs = [['A','B'], ['C','D']]
-    pairs.forEach(([l1, l2]) => {
-      checkPage(8)
+    if (diagramData) {
+      try { doc.addImage(diagramData, x, y - 2, dW, dH); y += dH2 } catch { /* image failed to embed — skip, question text still stands */ }
+    }
+    rows.forEach(row => {
       const rowY = y
-      let maxRowH = 6
-      ;[[l1, margin], [l2, margin + optColW + 12]].forEach(([l, x]) => {
-        const isCorrect = withAnswers && q.correct_option === l
-        const optText = pdfSafe(`${l}.  ${q[`option_${l.toLowerCase()}`] || '-'}`)
-        doc.setFontSize(9.5); doc.setFont('helvetica', isCorrect?'bold':'normal')
-        doc.setTextColor(isCorrect?21:51, isCorrect?128:65, isCorrect?61:85)
-        const lines = doc.splitTextToSize(optText, optColW)
+      const rowH = Math.max(...row.map(o => o.h))
+      row.forEach((o, k) => {
+        const cx = x + k * (cellW + 4)
+        const isCorrect = withAnswers && q.correct_option === o.l
         if (isCorrect) {
           doc.setFillColor(220,252,231)
-          doc.roundedRect(x-2, rowY-4, optColW+2, lines.length*4.6+2, 1, 1, 'F')
-          doc.setTextColor(21,128,61); doc.setFont('helvetica','bold')
+          doc.roundedRect(cx - 1.5, rowY - lh(oSize) + 0.6, cellW, rowH, 1, 1, 'F')
         }
-        doc.text(lines, x, rowY)
-        maxRowH = Math.max(maxRowH, lines.length*4.6+2)
-
-        const mayek = q[`option_${l.toLowerCase()}_mayek`]
-        if (mayek) {
-          doc.setFontSize(9); doc.setFont('NotoMayek','normal')
-          const mLines = doc.splitTextToSize(pdfMayekText(mayek, q.question_mayek_font), optColW)
-          doc.text(mLines, x, rowY + lines.length*4.6)
-          maxRowH = Math.max(maxRowH, lines.length*4.6 + mLines.length*4.6 + 2)
+        doc.setFontSize(oSize); doc.setFont(FONT, isCorrect ? 'bold' : 'normal')
+        doc.setTextColor(isCorrect?21:51, isCorrect?128:65, isCorrect?61:85)
+        doc.text(o.lines, cx, rowY)
+        if (o.ml.length) {
+          doc.setFontSize(oSize - 0.5); doc.setFont('NotoMayek','normal'); doc.setTextColor(55,65,81)
+          doc.text(o.ml, cx, rowY + o.lines.length * lh(oSize))
         }
       })
-      y += maxRowH + 1.5
+      y += rowH + rowGap
     })
-
-    y += 3
+    y += compact ? 0.5 : 3
     doc.setDrawColor(226,232,240); doc.setLineWidth(.15)
-    doc.line(margin, y, W-margin, y)
-    y += 5.5
+    doc.line(x, y, x + colW, y)
+    y += compact ? 3.5 : 5.5
   })
+
+  // Column divider on every two-column page.
+  if (twoCol && questions.length) {
+    const last = doc.getNumberOfPages()
+    colTops.forEach(({ page, top }) => {
+      doc.setPage(page)
+      doc.setDrawColor(203,213,225); doc.setLineWidth(.2)
+      doc.line(margin + colW + gutter / 2, top - 4, margin + colW + gutter / 2, FOOTER_Y - 8)
+    })
+    doc.setPage(last)
+  }
 
   // ── Answer key on its own clean, boxed page ────────────────────────────
   if (!withAnswers) {
@@ -3601,6 +3652,8 @@ function TabPaper({ questions, showToast }) {
   const [withAnswers,  setWithAnswers]  = useState(false)
   const [timeMinutes,  setTimeMinutes]  = useState('')
   const [instructions, setInstructions] = useState('Attempt all questions. Each question carries the marks shown against it. No negative marking unless stated.')
+  const [layout,       setLayout]       = useState(() => { try { return { ...PAPER_LAYOUT_DEFAULT, ...JSON.parse(localStorage.getItem('gnsi_paper_layout') || '{}') } } catch { return PAPER_LAYOUT_DEFAULT } })
+  const setLay = patch => setLayout(l => { const n = { ...l, ...patch }; try { localStorage.setItem('gnsi_paper_layout', JSON.stringify(n)) } catch { /* private mode */ } return n })
   const [preview,      setPreview]      = useState(null)
   const [downloading,  setDownloading]  = useState(false)
   const courseSubjectList = course ? Object.keys(COURSES[course]?.subjects || {}) : []
@@ -3658,6 +3711,7 @@ function TabPaper({ questions, showToast }) {
         title: title||'Question Paper', subject, chapter, questions:preview, withAnswers,
         timeMinutes: parseInt(timeMinutes) || undefined,
         instructions: instructions.trim() || undefined,
+        layout,
       })
       showToast('📄 PDF downloaded!', C.green)
     } catch(e) { showToast('PDF failed: '+e.message, C.rose) }
@@ -3759,6 +3813,28 @@ function TabPaper({ questions, showToast }) {
           </div>
         )}
 
+        <div style={{ border:`1px solid ${C.border}`, borderRadius:10, padding:'12px 14px', marginBottom:14, background:'#fafbfc' }}>
+          <div style={{ fontSize:12, fontWeight:800, color:C.navy, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:8 }}>Layout</div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:10 }}>
+            <div><label style={lS}>Page columns</label>
+              <select style={iS} value={layout.columns} onChange={e=>setLay({ columns:Number(e.target.value) })} aria-label="Page columns">
+                <option value={1}>One column</option><option value={2}>Two columns</option></select></div>
+            <div><label style={lS}>Options per row</label>
+              <select style={iS} value={layout.optionCols} onChange={e=>setLay({ optionCols:e.target.value === 'auto' ? 'auto' : Number(e.target.value) })} aria-label="Options per row">
+                <option value="auto">Auto (fit)</option><option value={4}>4 in a row</option><option value={2}>2 × 2</option><option value={1}>1 per line</option></select></div>
+            <div><label style={lS}>Spacing</label>
+              <select style={iS} value={layout.spacing} onChange={e=>setLay({ spacing:e.target.value })} aria-label="Spacing">
+                <option value="normal">Normal</option><option value="compact">Compact (saves paper)</option></select></div>
+            <div><label style={lS}>Font</label>
+              <select style={iS} value={layout.font} onChange={e=>setLay({ font:e.target.value })} aria-label="Font">
+                <option value="helvetica">Helvetica (sans)</option><option value="times">Times (serif)</option><option value="courier">Courier (typewriter)</option></select></div>
+            <div><label style={lS}>Text size</label>
+              <select style={iS} value={layout.size} onChange={e=>setLay({ size:e.target.value })} aria-label="Text size">
+                <option value="S">Small</option><option value="M">Medium</option><option value="L">Large</option></select></div>
+          </div>
+          <div style={{ fontSize:11.5, color:C.slate, marginTop:8 }}>Two columns + compact + auto options fits about twice as many questions per page. Your layout is remembered.</div>
+        </div>
+
         <div style={{ display:'flex', gap:12, alignItems:'center', flexWrap:'wrap', marginBottom:14 }}>
           <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:C.navy, fontWeight:600 }}>
             <input type="checkbox" checked={withAnswers} onChange={e=>setWithAnswers(e.target.checked)} />
@@ -3800,9 +3876,16 @@ function TabPaper({ questions, showToast }) {
               </div>
             </div>
 
-            {preview.map((q,i) => (
-              <div key={q.id||i} style={{ marginBottom:14 }}>
-                <div style={{ fontSize:13, fontWeight:600, color:'#1e293b', marginBottom:q.question_mayek ? 2 : 6 }}>
+            <div style={{ columnCount: layout.columns === 2 ? 2 : 1, columnGap: 28, columnRule: layout.columns === 2 ? `1px solid ${C.border}` : undefined,
+              fontFamily: PAPER_FONT_CSS[layout.font], fontSize: `${(PAPER_SIZE_PT[layout.size] || 10.5) + 2}px` }}>
+            {preview.map((q,i) => {
+              const optCols = layout.optionCols === 'auto'
+                ? (['a','b','c','d'].every(k => String(q[`option_${k}`] || '').length <= (layout.columns === 2 ? 7 : 16) && !q[`option_${k}_mayek`]) ? 4
+                  : ['a','b','c','d'].every(k => String(q[`option_${k}`] || '').length <= (layout.columns === 2 ? 18 : 40)) ? 2 : 1)
+                : Number(layout.optionCols)
+              return (
+              <div key={q.id||i} style={{ marginBottom: layout.spacing === 'compact' ? 6 : 14, breakInside:'avoid' }}>
+                <div style={{ fontSize:'1.08em', fontWeight:600, color:'#1e293b', marginBottom:q.question_mayek ? 2 : (layout.spacing === 'compact' ? 3 : 6) }}>
                   <span style={{ color:C.slate, marginRight:6 }}>Q{i+1}.</span>{q.question}
                   <span style={{ float:'right', fontSize:11, color:C.slate }}>[{q.marks||1}M]</span>
                 </div>
@@ -3815,9 +3898,9 @@ function TabPaper({ questions, showToast }) {
                   <img src={q.diagram_url} alt="diagram"
                     style={{ maxWidth:200, maxHeight:140, borderRadius:6, marginBottom:6, display:'block' }} />
                 )}
-                <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
+                <div style={{ display:'grid', gridTemplateColumns:`repeat(${optCols},minmax(0,1fr))`, gap: layout.spacing === 'compact' ? 1 : 4 }}>
                   {['A','B','C','D'].map(l => (
-                    <div key={l} style={{ fontSize:12, padding:'3px 8px', color:'#374151' }}>
+                    <div key={l} style={{ fontSize:'1em', padding: layout.spacing === 'compact' ? '1px 6px' : '3px 8px', color:'#374151' }}>
                       <span style={{ fontWeight:700, color:C.slate, marginRight:4 }}>{l}.</span>
                       {q[`option_${l.toLowerCase()}`]||'—'}
                       {withAnswers && q.correct_option===l && <span style={{ color:C.green, marginLeft:6, fontWeight:700 }}>✓</span>}
@@ -3829,9 +3912,11 @@ function TabPaper({ questions, showToast }) {
                     </div>
                   ))}
                 </div>
-                {i<preview.length-1 && <div style={{ height:1, background:C.border, marginTop:10 }} />}
+                {i<preview.length-1 && <div style={{ height:1, background:C.border, marginTop: layout.spacing === 'compact' ? 5 : 10 }} />}
               </div>
-            ))}
+              )
+            })}
+            </div>
           </div>
           <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
             <button onClick={handleDownload} disabled={downloading} style={btn(C.green, downloading)}>
