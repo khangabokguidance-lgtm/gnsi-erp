@@ -11,6 +11,38 @@
 
 import QRCode from 'qrcode'
 import { BMEI04_BASE64 } from './bmei04_font_base64'
+import { PATTERN_PRESETS, EXAM_TYPE_COURSE } from './entranceCore'
+
+// ── Exam formats ─────────────────────────────────────────────────────────────
+// The same official patterns the Entrance module uses (entranceCore
+// PATTERN_PRESETS), so a mock test here and a real entrance paper can't drift
+// apart. A section matches questions by Question Bank subject.
+export const EXAM_FORMATS = PATTERN_PRESETS.map(p => ({
+  id: p.id, label: p.label, short: p.label.split(' · ')[0], course: EXAM_TYPE_COURSE[p.exam_type] || '', classTarget: p.class_target,
+  duration: p.duration_mins, sections: p.sections,
+  questions: p.sections.reduce((t, x) => t + x.questions, 0), marks: p.sections.reduce((t, x) => t + x.questions * x.marks_each, 0),
+}))
+export const formatOf = o => EXAM_FORMATS.find(f => f.id === o?.format) || null
+const sectionIndex = (q, fmt) => fmt.sections.findIndex(x => x.subject === q.subject)
+
+// Tray vs official pattern, section by section.
+export function formatCoverage(tray, fmt) {
+  const qs = tray.filter(t => t.kind === 'q').map(t => t.row)
+  const rows = fmt.sections.map(x => ({ name: x.name, subject: x.subject, need: x.questions, marks_each: x.marks_each, have: 0 }))
+  let other = 0
+  for (const q of qs) { const i = sectionIndex(q, fmt); if (i < 0) other++; else rows[i].have++ }
+  return { rows, other, wrongCourse: qs.filter(q => fmt.course && (q.course || 'sainik') !== fmt.course).length }
+}
+
+export function formatInstructions(fmt, count) {
+  return [
+    `This is ${/^[AEIOU]/i.test(fmt.short) ? 'an' : 'a'} ${fmt.short}-pattern paper: ${count} questions in ${fmt.sections.length} sections (${fmt.sections.map(x => x.name).join(', ')}).`,
+    `Marks per question: ${fmt.sections.map(x => `${x.name} ${x.marks_each}`).join(' · ')}.`,
+    'Each question has four options (A)–(D). Only one is correct. Mark it on the OMR sheet.',
+    'There is no negative marking. Attempt all questions.',
+    `Time allowed: ${fmt.duration} minutes. Calculators and phones are not allowed.`,
+  ].join('\n')
+}
 
 export const DESIGNS = [
   { id: 'worksheet', label: 'Worksheet', icon: '📝', desc: 'Practice or homework sheet with answer space and an answer key' },
@@ -49,7 +81,7 @@ export const DEFAULT_OPTIONS = {
   marksMode: 'flat', marksEach: 1, weights: { Easy: 1, Medium: 2, Hard: 3 }, negative: 0,
   duration: 30, versions: 1, shuffle: false, shuffleOptions: false, sectionBy: 'subject', revealAnswers: true,
   theme: 'classic', paper: 'A4', twoUp: false, lang: 'en', omr: false, blueprint: false,
-  homework: false, dueDate: '',
+  homework: false, dueDate: '', format: '',
   brandName: 'GNSI', tagline: 'Guidance Navodaya & Sainik Institute · Khangabok', logo: '', watermark: '',
 }
 
@@ -61,7 +93,11 @@ const safeImg = s => (/^(https?:|data:image\/)/i.test(String(s || '')) ? esc(s) 
 
 export const questionsOf = tray => tray.filter(i => i.kind === 'q').map(i => i.row)
 export const materialsOf = tray => tray.filter(i => i.kind === 'm').map(i => i.row)
-export const marksFor = (q, o) => (o.marksMode === 'difficulty' ? Number(o.weights?.[q.difficulty || 'Medium']) || 1 : Number(o.marksEach) || 1)
+export const marksFor = (q, o) => {
+  if (o.marksMode === 'format') { const f = formatOf(o); const i = f ? sectionIndex(q, f) : -1; if (i >= 0) return f.sections[i].marks_each }
+  if (o.marksMode === 'difficulty') return Number(o.weights?.[q.difficulty || 'Medium']) || 1
+  return Number(o.marksEach) || 1
+}
 
 // ── Randomness (seeded, so a version prints the same every time) ─────────────
 export function seeded(seed) {
@@ -182,8 +218,15 @@ function keyTable(qs, label) {
   return `<h1 style="font-size:1.2em">${esc(label)}</h1><table class="grid">${rows.join('')}</table>`
 }
 
-function sections(qs, by) {
+function sections(qs, by, o = {}) {
   if (by === 'none') return [{ name: '', items: qs }]
+  const fmt = by === 'format' ? formatOf(o) : null
+  if (fmt) {
+    const out = fmt.sections.map(x => ({ name: x.name, items: [] })), other = []
+    for (const q of qs) { const i = sectionIndex(q, fmt); (i < 0 ? other : out[i].items).push(q) }
+    if (other.length) out.push({ name: 'Other', items: other })
+    return out.filter(x => x.items.length)
+  }
   const m = new Map()
   for (const q of qs) { const k = (by === 'chapter' ? q.chapter : q.subject) || 'General'; if (!m.has(k)) m.set(k, []); m.get(k).push(q) }
   return [...m].map(([name, items]) => ({ name, items }))
@@ -225,7 +268,7 @@ function omrSheet(n, o, code) {
 // ── Worksheet ────────────────────────────────────────────────────────────────
 function worksheetPages(qs, o, { badge = '', keyLabel = 'Answer key' } = {}) {
   let n = 0
-  const body = sections(qs, o.sectionBy).map(s => `${s.name ? `<div class="sec">${esc(s.name)}</div>` : ''}${s.items.map(q => questionHtml(q, ++n, o, { marks: o.marksMode === 'difficulty' ? marksFor(q, o) : null })).join('')}`).join('')
+  const body = sections(qs, o.sectionBy, o).map(s => `${s.name ? `<div class="sec">${esc(s.name)}</div>` : ''}${s.items.map(q => questionHtml(q, ++n, o, { marks: o.marksMode !== 'flat' ? marksFor(q, o) : null })).join('')}`).join('')
   const pages = [`${header(o, esc(fmtDate(o.date)))}${titleBlock(o, 'Worksheet', badge)}
     <div class="fill"><span>Name:</span><span>Class / Roll:</span><span>Date:</span></div>
     ${o.instructions ? `<div class="instr">${esc(o.instructions)}</div>` : ''}
@@ -262,7 +305,7 @@ export function testVersions(tray, o) {
   const n = Math.max(1, Math.min(4, Number(o.versions) || 1))
   return 'ABCD'.slice(0, n).split('').map((code, v) => {
     const rand = seeded(`${o.title}|${base.map(q => q.id).join(',')}|${code}`)
-    const secs = sections(base, o.sectionBy).map(s => {
+    const secs = sections(base, o.sectionBy, o).map(s => {
       let items = v === 0 && !o.shuffle ? s.items : shuffle(s.items, rand)
       if (o.shuffleOptions && (v > 0 || o.shuffle)) items = items.map(q => permuteOptions(q, rand))
       return { ...s, items }
@@ -278,10 +321,11 @@ function testPaper(tray, o) {
     const max = flat.reduce((t, q) => t + marksFor(q, o), 0)
     let n = 0
     const body = secs.map(s => `${s.name ? `<div class="sec">${esc(s.name)} · ${s.items.reduce((t, q) => t + marksFor(q, o), 0)} marks</div>` : ''}${s.items.map(q => questionHtml(q, ++n, o, { marks: marksFor(q, o) })).join('')}`).join('')
-    const rules = [o.instructions || 'Answer all questions. Each question has one correct answer.']
+    const fmt = formatOf(o)
+    const rules = [o.instructions || (fmt ? formatInstructions(fmt, flat.length) : 'Answer all questions. Each question has one correct answer.')]
     if (Number(o.negative) > 0) rules.push(`${o.negative} mark(s) will be deducted for each wrong answer.`)
     pages.push(`${header(o, multi ? `<b style="font-size:1.6em;border:2px solid currentColor;padding:2px 12px">SET ${code}</b>` : '')}
-      ${titleBlock(o, 'Class Test')}
+      ${titleBlock(o, fmt ? `${fmt.short} Mock Test` : 'Class Test', fmt ? `<span class="badge">${esc(fmt.short)} pattern · ${esc(fmt.classTarget)}</span>` : '')}
       <div class="meta"><span><b>Date:</b> ${esc(fmtDate(o.date))}</span><span><b>Time:</b> ${esc(o.duration)} min</span><span><b>Questions:</b> ${flat.length}</span><span><b>Max. marks:</b> ${max}</span>${o.teacher ? `<span><b>Teacher:</b> ${esc(o.teacher)}</span>` : ''}</div>
       <div class="fill"><span>Name:</span><span>Roll no.:</span><span>Marks obtained: ____ / ${max}</span></div>
       <div class="instr">${rules.map(esc).join('\n')}</div>

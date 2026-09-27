@@ -183,3 +183,43 @@ export function resizeLogo(file, max = 200) {
     img.src = URL.createObjectURL(file)
   })
 }
+
+// ── Scope lock ───────────────────────────────────────────────────────────────
+// scope: { course, subject, chapter, subsection } — any may be empty. Returns
+// the tray indexes that fall outside it. Untagged questions count as Sainik
+// (legacy rows), and material subjects are compared through `normalize`
+// (StudyMaterialBridge.normalizeToQBank) because materials use each
+// module's own subject names.
+export function outOfScope(tray, scope, normalize = s => s) {
+  const out = new Set()
+  if (!scope || !(scope.course || scope.subject || scope.chapter || scope.subsection)) return out
+  tray.forEach((it, i) => {
+    const r = it.row
+    const course = it.kind === 'q' ? (r.course || 'sainik') : r.course
+    if (scope.course && course !== scope.course) return out.add(i)
+    if (scope.subject && normalize(r.subject) !== normalize(scope.subject)) return out.add(i)
+    if (scope.chapter && r.chapter !== scope.chapter) return out.add(i)
+    if (scope.subsection && it.kind === 'q' && (r.subsection || '') !== scope.subsection) out.add(i)
+  })
+  return out
+}
+export const scopeLabel = s => [s?.course, s?.subject, s?.chapter, s?.subsection].filter(Boolean).join(' › ')
+
+// ── Exact counts per chapter ─────────────────────────────────────────────────
+// counts: { [chapter]: n }. Each chapter gets exactly n (or as many as it
+// has), honouring the difficulty mix inside the chapter.
+export function pickByChapter(pool, counts, opts = {}) {
+  const out = []
+  for (const [chapter, n] of Object.entries(counts)) {
+    if (!(n > 0)) continue
+    out.push(...autoPick(pool.filter(q => q.chapter === chapter), n, { ...opts, exclude: new Set([...(opts.exclude || []), ...out.map(q => q.id)]) }))
+  }
+  return out
+}
+
+// Split a search string into exact "quoted phrases" and loose words.
+export function searchTerms(text) {
+  const phrases = []
+  const rest = String(text || '').replace(/"([^"]+)"/g, (_, p) => { phrases.push(p.trim()); return ' ' })
+  return { phrases: phrases.filter(Boolean), words: rest.split(/\s+/).filter(Boolean) }
+}

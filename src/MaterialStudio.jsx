@@ -25,19 +25,33 @@ import { EventBus, GNSI_EVENTS } from './EventBus'
 import { isAdminRole } from './roles'
 import {
   DESIGNS, THEMES, INSTRUCTION_PRESETS, DEFAULT_OPTIONS, MATERIAL_TYPES, buildHtml, openPrintWindow, downloadWord, downloadPptx,
-  downloadBlob, fileBase, questionsOf, materialsOf, marksFor, hasMayek,
+  downloadBlob, fileBase, questionsOf, materialsOf, marksFor, hasMayek, EXAM_FORMATS, formatOf, formatCoverage, formatInstructions,
 } from './studioDesigns'
 import {
   duplicateIndexes, sortTray, shuffleTray, insights, autoPick, loadLibrary, saveLibrary, loadHistory, pushHistory,
   loadBrand, saveBrand, newSetId, exportSet, importSet, whatsappText, trayCSV, resizeLogo,
+  outOfScope, scopeLabel, pickByChapter, searchTerms,
 } from './studioTools'
 import StudioPresenter from './StudioPresenter'
 
 const PAGE = 30
 const Q_FIELDS = 'id,question,question_mayek,question_mayek_font,option_a,option_b,option_c,option_d,option_a_mayek,option_b_mayek,option_c_mayek,option_d_mayek,correct_option,subject,chapter,subsection,difficulty,diagram_url,course,marks'
 const DIFFS = ['Easy', 'Medium', 'Hard']
-const BLANK_FILTERS = { text: '', scope: 'all', course: '', subject: '', chapter: '', difficulty: '', type: '', inOptions: false, diagram: false, sort: 'new' }
+const BLANK_FILTERS = { text: '', scope: 'all', course: '', subject: '', chapter: '', subsection: '', difficulty: '', type: '', inOptions: false, diagram: false, sort: 'new' }
 const clean = s => String(s || '').replace(/[%_,()"'\\*:]/g, ' ').replace(/\s+/g, ' ').trim()
+
+// Every Question Bank row for one course + subject (paged past the 1000-row
+// cap). Untagged rows are Sainik-shaped legacy data, so Sainik includes them.
+async function fetchQuestionPool(course, subject) {
+  const { data, error } = await fetchAllPages(() => {
+    let q = supabase.from('qbank_questions').select(Q_FIELDS).eq('subject', subject)
+    if (course === 'sainik') q = q.or('course.eq.sainik,course.is.null')
+    else if (course) q = q.eq('course', course)
+    return q.order('id', { ascending: true })
+  })
+  if (error) throw error
+  return (data || []).filter(q => /^[ABCD]$/.test(q.correct_option || ''))
+}
 const trayKey = u => `gnsi_studio_tray_${u?.username || u?.name || 'me'}`
 const readTray = u => { try { return JSON.parse(localStorage.getItem(trayKey(u)) || '[]') } catch { return [] } }
 const BRAND_FIELDS = ['brandName', 'tagline', 'logo', 'watermark', 'theme']
@@ -69,6 +83,7 @@ const STYLES = `
   .ms-group{border-top:1px solid ${PX.line};margin-top:12px;padding-top:4px}
   .ms-group > summary{cursor:pointer;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:${PX.ink2};padding:8px 0;list-style:none}
   .ms-group > summary::-webkit-details-marker{display:none}
+  .ms-cov th,.ms-cov td{padding:7px 8px!important;white-space:normal}
   .ms-group > summary::before{content:'▸ ';color:${PX.gold}}.ms-group[open] > summary::before{content:'▾ '}
 `
 
@@ -83,6 +98,7 @@ export default function MaterialStudio({ currentUser, onNavigate }) {
   const [history, setHistory] = useState(() => loadHistory(currentUser))
   const [libOpen, setLibOpen] = useState(false)
   const [presenting, setPresenting] = useState(false)
+  const [scope, setScope] = useState(null)
   const [toast, setToast] = useState(null)
   useEffect(() => { try { localStorage.setItem(trayKey(currentUser), JSON.stringify(tray)) } catch { /* storage full / private mode */ } }, [tray, currentUser])
 
@@ -134,11 +150,11 @@ export default function MaterialStudio({ currentUser, onNavigate }) {
       {view === 'search' ? (
         <div className="ms-grid">
           <SearchPanel inTray={inTray} toggle={toggle} addMany={addMany} canDelete={canDelete} notify={notify} onNavigate={onNavigate}
-            onEdited={updateRow} onDeleted={removeRow} user={currentUser} tray={tray} />
-          <TrayPanel tray={tray} setTray={setTray} opts={opts} notify={notify} onCompose={() => setView('compose')} />
+            onEdited={updateRow} onDeleted={removeRow} user={currentUser} tray={tray} onScope={sc => { setScope(sc); notify(`Tray locked to ${scopeLabel(sc)}`, 'ok') }} />
+          <TrayPanel tray={tray} setTray={setTray} opts={opts} notify={notify} onCompose={() => setView('compose')} scope={scope} setScope={setScope} />
         </div>
       ) : (
-        <Composer tray={tray} setTray={setTray} design={design} setDesign={setDesign} o={opts} setO={setOpts} user={currentUser} notify={notify}
+        <Composer tray={tray} setTray={setTray} addMany={addMany} design={design} setDesign={setDesign} o={opts} setO={setOpts} user={currentUser} notify={notify}
           onBack={() => setView('search')} onPresent={() => setPresenting(true)} record={record}
           onSave={name => { updateLibrary([{ id: newSetId(), name, tray, design, options: opts, savedAt: new Date().toISOString() }, ...library]); notify(`Saved "${name}" to your library`, 'ok') }} />
       )}
@@ -157,7 +173,7 @@ export default function MaterialStudio({ currentUser, onNavigate }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Search
 // ═══════════════════════════════════════════════════════════════════════════
-function SearchPanel({ inTray, toggle, addMany, canDelete, notify, onNavigate, onEdited, onDeleted, user, tray }) {
+function SearchPanel({ inTray, toggle, addMany, canDelete, notify, onNavigate, onEdited, onDeleted, user, tray, onScope }) {
   const [f, setF] = useState(BLANK_FILTERS)
   const [applied, setApplied] = useState(BLANK_FILTERS)
   const [res, setRes] = useState({ key: '', qs: [], qCount: 0, mats: [], mCount: 0, qPage: 0, mPage: 0 })
@@ -171,6 +187,20 @@ function SearchPanel({ inTray, toggle, addMany, canDelete, notify, onNavigate, o
   const subjects = f.course ? Object.keys(COURSES[f.course]?.subjects || {}) : [...new Set(Object.values(COURSES).flatMap(c => Object.keys(c.subjects)))]
   const chapters = f.course && f.subject ? COURSES[f.course]?.subjects?.[f.subject] || [] : []
   const key = JSON.stringify(applied) + refresh
+
+  // Subtopics that actually exist for the chosen chapter.
+  const subKey = f.course && f.subject && f.chapter ? `${f.course}|${f.subject}|${f.chapter}` : ''
+  const [subs, setSubs] = useState({ key: '', list: [] })
+  useEffect(() => {
+    if (!subKey) return
+    let live = true
+    const [course, subject, chapter] = subKey.split('|')
+    let q = supabase.from('qbank_questions').select('subsection').eq('subject', subject).eq('chapter', chapter)
+    q = course === 'sainik' ? q.or('course.eq.sainik,course.is.null') : q.eq('course', course)
+    q.limit(1000).then(({ data }) => { if (live) setSubs({ key: subKey, list: [...new Set((data || []).map(r => (r.subsection || '').trim()).filter(Boolean))].sort() }) })
+    return () => { live = false }
+  }, [subKey])
+  const subsections = subs.key === subKey ? subs.list : []
 
   useEffect(() => {
     let live = true
@@ -217,7 +247,7 @@ function SearchPanel({ inTray, toggle, addMany, canDelete, notify, onNavigate, o
         right={<button className="px-btn gold ms-sm" onClick={() => setBuilder(true)}>✦ Auto-build</button>}>
         <form onSubmit={e => { e.preventDefault(); setApplied(f) }} style={{ display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', gap: 8 }}>
-            <input className="px-input" style={{ fontSize: 15 }} placeholder="Search words in questions, material titles and notes…" value={f.text} onChange={e => set({ text: e.target.value })} aria-label="Search text" />
+            <input className="px-input" style={{ fontSize: 15 }} placeholder='Search words, or an "exact phrase", in questions and materials…' value={f.text} onChange={e => set({ text: e.target.value })} aria-label="Search text" />
             <button className="px-btn" type="submit">Search</button>
           </div>
           <div className="ms-filters">
@@ -230,9 +260,14 @@ function SearchPanel({ inTray, toggle, addMany, canDelete, notify, onNavigate, o
             <select className="px-input" value={f.subject} onChange={e => set({ subject: e.target.value, chapter: '' })} aria-label="Subject">
               <option value="">All subjects</option>{subjects.map(s => <option key={s}>{s}</option>)}
             </select>
-            <select className="px-input" value={f.chapter} disabled={!chapters.length} onChange={e => set({ chapter: e.target.value })} aria-label="Chapter">
+            <select className="px-input" value={f.chapter} disabled={!chapters.length} onChange={e => set({ chapter: e.target.value, subsection: '' })} aria-label="Chapter">
               <option value="">{chapters.length ? 'All chapters' : 'Pick course + subject'}</option>{chapters.map(c => <option key={c}>{c}</option>)}
             </select>
+            {subsections.length > 0 && (
+              <select className="px-input" value={f.subsection} onChange={e => set({ subsection: e.target.value })} aria-label="Subtopic">
+                <option value="">All subtopics ({subsections.length})</option>{subsections.map(x => <option key={x}>{x}</option>)}
+              </select>
+            )}
             <select className="px-input" value={f.difficulty} onChange={e => set({ difficulty: e.target.value })} aria-label="Difficulty">
               <option value="">Any difficulty</option>{DIFFS.map(d => <option key={d}>{d}</option>)}
             </select>
@@ -246,6 +281,8 @@ function SearchPanel({ inTray, toggle, addMany, canDelete, notify, onNavigate, o
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
             <Check label="Also search inside answer options" v={f.inOptions} on={v => set({ inOptions: v })} />
             <Check label="Only questions with a diagram" v={f.diagram} on={v => set({ diagram: v })} />
+            <button type="button" className="px-btn ghost ms-sm" disabled={!(applied.course || applied.subject || applied.chapter)} title="Flag anything in the tray outside these filters"
+              onClick={() => onScope({ course: applied.course, subject: applied.subject, chapter: applied.chapter, subsection: applied.subsection })}>🔒 Lock tray to these filters</button>
             <button type="button" className="px-btn ghost ms-sm" style={{ marginLeft: 'auto' }} onClick={() => { setF(BLANK_FILTERS); setApplied(BLANK_FILTERS) }}>Clear</button>
           </div>
         </form>
@@ -296,9 +333,14 @@ function questionQuery(f) {
   else if (f.course) q = q.eq('course', f.course)
   if (f.subject) q = q.eq('subject', f.subject)
   if (f.chapter) q = q.eq('chapter', f.chapter)
+  if (f.subsection) q = q.eq('subsection', f.subsection)
   if (f.difficulty) q = q.eq('difficulty', f.difficulty)
-  for (const w of clean(f.text).split(' ').filter(Boolean)) {
-    conds.push(f.inOptions ? `or(${['question', 'option_a', 'option_b', 'option_c', 'option_d'].map(c => `${c}.ilike.*${w}*`).join(',')})` : `question.ilike.*${w}*`)
+  // "Quoted phrases" must appear as written; loose words may appear anywhere.
+  const { phrases, words } = searchTerms(f.text)
+  const terms = [...phrases.map(clean).filter(Boolean), ...words.map(clean).filter(Boolean)]
+  for (const t of terms) {
+    const v = t.includes(' ') ? `"*${t}*"` : `*${t}*`
+    conds.push(f.inOptions ? `or(${['question', 'option_a', 'option_b', 'option_c', 'option_d'].map(c => `${c}.ilike.${v}`).join(',')})` : `question.ilike.${v}`)
   }
   if (f.diagram) conds.push('diagram_url.like.http*')
   if (conds.length) q = q.or(`and(${conds.join(',')})`)
@@ -397,50 +439,67 @@ function AutoBuilder({ tray, addMany, notify, onClose }) {
   const [course, setCourse] = useState('sainik')
   const [subject, setSubject] = useState('Mathematics')
   const [picked, setPicked] = useState(null)             // null = all chapters
+  const [mode, setMode] = useState('spread')             // spread | exact
   const [count, setCount] = useState(20)
+  const [perCh, setPerCh] = useState({})                 // exact mode: { chapter: n }
   const [mix, setMix] = useState({ Easy: 30, Medium: 50, Hard: 20 })
   const [skipTray, setSkipTray] = useState(true)
   const [busy, setBusy] = useState(false)
   const subjects = Object.keys(COURSES[course]?.subjects || {})
   const chapters = COURSES[course]?.subjects?.[subject] || []
   const chosen = picked || chapters
+  const exactTotal = chosen.reduce((t, c) => t + (Number(perCh[c]) || 0), 0)
+  const total = mode === 'exact' ? exactTotal : count
 
   const build = async () => {
     if (!chosen.length) return notify('Pick at least one chapter', 'bad')
+    if (!total) return notify('Set how many questions you want', 'bad')
     setBusy(true)
-    const { data, error } = await fetchAllPages(() => {
-      let q = supabase.from('qbank_questions').select(Q_FIELDS).eq('subject', subject)
-      q = course === 'sainik' ? q.or('course.eq.sainik,course.is.null') : q.eq('course', course)
-      return q.order('id', { ascending: true })
-    })
+    let pool
+    try { pool = await fetchQuestionPool(course, subject) } catch (e) { setBusy(false); return notify(e.message, 'bad') }
     setBusy(false)
-    if (error) return notify(error.message, 'bad')
     const want = new Set(chosen)
-    const pool = (data || []).filter(q => want.has(q.chapter) && /^[ABCD]$/.test(q.correct_option || ''))
+    const inScope = pool.filter(q => want.has(q.chapter))
     const exclude = new Set(skipTray ? tray.filter(t => t.kind === 'q').map(t => t.id) : [])
-    const pick = autoPick(pool, Number(count) || 0, { mix, exclude })
+    const pick = mode === 'exact'
+      ? pickByChapter(inScope, Object.fromEntries(chosen.map(c => [c, Number(perCh[c]) || 0])), { mix, exclude })
+      : autoPick(inScope, Number(count) || 0, { mix, exclude })
     const n = addMany('q', pick)
-    notify(pick.length < count ? `Added ${n} — only ${pick.length} matching questions available` : `Added ${n} questions across ${new Set(pick.map(q => q.chapter)).size} chapters`, pick.length < count ? 'bad' : 'ok')
+    if (mode === 'exact') {
+      const short = chosen.filter(c => (Number(perCh[c]) || 0) > pick.filter(q => q.chapter === c).length)
+      notify(short.length ? `Added ${n}. Not enough questions in: ${short.join(', ')}` : `Added ${n} questions — exact counts per chapter`, short.length ? 'bad' : 'ok')
+    } else {
+      notify(pick.length < count ? `Added ${n} — only ${pick.length} matching questions available` : `Added ${n} questions across ${new Set(pick.map(q => q.chapter)).size} chapters`, pick.length < count ? 'bad' : 'ok')
+    }
     if (pick.length) onClose()
   }
 
   return (
     <Modal title="Auto-build from a blueprint" onClose={onClose}
-      footer={<><button className="px-btn ghost" onClick={onClose}>Cancel</button><button className="px-btn gold" disabled={busy} onClick={build}>{busy ? 'Picking…' : `✦ Add ${count} questions`}</button></>}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 110px', gap: 8 }}>
-        <div><label className="ms-label">Course</label><select className="px-input" value={course} onChange={e => { const c = e.target.value; setCourse(c); setSubject(Object.keys(COURSES[c].subjects)[0]); setPicked(null) }} aria-label="Builder course">{COURSE_LIST.map(c => <option key={c} value={c}>{COURSES[c].label}</option>)}</select></div>
-        <div><label className="ms-label">Subject</label><select className="px-input" value={subject} onChange={e => { setSubject(e.target.value); setPicked(null) }} aria-label="Builder subject">{subjects.map(s => <option key={s}>{s}</option>)}</select></div>
-        <div><label className="ms-label">Questions</label><input type="number" min="1" max="200" className="px-input" value={count} onChange={e => setCount(Math.max(1, Math.min(200, Number(e.target.value) || 1)))} aria-label="Question count" /></div>
+      footer={<><button className="px-btn ghost" onClick={onClose}>Cancel</button><button className="px-btn gold" disabled={busy || !total} onClick={build}>{busy ? 'Picking…' : `✦ Add ${total} questions`}</button></>}>
+      <div style={{ display: 'grid', gridTemplateColumns: mode === 'spread' ? '1fr 1fr 110px' : '1fr 1fr', gap: 8 }}>
+        <div><label className="ms-label">Course</label><select className="px-input" value={course} onChange={e => { const c = e.target.value; setCourse(c); setSubject(Object.keys(COURSES[c].subjects)[0]); setPicked(null); setPerCh({}) }} aria-label="Builder course">{COURSE_LIST.map(c => <option key={c} value={c}>{COURSES[c].label}</option>)}</select></div>
+        <div><label className="ms-label">Subject</label><select className="px-input" value={subject} onChange={e => { setSubject(e.target.value); setPicked(null); setPerCh({}) }} aria-label="Builder subject">{subjects.map(x => <option key={x}>{x}</option>)}</select></div>
+        {mode === 'spread' && <div><label className="ms-label">Questions</label><input type="number" min="1" max="200" className="px-input" value={count} onChange={e => setCount(Math.max(1, Math.min(200, Number(e.target.value) || 1)))} aria-label="Question count" /></div>}
       </div>
-      <label className="ms-label">Chapters ({chosen.length} of {chapters.length})</label>
+      <div className="ms-seg" style={{ marginTop: 12 }} role="tablist" aria-label="Builder mode">
+        <button role="tab" aria-selected={mode === 'spread'} className={mode === 'spread' ? 'on' : ''} onClick={() => setMode('spread')}>Spread automatically</button>
+        <button role="tab" aria-selected={mode === 'exact'} className={mode === 'exact' ? 'on' : ''} onClick={() => setMode('exact')}>Exact count per chapter</button>
+      </div>
+      <label className="ms-label">Chapters ({chosen.length} of {chapters.length}){mode === 'exact' ? ` · ${exactTotal} questions` : ''}</label>
       <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
         <button className="px-btn ghost ms-xs" onClick={() => setPicked(null)}>All</button>
         <button className="px-btn ghost ms-xs" onClick={() => setPicked([])}>None</button>
+        {mode === 'exact' && <button className="px-btn ghost ms-xs" onClick={() => setPerCh(Object.fromEntries(chosen.map(c => [c, 2])))}>2 each</button>}
+        {mode === 'exact' && <button className="px-btn ghost ms-xs" onClick={() => setPerCh(Object.fromEntries(chosen.map(c => [c, 5])))}>5 each</button>}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 4, maxHeight: 190, overflowY: 'auto', border: `1px solid ${PX.line}`, borderRadius: 10, padding: 8, fontSize: 12.5 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 4, maxHeight: 220, overflowY: 'auto', border: `1px solid ${PX.line}`, borderRadius: 10, padding: 8, fontSize: 12.5 }}>
         {chapters.map(c => (
           <label key={c} style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
-            <input type="checkbox" checked={chosen.includes(c)} onChange={e => setPicked(p => { const cur = p || chapters; return e.target.checked ? [...cur, c] : cur.filter(x => x !== c) })} style={{ accentColor: PX.gold }} />{c}
+            <input type="checkbox" checked={chosen.includes(c)} onChange={e => setPicked(p => { const cur = p || chapters; return e.target.checked ? [...cur, c] : cur.filter(x => x !== c) })} style={{ accentColor: PX.gold }} />
+            <span style={{ flex: 1 }}>{c}</span>
+            {mode === 'exact' && chosen.includes(c) && <input type="number" min="0" max="50" className="px-input" style={{ width: 58, padding: '3px 6px' }} value={perCh[c] ?? ''} placeholder="0"
+              onChange={e => setPerCh(m => ({ ...m, [c]: Math.max(0, Math.min(50, Number(e.target.value) || 0)) }))} aria-label={`${c} count`} />}
           </label>
         ))}
       </div>
@@ -449,7 +508,7 @@ function AutoBuilder({ tray, addMany, notify, onClose }) {
         {DIFFS.map(d => <div key={d}><span style={{ fontSize: 12, color: PX.sub }}>{d}</span><input type="number" min="0" max="100" className="px-input" value={mix[d]} onChange={e => setMix(m => ({ ...m, [d]: Number(e.target.value) || 0 }))} aria-label={`${d} percent`} /></div>)}
       </div>
       <div style={{ marginTop: 12, fontSize: 13 }}><Check label="Skip questions already in the tray" v={skipTray} on={setSkipTray} /></div>
-      <div style={{ fontSize: 11.5, color: PX.faint, marginTop: 10 }}>Questions are spread across the chosen chapters so no single chapter dominates. Only questions with a marked answer are used.</div>
+      <div style={{ fontSize: 11.5, color: PX.faint, marginTop: 10 }}>{mode === 'exact' ? 'Each chapter gets exactly the number you set (the difficulty mix applies inside each chapter).' : 'Questions are spread across the chosen chapters so no single chapter dominates.'} Only questions with a marked answer are used.</div>
     </Modal>
   )
 }
@@ -457,9 +516,14 @@ function AutoBuilder({ tray, addMany, notify, onClose }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Tray — tools, duplicate guard, insights
 // ═══════════════════════════════════════════════════════════════════════════
-function TrayPanel({ tray, setTray, opts, notify, onCompose }) {
+function TrayPanel({ tray, setTray, opts, notify, onCompose, scope, setScope }) {
   const move = (i, d) => setTray(t => { const a = [...t]; const j = i + d; if (j < 0 || j >= a.length) return a;[a[i], a[j]] = [a[j], a[i]]; return a })
   const dups = useMemo(() => duplicateIndexes(tray), [tray])
+  const oos = useMemo(() => outOfScope(tray, scope, normalizeToQBank), [tray, scope])
+  const [editScope, setEditScope] = useState(false)
+  const sc = scope || {}
+  const scSubjects = sc.course ? Object.keys(COURSES[sc.course]?.subjects || {}) : []
+  const scChapters = sc.course && sc.subject ? COURSES[sc.course]?.subjects?.[sc.subject] || [] : []
   const ins = useMemo(() => insights(tray, q => marksFor(q, opts)), [tray, opts])
   const totalQ = ins.questions || 1
   return (
@@ -467,6 +531,30 @@ function TrayPanel({ tray, setTray, opts, notify, onCompose }) {
       <PremiumCard title="Your tray" subtitle={`${ins.questions} question${ins.questions === 1 ? '' : 's'} · ${ins.materials} material${ins.materials === 1 ? '' : 's'}`}
         right={tray.length > 0 && <button className="px-btn ghost ms-sm" onClick={() => confirm('Empty the tray?') && setTray([])}>Clear</button>}
         bodyStyle={{ padding: '12px 14px' }}>
+        <div style={{ border: `1px dashed ${scope ? PX.gold : PX.line2}`, background: scope ? PX.goldBg : 'transparent', borderRadius: 10, padding: '7px 9px', marginBottom: 8, fontSize: 12 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 700, color: PX.ink2 }}>🔒 Scope:</span>
+            <span style={{ flex: 1, minWidth: 0, color: scope ? '#8a6118' : PX.faint }}>{scope ? scopeLabel(scope) : 'any course / chapter'}</span>
+            <button className="px-btn ghost ms-xs" onClick={() => setEditScope(v => !v)}>{editScope ? 'Done' : 'Set'}</button>
+            {scope && <button className="px-btn ghost ms-xs" onClick={() => { setScope(null); setEditScope(false) }}>Clear</button>}
+          </div>
+          {editScope && (
+            <div style={{ display: 'grid', gap: 5, marginTop: 7 }}>
+              <select className="px-input" style={{ padding: '4px 8px', fontSize: 12 }} value={sc.course || ''} onChange={e => setScope(e.target.value ? { course: e.target.value } : null)} aria-label="Scope course">
+                <option value="">Any course</option>{COURSE_LIST.map(c => <option key={c} value={c}>{COURSES[c].label}</option>)}</select>
+              {sc.course && <select className="px-input" style={{ padding: '4px 8px', fontSize: 12 }} value={sc.subject || ''} onChange={e => setScope({ course: sc.course, subject: e.target.value })} aria-label="Scope subject">
+                <option value="">Any subject</option>{scSubjects.map(x => <option key={x}>{x}</option>)}</select>}
+              {sc.subject && <select className="px-input" style={{ padding: '4px 8px', fontSize: 12 }} value={sc.chapter || ''} onChange={e => setScope({ ...sc, chapter: e.target.value, subsection: '' })} aria-label="Scope chapter">
+                <option value="">Any chapter</option>{scChapters.map(x => <option key={x}>{x}</option>)}</select>}
+            </div>
+          )}
+          {oos.size > 0 && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, color: PX.bad, fontWeight: 600 }}>
+              <span style={{ flex: 1 }}>{oos.size} item{oos.size > 1 ? 's' : ''} outside this scope</span>
+              <button className="px-btn ghost ms-xs" style={{ color: PX.bad }} aria-label="Remove out-of-scope items" onClick={() => { setTray(t => t.filter((_, i) => !oos.has(i))); notify(`Removed ${oos.size} out-of-scope item(s)`, 'ok') }}>Remove</button>
+            </div>
+          )}
+        </div>
         {tray.length > 1 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
             <button className="px-btn ghost ms-xs" onClick={() => { setTray(t => shuffleTray(t)); notify('Tray shuffled') }}>🔀 Shuffle</button>
@@ -479,13 +567,13 @@ function TrayPanel({ tray, setTray, opts, notify, onCompose }) {
         {tray.length === 0 ? <Muted>Tick questions and materials to collect them here, or use Auto-build. The tray is saved in this browser.</Muted> : (
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 6, maxHeight: '44vh', overflowY: 'auto' }}>
             {tray.map((it, i) => (
-              <div key={it.kind + it.id + i} style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0, border: `1px solid ${dups.has(i) ? '#f5c2bd' : PX.line}`, background: dups.has(i) ? PX.badBg : '#fff', borderRadius: 10, padding: '6px 8px', fontSize: 12.5 }}>
+              <div key={it.kind + it.id + i} data-oos={oos.has(i) || undefined} style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0, border: `1px solid ${dups.has(i) || oos.has(i) ? '#f5c2bd' : PX.line}`, background: dups.has(i) || oos.has(i) ? PX.badBg : '#fff', borderRadius: 10, padding: '6px 8px', fontSize: 12.5 }}>
                 <span style={{ color: PX.faint, fontWeight: 700, minWidth: 18 }}>{i + 1}</span>
                 <span title={it.kind === 'q' ? 'Question' : 'Material'}>{it.kind === 'q' ? '❓' : (MATERIAL_TYPES[it.row.material_type]?.icon || '📄')}</span>
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={dups.has(i) ? 'Looks like a duplicate of an earlier question' : ''}>{dups.has(i) && '⚠ '}{it.kind === 'q' ? it.row.question : it.row.title}</span>
-                <button className="px-btn ghost ms-sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up">↑</button>
-                <button className="px-btn ghost ms-sm" onClick={() => move(i, 1)} disabled={i === tray.length - 1} aria-label="Move down">↓</button>
-                <button className="px-btn ghost ms-sm" style={{ color: PX.bad }} onClick={() => setTray(t => t.filter((_, j) => j !== i))} aria-label="Remove">✕</button>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={oos.has(i) ? `Outside scope: ${[it.row.course || (it.kind === 'q' ? 'sainik' : ''), it.row.subject, it.row.chapter].filter(Boolean).join(' › ')}` : dups.has(i) ? 'Looks like a duplicate of an earlier question' : ''}>{oos.has(i) && '🚫 '}{dups.has(i) && '⚠ '}{it.kind === 'q' ? it.row.question : it.row.title}</span>
+                <button className="px-btn ghost ms-sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move item ${i + 1} up`}>↑</button>
+                <button className="px-btn ghost ms-sm" onClick={() => move(i, 1)} disabled={i === tray.length - 1} aria-label={`Move item ${i + 1} down`}>↓</button>
+                <button className="px-btn ghost ms-sm" style={{ color: PX.bad }} onClick={() => setTray(t => t.filter((_, j) => j !== i))} aria-label={`Remove item ${i + 1}`}>✕</button>
               </div>
             ))}
           </div>
@@ -576,7 +664,7 @@ function LibraryModal({ library, history, onClose, update, openSet, notify, canS
 // ═══════════════════════════════════════════════════════════════════════════
 // Composer — pick a design, set options, preview, export
 // ═══════════════════════════════════════════════════════════════════════════
-function Composer({ tray, setTray, design, setDesign, o, setO, user, notify, onBack, onPresent, record, onSave }) {
+function Composer({ tray, setTray, addMany, design, setDesign, o, setO, user, notify, onBack, onPresent, record, onSave }) {
   const [html, setHtml] = useState({ key: '', doc: '' })
   const [busy, setBusy] = useState('')
   const [saveName, setSaveName] = useState('')
@@ -586,6 +674,38 @@ function Composer({ tray, setTray, design, setDesign, o, setO, user, notify, onB
   const anyMayek = questionsOf(tray).some(hasMayek)
   const isPrint = design !== 'slides'
   const qDesign = ['worksheet', 'levels', 'test'].includes(design)
+  const fmt = formatOf(o)
+  const cov = useMemo(() => (fmt ? formatCoverage(tray, fmt) : null), [tray, fmt])
+  const [filling, setFilling] = useState(false)
+
+  // Choosing an exam format applies that exam's sections, marks and time.
+  const applyFormat = id => {
+    const f = EXAM_FORMATS.find(x => x.id === id)
+    if (!f) return set({ format: '', marksMode: 'flat', sectionBy: 'subject' })
+    set({
+      format: f.id, marksMode: 'format', sectionBy: 'format', duration: f.duration, omr: design === 'test' ? true : o.omr, negative: 0,
+      title: o.title || `${f.short} Mock Test`, subtitle: o.subtitle || `${f.classTarget} · ${f.label.split(' · ')[1] || ''}`.trim(),
+    })
+  }
+  // Top the tray up to the official count (or a fraction of it) per section.
+  const fillFormat = async scale => {
+    setFilling(true)
+    try {
+      const taken = new Set(tray.filter(t => t.kind === 'q').map(t => t.id))
+      const add = []
+      for (const r of cov.rows) {
+        const missing = Math.round(r.need * scale) - r.have
+        if (missing <= 0) continue
+        const pool = await fetchQuestionPool(fmt.course, r.subject)
+        const pick = autoPick(pool, missing, { exclude: new Set([...taken, ...add.map(q => q.id)]) })
+        add.push(...pick)
+      }
+      const n = addMany('q', add)
+      const target = cov.rows.reduce((t, r) => t + Math.round(r.need * scale), 0)
+      notify(n ? `Added ${n} questions towards ${target}` : 'Nothing to add — every section already has enough', n ? 'ok' : 'navy')
+    } catch (e) { notify(e.message || String(e), 'bad') }
+    setFilling(false)
+  }
 
   useEffect(() => {
     let live = true
@@ -646,6 +766,37 @@ function Composer({ tray, setTray, design, setDesign, o, setO, user, notify, onB
             </select>
           </>}
 
+          {qDesign && (
+            <details className="ms-group" open>
+              <summary>Exam format</summary>
+              <select className="px-input" value={o.format || ''} onChange={e => applyFormat(e.target.value)} aria-label="Exam format">
+                <option value="">None — my own layout</option>
+                {EXAM_FORMATS.map(f => <option key={f.id} value={f.id}>{f.label} — {f.questions} Q · {f.marks} marks · {f.duration} min</option>)}
+              </select>
+              {fmt && cov && (
+                <div style={{ marginTop: 8 }}>
+                  <table className="px-table ms-cov" style={{ fontSize: 12, tableLayout: 'fixed' }}>
+                    <thead><tr><th style={{ width: '46%' }}>Section</th><th title="Questions in the tray">Have</th><th title="Official number of questions">Need</th><th title="Marks per question">Marks</th></tr></thead>
+                    <tbody>{cov.rows.map(r => (
+                      <tr key={r.name}><td>{r.name}</td>
+                        <td><b style={{ color: r.have >= r.need ? PX.ok : r.have ? PX.warn : PX.bad }}>{r.have}</b></td>
+                        <td>{r.need}</td><td>{r.marks_each}</td></tr>
+                    ))}</tbody>
+                  </table>
+                  {(cov.other > 0 || cov.wrongCourse > 0) && <div style={{ fontSize: 11.5, color: PX.bad, marginTop: 6 }}>
+                    {cov.other > 0 && `${cov.other} question(s) are from subjects not in this exam (printed under "Other"). `}
+                    {cov.wrongCourse > 0 && `${cov.wrongCourse} question(s) are tagged for a different course.`}
+                  </div>}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    <span style={{ fontSize: 12, color: PX.sub, alignSelf: 'center' }}>Fill from the Question Bank:</span>
+                    {[[1, 'Full'], [0.5, 'Half'], [0.25, 'Quarter']].map(([sc, l]) => <button key={l} className="px-btn ghost ms-xs" disabled={filling} onClick={() => fillFormat(sc)}>{filling ? '…' : `${l} length`}</button>)}
+                  </div>
+                  {!o.instructions && <button className="px-btn ghost ms-xs" style={{ marginTop: 6 }} onClick={() => set({ instructions: formatInstructions(fmt, nq) })}>Use {fmt.short} instructions (editable)</button>}
+                </div>
+              )}
+            </details>
+          )}
+
           <details className="ms-group" open>
             <summary>Look</summary>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
@@ -670,13 +821,13 @@ function Composer({ tray, setTray, design, setDesign, o, setO, user, notify, onB
               <summary>Layout & marks</summary>
               {qDesign && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <div><label className="ms-label">Columns</label><select className="px-input" value={o.columns} onChange={e => set({ columns: Number(e.target.value) })}><option value={1}>One</option><option value={2}>Two</option></select></div>
-                <div><label className="ms-label">Group by</label><select className="px-input" value={o.sectionBy} onChange={e => set({ sectionBy: e.target.value })}><option value="subject">Subject</option><option value="chapter">Chapter</option><option value="none">No sections</option></select></div>
+                <div><label className="ms-label">Group by</label><select className="px-input" value={o.sectionBy} onChange={e => set({ sectionBy: e.target.value })} aria-label="Group by">{fmt && <option value="format">{fmt.short} sections</option>}<option value="subject">Subject</option><option value="chapter">Chapter</option><option value="none">No sections</option></select></div>
                 {design !== 'test' && <div><label className="ms-label">Answer space</label><select className="px-input" value={o.answerSpace} onChange={e => set({ answerSpace: e.target.value })}><option value="none">None (MCQ)</option><option value="lines">Lines</option><option value="box">Working box</option></select></div>}
-                <div><label className="ms-label">Marks</label><select className="px-input" value={o.marksMode} onChange={e => set({ marksMode: e.target.value })} aria-label="Marks mode"><option value="flat">Same for all</option><option value="difficulty">By difficulty</option></select></div>
+                <div><label className="ms-label">Marks</label><select className="px-input" value={o.marksMode} onChange={e => set({ marksMode: e.target.value })} aria-label="Marks mode">{fmt && <option value="format">{fmt.short} marks</option>}<option value="flat">Same for all</option><option value="difficulty">By difficulty</option></select></div>
               </div>}
               {qDesign && (o.marksMode === 'difficulty'
                 ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>{DIFFS.map(d => <div key={d}><label className="ms-label">{d}</label><input type="number" min="0" step="0.5" className="px-input" value={o.weights[d]} onChange={e => set({ weights: { ...o.weights, [d]: e.target.value } })} aria-label={`${d} marks`} /></div>)}</div>
-                : <div><label className="ms-label">Marks each</label><input type="number" min="0" step="0.5" className="px-input" value={o.marksEach} onChange={e => set({ marksEach: e.target.value })} /></div>)}
+                : o.marksMode === 'format' ? null : <div><label className="ms-label">Marks each</label><input type="number" min="0" step="0.5" className="px-input" value={o.marksEach} onChange={e => set({ marksEach: e.target.value })} /></div>)}
               {design === 'test' && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
                   <div><label className="ms-label">Minutes</label><input type="number" min="1" className="px-input" value={o.duration} onChange={e => set({ duration: e.target.value })} /></div>
