@@ -34,7 +34,7 @@ import { HeroStat, QBThemeStyles, OptionLetter } from './QBTheme'
 import { BMEI04_BASE64 } from './bmei04_font_base64'
 import {
   PAPER_OPTIONS_DEFAULT, marksOf, groupSections, sectionLetter, blueprint, blueprint as paperBlueprint, isComplete as isCompleteQ, pickPaper, swapCandidate, sortPaper, buildSets,
-  loadTemplates, saveTemplates, loadPaperHistory, pushPaperHistory, recentlyUsedIds, answerKeyText, paperText, paperWordHtml,
+  normalizeAnswer, tidyText, loadTemplates, saveTemplates, loadPaperHistory, pushPaperHistory, recentlyUsedIds, answerKeyText, paperText, paperWordHtml,
 } from './paperTools'
 
 // BMEI04 keystroke <-> Unicode Meetei Mayek conversion table, verified
@@ -2901,7 +2901,8 @@ async function generatePDF({ title, subject, chapter, questions, sets, withAnswe
     doc.setFontSize(14); doc.setFont('helvetica','bold'); doc.setTextColor(30,58,95)
     doc.text('Answer Key', W/2, y, { align:'center' }); y += 4
     doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(100,116,139)
-    doc.text(`${title}  ·  ${subject} — ${chapter}`, W/2, y, { align:'center' }); y += 8
+    const scope = `${subject} — ${chapter}`
+    doc.text(title === scope || !title ? scope : `${title}  ·  ${scope}`, W/2, y, { align:'center' }); y += 8
     const cols = 6, cellW = contentW/cols, cellH = 9
     SETS.forEach(set => {
       if (multi) {
@@ -3751,7 +3752,17 @@ function DictBrowsePanel({ showToast, isAdmin }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // TAB 4: CREATE PAPER
 // ══════════════════════════════════════════════════════════════════════════════
-function TabPaper({ questions, showToast }) {
+// Same bank row, made print-ready: merged options split ("65594 D)65494"
+// in C with D empty), answer letter normalised, whitespace tidied.
+function paperReady(q) {
+  const out = { ...q, ...(splitMergedOptions(q) || {}) }
+  for (const k of ['question', 'question_mayek', 'option_a', 'option_b', 'option_c', 'option_d']) if (out[k] != null) out[k] = tidyText(out[k])
+  out.correct_option = normalizeAnswer(q.correct_option)
+  return out
+}
+
+function TabPaper({ questions: bankQuestions, showToast }) {
+  const questions = useMemo(() => (bankQuestions || []).map(paperReady), [bankQuestions])
   const persisted = (k, d) => { try { return { ...d, ...JSON.parse(localStorage.getItem(k) || '{}') } } catch { return d } }
   const persist = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* private mode */ } }
   const [course,       setCourse]       = useState('')
@@ -3790,6 +3801,14 @@ function TabPaper({ questions, showToast }) {
       .forEach(q => { const k = `${q.chapter}${SEP}${q.subsection||'General'}`; map[k] = (map[k]||0)+1 })
     return map
   }, [questions, course, subject, chapterSel, difficulty, quality, SEP])
+
+  // Rows in the chosen chapters with no answer letter: left out by the
+  // quality filter, and shown as "—" in the key when that filter is off.
+  const noAnswer = useMemo(() => {
+    if (!course || !subject || !chapterSel.length) return 0
+    const want = new Set(chapterSel)
+    return questions.filter(q => (q.course||'')===course && q.subject===subject && want.has(q.chapter) && !q.correct_option).length
+  }, [questions, course, subject, chapterSel])
 
   const toggleSub = key => setSelSubs(prev => { const n = { ...prev }; if (n[key] !== undefined) delete n[key]; else n[key] = Math.min(10, availableSubs[key] || 5); return n })
   const updateCount = (key, val) => setSelSubs(prev => ({ ...prev, [key]: Math.max(1, Math.min(availableSubs[key] || 1, parseInt(val) || 1)) }))
@@ -4007,6 +4026,12 @@ function TabPaper({ questions, showToast }) {
             ))}
             {chk('Skip questions used in my last 5 papers', skipRecent, setSkipRecent)}
             {chk('Only complete questions, no near-duplicates', quality, setQuality)}
+            {noAnswer > 0 && (
+              <div role="status" style={{ fontSize:11.5, color:'#92400e', background:'#fffbeb', border:'1px solid #fde68a', borderRadius:6, padding:'6px 8px', marginTop:6 }}>
+                ⚠ {noAnswer} question{noAnswer === 1 ? '' : 's'} in {chapterSel.length > 1 ? 'these chapters' : 'this chapter'} {noAnswer === 1 ? 'has' : 'have'} no correct answer set.
+                {quality ? ' They are left out of the paper.' : ' The answer key will show “—” for them.'} Set answers in the Question Bank tab (✏️ Edit) or re-upload with the answer key.
+              </div>
+            )}
           </div>
         </div>
 

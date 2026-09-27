@@ -44,6 +44,19 @@ export function shuffle(arr, rand = Math.random) {
   return a
 }
 
+// ── Clean-up before printing ─────────────────────────────────────────────────
+// Answers typed as "a", "(B)", "Option C" or "d." all mean the same letter.
+export function normalizeAnswer(v) {
+  const m = String(v ?? '').trim().match(/^(?:option|ans(?:wer)?)?\s*[:-]?\s*[([]?\s*([A-Da-d])\s*[)\].]?$/i)
+  return m ? m[1].toUpperCase() : ''
+}
+// Pasted text often carries runs of spaces, tabs and stray blank lines,
+// which print as big gaps ("greatest         5-digit").
+export function tidyText(v) {
+  if (v == null) return v
+  return String(v).replace(/\r/g, '').split('\n').map(l => l.replace(/[ \t\u00a0]+/g, ' ').trim()).filter(Boolean).join('\n')
+}
+
 // ── Quality filter ───────────────────────────────────────────────────────────
 export const isComplete = q => !!(String(q.question || '').trim() && String(q.option_a || '').trim() && String(q.option_b || '').trim() && LETTERS.includes(q.correct_option))
 
