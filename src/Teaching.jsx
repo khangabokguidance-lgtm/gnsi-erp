@@ -259,6 +259,15 @@ const globalCSS = `
   .px-root ::-webkit-scrollbar-thumb { background:${PX.line2}; border-radius:99px }
   .px-root select { cursor:pointer }
   .px-root table th { color:${PX.sub} }
+  /* Section tabs: always two rows in reading order (first half on top),
+     sharing the full width so all 15 fit without scrolling on a desktop.
+     The column count (half the visible tabs) is set inline. */
+  .tch-tabs .px-tabs { display:grid; grid-auto-flow:row; gap:4px; overflow-x:auto }
+  .tch-tabs .px-tab { justify-content:center; padding:9px 10px; font-size:13px }
+  .tch-tabs .px-tab svg { flex-shrink:0 }
+  @media (max-width:1320px) { .tch-tabs .px-tab { padding:9px 7px; font-size:12.5px; gap:5px } }
+  @media (max-width:1100px) { .tch-tabs .px-tab svg { display:none } .tch-tabs .px-tab { padding:9px 6px; font-size:12px } }
+  @media (max-width:760px)  { .tch-tabs .px-tab svg { display:inline } .tch-tabs .px-tab { padding:9px 12px; font-size:13px } }
   @media (max-width:1024px) {
     .doubt-grid { grid-template-columns: repeat(2,1fr) !important }
   }
@@ -3889,14 +3898,15 @@ useEffect(() => {
           <div style={{ fontSize:13.5, color:PX.sub, marginTop:6 }}>Ask an administrator if you need access to teaching logs or reports.</div>
         </div>
       ) : (
-        <PremiumTabs
+        <div className="tch-tabs"><PremiumTabs
           tabs={TABS.map(t => ({
             id: t.key, label: t.label, icon: t.icon,
             badge: t.key==='logs' ? badges.todayLogs : t.key==='hmdash' ? hmNotifCount : t.key==='reports' ? badges.monthMissed : 0,
           }))}
           active={activeTab}
           onChange={handleTabChange}
-        />
+          style={{ gridTemplateColumns:`repeat(${Math.ceil(TABS.length / 2)}, auto)` }}
+        /></div>
       )}
 
       {has(activeTab) && activeTab==='logs'        && <TabLogs logs={logs} loading={loading} fetchLogs={fetchLogs} timetable={timetable} staff={staff} courseData={courseData} currentUser={currentUser}/>}
