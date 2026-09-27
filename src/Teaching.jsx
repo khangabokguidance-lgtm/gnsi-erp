@@ -326,12 +326,20 @@ const globalCSS = `
   /* Section tabs: always two rows in reading order (first half on top),
      sharing the full width so all 15 fit without scrolling on a desktop.
      The column count (half the visible tabs) is set inline. */
-  .tch-tabs .px-tabs { display:grid; grid-auto-flow:row; gap:4px; overflow-x:auto }
-  .tch-tabs .px-tab { justify-content:center; padding:9px 10px; font-size:13px }
+  /* Sized by the space the tab bar actually gets (a container query), not
+     the window: inside the portal layout the bar is much narrower than
+     the screen, and the old window-based rules let tabs spill off. */
+  .tch-tabs { container-type:inline-size }
+  .tch-tabs .px-tabs { display:grid; grid-auto-flow:row; grid-template-columns:repeat(var(--tch-c2), auto); gap:4px; overflow-x:auto }
+  .tch-tabs .px-tab { justify-content:center; padding:9px 10px; font-size:13px; min-width:0 }
   .tch-tabs .px-tab svg { flex-shrink:0 }
-  @media (max-width:1320px) { .tch-tabs .px-tab { padding:9px 7px; font-size:12.5px; gap:5px } }
-  @media (max-width:1100px) { .tch-tabs .px-tab svg { display:none } .tch-tabs .px-tab { padding:9px 6px; font-size:12px } }
-  @media (max-width:760px)  { .tch-tabs .px-tab svg { display:inline } .tch-tabs .px-tab { padding:9px 12px; font-size:13px } }
+  @container (max-width:1240px) { .tch-tabs .px-tab { padding:9px 6px; font-size:12.5px; gap:5px } }
+  @container (max-width:1120px) { .tch-tabs .px-tab svg { display:none } .tch-tabs .px-tab { padding:9px 5px; font-size:12.5px } }
+  @container (max-width:1000px) { .tch-tabs .px-tab { font-size:12px; padding:9px 4px } }
+  @container (max-width:930px)  { .tch-tabs .px-tabs { gap:2px } .tch-tabs .px-tab { font-size:11.5px; padding:9px 3px; letter-spacing:-.01em } }
+  @container (max-width:860px)  { .tch-tabs .px-tabs { grid-template-columns:repeat(var(--tch-c3), auto); gap:4px } .tch-tabs .px-tab svg { display:inline } .tch-tabs .px-tab { padding:9px 8px; font-size:13px; gap:6px; letter-spacing:0 } }
+  @container (max-width:820px)  { .tch-tabs .px-tab svg { display:none } .tch-tabs .px-tab { padding:9px 6px; font-size:12.5px } }
+  @container (max-width:700px)  { .tch-tabs .px-tabs { grid-template-columns:repeat(var(--tch-c4), auto) } .tch-tabs .px-tab { font-size:12.5px; padding:9px 6px } }
   /* Phones: hamburger section menu. */
   .tch-menu-wrap { position:relative; margin-bottom:16px; z-index:30 }
   .tch-menu-bar { width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 8px 8px 10px; background:#fff; border:1px solid ${PX.line}; border-radius:16px; box-shadow:0 1px 2px rgba(19,42,79,.05),0 10px 24px -18px rgba(19,42,79,.4); cursor:pointer; font:inherit; color:${PX.ink}; -webkit-tap-highlight-color:transparent }
@@ -354,7 +362,6 @@ const globalCSS = `
   @keyframes tchMenuIn { from { opacity:0; transform:translateY(-6px) } to { opacity:1; transform:none } }
   /* Tablets: tabs scroll sideways — fade the right edge so it's clear more
      tabs are there; compact hero on phones so the content starts higher. */
-  @media (max-width:900px)  { .tch-tabs .px-tabs { -webkit-mask-image:linear-gradient(90deg,#000 86%,transparent); mask-image:linear-gradient(90deg,#000 86%,transparent); padding-right:28px } }
   @media (max-width:640px)  {
     .tch-hero .px-hero { padding:14px 14px 12px !important; margin-bottom:12px }
     .tch-hero .px-hstat { padding:8px 11px }
@@ -3189,7 +3196,7 @@ useEffect(() => {
           }))}
           active={activeTab}
           onChange={handleTabChange}
-          style={{ gridTemplateColumns:`repeat(${Math.ceil(TABS.length / 2)}, auto)` }}
+          style={{ '--tch-c2': Math.ceil(TABS.length / 2), '--tch-c3': Math.ceil(TABS.length / 3), '--tch-c4': Math.ceil(TABS.length / 4) }}
         /></div>
         )
       )}
