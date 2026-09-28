@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis,
@@ -1514,49 +1515,26 @@ export default function AdminPage({ currentUser, onLogout, allStaff = [] }) {
         </div>
       )}
 
-      <div style={{ background: 'linear-gradient(135deg, #0f2847 0%, #1e3a5f 60%, #1a3355 100%)', boxShadow: '0 2px 20px rgba(15,40,71,0.4)', marginTop: idleWarning ? 44 : 0 }}>
-        <div style={{ padding: isMobile ? '14px 16px' : '16px 28px', display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 11, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>🔐</div>
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: 'white', letterSpacing: '-.02em' }}>Admin Panel</div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 1 }}>GNSI Portal · Khangabok, Manipur</div>
-          </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'rgba(255,255,255,0.1)', borderRadius: 9, border: '1px solid rgba(255,255,255,0.15)' }}>
-              <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ADE80', boxShadow: '0 0 0 2px rgba(74,222,128,0.3)', flexShrink: 0 }} />
-              <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.9)', fontWeight: 600 }}>{currentUser?.name ?? 'Admin'}</span>
-            </div>
-            <button
-              onClick={() => setLogoutConfirm(true)}
-              style={{ padding: '7px 14px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', cursor: 'pointer', fontSize: 13, color: 'rgba(255,255,255,0.75)', fontFamily: 'inherit', fontWeight: 500 }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; e.currentTarget.style.color = 'white' }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(255,255,255,0.75)' }}>
-              🚪 {isMobile ? '' : 'Logout'}
+      <div style={{ padding: isMobile ? '12px 12px 0' : '22px 28px 0', maxWidth: 1300, margin: '0 auto', marginTop: idleWarning ? 44 : 0 }}>
+        <PremiumStyles />
+        <PremiumHero isMobile={isMobile} eyebrow="GNSI · Administration" title="Admin Panel"
+          subtitle="GNSI Portal · Khangabok, Manipur"
+          icon={<span style={{ fontSize: isMobile ? 20 : 24 }}>🛡️</span>}
+          actions={<>
+            <span className="px-hbtn" style={{ cursor: 'default' }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ADE80', boxShadow: '0 0 0 2px rgba(74,222,128,0.3)' }} />
+              {currentUser?.name ?? 'Admin'}
+            </span>
+            <button className="px-hbtn" onClick={() => setLogoutConfirm(true)}>🚪 {isMobile ? '' : 'Logout'}</button>
+          </>} />
+        <nav className="px-tabs" role="tablist" style={{ marginBottom: 0 }}>
+          {NAV.map(tab => (
+            <button key={tab.id} role="tab" aria-selected={activeTab === tab.id} className={'px-tab' + (activeTab === tab.id ? ' on' : '')} onClick={() => setActiveTab(tab.id)}>
+              <span style={{ fontSize: 15 }}>{tab.icon}</span>{tab.label}
+              {tab.badge && <span style={{ fontSize: 9, fontWeight: 800, background: '#FBBF24', color: '#78350F', borderRadius: 4, padding: '1px 5px', letterSpacing: '.04em' }}>{tab.badge}</span>}
             </button>
-          </div>
-        </div>
-
-        <div className="adm-tab-scroll" style={{ paddingLeft: isMobile ? 8 : 20, display: 'flex', gap: 2, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          {NAV.map(tab => {
-            const isActive = activeTab === tab.id
-            return (
-              <button key={tab.id} className="adm-tab-btn" onClick={() => setActiveTab(tab.id)} style={{
-                display: 'flex', alignItems: 'center', gap: 7, padding: isMobile ? '10px 14px' : '11px 20px',
-                border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: isMobile ? 12 : 13,
-                fontWeight: isActive ? 700 : 500, whiteSpace: 'nowrap', flexShrink: 0,
-                background: isActive ? 'rgba(255,255,255,0.15)' : 'transparent',
-                color: isActive ? 'white' : 'rgba(255,255,255,0.55)',
-                borderBottom: isActive ? '2.5px solid white' : '2.5px solid transparent',
-                borderRadius: '0', transition: 'all .15s', position: 'relative',
-              }}>
-                <span style={{ fontSize: isMobile ? 14 : 15 }}>{tab.icon}</span>
-                {!isMobile && <span>{tab.label}</span>}
-                {isMobile && <span>{tab.label.split(' ')[0]}</span>}
-                {tab.badge && <span style={{ fontSize: 9, fontWeight: 800, background: '#FBBF24', color: '#78350F', borderRadius: 4, padding: '1px 5px', letterSpacing: '.04em' }}>{tab.badge}</span>}
-              </button>
-            )
-          })}
-        </div>
+          ))}
+        </nav>
       </div>
 
       <div className="adm-main-pad" style={{ padding: isMobile ? '16px' : '28px', maxWidth: 1300, margin: '0 auto' }}>

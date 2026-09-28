@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { isAdminRole } from './roles'
 
 const FONT_URL =
   'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,600;1,700&family=Cinzel:wght@400;600;700;900&family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,700&family=Raleway:wght@300;400;500;600;700;800&family=EB+Garamond:ital,wght@0,400;0,500;1,400;1,500&display=swap'
@@ -722,7 +723,7 @@ function ColorsContent({ colors, setColor, lessInk, setLessInk }) {
 // ── Main Component ────────────────────────────
 export default function InvitationGenerator({ currentUser }) {
   const role = (currentUser?.role || '').toLowerCase()
-  const canAccess = role === 'admin' || role === 'manager'
+  const canAccess = isAdminRole(currentUser?.role) || role === 'admin' || role === 'manager'
 
   const [fullscreen, setFullscreen]       = useState(false)
   const [toolbarMin, setToolbarMin]       = useState(false)

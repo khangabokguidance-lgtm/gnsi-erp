@@ -2118,7 +2118,7 @@ function PayrollView({ staffId, isAdmin, staffList, showToast, currentUsername }
       {/* Batch 2 — history viewer: audit log + revision snapshots for one
           staff/month, opened via the "🕘 History" button on each row. */}
       {historyStaff && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
           onClick={() => setHistoryStaff(null)}>
           <div onClick={e => e.stopPropagation()} style={{ background: PAY.card, borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 520, maxHeight: '85vh', overflowY: 'auto', padding: 18, boxSizing: 'border-box' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>

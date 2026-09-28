@@ -159,7 +159,7 @@ export function PremiumHero({ icon, title, subtitle, eyebrow = 'GNSI · Guidance
           background: 'linear-gradient(180deg,rgba(226,197,126,.25),rgba(226,197,126,.08))', border: '1px solid rgba(226,197,126,.45)', flexShrink: 0 }}>{icon}</div>
         <div style={{ flex: '1 1 220px', minWidth: 0 }}>
           <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', color: '#E2C57E', textTransform: 'uppercase' }}>{eyebrow}</div>
-          <h1 className="gp-serif" style={{ margin: '4px 0 2px', fontSize: mobile ? 22 : 30, fontWeight: 700, lineHeight: 1.15 }}>{title}</h1>
+          <h1 className="gp-serif" style={{ margin: '4px 0 2px', color: '#fff', fontSize: mobile ? 22 : 30, fontWeight: 700, lineHeight: 1.15 }}>{title}</h1>
           {subtitle && <div style={{ fontSize: 13, color: 'rgba(255,255,255,.72)' }}>{subtitle}</div>}
         </div>
         {right && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>{right}</div>}

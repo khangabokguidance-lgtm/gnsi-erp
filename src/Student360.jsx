@@ -22,6 +22,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 import { getActiveStudents, getStudentById } from './studentQueries'
 import { loadFullProfile } from './studentProfileLoader'
 import { detectMismatches } from './mismatchDetector'
@@ -451,13 +452,13 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
 
   return (
     <div style={{ maxWidth: 1040, width: '100%', margin: '0 auto', padding: '22px 16px 40px', display: 'flex', flexDirection: 'column', gap: 18, background: '#f7f8fa', minHeight: '100%', minWidth: 0, overflowX: 'hidden', boxSizing: 'border-box' }}>
+      <PremiumStyles />
       <div>
-        <div style={{ fontWeight: 800, fontSize: 22, color: NAVY, fontFamily: 'Georgia, serif', letterSpacing: '-.01em' }}>Student 360°</div>
-        <div style={{ fontSize: 12.5, color: SLATE[500], marginTop: 3, fontWeight: 500 }}>Cross-module record — everything every module has recorded for one student, in one place.</div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 2, borderBottom: `1px solid ${SLATE[200]}`, flexWrap: 'wrap' }}>
-        {[
+        <PremiumHero eyebrow="GNSI · Admin" title="Student 360°"
+          subtitle="Cross-module record — everything every module has recorded for one student, in one place"
+          icon={<span style={{ fontSize: 24 }}>🎓</span>} />
+        <nav className="px-tabs" role="tablist" style={{ marginBottom: 0 }}>
+          {[
           { id: 'search', label: '🔍 Search Student' },
           { id: 'globalsearch', label: '🌐 Global Search' },
           { id: 'intel', label: '🧠 Admin Intelligence' },
@@ -465,16 +466,9 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
           { id: 'overview', label: '🏫 School Overview' },
           { id: 'browser', label: '🗄️ Table Browser' },
         ].map(t => (
-          <button key={t.id} onClick={() => setView(t.id)} style={{
-            padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: '8px 8px 0 0',
-            fontSize: 12.5, fontWeight: view === t.id ? 750 : 600, color: view === t.id ? NAVY : SLATE[400],
-            borderBottom: view === t.id ? `2.5px solid ${GOLD}` : '2.5px solid transparent',
-            marginBottom: -1, transition: 'color .15s, background .15s',
-          }}
-            onMouseEnter={e => { if (view !== t.id) e.currentTarget.style.color = SLATE[600] }}
-            onMouseLeave={e => { if (view !== t.id) e.currentTarget.style.color = SLATE[400] }}
-          >{t.label}</button>
-        ))}
+            <button key={t.id} role="tab" aria-selected={view === t.id} className={'px-tab' + (view === t.id ? ' on' : '')} onClick={() => setView(t.id)}>{t.label}</button>
+          ))}
+        </nav>
       </div>
 
       {view === 'overview' && <SchoolOverview onOpenStudent={s => { setView('search'); select(s) }} />}

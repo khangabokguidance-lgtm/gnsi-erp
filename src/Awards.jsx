@@ -3,6 +3,7 @@ import jsPDF from 'jspdf'
 import { supabase } from './supabase'
 import { calcScores } from './Staff'
 import { generateAwardCertificate } from './AwardCertificate'
+import { PremiumStyles, PremiumHero, PremiumTabs, PX } from './premiumUI'
 
 // ══════════════════════════════════════════════════════════════
 //  AWARDS MODULE — daily tick system (simple version)
@@ -561,13 +562,13 @@ async function publishWinner(categoryKey, monthStr, winner) {
 // ══════════════════════════════════════════════════════════════
 
 const S = {
-  page: { fontFamily: "'Georgia', serif", background: '#F8F6F0', minHeight: '100vh', padding: 20 },
+  page: { minHeight: '100vh' },
   header: { color: '#0B1E3D', borderBottom: '3px solid #C9A24B', paddingBottom: 12, marginBottom: 16 },
   modeToggle: { display: 'flex', gap: 8, marginBottom: 16 },
   modeBtn: (active) => ({ padding: '8px 16px', borderRadius: 6, border: active ? '2px solid #C9A24B' : '1px solid #ccc', background: active ? '#0B1E3D' : '#fff', color: active ? '#fff' : '#0B1E3D', cursor: 'pointer', fontWeight: 600, fontSize: 13 }),
-  card: { background: '#fff', border: '1px solid #e0ddd3', borderRadius: 8, padding: 16, marginBottom: 12 },
+  card: { background: '#fff', border: `1px solid ${PX.line}`, borderRadius: 16, padding: 18, marginBottom: 14, boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 12px 32px -22px rgba(19,42,79,.35)' },
   catTabRow: { display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' },
-  catTab: (active) => ({ padding: '8px 14px', borderRadius: 6, border: active ? '2px solid #C9A24B' : '1px solid #ccc', background: active ? '#0B1E3D' : '#fff', color: active ? '#fff' : '#0B1E3D', cursor: 'pointer', fontWeight: 600, fontSize: 12 }),
+  catTab: (active) => ({ padding: '8px 14px', borderRadius: 999, border: `1px solid ${active ? PX.navy : PX.line2}`, background: active ? `linear-gradient(180deg, ${PX.navy2}, ${PX.navy})` : '#fff', color: active ? '#fff' : PX.ink2, cursor: 'pointer', fontWeight: 700, fontSize: 12.5, boxShadow: active ? '0 6px 14px -6px rgba(19,42,79,.6)' : 'none' }),
   nomineeRow: { padding: '12px 0', borderBottom: '1px solid #f0eee6' },
   checkRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', fontSize: 13 },
   rankRow: (isWinner) => ({ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderRadius: 6, marginBottom: 6, background: isWinner ? '#FFF8E7' : '#fafafa', border: isWinner ? '2px solid #C9A24B' : '1px solid #eee' }),
@@ -1505,22 +1506,34 @@ function SettingsScreen() {
 
 export default function Awards() {
   const [mode, setMode] = useState('tick') // 'tick' | 'master' | 'leaderboard' | 'settings'
+  const isMobile = useNarrowAwards()
 
   return (
-    <div style={S.page}>
-      <div style={S.header}>
-        <h1 style={{ margin: 0, fontSize: 24 }}>🏅 Staff & house awards</h1>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#666' }}>Tick daily. Winners calculate automatically from the month's ticks.</p>
+    <div className="px-root" style={S.page}>
+      <PremiumStyles />
+      <div className="px-wrap" style={{ padding: isMobile ? '12px 12px 90px' : undefined }}>
+        <PremiumHero isMobile={isMobile} eyebrow="GNSI · Recognition" title="Staff & House Awards"
+          subtitle="Tick daily · winners calculate automatically from the month's ticks"
+          icon={<span style={{ fontSize: isMobile ? 20 : 24 }}>🏅</span>} />
+        <PremiumTabs active={mode} onChange={setMode} tabs={[
+          { id: 'tick', label: "✅ Today's ticks" },
+          { id: 'master', label: '📋 Master table' },
+          { id: 'leaderboard', label: '🏆 Leaderboard' },
+          { id: 'settings', label: '⚙ Settings' },
+        ]} />
+        {mode === 'tick' ? <DailyTickScreen /> : mode === 'master' ? <MasterTickScreen /> : mode === 'leaderboard' ? <LeaderboardScreen /> : <SettingsScreen />}
       </div>
-
-      <div style={S.modeToggle}>
-        <button style={S.modeBtn(mode === 'tick')} onClick={() => setMode('tick')}>Today's ticks</button>
-        <button style={S.modeBtn(mode === 'master')} onClick={() => setMode('master')}>📋 Master table</button>
-        <button style={S.modeBtn(mode === 'leaderboard')} onClick={() => setMode('leaderboard')}>Leaderboard</button>
-        <button style={S.modeBtn(mode === 'settings')} onClick={() => setMode('settings')}>⚙ Settings</button>
-      </div>
-
-      {mode === 'tick' ? <DailyTickScreen /> : mode === 'master' ? <MasterTickScreen /> : mode === 'leaderboard' ? <LeaderboardScreen /> : <SettingsScreen />}
     </div>
   )
+}
+
+function useNarrowAwards() {
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)')
+    const on = e => setNarrow(e.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  return narrow
 }

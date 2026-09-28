@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { isAdminRole } from './roles'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CertificateGenerator — GNSI Batch Certificate Generator
@@ -49,7 +50,7 @@ export default function CertificateGenerator({ currentUser, perms }) {
   }, [currentUser])
 
   // ── Permission guard ──────────────────────────────────────────────────────
-  const isAdmin   = currentUser?.role === 'Admin'
+  const isAdmin   = isAdminRole(currentUser?.role)
   const isManager = currentUser?.role === 'Manager'
   if (!isAdmin && !isManager && !perms?.read) {
     return (

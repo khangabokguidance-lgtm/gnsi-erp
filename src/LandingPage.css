@@ -341,7 +341,7 @@ body.hi span[data-en]{display:none}
 .countdown-cta:hover{background:var(--goldLL)}
 
 /* ═══ NAV ═══ */
-nav{position:sticky;top:0;z-index:1000;background:rgba(17,17,17,.97);backdrop-filter:blur(16px);border-bottom:1px solid rgba(217,119,6,.28)}
+nav.lp-nav{position:sticky;top:0;z-index:1000;background:rgba(17,17,17,.97);backdrop-filter:blur(16px);border-bottom:1px solid rgba(217,119,6,.28)}
 .nav-inner{width:min(1200px,96%);margin:auto;height:74px;display:flex;align-items:center;justify-content:space-between;gap:.75rem}
 .brand{display:flex;align-items:center;gap:14px;text-decoration:none}
 .crest{width:48px;height:48px;border:2px solid var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -1152,7 +1152,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
 @media (max-width:640px){.ribbon-photo{padding:1.2rem 4%}}
 
 /* ═══ NAV BAR + STICKY BAR — professional redesign (navy + brass gold) ═══ */
-nav{background:#0B1E3D;backdrop-filter:none;border-bottom:2px solid #C9A24B;box-shadow:0 2px 12px rgba(11,30,61,.18)}
+nav.lp-nav{background:#0B1E3D;backdrop-filter:none;border-bottom:2px solid #C9A24B;box-shadow:0 2px 12px rgba(11,30,61,.18)}
 .nav-inner{height:68px;gap:1.25rem}
 .brand{gap:12px;min-width:0}
 .nv-crest{width:42px;height:42px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 1px rgba(201,162,75,.6)}
@@ -1207,7 +1207,7 @@ nav{background:#0B1E3D;backdrop-filter:none;border-bottom:2px solid #C9A24B;box-
 }
 /* Keep brand + actions on one line at every width (overrides older wrap rule) */
 .nav-inner{flex-wrap:nowrap!important;padding:0!important}
-nav .brand{flex:1 1 auto;min-width:0}
+nav.lp-nav .brand{flex:1 1 auto;min-width:0}
 .nav-fixed-actions{flex:0 0 auto!important;flex-wrap:nowrap!important;justify-content:flex-end}
 .brand-short{display:none}
 @media (max-width:900px){.nav-inner{height:60px!important}}

@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
+import { PremiumStyles, PremiumHero } from './premiumUI'
 import {
   CURRENT_YEAR, clearFeeRateCache, COURSE_STRUCTURE,
   getFeeRates, saveStudentFlatFeeOverride, TABLES,
@@ -434,6 +435,13 @@ function StudentOverridesTab({ sessionYear }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function FeeSetup({ userRole }) {
+  const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 640px)').matches)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)')
+    const on = e => setNarrow(e.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
   const [activeTab,    setActiveTab]    = useState('structures')   // 'structures' | 'overrides'
   const [sessionYear,  setSessionYear]  = useState(`${CURRENT_YEAR}-${CURRENT_YEAR + 1}`)
   const [activeCourse, setActiveCourse] = useState('Sainik')
@@ -548,17 +556,15 @@ export default function FeeSetup({ userRole }) {
   const batches     = COURSE_STRUCTURE[activeCourse]
 
   return (
-    <div style={{ maxWidth: 980, margin: '0 auto', padding: '24px 20px', fontFamily: "'Outfit', system-ui, sans-serif" }}>
+    <div className="px-root" style={{ maxWidth: 1080, margin: '0 auto', padding: narrow ? '12px 12px 90px' : '22px 24px 36px', minHeight: 'auto', background: 'transparent' }}>
 
       {/* ── Header ── */}
+      <PremiumStyles />
       <div style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: C.slate[400], marginBottom: 4 }}>Admin Settings</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: C.navy }}>Fee Structure Setup</div>
-            <div style={{ fontSize: 13, color: C.slate[400], marginTop: 3 }}>Configure fees and per-student flat fee overrides</div>
-          </div>
-          {activeTab === 'structures' && (
+        <PremiumHero isMobile={narrow} eyebrow="GNSI · Admin Settings" title="Fee Structure Setup"
+          subtitle="Configure fees and per-student flat fee overrides"
+          icon={<span style={{ fontSize: narrow ? 20 : 24 }}>🧾</span>}
+          actions={activeTab === 'structures' && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <button type="button" onClick={copyFromPrevSession}
                 style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${C.slate[200]}`, background: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: C.slate[500] }}>
@@ -569,8 +575,7 @@ export default function FeeSetup({ userRole }) {
                 {saving ? '⏳ Saving…' : dirtyCount ? `💾 Save ${dirtyCount} change${dirtyCount > 1 ? 's' : ''}` : '✓ Saved'}
               </button>
             </div>
-          )}
-        </div>
+          )} />
 
         {/* Session selector */}
         <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

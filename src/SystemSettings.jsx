@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./supabase";
+import { PremiumStyles, PremiumHero } from "./premiumUI";
 
 // ─── Access control ─────────────────────────────────────────
 // SystemSettings has no auth of its own to fall back on — every
@@ -1323,7 +1324,6 @@ function IntegrationsSection() {
 export default function SystemSettings({ currentUser }) {
   const mobile = useIsMobile();
   const [activeTab, setActiveTab] = useState("basic");
-  const [menuOpen, setMenuOpen]   = useState(false);
   const anyDirty = useAnyDirty();
 
   // Hard gate — see ADMIN_ROLES/isAdminRole above. Checked first, before
@@ -1357,87 +1357,23 @@ export default function SystemSettings({ currentUser }) {
   const activeTabInfo = NAV_TABS.find(t => t.id === activeTab);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "'DM Sans', 'Inter', sans-serif" }}>
-      {/* Header */}
-      <div style={{
-        background: "white", borderBottom: "1.5px solid #E5E7EB",
-        padding: mobile ? "14px 16px" : "18px 32px",
-        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
-        position: "sticky", top: 0, zIndex: 100,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 10, background: "#475569", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>⚙️</div>
-          <div>
-            <h1 style={{ margin: 0, fontSize: mobile ? 16 : 18, fontWeight: 800, color: "#111827" }}>System Settings</h1>
-            <p style={{ margin: 0, fontSize: 12, color: "#9CA3AF" }}>GNSI Portal · Khangabok, Manipur</p>
-          </div>
-        </div>
-
-        {/* Mobile hamburger */}
-        {mobile && (
-          <button
-            onClick={() => setMenuOpen(o => !o)}
-            style={{ padding: "8px 12px", borderRadius: 9, border: "1.5px solid #E5E7EB", background: "white", cursor: "pointer", fontSize: 18, lineHeight: 1 }}
-          >
-            {menuOpen ? "✕" : "☰"}
+    <div className="px-root" style={{ padding: mobile ? "12px 12px 90px" : "22px 24px 36px" }}>
+      <PremiumStyles />
+      <PremiumHero isMobile={mobile} eyebrow="GNSI · Administration" title="System Settings"
+        subtitle="GNSI Portal · Khangabok, Manipur"
+        icon={<span style={{ fontSize: mobile ? 20 : 24 }}>⚙️</span>} />
+      <nav className="px-tabs" role="tablist">
+        {NAV_TABS.map(tab => (
+          <button key={tab.id} role="tab" aria-selected={activeTab === tab.id} className={"px-tab" + (activeTab === tab.id ? " on" : "")} onClick={() => handleTabChange(tab.id)}>
+            <span style={{ fontSize: 15 }}>{tab.icon}</span>{tab.label}
           </button>
-        )}
-      </div>
-
-      {/* Mobile drawer */}
-      {mobile && menuOpen && (
-        <>
-          {/* FIX #9: backdrop — tapping outside the drawer closes it */}
-          <div
-            onClick={() => setMenuOpen(false)}
-            style={{ position: "fixed", inset: 0, top: 65, background: "rgba(15,23,42,0.35)", zIndex: 90 }}
-          />
-          <div style={{ background: "white", borderBottom: "1.5px solid #E5E7EB", padding: "8px 0", position: "relative", zIndex: 95 }}>
-            {NAV_TABS.map(tab => (
-              <button key={tab.id} onClick={() => { handleTabChange(tab.id); setMenuOpen(false); }} style={{
-                width: "100%", textAlign: "left", padding: "11px 20px", border: "none", cursor: "pointer",
-                background: activeTab === tab.id ? "#F1F5F9" : "transparent",
-                borderLeft: activeTab === tab.id ? "4px solid #475569" : "4px solid transparent",
-                color: activeTab === tab.id ? "#1E293B" : "#374151",
-                fontWeight: activeTab === tab.id ? 700 : 400,
-                fontSize: 14, display: "flex", alignItems: "center", gap: 10,
-              }}>
-                <span style={{ fontSize: 16 }}>{tab.icon}</span>
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-
-      <div style={{ display: "flex", minHeight: "calc(100vh - 73px)" }}>
-        {/* Desktop sidebar */}
-        {!mobile && (
-          <div style={{ width: 220, background: "white", borderRight: "1.5px solid #E5E7EB", padding: "16px 0", flexShrink: 0 }}>
-            {NAV_TABS.map(tab => (
-              <button key={tab.id} onClick={() => handleTabChange(tab.id)} style={{
-                width: "100%", textAlign: "left", padding: "11px 20px", border: "none", cursor: "pointer",
-                background: activeTab === tab.id ? "#F1F5F9" : "transparent",
-                borderRight: activeTab === tab.id ? "3px solid #475569" : "3px solid transparent",
-                color: activeTab === tab.id ? "#1E293B" : "#374151",
-                fontWeight: activeTab === tab.id ? 700 : 400,
-                fontSize: 13, display: "flex", alignItems: "center", gap: 10,
-                transition: "background 0.15s",
-              }}>
-                <span style={{ fontSize: 16 }}>{tab.icon}</span>
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Content */}
-        <div style={{ flex: 1, padding: mobile ? "16px 12px" : "28px 32px", maxWidth: "100%", overflow: "auto", boxSizing: "border-box" }}>
-          <h2 style={{ margin: "0 0 20px", fontSize: mobile ? 15 : 16, fontWeight: 800, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>
-            {activeTabInfo?.icon} {activeTabInfo?.label}
-          </h2>
-          {sectionMap[activeTab]}
+        ))}
+      </nav>
+      <div className="px-card" style={{ padding: mobile ? "16px 12px" : "24px 28px" }}>
+        <div className="px-section">
+          <span className="px-h2">{activeTabInfo?.icon} {activeTabInfo?.label}</span>
         </div>
+        {sectionMap[activeTab]}
       </div>
     </div>
   );

@@ -24,6 +24,7 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import { EventBus, GNSI_EVENTS } from './EventBus'
+import { isAdminRole } from './roles'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -2939,7 +2940,7 @@ export function HMDoubtSessionPanel({ session, onFeedback, currentUser }) {
               {statusLabel[session.status] || '⏳ Open'}
             </span>
             {/* FIX 12: admin delete button now opens InlineConfirm */}
-            {currentUser?.role === 'admin' && (
+            {isAdminRole(currentUser?.role) && (
               <button type="button" onClick={() => setDeleteConfirmOpen(true)} disabled={sending}
                 style={{ fontSize: 11, fontWeight: 700, color: C.red, background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>
                 🗑 Delete
