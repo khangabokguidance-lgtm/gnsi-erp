@@ -5,10 +5,13 @@
 // Pipeline, per translation:
 //   1. The school's own dictionary (mayek_dictionary) first: any line that
 //      exactly matches a verified entry is taken from it, never re-translated.
-//   2. The rest goes to Google Translate (/api/translate) when the language
-//      pair is one Google supports and the server has a key,
-//   3. otherwise to Gemini (/api/gemini), with dictionary words passed along
-//      as a glossary.
+//   2. The rest goes to a translation service the server has keys for and
+//      that supports the language pair: Bhashini (/api/bhashini, the
+//      Government of India's Indian-language models) is tried first when
+//      Manipuri is involved, Google Translate (/api/translate) first
+//      otherwise,
+//   3. and to Gemini (/api/gemini) when neither can, with dictionary words
+//      passed along as a glossary.
 // Staff corrections can be saved back into the dictionary (saveCorrections),
 // so the next translation of that line uses the corrected wording.
 //
@@ -32,7 +35,7 @@ export const LANGS = [
 ]
 export const langLabel = code => LANGS.find(l => l.code === code)?.label || code
 const langName = code => LANGS.find(l => l.code === code)?.name || langLabel(code)
-export const ENGINE_LABELS = { google: 'Google Translate', gemini: 'Gemini AI', dictionary: 'Your dictionary' }
+export const ENGINE_LABELS = { bhashini: 'Bhashini', google: 'Google Translate', gemini: 'Gemini AI', dictionary: 'Your dictionary' }
 
 const MTEI = /[ꯀ-꯿]/g
 const BENG = /[ঀ-৿]/g
@@ -97,20 +100,26 @@ async function glossary(text, pair) {
   return (await dictLookup('mayek_unicode', tokens)).filter(r => r.entry_type === 'word').slice(0, 120)
 }
 
-// ── 2. Google Translate ────────────────────────────────────────────────────
-const GOOGLE_LANGS = new Set(['en', 'hi', 'bn', 'mni-Mtei'])
-let googleOff = false // set once the server says it has no key, to skip the round trip
+// ── 2. Translation services (server-side keys) ─────────────────────────────
+// Bhashini needs a known source language (it has no text language detection).
+const SERVICES = {
+  bhashini: { url: '/api/bhashini', langs: new Set(['en', 'hi', 'bn', 'mni-Mtei', 'mni-Beng']), auto: false },
+  google:   { url: '/api/translate', langs: new Set(['en', 'hi', 'bn', 'mni-Mtei']), auto: true },
+}
+const serviceOff = new Set() // services whose server said "no key", to skip the round trip
 
-async function viaGoogle(segments, from, to) {
-  if (googleOff || !GOOGLE_LANGS.has(to) || (from !== 'auto' && !GOOGLE_LANGS.has(from))) return null
-  const res = await fetch('/api/translate', {
+async function viaService(name, segments, from, to) {
+  const svc = SERVICES[name]
+  if (serviceOff.has(name) || !svc.langs.has(to) || from === to) return null
+  if (from === 'auto' ? !svc.auto : !svc.langs.has(from)) return null
+  const res = await fetch(svc.url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ segments, from, to }),
   }).catch(() => null)
   if (!res) return null
   const data = await res.json().catch(() => ({}))
-  if (res.status === 501 || res.status === 404) { googleOff = true; return null }
+  if (res.status === 501 || res.status === 404) { serviceOff.add(name); return null }
   if (!res.ok || !Array.isArray(data.segments) || data.segments.length !== segments.length) return null
   return { segments: data.segments, detected: data.detected ? langLabel(data.detected) : '' }
 }
@@ -225,11 +234,15 @@ export async function translate(text, from, to, onProgress) {
   let detected = ''
   let translated = []
   if (segments.length) {
-    // The engines get the user's choice ('auto' stays auto): a script guess
-    // can't tell Roman-letter Manipuri from English.
-    const g = await viaGoogle(segments, fromCode, to)
-    if (g) { engine = 'google'; translated = g.segments; detected = g.detected }
-    else {
+    // Google and Gemini get the user's choice ('auto' stays auto) and detect
+    // it themselves; Bhashini can't, so it gets the script-based guess.
+    const manipuri = /^mni/.test(known || '') || /^mni/.test(to)
+    let s = null
+    for (const name of manipuri ? ['bhashini', 'google'] : ['google', 'bhashini']) {
+      s = await viaService(name, segments, name === 'bhashini' && fromCode === 'auto' ? known || 'auto' : fromCode, to)
+      if (s) { engine = name; translated = s.segments; detected = s.detected || (fromCode === 'auto' && known ? langLabel(known) : ''); break }
+    }
+    if (!s) {
       const terms = await glossary(segments.join('\n'), pair)
       const r = await viaGemini(segments, fromCode, to, terms, onProgress)
       engine = 'gemini'; translated = r.segments; detected = r.detected
