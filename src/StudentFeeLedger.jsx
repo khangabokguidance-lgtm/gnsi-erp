@@ -8,6 +8,8 @@ import FeeRegisterBook from './FeeRegisterBook'
 import PrintAllLedgers from './PrintAllLedgers'
 import FeeDayBook from './FeeDayBook'
 import FeeMonthlyLedger from './FeeMonthlyLedger'
+import ExpenseDayBook from './ExpenseDayBook'
+import IncomeExpenditureRegister from './IncomeExpenditureRegister'
 import { OPEN_LEDGER_EVENT, takePendingLedgerGcc, setLedgerUrl } from './ledgerLink'
 
 // ─── Mobile hook ──────────────────────────────────────────────────────────────
@@ -373,7 +375,7 @@ function LedgerSection({ title, icon, color, bg, rows, columns, emptyMsg, total,
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
-export default function StudentFeeLedger() {
+export default function StudentFeeLedger({ canSeeAccounts = false }) {
   const mobile = useMobile()
   const [students, setStudents] = useState([])
   const [selected, setSelected] = useState(null)
@@ -449,7 +451,9 @@ export default function StudentFeeLedger() {
         ]} />
 
       <div role="tablist" aria-label="Fee ledger books" style={{ display: 'flex', gap: 6, padding: 5, marginBottom: 16, background: '#fff', borderRadius: 999, border: '1px solid #e6dcc3', boxShadow: '0 8px 24px -18px rgba(11,30,61,.4)', overflowX: 'auto', width: 'fit-content', maxWidth: '100%' }}>
-        {[['student', '📒 Student ledger'], ['daybook', '📅 Day Book'], ['monthly', '🗓 Monthly Fee Ledger']].map(([id, label]) => (
+        {[['student', '📒 Student ledger'], ['daybook', '📅 Fee Day Book'], ['monthly', '🗓 Monthly Fee Ledger'],
+          // Expenditure lives in Accounts — only shown to users who can open Accounts.
+          ...(canSeeAccounts ? [['expense', '💸 Expenditure Day Book'], ['register', '⚖️ Income & Expenditure']] : [])].map(([id, label]) => (
           <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
             style={{ padding: mobile ? '8px 13px' : '9px 18px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: mobile ? 12.5 : 13.5, whiteSpace: 'nowrap',
               background: tab === id ? 'linear-gradient(180deg,#1e3a6e,#0B1E3D)' : 'transparent', color: tab === id ? '#E2C57E' : '#5d6b82' }}>
@@ -460,6 +464,8 @@ export default function StudentFeeLedger() {
 
       {tab === 'daybook' && <FeeDayBook students={students} />}
       {tab === 'monthly' && <FeeMonthlyLedger students={students} />}
+      {tab === 'expense' && canSeeAccounts && <ExpenseDayBook />}
+      {tab === 'register' && canSeeAccounts && <IncomeExpenditureRegister />}
 
       {tab === 'student' && <>
       {/* Search */}

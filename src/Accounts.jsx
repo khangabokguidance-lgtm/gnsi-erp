@@ -9,6 +9,8 @@ import IncomeAnalysis from './IncomeAnalysis'
 import AuditMonitor from './AuditMonitor'
 import { TransactionsViewBanking } from './Accounts_Transactions_Banking'
 import { AccountsDashboardBanking } from './AccountsDashboardBanking'
+import ExpenseDayBook from './ExpenseDayBook'
+import IncomeExpenditureRegister from './IncomeExpenditureRegister'
 // ── Report Generator dependencies ───────────────────────────────────────────
 // npm install jspdf jspdf-autotable docx xlsx
 import jsPDF from 'jspdf'
@@ -537,6 +539,8 @@ function Accounts({role,userId}){
   const [payers,       setPayers]       = useState([])
   const [expPayerFilter, setExpPayerFilter] = useState('All') // reused naming convention; filters the Income-side daily view if added later
   const [payerDrilldown, setPayerDrilldown] = useState(null)
+  // Rows for the Expenditure Day Book / Income & Expenditure tabs (rows:null while loading).
+  const bookSource = useMemo(()=>({rows:loading&&!entries.length?null:entries,vendors,payers}),[loading,entries,vendors,payers])
   const [incTargets,   setIncTargets]   = useState([])   // rows from income_targets for the current view
   const [editIncTarget, setEditIncTarget] = useState(null) // category currently being edited, or null
   const [incTargetDraft, setIncTargetDraft] = useState('')
@@ -3442,6 +3446,8 @@ function Accounts({role,userId}){
         {id:'transactions',label:'Transactions',group:'books'},
         {id:'daily',label:'Daily Book',group:'books'},
         {id:'expenditure',label:'Expenditure',group:'books'},
+        {id:'expdaybook',label:'Expenditure Day Book',group:'books'},
+        {id:'iereg',label:'Income & Expenditure',group:'books'},
         ...(isAdmin?[{id:'reconciliation',label:'Reconciliation',group:'books'}]:[]),
         ...(isAdmin?[{id:'balancesheet',label:'Balance Sheet',group:'books'}]:[]),
         {id:'analytics',label:'Analytics',group:'analysis'},
@@ -3495,6 +3501,9 @@ function Accounts({role,userId}){
         </div>
       )
     })()}
+
+    {activeTab==='expdaybook'&&<ExpenseDayBook source={bookSource}/>}
+    {activeTab==='iereg'&&<IncomeExpenditureRegister source={bookSource}/>}
 
     {/* ══ TAB: TRANSACTIONS ══ */}
 {activeTab==='transactions'&&(
@@ -5328,4 +5337,4 @@ function Accounts({role,userId}){
   )
 }
 
-export default Accounts
+export default Accounts

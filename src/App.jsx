@@ -903,7 +903,7 @@ export default function App() {
     reports:           <Reports           currentUser={currentUser} perms={perms('reports')}           />,
     checklist:         <Checklist         currentUser={currentUser} perms={perms('checklist')}         />,
     system:            <SystemSettings    currentUser={currentUser} perms={perms('system')}            />,
-    studentfeeledger:  <StudentFeeLedger  currentUser={currentUser} perms={perms('studentfeeledger')}  />,
+    studentfeeledger:  <StudentFeeLedger  currentUser={currentUser} perms={perms('studentfeeledger')} canSeeAccounts={canAccess('accounts')} />,
     // FIX: removed feeledger duplicate alias
     courses:           <Courses           currentUser={currentUser} perms={perms('courses')}           />,
     teaching:          <Teaching          currentUser={currentUser} perms={perms('teaching')} onNavigate={navigateTo} />,
