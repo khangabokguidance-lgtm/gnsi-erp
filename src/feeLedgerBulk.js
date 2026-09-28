@@ -14,7 +14,7 @@ const groupByGcc = rows => {
 }
 
 // Every non-reverted payment row, paged past the 1000-row cap.
-async function loadAllFeeRows() {
+export async function loadAllFeeRows() {
   const [a, f, c] = await Promise.all([
     fetchAllPages(() => supabase.from('adm_fee_collections').select('*').eq('reverted', false).order('id', { ascending: true })),
     fetchAllPages(() => supabase.from('adm_flat_fees').select('*').eq('paid', true).eq('reverted', false).order('id', { ascending: true })),
@@ -32,10 +32,12 @@ async function loadOverrides(session) {
   return new Map((data || []).map(r => [gccStr(r.gcc_no), Number(r.flat_fee_override)]))
 }
 
-export async function buildAllLedgers(students, session, { onProgress } = {}) {
+// rows: optional result of loadAllFeeRows() already in hand (the Monthly
+// Ledger tab reuses one load for every session it shows).
+export async function buildAllLedgers(students, session, { onProgress, rows: preloaded = null } = {}) {
   session = normalizeSessionYear(session)
   onProgress?.('Loading fee records…')
-  const [rows, overrides] = await Promise.all([loadAllFeeRows(), loadOverrides(session)])
+  const [rows, overrides] = await Promise.all([preloaded ? Promise.resolve(preloaded) : loadAllFeeRows(), loadOverrides(session)])
   onProgress?.('Working out each register…')
   const rateCache = new Map()
   const out = []
