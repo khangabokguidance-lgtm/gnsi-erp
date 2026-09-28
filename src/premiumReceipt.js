@@ -56,7 +56,7 @@ function itemRow(it, hostel) {
 // Instructions printed on every receipt — edit the wording here.
 export const RECEIPT_INSTRUCTIONS = {
   payment: [
-    'Monthly fees for the April–March session should be paid by the 10th of each month.',
+    'Monthly fees should be paid by the 10th of each month.',
     'Pay at the institute office in cash, or by UPI / bank transfer quoting the student\'s GCC No.',
     'For UPI or bank payments, share the transaction reference with the office — a payment is confirmed only when a receipt is issued.',
     'Clear any balance shown on this receipt at the earliest. Fees once paid are non-refundable and non-transferable.',
