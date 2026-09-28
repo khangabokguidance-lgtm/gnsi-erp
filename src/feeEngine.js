@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from './supabase'
+import { printFeeReceipt, sectionsToItems } from './premiumReceipt'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. LEGACY HARDCODED RATES  (kept as fallback only — DB is now source of truth)
@@ -1546,29 +1547,6 @@ export const promoteToStudent = async (admission) => {
 // 12. PRINT RECEIPT
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Converts a rupee amount to words, Indian numbering (lakh/crore), e.g.
-// 5500 -> "Five Thousand Five Hundred Rupees Only". Used on the receipt so
-// it reads like a real bank/institutional receipt rather than just a number.
-function _amountToWords(num) {
-  num = Math.round(Number(num) || 0)
-  if (num === 0) return 'Zero Rupees Only'
-  const ones = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten',
-    'Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen']
-  const tens = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety']
-  const twoDigits = n => n < 20 ? ones[n] : tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '')
-  const threeDigits = n => (n >= 100 ? ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + twoDigits(n % 100) : '') : twoDigits(n))
-  const crore = Math.floor(num / 10000000); num %= 10000000
-  const lakh = Math.floor(num / 100000); num %= 100000
-  const thousand = Math.floor(num / 1000); num %= 1000
-  const hundred = num
-  const parts = []
-  if (crore) parts.push(threeDigits(crore) + ' Crore')
-  if (lakh) parts.push(threeDigits(lakh) + ' Lakh')
-  if (thousand) parts.push(threeDigits(thousand) + ' Thousand')
-  if (hundred) parts.push(threeDigits(hundred))
-  return parts.join(' ') + ' Rupees Only'
-}
-
 // Shared letterhead block used by the receipt and the two scholarship
 // documents below, so every printed document from the portal reads as one
 // consistent, professionally-branded series rather than three separate looks.
@@ -1605,102 +1583,18 @@ function _letterfoot(note) {
     </div>`
 }
 
-export const buildReceiptHTML = ({
-  receipt_no, pay_date, pay_mode, txn_ref, collected_by,
-  student_name, adm_no, gcc_no, class_name, course, hostel_type,
-  sections = [], items = [], total = 0,
-}) => {
-  const fmtAmt = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
-  const allSections = [
-    ...sections,
-    ...(items.length > 0 ? [{ title: '', color: '#1e3a5f', items, subtotal: items.reduce((s, i) => s + (Number(i.amount) || 0), 0) }] : []),
-  ]
-
-  const sectionRows = allSections.map(sec => `
-    ${sec.title ? `<tr><td colspan="2" style="padding:9px 14px 5px;font-size:10.5px;font-weight:800;color:${sec.color || '#1e3a5f'};text-transform:uppercase;letter-spacing:.4px;border-top:1px solid #e2e8f0;">${sec.title}</td></tr>` : ''}
-    ${sec.items.map(it => `<tr><td style="padding:5px 14px;font-size:12.5px;color:#334155;">${it.label}</td><td style="padding:5px 14px;font-size:12.5px;font-weight:700;color:#1e3a5f;text-align:right;">${fmtAmt(it.amount)}</td></tr>`).join('')}
-    ${allSections.length > 1 ? `<tr><td style="padding:5px 14px 10px;font-size:11.5px;font-weight:700;color:${sec.color || '#1e3a5f'};border-bottom:1px solid #e2e8f0;">Subtotal</td><td style="padding:5px 14px 10px;font-size:11.5px;font-weight:800;color:${sec.color || '#1e3a5f'};text-align:right;border-bottom:1px solid #e2e8f0;">${fmtAmt(sec.subtotal)}</td></tr>` : ''}
-  `).join('')
-
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Fee Receipt ${receipt_no}</title><style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#0f172a;background:white}
-    @page{size:A5;margin:10mm}
-    table{width:100%;border-collapse:collapse}
-    @media screen{
-      body{background:#e2e8f0;padding:24px}
-      .page{background:white;padding:22px 24px;box-shadow:0 4px 24px rgba(0,0,0,.14);max-width:420px;margin:0 auto;border-radius:10px;position:relative;overflow:hidden}
-      .pbtn{position:fixed;top:16px;right:16px;background:#1e3a5f;color:white;border:none;padding:10px 20px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}
-      .cbtn{position:fixed;top:16px;right:170px;background:#64748b;color:white;border:none;padding:10px 16px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px}
-    }
-    @media print{.np{display:none!important}}
-    .wm{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%) rotate(-28deg);font-size:64px;font-weight:900;color:#1e3a5f;opacity:.045;letter-spacing:4px;white-space:nowrap;pointer-events:none;z-index:0}
-    .content{position:relative;z-index:1}
-  </style></head><body>
-    <button class="pbtn np" onclick="window.print()">Print / Save PDF</button>
-    <button class="cbtn np" onclick="window.close()">Close</button>
-    <div class="page">
-      <div class="wm">${INSTITUTE.short}</div>
-      <div class="content">
-        ${_letterhead({ docType: 'Official Fee Receipt', docNo: receipt_no, accentColor: '#1e3a5f', docDate: pay_date })}
-
-        <table style="margin-bottom:2px;">
-          <tr><td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;width:26%;">Student</td><td style="padding:4px 0;font-size:13px;font-weight:800;color:#0f172a;" colspan="3">${student_name}</td></tr>
-          <tr>
-            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Adm. No.</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${adm_no || '—'}</td>
-            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">GCC No.</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${gcc_no || '—'}</td>
-          </tr>
-          <tr>
-            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Class</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${class_name || '—'}</td>
-            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Course</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${course || '—'}</td>
-          </tr>
-          <tr>
-            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Hostel</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${hostel_type || '—'}</td>
-            <td style="padding:4px 0;font-size:9.5px;color:#94a3b8;text-transform:uppercase;font-weight:700;">Pay Mode</td><td style="padding:4px 0;font-size:12px;font-weight:700;color:#334155;">${pay_mode}${txn_ref ? ' &middot; ' + txn_ref : ''}</td>
-          </tr>
-        </table>
-
-        <div style="margin:14px 0 4px;font-size:10px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.5px;border-left:3px solid #1e3a5f;padding:2px 8px;background:#f8fafc;">Fee Particulars</div>
-        <table style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
-          <tbody>${sectionRows}</tbody>
-        </table>
-
-        <div style="display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#1e3a5f,#3730a3);color:white;padding:13px 16px;border-radius:8px;font-size:16px;font-weight:900;margin-top:12px;">
-          <span style="letter-spacing:.4px;">TOTAL PAID</span><span>${fmtAmt(total)}</span>
-        </div>
-        <div style="font-size:10.5px;color:#64748b;font-style:italic;margin-top:6px;padding:0 2px;">${_amountToWords(total)}</div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:34px;">
-          <div style="text-align:center;">
-            <div style="border-top:1.3px solid #1e3a5f;width:88%;margin:0 auto 4px;"></div>
-            <div style="font-size:10.5px;font-weight:700;color:#1e3a5f;">${collected_by || 'GNSI Office'}</div>
-            <div style="font-size:9px;color:#64748b;">Received By</div>
-          </div>
-          <div style="text-align:center;">
-            <div style="border-top:1.3px solid #1e3a5f;width:88%;margin:0 auto 4px;"></div>
-            <div style="font-size:10.5px;font-weight:700;color:#1e3a5f;">Authorised Signatory</div>
-            <div style="font-size:9px;color:#64748b;">${INSTITUTE.short}</div>
-          </div>
-        </div>
-
-        ${_letterfoot('This is a computer-generated receipt and is valid without a physical signature or seal.<br/>Please retain this receipt for your records &middot; Disputes must be reported within 7 days.')}
-      </div>
-    </div>
-  </body></html>`
-}
-
+// Fee receipts use the one shared design (premiumReceipt.js) — A4, fee
+// position, receiving staff, instructions. `sections` come from collectFee().
 export const printReceipt = ({
   receipt_no, pay_date, pay_mode, txn_ref, collected_by,
   student_name, adm_no, gcc_no, class_name, course, hostel_type,
   sections = [], items = [], total = 0,
 }) => {
-  const html = buildReceiptHTML({ receipt_no, pay_date, pay_mode, txn_ref, collected_by, student_name, adm_no, gcc_no, class_name, course, hostel_type, sections, items, total })
-  const win = window.open('', '_blank', 'width=520,height=750')
-  if (!win) { alert('Allow pop-ups to print receipt'); return }
-  win.document.write(html)
-  win.document.close()
-  win.focus()
-  setTimeout(() => { win.print(); win.close() }, 400)
+  printFeeReceipt({
+    receipt_no, pay_date, pay_mode, txn_ref, collected_by,
+    student_name, adm_no, gcc_no, class_name, course, hostel_type,
+    items: [...sectionsToItems(sections, hostel_type), ...items], total,
+  })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -94,23 +94,15 @@ function historyBlock(h) {
       </div>`
 }
 
-function receiptHTML(d, hist) {
-  const rows = (d.items || []).map(it => ({ ...(it.particulars ? it : itemRow(it, d.hostel_type)), amount: Number(it.amount || 0) }))
-  const gross = rows.reduce((s, r) => s + r.amount, 0)
-  const discount = Number(d.discount || 0)
-  const net = d.total != null ? Number(d.total) : gross - discount
-  const rno = d.receipt_no || '—'
-  const printed = new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-  const cell = (l, v, extra = '') => `<td class="c"${extra}><div class="l">${l}</div><div class="v">${v}</div></td>`
-  const bodyRows = rows.map((r, i) => `<tr><td>${i + 1}</td><td style="font-weight:700">${escH(r.particulars)}</td><td>${escH(r.period)}</td><td>${escH(r.category)}</td><td class="r mono" style="font-weight:700">${money(r.amount)}</td></tr>`).join('')
-  const by = d.collected_by ? escH(d.collected_by) : '—'
-
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Receipt ${escH(rno)}</title><style>
+// ── Shared receipt kit ───────────────────────────────────────────────────────
+// Every printed receipt / voucher in the ERP uses these pieces so they look
+// the same: letterhead, navy title band, A4 sheet, info grid, footer bar.
+export const RECEIPT_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@700&family=JetBrains+Mono:wght@500;700&display=swap');
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Inter',Arial,sans-serif;background:#EEF1F5;color:#111827;display:flex;flex-direction:column;align-items:center;padding:20px 12px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .mono{font-family:'JetBrains Mono',monospace}
-  /* A4 = 210 × 297 mm; 8 mm print margins leave 194 × 281 mm for the sheet. */
+  /* A4 = 210 × 297 mm; 8 mm print margins leave 194 × 281 mm — the sheet uses 279 mm so rounding never spills a blank page. */
   .sheet{width:194mm;max-width:100%;min-height:281mm;background:#fff;border:1px solid #D6DCE5;box-shadow:0 24px 60px rgba(15,23,42,.14);display:flex;flex-direction:column}
   .top{display:flex;align-items:center;gap:14px;padding:16px 22px 12px}
   .logo{width:54px;height:54px;border-radius:12px;background:linear-gradient(145deg,#0B1E3D,#1F4E8C);color:#E2C57E;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:20px;font-weight:700;flex-shrink:0}
@@ -162,9 +154,16 @@ function receiptHTML(d, hist) {
   .btns{display:flex;gap:10px;justify-content:center;margin-top:14px}
   .btn{padding:10px 24px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;border:1px solid #0B1E3D}
   @page{size:A4 portrait;margin:8mm}
-  @media print{body{background:#fff;padding:0;display:block}.sheet{box-shadow:none;border:none;width:194mm;min-height:0;height:281mm;overflow:hidden;zoom:var(--fit,1)}.btns{display:none}}
-  </style></head><body>
-  <div class="sheet" id="sheet">
+  @media print{html,body{margin:0;background:#fff;padding:0;display:block}.sheet{box-shadow:none;border:none;width:194mm;min-height:0;height:279mm;overflow:hidden;zoom:var(--fit,1);margin:0}.sheet+.sheet{break-before:page;margin-top:0}.btns{display:none}}
+  .sheet+.sheet{margin-top:18px}
+`
+
+export const esc = escH
+export { money, fmtDate }
+
+// Letterhead + title band. title e.g. 'FEE RECEIPT'; tag e.g. 'ORIGINAL · PAID'.
+export function receiptHeader(title, tag = 'ORIGINAL') {
+  return `
     <div class="top">
       <div class="logo">GN</div>
       <div>
@@ -173,8 +172,55 @@ function receiptHTML(d, hist) {
       </div>
       <div class="contact"><b>Khangabok, Thoubal, Manipur</b><br/>📞 +91 89742 98074<br/>🌐 guidancekhangabok.in</div>
     </div>
-    <div class="band"><span class="t">FEE RECEIPT</span><span class="p">ORIGINAL · PAID</span></div>
-    <div class="accent"></div>
+    <div class="band"><span class="t">${escH(title)}</span>${tag ? `<span class="p">${escH(tag)}</span>` : ''}</div>
+    <div class="accent"></div>`
+}
+
+// Boxed label/value grid. rows: [[label, valueHTML, span?], …] per row (spans total 4).
+export function infoGrid(rows) {
+  return `<table class="info"><tbody>${rows.map(r => `<tr>${r.map(([l, v, span]) => `<td class="c"${span > 1 ? ` colspan="${span}"` : ''}><div class="l">${escH(l)}</div><div class="v">${v == null || v === '' ? '—' : v}</div></td>`).join('')}</tr>`).join('')}</tbody></table>`
+}
+
+export function receiptSheet(inner, footLeft, footRight) {
+  const printed = new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return `<div class="sheet">${inner}<div class="bottom"><span>${footLeft ?? `Printed: ${escH(printed)}`}</span><span>${footRight ?? 'Guidance Navodaya &amp; Sainik Institute'}</span></div></div>`
+}
+
+// Full HTML document for one or more sheets; each sheet prints on its own A4
+// page and shrinks to fit if its content is taller than the page.
+export function receiptDocument(title, sheets, { extraCss = '', extraHead = '', printLabel = '🖨 Print' } = {}) {
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escH(title)}</title>${extraHead}<style>${RECEIPT_CSS}${extraCss}</style></head><body>
+  ${sheets}
+  <div class="btns"><button class="btn" style="background:#0B1E3D;color:#fff" onclick="window.print()">${printLabel}</button><button class="btn" style="background:#fff;color:#0B1E3D" onclick="window.close()">Close</button></div>
+  <script>
+  (function(){function fit(){var max=279*96/25.4;document.querySelectorAll('.sheet').forEach(function(s){s.style.setProperty('--fit','1');s.style.height='auto';s.style.minHeight='0';var h=s.scrollHeight;s.style.height='';s.style.minHeight='';s.style.setProperty('--fit',h>max?(max/h).toFixed(3):'1')})}fit();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);window.addEventListener('beforeprint',fit)})()
+  </script>
+  </body></html>`
+}
+
+// Open a print window synchronously (inside the click, so pop-up blockers
+// allow it) and fill it with html — or a promise of html.
+export function openReceiptWindow(title, html, { autoPrint = true } = {}) {
+  const pw = window.open('', '_blank', 'width=860,height=1000,scrollbars=yes')
+  if (pw) pw.document.write(`<p style="font:600 14px system-ui;color:#475569;padding:40px;text-align:center">Preparing ${escH(title)}…</p>`)
+  Promise.resolve(html).then(h => {
+    if (!pw) { window.open(URL.createObjectURL(new Blob([h], { type: 'text/html' })), '_blank'); return }
+    pw.document.open(); pw.document.write(h); pw.document.close(); pw.document.title = title
+    if (autoPrint) setTimeout(() => { try { pw.focus(); pw.print() } catch { /* window closed */ } }, 900)
+  })
+}
+
+// One fee receipt sheet.
+function feeReceiptSheet(d, hist) {
+  const rows = (d.items || []).map(it => ({ ...(it.particulars ? it : itemRow(it, d.hostel_type)), amount: Number(it.amount || 0) }))
+  const gross = rows.reduce((s, r) => s + r.amount, 0)
+  const discount = Number(d.discount || 0)
+  const net = d.total != null ? Number(d.total) : gross - discount
+  const rno = d.receipt_no || '—'
+  const cell = (l, v, extra = '') => `<td class="c"${extra}><div class="l">${l}</div><div class="v">${v}</div></td>`
+  const bodyRows = rows.map((r, i) => `<tr><td>${i + 1}</td><td style="font-weight:700">${escH(r.particulars)}</td><td>${escH(r.period)}</td><td>${escH(r.category)}</td><td class="r mono" style="font-weight:700">${money(r.amount)}</td></tr>`).join('')
+  const by = d.collected_by ? escH(d.collected_by) : '—'
+  return receiptSheet(receiptHeader('FEE RECEIPT', 'ORIGINAL · PAID') + `
     <div class="wrap">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px">
         <div><div class="l">Receipt No.</div><div class="mono" style="font-size:17px;font-weight:700;color:#0B1E3D;margin-top:2px">${escH(rno)}</div></div>
@@ -208,16 +254,13 @@ function receiptHTML(d, hist) {
         <div class="sig"><div class="line"></div><div class="who">${by === '—' ? 'Accounts' : by}</div><div class="l">Received by (signature)</div></div>
       </div>
     </div>
-    <div class="bottom"><span>Printed: ${escH(printed)}</span><span>Thank you — wishing ${escH(d.student_name)} every success.</span></div>
-  </div>
-  <div class="btns"><button class="btn" style="background:#0B1E3D;color:#fff" onclick="window.print()">🖨 Print receipt</button><button class="btn" style="background:#fff;color:#0B1E3D" onclick="window.close()">Close</button></div>
-  <script>
-  // Keep the receipt on ONE A4 page: if the content is taller than the
-  // printable area (281 mm), shrink it to fit when printing.
-  (function(){var s=document.getElementById('sheet');function fit(){s.style.height='auto';s.style.minHeight='0';var h=s.scrollHeight,max=281*96/25.4;s.style.height='';s.style.minHeight='';document.documentElement.style.setProperty('--fit',h>max?(max/h).toFixed(3):'1')}fit();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);window.addEventListener('beforeprint',fit)})()
-  </script>
-  </body></html>`
+`, undefined, `Thank you — wishing ${escH(d.student_name)} every success.`)
 }
+
+const withHistory = d => d.history !== undefined ? Promise.resolve(d.history)
+  : import('./receiptHistory')
+    .then(m => Promise.race([m.loadReceiptHistory(d), new Promise(r => setTimeout(() => r(null), 8000))]))
+    .catch(e => { console.warn('Receipt history unavailable:', e); return null })
 
 /**
  * printFeeReceipt({ receipt_no, pay_date, pay_mode, txn_ref, collected_by,
@@ -229,19 +272,74 @@ function receiptHTML(d, hist) {
  * the fee tables unless `history` is passed (null = leave it out).
  */
 export function printFeeReceipt(d) {
-  const rno = d.receipt_no || '—'
-  // Open the window now (inside the click) so pop-up blockers allow it, then fill it.
-  const pw = window.open('', '_blank', 'width=860,height=1000,scrollbars=yes')
-  const write = hist => {
-    const html = receiptHTML(d, hist)
-    if (!pw) { window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank'); return }
-    pw.document.open(); pw.document.write(html); pw.document.close(); pw.document.title = 'Receipt ' + rno
-    setTimeout(() => { try { pw.focus(); pw.print() } catch { /* window closed */ } }, 900)
+  const title = 'Receipt ' + (d.receipt_no || '—')
+  openReceiptWindow(title, withHistory(d).then(h => receiptDocument(title, feeReceiptSheet(d, h), { printLabel: '🖨 Print receipt' })))
+}
+
+// Several fee receipts in one print job, one A4 page each (e.g. Bulk Admission).
+export function printFeeReceipts(list, title = 'Fee receipts') {
+  if (!list?.length) return
+  openReceiptWindow(title, Promise.all(list.map(d => withHistory(d).then(h => feeReceiptSheet(d, h))))
+    .then(sheets => receiptDocument(title, sheets.join(''), { printLabel: `🖨 Print ${list.length} receipt${list.length === 1 ? '' : 's'}` })))
+}
+
+// Convert the fee engine's receipt sections ({title, items:[{label, amount}]})
+// into bill rows for the receipt above.
+export function sectionsToItems(sections = [], hostelType = '') {
+  const flag = l => [/ADVANCE/.test(l) && 'Advance', /UNDERPAID/.test(l) && 'Underpaid'].filter(Boolean).join(', ')
+  const out = []
+  for (const sec of sections) {
+    const t = String(sec.title || '')
+    for (const it of sec.items || []) {
+      const l = String(it.label || ''), f = flag(l), base = l.split(' · ')[0]
+      if (/^Monthly Flat/i.test(t)) {
+        const m = base.match(/^(\S+ \d{4})/)
+        out.push({ particulars: `Monthly Flat Fee${f ? ` (${f})` : ''}`, period: m ? m[1] : base, category: hostelType || 'Hostel', amount: it.amount })
+      } else if (/^Course/i.test(t)) {
+        const [crs, month] = l.split(' — ')
+        out.push({ particulars: `Course Fee — ${crs.replace(' · ', ' ')}${f ? ` (${f})` : ''}`, period: (month || '').split(' · ')[0] || '—', category: 'Course', amount: it.amount })
+      } else if (/^Advance/i.test(t)) {
+        out.push({ particulars: l || 'Advance', period: '—', category: 'Advance', amount: it.amount })
+      } else {
+        out.push({ particulars: l || 'Fee', period: 'One-time', category: t || 'Admission & Kit', amount: it.amount })
+      }
+    }
   }
-  if (pw) pw.document.write(`<p style="font:600 14px system-ui;color:#475569;padding:40px;text-align:center">Preparing receipt ${escH(rno)}…</p>`)
-  if (d.history !== undefined) { write(d.history); return }
-  import('./receiptHistory')
-    .then(m => Promise.race([m.loadReceiptHistory(d), new Promise(r => setTimeout(() => r(null), 8000))]))
-    .catch(e => { console.warn('Receipt history unavailable:', e); return null })
-    .then(write)
+  return out
+}
+
+// ── Accounts voucher (receipt voucher for income, payment voucher for expense) ──
+export function printAccountVoucher(item, { party = '' } = {}) {
+  const isIncome = item.type === 'Income'
+  const title = isIncome ? 'RECEIPT VOUCHER' : 'PAYMENT VOUCHER'
+  const vno = item.voucher_no || item.id || '—'
+  const amt = Number(item.amount || 0)
+  const who = party || item.voucher_head || ''
+  const body = `
+    <div class="wrap">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px">
+        <div><div class="l">Voucher No.</div><div class="mono" style="font-size:17px;font-weight:700;color:#0B1E3D;margin-top:2px">${escH(vno)}</div></div>
+        <div style="text-align:center">${barcodeSVG(String(vno))}</div>
+        <div style="text-align:right"><div class="l">Voucher Date</div><div style="font-size:13px;font-weight:700;margin-top:2px">${escH(fmtDate(item.entry_date))}</div></div>
+      </div>
+      ${infoGrid([
+        [[isIncome ? 'Received from' : 'Paid to', escH(who || '—'), 2], ['Type', escH(item.type)], ['Status', escH(item.status || 'Confirmed')]],
+        [['Head / Category', escH([item.category, item.sub_category].filter(Boolean).join(' › ') || '—'), 2], ['Account', escH(item.account_type || 'Cash A/c')], ['Payment Mode', escH(item.payment_mode || '—')]],
+        [['Entered by (staff)', escH(item.added_by || item.edited_by || '—'), 2], [isIncome ? 'Date received' : 'Date paid', escH(fmtDate(item.payment_date || item.entry_date))], ['Recurring', item.is_recurring ? 'Yes' : 'No']],
+      ])}
+      <table class="items"><thead><tr><th style="width:40px">Sl.</th><th>Particulars</th><th class="r" style="width:130px">Amount (₹)</th></tr></thead>
+        <tbody><tr><td>1</td><td style="font-weight:700">${escH(item.note || item.description || item.category || '—')}</td><td class="r mono" style="font-weight:700">${money(amt)}</td></tr></tbody></table>
+      <div style="display:flex;justify-content:flex-end;margin-top:-1px">
+        <table class="tot" style="width:300px"><tbody><tr class="net"><td>${isIncome ? 'AMOUNT RECEIVED' : 'AMOUNT PAID'}</td><td class="r amt">₹ ${money(amt)}</td></tr></tbody></table>
+      </div>
+      <div class="words"><span class="l" style="margin-right:6px">Amount in words:</span><b>${amountInWords(amt)}</b></div>
+      ${item.receipt_url ? `<div class="words" style="border-style:solid"><span class="l" style="margin-right:6px">Bill / proof attached:</span><span class="mono" style="font-size:10px;word-break:break-all">${escH(item.receipt_url)}</span></div>` : ''}
+      <div class="foot" style="padding-top:40px">
+        <div class="sig"><div class="line"></div><div class="who">${escH(item.added_by || '—')}</div><div class="l">Prepared by</div></div>
+        <div class="sig"><div class="line"></div><div class="who">${escH(who || ' ')}</div><div class="l">${isIncome ? 'Paid by' : 'Received by (payee)'}</div></div>
+        <div class="sig"><div class="line"></div><div class="who">&nbsp;</div><div class="l">Authorised signatory</div></div>
+      </div>
+    </div>`
+  const doc = receiptDocument(`${title} ${vno}`, receiptSheet(receiptHeader(title, isIncome ? 'INCOME' : 'EXPENDITURE') + body), { extraCss: `.band .p{color:${isIncome ? '#86EFAC' : '#FCA5A5'};border-color:currentColor}.net .amt{color:#E2C57E}.foot .sig{min-width:0;flex:1}`, printLabel: '🖨 Print voucher' })
+  openReceiptWindow(`${title} ${vno}`, doc)
 }

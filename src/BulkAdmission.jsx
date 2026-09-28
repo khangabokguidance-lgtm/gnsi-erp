@@ -26,6 +26,7 @@ import {
 } from './feeEngine'
 import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen } from './monthLock'
+import { printFeeReceipts } from './premiumReceipt'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -53,92 +54,18 @@ const C = {
   },
 }
 
-// ─── Amount in words ──────────────────────────────────────────────────────────
-
-function amountInWords(n) {
-  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
-    'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen']
-  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
-  if (!n || isNaN(n)) return 'Zero Rupees Only'
-  n = parseInt(n)
-  if (n === 0) return 'Zero Rupees Only'
-  const w = num => {
-    if (num < 20) return ones[num]
-    if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 ? ' ' + ones[num % 10] : '')
-    return ones[Math.floor(num / 100)] + ' Hundred' + (num % 100 ? ' ' + w(num % 100) : '')
-  }
-  let result = ''
-  if (n >= 100000) { result += w(Math.floor(n / 100000)) + ' Lakh '; n %= 100000 }
-  if (n >= 1000)   { result += w(Math.floor(n / 1000))   + ' Thousand '; n %= 1000 }
-  result += w(n)
-  return result.trim() + ' Rupees Only'
-}
-
-// ─── Receipt HTML (was referenced but never defined) ─────────────────────────
-
-const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
-
-function buildReceiptHTML(r) {
-  const rows = (r.items || []).map((it, i) =>
-    `<tr><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0">${i + 1}</td><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0">${esc(it.label)}</td><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right">₹${fmt(it.amount)}</td></tr>`
-  ).join('')
-  return `<div style="max-width:640px;margin:0 auto 18px;background:#fff;border:1.5px solid #0f2744;border-radius:8px;padding:22px 26px;font-family:Georgia,serif;color:#0f172a">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px double #0f2744;padding-bottom:10px;margin-bottom:12px">
-      <div><div style="font-size:19px;font-weight:700;color:#0f2744">Guidance Navodaya &amp; Sainik Institute</div>
-      <div style="font-size:10.5px;color:#64748b;margin-top:2px">Khangabok, Thoubal, Manipur</div></div>
-      <div style="text-align:right"><div style="font-size:11px;font-weight:700;background:#0f2744;color:#fff;padding:3px 10px;border-radius:4px">FEE RECEIPT</div>
-      <div style="font-size:11px;margin-top:5px">No. <b>${esc(r.receipt_no)}</b></div><div style="font-size:11px">Date: ${esc(r.pay_date)}</div></div>
-    </div>
-    <table style="width:100%;font-size:12.5px;margin-bottom:12px"><tr>
-      <td>Student: <b>${esc(r.student_name)}</b></td><td>GCC: <b>${esc(r.gcc_no)}</b></td></tr><tr>
-      <td>Adm. No: ${esc(r.adm_no || '--')}</td><td>Class: ${esc(r.class_name || '')} ${r.course ? '· ' + esc(r.course) : ''}</td></tr></table>
-    <table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#0f2744;color:#fff">
-      <th style="padding:6px 8px;text-align:left;width:34px">#</th><th style="padding:6px 8px;text-align:left">Particulars</th><th style="padding:6px 8px;text-align:right">Amount</th></tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot><tr><td></td><td style="padding:8px;text-align:right;font-weight:700">Total</td><td style="padding:8px;text-align:right;font-weight:700">₹${fmt(r.total)}</td></tr></tfoot></table>
-    <div style="font-size:11.5px;font-style:italic;margin:6px 0 12px">${esc(amountInWords(r.total))}</div>
-    <div style="display:flex;justify-content:space-between;font-size:11.5px;color:#334155">
-      <span>Mode: ${esc(r.pay_mode)}${r.txn_ref ? ' · Ref: ' + esc(r.txn_ref) : ''}</span><span>Collected by: <b>${esc(r.collected_by || '—')}</b></span></div>
-  </div>`
-}
 
 // ─── Receipt Printer ──────────────────────────────────────────────────────────
 
 function ReceiptPrinter({ receipts, onClose }) {
-  const print = () => {
-  
-    // Open all receipts in one print window separated by page breaks
-    const combined = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-    <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#f5f5f0;padding:20px}@page{margin:10mm}@media print{body{padding:0}.break{page-break-after:always}}</style>
-    </head><body>
-    ${receipts.map((r, i) => `
-      <div class="${i < receipts.length - 1 ? 'break' : ''}">
-        ${buildReceiptHTML({
-          receipt_no:   r.receipt_no,
-          pay_date:     r.pay_date,
-          pay_mode:     r.pay_mode,
-          txn_ref:      r.txn_ref,
-          collected_by: r.collected_by,
-          student_name: r.student_name,
-          adm_no:       r.adm_no,
-          gcc_no:       r.gcc,
-          class_name:   r.batch,
-          course:       r.course,
-          items:        r.items,
-          total:        r.total,
-        })}
-      </div>`).join('')}
-    </body></html>`
-
-    const pw = window.open('', '_blank', 'width=720,height=840,scrollbars=yes')
-    if (!pw) {
-      window.open(URL.createObjectURL(new Blob([combined], { type: 'text/html' })), '_blank')
-      return
-    }
-    pw.document.write(combined)
-    pw.document.close()
-    setTimeout(() => { pw.print() }, 400)
-  }
+  // Same receipt design as every other fee receipt (premiumReceipt.js), one A4 page each.
+  const print = () => printFeeReceipts(receipts.map(r => ({
+    receipt_no: r.receipt_no, pay_date: r.pay_date, pay_mode: r.pay_mode, txn_ref: r.txn_ref,
+    collected_by: r.collected_by, student_name: r.student_name, adm_no: r.adm_no, gcc_no: r.gcc,
+    class_name: r.batch, course: r.course, hostel_type: r.hostel_type,
+    items: (r.items || []).map(it => ({ particulars: it.label, period: 'One-time', category: /admission/i.test(it.label) ? 'Admission' : 'Kit / Items', amount: it.amount })),
+    total: r.total,
+  })), `Admission receipts (${receipts.length})`)
 
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}
@@ -334,6 +261,7 @@ export default function BulkAdmissionFee({ currentUser = null } = {}) {
             student_name: name,
             gcc:          gc,
             course:       s.course,
+            hostel_type:  s.hostel_type,
             batch,
             pay_mode:     payMode,
             pay_date:     payDate,
