@@ -343,3 +343,52 @@ export function printAccountVoucher(item, { party = '' } = {}) {
   const doc = receiptDocument(`${title} ${vno}`, receiptSheet(receiptHeader(title, isIncome ? 'INCOME' : 'EXPENDITURE') + body), { extraCss: `.band .p{color:${isIncome ? '#86EFAC' : '#FCA5A5'};border-color:currentColor}.net .amt{color:#E2C57E}.foot .sig{min-width:0;flex:1}`, printLabel: '🖨 Print voucher' })
   openReceiptWindow(`${title} ${vno}`, doc)
 }
+
+// ── Store sales bill ─────────────────────────────────────────────────────────
+export const STORE_BILL_NOTES = [
+  'Goods once sold are exchangeable only with this bill, within 7 days, in unused condition.',
+  'Please check the items and the balance returned before leaving the counter.',
+  'Any balance shown as due is added to the student\'s account and must be cleared with the fees.',
+]
+
+export function printStoreBill(sale) {
+  const items = Array.isArray(sale.items) ? sale.items : Array.isArray(sale.store_sale_items) ? sale.store_sale_items : []
+  const bno = sale.bill_no || '—'
+  const due = Number(sale.due_amount || 0)
+  const rows = items.map((i, k) => `<tr><td>${k + 1}</td><td style="font-weight:700">${escH(i.name)}</td><td>${escH(i.size || '—')}</td><td class="r mono">${Number(i.qty || 0)}</td><td class="r mono">${money(i.price)}</td><td class="r mono" style="font-weight:700">${money(i.amount)}</td></tr>`).join('')
+  const line = (k, v, cls = '') => `<tr${cls ? ` class="${cls}"` : ''}><td class="k">${k}</td><td class="r mono">${v}</td></tr>`
+  const body = `
+    <div class="wrap">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px">
+        <div><div class="l">Bill No.</div><div class="mono" style="font-size:17px;font-weight:700;color:#0B1E3D;margin-top:2px">${escH(bno)}</div></div>
+        <div style="text-align:center">${barcodeSVG(bno)}<div class="mono" style="font-size:8.5px;color:#64748B;margin-top:1px;letter-spacing:.2em">${escH(bno)}</div></div>
+        <div style="text-align:right"><div class="l">Bill Date</div><div style="font-size:13px;font-weight:700;margin-top:2px">${escH(fmtDate(sale.sale_date))}</div></div>
+      </div>
+      ${infoGrid([
+        [['Customer', escH(sale.customer_name || 'Walk-in customer'), 2], ['GCC No.', sale.gcc_no ? `<span class="mono">GCC-${escH(sale.gcc_no)}</span>` : '—'], ['Phone', escH(sale.phone || '—')]],
+        [['Billed by (staff)', escH(sale.collected_by || '—'), 2], ['Payment Mode', escH(sale.pay_mode || (Number(sale.amount_paid) > 0 ? '—' : 'On account'))], ['Transaction Ref.', sale.txn_ref ? `<span class="mono">${escH(sale.txn_ref)}</span>` : '—']],
+      ])}
+      <table class="items"><thead><tr><th style="width:40px">Sl.</th><th>Item</th><th style="width:90px">Size</th><th class="r" style="width:60px">Qty</th><th class="r" style="width:100px">Rate (₹)</th><th class="r" style="width:110px">Amount (₹)</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:#94A3B8">—</td></tr>'}</tbody></table>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-top:-1px">
+        <div class="stamp" style="${due > 0 ? `border-color:rgba(${Number(sale.amount_paid) ? '154,91,0' : '180,35,24'},.55);color:rgba(${Number(sale.amount_paid) ? '154,91,0' : '180,35,24'},.85);${Number(sale.amount_paid) ? 'font-size:11.5px' : ''}` : ''}">${due > 0 ? (Number(sale.amount_paid) ? 'PART PAID' : 'DUE') : 'PAID'}<small>GNSI STORE · ${escH(fmtDate(sale.sale_date))}</small></div>
+        <table class="tot" style="width:300px"><tbody>
+          ${line('Subtotal', money(sale.subtotal ?? items.reduce((s, i) => s + Number(i.amount || 0), 0)))}
+          ${Number(sale.discount) > 0 ? line('Discount', '− ' + money(sale.discount)) : ''}
+          <tr class="net"><td>TOTAL</td><td class="r amt">₹ ${money(sale.total)}</td></tr>
+          ${line('Amount paid', money(sale.amount_paid))}
+          ${Number(sale.tendered) > 0 ? line('Cash tendered', money(sale.tendered)) + line('Change returned', money(sale.change)) : ''}
+          ${due > 0 ? `<tr><td class="k" style="color:#B42318;font-weight:800">Balance due (student account)</td><td class="r mono" style="color:#B42318;font-weight:800">${money(due)}</td></tr>` : ''}
+        </tbody></table>
+      </div>
+      <div class="words"><span class="l" style="margin-right:6px">Amount in words:</span><b>${amountInWords(sale.total)}</b></div>
+      ${Number(sale.points_earned) > 0 ? `<div class="words" style="border-style:solid;border-color:#E9D9B0;background:#FFFCF4">⭐ <b>${Number(sale.points_earned)}</b> loyalty points earned on this bill.</div>` : ''}
+      <div class="instr" style="grid-template-columns:1fr"><div><h4>🛍️ Store policy</h4><ol>${STORE_BILL_NOTES.map(x => `<li>${escH(x)}</li>`).join('')}</ol></div></div>
+      <div class="foot">
+        <div class="note" style="font-style:italic">This is a computer-generated bill.</div>
+        <div class="sig"><div class="line"></div><div class="who">${escH(sale.collected_by || 'GNSI Store')}</div><div class="l">Billed by (signature)</div></div>
+      </div>
+    </div>`
+  const title = 'Bill ' + bno
+  openReceiptWindow(title, receiptDocument(title, receiptSheet(receiptHeader('SALES BILL', due > 0 ? 'GNSI STORE · BALANCE DUE' : 'GNSI STORE · PAID') + body, undefined, 'Thank you for shopping at the GNSI Store.'), { printLabel: '🖨 Print bill' }), { autoPrint: true })
+}

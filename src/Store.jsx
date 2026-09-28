@@ -4,6 +4,7 @@ import { PremiumStyles, PremiumHero } from './premiumUI'
 import { getActiveStudents } from './studentQueries'
 import { isAdminRole } from './roles'
 import { gccStr } from './feeEngine'
+import { printStoreBill } from './premiumReceipt'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GNSI Store — counter POS, inventory, online orders, sales, purchases, reports.
@@ -57,7 +58,7 @@ function downloadFile(name, text, type = 'text/csv;charset=utf-8') {
 }
 function parseCSV(text) {
   const rows = []; let row = [], cell = '', q = false
-  const t = text.replace(/^﻿/, '')
+  const t = text.replace(/^\uFEFF/, '')
   for (let i = 0; i < t.length; i++) {
     const c = t[i]
     if (q) {
@@ -105,6 +106,16 @@ const Modal = ({ children, onClose, width = 560, busy }) => (
 const inp = { width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, outline: 'none', boxSizing: 'border-box', background: 'white', fontFamily: 'inherit' }
 const lbl = { display: 'block', fontSize: 11, fontWeight: 700, color: '#475569', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.03em' }
 const card = { background: 'white', border: '1px solid #e2e8f0', borderRadius: 12 }
+// Clock reads for event handlers (ids, timestamps) — kept out of component bodies.
+const nowMs = () => Date.now()
+const nowISO = () => new Date().toISOString()
+
+// Small display pieces used by the reports / product panels (module level so
+// React keeps them stable between renders).
+function SumLine({ l, v, c, b }) { return <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13, fontWeight: b ? 800 : 500, color: c || '#334155' }}><span>{l}</span><span>{v}</span></div> }
+function StatBox({ title, children }) { return <div style={{ ...card, padding: 16 }}><div style={{ fontSize: 13, fontWeight: 800, color: NAVY, marginBottom: 10 }}>{title}</div>{children}</div> }
+function StatRow({ l, r, c }) { return <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f8fafc', fontSize: 12.5 }}><span style={{ color: '#475569' }}>{l}</span><span style={{ fontWeight: 800, color: c || '#0f172a' }}>{r}</span></div> }
+function KpiTile({ l, v, c = NAVY }) { return <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}><div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>{l}</div><div style={{ fontSize: 18, fontWeight: 900, color: c }}>{v}</div></div> }
 const btn = (bg, color = 'white', extra = {}) => ({ padding: '8px 14px', borderRadius: 8, border: 'none', background: bg, color, fontSize: 12, fontWeight: 700, cursor: 'pointer', ...extra })
 
 function useWindowWidth() {
@@ -137,7 +148,7 @@ function chime() {
       g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.25, at + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.35)
       o.start(at); o.stop(at + 0.4)
     })
-  } catch {}
+  } catch { /* not available here — safe to ignore */ }
 }
 
 // ── Accounts posting ────────────────────────────────────────────────────────
@@ -160,8 +171,14 @@ async function softDeleteAccounts(ref) {
 }
 
 // ── Printable bill ──────────────────────────────────────────────────────────
-function printBill(sale) {
-  const items = sale.items || sale.store_sale_items || []
+// A4 bill in the shared receipt design (premiumReceipt.js); the narrow
+// counter slip below is kept as an option for 80 mm counter printers.
+const SLIP_KEY = 'gnsi_pos_bill_slip'
+const slipPreferred = () => { try { return localStorage.getItem(SLIP_KEY) === 'on' } catch { return false } }
+function printBill(sale) { return slipPreferred() ? printSlip(sale) : printStoreBill(sale) }
+
+function printSlip(sale) {
+  const items = Array.isArray(sale.items) ? sale.items : (sale.store_sale_items || [])
   const rows = items.map((i, idx) => `<tr><td>${idx + 1}</td><td>${esc(i.name)}${i.size ? ' — ' + esc(i.size) : ''}</td><td class="r">${i.qty}</td><td class="r">₹${n(i.price)}</td><td class="r">₹${n(i.amount)}</td></tr>`).join('')
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${esc(sale.bill_no)}</title><style>
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#0f172a;padding:14px}
@@ -354,13 +371,14 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
   const [payOpen, setPayOpen] = useState(false)
   const [partPay, setPartPay] = useState(false)
   const [done, setDone] = useState(null) // completed sale shown on the success screen
+  const [slip, setSlip] = useState(slipPreferred)
   const [autoPrint, setAutoPrint] = useState(() => { try { return localStorage.getItem(AUTOPRINT_KEY) !== 'off' } catch { return true } })
   const [freq, setFreq] = useState(() => { try { return JSON.parse(localStorage.getItem(FREQ_KEY) || '{}') } catch { return {} } })
   const [flash, setFlash] = useState(null)
   const searchRef = useRef(null)
   const sheetRef = useRef(null)
   const billRef = useRef(null)
-  const saveHeld = list => { setHeld(list); try { localStorage.setItem(HELD_KEY, JSON.stringify(list)) } catch {} }
+  const saveHeld = list => { setHeld(list); try { localStorage.setItem(HELD_KEY, JSON.stringify(list)) } catch { /* not available here — safe to ignore */ } }
 
   const byId = useMemo(() => new Map(products.map(p => [p.id, p])), [products])
   const sellable = useMemo(() => products.filter(p => p.active), [products])
@@ -403,6 +421,7 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
 
   useEffect(() => {
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a new customer starts with no points redeemed
     setRedeemPts('')
     if (custType !== 'student' || !student) { setLoyaltyBalance(null); return }
     supabase.rpc('store_loyalty_balance', { p_gcc: gccStr(student.gcc_no) }).then(({ data, error }) => {
@@ -477,7 +496,7 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
   const holdBill = () => {
     if (!lines.length) { showToast('Nothing to hold — the bill is empty.', '#d97706'); return }
     const label = student ? student.name : custName.trim() || `Bill ${held.length + 1}`
-    const entry = { id: Date.now(), at: new Date().toISOString(), label, cart, custType, custName, custPhone, total, discount, promoCode: promoResult?.valid ? promoCode : '', promoResult: promoResult?.valid ? promoResult : null,
+    const entry = { id: nowMs(), at: nowISO(), label, cart, custType, custName, custPhone, total, discount, promoCode: promoResult?.valid ? promoCode : '', promoResult: promoResult?.valid ? promoResult : null,
       student: student ? { id: student.id, name: student.name, gcc_no: student.gcc_no, course: student.course, hostel_type: student.hostel_type } : null }
     saveHeld([entry, ...held].slice(0, 20)); reset()
     showToast(`⏸ Held: ${label}`, '#0e7490')
@@ -536,8 +555,8 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
       if (autoPrint) printBill(printed)
       setLastSale(printed)
       const f = { ...freq }; lines.forEach(l => { f[l.id] = (f[l.id] || 0) + l.qty })
-      setFreq(f); try { localStorage.setItem(FREQ_KEY, JSON.stringify(f)) } catch {}
-      setDone({ ...printed, mode: paidNum > 0 ? payMode : null, due: dueNum, items: count, points: data.points_earned })
+      setFreq(f); try { localStorage.setItem(FREQ_KEY, JSON.stringify(f)) } catch { /* not available here — safe to ignore */ }
+      setDone({ ...printed, mode: paidNum > 0 ? payMode : null, due: dueNum, itemCount: count, points: data.points_earned })
       setPayOpen(false); reset(); chime(); onSaleDone()
     } catch (err) {
       showToast('Sale failed: ' + err.message, '#dc2626')
@@ -546,12 +565,14 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
   }
 
   const toggleFull = () => {
-    try { if (document.fullscreenElement) document.exitFullscreen(); else rootRef.current?.requestFullscreen?.() } catch {}
+    try { if (document.fullscreenElement) document.exitFullscreen(); else rootRef.current?.requestFullscreen?.() } catch { /* not available here — safe to ignore */ }
   }
 
   // ── Keyboard: F2 search · F8 hold · F9 pay · Enter complete (pay screen) · Esc back ──
   const keysRef = useRef({})
-  keysRef.current = { openPay, holdBill, checkout, payOpen, done, setDone, setPayOpen, payMode, setTendered }
+  // Refreshed after every render so the key handler always sees the latest state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs after every render
+  useEffect(() => { keysRef.current = { openPay, holdBill, checkout, payOpen, done, setDone, setPayOpen, payMode, setTendered } })
   useEffect(() => {
     const onKey = e => {
       const k = keysRef.current
@@ -850,7 +871,7 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
             <div className="pos-okc">✓</div>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#15803d', letterSpacing: '.08em' }}>SALE COMPLETE</div>
             <div style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-.03em', margin: '4px 0' }}>₹{n(done.amount_paid)}</div>
-            <div style={{ fontSize: 13.5, color: '#64748b' }}>{done.bill_no} · {done.items} item{done.items > 1 ? 's' : ''}{done.mode ? ` · ${done.mode}` : ''}{done.customer_name ? ` · ${done.customer_name}` : ''}</div>
+            <div style={{ fontSize: 13.5, color: '#64748b' }}>{done.bill_no} · {done.itemCount} item{done.itemCount > 1 ? 's' : ''}{done.mode ? ` · ${done.mode}` : ''}{done.customer_name ? ` · ${done.customer_name}` : ''}</div>
             {Number(done.change) > 0 && <div className="pos-change" style={{ background: '#ecfdf3', color: '#15803d', margin: '16px 0 0' }}><span>Give change</span><b>₹{n(done.change)}</b></div>}
             {done.due > 0 && <div className="pos-change" style={{ background: '#fef2f2', color: '#dc2626', margin: '12px 0 0', fontSize: 14 }}><span>Added to student dues</span><b style={{ fontSize: 22 }}>₹{n(done.due)}</b></div>}
             {done.points > 0 && <div style={{ fontSize: 13, color: '#b45309', fontWeight: 700, marginTop: 10 }}>⭐ +{done.points} loyalty points earned</div>}
@@ -858,8 +879,11 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
               <button onClick={() => printBill(done)} style={{ height: 52, borderRadius: 14, border: '1.5px solid #e7e3da', background: '#fff', fontWeight: 800, fontSize: 14 }}>🖨 {autoPrint ? 'Print again' : 'Print bill'}</button>
               <button onClick={() => { setDone(null); searchRef.current?.focus() }} autoFocus style={{ height: 52, borderRadius: 14, border: 'none', background: '#132a4f', color: '#fff', fontWeight: 800, fontSize: 15 }}>New sale ↵</button>
             </div>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: '#64748b', marginTop: 10, cursor: 'pointer' }}>
+              <input type="checkbox" checked={slip} onChange={e => { setSlip(e.target.checked); try { localStorage.setItem(SLIP_KEY, e.target.checked ? 'on' : 'off') } catch { /* storage unavailable */ } }} /> Print a narrow counter slip (80 mm) instead of A4
+            </label>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: '#64748b', marginTop: 14, cursor: 'pointer' }}>
-              <input type="checkbox" checked={autoPrint} onChange={e => { setAutoPrint(e.target.checked); try { localStorage.setItem(AUTOPRINT_KEY, e.target.checked ? 'on' : 'off') } catch {} }} /> Print the bill automatically after every sale
+              <input type="checkbox" checked={autoPrint} onChange={e => { setAutoPrint(e.target.checked); try { localStorage.setItem(AUTOPRINT_KEY, e.target.checked ? 'on' : 'off') } catch { /* not available here — safe to ignore */ } }} /> Print the bill automatically after every sale
             </label>
           </div>
         </div>
@@ -890,12 +914,6 @@ function ProductsTab({ products, categories, isAdmin, currentUser, reload, showT
   const hasCost = products.length > 0 && 'cost_price' in products[0]
   const hasListing = products.length > 0 && 'bullets' in products[0]
 
-  const exportCSV = () => {
-    const headers = ['name', 'size', 'category', 'sku', 'barcode', 'price', 'mrp', 'cost_price', 'sale_price', 'stock', 'reorder_level', 'unit', 'online_visible', 'active', 'description', 'image_url']
-    const data = rows.map(p => [p.name, p.size, byCat.get(p.category_id) || '', p.sku, p.barcode, p.price, p.mrp, p.cost_price, p.sale_price, p.stock, p.reorder_level, p.unit, p.online_visible ? 'yes' : 'no', p.active ? 'yes' : 'no', p.description, p.image_url])
-    downloadFile(`gnsi-store-products-${todayStr()}.csv`, toCSV(headers, data))
-  }
-
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase()
     return products.filter(p => {
@@ -906,6 +924,13 @@ function ProductsTab({ products, categories, isAdmin, currentUser, reload, showT
       return [p.name, p.size, p.sku, p.barcode].some(v => (v || '').toString().toLowerCase().includes(s))
     })
   }, [products, q, cat, stockF])
+
+  const exportCSV = () => {
+    const headers = ['name', 'size', 'category', 'sku', 'barcode', 'price', 'mrp', 'cost_price', 'sale_price', 'stock', 'reorder_level', 'unit', 'online_visible', 'active', 'description', 'image_url']
+    const data = rows.map(p => [p.name, p.size, byCat.get(p.category_id) || '', p.sku, p.barcode, p.price, p.mrp, p.cost_price, p.sale_price, p.stock, p.reorder_level, p.unit, p.online_visible ? 'yes' : 'no', p.active ? 'yes' : 'no', p.description, p.image_url])
+    downloadFile(`gnsi-store-products-${todayStr()}.csv`, toCSV(headers, data))
+  }
+
 
   const openNew = () => { setForm(EMPTY_PRODUCT); setEditing({}) }
   const openEdit = p => {
@@ -1649,9 +1674,11 @@ function OrdersTab({ currentUser, showToast, onSaleDone, liveTick }) {
     setOrders(data || [])
     setLoading(false)
   }, [showToast])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the data on mount
   useEffect(() => { load() }, [load])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- refreshes when a new online order arrives
   useEffect(() => { if (liveTick) load(true) }, [liveTick, load])
-  useEffect(() => { try { localStorage.setItem('gnsi_orders_view', view) } catch {} }, [view])
+  useEffect(() => { try { localStorage.setItem('gnsi_orders_view', view) } catch { /* not available here — safe to ignore */ } }, [view])
 
   const togglePick = id => setPicked(p => { const x = new Set(p); x.has(id) ? x.delete(id) : x.add(id); return x })
   const pickedOrders = orders.filter(o => picked.has(o.id))
@@ -1873,6 +1900,7 @@ function SalesTab({ isAdmin, currentUser, showToast, onSaleDone, refreshKey }) {
     setSales(res.data || [])
     setLoading(false)
   }, [from, to, showToast])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads on mount and when refreshed
   useEffect(() => { load() }, [load, refreshKey])
 
   const refundedOf = s => (s.store_returns || []).reduce((a, r) => a + Number(r.refund), 0)
@@ -2073,6 +2101,7 @@ function DayCloseModal({ date, by, onClose, showToast }) {
 
   useEffect(() => {
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clears the previous day while the new one loads
     setData(null)
     Promise.all([
       supabase.from('store_sales').select('*').eq('sale_date', day).limit(5000),
@@ -2145,7 +2174,6 @@ ${note ? `<div class="s" style="margin-top:8px">Note: ${esc(note)}</div>` : ''}
     printZ(); onClose()
   }
 
-  const Line = ({ l, v, c, b }) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13, fontWeight: b ? 800 : 500, color: c || '#334155' }}><span>{l}</span><span>{v}</span></div>
 
   return (
     <Modal onClose={onClose} busy={saving} width={680}>
@@ -2158,16 +2186,16 @@ ${note ? `<div class="s" style="margin-top:8px">Note: ${esc(note)}</div>` : ''}
           {data.prev && <div style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', borderRadius: 8, padding: '7px 11px', fontSize: 12, marginBottom: 10 }}>This day was already closed by {data.prev.closed_by} at {new Date(data.prev.created_at).toLocaleTimeString('en-IN', { timeStyle: 'short' })} (counted ₹{n(data.prev.cash_counted)}, variance ₹{n(data.prev.variance)}). Saving again adds a new closing record.</div>}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 16 }}>
             <div>
-              <Line l={`Bills (${r.online} online)`} v={r.bills} />
-              <Line l="Gross sales" v={`₹${n(r.gross)}`} />
-              <Line l="Received" v={`₹${n(r.received)}`} b />
-              <Line l="Put on student dues" v={`₹${n(r.dues)}`} c="#b91c1c" />
-              <Line l="Refunds" v={`₹${n(r.refunds)}`} c="#9333ea" />
-              <Line l="Voided" v={`${r.voids} · ₹${n(r.voidAmt)}`} c="#64748b" />
+              <SumLine l={`Bills (${r.online} online)`} v={r.bills} />
+              <SumLine l="Gross sales" v={`₹${n(r.gross)}`} />
+              <SumLine l="Received" v={`₹${n(r.received)}`} b />
+              <SumLine l="Put on student dues" v={`₹${n(r.dues)}`} c="#b91c1c" />
+              <SumLine l="Refunds" v={`₹${n(r.refunds)}`} c="#9333ea" />
+              <SumLine l="Voided" v={`${r.voids} · ₹${n(r.voidAmt)}`} c="#64748b" />
               <div style={{ fontSize: 11, fontWeight: 800, color: '#475569', margin: '10px 0 2px' }}>BY MODE</div>
-              {Object.entries(r.byMode).map(([k, v]) => <Line key={k} l={k} v={`₹${n(v)}`} />)}
+              {Object.entries(r.byMode).map(([k, v]) => <SumLine key={k} l={k} v={`₹${n(v)}`} />)}
               <div style={{ fontSize: 11, fontWeight: 800, color: '#475569', margin: '10px 0 2px' }}>BY STAFF</div>
-              {Object.entries(r.byStaff).map(([k, v]) => <Line key={k} l={`${k} (${v.bills})`} v={`₹${n(v.amt)}`} />)}
+              {Object.entries(r.byStaff).map(([k, v]) => <SumLine key={k} l={`${k} (${v.bills})`} v={`₹${n(v.amt)}`} />)}
             </div>
             <div>
               <label style={lbl}>Opening float ₹</label>
@@ -2181,9 +2209,9 @@ ${note ? `<div class="s" style="margin-top:8px">Note: ${esc(note)}</div>` : ''}
                 ))}
               </div>
               <div style={{ marginTop: 10, background: '#f8fafc', borderRadius: 8, padding: '8px 12px' }}>
-                <Line l="Expected in drawer" v={`₹${n(expected)}`} />
-                <Line l="Counted" v={`₹${n(counted)}`} b />
-                <Line l="Variance" v={`${variance > 0 ? '+' : ''}₹${n(variance)}`} b c={variance === 0 ? '#16a34a' : '#dc2626'} />
+                <SumLine l="Expected in drawer" v={`₹${n(expected)}`} />
+                <SumLine l="Counted" v={`₹${n(counted)}`} b />
+                <SumLine l="Variance" v={`${variance > 0 ? '+' : ''}₹${n(variance)}`} b c={variance === 0 ? '#16a34a' : '#dc2626'} />
               </div>
               <input value={note} onChange={e => setNote(e.target.value)} placeholder="Note (e.g. reason for variance)" style={{ ...inp, marginTop: 8 }} />
             </div>
@@ -2223,6 +2251,7 @@ function ReportsTab({ products, categories, refreshKey }) {
 
   useEffect(() => {
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- shows the loader while the new period loads
     setLoading(true)
     Promise.all([
       supabase.from('store_sales').select('*, store_sale_items(*)').gte('sale_date', from).lte('sale_date', to).neq('status', 'void').limit(5000),
@@ -2260,13 +2289,13 @@ function ReportsTab({ products, categories, refreshKey }) {
 
   // Profit — item revenue is shared down by the bill's discount ratio, cost is the product's current cost_price.
   const hasCost = products.length > 0 && 'cost_price' in products[0]
-  let costed = 0, costedRev = 0, cogs = 0, allRev = 0
+  let costedRev = 0, cogs = 0, allRev = 0
   sales.forEach(s => {
     const ratio = Number(s.subtotal) > 0 ? Number(s.total) / Number(s.subtotal) : 1
     ;(s.store_sale_items || []).forEach(i => {
       const rev = Number(i.amount) * ratio, cp = prodById.get(i.product_id)?.cost_price
       allRev += rev
-      if (cp != null && Number(cp) > 0) { costed++; costedRev += rev; cogs += Number(cp) * i.qty }
+      if (cp != null && Number(cp) > 0) { costedRev += rev; cogs += Number(cp) * i.qty }
     })
   })
   const refundTotal = returns.reduce((a, r) => a + Number(r.refund), 0)
@@ -2340,8 +2369,6 @@ function ReportsTab({ products, categories, refreshKey }) {
   const byStaff = {}
   sales.forEach(s => { const k = s.collected_by || '—'; byStaff[k] = byStaff[k] || { bills: 0, amt: 0 }; byStaff[k].bills++; byStaff[k].amt += Number(s.amount_paid) })
 
-  const Box =({ title, children }) => <div style={{ ...card, padding: 16 }}><div style={{ fontSize: 13, fontWeight: 800, color: NAVY, marginBottom: 10 }}>{title}</div>{children}</div>
-  const Row = ({ l, r, c }) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f8fafc', fontSize: 12.5 }}><span style={{ color: '#475569' }}>{l}</span><span style={{ fontWeight: 800, color: c || '#0f172a' }}>{r}</span></div>
 
   return (
     <div>
@@ -2383,14 +2410,14 @@ function ReportsTab({ products, categories, refreshKey }) {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
-            <Box title="👤 Collections by staff">{Object.keys(byStaff).length ? Object.entries(byStaff).sort((a, b) => b[1].amt - a[1].amt).map(([k, v]) => <Row key={k} l={`${k} (${v.bills} bill${v.bills > 1 ? 's' : ''})`} r={`₹${n(v.amt)}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales</div>}</Box>
-            <Box title="🏆 Top products">{top.length ? top.map(([k, v]) => <Row key={k} l={`${k} (×${v.qty})`} r={`₹${n(v.amt)}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales</div>}</Box>
-            <Box title="📂 By category">{Object.keys(byCat).length ? Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => <Row key={k} l={k} r={`₹${n(v)}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales</div>}</Box>
-            <Box title="💳 Collected by mode">{Object.keys(byMode).length ? Object.entries(byMode).map(([k, v]) => <Row key={k} l={k} r={`₹${n(v)}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No payments</div>}</Box>
-            <Box title={`⚠️ Low / out of stock (${low.length})`}><div style={{ maxHeight: 240, overflowY: 'auto' }}>{low.length ? low.map(p => <Row key={p.id} l={`${p.name}${p.size ? ' — ' + p.size : ''}`} r={p.stock <= 0 ? 'OUT' : `${p.stock} left`} c={p.stock <= 0 ? '#dc2626' : '#d97706'} />) : <div style={{ color: '#16a34a', fontSize: 12 }}>All stocked ✓</div>}</div></Box>
-            <Box title="🔥 Best sellers (last 30 days)"><div style={{ maxHeight: 240, overflowY: 'auto' }}>{bestSellers.length ? bestSellers.map(b => <Row key={b.product_id} l={`${b.name}${b.size ? ' — ' + b.size : ''}`} r={`×${b.qty_sold_30d}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales in the last 30 days</div>}</div></Box>
-            <Box title="⭐ Product ratings"><div style={{ maxHeight: 240, overflowY: 'auto' }}>{Object.keys(ratings).length ? products.filter(p => ratings[p.id]).sort((a, b) => ratings[b.id].review_count - ratings[a.id].review_count).map(p => <Row key={p.id} l={`${p.name}${p.size ? ' — ' + p.size : ''}`} r={`${ratings[p.id].avg_rating}★ (${ratings[p.id].review_count})`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No reviews yet</div>}</div></Box>
-            <Box title={`🧾 Student dues (${dues.length})`}><div style={{ maxHeight: 240, overflowY: 'auto' }}>{dues.length ? dues.map(d => <Row key={d.id} l={`${d.customer_name || '—'} · GCC-${d.gcc_no} · ${d.bill_no}`} r={`₹${n(d.due_amount)}`} c="#dc2626" />) : <div style={{ color: '#16a34a', fontSize: 12 }}>No outstanding dues ✓</div>}</div></Box>
+            <StatBox title="👤 Collections by staff">{Object.keys(byStaff).length ? Object.entries(byStaff).sort((a, b) => b[1].amt - a[1].amt).map(([k, v]) => <StatRow key={k} l={`${k} (${v.bills} bill${v.bills > 1 ? 's' : ''})`} r={`₹${n(v.amt)}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales</div>}</StatBox>
+            <StatBox title="🏆 Top products">{top.length ? top.map(([k, v]) => <StatRow key={k} l={`${k} (×${v.qty})`} r={`₹${n(v.amt)}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales</div>}</StatBox>
+            <StatBox title="📂 By category">{Object.keys(byCat).length ? Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => <StatRow key={k} l={k} r={`₹${n(v)}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales</div>}</StatBox>
+            <StatBox title="💳 Collected by mode">{Object.keys(byMode).length ? Object.entries(byMode).map(([k, v]) => <StatRow key={k} l={k} r={`₹${n(v)}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No payments</div>}</StatBox>
+            <StatBox title={`⚠️ Low / out of stock (${low.length})`}><div style={{ maxHeight: 240, overflowY: 'auto' }}>{low.length ? low.map(p => <StatRow key={p.id} l={`${p.name}${p.size ? ' — ' + p.size : ''}`} r={p.stock <= 0 ? 'OUT' : `${p.stock} left`} c={p.stock <= 0 ? '#dc2626' : '#d97706'} />) : <div style={{ color: '#16a34a', fontSize: 12 }}>All stocked ✓</div>}</div></StatBox>
+            <StatBox title="🔥 Best sellers (last 30 days)"><div style={{ maxHeight: 240, overflowY: 'auto' }}>{bestSellers.length ? bestSellers.map(b => <StatRow key={b.product_id} l={`${b.name}${b.size ? ' — ' + b.size : ''}`} r={`×${b.qty_sold_30d}`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales in the last 30 days</div>}</div></StatBox>
+            <StatBox title="⭐ Product ratings"><div style={{ maxHeight: 240, overflowY: 'auto' }}>{Object.keys(ratings).length ? products.filter(p => ratings[p.id]).sort((a, b) => ratings[b.id].review_count - ratings[a.id].review_count).map(p => <StatRow key={p.id} l={`${p.name}${p.size ? ' — ' + p.size : ''}`} r={`${ratings[p.id].avg_rating}★ (${ratings[p.id].review_count})`} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No reviews yet</div>}</div></StatBox>
+            <StatBox title={`🧾 Student dues (${dues.length})`}><div style={{ maxHeight: 240, overflowY: 'auto' }}>{dues.length ? dues.map(d => <StatRow key={d.id} l={`${d.customer_name || '—'} · GCC-${d.gcc_no} · ${d.bill_no}`} r={`₹${n(d.due_amount)}`} c="#dc2626" />) : <div style={{ color: '#16a34a', fontSize: 12 }}>No outstanding dues ✓</div>}</div></StatBox>
           </div>
 
           <div style={{ ...card, padding: 16, marginTop: 14 }}>
@@ -2413,8 +2440,8 @@ function ReportsTab({ products, categories, refreshKey }) {
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
-              <div><div style={{ fontSize: 12, fontWeight: 800, color: '#16a34a', marginBottom: 4 }}>A items — never let these run out</div><div style={{ maxHeight: 200, overflowY: 'auto' }}>{abc.A.length ? abc.A.map(r => <Row key={r.id} l={`${r.p?.name || 'Removed'}${r.p?.size ? ' — ' + r.p.size : ''} · stock ${r.p?.stock ?? '—'}`} r={`₹${n(Math.round(r.v))}`} c={r.p && r.p.stock <= (r.p.reorder_level ?? 5) ? '#dc2626' : undefined} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales</div>}</div></div>
-              <div><div style={{ fontSize: 12, fontWeight: 800, color: '#dc2626', marginBottom: 4 }}>Dead stock — consider a deal or kit</div><div style={{ maxHeight: 200, overflowY: 'auto' }}>{abc.dead.length ? abc.dead.map(d => <Row key={d.p.id} l={`${d.p.name}${d.p.size ? ' — ' + d.p.size : ''} · ${d.p.stock} in stock`} r={`₹${n(Math.round(d.value))}`} c="#dc2626" />) : <div style={{ color: '#16a34a', fontSize: 12 }}>Everything in stock sold at least once ✓</div>}</div></div>
+              <div><div style={{ fontSize: 12, fontWeight: 800, color: '#16a34a', marginBottom: 4 }}>A items — never let these run out</div><div style={{ maxHeight: 200, overflowY: 'auto' }}>{abc.A.length ? abc.A.map(r => <StatRow key={r.id} l={`${r.p?.name || 'Removed'}${r.p?.size ? ' — ' + r.p.size : ''} · stock ${r.p?.stock ?? '—'}`} r={`₹${n(Math.round(r.v))}`} c={r.p && r.p.stock <= (r.p.reorder_level ?? 5) ? '#dc2626' : undefined} />) : <div style={{ color: '#94a3b8', fontSize: 12 }}>No sales</div>}</div></div>
+              <div><div style={{ fontSize: 12, fontWeight: 800, color: '#dc2626', marginBottom: 4 }}>Dead stock — consider a deal or kit</div><div style={{ maxHeight: 200, overflowY: 'auto' }}>{abc.dead.length ? abc.dead.map(d => <StatRow key={d.p.id} l={`${d.p.name}${d.p.size ? ' — ' + d.p.size : ''} · ${d.p.stock} in stock`} r={`₹${n(Math.round(d.value))}`} c="#dc2626" />) : <div style={{ color: '#16a34a', fontSize: 12 }}>Everything in stock sold at least once ✓</div>}</div></div>
             </div>
           </div>
 
@@ -2439,7 +2466,7 @@ function ReportsTab({ products, categories, refreshKey }) {
                 ))}
               </div>
               <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 4 }}>Top customers · {cust.walkins} anonymous walk-in bill{cust.walkins === 1 ? '' : 's'} not counted</div>
-              <div style={{ maxHeight: 200, overflowY: 'auto' }}>{cust.list.slice(0, 15).map(c => <Row key={c.key} l={`${c.name} · ${c.key.startsWith('GCC') ? c.key : c.phone} · ${c.bills} bill${c.bills > 1 ? 's' : ''} · last ${c.last}`} r={`₹${n(Math.round(c.spend))}`} />)}{!cust.list.length && <div style={{ color: '#94a3b8', fontSize: 12 }}>No named customers in this range</div>}</div>
+              <div style={{ maxHeight: 200, overflowY: 'auto' }}>{cust.list.slice(0, 15).map(c => <StatRow key={c.key} l={`${c.name} · ${c.key.startsWith('GCC') ? c.key : c.phone} · ${c.bills} bill${c.bills > 1 ? 's' : ''} · last ${c.last}`} r={`₹${n(Math.round(c.spend))}`} />)}{!cust.list.length && <div style={{ color: '#94a3b8', fontSize: 12 }}>No named customers in this range</div>}</div>
             </div>
           </div>
         </>
@@ -2472,6 +2499,7 @@ function PromotionsTab({ currentUser, showToast }) {
     setPromos(data || [])
     setLoading(false)
   }, [showToast])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the data on mount
   useEffect(() => { load() }, [load])
 
   const openNew = () => { setForm(EMPTY_PROMO); setEditing({}) }
@@ -2654,7 +2682,8 @@ function PromotionsTab({ currentUser, showToast }) {
 // ═══════════════════════════════════════════════════════════════════════════
 function CameraScanner({ onCode, onClose }) {
   const vid = useRef(null)
-  const cb = useRef(onCode); cb.current = onCode
+  const cb = useRef(onCode)
+  useEffect(() => { cb.current = onCode }, [onCode])
   const [msg, setMsg] = useState('Starting camera…')
   const [hits, setHits] = useState([])
   const supported = typeof window !== 'undefined' && 'BarcodeDetector' in window
@@ -2679,7 +2708,7 @@ function CameraScanner({ onCode, onClose }) {
               const name = cb.current(code.rawValue)
               setHits(h => [{ code: code.rawValue, name, at: now }, ...h].slice(0, 6))
             }
-          } catch {}
+          } catch { /* not available here — safe to ignore */ }
           timer = setTimeout(tick, 220)
         }
         tick()
@@ -2817,7 +2846,6 @@ function ProductInsights({ product, onClose }) {
     return { units, revenue, weeks, perDay, cover: perDay > 0 ? Math.floor(product.stock / perDay) : null, last, profit: cost != null ? revenue - cost : null, bills: new Set(rows.map(r => r.store_sales.bill_no)).size }
   }, [rows, product])
   const max = s ? Math.max(1, ...s.weeks.map(w => w.u)) : 1
-  const Kpi = ({ l, v, c = NAVY }) => <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 12px' }}><div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>{l}</div><div style={{ fontSize: 18, fontWeight: 900, color: c }}>{v}</div></div>
 
   return (
     <Modal onClose={onClose} width={680}>
@@ -2828,12 +2856,12 @@ function ProductInsights({ product, onClose }) {
       {err ? <div style={{ color: '#b91c1c', fontSize: 13, marginTop: 12 }}>{err}</div> : !s ? <div style={{ padding: 30, textAlign: 'center', color: '#64748b' }}>⏳ Loading…</div> : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 8, margin: '14px 0' }}>
-            <Kpi l="Units sold" v={s.units} />
-            <Kpi l="Revenue" v={`₹${n(Math.round(s.revenue))}`} c="#16a34a" />
-            {s.profit != null && <Kpi l="Est. profit" v={`₹${n(Math.round(s.profit))}`} c="#0f766e" />}
-            <Kpi l="Sells per week" v={(s.perDay * 7).toFixed(1)} />
-            <Kpi l="Stock lasts" v={s.cover == null ? '—' : `${s.cover} days`} c={s.cover != null && s.cover < 14 ? '#dc2626' : NAVY} />
-            <Kpi l="Last sold" v={s.last ? new Date(s.last + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Never'} c="#64748b" />
+            <KpiTile l="Units sold" v={s.units} />
+            <KpiTile l="Revenue" v={`₹${n(Math.round(s.revenue))}`} c="#16a34a" />
+            {s.profit != null && <KpiTile l="Est. profit" v={`₹${n(Math.round(s.profit))}`} c="#0f766e" />}
+            <KpiTile l="Sells per week" v={(s.perDay * 7).toFixed(1)} />
+            <KpiTile l="Stock lasts" v={s.cover == null ? '—' : `${s.cover} days`} c={s.cover != null && s.cover < 14 ? '#dc2626' : NAVY} />
+            <KpiTile l="Last sold" v={s.last ? new Date(s.last + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Never'} c="#64748b" />
           </div>
           <div style={{ fontSize: 12, fontWeight: 800, color: '#475569', marginBottom: 6 }}>Units per week</div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 110, borderBottom: '1px solid #e2e8f0' }}>
@@ -3049,6 +3077,7 @@ function PurchasesTab({ products, currentUser, reload, showToast }) {
     setVelocity(Object.fromEntries((v.data || []).map(b => [b.product_id, Number(b.qty_sold_30d) || 0])))
     setLoading(false)
   }, [showToast])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the data on mount
   useEffect(() => { load() }, [load])
 
   // Reorder suggestion: cover 30 days of sales + the safety level, minus what's on the shelf.
@@ -3107,7 +3136,7 @@ function PurchasesTab({ products, currentUser, reload, showToast }) {
   const draftPO = () => {
     const sup = suppliers.find(s => String(s.id) === String(form.supplier_id))
     if (!sup) { showToast('Choose the supplier first.', '#dc2626'); return }
-    const poNo = `PO-${todayStr().replace(/-/g, '').slice(2)}-${String(Date.now()).slice(-4)}`
+    const poNo = `PO-${todayStr().replace(/-/g, '').slice(2)}-${String(nowMs()).slice(-4)}`
     const rows = lines.map(l => ({ p: byId.get(l.product_id), qty: Number(l.qty) || 0, cost: Number(l.cost) || 0 }))
     openPrint(poNo, `${HEADER_HTML('Purchase order')}
 <table style="margin-top:12px"><tr><td>PO no: <b>${poNo}</b></td><td>Date: ${todayStr()}</td></tr>
@@ -3327,7 +3356,8 @@ export default function Store() {
   }, [])
 
   // ── Live order alerts: Supabase Realtime, with a 45-second check as backup ──
-  const alertsRef = useRef(alertsOn); alertsRef.current = alertsOn
+  const alertsRef = useRef(alertsOn)
+  useEffect(() => { alertsRef.current = alertsOn }, [alertsOn])
   useEffect(() => {
     let alive = true
     const announce = o => {
@@ -3337,20 +3367,20 @@ export default function Store() {
       showToast(`🔔 New online order ${o.order_no || ''} · ${o.customer_name || ''} · ₹${n(o.total)}`, '#1d4ed8')
       if (!alertsRef.current) return
       chime()
-      try { if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.hidden) new Notification('New GNSI Store order', { body: `${o.order_no} · ${o.customer_name} · ₹${n(o.total)}`, tag: String(o.id) }) } catch {}
+      try { if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.hidden) new Notification('New GNSI Store order', { body: `${o.order_no} · ${o.customer_name} · ₹${n(o.total)}`, tag: String(o.id) }) } catch { /* not available here — safe to ignore */ }
     }
     const latest = () => supabase.from('store_orders').select('id,order_no,customer_name,total').order('created_at', { ascending: false }).limit(10)
     latest().then(({ data }) => { seenOrders.current = new Set((data || []).map(o => o.id)) })
     let ch = null
-    try { ch = supabase.channel('gnsi-store-orders').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'store_orders' }, p => announce(p.new)).subscribe() } catch {}
+    try { ch = supabase.channel('gnsi-store-orders').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'store_orders' }, p => announce(p.new)).subscribe() } catch { /* not available here — safe to ignore */ }
     const t = setInterval(() => { if (seenOrders.current) latest().then(({ data }) => (data || []).slice().reverse().forEach(announce)) }, 45000)
-    return () => { alive = false; clearInterval(t); try { ch && supabase.removeChannel(ch) } catch {} }
+    return () => { alive = false; clearInterval(t); try { ch && supabase.removeChannel(ch) } catch { /* not available here — safe to ignore */ } }
   }, [showToast])
 
   const toggleAlerts = async () => {
     const on = !alertsOn
-    setAlertsOn(on); try { localStorage.setItem('gnsi_store_alerts', on ? 'on' : 'off') } catch {}
-    if (on) { chime(); try { if (typeof Notification !== 'undefined' && Notification.permission === 'default') await Notification.requestPermission() } catch {} }
+    setAlertsOn(on); try { localStorage.setItem('gnsi_store_alerts', on ? 'on' : 'off') } catch { /* not available here — safe to ignore */ }
+    if (on) { chime(); try { if (typeof Notification !== 'undefined' && Notification.permission === 'default') await Notification.requestPermission() } catch { /* not available here — safe to ignore */ } }
     showToast(on ? '🔔 Order alerts on — sound + desktop notification' : '🔕 Order alerts muted', on ? '#16a34a' : '#64748b')
   }
 
