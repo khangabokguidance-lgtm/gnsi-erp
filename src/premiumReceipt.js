@@ -53,6 +53,22 @@ function itemRow(it, hostel) {
   }
 }
 
+// Instructions printed on every receipt — edit the wording here.
+export const RECEIPT_INSTRUCTIONS = {
+  payment: [
+    'Monthly fees for the April–March session should be paid by the 10th of each month.',
+    'Pay at the institute office in cash, or by UPI / bank transfer quoting the student\'s GCC No.',
+    'For UPI or bank payments, share the transaction reference with the office — a payment is confirmed only when a receipt is issued.',
+    'Clear any balance shown on this receipt at the earliest. Fees once paid are non-refundable and non-transferable.',
+  ],
+  receipt: [
+    'Ask for a receipt for every payment. Do not pay any amount without a receipt.',
+    'Check the name, GCC No., months and amount before leaving the counter; report any mistake to the office within 7 days.',
+    'Keep all receipts safe for the whole session — they are needed for any fee query or certificate.',
+    'A receipt is valid only with its receipt number and the name of the staff member who received the fee.',
+  ],
+}
+
 const ST = { paid: ['PAID', '#047857', '#E7F6EC'], advance: ['ADV', '#0B5C8A', '#E6F1FB'], short: ['SHORT', '#9A5B00', '#FFF4DC'], due: ['DUE', '#B42318', '#FDE8E6'], upcoming: ['—', '#94A3B8', '#F8FAFC'], before: ['N/A', '#CBD5E1', '#F8FAFC'] }
 
 // The "fee position" block: month strip, previous month, earlier receipts, balance.
@@ -132,6 +148,11 @@ function receiptHTML(d, hist) {
   .prev td{padding:4px 8px;font-size:10.5px;border-top:1px solid #F1F5F9}
   .bal{display:flex;justify-content:space-between;gap:10px;padding:7px 10px;font-size:11.5px;font-weight:700;border-top:1px solid #E2E8F0}
   .bal.bad{background:#FDF0EE;color:#B42318}.bal.ok{background:#EEF8F1;color:#047857}
+  .instr{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+  .instr>div{border:1px solid #E6DCC3;background:#FFFCF4;border-radius:8px;padding:7px 10px}
+  .instr h4{font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#7A5A14;margin-bottom:4px}
+  .instr ol{padding-left:15px;font-size:9.6px;line-height:1.5;color:#334155}
+  .instr li+li{margin-top:2px}
   .foot{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-top:auto;padding-top:14px}
   .note{font-size:9.5px;color:#64748B;line-height:1.65}
   .sig{text-align:center;min-width:150px}
@@ -178,11 +199,12 @@ function receiptHTML(d, hist) {
       </div>
       <div class="words"><span class="l" style="margin-right:6px">Amount in words:</span><b>${amountInWords(net)}</b></div>
       ${historyBlock(hist)}
+      <div class="instr">
+        <div><h4>💳 Fee payment</h4><ol>${RECEIPT_INSTRUCTIONS.payment.map(x => `<li>${escH(x)}</li>`).join('')}</ol></div>
+        <div><h4>🧾 Receipt collection</h4><ol>${RECEIPT_INSTRUCTIONS.receipt.map(x => `<li>${escH(x)}</li>`).join('')}</ol></div>
+      </div>
       <div class="foot">
-        <div class="note"><b style="color:#0F172A">Terms</b><br/>
-          1. Fees once paid are non-refundable and non-transferable.<br/>
-          2. Please preserve this receipt; it is required for any fee query.<br/>
-          3. This is a computer-generated receipt.</div>
+        <div class="note" style="font-style:italic">This is a computer-generated receipt.</div>
         <div class="sig"><div class="line"></div><div class="who">${by === '—' ? 'Accounts' : by}</div><div class="l">Received by (signature)</div></div>
       </div>
     </div>
