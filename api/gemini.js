@@ -1,7 +1,7 @@
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
-  const { prompt } = req.body
+  const { prompt, maxTokens } = req.body
   if (!prompt) return res.status(400).json({ error: 'No prompt provided' })
 
   const apiKey = process.env.GEMINI_API_KEY
@@ -17,7 +17,9 @@ export default async function handler(req, res) {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.3,
-            maxOutputTokens: 4096,
+            // Callers may ask for more room (e.g. translation into Meetei
+            // Mayek, which is token-heavy); capped so a request can't run away.
+            maxOutputTokens: Math.min(Math.max(Number(maxTokens) || 4096, 256), 8192),
           },
         }),
       }

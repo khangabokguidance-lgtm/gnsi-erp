@@ -17,7 +17,7 @@ const receiptIn = note => (String(note || '').split(' · ').map(s => s.trim()).f
 
 export async function loadTodayIncome(date = new Date().toLocaleDateString('en-CA')) {
   const [acc, adm, flat, crs] = await Promise.all([
-    supabase.from('accounts').select('id,type,category,amount,entry_date,payment_date,payment_mode,note,description,source_type,source_ref,status,added_by,created_at')
+    supabase.from('accounts').select('id,type,category,amount,entry_date,payment_date,payment_mode,note,source_type,source_ref,status,added_by,created_at')
       .eq('is_soft_deleted', false).eq('type', 'Income').or(`entry_date.eq.${date},payment_date.eq.${date}`).limit(5000),
     supabase.from('adm_fee_collections').select('amount_paid,receipt_no,student_name,adm_app_id').eq('reverted', false).eq('pay_date', date),
     supabase.from('adm_flat_fees').select('amount,receipt_no,student_name,adm_app_id').eq('paid', true).eq('reverted', false).eq('pay_date', date),

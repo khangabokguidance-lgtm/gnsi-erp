@@ -45,6 +45,7 @@ import {
 // BMEI04 font rather than converting it.
 import { romanToMeetei, meeteiToRoman, getAllCharacters } from './meetei_mayek'
 import { bmeiToUnicode } from './mayekSegments'
+import { LANGS, langLabel, translate as aiTranslate } from './mayekTranslate'
 import MayekText from './MayekText'
 import {
   translateText, saveDictionaryEntry, deleteDictionaryEntry, bulkImportEntries, searchDictionary,
@@ -2988,8 +2989,109 @@ async function generatePDF({ title, subject, chapter, questions, sets, withAnswe
 // word or line, and for converting one already-saved BMEI04 row to
 // permanent Unicode (after which it renders with Noto Sans Meetei Mayek
 // like any other Unicode row, and no longer needs the embedded font).
+// Translate mode: meaning-level AI translation (mayekTranslate.js), shown for
+// a human to check — unlike the keystroke modes, which never guess.
+function MayekTranslator({ showToast }) {
+  const [from, setFrom] = useState('auto')
+  const [to, setTo] = useState('mni-Mtei')
+  const [input, setInput] = useState('')
+  const [output, setOutput] = useState('')
+  const [detected, setDetected] = useState('')
+  const [warnings, setWarnings] = useState([])
+  const [busy, setBusy] = useState('')
+  const [showKeys, setShowKeys] = useState(false)
+  const run = useRef(0)
+
+  const mayekFont = code => (code === 'mni-Mtei' ? "'Noto Sans Meetei Mayek', sans-serif" : 'inherit')
+  const doTranslate = async () => {
+    if (!input.trim() || busy) return
+    if (from === to) { setOutput(input); return }
+    const id = ++run.current
+    setBusy('Translating…'); setWarnings([]); setDetected('')
+    try {
+      const r = await aiTranslate(input, from, to, (i, n) => { if (n > 1 && id === run.current) setBusy(`Translating part ${i} of ${n}…`) })
+      if (id !== run.current) return
+      setOutput(r.text); setDetected(r.detected); setWarnings(r.warnings)
+    } catch (e) {
+      if (id === run.current) showToast('Translation failed: ' + e.message, C.rose)
+    } finally {
+      if (id === run.current) setBusy('')
+    }
+  }
+  const swap = () => {
+    // 'Detect' and BMEI04 are source-only, so they swap to a sensible target.
+    const next = from === 'auto' || from === 'bmei04' ? (to === 'en' ? 'mni-Mtei' : 'en') : from
+    setFrom(to); setTo(next); setInput(output); setOutput(''); setWarnings([]); setDetected('')
+  }
+  const copy = async text => {
+    if (!text) return
+    try { await navigator.clipboard.writeText(text); showToast('Copied', C.green) }
+    catch { showToast('Copy failed', C.rose) }
+  }
+  const keys = useMemo(() => (to === 'mni-Mtei' && showKeys ? meeteiToRoman(output) : ''), [to, showKeys, output])
+  const sel = { ...iS, width:'auto', minWidth:200, fontWeight:600 }
+  const box = { width:'100%', minHeight:200, padding:'10px 12px', borderRadius:7, border:'1px solid '+C.border,
+    fontSize:15, lineHeight:1.8, resize:'vertical', boxSizing:'border-box' }
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:10 }}>
+        <select aria-label="Translate from" value={from} onChange={e => setFrom(e.target.value)} style={sel}>
+          {LANGS.filter(l => l.source).map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
+        </select>
+        <button onClick={swap} title="Swap languages" aria-label="Swap languages" style={btnSm('#fff', C.navy)}>⇄</button>
+        <select aria-label="Translate to" value={to} onChange={e => setTo(e.target.value)} style={sel}>
+          {LANGS.filter(l => l.target).map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
+        </select>
+      </div>
+
+      <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+        <div>
+          <label style={lS}>{langLabel(from)}{detected && from === 'auto' ? ` — detected: ${detected}` : ''}</label>
+          <textarea value={input} onChange={e => setInput(e.target.value)} rows={9}
+            onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doTranslate() } }}
+            placeholder={from === 'bmei04' ? 'Paste BMEI04 keystrokes, e.g. AEgi k_laski mruPsiH' : 'Type or paste text to translate (Ctrl+Enter)'}
+            style={{ ...box, fontFamily: from === 'bmei04' ? 'monospace' : mayekFont(from) }} />
+          <div style={{ fontSize:11, color:C.slate, marginTop:4 }}>{input.length.toLocaleString()} characters</div>
+        </div>
+        <div>
+          <label style={lS}>{langLabel(to)}</label>
+          <textarea value={output} onChange={e => setOutput(e.target.value)} rows={9} aria-label="Translation"
+            placeholder={busy || 'Translation will appear here — you can edit it'}
+            style={{ ...box, background:'#f8fafc', fontFamily: mayekFont(to), fontSize: to === 'mni-Mtei' ? 19 : 15 }} />
+          {keys && (
+            <div style={{ marginTop:8 }}>
+              <label style={lS}>BMEI04 keystrokes (to type in Word with the Bmei04 font)</label>
+              <div style={{ padding:'8px 12px', borderRadius:7, background:'#f8fafc', border:'1px solid '+C.border,
+                fontFamily:'monospace', fontSize:13, whiteSpace:'pre-wrap', wordBreak:'break-word' }}>{keys}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {warnings.map(w => (
+        <div key={w} style={{ marginTop:10, padding:'8px 12px', borderRadius:8, background:'#fff7ed', border:'1px solid #fdba74', fontSize:12, color:'#9a3412' }}>⚠ {w}</div>
+      ))}
+
+      <div style={{ display:'flex', gap:8, marginTop:14, flexWrap:'wrap' }}>
+        <button onClick={doTranslate} disabled={!input.trim() || !!busy} style={btn(C.navy, !input.trim() || !!busy)}>{busy || 'Translate'}</button>
+        <button onClick={() => copy(output)} style={btn(C.teal, !output)} disabled={!output}>Copy Translation</button>
+        {to === 'mni-Mtei' && <button onClick={() => setShowKeys(v => !v)} style={btn(C.slate)}>{showKeys ? 'Hide' : 'Show'} BMEI04 Keys</button>}
+        {keys && <button onClick={() => copy(keys)} style={btn(C.slate)}>Copy Keys</button>}
+        <button onClick={() => { run.current++; setInput(''); setOutput(''); setWarnings([]); setDetected(''); setBusy('') }} style={btn(C.slate)}>Clear</button>
+      </div>
+
+      <div style={{ marginTop:14, padding:'10px 14px', borderRadius:8, background:'#f0f9ff',
+        border:'1px solid #bae6fd', fontSize:11, color:'#0369a1', lineHeight:1.6 }}>
+        AI translation — check it before putting it in a question paper, and edit the result box directly if a word is wrong.
+        For exact letter-by-letter conversion of BMEI04 text, use the two keystroke modes instead.
+      </div>
+    </div>
+  )
+}
+
 function TabTranslit({ questions, refetch, showToast }) {
-  const [mode, setMode] = useState('toMayek')
+  const [mode, setMode] = useState('translate')
   const [input, setInput] = useState('')
   const output = useMemo(() => (mode === 'toMayek' ? romanToMeetei(input) : meeteiToRoman(input)), [input, mode])
   const [showPicker, setShowPicker] = useState(false)
@@ -3037,14 +3139,16 @@ function TabTranslit({ questions, refetch, showToast }) {
   return (
     <div style={cardS}>
       <div style={{ fontSize:16, fontWeight:800, color:C.navy, marginBottom:4 }}>
-        Mayek Tool - Meetei Mayek Transliterator
+        Mayek Tool - Translator
       </div>
       <div style={{ fontSize:12, color:C.slate, marginBottom:16 }}>
-        Offline BMEI04 keystroke conversion, verified against real GNSI documents. No API, no model, instant.
+        {mode === 'translate'
+          ? 'Translate between English, Hindi, Bengali and Manipuri (Meetei Mayek, Bengali script or Roman).'
+          : 'Offline BMEI04 keystroke conversion, verified against real GNSI documents. No API, no model, instant.'}
       </div>
 
-      <div style={{ display:'flex', gap:6, marginBottom:14, padding:4, background:'#f1f5f9', borderRadius:9, width:'fit-content' }}>
-        {[{ k:'toMayek', label:'Roman - Meetei Mayek' }, { k:'toRoman', label:'Meetei Mayek - Roman' }].map(({ k, label }) => (
+      <div style={{ display:'flex', gap:6, marginBottom:14, padding:4, background:'#f1f5f9', borderRadius:9, width:'fit-content', flexWrap:'wrap' }}>
+        {[{ k:'translate', label:'Translate' }, { k:'toMayek', label:'Roman - Meetei Mayek' }, { k:'toRoman', label:'Meetei Mayek - Roman' }].map(({ k, label }) => (
           <button key={k} onClick={() => { setMode(k); setInput('') }}
             style={{ padding:'8px 16px', borderRadius:7, border:'none', fontSize:12, fontWeight:700,
               cursor:'pointer', fontFamily:'inherit',
@@ -3055,6 +3159,7 @@ function TabTranslit({ questions, refetch, showToast }) {
         ))}
       </div>
 
+      {mode === 'translate' ? <MayekTranslator showToast={showToast} /> : (<>
       <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
         <div>
           <label style={lS}>{mode === 'toMayek' ? 'BMEI04 Keystrokes' : 'Meetei Mayek Input'}</label>
@@ -3115,6 +3220,7 @@ function TabTranslit({ questions, refetch, showToast }) {
         Lowercase <code>a</code> is the Atap vowel sign (&ldquo;aa&rdquo;), not the vowel letter &mdash; that's capital <code>A</code>.
         The Save button converts a saved BMEI04 question_mayek to real Unicode — paste that question's full Mayek line exactly as stored.
       </div>
+      </>)}
     </div>
   )
 }
