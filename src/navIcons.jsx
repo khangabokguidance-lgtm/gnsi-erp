@@ -1,0 +1,59 @@
+// navIcons.jsx — line icons for the module menu (24×24, stroke = currentColor).
+const P = {
+  dashboard: <><rect x="3" y="3" width="7" height="8" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="15" width="7" height="6" rx="1.5"/></>,
+  students: <><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v5"/></>,
+  admissions: <><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3v2h6V3"/><path d="M9 11h6M9 15h4"/></>,
+  bulkadmission: <><path d="M12 3v11"/><path d="M7.5 9.5L12 14l4.5-4.5"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></>,
+  fees: <><path d="M7 5h10M7 9h10"/><path d="M9 5c4 0 5 2 5 4s-2 4-5 4H7l8 7"/></>,
+  accounts: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></>,
+  studentfeeledger: <><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2z"/><path d="M4 21a2 2 0 012-2h13v2"/><path d="M9 8h6M9 12h4"/></>,
+  feesetup: <><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></>,
+  construction: <><path d="M3 21h18"/><path d="M5 21V10l7-5 7 5v11"/><path d="M9 21v-6h6v6"/></>,
+  attendance: <><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18"/><path d="M8.5 15l2.5 2.5 4.5-5"/></>,
+  exams: <><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><path d="M14 3v6h6"/><path d="M8 14l2 2 4-4"/></>,
+  timetable: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
+  teaching: <><path d="M2 5h8a3 3 0 013 3v13a2 2 0 00-2-2H2z"/><path d="M22 5h-8a3 3 0 00-3 3v13a2 2 0 012-2h9z"/></>,
+  courses: <><path d="M12 3L2 8l10 5 10-5z"/><path d="M2 13l10 5 10-5"/></>,
+  questionbank: <><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 1.7-2.5 2-2.5 3.5"/><path d="M12 17h.01"/></>,
+  questionbankviewer: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></>,
+  entrance: <><path d="M8 21h8M12 17v4"/><path d="M7 4h10v5a5 5 0 01-10 0z"/><path d="M7 6H4a3 3 0 003 4M17 6h3a3 3 0 01-3 4"/></>,
+  studymaterial: <><path d="M4 19V5a2 2 0 012-2h12v14H6a2 2 0 00-2 2zm0 0a2 2 0 002 2h12"/><path d="M9 7h6"/></>,
+  teachingaids: <><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></>,
+  studylockers: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/><path d="M8 10v2M16 10v2"/></>,
+  kitchen: <><path d="M5 3v7a2 2 0 002 2h0a2 2 0 002-2V3M7 12v9"/><path d="M17 21V3c-2 1-3 4-3 7h3"/></>,
+  staff: <><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14c2.6.3 4.5 2.4 4.5 5"/></>,
+  hr: <><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2"/><path d="M3 12h18"/></>,
+  leave: <><path d="M12 3v2M5.6 5.6l1.4 1.4M3 12h2M19 12h2M17 7l1.4-1.4"/><path d="M7 14a5 5 0 0110 0"/><path d="M3 18h18M6 21h12"/></>,
+  hostel: <><path d="M3 21V8l9-5 9 5v13"/><path d="M3 21h18"/><path d="M9 21v-5h6v5"/><path d="M8 11h.01M16 11h.01"/></>,
+  awards: <><circle cx="12" cy="9" r="6"/><path d="M8.5 14L7 22l5-3 5 3-1.5-8"/></>,
+  faceattendance: <><path d="M4 8V6a2 2 0 012-2h2M16 4h2a2 2 0 012 2v2M20 16v2a2 2 0 01-2 2h-2M8 20H6a2 2 0 01-2-2v-2"/><circle cx="12" cy="10" r="2.5"/><path d="M8 17c.6-2 2.1-3 4-3s3.4 1 4 3"/></>,
+  reception: <><path d="M4 18h16"/><path d="M6 18a6 6 0 0112 0"/><path d="M12 8V6M10 6h4"/><path d="M3 21h18"/></>,
+  notice: <><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 003.4 0"/></>,
+  social: <><path d="M3 11v2a1 1 0 001 1h3l6 4V6L7 10H4a1 1 0 00-1 1z"/><path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12"/></>,
+  connect: <><path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7"/></>,
+  website: <><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></>,
+  store: <><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9a3 3 0 006 0 3 3 0 006 0 3 3 0 006 0"/><path d="M5 12v9h14v-9"/><path d="M10 21v-5h4v5"/></>,
+  reports: <><path d="M3 3v18h18"/><path d="M8 17v-5M12 17V8M16 17v-8M20 17V5"/></>,
+  checklist: <><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 9l1.5 1.5L12 8M8 15l1.5 1.5L12 14M14 9h2M14 15h2"/></>,
+  invitation: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></>,
+  certificate: <><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 8h10M7 11h6"/><circle cx="16" cy="17" r="3"/><path d="M14.5 19.5L14 23l2-1 2 1-.5-3.5"/></>,
+  admin: <><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></>,
+  student360: <><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/><path d="M8 11h6M11 8v6"/></>,
+  system: <><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></>,
+  adminlink: <><circle cx="8" cy="8" r="3.5"/><path d="M2 20c0-3.3 2.7-6 6-6 1.3 0 2.5.4 3.5 1"/><path d="M15 17h6M18 14v6"/></>,
+  search: <><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></>,
+  close: <><path d="M6 6l12 12M18 6L6 18"/></>,
+  chevron: <><path d="M9 6l6 6-6 6"/></>,
+  logout: <><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></>,
+  home: <><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></>,
+  star: <><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></>,
+}
+
+export function NavIcon({ id, size = 24, stroke = 1.8 }) {
+  const body = P[id] || <><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 12h6"/></>
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {body}
+    </svg>
+  )
+}

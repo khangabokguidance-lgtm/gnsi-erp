@@ -26,6 +26,7 @@ import QuestionBankViewer from './QuestionBankViewer'
 import SystemSettings     from './SystemSettings'
 import AdminPage          from './AdminPage'
 import StudentFeeLedger   from './StudentFeeLedger'
+import MobileNavHome from './MobileNavHome'
 import { OPEN_LEDGER_EVENT, ledgerGccFromUrl } from './ledgerLink'
 import GNSIDashboard      from './GNSIDashboard'
 import Courses            from './Courses'
@@ -577,11 +578,13 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
         </div>
         <button onClick={onLogout} style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', color: '#fca5a5', fontSize: 16, flexShrink: 0, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🚪</button>
       </div>
-      {drawerOpen && <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 298, backdropFilter: 'blur(3px)' }} />}
-      <div style={{ ...sidebarStyles, position: 'fixed', top: 0, left: 0, width: 280, height: '100vh', zIndex: 299, overflowY: 'hidden', transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.24s cubic-bezier(0.4, 0, 0.2, 1)', willChange: 'transform' }}>
-        <LogoHeader isMobile onClose={() => setDrawerOpen(false)} collapsed={false} onToggleCollapse={() => {}} />
-        <SidebarContent activePage={activePage} setActivePage={setActivePage} onLogout={onLogout} currentUser={currentUser} onNavClick={() => setDrawerOpen(false)} permMap={permMap} />
-      </div>
+      {/* Phone menu — payments-app style home screen of module icons */}
+      <MobileNavHome
+        open={drawerOpen} onClose={() => setDrawerOpen(false)}
+        groups={ALL_GROUPS} allowedModules={allowedModules} activePage={activePage}
+        onNavigate={setActivePage} badges={BADGES} currentUser={currentUser} onLogout={onLogout}
+        logoSrc={`data:image/png;base64,${LOGO_BASE64}`}
+      />
     </>
   )
 }
