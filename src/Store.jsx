@@ -4,6 +4,7 @@ import { PremiumStyles, PremiumHero } from './premiumUI'
 import { getActiveStudents } from './studentQueries'
 import { isAdminRole } from './roles'
 import { gccStr } from './feeEngine'
+import { printStoreBill } from './premiumReceipt'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GNSI Store — counter POS, inventory, online orders, sales, purchases, reports.
@@ -160,8 +161,14 @@ async function softDeleteAccounts(ref) {
 }
 
 // ── Printable bill ──────────────────────────────────────────────────────────
-function printBill(sale) {
-  const items = sale.items || sale.store_sale_items || []
+// A4 bill in the shared receipt design (premiumReceipt.js); the narrow
+// counter slip below is kept as an option for 80 mm counter printers.
+const SLIP_KEY = 'gnsi_pos_bill_slip'
+const slipPreferred = () => { try { return localStorage.getItem(SLIP_KEY) === 'on' } catch { return false } }
+function printBill(sale) { return slipPreferred() ? printSlip(sale) : printStoreBill(sale) }
+
+function printSlip(sale) {
+  const items = Array.isArray(sale.items) ? sale.items : (sale.store_sale_items || [])
   const rows = items.map((i, idx) => `<tr><td>${idx + 1}</td><td>${esc(i.name)}${i.size ? ' — ' + esc(i.size) : ''}</td><td class="r">${i.qty}</td><td class="r">₹${n(i.price)}</td><td class="r">₹${n(i.amount)}</td></tr>`).join('')
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${esc(sale.bill_no)}</title><style>
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#0f172a;padding:14px}
@@ -354,6 +361,7 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
   const [payOpen, setPayOpen] = useState(false)
   const [partPay, setPartPay] = useState(false)
   const [done, setDone] = useState(null) // completed sale shown on the success screen
+  const [slip, setSlip] = useState(slipPreferred)
   const [autoPrint, setAutoPrint] = useState(() => { try { return localStorage.getItem(AUTOPRINT_KEY) !== 'off' } catch { return true } })
   const [freq, setFreq] = useState(() => { try { return JSON.parse(localStorage.getItem(FREQ_KEY) || '{}') } catch { return {} } })
   const [flash, setFlash] = useState(null)
@@ -537,7 +545,7 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
       setLastSale(printed)
       const f = { ...freq }; lines.forEach(l => { f[l.id] = (f[l.id] || 0) + l.qty })
       setFreq(f); try { localStorage.setItem(FREQ_KEY, JSON.stringify(f)) } catch {}
-      setDone({ ...printed, mode: paidNum > 0 ? payMode : null, due: dueNum, items: count, points: data.points_earned })
+      setDone({ ...printed, mode: paidNum > 0 ? payMode : null, due: dueNum, itemCount: count, points: data.points_earned })
       setPayOpen(false); reset(); chime(); onSaleDone()
     } catch (err) {
       showToast('Sale failed: ' + err.message, '#dc2626')
@@ -850,7 +858,7 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
             <div className="pos-okc">✓</div>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#15803d', letterSpacing: '.08em' }}>SALE COMPLETE</div>
             <div style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-.03em', margin: '4px 0' }}>₹{n(done.amount_paid)}</div>
-            <div style={{ fontSize: 13.5, color: '#64748b' }}>{done.bill_no} · {done.items} item{done.items > 1 ? 's' : ''}{done.mode ? ` · ${done.mode}` : ''}{done.customer_name ? ` · ${done.customer_name}` : ''}</div>
+            <div style={{ fontSize: 13.5, color: '#64748b' }}>{done.bill_no} · {done.itemCount} item{done.itemCount > 1 ? 's' : ''}{done.mode ? ` · ${done.mode}` : ''}{done.customer_name ? ` · ${done.customer_name}` : ''}</div>
             {Number(done.change) > 0 && <div className="pos-change" style={{ background: '#ecfdf3', color: '#15803d', margin: '16px 0 0' }}><span>Give change</span><b>₹{n(done.change)}</b></div>}
             {done.due > 0 && <div className="pos-change" style={{ background: '#fef2f2', color: '#dc2626', margin: '12px 0 0', fontSize: 14 }}><span>Added to student dues</span><b style={{ fontSize: 22 }}>₹{n(done.due)}</b></div>}
             {done.points > 0 && <div style={{ fontSize: 13, color: '#b45309', fontWeight: 700, marginTop: 10 }}>⭐ +{done.points} loyalty points earned</div>}
@@ -858,6 +866,9 @@ function POSTab({ products, categories, students, kits = [], isAdmin, currentUse
               <button onClick={() => printBill(done)} style={{ height: 52, borderRadius: 14, border: '1.5px solid #e7e3da', background: '#fff', fontWeight: 800, fontSize: 14 }}>🖨 {autoPrint ? 'Print again' : 'Print bill'}</button>
               <button onClick={() => { setDone(null); searchRef.current?.focus() }} autoFocus style={{ height: 52, borderRadius: 14, border: 'none', background: '#132a4f', color: '#fff', fontWeight: 800, fontSize: 15 }}>New sale ↵</button>
             </div>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: '#64748b', marginTop: 10, cursor: 'pointer' }}>
+              <input type="checkbox" checked={slip} onChange={e => { setSlip(e.target.checked); try { localStorage.setItem(SLIP_KEY, e.target.checked ? 'on' : 'off') } catch { /* storage unavailable */ } }} /> Print a narrow counter slip (80 mm) instead of A4
+            </label>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: '#64748b', marginTop: 14, cursor: 'pointer' }}>
               <input type="checkbox" checked={autoPrint} onChange={e => { setAutoPrint(e.target.checked); try { localStorage.setItem(AUTOPRINT_KEY, e.target.checked ? 'on' : 'off') } catch {} }} /> Print the bill automatically after every sale
             </label>
