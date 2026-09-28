@@ -105,6 +105,25 @@ const fmt      = (n) => `₹${Number(n).toLocaleString('en-IN')}`
 const monthKey = (d) => d ? d.slice(0,7) : ''
 // PHASE 1 FIX: getToday() helper used for reactive today state
 const getToday = () => new Date().toLocaleDateString('en-CA')
+// Fee/store postings carry no account_type — they are Cash A/c, as every
+// other view here already assumes. Use this wherever entries are matched by account.
+const acctOf = e => e?.account_type || 'Cash A/c'
+// Local-time Date for a 'YYYY-MM-DD' (new Date('YYYY-MM-DD') is UTC midnight,
+// which lands on the previous day in time zones behind UTC).
+const localDate = s => { const [y, m, d] = String(s).slice(0, 10).split('-').map(Number); return new Date(y, (m || 1) - 1, d || 1) }
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+// Monday of the week containing dateStr, as 'YYYY-MM-DD'.
+const weekKey = dateStr => { const d = localDate(dateStr); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return ymd(d) }
+// Category summaries keyed by type too — "Other" exists as both an income and an expense head.
+const byTypeCategory = list => {
+  const map = {}
+  list.forEach(e => {
+    const k = `${e.type}|${e.category || 'Other'}`
+    if (!map[k]) map[k] = { category: e.category || 'Other', type: e.type, total: 0, count: 0 }
+    map[k].total += Number(e.amount); map[k].count += 1
+  })
+  return Object.values(map).sort((a, b) => b.total - a.total)
+}
 
 // BUGFIX (audit): single shared rule for "does this entry represent money
 // that has actually moved". A Pending/unconfirmed entry hasn't been
@@ -216,7 +235,8 @@ async function writeAuditLog({action,role,targetId,oldValues,newValues}){
 // ── PHASE 3: client-side fraud helpers kept for frequency anomaly display only ──
 function detectFrequencyAnomalies(entries, todayStr){
   const thisMonth=todayStr.slice(0,7),map={}
-  entries.filter(e=>monthKey(e.entry_date)===thisMonth).forEach(e=>{const k=`${e.category}-${e.amount}`;if(!map[k])map[k]=[];map[k].push(e)})
+  // Hand-entered expenses only: fee/store postings repeat the same amount every month by design.
+  entries.filter(e=>e.type==='Expense'&&!e.source_type&&!e.source_ref&&isConfirmed(e)&&monthKey(e.entry_date)===thisMonth).forEach(e=>{const k=`${e.category}-${e.amount}`;if(!map[k])map[k]=[];map[k].push(e)})
   return Object.entries(map).filter(([,arr])=>arr.length>2).map(([key,arr])=>({key,count:arr.length,entries:arr}))
 }
 
@@ -996,7 +1016,8 @@ function Accounts({role,userId}){
     // account type. Admin is exempt (that's how a month gets corrected or
     // reopened). Checked here rather than only at insert time so an edit
     // that MOVES an entry INTO a locked month is caught too.
-    const lockedRow=rows.find(r=>isMonthLocked(r.account_type,r.entry_date))
+    // …and an edit that moves an entry OUT of a closed month (its original date) is blocked too.
+    const lockedRow=rows.find(r=>isMonthLocked(r.account_type,r.entry_date))||(editEntry&&isMonthLocked(acctOf(editEntry),editEntry.entry_date)?{account_type:acctOf(editEntry),entry_date:editEntry.entry_date}:null)
     if(lockedRow){
       alert(`${monthKey(lockedRow.entry_date)} is closed for ${lockedRow.account_type}. Ask an admin to reopen that month before adding or editing entries in it.`)
       return
@@ -1403,9 +1424,9 @@ function Accounts({role,userId}){
     fetchMonthLocks()
     // Record the closing balance snapshot at the moment of closing, so a
     // later month's opening balance can be checked against it.
-    const monthEntries=entries.filter(e=>e.account_type===accountType&&isConfirmed(e)&&monthKey(e.entry_date)<=monthStr)
+    const monthEntries=entries.filter(e=>acctOf(e)===accountType&&isConfirmed(e)&&monthKey(e.entry_date)<=monthStr)
     const closingBalance=monthEntries.reduce((s,e)=>s+(e.type==='Income'?Number(e.amount):-Number(e.amount)),0)
-    const priorMonthEntries=entries.filter(e=>e.account_type===accountType&&isConfirmed(e)&&monthKey(e.entry_date)<monthStr)
+    const priorMonthEntries=entries.filter(e=>acctOf(e)===accountType&&isConfirmed(e)&&monthKey(e.entry_date)<monthStr)
     const openingBalance=priorMonthEntries.reduce((s,e)=>s+(e.type==='Income'?Number(e.amount):-Number(e.amount)),0)
     await supabase.from('month_opening_balances').upsert({account_type:accountType,month:monthStr,opening_balance:openingBalance,closing_balance:closingBalance},{onConflict:'account_type,month'})
     fetchOpeningBalances()
@@ -1474,10 +1495,10 @@ function Accounts({role,userId}){
 
   const printDailyRegister=()=>{
     const filtered=dailyFilteredEntries
-    const groups=groupByDate(filtered)
+    const groups=groupByDate(filtered,getDailyDate) // same grouping as the screen (payment date in that mode)
     const totalAmt=filtered.reduce((s,e)=>s+Number(e.amount),0)
     const cashAmt=filtered.filter(e=>e.payment_mode==='Cash').reduce((s,e)=>s+Number(e.amount),0)
-    const bankAmt=filtered.filter(e=>e.payment_mode==='Bank').reduce((s,e)=>s+Number(e.amount),0)
+    const bankAmt=filtered.filter(e=>e.payment_mode!=='Cash').reduce((s,e)=>s+Number(e.amount),0)
     const w=window.open('','_blank')
     const regTitle=`Daily ${dailyLabelWord} Register`
     const dateModeLabel=dailyIsIncome?(dailyDateMode==='payment'?'Actual Payment Date':'Entry Date'):'Entry Date'
@@ -1503,7 +1524,7 @@ function Accounts({role,userId}){
       const dayRows=rows.map(e=>{rowNum++;return`<tr><td>${rowNum}</td><td style="color:#888;font-size:11px">${e.id||''}</td><td><b>${e.account_type||'Cash A/c'}</b></td><td>${(e.note||e.category||'').replace(/</g,'&lt;')}</td><td>${e.payment_mode}</td>${dailyIsIncome?`<td style="font-size:11px;color:#888">${e.entry_date}</td>`:''}<td class="amt">${fmt(e.amount)}</td></tr>`}).join('')
       return`<tr><td colspan="${dailyIsIncome?7:6}" class="day-header">${date} — ${weekdayOf(date)} (${rows.length} entries)</td></tr>${dayRows}<tr class="subtotal"><td colspan="${dailyIsIncome?6:5}">Daily Total</td><td class="total-amt">${fmt(dayTotal)}</td></tr>`
     }).join('')}
-    <tr class="grand"><td colspan="4">GRAND TOTAL</td><td colspan="${dailyIsIncome?2:1}">Cash: ${fmt(cashAmt)} | Bank: ${fmt(bankAmt)}</td><td class="total-amt">${fmt(totalAmt)}</td></tr>
+    <tr class="grand"><td colspan="4">GRAND TOTAL</td><td colspan="${dailyIsIncome?2:1}">Cash: ${fmt(cashAmt)} | Bank/UPI/Card: ${fmt(bankAmt)}</td><td class="total-amt">${fmt(totalAmt)}</td></tr>
     </table></body></html>`)
     w.document.close();w.print()
   }
@@ -2096,7 +2117,7 @@ function Accounts({role,userId}){
       if(typeFilter!=='All'&&item.type!==typeFilter)return false
       if(modeFilter!=='All'&&item.payment_mode!==modeFilter)return false
       if(statusFilter!=='All'&&(item.status||'Confirmed')!==statusFilter)return false
-      if(acctFilter!=='All'&&(item.account_type||'Cash A/c')!==acctFilter)return false
+      if(acctFilter!=='All'&&acctOf(item)!==acctFilter)return false
       if(dateFrom&&item.entry_date<dateFrom)return false
       if(dateTo&&item.entry_date>dateTo)return false
       const q=search.toLowerCase()
@@ -2114,11 +2135,12 @@ function Accounts({role,userId}){
 
   const reportEntries = useMemo(()=>{
     const list = entries.filter(item=>{
-      if(!isConfirmed(item))return false
+      // 'All' = confirmed money only; picking a status (e.g. Pending) shows exactly that status.
+      if(rptStatus==='All'&&!isConfirmed(item))return false
       if(rptType!=='All'&&item.type!==rptType)return false
       if(rptCategory!=='All'&&item.category!==rptCategory)return false
       if(rptMode!=='All'&&item.payment_mode!==rptMode)return false
-      if(rptAccount!=='All'&&(item.account_type||'Cash A/c')!==rptAccount)return false
+      if(rptAccount!=='All'&&acctOf(item)!==rptAccount)return false
       if(rptStatus!=='All'&&(item.status||'Confirmed')!==rptStatus)return false
       if(rptVoucherHead&&!(item.voucher_head||'').toLowerCase().includes(rptVoucherHead.toLowerCase()))return false
       if(rptDateFrom&&item.entry_date<rptDateFrom)return false
@@ -2151,15 +2173,7 @@ function Accounts({role,userId}){
     return Object.values(map).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0) // newest first
   },[reportEntries])
 
-  const reportByCategory = useMemo(()=>{
-    const map={}
-    reportEntries.forEach(e=>{
-      const k=e.category||'Other'
-      if(!map[k])map[k]={category:k,type:e.type,total:0,count:0}
-      map[k].total+=Number(e.amount);map[k].count+=1
-    })
-    return Object.values(map).sort((a,b)=>b.total-a.total)
-  },[reportEntries])
+  const reportByCategory = useMemo(()=>byTypeCategory(reportEntries),[reportEntries])
 
   // ── "All Entries" export — used by the Transactions / Daily / Expenditure
   // modules' Export buttons. Deliberately ignores every on-screen filter
@@ -2171,15 +2185,7 @@ function Accounts({role,userId}){
     return { income, expense, net: income-expense, count: entries.filter(isConfirmed).length }
   },[entries])
 
-  const allEntriesByCategory = useMemo(()=>{
-    const map={}
-    entries.filter(isConfirmed).forEach(e=>{
-      const k=e.category||'Other'
-      if(!map[k])map[k]={category:k,type:e.type,total:0,count:0}
-      map[k].total+=Number(e.amount);map[k].count+=1
-    })
-    return Object.values(map).sort((a,b)=>b.total-a.total)
-  },[entries])
+  const allEntriesByCategory = useMemo(()=>byTypeCategory(entries.filter(isConfirmed)),[entries])
 
   const sortedAllEntries = useMemo(
     ()=>entries.filter(isConfirmed).sort((a,b)=>a.entry_date<b.entry_date?-1:a.entry_date>b.entry_date?1:0),
@@ -2216,11 +2222,8 @@ function Accounts({role,userId}){
   // including today", all types/categories/accounts. One-click PDF/DOCX/Excel
   // using the same letterheaded generator functions.
   const weeklyRange = useMemo(()=>{
-    const to=new Date(today)
-    const from=new Date(to);from.setDate(to.getDate()-6) // last 7 days inclusive
-    const pad=(n)=>String(n).padStart(2,'0')
-    const fmtDate=(d)=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
-    return {from:fmtDate(from),to:fmtDate(to)}
+    const from=localDate(today);from.setDate(from.getDate()-6) // last 7 days inclusive
+    return {from:ymd(from),to:today}
   },[today])
 
   const weeklyEntries = useMemo(()=>{
@@ -2235,15 +2238,7 @@ function Accounts({role,userId}){
     return { income, expense, net: income-expense, count: weeklyEntries.length }
   },[weeklyEntries])
 
-  const weeklyByCategory = useMemo(()=>{
-    const map={}
-    weeklyEntries.forEach(e=>{
-      const k=e.category||'Other'
-      if(!map[k])map[k]={category:k,type:e.type,total:0,count:0}
-      map[k].total+=Number(e.amount);map[k].count+=1
-    })
-    return Object.values(map).sort((a,b)=>b.total-a.total)
-  },[weeklyEntries])
+  const weeklyByCategory = useMemo(()=>byTypeCategory(weeklyEntries),[weeklyEntries])
 
   const weeklyFilterSummary = `Weekly Report for Admin's PA — ${weeklyRange.from} to ${weeklyRange.to} (all types, categories, accounts)`
 
@@ -2331,17 +2326,9 @@ function Accounts({role,userId}){
     return { income, expense, net: income-expense, count: monthlyRptEntries.length }
   },[monthlyRptEntries])
 
-  const monthlyRptByCategory = useMemo(()=>{
-    const map={}
-    monthlyRptEntries.forEach(e=>{
-      const k=e.category||'Other'
-      if(!map[k])map[k]={category:k,type:e.type,total:0,count:0}
-      map[k].total+=Number(e.amount);map[k].count+=1
-    })
-    return Object.values(map).sort((a,b)=>b.total-a.total)
-  },[monthlyRptEntries])
+  const monthlyRptByCategory = useMemo(()=>byTypeCategory(monthlyRptEntries),[monthlyRptEntries])
 
-  const monthlyRptLabel = useMemo(()=>new Date(monthlyRptMonth+'-01').toLocaleDateString('en-IN',{month:'long',year:'numeric'}),[monthlyRptMonth])
+  const monthlyRptLabel = useMemo(()=>localDate(monthlyRptMonth+'-01').toLocaleDateString('en-IN',{month:'long',year:'numeric'}),[monthlyRptMonth])
   const monthlyRptFilterSummary = useMemo(()=>`Monthly Report — ${monthlyRptLabel} (all types, categories, accounts)`,[monthlyRptLabel])
 
   const generateMonthlyReport=(format)=>{
@@ -2349,7 +2336,7 @@ function Accounts({role,userId}){
       entries:monthlyRptEntries,totals:monthlyRptTotals,byCategory:monthlyRptByCategory,
       title:`Monthly Report — ${monthlyRptLabel}`,filterSummary:monthlyRptFilterSummary,
       logLabel:`Report (${format}): Monthly Report (${monthlyRptLabel})`,
-      dateFrom:`${monthlyRptMonth}-01`,dateTo:monthlyRptMonth,
+      dateFrom:`${monthlyRptMonth}-01`,dateTo:(()=>{const[y,m]=monthlyRptMonth.split('-').map(Number);return ymd(new Date(y,m,0))})(),
     }
     if(format==='PDF')generateReportPDF(opts)
     else if(format==='DOCX')generateReportDOCX(opts)
@@ -2412,7 +2399,8 @@ function Accounts({role,userId}){
   },[expenditureFilteredEntries])
 
   const expenditureCashAmt = useMemo(()=>expenditureFilteredEntries.filter(e=>e.payment_mode==='Cash').reduce((s,e)=>s+Number(e.amount),0),[expenditureFilteredEntries])
-  const expenditureBankAmt = useMemo(()=>expenditureFilteredEntries.filter(e=>e.payment_mode==='Bank').reduce((s,e)=>s+Number(e.amount),0),[expenditureFilteredEntries])
+  // Everything not paid in cash (Bank, UPI, Card, Cheque…), so Cash + Bank always equals the total.
+  const expenditureBankAmt = useMemo(()=>expenditureFilteredEntries.filter(e=>e.payment_mode!=='Cash').reduce((s,e)=>s+Number(e.amount),0),[expenditureFilteredEntries])
 
   const expenditureFilterSummary = useMemo(()=>{
     const parts=['Type: Expense']
@@ -2514,13 +2502,13 @@ function Accounts({role,userId}){
     <p><b>Daily Expenditure Register</b> — ${expenditureFilterSummary}</p>
     <p>Printed on: ${new Date().toLocaleString('en-IN')}</p>
     <table><tr><th>#</th><th>Sl</th><th>Account</th><th>Description</th><th>Pay Mode</th><th style="text-align:right">Amount (Dr.)</th></tr>
-    ${Object.entries(groups).map(([date,rows])=>{
+    ${groups.map(([date,rows])=>{
       let rowNum=0
       const dayTotal=rows.reduce((s,e)=>s+Number(e.amount),0)
       const dayRows=rows.map(e=>{rowNum++;return`<tr><td>${rowNum}</td><td style="color:#888;font-size:10px">${e.id||''}</td><td><b>${e.account_type||'Cash A/c'}</b></td><td>${(e.note||e.category||'').replace(/</g,'&lt;')}</td><td>${e.payment_mode}</td><td class="amt">${fmt(e.amount)}</td></tr>`}).join('')
       return`<tr><td colspan="6" class="day-header">${date} — ${weekdayOf(date)} (${rows.length} entries)</td></tr>${dayRows}<tr class="subtotal"><td colspan="5">Daily Total</td><td class="total-amt">${fmt(dayTotal)}</td></tr>`
     }).join('')}
-    <tr class="grand"><td colspan="4">GRAND TOTAL</td><td>Cash: ${fmt(expenditureCashAmt)} | Bank: ${fmt(expenditureBankAmt)}</td><td class="total-amt">${fmt(totalAmt)}</td></tr>
+    <tr class="grand"><td colspan="4">GRAND TOTAL</td><td>Cash: ${fmt(expenditureCashAmt)} | Bank/UPI/Card: ${fmt(expenditureBankAmt)}</td><td class="total-amt">${fmt(totalAmt)}</td></tr>
     </table></body></html>`)
     win.document.close();win.focus();win.print()
   }
@@ -2638,7 +2626,7 @@ function Accounts({role,userId}){
 
   const categoryData=useMemo(()=>{
     const map={}
-    entries.filter(e=>(e.status||'Confirmed')==='Confirmed').forEach(e=>{if(!map[e.category])map[e.category]={name:e.category,value:0,type:e.type};map[e.category].value+=Number(e.amount)})
+    entries.filter(isConfirmed).forEach(e=>{const k=`${e.type}|${e.category}`;if(!map[k])map[k]={name:e.category,value:0,type:e.type};map[k].value+=Number(e.amount)})
     return Object.values(map).sort((a,b)=>b.value-a.value).slice(0,8)
   },[entries])
 
@@ -2664,13 +2652,6 @@ function Accounts({role,userId}){
       .map(r=>({...r,Net:r.Income-r.Expense}))
   },[entries,isAdmin])
 
-  const weekKey=(dateStr)=>{
-    const d=new Date(dateStr)
-    const day=(d.getDay()+6)%7 // Monday=0
-    const monday=new Date(d);monday.setDate(d.getDate()-day)
-    const pad=(n)=>String(n).padStart(2,'0')
-    return `${monday.getFullYear()}-${pad(monday.getMonth()+1)}-${pad(monday.getDate())}`
-  }
 
   const weeklyTrend=useMemo(()=>{
     if(!isAdmin)return[]
@@ -2730,7 +2711,7 @@ function Accounts({role,userId}){
     // but the 'All' default now means "all CONFIRMED entries" rather than
     // literally all statuses, consistent with how 'All' behaves nowhere
     // else in this codebase actually meaning "including unconfirmed money".
-    const passesAdv=(e)=>(plAccountType==='All'||e.account_type===plAccountType)&&(plPaymentMode==='All'||e.payment_mode===plPaymentMode)&&(plStatus==='All'?isConfirmed(e):e.status===plStatus)
+    const passesAdv=(e)=>(plAccountType==='All'||acctOf(e)===plAccountType)&&(plPaymentMode==='All'||e.payment_mode===plPaymentMode)&&(plStatus==='All'||plStatus==='Confirmed'?isConfirmed(e):e.status===plStatus)
     let thisM,prevM
     if(plRangeMode==='range'&&plDateFrom&&plDateTo){
       thisM=entries.filter(e=>e.entry_date>=plDateFrom&&e.entry_date<=plDateTo&&passesAdv(e))
@@ -2742,8 +2723,8 @@ function Accounts({role,userId}){
       const toKey=(d)=>d.toLocaleDateString('en-CA')
       prevM=entries.filter(e=>e.entry_date>=toKey(prevFrom)&&e.entry_date<=toKey(prevTo)&&passesAdv(e))
     }else{
-      thisM=entries.filter(e=>e.entry_date.startsWith(plMonth)&&passesAdv(e))
-      prevM=(()=>{const[y,m]=plMonth.split('-').map(Number);const d=new Date(y,m-2,1);const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;return entries.filter(e=>e.entry_date.startsWith(key)&&passesAdv(e))})()
+      thisM=entries.filter(e=>(e.entry_date||'').startsWith(plMonth)&&passesAdv(e))
+      prevM=(()=>{const[y,m]=plMonth.split('-').map(Number);const d=new Date(y,m-2,1);const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;return entries.filter(e=>(e.entry_date||'').startsWith(key)&&passesAdv(e))})()
     }
     const sumBy=(arr,type)=>{const map={};arr.filter(e=>e.type===type).forEach(e=>{map[e.category]=(map[e.category]||0)+Number(e.amount)});return map}
     const thisInc=sumBy(thisM,'Income'),thisExp=sumBy(thisM,'Expense'),prevInc=sumBy(prevM,'Income'),prevExp=sumBy(prevM,'Expense')
@@ -2781,7 +2762,7 @@ function Accounts({role,userId}){
       const fmtD=(s)=>new Date(s+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})
       return `${fmtD(plDateFrom)} – ${fmtD(plDateTo)}`
     }
-    return new Date(plMonth+'-01').toLocaleDateString('en-IN',{month:'long',year:'numeric'})
+    return localDate(plMonth+'-01').toLocaleDateString('en-IN',{month:'long',year:'numeric'})
   },[plRangeMode,plDateFrom,plDateTo,plMonth])
 
   const thisMonth=today.slice(0,7)
@@ -2868,7 +2849,7 @@ function Accounts({role,userId}){
   const reconSummaryByAccount = useMemo(()=>{
     if(!isAdmin)return[]
     return ACCOUNT_TYPES.map(acct=>{
-      const acctEntries=entries.filter(e=>e.account_type===acct&&isConfirmed(e))
+      const acctEntries=entries.filter(e=>acctOf(e)===acct&&isConfirmed(e))
       const unreconciled=acctEntries.filter(e=>!e.reconciled)
       const unreconciledBalance=unreconciled.reduce((s,e)=>s+(e.type==='Income'?Number(e.amount):-Number(e.amount)),0)
       return {account_type:acct,totalCount:acctEntries.length,unreconciledCount:unreconciled.length,unreconciledBalance}
@@ -2879,7 +2860,7 @@ function Accounts({role,userId}){
   // newest first — powers the checklist in the Reconciliation tab
   const reconEntries = useMemo(()=>{
     if(!isAdmin)return[]
-    return entries.filter(e=>e.account_type===reconAcctType&&isConfirmed(e)&&monthKey(e.entry_date)===thisMonth)
+    return entries.filter(e=>acctOf(e)===reconAcctType&&isConfirmed(e)&&monthKey(e.entry_date)===thisMonth)
       .sort((a,b)=>b.entry_date<a.entry_date?-1:b.entry_date>a.entry_date?1:0)
   },[isAdmin,entries,reconAcctType,thisMonth])
 
@@ -3007,7 +2988,7 @@ function Accounts({role,userId}){
       }
     })
     return alerts.sort((a,b)=>b.pctOver-a.pctOver)
-  },[entries,isAdmin,thisMonth,today,weekKey])
+  },[entries,isAdmin,thisMonth,today])
 
   // ── Budget drilldown: "where it was spent" — this month's individual
   // expense entries, grouped by category, newest first. Powers the
@@ -3027,10 +3008,11 @@ function Accounts({role,userId}){
 
   const budgetChartData=useMemo(()=>{
     const months=[]
-    for(let i=5;i>=0;i--){const d=new Date();d.setMonth(d.getMonth()-i);months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`)}
+    const now=new Date()
+    for(let i=5;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`)} // day 1: no month skipped on the 29th–31st
     return months.map(m=>{
       const row={month:m}
-      EXPENSE_CATEGORIES.forEach(cat=>{row[cat]=entries.filter(e=>e.type==='Expense'&&e.category===cat&&monthKey(e.entry_date)===m).reduce((s,e)=>s+Number(e.amount),0);row[`${cat}_budget`]=Number(budgets[cat])||0})
+      EXPENSE_CATEGORIES.forEach(cat=>{row[cat]=entries.filter(e=>isConfirmed(e)&&e.type==='Expense'&&e.category===cat&&monthKey(e.entry_date)===m).reduce((s,e)=>s+Number(e.amount),0);row[`${cat}_budget`]=Number(budgets[cat])||0})
       return row
     })
   },[entries,budgets])
@@ -3155,7 +3137,7 @@ function Accounts({role,userId}){
   const dailyGroups=useMemo(()=>groupByDate(dailyFilteredEntries,getDailyDate),[dailyFilteredEntries,getDailyDate])
   const dailyTotalAmt=dailyFilteredEntries.reduce((s,e)=>s+Number(e.amount),0)
   const dailyCashAmt=dailyFilteredEntries.filter(e=>e.payment_mode==='Cash').reduce((s,e)=>s+Number(e.amount),0)
-  const dailyBankAmt=dailyFilteredEntries.filter(e=>e.payment_mode==='Bank').reduce((s,e)=>s+Number(e.amount),0)
+  const dailyBankAmt=dailyFilteredEntries.filter(e=>e.payment_mode!=='Cash').reduce((s,e)=>s+Number(e.amount),0) // all non-cash
 
   // ── responsive style helpers ───────────────────────────────────────────
   const tabStyle=(t)=>({
@@ -3562,7 +3544,7 @@ function Accounts({role,userId}){
             dailyAmtColor={dailyAmtColor}
             dayTotal={dailyFilteredEntries.reduce((s,e)=>s+Number(e.amount),0)}
             dailyCashAmt={dailyFilteredEntries.filter(e=>e.payment_mode==='Cash').reduce((s,e)=>s+Number(e.amount),0)}
-            dailyBankAmt={dailyFilteredEntries.filter(e=>e.payment_mode==='Bank').reduce((s,e)=>s+Number(e.amount),0)}
+            dailyBankAmt={dailyBankAmt}
             dailyTotalAmt={dailyFilteredEntries.reduce((s,e)=>s+Number(e.amount),0)}
             fraudFlags={fraudFlags}
             canWrite={canWrite}
