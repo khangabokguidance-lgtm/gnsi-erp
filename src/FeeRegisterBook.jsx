@@ -7,58 +7,12 @@
 // April–March session, Feb/Mar are flat-fee months, a month isn't due until it
 // starts, and months before admission aren't charged.
 import { useEffect, useMemo, useState } from 'react'
-import {
-  getFeeRates, MONTHS_LIST, isFlatFeeMonth, feeMonthYearForSession, sessionStartYear,
-  isPreAdmissionMonth, normalizeSessionYear, getSessionYear, ADM_FEE_BASE, gccStr,
-} from './feeEngine'
+import { getFeeRates, normalizeSessionYear, getSessionYear, gccStr } from './feeEngine'
 import { printFeeReceipt } from './premiumReceipt'
 import { ledgerUrl } from './ledgerLink'
-
-const fmt = n => Number(n || 0).toLocaleString('en-IN')
-const fmtDate = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
-const escH = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
-
-// Session a fee month belongs to: Apr–Dec of Y → Y-(Y+1); Jan–Mar of Y → (Y-1)-Y.
-const sessionOfMonth = (month, year) => {
-  const y = Number(year)
-  if (!month || !y) return null
-  const start = isJanToMar(month) ? y - 1 : y
-  return `${start}-${start + 1}`
-}
-const isJanToMar = m => ['January', 'February', 'March'].includes(m)
-const sessionOfDate = d => {
-  if (!d) return null
-  const dt = new Date(d)
-  if (Number.isNaN(dt.getTime())) return null
-  const start = dt.getMonth() + 1 >= 4 ? dt.getFullYear() : dt.getFullYear() - 1
-  return `${start}-${start + 1}`
-}
-const shortSession = s => { const m = String(s || '').match(/^(\d{4})-(\d{4})$/); return m ? `${m[1]}-${m[2].slice(2)}` : s }
-const monthStarted = (month, year) => new Date(Number(year), new Date(`${month} 1, 2000`).getMonth(), 1) <= new Date()
-
-// One normalised entry per payment row, whichever table it came from.
-function toEntries(student, admRows, flatRows, crsRows) {
-  const e = []
-  for (const r of admRows) e.push({
-    kind: r.fee_type === 'advance' ? 'advance' : r.fee_type === 'item' ? 'item' : 'admission',
-    date: r.pay_date, receipt: r.receipt_no, amount: Number(r.amount_paid) || 0, mode: r.pay_mode, ref: r.txn_ref, by: r.collected_by,
-    particulars: r.description || (r.fee_type === 'admission' ? 'Admission Fee' : 'Admission / Kit'),
-    period: 'One-time', category: 'Admission & Kit', session: sessionOfDate(r.pay_date),
-  })
-  for (const r of flatRows) e.push({
-    kind: 'flat', month: r.month, year: Number(r.year), date: r.pay_date, receipt: r.receipt_no, amount: Number(r.amount) || 0,
-    mode: r.pay_mode, ref: r.txn_ref, by: r.collected_by, advance: !!r.is_advance,
-    particulars: 'Monthly Flat Fee', period: `${r.month} ${r.year}`, category: r.hostel_type || student.hostel_type || 'Hostel',
-    session: sessionOfMonth(r.month, r.year),
-  })
-  for (const r of crsRows) e.push({
-    kind: 'course', month: r.for_month, year: Number(r.year), date: r.pay_date, receipt: r.receipt_no, amount: Number(r.amount_paid) || 0,
-    mode: r.pay_mode, ref: r.txn_ref, by: r.collected_by, advance: !!r.is_advance,
-    particulars: `Course Fee${r.course ? ' — ' + r.course : ''}${r.subtype ? ' ' + r.subtype : ''}`, period: `${r.for_month} ${r.year}`,
-    category: r.course || student.course || 'Course', session: sessionOfMonth(r.for_month, r.year),
-  })
-  return e.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.receipt || '').localeCompare(String(b.receipt || '')))
-}
+import { fmt, fmtDate, escH, shortSession, prevSession, toEntries, buildRegister, buildStatement, parentPhone, reminderText } from './feeLedgerModel'
+import { StatementView, InsightsView } from './FeeLedgerTools'
+import { openWhatsAppReminder, printDuesNotice, exportLedgerExcel } from './feeLedgerActions'
 
 // Reprint one receipt with every line that was paid on it.
 function reprintReceipt(student, entries, receiptNo) {
@@ -72,40 +26,6 @@ function reprintReceipt(student, entries, receiptNo) {
     hostel_type: student.hostel_type,
     items: lines.map(x => ({ particulars: x.particulars, period: x.period, category: x.category, amount: x.amount })),
   })
-}
-
-// Month-wise register for one session.
-function buildRegister(student, entries, session, rates) {
-  const start = sessionStartYear(session)
-  const admissionDate = student.admission_date || null
-  const rows = MONTHS_LIST.map(month => {
-    const year = feeMonthYearForSession(month, session)
-    const flat = isFlatFeeMonth(month)
-    const head = flat ? 'Flat Fee' : 'Course Fee'
-    const expected = flat ? Number(rates?.flatFee || 0) : Number(rates?.courseFee || 0)
-    const paid = entries.filter(x => x.kind === (flat ? 'flat' : 'course') && x.month === month && Number(x.year) === year)
-    const paidAmt = paid.reduce((s, x) => s + x.amount, 0)
-    let status
-    if (paid.length) status = paid.some(x => x.advance) ? 'advance' : paidAmt + 0.5 < expected ? 'short' : 'paid'
-    else if (isPreAdmissionMonth(month, year, admissionDate)) status = 'before'
-    else if (!monthStarted(month, year)) status = 'upcoming'
-    else status = 'due'
-    const due = status === 'due' ? expected : 0
-    return { month, year, head, expected, paid, paidAmt, status, due }
-  })
-  // Admission fee: shown in the session it was paid in, or — if unpaid — in
-  // the student's own session.
-  const admEntries = entries.filter(x => x.kind === 'admission')
-  const admSession = admEntries[0]?.session || normalizeSessionYear(student.session) || sessionOfDate(admissionDate)
-  const admExpected = Number(rates?.admissionFee ?? ADM_FEE_BASE)
-  const admPaid = admEntries.reduce((s, x) => s + x.amount, 0)
-  const admission = admSession === session
-    ? { expected: admExpected, paid: admEntries, paidAmt: admPaid, due: Math.max(0, admExpected - admPaid) }
-    : null
-  const other = entries.filter(x => (x.kind === 'item' || x.kind === 'advance') && x.session === session)
-  const totalPaid = rows.reduce((s, r) => s + r.paidAmt, 0) + (admission?.paidAmt || 0) + other.reduce((s, x) => s + x.amount, 0)
-  const totalDue = rows.reduce((s, r) => s + r.due, 0) + (admission?.due || 0)
-  return { start, rows, admission, other, totalPaid, totalDue, dueMonths: rows.filter(r => r.status === 'due').length }
 }
 
 const STATUS = {
@@ -147,6 +67,12 @@ const REG_CSS = `
 .frb-tabs{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .frb-chip{padding:6px 13px;border-radius:999px;border:1px solid #d9d2c2;background:#fff;font-size:12.5px;font-weight:700;color:#2e3b52;cursor:pointer;font-family:inherit}
 .frb-chip.on{background:linear-gradient(180deg,#1e3a6e,#132a4f);color:#fff;border-color:#132a4f}
+.frb-date{padding:5px 8px;border:1px solid #d9d2c2;border-radius:8px;font:600 12px inherit;font-family:inherit;color:#1f2a44;background:#fff}
+.frb-search{padding:7px 12px;border:1px solid #d9d2c2;border-radius:999px;font:600 12.5px inherit;font-family:inherit;min-width:0;width:220px;max-width:100%;background:#fff}
+.frb-pane{display:flex;gap:4px;margin:14px 16px 0 66px;padding:4px;background:#f3efe3;border:1px solid #e6dcc3;border-radius:12px;width:fit-content;max-width:calc(100% - 82px);overflow-x:auto}
+.frb-pane button{padding:7px 14px;border-radius:9px;border:none;background:none;font:700 12.5px inherit;font-family:inherit;color:#5d6b82;cursor:pointer;white-space:nowrap}
+.frb-pane button.on{background:#fff;color:#1d3a78;box-shadow:0 1px 3px rgba(60,40,10,.18)}
+@media (max-width:640px){.frb-pane{margin-left:30px;max-width:calc(100% - 40px)}}
 .frb-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:14px 16px 0 66px}
 .frb-sumc{border:1px solid #e6dcc3;border-radius:10px;padding:9px 12px;background:#fff}
 .frb-sumc b{display:block;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:#6b7690}
@@ -171,6 +97,14 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
   const ratesError = rateState.key === rateKey ? rateState.error : ''
   const [bookScope, setBookScope] = useState('session') // 'session' | 'all'
   const [copied, setCopied] = useState(false)
+  const [pane, setPane] = useState('register') // 'register' | 'statement' | 'insights'
+  const [bookQuery, setBookQuery] = useState('')
+  const [notice, setNotice] = useState('')
+  // Previous session's rates → its unpaid dues are the statement's opening balance.
+  const prev = prevSession(session)
+  const prevKey = [prev, student.course, student.batch, student.hostel_type, student.gcc_no].join('|')
+  const [prevState, setPrevState] = useState({ key: null, rates: null })
+  const prevRates = prevState.key === prevKey ? prevState.rates : null
 
   useEffect(() => {
     let live = true
@@ -180,14 +114,42 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
     return () => { live = false }
   }, [rateKey, session, student.course, student.batch, student.hostel_type, student.gcc_no])
 
+  useEffect(() => {
+    let live = true
+    getFeeRates(prev, student.course || '', student.batch || '', student.hostel_type || 'Day Scholar', gccStr(student.gcc_no))
+      .then(r => { if (live) setPrevState({ key: prevKey, rates: r }) })
+      .catch(() => { if (live) setPrevState({ key: prevKey, rates: null }) })
+    return () => { live = false }
+  }, [prevKey, prev, student.course, student.batch, student.hostel_type, student.gcc_no])
+
   const reg = useMemo(() => buildRegister(student, entries, session, rates), [student, entries, session, rates])
-  const book = bookScope === 'all' ? entries : entries.filter(x => x.session === session)
+  const openingBalance = useMemo(() => prevRates ? buildRegister(student, entries, prev, prevRates).totalDue : 0, [student, entries, prev, prevRates])
+  const statement = useMemo(() => buildStatement(student, entries, session, reg, { openingBalance }), [student, entries, session, reg, openingBalance])
+  const q = bookQuery.trim().toLowerCase()
+  const book = (bookScope === 'all' ? entries : entries.filter(x => x.session === session))
+    .filter(x => !q || [x.receipt, x.particulars, x.period, x.mode, x.by, x.ref, String(x.amount), fmtDate(x.date)].some(v => String(v || '').toLowerCase().includes(q)))
   const bookRows = book.reduce((acc, x) => [...acc, { ...x, running: (acc.length ? acc[acc.length - 1].running : 0) + x.amount }], [])
   const bookTotal = bookRows.length ? bookRows[bookRows.length - 1].running : 0
 
   const receiptBtn = no => no
     ? <button type="button" className="frb-rcpt" title="Reprint this receipt" onClick={() => reprintReceipt(student, entries, no)}>{no}</button>
     : <span className="muted">—</span>
+
+  const sendReminder = () => {
+    const { phone } = openWhatsAppReminder(student, reg, session)
+    setNotice(phone ? `WhatsApp opened for +${phone}.` : 'No parent phone on file — WhatsApp opened so you can pick the contact.')
+    setTimeout(() => setNotice(''), 4000)
+  }
+  const copyReminder = async () => {
+    try { await navigator.clipboard.writeText(reminderText(student, reg, session)); setNotice('Reminder message copied.') }
+    catch { setNotice('Could not copy — use the WhatsApp button instead.') }
+    setTimeout(() => setNotice(''), 3000)
+  }
+  const doExport = async () => {
+    try { await exportLedgerExcel(student, reg, bookRows, statement, session); setNotice('Excel file downloaded.') }
+    catch (e) { setNotice('Export failed: ' + (e.message || e)) }
+    setTimeout(() => setNotice(''), 3000)
+  }
 
   const copyLink = async () => {
     try { await navigator.clipboard.writeText(ledgerUrl(student.gcc_no)); setCopied(true); setTimeout(() => setCopied(false), 1800) }
@@ -208,8 +170,13 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
         <div className="frb-tabs">
           <button className="frb-chip" onClick={copyLink} title={ledgerUrl(student.gcc_no)}>{copied ? '✓ Link copied' : '🔗 Copy ledger link'}</button>
           <button className="frb-chip" onClick={() => printRegister(student, reg, bookRows, session, bookScope)}>🖨️ Print register</button>
+          <button className="frb-chip" onClick={sendReminder} title={parentPhone(student) ? `Send to +${parentPhone(student)}` : 'No parent phone on file'}>📲 WhatsApp reminder</button>
+          <button className="frb-chip" onClick={copyReminder}>📋 Copy reminder</button>
+          <button className="frb-chip" onClick={() => printDuesNotice(student, reg, session)}>📄 Dues notice</button>
+          <button className="frb-chip" onClick={doExport}>⬇️ Excel</button>
         </div>
       </div>
+      {notice && <div role="status" style={{ margin: '-4px 0 10px', fontSize: 12.5, fontWeight: 700, color: '#146c3a' }}>{notice}</div>}
 
       <div className="frb-page">
         <div className="frb-head">
@@ -234,6 +201,16 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
         {ratesError && <div style={{ margin: '10px 16px 0 66px', color: '#b42318', fontSize: 12.5, fontWeight: 600 }}>⚠️ {ratesError} — amounts due can't be shown.</div>}
         {rates?.usingFallbackRates && <div style={{ margin: '10px 16px 0 66px', color: '#9a5b00', fontSize: 12 }}>Fee Setup has no rate for this course/batch/hostel in {shortSession(session)} — showing the default rates.</div>}
 
+        <div className="frb-pane" role="tablist" aria-label="Ledger section">
+          {[['register', '📅 Month-wise'], ['statement', '🧾 Statement'], ['insights', '📊 Insights']].map(([id, label]) => (
+            <button key={id} role="tab" aria-selected={pane === id} className={pane === id ? 'on' : ''} onClick={() => setPane(id)}>{label}</button>
+          ))}
+        </div>
+
+        {pane === 'statement' && <StatementView student={student} entries={entries} reg={reg} session={session} openingBalance={openingBalance} rates={rates} />}
+        {pane === 'insights' && <InsightsView student={student} entries={entries} reg={reg} session={session} rates={rates} onJump={() => setPane('register')} />}
+
+        {pane === 'register' && <>
         {/* ── Month-wise register ── */}
         <div className="frb-sec">
           <div className="frb-sech">
@@ -294,6 +271,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
           <div className="frb-sech">
             <h3>Day book — every payment in order</h3>
             <div className="frb-tabs">
+              <input className="frb-search" type="search" value={bookQuery} onChange={e => setBookQuery(e.target.value)} placeholder="Search receipt, month, mode, amount…" aria-label="Search day book" />
               <button className={'frb-chip' + (bookScope === 'session' ? ' on' : '')} onClick={() => setBookScope('session')}>This session</button>
               <button className={'frb-chip' + (bookScope === 'all' ? ' on' : '')} onClick={() => setBookScope('all')}>All time</button>
             </div>
@@ -304,7 +282,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
                 <tr><th>S.No</th><th>Date</th><th>Receipt No.</th><th>Particulars</th><th>For</th><th>Mode / Ref</th><th>Collected by</th><th style={{ textAlign: 'right' }}>Amount (₹)</th><th style={{ textAlign: 'right' }}>Progressive (₹)</th></tr>
               </thead>
               <tbody>
-                {bookRows.length === 0 && <tr><td colSpan={9} className="muted" style={{ textAlign: 'center' }}>No payments recorded{bookScope === 'session' ? ` in ${shortSession(session)}` : ''}.</td></tr>}
+                {bookRows.length === 0 && <tr><td colSpan={9} className="muted" style={{ textAlign: 'center' }}>{q ? `No payment matches “${bookQuery}”.` : `No payments recorded${bookScope === 'session' ? ` in ${shortSession(session)}` : ''}.`}</td></tr>}
                 {bookRows.map((x, i) => (
                   <tr key={i}>
                     <td className="muted">{i + 1}</td>
@@ -326,6 +304,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
           </div>
           {mobile && <div style={{ fontSize: 11, color: '#8a93a6', marginTop: 6 }}>Swipe the register sideways to see every column.</div>}
         </div>
+        </>}
       </div>
     </div>
   )
