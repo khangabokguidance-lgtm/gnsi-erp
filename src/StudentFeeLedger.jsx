@@ -6,6 +6,8 @@ import { PremiumHero, PREMIUM_CSS } from './staffPhotos'
 import { printFeeReceipt } from './premiumReceipt'
 import FeeRegisterBook from './FeeRegisterBook'
 import PrintAllLedgers from './PrintAllLedgers'
+import FeeDayBook from './FeeDayBook'
+import FeeMonthlyLedger from './FeeMonthlyLedger'
 import { OPEN_LEDGER_EVENT, takePendingLedgerGcc, setLedgerUrl } from './ledgerLink'
 
 // ─── Mobile hook ──────────────────────────────────────────────────────────────
@@ -385,6 +387,7 @@ export default function StudentFeeLedger() {
   const [printAll, setPrintAll] = useState(false)
   const [wantGcc, setWantGcc] = useState(() => takePendingLedgerGcc())
   const [notFound, setNotFound] = useState('')
+  const [tab, setTab] = useState('student') // 'student' | 'daybook' | 'monthly'
 
   useEffect(() => {
     // Every student, paged past the 1000-row cap so none are missing from search.
@@ -393,7 +396,7 @@ export default function StudentFeeLedger() {
 
   // A ledger link clicked while this screen is already open.
   useEffect(() => {
-    const onOpen = () => setWantGcc(takePendingLedgerGcc())
+    const onOpen = () => { setTab('student'); setWantGcc(takePendingLedgerGcc()) }
     window.addEventListener(OPEN_LEDGER_EVENT, onOpen)
     return () => { window.removeEventListener(OPEN_LEDGER_EVENT, onOpen); setLedgerUrl(null) }
   }, [])
@@ -445,6 +448,20 @@ export default function StudentFeeLedger() {
           ...(selected ? [{ icon: '🧾', label: 'Transactions', value: admRows.length + flatRows.length + crsRows.length }, { icon: '💰', label: 'Total paid', value: '₹' + fmt(grandTotal), color: '#E2C57E' }] : []),
         ]} />
 
+      <div role="tablist" aria-label="Fee ledger books" style={{ display: 'flex', gap: 6, padding: 5, marginBottom: 16, background: '#fff', borderRadius: 999, border: '1px solid #e6dcc3', boxShadow: '0 8px 24px -18px rgba(11,30,61,.4)', overflowX: 'auto', width: 'fit-content', maxWidth: '100%' }}>
+        {[['student', '📒 Student ledger'], ['daybook', '📅 Day Book'], ['monthly', '🗓 Monthly Fee Ledger']].map(([id, label]) => (
+          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+            style={{ padding: mobile ? '8px 13px' : '9px 18px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: mobile ? 12.5 : 13.5, whiteSpace: 'nowrap',
+              background: tab === id ? 'linear-gradient(180deg,#1e3a6e,#0B1E3D)' : 'transparent', color: tab === id ? '#E2C57E' : '#5d6b82' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'daybook' && <FeeDayBook students={students} />}
+      {tab === 'monthly' && <FeeMonthlyLedger students={students} />}
+
+      {tab === 'student' && <>
       {/* Search */}
       <div className="gp-card gp-in" style={{ padding: mobile ? '14px' : '20px 24px', marginBottom: 20, position: 'relative', zIndex: 5 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -537,6 +554,7 @@ export default function StudentFeeLedger() {
           </>}
         </>
       )}
+      </>}
     </div>
   )
 }
