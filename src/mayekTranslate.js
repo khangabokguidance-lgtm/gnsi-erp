@@ -310,3 +310,83 @@ export async function saveCorrections(pairs, createdBy = null) {
   if (!data?.length) throw new Error('Nothing was saved — you may need to be signed in as staff')
   return data.length
 }
+
+// ── Dictionary drafting ────────────────────────────────────────────────────
+// Gemini fills blank dictionary entries (English -> Meetei Mayek) as DRAFTS:
+// saved with needs_review = true and source 'gemini_draft', so the
+// translator ignores them (it only uses reviewed entries) until a teacher
+// approves or corrects each one in Dictionary → Coverage → Needs Review.
+export const AI_DRAFT_SOURCE = 'gemini_draft'
+const DRAFT_BATCH = 40
+
+function draftPrompt(words) {
+  return [
+    'You are helping a school in Manipur, India build an English to Manipuri (Meiteilon) dictionary for school exam papers.',
+    'For each English word or phrase in the JSON array, give the Manipuri equivalent a Manipur school textbook would use.',
+    'Rules:',
+    '- Write the Manipuri ONLY in Unicode Meetei Mayek letters (U+ABC0–U+ABFF). Never Bengali script, never Latin letters.',
+    '- Give one best equivalent, no alternatives, notes or brackets.',
+    '- For English loanwords that Manipuri normally borrows (e.g. apple, school, bus), write the borrowed word in Meetei Mayek.',
+    `Reply with strict JSON only, no code fences: {"items": [{"english": "<as given>", "mayek": "<Meetei Mayek>"}]} with exactly ${words.length} items in the same order.`,
+    '',
+    'WORDS:',
+    JSON.stringify(words),
+  ].join('\n')
+}
+
+// A usable draft: Meetei Mayek letters only (plus spaces/punctuation).
+const cleanDraft = s => {
+  const t = String(s || '').trim()
+  return t && count(t, MTEI) && !count(t, BENG) && !/[A-Za-z]/.test(t) ? t : null
+}
+
+/**
+ * Ask Gemini for Meetei Mayek drafts of dictionary rows (rows as returned by
+ * getUnfilledEntries: full mayek_dictionary rows) and save them as drafts.
+ * Returns { filled, failed: [english…] }.
+ */
+export async function aiDraftEntries(rows, onProgress) {
+  const todo = (rows || []).filter(r => r.english && r.english_norm)
+  let filled = 0
+  const failed = []
+  for (let i = 0; i < todo.length; i += DRAFT_BATCH) {
+    const batch = todo.slice(i, i + DRAFT_BATCH)
+    onProgress && onProgress(Math.min(i + DRAFT_BATCH, todo.length), todo.length)
+    let items = []
+    try {
+      const raw = String(await callGemini(draftPrompt(batch.map(r => r.english)))).trim()
+        .replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+      items = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)).items || []
+    } catch (e) {
+      if (/GEMINI_API_KEY|quota|429|40[13]/i.test(e.message || '')) throw e // not worth retrying the rest
+      failed.push(...batch.map(r => r.english)); continue
+    }
+    // Match by English text first, position second (the model may reorder).
+    const byWord = new Map(items.map(it => [normalizeEnglish(it?.english), it?.mayek]))
+    const updates = []
+    batch.forEach((r, k) => {
+      const mayek = cleanDraft(byWord.get(r.english_norm) ?? items[k]?.mayek)
+      if (!mayek) { failed.push(r.english); return }
+      updates.push({
+        ...r, mayek_unicode: mayek, bmei04: meeteiToRoman(mayek),
+        source: AI_DRAFT_SOURCE, needs_review: true,
+      })
+    })
+    if (!updates.length) continue
+    const { data, error } = await supabase.from('mayek_dictionary').upsert(updates, { onConflict: 'english_norm' }).select('id')
+    if (error) throw new Error(error.message)
+    if (!data?.length) throw new Error('Nothing was saved — you may need to be signed in as staff')
+    filled += data.length
+  }
+  return { filled, failed }
+}
+
+/** Mark dictionary entries as checked by a teacher (the translator then uses them). */
+export async function approveEntries(ids) {
+  if (!ids?.length) return 0
+  const { data, error } = await supabase.from('mayek_dictionary')
+    .update({ needs_review: false, source: 'gemini_reviewed' }).in('id', ids).select('id')
+  if (error) throw new Error(error.message)
+  if (!data?.length) throw new Error('Nothing was updated — you may need to be signed in as staff')
+  return data.length
+}
