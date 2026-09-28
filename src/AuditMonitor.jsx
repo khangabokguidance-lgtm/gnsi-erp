@@ -98,14 +98,14 @@ export default function AuditMonitor({ entries = [], isMobile = false }) {
   const [dwFrom, setDwFrom] = useState(() => {
     const d = new Date()
     d.setDate(d.getDate() - 29)
-    return d.toISOString().slice(0, 10)
+    return d.toLocaleDateString('en-CA') // local date (toISOString is UTC: yesterday before 5:30 AM IST)
   })
-  const [dwTo, setDwTo] = useState(() => new Date().toISOString().slice(0, 10))
+  const [dwTo, setDwTo] = useState(() => new Date().toLocaleDateString('en-CA'))
 
   const dayWiseRows = useMemo(() => {
     const map = {}
     entries
-      .filter(e => e.status !== 'Superseded' && e.entry_date >= dwFrom && e.entry_date <= dwTo)
+      .filter(e => (e.status == null || e.status === '' || e.status === 'Confirmed') && e.entry_date >= dwFrom && e.entry_date <= dwTo) // confirmed only, like every Accounts total
       .forEach(e => {
         const d = e.entry_date
         if (!map[d]) map[d] = { date: d, income: 0, expense: 0, incomeCount: 0, expenseCount: 0 }

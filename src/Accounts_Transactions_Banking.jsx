@@ -58,24 +58,26 @@ export const TransactionsViewBanking = ({
   // Group by date
   const grouped = useMemo(() => {
     return dayRows.reduce((acc, item) => {
-      const dateKey = item.entry_date || item.payment_date || 'No Date'
+      // Group by the same date the register filters on (payment date for income in that mode).
+      const dateKey = (dailyIsIncome && dailyDateMode === 'payment' ? item.payment_date || item.entry_date : item.entry_date || item.payment_date) || 'No Date'
       if (!acc[dateKey]) acc[dateKey] = []
       acc[dateKey].push(item)
       return acc
     }, {})
-  }, [dayRows])
+  }, [dayRows, dailyIsIncome, dailyDateMode])
 
   const dates = Object.keys(grouped).sort((a, b) => {
     if (a === 'No Date') return 1
     if (b === 'No Date') return -1
-    return new Date(b) - new Date(a)
+    return b < a ? -1 : b > a ? 1 : 0 // ISO dates sort as text
   })
 
   // Format date nicely
   const formatDate = (dateStr) => {
     if (!dateStr || dateStr === 'No Date') return 'Unspecified Date'
     try {
-      const d = new Date(dateStr)
+      const [y, m, dd] = String(dateStr).slice(0, 10).split('-').map(Number)
+      const d = new Date(y, m - 1, dd) // local date, not UTC midnight
       return new Intl.DateTimeFormat('en-IN', {
         weekday: 'short',
         year: 'numeric',
@@ -110,9 +112,10 @@ export const TransactionsViewBanking = ({
     // branch as a genuinely unconfirmed entry, showing an hourglass and
     // amber "PENDING" label on a row that isn't actually pending anything.
     const isSuperseded = item.status === 'Superseded'
-    const statusIcon = isFlagged ? '⚠️' : item.status === 'Confirmed' ? '✓' : isSuperseded ? '⊘' : '⏳'
-    const statusColor = isFlagged ? '#d97706' : item.status === 'Confirmed' ? '#16a34a' : isSuperseded ? '#6b7280' : '#f59e0b'
-    const statusLabel = isFlagged ? 'FLAGGED' : item.status === 'Confirmed' ? 'CONFIRMED' : isSuperseded ? 'SUPERSEDED' : 'PENDING'
+    const isOk = item.status == null || item.status === '' || item.status === 'Confirmed' // blank = fee/legacy postings, confirmed
+    const statusIcon = isFlagged ? '⚠️' : isOk ? '✓' : isSuperseded ? '⊘' : '⏳'
+    const statusColor = isFlagged ? '#d97706' : isOk ? '#16a34a' : isSuperseded ? '#6b7280' : '#f59e0b'
+    const statusLabel = isFlagged ? 'FLAGGED' : isOk ? 'CONFIRMED' : isSuperseded ? 'SUPERSEDED' : 'PENDING'
 
     return (
       <div

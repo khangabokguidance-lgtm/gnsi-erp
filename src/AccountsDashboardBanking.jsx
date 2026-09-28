@@ -21,6 +21,9 @@ import React, { useMemo, useState } from 'react'
 const FONT_DISPLAY = "'Fraunces', Georgia, 'Times New Roman', serif"
 const FONT_MONO     = "'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace"
 
+// Same rule as Accounts.jsx isConfirmed(): blank status = confirmed (legacy and fee postings).
+const isConfirmedEntry = (e) => e.status == null || e.status === '' || e.status === 'Confirmed'
+
 export const AccountsDashboardBanking = ({
   entries = [],
   canWrite = false,
@@ -67,7 +70,7 @@ export const AccountsDashboardBanking = ({
     [entries]
   )
   const accountOptions = useMemo(
-    () => ['All', ...Array.from(new Set(entries.map((e) => e.account_type).filter(Boolean))).sort()],
+    () => ['All', ...Array.from(new Set(entries.map((e) => e.account_type || 'Cash A/c'))).sort()],
     [entries]
   )
   const statusOptions = useMemo(
@@ -99,19 +102,21 @@ export const AccountsDashboardBanking = ({
     // summary cards elsewhere on the same page (₹29,38,048): the ₹1,00,350
     // gap is precisely the 7 known duplicate rows' worth of expense that
     // should never have been counted as real spend.
-    const activeEntries = entries.filter((e) => e.status !== 'Superseded')
+    // Confirmed money only (blank status = legacy/fee postings, which are confirmed) —
+    // the same rule as every other total in Accounts. Pending/Superseded never count.
+    const activeEntries = entries.filter(isConfirmedEntry)
     const income = activeEntries
       .filter((e) => e.type === 'Income')
       .reduce((s, e) => s + Number(e.amount || 0), 0)
     const expense = activeEntries
       .filter((e) => e.type === 'Expense')
       .reduce((s, e) => s + Number(e.amount || 0), 0)
-    const confirmed = activeEntries.filter((e) => e.status === 'Confirmed').length
+    const confirmed = activeEntries.length
     // Was `e.status !== 'Confirmed'`, which counted Superseded rows (a
     // settled, deliberately-deactivated state) as "awaiting confirmation."
     // Already excluded from activeEntries above, but kept explicit here
     // too in case this line is ever copied elsewhere without that filter.
-    const pending = activeEntries.filter((e) => e.status !== 'Confirmed' && e.status !== 'Superseded').length
+    const pending = entries.filter((e) => e.status === 'Pending').length
     return { income, expense, balance: income - expense, confirmed, pending }
   }, [entries])
 
@@ -136,7 +141,7 @@ export const AccountsDashboardBanking = ({
         // Excludes Superseded rows for the same reason as `stats` above —
         // a duplicate marked Superseded within the last 7 days would
         // otherwise still count toward this week's income/expense totals.
-        .filter((e) => e.status !== 'Superseded')
+        .filter(isConfirmedEntry)
         .filter((e) => e.entry_date >= last7Range.from && e.entry_date <= last7Range.to)
         .sort((a, b) => (a.entry_date < b.entry_date ? -1 : a.entry_date > b.entry_date ? 1 : 0)),
     [entries, last7Range]
@@ -159,7 +164,7 @@ export const AccountsDashboardBanking = ({
   const dayWiseRows = useMemo(() => {
     const map = {}
     entries
-      .filter((e) => e.status !== 'Superseded' && e.entry_date >= dwFrom && e.entry_date <= dwTo)
+      .filter((e) => isConfirmedEntry(e) && e.entry_date >= dwFrom && e.entry_date <= dwTo)
       .forEach((e) => {
         const d = e.entry_date
         if (!map[d]) map[d] = { date: d, income: 0, expense: 0, count: 0 }
@@ -242,7 +247,7 @@ export const AccountsDashboardBanking = ({
       if (filterDateTo && e.entry_date > filterDateTo) return false
       if (filterCategory !== 'All' && e.category !== filterCategory) return false
       if (filterMode !== 'All' && e.payment_mode !== filterMode) return false
-      if (filterAccount !== 'All' && e.account_type !== filterAccount) return false
+      if (filterAccount !== 'All' && (e.account_type || 'Cash A/c') !== filterAccount) return false
       if (filterStatus !== 'All' && e.status !== filterStatus) return false
       const amt = Number(e.amount || 0)
       if (filterAmountMin && amt < Number(filterAmountMin)) return false
