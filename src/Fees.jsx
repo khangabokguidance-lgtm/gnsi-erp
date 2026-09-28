@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { LedgerLink, LedgerButton } from './LedgerLink'
 import { getActiveStudents, getAllStudents } from './studentQueries'
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
 import { PersonalAccountantButton } from './personalAccountant'
@@ -1261,7 +1262,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
         <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
           <div style={{width:52,height:52,borderRadius:'50%',background:'rgba(255,255,255,.2)',border:'2px solid rgba(255,255,255,.4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:900,flexShrink:0}}>{(student.name||'?').split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase()}</div>
           <div style={{flex:1}}>
-            <div style={{fontSize:18,fontWeight:900,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>{student.name}{student.is_repeater&&<span style={{fontSize:9,fontWeight:800,background:'#fef3c7',color:'#92400e',padding:'1px 7px',borderRadius:3,border:'1px solid #fcd34d'}}>REPEATER</span>}</div>
+            <div style={{fontSize:18,fontWeight:900,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>{student.name}<LedgerButton gcc={student.gcc_no} dark/>{student.is_repeater&&<span style={{fontSize:9,fontWeight:800,background:'#fef3c7',color:'#92400e',padding:'1px 7px',borderRadius:3,border:'1px solid #fcd34d'}}>REPEATER</span>}</div>
             <div style={{fontSize:12,opacity:.8,marginTop:3,display:'flex',gap:10,flexWrap:'wrap'}}>{student.gcc_no&&<span style={{fontWeight:700}}>GCC-{student.gcc_no}</span>}{(student.class_name||student.batch)&&<span>{student.class_name||student.batch}</span>}{student.course&&<span>{student.course}</span>}{student.hostel_type&&<span style={{background:'rgba(255,255,255,.15)',padding:'1px 8px',borderRadius:4}}>{student.hostel_type}</span>}</div>
           </div>
           <div style={{textAlign:'right',flexShrink:0}}><div style={{fontSize:24,fontWeight:900}}>₹{n(grandTotal)}</div><div style={{fontSize:10,opacity:.7,marginTop:2}}>Total paid</div></div>
@@ -1955,7 +1956,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
               : underpaidStudents.map(s => (
                 <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fff7ed' }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>{s.name}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink></div>
                     <div style={{ fontSize: 10, color: '#8a93a6' }}>GCC-{s.gcc_no} · {s.course || '—'} · {s.hostel_type || '—'}</div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
@@ -2289,7 +2290,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
               : zeroPayment.map(s => (
                 <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fef2f2' }}>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>{s.name}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink></div>
                     <div style={{ fontSize: 10, color: '#8a93a6' }}>GCC-{s.gcc_no} · {s.course || '—'}</div>
                   </div>
                   {isAdmin && (
@@ -2316,7 +2317,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
               : defaultersThisMonth.map(s => (
                 <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fffbeb' }}>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>{s.name}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink></div>
                     <div style={{ fontSize: 10, color: '#8a93a6' }}>GCC-{s.gcc_no} · {s.course || '—'} · {s.hostel_type || '—'}</div>
                   </div>
                   {isAdmin && (
@@ -2343,7 +2344,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
               : admOnlyPaid.map(s => (
                 <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fbf3e0' }}>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>{s.name}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink></div>
                     <div style={{ fontSize: 10, color: '#8a93a6' }}>GCC-{s.gcc_no} · {s.course || '—'}</div>
                   </div>
                   {isAdmin && (
@@ -2370,7 +2371,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
               : repeaters.map(s => (
                 <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fef3c7' }}>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>{s.name}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink></div>
                     <div style={{ fontSize: 10, color: '#8a93a6' }}>GCC-{s.gcc_no} · {s.course || '—'}</div>
                   </div>
                   {isAdmin && (
@@ -3344,6 +3345,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#0f1b2e', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {student.name}
+            <LedgerButton gcc={student.gcc_no} />
             {/* ── REPEATER badge ── */}
             {isRepeater && (
               <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '2px 9px', borderRadius: 4, border: '1px solid #fcd34d', letterSpacing: '.02em' }}>
@@ -3898,7 +3900,7 @@ function PastStudentDuesTab({ isAdmin, onCollect }) {
                 {shown.map(({ student: s, d }) => (
                   <tr key={s.id}>
                     <td style={{ ...cell, fontWeight: 700 }}>{s.gcc_no}</td>
-                    <td style={cell}>{s.name}{d.partial && <span title="Some fee tables could not be checked — figure is a lower bound" style={{ marginLeft: 6, color: '#b45309' }}>⚠</span>}</td>
+                    <td style={cell}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>{d.partial && <span title="Some fee tables could not be checked — figure is a lower bound" style={{ marginLeft: 6, color: '#b45309' }}>⚠</span>}</td>
                     <td style={cell}><span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: '#f3f0e8', color: '#4b5870' }}>{s.status}</span></td>
                     <td style={{ ...cell, color: s.left_date ? '#14213d' : '#b45309' }}>{s.left_date || 'not set'}</td>
                     <td style={{ ...cell, textAlign: 'right' }}>₹{n(d.admDue)}</td>
@@ -4592,7 +4594,7 @@ export default function Fees() {
                       <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                       <td style={{ padding: '10px 14px', fontWeight: 600, color: '#14213d' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {s.name}
+                          <LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>
                           {s.is_repeater && (
                             <span style={{ fontSize: 9, fontWeight: 800, color: '#92400e', background: '#fef3c7', padding: '1px 6px', borderRadius: 3, border: '1px solid #fcd34d', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>🔁 RPT</span>
                           )}
@@ -4743,7 +4745,7 @@ export default function Fees() {
                           onMouseLeave={e => e.currentTarget.style.background='white'}>
                           <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
                           <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
-                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>{r.name}</td>
+                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}><LedgerLink gcc={r.gcc_no}>{r.name}</LedgerLink></td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.batch}</td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.course}</td>
                           <td style={{ padding: '9px 12px' }}><HostelBadge type={r.hostel_type} /></td>
@@ -4803,7 +4805,7 @@ export default function Fees() {
                           onMouseLeave={e => e.currentTarget.style.background='white'}>
                           <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
                           <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
-                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>{r.name}</td>
+                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}><LedgerLink gcc={r.gcc_no}>{r.name}</LedgerLink></td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.batch}</td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.course}</td>
                           <td style={{ padding: '9px 12px' }}><HostelBadge type={r.hostel_type} /></td>
@@ -4860,7 +4862,7 @@ export default function Fees() {
                       <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
                       <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{s.gcc_no}</td>
                       <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>
-                        {s.name}
+                        <LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>
                         {s.is_repeater && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: 3, border: '1px solid #fcd34d' }}>RPT</span>}
                       </td>
                       <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{s.class_name||s.batch||'—'}</td>

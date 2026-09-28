@@ -4,6 +4,8 @@ import { supabase } from './supabase'
 import { getAllStudents } from './studentQueries'
 import { PremiumHero, PREMIUM_CSS } from './staffPhotos'
 import { printFeeReceipt } from './premiumReceipt'
+import FeeRegisterBook from './FeeRegisterBook'
+import { OPEN_LEDGER_EVENT, takePendingLedgerGcc, setLedgerUrl } from './ledgerLink'
 
 // ─── Mobile hook ──────────────────────────────────────────────────────────────
 function useMobile() {
@@ -378,13 +380,26 @@ export default function StudentFeeLedger() {
   const [flatRows, setFlatRows] = useState([])
   const [crsRows, setCrsRows] = useState([])
 
+  const [view, setView] = useState('register') // 'register' | 'types'
+  const [wantGcc, setWantGcc] = useState(() => takePendingLedgerGcc())
+  const [notFound, setNotFound] = useState('')
+
   useEffect(() => {
     // Every student, paged past the 1000-row cap so none are missing from search.
     getAllStudents('*').then(setStudents)
   }, [])
 
+  // A ledger link clicked while this screen is already open.
+  useEffect(() => {
+    const onOpen = () => setWantGcc(takePendingLedgerGcc())
+    window.addEventListener(OPEN_LEDGER_EVENT, onOpen)
+    return () => { window.removeEventListener(OPEN_LEDGER_EVENT, onOpen); setLedgerUrl(null) }
+  }, [])
+
+
   const loadLedger = async student => {
-    setSelected(student); setLoading(true)
+    setSelected(student); setLoading(true); setNotFound('')
+    setLedgerUrl(student.gcc_no)
     const gcc = gccStr(student.gcc_no)
     const [a, f, c] = await Promise.all([
       supabase.from('adm_fee_collections').select('*').eq('adm_app_id', gcc).eq('reverted', false).order('pay_date', { ascending: true }),
@@ -399,16 +414,30 @@ export default function StudentFeeLedger() {
     setLoading(false)
   }
 
+  // Open the student a ledger link asked for, once the student list has loaded.
+  const openRequested = gcc => {
+    setWantGcc(null)
+    const st = students.find(s => gccStr(s.gcc_no) === gcc)
+    if (st) loadLedger(st)
+    else setNotFound(`No student with GCC-${gcc} was found.`)
+  }
+  useEffect(() => {
+    if (!wantGcc || !students.length) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- acts on a link/URL request once its data has arrived
+    openRequested(wantGcc)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when a link request or the student list arrives
+  }, [wantGcc, students])
+
   const admTotal  = useMemo(() => admRows.reduce((s, r) => s + (Number(r.amount_paid) || 0), 0), [admRows])
   const flatTotal = useMemo(() => flatRows.reduce((s, r) => s + (Number(r.amount) || 0), 0), [flatRows])
   const crsTotal  = useMemo(() => crsRows.reduce((s, r) => s + (Number(r.amount_paid) || 0), 0), [crsRows])
   const grandTotal = admTotal + flatTotal + crsTotal
-  const handleClear = () => { setSelected(null); setAdmRows([]); setFlatRows([]); setCrsRows([]) }
+  const handleClear = () => { setSelected(null); setAdmRows([]); setFlatRows([]); setCrsRows([]); setLedgerUrl(null) }
 
   return (
     <div style={{ padding: mobile ? '14px 12px' : '24px', fontFamily: "'Plus Jakarta Sans',system-ui,sans-serif", background: 'linear-gradient(180deg,#F4F1EA,#F8F6F0)', minHeight: '100vh' }}>
       <style>{PREMIUM_CSS}</style>
-      <PremiumHero mobile={mobile} icon="📒" title="Student Fee Ledger" subtitle="Full payment history per student · Print receipts on any row"
+      <PremiumHero mobile={mobile} icon="📒" title="Student Fee Ledger" subtitle="Register book per student · month-wise dues · click any receipt no. to reprint"
         stats={[
           { icon: '🎓', label: 'Students', value: students.length.toLocaleString('en-IN') },
           ...(selected ? [{ icon: '🧾', label: 'Transactions', value: admRows.length + flatRows.length + crsRows.length }, { icon: '💰', label: 'Total paid', value: '₹' + fmt(grandTotal), color: '#E2C57E' }] : []),
@@ -421,6 +450,8 @@ export default function StudentFeeLedger() {
         {!selected && <p style={{ marginTop: 10, fontSize: 13, color: '#94a3b8' }}>Search and select a student to view their fee ledger.</p>}
       </div>
 
+      {notFound && <div style={{ padding: '12px 16px', margin: '0 0 16px', borderRadius: 12, background: '#fff5e0', border: '1px solid #f3d38a', color: '#9a5b00', fontWeight: 600, fontSize: 13 }}>⚠️ {notFound}</div>}
+      {wantGcc && !students.length && <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>⏳ Opening GCC-{wantGcc}…</div>}
       {loading && <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>⏳ Loading ledger…</div>}
 
       {loadError && !loading && <div style={{ padding: '12px 16px', margin: '0 0 16px', borderRadius: 12, background: '#fdecea', border: '1px solid #f5c2bd', color: '#b42318', fontWeight: 600, fontSize: 13 }}>⚠️ {loadError}</div>}
@@ -453,6 +484,19 @@ export default function StudentFeeLedger() {
             </div>
           </div>
 
+          <div role="tablist" aria-label="Ledger view" style={{ display: 'flex', gap: 6, marginBottom: 14, padding: 5, background: '#fff', border: '1px solid #E8E1D0', borderRadius: 14, width: 'fit-content', maxWidth: '100%' }}>
+            {[['register', '📒 Register book'], ['types', '🗂 By fee type']].map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={view === id} onClick={() => setView(id)}
+                style={{ padding: '8px 16px', borderRadius: 10, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap',
+                  background: view === id ? 'linear-gradient(180deg,#1e3a6e,#132a4f)' : 'transparent', color: view === id ? '#fff' : '#5d6b82' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {view === 'register' && <FeeRegisterBook student={selected} admRows={admRows} flatRows={flatRows} crsRows={crsRows} mobile={mobile} />}
+
+          {view === 'types' && <>
           {/* Summary cards — 2-col on mobile */}
           <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: mobile ? 10 : 14, marginBottom: 16 }}>
             {[
@@ -481,6 +525,7 @@ export default function StudentFeeLedger() {
               <div className="gp-serif" style={{ fontSize: mobile ? 24 : 32, fontWeight: 700, color: '#E2C57E' }}>₹{fmt(grandTotal)}</div>
             </div>
           </div>
+          </>}
         </>
       )}
     </div>
