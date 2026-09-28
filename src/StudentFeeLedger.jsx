@@ -5,6 +5,7 @@ import { getAllStudents } from './studentQueries'
 import { PremiumHero, PREMIUM_CSS } from './staffPhotos'
 import { printFeeReceipt } from './premiumReceipt'
 import FeeRegisterBook from './FeeRegisterBook'
+import PrintAllLedgers from './PrintAllLedgers'
 import { OPEN_LEDGER_EVENT, takePendingLedgerGcc, setLedgerUrl } from './ledgerLink'
 
 // ─── Mobile hook ──────────────────────────────────────────────────────────────
@@ -381,6 +382,7 @@ export default function StudentFeeLedger() {
   const [crsRows, setCrsRows] = useState([])
 
   const [view, setView] = useState('register') // 'register' | 'types'
+  const [printAll, setPrintAll] = useState(false)
   const [wantGcc, setWantGcc] = useState(() => takePendingLedgerGcc())
   const [notFound, setNotFound] = useState('')
 
@@ -445,11 +447,18 @@ export default function StudentFeeLedger() {
 
       {/* Search */}
       <div className="gp-card gp-in" style={{ padding: mobile ? '14px' : '20px 24px', marginBottom: 20, position: 'relative', zIndex: 5 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 10 }}>Search student</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.08em' }}>Search student</div>
+          <button onClick={() => setPrintAll(true)} disabled={!students.length}
+            style={{ padding: '8px 16px', borderRadius: 999, border: '1px solid #E2C57E', background: 'linear-gradient(180deg,#D9B566,#C9A24B)', color: '#0B1E3D', fontWeight: 800, fontSize: 13, cursor: students.length ? 'pointer' : 'wait', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+            🖨️ Print all ledgers
+          </button>
+        </div>
         <StudentSearch students={students} onSelect={loadLedger} mobile={mobile} />
         {!selected && <p style={{ marginTop: 10, fontSize: 13, color: '#94a3b8' }}>Search and select a student to view their fee ledger.</p>}
       </div>
 
+      {printAll && <PrintAllLedgers students={students} onClose={() => setPrintAll(false)} />}
       {notFound && <div style={{ padding: '12px 16px', margin: '0 0 16px', borderRadius: 12, background: '#fff5e0', border: '1px solid #f3d38a', color: '#9a5b00', fontWeight: 600, fontSize: 13 }}>⚠️ {notFound}</div>}
       {wantGcc && !students.length && <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>⏳ Opening GCC-{wantGcc}…</div>}
       {loading && <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>⏳ Loading ledger…</div>}
