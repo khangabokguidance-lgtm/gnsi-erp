@@ -771,6 +771,22 @@ export default function App() {
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('storage', onVis) }
   }, [currentUser?.username])
 
+  // Secure-session watch: every staff table is private to a signed-in
+  // (Supabase Auth) staff session. Without one, queries don't fail — they
+  // return ZERO rows, so Fees shows ₹0 and 0 students, rosters look empty,
+  // etc. That happens if linking failed at login or the session expired and
+  // couldn't refresh. Show it plainly instead of silently empty data.
+  const [secureOff, setSecureOff] = useState(false)
+  useEffect(() => {
+    if (!currentUser) return
+    let live = true
+    supabase.auth.getSession()
+      .then(({ data }) => { if (live) setSecureOff(!data?.session) })
+      .catch(() => {})
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => { if (live) setSecureOff(!session) })
+    return () => { live = false; sub?.subscription?.unsubscribe?.() }
+  }, [currentUser])
+
   // Security: a staff session restored from an old login that never got
   // a secure (Supabase Auth) session is logged out ONCE per device, so the
   // next login links it automatically. The flag stops a loop if linking
@@ -963,6 +979,17 @@ export default function App() {
         </div>
       )}
       <main className="app-content" style={{ flex: 1, overflowY: 'auto', minHeight: '100vh', paddingLeft: isMobile ? 0 : sidebarW, paddingTop: isMobile ? 56 : 60, transition: 'padding-left 0.22s cubic-bezier(0.4,0,0.2,1)' }}>
+        {secureOff && currentUser && (
+          <div role="alert" style={{ margin: isMobile ? '10px 12px 0' : '16px 28px 0', padding: '12px 16px', borderRadius: 14, background: '#fff4e5', border: '1px solid #f5c26b', color: '#7a4a00', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontFamily: UI_FONT }}>
+            <span style={{ fontSize: 20 }}>⚠️</span>
+            <div style={{ flex: '1 1 260px', minWidth: 0, fontSize: 13.5, lineHeight: 1.45 }}>
+              <b>Secure database connection is off</b> — records will show as empty or ₹0 until you sign in again. Your data is safe; it just can't be read from this session.
+            </div>
+            <button onClick={handleLogout} style={{ padding: '9px 16px', borderRadius: 999, border: 'none', background: 'linear-gradient(180deg,#132B52,#0B1E3D)', color: '#E2C57E', fontWeight: 800, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              Sign in again
+            </button>
+          </div>
+        )}
         {renderContent()}
       </main>
     </div>
