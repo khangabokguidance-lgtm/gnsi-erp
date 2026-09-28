@@ -63,7 +63,7 @@ export default function TodayIncomeBreakdown({ onClose }) {
                         <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                           <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: '#64748b' }}>{time(r.created_at) || fmtD(r.entry_date)}</td>
                           <td style={{ padding: '6px 10px', fontWeight: 700 }}>{r.category || '—'}</td>
-                          <td style={{ padding: '6px 10px' }}>{r.note || r.description || '—'}</td>
+                          <td style={{ padding: '6px 10px' }}>{r.note || '—'}</td>
                           <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: r.paidOn !== data.date ? '#b42318' : '#64748b', fontWeight: r.paidOn !== data.date ? 700 : 400 }}>{fmtD(r.paidOn)}</td>
                           <td style={{ padding: '6px 10px' }}>{r.payment_mode || '—'}</td>
                           <td style={{ padding: '6px 10px' }}>{r.added_by || '—'}</td>
