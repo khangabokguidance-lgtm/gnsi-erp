@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { LedgerLink, LedgerButton } from './LedgerLink'
 import { getActiveStudents, getAllStudents } from './studentQueries'
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
 import { PersonalAccountantButton } from './personalAccountant'
@@ -115,6 +116,7 @@ async function fetchAllRows(table, { select = '*', filters = [], orderCol = null
     let q = supabase.from(table).select(select)
     for (const [col, op, val] of filters) q = q[op](col, val)
     q = q.order(orderCol || 'id', { ascending })   // stable order so pages never skip/repeat rows
+    if (orderCol && orderCol !== 'id') q = q.order('id', { ascending })   // ties on e.g. created_at broken by id
     q = q.range(from, from + PAGE - 1)
     const { data, error } = await q
     if (error) { console.error(`fetchAllRows(${table}) error:`, error.message); throw new Error(`Could not load ${table}: ${error.message}`) }
@@ -1207,7 +1209,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
   const myFlat=adm_flat_fees.filter(r=>gccStr(r.adm_app_id)===gcc&&r.paid)
   const myCrsf=adm_course_fees.filter(r=>gccStr(r.adm_app_id)===gcc&&!r.reverted)
   const admTotal=myAdm.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
-  const flatTotal=myFlat.reduce((s,r)=>s+(r.amount||0),0)
+  const flatTotal=myFlat.reduce((s,r)=>s+ (Number(r.amount) || 0),0)
   const crsfTotal=myCrsf.reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
   const grandTotal=admTotal+flatTotal+crsfTotal
   const timeline=[
@@ -1260,7 +1262,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
         <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
           <div style={{width:52,height:52,borderRadius:'50%',background:'rgba(255,255,255,.2)',border:'2px solid rgba(255,255,255,.4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:900,flexShrink:0}}>{(student.name||'?').split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase()}</div>
           <div style={{flex:1}}>
-            <div style={{fontSize:18,fontWeight:900,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>{student.name}{student.is_repeater&&<span style={{fontSize:9,fontWeight:800,background:'#fef3c7',color:'#92400e',padding:'1px 7px',borderRadius:3,border:'1px solid #fcd34d'}}>REPEATER</span>}</div>
+            <div style={{fontSize:18,fontWeight:900,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>{student.name}<LedgerButton gcc={student.gcc_no} dark/>{student.is_repeater&&<span style={{fontSize:9,fontWeight:800,background:'#fef3c7',color:'#92400e',padding:'1px 7px',borderRadius:3,border:'1px solid #fcd34d'}}>REPEATER</span>}</div>
             <div style={{fontSize:12,opacity:.8,marginTop:3,display:'flex',gap:10,flexWrap:'wrap'}}>{student.gcc_no&&<span style={{fontWeight:700}}>GCC-{student.gcc_no}</span>}{(student.class_name||student.batch)&&<span>{student.class_name||student.batch}</span>}{student.course&&<span>{student.course}</span>}{student.hostel_type&&<span style={{background:'rgba(255,255,255,.15)',padding:'1px 8px',borderRadius:4}}>{student.hostel_type}</span>}</div>
           </div>
           <div style={{textAlign:'right',flexShrink:0}}><div style={{fontSize:24,fontWeight:900}}>₹{n(grandTotal)}</div><div style={{fontSize:10,opacity:.7,marginTop:2}}>Total paid</div></div>
@@ -1453,7 +1455,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
   const n=v=>Number(v||0).toLocaleString('en-IN')
   const filteredLive=useMemo(()=>liveRows.filter(s=>{if(courseF!=='All'&&s.course!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;return true}),[liveRows,courseF,hostelF,statusF])
   const reports=useMemo(()=>buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows:filteredLive,todayStr,afDateFrom:dateFrom,afDateTo:dateTo}),[students,adm_fee_collections,adm_flat_fees,adm_course_fees,filteredLive,dateFrom,dateTo,todayStr])
-  const grandTotal=liveRows.reduce((s,r)=>s+r.grandTotal,0),admTotal=adm_fee_collections.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0),flatTotal=adm_flat_fees.filter(r=>r.paid).reduce((s,r)=>s+(r.amount||0),0),crsfTotal=adm_course_fees.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
+  const grandTotal=liveRows.reduce((s,r)=>s+r.grandTotal,0),admTotal=adm_fee_collections.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0),flatTotal=adm_flat_fees.filter(r=>r.paid).reduce((s,r)=>s+ (Number(r.amount) || 0),0),crsfTotal=adm_course_fees.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
   const inp3={padding:'8px 11px',borderRadius:7,border:'1px solid #d9d2c2',fontSize:12,outline:'none',background:'white',width:'100%'}
   const REPORT_GROUPS=[
     {group:'Student Reports',icon:'👨‍🎓',color:'#1e3a6e',reports:[
@@ -1682,7 +1684,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   // ── Totals ──────────────────────────────────────────────────────────────────
   const totalCollected  = liveRows.reduce((s, r) => s + r.grandTotal, 0)
   const admTotal        = adm_fee_collections.filter(r => !r.reverted).reduce((s, c) => s + (Number(c.amount_paid) || 0), 0)
-  const flatTotal       = adm_flat_fees.filter(r => r.paid).reduce((s, r) => s + (r.amount || 0), 0)
+  const flatTotal       = adm_flat_fees.filter(r => r.paid).reduce((s, r) => s + (Number(r.amount) || 0), 0)
   const crsfTotal       = adm_course_fees.filter(r => !r.reverted).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
 
   // This month collections
@@ -1712,7 +1714,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   // between 12:00 AM and 5:30 AM — causing Fees and Accounts to disagree on
   // "today" and show different totals for payments made in that window.
   const todayStr        = new Date().toLocaleDateString('en-CA')
-  const todayFlat       = adm_flat_fees.filter(r => r.paid && r.pay_date === todayStr).reduce((s, r) => s + (r.amount || 0), 0)
+  const todayFlat       = adm_flat_fees.filter(r => r.paid && r.pay_date === todayStr).reduce((s, r) => s + (Number(r.amount) || 0), 0)
   const todayCrsf       = adm_course_fees.filter(r => !r.reverted && r.pay_date === todayStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
   const todayAdm        = adm_fee_collections.filter(r => !r.reverted && r.pay_date === todayStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
   const todayTotal      = todayFlat + todayCrsf + todayAdm
@@ -1739,13 +1741,16 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const last6 = Array.from({ length: 6 }, (_, i) => {
     const d      = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
     const mon    = d.toLocaleString('default', { month: 'short' })
-    const yrStr  = String(d.getFullYear())
-    const fullMon= d.toLocaleString('default', { month: 'long' })
     const mStart = d.toLocaleDateString('en-CA')
     const mEnd   = new Date(d.getFullYear(), d.getMonth() + 1, 0).toLocaleDateString('en-CA')
-    const flat   = adm_flat_fees.filter(r => r.paid && r.month === fullMon && String(r.year) === yrStr).reduce((s, r) => s + (r.amount || 0), 0)
-    const crsf   = adm_course_fees.filter(r => !r.reverted && r.for_month === fullMon && String(r.year) === yrStr).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
-    const adm    = adm_fee_collections.filter(r => !r.reverted && r.pay_date >= mStart && r.pay_date <= mEnd).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+    // All three by the date the money was PAID — the same basis as the
+    // "This Month" card and Accounts, so the current month's bar equals that
+    // card. (Flat/course used to go by the fee month they were FOR, so an
+    // advance or late payment landed in a different bar than its cash.)
+    const inMonth = r => r.pay_date && r.pay_date >= mStart && r.pay_date <= mEnd
+    const flat   = adm_flat_fees.filter(r => r.paid && inMonth(r)).reduce((s, r) => s + (Number(r.amount) || 0), 0)
+    const crsf   = adm_course_fees.filter(r => !r.reverted && inMonth(r)).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
+    const adm    = adm_fee_collections.filter(r => !r.reverted && inMonth(r)).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
     // Flag the current calendar month — it's still in progress, so its total
     // isn't comparable to fully-elapsed past months (see: July showing a
     // "drop" that was actually just 26/31 days of collection so far).
@@ -1951,7 +1956,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
               : underpaidStudents.map(s => (
                 <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fff7ed' }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>{s.name}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink></div>
                     <div style={{ fontSize: 10, color: '#8a93a6' }}>GCC-{s.gcc_no} · {s.course || '—'} · {s.hostel_type || '—'}</div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
@@ -2285,7 +2290,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
               : zeroPayment.map(s => (
                 <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fef2f2' }}>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>{s.name}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink></div>
                     <div style={{ fontSize: 10, color: '#8a93a6' }}>GCC-{s.gcc_no} · {s.course || '—'}</div>
                   </div>
                   {isAdmin && (
@@ -2312,7 +2317,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
               : defaultersThisMonth.map(s => (
                 <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fffbeb' }}>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>{s.name}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink></div>
                     <div style={{ fontSize: 10, color: '#8a93a6' }}>GCC-{s.gcc_no} · {s.course || '—'} · {s.hostel_type || '—'}</div>
                   </div>
                   {isAdmin && (
@@ -2339,7 +2344,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
               : admOnlyPaid.map(s => (
                 <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fbf3e0' }}>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>{s.name}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink></div>
                     <div style={{ fontSize: 10, color: '#8a93a6' }}>GCC-{s.gcc_no} · {s.course || '—'}</div>
                   </div>
                   {isAdmin && (
@@ -2366,7 +2371,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
               : repeaters.map(s => (
                 <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 16px', borderBottom: '1px solid #fef3c7' }}>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>{s.name}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink></div>
                     <div style={{ fontSize: 10, color: '#8a93a6' }}>GCC-{s.gcc_no} · {s.course || '—'}</div>
                   </div>
                   {isAdmin && (
@@ -3160,7 +3165,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // month+year keys — a month paid in an earlier year must not block this year's fee
   const paidMonths   = myFlatRecs.map(r => `${r.month}|${r.year}`)
   const admEverPaid  = myAdmCols.reduce((s, c) => s + (Number(c.amount_paid) || 0), 0)
-  const flatEverPaid = myFlatRecs.reduce((s, r) => s + (r.amount || 0), 0)
+  const flatEverPaid = myFlatRecs.reduce((s, r) => s + (Number(r.amount) || 0), 0)
   const crsfEverPaid = myCrsfRecs.reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
   const totalEverPaid = admEverPaid + flatEverPaid + crsfEverPaid
 
@@ -3340,6 +3345,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#0f1b2e', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {student.name}
+            <LedgerButton gcc={student.gcc_no} />
             {/* ── REPEATER badge ── */}
             {isRepeater && (
               <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '2px 9px', borderRadius: 4, border: '1px solid #fcd34d', letterSpacing: '.02em' }}>
@@ -3894,7 +3900,7 @@ function PastStudentDuesTab({ isAdmin, onCollect }) {
                 {shown.map(({ student: s, d }) => (
                   <tr key={s.id}>
                     <td style={{ ...cell, fontWeight: 700 }}>{s.gcc_no}</td>
-                    <td style={cell}>{s.name}{d.partial && <span title="Some fee tables could not be checked — figure is a lower bound" style={{ marginLeft: 6, color: '#b45309' }}>⚠</span>}</td>
+                    <td style={cell}><LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>{d.partial && <span title="Some fee tables could not be checked — figure is a lower bound" style={{ marginLeft: 6, color: '#b45309' }}>⚠</span>}</td>
                     <td style={cell}><span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: '#f3f0e8', color: '#4b5870' }}>{s.status}</span></td>
                     <td style={{ ...cell, color: s.left_date ? '#14213d' : '#b45309' }}>{s.left_date || 'not set'}</td>
                     <td style={{ ...cell, textAlign: 'right' }}>₹{n(d.admDue)}</td>
@@ -4181,7 +4187,7 @@ export default function Fees() {
   const getLiveFees = s => {
     const gcc = gccStr(s.gcc_no)
     const admTotal   = adm_fee_collections.filter(c => gccStr(c.adm_app_id) === gcc && !c.reverted).reduce((a, c) => a + (Number(c.amount_paid) || 0), 0)
-    const flatTotal  = adm_flat_fees.filter(r => gccStr(r.adm_app_id) === gcc && r.paid).reduce((a, r) => a + (r.amount || 0), 0)
+    const flatTotal  = adm_flat_fees.filter(r => gccStr(r.adm_app_id) === gcc && r.paid).reduce((a, r) => a + (Number(r.amount) || 0), 0)
     const crsfTotal  = adm_course_fees.filter(r => gccStr(r.adm_app_id) === gcc && !r.reverted).reduce((a, r) => a + (Number(r.amount_paid) || 0), 0)
     const grandTotal = admTotal + flatTotal + crsfTotal
     return { admTotal, flatTotal, crsfTotal, grandTotal, hasFees: grandTotal > 0 }
@@ -4432,7 +4438,7 @@ export default function Fees() {
             const tFlat = activeAdmFlatFees.filter(r => r.paid && r.pay_date === dStr)
             const tCrsf = activeAdmCourseFees.filter(r => !r.reverted && r.pay_date === dStr)
             const tAdm  = activeAdmFeeCollections.filter(r => !r.reverted && r.pay_date === dStr)
-            const todayTotal = tFlat.reduce((a, r) => a + (r.amount || 0), 0) + tCrsf.reduce((a, r) => a + (Number(r.amount_paid) || 0), 0) + tAdm.reduce((a, r) => a + (Number(r.amount_paid) || 0), 0)
+            const todayTotal = tFlat.reduce((a, r) => a + (Number(r.amount) || 0), 0) + tCrsf.reduce((a, r) => a + (Number(r.amount_paid) || 0), 0) + tAdm.reduce((a, r) => a + (Number(r.amount_paid) || 0), 0)
             const todayCount = tFlat.length + tCrsf.length + tAdm.length
             // Total collected / pending are admin-level figures (same gate as
             // the Dashboard tab) — other roles only see today + roster size.
@@ -4588,7 +4594,7 @@ export default function Fees() {
                       <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: 12, color: '#1e3a6e', fontWeight: 700 }}>{s.gcc_no ? `GCC-${s.gcc_no}` : '—'}</td>
                       <td style={{ padding: '10px 14px', fontWeight: 600, color: '#14213d' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {s.name}
+                          <LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>
                           {s.is_repeater && (
                             <span style={{ fontSize: 9, fontWeight: 800, color: '#92400e', background: '#fef3c7', padding: '1px 6px', borderRadius: 3, border: '1px solid #fcd34d', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>🔁 RPT</span>
                           )}
@@ -4739,7 +4745,7 @@ export default function Fees() {
                           onMouseLeave={e => e.currentTarget.style.background='white'}>
                           <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
                           <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
-                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>{r.name}</td>
+                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}><LedgerLink gcc={r.gcc_no}>{r.name}</LedgerLink></td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.batch}</td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.course}</td>
                           <td style={{ padding: '9px 12px' }}><HostelBadge type={r.hostel_type} /></td>
@@ -4799,7 +4805,7 @@ export default function Fees() {
                           onMouseLeave={e => e.currentTarget.style.background='white'}>
                           <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
                           <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{r.gcc_no}</td>
-                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>{r.name}</td>
+                          <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}><LedgerLink gcc={r.gcc_no}>{r.name}</LedgerLink></td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.batch}</td>
                           <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{r.course}</td>
                           <td style={{ padding: '9px 12px' }}><HostelBadge type={r.hostel_type} /></td>
@@ -4856,7 +4862,7 @@ export default function Fees() {
                       <td style={{ padding: '9px 12px', color: '#8a93a6', fontSize: 11 }}>{i+1}</td>
                       <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: 11, color: '#1e3a6e', fontWeight: 700 }}>GCC-{s.gcc_no}</td>
                       <td style={{ padding: '9px 12px', fontWeight: 600, color: '#14213d' }}>
-                        {s.name}
+                        <LedgerLink gcc={s.gcc_no}>{s.name}</LedgerLink>
                         {s.is_repeater && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, color: '#92400e', background: '#fef3c7', padding: '1px 5px', borderRadius: 3, border: '1px solid #fcd34d' }}>RPT</span>}
                       </td>
                       <td style={{ padding: '9px 12px', color: '#5d6b82', fontSize: 12 }}>{s.class_name||s.batch||'—'}</td>
@@ -4949,4 +4955,4 @@ export default function Fees() {
       )}
     </div>
   )
-}
+}

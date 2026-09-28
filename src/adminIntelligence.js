@@ -27,6 +27,10 @@ import { TABLE_REGISTRY } from './tableRegistry'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const daysAgo = n => new Date(Date.now() - n * DAY_MS)
+// Local calendar date (YYYY-MM-DD). toISOString() gives the UTC date, which
+// in India is the PREVIOUS day before 5:30 AM — and for midnight of the 1st it
+// is the last day of the previous month, pulling that day into "this month".
+const localDate = d => d.toLocaleDateString('en-CA')
 const isOpenStatus = s => !['resolved', 'closed', 'rejected', 'cancelled'].includes(String(s || '').toLowerCase())
 
 // Pagination-safe fetch — same proven pattern as fetchAllRows() in
@@ -42,6 +46,7 @@ async function fetchAll(table, { select = '*', filters = [], orderCol = null, as
     let q = supabase.from(table).select(select)
     for (const [col, op, val] of filters) q = q[op](col, val)
     if (orderCol) q = q.order(orderCol, { ascending })
+    if (orderCol !== 'id') q = q.order('id', { ascending })   // id breaks ties so pages never skip or repeat rows
     q = q.range(from, from + PAGE - 1)
     const { data, error } = await q
     if (error) { console.error(`adminIntelligence.fetchAll(${table}) error:`, error.message); break }
@@ -338,9 +343,9 @@ export async function getRevenueForecast() {
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
 
   const [admFee, flatFee, courseFee] = await Promise.all([
-    fetchAll('adm_fee_collections', { select: 'amount_paid,pay_date', filters: [['pay_date', 'gte', monthStart.toISOString().slice(0, 10)], ['reverted', 'eq', false]] }),
-    fetchAll('adm_flat_fees', { select: 'amount,pay_date', filters: [['pay_date', 'gte', monthStart.toISOString().slice(0, 10)], ['paid', 'eq', true], ['reverted', 'eq', false]] }),
-    fetchAll('adm_course_fees', { select: 'amount_paid,pay_date', filters: [['pay_date', 'gte', monthStart.toISOString().slice(0, 10)], ['reverted', 'eq', false]] }),
+    fetchAll('adm_fee_collections', { select: 'amount_paid,pay_date', filters: [['pay_date', 'gte', localDate(monthStart)], ['reverted', 'eq', false]] }),
+    fetchAll('adm_flat_fees', { select: 'amount,pay_date', filters: [['pay_date', 'gte', localDate(monthStart)], ['paid', 'eq', true], ['reverted', 'eq', false]] }),
+    fetchAll('adm_course_fees', { select: 'amount_paid,pay_date', filters: [['pay_date', 'gte', localDate(monthStart)], ['reverted', 'eq', false]] }),
   ])
 
   const collectedSoFar =
@@ -382,7 +387,7 @@ export async function getCourseProfitability() {
 // "how much cash actually came in this month" without opening Fees.jsx's
 // export and pivoting it by hand.
 export async function getPaymentModeBreakdown({ days = 30 } = {}) {
-  const since = daysAgo(days).toISOString().slice(0, 10)
+  const since = localDate(daysAgo(days))
   const [admFee, flatFee, courseFee] = await Promise.all([
     fetchAll('adm_fee_collections', { select: 'amount_paid,pay_mode', filters: [['pay_date', 'gte', since], ['reverted', 'eq', false]] }),
     fetchAll('adm_flat_fees', { select: 'amount,pay_mode', filters: [['pay_date', 'gte', since], ['paid', 'eq', true], ['reverted', 'eq', false]] }),
@@ -696,7 +701,7 @@ export async function getAnomalyAlerts() {
 // gap in rupees so an admin can go find the missing entry.
 export async function getFeeReconciliation() {
   const [admFeeRows, flatFeeRows, courseFeeRows, accountsRows] = await Promise.all([
-    fetchAll('adm_fee_collections', { select: 'amount_paid', filters: [['reverted', 'eq', false]] }),
+    fetchAll('adm_fee_collections', { select: 'amount_paid,fee_type', filters: [['reverted', 'eq', false]] }),
     fetchAll('adm_flat_fees', { select: 'amount', filters: [['paid', 'eq', true], ['reverted', 'eq', false]] }),
     fetchAll('adm_course_fees', { select: 'amount_paid', filters: [['reverted', 'eq', false]] }),
     // accounts is GNSIDashboard.jsx's income ledger — every row with a
@@ -706,37 +711,47 @@ export async function getFeeReconciliation() {
     // rows" comment in that file for why those three categories are the
     // fee-equivalent ones: Admission, Hostel, Fees). type==='Income'
     // matches GNSIDashboard.jsx's own allIncome filter exactly.
-    fetchAll('accounts', { select: 'amount,category,type', filters: [['type', 'eq', 'Income']] }),
+    // Soft-deleted rows are the ledger side of REVERTED fees — the fee
+    // tables above exclude those, so the ledger must too or every revert
+    // shows up as a false "ledger has more" gap.
+    fetchAll('accounts', { select: 'amount,category,type', filters: [['type', 'eq', 'Income'], ['is_soft_deleted', 'eq', false]] }),
   ])
 
+  // Advance payments live in adm_fee_collections but are booked under the
+  // 'Advance' category in accounts (see collectFee), so they're compared
+  // on their own line instead of being counted as admission money.
+  const isAdvance = r => r.fee_type === 'advance'
   const sourceTables = {
-    admission: (admFeeRows || []).reduce((s, r) => s + Number(r.amount_paid || 0), 0),
+    admission: (admFeeRows || []).filter(r => !isAdvance(r)).reduce((s, r) => s + Number(r.amount_paid || 0), 0),
+    advance: (admFeeRows || []).filter(isAdvance).reduce((s, r) => s + Number(r.amount_paid || 0), 0),
     flatFee: (flatFeeRows || []).reduce((s, r) => s + Number(r.amount || 0), 0),
     courseFee: (courseFeeRows || []).reduce((s, r) => s + Number(r.amount_paid || 0), 0),
   }
-  sourceTables.total = sourceTables.admission + sourceTables.flatFee + sourceTables.courseFee
+  sourceTables.total = sourceTables.admission + sourceTables.advance + sourceTables.flatFee + sourceTables.courseFee
 
-  const ledger = { admission: 0, flatFee: 0, courseFee: 0 }
+  const ledger = { admission: 0, advance: 0, flatFee: 0, courseFee: 0 }
   for (const r of accountsRows || []) {
     const amt = Number(r.amount || 0)
     if (r.category === 'Admission') ledger.admission += amt
+    else if (r.category === 'Advance') ledger.advance += amt
     else if (r.category === 'Hostel') ledger.flatFee += amt
     else if (r.category === 'Fees') ledger.courseFee += amt
   }
-  ledger.total = ledger.admission + ledger.flatFee + ledger.courseFee
+  ledger.total = ledger.admission + ledger.advance + ledger.flatFee + ledger.courseFee
 
   const diff = {
     admission: ledger.admission - sourceTables.admission,
+    advance: ledger.advance - sourceTables.advance,
     flatFee: ledger.flatFee - sourceTables.flatFee,
     courseFee: ledger.courseFee - sourceTables.courseFee,
   }
-  diff.total = diff.admission + diff.flatFee + diff.courseFee
+  diff.total = diff.admission + diff.advance + diff.flatFee + diff.courseFee
 
   // A rounding-scale gap (a few rupees) is normal float noise, not a real
   // discrepancy — only flag categories where the gap is large enough to
   // represent at least one missing/extra transaction.
   const THRESHOLD = 50
-  const mismatchedCategories = ['admission', 'flatFee', 'courseFee'].filter(k => Math.abs(diff[k]) >= THRESHOLD)
+  const mismatchedCategories = ['admission', 'advance', 'flatFee', 'courseFee'].filter(k => Math.abs(diff[k]) >= THRESHOLD)
 
   return {
     sourceTables, // ground truth: actual fee-collection tables

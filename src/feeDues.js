@@ -17,7 +17,7 @@
 import { supabase } from './supabase'
 import {
   getFeeRates, getFlatFees, isCourseFeeMonth, isPreAdmissionMonth,
-  MONTHS_LIST, getSessionYear, ADM_FEE_BASE, resolveFeeMonthYear,
+  MONTHS_LIST, getSessionYear, ADM_FEE_BASE, feeMonthYearForSession,
 } from './feeEngine'
 
 // True when a signed-in staff session exists (Supabase Auth, Phase 1).
@@ -27,30 +27,26 @@ async function hasStaffSession() {
 
 // Course fee has no auto-generated month list the way flat fee does (staff
 // pick the month manually per collectFee's design) — so "due" months for
-// course fee are: every non-flat-fee month from the session's start
-// (April) through the current calendar month, minus any month that ended
-// before the student's admission date. This mirrors getFlatFees' own
-// admission-date rule (isPreAdmissionMonth) so flat and course fee agree
-// on what counts as "before admission."
-function courseFeeDueMonths(admissionDate) {
-  const now = new Date()
+// course fee are: every non-flat-fee month of the session (April→January)
+// that has already started, minus any month that ended before the
+// student's admission date. This mirrors getFlatFees' own admission-date
+// rule (isPreAdmissionMonth) so flat and course fee agree on what counts
+// as "before admission."
+function courseFeeDueMonths(admissionDate, sessionYear, now = new Date()) {
+  return MONTHS_LIST.filter(isCourseFeeMonth).map(month => ({
+    month,
+    // April–December in the session's start year, January in the next —
+    // the same rule getFlatFees uses, so the two can't drift apart.
+    year: feeMonthYearForSession(month, sessionYear),
+  })).filter(({ month, year }) => hasMonthStarted(month, year, now)
+    && !isPreAdmissionMonth(month, year, admissionDate))
+}
 
-  return MONTHS_LIST.filter(isCourseFeeMonth).map(month => {
-    // Session runs April→March; Jan/Feb/Mar-named months belong to the
-    // following calendar year relative to an April start. Shared with
-    // getFlatFees' own year resolution via resolveFeeMonthYear so the two
-    // can't drift apart.
-    const year = resolveFeeMonthYear(month, now)
-    return { month, year }
-  }).filter(({ month, year }) => {
-    // Only months that have actually started/passed count as "due" —
-    // don't bill for a future month that hasn't arrived yet.
-    const calMonth = new Date(`${month} 1, ${year}`).getMonth() + 1
-    const monthStart = new Date(year, calMonth - 1, 1)
-    if (monthStart > now) return false
-    if (isPreAdmissionMonth(month, year, admissionDate)) return false
-    return true
-  })
+// A fee month is only due once it has begun — never bill a month that
+// hasn't arrived yet (collecting one early is an authorised advance).
+function hasMonthStarted(month, year, now = new Date()) {
+  const calMonth = new Date(`${month} 1, ${year}`).getMonth()
+  return new Date(year, calMonth, 1) <= now
 }
 
 // Computes the full dues picture for one student. `student` needs at
@@ -164,7 +160,9 @@ export async function getStudentDues(student, sessionYear = getSessionYear()) {
   // Flat fee — check each Feb/Mar month getFlatFees says this student owes
   // against what's actually been paid for that exact month/year.
   const paidFlatKeys = new Set((flatFeeRows.data || []).map(r => `${r.month}|${r.year}`))
-  const flatFeeItems = flatFeeMonths.map(f => ({
+  // Only months that have started count — this session's Feb/Mar flat fee
+  // isn't owed in September.
+  const flatFeeItems = flatFeeMonths.filter(f => hasMonthStarted(f.month, f.year)).map(f => ({
     month: f.month, year: f.year, expected: f.amount,
     paid: paidFlatKeys.has(`${f.month}|${f.year}`),
   }))
@@ -172,7 +170,7 @@ export async function getStudentDues(student, sessionYear = getSessionYear()) {
 
   // Course fee — every non-flat month from session start through now,
   // minus pre-admission months, checked against what's actually paid.
-  const dueMonths = courseFeeDueMonths(student.admission_date)
+  const dueMonths = courseFeeDueMonths(student.admission_date, sessionYear)
   const paidCourseKeys = new Set((courseFeeRows.data || []).map(r => `${r.for_month}|${r.year}`))
   const courseFeeItems = dueMonths.map(m => ({
     month: m.month, year: m.year, expected: rates.courseFee,

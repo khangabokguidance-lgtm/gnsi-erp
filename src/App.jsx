@@ -26,6 +26,7 @@ import QuestionBankViewer from './QuestionBankViewer'
 import SystemSettings     from './SystemSettings'
 import AdminPage          from './AdminPage'
 import StudentFeeLedger   from './StudentFeeLedger'
+import { OPEN_LEDGER_EVENT, ledgerGccFromUrl } from './ledgerLink'
 import GNSIDashboard      from './GNSIDashboard'
 import Courses            from './Courses'
 import Teaching           from './Teaching'
@@ -667,8 +668,16 @@ export default function App() {
       }
       return path
     }
+    // Shared fee-ledger link (…/?ledger=<GCC>) opens that student's ledger.
+    if (ledgerGccFromUrl()) return 'studentfeeledger'
     return 'dashboard'
   })
+  // "Open ledger" links anywhere in the app (ledgerLink.jsx) switch here.
+  useEffect(() => {
+    const open = () => setActive('studentfeeledger')
+    window.addEventListener(OPEN_LEDGER_EVENT, open)
+    return () => window.removeEventListener(OPEN_LEDGER_EVENT, open)
+  }, [])
   // Teaching hub links (StudyMaterialBridge.openChapterIn) name hub targets
   // rather than pages: 'hub' / 'logs' / 'syllabusmgr' live inside Teaching.
   const navigateTo = useCallback(id => setActive(({ hub: 'teaching', logs: 'teaching', syllabusmgr: 'teaching' })[id] || id), [])
@@ -727,7 +736,7 @@ export default function App() {
     }
     const enriched = { ...user, staff_profile_id: staffProfileId }
     localStorage.setItem('gnsi_session', JSON.stringify({ user: enriched, expiry: Date.now() + SESSION_MAX_MS, loginAt: Date.now() }))
-    setCurrentUser(enriched); setActive('dashboard'); loadPermissions(user.role)
+    setCurrentUser(enriched); setActive(ledgerGccFromUrl() ? 'studentfeeledger' : 'dashboard'); loadPermissions(user.role)
   }
 
   const handleLogout = () => {

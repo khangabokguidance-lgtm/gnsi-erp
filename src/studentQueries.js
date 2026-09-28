@@ -44,7 +44,7 @@ async function fetchAllRows(select, extra) {
   while (true) {
     let q = supabase.from('students').select(select)
     if (extra) q = extra(q)
-    q = q.order('name').range(from, from + PAGE - 1)
+    q = q.order('name').order('id').range(from, from + PAGE - 1)   // id breaks ties so pages never skip or repeat rows
     const { data, error } = await q
     if (error) { console.error('studentQueries fetchAllRows error:', error.message); break }
     all = all.concat(data || [])

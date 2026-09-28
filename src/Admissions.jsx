@@ -37,6 +37,7 @@ async function fetchAllRows(table, { select = '*', orderCol = null, ascending = 
   while (true) {
     let q = supabase.from(table).select(select)
     if (orderCol) q = q.order(orderCol, { ascending })
+    if (orderCol !== 'id') q = q.order('id', { ascending })   // id breaks ties so pages never skip or repeat rows
     q = q.range(from, from + PAGE - 1)
     const { data, error } = await q
     if (error) { console.error(`fetchAllRows(${table}) error:`, error.message); break }
@@ -3235,7 +3236,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
 // ─── Application Card ──────────────────────────────────────────────────────────
 function AppCard({ a, cols, selected, onSelect, onEdit, onDelete, onAdmit, onEnroll, onOpenFee, onQuickEdit, onDetail, onWAMsg, tableMode, darkMode, canDelete=true }) {
   const gcc     = String(a.gcc || a.id)
-  const admPaid = cols.some(col => String(parseInt(col.adm_app_id)) === String(parseInt(a.gcc)) && col.fee_type === 'admission')
+  const admPaid = cols.some(col => String(parseInt(col.adm_app_id)) === String(parseInt(a.gcc)) && col.fee_type === 'admission' && !col.reverted)
   const cs      = COURSE_STRUCTURE[a.course]
   const today   = new Date().toISOString().slice(0,10)
   const followupOverdue = a.followupDate && a.followupDate < today
@@ -3756,7 +3757,7 @@ function KanbanBoard({ apps, cols, onAdmit, onEnroll, onOpenFee, onDetail, isMob
                 <div style={{ textAlign:'center', padding:'20px 8px', fontSize:11, color:N.muted }}>Nothing here</div>
               )}
               {list.map(a => {
-                const admPaid = cols.some(c => String(parseInt(c.adm_app_id))===String(parseInt(a.gcc)) && c.fee_type==='admission')
+                const admPaid = cols.some(c => String(parseInt(c.adm_app_id))===String(parseInt(a.gcc)) && c.fee_type==='admission' && !c.reverted)
                 return (
                   <div key={a.id} onClick={()=>onDetail(a)}
                     style={{ background:N.bg, borderRadius:10, padding:'10px 12px', boxShadow:N.shadow('sm'), cursor:'pointer', transition:'box-shadow .15s' }}
@@ -4429,7 +4430,7 @@ export default function Admissions() {
         return true
       })()
       const matchFeeStatus= !af.feeStatus || (() => {
-        const paid = cols.some(c=>String(parseInt(c.adm_app_id))===String(parseInt(a.gcc))&&c.fee_type==='admission')
+        const paid = cols.some(c=>String(parseInt(c.adm_app_id))===String(parseInt(a.gcc))&&c.fee_type==='admission'&&!c.reverted)
         return af.feeStatus==='paid' ? paid : !paid
       })()
 

@@ -68,7 +68,7 @@ async function fetchAllByIn(table, { select = '*', inCol, inValues = [], filters
     while (true) {
       let q = supabase.from(table).select(select).in(inCol, chunk)
       for (const [col, op, val] of filters) q = q[op](col, val)
-      q = q.range(from, from + PAGE - 1)
+      q = q.order('id').range(from, from + PAGE - 1)   // id breaks ties so pages never skip or repeat rows
       const { data, error } = await q
       if (error) { console.error(`fetchAllByIn(${table}) error:`, error.message); break }
       all = all.concat(data || [])

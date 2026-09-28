@@ -54,6 +54,7 @@ async function fetchAllRows(table, { select = '*', filters = [], orderCol = null
     let q = supabase.from(table).select(select)
     for (const [col, op, val] of filters) q = q[op](col, val)
     if (orderCol) q = q.order(orderCol, { ascending })
+    if (orderCol !== 'id') q = q.order('id', { ascending })   // id breaks ties so pages never skip or repeat rows
     q = q.range(from, from + PAGE - 1)
     const { data, error } = await q
     if (error) { console.error(`fetchAllRows(${table}) error:`, error.message); break }

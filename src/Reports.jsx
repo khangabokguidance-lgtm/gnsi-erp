@@ -4,6 +4,30 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import ExcelJS from 'exceljs'
 import { PremiumStyles, PremiumHero, PIcon, PX } from './premiumUI'
+
+// Every row of a report source. A plain .select() stops at Supabase's 1000-row
+// cap, so reports (and their totals) were silently truncated. Pages in id order
+// so rows are never skipped or repeated; a table without an id column falls
+// back to unordered paging rather than failing the report.
+async function fetchSourceRows(source) {
+  const PAGE = 1000
+  const run = async ordered => {
+    let all = []
+    for (let from = 0; ; from += PAGE) {
+      let q = supabase.from(source.table).select('*')
+      for (const [col, op, val] of source.baseFilters || []) q = q[op](col, val)
+      if (ordered) q = q.order('id', { ascending: true })
+      const { data, error } = await q.range(from, from + PAGE - 1)
+      if (error) return { error }
+      all = all.concat(data || [])
+      if (!data || data.length < PAGE) return { data: all }
+    }
+  }
+  let res = await run(true)
+  if (res.error && /column .*id.* does not exist|42703/i.test(`${res.error.message} ${res.error.code}`)) res = await run(false)
+  if (res.error) throw res.error
+  return res.data
+}
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
@@ -63,6 +87,8 @@ const SOURCES = [
   {
     key: 'adm_fee_collections', label: 'Fee Collections', icon: '💵',
     table: 'adm_fee_collections', dateCol: 'pay_date',
+    // Reverted collections are an audit trail, not money received.
+    baseFilters: [['reverted', 'eq', false]],
     columns: [
       { key: 'student_name', label: 'Student' }, { key: 'adm_app_id', label: 'Adm. No.' },
       { key: 'fee_type', label: 'Fee Type' }, { key: 'amount_paid', label: 'Amount (₹)' },
@@ -74,6 +100,8 @@ const SOURCES = [
   {
     key: 'accounts', label: 'Accounts', icon: '🧾',
     table: 'accounts', dateCol: 'entry_date',
+    // Soft-deleted rows (incl. the ledger side of reverted fees) aren't in the books.
+    baseFilters: [['is_soft_deleted', 'eq', false]],
     columns: [
       { key: 'entry_date', label: 'Date' }, { key: 'type', label: 'Type' },
       { key: 'category', label: 'Category' }, { key: 'amount', label: 'Amount (₹)' },
@@ -195,7 +223,7 @@ const BUILTIN_PRESETS = [
   { id: 'active-students', label: '✅ Active Students', builtin: true, config: { sourceKey: 'students', selectedCols: ['name','gcc_no','batch','course','session','house','hostel_type','status'], statusFilter: 'Active', search: '', dateFrom: '', dateTo: '', groupBy: 'house', sortCol: 'name', sortDir: 'asc' }, postFilter: null },
   { id: 'pending-admissions', label: '⏳ Pending Admissions', builtin: true, config: { sourceKey: 'admissions', selectedCols: ['applicant_name','gcc_no','course','batch','hostel_type','status'], statusFilter: 'Applied', search: '', dateFrom: '', dateTo: '', groupBy: '', sortCol: 'created_at', sortDir: 'desc' }, postFilter: null },
   { id: 'boarders', label: '🏠 Boarders', builtin: true, config: { sourceKey: 'students', selectedCols: ['name','gcc_no','batch','course','session','house','hostel_type','phone','status'], statusFilter: 'Active', search: '', dateFrom: '', dateTo: '', groupBy: 'house', sortCol: 'name', sortDir: 'asc' }, postFilter: (rows) => rows.filter(r => r.hostel_type === 'Boarder') },
-  { id: 'fee-collections-today', label: "💰 Today's Collections", builtin: true, config: { sourceKey: 'adm_fee_collections', selectedCols: ['student_name','adm_app_id','fee_type','amount_paid','pay_date','pay_mode','collected_by'], statusFilter: 'All', search: '', dateFrom: new Date().toISOString().slice(0,10), dateTo: new Date().toISOString().slice(0,10), groupBy: 'fee_type', sortCol: 'pay_date', sortDir: 'desc' }, postFilter: null },
+  { id: 'fee-collections-today', label: "💰 Today's Collections", builtin: true, config: { sourceKey: 'adm_fee_collections', selectedCols: ['student_name','adm_app_id','fee_type','amount_paid','pay_date','pay_mode','collected_by'], statusFilter: 'All', search: '', dateFrom: new Date().toLocaleDateString('en-CA'), dateTo: new Date().toLocaleDateString('en-CA'), groupBy: 'fee_type', sortCol: 'pay_date', sortDir: 'desc' }, postFilter: null },
   { id: 'staff-active', label: '👨‍🏫 Active Staff', builtin: true, config: { sourceKey: 'staff_profiles', selectedCols: ['name','department','role','basic_salary','status'], statusFilter: 'Active', search: '', dateFrom: '', dateTo: '', groupBy: 'department', sortCol: 'name', sortDir: 'asc' }, postFilter: null },
   { id: 'course-enrollments', label: '🗂️ All Enrollments', builtin: true, config: { sourceKey: 'course_enrollments', selectedCols: ['student_name','gcc_no','course','subtype','hostel_type','session_year','status'], statusFilter: 'Active', search: '', dateFrom: '', dateTo: '', groupBy: 'course', sortCol: 'student_name', sortDir: 'asc' }, postFilter: null },
 ]
@@ -362,9 +390,7 @@ export default function Reports() {
   const handleGenerate = async () => {
     setLoading(true); setError('')
     try {
-      const { data: d, error: err } = await supabase.from(source.table).select('*')
-      if (err) throw err
-      const data = d || []
+      const data = await fetchSourceRows(source)
       setAllRows(data); setGenerated(true)
       if (!selectedCols.length) setSelectedCols(source.columns.map(c => c.key))
       const entry = { id: Date.now(), source: source.label, filters: { statusFilter, search, dateFrom, dateTo }, total: data.length, at: new Date().toLocaleString('en-IN') }

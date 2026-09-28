@@ -18,6 +18,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
+import { fetchAllPages } from './StudyMaterialBridge'
 import {
   fmt, today, gccStr, rcptNo,
   collectFee,
@@ -207,18 +208,23 @@ export default function BulkAdmissionFee({ currentUser = null } = {}) {
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const { data: apps, error: e1 } = await supabase
+      // Both lists paged past Supabase's 1000-row cap — otherwise, once
+      // there are 1000+ admission payments, students who HAVE paid drop off
+      // the "paid" list and show up here as unpaid.
+      const { data: apps, error: e1 } = await fetchAllPages(() => supabase
         .from('admissions')
-        .select('gcc_no, applicant_name, course, subtype, batch, hostel_type, adm_no, phone, session')
+        .select('id, gcc_no, applicant_name, course, subtype, batch, hostel_type, adm_no, phone, session')
         .eq('status', 'Enrolled')
         .order('gcc_no', { ascending: true })
+        .order('id', { ascending: true }))
       if (e1) throw e1
 
-      const { data: paid, error: e2 } = await supabase
+      const { data: paid, error: e2 } = await fetchAllPages(() => supabase
         .from('adm_fee_collections')
-        .select('adm_app_id, fee_type')
+        .select('id, adm_app_id, fee_type')
         .eq('fee_type', 'admission')
         .eq('reverted', false)
+        .order('id', { ascending: true }))
       if (e2) throw e2
 
       const paidSet = new Set((paid || []).map(p => gccStr(p.adm_app_id)))
