@@ -355,19 +355,31 @@ export const isFlatFeeMonth   = (month) => FLAT_FEE_MONTHS.includes(month)
 export const isCourseFeeMonth = (month) => !FLAT_FEE_MONTHS.includes(month)
 
 // ✦ Single source of truth for "which calendar year does this named fee
-// month belong to, given the session runs April→March." Previously this
-// exact rule (if the month's calendar position falls after today's, it
-// belongs to last calendar year) was independently re-implemented in
-// getFlatFees below AND in feeDues.js's courseFeeDueMonths — two copies of
-// the same formula that could silently drift apart if this logic ever
-// changed (e.g. a different session start date). Both now call this.
+// month belong to." A session runs April→March, so April–December fall in
+// the session's start year and January–March in the year after.
+//
+// Previously this was worked out from TODAY's date ("if the month is later
+// in the calendar than now, it was last year"), which is a rolling
+// 12-month window, not a session. In September 2026 that dated this
+// session's February/March flat fee as Feb/Mar 2026 (last session) and put
+// Oct–Dec 2025 and Jan 2026 (also last session) into this session's
+// course-fee dues. Both helpers below now follow the session.
+export const sessionStartYear = (sessionYear) => {
+  const m = String(normalizeSessionYear(sessionYear) || '').match(/^(\d{4})-/)
+  return m ? parseInt(m[1], 10) : CURRENT_YEAR
+}
+
+export const feeMonthYearForSession = (monthName, sessionYear = getSessionYear()) => {
+  const start = sessionStartYear(sessionYear)
+  const calMonth = new Date(`${monthName} 1, ${start}`).getMonth() + 1
+  return calMonth >= 4 ? start : start + 1
+}
+
+// Same rule, for the session that contains referenceDate.
 export const resolveFeeMonthYear = (monthName, referenceDate = new Date()) => {
-  const currentCalYear  = referenceDate.getFullYear()
-  const currentCalMonth = referenceDate.getMonth() + 1
-  let year = currentCalYear
-  const calMonth = new Date(`${monthName} 1, ${year}`).getMonth() + 1
-  if (calMonth > currentCalMonth) year = currentCalYear - 1
-  return year
+  const y = referenceDate.getFullYear()
+  const start = referenceDate.getMonth() + 1 >= 4 ? y : y - 1
+  return feeMonthYearForSession(monthName, `${start}-${start + 1}`)
 }
 
 /**
@@ -387,7 +399,7 @@ export const getFlatFees = async (hostelType, course, batch, sessionYear = `${CU
   const admDate = admissionDate ? new Date(admissionDate) : null
 
   return FLAT_FEE_MONTHS.map(month => {
-    const year = resolveFeeMonthYear(month)
+    const year = feeMonthYearForSession(month, sessionYear)
     return {
       id: `flat_${month.slice(0, 3).toLowerCase()}_${year}`,
       month, year, amount, hostelType,
@@ -447,30 +459,35 @@ export const sourceRef = {
 // 6. DUPLICATE-CHECK GUARDS
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const checkFlatFeeExists = async (gcc, month, year) => {
-  const { data } = await supabase
+// All three guards read with limit(1) rather than maybeSingle(): maybeSingle()
+// returns data=null when MORE than one row matches (an existing duplicate) or
+// when the request fails, which read as "not paid yet" and let yet another
+// duplicate through. A failed check now throws so the payment stops instead
+// of guessing.
+const _anyRow = async (query, what) => {
+  const { data, error } = await query.limit(1)
+  if (error) throw new Error(`Could not check whether ${what} is already paid: ${error.message}`)
+  return (data || []).length > 0
+}
+
+export const checkFlatFeeExists = async (gcc, month, year) =>
+  _anyRow(supabase
     .from(TABLES.admFlatFees)
     .select('id')
     .eq('adm_app_id', gcc)
     .eq('month', month)
     .eq('year', year)
     .eq('paid', true)
-    .eq('reverted', false)
-    .maybeSingle()
-  return !!data
-}
+    .eq('reverted', false), `${month} ${year} flat fee`)
 
-export const checkCourseFeeExists = async (gcc, forMonth, year) => {
-  const { data } = await supabase
+export const checkCourseFeeExists = async (gcc, forMonth, year) =>
+  _anyRow(supabase
     .from(TABLES.admCourseFees)
     .select('id')
     .eq('adm_app_id', gcc)
     .eq('for_month', forMonth)
     .eq('year', year)
-    .eq('reverted', false)
-    .maybeSingle()
-  return !!data
-}
+    .eq('reverted', false), `${forMonth} ${year} course fee`)
 
 /**
  * Fix #2 — Admission Fee and item (dress/prospectus) lines had no
@@ -480,16 +497,13 @@ export const checkCourseFeeExists = async (gcc, forMonth, year) => {
  * for the admission-side items, keyed the same way collectFee derives rowId
  * so it catches the exact same row a second attempt would try to (re)write.
  */
-export const checkAdmItemExists = async (gcc, label) => {
-  const { data } = await supabase
+export const checkAdmItemExists = async (gcc, label) =>
+  _anyRow(supabase
     .from(TABLES.admFeeCollections)
     .select('id')
     .eq('adm_app_id', gcc)
     .eq('description', label)
-    .eq('reverted', false)
-    .maybeSingle()
-  return !!data
-}
+    .eq('reverted', false), label)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 7. ACCOUNTS UPSERT
@@ -513,6 +527,11 @@ export const upsertAccount = async ({
         type, category, amount, payment_mode, note,
         source_ref: sRef, source_type,
         is_recurring, receipt_url,
+        // A revert soft-deletes this ledger row (same source_ref/source_type).
+        // Collecting the same fee again upserts onto that row, so it must be
+        // revived here — otherwise the new payment is saved in the fee table
+        // but stays hidden from Accounts income.
+        is_soft_deleted: false, deleted_by: null, deleted_at: null,
       },
       { onConflict: 'source_ref,source_type', ignoreDuplicates: false }
     )

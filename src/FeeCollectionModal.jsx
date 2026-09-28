@@ -139,6 +139,14 @@ function PaymentSuccessToast({ toast, onDone }) {
   )
 }
 
+// Move a (month name, calendar year) pair by `delta` calendar months.
+function shiftFeeMonth(monthName, year, delta) {
+  const idx = new Date(`${monthName} 1, 2000`).getMonth()
+  if (Number.isNaN(idx)) return null
+  const d = new Date(Number(year), idx + delta, 1)
+  return { month: d.toLocaleString('en-US', { month: 'long' }), year: d.getFullYear() }
+}
+
 export default function FeeCollectionModal({ app, student, onClose, onSaved, isAdmin = false, currentUser = null }) {
 
 
@@ -335,8 +343,12 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const [flatUnderpaymentReasons, setFlatUnderpaymentReasons] = useState({}) // keyed by fee.id
 
   // Course fee tab
-  const [courseMonth,      setCourseMonth]      = useState(MONTHS_LIST[new Date().getMonth()])
-  const [courseYear,       setCourseYear]        = useState(CURRENT_YEAR)
+  // Default to the CURRENT calendar month and year. MONTHS_LIST starts at
+  // April, so indexing it with getMonth() (January = 0) picked a month
+  // three places off — December in September, April in January — and
+  // CURRENT_YEAR is the session's start year, wrong for January–March.
+  const [courseMonth,      setCourseMonth]      = useState(() => new Date().toLocaleString('en-US', { month: 'long' }))
+  const [courseYear,       setCourseYear]        = useState(() => new Date().getFullYear())
   const [courseAmt,        setCourseAmt]         = useState(0)
   const [paidCourseMonths, setPaidCourseMonths] = useState([])
   const [loadingCourse,    setLoadingCourse]    = useState(false)
@@ -488,16 +500,12 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   // against, not a shortfall) — callers must check for null before treating
   // 0 as "paid nothing last month" vs "no data for last month".
   const getPrevMonthAmount = (monthName, year, amountMap) => {
-    const idx = MONTHS_LIST.indexOf(monthName)
-    if (idx === -1) return null
-    const prevIdx = (idx - 1 + MONTHS_LIST.length) % MONTHS_LIST.length
-    // Stepping back from April (idx 0) to March (idx 11) moves to the
-    // PREVIOUS calendar year — mirrors buildAdvanceMonthRun's forward
-    // logic in reverse.
-    const prevYear = idx === 0 ? year - 1 : year
-    const key = `${MONTHS_LIST[prevIdx]}_${prevYear}`
-    const amount = amountMap[key]
-    return amount === undefined ? null : { month: MONTHS_LIST[prevIdx], year: prevYear, amount }
+    const prev = shiftFeeMonth(monthName, year, -1)
+    if (!prev) return null
+    // Calendar arithmetic: the year changes between January and December,
+    // not at the April/March wrap of MONTHS_LIST's session order.
+    const amount = amountMap[`${prev.month}_${prev.year}`]
+    return amount === undefined ? null : { month: prev.month, year: prev.year, amount }
   }
 
   // ✦ Flat-fee specific previous-period lookup. Flat fee only has TWO
@@ -668,19 +676,12 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   // feeEngine.js's own session-year logic treats the April-start cycle
   // elsewhere in this app.
   const buildAdvanceMonthRun = (startMonth, startYear, count) => {
-    const startIdx = MONTHS_LIST.indexOf(startMonth)
-    if (startIdx === -1 || count < 1) return [{ month: startMonth, year: startYear }]
-    const run = []
-    for (let i = 0; i < count; i++) {
-      const idx = (startIdx + i) % MONTHS_LIST.length
-      // Every full lap through MONTHS_LIST (12 months) advances the
-      // calendar year by 1 — but MONTHS_LIST is April-first, so the
-      // rollover from "March" (index 11) back to "April" (index 0) is
-      // where the calendar year actually increments, not the array wrap.
-      const yearOffset = Math.floor((startIdx + i) / MONTHS_LIST.length)
-      run.push({ month: MONTHS_LIST[idx], year: startYear + yearOffset })
-    }
-    return run
+    if (!MONTHS_LIST.includes(startMonth) || count < 1) return [{ month: startMonth, year: startYear }]
+    // Consecutive CALENDAR months — the year rolls over after December
+    // (Nov 2026 → Dec 2026 → Jan 2027), not at MONTHS_LIST's March→April
+    // wrap, which previously dated a run through January as the previous
+    // year's January.
+    return Array.from({ length: count }, (_, i) => shiftFeeMonth(startMonth, startYear, i))
   }
 
   const openAdminConfirm = (forWhich) => {

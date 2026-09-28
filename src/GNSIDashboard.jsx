@@ -208,7 +208,9 @@ async function fetchAllRows(table, selectCols, { orderCol = "created_at", filter
   while (pages < MAX_PAGES) {
     let q = supabase.from(table).select(selectCols)
     if (filterFn) q = filterFn(q)
-    q = q.order(orderCol, { ascending: false }).range(from, from + PAGE_SIZE - 1)
+    q = q.order(orderCol, { ascending: false })
+    if (orderCol !== "id") q = q.order("id", { ascending: false })   // id breaks ties so pages never skip or repeat rows
+    q = q.range(from, from + PAGE_SIZE - 1)
     const { data, error } = await q
     if (error) {
       // Throw rather than break — a partial total is worse than a visible failure.

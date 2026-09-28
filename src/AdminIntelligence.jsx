@@ -477,6 +477,7 @@ export default function AdminIntelligence({ onOpenStudent }) {
             )}
             {[
               ['Admission Fee', 'admission'],
+              ['Advance', 'advance'],
               ['Flat Fee', 'flatFee'],
               ['Course Fee', 'courseFee'],
             ].map(([label, key]) => {

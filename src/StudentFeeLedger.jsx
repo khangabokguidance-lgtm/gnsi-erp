@@ -1,6 +1,7 @@
 // StudentFeeLedger.jsx — mobile-responsive
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from './supabase'
+import { getAllStudents } from './studentQueries'
 import { PremiumHero, PREMIUM_CSS } from './staffPhotos'
 import { printFeeReceipt } from './premiumReceipt'
 
@@ -372,12 +373,14 @@ export default function StudentFeeLedger() {
   const [students, setStudents] = useState([])
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState('')
   const [admRows, setAdmRows] = useState([])
   const [flatRows, setFlatRows] = useState([])
   const [crsRows, setCrsRows] = useState([])
 
   useEffect(() => {
-    supabase.from('students').select('*').order('name').then(({ data }) => setStudents(data || []))
+    // Every student, paged past the 1000-row cap so none are missing from search.
+    getAllStudents('*').then(setStudents)
   }, [])
 
   const loadLedger = async student => {
@@ -388,7 +391,11 @@ export default function StudentFeeLedger() {
       supabase.from('adm_flat_fees').select('*').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false).order('pay_date', { ascending: true }),
       supabase.from('adm_course_fees').select('*').eq('adm_app_id', gcc).eq('reverted', false).order('pay_date', { ascending: true }),
     ])
-    setAdmRows(a.data || []); setFlatRows(f.data || []); setCrsRows(c.data || [])
+    // A failed query must not look like "nothing paid" — show the error
+    // instead of a ₹0 ledger.
+    const failed = [a, f, c].find(r => r.error)
+    setLoadError(failed ? `Could not load this ledger completely: ${failed.error.message}. Please retry.` : '')
+    setAdmRows(failed ? [] : a.data || []); setFlatRows(failed ? [] : f.data || []); setCrsRows(failed ? [] : c.data || [])
     setLoading(false)
   }
 
@@ -416,7 +423,9 @@ export default function StudentFeeLedger() {
 
       {loading && <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>⏳ Loading ledger…</div>}
 
-      {selected && !loading && (
+      {loadError && !loading && <div style={{ padding: '12px 16px', margin: '0 0 16px', borderRadius: 12, background: '#fdecea', border: '1px solid #f5c2bd', color: '#b42318', fontWeight: 600, fontSize: 13 }}>⚠️ {loadError}</div>}
+
+      {selected && !loading && !loadError && (
         <>
           {/* Student card */}
           <div className="gp-in" style={{ background: 'radial-gradient(120% 140% at 100% 0%, #1F4E8C 0%, #132B52 45%, #0B1E3D 85%)', borderRadius: 18, boxShadow: '0 18px 40px rgba(11,30,61,.22), inset 0 0 0 1px rgba(226,197,126,.22)', padding: mobile ? '16px' : '22px 26px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
