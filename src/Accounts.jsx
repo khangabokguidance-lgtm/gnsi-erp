@@ -80,7 +80,7 @@ const REPORT_TYPES = [
 const emptyRow = {
   entry_date   : new Date().toLocaleDateString('en-CA'),
   payment_date : new Date().toLocaleDateString('en-CA'), // actual date money was received (Income only)
-  type         : 'Income',
+  type         : 'Expense',  // Accounts entries are expenditure only (see canAddIncome)
   category     : '',
   sub_category : '',   // Expenditure v2: optional finer-grained category, Expense only
   vendor_id    : '',   // Expenditure v2: optional linked vendor/payee, Expense only
@@ -345,7 +345,12 @@ function Accounts({role,userId}){
   ]
   const canWrite     = isAdmin||role==='accounts'||role==='manager'
   const isSuperintendent = role==='superintendent'
-  const canAddIncome = isAdmin
+  // Accounts takes EXPENDITURE entries only. Income is never typed in by hand —
+  // it is posted automatically when fees are collected (Fees) and when store
+  // sales are made (Store), so every rupee of income traces back to a receipt.
+  // Existing manual income entries can still be corrected or deleted.
+  const canAddIncome = false
+  const INCOME_ONLY_AUTOMATIC = 'Accounts takes expenditure entries only.\n\nIncome is recorded automatically when fees are collected (Fees) and when store sales are made (Store).'
   // Any non-admin user can log an expenditure entry, even without full write
   // access — edit/delete/budgets/income stay restricted to canWrite/canAddIncome.
   // Superintendent is edit-only (see canEditExpenditure below) — explicitly
@@ -943,6 +948,7 @@ function Accounts({role,userId}){
   const openDuplicate=(item)=>{
     // A manual copy of fee income would count the same money twice.
     if(isLinkedEntry(item)){alert(linkedEntryMsg(item)+'\n\nDuplicating it would record the same fee twice.');return}
+    if(item.type==='Income'&&!canAddIncome){alert(INCOME_ONLY_AUTOMATIC);return}
     setEditEntry(null)
     setRows([{
       entry_date:today,payment_date:today,type:item.type,category:item.category,
@@ -1060,9 +1066,10 @@ function Accounts({role,userId}){
       // the existing Pending status, so every total/report/budget/register
       // that already excludes Pending via isConfirmed() correctly excludes
       // it with zero further changes) plus a matching expenditure_approvals
-      // row for the queue. Income is never gated — only admin can add
-      // Income at all (canAddIncome), which is already the highest trust
-      // level in this app.
+      // row for the queue. Income is never entered here at all (see
+      // canAddIncome) — it is posted by Fees and the Store.
+      // Never save a new income row from this form — income comes from Fees / Store only.
+      if(!canAddIncome&&rows.some(r=>r.type!=='Expense')){alert(INCOME_ONLY_AUTOMATIC);setSaving(false);return}
       const rowMeta=rows.filter(r=>canAddIncome||r.type==='Expense').map(r=>{
         const amt=Number(r.amount)||0
         const isExpense=r.type==='Expense'
@@ -3295,7 +3302,7 @@ function Accounts({role,userId}){
           <h2 style={{fontSize: isMobile ? 19 : 22,fontWeight:600,color:AC.navy,margin:0,fontFamily:AC.serif}}>{editEntry?'✏️ Edit Entry':`➕ Add ${rows.length>1?`${rows.length} Entries`:'Entry'}`}</h2>
           {!editEntry&&<button onClick={addRow} style={{backgroundColor:'#eef2f9',color:'#1e3a6e',border:'1px solid #bfdbfe',borderRadius:8,padding:'7px 14px',fontWeight:600,cursor:'pointer',fontSize:13}}>+ Add Row</button>}
         </div>
-        {!canAddIncome&&<div style={{backgroundColor:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'8px 14px',marginBottom:14,fontSize:13,color:'#92400e'}}>⚠️ You can only add <strong>Expense</strong> entries.</div>}
+        {!canAddIncome&&!editEntry&&<div style={{backgroundColor:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'8px 14px',marginBottom:14,fontSize:13,color:'#92400e'}}>ℹ️ Accounts takes <strong>expenditure</strong> entries only. Income is recorded automatically when fees are collected (Fees) and when store sales are made (Store).</div>}
         <form onSubmit={handleSubmit}>
           {rows.map((row,i)=>(
             <div key={i} style={{border:rows.length>1?'1px solid #e8e3d8':'none',borderRadius:10,padding:rows.length>1?16:0,marginBottom:rows.length>1?14:0}}>
@@ -3305,7 +3312,7 @@ function Accounts({role,userId}){
                 {row.type==='Income'&&<div><label style={lStyle}>💰 Actual Payment Date <span style={{color:'#dc2626'}}>*</span></label><input type="date" value={row.payment_date||row.entry_date} max={today} onChange={e=>updateRow(i,'payment_date',e.target.value)} required style={iStyle}/></div>}
                 <div><label style={lStyle}>Type <span style={{color:'#dc2626'}}>*</span></label>
                   <select value={row.type} disabled={!canAddIncome} onChange={e=>{updateRow(i,'type',e.target.value);updateRow(i,'category','')}} required style={{...iStyle,backgroundColor:!canAddIncome?'#faf8f3':'white'}}>
-                    {canAddIncome&&<option>Income</option>}<option>Expense</option>
+                    {(canAddIncome||row.type==='Income')&&<option>Income</option>}<option>Expense</option>
                   </select>
                 </div>
                 <div><label style={lStyle}>Category <span style={{color:'#dc2626'}}>*</span></label>
