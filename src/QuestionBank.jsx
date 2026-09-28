@@ -45,7 +45,7 @@ import {
 // BMEI04 font rather than converting it.
 import { romanToMeetei, meeteiToRoman, getAllCharacters } from './meetei_mayek'
 import { bmeiToUnicode } from './mayekSegments'
-import { LANGS, langLabel, translate as aiTranslate } from './mayekTranslate'
+import { LANGS, langLabel, ENGINE_LABELS, translate as aiTranslate, correctionPairs, saveCorrections } from './mayekTranslate'
 import MayekText from './MayekText'
 import {
   translateText, saveDictionaryEntry, deleteDictionaryEntry, bulkImportEntries, searchDictionary,
@@ -2991,7 +2991,7 @@ async function generatePDF({ title, subject, chapter, questions, sets, withAnswe
 // like any other Unicode row, and no longer needs the embedded font).
 // Translate mode: meaning-level AI translation (mayekTranslate.js), shown for
 // a human to check — unlike the keystroke modes, which never guess.
-function MayekTranslator({ showToast }) {
+function MayekTranslator({ showToast, currentStaffId }) {
   const [from, setFrom] = useState('auto')
   const [to, setTo] = useState('mni-Mtei')
   const [input, setInput] = useState('')
@@ -3000,6 +3000,8 @@ function MayekTranslator({ showToast }) {
   const [warnings, setWarnings] = useState([])
   const [busy, setBusy] = useState('')
   const [showKeys, setShowKeys] = useState(false)
+  const [last, setLast] = useState(null) // what the engine returned, to spot staff edits
+  const [saving, setSaving] = useState(false)
   const run = useRef(0)
 
   const mayekFont = code => (code === 'mni-Mtei' ? "'Noto Sans Meetei Mayek', sans-serif" : 'inherit')
@@ -3007,11 +3009,12 @@ function MayekTranslator({ showToast }) {
     if (!input.trim() || busy) return
     if (from === to) { setOutput(input); return }
     const id = ++run.current
-    setBusy('Translating…'); setWarnings([]); setDetected('')
+    setBusy('Translating…'); setWarnings([]); setDetected(''); setLast(null)
     try {
       const r = await aiTranslate(input, from, to, (i, n) => { if (n > 1 && id === run.current) setBusy(`Translating part ${i} of ${n}…`) })
       if (id !== run.current) return
       setOutput(r.text); setDetected(r.detected); setWarnings(r.warnings)
+      setLast({ source: r.source, machine: r.text, from: r.from, to, engine: r.engine, dictLines: r.dictLines })
     } catch (e) {
       if (id === run.current) showToast('Translation failed: ' + e.message, C.rose)
     } finally {
@@ -3021,7 +3024,20 @@ function MayekTranslator({ showToast }) {
   const swap = () => {
     // 'Detect' and BMEI04 are source-only, so they swap to a sensible target.
     const next = from === 'auto' || from === 'bmei04' ? (to === 'en' ? 'mni-Mtei' : 'en') : from
-    setFrom(to); setTo(next); setInput(output); setOutput(''); setWarnings([]); setDetected('')
+    setFrom(to); setTo(next); setInput(output); setOutput(''); setWarnings([]); setDetected(''); setLast(null)
+  }
+  // Lines the staff member changed after translating, ready to save to the dictionary.
+  const pairs = useMemo(() => (last ? correctionPairs(last.source, last.machine, output, last.from, last.to) : null), [last, output])
+  const edited = !!last && output !== last.machine
+  const saveFixes = async () => {
+    if (!pairs?.length || saving) return
+    setSaving(true)
+    try {
+      const n = await saveCorrections(pairs, currentStaffId)
+      showToast(`Saved ${n} correction${n === 1 ? '' : 's'} to the dictionary`, C.green)
+      setLast(l => ({ ...l, machine: output }))
+    } catch (e) { showToast('Could not save: ' + e.message, C.rose) }
+    finally { setSaving(false) }
   }
   const copy = async text => {
     if (!text) return
@@ -3055,7 +3071,7 @@ function MayekTranslator({ showToast }) {
           <div style={{ fontSize:11, color:C.slate, marginTop:4 }}>{input.length.toLocaleString()} characters</div>
         </div>
         <div>
-          <label style={lS}>{langLabel(to)}</label>
+          <label style={lS}>{langLabel(to)}{last?.engine ? ` — ${ENGINE_LABELS[last.engine]}` : ''}{last?.dictLines && last.engine !== 'dictionary' ? ` + ${last.dictLines} line${last.dictLines === 1 ? '' : 's'} from your dictionary` : ''}</label>
           <textarea value={output} onChange={e => setOutput(e.target.value)} rows={9} aria-label="Translation"
             placeholder={busy || 'Translation will appear here — you can edit it'}
             style={{ ...box, background:'#f8fafc', fontFamily: mayekFont(to), fontSize: to === 'mni-Mtei' ? 19 : 15 }} />
@@ -3069,6 +3085,13 @@ function MayekTranslator({ showToast }) {
         </div>
       </div>
 
+      {edited && pairs === null && (
+        <div style={{ marginTop:10, fontSize:12, color:C.slate }}>
+          {last.from === 'en' && last.to === 'mni-Mtei' || last.from === 'mni-Mtei' && last.to === 'en'
+            ? 'To save corrections to the dictionary, keep the same number of lines as the original.'
+            : 'Corrections can be saved to the dictionary only for English ↔ Manipuri (Meetei Mayek).'}
+        </div>
+      )}
       {warnings.map(w => (
         <div key={w} style={{ marginTop:10, padding:'8px 12px', borderRadius:8, background:'#fff7ed', border:'1px solid #fdba74', fontSize:12, color:'#9a3412' }}>⚠ {w}</div>
       ))}
@@ -3078,19 +3101,27 @@ function MayekTranslator({ showToast }) {
         <button onClick={() => copy(output)} style={btn(C.teal, !output)} disabled={!output}>Copy Translation</button>
         {to === 'mni-Mtei' && <button onClick={() => setShowKeys(v => !v)} style={btn(C.slate)}>{showKeys ? 'Hide' : 'Show'} BMEI04 Keys</button>}
         {keys && <button onClick={() => copy(keys)} style={btn(C.slate)}>Copy Keys</button>}
-        <button onClick={() => { run.current++; setInput(''); setOutput(''); setWarnings([]); setDetected(''); setBusy('') }} style={btn(C.slate)}>Clear</button>
+        {pairs?.length > 0 && (
+          <button onClick={saveFixes} disabled={saving} style={btn(C.green, saving)}
+            title="Saves the lines you changed, so future translations use your wording">
+            {saving ? 'Saving…' : `Save ${pairs.length} correction${pairs.length === 1 ? '' : 's'} to Dictionary`}
+          </button>
+        )}
+        <button onClick={() => { run.current++; setInput(''); setOutput(''); setWarnings([]); setDetected(''); setBusy(''); setLast(null) }} style={btn(C.slate)}>Clear</button>
       </div>
 
       <div style={{ marginTop:14, padding:'10px 14px', borderRadius:8, background:'#f0f9ff',
         border:'1px solid #bae6fd', fontSize:11, color:'#0369a1', lineHeight:1.6 }}>
-        AI translation — check it before putting it in a question paper, and edit the result box directly if a word is wrong.
+        Lines already in your Dictionary are used exactly; the rest is machine translation (Google Translate when set up, otherwise Gemini AI) —
+        check it before putting it in a question paper. If a line is wrong, fix it in the result box and press
+        <b> Save corrections to Dictionary</b>: the next translation of that line will use your wording.
         For exact letter-by-letter conversion of BMEI04 text, use the two keystroke modes instead.
       </div>
     </div>
   )
 }
 
-function TabTranslit({ questions, refetch, showToast }) {
+function TabTranslit({ questions, refetch, showToast, currentStaffId }) {
   const [mode, setMode] = useState('translate')
   const [input, setInput] = useState('')
   const output = useMemo(() => (mode === 'toMayek' ? romanToMeetei(input) : meeteiToRoman(input)), [input, mode])
@@ -3159,7 +3190,7 @@ function TabTranslit({ questions, refetch, showToast }) {
         ))}
       </div>
 
-      {mode === 'translate' ? <MayekTranslator showToast={showToast} /> : (<>
+      {mode === 'translate' ? <MayekTranslator showToast={showToast} currentStaffId={currentStaffId} /> : (<>
       <div className="qb-opts" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
         <div>
           <label style={lS}>{mode === 'toMayek' ? 'BMEI04 Keystrokes' : 'Meetei Mayek Input'}</label>
@@ -5476,7 +5507,7 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
       {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} initialFilter={initialFilter} isAdmin={isAdmin} canEdit={isStaffAllowed} onNavigate={onNavigate} />}
       {tab === 'manual' && <TabManualAdd questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'bulk'   && <TabBulkPaste questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
-      {tab === 'translit' && <TabTranslit questions={questions} refetch={refetch} showToast={showToast} />}
+      {tab === 'translit' && <TabTranslit questions={questions} refetch={refetch} showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} />}
       {tab === 'dictionary' && <TabDictionary showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} questions={questions} isAdmin={isAdmin} />}
       {isAdmin && tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
