@@ -19,7 +19,7 @@
 // that never guesses), steps 2–3 are machine translation: results can be
 // wrong and are shown for a human to check and edit before use.
 import { supabase } from './supabase'
-import { bmeiToUnicode } from './mayekSegments'
+import { bmeiToUnicode, bmeiSegments } from './mayekSegments'
 import { meeteiToRoman } from './meetei_mayek'
 import { normalizeEnglish } from './mayekDictionary'
 
@@ -309,4 +309,187 @@ export async function saveCorrections(pairs, createdBy = null) {
   if (error) throw new Error(error.message)
   if (!data?.length) throw new Error('Nothing was saved — you may need to be signed in as staff')
   return data.length
+}
+
+// ── Dictionary drafting ────────────────────────────────────────────────────
+// Gemini fills blank dictionary entries (English -> Meetei Mayek) as DRAFTS:
+// saved with needs_review = true and source 'gemini_draft', so the
+// translator ignores them (it only uses reviewed entries) until a teacher
+// approves or corrects each one in Dictionary → Coverage → Needs Review.
+export const AI_DRAFT_SOURCE = 'gemini_draft'
+const DRAFT_BATCH = 40
+const DRAFT_BATCH_CHARS = 2500 // sentences are long; keep each request's reply well inside the token budget
+
+function draftPrompt(words) {
+  return [
+    'You are helping a school in Manipur, India build an English to Manipuri (Meiteilon) dictionary for school exam papers.',
+    'For each English word, phrase or sentence in the JSON array, give the Manipuri equivalent a Manipur school textbook would use. Translate sentences naturally as whole sentences, keeping numbers, option labels and names.',
+    'Rules:',
+    '- Write the Manipuri ONLY in Unicode Meetei Mayek letters (U+ABC0–U+ABFF). Never Bengali script, never Latin letters.',
+    '- Give one best equivalent, no alternatives, notes or brackets.',
+    '- For English loanwords that Manipuri normally borrows (e.g. apple, school, bus), write the borrowed word in Meetei Mayek.',
+    `Reply with strict JSON only, no code fences: {"items": [{"english": "<as given>", "mayek": "<Meetei Mayek>"}]} with exactly ${words.length} items in the same order.`,
+    '',
+    'WORDS:',
+    JSON.stringify(words),
+  ].join('\n')
+}
+
+// A usable draft: Meetei Mayek (no Bengali script; Latin only for the odd
+// label such as "(A)" inside a sentence).
+const cleanDraft = s => {
+  const t = String(s || '').trim()
+  const m = count(t, MTEI)
+  return t && m && !count(t, BENG) && count(t, /[A-Za-z]/g) <= m / 10 ? t : null
+}
+
+/**
+ * Ask Gemini for Meetei Mayek drafts of dictionary rows (rows as returned by
+ * getUnfilledEntries: full mayek_dictionary rows) and save them as drafts.
+ * Returns { filled, failed: [english…] }.
+ */
+export async function aiDraftEntries(rows, onProgress) {
+  const todo = (rows || []).filter(r => r.english && r.english_norm)
+  let filled = 0
+  const failed = []
+  // Batches of up to DRAFT_BATCH entries / DRAFT_BATCH_CHARS characters.
+  const batches = []
+  for (const r of todo) {
+    const last = batches[batches.length - 1]
+    if (last && last.length < DRAFT_BATCH && last.reduce((n, x) => n + x.english.length, 0) + r.english.length <= DRAFT_BATCH_CHARS) last.push(r)
+    else batches.push([r])
+  }
+  let done = 0
+  for (const batch of batches) {
+    done += batch.length
+    onProgress && onProgress(done, todo.length)
+    let items = []
+    try {
+      const raw = String(await callGemini(draftPrompt(batch.map(r => r.english)))).trim()
+        .replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+      items = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)).items || []
+    } catch (e) {
+      if (/GEMINI_API_KEY|quota|429|40[13]/i.test(e.message || '')) throw e // not worth retrying the rest
+      failed.push(...batch.map(r => r.english)); continue
+    }
+    // Match by English text first, position second (the model may reorder).
+    const byWord = new Map(items.map(it => [normalizeEnglish(it?.english), it?.mayek]))
+    const updates = []
+    batch.forEach((r, k) => {
+      const mayek = cleanDraft(byWord.get(r.english_norm) ?? items[k]?.mayek)
+      if (!mayek) { failed.push(r.english); return }
+      updates.push({
+        ...r, mayek_unicode: mayek, bmei04: meeteiToRoman(mayek),
+        source: AI_DRAFT_SOURCE, needs_review: true,
+      })
+    })
+    if (!updates.length) continue
+    const { data, error } = await supabase.from('mayek_dictionary').upsert(updates, { onConflict: 'english_norm' }).select('id')
+    if (error) throw new Error(error.message)
+    if (!data?.length) throw new Error('Nothing was saved — you may need to be signed in as staff')
+    filled += data.length
+  }
+  return { filled, failed }
+}
+
+/** Mark dictionary entries as checked by a teacher (the translator then uses them). */
+export async function approveEntries(ids) {
+  if (!ids?.length) return 0
+  const { data, error } = await supabase.from('mayek_dictionary')
+    .update({ needs_review: false }).in('id', ids).select('id')
+  if (error) throw new Error(error.message)
+  if (!data?.length) throw new Error('Nothing was updated — you may need to be signed in as staff')
+  // Keep a record that an AI draft was checked by a person.
+  await supabase.from('mayek_dictionary').update({ source: 'gemini_reviewed' }).in('id', ids).eq('source', AI_DRAFT_SOURCE)
+  return data.length
+}
+
+// ── Sentence database ──────────────────────────────────────────────────────
+// Sentence entries (entry_type 'sentence') are what the translator matches
+// line-for-line. The Question Bank is the best source: many questions hold
+// the same text in English (question) and Meetei Mayek (question_mayek,
+// BMEI04 keystrokes or Unicode), written by teachers.
+export const QB_SOURCE = 'question_bank'
+export const REVIEWABLE_SOURCES = new Set([AI_DRAFT_SOURCE, QB_SOURCE])
+const OPTION_KEYS = ['option_a', 'option_b', 'option_c', 'option_d']
+
+const cleanLine = t => String(t || '').replace(/\s+/g, ' ').trim()
+// Worth a sentence entry: real English words (not a number, formula or one-word option).
+const sentenceLike = t => t.length <= 300 && (t.match(/[A-Za-z]{2,}/g) || []).length >= 3
+const mayekOf = q => {
+  const m = String(q.question_mayek || '').trim()
+  if (!m || q.question_mayek_font !== 'bmei04') return m
+  // A BMEI04 word the key table can't convert stays in Latin letters; such a
+  // line isn't a trustworthy pair, so the question counts as English-only.
+  // (All-capital runs are Roman numerals, which are meant to stay Latin.)
+  if (bmeiSegments(m).some(seg => seg.latin && /[a-z]/.test(seg.text))) return ''
+  return bmeiToUnicode(m)
+}
+// Mayek side of a pair must be clean Meetei Mayek (no leftover Latin or [?x?] flags).
+const cleanMayek = t => {
+  const s = cleanLine(t)
+  return s && count(s, MTEI) && !count(s, BENG) && !s.includes('[?') && count(s, /[A-Za-z]/g) <= count(s, MTEI) / 10 ? s : null
+}
+
+/** Distinct English sentences in the Question Bank, with a teacher-written Meetei Mayek version where one exists. */
+export function questionSentences(questions) {
+  const out = new Map() // english_norm -> { english, mayek|null }
+  const add = (english, mayek) => {
+    const norm = normalizeEnglish(english)
+    if (!norm || !sentenceLike(english)) return
+    const prev = out.get(norm)
+    if (!prev || (!prev.mayek && mayek)) out.set(norm, { english, mayek: mayek || null })
+  }
+  for (const q of questions || []) {
+    const en = String(q.question || '').split('\n').map(cleanLine).filter(Boolean)
+    const mm = mayekOf(q).split('\n').map(cleanLine).filter(Boolean)
+    if (mm.length && mm.length === en.length) en.forEach((l, i) => add(l, cleanMayek(mm[i])))
+    else if (mm.length && en.join(' ').length <= 300) add(en.join(' '), cleanMayek(mm.join(' ')))
+    else en.forEach(l => add(l, null))
+    for (const k of OPTION_KEYS) if (q[k]) add(cleanLine(q[k]), q[`${k}_mayek`] ? cleanMayek(q[`${k}_mayek`]) : null)
+  }
+  return [...out.entries()].map(([english_norm, v]) => ({ english_norm, ...v }))
+}
+
+/** How much of the Question Bank's sentences the dictionary already covers. */
+export async function scanSentences(questions) {
+  const all = questionSentences(questions)
+  const found = new Map()
+  const norms = all.map(s => s.english_norm)
+  for (let i = 0; i < norms.length; i += 100) {
+    const { data, error } = await supabase.from('mayek_dictionary')
+      .select('english_norm, mayek_unicode, needs_review').in('english_norm', norms.slice(i, i + 100))
+    if (error) throw new Error(error.message)
+    for (const r of data || []) found.set(r.english_norm, r)
+  }
+  const res = { total: all.length, approved: 0, waiting: 0, blank: 0, missingPairs: [], missingEnglish: [] }
+  for (const s of all) {
+    const r = found.get(s.english_norm)
+    if (!r) (s.mayek ? res.missingPairs : res.missingEnglish).push(s)
+    else if (!r.mayek_unicode) res.blank++
+    else if (r.needs_review) res.waiting++
+    else res.approved++
+  }
+  return res
+}
+
+/**
+ * Add sentences to the dictionary. Ones with a Meetei Mayek version are saved
+ * filled (source 'question_bank', needs_review so a teacher confirms the pair);
+ * English-only ones are saved blank for auto-fill. Existing entries are left alone.
+ */
+export async function addSentences(sentences, createdBy = null) {
+  const rows = (sentences || []).map(s => ({
+    entry_type: 'sentence', english: s.english, english_norm: s.english_norm,
+    bmei04: s.mayek ? meeteiToRoman(s.mayek) : '', mayek_unicode: s.mayek || '',
+    source: QB_SOURCE, created_by: createdBy, needs_review: !!s.mayek,
+  }))
+  let added = 0
+  for (let i = 0; i < rows.length; i += 200) {
+    const { data, error } = await supabase.from('mayek_dictionary')
+      .upsert(rows.slice(i, i + 200), { onConflict: 'english_norm', ignoreDuplicates: true }).select('id')
+    if (error) throw new Error(error.message)
+    added += data?.length || 0
+  }
+  return added
 }

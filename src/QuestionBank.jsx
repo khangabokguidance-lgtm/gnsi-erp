@@ -45,7 +45,7 @@ import {
 // BMEI04 font rather than converting it.
 import { romanToMeetei, meeteiToRoman, getAllCharacters } from './meetei_mayek'
 import { bmeiToUnicode } from './mayekSegments'
-import { LANGS, langLabel, ENGINE_LABELS, translate as aiTranslate, correctionPairs, saveCorrections } from './mayekTranslate'
+import { LANGS, langLabel, ENGINE_LABELS, translate as aiTranslate, correctionPairs, saveCorrections, aiDraftEntries, approveEntries, AI_DRAFT_SOURCE, QB_SOURCE, REVIEWABLE_SOURCES, scanSentences, addSentences } from './mayekTranslate'
 import MayekText from './MayekText'
 import {
   translateText, saveDictionaryEntry, deleteDictionaryEntry, bulkImportEntries, searchDictionary,
@@ -3384,6 +3384,9 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
   const [phrases, setPhrases] = useState([])
   const [loadingQueues, setLoadingQueues] = useState(true)
   const [fillDrafts, setFillDrafts] = useState({}) // id -> bmei04 text being typed
+  const [drafting, setDrafting] = useState('') // progress text while Gemini fills entries
+  const [sentScan, setSentScan] = useState(null) // Question Bank sentence coverage
+  const [sentBusy, setSentBusy] = useState('')
 
   const loadQueues = useCallback(async () => {
     setLoadingQueues(true)
@@ -3426,7 +3429,8 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
     try {
       await saveDictionaryEntry({
         entryType: row.entry_type, english: row.english, bmei04,
-        category: row.category, source: row.source, createdBy: currentStaffId || null,
+        category: row.category, source: row.source === AI_DRAFT_SOURCE ? 'gemini_reviewed' : row.source,
+        createdBy: currentStaffId || null,
       })
       showToast('Saved', C.green)
       setFillDrafts(d => { const n = { ...d }; delete n[row.id]; return n })
@@ -3434,6 +3438,78 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
     } catch (err) {
       showToast('Save failed: ' + err.message, C.rose)
     }
+  }
+
+  // Gemini fills blank entries as drafts (needs_review) for a teacher to check.
+  const DRAFT_LIMIT = 200
+  const runDraft = async (rows) => {
+    if (drafting || !rows.length) return
+    const todo = rows.slice(0, DRAFT_LIMIT)
+    setDrafting('Asking Gemini…')
+    try {
+      const { filled, failed } = await aiDraftEntries(todo, (n, total) => setDrafting(`Asking Gemini… ${n}/${total}`))
+      const more = rows.length - todo.length
+      showToast(`Gemini drafted ${filled} entr${filled === 1 ? 'y' : 'ies'} — check them under Needs Review` +
+        (failed.length ? ` · ${failed.length} skipped` : '') + (more > 0 ? ` · ${more} more: click again` : ''), filled ? C.green : C.amber)
+      loadQueues()
+    } catch (err) {
+      showToast('Auto-fill failed: ' + err.message, C.rose)
+    } finally {
+      setDrafting('')
+    }
+  }
+  const draftMissing = async () => {
+    if (drafting || !gaps?.missing.length) return
+    setDrafting('Adding words…')
+    try {
+      await seedWordlist(gaps.missing.join('\n'), { source: 'coverage_scan', createdBy: currentStaffId || null })
+      const want = new Set(gaps.missing)
+      const rows = (await getUnfilledEntries({ limit: 5000 })).filter(r => want.has(r.english_norm))
+      setDrafting('')
+      await runDraft(rows)
+      setGaps(g => g && ({ ...g, missing: [] }))
+    } catch (err) {
+      showToast('Could not add words: ' + err.message, C.rose)
+      setDrafting('')
+    }
+  }
+  const approve = async (ids) => {
+    try {
+      const n = await approveEntries(ids)
+      showToast(`Approved ${n} entr${n === 1 ? 'y' : 'ies'}`, C.green)
+      loadQueues()
+    } catch (err) { showToast('Approve failed: ' + err.message, C.rose) }
+  }
+  const aiDrafts = needsReview.filter(r => REVIEWABLE_SOURCES.has(r.source))
+
+  // ── Sentence database: Question Bank sentences -> sentence entries ──
+  const runSentenceScan = async () => {
+    setSentBusy('Scanning…')
+    try { setSentScan(await scanSentences(questions)) }
+    catch (err) { showToast('Sentence scan failed: ' + err.message, C.rose) }
+    finally { setSentBusy('') }
+  }
+  const importPairs = async () => {
+    if (!sentScan?.missingPairs.length) return
+    setSentBusy('Importing…')
+    try {
+      const n = await addSentences(sentScan.missingPairs, currentStaffId || null)
+      showToast(`Imported ${n} bilingual sentence${n === 1 ? '' : 's'} — confirm them under Needs Review`, C.green)
+      loadQueues(); await runSentenceScan()
+    } catch (err) { showToast('Import failed: ' + err.message, C.rose) }
+    finally { setSentBusy('') }
+  }
+  const addEnglishSentences = async () => {
+    if (!sentScan?.missingEnglish.length || drafting) return
+    setSentBusy('Adding…')
+    try {
+      await addSentences(sentScan.missingEnglish, currentStaffId || null)
+      const want = new Set(sentScan.missingEnglish.map(x => x.english_norm))
+      const rows = (await getUnfilledEntries({ limit: 5000 })).filter(r => want.has(r.english_norm))
+      setSentBusy('')
+      await runDraft(rows)
+      await runSentenceScan()
+    } catch (err) { showToast('Could not add sentences: ' + err.message, C.rose); setSentBusy('') }
   }
 
   const pct = (n, total) => total ? Math.round((n / total) * 100) : 0
@@ -3480,8 +3556,13 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
                 <div style={{ fontSize:12, color:'#7f1d1d', maxHeight:120, overflowY:'auto' }}>
                   {gaps.missing.join(', ')}
                 </div>
-                <div style={{ fontSize:11, color:'#991b1b', marginTop:8 }}>
-                  Copy these into <strong>Seed Wordlist</strong> to queue them for translation.
+                <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', marginTop:8 }}>
+                  <button onClick={draftMissing} disabled={!!drafting} style={btnSm(C.violet)}>
+                    {drafting || `✨ Add these & auto-fill with Gemini`}
+                  </button>
+                  <span style={{ fontSize:11, color:'#991b1b' }}>
+                    Or copy them into <strong>Seed Wordlist</strong> to fill by hand.
+                  </span>
                 </div>
               </div>
             )}
@@ -3489,10 +3570,61 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
         )}
       </div>
 
+      {/* ── Sentence database ── */}
+      <div style={{ marginBottom:22, paddingTop:16, borderTop:'1px solid '+C.border }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8, gap:10, flexWrap:'wrap' }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.navy }}>Sentence Database — Question Bank sentences</div>
+          <button onClick={runSentenceScan} disabled={!!sentBusy} style={btnSm(C.navy)}>{sentBusy || 'Run Sentence Scan'}</button>
+        </div>
+        <div style={{ fontSize:11, color:C.slate, marginBottom:10 }}>
+          Every question and option sentence ({(questions || []).length} questions loaded). Sentences in the dictionary are used
+          word-for-word by the translator. Questions that already have a Meetei Mayek version give teacher-written pairs.
+        </div>
+        {sentScan && (
+          <div>
+            <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:10 }}>
+              {[
+                { label:'Sentences found', n: sentScan.total, color: C.navy },
+                { label:'Approved in dictionary', n: sentScan.approved, color: C.green },
+                { label:'Waiting for review', n: sentScan.waiting, color: C.violet },
+                { label:'New with Mayek version', n: sentScan.missingPairs.length, color: C.teal },
+                { label:'New, English only', n: sentScan.missingEnglish.length + sentScan.blank, color: C.amber },
+              ].map(t => (
+                <div key={t.label} style={{ flex:'1 1 120px', padding:'10px 12px', borderRadius:8, background:'#f8fafc', border:'1px solid '+C.border }}>
+                  <div style={{ fontSize:20, fontWeight:800, color: t.color }}>{t.n}</div>
+                  <div style={{ fontSize:11, color:C.slate, marginTop:2 }}>{t.label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              {sentScan.missingPairs.length > 0 && (
+                <button onClick={importPairs} disabled={!!sentBusy} style={btnSm(C.teal)}
+                  title="Saves each English sentence with the Meetei Mayek text teachers already wrote for it">
+                  Import {sentScan.missingPairs.length} bilingual sentence{sentScan.missingPairs.length === 1 ? '' : 's'}
+                </button>
+              )}
+              {sentScan.missingEnglish.length > 0 && (
+                <button onClick={addEnglishSentences} disabled={!!sentBusy || !!drafting} style={btnSm(C.violet)}>
+                  {drafting || `✨ Add ${sentScan.missingEnglish.length} English sentence${sentScan.missingEnglish.length === 1 ? '' : 's'} & auto-fill with Gemini`}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ── Unfilled queue ── */}
       <div style={{ marginBottom:22, paddingTop:16, borderTop:'1px solid '+C.border }}>
-        <div style={{ fontSize:13, fontWeight:700, color:C.navy, marginBottom:8 }}>
-          Unfilled Entries ({unfilled.length}) — need BMEI04 keystrokes
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexWrap:'wrap', marginBottom:8 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.navy }}>
+            Unfilled Entries ({unfilled.length}) — need BMEI04 keystrokes
+          </div>
+          {unfilled.length > 0 && (
+            <button onClick={() => runDraft(unfilled)} disabled={!!drafting} style={btnSm(C.violet)}
+              title="Gemini suggests each word; they're saved as drafts for a teacher to approve">
+              {drafting || `✨ Auto-fill ${Math.min(unfilled.length, DRAFT_LIMIT)} with Gemini`}
+            </button>
+          )}
         </div>
         {loadingQueues ? (
           <div style={{ fontSize:12, color:C.slate }}>Loading...</div>
@@ -3503,7 +3635,7 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
             {unfilled.map(row => (
               <div key={row.id} style={{ display:'flex', gap:8, alignItems:'center', padding:'8px 10px',
                 borderBottom:'1px solid '+C.border }}>
-                <div style={{ width:140, flexShrink:0, fontWeight:700, fontSize:13, color:C.navy }}>{row.english}</div>
+                <div style={{ width: row.entry_type === 'sentence' ? 'min(40%, 360px)' : 140, flexShrink:0, fontWeight:700, fontSize:13, color:C.navy }}>{row.english}</div>
                 <input value={fillDrafts[row.id] || ''} onChange={e => setFillDrafts(d => ({ ...d, [row.id]: e.target.value }))}
                   placeholder="Type BMEI04 keystrokes..." style={{ ...iS, flex:1, fontFamily:'monospace', fontSize:12 }} />
                 <div style={{ minWidth:60, fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:18 }}>
@@ -3518,8 +3650,14 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
 
       {/* ── Needs review queue ── */}
       <div style={{ marginBottom:22, paddingTop:16, borderTop:'1px solid '+C.border }}>
-        <div style={{ fontSize:13, fontWeight:700, color:C.navy, marginBottom:8 }}>
-          Needs Review ({needsReview.length}) — flagged during entry
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, flexWrap:'wrap', marginBottom:8 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.navy }}>
+            Needs Review ({needsReview.length}) — AI drafts and entries flagged during entry
+          </div>
+          {aiDrafts.length > 1 && (
+            <button onClick={() => { if (window.confirm(`Approve all ${aiDrafts.length} drafts (Gemini and Question Bank) without checking each one? The translator will start using them.`)) approve(aiDrafts.map(r => r.id)) }}
+              style={btnSm('#fff', C.navy)}>Approve all {aiDrafts.length} drafts</button>
+          )}
         </div>
         {loadingQueues ? (
           <div style={{ fontSize:12, color:C.slate }}>Loading...</div>
@@ -3529,16 +3667,34 @@ function DictCoveragePanel({ showToast, questions, currentStaffId }) {
           <div style={{ maxHeight:320, overflowY:'auto' }}>
             {needsReview.map(row => (
               <div key={row.id} style={{ padding:'8px 10px', borderBottom:'1px solid '+C.border }}>
-                <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-                  <div style={{ fontWeight:700, fontSize:13, color:C.navy, width:140, flexShrink:0 }}>{row.english}</div>
+                <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+                  <div style={{ fontWeight:700, fontSize:13, color:C.navy, width: row.entry_type === 'sentence' ? 'min(100%, 420px)' : 140, flexShrink:0 }}>{row.english}</div>
                   <div style={{ fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:18 }}>{row.mayek_unicode}</div>
                   <div style={{ fontFamily:'monospace', fontSize:11, color:C.slate }}>{row.bmei04}</div>
+                  {REVIEWABLE_SOURCES.has(row.source) && (
+                    <span style={{ fontSize:10, fontWeight:700, color: row.source === QB_SOURCE ? C.teal : C.violet, background: row.source === QB_SOURCE ? '#ecfeff' : '#f3e8ff', borderRadius:5, padding:'2px 6px' }}>
+                      {row.source === QB_SOURCE ? 'FROM QUESTION BANK' : 'AI DRAFT'}
+                    </span>
+                  )}
                 </div>
-                <div style={{ fontSize:11, color:'#991b1b', marginTop:4 }}>
-                  This word started with a vowel sign that had no consonant to attach to — a word-initial
-                  vowel case the transliterator can only guess at for 'a' and 'u'. Check the BMEI04 spelling
-                  and re-save under Browse/Edit once confirmed.
-                </div>
+                {REVIEWABLE_SOURCES.has(row.source) ? (
+                  <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:6, flexWrap:'wrap' }}>
+                    <span style={{ fontSize:11, color:C.slate }}>
+                      {row.source === QB_SOURCE ? 'Taken from a question written in both scripts — approve if it is a true translation' : 'Suggested by Gemini — approve if right'}, or type the correct BMEI04 keystrokes:
+                    </span>
+                    <button onClick={() => approve([row.id])} style={btnSm(C.green)}>✓ Approve</button>
+                    <input value={fillDrafts[row.id] ?? ''} onChange={e => setFillDrafts(d => ({ ...d, [row.id]: e.target.value }))}
+                      placeholder="Correct BMEI04…" style={{ ...iS, width:180, fontFamily:'monospace', fontSize:12, padding:'5px 8px' }} />
+                    {fillDrafts[row.id] && <span style={{ fontFamily:'Noto Sans Meetei Mayek, sans-serif', fontSize:16 }}>{romanToMeetei(fillDrafts[row.id])}</span>}
+                    {fillDrafts[row.id] && <button onClick={() => handleFillSave(row)} style={btnSm(C.navy)}>Save correction</button>}
+                  </div>
+                ) : (
+                  <div style={{ fontSize:11, color:'#991b1b', marginTop:4 }}>
+                    This word started with a vowel sign that had no consonant to attach to — a word-initial
+                    vowel case the transliterator can only guess at for 'a' and 'u'. Check the BMEI04 spelling
+                    and re-save under Browse/Edit once confirmed.
+                  </div>
+                )}
               </div>
             ))}
           </div>
