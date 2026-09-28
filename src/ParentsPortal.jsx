@@ -1,3 +1,4 @@
+import { printFeeReceipt as printPremiumFeeReceipt } from './premiumReceipt';
 import { useState, useCallback, useEffect } from 'react';
 // Parents use their own Supabase client/session (see parentSupabase.js).
 import { parentSupabase as supabase } from './parentSupabase';
@@ -72,72 +73,25 @@ function downloadIcs(filename, events) {
 // the fee-type-specific fields (hostel_type, course, month), and
 // `row.feeType` is 'adm' | 'flat' | 'crs', matching StudentFeeLedger's
 // printReceipt(student, row, type) signature exactly.
-const feeFmt = (n) => Number(n || 0).toLocaleString('en-IN');
-const feeFmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 function printFeeReceipt(student, historyEntry) {
   const row = historyEntry.raw || {};
   const type = historyEntry.feeType;
-  const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  const receiptNo = row.receipt_no || historyEntry.receipt || '—';
-  const payDate = feeFmtDate(row.pay_date || historyEntry.date);
-  const payMode = row.pay_mode || historyEntry.mode || '—';
-  const txnRef = row.txn_ref || null;
-  let description, amount, sectionLabel, accentColor;
-
-  if (type === 'adm') {
-    description = row.description || row.fee_type || 'Admission / Kit Fee';
-    amount = Number(row.amount_paid ?? historyEntry.amount ?? 0);
-    sectionLabel = 'Admission & Kit Fee';
-    accentColor = '#4f46e5';
-  } else if (type === 'flat') {
-    description = `Monthly Fee — ${row.month || ''}${row.year ? ' ' + row.year : ''}${row.hostel_type ? ' (' + row.hostel_type + ')' : ''}`;
-    amount = Number(row.amount ?? historyEntry.amount ?? 0);
-    sectionLabel = `Monthly Flat Fee${row.hostel_type ? ' · ' + row.hostel_type : ''}`;
-    accentColor = '#059669';
-  } else {
-    description = `Course Fee — ${row.for_month || ''}${row.year ? ' ' + row.year : ''}`;
-    amount = Number(row.amount_paid ?? historyEntry.amount ?? 0);
-    sectionLabel = `Course Fee${row.course ? ' · ' + row.course : ''}`;
-    accentColor = '#7c3aed';
-  }
-
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Receipt ${esc(receiptNo)}</title>
-  <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#f0f4f8;display:flex;justify-content:center;padding:32px 16px}.page{width:720px;background:white;border-radius:0;box-shadow:0 4px 40px rgba(0,0,0,.15);overflow:hidden}.header{background:#1e3a5f;padding:28px 36px}.inst-name{font-size:20px;font-weight:700;color:white}.receipt-no{font-size:22px;font-weight:800;color:#c9a84c;font-family:monospace}.meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid #E2E8F0}.mc{padding:10px 18px;border-right:1px solid #E2E8F0}.ml{font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}.mv{font-weight:700;color:#1E293B;font-size:12px}table{width:100%;border-collapse:collapse}td{padding:8px 18px;border-bottom:1px solid #F1F5F9}.grand td{background:#1E1B4B;font-weight:900;font-size:16px;color:#fff;padding:14px 18px;border:none}.ftr{padding:16px 20px;background:#F8FAFC;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between}.sig-line{height:1px;width:130px;border-top:1.5px dashed #CBD5E1;margin-top:32px}.btns{display:flex;gap:10px;justify-content:center;margin-top:20px}.btn{padding:11px 30px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer}.bp{background:#1e3a5f;color:#fff}@media print{.btns{display:none}}</style></head><body>
-  <div class="page">
-    <div class="header" style="display:flex;justify-content:space-between;align-items:flex-start">
-      <div><div class="inst-name">Guidance Navodaya &amp; Sainik Institute</div><div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:4px">Khangabok, Thoubal, Manipur</div></div>
-      <div style="text-align:right"><div style="font-size:10px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em">Receipt No.</div><div class="receipt-no">${esc(receiptNo)}</div></div>
-    </div>
-    <div style="height:4px;background:linear-gradient(90deg,${accentColor},#c9a84c)"></div>
-    <div class="meta">
-      <div class="mc"><div class="ml">Date</div><div class="mv">${esc(payDate)}</div></div>
-      <div class="mc"><div class="ml">Pay mode</div><div class="mv">${esc(payMode)}</div></div>
-      <div class="mc"><div class="ml">Type</div><div class="mv" style="color:${accentColor}">${esc(sectionLabel)}</div></div>
-    </div>
-    <table><tbody>
-      <tr><td style="color:#64748B;width:40%">Student</td><td style="font-weight:700">${esc(student.name)}</td></tr>
-      <tr><td style="color:#64748B">GCC No.</td><td style="font-weight:700">GCC-${esc(student.gcc_no)}</td></tr>
-      <tr><td style="color:#64748B">Class / Course</td><td style="font-weight:700">${esc([student.batch, student.course].filter(Boolean).join(' · ') || '—')}</td></tr>
-      ${row.hostel_type ? `<tr><td style="color:#64748B">Hostel Type</td><td style="font-weight:700">${esc(row.hostel_type)}</td></tr>` : ''}
-      ${txnRef ? `<tr><td style="color:#64748B">Txn ref</td><td style="font-weight:700">${esc(txnRef)}</td></tr>` : ''}
-    </tbody></table>
-    <table><tbody>
-      <tr><td style="color:#1E293B;font-weight:600">${esc(description)}</td><td style="text-align:right;font-weight:800;font-size:16px;color:${accentColor}">₹${feeFmt(amount)}</td></tr>
-      <tr class="grand"><td>Total Paid</td><td style="text-align:right">₹${feeFmt(amount)}</td></tr>
-    </tbody></table>
-    <div class="ftr">
-      <div><div style="font-size:11px;color:#94a3b8;margin-bottom:4px">Authorised signatory</div><div class="sig-line"></div></div>
-      <div style="text-align:right;font-size:11px;color:#94A3B8"><div style="font-weight:700;color:#1E293B;font-size:13px">GNSI</div><div>Printed on: ${dateStr}</div></div>
-    </div>
-  </div>
-  <div class="btns"><button class="btn bp" onclick="window.print()">Print receipt</button></div>
-  </body></html>`;
-
-  const pw = window.open('', '_blank', 'width=820,height=950,scrollbars=yes');
-  if (!pw) { window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank'); return; }
-  pw.document.write(html); pw.document.close();
-  setTimeout(() => pw.print(), 500);
+  const period = type === 'adm' ? 'One-time'
+    : `${(type === 'flat' ? row.month : row.for_month) || ''}${row.year ? ' ' + row.year : ''}`.trim() || '—';
+  const item = type === 'adm'
+    ? { particulars: row.description || row.fee_type || 'Admission / Kit Fee', period, category: 'Admission & Kit', amount: row.amount_paid ?? historyEntry.amount }
+    : type === 'flat'
+      ? { particulars: 'Monthly Flat Fee', period, category: row.hostel_type || student.hostel_type || 'Hostel', amount: row.amount ?? historyEntry.amount }
+      : { particulars: `Course Fee${row.course ? ' — ' + row.course : ''}`, period, category: row.course || student.course || 'Course', amount: row.amount_paid ?? historyEntry.amount };
+  // Same receipt design as the office prints (premiumReceipt.js).
+  printPremiumFeeReceipt({
+    receipt_no: row.receipt_no || historyEntry.receipt || '—', pay_date: row.pay_date || historyEntry.date,
+    pay_mode: row.pay_mode || historyEntry.mode, txn_ref: row.txn_ref, collected_by: row.collected_by,
+    student_name: student.name, adm_no: student.admission_no, gcc_no: student.gcc_no,
+    class_name: [student.class_name, student.batch].filter(Boolean).join(' · '), course: student.course,
+    hostel_type: row.hostel_type || student.hostel_type, items: [item],
+  });
 }
 
 // ── responsive hook ───────────────────────────────────────────────────────

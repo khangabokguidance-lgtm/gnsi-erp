@@ -10,6 +10,7 @@ import AuditMonitor from './AuditMonitor'
 import { TransactionsViewBanking } from './Accounts_Transactions_Banking'
 import { AccountsDashboardBanking } from './AccountsDashboardBanking'
 import ExpenseDayBook from './ExpenseDayBook'
+import { printAccountVoucher } from './premiumReceipt'
 import IncomeExpenditureRegister from './IncomeExpenditureRegister'
 // ── Report Generator dependencies ───────────────────────────────────────────
 // npm install jspdf jspdf-autotable docx xlsx
@@ -1499,47 +1500,10 @@ function Accounts({role,userId}){
   }
 
   // ── Receipt / Voucher Memo (print-ready, single entry) ───────────────────
+  // Receipt / payment voucher in the same design as every other printed receipt (premiumReceipt.js).
   const printReceiptMemo=(item)=>{
-    const w=window.open('','_blank');if(!w)return
-    const isIncome=item.type==='Income'
-    w.document.write(`<html><head><title>Voucher Memo - ${item.id||''}</title><style>
-      body{font-family:Arial,sans-serif;padding:36px;color:#14213d}
-      .head{text-align:center;border-bottom:2px solid #1e3a6e;padding-bottom:12px;margin-bottom:20px}
-      .head h1{font-size:18px;color:#1e3a6e;margin:0 0 4px}
-      .head p{font-size:12px;color:#5d6b82;margin:2px 0}
-      h2{font-size:15px;color:#1e3a6e;margin:20px 0 10px;text-align:center;text-decoration:underline}
-      table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px}
-      td{padding:8px 12px;border-bottom:1px solid #f3f0e8}
-      td.label{color:#5d6b82;font-weight:600;width:40%}
-      .amt{font-size:20px;font-weight:800;text-align:center;padding:14px;border:2px solid ${isIncome?'#16a34a':'#dc2626'};border-radius:8px;color:${isIncome?'#16a34a':'#dc2626'};margin:16px 0}
-      .sig{display:flex;justify-content:space-between;margin-top:60px}
-      .sig div{width:45%;text-align:center;border-top:1px solid #14213d;padding-top:6px;font-size:12px;color:#2e3b52}
-    </style></head><body>
-    <div class="head">
-      <h1>${INSTITUTE_INFO.name}</h1>
-      <p>${INSTITUTE_INFO.tagline}</p>
-      <p>${INSTITUTE_INFO.address}</p>
-    </div>
-    <h2>${isIncome?'RECEIPT VOUCHER':'PAYMENT VOUCHER'}</h2>
-    <table>
-      <tr><td class="label">Voucher No.</td><td>${item.id||'-'}</td></tr>
-      <tr><td class="label">Date</td><td>${item.entry_date}</td></tr>
-      <tr><td class="label">Type</td><td>${item.type}</td></tr>
-      <tr><td class="label">Category</td><td>${item.category}</td></tr>
-      <tr><td class="label">Account</td><td>${item.account_type||'Cash A/c'}</td></tr>
-      <tr><td class="label">Payment Mode</td><td>${item.payment_mode}</td></tr>
-      <tr><td class="label">Voucher Head</td><td>${item.voucher_head||'-'}</td></tr>
-      <tr><td class="label">Particulars / Note</td><td>${(item.note||'-').replace(/</g,'&lt;')}</td></tr>
-      <tr><td class="label">Entered By</td><td>${item.added_by||item.edited_by||'-'}</td></tr>
-      <tr><td class="label">Status</td><td>${item.status||'Confirmed'}</td></tr>
-    </table>
-    <div class="amt">${isIncome?'Received':'Paid'}: ${fmt(item.amount)}</div>
-    <div class="sig">
-      <div>Received/Paid By</div>
-      <div>Authorized Signature</div>
-    </div>
-    </body></html>`)
-    w.document.close();w.print()
+    const party=item.type==='Expense'?vendors.find(v=>v.id===item.vendor_id)?.name:payers.find(p=>p.id===item.payer_id)?.name
+    printAccountVoucher(item,{party:party||''})
   }
 
   const printPL=()=>{

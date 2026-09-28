@@ -3,6 +3,7 @@
 // Preserves all logic, security fixes, and mobile patches from original
 // Only the visual layer is replaced.
 
+import { printFeeReceipt } from './premiumReceipt'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
@@ -2131,28 +2132,16 @@ function printBatchList(students, label, canViewPII = false) {
   w.print()
 }
 
-function printFeeReceipt(student, payment) {
-  const w=window.open('','_blank')
-  w.document.write(`<html><head><title>Receipt</title><style>
-    body{font-family:system-ui,sans-serif;padding:30px;max-width:560px;margin:auto;color:#334155}
-    .hdr{text-align:center;border-bottom:2px solid #1e3a6e;padding-bottom:16px;margin-bottom:20px}
-    .logo{font-size:22px;font-weight:800;color:#1e3a6e}.sub{font-size:13px;color:#64748b;margin-top:4px}
-    .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9}
-    .lbl{color:#64748b;font-weight:600}.val{font-weight:700;color:#0f172a}
-    .amt{font-size:28px;font-weight:800;color:#059669;text-align:center;margin:20px 0;padding:16px;background:#ecfdf5;border-radius:8px}
-    .foot{margin-top:40px;display:flex;justify-content:space-between;font-size:12px;color:#64748b}
-  </style></head><body>
-    <div class="hdr"><div class="logo">GNSI</div><div class="sub">Guidance Navodaya & Sainik Institute<br>Khangabok, Thoubal, Manipur</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Receipt · ${fmtD(payment.payment_date)}</div></div>
-    <div class="row"><span class="lbl">Name</span><span class="val">${student.name}</span></div>
-    <div class="row"><span class="lbl">GCC No.</span><span class="val">${student.gcc_no}</span></div>
-    <div class="row"><span class="lbl">Batch</span><span class="val">${student.batch} · ${student.course}</span></div>
-    <div class="row"><span class="lbl">Month For</span><span class="val">${payment.month_for||'N/A'}</span></div>
-    <div class="row"><span class="lbl">Method</span><span class="val">${payment.payment_method||'Cash'}</span></div>
-    <div class="amt">₹${fmt(payment.amount)}</div>
-    <div class="foot"><span>Received by: ______________</span><span>Authorized: ______________</span></div>
-    <script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script>
-  </body></html>`)
-  w.document.close()
+// Same receipt as Fees → Collect and the Student Fee Ledger (premiumReceipt.js).
+function printStudentFeeReceipt(student, payment) {
+  const r=payment.rcpt||{}
+  printFeeReceipt({
+    receipt_no:r.receipt_no||'—', pay_date:payment.payment_date, pay_mode:payment.mode||payment.payment_method||'—',
+    txn_ref:r.txn_ref, collected_by:r.collected_by,
+    student_name:student.name, adm_no:student.admission_no, gcc_no:student.gcc_no,
+    class_name:[student.class_name,student.batch].filter(Boolean).join(' · '), course:student.course, hostel_type:student.hostel_type,
+    items:[{particulars:r.particulars||payment.type||'Fee', period:r.period||payment.desc||'—', category:r.category||payment.type||'—', amount:payment.amount}],
+  })
 }
 
 // ─── Report Generator: data + print helpers ──────────────────────────────────
@@ -2882,9 +2871,9 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
                   <span style={{fontSize:16}}>💵</span>
                   <div style={{flex:1}}>
                     <div style={{fontWeight:700,fontSize:13,color:T.text1}}>₹{fmt(h.amount)}</div>
-                    <div style={{fontSize:11,color:T.text3,marginTop:1}}>{fmtD(h.payment_date)} · {h.payment_method||'Cash'}{h.month_for&&` · ${h.month_for}`}</div>
+                    <div style={{fontSize:11,color:T.text3,marginTop:1}}>{fmtD(h.payment_date)} · {h.mode||h.payment_method||'—'}{(h.desc||h.month_for)&&` · ${h.desc||h.month_for}`}</div>
                   </div>
-                  <Btn onClick={()=>printFeeReceipt(student,h)} size='sm'>🖨 Receipt</Btn>
+                  <Btn onClick={()=>printStudentFeeReceipt(student,h)} size='sm'>🖨 Receipt</Btn>
                 </div>
               ))}
             </div>
@@ -5177,16 +5166,16 @@ const effectiveCols = visibleCols.filter(col => {
       // Build gcc list from student rows (adm_ tables key on gcc, not student UUID)
       const gccList=studentRows.map(s=>gccStrFee(s.gcc_no)).filter(Boolean)
       const [admRes,flatRes,crsfRes]=await Promise.all([
-        fetchAllByIn('adm_fee_collections',{select:'adm_app_id,amount_paid,pay_date,fee_type,description,pay_mode',inCol:'adm_app_id',inValues:gccList,filters:[['reverted','eq',false]]}),
-        fetchAllByIn('adm_flat_fees',{select:'adm_app_id,amount,pay_date,month,year,pay_mode',inCol:'adm_app_id',inValues:gccList,filters:[['paid','eq',true],['reverted','eq',false]]}),
-        fetchAllByIn('adm_course_fees',{select:'adm_app_id,amount_paid,pay_date,course,for_month,year,pay_mode',inCol:'adm_app_id',inValues:gccList,filters:[['reverted','eq',false]]}),
+        fetchAllByIn('adm_fee_collections',{select:'adm_app_id,amount_paid,pay_date,fee_type,description,pay_mode,receipt_no,collected_by,txn_ref',inCol:'adm_app_id',inValues:gccList,filters:[['reverted','eq',false]]}),
+        fetchAllByIn('adm_flat_fees',{select:'adm_app_id,amount,pay_date,month,year,pay_mode,hostel_type,receipt_no,collected_by,txn_ref',inCol:'adm_app_id',inValues:gccList,filters:[['paid','eq',true],['reverted','eq',false]]}),
+        fetchAllByIn('adm_course_fees',{select:'adm_app_id,amount_paid,pay_date,course,for_month,year,pay_mode,receipt_no,collected_by,txn_ref',inCol:'adm_app_id',inValues:gccList,filters:[['reverted','eq',false]]}),
       ])
       // Build per-gcc totals, last-paid date, AND full itemized history for the viewer
       const totals={},lastPaid={},history={}
       const pushHist=(gcc,row)=>{if(!history[gcc])history[gcc]=[];history[gcc].push(row)}
-      ;(admRes||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount_paid||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount_paid||0),payment_date:r.pay_date,type:r.fee_type||'Admission Fee',desc:r.description||'',mode:r.pay_mode||''})})
-      ;(flatRes||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount||0),payment_date:r.pay_date,type:'Flat Fee',desc:`${r.month||''} ${r.year||''}`.trim(),mode:r.pay_mode||''})})
-      ;(crsfRes||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount_paid||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount_paid||0),payment_date:r.pay_date,type:'Course Fee',desc:`${r.course||''} ${r.for_month||''} ${r.year||''}`.trim(),mode:r.pay_mode||''})})
+      ;(admRes||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount_paid||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount_paid||0),payment_date:r.pay_date,type:r.fee_type||'Admission Fee',desc:r.description||'',mode:r.pay_mode||'',rcpt:{receipt_no:r.receipt_no,collected_by:r.collected_by,txn_ref:r.txn_ref,particulars:r.description||'Admission / Kit Fee',period:'One-time',category:'Admission & Kit'}})})
+      ;(flatRes||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount||0),payment_date:r.pay_date,type:'Flat Fee',desc:`${r.month||''} ${r.year||''}`.trim(),mode:r.pay_mode||'',rcpt:{receipt_no:r.receipt_no,collected_by:r.collected_by,txn_ref:r.txn_ref,particulars:'Monthly Flat Fee',period:`${r.month||''} ${r.year||''}`.trim()||'—',category:r.hostel_type||'Hostel'}})})
+      ;(crsfRes||[]).forEach(r=>{totals[r.adm_app_id]=(totals[r.adm_app_id]||0)+Number(r.amount_paid||0);if(!lastPaid[r.adm_app_id]||r.pay_date>lastPaid[r.adm_app_id])lastPaid[r.adm_app_id]=r.pay_date;pushHist(r.adm_app_id,{amount:Number(r.amount_paid||0),payment_date:r.pay_date,type:'Course Fee',desc:`${r.course||''} ${r.for_month||''} ${r.year||''}`.trim(),mode:r.pay_mode||'',rcpt:{receipt_no:r.receipt_no,collected_by:r.collected_by,txn_ref:r.txn_ref,particulars:`Course Fee${r.course?' — '+r.course:''}`,period:`${r.for_month||''} ${r.year||''}`.trim()||'—',category:r.course||'Course'}})})
       const result={},histResult={}
       for(const s of studentRows){
         const gcc=gccStrFee(s.gcc_no)
