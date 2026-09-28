@@ -3112,7 +3112,7 @@ function MayekTranslator({ showToast, currentStaffId }) {
 
       <div style={{ marginTop:14, padding:'10px 14px', borderRadius:8, background:'#f0f9ff',
         border:'1px solid #bae6fd', fontSize:11, color:'#0369a1', lineHeight:1.6 }}>
-        Lines already in your Dictionary are used exactly; the rest is machine translation (Google Translate when set up, otherwise Gemini AI) —
+        Lines already in your Dictionary are used exactly; the rest is machine translation (Bhashini or Google Translate when set up, otherwise Gemini AI) —
         check it before putting it in a question paper. If a line is wrong, fix it in the result box and press
         <b> Save corrections to Dictionary</b>: the next translation of that line will use your wording.
         For exact letter-by-letter conversion of BMEI04 text, use the two keystroke modes instead.
