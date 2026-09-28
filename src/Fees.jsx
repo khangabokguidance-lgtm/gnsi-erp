@@ -1,3 +1,4 @@
+import TodayIncomeBreakdown from './TodayIncomeBreakdown'
 import { supabase } from './supabase'
 import { LedgerLink, LedgerButton } from './LedgerLink'
 import { getActiveStudents, getAllStudents } from './studentQueries'
@@ -1662,6 +1663,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   // Underpaid card — toggles the inline drilldown list below the top stat
   // cards, same collapse/expand pattern as Month-wise Dues' Expand All.
   const [showUnderpaid, setShowUnderpaid] = useState(false)
+  const [showIncomeWhy, setShowIncomeWhy] = useState(false)
   // Month-wise Dues card — which month is drilled into, and whether every
   // month is expanded inline. Declared up-front with the other hooks (not
   // inline further down next to the derived `monthwiseDues` value) so hook
@@ -1671,12 +1673,13 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   useEffect(() => {
     let cancelled = false
     const todayLocal = new Date().toLocaleDateString('en-CA')
-    supabase.from('accounts').select('amount,type,entry_date')
+    supabase.from('accounts').select('amount,type,entry_date,status')
       .eq('is_soft_deleted', false).eq('type', 'Income').eq('entry_date', todayLocal)
       .then(({ data, error }) => {
         if (cancelled) return
         if (error) { console.error('todayAccountsIncome fetch error:', error.message); setTodayAccountsIncome(0); return }
-        setTodayAccountsIncome((data || []).reduce((s, r) => s + (Number(r.amount) || 0), 0))
+        // Confirmed only (blank = legacy confirmed) — same rule as Accounts' Today's Income.
+        setTodayAccountsIncome((data || []).filter(r => r.status == null || r.status === '' || r.status === 'Confirmed').reduce((s, r) => s + (Number(r.amount) || 0), 0))
       })
     return () => { cancelled = true }
   }, [])
@@ -1925,23 +1928,25 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             sub: monthChange !== null ? `${monthChange >= 0 ? '▲' : '▼'} ${Math.abs(monthChange)}% vs last month` : 'First month data' },
           { icon: '🌅', label: "Today's Fee Collection", value: `₹${n(todayTotal)}`, color: '#a7771f', bg: '#fbf3e0', sub: todayStr + ' · fee payments only' },
           ...(isAdmin ? [
-            { icon: '📊', label: "Today's Total Income", value: todayAccountsIncome === null ? '…' : `₹${n(todayAccountsIncome)}`, color: '#0e7490', bg: '#ecfeff', sub: todayStr + ' · all income (Accounts)' },
+            { icon: '📊', label: "Today's Total Income", value: todayAccountsIncome === null ? '…' : `₹${n(todayAccountsIncome)}`, color: '#0e7490', bg: '#ecfeff', sub: 'all income recorded in Accounts today · tap for breakdown', onClick: () => setShowIncomeWhy(v => !v), open: showIncomeWhy },
             { icon: '⚠️', label: 'No Payment Yet', value: zeroPayment.length, color: '#dc2626', bg: '#fef2f2', sub: 'students with ₹0 paid' },
             // Clickable — toggles the drilldown list below. Only this card
             // (and only for admins) gets an onClick; the rest stay static.
-            { icon: '🟠', label: 'Underpaid Students', value: underpaidStudents.length, color: '#c2410c', bg: '#ffedd5', sub: 'tap to see who', onClick: () => setShowUnderpaid(v => !v) },
+            { icon: '🟠', label: 'Underpaid Students', value: underpaidStudents.length, color: '#c2410c', bg: '#ffedd5', sub: 'tap to see who', onClick: () => setShowUnderpaid(v => !v), open: showUnderpaid },
           ] : []),
         ].map(c => (
           <div key={c.label} onClick={c.onClick} className="fe-anim"
-            style={{ position: 'relative', overflow: 'hidden', background: 'white', border: `1px solid ${c.onClick && showUnderpaid ? c.color : '#e8e3d8'}`, borderRadius: 16, padding: '16px 18px 15px 20px', boxShadow: c.onClick && showUnderpaid ? `0 0 0 3px ${c.color}22` : '0 1px 2px rgba(19,42,79,.05), 0 6px 18px -10px rgba(19,42,79,.14)', cursor: c.onClick ? 'pointer' : 'default', minWidth: 0 }}>
+            style={{ position: 'relative', overflow: 'hidden', background: 'white', border: `1px solid ${c.onClick && c.open ? c.color : '#e8e3d8'}`, borderRadius: 16, padding: '16px 18px 15px 20px', boxShadow: c.onClick && c.open ? `0 0 0 3px ${c.color}22` : '0 1px 2px rgba(19,42,79,.05), 0 6px 18px -10px rgba(19,42,79,.14)', cursor: c.onClick ? 'pointer' : 'default', minWidth: 0 }}>
             <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: c.color }} />
             <div style={{ width: 34, height: 34, borderRadius: 11, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, marginBottom: 12 }}>{c.icon}</div>
             <div style={{ fontSize: 11, color: '#5d6b82', fontWeight: 700, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.06em', lineHeight: 1.25 }}>{c.label}</div>
             <div style={{ fontSize: 24, fontWeight: 600, color: c.color, fontFamily: "'Fraunces',Georgia,serif", fontVariantNumeric: 'tabular-nums', lineHeight: 1.05 }}>{c.value}</div>
-            <div style={{ fontSize: 11, color: '#98a2b3', marginTop: 6 }}>{c.sub}{c.onClick ? (showUnderpaid ? ' ▲' : ' ▼') : ''}</div>
+            <div style={{ fontSize: 11, color: '#98a2b3', marginTop: 6 }}>{c.sub}{c.onClick ? (c.open ? ' ▲' : ' ▼') : ''}</div>
           </div>
         ))}
       </div>
+
+      {isAdmin && showIncomeWhy && <TodayIncomeBreakdown onClose={() => setShowIncomeWhy(false)} />}
 
       {/* ── Underpaid Students drilldown — toggled by the stat card above ── */}
       {isAdmin && showUnderpaid && (

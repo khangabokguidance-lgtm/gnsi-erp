@@ -11,6 +11,7 @@ import { TransactionsViewBanking } from './Accounts_Transactions_Banking'
 import { AccountsDashboardBanking } from './AccountsDashboardBanking'
 import ExpenseDayBook from './ExpenseDayBook'
 import { printAccountVoucher } from './premiumReceipt'
+import TodayIncomeBreakdown from './TodayIncomeBreakdown'
 import IncomeExpenditureRegister from './IncomeExpenditureRegister'
 // ── Report Generator dependencies ───────────────────────────────────────────
 // npm install jspdf jspdf-autotable docx xlsx
@@ -388,6 +389,7 @@ function Accounts({role,userId}){
 
   // tabs
   const [activeTab, setActiveTab] = useState('analytics')
+  const [showIncomeWhy, setShowIncomeWhy] = useState(false)
 
   // stat cards (Total Income / Expense / Net / Transactions / Pending) — hidden by default
   const [showStatCards, setShowStatCards] = useState(false)
@@ -3271,16 +3273,18 @@ function Accounts({role,userId}){
         {todayCount===0&&<span style={{marginLeft:'auto',fontSize:12,color:'#8a93a6',fontStyle:'italic'}}>No transactions today</span>}
       </div>
       <div style={{display:'grid',gridTemplateColumns:todayCols,gap: isMobile ? 10 : 12}}>
-        {[{label:"Today's Income",value:todayIncome,color:'#16a34a',bg:'#f0fdf4',icon:'⬆️'},{label:"Today's Expense",value:todayExpense,color:'#dc2626',bg:'#fff5f5',icon:'⬇️'},{label:"Today's Net",value:todayNet,color:todayNet>=0?'#1e3a6e':'#dc2626',bg:'#eef2f9',icon:todayNet>=0?'✅':'⚠️'},{label:"Today's Entries",value:todayCount,color:'#a7771f',bg:'#fbf6e8',icon:'🔢',isCurrency:false}].map(card=>(
-          <div key={card.label} style={{backgroundColor:card.bg,borderRadius:12,padding: isMobile ? '11px 12px' : '13px 16px',border:`1px solid ${card.color}1f`,position:'relative',overflow:'hidden'}}>
+        {[{label:"Today's Income",value:todayIncome,color:'#16a34a',bg:'#f0fdf4',icon:'⬆️',onClick:()=>setShowIncomeWhy(v=>!v),hint:showIncomeWhy?'Hide breakdown ▲':'Tap for breakdown ▼'},{label:"Today's Expense",value:todayExpense,color:'#dc2626',bg:'#fff5f5',icon:'⬇️'},{label:"Today's Net",value:todayNet,color:todayNet>=0?'#1e3a6e':'#dc2626',bg:'#eef2f9',icon:todayNet>=0?'✅':'⚠️'},{label:"Today's Entries",value:todayCount,color:'#a7771f',bg:'#fbf6e8',icon:'🔢',isCurrency:false}].map(card=>(
+          <div key={card.label} onClick={card.onClick} role={card.onClick?'button':undefined} tabIndex={card.onClick?0:undefined} onKeyDown={card.onClick?(e=>{if(e.key==='Enter'||e.key===' ')card.onClick()}):undefined} style={{backgroundColor:card.bg,borderRadius:12,padding: isMobile ? '11px 12px' : '13px 16px',border:`1px solid ${card.color}1f`,position:'relative',overflow:'hidden',cursor:card.onClick?'pointer':'default'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6,marginBottom:6}}>
               <p style={{fontSize:11,color:card.color,fontWeight:700,margin:0,letterSpacing:'.04em'}}>{card.label}</p>
               <span style={{fontSize: isMobile ? 13 : 15}}>{card.icon}</span>
             </div>
             <p style={{fontSize: isMobile ? 18 : 22,fontWeight:600,color:card.color,margin:0,fontFamily:AC.serif,fontVariantNumeric:'tabular-nums'}}>{card.isCurrency===false?card.value:fmt(card.value)}</p>
+            {card.hint&&<p style={{fontSize:10.5,color:card.color,opacity:.75,margin:'4px 0 0',fontWeight:600}}>{card.hint}</p>}
           </div>
         ))}
       </div>
+      {showIncomeWhy&&<div style={{marginTop:12}}><TodayIncomeBreakdown onClose={()=>setShowIncomeWhy(false)}/></div>}
     </div>
 
     {/* ── add/edit form ── */}
