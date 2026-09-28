@@ -5146,18 +5146,14 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
   // uses the shared isAdminRole() from roles.js, the single source of
   // truth for admin roles (ADMIN_ROLES = ['Admin','Administrator',
   // 'Co-Admin']) that every other module already checks against.
-  const roleLower = (currentUser?.role || '').toLowerCase()
   const isAdmin = isAdminRole(currentUser?.role)
-  // Question Bank is open to admins, Computer Staffs and teaching staff;
-  // every other role (Receptionist, Accountant, Superintendent, House
-  // Master) gets no access at all, not even read-only viewing. Neither
-  // "Computer Staffs" nor "Teaching" is an admin role, so each needs its
-  // own explicit, case-insensitive check here.
-  // Teaching staff ('Teaching', 'Teaching + …') may browse, add and edit
-  // questions for material preparation; deleting stays admin-only (the
-  // delete buttons below check isAdmin, and row-level security enforces it).
-  const isTeachingStaff = roleLower.startsWith('teaching')
-  const isStaffAllowed = isAdmin || roleLower === 'computer staffs' || isTeachingStaff
+  // Question Bank is open to every staff member who can reach it — who can
+  // reach it is decided by the module permissions in Admin → Permissions
+  // (App.jsx's canAccess), not by a hard-coded role list here. Any staff may
+  // browse, add and edit questions; deleting and the Create Paper / Online
+  // Test / Smart PPT / Stats tabs stay admin-only (the delete buttons check
+  // isAdmin, and row-level security enforces delete on the server).
+  const isStaffAllowed = !!currentUser
 
   const [tabState,      setTab]           = useState('bank')
   const [questions,     setQuestions]     = useState([])
@@ -5281,12 +5277,9 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
         <div className="qb-fade" style={{ ...cardS, maxWidth:440, textAlign:'center', padding:'40px 34px' }}>
           <div style={{ width:56, height:56, borderRadius:16, margin:'0 auto 16px', display:'flex', alignItems:'center', justifyContent:'center',
             background:T.navySoft, fontSize:26 }}>🔒</div>
-          <div style={{ fontSize:18, fontWeight:700, color:T.ink, marginBottom:8, letterSpacing:'-.01em' }}>Question Bank is restricted</div>
+          <div style={{ fontSize:18, fontWeight:700, color:T.ink, marginBottom:8, letterSpacing:'-.01em' }}>Please sign in</div>
           <div style={{ fontSize:13, color:C.slate, lineHeight:1.6 }}>
-            This module is only available to admin, Computer Staffs and teaching
-            accounts. If you need access to questions or papers for a class, please ask
-            an admin to prepare it or check <strong>Study Materials</strong> for
-            teaching content.
+            Sign in with your staff account to open the Question Bank.
           </div>
         </div>
       </div>
