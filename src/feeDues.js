@@ -14,6 +14,7 @@
 // every student regardless of reality.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { loadStudentHistory, sessionRates } from './hostelHistory'
 import { supabase } from './supabase'
 import {
   getFeeRates, getFlatFees, isCourseFeeMonth, isPreAdmissionMonth,
@@ -126,6 +127,18 @@ export async function getStudentDues(student, sessionYear = getSessionYear()) {
 
   const rates = ratesResult._failed ? { flatFee: 0, courseFee: 0, admissionFee: 0 } : ratesResult
   const flatFeeMonths = flatFeeMonthsResult._failed ? [] : flatFeeMonthsResult
+  // Mid-session hostel type change: each month is expected at the type in
+  // effect that month, so months before the change keep the old type's rate.
+  let rateAt = () => rates
+  if (!ratesResult._failed) {
+    const changes = await loadStudentHistory(gcc, { staff })
+    if (changes.length) {
+      try {
+        const fn = await sessionRates(student, sessionYear, changes, type => getFeeRates(sessionYear, student.course, student.batch, type, gcc))
+        if (typeof fn === 'function') rateAt = fn
+      } catch { /* keep the current type's rates */ }
+    }
+  }
 
   const failedSources = [
     ratesResult._failed && 'fee_rates',
@@ -163,7 +176,8 @@ export async function getStudentDues(student, sessionYear = getSessionYear()) {
   // Only months that have started count — this session's Feb/Mar flat fee
   // isn't owed in September.
   const flatFeeItems = flatFeeMonths.filter(f => hasMonthStarted(f.month, f.year)).map(f => ({
-    month: f.month, year: f.year, expected: f.amount,
+    // No change → the flat amount getFlatFees() worked out; otherwise that month's type rate.
+    month: f.month, year: f.year, expected: rateAt(f.month, f.year) === rates ? f.amount : Number(rateAt(f.month, f.year).flatFee || 0),
     paid: paidFlatKeys.has(`${f.month}|${f.year}`),
   }))
   const flatFeeDue = flatFeeItems.filter(i => !i.paid).reduce((s, i) => s + i.expected, 0)
@@ -173,7 +187,7 @@ export async function getStudentDues(student, sessionYear = getSessionYear()) {
   const dueMonths = courseFeeDueMonths(student.admission_date, sessionYear)
   const paidCourseKeys = new Set((courseFeeRows.data || []).map(r => `${r.for_month}|${r.year}`))
   const courseFeeItems = dueMonths.map(m => ({
-    month: m.month, year: m.year, expected: rates.courseFee,
+    month: m.month, year: m.year, expected: Number(rateAt(m.month, m.year).courseFee || 0),
     paid: paidCourseKeys.has(`${m.month}|${m.year}`),
   }))
   const courseFeeDue = courseFeeItems.filter(i => !i.paid).reduce((s, i) => s + i.expected, 0)

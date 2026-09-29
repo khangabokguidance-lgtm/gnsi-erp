@@ -6,6 +6,7 @@ import { supabase } from './supabase'
 import { fetchAllPages } from './StudyMaterialBridge'
 import { getFeeRates, gccStr, normalizeSessionYear } from './feeEngine'
 import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister } from './feeLedgerModel'
+import { loadHostelHistory, sessionRates } from './hostelHistory'
 
 const groupByGcc = rows => {
   const m = new Map()
@@ -37,18 +38,23 @@ async function loadOverrides(session) {
 export async function buildAllLedgers(students, session, { onProgress, rows: preloaded = null } = {}) {
   session = normalizeSessionYear(session)
   onProgress?.('Loading fee records…')
-  const [rows, overrides] = await Promise.all([preloaded ? Promise.resolve(preloaded) : loadAllFeeRows(), loadOverrides(session)])
+  const [rows, overrides, { map: history }] = await Promise.all([preloaded ? Promise.resolve(preloaded) : loadAllFeeRows(), loadOverrides(session), loadHostelHistory()])
   onProgress?.('Working out each register…')
   const rateCache = new Map()
   const out = []
   for (const s of students) {
-    const key = [s.course || '', s.batch || '', s.hostel_type || 'Day Scholar'].join('|')
-    if (!rateCache.has(key)) rateCache.set(key, await getFeeRates(session, s.course || '', s.batch || '', s.hostel_type || 'Day Scholar'))
-    const base = rateCache.get(key)
     const g = gccStr(s.gcc_no)
-    const rates = overrides.has(g) ? { ...base, flatFee: overrides.get(g) } : base
+    const rateOf = async type => {
+      const key = [s.course || '', s.batch || '', type].join('|')
+      if (!rateCache.has(key)) rateCache.set(key, await getFeeRates(session, s.course || '', s.batch || '', type))
+      const base = rateCache.get(key)
+      return overrides.has(g) ? { ...base, flatFee: overrides.get(g) } : base
+    }
+    // A mid-session hostel type change keeps earlier months at the old type's rate.
+    const byMonth = await sessionRates(s, session, history.get(g), rateOf)
+    const rates = typeof byMonth === 'function' ? byMonth.current : byMonth
     const entries = toEntries(s, rows.adm.get(g) || [], rows.flat.get(g) || [], rows.crs.get(g) || [])
-    out.push({ student: s, entries, rates, reg: buildRegister(s, entries, session, rates) })
+    out.push({ student: s, entries, rates, reg: buildRegister(s, entries, session, byMonth) })
   }
   return out
 }
