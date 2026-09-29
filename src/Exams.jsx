@@ -7976,14 +7976,20 @@ function ReportCardItem({ st, subjects, subjectMaxMap, courseMax, marks, examTyp
           {savingRemark ? "Saving…" : savedRemark ? "✓ Saved" : "💾 Save Remark"}
         </button>
       </div>
-      {(() => {
-        const [printing, setPrinting] = React.useState(false);
-        return <button onClick={() => { setPrinting(true); printReport(); setTimeout(() => setPrinting(false), 3000); }} disabled={printing}
-          style={{ ...css.btn, background: printing ? "#6B7280" : "#1a3c2e", color: "white", width: "100%" }}>
-          {printing ? "⏳ Opening…" : "🖨️ Print Report Card"}
-        </button>;
-      })()}
+      <PrintReportCardButton onPrint={printReport} />
     </div>
+  );
+}
+
+// Print button with a short "Opening…" state (its own component so the
+// state hook isn't created inside an inline function during render).
+function PrintReportCardButton({ onPrint }) {
+  const [printing, setPrinting] = React.useState(false);
+  return (
+    <button onClick={() => { setPrinting(true); onPrint(); setTimeout(() => setPrinting(false), 3000); }} disabled={printing}
+      style={{ ...css.btn, background: printing ? "#6B7280" : "#1a3c2e", color: "white", width: "100%" }}>
+      {printing ? "⏳ Opening…" : "🖨️ Print Report Card"}
+    </button>
   );
 }
 

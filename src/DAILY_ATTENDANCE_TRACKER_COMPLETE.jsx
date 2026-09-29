@@ -977,13 +977,15 @@ function ShiftManagement({ staff, logs, canOperate = true }) {
   useEffect(() => { fetchAssignments() }, [fetchAssignments])
 
   const handleDelete = async (id) => {
+    // Read the staff member before the row is gone (for the STAFF_UPDATED event).
+    const staffId = assignments.find(a => a.id === id)?.staff_id
     const { error } = await supabase.from('staff_shift_assignments').delete().eq('id', id)
     if (error) showToast('Delete failed: ' + error.message)
     else { 
       showToast('Shift removed', 'success'); 
       fetchAssignments();
       EventBus.emit(GNSI_EVENTS.STAFF_UPDATED, { 
-        staffId: confirmDelete?.staff_id, 
+        staffId, 
         change: 'shift_removed'
       });
     }

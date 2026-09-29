@@ -18,8 +18,9 @@ import { loadStudentHistory, sessionRates } from './hostelHistory'
 import { supabase } from './supabase'
 import {
   getFeeRates, getFlatFees, isCourseFeeMonth, isPreAdmissionMonth,
-  MONTHS_LIST, getSessionYear, ADM_FEE_BASE, feeMonthYearForSession,
+  MONTHS_LIST, getSessionYear, ADM_FEE_BASE, feeMonthYearForSession, normalizeSessionYear,
 } from './feeEngine'
+import { sessionOfDate } from './feeLedgerModel'
 
 // True when a signed-in staff session exists (Supabase Auth, Phase 1).
 async function hasStaffSession() {
@@ -54,7 +55,10 @@ function hasMonthStarted(month, year, now = new Date()) {
 // least: gcc_no, course, batch, hostel_type, admission_date (falls back
 // to fail-open/no-exclusion if admission_date is missing, same as
 // feeEngine.js's own functions).
-export async function getStudentDues(student, sessionYear = getSessionYear()) {
+// opts.withArrears (default true): also add unpaid flat/course fees from the
+// student's earlier sessions (each at its own session's rates) as `arrears`,
+// included in totalDue — a continuing student's old dues never disappear.
+export async function getStudentDues(student, sessionYear = getSessionYear(), { withArrears = true } = {}) {
   const gcc = String(student.gcc_no || '')
   if (!gcc) return null
 
@@ -105,8 +109,8 @@ export async function getStudentDues(student, sessionYear = getSessionYear()) {
   let admQ, flatQ, courseQ
   if (staff) {
     admQ    = supabase.from('adm_fee_collections').select('amount_paid, description, fee_type').eq('adm_app_id', gcc).eq('reverted', false)
-    flatQ   = supabase.from('adm_flat_fees').select('month,year,amount').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false)
-    courseQ = supabase.from('adm_course_fees').select('for_month,year,amount_paid').eq('adm_app_id', gcc).eq('reverted', false)
+    flatQ   = supabase.from('adm_flat_fees').select('*').eq('adm_app_id', gcc).eq('paid', true).eq('reverted', false)
+    courseQ = supabase.from('adm_course_fees').select('*').eq('adm_app_id', gcc).eq('reverted', false)
   } else {
     const rows = Promise.resolve(supabase.rpc('public_fee_rows', { p_gcc: gcc })).then(r => {
       if (r.error) throw new Error(r.error.message)
@@ -166,38 +170,71 @@ export async function getStudentDues(student, sessionYear = getSessionYear()) {
   // fee_type existed on this table.
   const admissionRows = (admFeeRows.data || []).filter(r => r.description === 'Admission Fee' || r.fee_type === 'admission')
   const admissionPaidAmount = admissionRows.reduce((s, r) => s + Number(r.amount_paid || 0), 0)
-  const admissionExpected = rates.admissionFee ?? ADM_FEE_BASE
-  const admissionPaid = admissionPaidAmount >= admissionExpected && admissionExpected > 0
+  // A repeater's admission fee is waived (as the collection screens say).
+  const admissionExpected = student.is_repeater ? 0 : (rates.admissionFee ?? ADM_FEE_BASE)
+  const admissionPaid = admissionPaidAmount >= admissionExpected
   const admissionDue = Math.max(0, admissionExpected - admissionPaidAmount)
 
   // Flat fee — check each Feb/Mar month getFlatFees says this student owes
   // against what's actually been paid for that exact month/year.
-  const paidFlatKeys = new Set((flatFeeRows.data || []).map(r => `${r.month}|${r.year}`))
+  // Paid + approved-concession amount per month. A month is settled only when
+  // these cover the expected fee; a part payment leaves the shortfall due
+  // (a pending or rejected low-fee request keeps it due too).
+  const paidBy = (rows, keyOf, amtOf) => {
+    const m = new Map()
+    for (const r of rows || []) {
+      const k = keyOf(r), p = m.get(k) || { paid: 0, waived: 0 }
+      p.paid += amtOf(r)
+      if (r.concession_status === 'approved') p.waived += Number(r.concession_amount) || 0
+      m.set(k, p)
+    }
+    return m
+  }
+  const settle = (expected, p) => {
+    const paidAmount = p?.paid || 0, waived = p?.waived || 0
+    let due = Math.max(0, expected - paidAmount - waived)
+    if (due < 0.5) due = 0
+    return { paidAmount, waived, due, paid: due === 0 }
+  }
+  const flatPaid = paidBy(flatFeeRows.data, r => `${r.month}|${r.year}`, r => Number(r.amount || 0))
   // Only months that have started count — this session's Feb/Mar flat fee
   // isn't owed in September.
   const flatFeeItems = flatFeeMonths.filter(f => hasMonthStarted(f.month, f.year)).map(f => ({
     // No change → the flat amount getFlatFees() worked out; otherwise that month's type rate.
     month: f.month, year: f.year, expected: rateAt(f.month, f.year) === rates ? f.amount : Number(rateAt(f.month, f.year).flatFee || 0),
-    paid: paidFlatKeys.has(`${f.month}|${f.year}`),
-  }))
-  const flatFeeDue = flatFeeItems.filter(i => !i.paid).reduce((s, i) => s + i.expected, 0)
+  })).map(i => ({ ...i, ...settle(i.expected, flatPaid.get(`${i.month}|${i.year}`)) }))
+  const flatFeeDue = flatFeeItems.reduce((s, i) => s + i.due, 0)
 
   // Course fee — every non-flat month from session start through now,
   // minus pre-admission months, checked against what's actually paid.
   const dueMonths = courseFeeDueMonths(student.admission_date, sessionYear)
-  const paidCourseKeys = new Set((courseFeeRows.data || []).map(r => `${r.for_month}|${r.year}`))
-  const courseFeeItems = dueMonths.map(m => ({
-    month: m.month, year: m.year, expected: Number(rateAt(m.month, m.year).courseFee || 0),
-    paid: paidCourseKeys.has(`${m.month}|${m.year}`),
-  }))
-  const courseFeeDue = courseFeeItems.filter(i => !i.paid).reduce((s, i) => s + i.expected, 0)
+  const coursePaid = paidBy(courseFeeRows.data, r => `${r.for_month}|${r.year}`, r => Number(r.amount_paid || 0))
+  const courseFeeItems = dueMonths.map(m => {
+    const expected = Number(rateAt(m.month, m.year).courseFee || 0)
+    return { month: m.month, year: m.year, expected, ...settle(expected, coursePaid.get(`${m.month}|${m.year}`)) }
+  })
+  const courseFeeDue = courseFeeItems.reduce((s, i) => s + i.due, 0)
 
   const totalPaid =
     (admFeeRows.data || []).reduce((s, r) => s + Number(r.amount_paid || 0), 0) +
     (flatFeeRows.data || []).reduce((s, r) => s + Number(r.amount || 0), 0) +
     (courseFeeRows.data || []).reduce((s, r) => s + Number(r.amount_paid || 0), 0)
 
-  const totalDue = admissionDue + flatFeeDue + courseFeeDue
+  // Earlier sessions' unpaid flat/course fees (admission is counted above, once).
+  const arrearsBySession = []
+  if (withArrears) {
+    const first = normalizeSessionYear(student.session) || sessionOfDate(student.admission_date)
+    const startY = Number(String(first || '').slice(0, 4)), curY = Number(String(sessionYear).slice(0, 4))
+    for (let y = Math.max(startY, curY - 6); startY && y < curY; y++) {
+      const s = `${y}-${y + 1}`
+      const d = await getStudentDues(student, s, { withArrears: false })
+      const due = (d?.flatFee.due || 0) + (d?.courseFee.due || 0)
+      if (due > 0) arrearsBySession.push({ session: s, due, months: [...d.courseFee.items, ...d.flatFee.items].filter(i => i.due > 0).map(i => `${i.month.slice(0, 3)} ${i.year}`) })
+    }
+  }
+  const arrears = arrearsBySession.reduce((t, a) => t + a.due, 0)
+  const sessionDue = admissionDue + flatFeeDue + courseFeeDue
+  const totalDue = sessionDue + arrears
 
   return {
     gcc, sessionYear,
@@ -206,7 +243,10 @@ export async function getStudentDues(student, sessionYear = getSessionYear()) {
     flatFee: { items: flatFeeItems, due: flatFeeDue },
     courseFee: { items: courseFeeItems, due: courseFeeDue },
     totalPaid,
-    totalDue,
+    sessionDue,          // this session only
+    arrears,             // earlier sessions, brought forward
+    arrearsBySession,
+    totalDue,            // sessionDue + arrears
     monthsOverdue: courseFeeItems.filter(i => !i.paid).length + flatFeeItems.filter(i => !i.paid).length,
     // Non-empty when one or more of the five fee-source queries above
     // failed (e.g. a dropped connection) and fell back to a safe default

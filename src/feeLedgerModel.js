@@ -89,14 +89,17 @@ export function buildRegister(student, entries, session, rates, now = new Date()
     else if (isPreAdmissionMonth(month, year, admissionDate)) status = 'before'
     else if (!monthStarted(month, year, now)) status = 'upcoming'
     else status = 'due'
-    const due = status === 'due' ? expected : 0
-    return { month, year, head, hostelType: R?.hostelType || null, expected, paid, paidAmt, waived, concessionPending, status, due, shortBy: status === 'short' ? Math.max(0, expected - paidAmt - waived) : 0 }
+    const shortBy = status === 'short' ? Math.max(0, expected - paidAmt - waived) : 0
+    // A part-paid month still owes its shortfall (until an admin approves a concession).
+    const due = status === 'due' ? expected : shortBy
+    return { month, year, head, hostelType: R?.hostelType || null, expected, paid, paidAmt, waived, concessionPending, status, due, shortBy }
   })
   // Admission fee: shown in the session it was paid in, or — if unpaid — in
   // the student's own session.
   const admEntries = entries.filter(x => x.kind === 'admission')
   const admSession = admEntries[0]?.session || normalizeSessionYear(student.session) || sessionOfDate(admissionDate)
-  const admExpected = Number((typeof rates === 'function' ? rates.current : rates)?.admissionFee ?? ADM_FEE_BASE)
+  // A repeater's admission fee is waived.
+  const admExpected = student.is_repeater ? 0 : Number((typeof rates === 'function' ? rates.current : rates)?.admissionFee ?? ADM_FEE_BASE)
   const admPaid = admEntries.reduce((s, x) => s + x.amount, 0)
   const admission = admSession === session
     ? { expected: admExpected, paid: admEntries, paidAmt: admPaid, due: Math.max(0, admExpected - admPaid) }
@@ -181,17 +184,20 @@ export const parentPhone = s => {
   return d.length === 10 ? '91' + d : d
 }
 
-export function reminderText(student, reg, session) {
-  const dueRows = reg.rows.filter(r => r.status === 'due')
+// arrears: earlier sessions' unpaid dues [{ session, due, months }] (brought forward).
+export function reminderText(student, reg, session, arrears = []) {
+  const dueRows = reg.rows.filter(r => r.due > 0)
   const lines = [
+    ...arrears.map(a => `• Brought forward from ${shortSession(a.session)} (${a.months.join(', ')}) — ₹${fmt(a.due)}`),
     ...(reg.admission?.due ? [`• Admission fee — ₹${fmt(reg.admission.due)}`] : []),
-    ...dueRows.map(r => `• ${r.head} ${r.month} ${r.year} — ₹${fmt(r.due)}`),
+    ...dueRows.map(r => `• ${r.head} ${r.month} ${r.year}${r.status === 'short' ? ' (balance)' : ''} — ₹${fmt(r.due)}`),
   ]
+  const total = reg.totalDue + arrears.reduce((t, a) => t + a.due, 0)
   const who = student.father_name ? `Dear ${student.father_name}` : 'Dear Parent/Guardian'
   if (!lines.length) {
     return `${who},\n\nThank you — all fees for ${student.name} (GCC-${student.gcc_no}) are paid up to date for session ${shortSession(session)}.\n\n— Accounts Office, Guidance Navodaya & Sainik Institute, Khangabok`
   }
-  return `${who},\n\nThis is a gentle reminder that the following fees for ${student.name} (GCC-${student.gcc_no}, ${[student.course, student.batch].filter(Boolean).join(' · ')}) are pending for session ${shortSession(session)}:\n\n${lines.join('\n')}\n\nTotal due: ₹${fmt(reg.totalDue)}\n\nKindly pay at the institute office at the earliest. Please ignore this message if already paid.\n\n— Accounts Office, Guidance Navodaya & Sainik Institute, Khangabok`
+  return `${who},\n\nThis is a gentle reminder that the following fees for ${student.name} (GCC-${student.gcc_no}, ${[student.course, student.batch].filter(Boolean).join(' · ')}) are pending for session ${shortSession(session)}:\n\n${lines.join('\n')}\n\nTotal due: ₹${fmt(total)}\n\nKindly pay at the institute office at the earliest. Please ignore this message if already paid.\n\n— Accounts Office, Guidance Navodaya & Sainik Institute, Khangabok`
 }
 
 // ── Month to be paid ─────────────────────────────────────────────────────────

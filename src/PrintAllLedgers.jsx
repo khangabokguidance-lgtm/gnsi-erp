@@ -39,8 +39,8 @@ export default function PrintAllLedgers({ students, onClose }) {
     if (win) win.document.write('<p style="font:16px system-ui;padding:40px;color:#1d3a78">Preparing fee ledgers…</p>')
     try {
       let items = await buildAllLedgers(chosen, session, { onProgress: setBusy })
-      if (onlyDues) items = items.filter(x => x.reg.totalDue > 0)
-      const cmp = { name: (a, b) => String(a.student.name).localeCompare(String(b.student.name)), gcc: (a, b) => Number(a.student.gcc_no) - Number(b.student.gcc_no), due: (a, b) => b.reg.totalDue - a.reg.totalDue }[sortBy]
+      if (onlyDues) items = items.filter(x => x.reg.totalDue + (x.arrears || 0) > 0)
+      const cmp = { name: (a, b) => String(a.student.name).localeCompare(String(b.student.name)), gcc: (a, b) => Number(a.student.gcc_no) - Number(b.student.gcc_no), due: (a, b) => (b.reg.totalDue + (b.arrears || 0)) - (a.reg.totalDue + (a.arrears || 0)) }[sortBy]
       items.sort(cmp)
       if (!items.length) { win?.close(); setError('No student in this selection has fees due.'); setBusy(''); return }
       const scope = [course !== 'All' && course, batch !== 'All' && batch, hostel !== 'All' && hostel].filter(Boolean).join(' · ')

@@ -2,8 +2,8 @@
 import { fmt, fmtDate, escH, shortSession, parentPhone, reminderText } from './feeLedgerModel'
 
 // ── Actions ──────────────────────────────────────────────────────────────────
-export function openWhatsAppReminder(student, reg, session) {
-  const text = reminderText(student, reg, session)
+export function openWhatsAppReminder(student, reg, session, arrears = []) {
+  const text = reminderText(student, reg, session, arrears)
   const phone = parentPhone(student)
   const url = `https://wa.me/${phone || ''}?text=${encodeURIComponent(text)}`
   window.open(url, '_blank', 'noopener')
@@ -42,11 +42,13 @@ export function printStatement(student, st, session, from, to) {
   <div class="sig"><span>Printed ${escH(new Date().toLocaleString('en-IN'))}</span><div>Accounts Office</div></div>`)
 }
 
-export function printDuesNotice(student, reg, session) {
-  const dueRows = reg.rows.filter(r => r.status === 'due')
+export function printDuesNotice(student, reg, session, arrears = []) {
+  // Unpaid months, the balance of part-paid ones, and earlier sessions' dues.
+  const dueRows = reg.rows.filter(r => r.due > 0)
   const items = [
+    ...arrears.map(a => [`Brought forward from session ${shortSession(a.session)} (${a.months.join(', ')})`, a.due]),
     ...(reg.admission?.due ? [['Admission fee', reg.admission.due]] : []),
-    ...dueRows.map(r => [`${r.head} — ${r.month} ${r.year}`, r.due]),
+    ...dueRows.map(r => [`${r.head} — ${r.month} ${r.year}${r.status === 'short' ? ' (balance)' : ''}`, r.due]),
   ]
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
   const dueBy = new Date(Date.now() + 7 * 86400000).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
@@ -55,7 +57,7 @@ export function printDuesNotice(student, reg, session) {
        <p><b>Subject: Reminder for pending fees — session ${escH(shortSession(session))}</b></p>
        <p>Dear Parent/Guardian, this is to inform you that the following fees are pending as per our records:</p>
        <table><thead><tr><th>#</th><th>Particulars</th><th>Amount (₹)</th></tr></thead><tbody>${items.map(([l, v], i) => `<tr><td>${i + 1}</td><td>${escH(l)}</td><td class="num">${fmt(v)}</td></tr>`).join('')}</tbody>
-       <tfoot><tr><td colspan="2">Total due</td><td class="num">${fmt(reg.totalDue)}</td></tr></tfoot></table>
+       <tfoot><tr><td colspan="2">Total due</td><td class="num">${fmt(items.reduce((t, [, v]) => t + v, 0))}</td></tr></tfoot></table>
        <p>You are kindly requested to clear the dues on or before <b>${escH(dueBy)}</b> at the institute office. Please ignore this notice if the amount has already been paid, and keep the receipt for your records.</p>`
     : `<p>Date: ${escH(today)}</p><p>All fees for ${escH(student.name)} (GCC-${escH(student.gcc_no)}) are paid up to date for session ${escH(shortSession(session))}. Thank you.</p>`
   openPrint(`Dues notice — ${student.name}`, `${header(student, 'Fee Dues Notice', session)}${body}<div class="sig"><div>Accounts Office</div><div>Principal</div></div>`)

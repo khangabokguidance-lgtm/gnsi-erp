@@ -7,6 +7,7 @@
 // April–March session, Feb/Mar are flat-fee months, a month isn't due until it
 // starts, and months before admission aren't charged.
 import { loadStudentHistory, sessionRates, timeline } from './hostelHistory'
+import { computeArrears } from './feeLedgerBulk'
 
 const fmtMonth = d => new Date(String(d).slice(0, 10) + 'T00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
 // Month before a change's effective month (the last month at the old type).
@@ -15,7 +16,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { getFeeRates, normalizeSessionYear, getSessionYear, gccStr } from './feeEngine'
 import { printFeeReceipt } from './premiumReceipt'
 import { ledgerUrl } from './ledgerLink'
-import { fmt, fmtDate, escH, shortSession, prevSession, toEntries, buildRegister, buildStatement, parentPhone, reminderText } from './feeLedgerModel'
+import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, buildStatement, parentPhone, reminderText } from './feeLedgerModel'
 import { StatementView, InsightsView } from './FeeLedgerTools'
 import { openWhatsAppReminder, printDuesNotice, exportLedgerExcel } from './feeLedgerActions'
 
@@ -114,11 +115,12 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
   const [pane, setPane] = useState('register') // 'register' | 'statement' | 'insights'
   const [bookQuery, setBookQuery] = useState('')
   const [notice, setNotice] = useState('')
-  // Previous session's rates → its unpaid dues are the statement's opening balance.
-  const prev = prevSession(session)
-  const prevKey = [prev, student.course, student.batch, student.hostel_type, student.gcc_no, histSig].join('|')
-  const [prevState, setPrevState] = useState({ key: null, rates: null })
-  const prevRates = prevState.key === prevKey ? prevState.rates : null
+  // Every earlier session's unpaid dues (each at its own rates) → brought
+  // forward: the statement's opening balance and part of the balance due.
+  const prevKey = [session, student.course, student.batch, student.hostel_type, student.gcc_no, histSig, entries.length, entries.reduce((t, x) => t + (Number(x.amount) || 0), 0)].join('|')
+  const [prevState, setPrevState] = useState({ key: null, arrears: 0, bySession: [] })
+  const openingBalance = prevState.key === prevKey ? prevState.arrears : 0
+  const arrearsBySession = prevState.key === prevKey ? prevState.bySession : []
 
   useEffect(() => {
     let live = true
@@ -130,15 +132,14 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
 
   useEffect(() => {
     let live = true
-    sessionRates(student, prev, changes, type => getFeeRates(prev, student.course || '', student.batch || '', type, gccStr(student.gcc_no)))
-      .then(r => { if (live) setPrevState({ key: prevKey, rates: r }) })
-      .catch(() => { if (live) setPrevState({ key: prevKey, rates: null }) })
+    computeArrears(student, session, entries, changes, sess => type => getFeeRates(sess, student.course || '', student.batch || '', type, gccStr(student.gcc_no)))
+      .then(r => { if (live) setPrevState({ key: prevKey, ...r }) })
+      .catch(() => { if (live) setPrevState({ key: prevKey, arrears: 0, bySession: [] }) })
     return () => { live = false }
-  }, [prevKey, prev, student, changes])
+  }, [prevKey, session, student, entries, changes])
 
   const curRates = typeof rates === 'function' ? rates.current : rates
   const reg = useMemo(() => buildRegister(student, entries, session, rates), [student, entries, session, rates])
-  const openingBalance = useMemo(() => prevRates ? buildRegister(student, entries, prev, prevRates).totalDue : 0, [student, entries, prev, prevRates])
   const statement = useMemo(() => buildStatement(student, entries, session, reg, { openingBalance }), [student, entries, session, reg, openingBalance])
   const q = bookQuery.trim().toLowerCase()
   const book = (bookScope === 'all' ? entries : entries.filter(x => x.session === session))
@@ -151,12 +152,12 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
     : <span className="muted">—</span>
 
   const sendReminder = () => {
-    const { phone } = openWhatsAppReminder(student, reg, session)
+    const { phone } = openWhatsAppReminder(student, reg, session, arrearsBySession)
     setNotice(phone ? `WhatsApp opened for +${phone}.` : 'No parent phone on file — WhatsApp opened so you can pick the contact.')
     setTimeout(() => setNotice(''), 4000)
   }
   const copyReminder = async () => {
-    try { await navigator.clipboard.writeText(reminderText(student, reg, session)); setNotice('Reminder message copied.') }
+    try { await navigator.clipboard.writeText(reminderText(student, reg, session, arrearsBySession)); setNotice('Reminder message copied.') }
     catch { setNotice('Could not copy — use the WhatsApp button instead.') }
     setTimeout(() => setNotice(''), 3000)
   }
@@ -187,7 +188,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
           <button className="frb-chip" onClick={() => printRegister(student, reg, bookRows, session, bookScope)}>🖨️ Print register</button>
           <button className="frb-chip" onClick={sendReminder} title={parentPhone(student) ? `Send to +${parentPhone(student)}` : 'No parent phone on file'}>📲 WhatsApp reminder</button>
           <button className="frb-chip" onClick={copyReminder}>📋 Copy reminder</button>
-          <button className="frb-chip" onClick={() => printDuesNotice(student, reg, session)}>📄 Dues notice</button>
+          <button className="frb-chip" onClick={() => printDuesNotice(student, reg, session, arrearsBySession)}>📄 Dues notice</button>
           <button className="frb-chip" onClick={doExport}>⬇️ Excel</button>
         </div>
       </div>
@@ -209,7 +210,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
 
         <div className="frb-sum">
           <div className="frb-sumc"><b>Paid this session</b><span style={{ color: '#146c3a' }}>₹{fmt(reg.totalPaid)}</span></div>
-          <div className="frb-sumc"><b>Balance due now</b><span style={{ color: reg.totalDue ? '#b42318' : '#146c3a' }}>{rates ? `₹${fmt(reg.totalDue)}` : '…'}</span></div>
+          <div className="frb-sumc"><b>Balance due now</b><span style={{ color: reg.totalDue + openingBalance ? '#b42318' : '#146c3a' }}>{rates ? `₹${fmt(reg.totalDue + openingBalance)}` : '…'}</span>{openingBalance > 0 && <small title={arrearsBySession.map(a => `${shortSession(a.session)}: ₹${fmt(a.due)} (${a.months.join(', ')})`).join('\n')} style={{ display: 'block', fontSize: 11, color: '#9a3412', marginTop: 2 }}>incl. ₹{fmt(openingBalance)} from {arrearsBySession.map(a => shortSession(a.session)).join(', ')}</small>}</div>
           <div className="frb-sumc"><b>Months due</b><span style={{ color: reg.dueMonths ? '#b42318' : '#146c3a' }}>{rates ? reg.dueMonths : '…'}</span></div>
           <div className="frb-sumc"><b>Monthly rate{changes.length ? ` (${student.hostel_type || 'Day Scholar'})` : ''}</b><span style={{ color: '#1d3a78', fontSize: 15 }}>{curRates ? `₹${fmt(curRates.courseFee)} course · ₹${fmt(curRates.flatFee)} flat` : '…'}</span></div>
         </div>

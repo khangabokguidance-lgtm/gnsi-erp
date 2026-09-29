@@ -2745,7 +2745,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     const changes = await loadStudentHistory(s.gcc_no)
     const rates = {}
     if (changes.length) {
-      const sy = s.session || `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
+      const sy = sessionOfDate(payDate || today()) || `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
       for (const t of new Set([s.hostel_type || 'Day Scholar', ...changes.flatMap(c => [c.from_type, c.to_type])])) {
         try { rates[t] = (await getFeeRates(sy, s.course || '', s.batch || '', t, parseInt(gccStr(s.gcc_no)) || null)).courseFee || syncCourseFeeAmt(s.course, t) } catch { rates[t] = syncCourseFeeAmt(s.course, t) }
       }
@@ -2757,14 +2757,10 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const [htForm, setHtForm] = useState({ to: '', from: '', reason: '' })
   const [htSaving, setHtSaving] = useState(false)
 
-  // ✦ Bug fix: every fee rate lookup below previously used
-  // `${CURRENT_YEAR}-${CURRENT_YEAR + 1}` (today's computed session)
-  // regardless of which session the student was actually admitted in. A
-  // student admitted in 2024-2025 was being billed at whatever the
-  // CURRENT session's rates were, not their own. Now uses the student's
-  // own `session` field first, falling back to today's session only when
-  // that's missing (legacy records predating session tracking).
-  const sessionYear = student?.session || `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
+  // Each session's own rates: fees are billed at the Fee Setup rates of the
+  // session the payment date falls in (Apr–Mar), so a continuing student pays
+  // this session's rates — the same rates the ledger and dues expect.
+  const sessionYear = sessionOfDate(payDate || today()) || `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
 
   // ── Async flat fees + rates ───────────────────────────────────────────────
   const [flatFees,  setFlatFees]  = useState([])
@@ -3435,9 +3431,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     const rec = admissions.find(a => gccStr(a.gcc_no) === gccStr(s.gcc_no)) || null
     setAdmRec(rec)
 
-    // Same session-derivation as sessionYear above — use this student's own
-    // admission session, not today's computed one.
-    const sSessionYear = s.session || `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
+    // Same session rule as sessionYear above: the payment date's session.
+    const sSessionYear = sessionOfDate(payDate || today()) || `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
 
     const studentFlatFees = await getFlatFees(s.hostel_type || 'Day Scholar', s.course || '', s.batch || '', sSessionYear, parseInt(gccStr(s.gcc_no)) || null)
     const paid = adm_flat_fees
@@ -4177,14 +4172,16 @@ function capDuesAtLeftDate(dues, leftDate) {
   if (!dues) return null
   const cap = /^\d{4}-\d{2}/.test(leftDate || '') ? Number(leftDate.slice(0, 4)) * 100 + Number(leftDate.slice(5, 7)) : null
   const owed = items => (items || []).filter(i => !i.paid && (cap == null || (ymOf(i) ?? 0) <= cap))
+  const balanceOf = i => Number(i.due ?? i.expected) || 0   // part-paid months owe only the balance
   const flatOwed = owed(dues.flatFee?.items)
   const crsOwed  = owed(dues.courseFee?.items)
-  const sum = arr => arr.reduce((t, i) => t + (Number(i.expected) || 0), 0)
+  const sum = arr => arr.reduce((t, i) => t + balanceOf(i), 0)
   // Without a left date we can't cap months, so fall back to the engine's own totals.
   const flatDue = cap == null ? Number(dues.flatFee?.due || 0) : sum(flatOwed)
   const crsDue  = cap == null ? Number(dues.courseFee?.due || 0) : sum(crsOwed)
   const admDue  = Number(dues.admission?.due || 0)
-  return { admDue, flatDue, crsDue, totalDue: admDue + flatDue + crsDue, months: flatOwed.length + crsOwed.length, partial: !!dues.failedSources?.length }
+  const arrears = Number(dues.arrears) || 0   // earlier sessions (before the left date by definition)
+  return { admDue, flatDue, crsDue, arrears, totalDue: admDue + flatDue + crsDue + arrears, months: flatOwed.length + crsOwed.length, partial: !!dues.failedSources?.length }
 }
 
 function PastStudentDuesTab({ isAdmin, onCollect }) {

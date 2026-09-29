@@ -506,7 +506,7 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button onClick={() => printLedger(selected, admRows, flatRows, crsRows, grandTotal)}
-                style={{ padding: mobile ? '8px 14px' : '10px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(180deg,#D9B566,#C9A24B)', color: '#0B1E3D', fontSize: mobile ? 12 : 13, fontWeight: 800, cursor: 'pointer', borderRadius: 999, boxShadow: '0 10px 22px rgba(201,162,75,.3)' }}>
+                style={{ padding: mobile ? '8px 14px' : '10px 20px', border: 'none', background: 'linear-gradient(180deg,#D9B566,#C9A24B)', color: '#0B1E3D', fontSize: mobile ? 12 : 13, fontWeight: 800, cursor: 'pointer', borderRadius: 999, boxShadow: '0 10px 22px rgba(201,162,75,.3)' }}>
                 🖨️ Print Ledger
               </button>
               <button onClick={handleClear}

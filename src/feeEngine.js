@@ -1039,7 +1039,8 @@ export const collectFee = async ({
         console.error(`collectFee: rollback of ${rollbackTable} id=${rollbackId} also failed after accounts write failed`, rollbackErr)
         throw new Error(
           `Payment save failed AND rollback failed — ${rollbackTable} row "${rollbackId}" may be ` +
-          `recorded as paid without a matching accounts entry. Please check manually. Original error: ${err.message}`
+          `recorded as paid without a matching accounts entry. Please check manually. Original error: ${err.message}`,
+          { cause: rollbackErr },
         )
       }
       throw err
@@ -1406,7 +1407,7 @@ export const recordPayment = async ({ invoiceId, amount, method }) => {
     await supabase.from(TABLES.feeInvoices).update({
       amount_paid: inv.amount_paid, amount_due: inv.amount_due, status: inv.status, last_payment_at: inv.last_payment_at,
     }).eq('id', invoiceId)
-    throw new Error('Payment save failed while updating accounts: ' + err.message)
+    throw new Error('Payment save failed while updating accounts: ' + err.message, { cause: err })
   }
 }
 
