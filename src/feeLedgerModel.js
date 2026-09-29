@@ -188,3 +188,17 @@ export function reminderText(student, reg, session) {
   }
   return `${who},\n\nThis is a gentle reminder that the following fees for ${student.name} (GCC-${student.gcc_no}, ${[student.course, student.batch].filter(Boolean).join(' · ')}) are pending for session ${shortSession(session)}:\n\n${lines.join('\n')}\n\nTotal due: ₹${fmt(reg.totalDue)}\n\nKindly pay at the institute office at the earliest. Please ignore this message if already paid.\n\n— Accounts Office, Guidance Navodaya & Sainik Institute, Khangabok`
 }
+
+// ── Month to be paid ─────────────────────────────────────────────────────────
+// Course-fee months (April → January) of `session` that have started, are not
+// before admission and have no payment yet — oldest first. `paid` is a Set of
+// 'Month|year' keys (any course-fee row counts, the same rule collectFee uses
+// to refuse a second payment for a month). With nothing due, `next` is the
+// first unpaid month still to come (an advance).
+export function courseMonthsDue({ session, paid, admissionDate = null, now = new Date() }) {
+  const months = MONTHS_LIST.filter(m => !isFlatFeeMonth(m)).map(month => ({ month, year: feeMonthYearForSession(month, session) }))
+    .filter(x => !paid.has(`${x.month}|${x.year}`) && !isPreAdmissionMonth(x.month, x.year, admissionDate))
+  const due = months.filter(x => monthStarted(x.month, x.year, now))
+  const upcoming = months.filter(x => !monthStarted(x.month, x.year, now))
+  return { due, next: due[0] || upcoming[0] || null, isAdvance: !due.length && !!upcoming[0] }
+}

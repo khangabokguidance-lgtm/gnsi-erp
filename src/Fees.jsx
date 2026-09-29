@@ -28,6 +28,7 @@ import {
 } from './feeEngine'
 import { getDuesForStudents, getStudentDues } from './feeDues'
 import { buildAllLedgers } from './feeLedgerBulk'
+import { courseMonthsDue, sessionOfDate } from './feeLedgerModel'
 import { CONCESSION_REASONS, countPendingConcessions } from './feeConcessions'
 import LowFeeApprovals from './LowFeeApprovals'
 
@@ -2868,6 +2869,30 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const lowFeeGap = r => { const std = Number(r.std) || 0, amt = Number(r.amount) || 0; return std > 0 && amt > 0 && amt < std ? std - amt : 0 }
   const lowFeeRows = crsfRows.filter(r => r.for_month && lowFeeGap(r) > 0)
 
+  // ── Month to be paid ──────────────────────────────────────────────────────
+  // Course-fee months of the payment date's session with no payment yet
+  // (oldest first), so the Month box fills itself with what is actually owed.
+  const courseDueFor = (s, date = payDate) => {
+    if (!s) return { due: [], next: null, isAdvance: false }
+    const g = gccStr(s.gcc_no)
+    const paidKeys = new Set(adm_course_fees.filter(r => gccStr(r.adm_app_id) === g && !r.reverted).map(r => `${r.for_month}|${r.year}`))
+    return courseMonthsDue({ session: sessionOfDate(date || today()), paid: paidKeys, admissionDate: (s === student && admissionDate) || s.admission_date || null })
+  }
+  const courseDue = courseDueFor(student)
+  // Year a month falls in for this payment's session (Apr–Dec start year, Jan–Mar next).
+  const dueYearOf = m => { const st = Number(sessionOfDate(payDate || today()).slice(0, 4)); return ['January', 'February', 'March'].includes(m) ? st + 1 : st }
+  // Due months not already on a line of this payment.
+  const dueNotInRows = courseDue.due.filter(d => !crsfRows.some(r => r.for_month === d.month))
+  const fillAllDueMonths = () => {
+    const base = crsfRows.find(r => r.course) || crsfRows[0] || {}
+    const mk = month => ({ course: base.course || '', subtype: base.subtype || '', hostelType: base.hostelType || hostelType, for_month: month, amount: base.std || base.amount || '', std: base.std || 0 })
+    setCrsfRows(rows => {
+      const kept = rows.filter(r => r.for_month)
+      const have = new Set(kept.map(r => r.for_month))
+      return [...kept, ...courseDue.due.filter(d => !have.has(d.month)).map(d => mk(d.month))]
+    })
+  }
+
   const buildFeeItems = () => {
     const items = []
     if (admPkgThis > 0 && !admPaid && !isRepeater) {
@@ -3183,11 +3208,13 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       }
     }
 
+    // Month to be paid: the oldest unpaid course month (or the next one, as an advance).
+    const firstDue = courseDueFor(s, payDate).next
     setCrsfRows([{
       course:     defaultCourse,
       subtype:    defaultBatch,
       hostelType: defaultHostelType,
-      for_month:  '',
+      for_month:  firstDue?.month || '',
       amount:     defaultAmt,
       std:        Number(defaultAmt) || 0,   // standard (Fee Setup) rate for this line
     }])
@@ -3597,6 +3624,21 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                   ))}
                 </div>
               )}
+              {student && (
+                <div role="status" aria-label="Course months due" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10, padding: '9px 12px', borderRadius: 8, fontSize: 12,
+                  background: courseDue.due.length ? '#fff7ed' : '#f0fdf4', border: `1px solid ${courseDue.due.length ? '#fdba74' : '#bbf7d0'}`, color: courseDue.due.length ? '#9a3412' : '#166534' }}>
+                  <span>
+                    {courseDue.due.length
+                      ? <>📌 <b>{courseDue.due.length} month{courseDue.due.length === 1 ? '' : 's'} to be paid:</b> {courseDue.due.map(d => d.month).join(', ')}</>
+                      : courseDue.next ? <>✓ All course months up to now are paid — next: <b>{courseDue.next.month} {courseDue.next.year}</b> (advance)</> : <>✓ All course months this session are paid</>}
+                  </span>
+                  {dueNotInRows.length > 0 && courseDue.due.length > 1 && (
+                    <button type="button" onClick={fillAllDueMonths} style={{ fontSize: 11.5, fontWeight: 800, color: '#9a3412', background: 'white', border: '1px solid #fdba74', borderRadius: 999, padding: '4px 12px', cursor: 'pointer' }}>
+                      + Add all {courseDue.due.length} due months
+                    </button>
+                  )}
+                </div>
+              )}
               {crsfRows.map((row, i) => (
                 <div key={i} style={{ border: '1px solid #e8e3d8', borderRadius: 8, padding: 12, marginBottom: 10 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8, marginBottom: 8 }}>
@@ -3630,7 +3672,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                       <label style={{ ...lbl, fontSize: 11 }}>Month</label>
                       <select value={row.for_month} onChange={e => updateCrsfRow(i, 'for_month', e.target.value)} style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
                         <option value="">— Month —</option>
-                        {MONTHS_LIST.map(m => <option key={m}>{m}</option>)}
+                        {MONTHS_LIST.map(m => {
+                          const isDue = courseDue.due.some(d => d.month === m)
+                          const isPaid = !isDue && myCrsfRecs.some(r => r.for_month === m && String(r.year) === String(dueYearOf(m)))
+                          return <option key={m} value={m}>{m}{isDue ? ' — due' : isPaid ? ' — paid' : ''}</option>
+                        })}
                       </select>
                     </div>
                   </div>
@@ -3681,7 +3727,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                   )}
                 </div>
               ))}
-              <button onClick={() => setCrsfRows(r => [...r, { course: '', subtype: '', hostelType: hostelType, for_month: '', amount: '' }])}
+              <button onClick={() => setCrsfRows(r => {
+                const base = r.find(x => x.course) || {}
+                const nextDue = courseDue.due.find(d => !r.some(x => x.for_month === d.month))
+                return [...r, { course: base.course || '', subtype: base.subtype || '', hostelType: base.hostelType || hostelType, for_month: nextDue?.month || '', amount: base.std || '', std: base.std || 0 }]
+              })}
                 style={{ fontSize: 12, color: '#2e3b52', background: '#faf8f3', border: '1px dashed #d9d2c2', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontWeight: 600, width: '100%' }}>
                 + Add month
               </button>
