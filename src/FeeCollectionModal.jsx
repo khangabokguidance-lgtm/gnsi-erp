@@ -1,5 +1,6 @@
 // FeeCollectionModal.jsx
 
+import { logHostelOverride } from './hostelFeeCheck'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
@@ -208,6 +209,8 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const [hostelType,      setHostelType]      = useState(resolveInitialHostel)
   const [hostelWarning,   setHostelWarning]   = useState(null)
   const [hostelAutoFixed, setHostelAutoFixed] = useState(false)
+  // Recorded as Boarder but no active hostel bed (wrong-fee risk).
+  const [boarderNoBed,    setBoarderNoBed]    = useState(false)
 
   // ── Repeater flag ─────────────────────────────────────────────────────────
   const [isRepeater,     setIsRepeater]     = useState(false)
@@ -390,6 +393,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
           setHostelAutoFixed(true)
           setHostelWarning(`Auto-corrected: ${name} has an active hostel allocation but was set as "${hostelType}". Changed to Boarder — verify below.`)
         } else if (data.length === 0 && hostelType === 'Boarder') {
+          setBoarderNoBed(true)
           setHostelWarning(`Warning: ${name} is set as Boarder but has no active hostel allocation on record.`)
         }
       })
@@ -725,9 +729,20 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   //  • Every non-cash mode needs a reference, not only UPI — a bank transfer
   //    or cheque with no number can't be reconciled in Accounts.
   //  • A month closed in Accounts blocks collections dated in it.
-  const preflight = async () => {
+  const preflight = async ({ hostelCheck = true } = {}) => {
     if (!collectedBy.trim()) { alert('Collected By is required — enter the name of the staff collecting this payment.'); return false }
     if (payMode !== 'Cash' && !txnRef.trim()) { alert(`${payMode === 'UPI' ? 'UPI Txn / UTR No.' : 'Transaction / cheque reference'} is required for ${payMode} payments.`); return false }
+    // Wrong hostel-type fee: charging at a type other than the student's record
+    // (the bed auto-correction to Boarder excepted), or a Boarder with no bed.
+    const recorded = student?.hostel_type || null
+    const issues = []
+    if (recorded && hostelType !== recorded && !hostelAutoFixed) issues.push(`${name} is a ${recorded} on record, but this fee is being charged at the ${hostelType} rate.`)
+    if (boarderNoBed && hostelType === 'Boarder') issues.push(`${name} is charged as a Boarder but has no active hostel bed.`)
+    if (hostelCheck && issues.length) {
+      if (!isAdmin) { alert(`Hostel type issue — an admin must approve this fee.\n\n${issues.join('\n')}\n\nUse the student's recorded hostel type, or ask an admin to collect.`); return false }
+      if (!window.confirm(`Hostel type issue:\n\n${issues.join('\n')}\n\nCollect anyway as admin? This is recorded in the audit log.`)) return false
+      await logHostelOverride({ student: student || { gcc_no: gcc, name }, by: adminUsername || collectedBy, detail: issues.join(' ') })
+    }
     return await confirmFeeMonthOpen(payDate, { isAdmin })
   }
   // Monthly fees belong to an enrolled student — Admissions → Enroll first.
@@ -743,7 +758,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
     if (payMode === 'UPI' && !txnRef.trim()) return alert('UPI Txn / UTR No. is required for UPI payments.')
     const admFeeItems = FEE_ITEMS.filter(f => selected[f.id] && !paidAdmItems.includes(f.label))
     if (!admFeeItems.length) return alert('Select at least one unpaid fee item.')
-    if (!(await preflight())) return
+    if (!(await preflight({ hostelCheck: false }))) return
     setSaving(true); setError(null)
     try {
       const rNo = rcptNo()

@@ -16,6 +16,7 @@ export const CONCESSION_REASONS = [
   'Scholarship / merit',
   'Joined mid-month',
   'Management decision',
+  'Hostel type mismatch',
   'Other',
 ]
 
