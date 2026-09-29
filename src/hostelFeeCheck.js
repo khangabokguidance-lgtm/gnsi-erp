@@ -98,18 +98,26 @@ export function rateFrom(structures, { session, course, batch, type, field }) {
 export function scanWrongRatePayments({ students, structures, courseRows = [], flatRows = [], overrideGccs = new Set(), session, history = new Map() }) {
   const issues = []
   let reviewed = 0
+  // Per student: how many of this session's payments match their own type's
+  // rate vs another type's — to spot a wrong hostel type on the record.
+  const stats = new Map()
+  const stat = st => { const k = gccKey(st.gcc_no); if (!stats.has(k)) stats.set(k, { student: st, own: 0, other: {}, total: 0 }); return stats.get(k) }
   const byGcc = new Map((students || []).filter(s => (s.status || 'Active') === 'Active').map(s => [gccKey(s.gcc_no), s]))
   const check = (st, kind, row, paid, month, year) => {
-    const rateSession = st.session || session
+    const rateSession = session   // each session's own rates (the month's session)
     const field = kind === 'flat' ? 'flat_fee' : 'course_fee'
     // The type in effect for that month (a mid-session change keeps earlier months at the old type).
     const ownType = typeOnMonth(st, history.get(gccKey(st.gcc_no)), month, year)
     const course = kind === 'course' ? (row.course || st.course) : st.course
     const args = { session: rateSession, course, batch: st.batch || '', field }
     const own = rateFrom(structures, { ...args, type: ownType })
-    if (!(own > 0) || !(paid > 0) || paid >= own) return
+    if (!(own > 0) || !(paid > 0)) return
+    const sx = stat(st); sx.total++
+    if (paid === own) { sx.own++; return }
     const match = HOSTEL_TYPES.filter(t => t !== ownType).map(t => ({ type: t, rate: rateFrom(structures, { ...args, type: t }) })).find(x => x.rate > 0 && x.rate === paid)
     if (!match) return
+    sx.other[match.type] = (sx.other[match.type] || 0) + 1
+    if (paid >= own) return
     if (row.concession_status) { reviewed++; return }
     issues.push({
       student: st, kind, month, year, paid, own, ownType, matchType: match.type, shortBy: own - paid,
@@ -127,7 +135,13 @@ export function scanWrongRatePayments({ students, structures, courseRows = [], f
     if (overrideGccs.has(gccKey(st.gcc_no))) continue   // a custom flat fee is set for this student
     check(st, 'flat', r, Number(r.amount) || 0, r.month, r.year)
   }
-  return { issues: issues.sort((a, b) => b.shortBy - a.shortBy), reviewed }
+  // Likely wrong record: every matched payment points at ONE other type and
+  // none was at the recorded type's rate.
+  const suspects = [...stats.values()].map(x => {
+    const types = Object.keys(x.other)
+    return types.length === 1 && x.own === 0 ? { student: x.student, recorded: x.student.hostel_type || 'Day Scholar', likely: types[0], count: x.other[types[0]], total: x.total } : null
+  }).filter(Boolean).sort((a, b) => b.count - a.count)
+  return { issues: issues.sort((a, b) => b.shortBy - a.shortBy), reviewed, suspects }
 }
 
 export async function loadWrongRateScan({ students, courseRows, flatRows, session }) {
