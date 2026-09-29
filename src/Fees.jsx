@@ -1,6 +1,7 @@
 import TodayIncomeBreakdown from './TodayIncomeBreakdown'
 import { supabase } from './supabase'
 import { LedgerLink, LedgerButton } from './LedgerLink'
+import { NavIcon } from './navIcons'
 import { getActiveStudents, getAllStudents } from './studentQueries'
 import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react'
 import { PersonalAccountantButton } from './personalAccountant'
@@ -8,9 +9,8 @@ import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen, getLockedAccountTypes } from './monthLock'
 import { printFeeReceipt } from './premiumReceipt'
 import {
-  fmt, today, gccStr, rcptNo,
-  collectFee, deleteLegacyFeeRecord,
-  upsertAccount,
+  today, gccStr, rcptNo,
+  collectFee,
   printReceipt, sourceRef,
   getFlatFees, getFeeRates, getFlatFeeAmtSync,
   saveStudentFlatFeeOverride, clearFeeRateCache,
@@ -23,7 +23,7 @@ import {
   // client-side isAdmin check in front of it. Now used by fileFeeActionRequest
   // below and the Pending Approvals tab.
   requestFeeActionRequest, approveFeeActionRequest, rejectFeeActionRequest,
-  COURSE_RATES, FLAT_RATES,
+  COURSE_RATES,
   PAY_MODES, MONTHS_LIST, CURRENT_YEAR,
 } from './feeEngine'
 import { getDuesForStudents, getStudentDues } from './feeDues'
@@ -148,7 +148,6 @@ function useWindowWidth() {
 
 // ── Sync helpers for display/hints only (not used for saving) ─────────────────
 const syncCourseFeeAmt = (course, hostelType) => COURSE_RATES[course]?.[hostelType] ?? 0
-const syncFlatFeeAmt   = (hostelType) => FLAT_RATES[hostelType] ?? 0
 
 const getSessionYear = () => {
   const yr = new Date().getFullYear()
@@ -258,7 +257,6 @@ function exportPrintHTML(rows, filename, title, meta={}) {
 
 
 // ── Daily Income Report ───────────────────────────────────────────────────────
-const GNSI_INST={name:'Guidance Navodaya & Sainik Institute',tagline:'Premier Coaching for NVS · Sainik School · RMS Entrance Examinations',address:'Khangabok Sorok Wangma, Thoubal District, Manipur – 795 131',website:'guidancekhangabok.in',estd:'2016'}
 const _inr=v=>Number(v||0).toLocaleString('en-IN')
 const _fdate=s=>{if(!s)return '—';const d=new Date(s+'T00:00:00');return d.toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})}
 const _fday=s=>{if(!s)return '';return new Date(s+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long'})}
@@ -312,7 +310,7 @@ const SEV_COLOR={CRITICAL:{bg:'#fef2f2',border:'#fca5a5',text:'#dc2626',badge:'#
 const SEV_ICON={CRITICAL:'🔴',HIGH:'🟠',MEDIUM:'🟡',LOW:'🟢'}
 function runAnomalyEngine({adm_fee_collections,adm_flat_fees,adm_course_fees,students,liveRows}){
   const flags=[],push=(id,sev,cat,title,detail,records=[])=>flags.push({id,sev,cat,title,detail,records})
-  const now=new Date(),todayStr=now.toLocaleDateString('en-CA'),thisMonth=now.toLocaleString('default',{month:'long'}),thisYearStr=String(now.getFullYear())
+  const now=new Date(),todayStr=now.toLocaleDateString('en-CA')
   // Tag every row with which table it actually came from BEFORE merging
   // arrays together below, so full-detail lookups can always resolve the
   // exact source table + id for an "Investigate" panel — several anomaly
@@ -441,8 +439,8 @@ function activityActionMeta(action) {
 
 function activityLine(entry) {
   let oldV = null, newV = null
-  try { oldV = entry.old_values ? JSON.parse(entry.old_values) : null } catch (e) {}
-  try { newV = entry.new_values ? JSON.parse(entry.new_values) : null } catch (e) {}
+  try { oldV = entry.old_values ? JSON.parse(entry.old_values) : null } catch { /* malformed JSON — show without details */ }
+  try { newV = entry.new_values ? JSON.parse(entry.new_values) : null } catch { /* malformed JSON — show without details */ }
 
   if (entry.action === 'fee_collection' && newV) {
     const itemsDesc = (newV.items || []).map(i => `${i.label} ₹${Number(i.amount || 0).toLocaleString('en-IN')}`).join(', ')
@@ -480,8 +478,8 @@ function activityLine(entry) {
 // loaded by this tab, matched on that recovered GCC.
 function activityColumns(entry, students = []) {
   let oldV = null, newV = null
-  try { oldV = entry.old_values ? JSON.parse(entry.old_values) : null } catch (e) {}
-  try { newV = entry.new_values ? JSON.parse(entry.new_values) : null } catch (e) {}
+  try { oldV = entry.old_values ? JSON.parse(entry.old_values) : null } catch { /* malformed JSON — show without details */ }
+  try { newV = entry.new_values ? JSON.parse(entry.new_values) : null } catch { /* malformed JSON — show without details */ }
   const v = newV || oldV || {}
 
   let gcc = v.gcc ?? v.adm_app_id ?? null
@@ -524,11 +522,11 @@ function activityColumns(entry, students = []) {
 // instead of just the one-line summary.
 function ActivityRawDetail({ entry }) {
   let oldV = null, newV = null
-  try { oldV = entry.old_values ? JSON.parse(entry.old_values) : null } catch (e) {}
-  try { newV = entry.new_values ? JSON.parse(entry.new_values) : null } catch (e) {}
+  try { oldV = entry.old_values ? JSON.parse(entry.old_values) : null } catch { /* malformed JSON — show without details */ }
+  try { newV = entry.new_values ? JSON.parse(entry.new_values) : null } catch { /* malformed JSON — show without details */ }
   const renderFields = (obj, heading) => {
     if (!obj) return null
-    const entries = Object.entries(obj).filter(([k, v]) => v !== null && v !== undefined && v !== '')
+    const entries = Object.entries(obj).filter(([, v]) => v !== null && v !== undefined && v !== '')
     if (!entries.length) return null
     return (
       <div style={{ marginBottom: 8 }}>
@@ -557,7 +555,7 @@ function ActivityRawDetail({ entry }) {
   )
 }
 
-function ActivityLogTab({ students, isAdmin, currentUser }) {
+function ActivityLogTab({ students, isAdmin }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [actionFilter, setActionFilter] = useState('ALL')
@@ -569,6 +567,7 @@ function ActivityLogTab({ students, isAdmin, currentUser }) {
 
   useEffect(() => {
     if (!isAdmin) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- shows the spinner while the log loads
     setLoading(true)
     supabase.from('audit_log')
       .select('*')
@@ -698,7 +697,7 @@ function ActivityLogTab({ students, isAdmin, currentUser }) {
 // have to filter the full activity feed down every time; it's the direct
 // admin-only surface for the warnings collectFee already writes to
 // audit_log at collection time (see feeEngine.js).
-function AuditWarningsTab({ students, isAdmin }) {
+function AuditWarningsTab({ isAdmin }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [reasonFilter, setReasonFilter] = useState('ALL')
@@ -709,6 +708,7 @@ function AuditWarningsTab({ students, isAdmin }) {
 
   useEffect(() => {
     if (!isAdmin) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- shows the spinner while the log loads
     setLoading(true)
     supabase.from('audit_log')
       .select('*')
@@ -727,7 +727,7 @@ function AuditWarningsTab({ students, isAdmin }) {
 
   const parsed = entries.map(e => {
     let v = {}
-    try { v = e.old_values ? JSON.parse(e.old_values) : {} } catch (err) {}
+    try { v = e.old_values ? JSON.parse(e.old_values) : {} } catch { /* malformed JSON — show without details */ }
     return { ...e, v }
   })
 
@@ -865,8 +865,8 @@ function PendingApprovalsTab({ isAdmin, currentUser, adminCount, onRefresh }) {
 
   useEffect(() => {
     if (!isAdmin) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the pending requests when an admin opens the tab
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin])
 
   if (!isAdmin) {
@@ -875,7 +875,7 @@ function PendingApprovalsTab({ isAdmin, currentUser, adminCount, onRefresh }) {
 
   const parsed = rows.map(r => {
     let snap = {}
-    try { snap = r.snapshot ? JSON.parse(r.snapshot) : {} } catch (e) {}
+    try { snap = r.snapshot ? JSON.parse(r.snapshot) : {} } catch { /* malformed JSON — show without details */ }
     return { ...r, snap }
   })
 
@@ -1004,6 +1004,7 @@ function AnomalyMonitor({adm_fee_collections,adm_flat_fees,adm_course_fees,stude
   const [reviewLoading,setReviewLoading]=useState(true)
 
   useEffect(()=>{
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- nothing to review — stop the spinner
     if(!isAdmin||flags.length===0){setReviewLoading(false);return}
     let cancelled=false
     ;(async()=>{
@@ -1134,13 +1135,15 @@ function AnomalyMonitor({adm_fee_collections,adm_flat_fees,adm_course_fees,stude
 function StudentActivityLog({ gcc, timelineIds }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
+  const idsKey = timelineIds.join(',')
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- shows the spinner while this student's log loads
     setLoading(true)
     // target_id is the GCC for collection entries, and the specific fee
     // record's own id for revert/date-correction entries — match on either
     // so this student's full activity shows regardless of action type.
-    const ids = [...new Set([String(gcc), ...timelineIds])]
+    const ids = [...new Set([String(gcc), ...idsKey.split(',').filter(Boolean)])]
     supabase.from('audit_log')
       .select('*')
       .in('action', ['fee_collection', 'fee_revert', 'fee_date_correction'])
@@ -1150,7 +1153,7 @@ function StudentActivityLog({ gcc, timelineIds }) {
         if (!error) setEntries(data || [])
         setLoading(false)
       })
-  }, [gcc, timelineIds.join(',')])
+  }, [gcc, idsKey])
 
   if (loading) return <div style={{ padding: 32, textAlign: 'center', color: '#8a93a6' }}>⏳ Loading…</div>
   if (entries.length === 0) return <div style={{ padding: 32, textAlign: 'center', color: '#8a93a6' }}>No activity recorded for this student yet.</div>
@@ -1204,6 +1207,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
   useEffect(()=>{
     if(tab!=='dues')return
     let cancelled=false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- shows the spinner while dues are worked out
     setDuesLoading(true);setDuesError(null)
     getStudentDues(student)
       .then(d=>{if(!cancelled)setDues(d)})
@@ -1373,7 +1377,7 @@ function StudentFeeCard({student,adm_fee_collections,adm_flat_fees,adm_course_fe
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                 <thead><tr style={{background:'#faf8f3',borderBottom:'1px solid #e8e3d8'}}>{['Type','Description','Amount','Date','Mode','Actions'].map(h=>(<th key={h} style={{padding:'9px 12px',textAlign:'left',fontWeight:700,color:'#374151',fontSize:11,whiteSpace:'nowrap'}}>{h}</th>))}</tr></thead>
-                <tbody>{timeline.map((r,i)=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table+'-rv'} style={{borderBottom:'1px solid #faf8f3'}} onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'9px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'9px 12px',color:'#14213d',fontWeight:600}}>{r._desc}</td><td style={{padding:'9px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'9px 12px',color:'#5d6b82',fontFamily:'monospace',fontSize:11}}>{r._date||<span style={{color:'#fca5a5',fontWeight:700}}>Missing!</span>}</td><td style={{padding:'9px 12px',color:'#4b5870'}}>{r.pay_mode||'—'}</td><td style={{padding:'9px 12px'}}><div style={{display:'flex',gap:6}}><button onClick={()=>doFixDate(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #c9d5ea',background:'#eef2f9',color:'#1e3a6e',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>📅 Fix Date</button><button onClick={()=>doRevert(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>↩️ Revert</button></div></td></tr>)})}</tbody>
+                <tbody>{timeline.map(r=>{const tc=typeColor(r._type);return(<tr key={r.id+r._table+'-rv'} style={{borderBottom:'1px solid #faf8f3'}} onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'} onMouseLeave={e=>e.currentTarget.style.background='white'}><td style={{padding:'9px 12px'}}><span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{r._type}</span></td><td style={{padding:'9px 12px',color:'#14213d',fontWeight:600}}>{r._desc}</td><td style={{padding:'9px 12px',fontWeight:800,color:'#16a34a',whiteSpace:'nowrap'}}>₹{n(r._amt)}</td><td style={{padding:'9px 12px',color:'#5d6b82',fontFamily:'monospace',fontSize:11}}>{r._date||<span style={{color:'#fca5a5',fontWeight:700}}>Missing!</span>}</td><td style={{padding:'9px 12px',color:'#4b5870'}}>{r.pay_mode||'—'}</td><td style={{padding:'9px 12px'}}><div style={{display:'flex',gap:6}}><button onClick={()=>doFixDate(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #c9d5ea',background:'#eef2f9',color:'#1e3a6e',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>📅 Fix Date</button><button onClick={()=>doRevert(r)} disabled={saving} style={{padding:'5px 10px',borderRadius:6,border:'1px solid #fca5a5',background:'#fef2f2',color:'#dc2626',fontSize:11,fontWeight:700,cursor:saving?'not-allowed':'pointer',whiteSpace:'nowrap'}}>↩️ Revert</button></div></td></tr>)})}</tbody>
               </table>
             </div>
           )}
@@ -1392,6 +1396,7 @@ function StudentLedgerTab({students,adm_fee_collections,adm_flat_fees,adm_course
   useEffect(()=>{
     if(!initialSelected)return
     const match=liveRows.find(s=>s.id===initialSelected.id)||initialSelected
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- opens the student passed in from another screen
     setSelected(match)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[initialSelected])
@@ -1484,7 +1489,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
     ]},
   ]
   const doExport=(report,format)=>{const rows=report.rows(),meta=report.meta();if(!rows?.length){alert('No data to export for this report.');return};const filename=`GNSI_${report.id}_${todayStr}`,title=`${report.name} — GNSI`;if(format==='csv'){exportCSV(rows,filename);setLastExport(`✅ ${report.name} CSV exported`)}if(format==='tsv'){exportTSV(rows,filename);setLastExport(`✅ ${report.name} TSV exported`)}if(format==='json'){exportJSON(rows,filename);setLastExport(`✅ ${report.name} JSON exported`)}if(format==='xls'){exportXLS(rows,filename,report.name);setLastExport(`✅ ${report.name} XLS exported`)}if(format==='print'){exportPrintHTML(rows,filename,title,meta);setLastExport(`✅ ${report.name} Print opened`)}}
-  const FmtBtn=({format,label,color,onClick})=>(<button onClick={onClick} style={{padding:'6px 10px',borderRadius:6,border:`1.5px solid ${color}20`,background:`${color}10`,color,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}} onMouseEnter={e=>{e.currentTarget.style.background=color;e.currentTarget.style.color='white'}} onMouseLeave={e=>{e.currentTarget.style.background=`${color}10`;e.currentTarget.style.color=color}}>{label}</button>)
+  const FmtBtn=({label,color,onClick})=>(<button onClick={onClick} style={{padding:'6px 10px',borderRadius:6,border:`1.5px solid ${color}20`,background:`${color}10`,color,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}} onMouseEnter={e=>{e.currentTarget.style.background=color;e.currentTarget.style.color='white'}} onMouseLeave={e=>{e.currentTarget.style.background=`${color}10`;e.currentTarget.style.color=color}}>{label}</button>)
   return(
     <div style={{fontFamily:'system-ui,sans-serif'}}>
       <div style={{background:'linear-gradient(135deg,#1e3a6e,#132a4f)',borderRadius:14,padding:'20px 24px',color:'white',marginBottom:20}}>
@@ -1523,7 +1528,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
               <div key={report.id} style={{padding:'14px 12px',borderBottom:ri<group.reports.length-1?'1px solid #f3f0e8':'none'}}>
                 <div style={{display:'flex',alignItems:'flex-start',gap:14,flexWrap:'wrap'}}>
                   <div style={{flex:1,minWidth:200}}><div style={{fontSize:13,fontWeight:800,color:'#14213d',marginBottom:3}}>{report.name}</div><div style={{fontSize:11,color:'#5d6b82',marginBottom:6}}>{report.desc}</div><div style={{display:'flex',gap:12,flexWrap:'wrap'}}>{Object.entries(meta).map(([k,v])=>(<div key={k} style={{fontSize:10}}><span style={{color:'#8a93a6',fontWeight:600}}>{k}: </span><span style={{color:'#14213d',fontWeight:800}}>{String(v)}</span></div>))}</div></div>
-                  <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',flexShrink:0}}><span style={{fontSize:10,color:'#8a93a6',fontWeight:700,marginRight:4}}>{rows.length} rows</span><FmtBtn format="csv" label="📄 CSV" color="#1e3a6e" onClick={()=>doExport(report,'csv')}/><FmtBtn format="tsv" label="📋 TSV" color="#059669" onClick={()=>doExport(report,'tsv')}/><FmtBtn format="xls" label="📊 XLS" color="#166534" onClick={()=>doExport(report,'xls')}/><FmtBtn format="json" label="{} JSON" color="#a7771f" onClick={()=>doExport(report,'json')}/><FmtBtn format="print" label="🖨 Print" color="#d97706" onClick={()=>doExport(report,'print')}/></div>
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',flexShrink:0}}><span style={{fontSize:10,color:'#8a93a6',fontWeight:700,marginRight:4}}>{rows.length} rows</span><FmtBtn label="📄 CSV" color="#1e3a6e" onClick={()=>doExport(report,'csv')}/><FmtBtn label="📋 TSV" color="#059669" onClick={()=>doExport(report,'tsv')}/><FmtBtn label="📊 XLS" color="#166534" onClick={()=>doExport(report,'xls')}/><FmtBtn label="{} JSON" color="#a7771f" onClick={()=>doExport(report,'json')}/><FmtBtn label="🖨 Print" color="#d97706" onClick={()=>doExport(report,'print')}/></div>
                 </div>
               </div>
             )})}
@@ -1660,6 +1665,26 @@ const FEES_CSS = `
 .fe-tab{display:flex;align-items:center;gap:6px;padding:9px 15px;border:none;border-radius:10px;background:none;cursor:pointer;font:600 13px/1 'Plus Jakarta Sans',system-ui,sans-serif;color:#5d6b82;white-space:nowrap}
 .fe-tab:hover{color:#0f1b2e;background:#f3f0e8!important;filter:none!important}
 .fe-tab.on{background:linear-gradient(180deg,#1e3a6e,#132a4f)!important;color:#fff;box-shadow:0 6px 14px -6px rgba(19,42,79,.6)}
+.fh{flex:1 1 100%;min-width:0;display:grid;grid-template-columns:var(--fh-cols,repeat(auto-fit,minmax(290px,1fr)));gap:14px}
+.fh-g{background:#fff;border-radius:22px;padding:16px 10px 12px;box-shadow:0 1px 2px rgba(16,24,40,.05),0 12px 28px -24px rgba(19,42,79,.45);border:1px solid #eef0f4}
+.fh-g h2{font:800 16.5px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#141a26;margin:0 10px 14px;letter-spacing:-.01em}
+.fh-grid{display:grid;grid-template-columns:repeat(var(--fh-n,4),minmax(0,1fr));gap:14px 4px}
+.fh-t{display:flex;flex-direction:column;align-items:center;gap:8px;background:none!important;border:none;cursor:pointer;padding:4px 2px;border-radius:14px;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#2b3445;-webkit-tap-highlight-color:transparent;min-width:0}
+.fh-t:hover .fh-i{transform:translateY(-2px);box-shadow:0 8px 16px -10px rgba(19,42,79,.55)}
+.fh-t:active .fh-i{transform:scale(.94)}
+.fh-i{position:relative;width:52px;height:52px;border-radius:17px;display:flex;align-items:center;justify-content:center;color:#1d3f7a;background:#eef3fb;transition:transform .12s,box-shadow .12s}
+.fh-t.on .fh-i{background:linear-gradient(160deg,#1f4e8c,#0b1e3d);color:#fff;box-shadow:0 0 0 3px #fff,0 0 0 5px #c9a24b}
+.fh-l{font-size:12px;font-weight:650;line-height:1.25;text-align:center;max-width:88px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.fh-t.on .fh-l{color:#0b1e3d;font-weight:800}
+.fh-b{position:absolute;top:-6px;right:-8px;min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:#e53935;color:#fff;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-sizing:border-box}
+.fh-row{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;background:#fff;border-radius:20px;padding:10px 8px 8px;border:1px solid #eef0f4;box-shadow:0 1px 2px rgba(16,24,40,.05)}
+.fh-row::-webkit-scrollbar{display:none}
+.fh-row .fh-t{flex:0 0 70px}
+.fh-row .fh-i{width:44px;height:44px;border-radius:14px}
+.fh-row .fh-l{font-size:11px}
+.fh-all .fh-i{background:#f6efdc;color:#8a6d2b}
+@media(max-width:1100px){.fh{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}}
+@media(max-width:640px){.fh{grid-template-columns:1fr;gap:12px}.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 2px}.fh-i{width:50px;height:50px}}
 .fe-kpi{position:relative;overflow:hidden;background:#fff;border:1px solid #e8e3d8;border-radius:16px;padding:16px 18px 15px 20px;cursor:pointer;box-shadow:0 1px 2px rgba(19,42,79,.05),0 6px 18px -10px rgba(19,42,79,.14);transition:transform .15s,box-shadow .15s;text-align:left;min-width:0}
 .fe-kpi:hover{transform:translateY(-2px);box-shadow:0 12px 28px -14px rgba(19,42,79,.3)}
 @keyframes feUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
@@ -1732,7 +1757,6 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const now      = new Date()
   const thisMonth= now.toLocaleString('default', { month: 'long' })
   const thisYear = now.getFullYear()
-  const prevMonth= new Date(now.getFullYear(), now.getMonth() - 1, 1).toLocaleString('default', { month: 'long' })
 
   // Today's TOTAL income across the whole institute (all categories, not just
   // fee payments) — sourced from the same `accounts` ledger Accounts.jsx reads,
@@ -1780,7 +1804,6 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const thisMonthAdm    = adm_fee_collections.filter(r => !r.reverted && r.pay_date >= thisMonthStart && r.pay_date <= todayLocal).reduce((s, r) => s + (Number(r.amount_paid) || 0), 0)
   const thisMonthTotal  = thisMonthFlat + thisMonthCrsf + thisMonthAdm
 
-  const prevYearStr     = String(now.getMonth() === 0 ? thisYear - 1 : thisYear)
   const prevMonthStart  = new Date(now.getFullYear(), now.getMonth() - 1, 1).toLocaleDateString('en-CA')
   const prevMonthEnd    = new Date(now.getFullYear(), now.getMonth(), 0).toLocaleDateString('en-CA')
   const prevMonthFlat   = adm_flat_fees.filter(r => r.paid && r.pay_date >= prevMonthStart && r.pay_date <= prevMonthEnd).reduce((s, r) => s + (Number(r.amount) || 0), 0)
@@ -2632,6 +2655,7 @@ function PostingPreview({ payDate, payMode, grandThis, lines, isAdmin }) {
   const [locked, setLocked] = useState(null)
   useEffect(() => {
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the lock status while the new date is checked
     setLocked(null)
     getLockedAccountTypes(payDate).then(l => { if (!cancelled) setLocked(l) })
     return () => { cancelled = true }
@@ -2745,13 +2769,20 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // ── Async flat fees + rates ───────────────────────────────────────────────
   const [flatFees,  setFlatFees]  = useState([])
   const [feeRates,  setFeeRates]  = useState({ flatFee: 0, courseFee: 0, admissionFee: ADM_FEE_BASE })
+  const [hasOverride,      setHasOverride]      = useState(false)
+  const [overrideMode,     setOverrideMode]     = useState(false)
+  const [overrideAmt,      setOverrideAmt]      = useState('')
+  const [overrideReason,   setOverrideReason]   = useState('')
+  const [overrideSaving,   setOverrideSaving]   = useState(false)
+  const [overrideFeedback, setOverrideFeedback] = useState(null)
 
   // currentUser can arrive asynchronously (auth resolving after mount) —
   // backfill collectedBy once it's available if the field is still empty,
   // without ever overwriting something staff already typed in.
   useEffect(() => {
     const authName = currentUser?.userName || currentUser?.name
-    if (authName && !collectedBy) setCollectedBy(authName)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fills the name once sign-in resolves, never overwriting typed text
+    if (authName) setCollectedBy(c => c || authName)
   }, [currentUser])
 
   // Flat months priced at the hostel type in effect that month.
@@ -2804,12 +2835,6 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const [admDateSaving,   setAdmDateSaving]   = useState(false)
 
   // ── Flat fee override state ───────────────────────────────────────────────
-  const [hasOverride,      setHasOverride]      = useState(false)
-  const [overrideMode,     setOverrideMode]     = useState(false)
-  const [overrideAmt,      setOverrideAmt]      = useState('')
-  const [overrideReason,   setOverrideReason]   = useState('')
-  const [overrideSaving,   setOverrideSaving]   = useState(false)
-  const [overrideFeedback, setOverrideFeedback] = useState(null)
 
   useEffect(() => {
     if (!student?.gcc_no) return
@@ -3354,7 +3379,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                 await finalizeCollection(items, { mode: 'Razorpay', ref: response.razorpay_payment_id })
               } catch (saveErr) {
                 // Money WAS taken — never show this as a failed payment.
-                try { localStorage.setItem('gnsi_rzp_unrecorded_' + response.razorpay_payment_id, JSON.stringify({ gcc, items, at: new Date().toISOString() })) } catch (_) {}
+                try { localStorage.setItem('gnsi_rzp_unrecorded_' + response.razorpay_payment_id, JSON.stringify({ gcc, items, at: new Date().toISOString() })) } catch { /* storage unavailable — the alert below still shows the id */ }
                 alert(`⚠️ PAYMENT RECEIVED BUT NOT SAVED\n\nRazorpay payment id: ${response.razorpay_payment_id}\nStudent: ${student?.name} (GCC ${gcc})\n\nDo NOT charge again. Note this id and record it as a Bank/UPI payment with this id as the reference.\n\nError: ${saveErr.message}`)
                 resolve('unrecorded'); return
               }
@@ -3433,7 +3458,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           defaultCourse, defaultBatch, defaultHostelType, parseInt(gccStr(s.gcc_no)) || null
         )
         defaultAmt = rates.courseFee || syncCourseFeeAmt(defaultCourse, defaultHostelType)
-      } catch (_) {
+      } catch {
         defaultAmt = syncCourseFeeAmt(defaultCourse, defaultHostelType)
       }
     }
@@ -3510,7 +3535,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       if (course && ht) {
         const rateAt = async type => {
           try { return (await getFeeRates(sessionYear, course, batch, type)).courseFee || syncCourseFeeAmt(course, type) }
-          catch (_) { return syncCourseFeeAmt(course, type) }
+          catch { return syncCourseFeeAmt(course, type) }
         }
         const amt = await rateAt(ht)
         // The student's own hostel-type rate for that month, to catch a line charged at another type.
@@ -4185,6 +4210,7 @@ function PastStudentDuesTab({ isAdmin, onCollect }) {
       setErr(e?.message || String(e)); setRows([])
     }
   }
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the past-student dues when an admin opens the tab
   useEffect(() => { if (isAdmin) load() }, [isAdmin])
 
   if (!isAdmin) return <div style={{ padding: 40, textAlign: 'center', color: '#8a93a6' }}>🔒 Admin only</div>
@@ -4284,9 +4310,7 @@ export default function Fees() {
   // student for rates/overrides), so liveRows falls back to the old sync
   // expectedFlat heuristic until this fills in — never blocks initial render.
   const [duesByGcc,           setDuesByGcc]     = useState({})
-  const [duesLoading,         setDuesLoading]   = useState(false)
-  const [saving,              setSaving]        = useState(false)
-  const [showForm,            setShowForm]      = useState(false)
+  const [,                    setDuesLoading]   = useState(false)
   const [search,              setSearch]        = useState('')
   const [tab, setTab] = useState('dashboard')
   // Student handed off from the Dashboard's "Collect" buttons (Zero Payment
@@ -4296,7 +4320,6 @@ export default function Fees() {
   // Student to jump straight to on the Ledger tab's admin-only Revert/Fix
   // view — set by the Month-wise Dues "Fix" button (admin only).
   const [presetFixStudent, setPresetFixStudent] = useState(null)
-  const [form,                setForm]          = useState({ gcc_no: '', name: '', class_name: '', course: '', amount: '', paid: '0' })
 
   // ✦ Dual-control revert/delete needs to know how many DISTINCT admin
   // accounts exist, to decide whether a revert request needs a second
@@ -4381,6 +4404,7 @@ export default function Fees() {
     setLoading(false)
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads every fee table on mount
   useEffect(() => { loadAll() }, [])
 
   // ── Backfill: bulk-fill blank "Collected By" on existing rows ───────────
@@ -4492,6 +4516,7 @@ export default function Fees() {
 
   useEffect(() => {
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clears dues when the roster is empty
     if (activeStudents.length === 0) { setDuesByGcc({}); return }
 
     const prev = prevGccSetsRef.current
@@ -4617,27 +4642,6 @@ export default function Fees() {
   // this is the count that was previously invisible entirely.
   const liveUnderpaid = liveRows.filter(s => s.liveStatus === 'Underpaid').length
 
-  const handleAdd = async e => {
-    e.preventDefault(); setSaving(true)
-    const amount = Number(form.amount) || 0, paid = Number(form.paid) || 0
-    const status = paid >= amount ? 'Paid' : paid > 0 ? 'Partial' : 'Pending'
-    const { error } = await supabase.from('fees').insert([{ gcc_no: form.gcc_no || null, name: form.name, class_name: form.class_name, course: form.course, amount, paid, status }])
-    if (error) alert('Error: ' + error.message)
-    else { setForm({ gcc_no: '', name: '', class_name: '', course: '', amount: '', paid: '0' }); setShowForm(false); loadAll() }
-    setSaving(false)
-  }
-
-  const handleCollect = async (id, amount) => {
-    const { error } = await supabase.from('fees').update({ paid: amount, status: 'Paid' }).eq('id', id)
-    if (error) { alert('Could not mark as paid: ' + error.message); return }
-    loadAll()
-  }
-  const handleDelete  = async id => {
-    if (!isAdmin) { alert('Only admin can delete records.'); return }
-    if (!window.confirm('Permanently delete this legacy fee record? This cannot be undone.')) return
-    try { await deleteLegacyFeeRecord(id, currentUser?.role || 'admin', currentUser?.userName || currentUser?.name || null); loadAll() }
-    catch (err) { alert('Delete failed: ' + err.message) }
-  }
 
   const handleSync = async s => {
     const live = getLiveFees(s); if (!live.hasFees) return
@@ -4650,26 +4654,31 @@ export default function Fees() {
 
   const n = v => Number(v || 0).toLocaleString('en-IN')
 
+  // Fees hub — a payments-app style icon grid, grouped. Admin-only entries
+  // are hidden from other staff (the security gates noted below still apply).
+  const [hubOpen, setHubOpen] = useState(false)
   const TABS = [
-    { id: 'dashboard', label: '🏠 Dashboard' },
-    { id: 'payment',   label: '💳 Fee Payment' },
-    { id: 'live',      label: '📊 Live Summary' },
-    { id: 'ledger',    label: '📒 Student Ledger' },
-    { id: 'admin',     label: '🛡️ Admin View' },
+    { id: 'dashboard', label: 'Dashboard',       icon: 'dashboard',        group: 'collect' },
+    { id: 'payment',   label: 'Fee Payment',     icon: 'card',             group: 'collect' },
+    { id: 'live',      label: 'Live Summary',    icon: 'pulse',            group: 'collect' },
+    { id: 'ledger',    label: 'Student Ledger',  icon: 'studentfeeledger', group: 'collect' },
+    { id: 'admin',     label: 'Admin View',      icon: 'shield',           group: 'records' },
     // ✦ Security fix: this tab exposes every student's full fee/payment
     // history (GCC, amounts, payment mode, Collected By) with a one-click
     // export, but had no role gate at all — any logged-in staff account,
     // not just admin/accounts, could open and export it. Restricted the
     // same way anomaly/activity/warnings already are below.
-    ...(isAdmin ? [{ id: 'reports', label: '📤 Reports & Export' }] : []),
-    ...(isAdmin ? [{ id: 'pastDues', label: '🚪 Past Students Dues' }] : []),
-    ...(isAdmin ? [{ id: 'anomaly', label: '🔍 Anomaly Monitor' }] : []),
-    ...(isAdmin ? [{ id: 'activity', label: '🕒 Activity Log' }] : []),
-    ...(isAdmin ? [{ id: 'warnings', label: '⚠️ Audit Warnings' }] : []),
-    ...(isAdmin ? [{ id: 'pendingApprovals', label: pendingApprovalCount ? `🔏 Pending Approvals (${pendingApprovalCount})` : '🔏 Pending Approvals' }] : []),
-    ...(isAdmin ? [{ id: 'lowFee', label: lowFeePending ? `🔎 Low-fee Approvals (${lowFeePending})` : '🔎 Low-fee Approvals' }] : []),
-    ...(isAdmin ? [{ id: 'hostelIssues', label: hostelIssueCount ? `🏠 Hostel Type Issues (${hostelIssueCount})` : '🏠 Hostel Type Issues' }] : []),
+    ...(isAdmin ? [{ id: 'reports',  label: 'Reports & Export', short: 'Reports', icon: 'export',  group: 'records' }] : []),
+    ...(isAdmin ? [{ id: 'pastDues', label: 'Past Students Dues', short: 'Past Dues', icon: 'door', group: 'records' }] : []),
+    ...(isAdmin ? [{ id: 'activity', label: 'Activity Log',       icon: 'history', group: 'records' }] : []),
+    ...(isAdmin ? [{ id: 'anomaly',  label: 'Anomaly Monitor', short: 'Anomalies', icon: 'radar', group: 'checks' }] : []),
+    ...(isAdmin ? [{ id: 'warnings', label: 'Audit Warnings', short: 'Warnings', icon: 'warning', group: 'checks' }] : []),
+    ...(isAdmin ? [{ id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', group: 'checks', badge: pendingApprovalCount }] : []),
+    ...(isAdmin ? [{ id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', group: 'checks', badge: lowFeePending }] : []),
+    ...(isAdmin ? [{ id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', group: 'checks', badge: hostelIssueCount }] : []),
   ]
+  const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals']]
+    .map(([id, title]) => ({ id, title, items: TABS.filter(t => t.group === id) })).filter(g => g.items.length)
 
   // ── Advanced filter state (shared across live + admin tabs) ──────────────
   const [afCourse,      setAfCourse]      = useState('All')
@@ -4803,13 +4812,35 @@ export default function Fees() {
 
       {/* ── Tabs + context export ── */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
-        <nav className="fe-tabs" role="tablist" style={{ marginBottom: 0, maxWidth: '100%' }}>
-          {TABS.map(t => (
-            <button key={t.id} role="tab" aria-selected={tab === t.id} className={'fe-tab' + (tab === t.id ? ' on' : '')} onClick={() => { setTab(t.id); setSearch('') }}>
-              {t.label}
+        {(() => {
+          // Full grid on the Dashboard (or when opened); elsewhere a one-line quick row.
+          const full = tab === 'dashboard' || hubOpen
+          const pick = id => { setTab(id); setSearch(''); setHubOpen(false) }
+          const tile = t => (
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} aria-label={t.badge ? `${t.label} (${t.badge})` : t.label}
+              className={'fh-t' + (tab === t.id ? ' on' : '')} onClick={() => pick(t.id)}>
+              <span className="fh-i"><NavIcon id={t.icon} size={full ? 24 : 21} />{t.badge > 0 && <span className="fh-b">{t.badge > 99 ? '99+' : t.badge}</span>}</span>
+              <span className="fh-l" title={t.label}>{t.short || t.label}</span>
             </button>
-          ))}
-        </nav>
+          )
+          return full ? (
+            <nav className="fh" role="tablist" aria-label="Fees sections" style={{ '--fh-cols': TAB_GROUPS.map(g => `${Math.max(4, g.items.length)}fr`).join(' ') }}>
+              {TAB_GROUPS.map(g => (
+                <section key={g.id} className="fh-g">
+                  <h2>{g.title}</h2>
+                  <div className="fh-grid" style={{ '--fh-n': Math.max(4, g.items.length) }}>{g.items.map(tile)}</div>
+                </section>
+              ))}
+            </nav>
+          ) : (
+            <nav className="fh fh-row" role="tablist" aria-label="Fees sections">
+              {TABS.map(tile)}
+              <button type="button" className="fh-t fh-all" onClick={() => setHubOpen(true)} aria-label="Show all fee sections">
+                <span className="fh-i"><NavIcon id="grid" size={21} /></span><span className="fh-l">All</span>
+              </button>
+            </nav>
+          )
+        })()}
         {tab === 'live' && (
           <ExportBar
             rows={advFilteredLive.map(s => ({ gcc_no: s.gcc_no, name: s.name, batch: s.class_name || s.batch || '', course: s.course || '', hostel_type: s.hostel_type || '', adm_fee: s.admTotal, flat_fee: s.flatTotal, course_fee: s.crsfTotal, total_paid: s.grandTotal, status: s.liveStatus }))}
@@ -5247,7 +5278,7 @@ export default function Fees() {
           isAdmin={isAdmin}
           currentUser={currentUser}
           onRefresh={loadAll}
-          onCollect={s => { setTab('payment') }}
+          onCollect={() => { setTab('payment') }}
           initialSelected={presetFixStudent}
           initialCardTab={presetFixStudent ? 'revert' : undefined}
           adminCount={adminCount}
@@ -5283,13 +5314,13 @@ export default function Fees() {
         />
       )}
       {tab === 'activity' && (
-        <ActivityLogTab students={students} isAdmin={isAdmin} currentUser={currentUser} />
+        <ActivityLogTab students={students} isAdmin={isAdmin} />
       )}
       {tab === 'pastDues' && (
         <PastStudentDuesTab isAdmin={isAdmin} onCollect={s => { setPresetCollectStudent(s); setTab('payment') }} />
       )}
       {tab === 'warnings' && (
-        <AuditWarningsTab students={students} isAdmin={isAdmin} />
+        <AuditWarningsTab isAdmin={isAdmin} />
       )}
       {tab === 'lowFee' && (
         <LowFeeApprovals students={students} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees}
