@@ -1,6 +1,6 @@
 // FeeCollectionModal.jsx
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import {
@@ -13,6 +13,7 @@ import {
   saveStudentFlatFeeOverride, getStudentFlatFeeOverride,
 } from './feeEngine'
 import { confirmFeeMonthOpen } from './monthLock'
+import { courseMonthsDue, sessionOfDate } from './feeLedgerModel'
 
 const FEE_ITEMS = [
   { id: 'admission',  label: 'Admission Fee',  amount: 6000, type: 'admission', icon: '🎓', color: '#4f46e5' },
@@ -351,6 +352,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const [courseYear,       setCourseYear]        = useState(() => new Date().getFullYear())
   const [courseAmt,        setCourseAmt]         = useState(0)
   const [paidCourseMonths, setPaidCourseMonths] = useState([])
+  const courseMonthTouched = useRef(false)   // staff picked a month themselves — stop auto-selecting
   const [loadingCourse,    setLoadingCourse]    = useState(false)
   // ✦ Advance months — lets staff pay several consecutive course-fee months
   // starting at the selected month/year in one go, instead of repeating the
@@ -491,6 +493,19 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const isAdmItemPaid     = label => paidAdmItems.includes(label)
   const isMonthPaid       = fee   => paidMonths.includes(`${fee.month}_${fee.year}`)
   const isCourseMonthPaid = ()    => paidCourseMonths.includes(`${courseMonth}_${courseYear}`)
+
+  // Month to be paid: once the paid months are known, start on the oldest
+  // unpaid course month of the current session (or the next one, as an advance).
+  const courseDue = useMemo(() => courseMonthsDue({
+    session: sessionOfDate(new Date().toLocaleDateString('en-CA')),
+    paid: new Set(paidCourseMonths.map(k => k.replace(/_(\d{4})$/, '|$1'))),
+    admissionDate: admissionDate || null,
+  }), [paidCourseMonths, admissionDate])
+  useEffect(() => {
+    if (loadingCourse || courseMonthTouched.current || !courseDue.next) return
+    setCourseMonth(courseDue.next.month)
+    setCourseYear(courseDue.next.year)
+  }, [loadingCourse, courseDue])
 
   // ✦ Previous-month lookup — walks one step back through MONTHS_LIST's
   // academic order (April→March, same order buildAdvanceMonthRun already
@@ -1417,13 +1432,13 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
                 </div>
                 <div>
                   <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>For month</label>
-                  <select value={courseMonth} onChange={e => { setCourseMonth(e.target.value); setCourseAdvanceAuthorized(false); setCourseRateAuthorized(false) }} style={inp}>
+                  <select value={courseMonth} onChange={e => { courseMonthTouched.current = true; setCourseMonth(e.target.value); setCourseAdvanceAuthorized(false); setCourseRateAuthorized(false) }} style={inp}>
                     {MONTHS_LIST.map(m => <option key={m}>{m}</option>)}
                   </select>
                 </div>
                 <div>
                   <label style={{ fontSize:12, fontWeight:600, color:C.slate[500], display:'block', marginBottom:5 }}>Year</label>
-                  <select value={courseYear} onChange={e => { setCourseYear(Number(e.target.value)); setCourseAdvanceAuthorized(false); setCourseRateAuthorized(false) }} style={inp}>
+                  <select value={courseYear} onChange={e => { courseMonthTouched.current = true; setCourseYear(Number(e.target.value)); setCourseAdvanceAuthorized(false); setCourseRateAuthorized(false) }} style={inp}>
                     {[CURRENT_YEAR-1, CURRENT_YEAR, CURRENT_YEAR+1].map(y => <option key={y}>{y}</option>)}
                   </select>
                 </div>
