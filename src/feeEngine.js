@@ -5,6 +5,7 @@
 
 import { supabase } from './supabase'
 import { printFeeReceipt, sectionsToItems } from './premiumReceipt'
+import { recordConcession, clearConcession } from './feeConcessions'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. LEGACY HARDCODED RATES  (kept as fallback only — DB is now source of truth)
@@ -634,6 +635,15 @@ export const revertFeeCollection = async ({
     originalRow = data || null
   } catch (e) { console.warn('revertFeeCollection: could not fetch original row for audit log', e) }
 
+  // A reversed payment takes its low-fee concession with it (the row id is
+  // reused if the month is collected again). Best-effort; never blocks.
+  if (table === TABLES.admFlatFees || table === TABLES.admCourseFees) {
+    try {
+      await supabase.from(table).update({ concession_status: null, concession_amount: 0 }).eq('id', id)
+      await supabase.from('fee_concessions').delete().eq('fee_table', table).eq('fee_row_id', String(id))
+    } catch { /* table/columns not there yet */ }
+  }
+
   const updates = {
     reverted: true,
     reverted_at: revertedAt,
@@ -1151,7 +1161,16 @@ export const collectFee = async ({
             created_at: collectedAt,
           })
         } catch (e) { console.warn('Audit log failed for flat fee underpayment', e) }
+        // Low-fee approval: pending until an admin decides, unless an admin
+        // authorised it at collection (concessionApprovedBy).
+        await recordConcession({
+          replace: true,
+          table: TABLES.admFlatFees, rowId: flatId, kind: 'flat', gcc, studentName, month: item.month, year: item.year,
+          standard: item.standardAmount, collected: item.amount, reason: item.underpaymentReason, note: item.underpaymentNote,
+          receiptNo, payDate, collectedBy, approvedBy: item.concessionApprovedBy || null,
+        })
       }
+      else await clearConcession(TABLES.admFlatFees, flatId)
       flatItems.push({ label: `${item.month} ${item.year} [${hostelType}]${item.isAdvance ? ' · ADVANCE (authorized)' : ''}${item.underpaymentAmount > 0 ? ' · UNDERPAID' : ''}`, amount: item.amount })
     }
 
@@ -1215,7 +1234,14 @@ export const collectFee = async ({
             created_at: collectedAt,
           })
         } catch (e) { console.warn('Audit log failed for course fee underpayment', e) }
+        await recordConcession({
+          replace: true,
+          table: TABLES.admCourseFees, rowId: recId, kind: 'course', gcc, studentName, month: item.month, year: yr, course: crs,
+          standard: item.standardAmount, collected: item.amount, reason: item.underpaymentReason, note: item.underpaymentNote,
+          receiptNo, payDate, collectedBy, approvedBy: item.concessionApprovedBy || null,
+        })
       }
+      else await clearConcession(TABLES.admCourseFees, recId)
       crsfItems.push({ label: `${crs}${sub ? ' · ' + sub : ''} — ${item.month}${item.isAdvance ? ' · ADVANCE (authorized)' : ''}${item.underpaymentAmount > 0 ? ' · UNDERPAID' : ''}`, amount: item.amount })
     }
 
