@@ -152,12 +152,12 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
     : <span className="muted">—</span>
 
   const sendReminder = () => {
-    const { phone } = openWhatsAppReminder(student, reg, session)
+    const { phone } = openWhatsAppReminder(student, reg, session, arrearsBySession)
     setNotice(phone ? `WhatsApp opened for +${phone}.` : 'No parent phone on file — WhatsApp opened so you can pick the contact.')
     setTimeout(() => setNotice(''), 4000)
   }
   const copyReminder = async () => {
-    try { await navigator.clipboard.writeText(reminderText(student, reg, session)); setNotice('Reminder message copied.') }
+    try { await navigator.clipboard.writeText(reminderText(student, reg, session, arrearsBySession)); setNotice('Reminder message copied.') }
     catch { setNotice('Could not copy — use the WhatsApp button instead.') }
     setTimeout(() => setNotice(''), 3000)
   }
@@ -188,7 +188,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
           <button className="frb-chip" onClick={() => printRegister(student, reg, bookRows, session, bookScope)}>🖨️ Print register</button>
           <button className="frb-chip" onClick={sendReminder} title={parentPhone(student) ? `Send to +${parentPhone(student)}` : 'No parent phone on file'}>📲 WhatsApp reminder</button>
           <button className="frb-chip" onClick={copyReminder}>📋 Copy reminder</button>
-          <button className="frb-chip" onClick={() => printDuesNotice(student, reg, session)}>📄 Dues notice</button>
+          <button className="frb-chip" onClick={() => printDuesNotice(student, reg, session, arrearsBySession)}>📄 Dues notice</button>
           <button className="frb-chip" onClick={doExport}>⬇️ Excel</button>
         </div>
       </div>

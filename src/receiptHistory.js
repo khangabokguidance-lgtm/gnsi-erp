@@ -7,6 +7,7 @@ import { supabase } from './supabase'
 import { getFeeRates, gccStr } from './feeEngine'
 import { toEntries, buildRegister, sessionOfDate } from './feeLedgerModel'
 import { loadStudentHistory, sessionRates } from './hostelHistory'
+import { computeArrears } from './feeLedgerBulk'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
@@ -30,6 +31,9 @@ export async function loadReceiptHistory(d) {
   const rates = await sessionRates(student, session, changes, type => getFeeRates(session, student.course || '', student.batch || '', type, gcc))
   const [py, pmo, pdd] = payDate.split('-').map(Number)
   const reg = buildRegister(student, entries, session, rates, new Date(py, pmo - 1, pdd, 23, 59, 59))
+
+  // Unpaid from earlier sessions (each at its own rates), as of the receipt date.
+  const { arrears, bySession } = await computeArrears(student, session, entries, changes, sess => type => getFeeRates(sess, student.course || '', student.batch || '', type, gcc))
 
   const thisRcpt = d.receipt_no
   const onThis = new Set(entries.filter(e => thisRcpt && e.receipt === thisRcpt && e.month).map(e => `${e.month} ${e.year}`))
@@ -60,5 +64,5 @@ export async function loadReceiptHistory(d) {
   }
   const previous = [...byRcpt.values()].sort((x, y) => String(y.date).localeCompare(String(x.date))).slice(0, 5)
 
-  return { session, months, previousMonth, previous, dueAfter: reg.totalDue, dueMonths: reg.rows.filter(r => r.due > 0).map(r => `${r.month.slice(0, 3)} ${r.year}${r.status === 'short' ? ' (bal.)' : ''}`), sessionPaid: reg.totalPaid }
+  return { session, months, previousMonth, previous, dueAfter: reg.totalDue + arrears, dueMonths: [...bySession.map(b => `${b.session.slice(2, 5)}${b.session.slice(7)} b/f`), ...reg.rows.filter(r => r.due > 0).map(r => `${r.month.slice(0, 3)} ${r.year}${r.status === 'short' ? ' (bal.)' : ''}`)], sessionPaid: reg.totalPaid }
 }

@@ -184,17 +184,20 @@ export const parentPhone = s => {
   return d.length === 10 ? '91' + d : d
 }
 
-export function reminderText(student, reg, session) {
-  const dueRows = reg.rows.filter(r => r.status === 'due')
+// arrears: earlier sessions' unpaid dues [{ session, due, months }] (brought forward).
+export function reminderText(student, reg, session, arrears = []) {
+  const dueRows = reg.rows.filter(r => r.due > 0)
   const lines = [
+    ...arrears.map(a => `• Brought forward from ${shortSession(a.session)} (${a.months.join(', ')}) — ₹${fmt(a.due)}`),
     ...(reg.admission?.due ? [`• Admission fee — ₹${fmt(reg.admission.due)}`] : []),
-    ...dueRows.map(r => `• ${r.head} ${r.month} ${r.year} — ₹${fmt(r.due)}`),
+    ...dueRows.map(r => `• ${r.head} ${r.month} ${r.year}${r.status === 'short' ? ' (balance)' : ''} — ₹${fmt(r.due)}`),
   ]
+  const total = reg.totalDue + arrears.reduce((t, a) => t + a.due, 0)
   const who = student.father_name ? `Dear ${student.father_name}` : 'Dear Parent/Guardian'
   if (!lines.length) {
     return `${who},\n\nThank you — all fees for ${student.name} (GCC-${student.gcc_no}) are paid up to date for session ${shortSession(session)}.\n\n— Accounts Office, Guidance Navodaya & Sainik Institute, Khangabok`
   }
-  return `${who},\n\nThis is a gentle reminder that the following fees for ${student.name} (GCC-${student.gcc_no}, ${[student.course, student.batch].filter(Boolean).join(' · ')}) are pending for session ${shortSession(session)}:\n\n${lines.join('\n')}\n\nTotal due: ₹${fmt(reg.totalDue)}\n\nKindly pay at the institute office at the earliest. Please ignore this message if already paid.\n\n— Accounts Office, Guidance Navodaya & Sainik Institute, Khangabok`
+  return `${who},\n\nThis is a gentle reminder that the following fees for ${student.name} (GCC-${student.gcc_no}, ${[student.course, student.batch].filter(Boolean).join(' · ')}) are pending for session ${shortSession(session)}:\n\n${lines.join('\n')}\n\nTotal due: ₹${fmt(total)}\n\nKindly pay at the institute office at the earliest. Please ignore this message if already paid.\n\n— Accounts Office, Guidance Navodaya & Sainik Institute, Khangabok`
 }
 
 // ── Month to be paid ─────────────────────────────────────────────────────────
