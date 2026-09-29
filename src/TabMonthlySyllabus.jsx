@@ -992,7 +992,7 @@ export default function TabMonthlySyllabus({ logs=[], missed=[], timetable=[], s
                 return top?.[0] || ''
               })()
               return (
-                <div key={subj} style={{ display:'flex', alignItems:'center', gap:6, background:'#f8fafc', borderRadius:8, padding:'7px 10px', border:'1px solid #e2e8f0', flexWrap:'wrap', gap:6 }}>
+                <div key={subj} style={{ display:'flex', alignItems:'center', gap:6, background:'#f8fafc', borderRadius:8, padding:'7px 10px', border:'1px solid #e2e8f0', flexWrap:'wrap' }}>
                   <span style={{ fontSize:12, fontWeight:600, color:'#1e293b', whiteSpace:'nowrap' }}>{subj}</span>
                   <select defaultValue={dominated} onChange={e=>{
                     visibleMonths.forEach(m=>handleBulkAssignSubject(monthKey(selYear,m),subj,e.target.value))

@@ -6080,7 +6080,7 @@ export default function Attendance({ currentUser, isAdmin, onNavigate: goToModul
   const [handoff] = useState(() => takeAttendanceHandoff())
   const [markPrefill, setMarkPrefill] = useState(() => handoff?.page === 'mark' ? { course: handoff.course || '', subtype: handoff.subtype || '' } : null)
   const [route, setRoute]             = useState(() => handoff?.page || 'home')
-  ATT_NAV = goToModule || null
+  useEffect(() => { ATT_NAV = goToModule || null }, [goToModule])
   const [navOpen, setNavOpen]         = useState(false)
   const moreRoutes = useMemo(() => NAV_ITEMS.slice(5).map(i => i.key), [])
   const isMoreActive = isMobile && moreRoutes.includes(route)
