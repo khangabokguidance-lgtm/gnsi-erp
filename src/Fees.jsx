@@ -1551,12 +1551,83 @@ const lbl = {
 // for admission, green for flat, purple for course, etc.) with one
 // consistent neutral surface, so the screen reads as a single coherent
 // document rather than a stack of differently-themed panels.
-const feeCard = { background: 'white', border: '1px solid #e8e3d8', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 6px 18px -10px rgba(19,42,79,.14)' }
-const feeCardHead = { padding: '13px 18px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #e8e3d8', background: 'linear-gradient(180deg,#faf8f3,#fff)' }
-const feeCardTitle = { flex: 1, fontWeight: 600, fontSize: 16, color: '#132a4f', fontFamily: "'Fraunces',Georgia,serif" }
-const feeCardSub = { fontSize: 11.5, color: '#5d6b82', marginTop: 2 }
-const feePillDone = { fontSize: 11, padding: '3px 10px', borderRadius: 99, background: '#f0fdf4', color: '#166534', fontWeight: 700, border: '1px solid #bbf7d0' }
-const feeTotalRow = { display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: '#132a4f', background: '#f6efdc', padding: '10px 14px', borderRadius: 10, border: '1px solid #e9d9b0' }
+const feeCard = { background: 'white', border: '1px solid #ece6d6', borderRadius: 20, overflow: 'hidden', boxShadow: '0 1px 0 rgba(255,255,255,.8) inset, 0 1px 2px rgba(19,42,79,.05), 0 14px 34px -22px rgba(19,42,79,.35)' }
+const feeCardHead = { padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid #f1ebdc', background: 'linear-gradient(180deg,#fffdf8,#fff)' }
+const feeCardTitle = { flex: 1, fontWeight: 600, fontSize: 17, color: '#0f1f3d', fontFamily: "'Fraunces',Georgia,serif", letterSpacing: '-.005em' }
+const feeCardSub = { fontSize: 11.5, color: '#6b7690', marginTop: 2, fontFamily: "'Plus Jakarta Sans',system-ui,sans-serif", fontWeight: 500 }
+const feePillDone = { fontSize: 11, padding: '4px 11px', borderRadius: 99, background: '#ecfdf3', color: '#146c3a', fontWeight: 800, border: '1px solid #bbf7d0' }
+const feeTotalRow = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 14, fontWeight: 800, color: '#0f1f3d', background: 'linear-gradient(90deg,#fbf3e0,#fdf8ec)', padding: '11px 14px', borderRadius: 12, border: '1px solid #ecdcb4' }
+// Icon tile in a fee card header.
+const feeIcon = bg => ({ width: 36, height: 36, borderRadius: 11, background: bg, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, flexShrink: 0, boxShadow: 'inset 0 0 0 1px rgba(15,31,61,.06)' })
+
+// Fee Payment screen — premium look (scoped to .fp).
+const FEE_PAY_CSS = `
+.fp{font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#1f2a44}
+.fp input:not([type=checkbox]),.fp select{transition:border-color .15s,box-shadow .15s;border-radius:11px!important}
+.fp input:not([type=checkbox]):focus,.fp select:focus{outline:none;border-color:#b8923a!important;box-shadow:0 0 0 3px rgba(184,146,58,.18)}
+.fp input[type=checkbox]{accent-color:#132a4f;width:16px!important;height:16px!important}
+.fp-hero{position:relative;overflow:hidden;border-radius:22px;padding:20px 22px;margin-bottom:18px;color:#fff;
+  background:radial-gradient(120% 140% at 100% 0%,#1F4E8C 0%,#132B52 45%,#0B1E3D 85%);box-shadow:0 22px 44px -22px rgba(11,30,61,.55),inset 0 0 0 1px rgba(226,197,126,.22)}
+.fp-hero::after{content:'';position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(226,197,126,.18),transparent 70%);pointer-events:none}
+.fp-hero-top{display:flex;gap:16px;align-items:center;flex-wrap:wrap;position:relative;z-index:1}
+.fp-avatar{width:66px;height:66px;border-radius:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:'Fraunces',Georgia,serif;font-size:24px;font-weight:700;color:#0B1E3D;
+  background:linear-gradient(135deg,#F3DFA8,#C9A24B);box-shadow:0 0 0 3px rgba(226,197,126,.35);overflow:hidden}
+.fp-avatar img{width:100%;height:100%;object-fit:cover}
+.fp-name{font-family:'Fraunces',Georgia,serif;font-size:25px;font-weight:700;line-height:1.1;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.fp-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.fp-chip{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;white-space:nowrap}
+.fp-chip.gold{color:#F3DFA8;border-color:rgba(226,197,126,.45);background:rgba(226,197,126,.12)}
+.fp-chip.warn{color:#FDE68A;border-color:rgba(253,230,138,.5);background:rgba(253,230,138,.12)}
+.fp-hero-btn{margin-left:auto;padding:9px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:#fff;font-weight:800;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.fp-hero-btn:hover{background:rgba(255,255,255,.18)}
+.fp-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:16px;position:relative;z-index:1}
+.fp-stat{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 12px}
+.fp-stat b{display:block;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.6);font-weight:800}
+.fp-stat span{display:block;font-family:'Fraunces',Georgia,serif;font-size:19px;font-weight:700;margin-top:3px}
+.fp-tools{display:flex;gap:8px 14px;align-items:center;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.12);position:relative;z-index:1;font-size:12px}
+.fp-tools label{display:inline-flex;align-items:center;gap:7px;color:rgba(255,255,255,.75);font-weight:700}
+.fp-tools input[type=date]{padding:5px 9px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.95);color:#0f1f3d;font-size:12px}
+.fp-tool-btn{padding:5px 11px;border-radius:999px;border:1px solid rgba(255,255,255,.25);background:transparent;color:#fff;font-weight:700;font-size:11.5px;cursor:pointer}
+.fp-tool-btn.on{background:#FDE68A;color:#78350f;border-color:#FDE68A}
+.fp-course-set{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px;padding:12px;border-radius:14px;background:#faf8f3;border:1px solid #efe7d4;margin-bottom:12px}
+.fp-lbl{display:block;font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#6b7690;margin-bottom:5px}
+.fp-line{border:1px solid #ece6d6;border-radius:14px;padding:10px 12px;margin-bottom:8px;background:#fff;transition:border-color .15s,box-shadow .15s}
+.fp-line:hover{border-color:#e2cf9f;box-shadow:0 6px 16px -12px rgba(19,42,79,.4)}
+.fp-line.low{border-color:#fca5a5;background:#fffafa}
+.fp-line-row{display:grid;grid-template-columns:30px minmax(0,1.3fr) minmax(0,1fr) auto 30px;gap:10px;align-items:center}
+.fp-idx{width:28px;height:28px;border-radius:9px;background:#0f1f3d;color:#F3DFA8;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center}
+.fp-amt{position:relative}
+.fp-amt span{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#8a93a6;font-weight:700;font-size:13px}
+.fp-amt input{padding-left:24px!important;font-weight:800!important;font-size:14px!important;font-variant-numeric:tabular-nums}
+.fp-tag{font-size:10.5px;font-weight:800;padding:4px 9px;border-radius:999px;white-space:nowrap;background:#eef2f9;color:#1e3a6e;border:1px solid #d6dfef}
+.fp-course-set select,.fp-course-set input,.fp-line select,.fp-line input{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid #ddd5c3;background:#fff;font-size:13px;color:#0f1f3d;font-family:inherit}
+.fp-total small{display:block;font-size:10.5px;letter-spacing:0;text-transform:none;font-weight:600;color:rgba(255,255,255,.55);margin-top:3px}
+.fp-receipt-head span{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:16px;color:#0f1f3d}
+.fp-receipt-head small{font-size:11px;font-weight:600;color:#8a93a6}
+.fp-x{width:28px;height:28px;border-radius:9px;border:1px solid #f3d0d0;background:#fff5f5;color:#b42318;font-weight:800;cursor:pointer}
+.fp-modes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.fp-mode{padding:9px 6px;border-radius:11px;border:1.5px solid #e6dfcd;background:#fff;font-weight:800;font-size:12.5px;color:#2e3b52;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px}
+.fp-mode.on{border-color:#132a4f;background:#132a4f;color:#F3DFA8;box-shadow:0 8px 18px -10px rgba(19,42,79,.6)}
+.fp-receipt{background:#fff;border:1px solid #ece6d6;border-radius:20px;overflow:hidden;box-shadow:0 14px 34px -22px rgba(19,42,79,.35)}
+.fp-receipt-head{padding:14px 18px;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(180deg,#fffdf8,#fff);border-bottom:1.5px dashed #e6dcc3}
+.fp-rline{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:13px;padding:8px 0;border-bottom:1px dotted #e6dfcd;color:#2e3b52}
+.fp-rline b{font-variant-numeric:tabular-nums;color:#0f1f3d}
+.fp-total{margin-top:12px;border-radius:16px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;color:#fff;
+  background:linear-gradient(135deg,#0B1E3D,#1d3a78);box-shadow:inset 0 0 0 1px rgba(226,197,126,.25)}
+.fp-total span{font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:rgba(255,255,255,.7)}
+.fp-total b{font-family:'Fraunces',Georgia,serif;font-size:28px;color:#F3DFA8;font-variant-numeric:tabular-nums}
+.fp-save{width:100%;padding:15px;border-radius:14px;border:none;font-weight:800;font-size:15px;cursor:pointer;color:#0B1E3D;
+  background:linear-gradient(180deg,#E9C979,#C9A24B);box-shadow:0 14px 28px -14px rgba(201,162,75,.9),inset 0 1px 0 rgba(255,255,255,.5)}
+.fp-save:disabled{background:#e8e3d8;color:#8a93a6;box-shadow:none;cursor:not-allowed}
+.fp-rzp{width:100%;padding:13px;border-radius:14px;border:1.5px solid #132a4f;background:#fff;color:#132a4f;font-weight:800;font-size:13.5px;cursor:pointer}
+.fp-rzp:disabled{border-color:#e8e3d8;color:#8a93a6;cursor:not-allowed}
+@media(max-width:640px){
+  .fp-hero{padding:16px;border-radius:18px}.fp-name{font-size:20px}.fp-avatar{width:54px;height:54px;border-radius:15px;font-size:20px}
+  .fp-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.fp-hero-btn{margin-left:0}
+  .fp-course-set{grid-template-columns:1fr 1fr}.fp-course-set>div:first-child{grid-column:1/-1}
+  .fp-line-row{grid-template-columns:28px minmax(0,1fr) 84px 28px;gap:8px}.fp-line-row .fp-tag{display:none}
+}
+`
 
 const FEES_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap');
@@ -3299,7 +3370,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
   // ── Payment screen ────────────────────────────────────────────────────────
   return (
-    <div>
+    <div className="fp">
+      <style>{FEE_PAY_CSS}</style>
       <FeeFlowSteps current={flowStep} />
       {toast && (
         <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 99999, background: '#fff', border: '1px solid #e8e3d8', borderLeft: `3px solid ${toast.color}`, borderRadius: 10, padding: '11px 16px', fontSize: 13, fontWeight: 600, boxShadow: '0 8px 32px rgba(0,0,0,.12)', maxWidth: 320, color: '#14213d' }}>
@@ -3336,68 +3408,52 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         )
       })()}
 
-      {/* Student bar */}
-      <div style={{ background: 'white', border: '1px solid #e8e3d8', borderRadius: 12, padding: '14px 18px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-        <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#eef2f9', color: '#132a4f', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, flexShrink: 0 }}>
-          {(student.name || '?').split(' ').map(w => w[0] || '').join('').slice(0, 2).toUpperCase()}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#0f1b2e', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            {student.name}
-            <LedgerButton gcc={student.gcc_no} />
-            {/* ── REPEATER badge ── */}
-            {isRepeater && (
-              <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '2px 9px', borderRadius: 4, border: '1px solid #fcd34d', letterSpacing: '.02em' }}>
-                Repeater
-              </span>
-            )}
+      {/* Student hero */}
+      <div className="fp-hero">
+        <div className="fp-hero-top">
+          <div className="fp-avatar">
+            {student.photo_url ? <img src={student.photo_url} alt="" /> : (student.name || '?').split(' ').map(w => w[0] || '').join('').slice(0, 2).toUpperCase()}
           </div>
-          <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 2, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            {student.gcc_no && <span style={{ fontWeight: 600, color: '#2e3b52' }}>GCC {student.gcc_no}</span>}
-            {(student.class_name || student.batch) && <span>{student.class_name || student.batch}</span>}
-            {student.course && <span>{student.course}</span>}
-            {admRec?.adm_no && <span style={{ color: '#1e3a6e', fontWeight: 600 }}>{admRec.adm_no}</span>}
-            {hostelType && <HostelBadge type={hostelType} />}
-            {/* ── Flat fee + course fee display with override badge + Change button ── */}
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ fontSize: 11, color: hasOverride ? '#a7771f' : '#2e3b52', fontWeight: 600 }}>
-                Flat fee ₹{feeRates.flatFee.toLocaleString('en-IN')}/mo · Course fee ₹{feeRates.courseFee.toLocaleString('en-IN')}/mo
-              </span>
-              {hasOverride && (
-                <span style={{ fontSize: 9, fontWeight: 700, background: '#f6ecd2', color: '#a7771f', padding: '1px 5px', borderRadius: 3, border: '1px solid #e2c57e' }}>OVERRIDE</span>
-              )}
-              <button type="button" onClick={() => { setOverrideMode(m => !m); setOverrideFeedback(null) }}
-                style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 4, border: '1px solid #e8e3d8', background: 'white', cursor: 'pointer', color: '#5d6b82' }}>
-                {overrideMode ? 'Cancel' : 'Change'}
-              </button>
-            </span>
-            {totalEverPaid > 0 && <span style={{ color: '#166534', fontWeight: 600 }}>₹{totalEverPaid.toLocaleString('en-IN')} previously paid</span>}
-            {/* ── Admission Date — required before any fee can be collected ── */}
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ fontSize: 10, fontWeight: 600, color: admissionDate ? '#5d6b82' : '#dc2626' }}>
-                Admission date{!admissionDate && ' (required)'}
-              </span>
-              <input
-                type="date"
-                value={admissionDate || ''}
-                onChange={e => saveAdmissionDate(e.target.value)}
-                disabled={admDateSaving}
-                style={{ fontSize: 11, padding: '2px 6px', borderRadius: 5, border: `1px solid ${admissionDate ? '#e8e3d8' : '#fca5a5'}`, background: admissionDate ? 'white' : '#fef2f2' }}
-              />
-              {admDateSaving && <span style={{ fontSize: 10, color: '#8a93a6' }}>saving…</span>}
-            </span>
-            {/* ── REPEATER toggle ── */}
-            <button
-              type="button"
-              onClick={toggleRepeater}
-              disabled={repeaterSaving}
-              title={isRepeater ? 'Remove repeater tag' : 'Mark as repeater (2+ years at GNSI)'}
-              style={{ fontSize: 10, fontWeight: 600, padding: '2px 9px', borderRadius: 4, border: `1px solid ${isRepeater ? '#fcd34d' : '#e8e3d8'}`, background: isRepeater ? '#fef3c7' : '#faf8f3', color: isRepeater ? '#92400e' : '#8a93a6', cursor: repeaterSaving ? 'not-allowed' : 'pointer' }}>
-              {repeaterSaving ? '…' : isRepeater ? 'Remove repeater' : 'Mark repeater'}
-            </button>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div className="fp-name">
+              {student.name}
+              <LedgerButton gcc={student.gcc_no} dark />
+            </div>
+            <div className="fp-chips">
+              {student.gcc_no && <span className="fp-chip gold">GCC-{student.gcc_no}</span>}
+              {admRec?.adm_no && <span className="fp-chip">{admRec.adm_no}</span>}
+              {student.course && <span className="fp-chip">{student.course}</span>}
+              {(student.class_name || student.batch) && <span className="fp-chip">{student.class_name || student.batch}</span>}
+              {hostelType && <span className="fp-chip">{hostelType}</span>}
+              {isRepeater && <span className="fp-chip warn">Repeater</span>}
+              {hasOverride && <span className="fp-chip gold">Custom flat fee</span>}
+            </div>
           </div>
+          <button type="button" className="fp-hero-btn" onClick={handleBack}>⇄ Change student</button>
         </div>
-        <button onClick={handleBack} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e8e3d8', background: '#faf8f3', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#5d6b82' }}>Change student</button>
+
+        <div className="fp-stats">
+          <div className="fp-stat"><b>Flat fee</b><span>₹{feeRates.flatFee.toLocaleString('en-IN')}<small style={{ fontSize: 11, opacity: .6, fontFamily: 'inherit' }}>/mo</small></span></div>
+          <div className="fp-stat"><b>Course fee</b><span>₹{feeRates.courseFee.toLocaleString('en-IN')}<small style={{ fontSize: 11, opacity: .6, fontFamily: 'inherit' }}>/mo</small></span></div>
+          <div className="fp-stat"><b>Months due</b><span style={{ color: courseDue.due.length ? '#FCA5A5' : '#86EFAC' }}>{courseDue.due.length || '✓ 0'}</span></div>
+          <div className="fp-stat"><b>Paid so far</b><span style={{ color: '#86EFAC' }}>₹{totalEverPaid.toLocaleString('en-IN')}</span></div>
+        </div>
+
+        <div className="fp-tools">
+          <label style={{ color: admissionDate ? undefined : '#FCA5A5' }}>
+            Admission date{!admissionDate && ' (required)'}
+            <input type="date" value={admissionDate || ''} onChange={e => saveAdmissionDate(e.target.value)} disabled={admDateSaving} aria-label="Admission date"
+              style={{ borderColor: admissionDate ? undefined : '#fca5a5' }} />
+            {admDateSaving && <span style={{ fontSize: 10.5, opacity: .7 }}>saving…</span>}
+          </label>
+          <button type="button" className="fp-tool-btn" onClick={() => { setOverrideMode(m => !m); setOverrideFeedback(null) }}>
+            {overrideMode ? '✕ Cancel rate change' : '✎ Change flat fee'}
+          </button>
+          <button type="button" className={`fp-tool-btn${isRepeater ? ' on' : ''}`} onClick={toggleRepeater} disabled={repeaterSaving}
+            title={isRepeater ? 'Remove repeater tag' : 'Mark as repeater (2+ years at GNSI)'}>
+            {repeaterSaving ? '…' : isRepeater ? '✓ Repeater' : 'Mark repeater'}
+          </button>
+        </div>
       </div>
 
       {/* ── Inline flat fee override editor ── */}
@@ -3465,6 +3521,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           {/* Admission package */}
           <div style={feeCard}>
             <div style={feeCardHead}>
+              <span style={feeIcon('#eef2f9')}>🎓</span>
               <div style={feeCardTitle}>Admission package</div>
               {admPaid && <span style={feePillDone}>Paid</span>}
             </div>
@@ -3538,6 +3595,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           {/* Flat fees */}
           <div style={feeCard}>
             <div style={feeCardHead}>
+              <span style={feeIcon('#ecfdf3')}>🏠</span>
               <div style={{ flex: 1 }}>
                 <div style={feeCardTitle}>Monthly flat fees</div>
                 <div style={feeCardSub}>{hostelType} rate · ₹{feeRates.flatFee.toLocaleString('en-IN')}/month</div>
@@ -3592,9 +3650,10 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           {/* Course fees */}
           <div style={feeCard}>
             <div style={feeCardHead}>
+              <span style={feeIcon('#fdf6e3')}>📚</span>
               <div style={{ flex: 1 }}>
                 <div style={feeCardTitle}>Course fees</div>
-                <div style={feeCardSub}>Select course and hostel type — amount auto-fills, editable</div>
+                <div style={feeCardSub}>Pick course & hostel once — each month auto-fills at the standard rate</div>
               </div>
               {crsfEverPaid > 0 && <span style={{ fontSize: 11, color: '#2e3b52', fontWeight: 600 }}>₹{crsfEverPaid.toLocaleString('en-IN')} previous</span>}
             </div>
@@ -3639,164 +3698,145 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                   )}
                 </div>
               )}
-              {crsfRows.map((row, i) => (
-                <div key={i} style={{ border: '1px solid #e8e3d8', borderRadius: 8, padding: 12, marginBottom: 10 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8, marginBottom: 8 }}>
+              {crsfRows.length > 0 && (() => {
+                const head = crsfRows[0]
+                const setAll = (field, value) => crsfRows.forEach((_, i) => updateCrsfRow(i, field, value))
+                const subtypes = COURSE_STRUCTURE[head.course]?.subtypes || []
+                return (
+                  <div className="fp-course-set">
                     <div>
-                      <label style={{ ...lbl, fontSize: 11 }}>Course</label>
-                      <select value={row.course} onChange={e => updateCrsfRow(i, 'course', e.target.value)} style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
+                      <span className="fp-lbl">Course</span>
+                      <select value={head.course} onChange={e => setAll('course', e.target.value)} aria-label="Course">
                         <option value="">— Select —</option>
                         {Object.keys(COURSE_STRUCTURE).map(c => <option key={c}>{c}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label style={{ ...lbl, fontSize: 11 }}>Hostel Type</label>
-                      <select value={row.hostelType} onChange={e => updateCrsfRow(i, 'hostelType', e.target.value)} style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
+                      <span className="fp-lbl">Batch / subtype</span>
+                      {subtypes.length > 0
+                        ? <select value={head.subtype} onChange={e => setAll('subtype', e.target.value)} aria-label="Subtype">
+                            <option value="">—</option>
+                            {subtypes.map(x => <option key={x}>{x}</option>)}
+                          </select>
+                        : <input value={head.subtype} onChange={e => setAll('subtype', e.target.value)} aria-label="Subtype" placeholder="Optional" />}
+                    </div>
+                    <div>
+                      <span className="fp-lbl">Hostel type</span>
+                      <select value={head.hostelType} onChange={e => setAll('hostelType', e.target.value)} aria-label="Hostel type">
                         <option value="">— Select —</option>
                         <option>Boarder</option><option>Day Boarder</option><option>Day Scholar</option>
                       </select>
                     </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                    <div>
-                      <label style={{ ...lbl, fontSize: 11 }}>Subtype</label>
-                      {(COURSE_STRUCTURE[row.course]?.subtypes || []).length > 0
-                        ? <select value={row.subtype} onChange={e => updateCrsfRow(i, 'subtype', e.target.value)} style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
-                            <option value="">—</option>
-                            {COURSE_STRUCTURE[row.course].subtypes.map(s => <option key={s}>{s}</option>)}
-                          </select>
-                        : <input value={row.subtype} onChange={e => updateCrsfRow(i, 'subtype', e.target.value)} style={{ ...inp, fontSize: 12, padding: '7px 10px' }} placeholder="Optional" />
-                      }
-                    </div>
-                    <div>
-                      <label style={{ ...lbl, fontSize: 11 }}>Month</label>
-                      <select value={row.for_month} onChange={e => updateCrsfRow(i, 'for_month', e.target.value)} style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
-                        <option value="">— Month —</option>
-                        {MONTHS_LIST.map(m => {
-                          const isDue = courseDue.due.some(d => d.month === m)
-                          const isPaid = !isDue && myCrsfRecs.some(r => r.for_month === m && String(r.year) === String(dueYearOf(m)))
-                          return <option key={m} value={m}>{m}{isDue ? ' — due' : isPaid ? ' — paid' : ''}</option>
-                        })}
-                      </select>
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: 8 }}>
-                    <label style={{ ...lbl, fontSize: 11 }}>
-                      Amount (₹)
-                      {row.course && row.hostelType && (
-                        <span style={{ fontWeight: 400, color: '#a7771f', marginLeft: 6 }}>
-                          · standard rate: ₹{Number(row.std || syncCourseFeeAmt(row.course, row.hostelType)).toLocaleString('en-IN')}
-                        </span>
-                      )}
-                    </label>
-                    <input type="number" value={row.amount || ''}
-                      onChange={e => updateCrsfRow(i, 'amount', e.target.value)}
-                      aria-label={`Course fee amount ${i + 1}`}
-                      style={{ ...inp, fontSize: 12, padding: '7px 10px',
-                        borderColor: lowFeeGap(row) > 0 ? '#dc2626' : row.std && row.amount !== '' && Number(row.amount) !== Number(row.std) ? '#f59e0b' : '#d9d2c2' }}
-                      placeholder={row.course && row.hostelType
-                        ? `Auto: ₹${Number(row.std || syncCourseFeeAmt(row.course, row.hostelType)).toLocaleString('en-IN')}`
-                        : 'Select course & hostel type first'}
-                    />
-                    {lowFeeGap(row) > 0 && (
-                      <div role="group" aria-label="Low fee reason" style={{ marginTop: 8, padding: '10px 12px', borderRadius: 10, background: '#fef2f2', border: '1px solid #fca5a5' }}>
-                        <div style={{ fontSize: 11.5, fontWeight: 800, color: '#991b1b' }}>
-                          ₹{lowFeeGap(row).toLocaleString('en-IN')} below the standard ₹{Number(row.std).toLocaleString('en-IN')} — reason required · {isAdmin ? 'approved by you (admin)' : 'needs admin approval'}
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
-                          <select value={row.reason || ''} onChange={e => updateCrsfRow(i, 'reason', e.target.value)} aria-label="Reason for low fee" style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
-                            <option value="">— Reason —</option>
-                            {CONCESSION_REASONS.map(x => <option key={x}>{x}</option>)}
-                          </select>
-                          <input value={row.reasonNote || ''} onChange={e => updateCrsfRow(i, 'reasonNote', e.target.value)} aria-label="Low fee explanation" placeholder={row.reason === 'Other' ? 'Explain (required)' : 'Details (optional)'} style={{ ...inp, fontSize: 12, padding: '7px 10px' }} />
-                        </div>
-                        {!isAdmin && <div style={{ fontSize: 10.5, color: '#b91c1c', marginTop: 6 }}>Until an admin approves it, the shortfall stays due on the student's ledger.</div>}
-                      </div>
-                    )}
-                    {row.std > 0 && row.amount !== '' && Number(row.amount) > Number(row.std) && (
-                      <div style={{ fontSize: 10, color: '#b45309', marginTop: 3 }}>
-                        Above the standard rate of ₹{Number(row.std).toLocaleString('en-IN')}
+                    {head.course && head.hostelType && (
+                      <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: '#8a6d2b' }}>
+                        Standard rate <b>₹{Number(head.std || syncCourseFeeAmt(head.course, head.hostelType)).toLocaleString('en-IN')}</b>/month · applies to every month below · amounts stay editable
                       </div>
                     )}
                   </div>
-                  {crsfRows.length > 1 && (
-                    <button onClick={() => setCrsfRows(r => r.filter((_, j) => j !== i))}
-                      style={{ fontSize: 11, color: '#dc2626', background: '#fef2f2', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}>
-                      Remove
-                    </button>
+                )
+              })()}
+              {crsfRows.map((row, i) => {
+                const gap = lowFeeGap(row)
+                const above = row.std > 0 && row.amount !== '' && Number(row.amount) > Number(row.std)
+                return (
+                <div key={i} className={`fp-line${gap > 0 ? ' low' : ''}`}>
+                  <div className="fp-line-row">
+                    <span className="fp-idx">{i + 1}</span>
+                    <select value={row.for_month} onChange={e => updateCrsfRow(i, 'for_month', e.target.value)} aria-label={`Course fee month ${i + 1}`}>
+                      <option value="">— Month —</option>
+                      {MONTHS_LIST.map(m => {
+                        const isDue = courseDue.due.some(d => d.month === m)
+                        const isPaid = !isDue && myCrsfRecs.some(r => r.for_month === m && String(r.year) === String(dueYearOf(m)))
+                        return <option key={m} value={m}>{m}{isDue ? ' — due' : isPaid ? ' — paid' : ''}</option>
+                      })}
+                    </select>
+                    <div className="fp-amt">
+                      <span>₹</span>
+                      <input type="number" value={row.amount || ''}
+                        onChange={e => updateCrsfRow(i, 'amount', e.target.value)}
+                        aria-label={`Course fee amount ${i + 1}`}
+                        style={{ borderColor: gap > 0 ? '#dc2626' : row.std && row.amount !== '' && Number(row.amount) !== Number(row.std) ? '#f59e0b' : undefined }}
+                        placeholder={row.course && row.hostelType
+                          ? Number(row.std || syncCourseFeeAmt(row.course, row.hostelType)).toLocaleString('en-IN')
+                          : 'Set course first'} />
+                    </div>
+                    {gap > 0 ? <span className="fp-tag" style={{ background: '#fef2f2', color: '#b91c1c', borderColor: '#fca5a5' }}>−₹{gap.toLocaleString('en-IN')}</span>
+                      : above ? <span className="fp-tag" style={{ background: '#fffbeb', color: '#b45309', borderColor: '#fcd34d' }}>Above rate</span>
+                      : courseDue.due.some(d => d.month === row.for_month) ? <span className="fp-tag" style={{ background: '#fff7ed', color: '#9a3412', borderColor: '#fdba74' }}>Due</span>
+                      : row.for_month ? <span className="fp-tag">Advance</span> : <span className="fp-tag" style={{ visibility: 'hidden' }}>—</span>}
+                    {crsfRows.length > 1
+                      ? <button type="button" className="fp-x" onClick={() => setCrsfRows(r => r.filter((_, j) => j !== i))} aria-label={`Remove month ${i + 1}`} title="Remove">×</button>
+                      : <span />}
+                  </div>
+                  {gap > 0 && (
+                    <div role="group" aria-label="Low fee reason" style={{ marginTop: 10, padding: '10px 12px', borderRadius: 12, background: '#fff', border: '1px dashed #fca5a5' }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 800, color: '#991b1b' }}>
+                        ₹{gap.toLocaleString('en-IN')} below the standard ₹{Number(row.std).toLocaleString('en-IN')} — reason required · {isAdmin ? 'approved by you (admin)' : 'needs admin approval'}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8, marginTop: 8 }}>
+                        <select value={row.reason || ''} onChange={e => updateCrsfRow(i, 'reason', e.target.value)} aria-label="Reason for low fee">
+                          <option value="">— Reason —</option>
+                          {CONCESSION_REASONS.map(x => <option key={x}>{x}</option>)}
+                        </select>
+                        <input value={row.reasonNote || ''} onChange={e => updateCrsfRow(i, 'reasonNote', e.target.value)} aria-label="Low fee explanation" placeholder={row.reason === 'Other' ? 'Explain (required)' : 'Details (optional)'} />
+                      </div>
+                      {!isAdmin && <div style={{ fontSize: 10.5, color: '#b91c1c', marginTop: 6 }}>Until an admin approves it, the shortfall stays due on the student's ledger.</div>}
+                    </div>
                   )}
                 </div>
-              ))}
-              <button onClick={() => setCrsfRows(r => {
-                const base = r.find(x => x.course) || {}
-                const nextDue = courseDue.due.find(d => !r.some(x => x.for_month === d.month))
-                return [...r, { course: base.course || '', subtype: base.subtype || '', hostelType: base.hostelType || hostelType, for_month: nextDue?.month || '', amount: base.std || '', std: base.std || 0 }]
+                )
               })}
-                style={{ fontSize: 12, color: '#2e3b52', background: '#faf8f3', border: '1px dashed #d9d2c2', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontWeight: 600, width: '100%' }}>
-                + Add month
-              </button>
             </div>
           </div>
 
-          {/* Advance */}
-          <div style={feeCard}>
-            <div style={feeCardHead}>
-              <div style={feeCardTitle}>Advance fee (optional)</div>
-            </div>
-            <div style={{ padding: '12px 16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ ...lbl, fontSize: 11 }}>Amount (₹)</label>
-                  <input type="number" min={0} value={advAmt} onChange={e => setAdvAmt(e.target.value)} placeholder="0" style={{ ...inp, fontSize: 12, padding: '7px 10px' }} />
-                </div>
-                <div>
-                  <label style={{ ...lbl, fontSize: 11 }}>For</label>
-                  <input value={advFor} onChange={e => setAdvFor(e.target.value)} placeholder="e.g. Phase I Month 1" style={{ ...inp, fontSize: 12, padding: '7px 10px' }} />
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Right: payment + summary */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: isMobile ? 'static' : 'sticky', top: 20 }}>
-          <div style={{ background: 'white', border: '1px solid #e8e3d8', borderRadius: 12, padding: 16 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: '#0f1b2e', marginBottom: 14 }}>Payment details</div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '11px 13px', marginBottom: 14 }}>
-              <div style={{ fontSize: 18, lineHeight: 1 }}>⚠️</div>
-              <div style={{ fontSize: 12.2, color: '#991B1B', lineHeight: 1.5 }}>
-                <div style={{ fontWeight: 800, marginBottom: 2 }}>Use only the institute's official QR code / bank account for fee collection.</div>
-                Accepting parent fee payments into a personal UPI, bank, or wallet account is <b>strictly prohibited and illegal</b>. Any staff found doing this will face strict disciplinary action.
-              </div>
+          <div style={feeCard}>
+            <div style={feeCardHead}>
+              <span style={feeIcon('#eef2f9')}>💳</span>
+              <div style={feeCardTitle}>Payment details</div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-              <div><label style={lbl}>Payment mode</label>
-                <select value={payMode} onChange={e => setPayMode(e.target.value)} style={inp}>
-                  {PAY_MODES.map(m => <option key={m}>{m}</option>)}
-                </select>
+            <div style={{ padding: 16 }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'linear-gradient(180deg,#fff5f5,#fef2f2)', border: '1px solid #fca5a5', borderRadius: 12, padding: '10px 12px', marginBottom: 14 }}>
+                <div style={{ fontSize: 16, lineHeight: 1.2 }}>⚠️</div>
+                <div style={{ fontSize: 11.8, color: '#991B1B', lineHeight: 1.5 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 2 }}>Use only the institute's official QR code / bank account for fee collection.</div>
+                  Accepting parent fee payments into a personal UPI, bank, or wallet account is <b>strictly prohibited and illegal</b>. Any staff found doing this will face strict disciplinary action.
+                </div>
               </div>
-              <div><label style={lbl}>Payment date</label><input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} style={inp} /></div>
-              <div>
-                <label style={lbl}>Transaction ref{payMode !== 'Cash' ? ' *' : ''}</label>
-                <input value={txnRef} onChange={e => setTxnRef(e.target.value)} placeholder={payMode !== 'Cash' ? 'UPI / Cheque ref — required' : 'UPI / Cheque ref (optional)'} style={payMode !== 'Cash' && !txnRef.trim() ? { ...inp, border: '1px solid #fca5a5' } : inp} />
+              <span className="fp-lbl">Payment mode</span>
+              <div className="fp-modes" role="radiogroup" aria-label="Payment mode">
+                {PAY_MODES.map(m => (
+                  <button key={m} type="button" role="radio" aria-checked={payMode === m} className={`fp-mode${payMode === m ? ' on' : ''}`} onClick={() => setPayMode(m)}>{m}</button>
+                ))}
               </div>
-              <div>
-                <label style={lbl}>Collected by *</label>
-                <input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Staff name" style={!collectedBy.trim() ? { ...inp, border: '1px solid #fca5a5' } : inp} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
+                <div><span className="fp-lbl">Payment date</span><input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} aria-label="Payment date" style={inp} /></div>
+                <div>
+                  <span className="fp-lbl">Collected by *</span>
+                  <input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Staff name" aria-label="Collected by" style={!collectedBy.trim() ? { ...inp, borderColor: '#fca5a5' } : inp} />
+                </div>
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <span className="fp-lbl">Transaction ref{payMode !== 'Cash' ? ' *' : ''}</span>
+                <input value={txnRef} onChange={e => setTxnRef(e.target.value)} aria-label="Transaction ref" placeholder={payMode !== 'Cash' ? 'UPI / Cheque ref — required' : 'UPI / Cheque ref (optional)'} style={payMode !== 'Cash' && !txnRef.trim() ? { ...inp, borderColor: '#fca5a5' } : inp} />
               </div>
             </div>
           </div>
 
-          <div style={{ background: 'white', border: '1px solid #e8e3d8', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', color: '#0f1b2e', fontWeight: 700, fontSize: 14, borderBottom: '1px solid #e8e3d8', background: '#faf8f3', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Receipt preview</span><span style={{ fontSize: 11, fontWeight: 600, color: '#8a93a6' }}>No. assigned on save</span></div>
-            <div style={{ padding: '14px 16px' }}>
-              {admPkgThis > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: '1px solid #f3f0e8', color: '#2e3b52' }}><span>Admission package</span><span style={{ fontWeight: 600 }}>₹{admPkgThis.toLocaleString('en-IN')}</span></div>}
-              {flatThis   > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: '1px solid #f3f0e8', color: '#2e3b52' }}><span>Flat fees ({hostelType})</span><span style={{ fontWeight: 600 }}>₹{flatThis.toLocaleString('en-IN')}</span></div>}
-              {crsfThis   > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: '1px solid #f3f0e8', color: '#2e3b52' }}><span>Course fees</span><span style={{ fontWeight: 600 }}>₹{crsfThis.toLocaleString('en-IN')}</span></div>}
-              {advThis    > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: '1px solid #f3f0e8', color: '#2e3b52' }}><span>Advance</span><span style={{ fontWeight: 600 }}>₹{advThis.toLocaleString('en-IN')}</span></div>}
-              {grandThis === 0 && <div style={{ fontSize: 12, color: '#8a93a6', textAlign: 'center', padding: '16px 0' }}>Select fee items on the left</div>}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 700, color: 'white', background: '#0f1b2e', padding: '12px 14px', borderRadius: 10, marginTop: 12 }}>
-                <span>Grand total</span><span>₹{grandThis.toLocaleString('en-IN')}</span>
+          <div className="fp-receipt">
+            <div className="fp-receipt-head"><span>Receipt preview</span><small>No. assigned on save</small></div>
+            <div style={{ padding: '6px 18px 16px' }}>
+              {admPkgThis > 0 && <div className="fp-rline"><span>Admission package</span><b>₹{admPkgThis.toLocaleString('en-IN')}</b></div>}
+              {flatThis   > 0 && <div className="fp-rline"><span>Flat fees ({hostelType})</span><b>₹{flatThis.toLocaleString('en-IN')}</b></div>}
+              {crsfThis   > 0 && <div className="fp-rline"><span>Course fees{crsfRows.filter(r => Number(r.amount) > 0).length > 1 ? ` · ${crsfRows.filter(r => Number(r.amount) > 0).length} months` : ''}</span><b>₹{crsfThis.toLocaleString('en-IN')}</b></div>}
+              {advThis    > 0 && <div className="fp-rline"><span>Advance</span><b>₹{advThis.toLocaleString('en-IN')}</b></div>}
+              {grandThis === 0 && <div style={{ fontSize: 12, color: '#8a93a6', textAlign: 'center', padding: '18px 0' }}>Select fee items on the left</div>}
+              <div className="fp-total">
+                <span>Grand total<small>{payMode} · {payDate ? new Date(payDate + 'T00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</small></span>
+                <b>₹{grandThis.toLocaleString('en-IN')}</b>
               </div>
             </div>
           </div>
@@ -3807,7 +3847,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           )}
 
           {totalEverPaid > 0 && (
-            <div style={{ background: 'white', border: '1px solid #e8e3d8', borderRadius: 12, padding: '12px 16px' }}>
+            <div style={{ ...feeCard, padding: '12px 16px' }}>
               <div style={{ fontWeight: 700, fontSize: 12, color: '#0f1b2e', marginBottom: 8 }}>Previously collected</div>
               {admEverPaid  > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#4b5870', padding: '3px 0' }}><span>Admission and kit</span><span>₹{admEverPaid.toLocaleString('en-IN')}</span></div>}
               {flatEverPaid > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#4b5870', padding: '3px 0' }}><span>Flat fees</span><span>₹{flatEverPaid.toLocaleString('en-IN')}</span></div>}
@@ -3818,12 +3858,10 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
             </div>
           )}
 
-          <button onClick={handleSave} disabled={saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate}
-            style={{ width: '100%', padding: 14, borderRadius: 10, background: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#e8e3d8' : '#0f1b2e', color: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#8a93a6' : 'white', border: 'none', fontSize: 15, fontWeight: 700, cursor: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? 'not-allowed' : 'pointer' }}>
+          <button type="button" className="fp-save" onClick={handleSave} disabled={saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate}>
             {saving ? 'Processing…' : !admissionDate ? 'Set admission date first' : `Save and print invoice · ₹${grandThis.toLocaleString('en-IN')}`}
           </button>
-          <button onClick={handleRazorpayCollect} disabled={saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate}
-            style={{ width: '100%', padding: 13, borderRadius: 10, background: 'white', color: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#8a93a6' : '#0f1b2e', border: '1px solid ' + ((saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? '#e8e3d8' : '#0f1b2e'), fontSize: 14, fontWeight: 600, cursor: (saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate) ? 'not-allowed' : 'pointer', marginTop: -4 }}>
+          <button type="button" className="fp-rzp" onClick={handleRazorpayCollect} disabled={saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate}>
             {razorpayBusy ? 'Opening Razorpay…' : `Pay via Razorpay · ₹${grandThis.toLocaleString('en-IN')}`}
           </button>
           {!admRec && <div style={{ fontSize: 11, color: '#dc2626', textAlign: 'center', marginTop: -6 }}>No admission record — create one in Admissions first</div>}
