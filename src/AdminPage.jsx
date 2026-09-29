@@ -9,6 +9,7 @@ import WebsiteTab from "./WebsiteTab";
 import AdminIntelligence from "./AdminIntelligence";
 import { SecurityCenter } from "./GNSIDashboard";
 import Store from "./Store";
+import { isAdminRole } from './roles'
 
 // ─────────────────────────────────────────────
 //  CONSTANTS
@@ -23,6 +24,7 @@ const ALL_MODULES = [
   { key: 'salary',           label: 'Salary',             icon: '💵'  },
   { key: 'studentfeeledger', label: 'Student Fee Ledger', icon: '📒'  },
   { key: 'feesetup',         label: 'Fee Setup',          icon: '⚙️' },
+  { key: 'construction',     label: 'Construction & Maintenance', icon: '🏗️' },
   { key: 'attendance',       label: 'Attendance',         icon: '📅'  },
   { key: 'faceattendance',   label: 'Face Attendance',    icon: '🧑‍💼' },
   { key: 'exams',            label: 'Exams',              icon: '📝'  },
@@ -63,7 +65,7 @@ const CRUD_BG     = { read: '#F0F9FF', add: '#F0FDF4', edit: '#FFFBEB', delete: 
 const ALL_ROLES = [
   'Teacher','Staff','Faculty','House Master','Accountant',
   'Computer Staffs','Administrator','Hostel Supervisor',
-  'Superintendent','Non Teaching Staffs','Receptionist','Staff Manager',
+  'Superintendent','Non Teaching Staffs','Receptionist','Staff Manager','Co-Admin',
 ]
 
 const NAV = [
@@ -88,13 +90,18 @@ const IDLE_TIMEOUT_MS = 30 * 60 * 1000
 // ─────────────────────────────────────────────
 function emptyCrud() { return { read: false, add: false, edit: false, delete: false } }
 function fullCrud()  { return { read: true,  add: true,  edit: true,  delete: true  } }
+// Read is what shows a module at all: granting add/edit/delete also grants
+// read, and taking read away takes the others with it.
+function withRead(cur, crud, on) {
+  if (crud === 'read') return on ? { ...cur, read: true } : emptyCrud()
+  return { ...cur, [crud]: on, ...(on ? { read: true } : {}) }
+}
 
 async function hashPassword(plain) {
   const enc = new TextEncoder()
   const buf = await crypto.subtle.digest('SHA-256', enc.encode(plain))
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
-async function verifyPassword(plain, hash) { return (await hashPassword(plain)) === hash }
 
 // CSV cell: escape quotes + block formula injection (=,+,-,@) in Excel
 function csvCell(v) {
@@ -152,18 +159,18 @@ function useIdleTimeout(onIdle, timeoutMs = IDLE_TIMEOUT_MS) {
 // ─────────────────────────────────────────────
 const GLOBAL_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Plus Jakarta Sans', sans-serif; background: #F1F5F9; }
+  .adm-root, .adm-root *, .adm-root *::before, .adm-root *::after { box-sizing: border-box; }
+  .adm-root h1, .adm-root h2, .adm-root h3, .adm-root p { margin: 0; }
   @keyframes adm-spin    { to { transform: rotate(360deg) } }
   @keyframes adm-fadein  { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }
   @keyframes adm-slidedown { from { opacity:0; transform:translateY(-8px) } to { opacity:1; transform:none } }
-  ::-webkit-scrollbar { width: 4px; height: 4px; }
-  ::-webkit-scrollbar-track { background: #F1F5F9; }
-  ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
+  .adm-root ::-webkit-scrollbar { width: 4px; height: 4px; }
+  .adm-root ::-webkit-scrollbar-track { background: #F1F5F9; }
+  .adm-root ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
   .adm-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .adm-row:hover { background: #F8FAFC !important; }
   .adm-tab-btn:hover { background: rgba(255,255,255,0.12) !important; }
-  input:focus, select:focus, textarea:focus {
+  .adm-root input:focus, .adm-root select:focus, .adm-root textarea:focus {
     border-color: #3B82F6 !important;
     box-shadow: 0 0 0 3px rgba(59,130,246,0.12) !important;
     outline: none !important;
@@ -361,7 +368,7 @@ function ChangePasswordSection({ currentUser }) {
           <input type="password" value={f.value} onChange={e => f.set(e.target.value)} placeholder={f.ph} style={inp} />
         </div>
       ))}
-      <p style={{ fontSize: 11, color: '#94A3B8', marginBottom: 14 }}>Password hashed with SHA-256 — never stored as plain text.</p>
+      <p style={{ fontSize: 11, color: '#94A3B8', marginBottom: 14 }}>Checked and saved on the server with bcrypt — never stored as plain text.</p>
       <button onClick={handleChange} disabled={saving} style={{ padding: '10px 24px', borderRadius: 8, border: 'none', fontSize: 14, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', background: saving ? '#93C5FD' : '#1e3a5f', color: 'white', width: '100%', fontFamily: 'inherit' }}>
         {saving ? '⏳ Updating…' : '🔑 Change Password'}
       </button>
@@ -380,7 +387,7 @@ async function upgradePw(userId, plain) {
   if (error) console.warn('[bcrypt] password kept as SHA-256 until next login:', error.message)
 }
 
-function UserModal({ existing, onClose, onSaved, currentUser, allStaff = [] }) {
+function UserModal({ existing, onClose, onSaved, currentUser, allStaff = [], adminCount = 1, isSelf = () => false }) {
   const isEdit = !!existing
   const [form, setForm] = useState({
     name: existing?.name ?? '',
@@ -398,6 +405,12 @@ function UserModal({ existing, onClose, onSaved, currentUser, allStaff = [] }) {
     if (!form.username.trim()) { setErr('Username is required.'); return }
     if (!isEdit && !form.password)           { setErr('Password is required.'); return }
     if (!isEdit && form.password.length < 8) { setErr('Password must be at least 8 characters.'); return }
+    if (isEdit && form.password && form.password.length < 8) { setErr('New password must be at least 8 characters.'); return }
+    // Never lock the institute out of Admin: no demoting yourself or the last active admin.
+    if (isEdit && isAdminRole(existing.role) && !isAdminRole(form.role)) {
+      if (isSelf(existing)) { setErr('You cannot remove your own admin role — ask another admin.'); return }
+      if (existing.active && adminCount <= 1) { setErr('This is the last active admin — make someone else an admin first.'); return }
+    }
     setSaving(true); setErr(null)
     if (isEdit) {
       const update = {
@@ -455,7 +468,7 @@ function UserModal({ existing, onClose, onSaved, currentUser, allStaff = [] }) {
         ))}
         <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>Role</label>
         <select style={{ ...inp, marginBottom: 14 }} value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))}>
-          {ALL_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+          {(ALL_ROLES.includes(form.role) ? ALL_ROLES : [form.role, ...ALL_ROLES]).map(r => <option key={r} value={r}>{r}</option>)}
         </select>
         <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>Link Staff Profile <span style={{ color: '#94A3B8', fontWeight: 400 }}>(for Geo-Attendance)</span></label>
         <select style={{ ...inp, marginBottom: 22 }} value={form.staff_profile_id} onChange={e => setForm(p => ({ ...p, staff_profile_id: e.target.value }))}>
@@ -503,12 +516,13 @@ function UsersSection({ currentUser, allStaff = [] }) {
     setLoading(false)
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the users on open
   useEffect(() => { fetchUsers() }, [fetchUsers])
 
   // FIX: optimistic toggle now reverts on error
   const isSelf = (u) => u.username && currentUser?.username && u.username.toLowerCase() === currentUser.username.toLowerCase()
-  const lastAdmin = (u) => ['Admin','Administrator'].includes(u.role) && u.active &&
-    users.filter(x => x.active && ['Admin','Administrator'].includes(x.role)).length <= 1
+  const adminCount = users.filter(x => x.active && isAdminRole(x.role)).length
+  const lastAdmin = (u) => isAdminRole(u.role) && u.active && adminCount <= 1
 
   const toggleActive = async (user) => {
     const newVal = !user.active
@@ -552,7 +566,7 @@ function UsersSection({ currentUser, allStaff = [] }) {
   return (
     <div>
       <Toast msg={toast} />
-      {modal && <UserModal existing={modal === 'add' ? null : modal} onClose={() => setModal(null)} onSaved={fetchUsers} currentUser={currentUser} allStaff={allStaff} />}
+      {modal && <UserModal existing={modal === 'add' ? null : modal} onClose={() => setModal(null)} onSaved={fetchUsers} currentUser={currentUser} allStaff={allStaff} adminCount={adminCount} isSelf={isSelf} />}
       {confirm && <ConfirmModal title={`Delete ${confirm.user.name}?`} message="This will permanently remove the user. This cannot be undone." danger onConfirm={() => deleteUser(confirm.user)} onCancel={() => setConfirm(null)} />}
 
       <div className="adm-role-filter" style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -646,12 +660,17 @@ function PermissionsSection({ currentUser }) {
   const [copyFrom, setCopyFrom] = useState('')
   const [copying,  setCopying]  = useState(false)
 
+  // Only the latest request may fill the matrix — switching roles quickly must
+  // not show (and then save) one role's permissions under another.
+  const reqRef = useRef(0)
   const fetchPerms = useCallback(async (r) => {
+    const req = ++reqRef.current
     setLoading(true); setError(null)
     const { data, error } = await supabase
       .from('role_permissions')
       .select('module_key,can_read,can_add,can_edit,can_delete,allowed')
       .eq('role', r)
+    if (req !== reqRef.current) return
     if (error) { setError(error.message); setLoading(false); return }
     const map = {}
     ;(data || []).forEach(p => {
@@ -665,13 +684,11 @@ function PermissionsSection({ currentUser }) {
     setPerms(map); setLoading(false)
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the chosen role's permissions
   useEffect(() => { fetchPerms(role) }, [role, fetchPerms])
 
   const toggle = (key, crud) => {
-    setPerms(p => ({
-      ...p,
-      [key]: { ...(p[key] || emptyCrud()), [crud]: !(p[key]?.[crud] ?? false) }
-    }))
+    setPerms(p => ({ ...p, [key]: withRead(p[key] || emptyCrud(), crud, !(p[key]?.[crud] ?? false)) }))
   }
 
   const toggleRow = (key) => {
@@ -685,7 +702,7 @@ function PermissionsSection({ currentUser }) {
     setPerms(p => {
       const next = { ...p }
       ALL_MODULES.forEach(m => {
-        next[m.key] = { ...(p[m.key] || emptyCrud()), [crud]: !allOn }
+        next[m.key] = withRead(p[m.key] || emptyCrud(), crud, !allOn)
       })
       return next
     })
@@ -986,7 +1003,7 @@ function OverridesSection({ currentUser }) {
       return
     }
     const base = overrides[moduleKey] || rolePerms[moduleKey] || emptyCrud()
-    const next = { ...base, [crudKey]: !base[crudKey] }
+    const next = withRead(base, crudKey, !base[crudKey])
     applyOverrideCrud(moduleKey, next)
   }
 
@@ -1271,6 +1288,7 @@ function AccessLogsSection() {
     setLogs(data || []); setServerTotal(count || 0); setPage(0); setLoading(false)
   }, [module, role])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loads the logs for the chosen filters
   useEffect(() => { fetchLogs() }, [fetchLogs])
 
   const filtered  = logs.filter(l => !search || l.username?.toLowerCase().includes(search.toLowerCase()) || l.module_key?.includes(search.toLowerCase()))
@@ -1356,6 +1374,24 @@ function AccessLogsSection() {
 // ─────────────────────────────────────────────
 //  AUDIT LOGS
 // ─────────────────────────────────────────────
+const FEE_ACTIONS = {
+  fee_collection: 'Fee collected', fee_revert: 'Fee payment reverted', legacy_fee_delete: 'Legacy fee record deleted',
+  fee_date_correction: 'Fee date corrected', fee_amount_correction: 'Fee amount corrected', fee_month_correction: 'Fee moved to another month',
+  flat_fee_underpayment: 'Flat fee collected below the rate', course_fee_underpayment: 'Course fee collected below the rate',
+  fee_concession_approved: 'Low fee approved', fee_concession_rejected: 'Low fee refused',
+  hostel_type_changed: 'Hostel type changed', hostel_type_corrected: 'Hostel type corrected', hostel_type_change_undone: 'Hostel type change undone',
+  fee_hostel_issue_approved: 'Fee collected despite a hostel type issue',
+}
+const feeLevel = a => (/revert|delete/.test(a) ? 'danger' : /correction|underpayment|corrected|changed|undone|issue|rejected/.test(a) ? 'warning' : 'info')
+function feeActionText(r) {
+  let v = {}
+  try { v = typeof r.new_values === 'string' ? JSON.parse(r.new_values) : (r.new_values || {}) } catch { /* not JSON */ }
+  let o = {}
+  try { o = typeof r.old_values === 'string' ? JSON.parse(r.old_values) : (r.old_values || {}) } catch { /* not JSON */ }
+  const who = v.student_name || o.student_name || (v.gcc || o.gcc ? `GCC-${v.gcc || o.gcc}` : '')
+  const bits = [who, v.receipt_no || o.receipt_no, v.total ? `₹${Number(v.total).toLocaleString('en-IN')}` : '', o.amount != null && v.amount != null ? `₹${o.amount} → ₹${v.amount}` : '', v.from && v.to ? `${v.from} → ${v.to}` : '', v.reason || ''].filter(Boolean)
+  return `${FEE_ACTIONS[r.action] || r.action}${bits.length ? ' — ' + bits.join(' · ') : ''}`
+}
 function AuditSection() {
   const [logs,      setLogs]      = useState([])
   const [loading,   setLoading]   = useState(true)
@@ -1367,8 +1403,16 @@ function AuditSection() {
 
   useEffect(() => {
     ;(async () => {
-      const { data } = await supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(500)
-      setLogs(data || []); setLoading(false)
+      // Admin/record events (audit_logs) + fee money events (audit_log:
+      // collections, reverts, date/amount/month corrections, approvals,
+      // hostel type changes) — one timeline.
+      const [a, b] = await Promise.all([
+        supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(500),
+        supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(500),
+      ])
+      const fee = (b.data || []).map(r => ({ id: 'f' + r.id, created_at: r.created_at, user_name: r.changed_by, level: feeLevel(r.action), action: feeActionText(r) }))
+      setLogs([...(a.data || []), ...fee].sort((x, y) => String(y.created_at).localeCompare(String(x.created_at))))
+      setLoading(false)
     })()
   }, [])
 
@@ -1462,12 +1506,20 @@ export default function AdminPage({ currentUser, onLogout, allStaff = [] }) {
   }, [onLogout])
   const stayLoggedIn = () => { clearTimeout(idleKill.current); idleKill.current = null; setIdleWarning(false) }
   useEffect(() => () => clearTimeout(idleKill.current), [])
+  // Any activity after the warning counts as "stay logged in".
+  useEffect(() => {
+    if (!idleWarning) return
+    const events = ['mousedown', 'keydown', 'touchstart']
+    const back = () => { clearTimeout(idleKill.current); idleKill.current = null; setIdleWarning(false) }
+    events.forEach(e => window.addEventListener(e, back))
+    return () => events.forEach(e => window.removeEventListener(e, back))
+  }, [idleWarning])
   useIdleTimeout(handleIdle, 25 * 60 * 1000)
 
   // FIX: admin role check — block non-admin users
   if (!currentUser) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', fontFamily: "'Plus Jakarta Sans',sans-serif", padding: 16 }}>
+      <div className="adm-root" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', fontFamily: "'Plus Jakarta Sans',sans-serif", padding: 16 }}>
         <style>{GLOBAL_CSS}</style>
         <div style={{ textAlign: 'center', padding: 40, background: 'white', borderRadius: 16, border: '1px solid #E2E8F0', maxWidth: 360, width: '100%' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
@@ -1478,10 +1530,9 @@ export default function AdminPage({ currentUser, onLogout, allStaff = [] }) {
     )
   }
 
-  const ADMIN_ROLES = ['Admin', 'Administrator']
-  if (!ADMIN_ROLES.includes(currentUser.role)) {
+  if (!isAdminRole(currentUser.role)) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', fontFamily: "'Plus Jakarta Sans',sans-serif", padding: 16 }}>
+      <div className="adm-root" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', fontFamily: "'Plus Jakarta Sans',sans-serif", padding: 16 }}>
         <style>{GLOBAL_CSS}</style>
         <div style={{ textAlign: 'center', padding: 40, background: 'white', borderRadius: 16, border: '1px solid #FECACA', maxWidth: 400, width: '100%' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🚫</div>
@@ -1498,7 +1549,7 @@ export default function AdminPage({ currentUser, onLogout, allStaff = [] }) {
   const activeNav = NAV.find(t => t.id === activeTab)
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F1F5F9', fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
+    <div className="adm-root" style={{ minHeight: '100vh', background: '#F1F5F9', fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
       <style>{GLOBAL_CSS}</style>
 
       {logoutConfirm && (

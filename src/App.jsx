@@ -713,11 +713,22 @@ export default function App() {
 
   useEffect(() => { if (currentUser) fetchSharedStaff() }, [currentUser])
 
-  const loadPermissions = async (role) => {
+  // Role permissions, then this user's own overrides (Admin → Overrides) on
+  // top — an override replaces the role's access for that module until it
+  // expires. The overrides table is optional: if it can't be read the role
+  // permissions stand alone.
+  const loadPermissions = async (role, userId = currentUser?.id) => {
     if (isAdminRole(role)) { setPermMap({}); return }
     setPermLoading(true)
-    const { data } = await supabase.from('role_permissions').select('module_key, allowed, can_read, can_add, can_edit, can_delete').eq('role', role)
-    setPermMap(buildPermMap(data))
+    const [{ data }, ov] = await Promise.all([
+      supabase.from('role_permissions').select('module_key, allowed, can_read, can_add, can_edit, can_delete').eq('role', role),
+      userId != null && userId !== 'admin'
+        ? supabase.from('user_module_overrides').select('module_key, allowed, can_read, can_add, can_edit, can_delete, expires_at').eq('user_id', userId)
+        : Promise.resolve({ data: [] }),
+    ])
+    const now = Date.now()
+    const live = (ov?.data || []).filter(o => !o.expires_at || new Date(o.expires_at).getTime() > now)
+    setPermMap({ ...buildPermMap(data), ...buildPermMap(live) })
     setPermLoading(false)
   }
 
@@ -739,7 +750,7 @@ export default function App() {
     }
     const enriched = { ...user, staff_profile_id: staffProfileId }
     localStorage.setItem('gnsi_session', JSON.stringify({ user: enriched, expiry: Date.now() + SESSION_MAX_MS, loginAt: Date.now() }))
-    setCurrentUser(enriched); setActive(ledgerGccFromUrl() ? 'studentfeeledger' : 'dashboard'); loadPermissions(user.role)
+    setCurrentUser(enriched); setActive(ledgerGccFromUrl() ? 'studentfeeledger' : 'dashboard'); loadPermissions(user.role, enriched.id)
   }
 
   const handleLogout = () => {
@@ -808,7 +819,22 @@ export default function App() {
     return () => { cancelled = true }
   }, [currentUser?.username])
 
-  useEffect(() => { if (currentUser) loadPermissions(currentUser.role) }, [currentUser])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when the signed-in user changes
+  useEffect(() => { if (currentUser) loadPermissions(currentUser.role, currentUser.id) }, [currentUser])
+
+  // Module visit log for Admin → Analytics / Access Logs: one row per module
+  // per sign-in session. Best-effort; stops trying if the table is missing.
+  const accessLogged = useRef({ uid: null, seen: new Set() })
+  const accessLogOff = useRef(false)
+  useEffect(() => {
+    if (!currentUser || !active || accessLogOff.current) return
+    const uid = currentUser.id ?? currentUser.username
+    if (accessLogged.current.uid !== uid) accessLogged.current = { uid, seen: new Set() }
+    if (accessLogged.current.seen.has(active)) return
+    accessLogged.current.seen.add(active)
+    supabase.from('module_access_logs').insert({ module_key: active, role: currentUser.role || null, username: currentUser.username || currentUser.name || null, accessed_at: new Date().toISOString() })
+      .then(({ error }) => { if (error) accessLogOff.current = true })
+  }, [active, currentUser])
 
   useEffect(() => {
     if (currentUser) {
