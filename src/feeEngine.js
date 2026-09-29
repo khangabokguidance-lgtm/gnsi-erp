@@ -1344,6 +1344,78 @@ export const correctFeeCollectionDate = async ({
   } catch (e) { console.warn('Audit log failed during date correction', e) }
 }
 
+// ── Admin corrections from the "Why short?" panel ────────────────────────────
+// A flat/course fee row's amount was entered wrongly (e.g. ₹2,000 typed for a
+// ₹5,500 payment). Updates the fee row and its Accounts income entry together,
+// drops any low-fee concession filed against the old amount (the shortfall
+// changed — decide it again if still short), and audits before → after.
+const FEE_ROW = {
+  adm_flat_fees:   { amountCol: 'amount',      monthCol: 'month',     kind: 'flat_fee',   ref: (g, m, y) => sourceRef.flatFee(g, m, y) },
+  adm_course_fees: { amountCol: 'amount_paid', monthCol: 'for_month', kind: 'course_fee', ref: (g, m, y) => sourceRef.courseFee(g, m, y) },
+}
+
+export const correctFeeCollectionAmount = async ({ table, id, newAmount, reason, correctedBy = 'Admin' }) => {
+  const cfg = FEE_ROW[table]
+  if (!cfg || !id) throw new Error('Only a flat or course fee payment can be corrected here.')
+  const amt = Math.round(Number(newAmount) * 100) / 100
+  if (!(amt > 0)) throw new Error('Enter the correct amount received.')
+  if (!String(reason || '').trim()) throw new Error('Give a reason for the correction.')
+  const { data: row, error: rErr } = await supabase.from(table).select('*').eq('id', id).maybeSingle()
+  if (rErr || !row) throw new Error(rErr?.message || 'Payment not found.')
+  const oldAmt = Number(row[cfg.amountCol]) || 0
+  if (oldAmt === amt) return
+  const { error } = await supabase.from(table).update({ [cfg.amountCol]: amt }).eq('id', id)
+  if (error) throw new Error(error.message)
+  const gcc = gccStr(row.adm_app_id)
+  const { error: aErr } = await supabase.from(TABLES.accounts).update({ amount: amt })
+    .eq('source_ref', cfg.ref(gcc, row[cfg.monthCol], row.year)).eq('source_type', cfg.kind)
+  if (aErr) console.warn('correctFeeCollectionAmount: Accounts entry not updated —', aErr.message)
+  if (row.concession_status) {
+    await clearConcession(table, id)
+    try { await supabase.from('fee_concessions').delete().eq('fee_table', table).eq('fee_row_id', String(id)) } catch { /* table not there yet */ }
+  }
+  try {
+    await supabase.from('audit_log').insert({
+      action: 'fee_amount_correction', changed_by: correctedBy, target_id: String(id),
+      old_values: JSON.stringify({ table, amount: oldAmt, gcc, month: row[cfg.monthCol], year: row.year, receipt_no: row.receipt_no, concession: row.concession_status || null }),
+      new_values: JSON.stringify({ table, amount: amt, reason: String(reason).trim(), corrected_at: new Date().toISOString() }),
+      created_at: new Date().toISOString(),
+    })
+  } catch (e) { console.warn('Audit log failed during amount correction', e) }
+}
+
+// A payment was filed under the wrong month (e.g. September's fee saved as
+// August). Moves the fee row and re-keys its Accounts entry; refuses when the
+// target month already has a payment.
+export const moveFeeCollectionMonth = async ({ table, id, month, year, reason, correctedBy = 'Admin' }) => {
+  const cfg = FEE_ROW[table]
+  if (!cfg || !id) throw new Error('Only a flat or course fee payment can be moved.')
+  if (!MONTHS_LIST.includes(month) || !Number(year)) throw new Error('Choose the month the payment was for.')
+  if (!String(reason || '').trim()) throw new Error('Give a reason for the correction.')
+  const { data: row, error: rErr } = await supabase.from(table).select('*').eq('id', id).maybeSingle()
+  if (rErr || !row) throw new Error(rErr?.message || 'Payment not found.')
+  const gcc = gccStr(row.adm_app_id)
+  if (row[cfg.monthCol] === month && Number(row.year) === Number(year)) return
+  let clash = supabase.from(table).select('id').eq('adm_app_id', gcc).eq(cfg.monthCol, month).eq('year', Number(year)).eq('reverted', false)
+  if (table === 'adm_flat_fees') clash = clash.eq('paid', true)
+  const { data: taken } = await clash
+  if ((taken || []).some(t => String(t.id) !== String(id))) throw new Error(`${month} ${year} already has a payment — revert or correct that one first.`)
+  const { error } = await supabase.from(table).update({ [cfg.monthCol]: month, year: Number(year) }).eq('id', id)
+  if (error) throw new Error(error.message)
+  const oldRef = cfg.ref(gcc, row[cfg.monthCol], row.year), newRef = cfg.ref(gcc, month, year)
+  const { error: aErr } = await supabase.from(TABLES.accounts).update({ source_ref: newRef }).eq('source_ref', oldRef).eq('source_type', cfg.kind)
+  if (aErr) console.warn('moveFeeCollectionMonth: Accounts entry not re-keyed —', aErr.message)
+  try { await supabase.from('fee_concessions').update({ month, year: Number(year) }).eq('fee_table', table).eq('fee_row_id', String(id)) } catch { /* table not there yet */ }
+  try {
+    await supabase.from('audit_log').insert({
+      action: 'fee_month_correction', changed_by: correctedBy, target_id: String(id),
+      old_values: JSON.stringify({ table, month: row[cfg.monthCol], year: row.year, gcc, receipt_no: row.receipt_no }),
+      new_values: JSON.stringify({ table, month, year: Number(year), reason: String(reason).trim(), corrected_at: new Date().toISOString() }),
+      created_at: new Date().toISOString(),
+    })
+  } catch (e) { console.warn('Audit log failed during month correction', e) }
+}
+
 export const getStudentFeeSummary = async (studentId, sessionYear) => {
   const [invRes, payRes] = await Promise.all([
     supabase.from(TABLES.feeInvoices).select('*').eq('student_id', studentId).eq('session_year', sessionYear).order('invoice_month', { ascending: true }),
