@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./supabase";
 import { PremiumStyles, PremiumHero } from "./premiumUI";
+import { settingsSaved } from "./systemSettings";
 
 // ─── Access control ─────────────────────────────────────────
 // SystemSettings has no auth of its own to fall back on — every
@@ -225,6 +226,23 @@ function InfoBanner({ msg, color = "blue" }) {
   );
 }
 
+// Where a card's settings take effect in the rest of the portal.
+function UsedIn({ children }) {
+  return (
+    <div style={{ padding: "9px 12px", borderRadius: 9, background: "#F0FDF4", border: "1px solid #BBF7D0", fontSize: 12, color: "#166534", marginBottom: 14, lineHeight: 1.5 }}>
+      <b>✓ Applied in:</b> {children}
+    </div>
+  );
+}
+// Settings that are stored but nothing enforces yet — said plainly.
+function NotYet({ children }) {
+  return (
+    <div style={{ padding: "8px 12px", borderRadius: 9, background: "#F8FAFC", border: "1px dashed #CBD5E1", fontSize: 11.5, color: "#64748B", margin: "-4px 0 14px", lineHeight: 1.5 }}>
+      ⓘ {children}
+    </div>
+  );
+}
+
 // ─── Safe JSON parse helper ───────────────────────────────────
 function safeJsonParse(str, fallback) {
   try { return JSON.parse(str); }
@@ -289,6 +307,7 @@ function useSettingsSection(keys) {
     setSaving(true); setSaved(false); setError(null);
     try {
       await saveSettings(s);
+      settingsSaved(s); // apply across the portal right away
       setSavedSnapshot(s);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -417,6 +436,7 @@ function BasicSection() {
     <Grid mobile={mobile}>
       <Card>
         <SectionTitle>🏫 Institute Details</SectionTitle>
+        <UsedIn>fee receipts, dues notices, fee registers &amp; day books, WhatsApp fee reminders, account &amp; construction reports, timetable, exam report cards &amp; admit cards, entrance prints, certificates, the login screen, and the office phone shown to parents (fee lookup, Parents Portal, leave messages). Blank fields keep the built-in GNSI details.</UsedIn>
         {error && <ErrorBanner msg={error} />}
         <Field label="School / Institute Name" value={s.school_name ?? ""} onChange={e => update("school_name", e.target.value)} />
         <Field label="Address"                 value={s.school_address ?? ""} onChange={e => update("school_address", e.target.value)} />
@@ -429,6 +449,7 @@ function BasicSection() {
 
       <Card>
         <SectionTitle>📋 Academic & System Info</SectionTitle>
+        <UsedIn>Academic Session → default year on exam report cards &amp; admit cards. Affiliation, institute type and portal version are for reference.</UsedIn>
         <Field label="Academic Session"    value={s.session_year ?? ""}   onChange={e => update("session_year", e.target.value)} placeholder="2025-2026" />
         <Field label="Institute Type"      value={s.institute_type ?? ""} onChange={e => update("institute_type", e.target.value)} placeholder="Coaching / School / College" />
         <Field label="Affiliation / Board" value={s.affiliation ?? ""}    onChange={e => update("affiliation", e.target.value)} placeholder="CBSE / State Board / NVS" />
@@ -531,10 +552,11 @@ function SecuritySection({ currentUser }) {
 
       <Card>
         <SectionTitle>⚙️ Login & Session Settings</SectionTitle>
+        <UsedIn>the staff login screen (wrong passwords lock login on that device) and every signed-in session (automatic logout when idle). The 24-hour login limit always applies as well.</UsedIn>
         {error && <ErrorBanner msg={error} />}
-        <Field label="Session Timeout (minutes)"  type="number" value={s.session_timeout_minutes ?? "60"} onChange={e => update("session_timeout_minutes", e.target.value)} />
+        <Field label="Idle Logout (minutes — blank or 0 = off)" type="number" value={s.session_timeout_minutes ?? ""} onChange={e => update("session_timeout_minutes", e.target.value)} placeholder="Off" />
         <Field label="Max Login Attempts"         type="number" value={s.max_login_attempts ?? "5"}      onChange={e => update("max_login_attempts", e.target.value)} />
-        <Field label="Lockout Duration (minutes)" type="number" value={s.lockout_duration_minutes ?? "15"} onChange={e => update("lockout_duration_minutes", e.target.value)} />
+        <Field label="Lockout Duration (minutes)" type="number" value={s.lockout_duration_minutes ?? "5"} onChange={e => update("lockout_duration_minutes", e.target.value)} />
         <Toggle
           label="Force Password Change" desc="Require users to change password on first login"
           checked={s.force_password_change === "true"}
@@ -545,6 +567,7 @@ function SecuritySection({ currentUser }) {
           checked={s.two_factor_required === "true"}
           onChange={() => update("two_factor_required", s.two_factor_required === "true" ? "false" : "true")}
         />
+        <NotYet>Force Password Change and Two-Factor are saved but not enforced yet — they need a per-user password-changed flag and an OTP step at login.</NotYet>
         <SaveBtn onClick={save} saving={saving} saved={saved} dirty={dirty} />
       </Card>
     </Grid>
@@ -656,6 +679,7 @@ function AppearanceSection() {
 
       <Card>
         <SectionTitle>🖼️ Branding</SectionTitle>
+        <UsedIn>Portal Title → sidebar name &amp; browser tab. Logo → sidebar, receipts and report cards. Favicon → browser tab icon. Sidebar &amp; Accent colours → the portal sidebar and highlights. Primary → phone browser toolbar. Font → portal text that doesn't set its own font.</UsedIn>
         {error && <ErrorBanner msg={error} />}
         <Field label="Portal Title" value={s.portal_title ?? ""} onChange={e => update("portal_title", e.target.value)} placeholder="GNSI ERP" />
         <Field label="Logo URL"     value={s.logo_url ?? ""}     onChange={e => update("logo_url", e.target.value)}     placeholder="https://..." />
@@ -686,7 +710,7 @@ function AppearanceSection() {
             />
           </div>
         )}
-        <InfoBanner msg="⚠️ Color and font changes require a page reload to take full effect after saving." color="yellow" />
+        <InfoBanner msg="Changes apply as soon as you save — no reload needed. Logo and favicon must be https:// links." color="blue" />
         <SaveBtn onClick={save} saving={saving} saved={saved} dirty={dirty} />
       </Card>
     </Grid>
@@ -739,6 +763,7 @@ function NotificationsSection() {
         <Card>
           <SectionTitle>📱 SMS Gateway</SectionTitle>
           {error && <ErrorBanner msg={error} />}
+          <NotYet>SMS and email sending, and the API token, need a server function before they can be used — saving them here does not send anything yet.</NotYet>
           <div style={{ marginBottom: 14 }}>
             <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Provider</label>
             <select
@@ -765,6 +790,7 @@ function NotificationsSection() {
 
         <Card>
           <SectionTitle>💬 WhatsApp</SectionTitle>
+          <UsedIn>turning WhatsApp Notifications (or WhatsApp Alerts) off hides the “Send receipt on WhatsApp” prompt in Fees and the WhatsApp reminder button in the fee register.</UsedIn>
           <Toggle
             label="WhatsApp Notifications" desc="Send fee receipts & alerts via WhatsApp"
             checked={s.whatsapp_enabled === "true"}
@@ -857,6 +883,7 @@ function AcademicSection() {
     <Grid mobile={mobile}>
       <Card>
         <SectionTitle>📅 Academic Year</SectionTitle>
+        <UsedIn>Fee Due Day → WhatsApp fee reminders (“due by the 10th of each month”) and the pay-by date on dues notices. Attendance Threshold → Attendance low-attendance list, colours and student risk signals.</UsedIn>
         {error && <ErrorBanner msg={error} />}
         <Field label="Year Start"               type="date"   value={s.academic_year_start ?? ""}  onChange={e => update("academic_year_start", e.target.value)} />
         <Field label="Year End"                 type="date"   value={s.academic_year_end ?? ""}    onChange={e => update("academic_year_end", e.target.value)} />
@@ -875,12 +902,14 @@ function AcademicSection() {
             <option value="marks">Marks out of custom total</option>
           </select>
         </div>
+        <NotYet>Year start/end and grading system are for reference — sessions run April–March, and exam grading is set per exam in Exams.</NotYet>
         <SaveBtn onClick={save} saving={saving} saved={saved} dirty={dirty} />
       </Card>
 
       <div>
         <Card>
           <SectionTitle>🏫 Classes / Batches</SectionTitle>
+          <NotYet>Reference list — classes and batches used by admissions and fees come from Courses / Fee Setup.</NotYet>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
             {classes.map(c => <Tag key={c} label={c} onRemove={() => removeClass(c)} />)}
           </div>
@@ -1269,6 +1298,7 @@ function IntegrationsSection() {
     <div>
       {/* FIX #1 & #2: RLS + plaintext secret warning */}
       <InfoBanner msg={SECRETS_WARNING} color="yellow" />
+      <UsedIn>switching Razorpay off hides “Pay via Razorpay” in Fees and online payment in the parents' fee lookup and Parents Portal. The Key ID is used only when the site has none set (VITE_RAZORPAY_KEY_ID); the secret is never sent to browsers — the payment server uses its own. Google sign-in and the portal API key are not used yet.</UsedIn>
 
       <Grid mobile={mobile}>
         <IntCard icon="💳" title="Razorpay" subtitle="Online fee collection & payments"

@@ -19,6 +19,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from './supabase'
+import { sysOr } from "./systemSettings";
 import { getActiveStudents } from './studentQueries'
 import { staffDB, useStaffDB } from './staffDB'
 import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from './admitCardTemplate'
@@ -594,14 +595,16 @@ const TAB_GROUPS = [
   },
 ];
 
+// Defaults follow System Settings (Basic Info / Appearance); an exam's own
+// saved institute config (exam_institute_config) still overrides them.
 const INSTITUTE_DEFAULT = {
-  name: "Guidance Navodaya & Sainik Institute",
-  address: "Khangabok Sorok Wangma Thoubal, Manipur -795138",
+  get name() { return sysOr("school_name", "Guidance Navodaya & Sainik Institute"); },
+  get address() { return sysOr("school_address", "Khangabok Sorok Wangma Thoubal, Manipur -795138"); },
   tagline: "A Premier Institute for Navodaya, Sainik & RMS Preparation since 2016",
-  principal: "Principal",
+  get principal() { return sysOr("principal_name", "Principal"); },
   teacher: "Class Teacher",
-  logoUrl: "https://postimg.cc/HrDFYwKn",
-  academicYear: "2026-2027",
+  get logoUrl() { return sysOr("logo_url", "https://postimg.cc/HrDFYwKn"); },
+  get academicYear() { return sysOr("session_year", "2026-2027"); },
   examDate: "",
 };
 

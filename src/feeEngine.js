@@ -3,6 +3,7 @@
 //  SINGLE SOURCE OF TRUTH for all fee logic across GNSI Portal
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { getInstitute, sysOr } from './systemSettings'
 import { supabase } from './supabase'
 import { printFeeReceipt, sectionsToItems } from './premiumReceipt'
 import { recordConcession, clearConcession } from './feeConcessions'
@@ -59,11 +60,12 @@ export const MONTHS_LIST = [
   'October','November','December','January','February','March',
 ]
 
+// Follows System Settings → Basic Info (these are the defaults until set).
 export const INSTITUTE = {
-  name:    'Guidance Navodaya & Sainik Institute',
+  get name()    { return getInstitute().name },
   short:   'GNSI',
-  address: 'Khangabok, Thoubal District, Manipur',
-  phone:   '',
+  get address() { return sysOr('school_address', 'Khangabok, Thoubal District, Manipur') },
+  get phone()   { return sysOr('school_phone', '') },
 }
 
 export const CURRENT_YEAR = (() => {

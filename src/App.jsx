@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { supabase } from './supabase'
+import { loadSystemSettings, useSystemSettings, loginPolicy, sysValue } from './systemSettings'
 import './privateFiles'
 
 import Login              from './Login'
@@ -194,8 +195,8 @@ function getModulePerms(permMap, moduleKey, isAdmin) {
 // ─────────────────────────────────────────────────────────────
 const LOGIN_ATTEMPTS_KEY = 'gnsi_login_attempts'
 const LOGIN_LOCKOUT_KEY  = 'gnsi_login_lockout'
-const MAX_ATTEMPTS       = 5
-const LOCKOUT_MS         = 5 * 60 * 1000 // 5 minutes
+// Max attempts and lockout length come from System Settings → Security
+// (defaults 5 attempts, 5 minutes).
 
 function checkLoginLock() {
   try {
@@ -209,8 +210,9 @@ function recordLoginAttempt() {
   try {
     const attempts = parseInt(localStorage.getItem(LOGIN_ATTEMPTS_KEY) || '0') + 1
     localStorage.setItem(LOGIN_ATTEMPTS_KEY, String(attempts))
-    if (attempts >= MAX_ATTEMPTS) {
-      const until = Date.now() + LOCKOUT_MS
+    const { maxAttempts, lockoutMs } = loginPolicy()
+    if (attempts >= maxAttempts) {
+      const until = Date.now() + lockoutMs
       localStorage.setItem(LOGIN_LOCKOUT_KEY, String(until))
       localStorage.setItem(LOGIN_ATTEMPTS_KEY, '0')
       return { locked: true, until }
@@ -228,14 +230,15 @@ function clearLoginAttempts() {
 
 const D = {
   // Premium navy + brass-gold shell (matches website, portal and login)
-  bg:           '#0B1E3D',
+  // Sidebar and accent colours follow System Settings → Appearance when set.
+  get bg() { return sysValue('sidebar_color') || '#0B1E3D' },
   bgDeep:       '#081629',
   bgSurface:    '#132B52',
   bgHover:      'rgba(255,255,255,0.06)',
   bgActive:     'rgba(201,162,75,0.14)',
   border:       'rgba(255,255,255,0.08)',
   borderStrong: 'rgba(255,255,255,0.14)',
-  accent:       '#C9A24B',
+  get accent() { return sysValue('accent_color') || '#C9A24B' },
   accentLight:  '#E2C57E',
   accentGlow:   'rgba(201,162,75,0.14)',
   accentBorder: 'rgba(226,197,126,0.38)',
@@ -377,15 +380,22 @@ function LogoutButton({ onLogout }) {
   )
 }
 
+// Portal title and logo from System Settings → Appearance (default GNSI ERP).
+const brandLogo = () => (/^https:\/\//.test(sysValue('logo_url')) ? sysValue('logo_url') : `data:image/png;base64,${LOGO_BASE64}`)
+function BrandTitle({ accent }) {
+  const title = sysValue('portal_title')
+  return title ? <>{title}</> : <>GNSI <span style={{ color: accent }}>ERP</span></>
+}
+
 function LogoHeader({ isMobile, onClose, collapsed, onToggleCollapse }) {
   const [hov, setHov] = useState(false)
   return (
     <div style={{ padding: '0 10px 0 14px', height: 60, display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 11, borderBottom: `1px solid ${D.border}`, flexShrink: 0, background: `linear-gradient(90deg, ${D.bgDeep} 0%, ${D.bg} 100%)`, position: 'relative', overflow: 'hidden', justifyContent: collapsed ? 'center' : 'flex-start' }}>
       <div style={{ position: 'absolute', bottom: 0, left: 14, right: 14, height: 1, background: `linear-gradient(90deg, ${D.accent}44, transparent)` }} />
-      <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI" style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, background: '#fff', boxShadow: `0 0 0 2px ${D.accent}` }} />
+      <img src={brandLogo()} alt="Logo" style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, background: '#fff', boxShadow: `0 0 0 2px ${D.accent}` }} />
       {!collapsed && (
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 17, fontWeight: 700, color: D.textPrimary, lineHeight: 1.1, fontFamily: SERIF_FONT }}>GNSI <span style={{ color: D.accentLight }}>ERP</span></div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: D.textPrimary, lineHeight: 1.1, fontFamily: SERIF_FONT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><BrandTitle accent={D.accentLight} /></div>
           <div style={{ fontSize: 9.5, color: D.textFaint, letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2, fontFamily: UI_FONT }}>School Management</div>
         </div>
       )}
@@ -563,14 +573,14 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
 
   return (
     <>
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, background: 'linear-gradient(90deg,#0B1E3D,#132B52)', borderBottom: `2px solid ${D.accent}`, boxShadow: '0 6px 18px rgba(8,22,41,0.25)', display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', zIndex: 200 }}>
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, background: `linear-gradient(90deg,${D.bg},#132B52)`, borderBottom: `2px solid ${D.accent}`, boxShadow: '0 6px 18px rgba(8,22,41,0.25)', display: 'flex', alignItems: 'center', gap: 10, padding: '0 12px', zIndex: 200 }}>
         <button onClick={() => setDrawerOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 5, padding: 4, position: 'relative', flexShrink: 0 }}>
           {[0,1,2].map(i => <span key={i} style={{ display: 'block', width: 22, height: 2, borderRadius: 2, background: D.textMuted }} />)}
           {totalBadges > 0 && <span style={{ position: 'absolute', top: 0, right: 0, width: 8, height: 8, borderRadius: '50%', background: D.accent, border: `1.5px solid ${D.bg}` }} />}
         </button>
-        <img src={`data:image/png;base64,${LOGO_BASE64}`} alt="GNSI" style={{ width: 30, height: 30, borderRadius: 7, objectFit: 'cover', flexShrink: 0 }} />
+        <img src={brandLogo()} alt="Logo" style={{ width: 30, height: 30, borderRadius: 7, objectFit: 'cover', flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: D.textPrimary, lineHeight: 1.1 }}>GNSI <span style={{ color: D.accent }}>ERP</span></div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: D.textPrimary, lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><BrandTitle accent={D.accent} /></div>
           <div style={{ fontSize: 9, color: D.textFaint, textTransform: 'uppercase', letterSpacing: '.07em' }}>School Management</div>
         </div>
         <div style={{ fontSize: 11, color: D.accentLight, fontWeight: 600, background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 6, padding: '3px 8px', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
@@ -583,7 +593,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
         open={drawerOpen} onClose={() => setDrawerOpen(false)}
         groups={ALL_GROUPS} allowedModules={allowedModules} activePage={activePage}
         onNavigate={setActivePage} badges={BADGES} currentUser={currentUser} onLogout={onLogout}
-        logoSrc={`data:image/png;base64,${LOGO_BASE64}`}
+        logoSrc={brandLogo()}
       />
     </>
   )
@@ -689,6 +699,17 @@ export default function App() {
   const [permMap,          setPermMap]          = useState({})
   const [permLoading,      setPermLoading]      = useState(false)
   const isMobile = useIsMobile()
+  // System Settings drive branding, security and defaults across the
+  // portal; re-render when an admin saves them, and refresh on each login.
+  const sysSettings = useSystemSettings()
+  useEffect(() => { loadSystemSettings() }, [currentUser?.username])
+  const portalTitle = sysSettings.portal_title?.trim()
+  useEffect(() => {
+    if (!currentUser || !portalTitle) return
+    const prev = document.title
+    document.title = portalTitle
+    return () => { document.title = prev }
+  }, [currentUser, portalTitle])
   const [sharedStaff, setSharedStaff] = useState([])
   // FIX 1: unified admin check
   const isAdmin = isAdminRole(currentUser?.role)
@@ -782,6 +803,36 @@ export default function App() {
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('storage', onVis) }
   }, [currentUser?.username])
 
+  // Idle logout (System Settings → Security → Session Timeout). Off unless
+  // an admin sets it. Activity in any open tab counts (shared timestamp).
+  const idleMs = loginPolicy().idleMs
+  useEffect(() => {
+    if (!currentUser || !idleMs) return
+    const KEY = 'gnsi_last_active'
+    const touch = () => { try { localStorage.setItem(KEY, String(Date.now())) } catch { /* private mode */ } }
+    let lastWrite = 0
+    const onActivity = () => { if (Date.now() - lastWrite > 15000) { lastWrite = Date.now(); touch() } }
+    touch()
+    const events = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll']
+    events.forEach(e => window.addEventListener(e, onActivity, { passive: true, capture: true }))
+    const check = () => {
+      const last = parseInt(localStorage.getItem(KEY) || '0') || Date.now()
+      if (Date.now() - last >= idleMs) {
+        handleLogout()
+        alert(`You were logged out after ${Math.round(idleMs / 60000)} minutes without activity.`)
+      }
+    }
+    const t = setInterval(check, 30 * 1000)
+    const onVis = () => { if (document.visibilityState === 'visible') check() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      clearInterval(t)
+      document.removeEventListener('visibilitychange', onVis)
+      events.forEach(e => window.removeEventListener(e, onActivity, { capture: true }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleLogout is stable in effect
+  }, [currentUser?.username, idleMs])
+
   // Secure-session watch: every staff table is private to a signed-in
   // (Supabase Auth) staff session. Without one, queries don't fail — they
   // return ZERO rows, so Fees shows ₹0 and 0 students, rosters look empty,
@@ -873,7 +924,7 @@ export default function App() {
   if (active === 'store' && !currentUser) return <StorePublic />
 
   if (!currentUser) {
-    if (showLogin) return <Login onLogin={(user) => { setShowLogin(false); handleLogin(user) }} onLoginFailed={recordLoginAttempt} loginLock={checkLoginLock()} />
+    if (showLogin) return <Login onLogin={(user) => { setShowLogin(false); handleLogin(user) }} onLoginFailed={recordLoginAttempt} checkLock={checkLoginLock} />
     return <LandingPage onLogin={() => setShowLogin(true)} />
   }
   if (permLoading) return (

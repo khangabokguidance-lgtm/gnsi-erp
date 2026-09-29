@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
+import { sysValue } from './systemSettings'
 import jsPDF from 'jspdf'
 import QRCode from 'qrcode'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts'
@@ -340,10 +341,10 @@ const GNSI_PHONE_FALLBACK = '+91-XXXXXXXXXX'
 async function getSchoolContact() {
   try {
     const { data } = await supabase.from('notification_config').select('school_phone').maybeSingle()
-    return data?.school_phone?.trim() || GNSI_PHONE_FALLBACK
+    return data?.school_phone?.trim() || sysValue('school_phone') || GNSI_PHONE_FALLBACK
   } catch (e) {
     console.error('getSchoolContact failed:', e)
-    return GNSI_PHONE_FALLBACK
+    return sysValue('school_phone') || GNSI_PHONE_FALLBACK
   }
 }
 const VERIFY_BASE  = 'https://guidancekhangabok.in/verify'

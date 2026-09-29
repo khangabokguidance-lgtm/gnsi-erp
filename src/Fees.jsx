@@ -1,5 +1,6 @@
 import TodayIncomeBreakdown from './TodayIncomeBreakdown'
 import { supabase } from './supabase'
+import { razorpayEnabled, razorpayKeyId, whatsappEnabled, useSystemSettings } from './systemSettings'
 import { LedgerLink, LedgerButton } from './LedgerLink'
 import { NavIcon } from './navIcons'
 import { getActiveStudents, getAllStudents } from './studentQueries'
@@ -3311,8 +3312,12 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       showToast('Collected By is required — enter the name of the staff on record for this payment.', '#dc2626')
       return
     }
-    if (!RAZORPAY_KEY_ID) {
-      showToast('Razorpay is not configured — set VITE_RAZORPAY_KEY_ID.', '#dc2626')
+    if (!razorpayEnabled()) {
+      showToast('Online payment (Razorpay) is switched off in System Settings → Integrations.', '#dc2626')
+      return
+    }
+    if (!razorpayKeyId(RAZORPAY_KEY_ID)) {
+      showToast('Razorpay is not configured — set VITE_RAZORPAY_KEY_ID or the Key ID in System Settings → Integrations.', '#dc2626')
       return
     }
     if (!(await approvalGate())) return
@@ -3343,7 +3348,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
       await new Promise((resolve, reject) => {
         const rzp = new window.Razorpay({
-          key: RAZORPAY_KEY_ID,
+          key: razorpayKeyId(RAZORPAY_KEY_ID),
           amount: order.amount,
           currency: order.currency || 'INR',
           order_id: order.id,
@@ -3566,7 +3571,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       )}
 
       {/* ── WhatsApp receipt prompt — shown right after a successful collection ── */}
-      {lastPayment && lastPayment.gcc === gcc && (() => {
+      {lastPayment && lastPayment.gcc === gcc && whatsappEnabled() && (() => {
         const parentPhone = getParentPhone(student)
         const waMsg  = buildFeeReceiptWaMessage(lastPayment)
         return (
@@ -4140,9 +4145,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           <button type="button" className="fp-save" onClick={handleSave} disabled={saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate}>
             {saving ? 'Processing…' : !admissionDate ? 'Set admission date first' : `Save and print invoice · ₹${grandThis.toLocaleString('en-IN')}`}
           </button>
-          <button type="button" className="fp-rzp" onClick={handleRazorpayCollect} disabled={saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate}>
-            {razorpayBusy ? 'Opening Razorpay…' : `Pay via Razorpay · ₹${grandThis.toLocaleString('en-IN')}`}
-          </button>
+          {razorpayEnabled() && (
+            <button type="button" className="fp-rzp" onClick={handleRazorpayCollect} disabled={saving || razorpayBusy || grandThis === 0 || !admRec || !admissionDate}>
+              {razorpayBusy ? 'Opening Razorpay…' : `Pay via Razorpay · ₹${grandThis.toLocaleString('en-IN')}`}
+            </button>
+          )}
           {!admRec && <div style={{ fontSize: 11, color: '#dc2626', textAlign: 'center', marginTop: -6 }}>No admission record — create one in Admissions first</div>}
         </div>
       </div>
@@ -4278,6 +4285,7 @@ function PastStudentDuesTab({ isAdmin, onCollect }) {
 }
 
 export default function Fees() {
+  useSystemSettings() // Razorpay / WhatsApp switches apply as soon as they're saved
   const w        = useWindowWidth()
   const isMobile = w < 768
   const currentUser = useMemo(() => {

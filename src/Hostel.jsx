@@ -4,6 +4,7 @@ import { isAdminRole } from './App'
 import { getActiveStudents, getAllStudents } from './studentQueries'
 import jsPDF from 'jspdf'
 import { generateAwardCertificate, CERT_SCHOOL_NAME } from './AwardCertificate'
+import { getInstitute } from './systemSettings'
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
 import { ClassTimetableTab } from './ClassTimetableTab'
 import HMDoubtSessionsTab from './HMDoubtSessionsTab'
@@ -4181,7 +4182,7 @@ function MonthlyCertificateCard() {
     // The PDF downloads locally; WhatsApp can't auto-attach a file via a
     // link (browser security), so we open a chat with the announcement
     // pre-filled and the admin attaches the just-downloaded PDF manually.
-    const message = `🏆 Congratulations ${winner.hmName}!\n\nYou've been recognized as the Top Performing Housemaster for ${monthLabel} at ${CERT_SCHOOL_NAME} — ${winner.house} House, Score: ${winner.score}%.\n\nYour Certificate of Appreciation is attached. Well done!`
+    const message = `🏆 Congratulations ${winner.hmName}!\n\nYou've been recognized as the Top Performing Housemaster for ${monthLabel} at ${getInstitute({ name: CERT_SCHOOL_NAME }).name} — ${winner.house} House, Score: ${winner.score}%.\n\nYour Certificate of Appreciation is attached. Well done!`
     const target = winner.hmPhone ? winner.hmPhone.replace(/\D/g, '') : ''
     const waUrl = `https://wa.me/${target.length === 10 ? '91' + target : target}?text=${encodeURIComponent(message)}`
     setTimeout(() => {

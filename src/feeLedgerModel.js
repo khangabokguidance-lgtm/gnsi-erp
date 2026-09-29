@@ -4,6 +4,7 @@
 // Same rules as the dues engine (feeDues.js): fee months follow the April–March
 // session, Feb/Mar are flat-fee months, a month isn't due until it starts, and
 // months before admission aren't charged.
+import { getInstitute, feeDueDay, ordinal, sysValue } from './systemSettings'
 import {
   MONTHS_LIST, isFlatFeeMonth, feeMonthYearForSession, sessionStartYear,
   isPreAdmissionMonth, normalizeSessionYear, ADM_FEE_BASE,
@@ -184,6 +185,9 @@ export const parentPhone = s => {
   return d.length === 10 ? '91' + d : d
 }
 
+// Name and address from System Settings → Basic Info.
+const signOff = () => { const i = getInstitute(); return `Accounts Office, ${i.name}, ${i.address}` }
+
 // arrears: earlier sessions' unpaid dues [{ session, due, months }] (brought forward).
 export function reminderText(student, reg, session, arrears = []) {
   const dueRows = reg.rows.filter(r => r.due > 0)
@@ -195,9 +199,9 @@ export function reminderText(student, reg, session, arrears = []) {
   const total = reg.totalDue + arrears.reduce((t, a) => t + a.due, 0)
   const who = student.father_name ? `Dear ${student.father_name}` : 'Dear Parent/Guardian'
   if (!lines.length) {
-    return `${who},\n\nThank you — all fees for ${student.name} (GCC-${student.gcc_no}) are paid up to date for session ${shortSession(session)}.\n\n— Accounts Office, Guidance Navodaya & Sainik Institute, Khangabok`
+    return `${who},\n\nThank you — all fees for ${student.name} (GCC-${student.gcc_no}) are paid up to date for session ${shortSession(session)}.\n\n— ${signOff()}`
   }
-  return `${who},\n\nThis is a gentle reminder that the following fees for ${student.name} (GCC-${student.gcc_no}, ${[student.course, student.batch].filter(Boolean).join(' · ')}) are pending for session ${shortSession(session)}:\n\n${lines.join('\n')}\n\nTotal due: ₹${fmt(total)}\n\nKindly pay at the institute office at the earliest. Please ignore this message if already paid.\n\n— Accounts Office, Guidance Navodaya & Sainik Institute, Khangabok`
+  return `${who},\n\nThis is a gentle reminder that the following fees for ${student.name} (GCC-${student.gcc_no}, ${[student.course, student.batch].filter(Boolean).join(' · ')}) are pending for session ${shortSession(session)}:\n\n${lines.join('\n')}\n\nTotal due: ₹${fmt(total)}\n\n${sysValue('fee_due_day') ? `Monthly fees are due by the ${ordinal(feeDueDay())} of each month. ` : ''}Kindly pay at the institute office at the earliest. Please ignore this message if already paid.\n\n— ${signOff()}`
 }
 
 // ── Month to be paid ─────────────────────────────────────────────────────────

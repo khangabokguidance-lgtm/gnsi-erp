@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabase'
+import { loadSystemSettings, useSystemSettings, getInstitute } from './systemSettings'
 // Put both images next to Login.jsx (Vite bundles them)
 import loginPoster from './login-poster.jpg'
 import gnsiCrest from './gnsi-crest.png'
@@ -213,7 +214,10 @@ const ShieldIcon = () => (
   </svg>
 )
 
-export default function Login({ onLogin }) {
+// Minutes (rounded up) until a lockout ends.
+const minsLeft = until => Math.max(1, Math.ceil((until - Date.now()) / 60000))
+
+export default function Login({ onLogin, onLoginFailed, checkLock }) {
   const [username,     setUsername]     = useState('')
   const [password,     setPassword]     = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -225,11 +229,19 @@ export default function Login({ onLogin }) {
 
   const ADMIN_USER = import.meta.env.VITE_ADMIN_USERNAME
 
-  useEffect(() => { injectStyles() }, [])
+  useEffect(() => { injectStyles(); loadSystemSettings() }, [])
+  useSystemSettings()
+  const instName = getInstitute().name
   useEffect(() => {
     const saved = localStorage.getItem('gnsi_remembered_user')
     if (saved) { setUsername(saved); setRememberMe(true) }
   }, [])
+
+  const failed = () => {
+    const r = onLoginFailed?.()
+    if (r?.locked) showError(`Too many failed attempts. Login is locked for ${minsLeft(r.until)} minute${minsLeft(r.until) === 1 ? '' : 's'}.`)
+    else showError('Invalid username or password.')
+  }
 
   const showError = (msg) => {
     setError(msg)
@@ -241,6 +253,12 @@ export default function Login({ onLogin }) {
     setError('')
     if (!username.trim() || !password.trim()) {
       showError('Please enter both username and password.'); return
+    }
+    // Too many wrong passwords → locked for a while (System Settings →
+    // Security: Max Login Attempts / Lockout Duration).
+    const lock = checkLock?.()
+    if (lock?.locked) {
+      showError(`Too many failed attempts. Try again in ${minsLeft(lock.until)} minute${minsLeft(lock.until) === 1 ? '' : 's'}.`); return
     }
     setLoading(true)
 
@@ -270,7 +288,7 @@ export default function Login({ onLogin }) {
       }
       const ok = status === 'ok'
 
-      if (!ok) { showError('Invalid username or password.'); setLoading(false); return }
+      if (!ok) { failed(); setLoading(false); return }
 
       // This hardcoded admin login is separate from portal_users, so it
       // has no row to join against staff_profiles automatically the way
@@ -327,7 +345,7 @@ export default function Login({ onLogin }) {
     }
 
     if (dbErr || !data) {
-      showError('Invalid username or password.')
+      failed()
       setLoading(false); return
     }
 
@@ -410,7 +428,7 @@ onLogin({
         <div style={{ width: '100%', maxWidth: 400 }}>
           <div className="gl-mobile-brand">
             <img className="gl-crest-img" src={gnsiCrest} alt="GNSI crest" />
-            <div className="gl-mobile-name">Guidance Navodaya &amp; Sainik Institute</div>
+            <div className="gl-mobile-name">{instName}</div>
             <div className="gl-mobile-sub">GNSI ERP · Staff Portal</div>
           </div>
 
@@ -496,7 +514,7 @@ onLogin({
             </div>
           </form>
 
-          <p className="gl-legal">© {year} Guidance Navodaya &amp; Sainik Institute</p>
+          <p className="gl-legal">© {year} {instName}</p>
         </div>
       </main>
     </div>
