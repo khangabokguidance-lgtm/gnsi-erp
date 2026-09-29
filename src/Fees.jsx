@@ -27,6 +27,7 @@ import {
   PAY_MODES, MONTHS_LIST, CURRENT_YEAR,
 } from './feeEngine'
 import { getDuesForStudents, getStudentDues } from './feeDues'
+import { buildAllLedgers } from './feeLedgerBulk'
 
 // ── Razorpay config ─────────────────────────────────────────────────────────
 // Public key only — safe to ship to the browser. The secret key lives ONLY
@@ -1771,135 +1772,74 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   }).filter(c => c.count > 0)
   const maxCourse = Math.max(...courseBreakdown.map(c => c.total), 1)
 
-  // ── Month-wise Dues (course fee) ────────────────────────────────────────────
-  // For each of the last 6 months: expected course-fee total (active students ×
-  // COURSE_RATES[course][hostel_type]) vs what was actually collected for that
-  // for_month/year — the gap is the outstanding due, drillable per student.
-  //
-  // PERF: naive version re-filtered adm_course_fees per student per month
-  // (students × 6 × course-fee rows comparisons on every render). Pre-index
-  // course-fee rows once per `adm_course_fees` change into a
-  // `"month|year|gcc" -> amount` map, then each month/student lookup is O(1).
-  // Index BOTH the amount paid AND the course/hostel_type *that was actually
-  // recorded on the payment row* (collectFee stamps these at payment time —
-  // see feeEngine.js `adm_course_fees` upsert). This is the real historical
-  // snapshot: a student who changed course or hostel_type after March still
-  // shows March's payment priced at March's rate, not today's rate.
-  const crsfByMonthGcc = useMemo(() => {
-    const map = new Map()
-    for (const r of adm_course_fees) {
-      if (r.reverted || !r.for_month || !r.year) continue
-      const key = `${r.for_month}|${r.year}|${gccStr(r.adm_app_id)}`
-      const prev = map.get(key)
-      map.set(key, {
-        paid: (prev?.paid || 0) + (Number(r.amount_paid) || 0),
-        course: r.course || prev?.course || null,
-        hostel_type: r.hostel_type || prev?.hostel_type || null,
-      })
-    }
-    return map
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adm_course_fees])
-
-  // Same per-month/per-student indexing for FLAT fee, mirroring crsfByMonthGcc
-  // above — needed because Feb/Mar only ever had flat fee (course fee starts
-  // April), so those months need real flat-fee numbers instead of the
-  // course-fee "no data" placeholder.
-  const flatByMonthGcc = useMemo(() => {
-    const map = new Map()
-    for (const r of adm_flat_fees) {
-      if (!r.paid || !r.month || !r.year) continue
-      const key = `${r.month}|${r.year}|${gccStr(r.adm_app_id)}`
-      const prev = map.get(key)
-      map.set(key, {
-        paid: (prev?.paid || 0) + (Number(r.amount) || 0),
-        hostel_type: r.hostel_type || prev?.hostel_type || null,
-      })
-    }
-    return map
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adm_flat_fees])
-
-  const monthwiseDues = useMemo(() => Array.from({ length: 6 }, (_, idx) => {
-    const d       = new Date(now.getFullYear(), now.getMonth() - (5 - idx), 1)
-    const label   = d.toLocaleString('default', { month: 'short' })
-    const fullMon = d.toLocaleString('default', { month: 'long' })
-    const yrStr   = String(d.getFullYear())
-    const isCurrent = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
-
-    // Flat fee — tracked every month, always computed.
-    const flatPerStudent = liveRows.map(s => {
-      const rec  = flatByMonthGcc.get(`${fullMon}|${yrStr}|${gccStr(s.gcc_no)}`)
-      const paid = rec?.paid || 0
-      const expected = paid > 0
-        ? (FLAT_RATES[rec.hostel_type] ?? FLAT_RATES[s.hostel_type] ?? 0)
-        : (FLAT_RATES[s.hostel_type] ?? 0)
-      return { student: s, expected, paid, due: Math.max(0, expected - paid) }
-    }).filter(x => x.expected > 0)
-    const flatExpectedTotal  = flatPerStudent.reduce((s, x) => s + x.expected, 0)
-    // IMPORTANT: collectedTotal for the *headline* is capped per-student at
-    // their own `expected` (Math.min(x.paid, x.expected)), NOT the raw sum
-    // of x.paid. A student who overpaid or has an advance/duplicate payment
-    // for the month would otherwise inflate this total enough to mask real
-    // dues from OTHER students when dueTotal was computed as a single
-    // subtraction (expectedTotal - collectedTotal) — that let one
-    // overpayment cancel out many real defaulters in the aggregate, even
-    // though each defaulter still correctly showed up in the drill-down
-    // list below. dueTotal is now the sum of each student's own due, which
-    // can never be silently offset by someone else's overpayment.
-    const flatCollectedCapped = flatPerStudent.reduce((s, x) => s + Math.min(x.paid, x.expected), 0)
-    const flatCollectedTotal = flatPerStudent.reduce((s, x) => s + x.paid, 0) // raw total, kept for reference/exports
-    const flatDueTotal       = flatPerStudent.reduce((s, x) => s + x.due, 0)
-    const flatDefaulters     = flatPerStudent.filter(x => x.due > 0).sort((a, b) => b.due - a.due)
-
-    // Course fee — only started from April of the current session (see note
-    // below); Jan/Feb/Mar are "not tracked" unless a payment actually exists.
-    const monthIdx0based = d.getMonth() // 0=Jan..11=Dec
-    const isPreSessionMonth = monthIdx0based < 3 // Jan/Feb/Mar
-    const hasAnyCrsfPayment = adm_course_fees.some(r => !r.reverted && r.for_month === fullMon && String(r.year) === yrStr)
-    const isCourseFeeTracked = !isPreSessionMonth || hasAnyCrsfPayment
-    const crsfPerStudent = !isCourseFeeTracked ? [] : liveRows.map(s => {
-      const rec  = crsfByMonthGcc.get(`${fullMon}|${yrStr}|${gccStr(s.gcc_no)}`)
-      const paid = rec?.paid || 0
-      // Paid this month → price at the course/hostel_type recorded ON that
-      // payment (historical rate). Not yet paid → no snapshot exists yet,
-      // so fall back to their current course/hostel_type as the best
-      // available estimate of what they owe.
-      const expected = paid > 0
-        ? (COURSE_RATES[rec.course]?.[rec.hostel_type] ?? COURSE_RATES[s.course]?.[s.hostel_type] ?? 0)
-        : (COURSE_RATES[s.course]?.[s.hostel_type] ?? 0)
-      return { student: s, expected, paid, due: Math.max(0, expected - paid) }
-    }).filter(x => x.expected > 0)
-    const crsfExpectedTotal  = crsfPerStudent.reduce((s, x) => s + x.expected, 0)
-    const crsfCollectedCapped = crsfPerStudent.reduce((s, x) => s + Math.min(x.paid, x.expected), 0)
-    const crsfCollectedTotal = crsfPerStudent.reduce((s, x) => s + x.paid, 0) // raw total, kept for reference/exports
-    const crsfDueTotal       = crsfPerStudent.reduce((s, x) => s + x.due, 0)
-    const crsfDefaulters     = crsfPerStudent.filter(x => x.due > 0).sort((a, b) => b.due - a.due)
-
-    // Card headline: use course fee where it's tracked (Apr onward), fall
-    // back to flat fee for Feb/Mar so those cards show real numbers instead
-    // of "no course-fee data".
-    const useFlat = !isCourseFeeTracked
-    const expectedTotal  = useFlat ? flatExpectedTotal  : crsfExpectedTotal
-    // % shown on the card uses the CAPPED collected figure, so one
-    // overpaying student can't push the percentage past what was actually
-    // owed for everyone else that month.
-    const collectedTotal = useFlat ? flatCollectedCapped : crsfCollectedCapped
-    const dueTotal        = useFlat ? flatDueTotal        : crsfDueTotal
-    const defaulters      = useFlat ? flatDefaulters      : crsfDefaulters
-
+  // ── Month-wise Dues (flat + course fee) ─────────────────────────────────────
+  // Built on the same register model as each student's Fee Ledger and the
+  // Monthly Fee Ledger (feeLedgerModel.buildRegister via buildAllLedgers), so
+  // all three always agree:
+  //   • rates come from Fee Setup (fee_structures) + per-student overrides,
+  //     not the old hard-coded FLAT_RATES / COURSE_RATES;
+  //   • each month is the head the session actually charges (Feb/Mar flat
+  //     fee, April–January course fee);
+  //   • months before a student's admission are not charged;
+  //   • a part-payment leaves the shortfall due (not "paid");
+  //   • advance payments count for the month they were paid for.
+  // Last 6 months that have started, each read from its own April–March session.
+  const duesMonths = useMemo(() => Array.from({ length: 6 }, (_, idx) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - idx), 1)
+    const start = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1
     return {
-      label, fullMon, year: yrStr, isCurrent, dayOfMonth: now.getDate(),
-      isTracked: useFlat ? flatExpectedTotal > 0 : isCourseFeeTracked,
-      headlineType: useFlat ? 'Flat Fee' : 'Course Fee',
-      expectedTotal, collectedTotal, dueTotal,
-      defaulterCount: defaulters.length, defaulters,
-      // Both breakdowns always available for the expanded/drill-down view.
-      flat:   { expectedTotal: flatExpectedTotal,  collectedTotal: flatCollectedCapped,  dueTotal: flatDueTotal,  defaulters: flatDefaulters },
-      course: { expectedTotal: crsfExpectedTotal, collectedTotal: crsfCollectedCapped, dueTotal: crsfDueTotal, defaulters: crsfDefaulters, isTracked: isCourseFeeTracked },
+      label: d.toLocaleString('default', { month: 'short' }), fullMon: d.toLocaleString('default', { month: 'long' }),
+      year: d.getFullYear(), session: `${start}-${start + 1}`,
+      isCurrent: d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(),
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [liveRows, crsfByMonthGcc, flatByMonthGcc, adm_course_fees])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is fixed for this render cycle
+  }), [])
+  // liveRows is rebuilt every time a batch of per-student dues arrives; only
+  // re-run the (network-backed) register build when a fee-relevant field changes.
+  const duesStudentsKey = liveRows.map(s => [s.gcc_no, s.course, s.batch, s.hostel_type, s.admission_date, s.session].join('|')).join(';')
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the fee-relevant fields above
+  const duesStudents = useMemo(() => liveRows, [duesStudentsKey])
+  const [duesLedgers, setDuesLedgers] = useState(null)   // { [session]: [{ student, reg }] }
+  const [duesError, setDuesError] = useState('')
+  useEffect(() => {
+    if (!duesStudents.length) return
+    let live = true
+    const group = (rows, keep) => { const m = new Map(); for (const r of rows || []) { if (!keep(r)) continue; const g = gccStr(r.adm_app_id); if (!m.has(g)) m.set(g, []); m.get(g).push(r) } return m }
+    const rows = {
+      adm:  group(adm_fee_collections, r => !r.reverted),
+      flat: group(adm_flat_fees, r => r.paid && !r.reverted),
+      crs:  group(adm_course_fees, r => !r.reverted),
+    }
+    const sessions = [...new Set(duesMonths.map(m => m.session))]
+    Promise.all(sessions.map(sess => buildAllLedgers(duesStudents, sess, { rows }).then(items => [sess, items])))
+      .then(pairs => { if (live) { setDuesLedgers(Object.fromEntries(pairs)); setDuesError('') } })
+      .catch(e => { if (live) setDuesError(e.message || 'Could not work out dues') })
+    return () => { live = false }
+  }, [duesStudents, adm_fee_collections, adm_flat_fees, adm_course_fees, duesMonths])
+
+  const monthwiseDues = useMemo(() => duesMonths.map(m => {
+    const perStudent = []
+    let head = null
+    for (const { student, reg } of duesLedgers?.[m.session] || []) {
+      const r = reg.rows.find(x => x.month === m.fullMon && Number(x.year) === m.year)
+      if (!r || r.status === 'before' || r.status === 'upcoming' || !(r.expected > 0)) continue
+      head = head || r.head
+      const due = r.status === 'due' ? r.due : r.status === 'short' ? r.shortBy : 0
+      perStudent.push({ student, expected: r.expected, paid: r.paidAmt, due })
+    }
+    const expectedTotal = perStudent.reduce((s, x) => s + x.expected, 0)
+    // Collected is capped per student at what they owed, so one overpayment
+    // can't hide another student's due in the percentage.
+    const collectedTotal = perStudent.reduce((s, x) => s + Math.min(x.paid, x.expected), 0)
+    const defaulters = perStudent.filter(x => x.due > 0).sort((a, b) => b.due - a.due)
+    return {
+      ...m, year: String(m.year), dayOfMonth: now.getDate(), loading: !duesLedgers,
+      isTracked: expectedTotal > 0, headlineType: head || (/^(February|March)$/.test(m.fullMon) ? 'Flat Fee' : 'Course Fee'),
+      expectedTotal, collectedTotal, dueTotal: defaulters.reduce((s, x) => s + x.due, 0),
+      defaulterCount: defaulters.length, defaulters,
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is fixed for this render cycle
+  }), [duesMonths, duesLedgers])
   const selectedDues = monthwiseDues[duesMonthIdx] ?? monthwiseDues[monthwiseDues.length - 1] ?? null
 
   // ── Hostel breakdown ────────────────────────────────────────────────────────
@@ -2174,6 +2114,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', gap: 8 }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>🗓️ Month-wise Dues (Flat + Course Fee)</div>
+            {duesError && <div style={{ fontSize: 12, color: '#b42318', marginTop: 4 }}>Could not work out dues: {duesError}</div>}
             <div style={{ fontSize: 11, color: '#8a93a6' }}>Expected vs collected — tap a month to see who still owes</div>
           </div>
           <button onClick={() => setDuesExpanded(e => !e)}
@@ -2209,10 +2150,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                   {m.headlineType}
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 900, color: cardColor, marginTop: 2 }}>
-                  {m.expectedTotal > 0 ? `₹${n(m.dueTotal)}` : '—'}
+                  {m.loading ? '…' : m.expectedTotal > 0 ? `₹${n(m.dueTotal)}` : '—'}
                 </div>
                 <div style={{ fontSize: 9.5, color: '#8a93a6', marginTop: 2 }}>
-                  {m.expectedTotal > 0 ? `${pct}% collected of ₹${n(m.expectedTotal)}` : 'no fee data'}
+                  {m.loading ? 'working out dues…' : m.expectedTotal > 0 ? `${pct}% collected of ₹${n(m.expectedTotal)}` : 'no fee due'}
                 </div>
                 {m.isCurrent && (
                   <div style={{ fontSize: 8.5, fontWeight: 700, color: '#a7771f', marginTop: 3 }}>
