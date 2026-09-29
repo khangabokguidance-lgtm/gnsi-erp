@@ -6,7 +6,7 @@
 //   3. this session's past payments made at another type's rate
 //   4. admin overrides and record corrections (audit trail)
 import { useEffect, useMemo, useState } from 'react'
-import { HOSTEL_TYPES, HOSTEL_MISMATCH_REASON, scanBedConflicts, fixHostelType, loadWrongRateScan, loadHostelAudit } from './hostelFeeCheck'
+import { HOSTEL_TYPES, HOSTEL_MISMATCH_REASON, scanBedConflicts, fixHostelType, loadWrongRateScan, loadHostelAudit, loadActiveBeds } from './hostelFeeCheck'
 import { loadConcessions, decideConcession, recordConcession, CONCESSIONS_SETUP_MSG } from './feeConcessions'
 import { sessionOfDate } from './feeLedgerModel'
 import { LedgerLink } from './LedgerLink'
@@ -46,6 +46,8 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
   const [conc, setConc] = useState(null)        // loadConcessions() result
   const [wrong, setWrong] = useState(null)      // { issues, reviewed } | { error }
   const [audit, setAudit] = useState(null)
+  const [beds, setBeds] = useState(null)        // Set of student ids with an active hostel bed
+  const [bulk, setBulk] = useState(null)        // bulk-correction progress text
   const [busy, setBusy] = useState(null)
   const [typeDraft, setTypeDraft] = useState({})
   const [status, setStatus] = useState('pending')
@@ -60,6 +62,7 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
     loadConcessions().then(set(setConc))
     loadWrongRateScan({ students, courseRows: adm_course_fees, flatRows: adm_flat_fees, session }).then(set(setWrong)).catch(e => set(setWrong)({ issues: [], reviewed: 0, error: e.message }))
     loadHostelAudit().then(set(setAudit))
+    loadActiveBeds().then(set(setBeds))
     return () => { live = false }
   }, [isAdmin, students, adm_course_fees, adm_flat_fees, session, nonce])
 
@@ -98,7 +101,35 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
     setBusy(null); reload()
   }
 
+  const suspects = wrong?.suspects || []
+  const hasBed = st => beds ? beds.has(String(st.id)) : false
+  const correctOne = async (x, quiet = false) => {
+    if (!quiet && !window.confirm(`Correct ${x.student.name}'s hostel type from ${x.recorded} to ${x.likely}?\n\n${x.count} of ${x.total} payment(s) this session were at the ${x.likely} rate. The corrected type applies to every month, so their dues are recalculated at the ${x.likely} rate. Payments and receipts are not changed.`)) return false
+    await fixHostelType(x.student, x.likely, me)
+    return true
+  }
+  const correctSuspect = async x => {
+    setBusy('sx' + x.student.gcc_no)
+    try { if (await correctOne(x)) reload() } catch (e) { alert(e.message) }
+    setBusy(null)
+  }
+  const correctAll = async () => {
+    const list = suspects.filter(x => !(x.likely !== 'Boarder' && hasBed(x.student)))
+    const skipped = suspects.length - list.length
+    if (!list.length) { alert('Nothing to correct automatically — the remaining students hold a hostel bed; check them one by one.'); return }
+    if (!window.confirm(`Correct the hostel type of ${list.length} student(s) to the type their payments match?${skipped ? `\n\n${skipped} student(s) holding a hostel bed are skipped — check them one by one.` : ''}\n\nEach correction applies to every month; payments and receipts are not changed. Every change is recorded in the audit trail.`)) return
+    let done = 0, failed = 0
+    for (const x of list) {
+      setBulk(`Correcting ${done + failed + 1} of ${list.length}…`)
+      try { await correctOne(x, true); done++ } catch { failed++ }
+    }
+    setBulk(null)
+    alert(`${done} student(s) corrected${failed ? `, ${failed} failed — try those one by one` : ''}.`)
+    reload()
+  }
+
   const kpis = [
+    ['Likely wrong type', wrong ? suspects.length : null, 'from payments', '#FDE68A'],
     ['Record ≠ hostel bed', bed?.rows?.length, 'students', '#FDBA74'],
     ['Awaiting approval', pending.length, inr(pending.reduce((s, c) => s + Number(c.shortfall || 0), 0)), '#FCD34D'],
     ['Paid at wrong rate', wrong?.issues?.length, inr((wrong?.issues || []).reduce((s, u) => s + u.shortBy, 0)) + ' short', '#FCA5A5'],
@@ -172,6 +203,25 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
               {c.status !== 'approved' && <button disabled={busy === c.id} style={btn('#146c3a')} onClick={() => decide(c, true)}>Approve</button>}
               {c.status !== 'rejected' && <button disabled={busy === c.id} style={btn('#fff', '#b42318', '1px solid #f3d0d0')} onClick={() => decide(c, false)}>Reject</button>}
             </div>
+          </div>
+        ))}
+      </Section>
+
+      <Section icon="🧭" label="Likely wrong hostel type" title="Likely wrong hostel type on record" count={suspects.length}
+        sub="Students whose payments this session were all at ANOTHER hostel type's rate and never at their recorded type's — the record is probably wrong (e.g. a Day Scholar saved as Boarder shows a false balance due). Correcting applies to every month; payments and receipts stay as they are."
+        action={suspects.length > 0 && <button style={btn('#9a3412')} disabled={!!bulk || !!busy} onClick={correctAll}>{bulk || `Correct all (${suspects.length})`}</button>}>
+        {!wrong && <div style={{ color: '#64748b', padding: '8px 0' }}>Scanning payments…</div>}
+        {wrong && !wrong.error && suspects.length === 0 && <div style={{ color: '#146c3a', fontWeight: 700, padding: '8px 0' }}>✓ Every student's payments match their recorded hostel type.</div>}
+        {suspects.map(x => (
+          <div key={x.student.gcc_no} style={row}>
+            <div style={{ flex: '2 1 260px' }}>
+              <b><LedgerLink gcc={x.student.gcc_no}>{x.student.name}</LedgerLink></b> <span style={{ color: '#98a2b3', fontSize: 12 }}>GCC-{x.student.gcc_no} · {x.student.course || '—'}{x.student.batch ? ' · ' + x.student.batch : ''}</span>
+              <div style={{ fontSize: 12, marginTop: 3, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                Recorded <TypePill t={x.recorded} /> but {x.count} of {x.total} payment{x.total === 1 ? '' : 's'} at the <TypePill t={x.likely} /> rate
+              </div>
+              {x.likely !== 'Boarder' && hasBed(x.student) && <div style={{ fontSize: 11.5, color: '#b42318', marginTop: 3 }}>⚠ Holds an active hostel bed — confirm before changing to {x.likely}.</div>}
+            </div>
+            <button disabled={busy === 'sx' + x.student.gcc_no || !!bulk} style={btn('#9a3412')} onClick={() => correctSuspect(x)}>Correct to {x.likely}</button>
           </div>
         ))}
       </Section>
