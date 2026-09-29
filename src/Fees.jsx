@@ -1,6 +1,7 @@
 import TodayIncomeBreakdown from './TodayIncomeBreakdown'
 import { supabase } from './supabase'
 import { LedgerLink, LedgerButton } from './LedgerLink'
+import { NavIcon } from './navIcons'
 import { getActiveStudents, getAllStudents } from './studentQueries'
 import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react'
 import { PersonalAccountantButton } from './personalAccountant'
@@ -1660,6 +1661,26 @@ const FEES_CSS = `
 .fe-tab{display:flex;align-items:center;gap:6px;padding:9px 15px;border:none;border-radius:10px;background:none;cursor:pointer;font:600 13px/1 'Plus Jakarta Sans',system-ui,sans-serif;color:#5d6b82;white-space:nowrap}
 .fe-tab:hover{color:#0f1b2e;background:#f3f0e8!important;filter:none!important}
 .fe-tab.on{background:linear-gradient(180deg,#1e3a6e,#132a4f)!important;color:#fff;box-shadow:0 6px 14px -6px rgba(19,42,79,.6)}
+.fh{flex:1 1 100%;min-width:0;display:grid;grid-template-columns:var(--fh-cols,repeat(auto-fit,minmax(290px,1fr)));gap:14px}
+.fh-g{background:#fff;border-radius:22px;padding:16px 10px 12px;box-shadow:0 1px 2px rgba(16,24,40,.05),0 12px 28px -24px rgba(19,42,79,.45);border:1px solid #eef0f4}
+.fh-g h2{font:800 16.5px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#141a26;margin:0 10px 14px;letter-spacing:-.01em}
+.fh-grid{display:grid;grid-template-columns:repeat(var(--fh-n,4),minmax(0,1fr));gap:14px 4px}
+.fh-t{display:flex;flex-direction:column;align-items:center;gap:8px;background:none!important;border:none;cursor:pointer;padding:4px 2px;border-radius:14px;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#2b3445;-webkit-tap-highlight-color:transparent;min-width:0}
+.fh-t:hover .fh-i{transform:translateY(-2px);box-shadow:0 8px 16px -10px rgba(19,42,79,.55)}
+.fh-t:active .fh-i{transform:scale(.94)}
+.fh-i{position:relative;width:52px;height:52px;border-radius:17px;display:flex;align-items:center;justify-content:center;color:#1d3f7a;background:#eef3fb;transition:transform .12s,box-shadow .12s}
+.fh-t.on .fh-i{background:linear-gradient(160deg,#1f4e8c,#0b1e3d);color:#fff;box-shadow:0 0 0 3px #fff,0 0 0 5px #c9a24b}
+.fh-l{font-size:12px;font-weight:650;line-height:1.25;text-align:center;max-width:88px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.fh-t.on .fh-l{color:#0b1e3d;font-weight:800}
+.fh-b{position:absolute;top:-6px;right:-8px;min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:#e53935;color:#fff;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-sizing:border-box}
+.fh-row{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;background:#fff;border-radius:20px;padding:10px 8px 8px;border:1px solid #eef0f4;box-shadow:0 1px 2px rgba(16,24,40,.05)}
+.fh-row::-webkit-scrollbar{display:none}
+.fh-row .fh-t{flex:0 0 70px}
+.fh-row .fh-i{width:44px;height:44px;border-radius:14px}
+.fh-row .fh-l{font-size:11px}
+.fh-all .fh-i{background:#f6efdc;color:#8a6d2b}
+@media(max-width:1100px){.fh{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}}
+@media(max-width:640px){.fh{grid-template-columns:1fr;gap:12px}.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 2px}.fh-i{width:50px;height:50px}}
 .fe-kpi{position:relative;overflow:hidden;background:#fff;border:1px solid #e8e3d8;border-radius:16px;padding:16px 18px 15px 20px;cursor:pointer;box-shadow:0 1px 2px rgba(19,42,79,.05),0 6px 18px -10px rgba(19,42,79,.14);transition:transform .15s,box-shadow .15s;text-align:left;min-width:0}
 .fe-kpi:hover{transform:translateY(-2px);box-shadow:0 12px 28px -14px rgba(19,42,79,.3)}
 @keyframes feUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
@@ -4650,26 +4671,31 @@ export default function Fees() {
 
   const n = v => Number(v || 0).toLocaleString('en-IN')
 
+  // Fees hub — a payments-app style icon grid, grouped. Admin-only entries
+  // are hidden from other staff (the security gates noted below still apply).
+  const [hubOpen, setHubOpen] = useState(false)
   const TABS = [
-    { id: 'dashboard', label: '🏠 Dashboard' },
-    { id: 'payment',   label: '💳 Fee Payment' },
-    { id: 'live',      label: '📊 Live Summary' },
-    { id: 'ledger',    label: '📒 Student Ledger' },
-    { id: 'admin',     label: '🛡️ Admin View' },
+    { id: 'dashboard', label: 'Dashboard',       icon: 'dashboard',        group: 'collect' },
+    { id: 'payment',   label: 'Fee Payment',     icon: 'card',             group: 'collect' },
+    { id: 'live',      label: 'Live Summary',    icon: 'pulse',            group: 'collect' },
+    { id: 'ledger',    label: 'Student Ledger',  icon: 'studentfeeledger', group: 'collect' },
+    { id: 'admin',     label: 'Admin View',      icon: 'shield',           group: 'records' },
     // ✦ Security fix: this tab exposes every student's full fee/payment
     // history (GCC, amounts, payment mode, Collected By) with a one-click
     // export, but had no role gate at all — any logged-in staff account,
     // not just admin/accounts, could open and export it. Restricted the
     // same way anomaly/activity/warnings already are below.
-    ...(isAdmin ? [{ id: 'reports', label: '📤 Reports & Export' }] : []),
-    ...(isAdmin ? [{ id: 'pastDues', label: '🚪 Past Students Dues' }] : []),
-    ...(isAdmin ? [{ id: 'anomaly', label: '🔍 Anomaly Monitor' }] : []),
-    ...(isAdmin ? [{ id: 'activity', label: '🕒 Activity Log' }] : []),
-    ...(isAdmin ? [{ id: 'warnings', label: '⚠️ Audit Warnings' }] : []),
-    ...(isAdmin ? [{ id: 'pendingApprovals', label: pendingApprovalCount ? `🔏 Pending Approvals (${pendingApprovalCount})` : '🔏 Pending Approvals' }] : []),
-    ...(isAdmin ? [{ id: 'lowFee', label: lowFeePending ? `🔎 Low-fee Approvals (${lowFeePending})` : '🔎 Low-fee Approvals' }] : []),
-    ...(isAdmin ? [{ id: 'hostelIssues', label: hostelIssueCount ? `🏠 Hostel Type Issues (${hostelIssueCount})` : '🏠 Hostel Type Issues' }] : []),
+    ...(isAdmin ? [{ id: 'reports',  label: 'Reports & Export', short: 'Reports', icon: 'export',  group: 'records' }] : []),
+    ...(isAdmin ? [{ id: 'pastDues', label: 'Past Students Dues', short: 'Past Dues', icon: 'door', group: 'records' }] : []),
+    ...(isAdmin ? [{ id: 'activity', label: 'Activity Log',       icon: 'history', group: 'records' }] : []),
+    ...(isAdmin ? [{ id: 'anomaly',  label: 'Anomaly Monitor', short: 'Anomalies', icon: 'radar', group: 'checks' }] : []),
+    ...(isAdmin ? [{ id: 'warnings', label: 'Audit Warnings', short: 'Warnings', icon: 'warning', group: 'checks' }] : []),
+    ...(isAdmin ? [{ id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', group: 'checks', badge: pendingApprovalCount }] : []),
+    ...(isAdmin ? [{ id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', group: 'checks', badge: lowFeePending }] : []),
+    ...(isAdmin ? [{ id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', group: 'checks', badge: hostelIssueCount }] : []),
   ]
+  const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals']]
+    .map(([id, title]) => ({ id, title, items: TABS.filter(t => t.group === id) })).filter(g => g.items.length)
 
   // ── Advanced filter state (shared across live + admin tabs) ──────────────
   const [afCourse,      setAfCourse]      = useState('All')
@@ -4803,13 +4829,35 @@ export default function Fees() {
 
       {/* ── Tabs + context export ── */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
-        <nav className="fe-tabs" role="tablist" style={{ marginBottom: 0, maxWidth: '100%' }}>
-          {TABS.map(t => (
-            <button key={t.id} role="tab" aria-selected={tab === t.id} className={'fe-tab' + (tab === t.id ? ' on' : '')} onClick={() => { setTab(t.id); setSearch('') }}>
-              {t.label}
+        {(() => {
+          // Full grid on the Dashboard (or when opened); elsewhere a one-line quick row.
+          const full = tab === 'dashboard' || hubOpen
+          const pick = id => { setTab(id); setSearch(''); setHubOpen(false) }
+          const tile = t => (
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} aria-label={t.badge ? `${t.label} (${t.badge})` : t.label}
+              className={'fh-t' + (tab === t.id ? ' on' : '')} onClick={() => pick(t.id)}>
+              <span className="fh-i"><NavIcon id={t.icon} size={full ? 24 : 21} />{t.badge > 0 && <span className="fh-b">{t.badge > 99 ? '99+' : t.badge}</span>}</span>
+              <span className="fh-l" title={t.label}>{t.short || t.label}</span>
             </button>
-          ))}
-        </nav>
+          )
+          return full ? (
+            <nav className="fh" role="tablist" aria-label="Fees sections" style={{ '--fh-cols': TAB_GROUPS.map(g => `${Math.max(4, g.items.length)}fr`).join(' ') }}>
+              {TAB_GROUPS.map(g => (
+                <section key={g.id} className="fh-g">
+                  <h2>{g.title}</h2>
+                  <div className="fh-grid" style={{ '--fh-n': Math.max(4, g.items.length) }}>{g.items.map(tile)}</div>
+                </section>
+              ))}
+            </nav>
+          ) : (
+            <nav className="fh fh-row" role="tablist" aria-label="Fees sections">
+              {TABS.map(tile)}
+              <button type="button" className="fh-t fh-all" onClick={() => setHubOpen(true)} aria-label="Show all fee sections">
+                <span className="fh-i"><NavIcon id="grid" size={21} /></span><span className="fh-l">All</span>
+              </button>
+            </nav>
+          )
+        })()}
         {tab === 'live' && (
           <ExportBar
             rows={advFilteredLive.map(s => ({ gcc_no: s.gcc_no, name: s.name, batch: s.class_name || s.batch || '', course: s.course || '', hostel_type: s.hostel_type || '', adm_fee: s.admTotal, flat_fee: s.flatTotal, course_fee: s.crsfTotal, total_paid: s.grandTotal, status: s.liveStatus }))}
