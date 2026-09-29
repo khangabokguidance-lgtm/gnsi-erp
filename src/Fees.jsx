@@ -32,6 +32,7 @@ import { courseMonthsDue, sessionOfDate } from './feeLedgerModel'
 import { CONCESSION_REASONS, countPendingConcessions } from './feeConcessions'
 import LowFeeApprovals from './LowFeeApprovals'
 import HostelIssues from './HostelIssues'
+import ShortFeeFixer from './ShortFeeFixer'
 import { loadStudentHistory, typeOnMonth, timeline as hostelTimeline, changeHostelType, undoLastChange, HOSTEL_TYPE_LIST, monthStart } from './hostelHistory'
 import { HOSTEL_MISMATCH_REASON, bedConflict, loadActiveBeds, fixHostelType, logHostelOverride, countHostelIssues } from './hostelFeeCheck'
 
@@ -2018,7 +2019,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                       Collect
                     </button>
                     {onFix && (
-                      <button onClick={() => onFix(s)}
+                      <button onClick={() => onFix(s)} title="Why short? — see the cause and fix it"
                         style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, border: '1px solid #1e3a6e', background: 'white', color: '#1e3a6e', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                         Fix
                       </button>
@@ -2124,7 +2125,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
           // paid nothing. Within each row, Paid and Due are now separate
           // labeled fields rather than one "paid ₹X of ₹Y" sentence, so the
           // two numbers can be scanned independently at a glance.
-          const renderDefaulterRow = (x) => (
+          const renderDefaulterRow = (x, md) => (
             <div key={x.student.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #faf8f3' }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -2164,7 +2165,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                   </button>
                 )}
                 {isAdmin && onFix && (
-                  <button onClick={() => onFix(x.student)}
+                  <button onClick={() => onFix(x.student, { month: md.fullMon, year: Number(md.year), session: md.session })} title="Why short? — see the cause and fix it"
                     style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, border: '1px solid #1e3a6e', background: 'white', color: '#1e3a6e', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                     Fix
                   </button>
@@ -2173,7 +2174,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             </div>
           )
 
-          const renderDefaulterList = (defaulters) => {
+          const renderDefaulterList = (defaulters, md) => {
             if (defaulters.length === 0) {
               return <div style={{ padding: '16px', fontSize: 12, color: '#8a93a6', textAlign: 'center' }}>🎉 No dues for this month</div>
             }
@@ -2191,7 +2192,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                       </span>
                       <span style={{ fontSize: 11, fontWeight: 800, color: '#b45309' }}>₹{n(partialSubtotal)} due</span>
                     </div>
-                    {partial.map(renderDefaulterRow)}
+                    {partial.map(x => renderDefaulterRow(x, md))}
                   </div>
                 )}
                 {noPayment.length > 0 && (
@@ -2202,7 +2203,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                       </span>
                       <span style={{ fontSize: 11, fontWeight: 800, color: '#991B1B' }}>₹{n(noPaymentSubtotal)} due</span>
                     </div>
-                    {noPayment.map(renderDefaulterRow)}
+                    {noPayment.map(x => renderDefaulterRow(x, md))}
                   </div>
                 )}
               </>
@@ -2279,7 +2280,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                   </div>
                 </div>
                 <div style={{ borderRadius: 8, border: '1px solid #f3f0e8', overflow: 'hidden' }}>
-                  {renderDefaulterList(md.defaulters)}
+                  {renderDefaulterList(md.defaulters, md)}
                 </div>
               </div>
             ))}
@@ -2295,7 +2296,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
               </div>
             </div>
             <div style={{ maxHeight: 320, overflowY: 'auto', borderRadius: 8, border: '1px solid #f3f0e8' }}>
-              {renderDefaulterList(selectedDues.defaulters)}
+              {renderDefaulterList(selectedDues.defaulters, selectedDues)}
             </div>
           </div>
         )}
@@ -4317,6 +4318,8 @@ export default function Fees() {
   // Student to jump straight to on the Ledger tab's admin-only Revert/Fix
   // view — set by the Month-wise Dues "Fix" button (admin only).
   const [presetFixStudent, setPresetFixStudent] = useState(null)
+  // Admin 'Why short?' panel opened from a dues list: { student, session, month?, year? }
+  const [fixCtx, setFixCtx] = useState(null)
 
   // ✦ Dual-control revert/delete needs to know how many DISTINCT admin
   // accounts exist, to decide whether a revert request needs a second
@@ -4856,7 +4859,7 @@ export default function Fees() {
           adm_course_fees={activeAdmCourseFees}
           liveRows={liveRows}
           onCollect={s => { setPresetCollectStudent(s); setTab('payment') }}
-          onFix={s => { setPresetFixStudent(s); setTab('ledger') }}
+          onFix={(s, ctx) => setFixCtx({ student: s, session: ctx?.session || sessionOfDate(today()), month: ctx?.month, year: ctx?.year })}
           isAdmin={isAdmin}
         />
       )}
@@ -5322,6 +5325,12 @@ export default function Fees() {
       {tab === 'lowFee' && (
         <LowFeeApprovals students={students} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees}
           isAdmin={isAdmin} currentUser={currentUser} onChanged={() => { refreshLowFeePending(); loadAll() }} />
+      )}
+      {fixCtx && isAdmin && (
+        <ShortFeeFixer {...fixCtx} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees}
+          currentUser={currentUser} onClose={() => setFixCtx(null)} onChanged={() => { loadAll(); refreshLowFeePending(); refreshHostelIssues() }}
+          onCollect={s => { setPresetCollectStudent(s); setTab('payment') }}
+          onOpenRevert={s => { setPresetFixStudent(s); setTab('ledger') }} />
       )}
       {tab === 'hostelIssues' && (
         <HostelIssues students={students} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees}
