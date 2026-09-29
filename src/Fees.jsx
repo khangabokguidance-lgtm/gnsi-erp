@@ -3727,35 +3727,9 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                   )}
                 </div>
               ))}
-              <button onClick={() => setCrsfRows(r => {
-                const base = r.find(x => x.course) || {}
-                const nextDue = courseDue.due.find(d => !r.some(x => x.for_month === d.month))
-                return [...r, { course: base.course || '', subtype: base.subtype || '', hostelType: base.hostelType || hostelType, for_month: nextDue?.month || '', amount: base.std || '', std: base.std || 0 }]
-              })}
-                style={{ fontSize: 12, color: '#2e3b52', background: '#faf8f3', border: '1px dashed #d9d2c2', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontWeight: 600, width: '100%' }}>
-                + Add month
-              </button>
             </div>
           </div>
 
-          {/* Advance */}
-          <div style={feeCard}>
-            <div style={feeCardHead}>
-              <div style={feeCardTitle}>Advance fee (optional)</div>
-            </div>
-            <div style={{ padding: '12px 16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ ...lbl, fontSize: 11 }}>Amount (₹)</label>
-                  <input type="number" min={0} value={advAmt} onChange={e => setAdvAmt(e.target.value)} placeholder="0" style={{ ...inp, fontSize: 12, padding: '7px 10px' }} />
-                </div>
-                <div>
-                  <label style={{ ...lbl, fontSize: 11 }}>For</label>
-                  <input value={advFor} onChange={e => setAdvFor(e.target.value)} placeholder="e.g. Phase I Month 1" style={{ ...inp, fontSize: 12, padding: '7px 10px' }} />
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Right: payment + summary */}
