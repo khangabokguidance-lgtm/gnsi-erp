@@ -34,6 +34,14 @@ export const shortSession = s => { const m = String(s || '').match(/^(\d{4})-(\d
 export const prevSession = s => { const st = sessionStartYear(s); return `${st - 1}-${st}` }
 export const monthStarted = (month, year, now = new Date()) => new Date(Number(year), monthIdx(month), 1) <= now
 
+// Low-fee concession recorded on a flat/course fee row (see feeConcessions.js):
+// only an APPROVED concession counts towards the month; pending/rejected don't.
+const concessionOf = r => ({
+  rowId: r.id,
+  concessionStatus: r.concession_status || null,
+  concession: r.concession_status === 'approved' ? Number(r.concession_amount) || 0 : 0,
+})
+
 // One normalised entry per payment row, whichever table it came from.
 export function toEntries(student, admRows, flatRows, crsRows) {
   const e = []
@@ -45,13 +53,13 @@ export function toEntries(student, admRows, flatRows, crsRows) {
   })
   for (const r of flatRows) e.push({
     kind: 'flat', month: r.month, year: Number(r.year), date: r.pay_date, receipt: r.receipt_no, amount: Number(r.amount) || 0,
-    mode: r.pay_mode, ref: r.txn_ref, by: r.collected_by, advance: !!r.is_advance, note: r.underpayment_note || null,
+    mode: r.pay_mode, ref: r.txn_ref, by: r.collected_by, advance: !!r.is_advance, note: r.underpayment_note || null, ...concessionOf(r),
     particulars: 'Monthly Flat Fee', period: `${r.month} ${r.year}`, category: r.hostel_type || student.hostel_type || 'Hostel',
     session: sessionOfMonth(r.month, r.year),
   })
   for (const r of crsRows) e.push({
     kind: 'course', month: r.for_month, year: Number(r.year), date: r.pay_date, receipt: r.receipt_no, amount: Number(r.amount_paid) || 0,
-    mode: r.pay_mode, ref: r.txn_ref, by: r.collected_by, advance: !!r.is_advance, note: r.override_note || null,
+    mode: r.pay_mode, ref: r.txn_ref, by: r.collected_by, advance: !!r.is_advance, note: r.override_note || null, ...concessionOf(r),
     particulars: `Course Fee${r.course ? ' — ' + r.course : ''}${r.subtype ? ' ' + r.subtype : ''}`, period: `${r.for_month} ${r.year}`,
     category: r.course || student.course || 'Course', session: sessionOfMonth(r.for_month, r.year),
   })
@@ -69,13 +77,15 @@ export function buildRegister(student, entries, session, rates, now = new Date()
     const expected = flat ? Number(rates?.flatFee || 0) : Number(rates?.courseFee || 0)
     const paid = entries.filter(x => x.kind === (flat ? 'flat' : 'course') && x.month === month && Number(x.year) === year)
     const paidAmt = paid.reduce((s, x) => s + x.amount, 0)
+    const waived = paid.reduce((s, x) => s + (x.concession || 0), 0)   // approved low-fee concession
+    const concessionPending = paid.some(x => x.concessionStatus === 'pending')
     let status
-    if (paid.length) status = paid.some(x => x.advance) ? 'advance' : paidAmt + 0.5 < expected ? 'short' : 'paid'
+    if (paid.length) status = paid.some(x => x.advance) ? 'advance' : paidAmt + waived + 0.5 < expected ? 'short' : 'paid'
     else if (isPreAdmissionMonth(month, year, admissionDate)) status = 'before'
     else if (!monthStarted(month, year, now)) status = 'upcoming'
     else status = 'due'
     const due = status === 'due' ? expected : 0
-    return { month, year, head, expected, paid, paidAmt, status, due, shortBy: status === 'short' ? expected - paidAmt : 0 }
+    return { month, year, head, expected, paid, paidAmt, waived, concessionPending, status, due, shortBy: status === 'short' ? Math.max(0, expected - paidAmt - waived) : 0 }
   })
   // Admission fee: shown in the session it was paid in, or — if unpaid — in
   // the student's own session.
@@ -112,6 +122,8 @@ export function buildStatement(student, entries, session, reg, { openingBalance 
   for (const x of reg.other) lines.push({ date: iso(x.date), kind: 'charge', particulars: `${x.particulars} charged`, debit: x.amount, credit: 0 })
   const paidIn = entries.filter(x => x.session === session)
   for (const x of paidIn) lines.push({ date: iso(x.date), kind: 'payment', particulars: `Received — ${x.particulars}${x.period && x.period !== 'One-time' ? ` (${x.period})` : ''}`, debit: 0, credit: x.amount, receipt: x.receipt, mode: x.mode, note: x.note })
+  // An approved low-fee concession settles the rest of that month's charge.
+  for (const x of paidIn.filter(p => p.concession > 0)) lines.push({ date: iso(x.date), kind: 'payment', particulars: `Concession approved — ${x.particulars} (${x.period})`, debit: 0, credit: x.concession, receipt: x.receipt, note: 'Low-fee concession approved by admin' })
   // Charges before payments on the same day, then by date.
   lines.sort((a, b) => a.date.localeCompare(b.date) || (a.kind === b.kind ? 0 : a.kind === 'charge' ? -1 : 1))
 
@@ -139,7 +151,7 @@ export function computeInsights(student, entries, reg, now = new Date()) {
   const modes = {}
   for (const x of entries) { const m = x.mode || 'Other'; modes[m] = (modes[m] || 0) + x.amount }
   const expectedSoFar = reg.rows.filter(r => !['before', 'upcoming'].includes(r.status) || r.paidAmt).reduce((s, r) => s + r.expected, 0) + (reg.admission?.expected || 0)
-  const paidAgainstThose = reg.rows.reduce((s, r) => s + r.paidAmt, 0) + (reg.admission?.paidAmt || 0)
+  const paidAgainstThose = reg.rows.reduce((s, r) => s + r.paidAmt + (r.waived || 0), 0) + (reg.admission?.paidAmt || 0)
   const sessionTotal = reg.rows.filter(r => r.status !== 'before').reduce((s, r) => s + r.expected, 0) + (reg.admission?.expected || 0)
   const upcoming = reg.rows.filter(r => r.status === 'upcoming')
   return {

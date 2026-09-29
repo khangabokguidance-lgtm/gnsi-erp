@@ -2,7 +2,7 @@ import TodayIncomeBreakdown from './TodayIncomeBreakdown'
 import { supabase } from './supabase'
 import { LedgerLink, LedgerButton } from './LedgerLink'
 import { getActiveStudents, getAllStudents } from './studentQueries'
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react'
 import { PersonalAccountantButton } from './personalAccountant'
 import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen, getLockedAccountTypes } from './monthLock'
@@ -28,6 +28,8 @@ import {
 } from './feeEngine'
 import { getDuesForStudents, getStudentDues } from './feeDues'
 import { buildAllLedgers } from './feeLedgerBulk'
+import { CONCESSION_REASONS, countPendingConcessions } from './feeConcessions'
+import LowFeeApprovals from './LowFeeApprovals'
 
 // ── Razorpay config ─────────────────────────────────────────────────────────
 // Public key only — safe to ship to the browser. The secret key lives ONLY
@@ -2862,6 +2864,10 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // Builds the pending-charge line items from current form state — shared by
   // the Cash/Bank/UPI-manual save path and the Razorpay checkout path, so the
   // two never drift out of sync on what's actually being charged.
+  // How far a course line is below its standard (Fee Setup) rate, in ₹ (0 if not below).
+  const lowFeeGap = r => { const std = Number(r.std) || 0, amt = Number(r.amount) || 0; return std > 0 && amt > 0 && amt < std ? std - amt : 0 }
+  const lowFeeRows = crsfRows.filter(r => r.for_month && lowFeeGap(r) > 0)
+
   const buildFeeItems = () => {
     const items = []
     if (admPkgThis > 0 && !admPaid && !isRepeater) {
@@ -2893,7 +2899,16 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         const sessStart = pdM >= 4 ? pdY : pdY - 1   // current April–March session at the time of payment
         const JAN_MAR = ['January', 'February', 'March']
         const courseYear = JAN_MAR.includes(r.for_month) ? sessStart + 1 : sessStart
-        items.push({ kind: 'course', month: r.for_month, year: courseYear, course: r.course, subtype: r.subtype, amount: amt })
+        const short = lowFeeGap(r)
+        items.push({
+          kind: 'course', month: r.for_month, year: courseYear, course: r.course, subtype: r.subtype, amount: amt,
+          ...(short > 0 ? {
+            standardAmount: Number(r.std), underpaymentAmount: short, underpaymentReason: r.reason, underpaymentNote: (r.reasonNote || '').trim() || null,
+            // An admin collecting approves it on the spot; anyone else sends it for approval.
+            concessionApprovedBy: isAdmin ? (collectedBy.trim() || currentUser?.name || 'Admin') : null,
+            note: `Low fee: ₹${Number(r.std).toLocaleString('en-IN')} standard → ₹${amt.toLocaleString('en-IN')} — ${r.reason}${r.reasonNote ? ` (${r.reasonNote.trim()})` : ''} — ${isAdmin ? `approved by ${collectedBy.trim() || 'admin'}` : 'awaiting admin approval'}`,
+          } : {}),
+        })
       }
     })
     if (advThis > 0) items.push({ kind: 'advance', label: advFor, amount: advThis })
@@ -2977,6 +2992,16 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     if (payMode !== 'Cash' && !txnRef.trim()) {
       showToast(`Transaction reference is required for ${payMode} payments.`, '#dc2626')
       return
+    }
+    // Below-standard course fee: a reason is required, and it needs an admin's approval.
+    const noReason = lowFeeRows.find(r => !r.reason || (r.reason === 'Other' && !(r.reasonNote || '').trim()))
+    if (noReason) {
+      showToast(`${noReason.for_month}: ₹${lowFeeGap(noReason).toLocaleString('en-IN')} below the standard fee — choose a reason${noReason.reason === 'Other' ? ' and explain it' : ''} before saving.`, '#dc2626')
+      return
+    }
+    if (lowFeeRows.length && !isAdmin) {
+      const short = lowFeeRows.reduce((s, r) => s + lowFeeGap(r), 0)
+      if (!window.confirm(`₹${short.toLocaleString('en-IN')} below the standard fee (${lowFeeRows.map(r => r.for_month).join(', ')}).\n\nThis payment will be saved and the low fee sent to an admin for approval. Until approved, the shortfall stays due on the student's ledger.`)) return
     }
     const itemsToSave = buildFeeItems()
     if (!validateItems(itemsToSave)) return
@@ -3164,6 +3189,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       hostelType: defaultHostelType,
       for_month:  '',
       amount:     defaultAmt,
+      std:        Number(defaultAmt) || 0,   // standard (Fee Setup) rate for this line
     }])
 
     setStep('pay')
@@ -3221,14 +3247,14 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           const amt = rates.courseFee || syncCourseFeeAmt(course, ht)
           setCrsfRows(rows => {
             const updated = [...rows]
-            updated[i] = { ...updated[i], amount: amt }
+            updated[i] = { ...updated[i], amount: amt, std: Number(amt) || 0 }
             return updated
           })
         } catch (_) {
           const amt = syncCourseFeeAmt(course, ht)
           setCrsfRows(rows => {
             const updated = [...rows]
-            updated[i] = { ...updated[i], amount: amt }
+            updated[i] = { ...updated[i], amount: amt, std: Number(amt) || 0 }
             return updated
           })
         }
@@ -3613,24 +3639,37 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                       Amount (₹)
                       {row.course && row.hostelType && (
                         <span style={{ fontWeight: 400, color: '#a7771f', marginLeft: 6 }}>
-                          · {row.hostelType} rate: ₹{syncCourseFeeAmt(row.course, row.hostelType).toLocaleString('en-IN')}
+                          · standard rate: ₹{Number(row.std || syncCourseFeeAmt(row.course, row.hostelType)).toLocaleString('en-IN')}
                         </span>
                       )}
                     </label>
                     <input type="number" value={row.amount || ''}
                       onChange={e => updateCrsfRow(i, 'amount', e.target.value)}
+                      aria-label={`Course fee amount ${i + 1}`}
                       style={{ ...inp, fontSize: 12, padding: '7px 10px',
-                        borderColor: row.course && row.hostelType && row.amount !== '' &&
-                          Number(row.amount) !== syncCourseFeeAmt(row.course, row.hostelType)
-                          ? '#f59e0b' : '#d9d2c2' }}
+                        borderColor: lowFeeGap(row) > 0 ? '#dc2626' : row.std && row.amount !== '' && Number(row.amount) !== Number(row.std) ? '#f59e0b' : '#d9d2c2' }}
                       placeholder={row.course && row.hostelType
-                        ? `Auto: ₹${syncCourseFeeAmt(row.course, row.hostelType).toLocaleString('en-IN')}`
+                        ? `Auto: ₹${Number(row.std || syncCourseFeeAmt(row.course, row.hostelType)).toLocaleString('en-IN')}`
                         : 'Select course & hostel type first'}
                     />
-                    {row.course && row.hostelType && row.amount !== '' &&
-                      Number(row.amount) !== syncCourseFeeAmt(row.course, row.hostelType) && (
+                    {lowFeeGap(row) > 0 && (
+                      <div role="group" aria-label="Low fee reason" style={{ marginTop: 8, padding: '10px 12px', borderRadius: 10, background: '#fef2f2', border: '1px solid #fca5a5' }}>
+                        <div style={{ fontSize: 11.5, fontWeight: 800, color: '#991b1b' }}>
+                          ₹{lowFeeGap(row).toLocaleString('en-IN')} below the standard ₹{Number(row.std).toLocaleString('en-IN')} — reason required · {isAdmin ? 'approved by you (admin)' : 'needs admin approval'}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+                          <select value={row.reason || ''} onChange={e => updateCrsfRow(i, 'reason', e.target.value)} aria-label="Reason for low fee" style={{ ...inp, fontSize: 12, padding: '7px 10px' }}>
+                            <option value="">— Reason —</option>
+                            {CONCESSION_REASONS.map(x => <option key={x}>{x}</option>)}
+                          </select>
+                          <input value={row.reasonNote || ''} onChange={e => updateCrsfRow(i, 'reasonNote', e.target.value)} aria-label="Low fee explanation" placeholder={row.reason === 'Other' ? 'Explain (required)' : 'Details (optional)'} style={{ ...inp, fontSize: 12, padding: '7px 10px' }} />
+                        </div>
+                        {!isAdmin && <div style={{ fontSize: 10.5, color: '#b91c1c', marginTop: 6 }}>Until an admin approves it, the shortfall stays due on the student's ledger.</div>}
+                      </div>
+                    )}
+                    {row.std > 0 && row.amount !== '' && Number(row.amount) > Number(row.std) && (
                       <div style={{ fontSize: 10, color: '#b45309', marginTop: 3 }}>
-                        Overriding standard rate of ₹{syncCourseFeeAmt(row.course, row.hostelType).toLocaleString('en-IN')}
+                        Above the standard rate of ₹{Number(row.std).toLocaleString('en-IN')}
                       </div>
                     )}
                   </div>
@@ -3944,6 +3983,10 @@ export default function Fees() {
   // query, refreshed whenever the tab changes (e.g. after approving/rejecting
   // there and switching away) so the nav badge doesn't go stale.
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0)
+  // Low fees waiting for an admin (fee_concessions); refreshed after each decision.
+  const [lowFeePending, setLowFeePending] = useState(0)
+  const refreshLowFeePending = useCallback(() => { countPendingConcessions().then(setLowFeePending) }, [])
+  useEffect(() => { if (isAdmin) refreshLowFeePending() }, [isAdmin, refreshLowFeePending])
   useEffect(() => {
     if (!isAdmin) return
     let cancelled = false
@@ -4274,6 +4317,7 @@ export default function Fees() {
     ...(isAdmin ? [{ id: 'activity', label: '🕒 Activity Log' }] : []),
     ...(isAdmin ? [{ id: 'warnings', label: '⚠️ Audit Warnings' }] : []),
     ...(isAdmin ? [{ id: 'pendingApprovals', label: pendingApprovalCount ? `🔏 Pending Approvals (${pendingApprovalCount})` : '🔏 Pending Approvals' }] : []),
+    ...(isAdmin ? [{ id: 'lowFee', label: lowFeePending ? `🔎 Low-fee Approvals (${lowFeePending})` : '🔎 Low-fee Approvals' }] : []),
   ]
 
   // ── Advanced filter state (shared across live + admin tabs) ──────────────
@@ -4895,6 +4939,10 @@ export default function Fees() {
       )}
       {tab === 'warnings' && (
         <AuditWarningsTab students={students} isAdmin={isAdmin} />
+      )}
+      {tab === 'lowFee' && (
+        <LowFeeApprovals students={students} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees}
+          isAdmin={isAdmin} currentUser={currentUser} onChanged={() => { refreshLowFeePending(); loadAll() }} />
       )}
       {tab === 'pendingApprovals' && (
         <PendingApprovalsTab isAdmin={isAdmin} currentUser={currentUser} adminCount={adminCount} onRefresh={loadAll} />
