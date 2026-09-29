@@ -7,8 +7,10 @@
 
 import { esc, fmtDate, hallTicketNo, sectionRanges } from './entranceCore'
 
-const INSTITUTE = 'Guidance Navodaya & Sainik Institute'
-const ADDRESS = 'Khangabok, Thoubal, Manipur'
+import { getInstitute } from './systemSettings'
+
+// Follows System Settings → Basic Info.
+const inst = () => getInstitute()
 
 const BASE_CSS = `
   @page { size: A4; margin: 12mm }
@@ -53,7 +55,7 @@ export function wrapDoc(title, body, extraCss = '', autoPrint = false) {
 }
 
 const crest = (right, sub = 'Entrance Examination') => `
-  <div class="crest"><div><div class="n">GNSI</div><div class="s">${INSTITUTE}</div><div class="s">${ADDRESS}</div></div>
+  <div class="crest"><div><div class="n">GNSI</div><div class="s">${esc(inst().name)}</div><div class="s">${esc(inst().address)}</div></div>
   <div class="t">${esc(right)}<div class="s" style="font-weight:400;letter-spacing:0">${esc(sub)}</div></div></div>`
 
 // ── Hall ticket ───────────────────────────────────────────────────────────────
@@ -245,6 +247,6 @@ export function offerLetterHtml(exam, r, { reportBy = '', fee = '' } = {}) {
       <ol><li>This offer letter and the hall ticket</li><li>Birth certificate and previous school's transfer certificate</li>
       <li>Category certificate (if applicable)</li><li>Aadhaar card of the candidate and parent</li><li>Four passport-size photographs</li></ol>
       <p>Admission is provisional, subject to verification of documents and a medical check.</p>
-      <div style="display:flex;justify-content:space-between;margin-top:46px"><div>Parent's acceptance<br><br>________________</div><div style="text-align:right">Principal / Director<br>${INSTITUTE}</div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:46px"><div>Parent's acceptance<br><br>________________</div><div style="text-align:right">Principal / Director<br>${esc(inst().name)}</div></div>
     </div></div>`
 }

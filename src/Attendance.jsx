@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
+import { attendanceThreshold } from './systemSettings'
 import { getActiveStudents, getAllStudents, getActiveStudentCount } from './studentQueries'
 import { courseOf, takeAttendanceHandoff, handoffToStudents } from './courseMap'
 import {
@@ -359,7 +360,7 @@ function SignalRow({ attendancePct, disciplineOpen, feeOverdueDays, hostelStatus
     {
       key: 'attendance', label: 'Attendance', icon: Icon.check,
       value: attendancePct != null ? `${attendancePct}%` : '—',
-      tone: attendancePct == null ? 'neutral' : attendancePct >= 75 ? 'good' : attendancePct >= 60 ? 'warn' : 'bad',
+      tone: attendancePct == null ? 'neutral' : attendancePct >= attendanceThreshold() ? 'good' : attendancePct >= 60 ? 'warn' : 'bad',
     },
     {
       key: 'discipline', label: 'Discipline', icon: Icon.shield,
@@ -400,7 +401,7 @@ function SignalRow({ attendancePct, disciplineOpen, feeOverdueDays, hostelStatus
 function riskLevel({ attendancePct, disciplineOpen, feeOverdueDays, hostelStatus }) {
   let score = 0
   if (attendancePct != null && attendancePct < 60) score += 2
-  else if (attendancePct != null && attendancePct < 75) score += 1
+  else if (attendancePct != null && attendancePct < attendanceThreshold()) score += 1
   if (disciplineOpen != null && disciplineOpen > 2) score += 2
   else if (disciplineOpen != null && disciplineOpen > 0) score += 1
   if (feeOverdueDays != null && feeOverdueDays > 15) score += 2
@@ -867,7 +868,7 @@ function AttendBar({ records }) {
 }
 
 function MiniBar({ pct }) {
-  const color = pct >= 75 ? '#16a34a' : pct >= 50 ? '#d97706' : '#e11d48'
+  const color = pct >= attendanceThreshold() ? '#16a34a' : pct >= 50 ? '#d97706' : '#e11d48'
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <div style={{
@@ -1061,7 +1062,8 @@ function TabHome({ onNavigate }) {
   const [sessions,   setSessions]   = useState([])
   const [defaulters, setDefaulters] = useState([])
   const [loading,    setLoading]    = useState(true)
-  const [threshold,  setThreshold]  = useState(75)
+  // Starts at System Settings → Academic → Attendance Threshold (default 75).
+  const [threshold,  setThreshold]  = useState(() => attendanceThreshold())
   const [stats,      setStats]      = useState({ total:0, pending:0, risk:0, avgPct:0 })
   const [refreshKey, setRefreshKey] = useState(0)
   useAttendanceUpdatedListener(useCallback(() => setRefreshKey(k => k + 1), []))
@@ -1120,7 +1122,7 @@ function TabHome({ onNavigate }) {
       <StatGrid mobile={isMobile} items={[
         { label: 'Tracked',      value: stats.total,   color: T.navy,  stripe: T.navy,  },
         { label: 'At risk',      value: stats.risk,    color: '#e11d48', stripe: '#f43f5e' },
-        { label: 'Avg this month', value: `${stats.avgPct}%`, color: stats.avgPct>=75?'#16a34a':'#d97706', stripe: stats.avgPct>=75?'#22c55e':'#f59e0b', barPct: stats.avgPct },
+        { label: 'Avg this month', value: `${stats.avgPct}%`, color: stats.avgPct>=attendanceThreshold()?'#16a34a':'#d97706', stripe: stats.avgPct>=attendanceThreshold()?'#22c55e':'#f59e0b', barPct: stats.avgPct },
         { label: 'Pending today', value: stats.pending, color: '#d97706', stripe: '#f59e0b' },
       ]} />
 
@@ -1179,7 +1181,7 @@ function TabHome({ onNavigate }) {
           right={
             <Select value={threshold} onChange={e => setThreshold(Number(e.target.value))}
               style={{ width: 'auto', padding: '5px 10px', fontSize: 12 }}>
-              {[50,60,65,70,75,80,85].map(v => <option key={v} value={v}>{v}% threshold</option>)}
+              {[...new Set([50,60,65,70,75,80,85,threshold])].sort((a,b)=>a-b).map(v => <option key={v} value={v}>{v}% threshold</option>)}
             </Select>
           }
         />

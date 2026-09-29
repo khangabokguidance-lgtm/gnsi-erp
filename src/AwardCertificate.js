@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf'
+import { getInstitute } from './systemSettings'
 
 // ══════════════════════════════════════════════════════════════
 //  AwardCertificate — shared A4-landscape "Certificate of
@@ -81,11 +82,11 @@ export function generateAwardCertificate({ categoryKey, name, monthLabel, score,
   doc.setTextColor(...navy)
   doc.setFont('times', 'bold')
   doc.setFontSize(13)
-  doc.text(CERT_SCHOOL_NAME, W / 2, 28, { align: 'center' })
+  doc.text(getInstitute({ name: CERT_SCHOOL_NAME }).name, W / 2, 28, { align: 'center' })
   doc.setFont('times', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(...grey)
-  doc.text(CERT_SCHOOL_ADDRESS, W / 2, 34, { align: 'center' })
+  doc.text(getInstitute({ address: CERT_SCHOOL_ADDRESS }).address, W / 2, 34, { align: 'center' })
 
   // Gold rule
   doc.setDrawColor(...gold)

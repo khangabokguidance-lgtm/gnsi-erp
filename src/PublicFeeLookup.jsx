@@ -66,6 +66,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
+import { loadSystemSettings, useSystemSettings, getInstitute, phoneDigits, razorpayEnabled } from './systemSettings'
 import { gccStr, fmt } from './feeEngine'
 import { getStudentDues } from './feeDues'
 
@@ -86,6 +87,11 @@ const C = {
 }
 
 export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
+  // Office phone comes from System Settings → Basic Info.
+  useSystemSettings()
+  useEffect(() => { if (isOpen) loadSystemSettings() }, [isOpen])
+  const officePhone = getInstitute().phone
+  const officeDigits = phoneDigits(officePhone)
   const [step, setStep] = useState('lookup') // lookup | summary | error
   const [gcc, setGcc] = useState('')
   const [phone, setPhone] = useState('')
@@ -339,7 +345,7 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
               </button>
               <p style={{ color: C.mist, fontSize: '.78rem', textAlign: 'center', marginTop: '.9rem' }}>
                 Don't know your GCC number? Call{' '}
-                <a href="tel:+918974298074" style={{ color: C.navy, fontWeight: 600 }}>+91 89742 98074</a>
+                <a href={`tel:+${officeDigits}`} style={{ color: C.navy, fontWeight: 600 }}>{officePhone}</a>
               </p>
             </form>
           )}
@@ -427,8 +433,8 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
                 )}
                 <p style={{ color: C.mist, fontSize: '.78rem', lineHeight: 1.6 }}>
                   Mention <strong>GCC-{student.gcc_no}</strong> as the payment reference, then WhatsApp your screenshot to{' '}
-                  <a href={`https://wa.me/918974298074?text=${encodeURIComponent(`Hello GNSI, I have paid the fee for GCC-${student.gcc_no} (${student.name}). Sending screenshot.`)}`} target="_blank" rel="noreferrer" style={{ color: C.green, fontWeight: 600 }}>
-                    +91 89742 98074
+                  <a href={`https://wa.me/${officeDigits}?text=${encodeURIComponent(`Hello GNSI, I have paid the fee for GCC-${student.gcc_no} (${student.name}). Sending screenshot.`)}`} target="_blank" rel="noreferrer" style={{ color: C.green, fontWeight: 600 }}>
+                    {officePhone}
                   </a>{' '}for confirmation.
                 </p>
               </div>
@@ -436,7 +442,8 @@ export default function PublicFeeLookup({ isOpen, onClose, upi, bank }) {
               {/* Card/netbanking via Razorpay Payment Link — secondary, and
                   labeled clearly so a payer understands the small fee only
                   applies to this option, not the UPI one above. */}
-              {!linkFailed && (
+              {/* Hidden when System Settings → Integrations → Razorpay is off. */}
+              {!linkFailed && razorpayEnabled() && (
                 <button
                   onClick={payViaRazorpayLink}
                   disabled={paying}

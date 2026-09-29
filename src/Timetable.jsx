@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { supabase } from './supabase'
+import { sysOr, sysValue } from './systemSettings'
 import { staffDB } from './staffDB'
 import { isAdminRole } from './roles'
 import { PremiumStyles, PremiumHero } from './premiumUI'
@@ -36,12 +37,13 @@ const ADMIN_PIN = '1950'
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 const INSTITUTE = {
-  name: 'GUIDANCE NAVODAYA & SAINIK INSTITUTE',
+  // Name / address / phone / email follow System Settings → Basic Info.
+  get name() { const n = sysValue('school_name'); return n ? n.toUpperCase() : 'GUIDANCE NAVODAYA & SAINIK INSTITUTE' },
   short: 'GNSI',
   tagline: 'NVS · Sainik School · RMS Entrance Coaching',
-  address: 'Khangabok, Thoubal District, Manipur — 795138',
-  phone: '+91 89742 98074',
-  email: 'admissions@guidancekhangabok.in',
+  get address() { return sysOr('school_address', 'Khangabok, Thoubal District, Manipur — 795138') },
+  get phone() { return sysOr('school_phone', '+91 89742 98074') },
+  get email() { return sysOr('school_email', 'admissions@guidancekhangabok.in') },
   website: 'guidancekhangabok.in',
   founded: '2016',
 }

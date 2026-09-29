@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { supabase } from './supabase'
+import { sysOr, sysValue } from './systemSettings'
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
@@ -33,7 +34,12 @@ const STATUS_COLORS = {
 }
 const PRIORITY_COLORS = { Low: '#64748b', Medium: '#0e7490', High: '#d97706', Critical: '#dc2626' }
 const CATEGORY_ICON = { Construction: '🏗️', Maintenance: '🔧' }
-const INSTITUTE_INFO = { name: 'GUIDANCE NAVODAYA & SAINIK INSTITUTE (GNSI)', tagline: 'NVS · Sainik School · RMS Entrance Coaching', address: 'Khangabok, Thoubal, Manipur, India' }
+// Name / address follow System Settings → Basic Info.
+const INSTITUTE_INFO = {
+  get name() { const n = sysValue('school_name'); return n ? n.toUpperCase() : 'GUIDANCE NAVODAYA & SAINIK INSTITUTE (GNSI)' },
+  tagline: 'NVS · Sainik School · RMS Entrance Coaching',
+  get address() { return sysOr('school_address', 'Khangabok, Thoubal, Manipur, India') },
+}
 
 const emptyProject = {
   name: '', category: 'Construction', description: '', contractor: '', contractor_phone: '', budget_amount: '',

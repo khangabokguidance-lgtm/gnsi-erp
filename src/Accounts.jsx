@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useRef, useCallback, Fragment } from 'react'
 import { supabase } from './supabase'
+import { sysOr, sysValue } from './systemSettings'
 import { isAdminRole } from './roles'
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -57,12 +58,13 @@ const DEFAULT_LOWER_TRUST_ROLES  = ['superintendent']
 
 // ── institute info (letterhead used by the Report Generator) ───────────────
 // Edit these once — every generated PDF / DOCX / Excel report reads from here.
+// Name / address / phone / email follow System Settings → Basic Info.
 const INSTITUTE_INFO = {
-  name    : 'GUIDANCE NAVODAYA & SAINIK INSTITUTE (GNSI)',
+  get name()    { const n = sysValue('school_name'); return n ? n.toUpperCase() : 'GUIDANCE NAVODAYA & SAINIK INSTITUTE (GNSI)' },
   tagline : 'NVS · Sainik School · RMS Entrance Coaching',
-  address : 'Khangabok, Thoubal, Manipur, India',
-  phone   : '',   // TODO: add contact number
-  email   : '',   // TODO: add contact email
+  get address() { return sysOr('school_address', 'Khangabok, Thoubal, Manipur, India') },
+  get phone()   { return sysValue('school_phone') },
+  get email()   { return sysValue('school_email') },
   website : 'guidancekhangabok.in',
 }
 

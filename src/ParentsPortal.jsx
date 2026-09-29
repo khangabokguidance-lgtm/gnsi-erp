@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect } from 'react';
 // Parents use their own Supabase client/session (see parentSupabase.js).
 import { parentSupabase as supabase } from './parentSupabase';
 import './privateFiles';
+import { loadSystemSettings, useSystemSettings, getInstitute, phoneDigits, razorpayEnabled } from './systemSettings';
 
 // Escapes text before it is placed inside HTML strings (receipts, report
 // cards, progress reports). Names/addresses/remarks come from the database
@@ -577,7 +578,7 @@ function MyPinCard({ pin, student }) {
       <div style={{ fontSize: 13, lineHeight: 1.55, color: 'rgba(255,255,255,.9)' }}>
         📌 <b>Please save this PIN for future use</b> — write it down or keep it in your phone.<br />
         If you forget it, please contact the <b>institute office</b>{' '}
-        (<a href="tel:+918974298074" style={{ color: '#E2C57E', fontWeight: 700, textDecoration: 'none' }}>+91 89742 98074</a>).
+        (<a href={`tel:+${phoneDigits()}`} style={{ color: '#E2C57E', fontWeight: 700, textDecoration: 'none' }}>{getInstitute().phone}</a>).
       </div>
       {!saved && <button onClick={markSaved} style={{ ...btn, marginTop: 12, background: '#E2C57E', border: 'none' }}>✓ I have saved my PIN</button>}
       {saved && <button onClick={() => setShow(false)} style={{ ...btn, marginTop: 12 }}>Close</button>}
@@ -586,6 +587,9 @@ function MyPinCard({ pin, student }) {
 }
 
 export default function ParentsPortal({ isOpen, onClose }) {
+  // Institute details (receipts, office phone) follow System Settings.
+  useSystemSettings();
+  useEffect(() => { if (isOpen) loadSystemSettings(); }, [isOpen]);
   const windowWidth = useWindowWidth();
   const isMobile = windowWidth < 640;
 
@@ -1382,6 +1386,11 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
   const handlePayNow = async () => {
     if (!student || fees.status !== 'ready') return;
+    // System Settings → Integrations → Razorpay switched off.
+    if (!razorpayEnabled()) {
+      alert(`Online payment is not available right now. Please pay at the institute office${getInstitute().phone ? ` or call ${getInstitute().phone}` : ''}.`);
+      return;
+    }
     const nextDue = pickNextDue(fees.data);
     if (!nextDue) {
       alert('No specific due found to pay online right now. Please contact the office.');

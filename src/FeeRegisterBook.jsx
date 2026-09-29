@@ -15,6 +15,7 @@ const fmtMonthBefore = d => { const x = new Date(String(d).slice(0, 10) + 'T00:0
 import { useEffect, useMemo, useState } from 'react'
 import { getFeeRates, normalizeSessionYear, getSessionYear, gccStr } from './feeEngine'
 import { printFeeReceipt } from './premiumReceipt'
+import { instNameHTML, instAddressHTML, getInstitute, whatsappEnabled } from './systemSettings'
 import { ledgerUrl } from './ledgerLink'
 import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, buildStatement, parentPhone, reminderText } from './feeLedgerModel'
 import { StatementView, InsightsView } from './FeeLedgerTools'
@@ -186,7 +187,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
         <div className="frb-tabs">
           <button className="frb-chip" onClick={copyLink} title={ledgerUrl(student.gcc_no)}>{copied ? '✓ Link copied' : '🔗 Copy ledger link'}</button>
           <button className="frb-chip" onClick={() => printRegister(student, reg, bookRows, session, bookScope)}>🖨️ Print register</button>
-          <button className="frb-chip" onClick={sendReminder} title={parentPhone(student) ? `Send to +${parentPhone(student)}` : 'No parent phone on file'}>📲 WhatsApp reminder</button>
+          {whatsappEnabled() && <button className="frb-chip" onClick={sendReminder} title={parentPhone(student) ? `Send to +${parentPhone(student)}` : 'No parent phone on file'}>📲 WhatsApp reminder</button>}
           <button className="frb-chip" onClick={copyReminder}>📋 Copy reminder</button>
           <button className="frb-chip" onClick={() => printDuesNotice(student, reg, session, arrearsBySession)}>📄 Dues notice</button>
           <button className="frb-chip" onClick={doExport}>⬇️ Excel</button>
@@ -196,7 +197,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
 
       <div className="frb-page">
         <div className="frb-head">
-          <div className="frb-inst">Guidance Navodaya &amp; Sainik Institute · Khangabok</div>
+          <div className="frb-inst">{getInstitute().name} · {getInstitute().address}</div>
           <div className="frb-title">Fee Collection Register — Session {shortSession(session)}</div>
           <div className="frb-fields">
             <div className="frb-f"><b>Name</b><span>{student.name}</span></div>
@@ -364,7 +365,7 @@ function printRegister(student, reg, bookRows, session, bookScope) {
   .sig{display:flex;justify-content:space-between;margin-top:36px;font-size:10px;color:#6b7690}.sig div{border-top:1px solid #1f2a44;padding-top:4px;width:180px;text-align:center}
   @page{size:A4 landscape;margin:10mm}.np{margin-top:14px}@media print{.np{display:none}}
   </style></head><body>
-  <div class="inst">Guidance Navodaya &amp; Sainik Institute · Khangabok, Thoubal, Manipur</div>
+  <div class="inst">${instNameHTML()} · ${instAddressHTML()}</div>
   <h1>Fee Collection Register — Session ${escH(shortSession(session))}</h1>
   <div class="f"><div><b>Name</b><span>${escH(student.name)}</span></div><div><b>GCC No.</b><span>GCC-${escH(student.gcc_no)}</span></div><div><b>Adm. No.</b><span>${escH(student.admission_no || '—')}</span></div><div><b>Course</b><span>${escH([student.course, student.batch].filter(Boolean).join(' · ') || '—')}</span></div><div><b>Hostel</b><span>${escH(student.hostel_type || '—')}</span></div><div><b>Admitted</b><span>${escH(fmtDate(student.admission_date))}</span></div></div>
   <h2>Month-wise register</h2>

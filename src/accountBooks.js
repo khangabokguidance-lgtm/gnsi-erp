@@ -8,6 +8,7 @@
 import { supabase } from './supabase'
 import { fetchAllPages } from './StudyMaterialBridge'
 import { fmt, fmtDate, escH } from './feeLedgerModel'
+import { instNameHTML } from './systemSettings'
 
 // Same rule as Accounts.jsx: absent status = legacy Confirmed; anything but
 // 'Confirmed' (Pending, Void, …) is not real money.
@@ -99,7 +100,7 @@ function openDoc(title, body, landscape = false) {
 }
 const range = (from, to) => from === to ? fmtDate(from) : `${fmtDate(from)} – ${fmtDate(to)}`
 const list = pairs => pairs.map(([k, v]) => `<p><span>${escH(k)}</span><b>₹${fmt(v)}</b></p>`).join('') || '<p>—</p>'
-const HEAD = '<div class="inst">Guidance Navodaya &amp; Sainik Institute</div>'
+const head = () => `<div class="inst">${instNameHTML()}</div>`
 const bal = v => v < 0 ? `(${fmt(-v)})` : fmt(v)
 export const MONEY_LABEL = { all: 'All money (cash + bank)', cash: 'Cash in hand', bank: 'Bank / UPI / Card' }
 
@@ -107,7 +108,7 @@ export function printExpenseBook(book, from, to) {
   let n = 0
   const body = book.days.map(d => d.rows.map(x => `<tr><td>${++n}</td><td>${escH(fmtDate(x.date))}</td><td>${escH(x.head)}${x.sub ? ' › ' + escH(x.sub) : ''}</td><td>${escH(x.party || '—')}</td><td>${escH(x.note)}</td><td>${escH(x.mode)}</td><td>${escH(x.account)}</td><td>${escH(x.by || '—')}</td><td class="num">${fmt(x.amount)}</td></tr>`).join('')
     + `<tr class="sub"><td colspan="8">${escH(fmtDate(d.date))} — ${d.rows.length} entr${d.rows.length === 1 ? 'y' : 'ies'}</td><td class="num">${fmt(d.total)}</td></tr>`).join('')
-  openDoc(`Expenditure Day Book ${range(from, to)}`, `${HEAD}<h1>Expenditure Day Book — ${escH(range(from, to))}</h1>
+  openDoc(`Expenditure Day Book ${range(from, to)}`, `${head()}<h1>Expenditure Day Book — ${escH(range(from, to))}</h1>
   <div class="kpis"><div><b>Spent</b><span class="out">₹${fmt(book.total)}</span></div><div><b>Entries</b><span>${book.count}</span></div><div><b>Days</b><span>${book.days.length}</span></div><div><b>Heads</b><span>${book.byHead.length}</span></div></div>
   <div class="split"><div><h2>By head</h2>${list(book.byHead)}</div><div><h2>By payment mode</h2>${list(book.byMode)}</div><div><h2>By paid to</h2>${list(book.byParty.slice(0, 12))}</div></div>
   <table><thead><tr><th>#</th><th>Date</th><th>Head</th><th>Paid to</th><th>Particulars</th><th>Mode</th><th>Account</th><th>Entered by</th><th>Amount (₹)</th></tr></thead><tbody>${body || '<tr><td colspan="9">No expenditure in this period.</td></tr>'}</tbody>
@@ -122,7 +123,7 @@ export function printCashBook(cb, from, to, money) {
   const maxN = Math.max(cb.incomeByHead.length, cb.expenseByHead.length)
   const ie = Array.from({ length: maxN }, (_, i) => { const a = cb.incomeByHead[i], b = cb.expenseByHead[i]; return `<tr><td>${a ? escH(a[0]) : ''}</td><td class="num in">${a ? fmt(a[1]) : ''}</td><td>${b ? escH(b[0]) : ''}</td><td class="num out">${b ? fmt(b[1]) : ''}</td></tr>` }).join('')
   const net = cb.totalIn - cb.totalOut
-  openDoc(`Income & Expenditure Register ${range(from, to)}`, `${HEAD}<h1>Income &amp; Expenditure Register — ${escH(range(from, to))}</h1>
+  openDoc(`Income & Expenditure Register ${range(from, to)}`, `${head()}<h1>Income &amp; Expenditure Register — ${escH(range(from, to))}</h1>
   <div class="muted" style="margin:-6px 0 8px;font-size:10.5px">Balance tracks: ${escH(MONEY_LABEL[money])}</div>
   <div class="kpis"><div><b>Opening balance</b><span>₹${bal(cb.opening)}</span></div><div><b>Income</b><span class="in">₹${fmt(cb.totalIn)}</span></div><div><b>Expenditure</b><span class="out">₹${fmt(cb.totalOut)}</span></div><div><b>Closing balance</b><span>₹${bal(cb.closing)}</span></div></div>
   <h2>Income &amp; Expenditure account</h2>

@@ -4,6 +4,7 @@ import { supabase } from './supabase'
 import { getAllStudents } from './studentQueries'
 import { PremiumHero, PREMIUM_CSS } from './staffPhotos'
 import { printFeeReceipt } from './premiumReceipt'
+import { instNameHTML, instAddressHTML, getInstitute } from './systemSettings'
 import FeeRegisterBook from './FeeRegisterBook'
 import PrintAllLedgers from './PrintAllLedgers'
 import FeeDayBook from './FeeDayBook'
@@ -116,8 +117,8 @@ const HEADER = (right) => `
     <div class="crest">GN</div>
     <div style="flex:1;min-width:0">
       <div class="tag">Est. 2016 · Residential Coaching</div>
-      <div class="inst">Guidance Navodaya &amp; Sainik Institute</div>
-      <div class="sub">Khangabok, Thoubal, Manipur · guidancekhangabok.in · +91 89742 98074</div>
+      <div class="inst">${instNameHTML()}</div>
+      <div class="sub">${instAddressHTML()} · guidancekhangabok.in${getInstitute().phone ? ` · ${escH(getInstitute().phone)}` : ''}</div>
     </div>
     ${right}
   </div><div class="goldbar"></div>`

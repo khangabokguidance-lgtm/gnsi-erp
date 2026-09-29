@@ -4,6 +4,7 @@
 // Built on the same model as each student's own ledger (feeLedgerModel.js).
 import { gccStr } from './feeEngine'
 import { fmt, fmtDate, escH, shortSession, toEntries } from './feeLedgerModel'
+import { instNameHTML } from './systemSettings'
 
 export const HEAD = { admission: 'Admission', item: 'Kit / Items', advance: 'Advance', course: 'Course Fee', flat: 'Flat Fee' }
 export const localISO = d => { const x = new Date(d); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}` }
@@ -66,7 +67,7 @@ export function printDayBook(book, from, to) {
   let n = 0
   const days = book.days.map(d => d.rows.map(x => `<tr><td>${++n}</td><td>${escH(fmtDate(x.date))}</td><td>${escH(x.receipt || '—')}</td><td>${escH(x.student.name)}</td><td>${escH(x.gcc)}</td><td>${escH(x.particulars)}</td><td>${escH(x.period)}</td><td>${escH(x.mode || '—')}${x.ref ? ' · ' + escH(x.ref) : ''}</td><td>${escH(x.by || '—')}</td><td class="num">${fmt(x.amount)}</td></tr>`).join('')
     + `<tr class="sub"><td colspan="9">${escH(fmtDate(d.date))} — ${d.rows.length} entr${d.rows.length === 1 ? 'y' : 'ies'}, ${d.receipts} receipt${d.receipts === 1 ? '' : 's'}</td><td class="num">${fmt(d.total)}</td></tr>`).join('')
-  openDoc(`Day Book ${range(from, to)}`, `<div class="inst">Guidance Navodaya &amp; Sainik Institute · Fee Day Book</div><h1>Day Book — ${escH(range(from, to))}</h1>
+  openDoc(`Day Book ${range(from, to)}`, `<div class="inst">${instNameHTML()} · Fee Day Book</div><h1>Day Book — ${escH(range(from, to))}</h1>
   <div class="kpis"><div><b>Collected</b><span class="P">₹${fmt(book.total)}</span></div><div><b>Receipts</b><span>${book.receipts}</span></div><div><b>Students</b><span>${book.students}</span></div><div><b>Days</b><span>${book.days.length}</span></div></div>
   <div class="split"><div><h2>By payment mode</h2>${list(book.byMode)}</div><div><h2>By fee head</h2>${list(book.byHead)}</div><div><h2>By collector (cash closing)</h2>${list(book.byCollector)}</div></div>
   <table><thead><tr><th>#</th><th>Date</th><th>Receipt</th><th>Student</th><th>GCC</th><th>Particulars</th><th>For</th><th>Mode / Ref</th><th>Collected by</th><th>Amount (₹)</th></tr></thead><tbody>${days || '<tr><td colspan="10">No receipts in this period.</td></tr>'}</tbody>
@@ -95,7 +96,7 @@ export function printMonthlyLedger(items, session, scope) {
     <td class="num ${x.reg.admission ? (x.reg.admission.due ? 'D' : 'P') : 'B'}">${x.reg.admission ? (x.reg.admission.due ? `DUE ${fmt(x.reg.admission.due)}` : fmt(x.reg.admission.paidAmt)) : '—'}</td>
     ${x.reg.rows.map(r => `<td class="num ${CELL[r.status][0]}">${cellText(r)}</td>`).join('')}
     <td class="num P">${fmt(x.reg.totalPaid)}</td><td class="num ${x.reg.totalDue ? 'D' : 'P'}">${fmt(x.reg.totalDue)}</td></tr>`).join('')
-  openDoc(`Monthly Fee Ledger ${shortSession(session)}`, `<div class="inst">Guidance Navodaya &amp; Sainik Institute · Monthly Fee Ledger</div><h1>Monthly Fee Ledger — Session ${escH(shortSession(session))}${scope ? ' · ' + escH(scope) : ''}</h1>
+  openDoc(`Monthly Fee Ledger ${shortSession(session)}`, `<div class="inst">${instNameHTML()} · Monthly Fee Ledger</div><h1>Monthly Fee Ledger — Session ${escH(shortSession(session))}${scope ? ' · ' + escH(scope) : ''}</h1>
   <table><thead><tr><th>#</th><th>Student</th><th class="num">Admission</th>${head}<th class="num">Paid</th><th class="num">Due</th></tr></thead><tbody>${body}</tbody>
   <tfoot><tr><td colspan="3">Collected</td>${totals.map(t => `<td class="num P">${fmt(t.collected)}</td>`).join('')}<td class="num">${fmt(items.reduce((s, x) => s + x.reg.totalPaid, 0))}</td><td></td></tr>
   <tr><td colspan="3">Outstanding</td>${totals.map(t => `<td class="num D">${t.outstanding ? fmt(t.outstanding) : '—'}</td>`).join('')}<td></td><td class="num D">${fmt(items.reduce((s, x) => s + x.reg.totalDue, 0))}</td></tr></tfoot></table>

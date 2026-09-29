@@ -1,5 +1,6 @@
 // feeLedgerActions.js — print, WhatsApp and Excel actions for the Student Fee Ledger.
 import { fmt, fmtDate, escH, shortSession, parentPhone, reminderText } from './feeLedgerModel'
+import { nextPayByDate, instNameHTML, instAddressHTML } from './systemSettings'
 
 // ── Actions ──────────────────────────────────────────────────────────────────
 export function openWhatsAppReminder(student, reg, session, arrears = []) {
@@ -27,7 +28,7 @@ function openPrint(title, body) {
   setTimeout(() => { try { w.focus(); w.print() } catch { /* user can press Print */ } }, 700)
 }
 
-const header = (student, title, session) => `<div class="hdr"><div class="inst">Guidance Navodaya &amp; Sainik Institute · Khangabok, Thoubal, Manipur</div><h1>${escH(title)}</h1>
+const header = (student, title, session) => `<div class="hdr"><div class="inst">${instNameHTML()} · ${instAddressHTML()}</div><h1>${escH(title)}</h1>
 <div class="meta"><div><b>Student</b>${escH(student.name)}</div><div><b>GCC No.</b>GCC-${escH(student.gcc_no)}</div><div><b>Adm. No.</b>${escH(student.admission_no || '—')}</div>
 <div><b>Course</b>${escH([student.course, student.batch].filter(Boolean).join(' · ') || '—')}</div><div><b>Hostel</b>${escH(student.hostel_type || '—')}</div><div><b>Session</b>${escH(shortSession(session))}</div></div></div>`
 
@@ -51,7 +52,8 @@ export function printDuesNotice(student, reg, session, arrears = []) {
     ...dueRows.map(r => [`${r.head} — ${r.month} ${r.year}${r.status === 'short' ? ' (balance)' : ''}`, r.due]),
   ]
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
-  const dueBy = new Date(Date.now() + 7 * 86400000).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+  // Next fee due day from System Settings → Academic (else one week).
+  const dueBy = nextPayByDate().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
   const body = items.length
     ? `<p>Date: ${escH(today)}</p><p>To,<br/>${escH(student.father_name || 'The Parent / Guardian')}<br/>of ${escH(student.name)} (GCC-${escH(student.gcc_no)})</p>
        <p><b>Subject: Reminder for pending fees — session ${escH(shortSession(session))}</b></p>

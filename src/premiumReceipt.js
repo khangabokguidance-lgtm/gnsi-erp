@@ -4,6 +4,8 @@
 //  letterhead · FEE RECEIPT bar · barcode · boxed student grid · itemised
 //  bill · gross / concession / NET PAID · amount in words · PAID stamp.
 // ════════════════════════════════════════════════════════════════════════
+import { getInstitute } from './systemSettings'
+
 const escH = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
 const money = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtDate = d => { if (!d) return '—'; const x = new Date(d); return isNaN(x) ? String(d) : x.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }
@@ -162,15 +164,21 @@ export const esc = escH
 export { money, fmtDate }
 
 // Letterhead + title band. title e.g. 'FEE RECEIPT'; tag e.g. 'ORIGINAL · PAID'.
+// Institute name, address, phone, email, logo and year come from System
+// Settings → Basic Info / Appearance (defaults below until set).
 export function receiptHeader(title, tag = 'ORIGINAL') {
+  const inst = getInstitute()
+  const logo = /^https:\/\//.test(inst.logoUrl)
+    ? `<div class="logo" style="background:#fff;padding:3px"><img src="${escH(inst.logoUrl)}" alt="" style="width:100%;height:100%;object-fit:contain;border-radius:9px"/></div>`
+    : '<div class="logo">GN</div>'
   return `
     <div class="top">
-      <div class="logo">GN</div>
+      ${logo}
       <div>
-        <div class="name">Guidance Navodaya &amp; Sainik Institute</div>
-        <div class="tagline">Residential Coaching · JNVST · AISSEE · RMS · Est. 2016</div>
+        <div class="name">${escH(inst.name)}</div>
+        <div class="tagline">Residential Coaching · JNVST · AISSEE · RMS${inst.established ? ` · Est. ${escH(inst.established)}` : ''}</div>
       </div>
-      <div class="contact"><b>Khangabok, Thoubal, Manipur</b><br/>📞 +91 89742 98074<br/>🌐 guidancekhangabok.in</div>
+      <div class="contact"><b>${escH(inst.address)}</b>${inst.phone ? `<br/>📞 ${escH(inst.phone)}` : ''}${inst.email ? `<br/>✉ ${escH(inst.email)}` : ''}<br/>🌐 ${escH(inst.website)}</div>
     </div>
     <div class="band"><span class="t">${escH(title)}</span>${tag ? `<span class="p">${escH(tag)}</span>` : ''}</div>
     <div class="accent"></div>`
@@ -183,7 +191,7 @@ export function infoGrid(rows) {
 
 export function receiptSheet(inner, footLeft, footRight) {
   const printed = new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-  return `<div class="sheet">${inner}<div class="bottom"><span>${footLeft ?? `Printed: ${escH(printed)}`}</span><span>${footRight ?? 'Guidance Navodaya &amp; Sainik Institute'}</span></div></div>`
+  return `<div class="sheet">${inner}<div class="bottom"><span>${footLeft ?? `Printed: ${escH(printed)}`}</span><span>${footRight ?? escH(getInstitute().name)}</span></div></div>`
 }
 
 // Full HTML document for one or more sheets; each sheet prints on its own A4
