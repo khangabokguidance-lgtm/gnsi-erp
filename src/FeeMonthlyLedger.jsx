@@ -21,6 +21,9 @@ function Cell({ r }) {
   return <span className={`fbk-cell ${r.status}`} title={tip}>{r.status === 'due' ? '⚠ ' : r.status === 'advance' ? '↑ ' : ''}{txt}</span>
 }
 
+// This session's dues plus earlier sessions' dues brought forward.
+const bal = x => x.reg.totalDue + (x.arrears || 0)
+
 export default function FeeMonthlyLedger({ students }) {
   const current = getSessionYear()
   const sessions = useMemo(() => { const y = Number(current.slice(0, 4)); return [0, 1, 2].map(k => `${y - k}-${y - k + 1}`) }, [current])
@@ -63,19 +66,20 @@ export default function FeeMonthlyLedger({ students }) {
 
   const items = useMemo(() => {
     const t = q.trim().toLowerCase()
-    const xs = (ready ? built.items : []).filter(({ student: s, reg }) =>
+    const xs = (ready ? built.items : []).filter(x => { const s = x.student; return (
       (who === 'all' || isActive(s)) &&
       (course === 'All' || s.course === course) && (batch === 'All' || s.batch === batch) && (hostel === 'All' || s.hostel_type === hostel) &&
-      (show === 'all' || (show === 'dues' ? reg.totalDue > 0 : reg.totalDue === 0)) &&
-      (!t || [s.name, s.gcc_no, s.admission_no, s.father_name].some(v => String(v || '').toLowerCase().includes(t))))
-    const by = { name: (a, b) => String(a.student.name || '').localeCompare(String(b.student.name || '')), gcc: (a, b) => (Number(a.student.gcc_no) || 0) - (Number(b.student.gcc_no) || 0), due: (a, b) => b.reg.totalDue - a.reg.totalDue, paid: (a, b) => b.reg.totalPaid - a.reg.totalPaid }
+      (show === 'all' || (show === 'dues' ? bal(x) > 0 : bal(x) === 0)) &&
+      (!t || [s.name, s.gcc_no, s.admission_no, s.father_name].some(v => String(v || '').toLowerCase().includes(t)))) })
+    const by = { name: (a, b) => String(a.student.name || '').localeCompare(String(b.student.name || '')), gcc: (a, b) => (Number(a.student.gcc_no) || 0) - (Number(b.student.gcc_no) || 0), due: (a, b) => bal(b) - bal(a), paid: (a, b) => b.reg.totalPaid - a.reg.totalPaid }
     return [...xs].sort(by[sort])
   }, [built, ready, who, course, batch, hostel, show, q, sort])
 
   const totals = useMemo(() => monthTotals(items), [items])
   const paid = items.reduce((s, x) => s + x.reg.totalPaid, 0)
-  const due = items.reduce((s, x) => s + x.reg.totalDue, 0)
-  const withDues = items.filter(x => x.reg.totalDue > 0).length
+  const due = items.reduce((s, x) => s + bal(x), 0)
+  const bf = items.reduce((s, x) => s + (x.arrears || 0), 0)
+  const withDues = items.filter(x => bal(x) > 0).length
   const scope = [course !== 'All' && course, batch !== 'All' && batch, hostel !== 'All' && hostel, who === 'all' && 'incl. inactive'].filter(Boolean).join(' · ')
   const sel = (label, value, set, opts, extra) => (
     <label className="fbk-lbl">{label}<select className="fbk-in" value={value} onChange={e => { set(e.target.value); extra?.() }}>{opts.map(o => Array.isArray(o) ? <option key={o[0]} value={o[0]}>{o[1]}</option> : <option key={o}>{o}</option>)}</select></label>
@@ -109,7 +113,7 @@ export default function FeeMonthlyLedger({ students }) {
           <div className="fbk-kpis">
             <div className="fbk-kpi"><b>Students</b><span>{items.length}</span><small>{scope || 'all courses'} · {shortSession(session)}</small></div>
             <div className="fbk-kpi"><b>Collected</b><span style={{ color: '#146c3a' }}>₹{fmt(paid)}</span><small>this session</small></div>
-            <div className="fbk-kpi"><b>Outstanding</b><span style={{ color: due ? '#b42318' : '#146c3a' }}>₹{fmt(due)}</span><small>{withDues} student{withDues === 1 ? '' : 's'} with dues</small></div>
+            <div className="fbk-kpi"><b>Outstanding</b><span style={{ color: due ? '#b42318' : '#146c3a' }}>₹{fmt(due)}</span><small>{withDues} student{withDues === 1 ? '' : 's'} with dues{bf ? ` · incl. ₹${fmt(bf)} b/f` : ''}</small></div>
             <div className="fbk-kpi"><b>Collection rate</b><span>{paid + due ? Math.round((paid / (paid + due)) * 100) : 100}%</span><small>of fees due to date</small></div>
           </div>
           <div className="fbk-card" style={{ padding: 0 }}>
@@ -122,13 +126,16 @@ export default function FeeMonthlyLedger({ students }) {
                 </tr></thead>
                 <tbody>
                   {items.length === 0 && <tr><td className="fbk-empty" colSpan={16} style={{ textAlign: 'left' }}>No students match these filters.</td></tr>}
-                  {items.map(({ student: s, reg }) => (
+                  {items.map(({ student: s, reg, arrears }) => (
                     <tr key={s.gcc_no}>
                       <td className="stk"><LedgerLink gcc={s.gcc_no} style={{ fontWeight: 700 }}>{s.name}</LedgerLink><div className="muted" style={{ fontSize: 11 }}>GCC-{s.gcc_no}{s.batch ? ` · ${s.batch}` : ''}{s.hostel_type ? ` · ${s.hostel_type}` : ''}</div></td>
                       <td>{reg.admission ? <span className={`fbk-cell ${reg.admission.due ? 'due' : 'paid'}`} title={`Admission fee ₹${fmt(reg.admission.expected)}`}>{reg.admission.due ? `⚠ ${fmt(reg.admission.due)}` : fmt(reg.admission.paidAmt)}</span> : <span className="fbk-cell before">—</span>}</td>
                       {reg.rows.map(r => <td key={r.month}><Cell r={r} /></td>)}
                       <td className="num" style={{ color: '#146c3a', fontWeight: 700 }}>{fmt(reg.totalPaid)}</td>
-                      <td className="num" style={{ color: reg.totalDue ? '#b42318' : '#146c3a', fontWeight: 800 }}>{fmt(reg.totalDue)}</td>
+                      <td className="num" style={{ color: reg.totalDue + (arrears || 0) ? '#b42318' : '#146c3a', fontWeight: 800 }}>
+                        {fmt(reg.totalDue + (arrears || 0))}
+                        {arrears > 0 && <div className="muted" style={{ fontSize: 10.5, fontWeight: 600 }} title="Unpaid from earlier sessions">incl. ₹{fmt(arrears)} b/f</div>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

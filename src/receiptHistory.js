@@ -60,5 +60,5 @@ export async function loadReceiptHistory(d) {
   }
   const previous = [...byRcpt.values()].sort((x, y) => String(y.date).localeCompare(String(x.date))).slice(0, 5)
 
-  return { session, months, previousMonth, previous, dueAfter: reg.totalDue, dueMonths: reg.rows.filter(r => r.status === 'due').map(r => `${r.month.slice(0, 3)} ${r.year}`), sessionPaid: reg.totalPaid }
+  return { session, months, previousMonth, previous, dueAfter: reg.totalDue, dueMonths: reg.rows.filter(r => r.due > 0).map(r => `${r.month.slice(0, 3)} ${r.year}${r.status === 'short' ? ' (bal.)' : ''}`), sessionPaid: reg.totalPaid }
 }

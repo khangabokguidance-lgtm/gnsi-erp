@@ -43,10 +43,11 @@ export function printStatement(student, st, session, from, to) {
 }
 
 export function printDuesNotice(student, reg, session) {
-  const dueRows = reg.rows.filter(r => r.status === 'due')
+  // Unpaid months, and the balance of part-paid ones.
+  const dueRows = reg.rows.filter(r => r.due > 0)
   const items = [
     ...(reg.admission?.due ? [['Admission fee', reg.admission.due]] : []),
-    ...dueRows.map(r => [`${r.head} — ${r.month} ${r.year}`, r.due]),
+    ...dueRows.map(r => [`${r.head} — ${r.month} ${r.year}${r.status === 'short' ? ' (balance)' : ''}`, r.due]),
   ]
   const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
   const dueBy = new Date(Date.now() + 7 * 86400000).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })

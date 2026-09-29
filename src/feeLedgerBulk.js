@@ -5,7 +5,7 @@
 import { supabase } from './supabase'
 import { fetchAllPages } from './StudyMaterialBridge'
 import { getFeeRates, gccStr, normalizeSessionYear } from './feeEngine'
-import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister } from './feeLedgerModel'
+import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, sessionOfDate } from './feeLedgerModel'
 import { loadHostelHistory, sessionRates } from './hostelHistory'
 
 const groupByGcc = rows => {
@@ -33,6 +33,21 @@ async function loadOverrides(session) {
   return new Map((data || []).map(r => [gccStr(r.gcc_no), Number(r.flat_fee_override)]))
 }
 
+// Earlier sessions' unpaid dues, each at that session's own rates (and hostel
+// type timeline) — brought forward so a continuing student's old dues never
+// disappear. rateOfFor(sess) → (type) → Promise<rates>.
+export async function computeArrears(student, session, entries, changes, rateOfFor) {
+  const first = normalizeSessionYear(student.session) || sessionOfDate(student.admission_date)
+  const startY = Number(String(first || '').slice(0, 4)), curY = Number(String(session).slice(0, 4))
+  const bySession = []
+  for (let y = Math.max(startY, curY - 6); startY && y < curY; y++) {
+    const sess = `${y}-${y + 1}`
+    const reg = buildRegister(student, entries, sess, await sessionRates(student, sess, changes, rateOfFor(sess)))
+    if (reg.totalDue > 0) bySession.push({ session: sess, due: reg.totalDue, months: reg.rows.filter(r => r.due > 0).map(r => `${r.month.slice(0, 3)} ${r.year}`) })
+  }
+  return { arrears: bySession.reduce((t, a) => t + a.due, 0), bySession }
+}
+
 // rows: optional result of loadAllFeeRows() already in hand (the Monthly
 // Ledger tab reuses one load for every session it shows).
 export async function buildAllLedgers(students, session, { onProgress, rows: preloaded = null } = {}) {
@@ -41,20 +56,26 @@ export async function buildAllLedgers(students, session, { onProgress, rows: pre
   const [rows, overrides, { map: history }] = await Promise.all([preloaded ? Promise.resolve(preloaded) : loadAllFeeRows(), loadOverrides(session), loadHostelHistory()])
   onProgress?.('Working out each register…')
   const rateCache = new Map()
+  const overridesBySession = new Map([[session, overrides]])
   const out = []
   for (const s of students) {
     const g = gccStr(s.gcc_no)
-    const rateOf = async type => {
-      const key = [s.course || '', s.batch || '', type].join('|')
-      if (!rateCache.has(key)) rateCache.set(key, await getFeeRates(session, s.course || '', s.batch || '', type))
-      const base = rateCache.get(key)
-      return overrides.has(g) ? { ...base, flatFee: overrides.get(g) } : base
+    const rateOfFor = sess => async type => {
+      const key = [sess, s.course || '', s.batch || '', type].join('|')
+      if (!rateCache.has(key)) rateCache.set(key, await getFeeRates(sess, s.course || '', s.batch || '', type))
+      if (!overridesBySession.has(sess)) overridesBySession.set(sess, await loadOverrides(sess))
+      const base = rateCache.get(key), ov = overridesBySession.get(sess)
+      return ov.has(g) ? { ...base, flatFee: ov.get(g) } : base
     }
+    const rateOf = rateOfFor(session)
     // A mid-session hostel type change keeps earlier months at the old type's rate.
     const byMonth = await sessionRates(s, session, history.get(g), rateOf)
     const rates = typeof byMonth === 'function' ? byMonth.current : byMonth
     const entries = toEntries(s, rows.adm.get(g) || [], rows.flat.get(g) || [], rows.crs.get(g) || [])
-    out.push({ student: s, entries, rates, reg: buildRegister(s, entries, session, byMonth) })
+    const reg = buildRegister(s, entries, session, byMonth)
+    const { arrears, bySession } = await computeArrears(s, session, entries, history.get(g), rateOfFor)
+    // balance = this session's dues + earlier sessions' dues brought forward
+    out.push({ student: s, entries, rates, reg, arrears, arrearsBySession: bySession, balance: reg.totalDue + arrears })
   }
   return out
 }
@@ -65,8 +86,8 @@ const STATUS_LABEL = { paid: 'PAID', advance: 'ADVANCE', short: 'SHORT', due: 'D
 // that this fills in once the ledgers are ready.
 export function printLedgerBook(items, session, { includeDayBook = true, title = 'Fee Ledgers', win = null } = {}) {
   const totalPaid = items.reduce((s, x) => s + x.reg.totalPaid, 0)
-  const totalDue = items.reduce((s, x) => s + x.reg.totalDue, 0)
-  const withDues = items.filter(x => x.reg.totalDue > 0).length
+  const totalDue = items.reduce((s, x) => s + (x.balance ?? x.reg.totalDue), 0)
+  const withDues = items.filter(x => (x.balance ?? x.reg.totalDue) > 0).length
   const printed = new Date().toLocaleString('en-IN')
 
   const summary = `<section class="page">
@@ -79,12 +100,12 @@ export function printLedgerBook(items, session, { includeDayBook = true, title =
       <div><b>Students with dues</b><span>${withDues}</span></div>
     </div>
     <table><thead><tr><th>#</th><th>GCC</th><th>Student</th><th>Course · Batch</th><th>Hostel</th><th class="num">Paid (₹)</th><th class="num">Due (₹)</th><th>Months due</th></tr></thead>
-    <tbody>${items.map((x, i) => `<tr><td>${i + 1}</td><td>${escH(x.student.gcc_no)}</td><td>${escH(x.student.name)}</td><td>${escH([x.student.course, x.student.batch].filter(Boolean).join(' · '))}</td><td>${escH(x.student.hostel_type || '—')}</td><td class="num">${fmt(x.reg.totalPaid)}</td><td class="num${x.reg.totalDue ? ' bad' : ''}">${fmt(x.reg.totalDue)}</td><td>${x.reg.rows.filter(r => r.status === 'due').map(r => r.month.slice(0, 3)).join(', ') || '—'}</td></tr>`).join('')}</tbody>
+    <tbody>${items.map((x, i) => `<tr><td>${i + 1}</td><td>${escH(x.student.gcc_no)}</td><td>${escH(x.student.name)}</td><td>${escH([x.student.course, x.student.batch].filter(Boolean).join(' · '))}</td><td>${escH(x.student.hostel_type || '—')}</td><td class="num">${fmt(x.reg.totalPaid)}</td><td class="num${(x.balance ?? x.reg.totalDue) ? ' bad' : ''}">${fmt((x.balance ?? x.reg.totalDue))}</td><td>${[...(x.arrearsBySession || []).map(a => `b/f ${shortSession(a.session)} ₹${fmt(a.due)}`), ...x.reg.rows.filter(r => r.due > 0).map(r => r.month.slice(0, 3) + (r.status === 'short' ? ' (bal.)' : ''))].join(', ') || '—'}</td></tr>`).join('')}</tbody>
     <tfoot><tr><td colspan="5">Total</td><td class="num">${fmt(totalPaid)}</td><td class="num">${fmt(totalDue)}</td><td></td></tr></tfoot></table>
     <div class="foot">Printed ${escH(printed)} · ${items.length} ledger${items.length === 1 ? '' : 's'} follow, one per page.</div>
   </section>`
 
-  const pages = items.map(({ student: s, entries, reg }) => {
+  const pages = items.map(({ student: s, entries, reg, arrears = 0 }) => {
     const mRows = [
       ...(reg.admission ? [`<tr><td class="hand">Admission</td><td>Admission Fee</td><td class="num">${fmt(reg.admission.expected)}</td><td class="num">${reg.admission.paidAmt ? fmt(reg.admission.paidAmt) : '—'}</td><td>${escH(reg.admission.paid[0] ? fmtDate(reg.admission.paid[0].date) : '—')}</td><td>${escH(reg.admission.paid.map(x => x.receipt).filter(Boolean).join(', ') || '—')}</td><td class="${reg.admission.due ? 'bad' : 'ok'}">${reg.admission.due ? `DUE ₹${fmt(reg.admission.due)}` : 'PAID'}</td></tr>`] : []),
       ...reg.rows.map(r => `<tr><td class="hand">${r.month.slice(0, 3)} ${r.year}</td><td>${r.head}</td><td class="num">${fmt(r.expected)}</td><td class="num">${r.paidAmt ? fmt(r.paidAmt) : '—'}</td><td>${escH(r.paid[0] ? fmtDate(r.paid[0].date) : '—')}</td><td>${escH(r.paid.map(x => x.receipt).filter(Boolean).join(', ') || '—')}</td><td class="${r.status === 'due' ? 'bad' : r.status === 'paid' || r.status === 'advance' ? 'ok' : r.status === 'short' ? 'warn' : 'muted'}">${STATUS_LABEL[r.status]}${r.status === 'due' ? ` ₹${fmt(r.due)}` : r.status === 'short' ? ` ₹${fmt(r.shortBy)}` : ''}</td></tr>`),
@@ -96,9 +117,9 @@ export function printLedgerBook(items, session, { includeDayBook = true, title =
     return `<section class="page">
       <div class="inst">Guidance Navodaya &amp; Sainik Institute · Fee Collection Register</div>
       <h2>${escH(s.name)} <small>GCC-${escH(s.gcc_no)} · Session ${escH(shortSession(session))}</small></h2>
-      <div class="f"><div><b>Adm. No.</b>${escH(s.admission_no || '—')}</div><div><b>Course</b>${escH([s.course, s.batch].filter(Boolean).join(' · ') || '—')}</div><div><b>Hostel</b>${escH(s.hostel_type || '—')}</div><div><b>Admitted</b>${escH(fmtDate(s.admission_date))}</div><div><b>Paid this session</b>₹${fmt(reg.totalPaid)}</div><div><b>Balance due</b><span class="${reg.totalDue ? 'bad' : 'ok'}">₹${fmt(reg.totalDue)}</span></div></div>
+      <div class="f"><div><b>Adm. No.</b>${escH(s.admission_no || '—')}</div><div><b>Course</b>${escH([s.course, s.batch].filter(Boolean).join(' · ') || '—')}</div><div><b>Hostel</b>${escH(s.hostel_type || '—')}</div><div><b>Admitted</b>${escH(fmtDate(s.admission_date))}</div><div><b>Paid this session</b>₹${fmt(reg.totalPaid)}</div><div><b>Balance due</b><span class="${reg.totalDue + arrears ? 'bad' : 'ok'}">₹${fmt(reg.totalDue + arrears)}${arrears ? ` <small>(incl. ₹${fmt(arrears)} b/f)</small>` : ''}</span></div></div>
       <table><thead><tr><th>Month</th><th>Fee head</th><th class="num">Due (₹)</th><th class="num">Paid (₹)</th><th>Date</th><th>Receipt</th><th>Status</th></tr></thead><tbody>${mRows}</tbody>
-      <tfoot><tr><td colspan="3">Total</td><td class="num">${fmt(reg.totalPaid)}</td><td colspan="2" style="text-align:right">Balance due</td><td class="num">₹${fmt(reg.totalDue)}</td></tr></tfoot></table>
+      <tfoot><tr><td colspan="3">Total</td><td class="num">${fmt(reg.totalPaid)}</td><td colspan="2" style="text-align:right">Balance due${arrears ? ` (incl. ₹${fmt(arrears)} b/f)` : ''}</td><td class="num">₹${fmt(reg.totalDue + arrears)}</td></tr></tfoot></table>
       ${includeDayBook ? `<h3>Day book</h3><table><thead><tr><th>#</th><th>Date</th><th>Receipt</th><th>Particulars</th><th>For</th><th>Mode</th><th class="num">Amount (₹)</th><th class="num">Progressive (₹)</th></tr></thead><tbody>${bRows || '<tr><td colspan="8" class="muted">No payments this session.</td></tr>'}</tbody></table>` : ''}
       <div class="sig"><span>Printed ${escH(printed)}</span><div>Accounts Office</div></div>
     </section>`

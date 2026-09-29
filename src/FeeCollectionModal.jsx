@@ -198,7 +198,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   // NOTE: this depends on admission_sessions / admissions / students all
   // using the same "YYYY-YYYY" string format as fee_structures.session_year
   // (e.g. "2026-2027") — confirmed and standardized across all three tables.
-  const sessionYear = app?.session || student?.session || `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
+  const [payDate,     setPayDate]     = useState(today())
 
   const resolveInitialHostel = () => {
     if (app?.hostel === 'Yes' || app?.hostel_type === 'Boarder') return 'Boarder'
@@ -221,6 +221,10 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   // FLOW FIX: null = not checked yet, false = applicant with no student row
   // yet (opened from Admissions before Enroll), true = enrolled student.
   const [hasStudentRow,     setHasStudentRow]     = useState(null)
+  // Each session's own rates: an enrolled student is billed at the rates of
+  // the session the payment falls in (so a continuing student pays this
+  // year's fees); an applicant not enrolled yet uses their application session.
+  const sessionYear = (hasStudentRow === false && app?.session) || sessionOfDate(payDate || today()) || `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
   const [dbStatus,          setDbStatus]          = useState(null)
   const [admDateSaving,     setAdmDateSaving]     = useState(false)
 
@@ -294,7 +298,6 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   const [paymentToast, setPaymentToast] = useState(null) // { amount, label } | null
   const [payMode,     setPayMode]     = useState('Cash')
   const [txnRef,      setTxnRef]      = useState('')
-  const [payDate,     setPayDate]     = useState(today())
   // ✦ Fix: currentUser was passed in as a prop but never actually used —
   // "Collected By" was a blank free-text field every time, letting staff
   // type any name (including someone else's), with no real audit trail.

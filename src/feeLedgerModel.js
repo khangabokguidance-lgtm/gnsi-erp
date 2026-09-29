@@ -89,14 +89,17 @@ export function buildRegister(student, entries, session, rates, now = new Date()
     else if (isPreAdmissionMonth(month, year, admissionDate)) status = 'before'
     else if (!monthStarted(month, year, now)) status = 'upcoming'
     else status = 'due'
-    const due = status === 'due' ? expected : 0
-    return { month, year, head, hostelType: R?.hostelType || null, expected, paid, paidAmt, waived, concessionPending, status, due, shortBy: status === 'short' ? Math.max(0, expected - paidAmt - waived) : 0 }
+    const shortBy = status === 'short' ? Math.max(0, expected - paidAmt - waived) : 0
+    // A part-paid month still owes its shortfall (until an admin approves a concession).
+    const due = status === 'due' ? expected : shortBy
+    return { month, year, head, hostelType: R?.hostelType || null, expected, paid, paidAmt, waived, concessionPending, status, due, shortBy }
   })
   // Admission fee: shown in the session it was paid in, or — if unpaid — in
   // the student's own session.
   const admEntries = entries.filter(x => x.kind === 'admission')
   const admSession = admEntries[0]?.session || normalizeSessionYear(student.session) || sessionOfDate(admissionDate)
-  const admExpected = Number((typeof rates === 'function' ? rates.current : rates)?.admissionFee ?? ADM_FEE_BASE)
+  // A repeater's admission fee is waived.
+  const admExpected = student.is_repeater ? 0 : Number((typeof rates === 'function' ? rates.current : rates)?.admissionFee ?? ADM_FEE_BASE)
   const admPaid = admEntries.reduce((s, x) => s + x.amount, 0)
   const admission = admSession === session
     ? { expected: admExpected, paid: admEntries, paidAmt: admPaid, due: Math.max(0, admExpected - admPaid) }
