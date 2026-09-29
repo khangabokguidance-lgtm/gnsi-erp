@@ -31,7 +31,8 @@ import { buildAllLedgers } from './feeLedgerBulk'
 import { courseMonthsDue, sessionOfDate } from './feeLedgerModel'
 import { CONCESSION_REASONS, countPendingConcessions } from './feeConcessions'
 import LowFeeApprovals from './LowFeeApprovals'
-import { HOSTEL_MISMATCH_REASON, bedConflict, loadActiveBeds, fixHostelType, logHostelOverride } from './hostelFeeCheck'
+import HostelIssues from './HostelIssues'
+import { HOSTEL_MISMATCH_REASON, bedConflict, loadActiveBeds, fixHostelType, logHostelOverride, countHostelIssues } from './hostelFeeCheck'
 
 // ── Razorpay config ─────────────────────────────────────────────────────────
 // Public key only — safe to ship to the browser. The secret key lives ONLY
@@ -4159,6 +4160,10 @@ export default function Fees() {
   const [lowFeePending, setLowFeePending] = useState(0)
   const refreshLowFeePending = useCallback(() => { countPendingConcessions().then(setLowFeePending) }, [])
   useEffect(() => { if (isAdmin) refreshLowFeePending() }, [isAdmin, refreshLowFeePending])
+  // Open hostel-type issues (record ≠ hostel bed + pending wrong-type approvals).
+  const [hostelIssueCount, setHostelIssueCount] = useState(0)
+  const refreshHostelIssues = useCallback(() => { countHostelIssues(students).then(setHostelIssueCount).catch(() => {}) }, [students])
+  useEffect(() => { if (isAdmin && students.length) refreshHostelIssues() }, [isAdmin, students.length, refreshHostelIssues])
   useEffect(() => {
     if (!isAdmin) return
     let cancelled = false
@@ -4490,6 +4495,7 @@ export default function Fees() {
     ...(isAdmin ? [{ id: 'warnings', label: '⚠️ Audit Warnings' }] : []),
     ...(isAdmin ? [{ id: 'pendingApprovals', label: pendingApprovalCount ? `🔏 Pending Approvals (${pendingApprovalCount})` : '🔏 Pending Approvals' }] : []),
     ...(isAdmin ? [{ id: 'lowFee', label: lowFeePending ? `🔎 Low-fee Approvals (${lowFeePending})` : '🔎 Low-fee Approvals' }] : []),
+    ...(isAdmin ? [{ id: 'hostelIssues', label: hostelIssueCount ? `🏠 Hostel Type Issues (${hostelIssueCount})` : '🏠 Hostel Type Issues' }] : []),
   ]
 
   // ── Advanced filter state (shared across live + admin tabs) ──────────────
@@ -5115,6 +5121,10 @@ export default function Fees() {
       {tab === 'lowFee' && (
         <LowFeeApprovals students={students} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees}
           isAdmin={isAdmin} currentUser={currentUser} onChanged={() => { refreshLowFeePending(); loadAll() }} />
+      )}
+      {tab === 'hostelIssues' && (
+        <HostelIssues students={students} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees}
+          isAdmin={isAdmin} currentUser={currentUser} onChanged={() => { refreshHostelIssues(); refreshLowFeePending(); loadAll() }} />
       )}
       {tab === 'pendingApprovals' && (
         <PendingApprovalsTab isAdmin={isAdmin} currentUser={currentUser} adminCount={adminCount} onRefresh={loadAll} />
