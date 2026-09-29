@@ -31,6 +31,7 @@ import { buildAllLedgers } from './feeLedgerBulk'
 import { courseMonthsDue, sessionOfDate } from './feeLedgerModel'
 import { CONCESSION_REASONS, countPendingConcessions } from './feeConcessions'
 import LowFeeApprovals from './LowFeeApprovals'
+import { HOSTEL_MISMATCH_REASON, bedConflict, loadActiveBeds, fixHostelType, logHostelOverride } from './hostelFeeCheck'
 
 // ── Razorpay config ─────────────────────────────────────────────────────────
 // Public key only — safe to ship to the browser. The secret key lives ONLY
@@ -2690,6 +2691,18 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
   const hostelType = student?.hostel_type || 'Day Scholar'
 
+  // Hostel bed vs the student's recorded hostel type (null = not known yet).
+  const [hasBed, setHasBed] = useState(null)
+  const [bedFor, setBedFor] = useState(null)
+  const [hostelFixing, setHostelFixing] = useState(false)
+  useEffect(() => {
+    if (student?.id == null) return
+    let live = true
+    loadActiveBeds([student.id]).then(beds => { if (live) { setHasBed(beds ? beds.has(String(student.id)) : null); setBedFor(student.id) } })
+    return () => { live = false }
+  }, [student?.id])
+  const bedIssue = student && bedFor === student.id ? bedConflict(hostelType, hasBed) : null
+
   // ✦ Bug fix: every fee rate lookup below previously used
   // `${CURRENT_YEAR}-${CURRENT_YEAR + 1}` (today's computed session)
   // regardless of which session the student was actually admitted in. A
@@ -2937,8 +2950,56 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // the Cash/Bank/UPI-manual save path and the Razorpay checkout path, so the
   // two never drift out of sync on what's actually being charged.
   // How far a course line is below its standard (Fee Setup) rate, in ₹ (0 if not below).
-  const lowFeeGap = r => { const std = Number(r.std) || 0, amt = Number(r.amount) || 0; return std > 0 && amt > 0 && amt < std ? std - amt : 0 }
+  // A line charged at another hostel type than the student's record is measured
+  // against the student's own rate (r.own), so a Boarder charged the Day Scholar
+  // rate shows up as a low fee that needs admin approval.
+  const isWrongType = r => !!r.hostelType && r.hostelType !== hostelType
+  const stdOf = r => (isWrongType(r) && Number(r.own) > 0 ? Number(r.own) : Number(r.std) || 0)
+  const lowFeeGap = r => { const std = stdOf(r), amt = Number(r.amount) || 0; return std > 0 && amt > 0 && amt < std ? std - amt : 0 }
   const lowFeeRows = crsfRows.filter(r => r.for_month && lowFeeGap(r) > 0)
+  // Charged at a dearer hostel type than the student's record — admin only.
+  const overTypeRows = crsfRows.filter(r => r.for_month && isWrongType(r) && stdOf(r) > 0 && Number(r.amount) > stdOf(r))
+  const reasonOf = r => r.reason || (isWrongType(r) ? HOSTEL_MISMATCH_REASON : '')
+
+  // Shared by Save and Razorpay: low-fee reasons, and the hostel-type checks
+  // that need an admin. Returns true when the payment may go ahead.
+  const approvalGate = async () => {
+    const noReason = lowFeeRows.find(r => !reasonOf(r) || ((reasonOf(r) === 'Other' || isWrongType(r)) && !(r.reasonNote || '').trim()))
+    if (noReason) {
+      showToast(`${noReason.for_month}: ₹${lowFeeGap(noReason).toLocaleString('en-IN')} below the standard fee — ${isWrongType(noReason) ? `charged at the ${noReason.hostelType} rate for a ${hostelType}; explain why` : `choose a reason${noReason.reason === 'Other' ? ' and explain it' : ''}`} before saving.`, '#dc2626')
+      return false
+    }
+    const issues = []
+    if (bedIssue) issues.push(`${student.name} is ${bedIssue.message}.`)
+    overTypeRows.forEach(r => issues.push(`${r.for_month}: charged at the ${r.hostelType} rate (₹${Number(r.amount).toLocaleString('en-IN')}) but ${student.name} is a ${hostelType} (₹${stdOf(r).toLocaleString('en-IN')}).`))
+    if (issues.length) {
+      if (!isAdmin) {
+        showToast(`Wrong hostel-type fee — needs an admin. ${issues[0]}`, '#dc2626')
+        return false
+      }
+      if (!window.confirm(`Hostel type issue:\n\n${issues.join('\n')}\n\nCollect anyway as admin? This is recorded in the audit log.`)) return false
+      await logHostelOverride({ student, by: collectedBy.trim() || currentUser?.name, detail: issues.join(' ') })
+    }
+    if (lowFeeRows.length && !isAdmin) {
+      const short = lowFeeRows.reduce((s, r) => s + lowFeeGap(r), 0)
+      if (!window.confirm(`₹${short.toLocaleString('en-IN')} below the standard fee (${lowFeeRows.map(r => r.for_month).join(', ')}).\n\nThis payment will be saved and the low fee sent to an admin for approval. Until approved, the shortfall stays due on the student's ledger.`)) return false
+    }
+    return true
+  }
+
+  const correctHostelType = async () => {
+    if (!isAdmin || !bedIssue?.should || hostelFixing) return
+    if (!window.confirm(`Change ${student.name}'s hostel type from ${hostelType} to ${bedIssue.should}? Fees will then be charged at the ${bedIssue.should} rate.`)) return
+    setHostelFixing(true)
+    try {
+      await fixHostelType(student, bedIssue.should, collectedBy.trim() || currentUser?.name)
+      const s2 = { ...student, hostel_type: bedIssue.should }
+      showToast(`Hostel type set to ${bedIssue.should}`, '#146c3a')
+      onRefresh?.()
+      await handleSelect(s2)
+    } catch (e) { showToast('Could not update hostel type: ' + e.message, '#dc2626') }
+    setHostelFixing(false)
+  }
 
   // ── Month to be paid ──────────────────────────────────────────────────────
   // Course-fee months of the payment date's session with no payment yet
@@ -2956,7 +3017,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const dueNotInRows = courseDue.due.filter(d => !crsfRows.some(r => r.for_month === d.month))
   const fillAllDueMonths = () => {
     const base = crsfRows.find(r => r.course) || crsfRows[0] || {}
-    const mk = month => ({ course: base.course || '', subtype: base.subtype || '', hostelType: base.hostelType || hostelType, for_month: month, amount: base.std || base.amount || '', std: base.std || 0 })
+    const mk = month => ({ course: base.course || '', subtype: base.subtype || '', hostelType: base.hostelType || hostelType, for_month: month, amount: base.std || base.amount || '', std: base.std || 0, own: base.own || 0 })
     setCrsfRows(rows => {
       const kept = rows.filter(r => r.for_month)
       const have = new Set(kept.map(r => r.for_month))
@@ -2996,13 +3057,15 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         const JAN_MAR = ['January', 'February', 'March']
         const courseYear = JAN_MAR.includes(r.for_month) ? sessStart + 1 : sessStart
         const short = lowFeeGap(r)
+        const typeNote = isWrongType(r) ? `Charged at ${r.hostelType} rate — student is ${hostelType}` : ''
+        const why = [typeNote, (r.reasonNote || '').trim()].filter(Boolean).join('; ')
         items.push({
           kind: 'course', month: r.for_month, year: courseYear, course: r.course, subtype: r.subtype, amount: amt,
           ...(short > 0 ? {
-            standardAmount: Number(r.std), underpaymentAmount: short, underpaymentReason: r.reason, underpaymentNote: (r.reasonNote || '').trim() || null,
+            standardAmount: stdOf(r), underpaymentAmount: short, underpaymentReason: reasonOf(r), underpaymentNote: why || null,
             // An admin collecting approves it on the spot; anyone else sends it for approval.
             concessionApprovedBy: isAdmin ? (collectedBy.trim() || currentUser?.name || 'Admin') : null,
-            note: `Low fee: ₹${Number(r.std).toLocaleString('en-IN')} standard → ₹${amt.toLocaleString('en-IN')} — ${r.reason}${r.reasonNote ? ` (${r.reasonNote.trim()})` : ''} — ${isAdmin ? `approved by ${collectedBy.trim() || 'admin'}` : 'awaiting admin approval'}`,
+            note: `Low fee: ₹${stdOf(r).toLocaleString('en-IN')} standard → ₹${amt.toLocaleString('en-IN')} — ${reasonOf(r)}${why ? ` (${why})` : ''} — ${isAdmin ? `approved by ${collectedBy.trim() || 'admin'}` : 'awaiting admin approval'}`,
           } : {}),
         })
       }
@@ -3089,16 +3152,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       showToast(`Transaction reference is required for ${payMode} payments.`, '#dc2626')
       return
     }
-    // Below-standard course fee: a reason is required, and it needs an admin's approval.
-    const noReason = lowFeeRows.find(r => !r.reason || (r.reason === 'Other' && !(r.reasonNote || '').trim()))
-    if (noReason) {
-      showToast(`${noReason.for_month}: ₹${lowFeeGap(noReason).toLocaleString('en-IN')} below the standard fee — choose a reason${noReason.reason === 'Other' ? ' and explain it' : ''} before saving.`, '#dc2626')
-      return
-    }
-    if (lowFeeRows.length && !isAdmin) {
-      const short = lowFeeRows.reduce((s, r) => s + lowFeeGap(r), 0)
-      if (!window.confirm(`₹${short.toLocaleString('en-IN')} below the standard fee (${lowFeeRows.map(r => r.for_month).join(', ')}).\n\nThis payment will be saved and the low fee sent to an admin for approval. Until approved, the shortfall stays due on the student's ledger.`)) return
-    }
+    // Below-standard course fee (reason + admin approval) and wrong hostel-type fees (admin only).
+    if (!(await approvalGate())) return
     const itemsToSave = buildFeeItems()
     if (!validateItems(itemsToSave)) return
     // FLOW FIX: Fees → Accounts. A month closed in Accounts must also stop
@@ -3136,6 +3191,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       showToast('Razorpay is not configured — set VITE_RAZORPAY_KEY_ID.', '#dc2626')
       return
     }
+    if (!(await approvalGate())) return
     // Checked BEFORE the parent pays — never after money has been taken.
     if (!(await confirmFeeMonthOpen(payDate, { isAdmin }))) return
     setRazorpayBusy(true)
@@ -3288,6 +3344,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       for_month:  firstDue?.month || '',
       amount:     defaultAmt,
       std:        Number(defaultAmt) || 0,   // standard (Fee Setup) rate for this line
+      own:        Number(defaultAmt) || 0,   // rate at the student's own hostel type
     }])
 
     setStep('pay')
@@ -3340,22 +3397,18 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       const ht         = field === 'hostelType' ? value : currentRow.hostelType || hostelType
       const batch      = field === 'subtype'    ? value : (field === 'course' ? '' : currentRow.subtype || '')
       if (course && ht) {
-        try {
-          const rates = await getFeeRates(sessionYear, course, batch, ht)
-          const amt = rates.courseFee || syncCourseFeeAmt(course, ht)
-          setCrsfRows(rows => {
-            const updated = [...rows]
-            updated[i] = { ...updated[i], amount: amt, std: Number(amt) || 0 }
-            return updated
-          })
-        } catch (_) {
-          const amt = syncCourseFeeAmt(course, ht)
-          setCrsfRows(rows => {
-            const updated = [...rows]
-            updated[i] = { ...updated[i], amount: amt, std: Number(amt) || 0 }
-            return updated
-          })
+        const rateAt = async type => {
+          try { return (await getFeeRates(sessionYear, course, batch, type)).courseFee || syncCourseFeeAmt(course, type) }
+          catch (_) { return syncCourseFeeAmt(course, type) }
         }
+        const amt = await rateAt(ht)
+        // The student's own hostel-type rate, to catch a line charged at another type.
+        const own = ht === hostelType ? amt : await rateAt(hostelType)
+        setCrsfRows(rows => {
+          const updated = [...rows]
+          updated[i] = { ...updated[i], amount: amt, std: Number(amt) || 0, own: Number(own) || 0 }
+          return updated
+        })
       }
     }
   }
@@ -3455,6 +3508,22 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           </button>
         </div>
       </div>
+
+      {bedIssue && (
+        <div role="alert" aria-label="Hostel type issue" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16, padding: '12px 16px', borderRadius: 16, background: 'linear-gradient(180deg,#fff7ed,#fff1e6)', border: '1px solid #fdba74' }}>
+          <span style={{ fontSize: 20 }}>🏠</span>
+          <div style={{ flex: 1, minWidth: 220, fontSize: 12.5, color: '#7c2d12', lineHeight: 1.5 }}>
+            <b>Hostel type issue — wrong fee risk.</b> {student.name} is {bedIssue.message}.{' '}
+            {isAdmin ? 'Correct the record, or collect anyway (you will be asked to confirm).' : 'An admin must approve before this fee can be collected.'}
+          </div>
+          {isAdmin && bedIssue.should && (
+            <button type="button" onClick={correctHostelType} disabled={hostelFixing}
+              style={{ padding: '8px 14px', borderRadius: 999, border: 'none', background: '#9a3412', color: '#fff', fontWeight: 800, fontSize: 12, cursor: 'pointer' }}>
+              {hostelFixing ? 'Updating…' : `Set to ${bedIssue.should}`}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Inline flat fee override editor ── */}
       {overrideMode && (
@@ -3727,6 +3796,12 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                         <option>Boarder</option><option>Day Boarder</option><option>Day Scholar</option>
                       </select>
                     </div>
+                    {head.hostelType && head.hostelType !== hostelType && (
+                      <div role="alert" style={{ gridColumn: '1 / -1', fontSize: 11.5, fontWeight: 700, color: '#9a3412', background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 10, padding: '7px 10px' }}>
+                        ⚠ {student.name} is a <b>{hostelType}</b> on record — charging at the {head.hostelType} rate is a hostel type mismatch and needs admin approval.{' '}
+                        <button type="button" onClick={() => setAll('hostelType', hostelType)} style={{ border: 'none', background: 'none', color: '#1e3a6e', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Use {hostelType}</button>
+                      </div>
+                    )}
                     {head.course && head.hostelType && (
                       <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: '#8a6d2b' }}>
                         Standard rate <b>₹{Number(head.std || syncCourseFeeAmt(head.course, head.hostelType)).toLocaleString('en-IN')}</b>/month · applies to every month below · amounts stay editable
@@ -3737,9 +3812,10 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               })()}
               {crsfRows.map((row, i) => {
                 const gap = lowFeeGap(row)
-                const above = row.std > 0 && row.amount !== '' && Number(row.amount) > Number(row.std)
+                const above = stdOf(row) > 0 && row.amount !== '' && Number(row.amount) > stdOf(row)
+                const wrong = isWrongType(row)
                 return (
-                <div key={i} className={`fp-line${gap > 0 ? ' low' : ''}`}>
+                <div key={i} className={`fp-line${gap > 0 || (wrong && above) ? ' low' : ''}`}>
                   <div className="fp-line-row">
                     <span className="fp-idx">{i + 1}</span>
                     <select value={row.for_month} onChange={e => updateCrsfRow(i, 'for_month', e.target.value)} aria-label={`Course fee month ${i + 1}`}>
@@ -3761,6 +3837,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                           : 'Set course first'} />
                     </div>
                     {gap > 0 ? <span className="fp-tag" style={{ background: '#fef2f2', color: '#b91c1c', borderColor: '#fca5a5' }}>−₹{gap.toLocaleString('en-IN')}</span>
+                      : wrong && above ? <span className="fp-tag" style={{ background: '#fef2f2', color: '#b91c1c', borderColor: '#fca5a5' }}>Wrong type</span>
                       : above ? <span className="fp-tag" style={{ background: '#fffbeb', color: '#b45309', borderColor: '#fcd34d' }}>Above rate</span>
                       : courseDue.due.some(d => d.month === row.for_month) ? <span className="fp-tag" style={{ background: '#fff7ed', color: '#9a3412', borderColor: '#fdba74' }}>Due</span>
                       : row.for_month ? <span className="fp-tag">Advance</span> : <span className="fp-tag" style={{ visibility: 'hidden' }}>—</span>}
@@ -3771,16 +3848,23 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                   {gap > 0 && (
                     <div role="group" aria-label="Low fee reason" style={{ marginTop: 10, padding: '10px 12px', borderRadius: 12, background: '#fff', border: '1px dashed #fca5a5' }}>
                       <div style={{ fontSize: 11.5, fontWeight: 800, color: '#991b1b' }}>
-                        ₹{gap.toLocaleString('en-IN')} below the standard ₹{Number(row.std).toLocaleString('en-IN')} — reason required · {isAdmin ? 'approved by you (admin)' : 'needs admin approval'}
+                        {wrong
+                          ? <>Hostel type mismatch: charged at the {row.hostelType} rate, but {student.name} is a {hostelType} — ₹{gap.toLocaleString('en-IN')} below the {hostelType} rate ₹{stdOf(row).toLocaleString('en-IN')} · explanation required · {isAdmin ? 'approved by you (admin)' : 'needs admin approval'}</>
+                          : <>₹{gap.toLocaleString('en-IN')} below the standard ₹{stdOf(row).toLocaleString('en-IN')} — reason required · {isAdmin ? 'approved by you (admin)' : 'needs admin approval'}</>}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8, marginTop: 8 }}>
-                        <select value={row.reason || ''} onChange={e => updateCrsfRow(i, 'reason', e.target.value)} aria-label="Reason for low fee">
+                        <select value={reasonOf(row)} onChange={e => updateCrsfRow(i, 'reason', e.target.value)} aria-label="Reason for low fee">
                           <option value="">— Reason —</option>
                           {CONCESSION_REASONS.map(x => <option key={x}>{x}</option>)}
                         </select>
-                        <input value={row.reasonNote || ''} onChange={e => updateCrsfRow(i, 'reasonNote', e.target.value)} aria-label="Low fee explanation" placeholder={row.reason === 'Other' ? 'Explain (required)' : 'Details (optional)'} />
+                        <input value={row.reasonNote || ''} onChange={e => updateCrsfRow(i, 'reasonNote', e.target.value)} aria-label="Low fee explanation" placeholder={reasonOf(row) === 'Other' || wrong ? 'Explain (required)' : 'Details (optional)'} />
                       </div>
                       {!isAdmin && <div style={{ fontSize: 10.5, color: '#b91c1c', marginTop: 6 }}>Until an admin approves it, the shortfall stays due on the student's ledger.</div>}
+                    </div>
+                  )}
+                  {wrong && above && (
+                    <div role="alert" aria-label="Wrong hostel type fee" style={{ marginTop: 10, padding: '9px 12px', borderRadius: 12, background: '#fff', border: '1px dashed #fca5a5', fontSize: 11.5, fontWeight: 700, color: '#991b1b' }}>
+                      Charged at the {row.hostelType} rate, but {student.name} is a {hostelType} (₹{stdOf(row).toLocaleString('en-IN')}) — ₹{(Number(row.amount) - stdOf(row)).toLocaleString('en-IN')} more. {isAdmin ? 'You will be asked to confirm.' : 'Only an admin can collect this.'}
                     </div>
                   )}
                 </div>

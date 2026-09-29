@@ -7,6 +7,7 @@ import { loadConcessions, decideConcession, recordConcession, summarise, unexpla
 import { buildAllLedgers } from './feeLedgerBulk'
 import { getSessionYear, gccStr } from './feeEngine'
 import { LedgerLink } from './LedgerLink'
+import { HOSTEL_TYPES, HOSTEL_MISMATCH_REASON, scanBedConflicts, fixHostelType } from './hostelFeeCheck'
 
 const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
 const fmtD = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
@@ -42,6 +43,16 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
   const [scan, setScan] = useState(null)       // null | 'running' | { items, error }
   const [draft, setDraft] = useState({})       // unexplained row key -> reason
   const me = currentUser?.name || currentUser?.userName || 'Admin'
+  // Students whose hostel type disagrees with the hostel beds (wrong-fee risk).
+  const [bedScan, setBedScan] = useState(null)   // null | 'running' | { rows, error }
+  const [typeDraft, setTypeDraft] = useState({})
+  const runBedScan = () => { setBedScan('running'); scanBedConflicts(students).then(setBedScan).catch(e => setBedScan({ rows: [], error: e.message })) }
+  useEffect(() => {
+    if (!isAdmin) return
+    let live = true
+    scanBedConflicts(students).then(r => { if (live) setBedScan(r) }).catch(e => { if (live) setBedScan({ rows: [], error: e.message }) })
+    return () => { live = false }
+  }, [isAdmin, students])
 
   const reload = useCallback(() => { loadConcessions().then(setData); onChanged?.() }, [onChanged])
   useEffect(() => { let live = true; loadConcessions().then(d => { if (live) setData(d) }); return () => { live = false } }, [])
@@ -57,6 +68,15 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
   }, [rows, status, reason, staff, q, from, to])
 
   if (!isAdmin) return <div style={{ padding: 48, textAlign: 'center', color: '#8a93a6' }}>🔒 Admin only</div>
+
+  const mismatchCount = rows.filter(r => r.reason === HOSTEL_MISMATCH_REASON && r.status === 'pending').length
+  const setType = async (st, type) => {
+    if (!type) { alert('Choose the correct hostel type first.'); return }
+    if (!window.confirm(`Change ${st.name}'s hostel type from ${st.hostel_type || 'Day Scholar'} to ${type}? Future fees are charged at the ${type} rate.`)) return
+    setBusy('ht' + st.id)
+    try { await fixHostelType(st, type, me); setBedScan(b => b && b.rows ? { ...b, rows: b.rows.filter(r => r.student !== st) } : b); onChanged?.() } catch (e) { alert(e.message) }
+    setBusy(null)
+  }
 
   const decide = async (c, approve) => {
     const note = window.prompt(approve
@@ -118,6 +138,7 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
       <div style={card}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
           {[['pending', `Pending (${sum.pending.count})`], ['approved', 'Approved'], ['rejected', 'Rejected'], ['All', 'All']].map(([k, l]) => <button key={k} style={chip(status === k)} onClick={() => setStatus(k)}>{l}</button>)}
+          <button style={{ ...chip(reason === HOSTEL_MISMATCH_REASON), marginLeft: 'auto' }} onClick={() => setReason(r => r === HOSTEL_MISMATCH_REASON ? 'All' : HOSTEL_MISMATCH_REASON)}>🏠 Wrong hostel type{mismatchCount ? ` (${mismatchCount} pending)` : ''}</button>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <select style={inp} value={reason} onChange={e => setReason(e.target.value)} aria-label="Filter by reason"><option>All</option>{CONCESSION_REASONS.map(r => <option key={r}>{r}</option>)}</select>
@@ -135,7 +156,7 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
           <div key={c.id} style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTop: '1px solid #f1f5f9' }}>
             <div style={{ minWidth: 220, flex: '2 1 260px' }}>
               <div style={{ fontWeight: 800 }}><LedgerLink gcc={c.gcc}>{c.student_name || `GCC-${c.gcc}`}</LedgerLink> <span style={{ color: '#98a2b3', fontWeight: 600, fontSize: 12 }}>GCC-{c.gcc} · {c.fee_kind === 'flat' ? 'Flat fee' : `Course fee${c.course ? ' — ' + c.course : ''}`} · {c.month} {c.year}</span></div>
-              <div style={{ fontSize: 12.5, marginTop: 3 }}><b>{c.reason}</b>{c.reason_note ? ` — ${c.reason_note}` : ''}</div>
+              <div style={{ fontSize: 12.5, marginTop: 3 }}>{c.reason === HOSTEL_MISMATCH_REASON && <span style={{ fontSize: 10.5, fontWeight: 800, color: '#9a3412', background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 999, padding: '1px 8px', marginRight: 6 }}>🏠 WRONG HOSTEL TYPE</span>}<b>{c.reason}</b>{c.reason_note ? ` — ${c.reason_note}` : ''}</div>
               <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>Collected by {c.collected_by || '—'} · {fmtD(c.pay_date || c.created_at)}{c.receipt_no ? ` · ${c.receipt_no}` : ''}{c.decided_by ? ` · ${c.status} by ${c.decided_by}${c.decision_note ? ` (“${c.decision_note}”)` : ''}` : ''}</div>
             </div>
             <div style={{ fontSize: 12.5, textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -149,6 +170,40 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
             </div>
           </div>
         ))}
+      </div>
+
+      <div style={{ ...card, borderColor: bedScan?.rows?.length ? '#fdba74' : '#e8e3d8' }} aria-label="Hostel type issues">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontWeight: 800 }}>🏠 Hostel type issues{bedScan?.rows?.length ? <span style={{ color: '#9a3412' }}> · {bedScan.rows.length}</span> : ''}</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>Active students whose Boarder / Day Boarder / Day Scholar type disagrees with the hostel beds — their flat and course fees are charged at the wrong rate until corrected.</div>
+          </div>
+          <button style={btn('#1e3a6e')} onClick={runBedScan} disabled={bedScan === 'running'}>{bedScan === 'running' ? 'Checking…' : '↻ Re-check'}</button>
+        </div>
+        {bedScan && bedScan !== 'running' && (
+          <div style={{ marginTop: 10 }}>
+            {bedScan.error && <div style={{ color: '#b42318' }}>{bedScan.error}</div>}
+            {!bedScan.error && bedScan.rows.length === 0 && <div style={{ color: '#146c3a', fontWeight: 700 }}>✓ Every active student's hostel type matches the hostel beds.</div>}
+            {bedScan.rows.map(({ student: st, conflict }) => {
+              const pick = typeDraft[st.id] ?? conflict.should ?? ''
+              return (
+                <div key={st.id} style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #f1f5f9' }}>
+                  <div style={{ flex: '2 1 260px' }}>
+                    <b><LedgerLink gcc={st.gcc_no}>{st.name}</LedgerLink></b> <span style={{ color: '#98a2b3', fontSize: 12 }}>GCC-{st.gcc_no} · {st.course || '—'}{st.batch ? ' · ' + st.batch : ''}</span>
+                    <div style={{ fontSize: 12, color: '#9a3412' }}>{conflict.message.charAt(0).toUpperCase() + conflict.message.slice(1)}.</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <select style={inp} value={pick} onChange={e => setTypeDraft(d => ({ ...d, [st.id]: e.target.value }))} aria-label={`Correct hostel type for ${st.name}`}>
+                      <option value="">— Correct type —</option>
+                      {HOSTEL_TYPES.filter(t => t !== (st.hostel_type || 'Day Scholar')).map(t => <option key={t}>{t}</option>)}
+                    </select>
+                    <button disabled={busy === 'ht' + st.id} style={btn('#9a3412')} onClick={() => setType(st, pick)}>Correct record</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12, marginBottom: 14 }}>
