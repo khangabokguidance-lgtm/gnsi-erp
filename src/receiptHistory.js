@@ -6,6 +6,7 @@
 import { supabase } from './supabase'
 import { getFeeRates, gccStr } from './feeEngine'
 import { toEntries, buildRegister, sessionOfDate } from './feeLedgerModel'
+import { loadStudentHistory, sessionRates } from './hostelHistory'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
@@ -25,7 +26,8 @@ export async function loadReceiptHistory(d) {
   // position on that day, not today's.
   const entries = toEntries(student, a.data || [], f.data || [], c.data || []).filter(e => !e.date || String(e.date).slice(0, 10) <= payDate)
   const session = sessionOfDate(payDate)
-  const rates = await getFeeRates(session, student.course || '', student.batch || '', student.hostel_type || 'Day Scholar', gcc)
+  const changes = await loadStudentHistory(gcc)
+  const rates = await sessionRates(student, session, changes, type => getFeeRates(session, student.course || '', student.batch || '', type, gcc))
   const [py, pmo, pdd] = payDate.split('-').map(Number)
   const reg = buildRegister(student, entries, session, rates, new Date(py, pmo - 1, pdd, 23, 59, 59))
 

@@ -6,6 +6,11 @@
 // Uses the same rules as the dues engine (feeDues.js): fee months follow the
 // April–March session, Feb/Mar are flat-fee months, a month isn't due until it
 // starts, and months before admission aren't charged.
+import { loadStudentHistory, sessionRates, timeline } from './hostelHistory'
+
+const fmtMonth = d => new Date(String(d).slice(0, 10) + 'T00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+// Month before a change's effective month (the last month at the old type).
+const fmtMonthBefore = d => { const x = new Date(String(d).slice(0, 10) + 'T00:00'); x.setMonth(x.getMonth() - 1); return x.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) }
 import { useEffect, useMemo, useState } from 'react'
 import { getFeeRates, normalizeSessionYear, getSessionYear, gccStr } from './feeEngine'
 import { printFeeReceipt } from './premiumReceipt'
@@ -90,8 +95,17 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
     return [...set].sort().reverse()
   }, [entries, student.session])
   const [session, setSession] = useState(() => sessions.includes(getSessionYear()) ? getSessionYear() : sessions[0])
+  // Hostel type changes (effective month) — earlier months keep the old type's rate.
+  const [hist, setHist] = useState({ gcc: null, changes: [] })
+  useEffect(() => {
+    let live = true
+    loadStudentHistory(student.gcc_no).then(changes => { if (live) setHist({ gcc: student.gcc_no, changes }) })
+    return () => { live = false }
+  }, [student.gcc_no, student.hostel_type])
+  const changes = useMemo(() => (hist.gcc === student.gcc_no ? hist.changes : []), [hist, student.gcc_no])
+  const histSig = changes.map(c => `${c.effective_from}:${c.to_type}`).join(',')
   // Rates for the session on screen; results for a previous session are ignored.
-  const rateKey = [session, student.course, student.batch, student.hostel_type, student.gcc_no].join('|')
+  const rateKey = [session, student.course, student.batch, student.hostel_type, student.gcc_no, histSig].join('|')
   const [rateState, setRateState] = useState({ key: null, rates: null, error: '' })
   const rates = rateState.key === rateKey ? rateState.rates : null
   const ratesError = rateState.key === rateKey ? rateState.error : ''
@@ -102,26 +116,27 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
   const [notice, setNotice] = useState('')
   // Previous session's rates → its unpaid dues are the statement's opening balance.
   const prev = prevSession(session)
-  const prevKey = [prev, student.course, student.batch, student.hostel_type, student.gcc_no].join('|')
+  const prevKey = [prev, student.course, student.batch, student.hostel_type, student.gcc_no, histSig].join('|')
   const [prevState, setPrevState] = useState({ key: null, rates: null })
   const prevRates = prevState.key === prevKey ? prevState.rates : null
 
   useEffect(() => {
     let live = true
-    getFeeRates(session, student.course || '', student.batch || '', student.hostel_type || 'Day Scholar', gccStr(student.gcc_no))
+    sessionRates(student, session, changes, type => getFeeRates(session, student.course || '', student.batch || '', type, gccStr(student.gcc_no)))
       .then(r => { if (live) setRateState({ key: rateKey, rates: r, error: '' }) })
       .catch(e => { if (live) setRateState({ key: rateKey, rates: null, error: e.message || 'Could not load fee rates' }) })
     return () => { live = false }
-  }, [rateKey, session, student.course, student.batch, student.hostel_type, student.gcc_no])
+  }, [rateKey, session, student, changes])
 
   useEffect(() => {
     let live = true
-    getFeeRates(prev, student.course || '', student.batch || '', student.hostel_type || 'Day Scholar', gccStr(student.gcc_no))
+    sessionRates(student, prev, changes, type => getFeeRates(prev, student.course || '', student.batch || '', type, gccStr(student.gcc_no)))
       .then(r => { if (live) setPrevState({ key: prevKey, rates: r }) })
       .catch(() => { if (live) setPrevState({ key: prevKey, rates: null }) })
     return () => { live = false }
-  }, [prevKey, prev, student.course, student.batch, student.hostel_type, student.gcc_no])
+  }, [prevKey, prev, student, changes])
 
+  const curRates = typeof rates === 'function' ? rates.current : rates
   const reg = useMemo(() => buildRegister(student, entries, session, rates), [student, entries, session, rates])
   const openingBalance = useMemo(() => prevRates ? buildRegister(student, entries, prev, prevRates).totalDue : 0, [student, entries, prev, prevRates])
   const statement = useMemo(() => buildStatement(student, entries, session, reg, { openingBalance }), [student, entries, session, reg, openingBalance])
@@ -196,10 +211,15 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
           <div className="frb-sumc"><b>Paid this session</b><span style={{ color: '#146c3a' }}>₹{fmt(reg.totalPaid)}</span></div>
           <div className="frb-sumc"><b>Balance due now</b><span style={{ color: reg.totalDue ? '#b42318' : '#146c3a' }}>{rates ? `₹${fmt(reg.totalDue)}` : '…'}</span></div>
           <div className="frb-sumc"><b>Months due</b><span style={{ color: reg.dueMonths ? '#b42318' : '#146c3a' }}>{rates ? reg.dueMonths : '…'}</span></div>
-          <div className="frb-sumc"><b>Monthly rate</b><span style={{ color: '#1d3a78', fontSize: 15 }}>{rates ? `₹${fmt(rates.courseFee)} course · ₹${fmt(rates.flatFee)} flat` : '…'}</span></div>
+          <div className="frb-sumc"><b>Monthly rate{changes.length ? ` (${student.hostel_type || 'Day Scholar'})` : ''}</b><span style={{ color: '#1d3a78', fontSize: 15 }}>{curRates ? `₹${fmt(curRates.courseFee)} course · ₹${fmt(curRates.flatFee)} flat` : '…'}</span></div>
         </div>
+        {changes.length > 0 && (
+          <div role="note" aria-label="Hostel type history" style={{ margin: '10px 16px 0 66px', fontSize: 12.5, color: '#1d3a78', background: '#eef2f9', border: '1px solid #d6dfef', borderRadius: 10, padding: '8px 12px' }}>
+            🏠 <b>Hostel type changed:</b> {timeline(student, changes).map((seg, i) => <span key={i}>{i ? ' → ' : ''}<b>{seg.type}</b>{seg.to ? ` until ${fmtMonthBefore(seg.to)}` : seg.from ? ` from ${fmtMonth(seg.from)}` : ''}</span>)}. Each month is charged at the type in effect that month; earlier payments are unchanged.
+          </div>
+        )}
         {ratesError && <div style={{ margin: '10px 16px 0 66px', color: '#b42318', fontSize: 12.5, fontWeight: 600 }}>⚠️ {ratesError} — amounts due can't be shown.</div>}
-        {rates?.usingFallbackRates && <div style={{ margin: '10px 16px 0 66px', color: '#9a5b00', fontSize: 12 }}>Fee Setup has no rate for this course/batch/hostel in {shortSession(session)} — showing the default rates.</div>}
+        {curRates?.usingFallbackRates && <div style={{ margin: '10px 16px 0 66px', color: '#9a5b00', fontSize: 12 }}>Fee Setup has no rate for this course/batch/hostel in {shortSession(session)} — showing the default rates.</div>}
 
         <div className="frb-pane" role="tablist" aria-label="Ledger section">
           {[['register', '📅 Month-wise'], ['statement', '🧾 Statement'], ['insights', '📊 Insights']].map(([id, label]) => (
@@ -237,7 +257,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
                 {reg.rows.map(r => (
                   <tr key={r.month}>
                     <td className="hand">{r.month.slice(0, 3)} {r.year}</td>
-                    <td>{r.head}</td>
+                    <td>{r.head}{changes.length > 0 && r.hostelType && <span className="muted" style={{ fontSize: 11 }}> · {r.hostelType}</span>}</td>
                     <td className="num">{rates ? fmt(r.expected) : '…'}</td>
                     <td className="num">{r.paidAmt ? fmt(r.paidAmt) : <span className="muted">—</span>}</td>
                     <td>{r.paid[0] ? fmtDate(r.paid[0].date) : <span className="muted">—</span>}</td>

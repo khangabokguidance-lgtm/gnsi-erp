@@ -67,14 +67,19 @@ export function toEntries(student, admRows, flatRows, crsRows) {
 }
 
 // Month-wise register for one session.
+// rates: the session's rates object, or a function (month, year) → rates when
+// the student's hostel type changed mid-session (see hostelHistory.js), so each
+// month is expected at the type in effect that month.
 export function buildRegister(student, entries, session, rates, now = new Date()) {
+  const rateAt = (month, year) => (typeof rates === 'function' ? rates(month, year) : rates)
   const start = sessionStartYear(session)
   const admissionDate = student.admission_date || null
   const rows = MONTHS_LIST.map(month => {
     const year = feeMonthYearForSession(month, session)
     const flat = isFlatFeeMonth(month)
     const head = flat ? 'Flat Fee' : 'Course Fee'
-    const expected = flat ? Number(rates?.flatFee || 0) : Number(rates?.courseFee || 0)
+    const R = rateAt(month, year)
+    const expected = flat ? Number(R?.flatFee || 0) : Number(R?.courseFee || 0)
     const paid = entries.filter(x => x.kind === (flat ? 'flat' : 'course') && x.month === month && Number(x.year) === year)
     const paidAmt = paid.reduce((s, x) => s + x.amount, 0)
     const waived = paid.reduce((s, x) => s + (x.concession || 0), 0)   // approved low-fee concession
@@ -85,13 +90,13 @@ export function buildRegister(student, entries, session, rates, now = new Date()
     else if (!monthStarted(month, year, now)) status = 'upcoming'
     else status = 'due'
     const due = status === 'due' ? expected : 0
-    return { month, year, head, expected, paid, paidAmt, waived, concessionPending, status, due, shortBy: status === 'short' ? Math.max(0, expected - paidAmt - waived) : 0 }
+    return { month, year, head, hostelType: R?.hostelType || null, expected, paid, paidAmt, waived, concessionPending, status, due, shortBy: status === 'short' ? Math.max(0, expected - paidAmt - waived) : 0 }
   })
   // Admission fee: shown in the session it was paid in, or — if unpaid — in
   // the student's own session.
   const admEntries = entries.filter(x => x.kind === 'admission')
   const admSession = admEntries[0]?.session || normalizeSessionYear(student.session) || sessionOfDate(admissionDate)
-  const admExpected = Number(rates?.admissionFee ?? ADM_FEE_BASE)
+  const admExpected = Number((typeof rates === 'function' ? rates.current : rates)?.admissionFee ?? ADM_FEE_BASE)
   const admPaid = admEntries.reduce((s, x) => s + x.amount, 0)
   const admission = admSession === session
     ? { expected: admExpected, paid: admEntries, paidAmt: admPaid, due: Math.max(0, admExpected - admPaid) }

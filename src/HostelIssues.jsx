@@ -202,15 +202,19 @@ export default function HostelIssues({ students = [], adm_flat_fees = [], adm_co
         })}
       </Section>
 
-      <Section icon="🧾" label="Hostel audit trail" title="Audit trail" sub="Admins collecting despite a hostel issue, and hostel type corrections.">
+      <Section icon="🧾" label="Hostel audit trail" title="Audit trail" sub="Hostel type changes (with the month they start), corrections, and admins collecting despite a hostel issue.">
         {!audit && <div style={{ color: '#64748b', padding: '8px 0' }}>Loading…</div>}
         {audit && audit.length === 0 && <div style={{ color: '#64748b', padding: '8px 0' }}>Nothing recorded yet.</div>}
         {(audit || []).slice(0, 30).map(a => (
           <div key={a.id || a.created_at + a.action} style={{ ...row, padding: '9px 0' }}>
             <div style={{ flex: '2 1 260px', fontSize: 12.5 }}>
               <b>{a.v.student_name || `GCC-${a.v.gcc || '—'}`}</b>{' '}
-              {a.action === 'hostel_type_corrected'
-                ? <>hostel type corrected <TypePill t={a.v.from || 'Day Scholar'} /> → <TypePill t={a.v.to} /></>
+              {a.action === 'hostel_type_changed'
+                ? <>hostel type changed <TypePill t={a.v.from || 'Day Scholar'} /> → <TypePill t={a.v.to} /> from {String(a.v.effective_from || '').slice(0, 7)}{a.v.reason ? <span style={{ color: '#64748b' }}> — {a.v.reason}</span> : ''}</>
+                : a.action === 'hostel_type_change_undone'
+                ? <>hostel type change undone <TypePill t={a.v.from || 'Day Scholar'} /> → <TypePill t={a.v.to} /></>
+                : a.action === 'hostel_type_corrected'
+                ? <>hostel type corrected <TypePill t={a.v.from || 'Day Scholar'} /> → <TypePill t={a.v.to} /> (all months)</>
                 : <span style={{ color: '#9a3412' }}>collected despite: {a.v.detail || 'hostel issue'}</span>}
             </div>
             <div style={{ fontSize: 11.5, color: '#64748b', whiteSpace: 'nowrap' }}>{a.changed_by || '—'} · {fmtD(a.created_at)}</div>

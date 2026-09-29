@@ -11,6 +11,7 @@
 // Either needs an admin: a cheaper rate goes through the low-fee approval
 // (reason HOSTEL_MISMATCH_REASON), anything else is admin-only.
 import { supabase } from './supabase'
+import { clearHistory, loadHostelHistory, typeOnMonth } from './hostelHistory'
 
 export const HOSTEL_TYPES = ['Boarder', 'Day Boarder', 'Day Scholar']
 export const HOSTEL_MISMATCH_REASON = 'Hostel type mismatch'
@@ -52,6 +53,8 @@ export async function scanBedConflicts(students) {
 export async function fixHostelType(student, newType, by) {
   const { error } = await supabase.from('students').update({ hostel_type: newType }).eq('id', student.id)
   if (error) throw new Error(error.message)
+  // A correction means the type was wrong all along — it applies to every month.
+  await clearHistory(student.gcc_no)
   try {
     await supabase.from('audit_log').insert({
       action: 'hostel_type_corrected', changed_by: by || 'Admin', target_id: String(student.id),
@@ -92,14 +95,15 @@ export function rateFrom(structures, { session, course, batch, type, field }) {
 // This session's flat/course payments made at ANOTHER hostel type's rate:
 // paid less than the student's own-type rate and exactly the rate of a cheaper
 // type. Rows already carrying a concession decision are counted as reviewed.
-export function scanWrongRatePayments({ students, structures, courseRows = [], flatRows = [], overrideGccs = new Set(), session }) {
+export function scanWrongRatePayments({ students, structures, courseRows = [], flatRows = [], overrideGccs = new Set(), session, history = new Map() }) {
   const issues = []
   let reviewed = 0
   const byGcc = new Map((students || []).filter(s => (s.status || 'Active') === 'Active').map(s => [gccKey(s.gcc_no), s]))
   const check = (st, kind, row, paid, month, year) => {
     const rateSession = st.session || session
     const field = kind === 'flat' ? 'flat_fee' : 'course_fee'
-    const ownType = st.hostel_type || 'Day Scholar'
+    // The type in effect for that month (a mid-session change keeps earlier months at the old type).
+    const ownType = typeOnMonth(st, history.get(gccKey(st.gcc_no)), month, year)
     const course = kind === 'course' ? (row.course || st.course) : st.course
     const args = { session: rateSession, course, batch: st.batch || '', field }
     const own = rateFrom(structures, { ...args, type: ownType })
@@ -127,13 +131,14 @@ export function scanWrongRatePayments({ students, structures, courseRows = [], f
 }
 
 export async function loadWrongRateScan({ students, courseRows, flatRows, session }) {
-  const [{ data: structures, error }, { data: ov }] = await Promise.all([
+  const [{ data: structures, error }, { data: ov }, { map: history }] = await Promise.all([
     supabase.from('fee_structures').select('session_year, course, batch, hostel_type, flat_fee, course_fee'),
     supabase.from('student_fee_overrides').select('gcc_no, session_year'),
+    loadHostelHistory(),
   ])
   if (error) throw new Error(error.message)
   const overrideGccs = new Set((ov || []).map(o => gccKey(o.gcc_no)))
-  return scanWrongRatePayments({ students, structures: structures || [], courseRows, flatRows, overrideGccs, session })
+  return scanWrongRatePayments({ students, structures: structures || [], courseRows, flatRows, overrideGccs, session, history })
 }
 
 // Pending wrong-hostel-type approvals + record/bed conflicts, for the tab badge.
@@ -146,7 +151,7 @@ export async function countHostelIssues(students) {
 }
 
 export async function loadHostelAudit() {
-  const { data, error } = await supabase.from('audit_log').select('*').in('action', ['fee_hostel_issue_approved', 'hostel_type_corrected']).order('created_at', { ascending: false }).limit(100)
+  const { data, error } = await supabase.from('audit_log').select('*').in('action', ['fee_hostel_issue_approved', 'hostel_type_corrected', 'hostel_type_changed', 'hostel_type_change_undone']).order('created_at', { ascending: false }).limit(100)
   if (error) return []
   return (data || []).map(a => { let v = {}; try { v = typeof a.new_values === 'string' ? JSON.parse(a.new_values) : (a.new_values || {}) } catch { /* not JSON */ } return { ...a, v } })
 }

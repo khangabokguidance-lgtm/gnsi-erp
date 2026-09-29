@@ -32,6 +32,7 @@ import { courseMonthsDue, sessionOfDate } from './feeLedgerModel'
 import { CONCESSION_REASONS, countPendingConcessions } from './feeConcessions'
 import LowFeeApprovals from './LowFeeApprovals'
 import HostelIssues from './HostelIssues'
+import { loadStudentHistory, typeOnMonth, timeline as hostelTimeline, changeHostelType, undoLastChange, HOSTEL_TYPE_LIST, monthStart } from './hostelHistory'
 import { HOSTEL_MISMATCH_REASON, bedConflict, loadActiveBeds, fixHostelType, logHostelOverride, countHostelIssues } from './hostelFeeCheck'
 
 // ── Razorpay config ─────────────────────────────────────────────────────────
@@ -2704,6 +2705,34 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   }, [student?.id])
   const bedIssue = student && bedFor === student.id ? bedConflict(hostelType, hasBed) : null
 
+  // Hostel type timeline: a mid-session change keeps earlier months at the old
+  // type's rate, so every month is priced at the type in effect that month.
+  const [hostelHist, setHostelHist] = useState({ gcc: null, changes: [], rates: {} })
+  const hostelChanges = student && hostelHist.gcc === gccStr(student.gcc_no) ? hostelHist.changes : []
+  const typeRates = student && hostelHist.gcc === gccStr(student.gcc_no) ? hostelHist.rates : {}
+  const histSig = hostelChanges.map(c => `${c.effective_from}:${c.to_type}`).join(',')
+  const typeFor = month => {
+    if (!month || !student || !hostelChanges.length) return hostelType
+    const st = Number(sessionOfDate(payDate || today()).slice(0, 4))
+    return typeOnMonth(student, hostelChanges, month, ['January', 'February', 'March'].includes(month) ? st + 1 : st)
+  }
+  // Loads a student's timeline + their course rate at each type in it.
+  const loadHostelHist = async s => {
+    const changes = await loadStudentHistory(s.gcc_no)
+    const rates = {}
+    if (changes.length) {
+      const sy = s.session || `${CURRENT_YEAR}-${CURRENT_YEAR + 1}`
+      for (const t of new Set([s.hostel_type || 'Day Scholar', ...changes.flatMap(c => [c.from_type, c.to_type])])) {
+        try { rates[t] = (await getFeeRates(sy, s.course || '', s.batch || '', t, parseInt(gccStr(s.gcc_no)) || null)).courseFee || syncCourseFeeAmt(s.course, t) } catch { rates[t] = syncCourseFeeAmt(s.course, t) }
+      }
+    }
+    setHostelHist({ gcc: gccStr(s.gcc_no), changes, rates })
+    return { changes, rates }
+  }
+  const [htOpen, setHtOpen] = useState(false)
+  const [htForm, setHtForm] = useState({ to: '', from: '', reason: '' })
+  const [htSaving, setHtSaving] = useState(false)
+
   // ✦ Bug fix: every fee rate lookup below previously used
   // `${CURRENT_YEAR}-${CURRENT_YEAR + 1}` (today's computed session)
   // regardless of which session the student was actually admitted in. A
@@ -2725,10 +2754,25 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     if (authName && !collectedBy) setCollectedBy(authName)
   }, [currentUser])
 
+  // Flat months priced at the hostel type in effect that month.
+  const withHostelHistory = async list => {
+    if (!hostelChanges.length || !student) return list
+    const gccInt = parseInt(gccStr(student.gcc_no)) || null
+    const out = []
+    for (const f of list) {
+      const t = typeOnMonth(student, hostelChanges, f.month, f.year)
+      if (t === hostelType) { out.push(f); continue }
+      const r = await getFeeRates(sessionYear, student.course || '', student.batch || '', t, gccInt)
+      out.push({ ...f, amount: Number(r.flatFee) || f.amount, hostelType: t })
+    }
+    return out
+  }
+
   useEffect(() => {
     if (!student) return
     const gccInt = parseInt(gccStr(student.gcc_no)) || null
     getFlatFees(hostelType, student.course || '', student.batch || '', sessionYear, gccInt)
+      .then(list => withHostelHistory(list))
       .then(setFlatFees)
     getFeeRates(
       sessionYear,
@@ -2744,7 +2788,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         setOverrideReason('')
       }
     })
-  }, [student, hostelType, sessionYear])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [student, hostelType, sessionYear, histSig])
 
   const [flatChecked, setFlatChecked] = useState([])
 
@@ -2954,7 +2999,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   // A line charged at another hostel type than the student's record is measured
   // against the student's own rate (r.own), so a Boarder charged the Day Scholar
   // rate shows up as a low fee that needs admin approval.
-  const isWrongType = r => !!r.hostelType && r.hostelType !== hostelType
+  const isWrongType = r => !!r.hostelType && r.hostelType !== typeFor(r.for_month)
   const stdOf = r => (isWrongType(r) && Number(r.own) > 0 ? Number(r.own) : Number(r.std) || 0)
   const lowFeeGap = r => { const std = stdOf(r), amt = Number(r.amount) || 0; return std > 0 && amt > 0 && amt < std ? std - amt : 0 }
   const lowFeeRows = crsfRows.filter(r => r.for_month && lowFeeGap(r) > 0)
@@ -2967,12 +3012,12 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const approvalGate = async () => {
     const noReason = lowFeeRows.find(r => !reasonOf(r) || ((reasonOf(r) === 'Other' || isWrongType(r)) && !(r.reasonNote || '').trim()))
     if (noReason) {
-      showToast(`${noReason.for_month}: ₹${lowFeeGap(noReason).toLocaleString('en-IN')} below the standard fee — ${isWrongType(noReason) ? `charged at the ${noReason.hostelType} rate for a ${hostelType}; explain why` : `choose a reason${noReason.reason === 'Other' ? ' and explain it' : ''}`} before saving.`, '#dc2626')
+      showToast(`${noReason.for_month}: ₹${lowFeeGap(noReason).toLocaleString('en-IN')} below the standard fee — ${isWrongType(noReason) ? `charged at the ${noReason.hostelType} rate for a ${typeFor(noReason.for_month)}; explain why` : `choose a reason${noReason.reason === 'Other' ? ' and explain it' : ''}`} before saving.`, '#dc2626')
       return false
     }
     const issues = []
     if (bedIssue) issues.push(`${student.name} is ${bedIssue.message}.`)
-    overTypeRows.forEach(r => issues.push(`${r.for_month}: charged at the ${r.hostelType} rate (₹${Number(r.amount).toLocaleString('en-IN')}) but ${student.name} is a ${hostelType} (₹${stdOf(r).toLocaleString('en-IN')}).`))
+    overTypeRows.forEach(r => issues.push(`${r.for_month}: charged at the ${r.hostelType} rate (₹${Number(r.amount).toLocaleString('en-IN')}) but ${student.name} is a ${typeFor(r.for_month)} for that month (₹${stdOf(r).toLocaleString('en-IN')}).`))
     if (issues.length) {
       if (!isAdmin) {
         showToast(`Wrong hostel-type fee — needs an admin. ${issues[0]}`, '#dc2626')
@@ -2986,6 +3031,58 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       if (!window.confirm(`₹${short.toLocaleString('en-IN')} below the standard fee (${lowFeeRows.map(r => r.for_month).join(', ')}).\n\nThis payment will be saved and the low fee sent to an admin for approval. Until approved, the shortfall stays due on the student's ledger.`)) return false
     }
     return true
+  }
+
+  // ── Change hostel type from a month onward (admin) ─────────────────────────
+  const sessStartYear = Number(sessionOfDate(payDate || today()).slice(0, 4))
+  const htMonths = ['April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February', 'March']
+    .map(m => { const y = ['January', 'February', 'March'].includes(m) ? sessStartYear + 1 : sessStartYear; return { month: m, year: y, value: monthStart(m, y) } })
+  const openHostelChange = () => {
+    const now = new Date()
+    setHtForm({ to: '', from: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`, reason: '', rates: null })
+    setHtOpen(o => !o)
+  }
+  const pickHostelTo = async to => {
+    setHtForm(f => ({ ...f, to, rates: null }))
+    try {
+      const r = await getFeeRates(sessionYear, student.course || '', student.batch || '', to, parseInt(gccStr(student.gcc_no)) || null)
+      setHtForm(f => (f.to === to ? { ...f, rates: r } : f))
+    } catch { /* preview only */ }
+  }
+  const htLabel = v => { const m = htMonths.find(x => x.value === v); return m ? `${m.month.slice(0, 3)} ${m.year}` : v }
+  // Payments already made for months from the effective month (they stay as they are).
+  const htPaidAfterList = () => htForm.from ? [
+    ...myCrsfRecs.filter(r => monthStart(r.for_month, r.year) >= htForm.from).map(r => `${r.for_month.slice(0, 3)} ${r.year} course ₹${Number(r.amount_paid || 0).toLocaleString('en-IN')}`),
+    ...myFlatRecs.filter(r => !r.reverted && monthStart(r.month, r.year) >= htForm.from).map(r => `${r.month.slice(0, 3)} ${r.year} flat ₹${Number(r.amount || 0).toLocaleString('en-IN')}`),
+  ] : []
+  const saveHostelChange = async () => {
+    if (!isAdmin || htSaving) return
+    if (!htForm.to) { showToast('Choose the new hostel type.', '#dc2626'); return }
+    if (!htForm.from) { showToast('Choose the month the new hostel type starts.', '#dc2626'); return }
+    if (!htForm.reason.trim()) { showToast('Give a reason for the hostel type change.', '#dc2626'); return }
+    if (!window.confirm(`Change ${student.name} from ${hostelType} to ${htForm.to} from ${htLabel(htForm.from)}?\n\nMonths before ${htLabel(htForm.from)} stay at the ${hostelType} rate. Receipts already issued are not changed.`)) return
+    setHtSaving(true)
+    try {
+      await changeHostelType({ student, toType: htForm.to, effectiveFrom: htForm.from, reason: htForm.reason.trim(), by: collectedBy.trim() || currentUser?.name, changes: hostelChanges })
+      showToast(`🏠 ${student.name} is now ${htForm.to} from ${htLabel(htForm.from)} — earlier months unchanged`, '#146c3a')
+      setHtOpen(false)
+      onRefresh?.()
+      await handleSelect({ ...student, hostel_type: htForm.to })
+    } catch (e) { showToast(e.message, '#dc2626') }
+    setHtSaving(false)
+  }
+  const undoHostelChange = async () => {
+    const last = hostelChanges[hostelChanges.length - 1]
+    if (!isAdmin || !last || htSaving) return
+    if (!window.confirm(`Undo the change to ${last.to_type} from ${String(last.effective_from).slice(0, 7)}? ${student.name} goes back to ${last.from_type}.`)) return
+    setHtSaving(true)
+    try {
+      await undoLastChange({ student, changes: hostelChanges, by: collectedBy.trim() || currentUser?.name })
+      showToast(`Hostel type change undone — back to ${last.from_type}`, '#146c3a')
+      onRefresh?.()
+      await handleSelect({ ...student, hostel_type: last.from_type })
+    } catch (e) { showToast(e.message, '#dc2626') }
+    setHtSaving(false)
   }
 
   const correctHostelType = async () => {
@@ -3018,7 +3115,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const dueNotInRows = courseDue.due.filter(d => !crsfRows.some(r => r.for_month === d.month))
   const fillAllDueMonths = () => {
     const base = crsfRows.find(r => r.course) || crsfRows[0] || {}
-    const mk = month => ({ course: base.course || '', subtype: base.subtype || '', hostelType: base.hostelType || hostelType, for_month: month, amount: base.std || base.amount || '', std: base.std || 0, own: base.own || 0 })
+    const mk = month => {
+      const t = typeFor(month), r = hostelChanges.length && (base.course || '') === (student.course || '') ? typeRates[t] : null
+      if (r != null && t !== (base.hostelType || hostelType)) return { course: base.course || '', subtype: base.subtype || '', hostelType: t, for_month: month, amount: r, std: Number(r) || 0, own: Number(r) || 0 }
+      return { course: base.course || '', subtype: base.subtype || '', hostelType: base.hostelType || hostelType, for_month: month, amount: base.std || base.amount || '', std: base.std || 0, own: base.own || 0 }
+    }
     setCrsfRows(rows => {
       const kept = rows.filter(r => r.for_month)
       const have = new Set(kept.map(r => r.for_month))
@@ -3058,7 +3159,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
         const JAN_MAR = ['January', 'February', 'March']
         const courseYear = JAN_MAR.includes(r.for_month) ? sessStart + 1 : sessStart
         const short = lowFeeGap(r)
-        const typeNote = isWrongType(r) ? `Charged at ${r.hostelType} rate — student is ${hostelType}` : ''
+        const typeNote = isWrongType(r) ? `Charged at ${r.hostelType} rate — student is ${typeFor(r.for_month)}` : ''
         const why = [typeNote, (r.reasonNote || '').trim()].filter(Boolean).join('; ')
         items.push({
           kind: 'course', month: r.for_month, year: courseYear, course: r.course, subtype: r.subtype, amount: amt,
@@ -3319,8 +3420,9 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       .map(r => `${r.month}|${r.year}`)
     setFlatChecked(studentFlatFees.map(ff => !paid.includes(`${ff.month}|${ff.year}`)))
 
+    const { changes: sChanges, rates: sTypeRates } = await loadHostelHist(s)
     const defaultCourse     = s.course && COURSE_STRUCTURE[s.course] ? s.course : ''
-    const defaultHostelType = s.hostel_type || 'Day Scholar'
+    let defaultHostelType   = s.hostel_type || 'Day Scholar'
     const defaultBatch      = s.batch || ''
 
     let defaultAmt = ''
@@ -3338,6 +3440,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
 
     // Month to be paid: the oldest unpaid course month (or the next one, as an advance).
     const firstDue = courseDueFor(s, payDate).next
+    // Priced at the hostel type in effect that month (mid-session change).
+    if (firstDue && sChanges.length) {
+      const t = typeOnMonth(s, sChanges, firstDue.month, firstDue.year)
+      if (t !== defaultHostelType && sTypeRates[t] != null) { defaultHostelType = t; defaultAmt = sTypeRates[t] }
+    }
     setCrsfRows([{
       course:     defaultCourse,
       subtype:    defaultBatch,
@@ -3392,10 +3499,13 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       return updated
     })
 
-    if (field === 'course' || field === 'hostelType' || field === 'subtype') {
+    // With a hostel type change on file, picking a month re-prices the line at
+    // the type in effect that month.
+    const monthRetype = field === 'for_month' && hostelChanges.length > 0 && typeFor(value) !== typeFor(crsfRows[i]?.for_month)
+    if (field === 'course' || field === 'hostelType' || field === 'subtype' || monthRetype) {
       const currentRow = crsfRows[i]
       const course     = field === 'course'     ? value : currentRow.course
-      const ht         = field === 'hostelType' ? value : currentRow.hostelType || hostelType
+      const ht         = monthRetype ? typeFor(value) : field === 'hostelType' ? value : currentRow.hostelType || hostelType
       const batch      = field === 'subtype'    ? value : (field === 'course' ? '' : currentRow.subtype || '')
       if (course && ht) {
         const rateAt = async type => {
@@ -3403,11 +3513,12 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           catch (_) { return syncCourseFeeAmt(course, type) }
         }
         const amt = await rateAt(ht)
-        // The student's own hostel-type rate, to catch a line charged at another type.
-        const own = ht === hostelType ? amt : await rateAt(hostelType)
+        // The student's own hostel-type rate for that month, to catch a line charged at another type.
+        const ownType = typeFor(field === 'for_month' ? value : currentRow.for_month)
+        const own = ht === ownType ? amt : await rateAt(ownType)
         setCrsfRows(rows => {
           const updated = [...rows]
-          updated[i] = { ...updated[i], amount: amt, std: Number(amt) || 0, own: Number(own) || 0 }
+          updated[i] = { ...updated[i], amount: amt, std: Number(amt) || 0, own: Number(own) || 0, ...(monthRetype ? { hostelType: ht } : {}) }
           return updated
         })
       }
@@ -3481,6 +3592,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               {hostelType && <span className="fp-chip">{hostelType}</span>}
               {isRepeater && <span className="fp-chip warn">Repeater</span>}
               {hasOverride && <span className="fp-chip gold">Custom flat fee</span>}
+              {hostelChanges.length > 0 && (
+                <span className="fp-chip gold" title="Hostel type timeline">
+                  🏠 {hostelTimeline(student, hostelChanges).map(seg => seg.type + (seg.from ? ` from ${String(seg.from).slice(0, 7)}` : '')).join(' → ')}
+                </span>
+              )}
             </div>
           </div>
           <button type="button" className="fp-hero-btn" onClick={handleBack}>⇄ Change student</button>
@@ -3503,12 +3619,69 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           <button type="button" className="fp-tool-btn" onClick={() => { setOverrideMode(m => !m); setOverrideFeedback(null) }}>
             {overrideMode ? '✕ Cancel rate change' : '✎ Change flat fee'}
           </button>
+          {isAdmin && (
+            <button type="button" className={`fp-tool-btn${htOpen ? ' on' : ''}`} onClick={openHostelChange}>🏠 Change hostel type</button>
+          )}
           <button type="button" className={`fp-tool-btn${isRepeater ? ' on' : ''}`} onClick={toggleRepeater} disabled={repeaterSaving}
             title={isRepeater ? 'Remove repeater tag' : 'Mark as repeater (2+ years at GNSI)'}>
             {repeaterSaving ? '…' : isRepeater ? '✓ Repeater' : 'Mark repeater'}
           </button>
         </div>
       </div>
+
+      {htOpen && isAdmin && (
+        <div role="region" aria-label="Change hostel type" style={{ ...feeCard, marginBottom: 16 }}>
+          <div style={feeCardHead}>
+            <span style={feeIcon('#fdf6e3')}>🏠</span>
+            <div style={{ flex: 1 }}>
+              <div style={feeCardTitle}>Change hostel type</div>
+              <div style={feeCardSub}>Currently <b>{hostelType}</b>. Months before the change keep the old rate — past payments and receipts stay exactly as they are.</div>
+            </div>
+          </div>
+          <div style={{ padding: 16, display: 'grid', gap: 12 }}>
+            <div>
+              <span className="fp-lbl">New hostel type</span>
+              <div className="fp-modes" role="radiogroup" aria-label="New hostel type">
+                {HOSTEL_TYPE_LIST.map(t => (
+                  <button key={t} type="button" role="radio" aria-checked={htForm.to === t} disabled={t === hostelType}
+                    className={`fp-mode${htForm.to === t ? ' on' : ''}`} style={t === hostelType ? { opacity: .45, cursor: 'not-allowed' } : undefined}
+                    onClick={() => pickHostelTo(t)}>{t}{t === hostelType ? ' (now)' : ''}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '200px 1fr', gap: 10 }}>
+              <div>
+                <span className="fp-lbl">Effective from</span>
+                <select value={htForm.from} onChange={e => setHtForm(f => ({ ...f, from: e.target.value }))} aria-label="Effective from month" style={inp}>
+                  {htMonths.map(m => <option key={m.value} value={m.value}>{m.month} {m.year}</option>)}
+                </select>
+              </div>
+              <div>
+                <span className="fp-lbl">Reason *</span>
+                <input value={htForm.reason} onChange={e => setHtForm(f => ({ ...f, reason: e.target.value }))} aria-label="Reason for hostel type change" placeholder="e.g. Left the hostel, now travels daily" style={inp} />
+              </div>
+            </div>
+            {htForm.to && (
+              <div role="note" aria-label="Hostel change preview" style={{ fontSize: 12.5, lineHeight: 1.6, color: '#1f2a44', background: '#faf8f3', border: '1px solid #efe7d4', borderRadius: 12, padding: '10px 12px' }}>
+                <div>From <b>{htLabel(htForm.from)}</b>: course fee ₹{Number(feeRates.courseFee || 0).toLocaleString('en-IN')} → <b>₹{Number(htForm.rates?.courseFee ?? 0).toLocaleString('en-IN')}</b>/month · flat fee ₹{Number(feeRates.flatFee || 0).toLocaleString('en-IN')} → <b>₹{Number(htForm.rates?.flatFee ?? 0).toLocaleString('en-IN')}</b>/month{!htForm.rates && ' (loading…)'}.</div>
+                <div>Months before {htLabel(htForm.from)} stay at the <b>{hostelType}</b> rate. Every receipt already issued stays as it is.</div>
+                {htPaidAfterList().length > 0 && <div style={{ color: '#9a3412', marginTop: 4 }}>⚠ Already paid from {htLabel(htForm.from)}: {htPaidAfterList().join(', ')} — these payments stay as they are and are now compared with the {htForm.to} rate.</div>}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button type="button" onClick={saveHostelChange} disabled={htSaving} style={{ padding: '10px 18px', borderRadius: 12, border: 'none', background: 'linear-gradient(180deg,#E9C979,#C9A24B)', color: '#0B1E3D', fontWeight: 800, cursor: 'pointer' }}>
+                {htSaving ? 'Saving…' : 'Save hostel type change'}
+              </button>
+              <button type="button" onClick={() => setHtOpen(false)} style={{ padding: '10px 16px', borderRadius: 12, border: '1px solid #d8dfec', background: '#fff', fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+              {hostelChanges.length > 0 && (
+                <button type="button" onClick={undoHostelChange} disabled={htSaving} style={{ marginLeft: 'auto', padding: '10px 16px', borderRadius: 12, border: '1px solid #f3d0d0', background: '#fff5f5', color: '#b42318', fontWeight: 800, cursor: 'pointer' }}>
+                  ↶ Undo last change ({hostelChanges[hostelChanges.length - 1].to_type} from {String(hostelChanges[hostelChanges.length - 1].effective_from).slice(0, 7)})
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {bedIssue && (
         <div role="alert" aria-label="Hostel type issue" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16, padding: '12px 16px', borderRadius: 16, background: 'linear-gradient(180deg,#fff7ed,#fff1e6)', border: '1px solid #fdba74' }}>
@@ -3687,7 +3860,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: 600, color: '#14213d' }}>{ff.month} {ff.year}</div>
                           <div style={{ fontSize: 11, color: paid ? '#166534' : '#8a93a6', marginTop: 1 }}>
-                            {paid ? 'Already collected' : `${hostelType} rate`}
+                            {paid ? 'Already collected' : `${ff.hostelType || hostelType} rate`}
                           </div>
                         </div>
                         <span style={{ fontSize: 14, fontWeight: 700, color: paid ? '#166534' : '#0f1b2e' }}>
@@ -3797,10 +3970,10 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                         <option>Boarder</option><option>Day Boarder</option><option>Day Scholar</option>
                       </select>
                     </div>
-                    {head.hostelType && head.hostelType !== hostelType && (
+                    {head.hostelType && head.hostelType !== typeFor(head.for_month) && (
                       <div role="alert" style={{ gridColumn: '1 / -1', fontSize: 11.5, fontWeight: 700, color: '#9a3412', background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 10, padding: '7px 10px' }}>
-                        ⚠ {student.name} is a <b>{hostelType}</b> on record — charging at the {head.hostelType} rate is a hostel type mismatch and needs admin approval.{' '}
-                        <button type="button" onClick={() => setAll('hostelType', hostelType)} style={{ border: 'none', background: 'none', color: '#1e3a6e', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Use {hostelType}</button>
+                        ⚠ {student.name} is a <b>{typeFor(head.for_month)}</b> on record{hostelChanges.length ? ` for ${head.for_month || 'this month'}` : ''} — charging at the {head.hostelType} rate is a hostel type mismatch and needs admin approval.{' '}
+                        <button type="button" onClick={() => setAll('hostelType', typeFor(head.for_month))} style={{ border: 'none', background: 'none', color: '#1e3a6e', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Use {typeFor(head.for_month)}</button>
                       </div>
                     )}
                     {head.course && head.hostelType && (
@@ -3850,7 +4023,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                     <div role="group" aria-label="Low fee reason" style={{ marginTop: 10, padding: '10px 12px', borderRadius: 12, background: '#fff', border: '1px dashed #fca5a5' }}>
                       <div style={{ fontSize: 11.5, fontWeight: 800, color: '#991b1b' }}>
                         {wrong
-                          ? <>Hostel type mismatch: charged at the {row.hostelType} rate, but {student.name} is a {hostelType} — ₹{gap.toLocaleString('en-IN')} below the {hostelType} rate ₹{stdOf(row).toLocaleString('en-IN')} · explanation required · {isAdmin ? 'approved by you (admin)' : 'needs admin approval'}</>
+                          ? <>Hostel type mismatch: charged at the {row.hostelType} rate, but {student.name} is a {typeFor(row.for_month)} — ₹{gap.toLocaleString('en-IN')} below the {typeFor(row.for_month)} rate ₹{stdOf(row).toLocaleString('en-IN')} · explanation required · {isAdmin ? 'approved by you (admin)' : 'needs admin approval'}</>
                           : <>₹{gap.toLocaleString('en-IN')} below the standard ₹{stdOf(row).toLocaleString('en-IN')} — reason required · {isAdmin ? 'approved by you (admin)' : 'needs admin approval'}</>}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8, marginTop: 8 }}>
@@ -3865,7 +4038,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
                   )}
                   {wrong && above && (
                     <div role="alert" aria-label="Wrong hostel type fee" style={{ marginTop: 10, padding: '9px 12px', borderRadius: 12, background: '#fff', border: '1px dashed #fca5a5', fontSize: 11.5, fontWeight: 700, color: '#991b1b' }}>
-                      Charged at the {row.hostelType} rate, but {student.name} is a {hostelType} (₹{stdOf(row).toLocaleString('en-IN')}) — ₹{(Number(row.amount) - stdOf(row)).toLocaleString('en-IN')} more. {isAdmin ? 'You will be asked to confirm.' : 'Only an admin can collect this.'}
+                      Charged at the {row.hostelType} rate, but {student.name} is a {typeFor(row.for_month)} (₹{stdOf(row).toLocaleString('en-IN')}) — ₹{(Number(row.amount) - stdOf(row)).toLocaleString('en-IN')} more. {isAdmin ? 'You will be asked to confirm.' : 'Only an admin can collect this.'}
                     </div>
                   )}
                 </div>
