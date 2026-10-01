@@ -26,6 +26,7 @@ import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from 
 import ToppersCertificate from './ToppersCertificate'
 import ExamDashboard from './ExamDashboard'
 import MockTestAnalyzer from './MockTestAnalyzer'
+import ResponsiveTables from './ResponsiveTables'
 import { ExamHomeMobile, ExamTopBar, ExamBottomBar } from './ExamsMobile'
 import './examsTheme.css'
 import './mobile.css';
@@ -10513,7 +10514,7 @@ export default function Exams({ currentUser, perms }) {
         ) : (
           <>
             <ExamTopBar title={activeTabInfo?.label} icon={activeTabInfo?.icon} subtitle={activeTabInfo?.tip} onBack={() => setTab("home")} />
-            <div className="xm-body">{sectionMap[tab]?.()}</div>
+            <div className="xm-body"><ResponsiveTables>{sectionMap[tab]?.()}</ResponsiveTables></div>
           </>
         )}
         <ExamBottomBar items={bottomItems} active={tab === "home" || !allowed.includes(tab) ? "home" : tab} onSelect={goBottom} />
@@ -10533,7 +10534,7 @@ export default function Exams({ currentUser, perms }) {
             <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6B7A90" }}>{activeTabInfo?.tip}</p>
           </div>
         </div>
-        {sectionMap[tab]?.()}
+        <ResponsiveTables>{sectionMap[tab]?.()}</ResponsiveTables>
       </div>
     </div>
   );
