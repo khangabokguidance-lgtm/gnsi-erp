@@ -679,6 +679,95 @@ const css = {
   btn:   { padding: "8px 18px", borderRadius: 8, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
 };
 
+// ─── Phone card layout for data tables ───────────────────────────────────────
+// Any <table className="gx-rt"> turns into one card per row on phones (< 768px):
+// the name / subject becomes the card title, every other column becomes a
+// labelled tile, rank / # sits in the corner, a leading checkbox sits top-right
+// and Actions / Print buttons get their own row. Labels are copied from each
+// table's own header row at runtime, so no table needs per-cell changes.
+// Desktop is untouched. Set PHONE_CARD_TABLES to false to fall back to the old
+// sideways-scrolling tables.
+const PHONE_CARD_TABLES = true;
+
+const CARD_TABLE_CSS = `
+@media (max-width: 767.98px) {
+  div:has(> table.gx-rt) { border: 0 !important; background: transparent !important; box-shadow: none !important; overflow: visible !important; max-height: none !important; }
+  table.gx-rt, table.gx-rt tbody, table.gx-rt tfoot { display: block !important; width: 100% !important; min-width: 0 !important; border: 0 !important; background: transparent !important; }
+  table.gx-rt thead { display: none !important; }
+  table.gx-rt tr { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 14px; row-gap: 2px; position: relative; margin: 0 0 10px !important; padding: 10px 12px !important; background: #fff; border: 1px solid #E5E7EB !important; border-left: 4px solid #002E6E !important; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  table.gx-rt td { display: block !important; position: static !important; width: auto !important; min-width: 0 !important; padding: 4px 0 !important; border: 0 !important; background: transparent !important; text-align: left !important; white-space: normal !important; font-size: 13px !important; overflow-wrap: anywhere; }
+  table.gx-rt td:empty { display: none !important; }
+  table.gx-rt td::before { content: attr(data-label); display: block; margin-bottom: 1px; font-size: 10.5px; font-weight: 700; color: #94A3B8; }
+  table.gx-rt td[data-label=""]::before, table.gx-rt td[data-rt="title"]::before, table.gx-rt td[data-rt="corner"]::before, table.gx-rt td[data-rt="bare"]::before, table.gx-rt td[data-rt="actions"]::before { display: none; }
+  table.gx-rt td[data-rt="title"] { grid-column: 1 / -1; order: -1; margin-bottom: 4px; padding: 0 0 8px !important; border-bottom: 1px solid #F1F5F9 !important; font-size: 14.5px !important; font-weight: 700; }
+  table.gx-rt[data-rt-pad] td[data-rt="title"] { padding-right: 44px !important; }
+  table.gx-rt td[data-rt="corner"] { position: absolute !important; top: 10px; right: 12px; padding: 0 !important; text-align: right !important; font-size: 15px !important; font-weight: 800; }
+  table.gx-rt td[data-rt="bare"] { position: absolute !important; top: 8px; right: 10px; padding: 0 !important; }
+  table.gx-rt td[data-rt="bare"] input[type="checkbox"] { width: 22px; height: 22px; }
+  table.gx-rt td[data-rt="actions"] { grid-column: 1 / -1; display: flex !important; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; padding: 8px 0 0 !important; border-top: 1px solid #F1F5F9 !important; }
+  table.gx-rt td[data-rt="actions"] button { min-height: 36px; }
+  table.gx-rt td[data-rt="wide"] { grid-column: 1 / -1; text-align: center !important; }
+  table.gx-rt td input, table.gx-rt td select { max-width: 100%; }
+}
+`;
+
+const RT_CORNER  = /^(#|rank|row|sl\.?|s\.?\s?no\.?)$/i;
+const RT_ACTIONS = /^(actions?|print)$/i;
+const RT_TITLE   = [/^student( name)?$/i, /name/i, /^subject$/i, /^session$/i, /^course$/i, /^date$/i, /^batch$/i];
+
+function labelCardTables() {
+  const setAttr = (el, k, v) => { if (el.getAttribute(k) !== v) el.setAttribute(k, v); };
+  document.querySelectorAll("table.gx-rt").forEach(table => {
+    const headRow = table.querySelector("thead tr");
+    if (!headRow) return;
+    const heads = Array.from(headRow.children).map(th => (th.textContent || "").replace(/\s+/g, " ").trim());
+    const roles = heads.map((h, i) => {
+      if (h === "") return i === 0 ? "bare" : "actions";   // leading blank = select checkbox, later blank = buttons
+      if (RT_ACTIONS.test(h)) return "actions";
+      if (RT_CORNER.test(h)) return "corner";
+      return "field";
+    });
+    let titleIdx = Number(table.getAttribute("data-rt-title")) - 1;   // optional 1-based override
+    if (!(titleIdx >= 0 && titleIdx < heads.length)) {
+      titleIdx = -1;
+      for (const re of RT_TITLE) {
+        const i = heads.findIndex((h, k) => roles[k] === "field" && re.test(h));
+        if (i >= 0) { titleIdx = i; break; }
+      }
+      if (titleIdx < 0) titleIdx = roles.indexOf("field");
+    }
+    table.toggleAttribute("data-rt-pad", roles.some(r => r === "bare" || r === "corner"));
+    table.querySelectorAll(":scope > tbody > tr, :scope > tfoot > tr").forEach(tr => {
+      let col = 0;
+      for (const td of tr.children) {
+        const span = td.colSpan || 1;
+        if (span > 1 || col >= heads.length) {           // empty-state / summary rows
+          setAttr(td, "data-rt", "wide"); setAttr(td, "data-label", "");
+          col += span; continue;
+        }
+        setAttr(td, "data-rt", col === titleIdx ? "title" : roles[col]);
+        setAttr(td, "data-label", roles[col] === "field" ? heads[col] : "");
+        col += 1;
+      }
+    });
+  });
+}
+
+function CardTableEngine({ enabled }) {
+  const on = enabled && PHONE_CARD_TABLES;
+  useEffect(() => {
+    if (!on) return undefined;
+    let raf = 0;
+    const run = () => { raf = 0; labelCardTables(); };
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(run); };
+    run();
+    const mo = new MutationObserver(schedule);
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => { mo.disconnect(); if (raf) cancelAnimationFrame(raf); };
+  }, [on]);
+  return on ? <style>{CARD_TABLE_CSS}</style> : null;
+}
+
 // ─── Micro-components ─────────────────────────────────────────────────────────
 function Spinner({ small }) {
   return <div style={{ padding: small ? 8 : 40, textAlign: "center", color: "#9CA3AF", fontSize: small ? 12 : 14 }}>⏳ Loading…</div>;
@@ -1084,6 +1173,14 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const [bulkFillValues, setBulkFillValues] = useState({}); // { [subject]: string } — the bulk-fill input per subject column
   const [bulkOpen, setBulkOpen] = useState(false); // phone: "fill one subject for everyone" panel expanded
   const [bulkSub, setBulkSub] = useState("");       // phone: subject currently picked in that panel
+  const [navH, setNavH] = useState(0);              // phone: height of the fixed bottom navigation
+  useEffect(() => {
+    if (!isMobile) return undefined;
+    const measure = () => { const el = document.querySelector(".xm-bottom"); setNavH(el ? el.offsetHeight : 0); };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [isMobile]);
 
   // Loads the real exam_schedule rows for (course, examType), then loads any
   // exam_marks already saved against those exact exam_ids. This allows subjects
@@ -2012,7 +2109,7 @@ for (const st of courseStudents) {
           const medals = ["🥇", "🥈", "🥉"];
           return (
             <div style={{ overflowX: "auto", marginBottom: 16, maxHeight: 300, overflowY: "auto", borderRadius: 8 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 500 }}>
+              <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 500 }}>
                 <thead style={{ position: "sticky", top: 0 }}>
                   <tr style={{ background: "#002E6E" }}>
                     <th style={{ padding: "8px 8px", textAlign: "center", color: "white", fontWeight: 700, whiteSpace: "nowrap" }}>Rank</th>
@@ -2325,7 +2422,7 @@ for (const st of courseStudents) {
 
           {/* Sticky save bar — stays in reach while scrolling long batches */}
           {filtered.length > 0 && subjects.length > 0 && (
-            <div style={{ position: "sticky", bottom: 8, zIndex: 20, marginTop: 6, background: "#002E6E", color: "white", borderRadius: 14, padding: "10px 12px calc(10px + env(safe-area-inset-bottom, 0px))", display: "flex", alignItems: "center", gap: 8, boxShadow: "0 6px 20px rgba(0,46,110,0.35)" }}>
+            <div style={{ position: "sticky", bottom: navH ? navH + 8 : 8, zIndex: 20, marginTop: 6, background: "#002E6E", color: "white", borderRadius: 14, padding: "10px 12px calc(10px + env(safe-area-inset-bottom, 0px))", display: "flex", alignItems: "center", gap: 8, boxShadow: "0 6px 20px rgba(0,46,110,0.35)" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700 }}>{completeCount}/{courseStudents.length} students done</div>
                 <div style={{ fontSize: 11, color: isDirty ? "#FCD34D" : "rgba(255,255,255,0.7)" }}>{isDirty ? "● Unsaved changes" : "No unsaved changes"}</div>
@@ -2523,7 +2620,7 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
       )}
       {loading ? <Spinner /> : (
         <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 480 : "auto" }}>
+          <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 480 : "auto" }}>
             <thead><tr style={{ background: "#002E6E" }}>
               <th style={{ padding: "10px 14px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 12, position: isMobile ? "sticky" : "static", left: 0, background: "#002E6E", zIndex: 2 }}>Student</th>
               {subjects.map(s => (
@@ -2828,7 +2925,7 @@ function Rankings({ courseSubjects, examTypes, students }) {
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
         <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>🏆 Full Rankings — {course}</div>
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 380 : "auto" }}>
+          <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 380 : "auto" }}>
             <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
               {["Rank", "Student", "GCC", "Total", "%", "Grade"].map(h => <th key={h} style={{ padding: "10px 10px", textAlign: h === "Student" ? "left" : "center", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>)}
             </tr></thead>
@@ -3023,7 +3120,7 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
                 <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
                   <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📋 Exam-wise Summary</div>
                   <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: isMobile ? 400 : "auto" }}>
+                    <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: isMobile ? 400 : "auto" }}>
                       <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
                         <th style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>Date</th>
                         {subjects.map(s => <th key={s} style={{ padding: "9px 6px", textAlign: "center", fontWeight: 700, color: "#374151", fontSize: 10, whiteSpace: "nowrap" }}>{s}</th>)}
@@ -3231,7 +3328,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
               <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
                 <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📊 Subject Breakdown</div>
                 <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: isMobile ? 12 : 13, minWidth: isMobile ? 340 : "auto" }}>
+                  <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: isMobile ? 12 : 13, minWidth: isMobile ? 340 : "auto" }}>
                     <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
                       <th style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>Subject</th>
                       <th style={{ padding: "9px 8px", textAlign: "center", fontWeight: 700, color: "#374151", fontSize: 10 }}>Max</th>
@@ -3495,7 +3592,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
           ))}
         </div>
         <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 6 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+          <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
             <thead style={{ position: "sticky", top: 0 }}>
               <tr style={{ background: "#002E6E" }}>
                 {["Date", "Student", "Class", "Subject", "Marks"].map(h => (
@@ -4190,7 +4287,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
           )}
 
           <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 520 : "auto" }}>
+            <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 520 : "auto" }}>
               <thead>
                 <tr style={{ background: "#002E6E" }}>
                   <th style={{ padding: "10px 8px", textAlign: "center", width: 34 }}>
@@ -4803,7 +4900,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
             </div>
 
             <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 16 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+              <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                 <thead style={{ position: "sticky", top: 0 }}>
                   <tr style={{ background: "#002E6E" }}>
                     {["Row", "Name (from file)", "Match", "Action"].map(h => (
@@ -5085,7 +5182,7 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
             </div>
 
             <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 16 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+              <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                 <thead style={{ position: "sticky", top: 0 }}>
                   <tr style={{ background: "#002E6E" }}>
                     {["Row", "Name (from file)", "Match", "Action"].map(h => (
@@ -5591,7 +5688,7 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
             </div>
 
             <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 16 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+              <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                 <thead style={{ position: "sticky", top: 0 }}>
                   <tr style={{ background: "#002E6E" }}>
                     {["Row", "Name (from file)", "Match", "Marks Found", "Action"].map(h => (
@@ -6410,7 +6507,7 @@ function MeritList({ courseSubjects, examTypes, students }) {
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
         <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📜 Merit List — {course} ({filtered.length} students)</div>
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 380 : "auto" }}>
+          <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 380 : "auto" }}>
             <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
               {["Rank", "Student", "GCC No", "Total", "%", "Grade"].map(h => <th key={h} style={{ padding: "10px 12px", textAlign: h === "Student" ? "left" : "center", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>)}
             </tr></thead>
@@ -7366,7 +7463,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
             <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
               <div style={{ padding: "11px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Preview</div>
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 340 }}>
+                <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 340 }}>
                   <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
                     {["#","Date","Day","Subject","Marks"].map(h => <th key={h} style={{ padding: "9px 14px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>)}
                   </tr></thead>
@@ -7444,7 +7541,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
               <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
                 <div style={{ padding: "11px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Preview</div>
                 <div style={{ overflowX: "auto", maxHeight: 480, overflowY: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 420 }}>
+                  <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 420 }}>
                     <thead style={{ position: "sticky", top: 0 }}><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
                       {["Batch","Date","Day","Subject","Marks","Status"].map(h => <th key={h} style={{ padding: "9px 14px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>)}
                     </tr></thead>
@@ -7519,7 +7616,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
             <div style={{ padding: "11px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>{importRows.length ? `📋 Preview (${importRows.length})` : "📋 Awaiting upload…"}</div>
             {importRows.length > 0 ? (
               <div style={{ overflowX: "auto", maxHeight: 400, overflowY: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 480 }}>
+                <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 480 }}>
                   <thead style={{ position: "sticky", top: 0 }}>
                     <tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
                       {["Course","Subject","Date","Exam Type","Shift","Time","Room","Marks"].map(h => <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>)}
@@ -7605,7 +7702,7 @@ function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCo
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
         <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Exam Schedule</div>
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 600 }}>
+          <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 600 }}>
             <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
               {selectable && <th style={{ padding: "10px 12px", width: 36 }}></th>}
               {["Date","Course","Exam Type","Subject","Shift","Time","Marks","Room",""].map(h => (
@@ -8635,7 +8732,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
                 <span>📋 Print Queue</span><span style={{ opacity:0.7, fontSize:12 }}>{filteredRcStudents.length} cards</span>
               </div>
               <div style={{ maxHeight:320, overflowY:"auto", overflowX:"auto" }}>
-                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12, minWidth: isMobile ? 380 : "auto" }}>
+                <table className="gx-rt" style={{ width:"100%", borderCollapse:"collapse", fontSize:12, minWidth: isMobile ? 380 : "auto" }}>
                   <thead style={{ position:"sticky", top:0 }}>
                     <tr style={{ background:"#F8FAFC", borderBottom:"2px solid #E5E7EB" }}>
                       {["#","GCC","Student","Total","%","Grade"].map(h=><th key={h} style={{ padding:"9px 10px", textAlign:h==="Student"?"left":"center", fontWeight:700, color:"#374151", fontSize:11 }}>{h}</th>)}
@@ -8868,7 +8965,7 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
           <span style={{ opacity: 0.7, fontSize: 12 }}>{filtered.length} students</span>
         </div>
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 380 : "auto" }}>
+          <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 380 : "auto" }}>
             <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
               {["GCC No.", "Student Name", "Batch", "Adm. No.", "Print"].map(h => (
                 <th key={h} style={{ padding: "10px 12px", textAlign: h === "Student Name" ? "left" : "center", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>
@@ -9903,7 +10000,7 @@ function ExamPreviewModal({ cfg, onClose }) {
           {cfg.sessions?.filter(s=>s.time).length > 0 && (
             <div style={{ marginBottom:22 }}>
               <div style={{ fontWeight:700, fontSize:12, color:"#6B7280", textTransform:"uppercase", marginBottom:8, letterSpacing:".06em" }}>Exam Schedule</div>
-              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+              <table className="gx-rt" style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
                 <thead>
                   <tr style={{ background:"#F8FAFC" }}>
                     <th style={{ padding:"8px 12px", textAlign:"left", borderBottom:"2px solid #E5E7EB", color:"#002E6E", fontWeight:700 }}>Session</th>
@@ -9935,7 +10032,7 @@ function ExamPreviewModal({ cfg, onClose }) {
                   <div style={{ fontWeight:700, color:"white", fontSize:13 }}>{course}</div>
                   <div style={{ fontSize:11, color:"rgba(255,255,255,.75)", fontWeight:600 }}>Total: {total} marks</div>
                 </div>
-                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13, border:"1px solid #E5E7EB", borderTop:"none" }}>
+                <table className="gx-rt" style={{ width:"100%", borderCollapse:"collapse", fontSize:13, border:"1px solid #E5E7EB", borderTop:"none" }}>
                   <thead>
                     <tr style={{ background:"#F8FAFC" }}>
                       <th style={{ padding:"7px 12px", textAlign:"left", color:"#6B7280", fontWeight:700, fontSize:11, textTransform:"uppercase", width:36 }}>#</th>
@@ -10669,6 +10766,7 @@ export default function Exams({ currentUser, perms }) {
     const goBottom = (id) => setTab(id === "__more" ? "home" : id);
     return (
       <div className="exams-root xm-root">
+        <CardTableEngine enabled={isPhone} />
         {tab === "home" || !allowed.includes(tab) ? (
           <ExamHomeMobile
             groups={visibleGroups}
