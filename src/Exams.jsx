@@ -1082,6 +1082,8 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const [isDirty, setIsDirty] = useState(false); // true once any mark changes since last successful save
   const [pendingCourseChange, setPendingCourseChange] = useState(null); // { type: 'course'|'examType'|'examDate', value } — held until confirmed
   const [bulkFillValues, setBulkFillValues] = useState({}); // { [subject]: string } — the bulk-fill input per subject column
+  const [bulkOpen, setBulkOpen] = useState(false); // phone: "fill one subject for everyone" panel expanded
+  const [bulkSub, setBulkSub] = useState("");       // phone: subject currently picked in that panel
 
   // Loads the real exam_schedule rows for (course, examType), then loads any
   // exam_marks already saved against those exact exam_ids. This allows subjects
@@ -1601,6 +1603,44 @@ for (const st of courseStudents) {
     });
     setIsDirty(true);
     setSaved(false);
+  };
+
+  // ── Phone card entry ────────────────────────────────────────────────────
+  // Enter / the keyboard's "Next" key walks across a student's subjects, then
+  // drops to the next student's first subject. Subjects marked absent are
+  // read-only, so they are skipped.
+  const handleCardKeyDown = (e, row, col) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    let r = row, c = col;
+    for (let n = 0; n < filtered.length * subjects.length; n++) {
+      c += 1;
+      if (c >= subjects.length) { c = 0; r += 1; }
+      if (r >= filtered.length) { e.target.blur(); return; }
+      if (!absentSet.has(`${filtered[r].id}-${subjects[c]}`)) { focusCell(r, c); return; }
+    }
+  };
+
+  // Scrolls to the next student (after the one being edited, wrapping round)
+  // who still has an empty subject, and focuses that first empty box.
+  const jumpToPending = () => {
+    const active = document.activeElement;
+    let start = 0;
+    for (const [k, el] of Object.entries(cellRefs.current)) {
+      if (el === active) { start = Number(k.split("-")[0]) + 1; break; }
+    }
+    for (let n = 0; n < filtered.length; n++) {
+      const r = (start + n) % filtered.length;
+      const sid = filtered[r].id;
+      if (isStudentComplete(sid)) continue;
+      const c = Math.max(0, subjects.findIndex(sub => {
+        const v = marks[`${sid}-${sub}`];
+        return v === "" || v === undefined || v === null;
+      }));
+      const el = cellRefs.current[`${r}-${c}`];
+      if (el) { el.scrollIntoView({ block: "center", behavior: "smooth" }); el.focus({ preventScroll: true }); }
+      return;
+    }
   };
 
   // Mobile: compact controls stacked
@@ -2173,7 +2213,137 @@ for (const st of courseStudents) {
         </div>
       )}
 
-      {loading ? <Spinner /> : (
+      {loading ? <Spinner /> : isMobile ? (
+        <div>
+          {/* Fill one subject for every visible student */}
+          {subjects.length > 0 && filtered.length > 0 && (
+            <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 12, marginBottom: 12, overflow: "hidden" }}>
+              <button type="button" onClick={() => setBulkOpen(o => !o)}
+                style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", border: "none", background: "transparent", fontSize: 13, fontWeight: 700, color: "#002E6E", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>
+                <span>⚡ Fill one subject for everyone</span>
+                <span style={{ fontSize: 11, color: "#94A3B8" }}>{bulkOpen ? "▲" : "▼"}</span>
+              </button>
+              {bulkOpen && (() => {
+                const sub = bulkSub && subjects.includes(bulkSub) ? bulkSub : subjects[0];
+                return (
+                  <div style={{ padding: "0 14px 14px", display: "grid", gridTemplateColumns: "minmax(0,1fr) 96px", gap: 8 }}>
+                    <select value={sub} onChange={e => setBulkSub(e.target.value)} style={{ ...css.input, height: 42, fontSize: 14 }}>
+                      {subjects.map(s => <option key={s} value={s}>{s} (/{getSubMax(s)})</option>)}
+                    </select>
+                    <input type="number" inputMode="decimal" min="0" max={getSubMax(sub)} placeholder="Marks"
+                      value={bulkFillValues[sub] ?? ""}
+                      onChange={e => setBulkFillValues(p => ({ ...p, [sub]: e.target.value }))}
+                      style={{ ...css.input, height: 42, fontSize: 16, textAlign: "center" }} />
+                    <button type="button" onClick={() => applyBulkFill(sub)}
+                      style={{ ...css.btn, gridColumn: "1 / -1", background: "#002E6E", color: "white", padding: "11px 18px" }}>
+                      Fill {filtered.length} student{filtered.length !== 1 ? "s" : ""}
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* One card per student */}
+          {filtered.map((st, i) => {
+            const total = getTotal(st.id);
+            const pct = calcPctLocal(total);
+            const g = getGrade(pct);
+            const entered = subjects.filter(sub => {
+              const v = marks[`${st.id}-${sub}`];
+              return v !== "" && v !== undefined && v !== null;
+            }).length;
+            const complete = isStudentComplete(st.id);
+            const stripe = complete ? "#16A34A" : entered > 0 ? "#F59E0B" : "#CBD5E1";
+            return (
+              <div key={st.id} style={{ background: "white", borderRadius: 12, marginBottom: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.07)", borderLeft: `4px solid ${stripe}`, overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: "1px solid #F1F5F9" }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 999, background: "#EEF2FF", color: "#002E6E", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, color: "#1e293b", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{st.name}</div>
+                    <div style={{ fontSize: 11, color: "#94A3B8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {st.class_name} · GCC {st.gcc_no}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: "#0F172A" }}>
+                      {total}<span style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8" }}>/{courseMax}</span>
+                    </div>
+                    {entered > 0 ? (
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end", marginTop: 2 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: g.color }}>{pct.toFixed(0)}%</span>
+                        <Badge label={g.label} color={g.color} bg={g.bg} />
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>Not started</div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, padding: 10 }}>
+                  {subjects.map((sub, colIdx) => {
+                    const key = `${st.id}-${sub}`;
+                    const val = marks[key];
+                    const max = getSubMax(sub);
+                    const absent = absentSet.has(key);
+                    const overMax = val !== "" && val !== undefined && val !== null && Number(val) > max;
+                    return (
+                      <div key={sub} style={{ background: absent ? "#FEF2F2" : "#F8FAFC", border: `1px solid ${absent ? "#FECACA" : "#E2E8F0"}`, borderRadius: 10, padding: "8px 8px 8px 10px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 4, fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 6 }}>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span>
+                          <span style={{ color: "#94A3B8", fontWeight: 600, flexShrink: 0 }}>/{max}</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <input type="number" inputMode="decimal" enterKeyHint="next" min="0" max={max} placeholder="--"
+                            ref={setCellRef(i, colIdx)}
+                            value={val ?? ""}
+                            readOnly={absent}
+                            aria-label={`${st.name} — ${sub} marks out of ${max}`}
+                            onChange={e => handleMark(st.id, sub, e.target.value)}
+                            onKeyDown={e => handleCardKeyDown(e, i, colIdx)}
+                            onFocus={e => e.target.select()}
+                            style={{ flex: 1, minWidth: 0, height: 42, boxSizing: "border-box", borderRadius: 8, border: overMax ? "1.5px solid #DC2626" : "1px solid #CBD5E1", textAlign: "center", fontSize: 18, fontWeight: 700, color: absent ? "#DC2626" : "#0F172A", background: overMax || absent ? "#FEF2F2" : "white", outline: "none", fontFamily: "'DM Sans',sans-serif" }} />
+                          <button type="button" onClick={() => toggleAbsent(st.id, sub)} aria-pressed={absent}
+                            title={absent ? "Marked absent — tap to undo" : "Mark absent"}
+                            style={{ width: 42, height: 42, flexShrink: 0, borderRadius: 8, border: `1px solid ${absent ? "#DC2626" : "#E2E8F0"}`, background: absent ? "#DC2626" : "white", color: absent ? "white" : "#94A3B8", fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>
+                            {absent ? "ABS" : "A"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          {!filtered.length && (
+            <div style={{ background: "white", borderRadius: 12, padding: 32, textAlign: "center", color: "#94A3B8", fontSize: 13 }}>
+              No students found for <b>{course}</b>.
+            </div>
+          )}
+
+          {/* Sticky save bar — stays in reach while scrolling long batches */}
+          {filtered.length > 0 && subjects.length > 0 && (
+            <div style={{ position: "sticky", bottom: 8, zIndex: 20, marginTop: 6, background: "#002E6E", color: "white", borderRadius: 14, padding: "10px 12px calc(10px + env(safe-area-inset-bottom, 0px))", display: "flex", alignItems: "center", gap: 8, boxShadow: "0 6px 20px rgba(0,46,110,0.35)" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700 }}>{completeCount}/{courseStudents.length} students done</div>
+                <div style={{ fontSize: 11, color: isDirty ? "#FCD34D" : "rgba(255,255,255,0.7)" }}>{isDirty ? "● Unsaved changes" : "No unsaved changes"}</div>
+              </div>
+              {completeCount < courseStudents.length && (
+                <button type="button" onClick={jumpToPending}
+                  style={{ ...css.btn, padding: "10px 12px", fontSize: 12, background: "rgba(255,255,255,0.14)", color: "white", border: "1px solid rgba(255,255,255,0.35)" }}>
+                  Next pending
+                </button>
+              )}
+              <button type="button" onClick={handleSave} disabled={saving}
+                style={{ ...css.btn, padding: "10px 16px", background: saved ? "#16A34A" : "white", color: saved ? "white" : "#002E6E", opacity: saving ? 0.7 : 1 }}>
+                {saved ? "✓ Saved" : saving ? "Saving…" : "💾 Save"}
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
         <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: isMobile ? 12 : 13, minWidth: isMobile ? 500 : "auto" }}>
             <thead>
