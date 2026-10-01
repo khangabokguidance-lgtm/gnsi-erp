@@ -16,12 +16,12 @@ import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTes
 import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } from './lib/mockTestReports';
 import { loadAll, saveRows, deleteTest, migrateLocalToCloud, localCount } from './lib/mockTestStore';
 
-const NAVY = '#0f2d5e';
+const NAVY = '#002E6E';
 const ui = {
-  card: { background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 16, marginBottom: 14, boxShadow: '0 1px 4px rgba(0,0,0,.05)' },
-  input: { padding: '7px 10px', borderRadius: 8, border: '1px solid #D1D5DB', fontSize: 13, background: '#fff', color: '#111827', fontFamily: 'inherit', minWidth: 0 },
-  btn: { padding: '8px 16px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: NAVY, color: '#fff', fontFamily: 'inherit' },
-  ghost: { padding: '7px 14px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#fff', color: '#334155', fontFamily: 'inherit' },
+  card: { background: '#fff', border: '1px solid #E6ECF4', borderRadius: 16, padding: 14, marginBottom: 12, boxShadow: '0 2px 10px rgba(0,46,110,.06)' },
+  input: { padding: '8px 12px', borderRadius: 12, border: '1px solid #D6E0EE', fontSize: 13, background: '#fff', color: '#111827', fontFamily: 'inherit', minWidth: 0 },
+  btn: { padding: '10px 18px', borderRadius: 12, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: NAVY, color: '#fff', fontFamily: 'inherit' },
+  ghost: { padding: '9px 14px', borderRadius: 12, border: '1px solid #D6E0EE', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#fff', color: '#334155', fontFamily: 'inherit' },
   th: { background: NAVY, color: '#fff', padding: '7px 8px', fontSize: 11, textTransform: 'uppercase', letterSpacing: .5, textAlign: 'center', whiteSpace: 'nowrap', position: 'sticky', top: 0 },
   td: { padding: '6px 8px', borderBottom: '1px solid #E5E7EB', textAlign: 'center', fontSize: 13, whiteSpace: 'nowrap' },
   label: { fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: .8, marginBottom: 4, display: 'block' },
@@ -41,7 +41,7 @@ const tone = (v, g = 0) => (v > g ? '#047857' : v < -g ? '#b91c1c' : '#475569');
 const Svg = ({ html }) => <div dangerouslySetInnerHTML={{ __html: html }} />;
 const Pill = ({ text, color }) => <span style={{ background: color, color: '#fff', borderRadius: 10, padding: '1px 9px', fontSize: 11, fontWeight: 700 }}>{text}</span>;
 const Stat = ({ label, value, sub, color = '#0f172a' }) => (
-  <div style={{ flex: '1 1 130px', background: '#fff', border: '1px solid #E5E7EB', borderTop: `3px solid ${color}`, borderRadius: 10, padding: '10px 12px' }}>
+  <div style={{ flex: '1 1 calc(50% - 10px)', minWidth: 130, boxSizing: 'border-box', background: '#fff', border: '1px solid #E6ECF4', borderLeft: `4px solid ${color}`, borderRadius: 14, padding: '10px 12px', boxShadow: '0 2px 8px rgba(0,46,110,.05)' }}>
     <div style={{ fontSize: 10.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: .8 }}>{label}</div>
     <div style={{ fontSize: 22, fontWeight: 700, color, lineHeight: 1.25 }}>{value}</div>
     {sub ? <div style={{ fontSize: 11.5, color: '#64748B' }}>{sub}</div> : null}
@@ -51,7 +51,7 @@ const Field = ({ label, children, grow }) => (
   <div style={{ flex: grow ? '1 1 220px' : '0 1 auto' }}><span style={ui.label}>{label}</span>{children}</div>
 );
 const Table = ({ head, children, maxH }) => (
-  <div style={{ overflow: 'auto', maxHeight: maxH, border: '1px solid #E5E7EB', borderRadius: 10 }}>
+  <div style={{ overflow: 'auto', maxHeight: maxH, border: '1px solid #E6ECF4', borderRadius: 12 }}>
     <table style={{ borderCollapse: 'collapse', width: '100%' }}>
       <thead><tr>{head.map((h, i) => <th key={i} style={{ ...ui.th, textAlign: i === 0 ? 'left' : 'center' }}>{h}</th>)}</tr></thead>
       <tbody>{children}</tbody>
@@ -111,9 +111,9 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {note ? <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>⚠️ {note}</div> : null}
       {err ? <div style={{ ...ui.card, background: '#FEF2F2', borderColor: '#FCA5A5', fontSize: 13, color: '#991B1B' }}>❌ {err}</div> : null}
       {header}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', margin: '0 -12px 12px', padding: '2px 12px 6px', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
         {SUBTABS.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{ ...ui.ghost, ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}` } : {}) }}>{t.icon} {t.label}</button>
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 0 auto', borderRadius: 999, padding: '8px 16px', whiteSpace: 'nowrap', ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(0,46,110,.25)' } : {}) }}>{t.icon} {t.label}</button>
         ))}
       </div>
       {!rows.length && tab !== 'data' ? (

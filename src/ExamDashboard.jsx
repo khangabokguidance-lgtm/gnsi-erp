@@ -49,10 +49,10 @@ function getGrade(pct) {
   return GRADE_PRESETS[GRADE_PRESETS.length - 1];
 }
 
-const COURSE_COLORS = ["#1a3c2e","#185FA5","#7c3aed","#d97706","#0891b2","#e11d48","#84cc16","#64748b"];
+const COURSE_COLORS = ["#002E6E","#185FA5","#7c3aed","#d97706","#0891b2","#e11d48","#84cc16","#64748b"];
 
 // ─── Mini Sparkline (SVG) ─────────────────────────────────────────────────────
-function Sparkline({ data, color = "#1a3c2e", height = 40, width = 120 }) {
+function Sparkline({ data, color = "#002E6E", height = 40, width = 120 }) {
   if (!data || data.length < 2) return null;
   const min = Math.min(...data);
   const max = Math.max(...data);
@@ -276,7 +276,7 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
 
       {/* Header bar */}
       <div style={{
-        background: "linear-gradient(135deg,#1a3c2e,#2A5C45)",
+        background: "linear-gradient(135deg,#002E6E,#0A56B8)",
         borderRadius: 14, padding: "20px 28px",
         display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12
       }}>
@@ -292,14 +292,14 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
           <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.65)", textTransform: "uppercase" }}>Exam Type</label>
           <select value={examType} onChange={e => setExamType(e.target.value)}
             style={{ padding: "8px 14px", borderRadius: 8, border: "none", fontSize: 13, fontWeight: 600, background: "rgba(255,255,255,0.15)", color: "white", outline: "none", cursor: "pointer" }}>
-            {examTypes.map(et => <option key={et.id} value={et.id} style={{ background: "#1a3c2e" }}>{et.name}</option>)}
+            {examTypes.map(et => <option key={et.id} value={et.id} style={{ background: "#002E6E" }}>{et.name}</option>)}
           </select>
         </div>
       </div>
 
       {/* Top KPI cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <StatCard icon="👥" label="Total Students" value={totalStudents} sub={`${courses.length} courses enrolled`} color="#1a3c2e" />
+        <StatCard icon="👥" label="Total Students" value={totalStudents} sub={`${courses.length} courses enrolled`} color="#002E6E" />
         <StatCard icon="📝" label="Tests Taken" value={totalTested} sub={`out of ${totalStudents} students`} color="#185FA5" />
         <StatCard icon="📈" label="Class Average" value={`${overallAvg.toFixed(1)}%`} sub="across all batches" color="#0891b2" />
         <StatCard icon="✅" label="Avg Pass Rate" value={`${overallPass.toFixed(0)}%`} sub="across all courses" color="#0F6E56" />
@@ -424,11 +424,11 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
                 display: "flex", alignItems: "center", gap: 10,
                 padding: "8px 10px", borderRadius: 8, marginBottom: 6,
                 background: i === 0 ? "#FEF9E7" : "#F9FAFB",
-                border: i === 0 ? "1px solid #f0c040" : "1px solid #F1F5F9"
+                border: i === 0 ? "1px solid #00BAF2" : "1px solid #F1F5F9"
               }}>
                 <div style={{
                   width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-                  background: i === 0 ? "#f0c040" : st.color,
+                  background: i === 0 ? "#00BAF2" : st.color,
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 11, fontWeight: 800, color: "white"
                 }}>{i + 1}</div>
@@ -507,7 +507,7 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
 
       {/* Bottom: Quick stats bar */}
       <div style={{
-        background: "#1a3c2e", borderRadius: 14, padding: "16px 28px",
+        background: "#002E6E", borderRadius: 14, padding: "16px 28px",
         display: "flex", gap: 0, overflow: "hidden"
       }}>
         {[
