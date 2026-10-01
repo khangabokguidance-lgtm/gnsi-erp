@@ -26,6 +26,8 @@ import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from 
 import ToppersCertificate from './ToppersCertificate'
 import ExamDashboard from './ExamDashboard'
 import MockTestAnalyzer from './MockTestAnalyzer'
+import { ExamHomeMobile, ExamTopBar, ExamBottomBar } from './ExamsMobile'
+import './examsTheme.css'
 import './mobile.css';
 import ExamCSVImport from './lib/ExamCSVImport';
 import { isAdminRole } from './roles'
@@ -627,11 +629,11 @@ function printHTML(html, title = "GNSI") {
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
-    :root{--bg:#F0F4FF;--bg2:#DBEAFE;--border:#BFDBFE;--text:#1C1A16;--text2:#3b5ca8;--accent:#0f2d5e;--gold:#B8860B;}
+    :root{--bg:#F0F4FF;--bg2:#DBEAFE;--border:#BFDBFE;--text:#1C1A16;--text2:#3b5ca8;--accent:#0f2d5e;--gold:#00BAF2;}
     body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);padding:28px;-webkit-font-smoothing:antialiased;}
     .page{max-width:720px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.10);}
     .header{background:linear-gradient(135deg,#0f2d5e 0%,#1a4d8a 60%,#2563b0 100%);color:#fff;padding:28px 36px 22px;text-align:center;position:relative;}
-    .header::after{content:'';display:block;position:absolute;bottom:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#B8860B,#f0c040,#B8860B);}
+    .header::after{content:'';display:block;position:absolute;bottom:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#00BAF2,#00BAF2,#00BAF2);}
     .eyebrow{font-size:10px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,.75);margin-bottom:6px;}
     .inst-name{font-family:'Playfair Display',Georgia,serif;font-size:24px;font-weight:400;margin-bottom:4px;}
     .inst-addr{font-size:12px;color:rgba(255,255,255,.75);}
@@ -699,7 +701,7 @@ function CoursePicker({ courses, value, onChange, label = "Batch / Course" }) {
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {courses.map(c => (
           <button key={c} onClick={() => onChange(c)}
-            style={{ ...css.btn, padding: "6px 14px", background: value === c ? "#1a3c2e" : "#F3F4F6", color: value === c ? "white" : "#374151", border: value === c ? "none" : "1px solid #E5E7EB", fontSize: 12 }}>
+            style={{ ...css.btn, padding: "6px 14px", background: value === c ? "#002E6E" : "#F3F4F6", color: value === c ? "white" : "#374151", border: value === c ? "none" : "1px solid #E5E7EB", fontSize: 12 }}>
             {c}
           </button>
         ))}
@@ -712,7 +714,7 @@ function CoursePicker({ courses, value, onChange, label = "Batch / Course" }) {
 function DashStatCard({ label, value, sub, color, strip }) {
   const strips = {
     blue: "linear-gradient(90deg,#185FA5,#4A90D9)", green: "linear-gradient(90deg,#0F6E56,#2A9D8F)",
-    gold: "linear-gradient(90deg,#B8860B,#f0c040)", purple: "linear-gradient(90deg,#534AB7,#7B68EE)",
+    gold: "linear-gradient(90deg,#00BAF2,#00BAF2)", purple: "linear-gradient(90deg,#534AB7,#7B68EE)",
     red:  "linear-gradient(90deg,#A32D2D,#DC4444)", teal: "linear-gradient(90deg,#0891b2,#38bdf8)",
   };
   return (
@@ -742,10 +744,9 @@ function useMobile() {
   return useWindowWidth() < 768;
 }
 
-function TabNav({ active, onSelect, perms, isAdmin, currentUser }) {
-  const isMobile = useMobile();
-  const [menuOpen, setMenuOpen] = React.useState(false);
-
+// Which tabs the signed-in user may see (shared by the desktop tab bar and the
+// phone home / bottom navigation).
+function visibleTabGroups({ perms, isAdmin, currentUser }) {
   const SETUP_TABS = ["studentsmgr", "coursesubjects", "examtypes", "settings"];
   const WRITE_TABS = ["entry", "schedule", "seatplan"];
   const DOC_TABS   = ["admitcard", "reportcard", "bulkreport", "toppers"];
@@ -766,9 +767,16 @@ function TabNav({ active, onSelect, perms, isAdmin, currentUser }) {
     return p.read === true;
   };
 
-  const filteredGroups = TAB_GROUPS
+  return TAB_GROUPS
     .map((g) => ({ ...g, tabs: g.tabs.filter((t) => canShow(t.id)) }))
     .filter((g) => g.tabs.length > 0);
+}
+
+function TabNav({ active, onSelect, perms, isAdmin, currentUser }) {
+  const isMobile = useMobile();
+  const [menuOpen, setMenuOpen] = React.useState(false);
+
+  const filteredGroups = visibleTabGroups({ perms, isAdmin, currentUser });
 
   const activeTabInfo = TAB_GROUPS.flatMap((g) => g.tabs).find((t) => t.id === active);
 
@@ -794,14 +802,14 @@ function TabNav({ active, onSelect, perms, isAdmin, currentUser }) {
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
             <span style={{ fontSize: 18, flexShrink: 0 }}>{activeTabInfo?.icon}</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#1a3c2e", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#002E6E", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {activeTabInfo?.label}
             </span>
           </div>
           <button
             onClick={() => setMenuOpen((p) => !p)}
             style={{
-              background: menuOpen ? "#1a3c2e" : "#F3F4F6",
+              background: menuOpen ? "#002E6E" : "#F3F4F6",
               border: "none",
               borderRadius: 8,
               width: 38,
@@ -848,7 +856,7 @@ function TabNav({ active, onSelect, perms, isAdmin, currentUser }) {
             }}>
               {/* Drawer header */}
               <div style={{
-                background: "linear-gradient(135deg,#1a3c2e,#2A5C45)",
+                background: "linear-gradient(135deg,#002E6E,#0A56B8)",
                 padding: "14px 18px",
                 display: "flex",
                 alignItems: "center",
@@ -890,7 +898,7 @@ function TabNav({ active, onSelect, perms, isAdmin, currentUser }) {
                             padding: "9px 10px",
                             borderRadius: 9,
                             border: isActive ? "none" : "1px solid #E5E7EB",
-                            background: isActive ? "#1a3c2e" : "#F9FAFB",
+                            background: isActive ? "#002E6E" : "#F9FAFB",
                             color: isActive ? "white" : "#374151",
                             cursor: "pointer",
                             fontFamily: "'DM Sans',sans-serif",
@@ -937,7 +945,7 @@ function TabNav({ active, onSelect, perms, isAdmin, currentUser }) {
           <button key={t.id} onClick={() => onSelect(t.id)} title={t.tip}
             style={{
               padding: "5px 10px", fontSize: 12,
-              background: active === t.id ? "#1a3c2e" : "transparent",
+              background: active === t.id ? "#002E6E" : "transparent",
               color: active === t.id ? "white" : "#374151",
               border: active === t.id ? "none" : "1px solid transparent",
               borderRadius: 7, cursor: "pointer",
@@ -1728,7 +1736,7 @@ for (const st of courseStudents) {
         {importInfo && (
           <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12 }}>
             <span style={{ fontWeight: 700, color: "#1D4ED8" }}>🎯 Auto-detected: </span>
-            <span style={{ fontWeight: 800, color: "#1a3c2e", background: "#D1FAE5", padding: "2px 10px", borderRadius: 999 }}>{importInfo.detectedCourse}</span>
+            <span style={{ fontWeight: 800, color: "#002E6E", background: "#D1FAE5", padding: "2px 10px", borderRadius: 999 }}>{importInfo.detectedCourse}</span>
           </div>
         )}
 
@@ -1803,7 +1811,7 @@ for (const st of courseStudents) {
                           </button>
                         )}
                         <button onClick={() => { setAddNewOpenIdx(null); setManualOpenIdx(isOpen ? null : idx); }}
-                          style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: isOpen ? "#1a3c2e" : "#EFF6FF", color: isOpen ? "white" : "#1D4ED8", border: isOpen ? "none" : "1px solid #BFDBFE" }}>
+                          style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: isOpen ? "#002E6E" : "#EFF6FF", color: isOpen ? "white" : "#1D4ED8", border: isOpen ? "none" : "1px solid #BFDBFE" }}>
                           🔍 {isOpen ? "Close" : "Search"}
                         </button>
                         <button onClick={() => toggleAddStudentForm(idx, err)}
@@ -1835,7 +1843,7 @@ for (const st of courseStudents) {
                           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                             <button 
                               onClick={() => setManualSearchFilter(p => ({ ...p, [idx]: {} }))}
-                              style={{ ...css.btn, padding: "3px 8px", fontSize: 10, background: !manualSearchFilter[idx]?.batch ? "#1a3c2e" : "#F3F4F6", color: !manualSearchFilter[idx]?.batch ? "white" : "#374151", border: "none", borderRadius: 4 }}>
+                              style={{ ...css.btn, padding: "3px 8px", fontSize: 10, background: !manualSearchFilter[idx]?.batch ? "#002E6E" : "#F3F4F6", color: !manualSearchFilter[idx]?.batch ? "white" : "#374151", border: "none", borderRadius: 4 }}>
                               ✕ Clear
                             </button>
                             {courses.map(c => (
@@ -1890,7 +1898,7 @@ for (const st of courseStudents) {
                     )}
                     {isAddOpen && (
                       <div style={{ marginTop: 10, padding: 12, background: "white", border: "1px solid #E5E7EB", borderRadius: 8 }}>
-                        <div style={{ fontWeight: 700, fontSize: 12, color: "#1a3c2e", marginBottom: 8 }}>➕ Register as New Student</div>
+                        <div style={{ fontWeight: 700, fontSize: 12, color: "#002E6E", marginBottom: 8 }}>➕ Register as New Student</div>
                         {addStudentError && (
                           <div style={{ background: "#FEF2F2", color: "#DC2626", padding: "6px 10px", borderRadius: 6, fontSize: 11, marginBottom: 8 }}>⚠️ {addStudentError}</div>
                         )}
@@ -1905,7 +1913,7 @@ for (const st of courseStudents) {
                           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                             {TRACKS.map(t => (
                               <button key={t} onClick={() => setNewStudentForm(p => ({ ...p, track: t, batch: TRACK_BATCHES[t][0] || p.batch }))}
-                                style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: newStudentForm.track === t ? "#1a3c2e" : "#F3F4F6", color: newStudentForm.track === t ? "white" : "#374151", border: newStudentForm.track === t ? "none" : "1px solid #E5E7EB" }}>
+                                style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: newStudentForm.track === t ? "#002E6E" : "#F3F4F6", color: newStudentForm.track === t ? "white" : "#374151", border: newStudentForm.track === t ? "none" : "1px solid #E5E7EB" }}>
                                 {t}
                               </button>
                             ))}
@@ -1965,7 +1973,7 @@ for (const st of courseStudents) {
             <div style={{ overflowX: "auto", marginBottom: 16, maxHeight: 300, overflowY: "auto", borderRadius: 8 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 500 }}>
                 <thead style={{ position: "sticky", top: 0 }}>
-                  <tr style={{ background: "#1a3c2e" }}>
+                  <tr style={{ background: "#002E6E" }}>
                     <th style={{ padding: "8px 8px", textAlign: "center", color: "white", fontWeight: 700, whiteSpace: "nowrap" }}>Rank</th>
                     <th style={{ padding: "8px 12px", textAlign: "left", color: "white", fontWeight: 700 }}>Student</th>
                     <th style={{ padding: "8px 8px", textAlign: "center", color: "white", fontWeight: 700, whiteSpace: "nowrap" }}>Matched By</th>
@@ -2041,7 +2049,7 @@ for (const st of courseStudents) {
             </div>
           )
           : <button onClick={confirmImport} disabled={importing || !importRows.length}
-              style={{ ...css.btn, background: importing ? "#93C5FD" : "#1a3c2e", color: "white", padding: "10px 24px", fontSize: 14, width: isMobile ? "100%" : "auto" }}>
+              style={{ ...css.btn, background: importing ? "#93C5FD" : "#002E6E", color: "white", padding: "10px 24px", fontSize: 14, width: isMobile ? "100%" : "auto" }}>
               {importing ? "⏳ Saving…" : `✅ Confirm Import (${importRows.length} students)`}
             </button>
         }
@@ -2086,7 +2094,7 @@ for (const st of courseStudents) {
                 {s} <span style={{ opacity: 0.6 }}>/{getSubMax(s)}</span>
               </span>
             ))}
-            <span style={{ fontSize: 11, padding: "3px 10px", background: "#1a3c2e", color: "white", borderRadius: 999, fontWeight: 700 }}>Total: {courseMax}</span>
+            <span style={{ fontSize: 11, padding: "3px 10px", background: "#002E6E", color: "white", borderRadius: 999, fontWeight: 700 }}>Total: {courseMax}</span>
           </div>
         )}
       </div>
@@ -2153,7 +2161,7 @@ for (const st of courseStudents) {
               <span style={{ fontWeight: 700, color: progressPct === 100 ? "#0F6E56" : "#374151" }}>{completeCount} / {courseStudents.length} students ({progressPct}%)</span>
             </div>
             <div style={{ height: 7, background: "#F1F5F9", borderRadius: 999, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${progressPct}%`, background: progressPct === 100 ? "#16A34A" : "#1a3c2e", borderRadius: 999, transition: "width .3s" }} />
+              <div style={{ height: "100%", width: `${progressPct}%`, background: progressPct === 100 ? "#16A34A" : "#002E6E", borderRadius: 999, transition: "width .3s" }} />
             </div>
           </div>
           {isDirty && (
@@ -2168,8 +2176,8 @@ for (const st of courseStudents) {
         <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: isMobile ? 12 : 13, minWidth: isMobile ? 500 : "auto" }}>
             <thead>
-              <tr style={{ background: "#1a3c2e" }}>
-                <th style={{ padding: isMobile ? "8px 10px" : "10px 14px", textAlign: "left", color: "white", fontWeight: 700, fontSize: isMobile ? 11 : 12, position: "sticky", left: 0, background: "#1a3c2e", zIndex: 2 }}>Student</th>
+              <tr style={{ background: "#002E6E" }}>
+                <th style={{ padding: isMobile ? "8px 10px" : "10px 14px", textAlign: "left", color: "white", fontWeight: 700, fontSize: isMobile ? 11 : 12, position: "sticky", left: 0, background: "#002E6E", zIndex: 2 }}>Student</th>
                 {subjects.map(s => (
                   <th key={s} style={{ padding: "10px 6px", textAlign: "center", color: "white", fontWeight: 700, fontSize: 10, whiteSpace: "nowrap" }}>
                     {s}<br /><span style={{ opacity: 0.6, fontWeight: 400, fontSize: 9 }}>/{getSubMax(s)}</span>
@@ -2191,7 +2199,7 @@ for (const st of courseStudents) {
                           onKeyDown={e => { if (e.key === "Enter") applyBulkFill(sub); }}
                           style={{ width: 34, padding: "3px 2px", borderRadius: 5, border: "1px solid #D1D5DB", textAlign: "center", fontSize: 11 }} />
                         <button onClick={() => applyBulkFill(sub)} title={`Fill ${sub} for all visible students`}
-                          style={{ ...css.btn, padding: "2px 5px", fontSize: 10, background: "#1a3c2e", color: "white" }}>✓</button>
+                          style={{ ...css.btn, padding: "2px 5px", fontSize: 10, background: "#002E6E", color: "white" }}>✓</button>
                       </div>
                     </th>
                   ))}
@@ -2345,8 +2353,8 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
       {loading ? <Spinner /> : (
         <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 480 : "auto" }}>
-            <thead><tr style={{ background: "#1a3c2e" }}>
-              <th style={{ padding: "10px 14px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 12, position: isMobile ? "sticky" : "static", left: 0, background: "#1a3c2e", zIndex: 2 }}>Student</th>
+            <thead><tr style={{ background: "#002E6E" }}>
+              <th style={{ padding: "10px 14px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 12, position: isMobile ? "sticky" : "static", left: 0, background: "#002E6E", zIndex: 2 }}>Student</th>
               {subjects.map(s => (
                 <th key={s} style={{ padding: "10px 6px", textAlign: "center", color: "white", fontWeight: 700, fontSize: 10, whiteSpace: "nowrap" }}>
                   {s}<br /><span style={{ opacity: 0.6, fontWeight: 400, fontSize: 9 }}>/{subjectMaxMap[s] || 100}</span>
@@ -2480,7 +2488,7 @@ function Analytics({ courseSubjects, examTypes, students }) {
         chartsRef.current.push(new Chart(gradeRef.current, { type: "doughnut", data: { labels, datasets: [{ data: labels.map(l => gradeCounts[l] || 0), backgroundColor: GRADE_PRESETS.map(g => g.color), borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } } }));
       }
       if (subjectRef.current) {
-        chartsRef.current.push(new Chart(subjectRef.current, { type: "bar", data: { labels: subjects, datasets: [{ label: "Avg %", data: subjects.map(s => subjectAvgPct[s]), backgroundColor: "#2A5C45", borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } }, plugins: { legend: { display: false } } } }));
+        chartsRef.current.push(new Chart(subjectRef.current, { type: "bar", data: { labels: subjects, datasets: [{ label: "Avg %", data: subjects.map(s => subjectAvgPct[s]), backgroundColor: "#0A56B8", borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } }, plugins: { legend: { display: false } } } }));
       }
       if (passRef.current) {
         chartsRef.current.push(new Chart(passRef.current, { type: "bar", data: { labels: subjects, datasets: [{ label: "Pass Rate %", data: subjects.map(s => Math.round((subjectPass[s] / n) * 100)), backgroundColor: "#185FA5", borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } }, plugins: { legend: { display: false } } } }));
@@ -2512,7 +2520,7 @@ function Analytics({ courseSubjects, examTypes, students }) {
         <DashStatCard label={`${course} Students`} value={courseStudents.length} strip="blue" color="#185FA5" />
         <DashStatCard label="Class Average" value={`${classAvg}%`} strip="teal" color="#0891b2" />
         <DashStatCard label="Pass Rate" value={`${Math.round(passed / n * 100)}%`} sub={`${passed} passed`} strip="green" color="#0F6E56" />
-        <DashStatCard label="Highest" value={`${highest}/${courseMax}`} strip="gold" color="#B8860B" />
+        <DashStatCard label="Highest" value={`${highest}/${courseMax}`} strip="gold" color="#00BAF2" />
         <DashStatCard label="Lowest" value={`${lowest}/${courseMax}`} strip="red" color="#A32D2D" />
       </div>
 
@@ -2630,7 +2638,7 @@ function Rankings({ courseSubjects, examTypes, students }) {
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,1fr)", gap: isMobile ? 10 : 14, marginBottom: 20 }}>
         {rankedWithRanks.slice(0, 3).map((st, i) => {
           const g = getGrade(st.pct);
-          const podiumColor = i === 0 ? "#B8860B" : i === 1 ? "#94A3B8" : "#CD7F32";
+          const podiumColor = i === 0 ? "#00BAF2" : i === 1 ? "#94A3B8" : "#CD7F32";
           return (
             <div key={st.id} style={{ ...css.card, textAlign: "center", borderTop: `4px solid ${podiumColor}`, position: "relative", padding: isMobile ? "14px 12px" : 20 }}>
               <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", width: 24, height: 24, borderRadius: "50%", background: podiumColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "white" }}>{i + 1}</div>
@@ -2647,7 +2655,7 @@ function Rankings({ courseSubjects, examTypes, students }) {
 
       {/* Full rankings table — scrollable on mobile */}
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-        <div style={{ padding: "12px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>🏆 Full Rankings — {course}</div>
+        <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>🏆 Full Rankings — {course}</div>
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 380 : "auto" }}>
             <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
@@ -2752,7 +2760,7 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
     ensureLibs().then(() => {
       const Chart = window.Chart; if (!Chart) return;
       if (chartInstance.current) { try { chartInstance.current.destroy(); } catch (_) {} }
-      const colors = ["#2A5C45","#185FA5","#7c3aed","#d97706","#0891b2","#e11d48","#84cc16"];
+      const colors = ["#0A56B8","#185FA5","#7c3aed","#d97706","#0891b2","#e11d48","#84cc16"];
       const datasets = subjects.map((sub, i) => ({
         label: sub,
         data: dates.map(d => { const m = resolvedMarks.find(r => r.subject === sub && r.exam_date === d); return m ? m.marks_obtained : null; }),
@@ -2763,7 +2771,7 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
         const dm = resolvedMarks.filter(r => r.exam_date === d);
         return dm.length ? dm.reduce((s, r) => s + (r.marks_obtained || 0), 0) : null;
       });
-      datasets.push({ label: "Total", data: totalsData, borderColor: "#1a3c2e", backgroundColor: "#1a3c2e22", tension: 0.4, fill: true, borderWidth: 3, pointRadius: 5, pointHoverRadius: 7, spanGaps: true, yAxisID: "y2" });
+      datasets.push({ label: "Total", data: totalsData, borderColor: "#002E6E", backgroundColor: "#002E6E22", tension: 0.4, fill: true, borderWidth: 3, pointRadius: 5, pointHoverRadius: 7, spanGaps: true, yAxisID: "y2" });
       chartInstance.current = new Chart(chartRef.current, {
         type: "line", data: { labels: dates, datasets },
         options: { responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
@@ -2799,7 +2807,7 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
       <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "280px 1fr", gap: isMobile ? 14 : 20 }}>
         {/* Student selector */}
         <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-          <div style={{ padding: "12px 16px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>👤 Select Student</div>
+          <div style={{ padding: "12px 16px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>👤 Select Student</div>
           <div style={{ padding: 10 }}><input placeholder="🔍 Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...css.input, marginBottom: 8, fontSize: 12 }} /></div>
           <div style={{ maxHeight: isMobile ? 200 : 480, overflowY: "auto" }}>
             {filteredStudents.map(st => (
@@ -2821,7 +2829,7 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
             </div>
           ) : loading ? <Spinner /> : (
             <>
-              <div style={{ background: "linear-gradient(135deg,#1a3c2e,#2A5C45)", borderRadius: 12, padding: isMobile ? "14px 16px" : "18px 24px", marginBottom: 14, color: "white", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+              <div style={{ background: "linear-gradient(135deg,#002E6E,#0A56B8)", borderRadius: 12, padding: isMobile ? "14px 16px" : "18px 24px", marginBottom: 14, color: "white", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
                 <div>
                   <div style={{ fontFamily: "'Playfair Display',serif", fontSize: isMobile ? 16 : 20 }}>{selectedStudent.name}</div>
                   <div style={{ fontSize: 11, opacity: 0.75, marginTop: 2 }}>GCC {selectedStudent.gcc_no} · {selectedStudent.class_name}</div>
@@ -2842,7 +2850,7 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
 
               {dateSummary.some(d => d.pct !== null) && (
                 <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-                  <div style={{ padding: "12px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>📋 Exam-wise Summary</div>
+                  <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📋 Exam-wise Summary</div>
                   <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: isMobile ? 400 : "auto" }}>
                       <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
@@ -2891,7 +2899,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
   const [search, setSearch] = useState("");
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
-  const COMPARE_COLORS = ["#2A5C45","#185FA5","#7c3aed","#d97706"];
+  const COMPARE_COLORS = ["#0A56B8","#185FA5","#7c3aed","#d97706"];
   // ── Real exam config, sourced live from exam_schedule for this exact course +
   // exam type — NOT the static courseSubjects/COURSE_MAX_MARKS config.
   const [scheduledSubjects, setScheduledSubjects] = useState([]);
@@ -3000,7 +3008,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
       <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "260px 1fr", gap: isMobile ? 12 : 20 }}>
         {/* Student list */}
         <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-          <div style={{ padding: "12px 16px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>Select Students ({selected.length}/4)</div>
+          <div style={{ padding: "12px 16px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>Select Students ({selected.length}/4)</div>
           <div style={{ padding: 10 }}><input placeholder="🔍 Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...css.input, marginBottom: 8, fontSize: 12 }} /></div>
           <div style={{ maxHeight: isMobile ? 200 : 420, overflowY: "auto" }}>
             {filteredStudents.map(st => {
@@ -3050,7 +3058,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
 
               {/* Breakdown table */}
               <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-                <div style={{ padding: "12px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>📊 Subject Breakdown</div>
+                <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📊 Subject Breakdown</div>
                 <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: isMobile ? 12 : 13, minWidth: isMobile ? 340 : "auto" }}>
                     <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
@@ -3072,7 +3080,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
                         );
                       })}
                       <tr style={{ background: "#F0FDF4", borderTop: "2px solid #BBF7D0" }}>
-                        <td style={{ padding: "10px 12px", fontWeight: 800, color: "#1a3c2e", fontSize: isMobile ? 12 : 13 }}>TOTAL</td>
+                        <td style={{ padding: "10px 12px", fontWeight: 800, color: "#002E6E", fontSize: isMobile ? 12 : 13 }}>TOTAL</td>
                         <td style={{ padding: "10px 8px", textAlign: "center", fontWeight: 700, color: "#94A3B8" }}>{courseMax}</td>
                         {selected.map((st, i) => { const total = getTotal(st.id); const pct = getPct(total); const maxTotal = Math.max(...selected.map(s => getTotal(s.id))); const isTop = total === maxTotal;
                           return <td key={st.id} style={{ padding: "10px 10px", textAlign: "center", fontWeight: 800, color: isTop ? COMPARE_COLORS[i] : "#374151", fontSize: isMobile ? 11 : 13 }}>{total} <span style={{ fontSize: 10, color: "#64748b" }}>({pct.toFixed(0)}%)</span>{isTop ? " 🏆" : ""}</td>; })}
@@ -3318,7 +3326,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
         <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 6 }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
             <thead style={{ position: "sticky", top: 0 }}>
-              <tr style={{ background: "#1a3c2e" }}>
+              <tr style={{ background: "#002E6E" }}>
                 {["Date", "Student", "Class", "Subject", "Marks"].map(h => (
                   <th key={h} style={{ padding: "6px 8px", textAlign: "left", color: "white", fontWeight: 700 }}>{h}</th>
                 ))}
@@ -3455,7 +3463,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
                           {count ? `✓ ${count} mark${count !== 1 ? "s" : ""} recorded` : "0 marks — likely safe to delete"}
                         </span>
                         <div style={{ display: "flex", gap: 5 }}>
-                          <button onClick={() => toggleInspect(et.id)} style={{ ...css.btn, padding: "3px 10px", fontSize: 11, background: inspectId === et.id ? "#1a3c2e" : "#EFF6FF", color: inspectId === et.id ? "white" : "#1D4ED8", border: inspectId === et.id ? "none" : "1px solid #BFDBFE" }}>
+                          <button onClick={() => toggleInspect(et.id)} style={{ ...css.btn, padding: "3px 10px", fontSize: 11, background: inspectId === et.id ? "#002E6E" : "#EFF6FF", color: inspectId === et.id ? "white" : "#1D4ED8", border: inspectId === et.id ? "none" : "1px solid #BFDBFE" }}>
                             🔍 {inspectId === et.id ? "Hide" : "Inspect"}
                           </button>
                           <button onClick={() => remove(et.id)} style={{ ...css.btn, padding: "3px 10px", fontSize: 11, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>🗑️ Delete</button>
@@ -3481,7 +3489,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
                 </div>
               </div>
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                <button onClick={() => toggleInspect(et.id)} style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: inspectId === et.id ? "#1a3c2e" : "#EFF6FF", color: inspectId === et.id ? "white" : "#1D4ED8", border: inspectId === et.id ? "none" : "1px solid #BFDBFE" }}>
+                <button onClick={() => toggleInspect(et.id)} style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: inspectId === et.id ? "#002E6E" : "#EFF6FF", color: inspectId === et.id ? "white" : "#1D4ED8", border: inspectId === et.id ? "none" : "1px solid #BFDBFE" }}>
                   🔍 {inspectId === et.id ? "Hide" : "Inspect"}
                 </button>
                 {onSetupSchedule && (
@@ -3747,26 +3755,26 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
-        <button onClick={() => setView("list")} style={{ ...css.btn, padding: "8px 20px", background: view === "list" ? "#1a3c2e" : "#F3F4F6", color: view === "list" ? "white" : "#374151" }}>
+        <button onClick={() => setView("list")} style={{ ...css.btn, padding: "8px 20px", background: view === "list" ? "#002E6E" : "#F3F4F6", color: view === "list" ? "white" : "#374151" }}>
           📋 All Students ({students.length})
         </button>
         {perm.canEdit && (
-          <button onClick={() => { setView("add"); setError(""); setForm(EMPTY_FORM); setSaved(false); }} style={{ ...css.btn, padding: "8px 20px", background: view === "add" ? "#1a3c2e" : "#F3F4F6", color: view === "add" ? "white" : "#374151" }}>
+          <button onClick={() => { setView("add"); setError(""); setForm(EMPTY_FORM); setSaved(false); }} style={{ ...css.btn, padding: "8px 20px", background: view === "add" ? "#002E6E" : "#F3F4F6", color: view === "add" ? "white" : "#374151" }}>
             👤 Add Student (via StudentDB)
           </button>
         )}
         {perm.canEdit && (
-          <button onClick={() => { setView("import"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "import" ? "#1a3c2e" : "#F3F4F6", color: view === "import" ? "white" : "#374151" }}>
+          <button onClick={() => { setView("import"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "import" ? "#002E6E" : "#F3F4F6", color: view === "import" ? "white" : "#374151" }}>
             📥 Import from CSV / Excel
           </button>
         )}
         {perm.canEdit && (
-          <button onClick={() => { setView("resultimport"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "resultimport" ? "#1a3c2e" : "#F3F4F6", color: view === "resultimport" ? "white" : "#374151" }}>
+          <button onClick={() => { setView("resultimport"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "resultimport" ? "#002E6E" : "#F3F4F6", color: view === "resultimport" ? "white" : "#374151" }}>
             🧾 Import Result Sheet
           </button>
         )}
         {perm.canEdit && (
-          <button onClick={() => { setView("secondaryimport"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "secondaryimport" ? "#1a3c2e" : "#F3F4F6", color: view === "secondaryimport" ? "white" : "#374151" }}>
+          <button onClick={() => { setView("secondaryimport"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "secondaryimport" ? "#002E6E" : "#F3F4F6", color: view === "secondaryimport" ? "white" : "#374151" }}>
             🔗📥 Import Secondary Batch
           </button>
         )}
@@ -3870,7 +3878,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
       {view === "add" && (
         <div style={{ maxWidth: 560 }}>
           <div style={{ background: "white", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", overflow: "hidden", marginBottom: 20 }}>
-            <div style={{ background: "linear-gradient(135deg,#1a3c2e,#2A5C45)", padding: "18px 24px" }}>
+            <div style={{ background: "linear-gradient(135deg,#002E6E,#0A56B8)", padding: "18px 24px" }}>
               <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, color: "white", fontWeight: 400 }}>👤 Student Records Have Moved</div>
             </div>
             <div style={{ padding: 24 }}>
@@ -3881,7 +3889,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
               <p style={{ fontSize: 14, color: "#374151", lineHeight: 1.6, marginBottom: 20 }}>
                 Once a student is added in StudentDB, they'll appear here automatically — no separate step needed.
               </p>
-              <button onClick={() => { setView("list"); setError(""); }} style={{ ...css.btn, background: "#1a3c2e", color: "white", padding: "10px 24px" }}>
+              <button onClick={() => { setView("list"); setError(""); }} style={{ ...css.btn, background: "#002E6E", color: "white", padding: "10px 24px" }}>
                 Back to Student List
               </button>
             </div>
@@ -3893,14 +3901,14 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 10, marginBottom: 16 }}>
             {statsPerCourse.filter(s => s.count > 0).map(s => (
-              <div key={s.course} style={{ background: "white", borderRadius: 10, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", borderTop: "3px solid #1a3c2e" }}>
+              <div key={s.course} style={{ background: "white", borderRadius: 10, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", borderTop: "3px solid #002E6E" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".08em" }}>{s.course}</div>
 
-                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: "#1a3c2e", lineHeight: 1.2, marginTop: 4 }}>{s.count}</div>
+                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: "#002E6E", lineHeight: 1.2, marginTop: 4 }}>{s.count}</div>
                 <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 3 }}>{s.batches.join(", ") || "no batches"}</div>
               </div>
             ))}
-            <div style={{ background: "#1a3c2e", borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ background: "#002E6E", borderRadius: 10, padding: "12px 14px" }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.6)", textTransform: "uppercase" }}>Total</div>
               <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: "white", lineHeight: 1.2, marginTop: 4 }}>{students.length}</div>
             </div>
@@ -3915,7 +3923,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                 {statsPerSecondaryBatch.map(s => (
                   <div key={s.batch} style={{ background: "white", borderRadius: 10, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", borderTop: "3px solid #C9A24B" }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: ".08em" }}>{s.batch}</div>
-                    <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: "#1a3c2e", lineHeight: 1.2, marginTop: 4 }}>{s.count}</div>
+                    <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: "#002E6E", lineHeight: 1.2, marginTop: 4 }}>{s.count}</div>
                     <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 3 }}>secondary batch</div>
                   </div>
                 ))}
@@ -3927,7 +3935,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
               {["ALL", ...courses].map(c => (
                 <button key={c} onClick={() => setFilterCourse(c)}
-                  style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: filterCourse === c ? "#1a3c2e" : "#F3F4F6", color: filterCourse === c ? "white" : "#374151", border: filterCourse === c ? "none" : "1px solid #E5E7EB" }}>
+                  style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: filterCourse === c ? "#002E6E" : "#F3F4F6", color: filterCourse === c ? "white" : "#374151", border: filterCourse === c ? "none" : "1px solid #E5E7EB" }}>
                   {c}
                 </button>
               ))}
@@ -4013,7 +4021,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
           <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 520 : "auto" }}>
               <thead>
-                <tr style={{ background: "#1a3c2e" }}>
+                <tr style={{ background: "#002E6E" }}>
                   <th style={{ padding: "10px 8px", textAlign: "center", width: 34 }}>
                     <input type="checkbox"
                       checked={filtered.length > 0 && filtered.every(s => selectedIds.has(s.id))}
@@ -4032,7 +4040,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                   <tr>
                     <td colSpan={7} style={{ padding: "28px 12px", textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>
                       {students.length
-                        ? <>No students match your current filters. <button onClick={() => { setSearch(""); setFilterCourse("ALL"); }} style={{ color: "#1a3c2e", fontWeight: 700, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: 13 }}>Reset filters</button> to see all {students.length}.</>
+                        ? <>No students match your current filters. <button onClick={() => { setSearch(""); setFilterCourse("ALL"); }} style={{ color: "#002E6E", fontWeight: 700, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: 13 }}>Reset filters</button> to see all {students.length}.</>
                         : "No students loaded yet."}
                     </td>
                   </tr>
@@ -4056,14 +4064,14 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                         <td style={{ padding: "6px 8px", textAlign: "center" }}><EditCell field="admission_no" width={80} /></td>
                         <td style={{ padding: "6px 8px", textAlign: "center" }}>
                           <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                            <button onClick={() => saveEdit(st.id)} disabled={editSaving} style={{ ...css.btn, padding: "4px 10px", background: "#1a3c2e", color: "white", fontSize: 11 }}>{editSaving ? "…" : "✓"}</button>
+                            <button onClick={() => saveEdit(st.id)} disabled={editSaving} style={{ ...css.btn, padding: "4px 10px", background: "#002E6E", color: "white", fontSize: 11 }}>{editSaving ? "…" : "✓"}</button>
                             <button onClick={cancelEdit} style={{ ...css.btn, padding: "4px 8px", background: "#F3F4F6", color: "#374151", fontSize: 11 }}>✕</button>
                           </div>
                         </td>
                       </>
                     ) : (
                       <>
-                        <td style={{ padding: "9px 12px", textAlign: "center", fontWeight: 700, color: "#1a3c2e" }}>{st.gcc_no}</td>
+                        <td style={{ padding: "9px 12px", textAlign: "center", fontWeight: 700, color: "#002E6E" }}>{st.gcc_no}</td>
                         <td style={{ padding: "9px 12px", fontWeight: 600, color: "#1e293b" }}>{st.name}</td>
                         <td style={{ padding: "9px 12px", textAlign: "center" }}>
                           <span style={{ background: "#E0F2FE", color: "#0369A1", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{st.class_name || "—"}</span>
@@ -4144,9 +4152,9 @@ function BulkChangeCourseModal({ selectedIds, students, onStudentsChange, onClos
         <div style={{ marginBottom: 12 }}>
           <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>New Track (optional)</label>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <button onClick={() => setTrack("")} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: track === "" ? "#1a3c2e" : "#F3F4F6", color: track === "" ? "white" : "#374151" }}>— Keep —</button>
+            <button onClick={() => setTrack("")} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: track === "" ? "#002E6E" : "#F3F4F6", color: track === "" ? "white" : "#374151" }}>— Keep —</button>
             {TRACKS.map(t => (
-              <button key={t} onClick={() => setTrack(t)} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: track === t ? "#1a3c2e" : "#F3F4F6", color: track === t ? "white" : "#374151" }}>{t}</button>
+              <button key={t} onClick={() => setTrack(t)} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: track === t ? "#002E6E" : "#F3F4F6", color: track === t ? "white" : "#374151" }}>{t}</button>
             ))}
           </div>
         </div>
@@ -4163,7 +4171,7 @@ function BulkChangeCourseModal({ selectedIds, students, onStudentsChange, onClos
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={onClose} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151" }}>Cancel</button>
-          <button onClick={apply} disabled={saving} style={{ ...css.btn, flex: 2, background: saving ? "#93C5FD" : "#1a3c2e", color: "white" }}>
+          <button onClick={apply} disabled={saving} style={{ ...css.btn, flex: 2, background: saving ? "#93C5FD" : "#002E6E", color: "white" }}>
             {saving ? "⏳ Applying…" : `✅ Apply to ${selected.length}`}
           </button>
         </div>
@@ -4383,7 +4391,7 @@ function BulkSecondaryBatchModal({ selectedIds, students, courseSubjects, second
             </button>
           )}
           {result && (
-            <button onClick={onDone} style={{ ...css.btn, flex: 2, background: "#1a3c2e", color: "white" }}>Done</button>
+            <button onClick={onDone} style={{ ...css.btn, flex: 2, background: "#002E6E", color: "white" }}>Done</button>
           )}
         </div>
       </div>
@@ -4570,7 +4578,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
             <button onClick={() => fileInputRef.current?.click()} disabled={parsing}
-              style={{ ...css.btn, background: "#1a3c2e", color: "white", padding: "10px 22px" }}>
+              style={{ ...css.btn, background: "#002E6E", color: "white", padding: "10px 22px" }}>
               {parsing ? "⏳ Reading file…" : "📂 Choose CSV / Excel File"}
             </button>
             {parseError && <div style={{ marginTop: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
@@ -4595,7 +4603,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
             <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 8, textTransform: "uppercase" }}>Default Track / Batch for New Students</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
               {TRACKS.map(t => (
-                <button key={t} onClick={() => setDefaultTrack(t)} style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: defaultTrack === t ? "#1a3c2e" : "#F3F4F6", color: defaultTrack === t ? "white" : "#374151" }}>{t}</button>
+                <button key={t} onClick={() => setDefaultTrack(t)} style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: defaultTrack === t ? "#002E6E" : "#F3F4F6", color: defaultTrack === t ? "white" : "#374151" }}>{t}</button>
               ))}
             </div>
             {defaultTrack && (
@@ -4610,7 +4618,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
 
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => { setRawRows(null); setHeaders([]); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Back</button>
-              <button onClick={processRows} style={{ ...css.btn, background: "#1a3c2e", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
+              <button onClick={processRows} style={{ ...css.btn, background: "#002E6E", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
             </div>
           </div>
         )}
@@ -4626,7 +4634,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
             <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 16 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                 <thead style={{ position: "sticky", top: 0 }}>
-                  <tr style={{ background: "#1a3c2e" }}>
+                  <tr style={{ background: "#002E6E" }}>
                     {["Row", "Name (from file)", "Match", "Action"].map(h => (
                       <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 11 }}>{h}</th>
                     ))}
@@ -4647,7 +4655,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
                         {r.status === "new" && <MatchBadge matchType="New" />}
                         {r.status === "skip" && <span style={{ fontSize: 11, color: "#94A3B8" }}>Skipped</span>}
                         {r.status === "new" && r.suggestion && (
-                          <div style={{ fontSize: 10.5, color: "#B8860B", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
+                          <div style={{ fontSize: 10.5, color: "#00BAF2", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
                         )}
                       </td>
                       <td style={{ padding: "7px 10px" }}>
@@ -4717,7 +4725,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button onClick={() => { setRawRows(null); setHeaders([]); setRows([]); setSaveSummary(null); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Start Over</button>
-              <button onClick={handleSaveNew} disabled={saving || newRowsCount === 0 || gccConflicts.length > 0} style={{ ...css.btn, background: saving ? "#93C5FD" : gccConflicts.length ? "#D1D5DB" : "#1a3c2e", color: "white", flex: 1 }}>
+              <button onClick={handleSaveNew} disabled={saving || newRowsCount === 0 || gccConflicts.length > 0} style={{ ...css.btn, background: saving ? "#93C5FD" : gccConflicts.length ? "#D1D5DB" : "#002E6E", color: "white", flex: 1 }}>
                 {saving ? "⏳ Saving…" : gccConflicts.length ? "⚠️ Resolve GCC conflicts above first" : `✅ Add ${newRowsCount} New Student(s)`}
               </button>
               <button onClick={onDone} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>Done</button>
@@ -4865,7 +4873,7 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
             <button onClick={() => fileInputRef.current?.click()} disabled={parsing}
-              style={{ ...css.btn, background: "#1a3c2e", color: "white", padding: "10px 22px" }}>
+              style={{ ...css.btn, background: "#002E6E", color: "white", padding: "10px 22px" }}>
               {parsing ? "⏳ Reading file…" : "📂 Choose CSV / Excel File"}
             </button>
             {parseError && <div style={{ marginTop: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
@@ -4891,7 +4899,7 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
 
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => { setRawRows(null); setHeaders([]); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Back</button>
-              <button onClick={processRows} style={{ ...css.btn, background: "#1a3c2e", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
+              <button onClick={processRows} style={{ ...css.btn, background: "#002E6E", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
             </div>
           </div>
         )}
@@ -4908,7 +4916,7 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
             <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 16 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                 <thead style={{ position: "sticky", top: 0 }}>
-                  <tr style={{ background: "#1a3c2e" }}>
+                  <tr style={{ background: "#002E6E" }}>
                     {["Row", "Name (from file)", "Match", "Action"].map(h => (
                       <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 11 }}>{h}</th>
                     ))}
@@ -4932,7 +4940,7 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
                         {r.status === "unmatched" && <span style={{ fontSize: 11, color: "#A32D2D", fontWeight: 700 }}>No match found</span>}
                         {r.status === "skip" && <span style={{ fontSize: 11, color: "#94A3B8" }}>{r.reason || "Skipped"}</span>}
                         {r.status === "unmatched" && r.suggestion && (
-                          <div style={{ fontSize: 10.5, color: "#B8860B", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
+                          <div style={{ fontSize: 10.5, color: "#00BAF2", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
                         )}
                       </td>
                       <td style={{ padding: "7px 10px" }}>
@@ -5347,7 +5355,7 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
             <button onClick={() => fileInputRef.current?.click()} disabled={parsing}
-              style={{ ...css.btn, background: "#1a3c2e", color: "white", padding: "10px 22px" }}>
+              style={{ ...css.btn, background: "#002E6E", color: "white", padding: "10px 22px" }}>
               {parsing ? "⏳ Reading file…" : "📂 Choose Result Sheet File"}
             </button>
             {parseError && <div style={{ marginTop: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
@@ -5397,7 +5405,7 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
 
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => { setRawRows(null); setHeaders([]); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Back</button>
-              <button onClick={processRows} style={{ ...css.btn, background: "#1a3c2e", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
+              <button onClick={processRows} style={{ ...css.btn, background: "#002E6E", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
             </div>
           </div>
         )}
@@ -5414,7 +5422,7 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
             <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 16 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                 <thead style={{ position: "sticky", top: 0 }}>
-                  <tr style={{ background: "#1a3c2e" }}>
+                  <tr style={{ background: "#002E6E" }}>
                     {["Row", "Name (from file)", "Match", "Marks Found", "Action"].map(h => (
                       <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 11 }}>{h}</th>
                     ))}
@@ -5435,7 +5443,7 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
                         {r.status === "new" && <MatchBadge matchType="New" />}
                         {r.status === "skip" && <span style={{ fontSize: 11, color: "#94A3B8" }}>{r.reason || "Skipped"}</span>}
                         {r.status === "new" && r.suggestion && (
-                          <div style={{ fontSize: 10.5, color: "#B8860B", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
+                          <div style={{ fontSize: 10.5, color: "#00BAF2", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
                         )}
                       </td>
                       <td style={{ padding: "7px 10px", color: "#64748b" }}>{Object.keys(r.subMarks || {}).length}/{subjects.length} subjects</td>
@@ -5511,7 +5519,7 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button onClick={() => { setRawRows(null); setHeaders([]); setRows([]); setSaveSummary(null); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Start Over</button>
-              <button onClick={handleImportAll} disabled={saving || !examTypeId || !examDate || gccConflicts.length > 0} style={{ ...css.btn, background: saving ? "#93C5FD" : gccConflicts.length ? "#D1D5DB" : "#1a3c2e", color: "white", flex: 1 }}>
+              <button onClick={handleImportAll} disabled={saving || !examTypeId || !examDate || gccConflicts.length > 0} style={{ ...css.btn, background: saving ? "#93C5FD" : gccConflicts.length ? "#D1D5DB" : "#002E6E", color: "white", flex: 1 }}>
                 {saving ? "⏳ Importing…" : gccConflicts.length ? "⚠️ Resolve GCC conflicts above first" : `✅ Import Roster + Marks (${rows.length - skipCount} students)`}
               </button>
               <button onClick={onDone} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>Done</button>
@@ -5641,7 +5649,7 @@ function ExamAbsentFinder({ courseSubjects, students, onStudentsChange, onClose 
           </select>
         </div>
 
-        <button onClick={search} disabled={loading || !course || !examTypeId} style={{ ...css.btn, background: "#1a3c2e", color: "white", marginBottom: 16 }}>
+        <button onClick={search} disabled={loading || !course || !examTypeId} style={{ ...css.btn, background: "#002E6E", color: "white", marginBottom: 16 }}>
           {loading ? "⏳ Searching…" : "🔎 Find Absent Students"}
         </button>
 
@@ -5849,7 +5857,7 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
                 {result.ok ? "✅ " : "⚠️ "}{result.message}
               </div>
             )}
-            <button onClick={applyFix} disabled={applying || !selected.size} style={{ ...css.btn, background: applying ? "#93C5FD" : "#1a3c2e", color: "white", width: "100%" }}>
+            <button onClick={applyFix} disabled={applying || !selected.size} style={{ ...css.btn, background: applying ? "#93C5FD" : "#002E6E", color: "white", width: "100%" }}>
               {applying ? "⏳ Fixing…" : `✅ Fix ${selected.size} Selected Student(s)`}
             </button>
           </>
@@ -6118,7 +6126,7 @@ function SecondaryBatchSpellingCleanupTool({ students, secondaryBatchMap, onSeco
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button onClick={onClose} style={{ ...css.btn, background: "#F3F4F6", color: "#374151", padding: "9px 18px" }}>Close</button>
-              <button onClick={applyFix} disabled={applying || !selected.size} style={{ ...css.btn, background: "#1a3c2e", color: "white", padding: "9px 18px" }}>
+              <button onClick={applyFix} disabled={applying || !selected.size} style={{ ...css.btn, background: "#002E6E", color: "white", padding: "9px 18px" }}>
                 {applying ? "⏳ Fixing…" : `Fix ${selected.size} Selected`}
               </button>
             </div>
@@ -6226,10 +6234,10 @@ function MeritList({ courseSubjects, examTypes, students }) {
             <option value="">All</option><option value="3">Top 3</option><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option>
           </select>
         </div>
-        <button onClick={handlePrint} style={{ ...css.btn, background: "#1a3c2e", color: "white" }}>🖨️ Print</button>
+        <button onClick={handlePrint} style={{ ...css.btn, background: "#002E6E", color: "white" }}>🖨️ Print</button>
       </div>
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-        <div style={{ padding: "12px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>📜 Merit List — {course} ({filtered.length} students)</div>
+        <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📜 Merit List — {course} ({filtered.length} students)</div>
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 380 : "auto" }}>
             <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
@@ -6505,15 +6513,15 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
           {Object.keys(courseSubjects).map(c => (
             <div key={c} style={{ display: "flex", alignItems: "stretch" }}>
               <button onClick={() => setSelected(c)}
-                style={{ ...css.btn, padding: "6px 16px", background: selected === c ? "#1a3c2e" : "#F3F4F6", color: selected === c ? "white" : "#374151", border: "1.5px solid " + (selected === c ? "#1a3c2e" : "#E5E7EB"), borderRadius: "8px 0 0 8px" }}>
+                style={{ ...css.btn, padding: "6px 16px", background: selected === c ? "#002E6E" : "#F3F4F6", color: selected === c ? "white" : "#374151", border: "1.5px solid " + (selected === c ? "#002E6E" : "#E5E7EB"), borderRadius: "8px 0 0 8px" }}>
                 {c} <span style={{ fontSize: 11, opacity: 0.7 }}>({(courseSubjects[c] || []).length})</span>
               </button>
               <button onClick={() => setRenamingCourse(c)} title={`Rename "${c}" everywhere (students, schedule, marks, configs)`}
-                style={{ ...css.btn, padding: "6px 10px", background: selected === c ? "#14532d" : "#E5E7EB", color: selected === c ? "white" : "#6B7280", border: "1.5px solid " + (selected === c ? "#1a3c2e" : "#E5E7EB"), borderLeft: "none", fontSize: 12 }}>
+                style={{ ...css.btn, padding: "6px 10px", background: selected === c ? "#14532d" : "#E5E7EB", color: selected === c ? "white" : "#6B7280", border: "1.5px solid " + (selected === c ? "#002E6E" : "#E5E7EB"), borderLeft: "none", fontSize: 12 }}>
                 ✏️
               </button>
               <button onClick={() => setDeletingCourse(c)} title={`Remove "${c}" from Course Subjects config (does not touch student records)`}
-                style={{ ...css.btn, padding: "6px 10px", background: selected === c ? "#7f1d1d" : "#FEE2E2", color: selected === c ? "white" : "#B91C1C", border: "1.5px solid " + (selected === c ? "#1a3c2e" : "#E5E7EB"), borderLeft: "none", borderRadius: "0 8px 8px 0", fontSize: 12 }}>
+                style={{ ...css.btn, padding: "6px 10px", background: selected === c ? "#7f1d1d" : "#FEE2E2", color: selected === c ? "white" : "#B91C1C", border: "1.5px solid " + (selected === c ? "#002E6E" : "#E5E7EB"), borderLeft: "none", borderRadius: "0 8px 8px 0", fontSize: 12 }}>
                 🗑️
               </button>
             </div>
@@ -6558,7 +6566,7 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
         {selected && (
           <>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", marginBottom: 8 }}>
-              Subjects for <span style={{ color: "#1a3c2e" }}>{selected}</span>
+              Subjects for <span style={{ color: "#002E6E" }}>{selected}</span>
               <span style={{ marginLeft: 8, fontWeight: 400, color: "#9CA3AF" }}>(Max: {getCourseMax(selected)})</span>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
@@ -6585,7 +6593,7 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
         <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 15, color: "#1e293b", marginBottom: 12 }}>📋 All Courses Summary</div>
         {Object.entries(courseSubjects).map(([c, subs]) => (
           <div key={c} style={{ marginBottom: 10, padding: "10px 14px", background: "white", borderRadius: 8, border: "1px solid #E5E7EB" }}>
-            <div style={{ fontWeight: 700, color: "#1a3c2e", fontSize: 13, marginBottom: 4 }}>
+            <div style={{ fontWeight: 700, color: "#002E6E", fontSize: 13, marginBottom: 4 }}>
               {c} <span style={{ color: "#9CA3AF", fontWeight: 400 }}>({subs.length} subjects · max {getCourseMax(c)} marks)</span>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
@@ -6973,7 +6981,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
 
   const ModeBtn = ({ id, icon, label }) => (
     <button onClick={() => setMode(id)}
-      style={{ ...css.btn, padding: isMobile ? "7px 10px" : "8px 16px", background: mode === id ? "#1a3c2e" : "#F3F4F6", color: mode === id ? "white" : "#374151", border: mode === id ? "none" : "1px solid #E5E7EB", fontSize: isMobile ? 11 : 12 }}>
+      style={{ ...css.btn, padding: isMobile ? "7px 10px" : "8px 16px", background: mode === id ? "#002E6E" : "#F3F4F6", color: mode === id ? "white" : "#374151", border: mode === id ? "none" : "1px solid #E5E7EB", fontSize: isMobile ? 11 : 12 }}>
       {icon} {isMobile ? "" : label}
     </button>
   );
@@ -7063,7 +7071,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
                 </select></div>
               <div><FieldLabel>Course / Batch</FieldLabel>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {courses.map(c => <button key={c} onClick={() => setMsCourse(c)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: msCourse === c ? "#1a3c2e" : "#F3F4F6", color: msCourse === c ? "white" : "#374151", border: msCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>)}
+                  {courses.map(c => <button key={c} onClick={() => setMsCourse(c)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: msCourse === c ? "#002E6E" : "#F3F4F6", color: msCourse === c ? "white" : "#374151", border: msCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>)}
                 </div></div>
               <div><FieldLabel>Auto-fill Start Date</FieldLabel>
                 <input type="date" value={msStartDate} onChange={e => setMsStartDate(e.target.value)} style={{ ...css.input, width: 180 }} /></div>
@@ -7074,12 +7082,12 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
               <div><FieldLabel>Room</FieldLabel><input value={msRoom} onChange={e => setMsRoom(e.target.value)} style={css.input} /></div>
             </div>
             <button onClick={handleSaveMulti} disabled={msSaving}
-              style={{ ...css.btn, background: msSaved ? "#16A34A" : msSaving ? "#93C5FD" : "#1a3c2e", color: "white", width: "100%", fontSize: 13 }}>
+              style={{ ...css.btn, background: msSaved ? "#16A34A" : msSaving ? "#93C5FD" : "#002E6E", color: "white", width: "100%", fontSize: 13 }}>
               {msSaved ? `✓ Saved!` : msSaving ? "Saving…" : `💾 Save ${msRows.filter(r=>r.date).length} Entries`}
             </button>
           </div>
           <div style={css.card}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600, marginBottom: 14 }}>Subjects for <span style={{ color: "#1a3c2e" }}>{msCourse}</span></div>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600, marginBottom: 14 }}>Subjects for <span style={{ color: "#002E6E" }}>{msCourse}</span></div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 480, overflowY: "auto" }}>
               {msRows.map((r, i) => (
                 <div key={r.subject} style={{ display: "grid", gridTemplateColumns: "1fr 130px 70px", gap: 8, alignItems: "center", padding: "8px 10px", background: i % 2 ? "#F9FAFB" : "white", borderRadius: 8, border: "1px solid #F1F5F9" }}>
@@ -7120,11 +7128,11 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   <button onClick={() => setBkCourses(new Set(courses))} style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: "#E0F2FE", color: "#0369A1" }}>All</button>
                   <button onClick={() => setBkCourses(new Set())} style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: "#FEF2F2", color: "#DC2626" }}>None</button>
-                  {courses.map(c => { const sel = bkCourses.has(c); return <button key={c} onClick={() => setBkCourses(p => { const n = new Set(p); sel ? n.delete(c) : n.add(c); return n; })} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: sel ? "#1a3c2e" : "#F3F4F6", color: sel ? "white" : "#374151", border: sel ? "none" : "1px solid #E5E7EB" }}>{sel ? "✓ " : ""}{c}</button>; })}
+                  {courses.map(c => { const sel = bkCourses.has(c); return <button key={c} onClick={() => setBkCourses(p => { const n = new Set(p); sel ? n.delete(c) : n.add(c); return n; })} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: sel ? "#002E6E" : "#F3F4F6", color: sel ? "white" : "#374151", border: sel ? "none" : "1px solid #E5E7EB" }}>{sel ? "✓ " : ""}{c}</button>; })}
                 </div>
               </div>
               <button onClick={handleSaveBulk} disabled={bkSaving || !bkCourses.size || !bkDate || !bkSubject}
-                style={{ ...css.btn, background: bkSaved ? "#16A34A" : bkSaving ? "#93C5FD" : "#1a3c2e", color: "white", fontSize: 13 }}>
+                style={{ ...css.btn, background: bkSaved ? "#16A34A" : bkSaving ? "#93C5FD" : "#002E6E", color: "white", fontSize: 13 }}>
                 {bkSaved ? `✓ Saved!` : bkSaving ? "Saving…" : `💾 Assign to ${bkCourses.size} Courses`}
               </button>
             </div>
@@ -7145,7 +7153,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
               <div><FieldLabel>Exam Type</FieldLabel><select value={genExamType} onChange={e => setGenExamType(e.target.value)} style={css.input}>{examTypes.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
               <div><FieldLabel>Course</FieldLabel>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {courses.map(c => <button key={c} onClick={() => setGenCourse(c)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: genCourse === c ? "#1a3c2e" : "#F3F4F6", color: genCourse === c ? "white" : "#374151", border: genCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>)}
+                  {courses.map(c => <button key={c} onClick={() => setGenCourse(c)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: genCourse === c ? "#002E6E" : "#F3F4F6", color: genCourse === c ? "white" : "#374151", border: genCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>)}
                 </div></div>
               <div><FieldLabel>Start Date</FieldLabel><input type="date" value={genStartDate} onChange={e => setGenStartDate(e.target.value)} style={css.input} /></div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -7180,12 +7188,12 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
                 <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>{genCourse} · starts {genStartDate || "—"}</div>
               </div>
               <button onClick={handleSaveGenerate} disabled={!genPreview.length || genSaving}
-                style={{ ...css.btn, background: genSaved ? "#16A34A" : genSaving ? "#93C5FD" : "#1a3c2e", color: "white", padding: "10px 22px", fontSize: 13 }}>
+                style={{ ...css.btn, background: genSaved ? "#16A34A" : genSaving ? "#93C5FD" : "#002E6E", color: "white", padding: "10px 22px", fontSize: 13 }}>
                 {genSaved ? `✓ Saved!` : genSaving ? "Saving…" : `💾 Save ${genPreview.length} Entries`}
               </button>
             </div>
             <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-              <div style={{ padding: "11px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Preview</div>
+              <div style={{ padding: "11px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Preview</div>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 340 }}>
                   <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
@@ -7198,7 +7206,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
                         <td style={{ padding: "8px 14px", color: "#94A3B8", fontSize: 12 }}>{i+1}</td>
                         <td style={{ padding: "8px 14px", fontWeight: 600 }}>{r.exam_date}</td>
                         <td style={{ padding: "8px 14px", color: "#64748b" }}>{day}</td>
-                        <td style={{ padding: "8px 14px", fontWeight: 600, color: "#1a3c2e" }}>{r.subject}</td>
+                        <td style={{ padding: "8px 14px", fontWeight: 600, color: "#002E6E" }}>{r.subject}</td>
                         <td style={{ padding: "8px 14px", color: "#64748b" }}>{r.total_marks}</td>
                       </tr>;
                     })}
@@ -7257,13 +7265,13 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
                   </div>
                 </div>
                 <button onClick={handleSaveAutoGenerate} disabled={!acNewRows.length || acSaving}
-                  style={{ ...css.btn, background: acSaved ? "#16A34A" : acSaving ? "#93C5FD" : "#1a3c2e", color: "white", padding: "10px 22px", fontSize: 13 }}>
+                  style={{ ...css.btn, background: acSaved ? "#16A34A" : acSaving ? "#93C5FD" : "#002E6E", color: "white", padding: "10px 22px", fontSize: 13 }}>
                   {acSaved ? `✓ Saved!` : acSaving ? "Saving…" : `💾 Save ${acNewRows.length} Entries`}
                 </button>
               </div>
               {acError && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13 }}>⚠️ {acError}</div>}
               <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-                <div style={{ padding: "11px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Preview</div>
+                <div style={{ padding: "11px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Preview</div>
                 <div style={{ overflowX: "auto", maxHeight: 480, overflowY: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 420 }}>
                     <thead style={{ position: "sticky", top: 0 }}><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
@@ -7277,7 +7285,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
                           <td style={{ padding: "8px 14px" }}><span style={{ background: "#E0F2FE", color: "#0369A1", padding: "2px 8px", borderRadius: 999, fontSize: 10.5, fontWeight: 700 }}>{r.course}</span></td>
                           <td style={{ padding: "8px 14px", fontWeight: 600 }}>{r.exam_date}</td>
                           <td style={{ padding: "8px 14px", color: "#64748b" }}>{day}</td>
-                          <td style={{ padding: "8px 14px", fontWeight: 600, color: "#1a3c2e" }}>{r.subject}</td>
+                          <td style={{ padding: "8px 14px", fontWeight: 600, color: "#002E6E" }}>{r.subject}</td>
                           <td style={{ padding: "8px 14px", color: "#64748b" }}>{r.total_marks}</td>
                           <td style={{ padding: "8px 14px" }}>{alreadyExists
                             ? <span style={{ fontSize: 10.5, color: "#92400E", fontWeight: 700 }}>Already scheduled</span>
@@ -7329,7 +7337,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
               {importRows.length > 0 && <div style={{ background: "#E1F5EE", border: "1px solid #BBF7D0", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#0F6E56" }}>✅ {importRows.length} rows ready</div>}
               {importErrors.length > 0 && <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#92400E" }}>⚠️ {importErrors.length} rows skipped</div>}
               {importRows.length > 0 && !importDone && (
-                <button onClick={handleImportSave} disabled={importSaving} style={{ ...css.btn, background: importSaving ? "#93C5FD" : "#1a3c2e", color: "white", fontSize: 13 }}>
+                <button onClick={handleImportSave} disabled={importSaving} style={{ ...css.btn, background: importSaving ? "#93C5FD" : "#002E6E", color: "white", fontSize: 13 }}>
                   {importSaving ? "Saving…" : `💾 Confirm Import (${importRows.length})`}
                 </button>
               )}
@@ -7337,7 +7345,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
             </div>
           </div>
           <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-            <div style={{ padding: "11px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>{importRows.length ? `📋 Preview (${importRows.length})` : "📋 Awaiting upload…"}</div>
+            <div style={{ padding: "11px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>{importRows.length ? `📋 Preview (${importRows.length})` : "📋 Awaiting upload…"}</div>
             {importRows.length > 0 ? (
               <div style={{ overflowX: "auto", maxHeight: 400, overflowY: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 480 }}>
@@ -7404,7 +7412,7 @@ function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCo
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
             {["ALL", ...courses].map(c => (
               <button key={c} onClick={() => setFilterCourse(c)}
-                style={{ ...css.btn, padding: "5px 10px", fontSize: 11, background: filterCourse === c ? "#1a3c2e" : "#F3F4F6", color: filterCourse === c ? "white" : "#374151", border: filterCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>
+                style={{ ...css.btn, padding: "5px 10px", fontSize: 11, background: filterCourse === c ? "#002E6E" : "#F3F4F6", color: filterCourse === c ? "white" : "#374151", border: filterCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>
             ))}
           </div>
         </div>
@@ -7424,7 +7432,7 @@ function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCo
         <div style={{ fontSize: 12, color: "#9CA3AF", alignSelf: "center" }}>{schedule.length} entries</div>
       </div>
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-        <div style={{ padding: "12px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Exam Schedule</div>
+        <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Exam Schedule</div>
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 600 }}>
             <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
@@ -7451,7 +7459,7 @@ function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCo
                       <td style={{ padding: "6px 8px" }}><input value={editForm.room} onChange={e => setEditForm(p => ({ ...p, room: e.target.value }))} placeholder="Hall 2" style={{ ...css.input, width: 90, fontSize: 12 }} /></td>
                       <td style={{ padding: "9px 10px" }}>
                         <div style={{ display: "flex", gap: 5 }}>
-                          <button onClick={() => saveEdit(s.id)} disabled={savingEdit} style={{ ...css.btn, padding: "4px 10px", background: "#1a3c2e", color: "white", fontSize: 11 }}>{savingEdit ? "…" : "✓"}</button>
+                          <button onClick={() => saveEdit(s.id)} disabled={savingEdit} style={{ ...css.btn, padding: "4px 10px", background: "#002E6E", color: "white", fontSize: 11 }}>{savingEdit ? "…" : "✓"}</button>
                           <button onClick={cancelEdit} style={{ ...css.btn, padding: "4px 8px", background: "#F3F4F6", color: "#374151", fontSize: 11 }}>✕</button>
                         </div>
                       </td>
@@ -7622,16 +7630,16 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
         {/* Left: Rooms + Student list */}
         <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
           <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", overflow:"hidden" }}>
-            <div style={{ padding:"11px 16px", background:"#1a3c2e", color:"white", fontWeight:700, fontSize:13 }}>🏫 Rooms</div>
+            <div style={{ padding:"11px 16px", background:"#002E6E", color:"white", fontWeight:700, fontSize:13 }}>🏫 Rooms</div>
             <div style={{ padding:12, display:"flex", flexDirection:"column", gap:6 }}>
               {isMobile ? (
                 <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                   {allRooms.map(r => (
-                    <button key={r} onClick={()=>setRoom(r)} style={{ ...css.btn, padding:"6px 12px", background:room===r?"#1a3c2e":"#F3F4F6", color:room===r?"white":"#374151", border:room===r?"none":"1px solid #E5E7EB", fontSize:12 }}>🏫 {r}</button>
+                    <button key={r} onClick={()=>setRoom(r)} style={{ ...css.btn, padding:"6px 12px", background:room===r?"#002E6E":"#F3F4F6", color:room===r?"white":"#374151", border:room===r?"none":"1px solid #E5E7EB", fontSize:12 }}>🏫 {r}</button>
                   ))}
                 </div>
               ) : allRooms.map(r => (
-                <button key={r} onClick={()=>setRoom(r)} style={{ ...css.btn, padding:"8px 14px", textAlign:"left", background:room===r?"#1a3c2e":"#F3F4F6", color:room===r?"white":"#374151", border:room===r?"none":"1px solid #E5E7EB", fontSize:12 }}>🏫 {r}</button>
+                <button key={r} onClick={()=>setRoom(r)} style={{ ...css.btn, padding:"8px 14px", textAlign:"left", background:room===r?"#002E6E":"#F3F4F6", color:room===r?"white":"#374151", border:room===r?"none":"1px solid #E5E7EB", fontSize:12 }}>🏫 {r}</button>
               ))}
               {!allRooms.length && <div style={{ fontSize:12, color:"#94A3B8" }}>No rooms yet.</div>}
               <div style={{ display:"flex", gap:6, marginTop:4 }}>
@@ -7642,12 +7650,12 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
           </div>
 
           <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", overflow:"hidden" }}>
-            <div style={{ padding:"11px 16px", background:"#1a3c2e", color:"white", fontWeight:700, fontSize:13 }}>👤 Students</div>
+            <div style={{ padding:"11px 16px", background:"#002E6E", color:"white", fontWeight:700, fontSize:13 }}>👤 Students</div>
             <div style={{ padding:10 }}>
               <input placeholder="🔍 Search…" value={search} onChange={e=>setSearch(e.target.value)} style={{ ...css.input, marginBottom:8, fontSize:12 }} />
               <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:8 }}>
                 {["ALL",...courses].map(c=>(
-                  <button key={c} onClick={()=>setFilterCourse(c)} style={{ ...css.btn, padding:"3px 8px", fontSize:10, background:filterCourse===c?"#1a3c2e":"#F3F4F6", color:filterCourse===c?"white":"#374151", border:filterCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>
+                  <button key={c} onClick={()=>setFilterCourse(c)} style={{ ...css.btn, padding:"3px 8px", fontSize:10, background:filterCourse===c?"#002E6E":"#F3F4F6", color:filterCourse===c?"white":"#374151", border:filterCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>
                 ))}
               </div>
             </div>
@@ -7673,7 +7681,7 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
         {/* Right: Actions + Seat grid */}
         <div>
           <div style={{ display:"flex", gap:8, marginBottom:12, alignItems:"center", flexWrap:"wrap" }}>
-            <div style={{ background:"white", borderRadius:10, padding:"10px 14px", boxShadow:"0 1px 4px rgba(0,0,0,0.06)", fontSize:13, fontWeight:600, color:"#1a3c2e" }}>
+            <div style={{ background:"white", borderRadius:10, padding:"10px 14px", boxShadow:"0 1px 4px rgba(0,0,0,0.06)", fontSize:13, fontWeight:600, color:"#002E6E" }}>
               🏫 <b>{room||"No room"}</b>
               <span style={{ fontWeight:400, color:"#9CA3AF", marginLeft:8 }}>{occupiedCount}/{capacity}</span>
             </div>
@@ -7686,10 +7694,10 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
 
           <div style={{ background:"white", borderRadius:8, padding:"8px 14px", marginBottom:12, boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
             <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#6B7280", marginBottom:5 }}>
-              <span>Capacity</span><span style={{ fontWeight:700, color:"#1a3c2e" }}>{occupiedCount} / {capacity}</span>
+              <span>Capacity</span><span style={{ fontWeight:700, color:"#002E6E" }}>{occupiedCount} / {capacity}</span>
             </div>
             <div style={{ height:6, background:"#F1F5F9", borderRadius:999, overflow:"hidden" }}>
-              <div style={{ height:"100%", width:`${(occupiedCount/capacity)*100}%`, background:"#1a3c2e", borderRadius:999, transition:"width .3s" }} />
+              <div style={{ height:"100%", width:`${(occupiedCount/capacity)*100}%`, background:"#002E6E", borderRadius:999, transition:"width .3s" }} />
             </div>
           </div>
 
@@ -7760,7 +7768,7 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
 .btn-print{background:#0f2d5e;color:white;}.btn-close{background:#e5e7eb;color:#374151;}
 .page-break{page-break-after:always;height:0;overflow:hidden;}
 .card{width:720px;margin:0 auto 24px;background:#F0F4FF;border-radius:3px;box-shadow:0 12px 48px rgba(0,0,0,0.22),0 0 0 1px #B8C9E8;position:relative;overflow:hidden;}
-.top-strip{height:5px;background:linear-gradient(90deg,#0f2d5e 0%,#1a4d8a 30%,#B8860B 60%,#f0c040 80%,#1a4d8a 100%);}
+.top-strip{height:5px;background:linear-gradient(90deg,#0f2d5e 0%,#1a4d8a 30%,#00BAF2 60%,#00BAF2 80%,#1a4d8a 100%);}
 .header{background:linear-gradient(150deg,#071a3e 0%,#0f2d5e 45%,#133a7a 100%);padding:22px 32px 18px;display:flex;align-items:center;gap:16px;}
 .logo-ring{width:64px;height:64px;border-radius:50%;border:2px solid #D4A017;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .logo-text{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:white;}
@@ -7992,7 +8000,7 @@ function PrintReportCardButton({ onPrint }) {
   const [printing, setPrinting] = React.useState(false);
   return (
     <button onClick={() => { setPrinting(true); onPrint(); setTimeout(() => setPrinting(false), 3000); }} disabled={printing}
-      style={{ ...css.btn, background: printing ? "#6B7280" : "#1a3c2e", color: "white", width: "100%" }}>
+      style={{ ...css.btn, background: printing ? "#6B7280" : "#002E6E", color: "white", width: "100%" }}>
       {printing ? "⏳ Opening…" : "🖨️ Print Report Card"}
     </button>
   );
@@ -8102,7 +8110,7 @@ function ReportCards({ courseSubjects, examTypes, students, institute, secondary
             <div style={{ display: "flex", gap: 8 }}>
               {[["ALL", "All"], ["ENG", "English"], ["MM", "Manipuri (MM)"]].map(([val, label]) => (
                 <button key={val} onClick={() => setCombinedSection(val)}
-                  style={{ ...css.btn, padding: "6px 14px", background: combinedSection === val ? "#1a3c2e" : "#F3F4F6", color: combinedSection === val ? "white" : "#374151", border: "1.5px solid " + (combinedSection === val ? "#1a3c2e" : "#E5E7EB") }}>
+                  style={{ ...css.btn, padding: "6px 14px", background: combinedSection === val ? "#002E6E" : "#F3F4F6", color: combinedSection === val ? "white" : "#374151", border: "1.5px solid " + (combinedSection === val ? "#002E6E" : "#E5E7EB") }}>
                   {label}
                 </button>
               ))}
@@ -8345,7 +8353,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
 
   const SectionBtn = ({ id, icon, label, count }) => (
     <button onClick={() => setActiveSection(id)}
-      style={{ display:"flex", alignItems:"center", gap:10, padding: isMobile ? "12px 14px" : "14px 24px", borderRadius:10, border: activeSection===id ? "2px solid #1a3c2e" : "2px solid #E5E7EB", background: activeSection===id ? "#1a3c2e" : "white", color: activeSection===id ? "white" : "#374151", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize: isMobile ? 13 : 14, flex:1, transition:"all .15s" }}>
+      style={{ display:"flex", alignItems:"center", gap:10, padding: isMobile ? "12px 14px" : "14px 24px", borderRadius:10, border: activeSection===id ? "2px solid #002E6E" : "2px solid #E5E7EB", background: activeSection===id ? "#002E6E" : "white", color: activeSection===id ? "white" : "#374151", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize: isMobile ? 13 : 14, flex:1, transition:"all .15s" }}>
       <span style={{ fontSize: isMobile ? 18 : 22 }}>{icon}</span>
       <div style={{ textAlign:"left" }}>
         <div>{label}</div>
@@ -8355,9 +8363,9 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
   );
 
   const StatPill = ({ label, value, color }) => (
-    <div style={{ background:"white", borderRadius:8, padding:"10px 14px", boxShadow:"0 1px 4px rgba(0,0,0,0.06)", borderLeft:`3px solid ${color||"#1a3c2e"}` }}>
+    <div style={{ background:"white", borderRadius:8, padding:"10px 14px", boxShadow:"0 1px 4px rgba(0,0,0,0.06)", borderLeft:`3px solid ${color||"#002E6E"}` }}>
       <div style={{ fontSize:10, fontWeight:700, color:"#6B7280", textTransform:"uppercase", letterSpacing:".08em", marginBottom:3 }}>{label}</div>
-      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:600, color:color||"#1a3c2e" }}>{value}</div>
+      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:600, color:color||"#002E6E" }}>{value}</div>
     </div>
   );
 
@@ -8375,12 +8383,12 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
         <div style={twoCols}>
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
             <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", overflow:"hidden" }}>
-              <div style={{ padding:"12px 18px", background:"#1a3c2e", color:"white", fontWeight:700, fontSize:13 }}>⚙️ Report Card Settings</div>
+              <div style={{ padding:"12px 18px", background:"#002E6E", color:"white", fontWeight:700, fontSize:13 }}>⚙️ Report Card Settings</div>
               <div style={{ padding:18, display:"flex", flexDirection:"column", gap:14 }}>
                 <div>
                   <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:6, textTransform:"uppercase" }}>Batch / Course</label>
                   <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-                    {courses.map(c => <button key={c} onClick={()=>{setRcCourse(c); setRcSecondaryBatchFilter("");}} style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:rcCourse===c?"#1a3c2e":"#F3F4F6", color:rcCourse===c?"white":"#374151", border:rcCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>)}
+                    {courses.map(c => <button key={c} onClick={()=>{setRcCourse(c); setRcSecondaryBatchFilter("");}} style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:rcCourse===c?"#002E6E":"#F3F4F6", color:rcCourse===c?"white":"#374151", border:rcCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>)}
                   </div>
                 </div>
                 {secondaryBatches.length > 0 && (
@@ -8424,7 +8432,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
 
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
             <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,1fr)", gap:10 }}>
-              <StatPill label="Total"   value={rcStudents.length}          color="#1a3c2e" />
+              <StatPill label="Total"   value={rcStudents.length}          color="#002E6E" />
               <StatPill label="Will Print" value={filteredRcStudents.length}  color="#185FA5" />
               <StatPill label="Passed"  value={rankingPoolRcStudents.filter(s=>getPct(s.id)>=40).length} color="#0F6E56" />
               <StatPill label="Failed"  value={rankingPoolRcStudents.filter(s=>getPct(s.id)<40 && getTotal(s.id)>0).length} color="#A32D2D" />
@@ -8433,9 +8441,9 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
             <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", padding:18 }}>
               {rcProgress ? (
                 <div style={{ textAlign:"center", padding:"20px 0" }}>
-                  <div style={{ fontSize:14, fontWeight:600, color:"#1a3c2e", marginBottom:12 }}>⏳ Generating {rcProgress.current}/{rcProgress.total} cards…</div>
+                  <div style={{ fontSize:14, fontWeight:600, color:"#002E6E", marginBottom:12 }}>⏳ Generating {rcProgress.current}/{rcProgress.total} cards…</div>
                   <div style={{ height:8, background:"#F1F5F9", borderRadius:999, overflow:"hidden" }}>
-                    <div style={{ height:"100%", width:`${(rcProgress.current/rcProgress.total)*100}%`, background:"#1a3c2e", borderRadius:999, transition:"width .2s" }} />
+                    <div style={{ height:"100%", width:`${(rcProgress.current/rcProgress.total)*100}%`, background:"#002E6E", borderRadius:999, transition:"width .2s" }} />
                   </div>
                 </div>
               ) : (
@@ -8445,14 +8453,14 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
                     <div style={{ fontSize:12, color:"#9CA3AF" }}>{rcCourse} · {examTypes.find(e=>e.id===rcExamType)?.name} · {rcExamDate}</div>
                   </div>
                   <button onClick={printAllReportCards} disabled={!filteredRcStudents.length || rcLoading}
-                    style={{ ...css.btn, background:"#1a3c2e", color:"white", padding:"12px 24px", fontSize:13, whiteSpace:"nowrap" }}>
+                    style={{ ...css.btn, background:"#002E6E", color:"white", padding:"12px 24px", fontSize:13, whiteSpace:"nowrap" }}>
                     🖨️ Print All {filteredRcStudents.length}
                   </button>
                 </div>
               )}
             </div>
             <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", overflow:"hidden" }}>
-              <div style={{ padding:"12px 18px", background:"#1a3c2e", color:"white", fontWeight:700, fontSize:13, display:"flex", justifyContent:"space-between" }}>
+              <div style={{ padding:"12px 18px", background:"#002E6E", color:"white", fontWeight:700, fontSize:13, display:"flex", justifyContent:"space-between" }}>
                 <span>📋 Print Queue</span><span style={{ opacity:0.7, fontSize:12 }}>{filteredRcStudents.length} cards</span>
               </div>
               <div style={{ maxHeight:320, overflowY:"auto", overflowX:"auto" }}>
@@ -8467,7 +8475,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
                       const total=getTotal(st.id); const pct=getPct(st.id); const g=getGrade(pct);
                       return <tr key={st.id} style={{ background:i%2?"#F9FAFB":"white", borderBottom:"1px solid #F1F5F9" }}>
                         <td style={{ padding:"8px 10px", textAlign:"center", color:"#9CA3AF", fontSize:11 }}>{i+1}</td>
-                        <td style={{ padding:"8px 10px", textAlign:"center", fontWeight:700, color:"#1a3c2e" }}>{st.gcc_no}</td>
+                        <td style={{ padding:"8px 10px", textAlign:"center", fontWeight:700, color:"#002E6E" }}>{st.gcc_no}</td>
                         <td style={{ padding:"8px 10px", fontWeight:600 }}>{st.name}</td>
                         <td style={{ padding:"8px 10px", textAlign:"center", fontWeight:700 }}>{total}/{rcCourseMax}</td>
                         <td style={{ padding:"8px 10px", textAlign:"center", fontWeight:700, color:g.color }}>{pct.toFixed(1)}%</td>
@@ -8487,12 +8495,12 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
         <div style={twoCols}>
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
             <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", overflow:"hidden" }}>
-              <div style={{ padding:"12px 18px", background:"#1a3c2e", color:"white", fontWeight:700, fontSize:13 }}>⚙️ Admit Card Settings</div>
+              <div style={{ padding:"12px 18px", background:"#002E6E", color:"white", fontWeight:700, fontSize:13 }}>⚙️ Admit Card Settings</div>
               <div style={{ padding:18, display:"flex", flexDirection:"column", gap:14 }}>
                 <div>
                   <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:6, textTransform:"uppercase" }}>Batch / Course</label>
                   <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-                    {courses.map(c=><button key={c} onClick={()=>{setAcCourse(c); setAcSecondaryBatchFilter("");}} style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:acCourse===c?"#1a3c2e":"#F3F4F6", color:acCourse===c?"white":"#374151", border:acCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>)}
+                    {courses.map(c=><button key={c} onClick={()=>{setAcCourse(c); setAcSecondaryBatchFilter("");}} style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:acCourse===c?"#002E6E":"#F3F4F6", color:acCourse===c?"white":"#374151", border:acCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>)}
                   </div>
                 </div>
                 {secondaryBatches.length > 0 && (
@@ -8518,16 +8526,16 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
 
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
-              <StatPill label="Total Students" value={acStudents.length}        color="#1a3c2e" />
+              <StatPill label="Total Students" value={acStudents.length}        color="#002E6E" />
               <StatPill label="Will Print"     value={filteredAcStudents.length} color="#185FA5" />
               <StatPill label="Schedule Items" value={acSchedule.length}        color="#7c3aed" />
             </div>
             <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", padding:18 }}>
               {acProgress ? (
                 <div style={{ textAlign:"center", padding:"20px 0" }}>
-                  <div style={{ fontSize:14, fontWeight:600, color:"#1a3c2e", marginBottom:12 }}>⏳ Generating {acProgress.current}/{acProgress.total} cards…</div>
+                  <div style={{ fontSize:14, fontWeight:600, color:"#002E6E", marginBottom:12 }}>⏳ Generating {acProgress.current}/{acProgress.total} cards…</div>
                   <div style={{ height:8, background:"#F1F5F9", borderRadius:999, overflow:"hidden" }}>
-                    <div style={{ height:"100%", width:`${(acProgress.current/acProgress.total)*100}%`, background:"#1a3c2e", borderRadius:999, transition:"width .2s" }} />
+                    <div style={{ height:"100%", width:`${(acProgress.current/acProgress.total)*100}%`, background:"#002E6E", borderRadius:999, transition:"width .2s" }} />
                   </div>
                 </div>
               ) : (
@@ -8537,7 +8545,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
                     <div style={{ fontSize:12, color:"#9CA3AF" }}>{acCourse} · {acExamName}</div>
                   </div>
                   <button onClick={printAllAdmitCards} disabled={!filteredAcStudents.length}
-                    style={{ ...css.btn, background:"#1a3c2e", color:"white", padding:"12px 24px", fontSize:13, whiteSpace:"nowrap" }}>
+                    style={{ ...css.btn, background:"#002E6E", color:"white", padding:"12px 24px", fontSize:13, whiteSpace:"nowrap" }}>
                     🖨️ Print All {filteredAcStudents.length}
                   </button>
                 </div>
@@ -8657,7 +8665,7 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
           <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Search</label>
           <input placeholder="Name or GCC…" value={search} onChange={e => setSearch(e.target.value)} style={css.input} />
         </div>
-        <button onClick={printAll} style={{ ...css.btn, background: "#1a3c2e", color: "white", padding: "9px 20px", fontSize: isMobile ? 12 : 14, whiteSpace: "nowrap" }}>
+        <button onClick={printAll} style={{ ...css.btn, background: "#002E6E", color: "white", padding: "9px 20px", fontSize: isMobile ? 12 : 14, whiteSpace: "nowrap" }}>
           🖨️ Print All ({filtered.length})
         </button>
       </div>
@@ -8670,7 +8678,7 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
             </span>
             {matchingPreset && (
               <button onClick={autoPopulateFromConfig} disabled={populating}
-                style={{ ...css.btn, padding: "7px 14px", fontSize: 12, background: populating ? "#93C5FD" : "#1a3c2e", color: "white", whiteSpace: "nowrap" }}>
+                style={{ ...css.btn, padding: "7px 14px", fontSize: 12, background: populating ? "#93C5FD" : "#002E6E", color: "white", whiteSpace: "nowrap" }}>
                 {populating ? "⏳ Populating…" : `⚡ Auto-populate for ${course}`}
               </button>
             )}
@@ -8684,7 +8692,7 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
         </div>
       )}
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-        <div style={{ padding: "12px 18px", background: "#1a3c2e", color: "white", fontWeight: 700, fontSize: 13, display: "flex", justifyContent: "space-between" }}>
+        <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13, display: "flex", justifyContent: "space-between" }}>
           <span>🪪 {course} — {examTypeName}</span>
           <span style={{ opacity: 0.7, fontSize: 12 }}>{filtered.length} students</span>
         </div>
@@ -8698,12 +8706,12 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
             <tbody>
               {filtered.map((st, i) => (
                 <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
-                  <td style={{ padding: "9px 12px", textAlign: "center", fontWeight: 700, color: "#1a3c2e" }}>{st.gcc_no}</td>
+                  <td style={{ padding: "9px 12px", textAlign: "center", fontWeight: 700, color: "#002E6E" }}>{st.gcc_no}</td>
                   <td style={{ padding: "9px 12px", fontWeight: 600, color: "#1e293b" }}>{st.name}</td>
                   <td style={{ padding: "9px 12px", textAlign: "center" }}><span style={{ background: "#E0F2FE", color: "#0369A1", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{st.class_name || "—"}</span></td>
                   <td style={{ padding: "9px 12px", textAlign: "center", color: "#94A3B8", fontSize: 12 }}>{st.admission_no || "—"}</td>
                   <td style={{ padding: "9px 12px", textAlign: "center" }}>
-                    <button onClick={() => printOne(st)} style={{ ...css.btn, padding: "5px 12px", background: "#1a3c2e", color: "white", fontSize: 12 }}>🖨️</button>
+                    <button onClick={() => printOne(st)} style={{ ...css.btn, padding: "5px 12px", background: "#002E6E", color: "white", fontSize: 12 }}>🖨️</button>
                   </td>
                 </tr>
               ))}
@@ -8723,7 +8731,7 @@ function ExamHubHeader({ institute, students, courses, examTypes, currentUser })
   const stats = [
     { label: "Students",   val: students.length,              icon: "👤", color: "#60a5fa" },
     { label: "Batches",    val: courses.length,               icon: "📚", color: "#34d399" },
-    { label: "Exam Types", val: examTypes.length,             icon: "📝", color: "#f0c040" },
+    { label: "Exam Types", val: examTypes.length,             icon: "📝", color: "#00BAF2" },
     { label: "Role",       val: currentUser?.role || "Admin", icon: "🔑", color: "#c084fc" },
   ];
 
@@ -8731,8 +8739,8 @@ function ExamHubHeader({ institute, students, courses, examTypes, currentUser })
     <div style={{
       width: isMobile ? 34 : 40, height: isMobile ? 34 : 40,
       borderRadius: 9, flexShrink: 0,
-      background: "linear-gradient(135deg,#1a3c2e,#2A5C45)",
-      border: "1.5px solid rgba(184,134,11,0.5)",
+      background: "linear-gradient(135deg,#002E6E,#0A56B8)",
+      border: "1.5px solid rgba(0,186,242,0.5)",
       display: "flex", alignItems: "center", justifyContent: "center",
       fontSize: isMobile ? 16 : 20,
     }}>🎓</div>
@@ -8741,7 +8749,7 @@ function ExamHubHeader({ institute, students, courses, examTypes, currentUser })
   const Title = (
     <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
       <span style={{ fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: isMobile ? 16 : 19, color: "white" }}>Exam</span>
-      <span style={{ fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: isMobile ? 16 : 19, color: "#f0c040" }}>HUB</span>
+      <span style={{ fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: isMobile ? 16 : 19, color: "#00BAF2" }}>HUB</span>
       {!isMobile && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", marginLeft: 4 }}>· {institute.name}</span>}
     </div>
   );
@@ -8768,7 +8776,7 @@ function ExamHubHeader({ institute, students, courses, examTypes, currentUser })
   );
 
   if (isMobile) return (
-    <div style={{ background: "#0d1b2a", borderBottom: "3px solid #B8860B" }}>
+    <div style={{ background: "#001F4D", borderBottom: "3px solid #00BAF2" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px 8px" }}>
         {Badge}{Title}
       </div>
@@ -8778,7 +8786,7 @@ function ExamHubHeader({ institute, students, courses, examTypes, currentUser })
 
   return (
     <div style={{
-      background: "#0d1b2a", borderBottom: "3px solid #B8860B",
+      background: "#001F4D", borderBottom: "3px solid #00BAF2",
       display: "flex", alignItems: "center",
       padding: "0 28px", height: 60, gap: 16,
     }}>
@@ -9233,16 +9241,16 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
               <div style={{
                 width:30, height:30, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center",
                 fontSize:13, fontWeight:700,
-                background: done ? "#1a3c2e" : active ? "#2A5C45" : "#F1F5F9",
+                background: done ? "#002E6E" : active ? "#0A56B8" : "#F1F5F9",
                 color: (done || active) ? "white" : "#9CA3AF",
-                border: active ? "2px solid #1a3c2e" : "none",
+                border: active ? "2px solid #002E6E" : "none",
               }}>
                 {done ? "✓" : n}
               </div>
-              {!isMobile && <div style={{ fontSize:9, fontWeight:700, color: active ? "#1a3c2e" : done ? "#0F6E56" : "#9CA3AF", textTransform:"uppercase", letterSpacing:".08em", whiteSpace:"nowrap" }}>{label}</div>}
+              {!isMobile && <div style={{ fontSize:9, fontWeight:700, color: active ? "#002E6E" : done ? "#0F6E56" : "#9CA3AF", textTransform:"uppercase", letterSpacing:".08em", whiteSpace:"nowrap" }}>{label}</div>}
             </div>
             {i < STEP_LABELS.length - 1 && (
-              <div style={{ flex:1, height:2, background: step > n ? "#1a3c2e" : "#E5E7EB", margin:"0 4px 18px" }} />
+              <div style={{ flex:1, height:2, background: step > n ? "#002E6E" : "#E5E7EB", margin:"0 4px 18px" }} />
             )}
           </React.Fragment>
         );
@@ -9254,7 +9262,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
     <div style={{ display:"flex", gap:10, marginTop:24, paddingTop:16, borderTop:"1px solid #F1F5F9" }}>
       {step > 1 && <button onClick={() => setStep(s => s-1)} style={{ ...css.btn, background:"#F3F4F6", color:"#374151", flex:1 }}>← Back</button>}
       {step < TOTAL_STEPS
-        ? <button onClick={() => setStep(s => s+1)} disabled={!canNext()} style={{ ...css.btn, background:canNext()?"#1a3c2e":"#D1D5DB", color:"white", flex:2, fontSize:14 }}>
+        ? <button onClick={() => setStep(s => s+1)} disabled={!canNext()} style={{ ...css.btn, background:canNext()?"#002E6E":"#D1D5DB", color:"white", flex:2, fontSize:14 }}>
             Next →
           </button>
         : <button onClick={handleSave} disabled={saving} style={{ ...css.btn, background:saving?"#93C5FD":"#16A34A", color:"white", flex:2, fontSize:14 }}>
@@ -9285,7 +9293,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
           <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
             {["Written","OMR","Online","Oral"].map(m => (
               <button key={m} onClick={() => setExamMode(m)}
-                style={{ ...css.btn, padding:"7px 16px", fontSize:12, background:examMode===m?"#1a3c2e":"#F3F4F6", color:examMode===m?"white":"#374151", border:examMode===m?"none":"1px solid #E5E7EB" }}>
+                style={{ ...css.btn, padding:"7px 16px", fontSize:12, background:examMode===m?"#002E6E":"#F3F4F6", color:examMode===m?"white":"#374151", border:examMode===m?"none":"1px solid #E5E7EB" }}>
                 {m}
               </button>
             ))}
@@ -9303,13 +9311,13 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
             </label>
             <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(200px,1fr))", gap:8 }}>
               <div onClick={() => setCopyFrom("")}
-                style={{ padding:"10px 14px", borderRadius:10, border: !copyFrom?"2px solid #1a3c2e":"1px solid #E5E7EB", background: !copyFrom?"#E1F5EE":"#F9FAFB", cursor:"pointer" }}>
+                style={{ padding:"10px 14px", borderRadius:10, border: !copyFrom?"2px solid #002E6E":"1px solid #E5E7EB", background: !copyFrom?"#E1F5EE":"#F9FAFB", cursor:"pointer" }}>
                 <div style={{ fontWeight:700, fontSize:12, color: !copyFrom?"#0F6E56":"#374151" }}>Start fresh</div>
                 <div style={{ fontSize:11, color:"#9CA3AF", marginTop:2 }}>Define everything from scratch</div>
               </div>
               {EXAM_CONFIG_PRESETS.map(p => (
                 <div key={p.id} onClick={() => setCopyFrom(p.id)}
-                  style={{ padding:"10px 14px", borderRadius:10, border: copyFrom===p.id?"2px solid #1a3c2e":"1px solid #E5E7EB", background: copyFrom===p.id?"#E1F5EE":"#F9FAFB", cursor:"pointer" }}>
+                  style={{ padding:"10px 14px", borderRadius:10, border: copyFrom===p.id?"2px solid #002E6E":"1px solid #E5E7EB", background: copyFrom===p.id?"#E1F5EE":"#F9FAFB", cursor:"pointer" }}>
                   <div style={{ fontWeight:700, fontSize:12, color: copyFrom===p.id?"#0F6E56":"#374151" }}>{p.name}</div>
                   <div style={{ fontSize:11, color:"#9CA3AF", marginTop:2 }}>{p.description || "Built-in preset"}</div>
                 </div>
@@ -9335,7 +9343,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
           const subCount = courseData[c]?.subjects?.length || courseSubjects[c]?.length || 0;
           return (
             <div key={c} onClick={() => toggleCourse(c)}
-              style={{ padding:"14px 16px", borderRadius:12, border: sel?"2px solid #1a3c2e":"1.5px solid #E5E7EB", background: sel?"#E1F5EE":"#F9FAFB", cursor:"pointer", transition:"all .15s", position:"relative" }}>
+              style={{ padding:"14px 16px", borderRadius:12, border: sel?"2px solid #002E6E":"1.5px solid #E5E7EB", background: sel?"#E1F5EE":"#F9FAFB", cursor:"pointer", transition:"all .15s", position:"relative" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                 <div style={{ fontWeight:700, fontSize:14, color: sel?"#0F6E56":"#374151" }}>{c}</div>
                 <div style={{ display:"flex", alignItems:"center", gap:6 }}>
@@ -9354,7 +9362,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
         })}
       </div>
       <div style={{ background:"#F8FAFC", borderRadius:8, padding:"10px 14px", fontSize:12, color:"#64748b" }}>
-        {selectedCourses.size} course{selectedCourses.size !== 1 ? "s" : ""} selected: <b style={{ color:"#1a3c2e" }}>{[...selectedCourses].join(", ") || "none"}</b>
+        {selectedCourses.size} course{selectedCourses.size !== 1 ? "s" : ""} selected: <b style={{ color:"#002E6E" }}>{[...selectedCourses].join(", ") || "none"}</b>
       </div>
     </div>
   );
@@ -9377,7 +9385,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
                 <div key={c} style={{ display:"flex", alignItems:"stretch", gap:0 }}>
                   <button onClick={() => setActiveCourse(c)}
                     style={{ ...css.btn, padding:"8px 12px", textAlign:"left", fontSize:12, flex:1,
-                      background: activeCourse===c?"#1a3c2e":"#F9FAFB",
+                      background: activeCourse===c?"#002E6E":"#F9FAFB",
                       color: activeCourse===c?"white":"#374151",
                       border: activeCourse===c?"none": ok?"1px solid #BBF7D0":"1px solid #E5E7EB",
                       borderRadius: "8px 0 0 8px",
@@ -9401,7 +9409,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
 
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-            <div style={{ fontWeight:700, fontSize:15, color:"#1a3c2e" }}>{activeCourse}</div>
+            <div style={{ fontWeight:700, fontSize:15, color:"#002E6E" }}>{activeCourse}</div>
             <div style={{ display:"flex", gap:6, alignItems:"center" }}>
               <span style={{ fontSize:11, color: total===getTarget(activeCourse)?"#0F6E56":total>getTarget(activeCourse)?"#DC2626":"#9CA3AF", fontWeight:700 }}>
                 Total: {total} / {getTarget(activeCourse)}
@@ -9428,7 +9436,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
   onKeyDown={e => { if (e.key === "Enter") addSubjectWithMark(); }}
 />
             <button onClick={() => addSubjectWithMark()}
-              style={{ ...css.btn, background:"#1a3c2e", color:"white", whiteSpace:"nowrap" }}>+ Add</button>
+              style={{ ...css.btn, background:"#002E6E", color:"white", whiteSpace:"nowrap" }}>+ Add</button>
           </div>
 
           <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
@@ -9456,7 +9464,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
                     onKeyDown={e => { if(e.key==="Enter") { setMark(activeCourse, sub, e.target.value); setEditingSub(null); } }} />
                 ) : (
                   <div onClick={() => setEditingSub(`${activeCourse}-${sub}`)}
-                    style={{ width:70, textAlign:"center", padding:"4px 8px", borderRadius:6, border:"1px solid #E5E7EB", fontSize:13, fontWeight:700, color: d.marks[sub]?"#1a3c2e":"#CBD5E1", cursor:"pointer", background:"#F9FAFB" }}>
+                    style={{ width:70, textAlign:"center", padding:"4px 8px", borderRadius:6, border:"1px solid #E5E7EB", fontSize:13, fontWeight:700, color: d.marks[sub]?"#002E6E":"#CBD5E1", cursor:"pointer", background:"#F9FAFB" }}>
                     {d.marks[sub] || "—"}
                   </div>
                 )}
@@ -9521,7 +9529,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
     const courseArr = [...selectedCourses];
     return (
       <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-        <div style={{ background:"linear-gradient(135deg,#1a3c2e,#2A5C45)", borderRadius:12, padding:"16px 20px", color:"white" }}>
+        <div style={{ background:"linear-gradient(135deg,#002E6E,#0A56B8)", borderRadius:12, padding:"16px 20px", color:"white" }}>
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:20, marginBottom:4 }}>{name || "Untitled Exam"}</div>
           <div style={{ fontSize:12, opacity:.75 }}>{description}</div>
           <div style={{ display:"flex", gap:12, marginTop:10, flexWrap:"wrap" }}>
@@ -9541,7 +9549,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
             return (
               <div key={c} style={{ background:"white", borderRadius:10, border: ok?"1px solid #BBF7D0":"1px solid #FECACA", padding:"12px 14px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                  <div style={{ fontWeight:700, color:"#1a3c2e", fontSize:13 }}>{c}</div>
+                  <div style={{ fontWeight:700, color:"#002E6E", fontSize:13 }}>{c}</div>
                   <span style={{ fontSize:11, padding:"2px 8px", borderRadius:999, background: total===target?"#E1F5EE":total>target?"#FCEBEB":"#FFFBEB", color: total===target?"#0F6E56":total>target?"#DC2626":"#92400E", fontWeight:700 }}>
                     {total} marks
                   </span>
@@ -9582,7 +9590,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
 
   return (
     <div style={{ background:"white", borderRadius:14, boxShadow:"0 2px 16px rgba(0,0,0,0.09)", overflow:"hidden" }}>
-      <div style={{ background:"linear-gradient(135deg,#1a3c2e,#2A5C45)", padding:"18px 24px" }}>
+      <div style={{ background:"linear-gradient(135deg,#002E6E,#0A56B8)", padding:"18px 24px" }}>
         <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, color:"white", marginBottom:2 }}>
           {isEdit ? "✏️ Edit Exam Format" : "✏️ Exam Format Builder"}
         </div>
@@ -9691,7 +9699,7 @@ function ExamPreviewModal({ cfg, onClose }) {
         maxHeight:"92vh", overflowY:"auto", boxShadow:"0 8px 40px rgba(0,0,0,0.25)" }}>
 
         {/* sticky header */}
-        <div style={{ background:"linear-gradient(135deg,#1a3c2e,#2A5C45)", padding:"14px 20px",
+        <div style={{ background:"linear-gradient(135deg,#002E6E,#0A56B8)", padding:"14px 20px",
           display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
           <div>
             <div style={{ fontFamily:"'Playfair Display',serif", fontSize:16, color:"white" }}>👁 Preview — {cfg.name}</div>
@@ -9727,8 +9735,8 @@ function ExamPreviewModal({ cfg, onClose }) {
               <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
                 <thead>
                   <tr style={{ background:"#F8FAFC" }}>
-                    <th style={{ padding:"8px 12px", textAlign:"left", borderBottom:"2px solid #E5E7EB", color:"#1a3c2e", fontWeight:700 }}>Session</th>
-                    <th style={{ padding:"8px 12px", textAlign:"left", borderBottom:"2px solid #E5E7EB", color:"#1a3c2e", fontWeight:700 }}>Timing</th>
+                    <th style={{ padding:"8px 12px", textAlign:"left", borderBottom:"2px solid #E5E7EB", color:"#002E6E", fontWeight:700 }}>Session</th>
+                    <th style={{ padding:"8px 12px", textAlign:"left", borderBottom:"2px solid #E5E7EB", color:"#002E6E", fontWeight:700 }}>Timing</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -9751,7 +9759,7 @@ function ExamPreviewModal({ cfg, onClose }) {
             return (
               <div key={course} style={{ marginBottom:20 }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
-                  background:"linear-gradient(90deg,#1a3c2e 0%,#2A5C45 100%)",
+                  background:"linear-gradient(90deg,#002E6E 0%,#0A56B8 100%)",
                   borderRadius:"8px 8px 0 0", padding:"8px 14px" }}>
                   <div style={{ fontWeight:700, color:"white", fontSize:13 }}>{course}</div>
                   <div style={{ fontSize:11, color:"rgba(255,255,255,.75)", fontWeight:600 }}>Total: {total} marks</div>
@@ -9770,7 +9778,7 @@ function ExamPreviewModal({ cfg, onClose }) {
                         <td style={{ padding:"8px 12px", color:"#CBD5E1", fontWeight:700 }}>{i+1}</td>
                         <td style={{ padding:"8px 12px", color:"#1e293b", fontWeight:500 }}>{sub}</td>
                         <td style={{ padding:"8px 12px", textAlign:"center", fontWeight:700,
-                          color: marks[sub] ? "#1a3c2e" : "#CBD5E1" }}>
+                          color: marks[sub] ? "#002E6E" : "#CBD5E1" }}>
                           {marks[sub] || "—"}
                         </td>
                       </tr>
@@ -9969,7 +9977,7 @@ setLoading(false);
       {viewCfg && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
           <div style={{ background:"white", borderRadius:14, width:"100%", maxWidth:620, maxHeight:"88vh", overflowY:"auto", boxShadow:"0 8px 40px rgba(0,0,0,0.2)" }}>
-            <div style={{ background:"linear-gradient(135deg,#1a3c2e,#2A5C45)", padding:"16px 22px", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0 }}>
+            <div style={{ background:"linear-gradient(135deg,#002E6E,#0A56B8)", padding:"16px 22px", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0 }}>
               <div style={{ fontFamily:"'Playfair Display',serif", fontSize:16, color:"white" }}>{viewCfg.name}</div>
               <button onClick={() => setViewId(null)} style={{ background:"rgba(255,255,255,.15)", border:"none", borderRadius:6, padding:"4px 10px", color:"white", cursor:"pointer" }}>✕</button>
             </div>
@@ -9988,7 +9996,7 @@ setLoading(false);
               )}
               {Object.entries(viewCfg.courseSubjects||{}).map(([c,subs])=>(
                 <div key={c} style={{ marginBottom:12, background:"#F9FAFB", borderRadius:10, padding:"10px 14px", border:"1px solid #E5E7EB" }}>
-                  <div style={{ fontWeight:700, color:"#1a3c2e", fontSize:13, marginBottom:6 }}>
+                  <div style={{ fontWeight:700, color:"#002E6E", fontSize:13, marginBottom:6 }}>
                     {c} <span style={{ fontWeight:400, color:"#9CA3AF" }}>· {getTotalMarks(viewCfg,c)} marks</span>
                   </div>
                   <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
@@ -10024,7 +10032,7 @@ setLoading(false);
             ⬆ Import JSON
           </button>
           <button onClick={() => { setEditingConfig(null); setShowBuilder(true); }}
-            style={{ ...css.btn, background:"#1a3c2e", color:"white", fontSize:13, padding:"10px 20px" }}>
+            style={{ ...css.btn, background:"#002E6E", color:"white", fontSize:13, padding:"10px 20px" }}>
             ✏️ Create New Format
           </button>
         </div>
@@ -10053,11 +10061,11 @@ setLoading(false);
           return (
             <div key={cfg.id} style={{
               background:"white", borderRadius:12,
-              border: isActive ? "2px solid #1a3c2e" : "1.5px solid #E5E7EB",
-              boxShadow: isActive ? "0 4px 16px rgba(26,60,46,0.12)" : "0 1px 4px rgba(0,0,0,0.06)",
+              border: isActive ? "2px solid #002E6E" : "1.5px solid #E5E7EB",
+              boxShadow: isActive ? "0 4px 16px rgba(0,46,110,0.12)" : "0 1px 4px rgba(0,0,0,0.06)",
               overflow:"hidden", position:"relative",
             }}>
-              {isActive && <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:"linear-gradient(90deg,#1a3c2e,#2A5C45,#B8860B)" }} />}
+              {isActive && <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:"linear-gradient(90deg,#002E6E,#0A56B8,#00BAF2)" }} />}
               <div style={{ padding:"16px 18px 10px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6, gap:8 }}>
                   <div style={{ flex:1, minWidth:0 }}>
@@ -10082,7 +10090,7 @@ setLoading(false);
                 <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:10 }}>
                   {courses.map(c => (
                     <div key={c} style={{ fontSize:11, padding:"3px 10px", borderRadius:999, background:"#F8FAFC", border:"1px solid #E5E7EB", color:"#374151" }}>
-                      <span style={{ fontWeight:700, color:"#1a3c2e" }}>{c}</span>
+                      <span style={{ fontWeight:700, color:"#002E6E" }}>{c}</span>
                       <span style={{ color:"#9CA3AF", marginLeft:3 }}>{getTotalMarks(cfg,c)}m</span>
                     </div>
                   ))}
@@ -10126,7 +10134,7 @@ setLoading(false);
                 {isActive
                   ? <div style={{ flex:1, textAlign:"center", fontSize:12, color:"#0F6E56", fontWeight:600, padding:"7px 0", minWidth:100 }}>✓ Active</div>
                   : <button onClick={() => handleSwitch(cfg)} disabled={switching}
-                      style={{ ...css.btn, flex:1, minWidth:100, background:switching?"#93C5FD":"#1a3c2e", color:"white", fontSize:13 }}>
+                      style={{ ...css.btn, flex:1, minWidth:100, background:switching?"#93C5FD":"#002E6E", color:"white", fontSize:13 }}>
                       {switching ? "⏳…" : "⚡ Activate"}
                     </button>
                 }
@@ -10161,7 +10169,9 @@ setLoading(false);
 
 // ─── ROOT EXPORT ──────────────────────────────────────────────────────────────
 export default function Exams({ currentUser, perms }) {
-  const [tab, setTab]               = useState("entry");
+  const isPhone = useMobile();
+  // On a phone the module opens on the app-style home grid; on desktop it opens on Mark Entry.
+  const [tab, setTab]               = useState(() => (typeof window !== "undefined" && window.innerWidth < 768 ? "home" : "entry"));
   const [examConfigPrefillName, setExamConfigPrefillName] = useState("");
   const [students, setStudents]     = useState([]);
   const [examTypes, setExamTypes]   = useState([]);
@@ -10393,7 +10403,7 @@ export default function Exams({ currentUser, perms }) {
  
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", background: "#F7F6F1", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ minHeight: "100vh", background: "#F5F7FA", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <Spinner />
       </div>
     );
@@ -10465,21 +10475,67 @@ export default function Exams({ currentUser, perms }) {
   };
  
   const activeTabInfo = TAB_GROUPS.flatMap(g => g.tabs).find(t => t.id === tab);
-  const isMobile = window.innerWidth < 768;
- 
+  const isAdmin = isAdminRole(currentUser?.role);
+  const visibleGroups = visibleTabGroups({ perms, isAdmin, currentUser });
+  const allowed = visibleGroups.flatMap(g => g.tabs.map(t => t.id));
+
+  // ── Phone: app-style shell ─────────────────────────────────────────────────
+  if (isPhone) {
+    const bottomItems = [
+      { id: "home", icon: "🏠", label: "Home" },
+      { id: "entry", icon: "✏️", label: "Entry" },
+      { id: "mockanalyzer", icon: "🧠", label: "Analyzer" },
+      { id: "reportcard", icon: "📋", label: "Reports" },
+      { id: "__more", icon: "⋯", label: "More" },
+    ].filter(i => i.id === "home" || i.id === "__more" || allowed.includes(i.id));
+    // keep five slots even if a role lacks some tabs
+    const fillers = ["rankings", "marks", "analytics", "schedule"].filter(id => allowed.includes(id) && !bottomItems.some(b => b.id === id));
+    while (bottomItems.length < 5 && fillers.length) {
+      const id = fillers.shift();
+      const t = TAB_GROUPS.flatMap(g => g.tabs).find(x => x.id === id);
+      bottomItems.splice(bottomItems.length - 1, 0, { id, icon: t.icon, label: t.label.split(" ")[0] });
+    }
+    const goBottom = (id) => setTab(id === "__more" ? "home" : id);
+    return (
+      <div className="exams-root xm-root">
+        {tab === "home" || !allowed.includes(tab) ? (
+          <ExamHomeMobile
+            groups={visibleGroups}
+            onSelect={setTab}
+            institute={institute}
+            role={currentUser?.role}
+            stats={[
+              { label: "Students", val: students.length },
+              { label: "Batches", val: courses.length },
+              { label: "Exam types", val: examTypes.length },
+            ]}
+          />
+        ) : (
+          <>
+            <ExamTopBar title={activeTabInfo?.label} icon={activeTabInfo?.icon} subtitle={activeTabInfo?.tip} onBack={() => setTab("home")} />
+            <div className="xm-body">{sectionMap[tab]?.()}</div>
+          </>
+        )}
+        <ExamBottomBar items={bottomItems} active={tab === "home" || !allowed.includes(tab) ? "home" : tab} onSelect={goBottom} />
+      </div>
+    );
+  }
+
   return (
-    <div className="exams-root" style={{ minHeight: "100vh", background: "#F7F6F1", fontFamily: "'DM Sans','Inter',sans-serif" }}>
+    <div className="exams-root" style={{ minHeight: "100vh", background: "#F5F7FA", fontFamily: "'Plus Jakarta Sans','DM Sans','Inter',sans-serif" }}>
       <ExamHubHeader institute={institute} students={students} courses={courses} examTypes={examTypes} currentUser={currentUser} />
-      <TabNav active={tab} onSelect={setTab} perms={perms} isAdmin={isAdminRole(currentUser?.role)} currentUser={currentUser} />
-      <div style={{ padding: isMobile ? "14px 12px" : "24px 28px", maxWidth: 1400 }}>
-        <div style={{ marginBottom: 18 }}>
-          <h2 style={{ margin: 0, fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 400, color: "#1C1A16" }}>
-            {activeTabInfo?.icon} {activeTabInfo?.label}
-          </h2>
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9CA3AF" }}>{activeTabInfo?.tip}</p>
+      <TabNav active={tab} onSelect={setTab} perms={perms} isAdmin={isAdmin} currentUser={currentUser} />
+      <div style={{ padding: "24px 28px", maxWidth: 1400 }}>
+        <div style={{ marginBottom: 18, display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ width: 40, height: 40, borderRadius: 12, background: "#E8F4FD", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{activeTabInfo?.icon}</span>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: "#10223D" }}>{activeTabInfo?.label}</h2>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6B7A90" }}>{activeTabInfo?.tip}</p>
+          </div>
         </div>
         {sectionMap[tab]?.()}
       </div>
     </div>
   );
+
 }

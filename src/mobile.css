@@ -57,8 +57,8 @@
     margin: 0 auto !important;
   }
 
-  /* Content area padding */
-  .exams-root > div:last-child {
+  /* Content area padding (phone shell uses .xm-body instead) */
+  .exams-root > div:last-child:not(.xm-body):not(.xm-home) {
     padding: 14px 12px !important;
   }
 
