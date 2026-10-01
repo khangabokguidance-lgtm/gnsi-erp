@@ -25,6 +25,7 @@ import { staffDB, useStaffDB } from './staffDB'
 import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from './admitCardTemplate'
 import ToppersCertificate from './ToppersCertificate'
 import ExamDashboard from './ExamDashboard'
+import MockTestAnalyzer from './MockTestAnalyzer'
 import './mobile.css';
 import ExamCSVImport from './lib/ExamCSVImport';
 import { isAdminRole } from './roles'
@@ -564,7 +565,8 @@ const TAB_GROUPS = [
       { id: "progress",  icon: "🎓", label: "Progress",    tip: "Per-student progress" },
       { id: "compare",   icon: "⚖️",  label: "Compare",    tip: "Side-by-side comparison" },
       { id: "merit",     icon: "📜", label: "Merit List",  tip: "Generate merit lists" },
-      { id: "dashboard", icon: "🏠", label: "Dashboard",   tip: "Exam HUB overview" }
+      { id: "dashboard", icon: "🏠", label: "Dashboard",   tip: "Exam HUB overview" },
+      { id: "mockanalyzer", icon: "🧠", label: "Mock Analyzer", tip: "Advanced student, subject & batch analysis of mock tests — upload Excel, save records, print reports" }
     ]
   },
   {
@@ -10421,6 +10423,9 @@ export default function Exams({ currentUser, perms }) {
   // ── Section map ────────────────────────────────────────────────────────────
   const sectionMap = {
     dashboard:      () => <ExamDashboard courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} schedule={schedule} />,
+    mockanalyzer:   () => <MockTestAnalyzer institute={institute} currentUser={currentUser}
+                            canUpload={isAdminRole(currentUser?.role) || perms?.add === true || perms?.edit === true || ['Manager','Accounts','Accountant'].includes(currentUser?.role)}
+                            canDelete={isAdminRole(currentUser?.role) || perms?.delete === true} />,
     toppers:        () => <ToppersCertificate courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} institute={institute} />,
     entry:          () => <MarkEntry key={markEntryRefreshKey} courseSubjects={courseSubjects} examTypes={examTypes} students={examStudents} currentUser={currentUser} perms={perms} onStudentsChange={handleMarkEntryStudentsChange} initialCourse={lastCSVImportContext?.course} initialExamType={lastCSVImportContext?.examTypeId} initialExamDate={lastCSVImportContext?.examDate} />,
  
