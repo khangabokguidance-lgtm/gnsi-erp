@@ -26,7 +26,7 @@ import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from 
 import ToppersCertificate from './ToppersCertificate'
 import ExamDashboard from './ExamDashboard'
 import MockTestAnalyzer from './MockTestAnalyzer'
-import { ExamHomeMobile, ExamTopBar, ExamBottomBar } from './ExamsMobile'
+import { ExamHomeMobile, ExamTopBar, ExamBottomBar, ResponsiveTables } from './ExamsMobile'
 import './examsTheme.css'
 import './mobile.css';
 import ExamCSVImport from './lib/ExamCSVImport';
@@ -10513,7 +10513,7 @@ export default function Exams({ currentUser, perms }) {
         ) : (
           <>
             <ExamTopBar title={activeTabInfo?.label} icon={activeTabInfo?.icon} subtitle={activeTabInfo?.tip} onBack={() => setTab("home")} />
-            <div className="xm-body">{sectionMap[tab]?.()}</div>
+            <ResponsiveTables className="xm-body">{sectionMap[tab]?.()}</ResponsiveTables>
           </>
         )}
         <ExamBottomBar items={bottomItems} active={tab === "home" || !allowed.includes(tab) ? "home" : tab} onSelect={goBottom} />
