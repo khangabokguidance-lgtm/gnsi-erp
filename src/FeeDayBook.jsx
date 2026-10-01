@@ -7,7 +7,7 @@ import { loadAllFeeRows } from './feeLedgerBulk'
 import { fmt, fmtDate } from './feeLedgerModel'
 import { allEntries, dayBook, presetRange, shiftDay, localISO, printDayBook, exportDayBookExcel, reprintBookReceipt } from './feeBooks'
 import { BOOKS_CSS } from './feeBooksCss'
-import { LedgerLink } from './LedgerLink'
+import { LedgerLink } from './LedgerLinks'
 
 const PRESETS = [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This week'], ['month', 'This month'], ['lastmonth', 'Last month']]
 

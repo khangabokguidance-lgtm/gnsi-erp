@@ -35,7 +35,7 @@ import { editField, getEditableFields } from './editEngine'
 import RegistrationCard from './RegistrationCard'
 import { allocateStudent, vacateStudent, backfillMissingAllocations, cleanupNonBoardingAllocations } from './hostelAllocation'
 import { TABLE_REGISTRY } from './tableRegistry'
-import AdminIntelligence from './AdminIntelligence'
+import AdminIntelligence from './AdminIntelligencePage'
 
 // ── Pagination-safe fetch — same helper as Fees.jsx's fetchAllRows() ───────
 // Supabase/PostgREST caps any query with no .range() at 1000 rows, silently

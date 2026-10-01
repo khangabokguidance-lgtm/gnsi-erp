@@ -6,7 +6,7 @@ import {
   Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis,
 } from 'recharts'
 import WebsiteTab from "./WebsiteTab";
-import AdminIntelligence from "./AdminIntelligence";
+import AdminIntelligence from "./AdminIntelligencePage";
 import { SecurityCenter } from "./GNSIDashboard";
 import Store from "./Store";
 import { isAdminRole } from './roles'

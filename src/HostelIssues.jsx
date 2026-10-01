@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { HOSTEL_TYPES, HOSTEL_MISMATCH_REASON, scanBedConflicts, fixHostelType, loadWrongRateScan, loadHostelAudit, loadActiveBeds } from './hostelFeeCheck'
 import { loadConcessions, decideConcession, recordConcession, CONCESSIONS_SETUP_MSG } from './feeConcessions'
 import { sessionOfDate } from './feeLedgerModel'
-import { LedgerLink } from './LedgerLink'
+import { LedgerLink } from './LedgerLinks'
 
 const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
 const fmtD = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'

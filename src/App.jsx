@@ -24,11 +24,11 @@ import Reports            from './Reports'
 import Checklist          from './Checklist'
 import QuestionBank       from './QuestionBank'
 import QuestionBankViewer from './QuestionBankViewer'
-import SystemSettings     from './systemSettings'
+import SystemSettings     from './SystemSettingsPage'
 import AdminPage          from './AdminPage'
 import StudentFeeLedger   from './StudentFeeLedger'
 import MobileNavHome from './MobileNavHome'
-import { OPEN_LEDGER_EVENT, ledgerGccFromUrl } from './LedgerLink'
+import { OPEN_LEDGER_EVENT, ledgerGccFromUrl } from './ledgerLink'
 import GNSIDashboard      from './GNSIDashboard'
 import Courses            from './Courses'
 import Teaching           from './Teaching'
@@ -685,7 +685,7 @@ export default function App() {
     if (ledgerGccFromUrl()) return 'studentfeeledger'
     return 'dashboard'
   })
-  // "Open ledger" links anywhere in the app (ledgerLink.jsx) switch here.
+  // "Open ledger" links anywhere in the app (ledgerLink.js) switch here.
   useEffect(() => {
     const open = () => setActive('studentfeeledger')
     window.addEventListener(OPEN_LEDGER_EVENT, open)
