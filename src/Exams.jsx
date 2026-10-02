@@ -764,6 +764,96 @@ function CardTableEngine({ enabled }) {
   return on ? <style>{CARD_TABLE_CSS}</style> : null;
 }
 
+// ─── Small presentational pieces ──────────────────────────────────────────────
+// Declared at module level (not inside the screens that use them) so React keeps
+// them mounted between renders; everything they need arrives through props.
+const EXAM_STEP_LABELS = ["Basic Info", "Courses", "Subjects & Marks", "Sessions", "Review"];
+
+function FieldLabel({ children }) {
+  return (
+    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>{children}</label>
+  );
+}
+
+function StatPill({ label, value, color }) {
+  return (
+    <div style={{ background:"white", borderRadius:8, padding:"10px 14px", boxShadow:"0 1px 4px rgba(0,0,0,0.06)", borderLeft:`3px solid ${color||"#132a4f"}` }}>
+      <div style={{ fontSize:10, fontWeight:700, color:"#5d6b82", textTransform:"uppercase", letterSpacing:".08em", marginBottom:3 }}>{label}</div>
+      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:600, color:color||"#132a4f" }}>{value}</div>
+    </div>
+  );
+}
+
+function ModeBtn({ id, icon, label, mode, setMode, isMobile }) {
+  return (
+    <button onClick={() => setMode(id)}
+      style={{ ...css.btn, padding: isMobile ? "7px 10px" : "8px 16px", background: mode === id ? "#132a4f" : "#f3f0e8", color: mode === id ? "white" : "#2e3b52", border: mode === id ? "none" : "1px solid #E5E7EB", fontSize: isMobile ? 11 : 12 }}>
+      {icon} {isMobile ? "" : label}
+    </button>
+  );
+}
+
+function SectionBtn({ id, icon, label, count, activeSection, setActiveSection, isMobile }) {
+  return (
+    <button onClick={() => setActiveSection(id)}
+      style={{ display:"flex", alignItems:"center", gap:10, padding: isMobile ? "12px 14px" : "14px 24px", borderRadius:10, border: activeSection===id ? "2px solid #132a4f" : "2px solid #E5E7EB", background: activeSection===id ? "#132a4f" : "white", color: activeSection===id ? "white" : "#2e3b52", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize: isMobile ? 13 : 14, flex:1, transition:"all .15s" }}>
+      <span style={{ fontSize: isMobile ? 18 : 22 }}>{icon}</span>
+      <div style={{ textAlign:"left" }}>
+        <div>{label}</div>
+        <div style={{ fontSize:11, fontWeight:400, opacity:0.7 }}>{count} students</div>
+      </div>
+    </button>
+  );
+}
+
+function StepBar({ step, setStep, isMobile }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", marginBottom:24, gap:0 }}>
+      {EXAM_STEP_LABELS.map((label, i) => {
+        const n = i + 1;
+        const done = step > n;
+        const active = step === n;
+        return (
+          <React.Fragment key={n}>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4, cursor: done ? "pointer" : "default" }}
+              onClick={() => done && setStep(n)}>
+              <div style={{
+                width:30, height:30, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center",
+                fontSize:13, fontWeight:700,
+                background: done ? "#132a4f" : active ? "#1e3a6e" : "#f3f0e8",
+                color: (done || active) ? "white" : "#8a93a6",
+                border: active ? "2px solid #132a4f" : "none",
+              }}>
+                {done ? "✓" : n}
+              </div>
+              {!isMobile && <div style={{ fontSize:9, fontWeight:700, color: active ? "#132a4f" : done ? "#0F6E56" : "#8a93a6", textTransform:"uppercase", letterSpacing:".08em", whiteSpace:"nowrap" }}>{label}</div>}
+            </div>
+            {i < EXAM_STEP_LABELS.length - 1 && (
+              <div style={{ flex:1, height:2, background: step > n ? "#132a4f" : "#e8e3d8", margin:"0 4px 18px" }} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+function NavButtons({ step, setStep, totalSteps, canNext, handleSave, saving, isEdit }) {
+  return (
+    <div style={{ display:"flex", gap:10, marginTop:24, paddingTop:16, borderTop:"1px solid #F1F5F9" }}>
+      {step > 1 && <button onClick={() => setStep(s => s-1)} style={{ ...css.btn, background:"#f3f0e8", color:"#2e3b52", flex:1 }}>← Back</button>}
+      {step < totalSteps
+        ? <button onClick={() => setStep(s => s+1)} disabled={!canNext()} style={{ ...css.btn, background:canNext()?"#132a4f":"#d9d2c2", color:"white", flex:2, fontSize:14 }}>
+            Next →
+          </button>
+        : <button onClick={handleSave} disabled={saving} style={{ ...css.btn, background:saving?"#b7c6e0":"#16A34A", color:"white", flex:2, fontSize:14 }}>
+            {saving ? "⏳ Saving…" : isEdit ? "✅ Save Changes" : "✅ Create Exam Format"}
+          </button>
+      }
+    </div>
+  );
+}
+
 // ─── Micro-components ─────────────────────────────────────────────────────────
 function Spinner({ small }) {
   return <div style={{ padding: small ? 8 : 40, textAlign: "center", color: "#8a93a6", fontSize: small ? 12 : 14 }}>⏳ Loading…</div>;
@@ -1530,7 +1620,7 @@ for (const st of courseStudents) {
     ? { display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }
     : { display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 18, alignItems: "flex-end" };
 
-  const ImportPreview = () => {
+  const renderImportPreview = () => {
     const previewSubjects = importInfo?.subjects || subjects;
     const detCourse = importInfo?.detectedCourse || course;
 
@@ -2074,7 +2164,7 @@ for (const st of courseStudents) {
       {saved && <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>✅ Marks saved!</div>}
       {saveError && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#991B1B", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>⚠ Save failed: {saveError}</div>}
       {scheduleError && <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>📋 {scheduleError}</div>}
-      {importMode && <ImportPreview />}
+      {importMode && renderImportPreview()}
 
       {!loading && subjects.length > 0 && courseStudents.length > 0 && (
         <div style={{ background: "white", borderRadius: 10, padding: "10px 16px", marginBottom: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.05)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -6950,17 +7040,6 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
     return matchCourse && matchType;
   });
 
-  const ModeBtn = ({ id, icon, label }) => (
-    <button onClick={() => setMode(id)}
-      style={{ ...css.btn, padding: isMobile ? "7px 10px" : "8px 16px", background: mode === id ? "#132a4f" : "#f3f0e8", color: mode === id ? "white" : "#2e3b52", border: mode === id ? "none" : "1px solid #E5E7EB", fontSize: isMobile ? 11 : 12 }}>
-      {icon} {isMobile ? "" : label}
-    </button>
-  );
-
-  const FieldLabel = ({ children }) => (
-    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>{children}</label>
-  );
-
   // Responsive two-col style
   const twoCols = {
     display: isMobile ? "flex" : "grid",
@@ -6974,13 +7053,13 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
       {/* Mode switcher */}
       <div style={{ background: "white", borderRadius: 12, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: "#5d6b82", textTransform: "uppercase", marginRight: 4 }}>Mode:</span>
-        <ModeBtn id="single"    icon="✏️"  label="Single Entry" />
-        <ModeBtn id="multi"     icon="📋" label="Multi-Subject" />
-        <ModeBtn id="bulk"      icon="🔀" label="One Subject → Many Courses" />
-        <ModeBtn id="generate"  icon="⚡" label="Auto-Generate Timetable" />
-        <ModeBtn id="autoconfig" icon="🎯" label="From Active Config (All Batches)" />
-        <ModeBtn id="duplicate" icon="📄" label="Duplicate Entries" />
-        <ModeBtn id="import"    icon="📂" label="Import CSV/Excel" />
+        <ModeBtn mode={mode} setMode={setMode} isMobile={isMobile} id="single"    icon="✏️"  label="Single Entry" />
+        <ModeBtn mode={mode} setMode={setMode} isMobile={isMobile} id="multi"     icon="📋" label="Multi-Subject" />
+        <ModeBtn mode={mode} setMode={setMode} isMobile={isMobile} id="bulk"      icon="🔀" label="One Subject → Many Courses" />
+        <ModeBtn mode={mode} setMode={setMode} isMobile={isMobile} id="generate"  icon="⚡" label="Auto-Generate Timetable" />
+        <ModeBtn mode={mode} setMode={setMode} isMobile={isMobile} id="autoconfig" icon="🎯" label="From Active Config (All Batches)" />
+        <ModeBtn mode={mode} setMode={setMode} isMobile={isMobile} id="duplicate" icon="📄" label="Duplicate Entries" />
+        <ModeBtn mode={mode} setMode={setMode} isMobile={isMobile} id="import"    icon="📂" label="Import CSV/Excel" />
       </div>
 
       {/* SINGLE ENTRY */}
@@ -8315,32 +8394,14 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
     setAcProgress(null);
   };
 
-  const SectionBtn = ({ id, icon, label, count }) => (
-    <button onClick={() => setActiveSection(id)}
-      style={{ display:"flex", alignItems:"center", gap:10, padding: isMobile ? "12px 14px" : "14px 24px", borderRadius:10, border: activeSection===id ? "2px solid #132a4f" : "2px solid #E5E7EB", background: activeSection===id ? "#132a4f" : "white", color: activeSection===id ? "white" : "#2e3b52", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize: isMobile ? 13 : 14, flex:1, transition:"all .15s" }}>
-      <span style={{ fontSize: isMobile ? 18 : 22 }}>{icon}</span>
-      <div style={{ textAlign:"left" }}>
-        <div>{label}</div>
-        <div style={{ fontSize:11, fontWeight:400, opacity:0.7 }}>{count} students</div>
-      </div>
-    </button>
-  );
-
-  const StatPill = ({ label, value, color }) => (
-    <div style={{ background:"white", borderRadius:8, padding:"10px 14px", boxShadow:"0 1px 4px rgba(0,0,0,0.06)", borderLeft:`3px solid ${color||"#132a4f"}` }}>
-      <div style={{ fontSize:10, fontWeight:700, color:"#5d6b82", textTransform:"uppercase", letterSpacing:".08em", marginBottom:3 }}>{label}</div>
-      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:600, color:color||"#132a4f" }}>{value}</div>
-    </div>
-  );
-
   // Responsive two-col
   const twoCols = { display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "300px 1fr", gap: isMobile ? 14 : 20 };
 
   return (
     <div>
       <div style={{ display:"flex", gap:12, marginBottom:20 }}>
-        <SectionBtn id="reportcard" icon="📋" label="Bulk Report Cards" count={rcStudents.length} />
-        <SectionBtn id="admitcard"  icon="🪪"  label="Bulk Admit Cards"  count={acStudents.length} />
+        <SectionBtn activeSection={activeSection} setActiveSection={setActiveSection} isMobile={isMobile} id="reportcard" icon="📋" label="Bulk Report Cards" count={rcStudents.length} />
+        <SectionBtn activeSection={activeSection} setActiveSection={setActiveSection} isMobile={isMobile} id="admitcard"  icon="🪪"  label="Bulk Admit Cards"  count={acStudents.length} />
       </div>
 
       {activeSection === "reportcard" && (
@@ -9107,51 +9168,6 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
     return true;
   };
 
-  const STEP_LABELS = ["Basic Info", "Courses", "Subjects & Marks", "Sessions", "Review"];
-  const StepBar = () => (
-    <div style={{ display:"flex", alignItems:"center", marginBottom:24, gap:0 }}>
-      {STEP_LABELS.map((label, i) => {
-        const n = i + 1;
-        const done = step > n;
-        const active = step === n;
-        return (
-          <React.Fragment key={n}>
-            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4, cursor: done ? "pointer" : "default" }}
-              onClick={() => done && setStep(n)}>
-              <div style={{
-                width:30, height:30, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center",
-                fontSize:13, fontWeight:700,
-                background: done ? "#132a4f" : active ? "#1e3a6e" : "#f3f0e8",
-                color: (done || active) ? "white" : "#8a93a6",
-                border: active ? "2px solid #132a4f" : "none",
-              }}>
-                {done ? "✓" : n}
-              </div>
-              {!isMobile && <div style={{ fontSize:9, fontWeight:700, color: active ? "#132a4f" : done ? "#0F6E56" : "#8a93a6", textTransform:"uppercase", letterSpacing:".08em", whiteSpace:"nowrap" }}>{label}</div>}
-            </div>
-            {i < STEP_LABELS.length - 1 && (
-              <div style={{ flex:1, height:2, background: step > n ? "#132a4f" : "#e8e3d8", margin:"0 4px 18px" }} />
-            )}
-          </React.Fragment>
-        );
-      })}
-    </div>
-  );
-
-  const NavButtons = () => (
-    <div style={{ display:"flex", gap:10, marginTop:24, paddingTop:16, borderTop:"1px solid #F1F5F9" }}>
-      {step > 1 && <button onClick={() => setStep(s => s-1)} style={{ ...css.btn, background:"#f3f0e8", color:"#2e3b52", flex:1 }}>← Back</button>}
-      {step < TOTAL_STEPS
-        ? <button onClick={() => setStep(s => s+1)} disabled={!canNext()} style={{ ...css.btn, background:canNext()?"#132a4f":"#d9d2c2", color:"white", flex:2, fontSize:14 }}>
-            Next →
-          </button>
-        : <button onClick={handleSave} disabled={saving} style={{ ...css.btn, background:saving?"#b7c6e0":"#16A34A", color:"white", flex:2, fontSize:14 }}>
-            {saving ? "⏳ Saving…" : isEdit ? "✅ Save Changes" : "✅ Create Exam Format"}
-          </button>
-      }
-    </div>
-  );
-
   // ── STEP 1 ──────────────────────────────────────────────────────────────
   const Step1 = () => (
     <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
@@ -9478,9 +9494,9 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
       </div>
 
       <div style={{ padding: isMobile ? "16px 14px" : "24px 28px" }}>
-        <StepBar />
+        <StepBar step={step} setStep={setStep} isMobile={isMobile} />
         {stepFns[step - 1]()}
-        <NavButtons />
+        <NavButtons step={step} setStep={setStep} totalSteps={TOTAL_STEPS} canNext={canNext} handleSave={handleSave} saving={saving} isEdit={isEdit} />
       </div>
 
       {renamingCourse && (
