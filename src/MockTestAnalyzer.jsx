@@ -14,7 +14,8 @@ import {
 } from './lib/mockTestEngine';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
 import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } from './lib/mockTestReports';
-import { loadAll, saveRows, deleteTest, migrateLocalToCloud, localCount } from './lib/mockTestStore';
+import ResponsiveTables from './ResponsiveTables';
+import { loadAll, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount } from './lib/mockTestStore';
 
 const NAVY = '#002E6E';
 const ui = {
@@ -38,7 +39,7 @@ const fx = (n, d = 1) => (n === null || n === undefined || !Number.isFinite(n) ?
 const sgn = (n, d = 1) => (n === null || n === undefined || !Number.isFinite(n) ? '—' : `${n > 0 ? '+' : ''}${fx(n, d)}`);
 const tone = (v, g = 0) => (v > g ? '#047857' : v < -g ? '#b91c1c' : '#475569');
 
-const Svg = ({ html }) => <div dangerouslySetInnerHTML={{ __html: html }} />;
+const Svg = ({ html, minW }) => <div className="mta-svg"><div style={minW ? { '--mw': `${minW}px` } : undefined} dangerouslySetInnerHTML={{ __html: html }} /></div>;
 const Pill = ({ text, color }) => <span style={{ background: color, color: '#fff', borderRadius: 10, padding: '1px 9px', fontSize: 11, fontWeight: 700 }}>{text}</span>;
 const Stat = ({ label, value, sub, color = '#0f172a' }) => (
   <div style={{ flex: '1 1 calc(50% - 10px)', minWidth: 130, boxSizing: 'border-box', background: '#fff', border: '1px solid #E6ECF4', borderLeft: `4px solid ${color}`, borderRadius: 14, padding: '10px 12px', boxShadow: '0 2px 8px rgba(0,46,110,.05)' }}>
@@ -48,10 +49,10 @@ const Stat = ({ label, value, sub, color = '#0f172a' }) => (
   </div>
 );
 const Field = ({ label, children, grow }) => (
-  <div style={{ flex: grow ? '1 1 220px' : '0 1 auto' }}><span style={ui.label}>{label}</span>{children}</div>
+  <div className={grow ? 'mta-field mta-grow' : 'mta-field'} style={{ flex: grow ? '1 1 220px' : '0 1 auto' }}><span style={ui.label}>{label}</span>{children}</div>
 );
 const Table = ({ head, children, maxH }) => (
-  <div style={{ overflow: 'auto', maxHeight: maxH, border: '1px solid #E6ECF4', borderRadius: 12 }}>
+  <div className="mta-tbl" style={{ overflow: 'auto', maxHeight: maxH, border: '1px solid #E6ECF4', borderRadius: 12 }}>
     <table style={{ borderCollapse: 'collapse', width: '100%' }}>
       <thead><tr>{head.map((h, i) => <th key={i} style={{ ...ui.th, textAlign: i === 0 ? 'left' : 'center' }}>{h}</th>)}</tr></thead>
       <tbody>{children}</tbody>
@@ -59,6 +60,20 @@ const Table = ({ head, children, maxH }) => (
   </div>
 );
 const heatBg = (p) => (p === null || p === undefined ? '#fff' : p >= 75 ? '#bbf7d0' : p >= 60 ? '#dbeafe' : p >= 45 ? '#fef3c7' : '#fecaca');
+
+// Phone layout (<= 640px).  Scoped to .mta so nothing else in the portal is touched.
+const MOBILE_CSS = `
+@media screen and (max-width: 640px) {
+  .mta select, .mta input:not([type=file]) { font-size: 16px !important; }
+  .mta button { min-height: 40px; }
+  .mta td button, .mta summary { min-height: 0; }
+  .mta .mta-field { flex: 1 1 calc(50% - 6px) !important; min-width: 0; }
+  .mta .mta-grow { flex: 1 1 100% !important; }
+  .mta .mta-field select, .mta .mta-field input:not([type=file]) { width: 100% !important; box-sizing: border-box; }
+  .mta .mta-half { flex: 1 1 calc(50% - 6px); }
+  .mta .mta-svg { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .mta .mta-svg > div { min-width: var(--mw, 0); }
+}`;
 
 export default function MockTestAnalyzer({ institute, currentUser, canUpload = true, canDelete = false }) {
   const [tab, setTab] = useState('overview');
@@ -107,7 +122,8 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF' }}>⏳ Loading mock-test records…</div>;
 
   return (
-    <div>
+    <ResponsiveTables><div className="mta">
+      <style>{MOBILE_CSS}</style>
       {note ? <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>⚠️ {note}</div> : null}
       {err ? <div style={{ ...ui.card, background: '#FEF2F2', borderColor: '#FCA5A5', fontSize: 13, color: '#991B1B' }}>❌ {err}</div> : null}
       {header}
@@ -132,7 +148,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
         <DataView allRows={allRows} series={series} setSeries={setSeries} mode={mode} meta={meta} who={who}
           canUpload={canUpload} canDelete={canDelete} reload={reload} />
       ) : null}
-    </div>
+    </div></ResponsiveTables>
   );
 }
 
@@ -161,8 +177,8 @@ function Overview({ rows, meta, passPct, institute, series }) {
         <Stat label="At risk" value={all.atRisk.length} sub="students" color="#b91c1c" />
       </div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        <div style={{ ...ui.card, flex: '1 1 420px' }}><Svg html={trend} /></div>
-        <div style={{ ...ui.card, flex: '1 1 420px' }}><Svg html={batchBars} /></div>
+        <div style={{ ...ui.card, flex: '1 1 min(420px, 100%)' }}><Svg minW={520} html={trend} /></div>
+        <div style={{ ...ui.card, flex: '1 1 min(420px, 100%)' }}><Svg minW={520} html={batchBars} /></div>
       </div>
       <div style={ui.card}>
         <h4 style={{ margin: '0 0 8px' }}>Batch comparison</h4>
@@ -178,7 +194,7 @@ function Overview({ rows, meta, passPct, institute, series }) {
       </div>
       <div style={ui.card}>
         <h4 style={{ margin: '0 0 8px' }}>Subject difficulty — all batches</h4>
-        <Svg html={hBars({ items: [...all.perSubject].sort((a, b) => a.avgPct - b.avgPct).map((s) => ({ label: s.subject, value: s.avgPct, color: subjColor(subs, s.subject) })), width: 640 })} />
+        <Svg minW={440} html={hBars({ items: [...all.perSubject].sort((a, b) => a.avgPct - b.avgPct).map((s) => ({ label: s.subject, value: s.avgPct, color: subjColor(subs, s.subject) })), width: 640 })} />
         <div style={{ marginTop: 10 }}>
           <button style={ui.btn} onClick={() => printDocument(batchReportHTML(all, { institute, series }), `${series} — Institute report`)}>🖨️ Print institute report</button>
         </div>
@@ -225,8 +241,8 @@ function StudentView({ rows, meta, passPct, institute, series }) {
             {list.map((s) => <option key={s.sid} value={s.sid}>{s.name}{s.gcc ? ` · GCC ${s.gcc}` : ''} · {s.batch}</option>)}
           </select>
         </Field>
-        <button style={ui.ghost} disabled={idx <= 0} onClick={() => setSid(list[idx - 1].sid)}>◀ Prev</button>
-        <button style={ui.ghost} disabled={idx < 0 || idx >= list.length - 1} onClick={() => setSid(list[idx + 1].sid)}>Next ▶</button>
+        <button className="mta-half" style={ui.ghost} disabled={idx <= 0} onClick={() => setSid(list[idx - 1].sid)}>◀ Prev</button>
+        <button className="mta-half" style={ui.ghost} disabled={idx < 0 || idx >= list.length - 1} onClick={() => setSid(list[idx + 1].sid)}>Next ▶</button>
       </div>
       {!a ? <div style={ui.card}>No student matches the filter.</div> : <StudentCard a={a} onPrint={() => printDocument(studentReportHTML(a, ctx), `${a.name} — Performance report`)} onPrintAll={printAll} count={list.length} batch={batch} />}
     </>
@@ -247,7 +263,7 @@ function StudentCard({ a, onPrint, onPrintAll, count, batch }) {
   return (
     <>
       <div style={{ ...ui.card, display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 260px' }}>
+        <div style={{ flex: '1 1 min(260px, 100%)' }}>
           <div style={{ fontSize: 20, fontWeight: 700, color: NAVY }}>{a.name}</div>
           <div style={{ fontSize: 13, color: '#64748B' }}>GCC {a.gcc || '—'} · {a.batch}{a.batches.length > 1 ? ` (also ${a.batches.filter((b) => b !== a.batch).join(', ')})` : ''} · {S.testsAttended} of {S.testsHeld} tests</div>
           <div style={{ marginTop: 4 }}><Pill text={S.band.label} color={S.band.color} /> {S.atRisk ? <Pill text="At risk" color="#b91c1c" /> : null}</div>
@@ -278,8 +294,8 @@ function StudentCard({ a, onPrint, onPrintAll, count, batch }) {
         </Table>
       </div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        <div style={{ ...ui.card, flex: '1 1 400px' }}><Svg html={score} /></div>
-        <div style={{ ...ui.card, flex: '1 1 400px' }}><Svg html={rank} /></div>
+        <div style={{ ...ui.card, flex: '1 1 min(400px, 100%)' }}><Svg minW={520} html={score} /></div>
+        <div style={{ ...ui.card, flex: '1 1 min(400px, 100%)' }}><Svg minW={520} html={rank} /></div>
       </div>
       <div style={ui.card}>
         <h4 style={{ margin: '0 0 8px' }}>Subject-wise analysis</h4>
@@ -299,8 +315,8 @@ function StudentCard({ a, onPrint, onPrintAll, count, batch }) {
         </Table>
       </div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        <div style={{ ...ui.card, flex: '1 1 400px' }}><Svg html={subj} /></div>
-        <div style={{ ...ui.card, flex: '1 1 300px', display: 'flex', justifyContent: 'center' }}><Svg html={radar} /></div>
+        <div style={{ ...ui.card, flex: '1 1 min(400px, 100%)' }}><Svg minW={520} html={subj} /></div>
+        <div style={{ ...ui.card, flex: '1 1 min(300px, 100%)', display: 'flex', justifyContent: 'center' }}><Svg html={radar} /></div>
       </div>
       <div style={ui.card}>
         <h4 style={{ margin: '0 0 8px' }}>Where the marks are being lost</h4>
@@ -353,13 +369,13 @@ function SubjectView({ rows, meta, passPct, institute, series }) {
         <Stat label="Full marks" value={ps.full} sub="scores" color="#7c3aed" />
       </div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        <div style={{ ...ui.card, flex: '1 1 400px' }}>{trend ? <Svg html={trend} /> : <i style={{ color: '#64748B' }}>Single test selected — no trend.</i>}</div>
-        <div style={{ ...ui.card, flex: '1 1 400px' }}><Svg html={compare} /></div>
+        <div style={{ ...ui.card, flex: '1 1 min(400px, 100%)' }}>{trend ? <Svg minW={520} html={trend} /> : <i style={{ color: '#64748B' }}>Single test selected — no trend.</i>}</div>
+        <div style={{ ...ui.card, flex: '1 1 min(400px, 100%)' }}><Svg minW={520} html={compare} /></div>
       </div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        <div style={{ ...ui.card, flex: '1 1 300px' }}><h4 style={{ margin: '0 0 6px' }}>Score distribution</h4><Svg html={hBars({ items: ps.dist.map((d) => ({ label: `${d.label}%`, value: d.count, color: col })), max: Math.max(1, ...ps.dist.map((d) => d.count)), unit: '', labelW: 70, width: 340 })} /></div>
-        <div style={{ ...ui.card, flex: '1 1 300px' }}><h4 style={{ margin: '0 0 6px', color: '#047857' }}>Top 5</h4>{ps.toppers.map((t, i) => <div key={i} style={{ fontSize: 13, padding: '3px 0' }}>{i + 1}. {t.name} <b style={{ float: 'right' }}>{fx(t.pct)}%</b></div>)}</div>
-        <div style={{ ...ui.card, flex: '1 1 300px' }}><h4 style={{ margin: '0 0 6px', color: '#b91c1c' }}>Needs support</h4>{ps.weakest.map((t, i) => <div key={i} style={{ fontSize: 13, padding: '3px 0' }}>{t.name} <b style={{ float: 'right' }}>{fx(t.pct)}%</b></div>)}</div>
+        <div style={{ ...ui.card, flex: '1 1 min(300px, 100%)' }}><h4 style={{ margin: '0 0 6px' }}>Score distribution</h4><Svg minW={440} html={hBars({ items: ps.dist.map((d) => ({ label: `${d.label}%`, value: d.count, color: col })), max: Math.max(1, ...ps.dist.map((d) => d.count)), unit: '', labelW: 70, width: 340 })} /></div>
+        <div style={{ ...ui.card, flex: '1 1 min(300px, 100%)' }}><h4 style={{ margin: '0 0 6px', color: '#047857' }}>Top 5</h4>{ps.toppers.map((t, i) => <div key={i} style={{ fontSize: 13, padding: '3px 0' }}>{i + 1}. {t.name} <b style={{ float: 'right' }}>{fx(t.pct)}%</b></div>)}</div>
+        <div style={{ ...ui.card, flex: '1 1 min(300px, 100%)' }}><h4 style={{ margin: '0 0 6px', color: '#b91c1c' }}>Needs support</h4>{ps.weakest.map((t, i) => <div key={i} style={{ fontSize: 13, padding: '3px 0' }}>{t.name} <b style={{ float: 'right' }}>{fx(t.pct)}%</b></div>)}</div>
       </div>
       <div style={ui.card}>
         <h4 style={{ margin: '0 0 8px' }}>Student-wise marks in {ps.subject}</h4>
@@ -436,7 +452,7 @@ function BatchView({ rows, meta, passPct, institute, series }) {
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
         {[['🚀 Most improved', b.improvers, (s) => `${sgn(s.trend, 2)} pts/test`, '#047857'], ['📉 Declining', b.decliners, (s) => `${sgn(s.trend, 2)} pts/test`, '#b91c1c'],
           ['🎯 Most consistent', b.consistent, (s) => `SD ${fx(s.consistency)}`, NAVY], ['⚠️ At risk', b.atRisk.slice(0, 8), (s) => `${fx(s.avgPct)}% avg`, '#b91c1c']].map(([t, arr, f, c]) => (
-          <div key={t} style={{ ...ui.card, flex: '1 1 240px' }}><h4 style={{ margin: '0 0 6px', color: c }}>{t}</h4>
+          <div key={t} style={{ ...ui.card, flex: '1 1 min(240px, 100%)' }}><h4 style={{ margin: '0 0 6px', color: c }}>{t}</h4>
             {arr.length ? arr.map((s) => <div key={s.sid} style={{ fontSize: 13, padding: '3px 0' }}>{s.name} <b style={{ float: 'right' }}>{f(s)}</b></div>) : <i style={{ color: '#64748B' }}>None</i>}</div>
         ))}
       </div>
@@ -548,6 +564,21 @@ function DataView({ allRows, series, setSeries, mode, meta, who, canUpload, canD
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Results');
     XLSX.writeFile(wb, `${series} - all results.xlsx`);
   };
+  const resetData = async (all) => {
+    const count = all ? allRows.length : allRows.filter((r) => r.series === series).length;
+    if (!count && !(all && localCount())) { setMsg('Nothing to reset.'); return; }
+    const typed = window.prompt(`This permanently deletes ${count} saved results from ${all ? 'ALL series' : `series "${series}"`}. This cannot be undone.\n\nType RESET to confirm.`);
+    if (typed === null) return;
+    if (typed.trim() !== 'RESET') { setMsg('Reset cancelled — confirmation text did not match.'); return; }
+    setBusy('Resetting…'); setMsg('');
+    try {
+      if (all) await resetAll(mode); else await resetSeries(series, mode);
+      setFiles([]);
+      await reload();
+      setMsg(`✅ Reset complete — ${count} results removed.`);
+    } catch (e) { setMsg(`❌ ${e.message || e}`); }
+    setBusy('');
+  };
   const migrate = async () => {
     setBusy('Moving to database…');
     try { const n = await migrateLocalToCloud(); setMsg(`✅ Moved ${n} browser-saved results into the database.`); await reload(); } catch (e) { setMsg(`❌ ${e.message || e}`); }
@@ -611,7 +642,7 @@ function DataView({ allRows, series, setSeries, mode, meta, who, canUpload, canD
 
       {canUpload ? (
         <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ flex: '1 1 300px' }}><b>Built-in data: Pre Mock Test 2026</b><div style={{ fontSize: 12.5, color: '#64748B' }}>24 result sheets · 8 tests · Lakshya A/B, Umeed, Combined English &amp; Manipuri · Mental Ability, EVS, Mathematics, Passage (25 each).</div></div>
+          <div style={{ flex: '1 1 min(300px, 100%)' }}><b>Built-in data: Pre Mock Test 2026</b><div style={{ fontSize: 12.5, color: '#64748B' }}>24 result sheets · 8 tests · Lakshya A/B, Umeed, Combined English &amp; Manipuri · Mental Ability, EVS, Mathematics, Passage (25 each).</div></div>
           <button style={ui.btn} disabled={!!busy} onClick={loadSeed}>📥 Load Pre Mock Test 2026 data</button>
           <button style={ui.ghost} disabled={!meta.tests.length} onClick={exportAll}>⬇️ Export this series (Excel)</button>
         </div>
@@ -652,6 +683,14 @@ function DataView({ allRows, series, setSeries, mode, meta, who, canUpload, canD
               ) : <div style={{ fontSize: 13, color: '#047857' }}>✅ Every student has every test their batch sat (between their first and last test).</div>}
             </div>
           </details>
+        </div>
+      ) : null}
+
+      {canDelete ? (
+        <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', background: '#FEF2F2', borderColor: '#FECACA' }}>
+          <div style={{ flex: '1 1 min(300px, 100%)' }}><b style={{ color: '#b91c1c' }}>Reset data</b><div style={{ fontSize: 12.5, color: '#64748B' }}>Permanently delete saved results. You will be asked to type RESET to confirm.</div></div>
+          <button style={{ ...ui.ghost, color: '#b91c1c' }} disabled={!!busy} onClick={() => resetData(false)}>Reset this series</button>
+          <button style={{ ...ui.btn, background: '#b91c1c' }} disabled={!!busy} onClick={() => resetData(true)}>Reset everything</button>
         </div>
       ) : null}
 

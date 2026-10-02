@@ -66,6 +66,22 @@ export async function deleteTest(series, test_no, batch, mode) {
   if (error) throw error;
 }
 
+// Remove every saved result of one series.
+export async function resetSeries(series, mode) {
+  if (mode === 'local') { lsWrite(lsRead().filter((r) => r.series !== series)); return; }
+  const { error } = await supabase.from(TABLE).delete().eq('series', series);
+  if (error) throw error;
+}
+
+// Remove every saved result in every series (also clears any browser-saved copy).
+export async function resetAll(mode) {
+  if (mode !== 'local') {
+    const { error } = await supabase.from(TABLE).delete().not('id', 'is', null);
+    if (error) throw error;
+  }
+  try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
+}
+
 // Move anything saved locally (before the migration was applied) into Supabase.
 export async function migrateLocalToCloud() {
   const local = lsRead();

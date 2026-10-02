@@ -13,7 +13,7 @@ import { recordConcession, decideConcession, CONCESSION_REASONS, CONCESSIONS_SET
 import { fixHostelType, loadActiveBeds, HOSTEL_TYPES } from './hostelFeeCheck'
 import { changeHostelType, loadStudentHistory, monthStart } from './hostelHistory'
 import { confirmFeeMonthOpen } from './monthLock'
-import { LedgerLink } from './LedgerLink'
+import { LedgerLink } from './LedgerLinks'
 
 const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
 const fmtD = d => d ? new Date(String(d).slice(0, 10) + 'T00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'

@@ -8,7 +8,7 @@ import {
   FunnelChart, Funnel, LabelList,
 } from "recharts"
 import { supabase } from "./supabase"
-import AdminIntelligence from "./AdminIntelligence"
+import AdminIntelligence from "./AdminIntelligencePage"
 
 // ─── PROFESSIONAL INSTITUTE THEME TOKENS ────────────────────────────────────
 const T = {

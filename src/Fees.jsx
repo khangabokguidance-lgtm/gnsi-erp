@@ -1,7 +1,7 @@
 import TodayIncomeBreakdown from './TodayIncomeBreakdown'
 import { supabase } from './supabase'
 import { razorpayEnabled, razorpayKeyId, whatsappEnabled, useSystemSettings } from './systemSettings'
-import { LedgerLink, LedgerButton } from './LedgerLink'
+import { LedgerLink, LedgerButton } from './LedgerLinks'
 import { NavIcon } from './navIcons'
 import { getActiveStudents, getAllStudents } from './studentQueries'
 import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react'

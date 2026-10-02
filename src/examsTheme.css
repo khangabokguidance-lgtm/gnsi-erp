@@ -71,32 +71,4 @@
   .exams-root button{min-height:36px}
 }
 
-/* ─── Phone: every table becomes a list of cards ─────────────────────────── */
-@media (max-width:767px){
-  .xm-body :has(> table[data-xm-t]){overflow:visible!important;max-height:none!important;border:0!important;background:transparent!important;box-shadow:none!important;padding-left:0!important;padding-right:0!important}
-  table[data-xm-t]{display:block!important;width:100%!important;min-width:0!important;max-width:100%;border:0!important;font-size:13px!important;background:transparent!important}
-  table[data-xm-t] > thead{display:none!important}
-  table[data-xm-t] > tbody,table[data-xm-t] > tfoot{display:block!important;width:100%}
-  table[data-xm-t] tr{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;position:relative;background:#fff!important;border:1px solid #E6ECF4!important;border-radius:14px;padding:11px 12px;margin:0 0 10px;box-shadow:0 1px 6px rgba(0,46,110,.06);box-sizing:border-box;width:100%}
-  table[data-xm-t] tr[data-xm-c="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}
-  table[data-xm-t] td,table[data-xm-t] th{display:block!important;min-width:0;width:auto!important;max-width:none!important;padding:0!important;border:0!important;text-align:left!important;white-space:normal!important;position:static!important;background:transparent!important;font-size:13px;line-height:1.35;overflow-wrap:anywhere;color:var(--x-ink)}
-  table[data-xm-t] td[data-label]::before{content:attr(data-label);display:block;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--x-sub);margin-bottom:2px}
-  table[data-xm-t] td[data-xm=title]{grid-column:1/-1;order:-1;font-size:15px;font-weight:800;padding:0 28px 8px 0!important;border-bottom:1px dashed #DCE5F1!important}
-  table[data-xm-t] td[data-xm=full]{grid-column:1/-1;display:flex!important;flex-wrap:wrap;gap:8px;align-items:center}
-  table[data-xm-t] td[data-xm=tick]{position:absolute!important;top:11px;right:12px;width:auto}
-  table[data-xm-t] td[data-xm=empty]{display:none!important}
-  table[data-xm-t] td > input:not([type=checkbox]):not([type=radio]),table[data-xm-t] td > select{width:100%!important;max-width:100%!important;box-sizing:border-box}
-  /* inputs sitting in a flex row beside a small button (e.g. the Absent toggle) share the row */
-  table[data-xm-t] td input:not([type=checkbox]):not([type=radio]){min-width:0;box-sizing:border-box}
-  table[data-xm-t] td div[style*="flex"] > input{flex:1 1 auto;width:auto!important}
-  table[data-xm-t] td div[style*="flex"] > button{flex:0 0 auto;width:auto;min-width:40px}
-  table[data-xm-t] td input[type=checkbox]{width:20px!important;height:20px;min-height:0}
-  table[data-xm-t] td button{min-height:34px}
-  /* mark-entry cell: input + small "A" (absent) toggle -> one row, tap-sized toggle */
-  table[data-xm-t] td:has(> input + button){display:grid!important;grid-template-columns:minmax(0,1fr) auto;column-gap:6px;align-items:stretch}
-  table[data-xm-t] td:has(> input + button)::before{grid-column:1/-1}
-  table[data-xm-t] td:has(> input + button) > button{margin:0!important;min-width:40px;min-height:42px;font-size:12px!important;border-radius:10px!important;padding:0 8px!important}
-  /* "No data" rows read as a calm empty state, not a card */
-  table[data-xm-t] tr:has(> td[data-xm=full]:only-child){display:block!important;text-align:center;box-shadow:none;border-style:dashed!important;background:#fff!important}
-}
 @media (min-width:768px){.xm-top,.xm-bottom{display:none}}

@@ -9,7 +9,7 @@ import { loadAllFeeRows, buildAllLedgers } from './feeLedgerBulk'
 import { fmt, shortSession } from './feeLedgerModel'
 import { monthTotals, printMonthlyLedger, exportMonthlyExcel } from './feeBooks'
 import { BOOKS_CSS } from './feeBooksCss'
-import { LedgerLink } from './LedgerLink'
+import { LedgerLink } from './LedgerLinks'
 
 const uniq = xs => [...new Set(xs.filter(Boolean))].sort()
 const isActive = s => !s.deleted_at && (!s.status || s.status === 'Active')

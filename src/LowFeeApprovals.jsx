@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { loadConcessions, decideConcession, recordConcession, summarise, unexplainedShortPayments, CONCESSION_REASONS, CONCESSIONS_SETUP_MSG } from './feeConcessions'
 import { buildAllLedgers } from './feeLedgerBulk'
 import { getSessionYear, gccStr } from './feeEngine'
-import { LedgerLink } from './LedgerLink'
+import { LedgerLink } from './LedgerLinks'
 import { HOSTEL_MISMATCH_REASON } from './hostelFeeCheck'
 
 const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
