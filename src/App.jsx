@@ -1080,20 +1080,80 @@ export default function App() {
 
 // Staff (non-admin) home — premium welcome + one-tap tiles for the
 // modules this person is allowed to open.
+const UD_CSS = `
+.ud-phone{display:none}
+@media (max-width:767px){
+  .ud-desk{display:none}
+  .ud-phone{display:block}
+  .ud-hero{padding:18px 16px 22px!important;border-radius:0 0 26px 26px!important;margin:-14px -14px 14px!important}
+  .ud-search{display:flex;align-items:center;gap:10px;background:#fff;color:#5d6b82;border-radius:14px;padding:0 14px;height:46px;margin-top:14px;box-shadow:0 8px 20px -10px rgba(0,0,0,.5)}
+  .ud-search input{flex:1;min-width:0;border:0;outline:0;background:none;font:500 14px 'Plus Jakarta Sans',system-ui,sans-serif;color:#0f1b2e}
+  .ud-card{background:#fff;border:1px solid #e8e3d8;border-radius:18px;margin:0 0 14px;padding:14px 8px 8px;box-shadow:0 2px 12px rgba(19,42,79,.07)}
+  .ud-card-h{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;color:#0f1b2e;padding:0 6px 10px;letter-spacing:.02em}
+  .ud-card-h i{width:4px;height:15px;border-radius:2px;background:#b8923a;display:inline-block}
+  .ud-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px 2px}
+  .ud-tile{background:none;border:0;padding:6px 2px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;font:700 11px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#0f1b2e;text-align:center;border-radius:12px}
+  .ud-tile:active{background:#f3f0e8}
+  .ud-tile:focus-visible,.ud-qb:focus-visible{outline:2px solid #b8923a;outline-offset:2px}
+  .ud-ic{width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;color:#132a4f;background:#eef2f9;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 3px 0 rgba(19,42,79,.12),0 7px 12px rgba(19,42,79,.10);transition:transform .09s ease}
+  .ud-tile:active .ud-ic{transform:translateY(2px)}
+  .ud-quick{display:flex;justify-content:space-around;gap:4px;padding:14px 6px 12px}
+  .ud-qb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;font:700 11px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#0f1b2e;text-align:center;min-width:60px}
+  .ud-round{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;background-color:#132a4f;background-image:linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,0) 55%,rgba(0,0,0,.12));box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 3px 0 rgba(0,0,0,.18),0 8px 14px -6px rgba(19,42,79,.5)}
+  .ud-qb:active .ud-round{transform:translateY(2px)}
+}`
+
 function UserDashboard({ onNavigate, currentUser, modules = [] }) {
+  const [udQ, setUdQ] = useState('')
+  const udNeedle = udQ.trim().toLowerCase()
+  const udIds = new Set(modules.map(m => m.id))
+  const udGroups = ALL_GROUPS.map(g => ({ group: g.group, items: g.items.filter(i => udIds.has(i.id) && (!udNeedle || i.label.toLowerCase().includes(udNeedle))) })).filter(g => g.items.length)
+  const udQuick = modules.slice(0, 4)
   const now = new Date()
   const greet = now.getHours() < 12 ? 'Good Morning' : now.getHours() < 17 ? 'Good Afternoon' : 'Good Evening'
   return (
     <div style={{ padding: 'clamp(14px,2.4vw,28px)', maxWidth: 1300, margin: '0 auto', fontFamily: UI_FONT }}>
-      <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 20, padding: '28px 26px', marginBottom: 22, background: 'radial-gradient(120% 140% at 100% 0%, #1F4E8C 0%, #132B52 40%, #0B1E3D 78%)', boxShadow: '0 22px 50px rgba(11,30,61,.28), inset 0 0 0 1px rgba(226,197,126,.22)' }}>
+      <style>{UD_CSS}</style>
+      <div className="ud-hero" style={{ position: 'relative', overflow: 'hidden', borderRadius: 20, padding: '28px 26px', marginBottom: 22, background: 'radial-gradient(120% 140% at 100% 0%, #1F4E8C 0%, #132B52 40%, #0B1E3D 78%)', boxShadow: '0 22px 50px rgba(11,30,61,.28), inset 0 0 0 1px rgba(226,197,126,.22)' }}>
         <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: 'linear-gradient(90deg,#B8913F,#E2C57E,#B8913F)' }} />
         <div style={{ position: 'absolute', right: -80, top: -80, width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(226,197,126,.22), transparent 70%)' }} />
         <div style={{ position: 'relative' }}>
           <div style={{ fontSize: 10.5, fontWeight: 800, color: '#E2C57E', letterSpacing: '.18em', textTransform: 'uppercase', marginBottom: 8 }}>{currentUser?.role || 'Staff'} · GNSI ERP</div>
           <h1 style={{ margin: 0, color: '#fff', fontFamily: SERIF_FONT, fontSize: 'clamp(24px,4vw,34px)', fontWeight: 700, lineHeight: 1.15 }}>{greet}, {(currentUser?.name || '').split(' ')[0] || 'there'}</h1>
           <p style={{ margin: '6px 0 0', color: 'rgba(255,255,255,.72)', fontSize: 13 }}>{now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+          <label className="ud-phone ud-search">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></svg>
+            <input value={udQ} onChange={e => setUdQ(e.target.value)} placeholder="Search your modules…" />
+          </label>
         </div>
       </div>
+      {/* Phone: payments-app style quick actions + one icon-tile card per group */}
+      <div className="ud-phone">
+        {modules.length > 0 && !udNeedle && (
+          <div className="ud-card ud-quick">
+            {udQuick.map(m => (
+              <button key={m.id} className="ud-qb" onClick={() => onNavigate(m.id)}>
+                <span className="ud-round"><NavIcon id={m.id} size={24} /></span><span>{m.label.length > 11 ? m.label.split(' ')[0] : m.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {udGroups.map(g => (
+          <div key={g.group} className="ud-card">
+            <div className="ud-card-h"><i />{g.group}</div>
+            <div className="ud-grid">
+              {g.items.map(m => (
+                <button key={m.id} className="ud-tile" onClick={() => onNavigate(m.id)}>
+                  <span className="ud-ic"><NavIcon id={m.id} size={24} /></span>{m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+        {modules.length > 0 && !udGroups.length && <div style={{ textAlign: 'center', color: '#5d6b82', fontSize: 13, padding: '18px 0' }}>No module matches “{udQ}”.</div>}
+        {modules.length === 0 && <div style={{ background: '#fff', border: '1px dashed #D9CFB8', borderRadius: 16, padding: 24, textAlign: 'center', color: '#7A8398', fontSize: 13 }}>No modules assigned yet — ask the admin to grant access.</div>}
+      </div>
+      <div className="ud-desk">
       <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#A87A1F', margin: '0 0 12px' }}>Your modules</div>
       {modules.length === 0 ? (
         <div style={{ background: '#fff', border: '1px dashed #D9CFB8', borderRadius: 16, padding: 28, textAlign: 'center', color: '#7A8398', fontSize: 13 }}>No modules assigned yet — ask the admin to grant access.</div>
@@ -1111,6 +1171,7 @@ function UserDashboard({ onNavigate, currentUser, modules = [] }) {
           ))}
         </div>
       )}
+      </div>
     </div>
   )
 }
