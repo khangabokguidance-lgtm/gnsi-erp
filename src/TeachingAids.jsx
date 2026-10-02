@@ -79,6 +79,7 @@
 //   currentUser — { id, name, role, ... }
 //   perms       — { read, canEdit, canDelete, ... } from getModulePerms(...)
 
+import { NavIcon } from './navIcons'
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
 import { PremiumStyles, PremiumHero } from './premiumUI'
@@ -97,24 +98,24 @@ const ALL_BATCHES = TRACKS.flatMap(t => t.batches)
 const ALL_COURSES = '__all__' // sentinel value for activeBatch meaning "no batch filter"
 
 const C = {
-  navy: '#1e3a5f', slate: '#64748b', border: '#e2e8f0',
-  white: '#ffffff', bg: '#f8fafc', green: '#16a34a',
-  rose: '#dc2626', amber: '#d97706', indigo: '#4f46e5',
+  navy: '#132a4f', slate: '#5d6b82', border: '#e8e3d8',
+  white: '#ffffff', bg: '#faf8f3', green: '#16a34a',
+  rose: '#dc2626', amber: '#d97706', indigo: '#1e3a6e',
 }
 const iS = { width: '100%', padding: '8px 11px', borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 13, background: C.white, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }
 const lS = { display: 'block', fontSize: 11, fontWeight: 700, color: C.slate, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.05em' }
 const cardS = { background: C.white, borderRadius: 12, boxShadow: '0 1px 6px rgba(0,0,0,.07)', padding: '18px 20px', marginBottom: 14 }
-const btn = (bg, dis = false) => ({ padding: '8px 16px', borderRadius: 8, background: dis ? '#94a3b8' : bg, color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: dis ? 'not-allowed' : 'pointer', opacity: dis ? .7 : 1 })
+const btn = (bg, dis = false) => ({ padding: '8px 16px', borderRadius: 8, background: dis ? '#8a93a6' : bg, color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: dis ? 'not-allowed' : 'pointer', opacity: dis ? .7 : 1 })
 const btnSm = (bg, color = '#fff') => ({ padding: '4px 10px', borderRadius: 6, background: bg, color, border: 'none', fontSize: 11, fontWeight: 700, cursor: 'pointer' })
 const chip = (active) => ({
   padding: '5px 11px', borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: 'pointer',
   border: active ? `1.5px solid ${C.indigo}` : `1.5px solid ${C.border}`,
-  background: active ? '#ede9fe' : C.white, color: active ? C.indigo : C.slate,
+  background: active ? '#f6ecd2' : C.white, color: active ? C.indigo : C.slate,
 })
 
 const BUCKET = 'teaching-aids'
 const SIGNED_URL_TTL = 60 * 5 // 5 minutes — short-lived on purpose
-const HIGHLIGHT_COLORS = ['#fde047', '#86efac', '#93c5fd', '#fca5a5', '#d8b4fe']
+const HIGHLIGHT_COLORS = ['#fde047', '#86efac', '#b7c6e0', '#fca5a5', '#d8b4fe']
 
 // ── LAZY EXTERNAL SCRIPT LOADERS ─────────────────────────────────────────────
 const scriptCache = {}
@@ -384,7 +385,7 @@ function WatermarkOverlay({ label }) {
   return (
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', zIndex: 5 }}>
       {tiles.map((_, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', transform: 'rotate(-28deg)', opacity: 0.11, fontSize: 13, fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', padding: '30px 0' }}>
+        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', transform: 'rotate(-28deg)', opacity: 0.11, fontSize: 13, fontWeight: 700, color: '#0f1b2e', whiteSpace: 'nowrap', padding: '30px 0' }}>
           {label}
         </div>
       ))}
@@ -614,13 +615,13 @@ function PageNotesPanel({ notes, onAdd, onDelete, onClose }) {
     <div style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 300, maxWidth: '85vw', background: '#fff', zIndex: 20500, boxShadow: '-6px 0 24px rgba(0,0,0,.25)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: C.navy }}>📝 Notes for this page</div>
-        <button onClick={onClose} style={btnSm('#f1f5f9', C.slate)}>✕</button>
+        <button onClick={onClose} style={btnSm('#f3f0e8', C.slate)}>✕</button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {notes.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', marginTop: 20 }}>No notes on this page yet.</div>}
+        {notes.length === 0 && <div style={{ fontSize: 12, color: '#8a93a6', textAlign: 'center', marginTop: 20 }}>No notes on this page yet.</div>}
         {notes.map(n => (
           <div key={n.id} style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', position: 'relative' }}>
-            <div style={{ fontSize: 12, color: '#1e293b', whiteSpace: 'pre-wrap', paddingRight: 18 }}>{n.note}</div>
+            <div style={{ fontSize: 12, color: '#14213d', whiteSpace: 'pre-wrap', paddingRight: 18 }}>{n.note}</div>
             <div style={{ fontSize: 9, color: '#a16207', marginTop: 4 }}>{new Date(n.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
             <button onClick={() => onDelete(n.id)} style={{ position: 'absolute', top: 6, right: 6, background: 'none', border: 'none', color: '#b45309', cursor: 'pointer', fontSize: 12 }}>✕</button>
           </div>
@@ -729,7 +730,7 @@ function KindleReader({ aid, pageUrls, watermarkLabel, currentUser, onClose }) {
   const zoomPct = Math.round(rp.zoomLevel * 100)
 
   const bg = rp.nightMode ? '#0a0e14' : 'rgba(10,15,25,.95)'
-  const headerBg = rp.nightMode ? '#000' : '#0f172a'
+  const headerBg = rp.nightMode ? '#000' : '#0f1b2e'
 
   return (
     <div
@@ -754,15 +755,15 @@ function KindleReader({ aid, pageUrls, watermarkLabel, currentUser, onClose }) {
           <span style={{ fontSize: 16 }}>🔒</span>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>{aid.title}</div>
-            <div style={{ fontSize: 10, color: '#94a3b8' }}>View-only · Page {pageIdx + 1} of {totalPages}</div>
+            <div style={{ fontSize: 10, color: '#8a93a6' }}>View-only · Page {pageIdx + 1} of {totalPages}</div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <button onClick={() => rp.toggleBookmark(pageIdx)} title="Bookmark this page" style={btnSm(isBookmarked ? C.amber : '#1e293b')}>
+          <button onClick={() => rp.toggleBookmark(pageIdx)} title="Bookmark this page" style={btnSm(isBookmarked ? C.amber : '#14213d')}>
             {isBookmarked ? '🔖 Bookmarked' : '🔖 Bookmark'}
           </button>
-          <button onClick={() => setShowBookmarks(v => !v)} style={btnSm('#1e293b')}>📑 {rp.bookmarks.length}</button>
-          <button onClick={() => setDrawMode(v => !v)} title="Draw a highlight box" style={btnSm(drawMode ? C.indigo : '#1e293b')}>
+          <button onClick={() => setShowBookmarks(v => !v)} style={btnSm('#14213d')}>📑 {rp.bookmarks.length}</button>
+          <button onClick={() => setDrawMode(v => !v)} title="Draw a highlight box" style={btnSm(drawMode ? C.indigo : '#14213d')}>
             {drawMode ? '✏️ Highlighting' : '✏️ Highlight'}
           </button>
           {drawMode && (
@@ -773,11 +774,11 @@ function KindleReader({ aid, pageUrls, watermarkLabel, currentUser, onClose }) {
               ))}
             </div>
           )}
-          <button onClick={() => setShowNotes(true)} style={btnSm('#1e293b')}>📝 {notes.length > 0 ? notes.length : ''}</button>
-          <button onClick={() => rp.setZoomLevel(Math.max(0.6, rp.zoomLevel - 0.2))} style={btnSm('#1e293b')}>A−</button>
+          <button onClick={() => setShowNotes(true)} style={btnSm('#14213d')}>📝 {notes.length > 0 ? notes.length : ''}</button>
+          <button onClick={() => rp.setZoomLevel(Math.max(0.6, rp.zoomLevel - 0.2))} style={btnSm('#14213d')}>A−</button>
           <span style={{ fontSize: 11, minWidth: 32, textAlign: 'center' }}>{zoomPct}%</span>
-          <button onClick={() => rp.setZoomLevel(Math.min(2.2, rp.zoomLevel + 0.2))} style={btnSm('#1e293b')}>A+</button>
-          <button onClick={() => rp.setNightMode(!rp.nightMode)} title="Night mode" style={btnSm(rp.nightMode ? '#facc15' : '#1e293b', rp.nightMode ? '#000' : '#fff')}>
+          <button onClick={() => rp.setZoomLevel(Math.min(2.2, rp.zoomLevel + 0.2))} style={btnSm('#14213d')}>A+</button>
+          <button onClick={() => rp.setNightMode(!rp.nightMode)} title="Night mode" style={btnSm(rp.nightMode ? '#facc15' : '#14213d', rp.nightMode ? '#000' : '#fff')}>
             {rp.nightMode ? '☀️' : '🌙'}
           </button>
           {cast.supported && (
@@ -792,15 +793,15 @@ function KindleReader({ aid, pageUrls, watermarkLabel, currentUser, onClose }) {
       {/* Bookmarks strip */}
       {showBookmarks && (
         <div style={{ background: headerBg, borderTop: '1px solid #334155', padding: '8px 16px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {rp.bookmarks.length === 0 && <span style={{ fontSize: 11, color: '#64748b' }}>No bookmarks yet — tap 🔖 on any page.</span>}
+          {rp.bookmarks.length === 0 && <span style={{ fontSize: 11, color: '#5d6b82' }}>No bookmarks yet — tap 🔖 on any page.</span>}
           {rp.bookmarks.map(p => (
-            <button key={p} onClick={() => setPageIdx(p)} style={btnSm(p === pageIdx ? C.indigo : '#1e293b')}>Page {p + 1}</button>
+            <button key={p} onClick={() => setPageIdx(p)} style={btnSm(p === pageIdx ? C.indigo : '#14213d')}>Page {p + 1}</button>
           ))}
         </div>
       )}
 
       {!cast.supported && (
-        <div style={{ background: '#1e293b', color: '#94a3b8', fontSize: 10, textAlign: 'center', padding: '4px 12px' }}>
+        <div style={{ background: '#14213d', color: '#8a93a6', fontSize: 10, textAlign: 'center', padding: '4px 12px' }}>
           Cast-to-TV needs Chrome/Edge + a Chromecast or Android TV. For Miracast/AirPlay TVs, use your laptop's screen-mirroring instead.
         </div>
       )}
@@ -842,12 +843,12 @@ function KindleReader({ aid, pageUrls, watermarkLabel, currentUser, onClose }) {
       </div>
 
       {/* Progress bar */}
-      <div style={{ height: 4, background: '#1e293b', flexShrink: 0 }}>
+      <div style={{ height: 4, background: '#14213d', flexShrink: 0 }}>
         <div style={{ height: '100%', width: `${((pageIdx + 1) / totalPages) * 100}%`, background: C.indigo, transition: 'width .2s' }} />
       </div>
 
       {/* Footer strip */}
-      <div style={{ padding: '6px 18px', background: headerBg, color: '#64748b', fontSize: 10, textAlign: 'center', flexShrink: 0 }}>
+      <div style={{ padding: '6px 18px', background: headerBg, color: '#5d6b82', fontSize: 10, textAlign: 'center', flexShrink: 0 }}>
         This material is for {aid.batch} students only. Do not photograph, screen-record, or redistribute. Swipe or use ‹ › to turn pages.
       </div>
     </div>
@@ -996,7 +997,7 @@ function AddAidModal({ batch, allBatches, onBatchChange, onClose, onSaved, showT
         <div style={{ width: 40, height: 4, borderRadius: 2, background: C.border, margin: '0 auto 18px' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>➕ Add Teaching Aid{!allBatches ? ` — ${batch}` : ''}</div>
-          <button onClick={onClose} style={btnSm('#f1f5f9', C.slate)}>✕</button>
+          <button onClick={onClose} style={btnSm('#f3f0e8', C.slate)}>✕</button>
         </div>
 
         {allBatches && (
@@ -1068,7 +1069,7 @@ function AddAidModal({ batch, allBatches, onBatchChange, onClose, onSaved, showT
           </div>
 
           {converting && (
-            <div style={{ fontSize: 12, color: C.indigo, background: '#ede9fe', borderRadius: 8, padding: '8px 12px' }}>
+            <div style={{ fontSize: 12, color: C.indigo, background: '#f6ecd2', borderRadius: 8, padding: '8px 12px' }}>
               ⏳ Converting {converting.name}{converting.total ? ` — page ${converting.page}/${converting.total}` : '…'}
             </div>
           )}
@@ -1167,7 +1168,7 @@ function BookCover({ aid, coverUrl, progress, canDelete, canShare, onOpen, onDel
     <div onClick={() => onOpen(aid)} style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column' }}>
       <div style={{
         position: 'relative', aspectRatio: '3 / 4', borderRadius: 10, overflow: 'hidden',
-        background: '#e2e8f0', boxShadow: '0 3px 10px rgba(0,0,0,.15)', border: `1px solid ${C.border}`,
+        background: '#e8e3d8', boxShadow: '0 3px 10px rgba(0,0,0,.15)', border: `1px solid ${C.border}`,
       }}>
         {coverUrl ? (
           <img src={coverUrl} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -1192,7 +1193,7 @@ function BookCover({ aid, coverUrl, progress, canDelete, canShare, onOpen, onDel
           {hasStarted ? `${pct}% read` : `${aid.page_count} page${aid.page_count !== 1 ? 's' : ''}`}
         </div>
         <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-          {canShare && <button onClick={handleCopyLink} title="Copy view-only link" style={{ ...btnSm('#eef2ff', C.indigo), padding: '2px 6px' }}>🔗</button>}
+          {canShare && <button onClick={handleCopyLink} title="Copy view-only link" style={{ ...btnSm('#eef2f9', C.indigo), padding: '2px 6px' }}>🔗</button>}
           {canDelete && <button onClick={handleDelete} disabled={deleting} style={{ ...btnSm('#fee2e2', C.rose), padding: '2px 6px' }}>{deleting ? '…' : '🗑'}</button>}
         </div>
       </div>
@@ -1216,7 +1217,7 @@ function Bookshelf({ aids, currentUser, canDelete, canShare, onOpen, onDelete, s
 
   if (sorted.length === 0) {
     return (
-      <div style={{ ...cardS, textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+      <div style={{ ...cardS, textAlign: 'center', padding: 40, color: '#8a93a6' }}>
         No teaching aids{subjectFilter ? ` for ${subjectFilter}` : ''} uploaded yet.
       </div>
     )
@@ -1286,7 +1287,7 @@ function AdminAidMonitor({ aid, onClose }) {
             <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>📊 Reading Activity — {aid.title}</div>
             <div style={{ fontSize: 11, color: C.slate, marginTop: 2 }}>Admin view · student-private data, monitoring only</div>
           </div>
-          <button onClick={onClose} style={btnSm('#f1f5f9', C.slate)}>✕</button>
+          <button onClick={onClose} style={btnSm('#f3f0e8', C.slate)}>✕</button>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'grid', gridTemplateColumns: selected ? '1fr 1fr' : '1fr', gap: 16 }}>
@@ -1294,17 +1295,17 @@ function AdminAidMonitor({ aid, onClose }) {
             {loading ? (
               <div style={{ textAlign: 'center', color: C.slate, padding: 20 }}>⏳ Loading…</div>
             ) : rows.length === 0 ? (
-              <div style={{ textAlign: 'center', color: '#94a3b8', padding: 20, fontSize: 12 }}>No one has opened this aid yet.</div>
+              <div style={{ textAlign: 'center', color: '#8a93a6', padding: 20, fontSize: 12 }}>No one has opened this aid yet.</div>
             ) : (
               <div style={{ display: 'grid', gap: 8 }}>
                 {rows.map(r => {
                   const pct = Math.round(((r.last_page + 1) / (r.total_pages || aid.page_count || 1)) * 100)
                   return (
                     <div key={r.student_key} onClick={() => openStudent(r.student_key)}
-                      style={{ padding: '10px 12px', borderRadius: 8, border: `1px solid ${selected === r.student_key ? C.indigo : C.border}`, cursor: 'pointer', background: selected === r.student_key ? '#ede9fe' : '#fff' }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{r.student_name || 'Unknown user'} <span style={{ fontWeight: 400, color: C.slate }}>· {r.student_role || '—'}</span></div>
+                      style={{ padding: '10px 12px', borderRadius: 8, border: `1px solid ${selected === r.student_key ? C.indigo : C.border}`, cursor: 'pointer', background: selected === r.student_key ? '#f6ecd2' : '#fff' }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}>{r.student_name || 'Unknown user'} <span style={{ fontWeight: 400, color: C.slate }}>· {r.student_role || '—'}</span></div>
                       <div style={{ fontSize: 11, color: C.slate, marginTop: 3 }}>{pct}% read · page {r.last_page + 1} · {r.bookmarked_pages?.length || 0} bookmark{r.bookmarked_pages?.length !== 1 ? 's' : ''}</div>
-                      <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>Last active {new Date(r.updated_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+                      <div style={{ fontSize: 10, color: '#8a93a6', marginTop: 2 }}>Last active {new Date(r.updated_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
                     </div>
                   )
                 })}
@@ -1320,16 +1321,16 @@ function AdminAidMonitor({ aid, onClose }) {
               ) : (
                 <>
                   <div style={{ fontSize: 11, fontWeight: 700, color: C.slate, marginBottom: 4 }}>✏️ Highlights ({detail.highlights.length})</div>
-                  {detail.highlights.length === 0 && <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10 }}>None</div>}
+                  {detail.highlights.length === 0 && <div style={{ fontSize: 11, color: '#8a93a6', marginBottom: 10 }}>None</div>}
                   {detail.highlights.map(h => (
-                    <div key={h.id} style={{ fontSize: 11, color: '#1e293b', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div key={h.id} style={{ fontSize: 11, color: '#14213d', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ width: 10, height: 10, borderRadius: 3, background: h.color, display: 'inline-block' }} /> Page {h.page_idx + 1}
                     </div>
                   ))}
                   <div style={{ fontSize: 11, fontWeight: 700, color: C.slate, marginTop: 12, marginBottom: 4 }}>📝 Notes ({detail.notes.length})</div>
-                  {detail.notes.length === 0 && <div style={{ fontSize: 11, color: '#94a3b8' }}>None</div>}
+                  {detail.notes.length === 0 && <div style={{ fontSize: 11, color: '#8a93a6' }}>None</div>}
                   {detail.notes.map(n => (
-                    <div key={n.id} style={{ fontSize: 11, color: '#1e293b', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 8px', marginBottom: 6 }}>
+                    <div key={n.id} style={{ fontSize: 11, color: '#14213d', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 8px', marginBottom: 6 }}>
                       <div style={{ fontWeight: 700, marginBottom: 2 }}>Page {n.page_idx + 1}</div>
                       {n.note}
                     </div>
@@ -1538,7 +1539,7 @@ export default function TeachingAids({ currentUser, perms }) {
       <PremiumStyles />
       <PremiumHero isMobile={isMobile} eyebrow="GNSI · Sainik · Navodaya · Foundation · Combined" title="Teaching Aids"
         subtitle="View-only library · bookmarks, highlights and notes save automatically"
-        icon={<span style={{ fontSize: isMobile ? 20 : 24 }}>🔒</span>} />
+        icon={<NavIcon id="teachingaids" size={isMobile ? 22 : 26} />} />
 
       {/* All Courses + track-grouped batch tabs */}
       <div style={{ marginBottom: 18 }}>
@@ -1547,7 +1548,7 @@ export default function TeachingAids({ currentUser, perms }) {
             style={{
               padding: isMobile ? '8px 14px' : '10px 20px', borderRadius: 10, fontSize: 12, fontWeight: 800,
               border: activeBatch === ALL_COURSES ? `2px solid ${C.indigo}` : `2px solid ${C.border}`,
-              background: activeBatch === ALL_COURSES ? '#ede9fe' : C.white,
+              background: activeBatch === ALL_COURSES ? '#f6ecd2' : C.white,
               color: activeBatch === ALL_COURSES ? C.indigo : C.slate, cursor: 'pointer',
             }}>
             📚 All Courses
@@ -1555,14 +1556,14 @@ export default function TeachingAids({ currentUser, perms }) {
         </div>
         {TRACKS.map(track => (
           <div key={track.name} style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>{track.name}</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#8a93a6', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>{track.name}</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {track.batches.map(b => (
                 <button key={b} onClick={() => { setActiveBatch(b); setUploadBatch(b); setSubjectFilter('') }}
                   style={{
                     padding: isMobile ? '7px 12px' : '8px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700,
                     border: activeBatch === b ? `2px solid ${C.indigo}` : `2px solid ${C.border}`,
-                    background: activeBatch === b ? '#ede9fe' : C.white,
+                    background: activeBatch === b ? '#f6ecd2' : C.white,
                     color: activeBatch === b ? C.indigo : C.slate, cursor: 'pointer',
                   }}>
                   {b}
@@ -1620,7 +1621,7 @@ export default function TeachingAids({ currentUser, perms }) {
           <div style={{ fontSize: 11, fontWeight: 700, color: C.slate, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Admin · Reading Activity</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {visibleAids.map(aid => (
-              <button key={aid.id} onClick={() => setMonitorAid(aid)} style={btnSm('#f1f5f9', C.navy)}>
+              <button key={aid.id} onClick={() => setMonitorAid(aid)} style={btnSm('#f3f0e8', C.navy)}>
                 📊 {aid.title}
               </button>
             ))}

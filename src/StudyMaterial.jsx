@@ -41,7 +41,7 @@ const BASE_COURSES = {
   },
   navodaya: {
     label: 'Navodaya Vidyalaya', short: 'JNVST', exam: 'JNVST · Class 6 & 9',
-    color: '#2563eb', bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8',
+    color: '#1e3a6e', bg: '#e4ebf6', border: '#b7c6e0', text: '#1e3a6e',
     FILE_BUCKET: 'study-materials-navodaya',
     // Updated to JNVST 2027 pattern (NVS Final Prospectus): Section 1 is now
     // MAT (20Q) + Environmental Studies (20Q, new subject) — see EVS entry
@@ -91,13 +91,13 @@ const BASE_COURSES = {
 }
 
 const MATERIAL_TYPES = [
-  { key: 'notes',          label: 'Notes PDF',      icon: '📄', color: '#1d4ed8', bg: '#dbeafe' },
-  { key: 'formula',        label: 'Formula Sheet',  icon: '🔣', color: '#7c3aed', bg: '#ede9fe' },
+  { key: 'notes',          label: 'Notes PDF',      icon: '📄', color: '#1e3a6e', bg: '#e4ebf6' },
+  { key: 'formula',        label: 'Formula Sheet',  icon: '🔣', color: '#a7771f', bg: '#f6ecd2' },
   { key: 'practice',       label: 'Practice Set',   icon: '✏️', color: '#15803d', bg: '#dcfce7' },
   { key: 'solved',         label: 'Solved Paper',   icon: '✅', color: '#0f766e', bg: '#ccfbf1' },
   { key: 'mindmap',        label: 'Mind Map',       icon: '🗂️', color: '#b45309', bg: '#fef9c3' },
   { key: 'video',          label: 'Video Link',     icon: '🎥', color: '#dc2626', bg: '#fee2e2' },
-  { key: 'currentaffairs', label: 'Current Affairs',icon: '📰', color: '#64748b', bg: '#f1f5f9' },
+  { key: 'currentaffairs', label: 'Current Affairs',icon: '📰', color: '#5d6b82', bg: '#f3f0e8' },
 ]
 
 const ICON_OPTIONS = ['📁','📐','🧠','📖','🌍','🗺️','🧩','🔢','📗','📕','📘','📙','🔬','⚗️','🏛️','🎨','🎵','💻','🏃','🌱','🔭','📊','🗣️','✍️']
@@ -211,7 +211,7 @@ function CastButton({ url, title, showToast, small }) {
   }
 
   const style = small
-    ? btnSm(casting ? '#dcfce7' : '#eff6ff', casting ? '#15803d' : C.navy)
+    ? btnSm(casting ? '#dcfce7' : '#eef2f9', casting ? '#15803d' : C.navy)
     : btn(casting ? C.green : C.navy)
 
   return (
@@ -404,7 +404,7 @@ function MaterialSlideViewer({ slides, title, subject, chapter, onClose, showToa
           {slide.title}
         </div>
         {slide.description && (
-          <div style={{ fontSize:'clamp(16px,1.8vw,22px)', color:'#cbd5e1', maxWidth:900, marginTop:18 }}>
+          <div style={{ fontSize:'clamp(16px,1.8vw,22px)', color:'#d9d2c2', maxWidth:900, marginTop:18 }}>
             {slide.description}
           </div>
         )}
@@ -414,7 +414,7 @@ function MaterialSlideViewer({ slides, title, subject, chapter, onClose, showToa
       </div>
 
       <div style={{ display:'flex', justifyContent:'center', gap:16, padding:'18px 0 26px' }}>
-        <button onClick={() => go(-1)} disabled={index===0} style={btn('#334155', index===0)}>← Previous</button>
+        <button onClick={() => go(-1)} disabled={index===0} style={btn('#2e3b52', index===0)}>← Previous</button>
         <span style={{ color:'#fff', alignSelf:'center', fontSize:13, opacity:.7 }}>Space/→ next · Esc close</span>
         <button onClick={() => go(1)} disabled={index===slides.length-1} style={btn(C.green, index===slides.length-1)}>Next →</button>
       </div>
@@ -492,7 +492,7 @@ function AddSubjectModal({ course, courseData, existingSubjects, onClose, onSave
         <div style={{ width: 40, height: 4, borderRadius: 2, background: C.border, margin: '0 auto 18px' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>➕ Add New Subject</div>
-          <button onClick={onClose} style={btnSm('#f1f5f9', C.slate)}>✕</button>
+          <button onClick={onClose} style={btnSm('#f3f0e8', C.slate)}>✕</button>
         </div>
 
         <div style={{ display: 'grid', gap: 14 }}>
@@ -711,7 +711,7 @@ function BulkPasteModal({ course, subject, chapter, onClose, onSaved, showToast 
   }
 
   const toggle = i => setChecked(p => p.includes(i) ? p.filter(x => x !== i) : [...p, i])
-  const typeColor = { notes:{color:'#1d4ed8',bg:'#dbeafe'}, formula:{color:'#7c3aed',bg:'#ede9fe'}, practice:{color:'#15803d',bg:'#dcfce7'}, solved:{color:'#0f766e',bg:'#ccfbf1'}, mindmap:{color:'#b45309',bg:'#fef9c3'}, video:{color:'#dc2626',bg:'#fee2e2'}, currentaffairs:{color:'#64748b',bg:'#f1f5f9'} }
+  const typeColor = { notes:{color:'#1e3a6e',bg:'#e4ebf6'}, formula:{color:'#a7771f',bg:'#f6ecd2'}, practice:{color:'#15803d',bg:'#dcfce7'}, solved:{color:'#0f766e',bg:'#ccfbf1'}, mindmap:{color:'#b45309',bg:'#fef9c3'}, video:{color:'#dc2626',bg:'#fee2e2'}, currentaffairs:{color:'#5d6b82',bg:'#f3f0e8'} }
   const typeLabel = { notes:'Notes PDF', formula:'Formula Sheet', practice:'Practice Set', solved:'Solved Paper', mindmap:'Mind Map', video:'Video Link', currentaffairs:'Current Affairs' }
   const typeIcon  = { notes:'📄', formula:'🔣', practice:'✏️', solved:'✅', mindmap:'🗂️', video:'🎥', currentaffairs:'📰' }
 
@@ -721,12 +721,12 @@ function BulkPasteModal({ course, subject, chapter, onClose, onSaved, showToast 
         <div style={{ width: 40, height: 4, borderRadius: 2, background: C.border, margin: '14px auto 0' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>📋 Bulk Paste Materials</div>
-          <button onClick={onClose} style={btnSm('#f1f5f9', C.slate)}>✕</button>
+          <button onClick={onClose} style={btnSm('#f3f0e8', C.slate)}>✕</button>
         </div>
         <div style={{ padding: '16px 20px', flex: 1, overflowY: 'auto' }}>
           {step === 'paste' && (
             <div style={{ display: 'grid', gap: 12 }}>
-              <div style={{ fontSize: 12, color: C.slate, background: '#f8fafc', padding: '10px 13px', borderRadius: 8, border: `1px solid ${C.border}`, lineHeight: 1.7 }}>
+              <div style={{ fontSize: 12, color: C.slate, background: '#faf8f3', padding: '10px 13px', borderRadius: 8, border: `1px solid ${C.border}`, lineHeight: 1.7 }}>
                 One item per line — a title, optionally followed by a Drive/YouTube link. Each line becomes one material.
               </div>
               <div>
@@ -755,10 +755,10 @@ function BulkPasteModal({ course, subject, chapter, onClose, onSaved, showToast 
                 const tc = typeColor[it.material_type] || typeColor.notes
                 const isVideo = it.material_type === 'video' || it.file_url?.includes('youtube') || it.file_url?.includes('youtu.be')
                 return (
-                  <div key={i} onClick={() => toggle(i)} style={{ display: 'flex', gap: 11, alignItems: 'flex-start', padding: '11px 13px', borderRadius: 10, border: `1px solid ${isChecked ? (courseData?.border || C.border) : C.border}`, background: isChecked ? (courseData?.bg || '#f8fafc') : C.white, cursor: 'pointer', opacity: isChecked ? 1 : 0.5 }}>
+                  <div key={i} onClick={() => toggle(i)} style={{ display: 'flex', gap: 11, alignItems: 'flex-start', padding: '11px 13px', borderRadius: 10, border: `1px solid ${isChecked ? (courseData?.border || C.border) : C.border}`, background: isChecked ? (courseData?.bg || '#faf8f3') : C.white, cursor: 'pointer', opacity: isChecked ? 1 : 0.5 }}>
                     <input type="checkbox" checked={isChecked} onChange={() => toggle(i)} onClick={e => e.stopPropagation()} style={{ marginTop: 3, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>{typeIcon[it.material_type] || '📄'} {it.title}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#14213d', marginBottom: 4 }}>{typeIcon[it.material_type] || '📄'} {it.title}</div>
                       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 4 }}>
                         <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, color: tc.color, background: tc.bg }}>{typeLabel[it.material_type] || it.material_type}</span>
                         {it.chapter && <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, color: courseData?.text || C.navy, background: courseData?.bg || '#f0f4ff' }}>{it.chapter}</span>}
@@ -766,13 +766,13 @@ function BulkPasteModal({ course, subject, chapter, onClose, onSaved, showToast 
                       </div>
                       {it.file_url
                         ? <a href={it.file_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 11, color: isVideo ? C.rose : C.indigo, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{isVideo ? '▶ ' : '🔗 '}{it.file_url}</a>
-                        : <span style={{ fontSize: 11, color: '#94a3b8' }}>No URL</span>
+                        : <span style={{ fontSize: 11, color: '#8a93a6' }}>No URL</span>
                       }
                     </div>
                   </div>
                 )
               })}
-              <button onClick={() => { setStep('paste'); setItems([]); setChecked([]) }} style={{ ...btnSm('#f1f5f9', C.slate), alignSelf: 'flex-start', marginTop: 4 }}>← Edit paste</button>
+              <button onClick={() => { setStep('paste'); setItems([]); setChecked([]) }} style={{ ...btnSm('#f3f0e8', C.slate), alignSelf: 'flex-start', marginTop: 4 }}>← Edit paste</button>
             </div>
           )}
         </div>
@@ -829,7 +829,7 @@ function MaterialCard({ mat, onDelete, showToast, isAdmin, feedback }) {
       <div style={{ fontSize: 20, flexShrink: 0, width: 40, height: 40, borderRadius: 12, background: PX.tint, border: `1px solid ${PX.line}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{MATERIAL_TYPES.find(t => t.key === mat.material_type)?.icon || '📄'}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 5 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{mat.title}</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#14213d' }}>{mat.title}</span>
           <MaterialTypeBadge typeKey={mat.material_type} />
           {fb && fb.count > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: C.slate }}><Stars value={fb.avg} size={12} /> {fb.avg} ({fb.count})</span>}
         </div>
@@ -841,10 +841,10 @@ function MaterialCard({ mat, onDelete, showToast, isAdmin, feedback }) {
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
           {mat.file_url && !isAdmin && isDownloadableFile && (
-            <button onClick={() => setViewingOnly(true)} style={btnSm('#eff6ff', C.navy)}>👁 View Only</button>
+            <button onClick={() => setViewingOnly(true)} style={btnSm('#eef2f9', C.navy)}>👁 View Only</button>
           )}
           {mat.file_url && (isAdmin || !isDownloadableFile) && (
-            <a href={mat.file_url} target="_blank" rel="noreferrer" style={btnSm(isVideo ? '#fee2e2' : '#eff6ff', isVideo ? C.rose : C.navy)}>
+            <a href={mat.file_url} target="_blank" rel="noreferrer" style={btnSm(isVideo ? '#fee2e2' : '#eef2f9', isVideo ? C.rose : C.navy)}>
               {isVideo ? '▶ Watch' : isLink ? '🔗 Open Link' : '📥 Download'}
             </a>
           )}
@@ -974,7 +974,7 @@ function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, mater
               </span>
               {total > 0
   ? <Badge text={`${total}`} color={courseData.text} bg={courseData.bg} />
-  : <Badge text="—" color="#94a3b8" bg="#f1f5f9" />
+  : <Badge text="—" color="#8a93a6" bg="#f3f0e8" />
 }
 {isStaffAllowed && qCounts[ch] > 0 && (
   <span
@@ -983,7 +983,7 @@ function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, mater
       openChapterIn('questionbank', { course, subject: subjectName, chapter: ch }, onNavigate)
     }}
     title={`${qCounts[ch]} questions in QBank — click to open`}
-    style={{ padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 700, color: '#7c3aed', background: '#ede9fe', cursor: 'pointer', whiteSpace: 'nowrap' }}
+    style={{ padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 700, color: '#a7771f', background: '#f6ecd2', cursor: 'pointer', whiteSpace: 'nowrap' }}
   >
     📚 {qCounts[ch]} Q
   </span>
@@ -1001,7 +1001,7 @@ function SubjectPanel({ course, subjectName, subjectData, isCustomSubject, mater
             {isExpanded && (
               <div style={{ padding: '10px 14px 14px', borderTop: `1px solid ${C.border}` }}>
                 {chMats.length === 0
-                  ? <div style={{ fontSize: 13, color: '#94a3b8', padding: '12px 0', textAlign: 'center' }}>
+                  ? <div style={{ fontSize: 13, color: '#8a93a6', padding: '12px 0', textAlign: 'center' }}>
                       No materials yet.
                       <button onClick={() => handleUploadForChapter(ch)} style={{ ...btnSm(courseData.bg, courseData.text), marginLeft: 10 }}>📋 Paste now</button>
                     </div>
@@ -1055,7 +1055,7 @@ function CourseStats({ course, materials, mergedCourses }) {
           { label: 'Chapters covered', val: `${coveredChapters}/${totalChapters}`, color: pct >= 70 ? C.green : pct >= 40 ? C.amber : C.rose },
           { label: 'Coverage', val: `${pct}%`, color: pct >= 70 ? C.green : pct >= 40 ? C.amber : C.rose },
         ].map(s => (
-          <div key={s.label} style={{ padding: '12px 14px', borderRadius: 9, background: '#f8fafc', border: `1px solid ${C.border}` }}>
+          <div key={s.label} style={{ padding: '12px 14px', borderRadius: 9, background: '#faf8f3', border: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.val}</div>
             <div style={{ fontSize: 11, color: C.slate, marginTop: 2 }}>{s.label}</div>
           </div>
@@ -1070,8 +1070,8 @@ function CourseStats({ course, materials, mergedCourses }) {
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: 8, marginBottom: 14 }}>
         {Object.entries(bySubject).map(([sub, cnt]) => (
           <div key={sub} style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${C.border}`, background: '#fafafa', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: '#1e293b' }}>{courseData.subjects[sub]?.icon} {sub}</span>
-            <Badge text={`${cnt} files`} color={cnt > 0 ? courseData.text : '#94a3b8'} bg={cnt > 0 ? courseData.bg : '#f1f5f9'} />
+            <span style={{ fontSize: 12, color: '#14213d' }}>{courseData.subjects[sub]?.icon} {sub}</span>
+            <Badge text={`${cnt} files`} color={cnt > 0 ? courseData.text : '#8a93a6'} bg={cnt > 0 ? courseData.bg : '#f3f0e8'} />
           </div>
         ))}
       </div>
@@ -1080,7 +1080,7 @@ function CourseStats({ course, materials, mergedCourses }) {
         {MATERIAL_TYPES.filter(t => byType[t.key]).map(t => (
           <span key={t.key} style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, color: t.color, background: t.bg }}>{t.icon} {t.label}: {byType[t.key]}</span>
         ))}
-        {!courseMats.length && <span style={{ fontSize: 12, color: '#94a3b8' }}>No materials yet</span>}
+        {!courseMats.length && <span style={{ fontSize: 12, color: '#8a93a6' }}>No materials yet</span>}
       </div>
     </div>
   )
@@ -1132,12 +1132,12 @@ function LessonPrepChapterRow({ course, subject, chapter, materials, onNavigate,
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: C.navy, flex: 1, minWidth: 140 }}>{chapter}</span>
         <span style={{ padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700,
-          color: hasMaterials ? '#15803d' : '#94a3b8', background: hasMaterials ? '#dcfce7' : '#f1f5f9' }}>
+          color: hasMaterials ? '#15803d' : '#8a93a6', background: hasMaterials ? '#dcfce7' : '#f3f0e8' }}>
           📄 {chapterMats.length} material{chapterMats.length!==1?'s':''}
         </span>
         {isStaffAllowed && (
           <span style={{ padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700,
-            color: hasQuestions ? '#4f46e5' : '#94a3b8', background: hasQuestions ? '#eef2ff' : '#f1f5f9' }}>
+            color: hasQuestions ? '#1e3a6e' : '#8a93a6', background: hasQuestions ? '#eef2f9' : '#f3f0e8' }}>
             {qLoading ? '⏳ …' : `📚 ${qCount} question${qCount!==1?'s':''}`}
           </span>
         )}
@@ -1151,7 +1151,7 @@ function LessonPrepChapterRow({ course, subject, chapter, materials, onNavigate,
         {isStaffAllowed && hasQuestions && (
           <button
             onClick={() => openChapterIn('questionbank', { course, subject, chapter }, onNavigate)}
-            style={{ ...btnSm('#ede9fe', '#7c3aed'), whiteSpace: 'nowrap' }}>
+            style={{ ...btnSm('#f6ecd2', '#a7771f'), whiteSpace: 'nowrap' }}>
             Open in QBank →
           </button>
         )}
@@ -1166,7 +1166,7 @@ function LessonPrepChapterRow({ course, subject, chapter, materials, onNavigate,
       {hasMaterials && (
         <div style={{ padding: '8px 14px', borderTop: `1px solid ${C.border}`, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {chapterMats.map(m => (
-            <span key={m.id} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 6, background: '#f8fafc', border: `1px solid ${C.border}`, color: '#374151' }}>
+            <span key={m.id} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 6, background: '#faf8f3', border: `1px solid ${C.border}`, color: '#2e3b52' }}>
               {TYPE_ICON[m.material_type] || '📄'} {m.title}
             </span>
           ))}
@@ -1228,9 +1228,9 @@ function LessonPrep({ course, courseData, materials, onNavigate, isStaffAllowed 
       </div>
 
       {chapters.length === 0 ? (
-        <div style={{ ...cardS, textAlign: 'center', padding: 32, color: '#94a3b8' }}>No chapters in this subject yet.</div>
+        <div style={{ ...cardS, textAlign: 'center', padding: 32, color: '#8a93a6' }}>No chapters in this subject yet.</div>
       ) : visibleChapters.length === 0 ? (
-        <div style={{ ...cardS, textAlign: 'center', padding: 32, color: '#94a3b8' }}>
+        <div style={{ ...cardS, textAlign: 'center', padding: 32, color: '#8a93a6' }}>
           No chapters match this filter — nice, coverage looks solid here.
         </div>
       ) : (
@@ -1353,11 +1353,11 @@ function SubjectDrawer({ open, onClose, course, subjects, customSubjectSet, cour
             <div key={s} onClick={() => { onSelect(s); onClose() }}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 10px', borderRadius: 9, cursor: 'pointer', background: isActive ? courseData.bg : 'transparent', marginBottom: 3 }}>
               <span style={{ fontSize: 20 }}>{subjects[s].icon}</span>
-              <span style={{ fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? courseData.text : '#374151', flex: 1 }}>
+              <span style={{ fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? courseData.text : '#2e3b52', flex: 1 }}>
                 {s}
                 {isCustom && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, background: '#fef9c3', color: '#b45309', padding: '1px 5px', borderRadius: 4 }}>custom</span>}
               </span>
-              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: cnt > 0 ? courseData.bg : '#f1f5f9', color: cnt > 0 ? courseData.text : '#94a3b8' }}>{cnt}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: cnt > 0 ? courseData.bg : '#f3f0e8', color: cnt > 0 ? courseData.text : '#8a93a6' }}>{cnt}</span>
             </div>
           )
         })}
@@ -1636,7 +1636,7 @@ export default function StudyMaterial({ currentUser, onNavigate, embedded = fals
         isStaffAllowed ? (
           <QuestionBankViewer currentUser={currentUser} onNavigate={onNavigate} />
         ) : (
-          <div style={{ ...cardS, textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+          <div style={{ ...cardS, textAlign: 'center', padding: 40, color: '#8a93a6' }}>
             Question Bank is only available to admin and Computer Staffs accounts.
           </div>
         )
@@ -1678,7 +1678,7 @@ export default function StudyMaterial({ currentUser, onNavigate, embedded = fals
               focusChapter={focusChapterName} feedback={feedback}
             />
           ) : (
-            <div style={{ ...cardS, textAlign: 'center', padding: 40, color: '#94a3b8' }}>Select a subject above</div>
+            <div style={{ ...cardS, textAlign: 'center', padding: 40, color: '#8a93a6' }}>Select a subject above</div>
           )}
         </div>
       ) : (
@@ -1699,11 +1699,11 @@ export default function StudyMaterial({ currentUser, onNavigate, embedded = fals
                 <div key={s} onClick={() => { setActiveSubject(s); setSearch('') }}
                   style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', borderRadius: 8, cursor: 'pointer', background: isActive ? courseData.bg : 'transparent', marginBottom: 3, transition: 'background .1s' }}>
                   <span style={{ fontSize: 16 }}>{subjects[s].icon}</span>
-                  <span style={{ fontSize: 12, fontWeight: isActive ? 700 : 500, color: isActive ? courseData.text : '#374151', flex: 1 }}>
+                  <span style={{ fontSize: 12, fontWeight: isActive ? 700 : 500, color: isActive ? courseData.text : '#2e3b52', flex: 1 }}>
                     {s}
                     {isCustom && <span style={{ marginLeft: 5, fontSize: 9, fontWeight: 700, background: '#fef9c3', color: '#b45309', padding: '1px 5px', borderRadius: 4 }}>custom</span>}
                   </span>
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: cnt > 0 ? courseData.bg : '#f1f5f9', color: cnt > 0 ? courseData.text : '#94a3b8' }}>{cnt}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: cnt > 0 ? courseData.bg : '#f3f0e8', color: cnt > 0 ? courseData.text : '#8a93a6' }}>{cnt}</span>
                 </div>
               )
             })}
@@ -1726,7 +1726,7 @@ export default function StudyMaterial({ currentUser, onNavigate, embedded = fals
                 focusChapter={focusChapterName} feedback={feedback}
               />
             ) : (
-              <div style={{ ...cardS, textAlign: 'center', padding: 48, color: '#94a3b8' }}>Select a subject from the sidebar</div>
+              <div style={{ ...cardS, textAlign: 'center', padding: 48, color: '#8a93a6' }}>Select a subject from the sidebar</div>
             )}
           </div>
         </div>
