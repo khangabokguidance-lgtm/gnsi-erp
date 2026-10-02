@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
+import { createPortal } from "react-dom"
+import { NavIcon } from "./navIcons"
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
   ResponsiveContainer, Cell, PieChart, Pie,
@@ -397,12 +399,102 @@ function TableWrap({ children }) {
 // activeId is tracked by the parent via a scroll-spy IntersectionObserver
 // so the current section highlights as the admin scrolls, not just on
 // click.
+
+// Phone: payments-app style bottom navigation (four key sections + an "All" sheet
+// with a searchable icon grid of every section) replaces the scrolling pill row.
+const BOTTOM_MAIN = [
+  { id: 'overview', label: 'Home', icon: 'dashboard' },
+  { id: 'finance', label: 'Finance', icon: 'accounts' },
+  { id: 'students', label: 'Students', icon: 'students' },
+  { id: 'intel', label: 'Insights', icon: 'radar' },
+]
+const PHONE_CSS = `.dh-bottom{position:fixed;left:0;right:0;bottom:0;z-index:120;display:grid;grid-template-columns:repeat(5,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+body:has(.dh-bottom){padding-bottom:76px}
+.dh-nb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:3px 0;font:600 10.5px 'Plus Jakarta Sans',system-ui,sans-serif;color:#b9c3d6;cursor:pointer}
+.dh-nb .dh-bi{display:flex;align-items:center;justify-content:center;width:42px;height:27px;border-radius:10px}
+.dh-nb.on{color:#fff;font-weight:800}
+.dh-nb.on .dh-bi{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
+.dh-nb:focus-visible,.dh-tile:focus-visible{outline:2px solid #e9d9b0;outline-offset:-2px;border-radius:10px}
+.dh-scrim{position:fixed;inset:0;z-index:998;background:rgba(10,18,32,.45)}
+.dh-sheet{position:fixed;left:0;right:0;bottom:0;z-index:999;max-height:82vh;display:flex;flex-direction:column;background:#faf8f3;border-radius:22px 22px 0 0;box-shadow:0 -12px 40px rgba(10,18,32,.4);animation:dhUp .2s ease both}
+@keyframes dhUp{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+.dh-grab{width:36px;height:4px;border-radius:2px;background:#d9d2c2;margin:8px auto 4px}
+.dh-sh{display:flex;align-items:center;justify-content:space-between;padding:6px 18px 8px}
+.dh-sh b{font-family:'Fraunces',Georgia,serif;font-size:20px;color:#0f1b2e}
+.dh-x{width:34px;height:34px;border-radius:50%;border:1px solid #e8e3d8;background:#fff;font-size:16px;cursor:pointer;color:#2e3b52}
+.dh-find{margin:0 16px 8px;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e8e3d8;border-radius:12px;padding:0 12px;height:42px}
+.dh-find input{flex:1;min-width:0;border:0;outline:0;background:none;font:500 14px 'Plus Jakarta Sans',system-ui,sans-serif;color:#0f1b2e}
+.dh-grid{overflow-y:auto;padding:4px 10px calc(18px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,1fr);gap:4px 2px}
+.dh-tile{background:none;border:0;padding:8px 2px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;font:700 11px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#0f1b2e;text-align:center;border-radius:12px}
+.dh-tile:active{background:#f3f0e8}
+.dh-tile .dh-ic{width:48px;height:48px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:22px;background:#eef2f9;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 3px 0 rgba(19,42,79,.12),0 6px 10px rgba(19,42,79,.08)}
+.dh-tile.on .dh-ic{background:linear-gradient(180deg,#d4ae58,#b8923a);box-shadow:0 0 0 3px #fff,0 0 0 5px #b8923a}
+.dh-empty{grid-column:1/-1;text-align:center;color:#5d6b82;font-size:13px;padding:22px 0}`
+
+function useIsPhone() {
+  const [p, setP] = useState(typeof window !== "undefined" && window.innerWidth < 768)
+  useEffect(() => {
+    const fn = () => setP(window.innerWidth < 768)
+    window.addEventListener("resize", fn)
+    return () => window.removeEventListener("resize", fn)
+  }, [])
+  return p
+}
+
+function PhoneSectionNav({ activeId, onSelect }) {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState("")
+  const needle = q.trim().toLowerCase()
+  const list = needle ? SECTION_TABS.filter(t => t.label.toLowerCase().includes(needle)) : SECTION_TABS
+  const inMain = BOTTOM_MAIN.some(m => m.id === activeId)
+  const pick = id => { onSelect(id); setOpen(false); setQ("") }
+  return createPortal(
+    <>
+      <style>{PHONE_CSS}</style>
+      <nav className="dh-bottom" aria-label="Dashboard sections">
+        {BOTTOM_MAIN.map(m => (
+          <button key={m.id} type="button" className={"dh-nb" + (activeId === m.id ? " on" : "")} onClick={() => pick(m.id)} aria-current={activeId === m.id ? "page" : undefined}>
+            <span className="dh-bi"><NavIcon id={m.icon} size={20} /></span><span>{m.label}</span>
+          </button>
+        ))}
+        <button type="button" className={"dh-nb" + (open || !inMain ? " on" : "")} onClick={() => setOpen(true)} aria-label="All dashboard sections">
+          <span className="dh-bi"><NavIcon id="grid" size={20} /></span><span>All</span>
+        </button>
+      </nav>
+      {open && (
+        <>
+          <div className="dh-scrim" onClick={() => setOpen(false)} />
+          <div className="dh-sheet" role="dialog" aria-label="All sections">
+            <div className="dh-grab" />
+            <div className="dh-sh"><b>All sections</b><button type="button" className="dh-x" onClick={() => setOpen(false)} aria-label="Close">✕</button></div>
+            <label className="dh-find">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5d6b82" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></svg>
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Find a section…" />
+            </label>
+            <div className="dh-grid">
+              {list.map(t => (
+                <button key={t.id} type="button" className={"dh-tile" + (t.id === activeId ? " on" : "")} onClick={() => pick(t.id)}>
+                  <span className="dh-ic">{t.icon}</span>{t.label}
+                </button>
+              ))}
+              {!list.length && <div className="dh-empty">No section matches “{q}”.</div>}
+            </div>
+          </div>
+        </>
+      )}
+    </>,
+    document.body
+  )
+}
+
 function SectionNav({ activeId, onSelect }) {
+  const isPhone = useIsPhone()
   const activeRef = useRef(null)
   useEffect(() => {
     activeRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" })
   }, [activeId])
 
+  if (isPhone) return <PhoneSectionNav activeId={activeId} onSelect={onSelect} />
   return (
     <div style={{
       position: "sticky", top: 0, zIndex: 20,
