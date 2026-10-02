@@ -436,7 +436,22 @@ function FsRow({ label, fsKey, value, min, max, onChange, colorValue, onColorCha
 }
 
 // ── Draggable floating panel — portaled to body (Photoshop style) ─
-function FloatPanel({ title, icon, children, open, onClose, initialPos, zIndex, onFocus }) {
+// Phone layouts: the studio was built as a desktop canvas, so below 768px the two
+// A5 cards are stacked and scaled to the screen width, the toolbar scrolls sideways
+// and the floating editor panels become bottom sheets.
+function useVw() {
+  const [vw, setVw] = useState(typeof window !== 'undefined' ? window.innerWidth : 1280)
+  useEffect(() => {
+    const fn = () => setVw(window.innerWidth)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
+  return vw
+}
+const CARD_W = (148 * 96) / 25.4 // A5 half of the A4 landscape sheet, in CSS px
+const CARD_H = (210 * 96) / 25.4
+
+function FloatPanel({ title, icon, children, open, onClose, initialPos, zIndex, onFocus, phone }) {
   const [pos, setPos]           = useState(initialPos)
   const [minimized, setMin]     = useState(false)
   const [size, setSize]         = useState({ w: 270, h: 440 })
@@ -482,11 +497,12 @@ function FloatPanel({ title, icon, children, open, onClose, initialPos, zIndex, 
     <div
       onMouseDown={onFocus}
       style={{
-        position:'fixed', left: pos.x, top: pos.y, zIndex,
-        width: size.w, minWidth:220,
+        position:'fixed', zIndex,
+        ...(phone
+          ? { left:0, right:0, bottom:0, width:'100%', minWidth:0, maxHeight:'78vh', borderRadius:'14px 14px 0 0' }
+          : { left: pos.x, top: pos.y, width: size.w, minWidth:220, borderRadius:6 }),
         background:'#13110e',
         border:'1px solid rgba(196,150,42,0.4)',
-        borderRadius:6,
         boxShadow:'0 12px 48px rgba(0,0,0,0.85), 0 0 0 1px rgba(196,150,42,0.08)',
         display:'flex', flexDirection:'column',
         userSelect:'none',
@@ -494,22 +510,22 @@ function FloatPanel({ title, icon, children, open, onClose, initialPos, zIndex, 
       }}>
 
       {/* ── Title bar ── */}
-      <div onMouseDown={onHeaderDown} style={{
-        height:30, flexShrink:0,
+      <div onMouseDown={phone ? undefined : onHeaderDown} style={{
+        height: phone ? 44 : 30, flexShrink:0,
         background:'linear-gradient(90deg,#07102a,#0d1e45,#07102a)',
         borderBottom:'1px solid rgba(196,150,42,0.3)',
-        borderRadius:'6px 6px 0 0',
+        borderRadius: phone ? '14px 14px 0 0' : '6px 6px 0 0',
         display:'flex', alignItems:'center', padding:'0 8px', gap:7,
-        cursor:'move',
+        cursor: phone ? 'default' : 'move',
       }}>
         <span style={{ fontSize:11 }}>{icon}</span>
         <span style={{
-          fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'7.5px',
+          fontFamily:"'Cinzel',serif", fontWeight:700, fontSize: phone ? '11px' : '7.5px',
           letterSpacing:'2.5px', textTransform:'uppercase', color:'#E0BC6A',
           flex:1, pointerEvents:'none',
         }}>{title}</span>
         <button onClick={() => setMin(m => !m)} title={minimized ? 'Restore' : 'Minimize'}
-          style={{ width:18, height:18, borderRadius:3,
+          style={{ width: phone ? 32 : 18, height: phone ? 32 : 18, borderRadius:3,
             border:'1px solid rgba(196,150,42,0.35)',
             background: minimized ? 'rgba(196,150,42,0.35)' : 'rgba(196,150,42,0.1)',
             cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
@@ -517,7 +533,7 @@ function FloatPanel({ title, icon, children, open, onClose, initialPos, zIndex, 
           {minimized ? '+' : '−'}
         </button>
         <button onClick={onClose} title="Close"
-          style={{ width:18, height:18, borderRadius:3,
+          style={{ width: phone ? 32 : 18, height: phone ? 32 : 18, borderRadius:3,
             border:'1px solid rgba(220,38,38,0.4)',
             background:'rgba(220,38,38,0.15)', cursor:'pointer',
             display:'flex', alignItems:'center', justifyContent:'center',
@@ -529,7 +545,7 @@ function FloatPanel({ title, icon, children, open, onClose, initialPos, zIndex, 
       {/* ── Content ── */}
       {!minimized && (
         <div style={{
-          height: size.h, overflowY:'auto', overflowX:'hidden',
+          ...(phone ? { maxHeight:'calc(78vh - 44px)' } : { height: size.h }), overflowY:'auto', overflowX:'hidden',
           padding:'10px 12px 16px',
           scrollbarWidth:'thin',
           scrollbarColor:'rgba(196,150,42,0.25) transparent',
@@ -539,7 +555,7 @@ function FloatPanel({ title, icon, children, open, onClose, initialPos, zIndex, 
       )}
 
       {/* ── Resize grip ── */}
-      {!minimized && (
+      {!minimized && !phone && (
         <div onMouseDown={onResizeDown} style={{
           position:'absolute', bottom:0, right:0,
           width:16, height:16, cursor:'nwse-resize', zIndex:10,
@@ -741,6 +757,8 @@ export default function InvitationGenerator({ currentUser }) {
   const [panelZOrder, setPanelZOrder]     = useState({ p1:1001, p2:1002, fonts:1003, colors:1004 })
   const [panelOpen, setPanelOpen]         = useState({ p1:false, p2:false, fonts:false, colors:false })
   const previewRef = useRef(null)
+  const vw = useVw()
+  const phone = vw < 768
   const zTop = useRef(1010)
 
   useEffect(() => { injectFonts() }, [])
@@ -831,6 +849,24 @@ export default function InvitationGenerator({ currentUser }) {
     filter:'drop-shadow(0 30px 80px rgba(0,0,0,0.8))',
   }
 
+  // Cards: side by side on desktop (zoom slider); stacked and fitted to the screen on phones.
+  const renderCards = () => {
+    const cards = (<>
+      <InvCard p1={p1} members={members} colors={colors} lessInk={lessInk}/>
+      <ProgCard p2={p2} progs={progs} colors={colors} lessInk={lessInk}/>
+    </>)
+    if (!phone) return <div style={cardsWrapStyle} ref={previewRef}>{cards}</div>
+    const sc = Math.max(0.3, (vw - 24) / CARD_W), gap = 16
+    return (
+      <div style={{ width: CARD_W * sc, height: (2 * CARD_H + gap) * sc, position:'relative', flexShrink:0 }}>
+        <div ref={previewRef} style={{ position:'absolute', left:0, top:0, width: CARD_W, display:'flex', flexDirection:'column', gap,
+          transform:`scale(${sc})`, transformOrigin:'top left', filter:'drop-shadow(0 18px 40px rgba(0,0,0,0.7))' }}>
+          {cards}
+        </div>
+      </div>
+    )
+  }
+
   const PANELS = [
     { id:'p1',     title:'Page 1',  icon:'📄', initX:20,  initY:80  },
     { id:'p2',     title:'Page 2',  icon:'📋', initX:300, initY:80  },
@@ -859,12 +895,9 @@ export default function InvitationGenerator({ currentUser }) {
           ▼ ✉ INVITATION STUDIO — CLICK TO RESTORE ▼
         </span>
       </div>
-      <div style={{ flex:1, overflow:'auto', padding:24, display:'flex', flexDirection:'column', alignItems:'center', background:'radial-gradient(ellipse at 50% 0%,#1a1208 0%,#0d0a07 60%)' }}>
+      <div style={{ flex:1, overflow:'auto', padding: phone ? 12 : 24, display:'flex', flexDirection:'column', alignItems:'center', background:'radial-gradient(ellipse at 50% 0%,#1a1208 0%,#0d0a07 60%)' }}>
         <style>{`${PRINT_CARD_CSS}:root{${cssVarsStyle}} ${lessInk ? LESS_INK_CSS : ''}`}</style>
-        <div style={cardsWrapStyle} ref={previewRef}>
-          <InvCard p1={p1} members={members} colors={colors} lessInk={lessInk}/>
-          <ProgCard p2={p2} progs={progs} colors={colors} lessInk={lessInk}/>
-        </div>
+        {renderCards()}
       </div>
     </div>
   )
@@ -873,18 +906,20 @@ export default function InvitationGenerator({ currentUser }) {
     <div style={{
       display:'flex', flexDirection:'column',
       height: fullscreen ? '100vh' : 'calc(100vh - 60px)',
-      background:'#0a0d14', overflow:'hidden',
+      background:'#0a0d14', overflow:'hidden', minWidth:0, width:'100%', maxWidth:'100%', contain:'inline-size',
       position: fullscreen ? 'fixed' : 'relative',
       inset: fullscreen ? 0 : 'auto',
       zIndex: fullscreen ? 9999 : 'auto',
     }}>
 
       {/* ══ MENUBAR ══ */}
-      <div style={{
-        height: MENU_H, flexShrink:0,
+      <style>{'.inv-mb>*{flex-shrink:0}.inv-mb{scrollbar-width:thin;scrollbar-color:rgba(196,150,42,.45) transparent}@media (max-width:767px){.inv-mb{scrollbar-width:none}.inv-mb::-webkit-scrollbar{display:none}}'}</style>
+      <div className="inv-mb" style={{
+        height: phone ? 52 : MENU_H + 6, flexShrink:0, overflowX:'auto', overflowY:'hidden',
         background:'linear-gradient(90deg,#07102a 0%,#0d1e45 60%,#07102a 100%)',
         borderBottom:'1px solid rgba(196,150,42,0.25)',
-        display:'flex', alignItems:'center', padding:'0 14px', gap:10, zIndex:100,
+        display:'flex', alignItems:'center', padding:'0 14px', gap:10, zIndex:100, minWidth:0,
+        WebkitOverflowScrolling:'touch',
       }}>
         {/* Brand */}
         <span style={{ fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'8px', letterSpacing:'3px', textTransform:'uppercase', color:'#E0BC6A', whiteSpace:'nowrap', marginRight:2 }}>
@@ -924,8 +959,8 @@ export default function InvitationGenerator({ currentUser }) {
 
         <div style={{ width:1, height:22, background:'rgba(196,150,42,0.2)', flexShrink:0 }}/>
 
-        {/* Zoom */}
-        <div style={{ display:'flex', alignItems:'center', gap:7, background:'rgba(196,150,42,0.06)', border:'1px solid rgba(196,150,42,0.14)', borderRadius:5, padding:'4px 10px' }}>
+        {/* Zoom (phones auto-fit the cards to the screen instead) */}
+        {!phone && <div style={{ display:'flex', alignItems:'center', gap:7, background:'rgba(196,150,42,0.06)', border:'1px solid rgba(196,150,42,0.14)', borderRadius:5, padding:'4px 10px' }}>
           <span style={{ fontFamily:"'Cinzel',serif", fontWeight:700, fontSize:'6.5px', letterSpacing:'2px', textTransform:'uppercase', color:'#C4962A', whiteSpace:'nowrap' }}>Zoom</span>
           <input type="range" min={0.3} max={1.2} step={0.02} value={previewZoom}
             onChange={e => setPreviewZoom(Number(e.target.value))}
@@ -933,7 +968,7 @@ export default function InvitationGenerator({ currentUser }) {
           <span style={{ fontFamily:'monospace', fontSize:10, color:'#E0BC6A', minWidth:30, textAlign:'right' }}>{Math.round(previewZoom * 100)}%</span>
           <button onClick={() => setPreviewZoom(0.72)}
             style={{ background:'none', border:'none', color:'rgba(196,150,42,0.4)', cursor:'pointer', fontFamily:"'Cinzel',serif", fontSize:'6.5px', letterSpacing:'1px', textTransform:'uppercase', padding:'2px 4px' }}>Reset</button>
-        </div>
+        </div>}
 
         {lessInk && <span style={{ fontFamily:"'Raleway',sans-serif", fontSize:'7px', fontWeight:700, letterSpacing:'2px', textTransform:'uppercase', padding:'3px 9px', borderRadius:10, background:'rgba(46,125,50,0.25)', color:'#81c784', border:'1px solid rgba(46,125,50,0.3)' }}>◆ Less Ink</span>}
 
@@ -960,7 +995,7 @@ export default function InvitationGenerator({ currentUser }) {
 
       {/* ══ CANVAS / PREVIEW ══ */}
       <div style={{
-        flex:1, overflow:'auto', padding:32,
+        flex:1, minWidth:0, overflow:'auto', padding: phone ? 12 : 32,
         display:'flex', flexDirection:'column', alignItems:'center',
         background:'radial-gradient(ellipse at 50% 0%,#1a1208 0%,#0d0a07 60%)',
         position:'relative',
@@ -971,35 +1006,32 @@ export default function InvitationGenerator({ currentUser }) {
 
         <style>{`${PRINT_CARD_CSS}:root{${cssVarsStyle}} ${lessInk ? LESS_INK_CSS : ''}`}</style>
 
-        <div style={cardsWrapStyle} ref={previewRef}>
-          <InvCard p1={p1} members={members} colors={colors} lessInk={lessInk}/>
-          <ProgCard p2={p2} progs={progs} colors={colors} lessInk={lessInk}/>
-        </div>
+        {renderCards()}
       </div>
 
       {/* ══ FLOATING PANELS — portaled to body ══ */}
-      <FloatPanel title="Page 1" icon="📄"
+      <FloatPanel phone={phone} title="Page 1" icon="📄"
         open={panelOpen.p1} onClose={() => setPanelOpen(p => ({...p, p1:false}))}
         initialPos={{ x:280, y:110 }} zIndex={panelZOrder.p1}
         onFocus={() => bringToFront('p1')}>
         <P1Content p1={p1} sp1={sp1} members={members} updMember={updMember} addMember={addMember} delMember={delMember} T={PT}/>
       </FloatPanel>
 
-      <FloatPanel title="Page 2" icon="📋"
+      <FloatPanel phone={phone} title="Page 2" icon="📋"
         open={panelOpen.p2} onClose={() => setPanelOpen(p => ({...p, p2:false}))}
         initialPos={{ x:570, y:110 }} zIndex={panelZOrder.p2}
         onFocus={() => bringToFront('p2')}>
         <P2Content p2={p2} sp2={sp2} progs={progs} updProg={updProg} addProg={addProg} delProg={delProg} T={PT}/>
       </FloatPanel>
 
-      <FloatPanel title="Fonts" icon="🔤"
+      <FloatPanel phone={phone} title="Fonts" icon="🔤"
         open={panelOpen.fonts} onClose={() => setPanelOpen(p => ({...p, fonts:false}))}
         initialPos={{ x:860, y:110 }} zIndex={panelZOrder.fonts}
         onFocus={() => bringToFront('fonts')}>
         <FontsContent fs={fs} setFsKey={setFsKey} fc={fc} setFcKey={setFcKey}/>
       </FloatPanel>
 
-      <FloatPanel title="Colors & Print" icon="🎨"
+      <FloatPanel phone={phone} title="Colors & Print" icon="🎨"
         open={panelOpen.colors} onClose={() => setPanelOpen(p => ({...p, colors:false}))}
         initialPos={{ x:280, y:460 }} zIndex={panelZOrder.colors}
         onFocus={() => bringToFront('colors')}>
