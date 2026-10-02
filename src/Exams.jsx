@@ -21,7 +21,6 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from './supabase'
 import { sysOr } from "./systemSettings";
 import { getActiveStudents } from './studentQueries'
-import { staffDB, useStaffDB } from './staffDB'
 import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from './admitCardTemplate'
 import ToppersCertificate from './ToppersCertificate'
 import ExamDashboard from './ExamDashboard'
@@ -621,11 +620,6 @@ function getGrade(pct, scale = GRADE_PRESETS) {
   return scale[scale.length - 1];
 }
 
-function calcPct(total, course) {
-  const max = getCourseMax(course);
-  return (total / max) * 100;
-}
-
 function printHTML(html, title = "GNSI") {
   const w = window.open("", "_blank");
   w.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
@@ -892,7 +886,7 @@ function useRemarks(studentId, examTypeId, examDate) {
   return { remark, setRemark, save, saving, saved };
 }
 
-function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, onStudentsChange, initialCourse, initialExamType, initialExamDate }) {
+function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, initialCourse, initialExamType, initialExamDate }) {
   const isMobile = useMobile();
   const perm = usePerm(currentUser, perms);
   const courses = Object.keys(courseSubjects);
@@ -954,14 +948,13 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const [rawImport, setRawImport] = useState(null);       // { rows, headers } — kept so subject columns can be remapped after detection
   const [addNewOpenIdx, setAddNewOpenIdx] = useState(null);     // which unmatched row has its "add new student" form open
   const [newStudentForm, setNewStudentForm] = useState({ name: "", gcc_no: "", admission_no: "", track: "", batch: "" });
-  const [addingStudent, setAddingStudent] = useState(false);
+  const [addingStudent] = useState(false);
   const [addStudentError, setAddStudentError] = useState("");
   const [importSaveError, setImportSaveError] = useState("");
   const [lastImportSummary, setLastImportSummary] = useState(null); // persists after the import panel closes, so the save is never invisible
   const [absentSet, setAbsentSet] = useState(new Set());
   const fileInputRef = useRef(null);
   const [isDirty, setIsDirty] = useState(false); // true once any mark changes since last successful save
-  const [pendingCourseChange, setPendingCourseChange] = useState(null); // { type: 'course'|'examType'|'examDate', value } — held until confirmed
   const [bulkFillValues, setBulkFillValues] = useState({}); // { [subject]: string } — the bulk-fill input per subject column
   const [bulkOpen, setBulkOpen] = useState(false); // phone: "fill one subject for everyone" panel expanded
   const [bulkSub, setBulkSub] = useState("");       // phone: subject currently picked in that panel
@@ -1173,7 +1166,7 @@ for (const st of courseStudents) {
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return; e.target.value = "";
-    await ensureLibs(); const XLSX = window.XLSX; let rows = [];
+    await ensureLibs(); const XLSX = window.XLSX; let rows;
     const ext = file.name.split(".").pop().toLowerCase();
     if (ext === "csv") {
       const text = await file.text();
@@ -1385,7 +1378,7 @@ for (const st of courseStudents) {
     setAddNewOpenIdx(idx);
   };
 
-  const saveNewStudentFromError = async (idx) => {
+  const saveNewStudentFromError = async () => {
     // Student records are now managed exclusively in StudentDB (Attendance
     // module → Students tab). Exams no longer creates new student rows —
     // this keeps a single source of truth for course/batch, so add the
@@ -1574,8 +1567,8 @@ for (const st of courseStudents) {
       }
 
       const scoredCandidates = pool.map(s => {
-        let score = 0;
-        let matchReason = "";
+        let score;
+        let matchReason;
 
         const normGcc = normalizeGccValue(s.gcc_no);
         const normAdm = String(s.admission_no || "").trim().toUpperCase();
@@ -1793,7 +1786,7 @@ for (const st of courseStudents) {
                               const normAdm = String(s.admission_no || "").trim().toUpperCase();
                               const normName = normalizeNameValue(s.name);
                               
-                              let matchBg = "#F0FDF4", matchColor = "#15803D", matchLabel = "";
+                              let matchBg = "#F0FDF4", matchColor = "#15803D", matchLabel;
                               if (normalizeGccValue(q) === normGcc) matchLabel = "GCC match";
                               else if (String(s.gcc_no).includes(q)) { matchLabel = "GCC substring"; matchBg = "#FEF3C7"; matchColor = "#92400E"; }
                               else if (normAdm === q) matchLabel = "Admission# exact";
@@ -2541,7 +2534,7 @@ function Analytics({ courseSubjects, examTypes, students }) {
     ensureLibs().then(() => {
       const Chart = window.Chart; if (!Chart) return;
       chartsRef.current = (chartsRef.current || []).filter(Boolean);
-      chartsRef.current.forEach(c => { try { if (c && typeof c.destroy === "function") c.destroy(); } catch (_) {} });
+      chartsRef.current.forEach(c => { try { if (c && typeof c.destroy === "function") c.destroy(); } catch { /* ignore */ } });
       chartsRef.current = [];
       if (gradeRef.current) {
         const labels = GRADE_PRESETS.map(g => g.label);
@@ -2554,7 +2547,7 @@ function Analytics({ courseSubjects, examTypes, students }) {
         chartsRef.current.push(new Chart(passRef.current, { type: "bar", data: { labels: subjects, datasets: [{ label: "Pass Rate %", data: subjects.map(s => Math.round((subjectPass[s] / n) * 100)), backgroundColor: "#185FA5", borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } }, plugins: { legend: { display: false } } } }));
       }
     });
-    return () => { chartsRef.current.forEach(c => { try { c.destroy(); } catch (_) {} }); chartsRef.current = []; };
+    return () => { chartsRef.current.forEach(c => { try { c.destroy(); } catch { /* ignore */ } }); chartsRef.current = []; };
   }, [marks, course]);
 
   const chartH = isMobile ? 220 : 260;
@@ -2668,8 +2661,17 @@ function Rankings({ courseSubjects, examTypes, students }) {
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const ranked = [...courseStudents].map(st => ({ ...st, total: getTotal(st.id), pct: courseMax ? (getTotal(st.id) / courseMax) * 100 : 0 })).sort((a, b) => b.total - a.total);
-  let cr = 1, pt = null;
-  const rankedWithRanks = ranked.map((st, i) => { if (i === 0) { cr = 1; pt = st.total; } else if (st.total !== pt) { cr++; pt = st.total; } return { ...st, rank: cr }; });
+  // dense rank by total (ties share a rank) — plain loop, no outer variables mutated
+  const rankedWithRanks = (() => {
+    let cr = 1, pt = null;
+    const out = [];
+    for (let i = 0; i < ranked.length; i++) {
+      const st = ranked[i];
+      if (i === 0) { cr = 1; pt = st.total; } else if (st.total !== pt) { cr++; pt = st.total; }
+      out.push({ ...st, rank: cr });
+    }
+    return out;
+  })();
   const medals = ["🥇", "🥈", "🥉"];
 
   return (
@@ -2819,7 +2821,7 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
     if (!chartRef.current || !selectedStudent || !dates.length) return;
     ensureLibs().then(() => {
       const Chart = window.Chart; if (!Chart) return;
-      if (chartInstance.current) { try { chartInstance.current.destroy(); } catch (_) {} }
+      if (chartInstance.current) { try { chartInstance.current.destroy(); } catch { /* ignore */ } }
       const colors = ["#1e3a6e","#185FA5","#a7771f","#d97706","#0891b2","#e11d48","#84cc16"];
       const datasets = subjects.map((sub, i) => ({
         label: sub,
@@ -2839,7 +2841,7 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
           scales: { x: { grid: { color: "#f3f0e8" } }, y: { beginAtZero: true, grid: { color: "#f3f0e8" }, title: { display: !isMobile, text: "Subject Marks" } }, y2: { beginAtZero: true, position: "right", max: courseMax, grid: { display: false }, title: { display: !isMobile, text: `Total /${courseMax}` } } } },
       });
     });
-    return () => { if (chartInstance.current) { try { chartInstance.current.destroy(); } catch (_) {} } };
+    return () => { if (chartInstance.current) { try { chartInstance.current.destroy(); } catch { /* ignore */ } } };
   }, [allMarks, dates, selectedStudent, scheduledSubjects]);
 
   const filteredStudents = courseStudents.filter(s => !search || s.name?.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search));
@@ -3020,14 +3022,14 @@ function CompareTab({ courseSubjects, examTypes, students }) {
     if (!chartRef.current || selected.length < 2) return;
     ensureLibs().then(() => {
       const Chart = window.Chart; if (!Chart) return;
-      if (chartInstance.current) { try { chartInstance.current.destroy(); } catch (_) {} }
+      if (chartInstance.current) { try { chartInstance.current.destroy(); } catch { /* ignore */ } }
       chartInstance.current = new Chart(chartRef.current, {
         type: "radar",
         data: { labels: subjects, datasets: selected.map((st, i) => ({ label: st.name.split(" ")[0], data: subjects.map(sub => Number(marks[`${st.id}-${sub}`]) || 0), borderColor: COMPARE_COLORS[i], backgroundColor: COMPARE_COLORS[i] + "33", borderWidth: 2, pointRadius: 4 })) },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } } }, scales: { r: { beginAtZero: true } } },
       });
     });
-    return () => { if (chartInstance.current) { try { chartInstance.current.destroy(); } catch (_) {} } };
+    return () => { if (chartInstance.current) { try { chartInstance.current.destroy(); } catch { /* ignore */ } } };
   }, [selected, marks]);
 
   const filteredStudents = courseStudents.filter(s => !search || s.name?.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search));
@@ -3606,15 +3608,14 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   // `track` = the real exam track (Sainik/Navodaya/Foundation/Combined Course), written to
   // students.course. `batch` = Achiever/Champion/etc, written to students.class_name + batch.
   const EMPTY_FORM = { name: "", gcc_no: "", admission_no: "", track: "", batch: courses[0] || "" };
-  const [form, setForm]             = useState(EMPTY_FORM);
-  const [saving, setSaving]         = useState(false);
-  const [saved, setSaved]           = useState(false);
-  const [error, setError]           = useState("");
+  const [, setForm]               = useState(EMPTY_FORM);
+  const [, setSaved]                = useState(false);
+  const [, setError]                = useState("");
   const [search, setSearch]         = useState("");
   const [filterCourse, setFilterCourse] = useState("ALL");
   const [editId, setEditId]         = useState(null);
   const [editForm, setEditForm]     = useState({});
-  const [editSaving, setEditSaving] = useState(false);
+  const [editSaving]               = useState(false);
   const [deleteId, setDeleteId]     = useState(null);
   const [view, setView]             = useState("list");
 
@@ -3640,81 +3641,15 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   // Existing batch values already in use (for quick-pick buttons). Track has no further
   // sub-hierarchy under it in the data — TRACK_BATCHES gives the canonical list per track,
   // but we also surface any batch values already seen in the data in case of stragglers.
-  const batchesForTrack = (trackName) => {
-    const canonical = TRACK_BATCHES[trackName] || [];
-    const seen = new Set(
-      students
-        .filter(s => (s.course || "").trim() === trackName)
-        .map(s => (s.class_name || "").toUpperCase())
-        .filter(Boolean)
-    );
-    return [...new Set([...canonical, ...seen])];
-  };
-
-  const handleAdd = async () => {
-    // Student records are now managed exclusively in StudentDB (Attendance
-    // module → Students tab), which is the single source of truth for
-    // name/course/batch/GCC. Exams reads students from there — creating
-    // one here would let the two screens' data drift apart again.
-    setError("Adding students has moved to StudentDB (Attendance → Students). Please add the student there — they'll appear here automatically.");
-    return;
-  };
-
-  const _unused_handleAdd = async () => {
-    setError("");
-    if (!form.name.trim())       { setError("Student name is required."); return; }
-    if (!form.gcc_no.trim())     { setError("GCC No. is required."); return; }
-    if (!form.track)             { setError("Track is required."); return; }
-    if (!form.batch.trim())      { setError("Batch is required."); return; }
-    if (students.find(s => String(s.gcc_no) === String(form.gcc_no).trim())) {
-      setError(`GCC No. ${form.gcc_no} already exists.`); return;
-    }
-    setSaving(true);
-    const batchVal = form.batch.trim();
-    const payload = {
-      name: form.name.trim().toUpperCase(), gcc_no: Number(form.gcc_no),
-      admission_no: form.admission_no.trim() || null,
-      course: form.track, class_name: batchVal.toUpperCase(), batch: batchVal,
-    };
-    const { data, error: sbErr } = await supabase.from("students").insert([payload]).select();
-    if (sbErr) { setError(sbErr.message); setSaving(false); return; }
-    onStudentsChange([...students, data[0]].sort((a, b) => a.name.localeCompare(b.name)));
-    setForm(EMPTY_FORM); setSaving(false); setSaved(true);
-    setTimeout(() => { setSaved(false); setView("list"); }, 1800);
-  };
-
-  const startEdit = (st) => {
-    // Editing has moved to StudentDB too (see handleAdd note above) — this
-    // now only opens a read-only detail view rather than an editable form.
-    setEditId(null);
-  };
-  const _unused_startEdit = (st) => {
-    setEditId(st.id);
-    setEditForm({
-      name: st.name, gcc_no: st.gcc_no, admission_no: st.admission_no || "",
-      track: st.course || trackForBatch(st.class_name) || "",
-      batch: st.class_name || st.batch || "",
-    });
-  };
-  const cancelEdit = () => { setEditId(null); setEditForm({}); };
-  const saveEdit = async (id) => {
+  
+  
+  
+      const cancelEdit = () => { setEditId(null); setEditForm({}); };
+  const saveEdit = async () => {
     // See handleAdd note — student records are edited in StudentDB only now.
     return;
   };
-  const _unused_saveEdit = async (id) => {
-    setEditSaving(true);
-    const batchVal = (editForm.batch || "").trim();
-    const payload = {
-      name: editForm.name.trim().toUpperCase(), gcc_no: Number(editForm.gcc_no),
-      admission_no: editForm.admission_no || null,
-      course: editForm.track || "", class_name: batchVal.toUpperCase(), batch: batchVal,
-    };
-    const { error: sbErr } = await supabase.from("students").update(payload).eq("id", id);
-    if (sbErr) { alert(sbErr.message); setEditSaving(false); return; }
-    onStudentsChange(students.map(s => s.id === id ? { ...s, ...payload } : s));
-    setEditId(null); setEditSaving(false);
-  };
-
+  
   const confirmDelete = async () => {
     // See handleAdd note — students are removed in StudentDB only now
     // (StudentDB also distinguishes soft-delete/dropout vs. permanent
@@ -3722,13 +3657,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
     setDeleteId(null);
     return;
   };
-  const _unused_confirmDelete = async () => {
-    if (!deleteId) return;
-    await supabase.from("students").delete().eq("id", deleteId);
-    onStudentsChange(students.filter(s => s.id !== deleteId));
-    setDeleteId(null);
-  };
-
+  
 
   const knownBatchKeys = new Set(courses.map(c => c.trim().toUpperCase()));
   const isUnrecognizedBatch = (s) => {
@@ -3777,7 +3706,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   // card instead of two — see that function's comment for why the raw data can still
   // have both spellings even after this display-side merge.
   const secondaryBatchCounts = new Map();
-  Object.entries(secondaryBatchMap || {}).forEach(([studentId, batchList]) => {
+  Object.entries(secondaryBatchMap || {}).forEach(([, batchList]) => {
     // Dedupe per student: a student with BOTH "Combined Navoday ENG" and "Combined
     // Navodaya Course(ENG)" tags (the exact spelling-drift case this normalizer
     // exists for) must only count once toward the merged ENG card, not twice.
@@ -4463,10 +4392,9 @@ function BulkSecondaryBatchModal({ selectedIds, students, courseSubjects, second
 // Reuses findBestStudentMatch / normalizeNameValue / normalizeGccValue already
 // defined near the top of this file for the marks-CSV importer, so the same
 // matching quality (GCC → Admission No. → exact name → fuzzy name) applies here.
-function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDone }) {
+function StudentRosterImport({ students, onDone }) {
   const isMobile = useMobile();
-  const courses = Object.keys(courseSubjects);
-  const [rawRows, setRawRows] = useState(null);   // parsed sheet rows (array of arrays)
+    const [rawRows, setRawRows] = useState(null);   // parsed sheet rows (array of arrays)
   const [headers, setHeaders] = useState([]);
   const [colMap, setColMap] = useState({ name: -1, gcc: -1, admission: -1 });
   const [defaultTrack, setDefaultTrack] = useState("");
@@ -4474,7 +4402,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState("");
   const [rows, setRows] = useState([]);           // processed rows with match info
-  const [saving, setSaving] = useState(false);
+  const [saving] = useState(false);
   const [saveSummary, setSaveSummary] = useState(null);
   const [manualOpenIdx, setManualOpenIdx] = useState(null);
   const [manualSearch, setManualSearch] = useState({});
@@ -4502,7 +4430,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
         gcc: findCol(["gcc"]),
         admission: findCol(["admission", "adm no", "adm.", "adm_no"]),
       });
-    } catch (e) {
+    } catch {
       setParseError("Could not read this file. Please upload a valid .csv or .xlsx file.");
     }
     setParsing(false);
@@ -4596,34 +4524,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
     setSaveSummary({ ok: false, message: "New students can't be created from this import anymore. Add them in StudentDB (Attendance → Students) first, then re-run this import so they match instead of appearing as \"new\"." });
     return;
   };
-  const _unused_handleSaveNew = async () => {
-    if (gccConflicts.length) return; // blocked — see warning banner in the UI
-    setSaving(true);
-    const toInsert = rows.filter(r => r.status === "new").map(r => {
-      const batchVal = (r.batch || defaultBatch || "").trim();
-      return {
-        name: r.rawName.trim().toUpperCase(),
-        gcc_no: r.rawGcc ? Number(normalizeGccValue(r.rawGcc)) || null : null,
-        admission_no: r.rawAdm ? String(r.rawAdm).trim() : null,
-        course: r.track || defaultTrack || "",
-        class_name: batchVal.toUpperCase(),
-        batch: batchVal,
-      };
-    }).filter(p => p.name);
-
-    if (!toInsert.length) { setSaving(false); return; }
-
-    const { data, error } = await supabase.from("students").insert(toInsert).select();
-    if (error) {
-      setSaveSummary({ ok: false, message: error.message });
-      setSaving(false);
-      return;
-    }
-    onStudentsChange([...students, ...(data || [])].sort((a, b) => (a.name || "").localeCompare(b.name || "")));
-    setSaveSummary({ ok: true, added: data?.length || 0, skippedExisting: existingRowsCount, skipped: skipRowsCount });
-    setSaving(false);
-  };
-
+  
   return (
     <div style={{ maxWidth: 900 }}>
       <div style={css.card}>
@@ -4839,7 +4740,7 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
         gcc: findCol(["gcc"]),
         admission: findCol(["admission", "adm no", "adm."]),
       });
-    } catch (e) {
+    } catch {
       setParseError("Could not read this file. Please upload a valid .csv or .xlsx file.");
     }
     setParsing(false);
@@ -5122,7 +5023,7 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
       // Best-effort section guess from the filename, e.g. RESULT__ENG_COMBINED.xls
       const guess = file.name.toUpperCase().match(/\b(ENG|MAN|HIN|MEI)\b/);
       if (guess) setSection(guess[1]);
-    } catch (e) {
+    } catch {
       setParseError("Could not read this file. Please upload a valid .csv or .xlsx file.");
     }
     setParsing(false);
@@ -5760,7 +5661,7 @@ function ExamAbsentFinder({ courseSubjects, students, onStudentsChange, onClose 
 // confusing "Achiever — ENG" pill shown in the roster. This tool finds every
 // student where stripping a trailing " — SUFFIX" from `batch` would exactly
 // match their real `class_name`, and offers to restore `batch` back to it.
-function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap, onSecondaryBatchesChange, onClose }) {
+function BatchSuffixCleanupTool({ students, secondaryBatchMap, onSecondaryBatchesChange, onClose }) {
   const [scanning, setScanning] = useState(true);
   const [affected, setAffected] = useState([]);
   const [selected, setSelected] = useState(new Set());
@@ -6260,8 +6161,17 @@ function MeritList({ courseSubjects, examTypes, students }) {
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const ranked = [...courseStudents].map(st => ({ ...st, total: getTotal(st.id), pct: courseMax ? (getTotal(st.id) / courseMax) * 100 : 0 })).sort((a, b) => b.total - a.total);
-  let cr = 1, pt = null;
-  const rankedWithRanks = ranked.map((st, i) => { if (i === 0) { cr = 1; pt = st.total; } else if (st.total !== pt) { cr++; pt = st.total; } return { ...st, rank: cr }; });
+  // dense rank by total (ties share a rank) — plain loop, no outer variables mutated
+  const rankedWithRanks = (() => {
+    let cr = 1, pt = null;
+    const out = [];
+    for (let i = 0; i < ranked.length; i++) {
+      const st = ranked[i];
+      if (i === 0) { cr = 1; pt = st.total; } else if (st.total !== pt) { cr++; pt = st.total; }
+      out.push({ ...st, rank: cr });
+    }
+    return out;
+  })();
   const filtered = rankedWithRanks.filter(st => !rankFilter || st.rank <= parseInt(rankFilter));
   const medals = ["🥇", "🥈", "🥉"];
 
@@ -6458,7 +6368,7 @@ function RenameCourseModal({ courseSubjects, oldName, onClose, onDone, onCourseS
             { onConflict: "key" }
           );
           if (error) errors.push(`exam_configs presets: ${error.message}`);
-        } catch (e) {
+        } catch {
           errors.push(`exam_configs presets: could not parse saved config JSON — left untouched, check manually.`);
         }
       }
@@ -6708,7 +6618,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [schedule, setSchedule] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [filterCourse, setFilterCourse] = useState("ALL");
   const [filterExamType, setFilterExamType] = useState("ALL");
   const [mode, setMode] = useState("single");
@@ -6804,6 +6714,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
   const acConfigBatches = activeExamConfig?.courseSubjects
     ? Object.keys(activeExamConfig.courseSubjects)
     : [];
+  const acConfigBatchesKey = acConfigBatches.join("|");
 
   // Builds the full preview: for each batch in the active config, one row
   // per subject, dated sequentially. `acSameDateAllBatches` controls whether
@@ -6840,7 +6751,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
       if (!acSameDateAllBatches) sharedDate = d;
     }
     return rows;
-  }, [acStartDate, acConfigBatches.join("|"), acSameDateAllBatches, acSkipWeekends, activeExamConfig]);
+  }, [acStartDate, acConfigBatchesKey, acSameDateAllBatches, acSkipWeekends, activeExamConfig]);
 
   // Rows that would collide with a schedule entry that already exists for
   // this exam type — re-running Auto-Generate (e.g. after fixing a date)
@@ -6966,7 +6877,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
     if (!dupDate || !dupIds.size) return;
     setDupSaving(true);
     const toDup = schedule.filter(s => dupIds.has(s.id));
-    const rows = toDup.map(({ id, created_at, ...rest }) => ({ ...rest, exam_date: dupDate }));
+    const rows = toDup.map((r) => ({ ...Object.fromEntries(Object.entries(r).filter(([k]) => k !== "id" && k !== "created_at")), exam_date: dupDate }));
     await supabase.from("exam_schedule").insert(rows);
     setDupSaving(false); setDupSaved(true); setDupIds(new Set()); fetchSchedule(); onScheduleChange?.();
     setTimeout(() => setDupSaved(false), 2500);
@@ -6975,7 +6886,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
   const handleFileUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return; e.target.value = "";
     await ensureLibs(); const XLSX = window.XLSX;
-    let rows = [];
+    let rows;
     const ext = file.name.split(".").pop().toLowerCase();
     if (ext === "csv") {
       const text = await file.text();
@@ -7552,7 +7463,7 @@ function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCo
 }
 
 // ─── SEAT ARRANGEMENT (mobile: stacked layout) ───────────────────────────────
-function SeatArrangement({ courseSubjects, examTypes, students, institute, schedule }) {
+function SeatArrangement({ courseSubjects, examTypes, students, schedule }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
 
@@ -7561,7 +7472,7 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
   const [dates, setDates]           = useState([]);
   const [room, setRoom]             = useState("");
   const [seats, setSeats]           = useState({});
-  const [savedSeats, setSavedSeats] = useState({});
+  const [, setSavedSeats]       = useState({});
   const [capacity, setCapacity]     = useState(30);
   const [cols, setCols]             = useState(5);
   const [loading, setLoading]       = useState(false);
@@ -7650,8 +7561,7 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
     setRoom(r); setSeats({}); setNewRoom("");
   };
 
-  const examName = examTypes.find(e=>e.id===examType)?.name || "Examination";
-  const occupiedCount = Object.values(seats).filter(Boolean).length;
+    const occupiedCount = Object.values(seats).filter(Boolean).length;
   const rows = Math.ceil(capacity / cols);
 
   return (
@@ -8007,12 +7917,6 @@ function ReportCardItem({ st, subjects, subjectMaxMap, courseMax, marks, examTyp
   const grade = getGrade(pct);
 
   const printReport = () => {
-    const sortedStudents = [...allStudents].map(s => ({ ...s, total: getTotal(s.id) })).sort((a, b) => b.total - a.total);
-    let rank = 1, prev = null;
-    for (let i = 0; i < sortedStudents.length; i++) {
-      if (i === 0) { rank = 1; prev = sortedStudents[i].total; } else if (sortedStudents[i].total !== prev) { rank++; prev = sortedStudents[i].total; }
-      if (sortedStudents[i].id === st.id) break;
-    }
     const html = buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marks, course, allStudents, examName, examDate, institute, remark);
     const w = window.open("", "_blank");
     w.document.write(`<!DOCTYPE html><html><head>
@@ -8358,7 +8262,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
     if (!w) { alert("⚠️ Popup blocked! Please allow popups for this site."); return; }
     w.document.write(`<!DOCTYPE html><html><head><style>body{font-family:sans-serif;background:#1a3c2e;display:flex;align-items:center;justify-content:center;min-height:100vh;color:white;font-size:18px;}</style></head><body>⏳ Preparing ${filteredRcStudents.length} report cards…</body></html>`);
     setRcProgress({ current: 0, total: filteredRcStudents.length });
-    try { await supabase.from('exam_print_log').insert({ doc_type:'report_card', course:rcCourse, exam_type:examTypes.find(e=>e.id===rcExamType)?.name||'', student_count:filteredRcStudents.length }); } catch(_) {}
+    try { await supabase.from('exam_print_log').insert({ doc_type:'report_card', course:rcCourse, exam_type:examTypes.find(e=>e.id===rcExamType)?.name||'', student_count:filteredRcStudents.length }); } catch { /* ignore */ }
     const cards = [];
     for (let i = 0; i < filteredRcStudents.length; i++) {
       const st = filteredRcStudents[i];
@@ -8390,7 +8294,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
     if (!w) { alert("⚠️ Popup blocked! Please allow popups for this site."); return; }
     w.document.write(`<!DOCTYPE html><html><head><style>body{font-family:sans-serif;background:#1a3c2e;display:flex;align-items:center;justify-content:center;min-height:100vh;color:white;font-size:18px;}</style></head><body>⏳ Preparing ${filteredAcStudents.length} admit cards…</body></html>`);
     setAcProgress({ current: 0, total: filteredAcStudents.length });
-    try { await supabase.from('exam_print_log').insert({ doc_type:'admit_card', course:acCourse, exam_type:acExamName, student_count:filteredAcStudents.length }); } catch(_) {}
+    try { await supabase.from('exam_print_log').insert({ doc_type:'admit_card', course:acCourse, exam_type:acExamName, student_count:filteredAcStudents.length }); } catch { /* ignore */ }
     const cards = [];
     for (let i = 0; i < filteredAcStudents.length; i++) {
       cards.push(buildAdmitCardHTML(filteredAcStudents[i]));
@@ -9097,17 +9001,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
     });
   };
 
-  const addSubject = () => {
-    const sub = subInput.trim();
-    if (!sub || !activeCourse) return;
-    setCourseData(prev => {
-      const existing = prev[activeCourse] || { subjects: [], marks: {} };
-      if (existing.subjects.includes(sub)) return prev;
-      return { ...prev, [activeCourse]: { ...existing, subjects: [...existing.subjects, sub] } };
-    });
-    setSubInput("");
-  };
-
+  
   const removeSubject = (course, sub) => {
     setCourseData(prev => {
       const existing = prev[course] || { subjects: [], marks: {} };
@@ -9819,7 +9713,7 @@ function ExamConfigManager({ courseSubjects, onUpdate, activeConfigId, onConfigS
     ]).then(([{ data: cfgData }, { data: actData }]) => {
       let allConfigs = [...EXAM_CONFIG_PRESETS];
 if (cfgData?.value) {
-  try { allConfigs = [...EXAM_CONFIG_PRESETS, ...JSON.parse(cfgData.value)]; } catch(_) {}
+  try { allConfigs = [...EXAM_CONFIG_PRESETS, ...JSON.parse(cfgData.value)]; } catch { /* ignore */ }
 }
 setConfigs(allConfigs);
 const savedId = actData?.value || "default";
@@ -10182,7 +10076,7 @@ export default function Exams({ currentUser, perms }) {
       ]);
       let allConfigs = [...EXAM_CONFIG_PRESETS];
       if (cfgData?.value) {
-        try { allConfigs = [...EXAM_CONFIG_PRESETS, ...JSON.parse(cfgData.value)]; } catch (_) {}
+        try { allConfigs = [...EXAM_CONFIG_PRESETS, ...JSON.parse(cfgData.value)]; } catch { /* ignore */ }
       }
       const savedId = actData?.value || "default";
       const cfg = allConfigs.find(c => c.id === savedId) || allConfigs[0];
@@ -10337,10 +10231,10 @@ export default function Exams({ currentUser, perms }) {
           // because the DB row predates it. Existing saved batches are never overwritten.
           const merged = { ...DEFAULT_COURSE_SUBJECTS, ...saved };
           setCourseSubjects(merged);
-        } catch (_) {}
+        } catch { /* ignore */ }
       }
       setSchedule(sched || []);
-      if (instSetting?.value) { try { setInstitute({ ...INSTITUTE_DEFAULT, ...JSON.parse(instSetting.value) }); } catch (_) {} }
+      if (instSetting?.value) { try { setInstitute({ ...INSTITUTE_DEFAULT, ...JSON.parse(instSetting.value) }); } catch { /* ignore */ } }
       setLoading(false);
     };
 
