@@ -91,3 +91,58 @@ export async function migrateLocalToCloud() {
   return local.length;
 }
 export const localCount = () => lsRead().length;
+
+// ─── Student Data Fix Engine rules (see studentFixEngine.js) ─────────────────
+// Table `mock_test_fixes`; browser fallback until the migration
+// 20261003_mock_test_fixes.sql is applied.
+const FIX_TABLE = 'mock_test_fixes';
+const FIX_LS = 'gnsi_mock_test_fixes_v1';
+const fixRead = () => { try { return JSON.parse(localStorage.getItem(FIX_LS) || '[]'); } catch { return []; } };
+const fixWrite = (rules) => { try { localStorage.setItem(FIX_LS, JSON.stringify(rules)); return true; } catch { return false; } };
+const fromDb = (r) => ({ ...r, group: r.grp });
+
+// → { fixes, mode: 'cloud' | 'local' }
+export async function loadFixes() {
+  const { data, error } = await supabase.from(FIX_TABLE).select('*').order('created_at');
+  if (error) {
+    if (missingTable(error)) return { fixes: fixRead(), mode: 'local' };
+    throw error;
+  }
+  return { fixes: data.map(fromDb), mode: 'cloud' };
+}
+
+// rules: [{series?, kind, match, changes, note, group}]
+export async function saveFixes(rules, mode, who = '') {
+  const stamp = new Date().toISOString();
+  if (mode === 'local') {
+    const withIds = rules.map((r, i) => ({ ...r, id: `local-fix-${Date.now()}-${i}`, created_at: new Date(Date.parse(stamp) + i).toISOString(), created_by: who || null }));
+    if (!fixWrite([...fixRead(), ...withIds])) throw new Error('Browser storage is full — apply the Supabase migration to save fixes permanently.');
+    return;
+  }
+  const rows = rules.map((r, i) => ({ series: r.series ?? null, kind: r.kind, match: r.match || {}, changes: r.changes || {}, note: r.note || null, grp: r.group || null, created_by: who || null, created_at: new Date(Date.parse(stamp) + i).toISOString() }));
+  for (let i = 0; i < rows.length; i += 200) {
+    const { error } = await supabase.from(FIX_TABLE).insert(rows.slice(i, i + 200));
+    if (error) throw error;
+  }
+}
+
+// Undo: remove every rule of a group (or one rule when it has no group).
+export async function deleteFixGroup(rule, mode) {
+  if (mode === 'local') {
+    fixWrite(fixRead().filter((r) => (rule.group ? r.group !== rule.group : r.id !== rule.id)));
+    return;
+  }
+  const q = supabase.from(FIX_TABLE).delete();
+  const { error } = rule.group ? await q.eq('grp', rule.group) : await q.eq('id', rule.id);
+  if (error) throw error;
+}
+
+// Move rules saved in this browser into Supabase (after the migration is applied).
+export async function migrateLocalFixes() {
+  const local = fixRead();
+  if (!local.length) return 0;
+  await saveFixes(local.map((r) => ({ series: r.series, kind: r.kind, match: r.match, changes: r.changes, note: r.note, group: r.group })), 'cloud');
+  try { localStorage.removeItem(FIX_LS); } catch { /* ignore */ }
+  return local.length;
+}
+export const localFixCount = () => fixRead().length;
