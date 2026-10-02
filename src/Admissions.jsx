@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { NavIcon } from './navIcons'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
@@ -4639,7 +4640,7 @@ export default function Admissions() {
 
       <PersonalAccountantButton supabase={supabase} moduleKey="admissions" isAdmin={isAdminRole(userRole) || ['admin','Admin'].includes(userRole)} currentUser={getSessionInfo()} isMobile={isMobile} />
 
-      <div style={{ padding:'0 12px 40px', fontFamily:"'Inter',system-ui,sans-serif", background: darkMode ? T.slate[900] : PAGE_BG, minHeight:'100vh', color:N.text, transition:'background .2s', overflowX:'hidden', maxWidth:'100vw' }}>
+      <div style={{ padding:isMobile?'0 12px 96px':'0 12px 40px', fontFamily:"'Inter',system-ui,sans-serif", background: darkMode ? T.slate[900] : PAGE_BG, minHeight:'100vh', color:N.text, transition:'background .2s', overflowX:'hidden', maxWidth:'100vw' }}>
         <style>{`
   @keyframes spin { to { transform:rotate(360deg) } }
   @keyframes pulse { 0%,100%{box-shadow:0 0 0 3px rgba(10,128,66,.18)} 50%{box-shadow:0 0 0 7px rgba(10,128,66,.06)} }
@@ -4679,7 +4680,23 @@ export default function Admissions() {
               </p>
             </div>
           </div>
-          <div style={{ display:'flex', gap:4, background:N.bg2, borderRadius:10, padding:3 }}>
+          {isMobile ? createPortal(
+            <nav className="adm-bottom" role="tablist" aria-label="Admissions sections">
+              <style>{`.adm-bottom{position:fixed;left:0;right:0;bottom:0;z-index:120;display:grid;grid-template-columns:repeat(4,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+.adm-nb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:3px 0;font:600 10.5px 'Plus Jakarta Sans',system-ui,sans-serif;color:#b9c3d6;cursor:pointer}
+.adm-nb .adm-bi{display:flex;align-items:center;justify-content:center;width:42px;height:27px;border-radius:10px}
+.adm-nb.on{color:#fff;font-weight:800}
+.adm-nb.on .adm-bi{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
+.adm-nb:focus-visible{outline:2px solid #e9d9b0;outline-offset:-2px;border-radius:10px}`}</style>
+              {[['newApplication','New','admissions'],['applications','Applications','students'],['ledger','Ledger','studentfeeledger'],['sessions','Sessions','timetable']].map(([key,label,icon]) => (
+                <button key={key} type="button" role="tab" aria-selected={moduleView===key} className={'adm-nb'+(moduleView===key?' on':'')} onClick={()=>{setModuleView(key);window.scrollTo({top:0})}}>
+                  <span className="adm-bi"><NavIcon id={icon} size={20} /></span><span>{label}</span>
+                </button>
+              ))}
+            </nav>,
+            document.body
+          ) : null}
+          {!isMobile && <div style={{ display:'flex', gap:4, background:N.bg2, borderRadius:10, padding:3 }}>
             {[['newApplication','📝 New Application'],['applications','📋 Applications'],['ledger','🔗 Student Ledger'],['sessions','📅 Sessions']].map(([key,label]) => (
               <button key={key} onClick={()=>setModuleView(key)}
                 style={{ padding:'7px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:12, fontWeight:700,
@@ -4689,7 +4706,7 @@ export default function Admissions() {
                 {label}
               </button>
             ))}
-          </div>
+          </div>}
         </div>
 
         {moduleView === 'newApplication' ? (
@@ -4770,13 +4787,13 @@ export default function Admissions() {
               <span>🏫 Day Scholar: <strong style={{ color:T.slate[500] }}>₹2,000/mo</strong></span>
               <span style={{ padding:'1px 8px', borderRadius:6, background:T.slate[100], color:T.slate[500], fontWeight:700, fontSize:10 }}>Role: {userRole}</span>
             </div>
-            <div style={{ marginTop:4, fontSize:10, color:T.slate[300] }}>
+            {!isMobile && <div style={{ marginTop:4, fontSize:10, color:T.slate[300] }}>
               Shortcuts: <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>N</kbd> New &nbsp;
               <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>/</kbd> Search &nbsp;
               <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>V</kbd> Toggle view &nbsp;
               <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>D</kbd> Dark mode &nbsp;
               <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>Esc</kbd> Close
-            </div>
+            </div>}
           </div>
           <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr 1fr':'repeat(7,auto)', gap:8, alignItems:'center' }}>
            <button onClick={()=>setDarkMode(v=>!v)} title="Toggle dark mode (D)"
