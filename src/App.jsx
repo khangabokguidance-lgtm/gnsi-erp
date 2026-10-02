@@ -687,8 +687,11 @@ export default function App() {
   // navigation to one of their old ids ('questionbank', 'entrance', …) opens the
   // hub on that tab, so existing links and deep links keep working.
   const [hubTab, setHubTab] = useState(HUB_TABS[0])
+  // hubHome: the hub opens on its home screen from the menu, but straight on a tab for deep links
+  const [hubHome, setHubHome] = useState(true)
   const setActive = useCallback(id => {
-    if (isHubTab(id)) { setHubTab(id); setActiveRaw(HUB_ID) } else setActiveRaw(id)
+    if (isHubTab(id)) { setHubTab(id); setHubHome(false); setActiveRaw(HUB_ID) }
+    else { if (id === HUB_ID) setHubHome(true); setActiveRaw(id) }
   }, [])
   // "Open ledger" links anywhere in the app (ledgerLink.js) switch here.
   useEffect(() => {
@@ -976,7 +979,7 @@ export default function App() {
     reception:         <Reception         currentUser={currentUser} perms={perms('reception')}         />,
     notice:            <Notice            currentUser={currentUser} perms={perms('notice')}            />,
     social:            <Social            currentUser={currentUser} perms={perms('social')}            />,
-    learninghub:       <LearningHub       currentUser={currentUser} tab={hubTab} onNavigate={setActive} perms={perms} canAccess={canAccess} />,
+    learninghub:       <LearningHub       currentUser={currentUser} tab={hubTab} home={hubHome} onHome={() => setHubHome(true)} onNavigate={setActive} perms={perms} canAccess={canAccess} />,
     studylockers:      <StudyLockers      currentUser={currentUser} perms={perms('studylockers')}  onNavigate={navigateTo} />,
     connect:           <Connect           currentUser={currentUser} perms={perms('connect')}           />,
     website:           <WebsiteTab        />,
