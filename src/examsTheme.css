@@ -10,6 +10,17 @@
 .exams-root input,.exams-root select,.exams-root textarea{font-family:inherit}
 .exams-root input:focus,.exams-root select:focus,.exams-root textarea:focus{border-color:var(--x-cyan)!important;box-shadow:0 0 0 3px rgba(0,186,242,.18);outline:none}
 
+/* ─── Desktop tab bar ─────────────────────────────────────────────────────── */
+.xd-nav{display:flex;flex-wrap:wrap;gap:8px;padding:10px 24px;background:#fff;border-bottom:1px solid #E6ECF4;box-shadow:0 2px 6px rgba(0,46,110,.04)}
+.xd-group{background:#F8FAFD;border:1px solid #E6ECF4;border-radius:14px;padding:6px 6px 5px}
+.xd-group-h{font-size:9.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;padding:0 6px 4px}
+.xd-group-tabs{display:flex;flex-wrap:wrap;gap:2px}
+.xd-tab{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 9px;flex:0 0 auto;white-space:nowrap;font-size:12px;font-weight:600;color:#334155;background:transparent;border:1px solid transparent;border-radius:10px;cursor:pointer;transition:background .15s,color .15s,box-shadow .15s}
+.xd-tab:hover{background:#EEF4FC;color:var(--x-navy)}
+.xd-tab:focus-visible{outline:2px solid var(--x-cyan);outline-offset:1px}
+.xd-tab.on{background:var(--x-navy);color:#fff;box-shadow:0 4px 10px rgba(0,46,110,.28)}
+.xd-tab span{line-height:1}
+
 /* ─── Phone shell ────────────────────────────────────────────────────────── */
 .xm-home{padding-bottom:96px}
 .xm-hero{background:linear-gradient(145deg,#002E6E 0%,#0A56B8 100%);padding:16px 16px 58px;border-radius:0 0 28px 28px;color:#fff}
@@ -31,20 +42,20 @@
 .xm-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px 2px}
 .xm-tile{background:none;border:0;padding:6px 2px 10px;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;color:var(--x-ink);border-radius:12px}
 .xm-tile:active{background:#F1F5FA}
-.xm-ico{width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:23px}
+.xm-ico{width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center}
 .xm-lbl{font-size:10.8px;font-weight:600;line-height:1.2;text-align:center;max-width:80px;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .xm-quick{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:14px 8px 12px}
 .xm-quick button{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;font-size:11px;font-weight:700;color:var(--x-ink);text-align:center;line-height:1.2}
-.xm-round{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 6px 14px rgba(0,46,110,.22)}
+.xm-round{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 6px 14px rgba(0,46,110,.22)}
 .xm-promo{width:calc(100% - 32px);margin:0 16px 14px;border:0;border-radius:18px;padding:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;cursor:pointer;color:#fff;background:linear-gradient(120deg,#00BAF2,#0A56B8);box-shadow:0 8px 20px rgba(10,86,184,.28)}
 .xm-promo em{font-style:normal;font-size:10px;font-weight:800;letter-spacing:.1em;background:rgba(255,255,255,.25);padding:2px 8px;border-radius:999px}
 .xm-promo b{display:block;font-size:17px;margin:6px 0 3px}
 .xm-promo span{font-size:12px;opacity:.92;line-height:1.35;display:block}
-.xm-promo .xm-promo-ico{font-size:42px;opacity:.95;flex-shrink:0}
+.xm-promo .xm-promo-ico{display:flex;opacity:.95;flex-shrink:0;color:#fff}
 
 .xm-top{position:fixed;top:56px;left:0;right:0;z-index:90;height:54px;display:flex;align-items:center;gap:8px;padding:0 12px 0 6px;background:#fff;border-bottom:1px solid #E6ECF4;box-shadow:0 2px 10px rgba(0,46,110,.06)}
 .xm-back{width:40px;height:40px;border-radius:50%;border:0;background:#EEF4FC;color:var(--x-navy);font-size:26px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0 0 3px}
-.xm-top-ico{font-size:20px}
+.xm-top-ico{display:flex;color:var(--x-navy)}
 .xm-top-t{min-width:0;display:flex;flex-direction:column}
 .xm-top-t b{font-size:16px;font-weight:800;color:var(--x-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .xm-top-t small{font-size:11px;color:var(--x-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -52,9 +63,9 @@
 
 .xm-bottom{position:fixed;left:0;right:0;bottom:0;z-index:90;display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-top:1px solid #E6ECF4;box-shadow:0 -4px 16px rgba(0,46,110,.08);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
 .xm-bottom button{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:10.5px;font-weight:600;color:var(--x-sub);cursor:pointer;position:relative}
-.xm-bottom .xm-bi{font-size:21px;line-height:1;filter:grayscale(1);opacity:.7}
+.xm-bottom .xm-bi{display:flex;opacity:.75}
 .xm-bottom button.on{color:var(--x-navy);font-weight:800}
-.xm-bottom button.on .xm-bi{filter:none;opacity:1}
+.xm-bottom button.on .xm-bi{opacity:1}
 .xm-bottom button.on::before{content:'';position:absolute;top:-7px;width:28px;height:3px;border-radius:0 0 3px 3px;background:var(--x-cyan)}
 
 /* ─── Phone fixes for the inner screens ──────────────────────────────────── */
