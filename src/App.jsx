@@ -22,13 +22,12 @@ import Social             from './Social'
 import Connect            from './Connect'
 import Reports            from './Reports'
 import Checklist          from './Checklist'
-import QuestionBank       from './QuestionBank'
-import QuestionBankViewer from './QuestionBankViewer'
 import SystemSettings     from './SystemSettingsPage'
 import AdminPage          from './AdminPage'
 import StudentFeeLedger   from './StudentFeeLedger'
 import MobileNavHome from './MobileNavHome'
-import LearningShell from './LearningHub'
+import LearningHub from './LearningHub'
+import { HUB_ID, HUB_TABS, isHubTab, canSeeHub } from './learningHubTabs'
 import { NavIcon } from './navIcons'
 import { OPEN_LEDGER_EVENT, ledgerGccFromUrl } from './ledgerLink'
 import GNSIDashboard      from './GNSIDashboard'
@@ -39,7 +38,6 @@ import Exams              from './Exams'
 import Timetable          from './Timetable'
 import FeeSetup           from './FeeSetup'
 import Kitchen            from './Kitchen.jsx'
-import Entrance           from './Entrance'
 import ConstructionMaintenance from './ConstructionMaintenance'
 import Store              from './Store'
 import StorePublic        from './StorePublic'
@@ -49,11 +47,9 @@ import LandingPage        from './LandingPage'
 import WebsiteTab         from './WebsiteTab'
 import { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
 import AdminLinkStaff     from './AdminLinkStaff'
-import StudyMaterial      from './StudyMaterial'
 import StudyLockers       from './StudyLockers'
 import InvitationGenerator from './InvitationGenerator'
 import CertificateGenerator from './CertificateGenerator'
-import TeachingAids       from './TeachingAids'
 import CastReceiver       from './CastReceiver'
 import Awards             from './Awards'
 import FaceAttendance     from './FaceAttendance'
@@ -117,11 +113,9 @@ const ALL_GROUPS = [
       { id: 'timetable',     label: 'Timetable',       icon: '🕐' },
       { id: 'teaching',      label: 'Teaching',        icon: '📚' },
       { id: 'courses',       label: 'Courses',         icon: '🎓' },
-      { id: 'questionbank',  label: 'Question Bank',   icon: '❓' },
-      { id: 'questionbankviewer', label: 'Question Bank Viewer', icon: '📖' },
-      { id: 'entrance',      label: 'Entrance Exam',   icon: '🏆' },
-      { id: 'studymaterial', label: 'Study Materials', icon: '📖' },
-      { id: 'teachingaids',  label: 'Teaching Aids',   icon: '🔒' },
+      // Study Materials, Teaching Aids, Question Bank (+ Viewer) and Entrance Exam
+      // are tabs of this one module; each keeps its own permission key.
+      { id: 'learninghub',   label: 'Learning Hub',    icon: '🎓' },
       { id: 'studylockers',  label: 'Study Lockers',   icon: '🗃️' },
     ],
   },
@@ -424,6 +418,7 @@ function SidebarContent({ activePage, setActivePage, onLogout, currentUser, onNa
     const set = new Set(['dashboard'])
     if (canSeeFaceAttendance(currentUser, isAdmin)) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
+    if (canSeeHub(k => set.has(k))) set.add(HUB_ID)
     return set
   }, [permMap, isAdmin, currentUser])
 
@@ -536,6 +531,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
     const set = new Set(['dashboard'])
     if (canSeeFaceAttendance(currentUser, isAdmin)) set.add('faceattendance')
     Object.entries(permMap).forEach(([key, crud]) => { if (crud.read) set.add(key) })
+    if (canSeeHub(k => set.has(k))) set.add(HUB_ID)
     return set
   }, [permMap, isAdmin, currentUser])
 
@@ -661,7 +657,7 @@ export default function App() {
       return p.user
     } catch { return null }
   })
-  const [active,           setActive]           = useState(() => {
+  const [active,           setActiveRaw]        = useState(() => {
     // Public, unauthenticated pages must resolve correctly on a cold page
     // load (no prior in-app navigation) — e.g. a QR code, a shared link, or
     // a Chromecast/Android TV opening this URL directly via the
@@ -687,15 +683,22 @@ export default function App() {
     if (ledgerGccFromUrl()) return 'studentfeeledger'
     return 'dashboard'
   })
+  // Learning Hub: the five academic-content modules are tabs of one page. Any
+  // navigation to one of their old ids ('questionbank', 'entrance', …) opens the
+  // hub on that tab, so existing links and deep links keep working.
+  const [hubTab, setHubTab] = useState(HUB_TABS[0])
+  const setActive = useCallback(id => {
+    if (isHubTab(id)) { setHubTab(id); setActiveRaw(HUB_ID) } else setActiveRaw(id)
+  }, [])
   // "Open ledger" links anywhere in the app (ledgerLink.js) switch here.
   useEffect(() => {
     const open = () => setActive('studentfeeledger')
     window.addEventListener(OPEN_LEDGER_EVENT, open)
     return () => window.removeEventListener(OPEN_LEDGER_EVENT, open)
-  }, [])
+  }, [setActive])
   // Teaching hub links (StudyMaterialBridge.openChapterIn) name hub targets
   // rather than pages: 'hub' / 'logs' / 'syllabusmgr' live inside Teaching.
-  const navigateTo = useCallback(id => setActive(({ hub: 'teaching', logs: 'teaching', syllabusmgr: 'teaching' })[id] || id), [])
+  const navigateTo = useCallback(id => setActive(({ hub: 'teaching', logs: 'teaching', syllabusmgr: 'teaching' })[id] || id), [setActive])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => LS.get('gnsi_sidebar_collapsed', false))
   const [showLogin,        setShowLogin]        = useState(false)
   const [permMap,          setPermMap]          = useState({})
@@ -909,7 +912,7 @@ export default function App() {
     }
     window.addEventListener('popstate', handleBack)
     return () => window.removeEventListener('popstate', handleBack)
-  }, [active])
+  }, [active, setActive])
 
   // These pages are intentionally public and must render even with no
   // logged-in session — e.g. a QR code (verify), a student self-service
@@ -946,6 +949,7 @@ export default function App() {
     // the component itself only exposes enrollment management to admins.
     if (key === 'faceattendance') return canSeeFaceAttendance(currentUser, isAdmin)
     if (isAdmin) return true
+    if (key === HUB_ID) return canSeeHub(k => permMap[k]?.read === true)
     return permMap[key]?.read === true
   }
   const perms = (key) => getModulePerms(permMap, key, isAdmin)
@@ -972,10 +976,7 @@ export default function App() {
     reception:         <Reception         currentUser={currentUser} perms={perms('reception')}         />,
     notice:            <Notice            currentUser={currentUser} perms={perms('notice')}            />,
     social:            <Social            currentUser={currentUser} perms={perms('social')}            />,
-    questionbank:      <LearningShell id="questionbank" onNavigate={navigateTo}><QuestionBank      currentUser={currentUser} perms={perms('questionbank')} onNavigate={navigateTo} /></LearningShell>,
-    questionbankviewer:<LearningShell id="questionbankviewer" onNavigate={navigateTo}><QuestionBankViewer currentUser={currentUser} onNavigate={setActive} /></LearningShell>,
-    studymaterial:     <LearningShell id="studymaterial" onNavigate={navigateTo}><StudyMaterial     currentUser={currentUser} perms={perms('studymaterial')} onNavigate={navigateTo} /></LearningShell>,
-    teachingaids:      <LearningShell id="teachingaids" onNavigate={navigateTo}><TeachingAids      currentUser={currentUser} perms={perms('teachingaids')}  /></LearningShell>,
+    learninghub:       <LearningHub       currentUser={currentUser} tab={hubTab} onNavigate={setActive} perms={perms} canAccess={canAccess} />,
     studylockers:      <StudyLockers      currentUser={currentUser} perms={perms('studylockers')}  onNavigate={navigateTo} />,
     connect:           <Connect           currentUser={currentUser} perms={perms('connect')}           />,
     website:           <WebsiteTab        />,
@@ -994,7 +995,6 @@ export default function App() {
     feesetup:          isAdmin ? <FeeSetup userRole={currentUser.role} perms={perms('feesetup')} /> : <AccessDenied />,
     construction:      <ConstructionMaintenance />,
     kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}           />,
-    entrance:          <LearningShell id="entrance" onNavigate={navigateTo}><Entrance          currentUser={currentUser} perms={perms('entrance')}          /></LearningShell>,
     store:             <Store             currentUser={currentUser} perms={perms('store')}             />,
     // FIX: invitation now uses permission system, not hardcoded Manager bypass
     invitation:        canAccess('invitation') ? <InvitationGenerator currentUser={currentUser} /> : <AccessDenied />,

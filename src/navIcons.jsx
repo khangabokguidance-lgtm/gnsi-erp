@@ -19,6 +19,7 @@ const P = {
   entrance: <><path d="M8 21h8M12 17v4"/><path d="M7 4h10v5a5 5 0 01-10 0z"/><path d="M7 6H4a3 3 0 003 4M17 6h3a3 3 0 01-3 4"/></>,
   studymaterial: <><path d="M4 19V5a2 2 0 012-2h12v14H6a2 2 0 00-2 2zm0 0a2 2 0 002 2h12"/><path d="M9 7h6"/></>,
   teachingaids: <><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></>,
+  learninghub: <><path d="M12 3L2 8l10 5 10-5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/><path d="M22 8v6"/><path d="M12 13v4"/></>,
   studylockers: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/><path d="M8 10v2M16 10v2"/></>,
   kitchen: <><path d="M5 3v7a2 2 0 002 2h0a2 2 0 002-2V3M7 12v9"/><path d="M17 21V3c-2 1-3 4-3 7h3"/></>,
   staff: <><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14c2.6.3 4.5 2.4 4.5 5"/></>,

@@ -1,20 +1,28 @@
 // ─── LearningHub.jsx ─────────────────────────────────────────────────────────
-// Shared shell for the five academic-content modules:
-//   Study Materials · Teaching Aids  →  Question Bank · Question Bank Viewer  →  Entrance Exam
-//   (Learn)                             (Practice)                               (Assess)
-// It wraps each module with
-//   1. a premium ribbon that shows the whole flow and lets you jump between
-//      the modules (live counts on every stop), and
-//   2. "Connected to this page" cards — what this module feeds / is fed by,
-//      each a one-click jump with its live number.
-// Counts refresh by themselves when a question or material is saved anywhere
-// (EventBus), so the numbers are the same on every one of the five screens.
+// ONE module for everything academic-content: Study Materials, Teaching Aids,
+// Question Bank, Question Bank Viewer and Entrance Exam are tabs of this page
+// (sidebar id 'learninghub'), laid out as a flow:
+//   Learn (Study Materials · Teaching Aids) → Practice (Question Bank · Viewer) → Assess (Entrance Exam)
+// • a premium ribbon is the tab bar, with a live count on every tab (refreshes
+//   when a question/material is saved anywhere);
+// • "Connected to this page" cards link each tab to the ones it feeds / is fed by;
+// • tabs keep their state while you switch (a visited tab stays mounted, hidden),
+//   so a half-written question or an open filter is not lost;
+// • each tab keeps its own permission key (questionbank, entrance, …), so role
+//   settings still decide who sees which tab.
 // Styled with the portal's premiumUI tokens (navy + antique gold).
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { supabase } from './supabase';
 import { NavIcon } from './navIcons';
 import { PX } from './premiumUI';
 import { EventBus, GNSI_EVENTS } from './EventBus';
+import { HUB_TABS } from './learningHubTabs';
+
+const StudyMaterial = lazy(() => import('./StudyMaterial'));
+const TeachingAids = lazy(() => import('./TeachingAids'));
+const QuestionBank = lazy(() => import('./QuestionBank'));
+const QuestionBankViewer = lazy(() => import('./QuestionBankViewer'));
+const Entrance = lazy(() => import('./Entrance'));
 
 const MODULES = {
   studymaterial:      { label: 'Study Materials',      short: 'Materials',  metric: 'materials', unit: 'materials' },
@@ -93,6 +101,12 @@ const fmt = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleSt
 const CSS = `
 .lh-root{--lh-navy:${PX.navy};--lh-gold:${PX.gold};font-family:${PX.sans}}
 .lh-wrap{padding:16px 24px 0}
+.lh-title{display:flex;align-items:center;gap:12px;margin:0 2px 12px;flex-wrap:wrap}
+.lh-title-ico{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,${PX.navy2},${PX.navy});color:${PX.goldLt};box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 8px 16px -8px rgba(19,42,79,.6)}
+.lh-title-e{font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:${PX.gold}}
+.lh-title-t{font-family:${PX.serif};font-size:22px;font-weight:600;color:${PX.ink};line-height:1.1}
+.lh-title-s{font-size:12.5px;color:${PX.sub};margin-left:auto}
+@media (max-width:640px){.lh-title-s{display:none}.lh-title-t{font-size:19px}}
 .lh-ribbon{display:flex;align-items:stretch;gap:0;background:#fff;border:1px solid ${PX.line};border-radius:18px;padding:8px;box-shadow:0 1px 2px rgba(19,42,79,.05),0 14px 30px -22px rgba(19,42,79,.4);overflow-x:auto;scrollbar-width:none}
 .lh-ribbon::-webkit-scrollbar{display:none}
 .lh-stage{display:flex;flex-direction:column;gap:5px;padding:2px 10px 4px;flex:0 0 auto;position:relative}
@@ -119,6 +133,7 @@ const CSS = `
 .lh-link-d{font-size:11.5px;color:${PX.sub};margin-top:2px;line-height:1.3}
 .lh-link-go{margin-left:auto;color:${PX.gold};flex-shrink:0}
 @media (max-width:900px){.lh-links{grid-template-columns:1fr}}
+@media (min-width:641px){.lh-ribbon{flex-wrap:wrap;overflow-x:visible;row-gap:10px}.lh-stage + .lh-stage{border-left:0}.lh-stage + .lh-stage::before{display:none}.lh-stage{padding:2px 12px 4px 4px}}
 @media (max-width:640px){
   .lh-wrap{padding:10px 12px 0}
   .lh-pill{height:40px;padding:0 11px 0 9px}
@@ -131,10 +146,10 @@ const CSS = `
 }
 `;
 
-export function LearningRibbon({ active, onNavigate, counts }) {
+export function LearningRibbon({ active, onNavigate, counts, visible }) {
   return (
     <nav className="lh-ribbon" aria-label="Learning flow">
-      {FLOW.map((st) => (
+      {FLOW.map((st) => ({ ...st, ids: st.ids.filter((id) => !visible || visible.includes(id)) })).filter((st) => st.ids.length).map((st) => (
         <div key={st.stage} className="lh-stage">
           <div className="lh-stage-h">{st.stage}</div>
           <div className="lh-pills">
@@ -155,8 +170,8 @@ export function LearningRibbon({ active, onNavigate, counts }) {
   );
 }
 
-export function LearningLinks({ active, onNavigate, counts }) {
-  const rel = RELATED[active] || [];
+export function LearningLinks({ active, onNavigate, counts, visible }) {
+  const rel = (RELATED[active] || []).filter((r) => !visible || visible.includes(r.to));
   if (!rel.length || !onNavigate) return null;
   return (
     <div className="lh-links" aria-label="Connected to this page">
@@ -177,17 +192,54 @@ export function LearningLinks({ active, onNavigate, counts }) {
   );
 }
 
-// id: the module being shown; onNavigate(id): App's navigation.
-export default function LearningShell({ id, onNavigate, children }) {
+const Loading = () => (
+  <div style={{ padding: '60px 20px', textAlign: 'center', color: PX.sub, fontFamily: PX.sans, fontSize: 13 }}>Loading…</div>
+);
+
+// tab: active tab id (controlled by App so links from other modules can open a
+// specific tab); onNavigate(id): App's router (tab ids stay inside the hub).
+// perms(key) / canAccess(key): the signed-in user's rights per tab module.
+export default function LearningHub({ currentUser, tab, onNavigate, perms, canAccess }) {
   const counts = useLearningCounts();
+  const visible = HUB_TABS.filter((id) => !canAccess || canAccess(id));
+  const active = visible.includes(tab) ? tab : visible[0];
+  // tabs stay mounted once opened (hidden when inactive) so their state survives switching
+  const [opened, setOpened] = useState(() => new Set(active ? [active] : []));
+  if (active && !opened.has(active)) setOpened(new Set(opened).add(active)); // derived state: adjust during render
+  if (!active) return <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>You do not have access to any Learning Hub section.</div>;
+
+  const view = (id) => {
+    const common = { currentUser, onNavigate };
+    switch (id) {
+      case 'studymaterial': return <StudyMaterial {...common} perms={perms('studymaterial')} />;
+      case 'teachingaids': return <TeachingAids {...common} perms={perms('teachingaids')} />;
+      case 'questionbank': return <QuestionBank {...common} perms={perms('questionbank')} />;
+      case 'questionbankviewer': return <QuestionBankViewer {...common} />;
+      case 'entrance': return <Entrance {...common} perms={perms('entrance')} />;
+      default: return null;
+    }
+  };
+
   return (
     <div className="lh-root">
       <style>{CSS}</style>
       <div className="lh-wrap">
-        <LearningRibbon active={id} onNavigate={onNavigate} counts={counts} />
-        <LearningLinks active={id} onNavigate={onNavigate} counts={counts} />
+        <div className="lh-title">
+          <span className="lh-title-ico"><NavIcon id="learninghub" size={18} /></span>
+          <div>
+            <div className="lh-title-e">GNSI · Academics</div>
+            <div className="lh-title-t">Learning Hub</div>
+          </div>
+          <div className="lh-title-s">Study · Practise · Assess — one connected place</div>
+        </div>
+        <LearningRibbon active={active} onNavigate={onNavigate} counts={counts} visible={visible} />
+        <LearningLinks active={active} onNavigate={onNavigate} counts={counts} visible={visible} />
       </div>
-      {children}
+      {visible.filter((id) => opened.has(id)).map((id) => (
+        <div key={id} style={{ display: id === active ? 'block' : 'none' }}>
+          <Suspense fallback={<Loading />}>{view(id)}</Suspense>
+        </div>
+      ))}
     </div>
   );
 }
