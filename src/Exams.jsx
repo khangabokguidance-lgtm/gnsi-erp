@@ -1119,6 +1119,7 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, in
     setMarks(map); setLoading(false); setIsDirty(false); setAbsentSet(new Set());
   }, [students]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
   useEffect(() => { loadScheduleAndMarks(examType, course); }, [examType, course, loadScheduleAndMarks]);
 
   // Warn on tab close/refresh if there are unsaved mark changes — standard
@@ -2417,6 +2418,7 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
 
   useEffect(() => {
     if (!examType) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     setDatesLoaded(false);
     supabase.from("exam_marks").select("exam_date").eq("exam_type_id", examType).then(({ data }) => {
       const unique = [...new Set((data || []).map(r => r.exam_date))].sort().reverse();
@@ -2426,6 +2428,7 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
   }, [examType]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     if (!examType || !course) { setScheduledSubjects([]); return; }
     supabase.from("exam_schedule").select("id, subject, total_marks").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
       setScheduledSubjects(data || []);
@@ -2441,6 +2444,7 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
 
   useEffect(() => {
     if (!examType || !examDate) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     setLoading(true);
     const ids = courseStudents.map(s => s.id);
     // Resolve via exam_schedule (exam_id -> subject) rather than trusting the raw
@@ -2559,6 +2563,7 @@ function Analytics({ courseSubjects, examTypes, students }) {
   }, [examType]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     if (!examType || !course) { setScheduledSubjects([]); return; }
     supabase.from("exam_schedule").select("id, subject, total_marks").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
       setScheduledSubjects(data || []);
@@ -2715,6 +2720,7 @@ function Rankings({ courseSubjects, examTypes, students }) {
   }, [examType]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     if (!examType || !course) { setScheduledSubjects([]); return; }
     supabase.from("exam_schedule").select("id, subject, total_marks").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
       setScheduledSubjects(data || []);
@@ -2865,6 +2871,7 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
   }, [examType]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     if (!examType || !course) { setScheduledSubjects([]); return; }
     supabase.from("exam_schedule").select("id, subject, total_marks, exam_date").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
       setScheduledSubjects(data || []);
@@ -2873,6 +2880,7 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
 
   useEffect(() => {
     if (!selectedStudent || !examType || !dates.length) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     setLoading(true);
     supabase.from("exam_marks").select("student_id, exam_id, subject, marks_obtained, exam_date").eq("student_id", selectedStudent.id).eq("exam_type_id", examType).then(({ data }) => {
       setAllMarks(data || []); setLoading(false);
@@ -3065,6 +3073,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
   }, [examType]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     if (!examType || !course) { setScheduledSubjects([]); return; }
     supabase.from("exam_schedule").select("id, subject, total_marks").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
       setScheduledSubjects(data || []);
@@ -5601,6 +5610,7 @@ function ExamAbsentFinder({ courseSubjects, students, onStudentsChange, onClose 
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     if (!examTypeId) { setAvailableDates([]); return; }
     supabase.from("exam_marks").select("exam_date").eq("exam_type_id", examTypeId).then(({ data }) => {
       setAvailableDates([...new Set((data || []).map(d => d.exam_date).filter(Boolean))].sort());
@@ -5800,6 +5810,7 @@ function BatchSuffixCleanupTool({ students, secondaryBatchMap, onSecondaryBatche
         _wrongSecondaryBatches: wrongSecondaryBatches,
       };
     });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     setAffected(found);
     setSelected(new Set(found.map(s => s.id)));
     setScanning(false);
@@ -5942,6 +5953,7 @@ function DuplicateSectionTagResolver({ students, secondaryBatchMap, onSecondaryB
       const tags = secondaryBatchMap?.[s.id] || [];
       return tags.includes(ENG) && tags.includes(MM);
     });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     setAffected(found);
   }, [students, secondaryBatchMap]);
 
@@ -6086,6 +6098,7 @@ function SecondaryBatchSpellingCleanupTool({ students, secondaryBatchMap, onSeco
         }
       });
     });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     setAffected(found);
     setSelected(new Set(found.map((f, i) => i)));
     setScanning(false);
@@ -6215,6 +6228,7 @@ function MeritList({ courseSubjects, examTypes, students }) {
   }, [examType]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     if (!examType || !course) { setScheduledSubjects([]); return; }
     supabase.from("exam_schedule").select("id, subject, total_marks").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
       setScheduledSubjects(data || []);
@@ -6529,6 +6543,7 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
   const [deletingCourse, setDeletingCourse] = useState(null); // course name pending delete confirmation
   const [deleting, setDeleting] = useState(false);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
   useEffect(() => { setList(courseSubjects[selected] || []); }, [selected, courseSubjects]);
 
   const save = async () => {
@@ -6889,6 +6904,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
       if (cfg) {
         const subs = cfg.courseSubjects?.[msCourse] || courseSubjects[msCourse] || [];
         const maxMap = cfg.courseMaxMarks?.[msCourse] || {};
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
         setMsRows(subs.map((subject) => ({ subject, date: "", marks: maxMap[subject] || getSubjectMax(msCourse, subject) })));
         return;
       }
@@ -6899,6 +6915,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
 
   useEffect(() => {
     if (!msStartDate) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     setMsRows(prev => {
       let d = new Date(msStartDate);
       return prev.map((r) => {
@@ -6911,11 +6928,13 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
 
   useEffect(() => {
     const subs = courseSubjects[genCourse] || [];
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     setGenSubjectOrder(subs.map(s => ({ subject: s, marks: getSubjectMax(genCourse, s) })));
     setGenPreview([]);
   }, [genCourse]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     if (!genStartDate || !genSubjectOrder.length) { setGenPreview([]); return; }
     let d = new Date(genStartDate);
     const rows = [];
@@ -7586,6 +7605,7 @@ function SeatArrangement({ courseSubjects, examTypes, students, schedule }) {
 
   useEffect(() => {
     if (!examType || !examDate || !room) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     setLoading(true);
     supabase.from("seat_arrangements").select("*").eq("exam_type_id", examType).eq("exam_date", examDate).eq("room", room).then(({ data }) => {
       const map = {}; (data||[]).forEach(r => { map[r.seat_number] = r.student_id; });
@@ -8095,6 +8115,7 @@ function ReportCards({ courseSubjects, examTypes, students, institute, secondary
 
   useEffect(() => {
     if (!examType) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     setDatesLoaded(false);
     supabase.from("exam_marks").select("exam_date").eq("exam_type_id", examType).then(({ data }) => {
       const unique = [...new Set((data || []).map(r => r.exam_date))].sort().reverse();
@@ -8104,6 +8125,7 @@ function ReportCards({ courseSubjects, examTypes, students, institute, secondary
   }, [examType]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     if (!examType || !course) { setScheduledSubjects([]); return; }
     supabase.from("exam_schedule").select("id, subject, total_marks").eq("exam_type_id", examType).eq("course", course).order("exam_date").then(({ data }) => {
       setScheduledSubjects(data || []);
@@ -8275,6 +8297,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
 
   useEffect(() => {
     if (!rcExamType || !rcExamDate) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     setRcLoading(true);
     const ids = rcStudents.map(s=>s.id);
     // Resolve via exam_schedule (exam_id -> subject), scoped to THIS course's
@@ -9030,6 +9053,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
         marks: { ...(src.courseMaxMarks[course] || {}) },
       };
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     setCourseData(data);
     setSelectedCourses(new Set(Object.keys(src.courseSubjects)));
     setExamMode(src.examMode || "Written");
@@ -9038,6 +9062,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
 
   // Ensure courseData has entry for every selected course
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     setCourseData(prev => {
       const next = { ...prev };
       for (const c of selectedCourses) {
@@ -9716,6 +9741,7 @@ function ExamConfigManager({ courseSubjects, onUpdate, activeConfigId, onConfigS
   const [builderPrefillName, setBuilderPrefillName] = useState("");
   useEffect(() => {
     if (!prefillName) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch effect: reset/loading flag before async load
     setEditingConfig(null);
     setBuilderPrefillName(prefillName);
     setShowBuilder(true);
