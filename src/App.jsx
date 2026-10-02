@@ -28,6 +28,8 @@ import SystemSettings     from './SystemSettingsPage'
 import AdminPage          from './AdminPage'
 import StudentFeeLedger   from './StudentFeeLedger'
 import MobileNavHome from './MobileNavHome'
+import LearningShell from './LearningHub'
+import { NavIcon } from './navIcons'
 import { OPEN_LEDGER_EVENT, ledgerGccFromUrl } from './ledgerLink'
 import GNSIDashboard      from './GNSIDashboard'
 import Courses            from './Courses'
@@ -310,7 +312,7 @@ function CollapsedNav({ activePage, onNavigate, allowedModules }) {
               fontSize: 18, position: 'relative', transition: 'all .12s' }}
             onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = D.bgHover }}
             onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
-            {item.icon}
+            <NavIcon id={item.id} size={19} />
             {isActive && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 16, borderRadius: '0 3px 3px 0', background: D.accent }} />}
             {badge && <span style={{ position: 'absolute', top: 4, right: 4, width: 7, height: 7, borderRadius: '50%', background: D.accent, border: `1.5px solid ${D.bg}` }} />}
           </button>
@@ -328,7 +330,7 @@ function NavItem({ item, isActive, onClick, onPin, isPinned, compact = false }) 
     <div style={{ position: 'relative' }} onMouseEnter={() => setHov(true)} onMouseLeave={() => { setHov(false); setPinHov(false) }}>
       <button onClick={onClick} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: compact ? '5px 10px 5px 12px' : '7px 10px 7px 14px', borderRadius: 8, marginBottom: 1, border: isActive ? `1px solid ${D.accentBorder}` : `1px solid ${hov ? D.border : 'transparent'}`, cursor: 'pointer', textAlign: 'left', fontSize: compact ? 12.5 : 13.5, fontWeight: isActive ? 600 : 400, background: isActive ? `linear-gradient(90deg, rgba(201,162,75,0.20) 0%, rgba(201,162,75,0.04) 100%)` : hov ? D.bgHover : 'transparent', color: isActive ? D.accentLight : hov ? D.textPrimary : D.textSecondary, position: 'relative', transition: 'background .12s, border-color .12s, color .12s', fontFamily: UI_FONT }}>
         {isActive && <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, borderRadius: '0 3px 3px 0', background: D.accent, boxShadow: `0 0 8px ${D.accent}` }} />}
-        <span style={{ fontSize: compact ? 13 : 15, lineHeight: 1, flexShrink: 0 }}>{item.icon}</span>
+        <span style={{ display: 'flex', flexShrink: 0, opacity: isActive ? 1 : 0.85, color: isActive ? D.accentLight : 'inherit' }}><NavIcon id={item.id} size={compact ? 16 : 18} /></span>
         <span style={{ flex: 1, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
         {badge && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 99, background: badge.bg, color: badge.color, flexShrink: 0 }}>{badge.count}</span>}
         {isPinned && !hov && <span style={{ fontSize: 9, color: D.accent, flexShrink: 0, opacity: 0.6 }}>📌</span>}
@@ -584,7 +586,7 @@ function Sidebar({ activePage, setActivePage, onLogout, currentUser, permMap, co
           <div style={{ fontSize: 9, color: D.textFaint, textTransform: 'uppercase', letterSpacing: '.07em' }}>School Management</div>
         </div>
         <div style={{ fontSize: 11, color: D.accentLight, fontWeight: 600, background: D.accentGlow, border: `1px solid ${D.accentBorder}`, borderRadius: 6, padding: '3px 8px', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
-          {ALL_ITEMS.find(i => i.id === activePage)?.icon}{' '}{ALL_ITEMS.find(i => i.id === activePage)?.label || activePage}
+          <span style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 6 }}><NavIcon id={activePage} size={14} /></span>{ALL_ITEMS.find(i => i.id === activePage)?.label || activePage}
         </div>
         <button onClick={onLogout} style={{ background: 'rgba(220,38,38,.12)', border: '1px solid rgba(220,38,38,.25)', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', color: '#fca5a5', fontSize: 16, flexShrink: 0, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🚪</button>
       </div>
@@ -970,10 +972,10 @@ export default function App() {
     reception:         <Reception         currentUser={currentUser} perms={perms('reception')}         />,
     notice:            <Notice            currentUser={currentUser} perms={perms('notice')}            />,
     social:            <Social            currentUser={currentUser} perms={perms('social')}            />,
-    questionbank:      <QuestionBank      currentUser={currentUser} perms={perms('questionbank')} onNavigate={navigateTo} />,
-    questionbankviewer:<QuestionBankViewer currentUser={currentUser} onNavigate={setActive} />,
-    studymaterial:     <StudyMaterial     currentUser={currentUser} perms={perms('studymaterial')} onNavigate={navigateTo} />,
-    teachingaids:      <TeachingAids      currentUser={currentUser} perms={perms('teachingaids')}  />,
+    questionbank:      <LearningShell id="questionbank" onNavigate={navigateTo}><QuestionBank      currentUser={currentUser} perms={perms('questionbank')} onNavigate={navigateTo} /></LearningShell>,
+    questionbankviewer:<LearningShell id="questionbankviewer" onNavigate={navigateTo}><QuestionBankViewer currentUser={currentUser} onNavigate={setActive} /></LearningShell>,
+    studymaterial:     <LearningShell id="studymaterial" onNavigate={navigateTo}><StudyMaterial     currentUser={currentUser} perms={perms('studymaterial')} onNavigate={navigateTo} /></LearningShell>,
+    teachingaids:      <LearningShell id="teachingaids" onNavigate={navigateTo}><TeachingAids      currentUser={currentUser} perms={perms('teachingaids')}  /></LearningShell>,
     studylockers:      <StudyLockers      currentUser={currentUser} perms={perms('studylockers')}  onNavigate={navigateTo} />,
     connect:           <Connect           currentUser={currentUser} perms={perms('connect')}           />,
     website:           <WebsiteTab        />,
@@ -992,7 +994,7 @@ export default function App() {
     feesetup:          isAdmin ? <FeeSetup userRole={currentUser.role} perms={perms('feesetup')} /> : <AccessDenied />,
     construction:      <ConstructionMaintenance />,
     kitchen:           <Kitchen           currentUser={currentUser} perms={perms('kitchen')}           />,
-    entrance:          <Entrance          currentUser={currentUser} perms={perms('entrance')}          />,
+    entrance:          <LearningShell id="entrance" onNavigate={navigateTo}><Entrance          currentUser={currentUser} perms={perms('entrance')}          /></LearningShell>,
     store:             <Store             currentUser={currentUser} perms={perms('store')}             />,
     // FIX: invitation now uses permission system, not hardcoded Manager bypass
     invitation:        canAccess('invitation') ? <InvitationGenerator currentUser={currentUser} /> : <AccessDenied />,
@@ -1036,7 +1038,7 @@ export default function App() {
       {!isMobile && (
         <div style={{ position: 'fixed', top: 0, right: 0, left: sidebarW, height: 60, background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid #E8E1D0', boxShadow: '0 4px 18px rgba(11,30,61,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', zIndex: 99, transition: 'left 0.22s cubic-bezier(0.4,0,0.2,1)', fontFamily: UI_FONT }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-            <span style={{ width: 34, height: 34, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#0B1E3D', fontSize: 16, boxShadow: 'inset 0 0 0 1px rgba(226,197,126,0.4)' }}>{ALL_ITEMS.find(i => i.id === active)?.icon || '⊞'}</span>
+            <span style={{ width: 34, height: 34, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#0B1E3D', fontSize: 16, boxShadow: 'inset 0 0 0 1px rgba(226,197,126,0.4)' }}><span style={{ color: D.accentLight, display: 'flex' }}><NavIcon id={active} size={18} /></span></span>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#A87A1F' }}>{ALL_GROUPS.find(g => g.items.some(i => i.id === active))?.group || 'CORE'}</div>
               <div style={{ fontSize: 17, fontWeight: 700, color: '#0B1E3D', fontFamily: SERIF_FONT, lineHeight: 1.15 }}>{ALL_ITEMS.find(i => i.id === active)?.label || 'Dashboard'}</div>
@@ -1099,7 +1101,7 @@ function UserDashboard({ onNavigate, currentUser, modules = [] }) {
               style={{ textAlign: 'left', background: '#fff', border: '1px solid #E8E1D0', borderRadius: 16, padding: '16px 16px 14px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(11,30,61,.05), 0 10px 28px rgba(11,30,61,.07)', transition: 'transform .18s, box-shadow .18s', fontFamily: UI_FONT }}
               onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 18px 40px rgba(11,30,61,.14)' }}
               onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 1px 2px rgba(11,30,61,.05), 0 10px 28px rgba(11,30,61,.07)' }}>
-              <span style={{ width: 40, height: 40, borderRadius: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, background: '#0B1E3D', boxShadow: 'inset 0 0 0 1px rgba(226,197,126,.4)', marginBottom: 10 }}>{m.icon}</span>
+              <span style={{ width: 40, height: 40, borderRadius: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, background: '#0B1E3D', boxShadow: 'inset 0 0 0 1px rgba(226,197,126,.4)', marginBottom: 10, color: '#E2C57E' }}><NavIcon id={m.id} size={20} /></span>
               <div style={{ fontSize: 14, fontWeight: 700, color: '#0B1E3D' }}>{m.label}</div>
               <div style={{ fontSize: 11, color: '#A87A1F', fontWeight: 700, marginTop: 2 }}>Open →</div>
             </button>

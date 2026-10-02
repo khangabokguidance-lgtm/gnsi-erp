@@ -5,29 +5,30 @@
 // React fast refresh works: a file should export only components or only
 // constants).
 //
-// Tokens follow the portal's own look (deep navy sidebar #03263a with an
-// amber accent, light slate canvas, Inter — loaded globally by App.jsx).
+// Tokens follow the portal's premium palette (premiumUI.jsx: navy #132a4f,
+// antique gold #b8923a, ivory canvas) so the Question Bank looks like every
+// other module.
 // Components in both files use inline styles, which can't express hover,
 // focus or media queries, so QB_CSS adds those once, scoped under the
 // `.qbx` root class so nothing leaks into other modules.
 
 export const T = {
   // Brand
-  ink:        '#0b1f33',   // headings / primary text
-  navy:       '#0e2a47',   // primary actions, active states
-  navyDeep:   '#071a2c',
-  navySoft:   '#e8eef6',
-  accent:     '#f59e0b',   // portal amber
-  accentSoft: '#fff7e6',
+  ink:        '#0f1b2e',   // headings / primary text
+  navy:       '#132a4f',   // primary actions, active states
+  navyDeep:   '#0e203f',
+  navySoft:   '#eef2f9',
+  accent:     '#b8923a',   // portal antique gold
+  accentSoft: '#f6efdc',
   // Neutrals
   text:       '#1e293b',
   muted:      '#5b6b80',
   faint:      '#94a3b8',
-  border:     '#e3e8ef',
-  borderStrong:'#cfd8e3',
-  canvas:     '#f4f6fa',
+  border:     '#e8e3d8',
+  borderStrong:'#d9d2c2',
+  canvas:     '#f7f5f0',
   surface:    '#ffffff',
-  surfaceAlt: '#f8fafc',
+  surfaceAlt: '#faf8f3',
   // Semantic
   green:      '#15803d', greenSoft: '#e8f7ee', greenLine: '#a7e3bd',
   rose:       '#e11d48', roseSoft:  '#fff1f3', roseLine:  '#fecdd6',
