@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, useRef, useCallback, Fragment } from 'react'
+import { createPortal } from 'react-dom'
+import { NavIcon } from './navIcons'
 import { supabase } from './supabase'
 import { sysOr, sysValue } from './systemSettings'
 import { isAdminRole } from './roles'
@@ -3435,7 +3437,31 @@ function Accounts({role,userId}){
       const groupBadge=g=>all.filter(t=>t.group===g).reduce((n,t)=>n+(t.badge||0),0)
       return (
         <div style={{marginBottom:18}}>
-          <div className="ac-groups" role="tablist" aria-label="Accounts areas">
+          {isMobile && createPortal(
+            <nav className="ac-bottom" role="tablist" aria-label="Accounts areas">
+              <style>{`.ac-bottom{position:fixed;left:0;right:0;bottom:0;z-index:120;display:grid;grid-template-columns:repeat(4,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+body:has(.ac-bottom){padding-bottom:76px}
+.ac-nb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:3px 0;font:600 10.5px 'Plus Jakarta Sans',system-ui,sans-serif;color:#b9c3d6;cursor:pointer;position:relative}
+.ac-nb .ac-bi{display:flex;align-items:center;justify-content:center;width:42px;height:27px;border-radius:10px}
+.ac-nb.on{color:#fff;font-weight:800}
+.ac-nb.on .ac-bi{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
+.ac-nb:focus-visible{outline:2px solid #e9d9b0;outline-offset:-2px;border-radius:10px}
+.ac-nb .ac-badge{position:absolute;top:0;right:calc(50% - 28px)}`}</style>
+              {GROUPS.map(g=>{
+                const on=g.id===grp, b=groupBadge(g.id)
+                const icon={books:'accounts',analysis:'pulse',controls:'shield',reports:'reports'}[g.id]
+                return (
+                  <button key={g.id} type="button" role="tab" aria-selected={on} className={'ac-nb'+(on?' on':'')}
+                    onClick={()=>{ if(!on) setActiveTab(all.find(t=>t.group===g.id).id); window.scrollTo({top:0}) }}>
+                    <span className="ac-bi"><NavIcon id={icon} size={20}/></span><span>{g.label}</span>
+                    {b>0&&<span className="ac-badge">{b}</span>}
+                  </button>
+                )
+              })}
+            </nav>,
+            document.body
+          )}
+          {!isMobile && <div className="ac-groups" role="tablist" aria-label="Accounts areas">
             {GROUPS.map(g=>{
               const on=g.id===grp, b=groupBadge(g.id)
               return (
@@ -3449,8 +3475,8 @@ function Accounts({role,userId}){
                 </button>
               )
             })}
-          </div>
-          <nav className="ac-tabs" role="tablist" style={{marginTop:10}}>
+          </div>}
+          <nav className="ac-tabs" role="tablist" style={{marginTop:isMobile?0:10}}>
             {all.filter(t=>t.group===grp).map(t=>(
               <button key={t.id} role="tab" aria-selected={activeTab===t.id} className={'ac-tab'+(activeTab===t.id?' on':'')} onClick={()=>setActiveTab(t.id)}>
                 {t.label}{t.badge>0&&<span className="ac-badge" style={{marginLeft:6}}>{t.badge}</span>}
