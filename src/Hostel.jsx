@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { NavIcon } from './navIcons'
 import { supabase } from './supabase'
 import { isAdminRole } from './App'
 import { getActiveStudents, getAllStudents } from './studentQueries'
@@ -8,7 +10,7 @@ import { getInstitute } from './systemSettings'
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
 import { ClassTimetableTab } from './ClassTimetableTab'
 import HMDoubtSessionsTab from './HMDoubtSessionsTab'
-import LeaveTab, { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
+import LeaveTab from './LeaveTab'
 import HouseReportModal from './HouseReportModal'
 import { sendPushToStaffId, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
 import { approveLeaveRecord, checkQuotaBeforeApproval } from './leaveApproval'
@@ -30,7 +32,7 @@ function useStudentsUpdatedListener(callback) {
     const handler = (e) => callback(e.detail)
     window.addEventListener('gnsi:students-updated', handler)
     return () => window.removeEventListener('gnsi:students-updated', handler)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [callback])
 }
 
@@ -139,7 +141,7 @@ function loadAutoFired() {
   } catch { return {} }
 }
 function saveAutoFired(obj) {
-  try { localStorage.setItem(AUTO_FIRED_KEY, JSON.stringify(obj)) } catch { }
+  try { localStorage.setItem(AUTO_FIRED_KEY, JSON.stringify(obj)) } catch { /* ignore */ }
 }
 
 // ─── Shared styles — quiet institutional surfaces on the refined palette ──
@@ -6410,7 +6412,7 @@ function loadChecks() {
   try { return JSON.parse(localStorage.getItem(CHECK_KEY()) || '{}') } catch { return {} }
 }
 function saveChecks(obj) {
-  try { localStorage.setItem(CHECK_KEY(), JSON.stringify(obj)) } catch { }
+  try { localStorage.setItem(CHECK_KEY(), JSON.stringify(obj)) } catch { /* ignore */ }
 }
 
 function ScheduleTab({ currentUser }) {
@@ -11490,6 +11492,28 @@ function Hostel() {
         )
         : tabContent[activeTab]
       }
+
+      {/* Phone: payments-app style bottom navigation — the day-to-day sections + the full menu */}
+      {mobile && createPortal(
+        <nav className="hs-bottom" aria-label="Hostel navigation">
+          <style>{`.hs-bottom{position:fixed;left:0;right:0;bottom:0;z-index:120;display:grid;grid-template-columns:repeat(5,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+body:has(.hs-bottom){padding-bottom:76px}
+.hs-nb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:3px 0;font:600 10.5px 'Plus Jakarta Sans',system-ui,sans-serif;color:#b9c3d6;cursor:pointer}
+.hs-nb .hs-bi{display:flex;align-items:center;justify-content:center;width:42px;height:27px;border-radius:10px}
+.hs-nb.on{color:#fff;font-weight:800}
+.hs-nb.on .hs-bi{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
+.hs-nb:focus-visible{outline:2px solid #e9d9b0;outline-offset:-2px;border-radius:10px}`}</style>
+          {[['hmdashboard','Home','home'],['attendance','Roll Call','attendance'],['leave','Leave','leave'],['sickbay','Sickbay','pulse']].map(([id,label,icon]) => (
+            <button key={id} type="button" className={'hs-nb' + (activeTab === id ? ' on' : '')} onClick={() => { changeTab(id); window.scrollTo({ top: 0 }) }} aria-current={activeTab === id ? 'page' : undefined}>
+              <span className="hs-bi"><NavIcon id={icon} size={20} /></span><span>{label}</span>
+            </button>
+          ))}
+          <button type="button" className={'hs-nb' + (menuOpen || !['hmdashboard','attendance','leave','sickbay'].includes(activeTab) ? ' on' : '')} onClick={() => setMenuOpen(true)} aria-label="All hostel sections">
+            <span className="hs-bi"><NavIcon id="grid" size={20} /></span><span>More</span>
+          </button>
+        </nav>,
+        document.body
+      )}
     </div>
   )
 }
@@ -11670,7 +11694,7 @@ function StudentTransferTab({ students, currentUser }) {
     for (const s of toRemove) {
       try {
         await vacateStudent(s.id)
-      } catch (e) {
+      } catch {
         failed++
       }
     }

@@ -5,6 +5,7 @@
 
 import { printFeeReceipt } from './premiumReceipt'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
 import { getFlatFeeAmtSync, getFeeRates, getSessionYear, collectFee, rcptNo, gccStr as gccStrFee, printScholarshipRequestForm, printScholarshipApprovalCertificate } from './feeEngine'
@@ -34,7 +35,7 @@ function useAttendanceUpdatedListener(callback) {
     const handler = (e) => callback(e.detail)
     window.addEventListener(ATTENDANCE_UPDATED_EVENT, handler)
     return () => window.removeEventListener(ATTENDANCE_UPDATED_EVENT, handler)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [callback])
 }
 
@@ -726,7 +727,7 @@ function exportToPDF(title, headers, rows) {
   </style></head><body>
     <h2>${title}</h2><div class="meta">${rows.length} records · ${new Date().toLocaleDateString('en-IN')}</div>
     <table><thead><tr>${th}</tr></thead><tbody>${td}</tbody></table>
-    <script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script>
+    <script>window.onload=()=>setTimeout(()=>window.print(),300)</script>
   </body></html>`)
   w.document.close()
 }
@@ -2102,7 +2103,7 @@ function printIDCard(student) {
       </div>
     </div>
   </div>
-  <script>window.print()<\/script></body></html>`)
+  <script>window.print()</script></body></html>`)
   w.document.close()
 }
 
@@ -2261,7 +2262,7 @@ function printProfessionalReport(cfg) {
         <div class="sig-line">Principal / Director</div>
       </div>` : ''}
     <div class="footnote">GNSI Portal · ${reportTypeLabel} · Generated automatically — verify figures before official use</div>
-    <script>window.onload=()=>setTimeout(()=>window.print(),350)<\/script>
+    <script>window.onload=()=>setTimeout(()=>window.print(),350)</script>
   </body></html>`)
   w.document.close()
 }
@@ -4573,7 +4574,7 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
   const [includePast, setIncludePast] = useState(false)
   const [pastRows, setPastRows] = useState(null)
 
-  useEffect(() => { try { localStorage.setItem('gnsi_cdb_course', course) } catch {} ; setBatch('All'); setHouseF('All') }, [course])
+  useEffect(() => { try { localStorage.setItem('gnsi_cdb_course', course) } catch { /* ignore */ } ; setBatch('All'); setHouseF('All') }, [course])
 
   // Past students (Dropout / Withdrawn / Passed Out / Inactive) load only on request.
   useEffect(() => {
@@ -5001,7 +5002,7 @@ export default function Students({ onNavigate: goToModule } = {}) {
   const [page,setPage]=useState(1)
   const [viewMode,setViewMode]=useState('list')
   const [pageTab,setPageTab]=useState(()=>{try{return localStorage.getItem('gnsi_students_tab')||'courses'}catch{return 'courses'}})
-  useEffect(()=>{try{localStorage.setItem('gnsi_students_tab',pageTab)}catch{}},[pageTab])
+  useEffect(()=>{try{localStorage.setItem('gnsi_students_tab',pageTab)}catch{ /* ignore */ }},[pageTab])
   const [showBulkOps,setShowBulkOps]=useState(false)
   const [showRollover,setShowRollover]=useState(false)
   const [showBulkFee,setShowBulkFee]=useState(false)
@@ -5131,7 +5132,7 @@ const effectiveCols = visibleCols.filter(col => {
         map[id]=(recs.filter(r=>r.status==='Present').length+recs.filter(r=>r.status==='Late').length*.5)/recs.length*100
       })
       setAttData(map)
-    }catch{}
+    }catch{ /* ignore */ }
   },[])
 
   const loadExamData=useCallback(async ids=>{
@@ -5156,7 +5157,7 @@ const effectiveCols = visibleCols.filter(col => {
       })
       Object.keys(map).forEach(id=>map[id].sort((a,b)=>new Date(b.exam_date)-new Date(a.exam_date)))
       setExamData(map)
-    }catch{}
+    }catch{ /* ignore */ }
   },[])
 
 
@@ -5623,17 +5624,40 @@ const effectiveCols = visibleCols.filter(col => {
 
         {/* Page-level tabs — Dashboard / Students / Scholarship / Data Quality */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:16}}>
-          <nav className="st-tabs" role="tablist" style={{maxWidth:'100%'}}>
-            {[{key:'courses',label:'Courses',icon:SIcon.layers},{key:'dashboard',label:'Dashboard',icon:SIcon.home},{key:'students',label:'All Students',icon:SIcon.users},{key:'scholarship',label:'Scholarship/Waiver',icon:SIcon.fileText},{key:'dataQuality',label:'Data Quality',icon:SIcon.check}].map(t=>{
-              const active=pageTab===t.key
-              return (
-                <button key={t.key} role="tab" aria-selected={active} className={'st-tab'+(active?' on':'')} onClick={()=>setPageTab(t.key)}>
-                  <t.icon size={15}/>
-                  {t.label}
-                </button>
-              )
-            })}
-          </nav>
+          {(()=>{
+            const PAGE_TABS=[{key:'courses',label:'Courses',short:'Courses',icon:SIcon.layers},{key:'dashboard',label:'Dashboard',short:'Home',icon:SIcon.home},{key:'students',label:'All Students',short:'Students',icon:SIcon.users},{key:'scholarship',label:'Scholarship/Waiver',short:'Waiver',icon:SIcon.fileText},{key:'dataQuality',label:'Data Quality',short:'Quality',icon:SIcon.check}]
+            // Phone: payments-app style bottom navigation instead of the scrolling tab strip
+            if(isMobile) return createPortal(
+              <nav className="st-bottom" role="tablist" aria-label="Students sections">
+                <style>{`.st-bottom{position:fixed;left:0;right:0;bottom:0;z-index:120;display:grid;grid-template-columns:repeat(5,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+.st-nb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:3px 0;font:600 10.5px 'Plus Jakarta Sans',system-ui,sans-serif;color:#b9c3d6;cursor:pointer}
+.st-nb .st-bi{display:flex;align-items:center;justify-content:center;width:42px;height:27px;border-radius:10px}
+.st-nb.on{color:#fff;font-weight:800}
+.st-nb.on .st-bi{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
+.st-nb:focus-visible{outline:2px solid #e9d9b0;outline-offset:-2px;border-radius:10px}
+.st-pad{height:76px}`}</style>
+                {PAGE_TABS.map(t=>(
+                  <button key={t.key} role="tab" aria-selected={pageTab===t.key} aria-label={t.label} className={'st-nb'+(pageTab===t.key?' on':'')} onClick={()=>{setPageTab(t.key);window.scrollTo({top:0})}}>
+                    <span className="st-bi"><t.icon size={20}/></span><span>{t.short}</span>
+                  </button>
+                ))}
+              </nav>,
+              document.body
+            )
+            return (
+              <nav className="st-tabs" role="tablist" style={{maxWidth:'100%'}}>
+                {PAGE_TABS.map(t=>{
+                  const active=pageTab===t.key
+                  return (
+                    <button key={t.key} role="tab" aria-selected={active} className={'st-tab'+(active?' on':'')} onClick={()=>setPageTab(t.key)}>
+                      <t.icon size={15}/>
+                      {t.label}
+                    </button>
+                  )
+                })}
+              </nav>
+            )
+          })()}
 
         {/* Action Toolbar */}
         {pageTab==='students'&&(
@@ -5890,6 +5914,7 @@ const effectiveCols = visibleCols.filter(col => {
         )}
         </>)}
       </div>
+      {isMobile&&<div style={{height:76}} aria-hidden="true"/>}
     </>
   )
 }

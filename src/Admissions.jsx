@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { NavIcon } from './navIcons'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
@@ -96,7 +97,7 @@ function getSessionInfo() {
       const userName = parsed?.name || parsed?.username || parsed?.user?.name || role
       return { role, userId, userName }
     }
-  } catch (_) { /* default to least-privilege */ }
+  } catch { /* default to least-privilege */ }
   return { role: 'staff', userId: null, userName: 'staff' }
 }
 
@@ -311,7 +312,7 @@ async function logAudit(action, recordId, details, role) {
       level: action.includes('DELETE') ? 'warning' : 'info',
       metadata: { recordId, role, ...details },
     }])
-  } catch (_) {
+  } catch {
     // Never block the user's action if logging fails for any reason.
   }
 }
@@ -2205,7 +2206,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
     if (editing) return null
     try { const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); return d && d.name ? d : null } catch { return null }
   })
-  const persist = nf => { if (!editing) { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(nf)) } catch(_) {} } }
+  const persist = nf => { if (!editing) { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(nf)) } catch { /* ignore */ } } }
   const set = (k, v) => setForm(f => { const nf = { ...f, [k]: v }; persist(nf); return nf })
   // Nested reg setter: setReg('corr.pin', '795138') / setReg('aissee.cities.2', 'Imphal')
   const setReg = (path, v) => setForm(f => {
@@ -2313,7 +2314,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
   useEffect(() => { if (firstRender.current) { firstRender.current = false; return } setDirty(true) }, [form])
   const handleCancel = () => {
     if (dirty && !confirm('Discard unsaved changes?')) return
-    try { localStorage.removeItem(DRAFT_KEY) } catch(_) {}
+    try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ }
     onCancel()
   }
 
@@ -2357,7 +2358,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
   const goTo = i => {
     setTouched(t => ({ ...t, [STEPS[stepIdx].id]: true }))
     setStepIdx(i)
-    try { topRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }) } catch(_) {}
+    try { topRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }) } catch { /* ignore */ }
   }
   const doneCount = STEPS.filter(stepDone).length
   const pct = Math.round(doneCount / STEPS.length * 100)
@@ -2365,9 +2366,9 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
   const openReview = () => {
     const all = {}; STEPS.forEach(s => { all[s.id] = true }); setTouched(all)
     const firstBad = STEPS.findIndex(s => !stepDone(s))
-    if (firstBad >= 0) { setStepIdx(firstBad); try { topRef.current?.scrollIntoView({ behavior:'smooth' }) } catch(_) {}; return }
+    if (firstBad >= 0) { setStepIdx(firstBad); try { topRef.current?.scrollIntoView({ behavior:'smooth' }) } catch { /* ignore */ }; return }
     setMode('preview')
-    try { topRef.current?.scrollIntoView({ behavior:'smooth' }) } catch(_) {}
+    try { topRef.current?.scrollIntoView({ behavior:'smooth' }) } catch { /* ignore */ }
   }
 
   const step = STEPS[stepIdx]
@@ -2464,7 +2465,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
           <span style={{ fontWeight:700 }}>Unsaved draft found{draftOffer.name ? ` for ${draftOffer.name}` : ''}.</span>
           <button type="button" onClick={() => { setForm({ ...draftOffer, reg: mergeReg(draftOffer.reg), docs: draftOffer.docs || [] }); setDraftOffer(null) }}
             style={{ padding:'5px 12px', borderRadius:8, border:'none', background:AF.navy, color:'#fff', fontWeight:700, fontSize:12, cursor:'pointer' }}>Resume draft</button>
-          <button type="button" onClick={() => { try { localStorage.removeItem(DRAFT_KEY) } catch(_) {}; setDraftOffer(null) }}
+          <button type="button" onClick={() => { try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ }; setDraftOffer(null) }}
             style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${AF.goldLine}`, background:'transparent', color:'#6B4E0F', fontWeight:700, fontSize:12, cursor:'pointer' }}>Discard</button>
         </div>
       )}
@@ -2477,7 +2478,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
               setSubmitting(true)
               try {
                 const ok = await onSave(editing?.id || null, { ...formForSave, reg: { ...r, exams } })
-                if (ok !== false) { try { localStorage.removeItem(DRAFT_KEY) } catch(_) {} }
+                if (ok !== false) { try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ } }
               } finally { setSubmitting(false) }
             }} />
         </div>
@@ -3283,12 +3284,12 @@ function useFilterPresets() {
   const save = (name, filters) => {
     const next = { ...presets, [name]: filters }
     setPresets(next)
-    try { localStorage.setItem(PRESET_KEY, JSON.stringify(next)) } catch(_) {}
+    try { localStorage.setItem(PRESET_KEY, JSON.stringify(next)) } catch { /* ignore */ }
   }
   const remove = name => {
     const next = { ...presets }; delete next[name]
     setPresets(next)
-    try { localStorage.setItem(PRESET_KEY, JSON.stringify(next)) } catch(_) {}
+    try { localStorage.setItem(PRESET_KEY, JSON.stringify(next)) } catch { /* ignore */ }
   }
   return { presets, save, remove }
 }
@@ -4138,7 +4139,7 @@ export default function Admissions() {
         const parsed = JSON.parse(draft)
         if (parsed.name) showToast(`Draft restored: ${parsed.name}`, T.amber[600])
       }
-    } catch(_) {}
+    } catch { /* ignore */ }
   }, [])
 
   const sessionOptions = useMemo(() => [...new Set(apps.map(a=>a.session).filter(Boolean))].sort().reverse(), [apps])
@@ -4301,7 +4302,7 @@ export default function Admissions() {
         const log = JSON.parse(localStorage.getItem('gnsi_audit_'+eid)||'[]')
         log.unshift({ ts:now(), action:'edit', by:userRole, changes: JSON.stringify(dbRow).slice(0,200) })
         localStorage.setItem('gnsi_audit_'+eid, JSON.stringify(log.slice(0,50)))
-      } catch(_) {}
+      } catch { /* ignore */ }
       setApps(prev => prev.map(a => String(a.id)===String(eid) ? { ...a, ...cleanObj, id:parseInt(eid), hostel_type:dbRow.hostel_type } : a))
       showToast('Application updated', T.amber[600])
     } else {
@@ -4326,7 +4327,7 @@ export default function Admissions() {
       // collected on the spot, without a second click to "Admit" first.
       setFeePanel(newApp)
     }
-    try { localStorage.removeItem(DRAFT_KEY) } catch(_) {}
+    try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ }
     setFormOpen(false); setEditing(null)
     return true
   }
@@ -4445,7 +4446,7 @@ export default function Admissions() {
       localStorage.setItem(key, JSON.stringify(notes.slice(0,100)))
       setApps(prev => prev.map(a => String(a.id)===String(id) ? { ...a, notes } : a))
       showToast('Note added', T.emerald[600])
-    } catch(_) {}
+    } catch { /* ignore */ }
   }
 
   const handleBulkStatus = async status => {
@@ -4606,7 +4607,7 @@ export default function Admissions() {
           try {
             const rates = await getFeeRates(sessionYear, a.course, a.batch, a.hostel_type, a.gcc_no || null)
             rateCache.set(key, rates.flatFee)
-          } catch (_) {
+          } catch {
             rateCache.set(key, getFlatFeeAmtSync(a.hostel_type, a.course))
           }
         }
@@ -4639,7 +4640,7 @@ export default function Admissions() {
 
       <PersonalAccountantButton supabase={supabase} moduleKey="admissions" isAdmin={isAdminRole(userRole) || ['admin','Admin'].includes(userRole)} currentUser={getSessionInfo()} isMobile={isMobile} />
 
-      <div style={{ padding:'0 12px 40px', fontFamily:"'Inter',system-ui,sans-serif", background: darkMode ? T.slate[900] : PAGE_BG, minHeight:'100vh', color:N.text, transition:'background .2s', overflowX:'hidden', maxWidth:'100vw' }}>
+      <div style={{ padding:isMobile?'0 12px 96px':'0 12px 40px', fontFamily:"'Inter',system-ui,sans-serif", background: darkMode ? T.slate[900] : PAGE_BG, minHeight:'100vh', color:N.text, transition:'background .2s', overflowX:'hidden', maxWidth:'100vw' }}>
         <style>{`
   @keyframes spin { to { transform:rotate(360deg) } }
   @keyframes pulse { 0%,100%{box-shadow:0 0 0 3px rgba(10,128,66,.18)} 50%{box-shadow:0 0 0 7px rgba(10,128,66,.06)} }
@@ -4679,7 +4680,23 @@ export default function Admissions() {
               </p>
             </div>
           </div>
-          <div style={{ display:'flex', gap:4, background:N.bg2, borderRadius:10, padding:3 }}>
+          {isMobile ? createPortal(
+            <nav className="adm-bottom" role="tablist" aria-label="Admissions sections">
+              <style>{`.adm-bottom{position:fixed;left:0;right:0;bottom:0;z-index:120;display:grid;grid-template-columns:repeat(4,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+.adm-nb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:3px 0;font:600 10.5px 'Plus Jakarta Sans',system-ui,sans-serif;color:#b9c3d6;cursor:pointer}
+.adm-nb .adm-bi{display:flex;align-items:center;justify-content:center;width:42px;height:27px;border-radius:10px}
+.adm-nb.on{color:#fff;font-weight:800}
+.adm-nb.on .adm-bi{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
+.adm-nb:focus-visible{outline:2px solid #e9d9b0;outline-offset:-2px;border-radius:10px}`}</style>
+              {[['newApplication','New','admissions'],['applications','Applications','students'],['ledger','Ledger','studentfeeledger'],['sessions','Sessions','timetable']].map(([key,label,icon]) => (
+                <button key={key} type="button" role="tab" aria-selected={moduleView===key} className={'adm-nb'+(moduleView===key?' on':'')} onClick={()=>{setModuleView(key);window.scrollTo({top:0})}}>
+                  <span className="adm-bi"><NavIcon id={icon} size={20} /></span><span>{label}</span>
+                </button>
+              ))}
+            </nav>,
+            document.body
+          ) : null}
+          {!isMobile && <div style={{ display:'flex', gap:4, background:N.bg2, borderRadius:10, padding:3 }}>
             {[['newApplication','📝 New Application'],['applications','📋 Applications'],['ledger','🔗 Student Ledger'],['sessions','📅 Sessions']].map(([key,label]) => (
               <button key={key} onClick={()=>setModuleView(key)}
                 style={{ padding:'7px 14px', borderRadius:8, border:'none', cursor:'pointer', fontSize:12, fontWeight:700,
@@ -4689,7 +4706,7 @@ export default function Admissions() {
                 {label}
               </button>
             ))}
-          </div>
+          </div>}
         </div>
 
         {moduleView === 'newApplication' ? (
@@ -4770,13 +4787,13 @@ export default function Admissions() {
               <span>🏫 Day Scholar: <strong style={{ color:T.slate[500] }}>₹2,000/mo</strong></span>
               <span style={{ padding:'1px 8px', borderRadius:6, background:T.slate[100], color:T.slate[500], fontWeight:700, fontSize:10 }}>Role: {userRole}</span>
             </div>
-            <div style={{ marginTop:4, fontSize:10, color:T.slate[300] }}>
+            {!isMobile && <div style={{ marginTop:4, fontSize:10, color:T.slate[300] }}>
               Shortcuts: <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>N</kbd> New &nbsp;
               <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>/</kbd> Search &nbsp;
               <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>V</kbd> Toggle view &nbsp;
               <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>D</kbd> Dark mode &nbsp;
               <kbd style={{ background:T.slate[100], padding:'1px 4px', borderRadius:3, fontSize:10 }}>Esc</kbd> Close
-            </div>
+            </div>}
           </div>
           <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr 1fr':'repeat(7,auto)', gap:8, alignItems:'center' }}>
            <button onClick={()=>setDarkMode(v=>!v)} title="Toggle dark mode (D)"
