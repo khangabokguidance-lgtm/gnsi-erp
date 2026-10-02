@@ -10,7 +10,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   DEFAULT_SERIES, parseResultSheet, inferMax, guessFromFilename, resolveIdentities, seriesMeta,
-  studentAnalysis, batchAnalysis, batchComparison, rowsFromSeed, strengthLabel, r1, r2, cleanName, gccDigits,
+  studentAnalysis, batchAnalysis, batchComparison, matchingReport, rowsFromSeed, strengthLabel, r1, r2, cleanName, gccDigits,
 } from './lib/mockTestEngine';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
 import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } from './lib/mockTestReports';
@@ -477,6 +477,7 @@ function DataView({ allRows, series, setSeries, mode, meta, who, canUpload, canD
     return m;
   }, [allRows, newSeries]);
   const batchNames = useMemo(() => [...new Set(allRows.map((r) => r.batch))].sort(), [allRows]);
+  const match = useMemo(() => matchingReport(resolveIdentities(allRows.filter((r) => r.series === series))), [allRows, series]);
 
   const onFiles = async (fl) => {
     setMsg(''); setBusy('Reading files…');
@@ -644,6 +645,44 @@ function DataView({ allRows, series, setSeries, mode, meta, who, canUpload, canD
           <div style={{ flex: '1 1 min(300px, 100%)' }}><b>Built-in data: Pre Mock Test 2026</b><div style={{ fontSize: 12.5, color: '#64748B' }}>24 result sheets · 8 tests · Lakshya A/B, Umeed, Combined English &amp; Manipuri · Mental Ability, EVS, Mathematics, Passage (25 each).</div></div>
           <button style={ui.btn} disabled={!!busy} onClick={loadSeed}>📥 Load Pre Mock Test 2026 data</button>
           <button style={ui.ghost} disabled={!meta.tests.length} onClick={exportAll}>⬇️ Export this series (Excel)</button>
+        </div>
+      ) : null}
+
+      {match.students ? (
+        <div style={ui.card}>
+          <h4 style={{ margin: '0 0 4px' }}>🔍 Student matching check</h4>
+          <div style={{ fontSize: 12.5, color: '#64748B', marginBottom: 8 }}>
+            Students are tied together across tests by GCC number, then by name (spelling variants, blank or mistyped GCC). Check the lists below if a student looks like they are missing data.
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+            <Stat label="Students" value={match.students} color={NAVY} />
+            <Stat label="Joined from variants" value={match.merged.length} sub="more than one GCC" color="#0e7490" />
+            <Stat label="Skipped a test" value={match.gaps.length} sub="check if absent" color={match.gaps.length ? '#b45309' : '#047857'} />
+          </div>
+          <details style={{ marginBottom: 6 }}>
+            <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Matched under different GCC numbers or spellings ({match.merged.length})</summary>
+            <div style={{ marginTop: 6 }}>
+              <Table maxH={320} head={['Student', 'GCC numbers', 'Spellings seen', 'Tests']}>
+                {match.merged.map((m) => (
+                  <tr key={m.sid}><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{m.name}</td><td style={ui.td}>{m.gccs.join(', ')}</td>
+                    <td style={{ ...ui.td, textAlign: 'left' }}>{m.names.join(' · ')}</td><td style={ui.td}>{m.tests.map((t) => 'T' + t).join(' ')}</td></tr>
+                ))}
+              </Table>
+            </div>
+          </details>
+          <details open={match.gaps.length > 0}>
+            <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Students who skipped a test their batch sat ({match.gaps.length})</summary>
+            <div style={{ marginTop: 6 }}>
+              {match.gaps.length ? (
+                <Table maxH={320} head={['Student', 'Batch', 'GCC', 'Has tests', 'Missing']}>
+                  {match.gaps.map((g) => (
+                    <tr key={g.sid}><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{g.name}</td><td style={ui.td}>{g.batch}</td><td style={ui.td}>{g.gcc || '—'}</td>
+                      <td style={ui.td}>{g.tests.map((t) => 'T' + t).join(' ')}</td><td style={{ ...ui.td, color: '#b91c1c', fontWeight: 700 }}>{g.missing.map((t) => 'T' + t).join(' ')}</td></tr>
+                  ))}
+                </Table>
+              ) : <div style={{ fontSize: 13, color: '#047857' }}>✅ Every student has every test their batch sat (between their first and last test).</div>}
+            </div>
+          </details>
         </div>
       ) : null}
 

@@ -176,7 +176,80 @@ export function resolveIdentities(rows) {
     k.slots.add(`${r.batch}|${r.test_no}`);
     k.batches.add(r.batch);
   });
-  return out;
+  return reconcileSplits(out);
+}
+
+// Pass 3 — the same child recorded as two students.  Two identities are merged
+// when they (a) never share a test (a child cannot sit one test twice), (b) are
+// in the same batch, and (c) carry the same GCC, or a GCC one digit apart
+// (566 / 966) together with a distinctive shared name word.  A GCC typo is the
+// usual cause: the child's early tests carry one number, the later ones another.
+function distinctive(a, b) {
+  const ta = tokens(a, true), tb = tokens(b, true);
+  return ta.some((x) => tb.some((y) => x === y || (Math.min(x.length, y.length) >= 3 && (x.startsWith(y) || y.startsWith(x)))));
+}
+function reconcileSplits(rows) {
+  const ids = new Map();
+  rows.forEach((r) => {
+    if (!ids.has(r.sid)) ids.set(r.sid, { slots: new Set(), batches: new Set(), gccs: new Set(), names: new Set(), n: 0 });
+    const k = ids.get(r.sid);
+    k.slots.add(r.test_no); k.batches.add(r.batch); k.n++; k.names.add(r.student_name);
+    const g = gccDigits(r.gcc_no); if (g) k.gccs.add(g);
+  });
+  const keys = [...ids.keys()];
+  const parent = new Map(keys.map((k) => [k, k]));
+  const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  for (let i = 0; i < keys.length; i++) {
+    for (let j = i + 1; j < keys.length; j++) {
+      const A = ids.get(keys[i]), B = ids.get(keys[j]);
+      if (![...A.batches].some((b) => B.batches.has(b))) continue;
+      const ra = find(keys[i]), rb = find(keys[j]);
+      if (ra === rb) continue;
+      // tests of the whole merged groups must stay disjoint
+      const ga = ids.get(ra), gb = ids.get(rb);
+      if ([...ga.slots].some((t) => gb.slots.has(t)) || [...A.slots].some((t) => B.slots.has(t))) continue;
+      let sameG = false, nearG = false;
+      A.gccs.forEach((x) => B.gccs.forEach((y) => {
+        if (x === y) sameG = true;
+        else if (x.length >= 3 && y.length >= 3 && lev(x, y) <= 1) nearG = true;
+      }));
+      let named = false;
+      A.names.forEach((x) => B.names.forEach((y) => { if (distinctive(x, y)) named = true; }));
+      if (sameG || (nearG && named)) {
+        const keep = ga.n >= gb.n ? ra : rb, drop = keep === ra ? rb : ra;
+        parent.set(drop, keep);
+        const K = ids.get(keep), D = ids.get(drop);
+        D.slots.forEach((t) => K.slots.add(t)); D.names.forEach((n) => K.names.add(n)); D.gccs.forEach((g) => K.gccs.add(g)); D.batches.forEach((b) => K.batches.add(b)); K.n += D.n;
+      }
+    }
+  }
+  return rows.map((r) => (find(r.sid) === r.sid ? r : { ...r, sid: find(r.sid) }));
+}
+
+// Plain-language report on how rows were tied together, so a person can verify
+// the automatic matching: children merged under several GCCs / spellings, and
+// children who skipped a test their own batch sat (genuine absence, or a
+// missed match).
+export function matchingReport(rows) {
+  const by = new Map();
+  rows.forEach((r) => { if (!by.has(r.sid)) by.set(r.sid, []); by.get(r.sid).push(r); });
+  const heldByBatch = {};
+  rows.forEach((r) => { (heldByBatch[r.batch] = heldByBatch[r.batch] || new Set()).add(r.test_no); });
+  const merged = [], gaps = [];
+  by.forEach((rs, sid) => {
+    rs.sort((a, b) => a.test_no - b.test_no);
+    const names = [...new Set(rs.map((r) => cleanName(r.student_name)))];
+    const gccs = [...new Set(rs.map((r) => String(r.gcc_no ?? '').trim()).filter(Boolean))];
+    const display = [...names].sort((a, b) => b.length - a.length)[0];
+    const tests = rs.map((r) => r.test_no);
+    if (gccs.length > 1) merged.push({ sid, name: display, gccs, names, tests, reason: 'Different GCC numbers on different sheets' });
+    const last = rs[rs.length - 1].batch;
+    const missing = [...heldByBatch[last]].filter((t) => !tests.includes(t) && t > tests[0] && t < tests[tests.length - 1]).sort((a, b) => a - b);
+    if (missing.length) gaps.push({ sid, name: display, batch: last, tests, missing, gcc: gccs[0] || '' });
+  });
+  merged.sort((a, b) => a.name.localeCompare(b.name));
+  gaps.sort((a, b) => a.batch.localeCompare(b.batch) || a.name.localeCompare(b.name));
+  return { merged, gaps, students: by.size };
 }
 
 // ─── series meta ──────────────────────────────────────────────────────────────

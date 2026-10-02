@@ -70,4 +70,5 @@
   .exams-root img,.exams-root canvas,.exams-root svg{max-width:100%}
   .exams-root button{min-height:36px}
 }
+
 @media (min-width:768px){.xm-top,.xm-bottom{display:none}}
