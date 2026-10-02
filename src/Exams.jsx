@@ -49,6 +49,17 @@ async function ensureLibs() {
 }
 
 // ─── Default per-course subjects ──────────────────────────────────────────────
+// Hoisted to module level so effects/memos need not list them as dependencies.
+const COMPARE_COLORS = ["#1e3a6e","#185FA5","#a7771f","#d97706"];
+const SUFFIX_RE = /\s+—\s+([A-Za-z]+)$/;
+// Maps the extracted suffix to the batch it actually should have been
+// recorded as a secondary batch for. Confirmed exact names: "ENG" → the
+// English-medium Combined Navodaya batch, "MM" → the Manipuri-medium one.
+const SUFFIX_TO_SECONDARY_BATCH = {
+  ENG: "Combined Navodaya Course(ENG)",
+  MM: "Combined Navodaya Course (MM)",
+};
+
 const DEFAULT_COURSE_SUBJECTS = {
   ACHIEVER:  ["English Grammar", "Vocabulary", "General Knowledge", "Mathematics -I", "Mathematics - II", "Reasoning", "Science"],
   ELITE:     ["English Grammar", "Science", "Mathematics", "Reasoning", "Meitei Mayek"],
@@ -3059,7 +3070,6 @@ function CompareTab({ courseSubjects, examTypes, students }) {
   const [search, setSearch] = useState("");
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
-  const COMPARE_COLORS = ["#1e3a6e","#185FA5","#a7771f","#d97706"];
   // ── Real exam config, sourced live from exam_schedule for this exact course +
   // exam type — NOT the static courseSubjects/COURSE_MAX_MARKS config.
   const [scheduledSubjects, setScheduledSubjects] = useState([]);
@@ -5768,15 +5778,7 @@ function BatchSuffixCleanupTool({ students, secondaryBatchMap, onSecondaryBatche
   const [applying, setApplying] = useState(false);
   const [result, setResult] = useState(null);
 
-  const SUFFIX_RE = /\s+—\s+([A-Za-z]+)$/;
 
-  // Maps the extracted suffix to the batch it actually should have been
-  // recorded as a secondary batch for. Confirmed exact names: "ENG" → the
-  // English-medium Combined Navodaya batch, "MM" → the Manipuri-medium one.
-  const SUFFIX_TO_SECONDARY_BATCH = {
-    ENG: "Combined Navodaya Course(ENG)",
-    MM: "Combined Navodaya Course (MM)",
-  };
 
   useEffect(() => {
     // No DB round-trip needed — the same `batch` value already loaded into
@@ -10321,7 +10323,7 @@ export default function Exams({ currentUser, perms }) {
       supabase.removeChannel(studentsChannel);
       supabase.removeChannel(secondaryBatchChannel);
     };
-  }, []);
+  }, [refetchSecondaryBatches]);
  
   if (loading) {
     return (
