@@ -37,7 +37,7 @@ export function ExamHomeMobile({ groups, onSelect, institute, stats, role }) {
         <label className="xm-search">
           <span aria-hidden="true" style={{ display: "flex" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></svg></span>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search marks, reports, analyzer…" />
-          {q ? <button type="button" onClick={() => setQ('')} aria-label="Clear search">✕</button> : null}
+          {q ? <button type="button" className="xm-clear" onClick={() => setQ('')} aria-label="Clear search">✕</button> : null}
         </label>
       </div>
 
@@ -57,7 +57,7 @@ export function ExamHomeMobile({ groups, onSelect, institute, stats, role }) {
           {quick.length ? (
             <div className="xm-card xm-quick">
               {quick.map((t) => (
-                <button key={t.id} onClick={() => onSelect(t.id)}>
+                <button key={t.id} className="xm-qb" onClick={() => onSelect(t.id)}>
                   <span className="xm-round" style={{ background: t.color }}><ExamIcon id={t.id} size={25} /></span>
                   <span>{t.label}</span>
                 </button>
@@ -101,7 +101,7 @@ export function ExamBottomBar({ items, active, onSelect }) {
   return (
     <nav className="xm-bottom" aria-label="Exam navigation">
       {items.map((it) => (
-        <button key={it.id} className={active === it.id ? 'on' : ''} onClick={() => onSelect(it.id)}>
+        <button key={it.id} className={`xm-nb${active === it.id ? ' on' : ''}`} onClick={() => onSelect(it.id)}>
           <span className="xm-bi"><ExamIcon id={it.id === '__more' ? 'more' : it.id} size={22} /></span>
           <span>{it.label}</span>
         </button>

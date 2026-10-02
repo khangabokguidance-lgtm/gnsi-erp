@@ -10,15 +10,43 @@
 .exams-root input,.exams-root select,.exams-root textarea{font-family:inherit}
 .exams-root input:focus,.exams-root select:focus,.exams-root textarea:focus{border-color:var(--x-cyan)!important;box-shadow:0 0 0 3px rgba(0,186,242,.18);outline:none}
 
+/* ─── Premium keys ───────────────────────────────────────────────────────────
+   Every button in the Exams module becomes a tactile "Pay"-style key: glossy
+   top light, a depth edge underneath, a soft drop shadow, and a press-down.
+   It layers on top of each button's own colour (so green stays green, red stays
+   red). Only plain buttons are touched: ones with a class (tabs, phone nav) have
+   their own styles below, and transparent / icon-only buttons are skipped. */
+.exams-root button:not([class]):not([style*="transparent"]):not([style*="background: none"]):not([style*="background:none"]){
+  border-radius:12px;font-weight:700;letter-spacing:.01em;
+  background-image:linear-gradient(180deg,rgba(255,255,255,.28) 0%,rgba(255,255,255,.04) 48%,rgba(0,0,0,.07) 100%)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),inset 0 -3px 0 rgba(0,0,0,.14),0 4px 10px rgba(0,46,110,.18)!important;
+  transition:transform .09s ease,box-shadow .09s ease,filter .15s ease;
+}
+.exams-root button:not([class]):not([style*="transparent"]):not([style*="background: none"]):not([style*="background:none"]):hover:not(:disabled){filter:brightness(1.07) saturate(1.05)}
+.exams-root button:not([class]):not([style*="transparent"]):not([style*="background: none"]):not([style*="background:none"]):active:not(:disabled){
+  transform:translateY(2px);
+  box-shadow:inset 0 2px 5px rgba(0,0,0,.28),0 1px 2px rgba(0,46,110,.2)!important;
+}
+.exams-root button:not([class]):disabled{box-shadow:none!important;background-image:none!important;opacity:.55;cursor:not-allowed}
+.exams-root button:focus-visible{outline:2px solid var(--x-cyan);outline-offset:2px}
+
 /* ─── Desktop tab bar ─────────────────────────────────────────────────────── */
 .xd-nav{display:flex;flex-wrap:wrap;gap:8px;padding:10px 24px;background:#fff;border-bottom:1px solid #E6ECF4;box-shadow:0 2px 6px rgba(0,46,110,.04)}
 .xd-group{background:#F8FAFD;border:1px solid #E6ECF4;border-radius:14px;padding:6px 6px 5px}
 .xd-group-h{font-size:9.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;padding:0 6px 4px}
 .xd-group-tabs{display:flex;flex-wrap:wrap;gap:2px}
-.xd-tab{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 9px;flex:0 0 auto;white-space:nowrap;font-size:12px;font-weight:600;color:#334155;background:transparent;border:1px solid transparent;border-radius:10px;cursor:pointer;transition:background .15s,color .15s,box-shadow .15s}
-.xd-tab:hover{background:#EEF4FC;color:var(--x-navy)}
-.xd-tab:focus-visible{outline:2px solid var(--x-cyan);outline-offset:1px}
-.xd-tab.on{background:var(--x-navy);color:#fff;box-shadow:0 4px 10px rgba(0,46,110,.28)}
+.xd-tab{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 11px;flex:0 0 auto;white-space:nowrap;font-size:12px;font-weight:700;letter-spacing:.01em;color:#27405F;cursor:pointer;
+  background:linear-gradient(180deg,#FFFFFF 0%,#F1F5FB 100%);border:1px solid #D5E0EF;border-radius:12px;
+  box-shadow:inset 0 1px 0 #fff,0 2px 0 #D5E0EF,0 4px 8px rgba(0,46,110,.08);
+  transition:transform .09s ease,box-shadow .09s ease,background .15s,color .15s}
+.xd-tab:hover{background:linear-gradient(180deg,#FFFFFF 0%,#E6EFFB 100%);color:var(--x-navy);transform:translateY(-1px);box-shadow:inset 0 1px 0 #fff,0 3px 0 #C6D6EA,0 7px 12px rgba(0,46,110,.12)}
+.xd-tab:active{transform:translateY(2px);box-shadow:inset 0 2px 4px rgba(0,46,110,.18),0 0 0 #D5E0EF}
+.xd-tab:focus-visible{outline:2px solid var(--x-cyan);outline-offset:2px}
+.xd-tab.on{color:#fff;border-color:#00265C;
+  background:linear-gradient(180deg,#1478DA 0%,#0A56B8 48%,#003C94 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.45),inset 0 -3px 0 rgba(0,0,0,.18),0 3px 0 #001F4D,0 8px 16px rgba(0,46,110,.34)}
+.xd-tab.on:hover{transform:none;filter:brightness(1.06)}
+.xd-tab.on:active{transform:translateY(2px);box-shadow:inset 0 2px 5px rgba(0,0,0,.35),0 1px 0 #001F4D}
 .xd-tab span{line-height:1}
 
 /* ─── Phone shell ────────────────────────────────────────────────────────── */
@@ -31,7 +59,7 @@
 .xm-chip{background:rgba(255,255,255,.16);border-radius:999px;padding:5px 12px;font-size:11px;font-weight:700;letter-spacing:.04em;white-space:nowrap}
 .xm-search{display:flex;align-items:center;gap:8px;background:#fff;border-radius:14px;padding:0 12px;height:46px;color:var(--x-sub);box-shadow:0 6px 18px rgba(0,20,60,.22)}
 .xm-search input{flex:1;min-width:0;border:0!important;outline:0;background:transparent;font-size:15px!important;color:var(--x-ink);box-shadow:none!important;height:100%}
-.xm-search button{border:0;background:#EEF2F7;color:var(--x-sub);width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:11px;padding:0}
+.xm-search .xm-clear{border:0;background:#EEF2F7;color:var(--x-sub);width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:11px;padding:0}
 .xm-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:-40px 16px 14px;position:relative}
 .xm-stat{background:#fff;border-radius:16px;padding:12px 8px;text-align:center;box-shadow:0 4px 16px rgba(0,46,110,.12)}
 .xm-stat b{display:block;font-size:20px;font-weight:800;color:var(--x-navy);line-height:1.1}
@@ -42,11 +70,13 @@
 .xm-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px 2px}
 .xm-tile{background:none;border:0;padding:6px 2px 10px;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;color:var(--x-ink);border-radius:12px}
 .xm-tile:active{background:#F1F5FA}
-.xm-ico{width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center}
+.xm-ico{width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 3px 0 rgba(0,46,110,.12),0 7px 12px rgba(0,46,110,.10);transition:transform .09s ease,box-shadow .09s ease}
+.xm-tile:active .xm-ico{transform:translateY(2px);box-shadow:inset 0 2px 4px rgba(0,46,110,.18),0 0 0 rgba(0,46,110,.12)}
 .xm-lbl{font-size:10.8px;font-weight:600;line-height:1.2;text-align:center;max-width:80px;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .xm-quick{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:14px 8px 12px}
-.xm-quick button{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;font-size:11px;font-weight:700;color:var(--x-ink);text-align:center;line-height:1.2}
-.xm-round{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 6px 14px rgba(0,46,110,.22)}
+.xm-quick .xm-qb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;font-size:11px;font-weight:700;color:var(--x-ink);text-align:center;line-height:1.2}
+.xm-round{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;background-image:linear-gradient(180deg,rgba(255,255,255,.32),rgba(255,255,255,0) 55%,rgba(0,0,0,.12));box-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.16),0 6px 14px rgba(0,46,110,.26);transition:transform .09s ease}
+.xm-quick .xm-qb:active .xm-round{transform:translateY(2px)}
 .xm-promo{width:calc(100% - 32px);margin:0 16px 14px;border:0;border-radius:18px;padding:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;cursor:pointer;color:#fff;background:linear-gradient(120deg,#00BAF2,#0A56B8);box-shadow:0 8px 20px rgba(10,86,184,.28)}
 .xm-promo em{font-style:normal;font-size:10px;font-weight:800;letter-spacing:.1em;background:rgba(255,255,255,.25);padding:2px 8px;border-radius:999px}
 .xm-promo b{display:block;font-size:17px;margin:6px 0 3px}
@@ -62,11 +92,11 @@
 .xm-body{padding:66px 12px 96px}
 
 .xm-bottom{position:fixed;left:0;right:0;bottom:0;z-index:90;display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-top:1px solid #E6ECF4;box-shadow:0 -4px 16px rgba(0,46,110,.08);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
-.xm-bottom button{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:10.5px;font-weight:600;color:var(--x-sub);cursor:pointer;position:relative}
+.xm-bottom .xm-nb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:10.5px;font-weight:600;color:var(--x-sub);cursor:pointer;position:relative}
 .xm-bottom .xm-bi{display:flex;opacity:.75}
-.xm-bottom button.on{color:var(--x-navy);font-weight:800}
-.xm-bottom button.on .xm-bi{opacity:1}
-.xm-bottom button.on::before{content:'';position:absolute;top:-7px;width:28px;height:3px;border-radius:0 0 3px 3px;background:var(--x-cyan)}
+.xm-bottom .xm-nb.on{color:var(--x-navy);font-weight:800}
+.xm-bottom .xm-nb.on .xm-bi{opacity:1;margin:-3px 0;padding:3px 16px;border-radius:12px;background:linear-gradient(180deg,#EAF3FF,#D9E9FD);box-shadow:inset 0 1px 0 #fff,0 2px 0 #BFD5F2}
+.xm-bottom .xm-nb.on::before{content:'';position:absolute;top:-7px;width:28px;height:3px;border-radius:0 0 3px 3px;background:var(--x-cyan)}
 
 /* ─── Phone fixes for the inner screens ──────────────────────────────────── */
 @media (max-width:767px){
