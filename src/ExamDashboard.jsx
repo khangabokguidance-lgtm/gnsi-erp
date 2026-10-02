@@ -39,7 +39,7 @@ const GRADE_PRESETS = [
   { min: 90, label: "A+", color: "#0F6E56", bg: "#E1F5EE" },
   { min: 80, label: "A",  color: "#185FA5", bg: "#E6F1FB" },
   { min: 70, label: "B+", color: "#534AB7", bg: "#EEEDFE" },
-  { min: 60, label: "B",  color: "#2563eb", bg: "#dbeafe" },
+  { min: 60, label: "B",  color: "#1e3a6e", bg: "#e4ebf6" },
   { min: 50, label: "C",  color: "#BA7517", bg: "#FAEEDA" },
   { min: 40, label: "D",  color: "#ea580c", bg: "#fff7ed" },
   { min: 0,  label: "F",  color: "#A32D2D", bg: "#FCEBEB" },
@@ -49,10 +49,10 @@ function getGrade(pct) {
   return GRADE_PRESETS[GRADE_PRESETS.length - 1];
 }
 
-const COURSE_COLORS = ["#002E6E","#185FA5","#7c3aed","#d97706","#0891b2","#e11d48","#84cc16","#64748b"];
+const COURSE_COLORS = ["#132a4f","#185FA5","#a7771f","#d97706","#0891b2","#e11d48","#84cc16","#5d6b82"];
 
 // ─── Mini Sparkline (SVG) ─────────────────────────────────────────────────────
-function Sparkline({ data, color = "#002E6E", height = 40, width = 120 }) {
+function Sparkline({ data, color = "#132a4f", height = 40, width = 120 }) {
   if (!data || data.length < 2) return null;
   const min = Math.min(...data);
   const max = Math.max(...data);
@@ -81,11 +81,11 @@ function StatCard({ icon, label, value, sub, color, sparkData }) {
       position: "relative", overflow: "hidden"
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".1em" }}>{label}</div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "#8a93a6", textTransform: "uppercase", letterSpacing: ".1em" }}>{label}</div>
         <div style={{ fontSize: 22 }}>{icon}</div>
       </div>
-      <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 36, fontWeight: 700, color: "#1e293b", lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, color: "#64748b" }}>{sub}</div>}
+      <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 36, fontWeight: 700, color: "#14213d", lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 12, color: "#5d6b82" }}>{sub}</div>}
       {sparkData && (
         <div style={{ position: "absolute", bottom: 12, right: 16, opacity: 0.3 }}>
           <Sparkline data={sparkData} color={color} />
@@ -102,15 +102,15 @@ function CourseBar({ course, avg, pass, total, color }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ width: 10, height: 10, borderRadius: "50%", background: color, display: "inline-block" }} />
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>{course}</span>
-          <span style={{ fontSize: 11, color: "#9CA3AF" }}>{total} students</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#14213d" }}>{course}</span>
+          <span style={{ fontSize: 11, color: "#8a93a6" }}>{total} students</span>
         </div>
         <div style={{ display: "flex", gap: 14, fontSize: 12 }}>
           <span style={{ fontWeight: 700, color }}>{avg.toFixed(1)}%</span>
           <span style={{ color: "#0F6E56" }}>✓ {pass}% pass</span>
         </div>
       </div>
-      <div style={{ height: 8, background: "#F1F5F9", borderRadius: 999, overflow: "hidden" }}>
+      <div style={{ height: 8, background: "#f3f0e8", borderRadius: 999, overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${avg}%`, background: color, borderRadius: 999, transition: "width .6s ease" }} />
       </div>
     </div>
@@ -276,7 +276,7 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
 
       {/* Header bar */}
       <div style={{
-        background: "linear-gradient(135deg,#002E6E,#0A56B8)",
+        background: "linear-gradient(135deg,#132a4f,#1e3a6e)",
         borderRadius: 14, padding: "20px 28px",
         display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12
       }}>
@@ -292,14 +292,14 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
           <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.65)", textTransform: "uppercase" }}>Exam Type</label>
           <select value={examType} onChange={e => setExamType(e.target.value)}
             style={{ padding: "8px 14px", borderRadius: 8, border: "none", fontSize: 13, fontWeight: 600, background: "rgba(255,255,255,0.15)", color: "white", outline: "none", cursor: "pointer" }}>
-            {examTypes.map(et => <option key={et.id} value={et.id} style={{ background: "#002E6E" }}>{et.name}</option>)}
+            {examTypes.map(et => <option key={et.id} value={et.id} style={{ background: "#132a4f" }}>{et.name}</option>)}
           </select>
         </div>
       </div>
 
       {/* Top KPI cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <StatCard icon="👥" label="Total Students" value={totalStudents} sub={`${courses.length} courses enrolled`} color="#002E6E" />
+        <StatCard icon="👥" label="Total Students" value={totalStudents} sub={`${courses.length} courses enrolled`} color="#132a4f" />
         <StatCard icon="📝" label="Tests Taken" value={totalTested} sub={`out of ${totalStudents} students`} color="#185FA5" />
         <StatCard icon="📈" label="Class Average" value={`${overallAvg.toFixed(1)}%`} sub="across all batches" color="#0891b2" />
         <StatCard icon="✅" label="Avg Pass Rate" value={`${overallPass.toFixed(0)}%`} sub="across all courses" color="#0F6E56" />
@@ -319,11 +319,11 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
 
           {/* Course bars */}
           <div style={{ background: "white", borderRadius: 14, padding: "20px 24px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)" }}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 600, color: "#1e293b", marginBottom: 18 }}>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 600, color: "#14213d", marginBottom: 18 }}>
               📚 Course-wise Performance — {examName}
             </div>
             {loading ? (
-              <div style={{ textAlign: "center", color: "#9CA3AF", padding: 40 }}>⏳ Loading…</div>
+              <div style={{ textAlign: "center", color: "#8a93a6", padding: 40 }}>⏳ Loading…</div>
             ) : (
               courseStats.map(c => (
                 <CourseBar key={c.course} course={c.course} avg={c.avgPct}
@@ -342,8 +342,8 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{c.course}</div>
-                    <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: "#14213d" }}>{c.course}</div>
+                    <div style={{ fontSize: 11, color: "#8a93a6", marginTop: 2 }}>
                       {c.tested}/{c.total} students tested
                     </div>
                   </div>
@@ -351,29 +351,29 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
                     <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 700, color: c.color }}>
                       {c.avgPct.toFixed(1)}%
                     </div>
-                    <div style={{ fontSize: 10, color: "#9CA3AF" }}>avg</div>
+                    <div style={{ fontSize: 10, color: "#8a93a6" }}>avg</div>
                   </div>
                 </div>
 
                 {/* Trend sparkline */}
                 {c.trendData.length > 1 && (
                   <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".08em" }}>Trend</div>
+                    <div style={{ fontSize: 10, color: "#8a93a6", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".08em" }}>Trend</div>
                     <Sparkline data={c.trendData} color={c.color} height={36} width={200} />
                   </div>
                 )}
 
                 <div style={{ display: "flex", gap: 8 }}>
-                  <div style={{ flex: 1, textAlign: "center", background: "#F8FAFC", borderRadius: 8, padding: "8px 4px" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase" }}>Pass Rate</div>
+                  <div style={{ flex: 1, textAlign: "center", background: "#faf8f3", borderRadius: 8, padding: "8px 4px" }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: "#8a93a6", textTransform: "uppercase" }}>Pass Rate</div>
                     <div style={{ fontSize: 16, fontWeight: 700, color: c.passRate >= 70 ? "#0F6E56" : c.passRate >= 50 ? "#BA7517" : "#A32D2D" }}>
                       {c.passRate}%
                     </div>
                   </div>
                   {c.topper && (
-                    <div style={{ flex: 2, background: "#F8FAFC", borderRadius: 8, padding: "8px 10px" }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", marginBottom: 3 }}>🥇 Topper</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={{ flex: 2, background: "#faf8f3", borderRadius: 8, padding: "8px 10px" }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: "#8a93a6", textTransform: "uppercase", marginBottom: 3 }}>🥇 Topper</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#14213d", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {c.topper.name}
                       </div>
                       <div style={{ fontSize: 11, color: c.color, fontWeight: 600 }}>
@@ -392,7 +392,7 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
 
           {/* Grade distribution */}
           <div style={{ background: "white", borderRadius: 14, padding: "18px 20px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)" }}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600, color: "#1e293b", marginBottom: 14 }}>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600, color: "#14213d", marginBottom: 14 }}>
               🎓 Grade Distribution
             </div>
             {Object.entries(gradeCounts).map(([label, count]) => {
@@ -405,10 +405,10 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
                     display: "flex", alignItems: "center", justifyContent: "center",
                     background: g?.bg, color: g?.color
                   }}>{label}</span>
-                  <div style={{ flex: 1, height: 8, background: "#F1F5F9", borderRadius: 999, overflow: "hidden" }}>
+                  <div style={{ flex: 1, height: 8, background: "#f3f0e8", borderRadius: 999, overflow: "hidden" }}>
                     <div style={{ height: "100%", width: `${pct}%`, background: g?.color, borderRadius: 999, transition: "width .5s" }} />
                   </div>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", minWidth: 28, textAlign: "right" }}>{count}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#5d6b82", minWidth: 28, textAlign: "right" }}>{count}</span>
                 </div>
               );
             })}
@@ -416,43 +416,43 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
 
           {/* Top performers across all courses */}
           <div style={{ background: "white", borderRadius: 14, padding: "18px 20px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)" }}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600, color: "#1e293b", marginBottom: 14 }}>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600, color: "#14213d", marginBottom: 14 }}>
               🏆 Top Performers (All Courses)
             </div>
             {allToppers.slice(0, 7).map((st, i) => (
               <div key={st.id || i} style={{
                 display: "flex", alignItems: "center", gap: 10,
                 padding: "8px 10px", borderRadius: 8, marginBottom: 6,
-                background: i === 0 ? "#FEF9E7" : "#F9FAFB",
-                border: i === 0 ? "1px solid #00BAF2" : "1px solid #F1F5F9"
+                background: i === 0 ? "#FEF9E7" : "#faf8f3",
+                border: i === 0 ? "1px solid #b8923a" : "1px solid #F1F5F9"
               }}>
                 <div style={{
                   width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-                  background: i === 0 ? "#00BAF2" : st.color,
+                  background: i === 0 ? "#b8923a" : st.color,
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 11, fontWeight: 800, color: "white"
                 }}>{i + 1}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#14213d", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {st.name}
                   </div>
-                  <div style={{ fontSize: 10, color: "#9CA3AF" }}>{st.course} · GCC {st.gcc_no}</div>
+                  <div style={{ fontSize: 10, color: "#8a93a6" }}>{st.course} · GCC {st.gcc_no}</div>
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 800, color: st.color }}>{st.pct?.toFixed(1)}%</div>
-                  <div style={{ fontSize: 10, color: "#9CA3AF" }}>{st.total}/{st.courseMax}</div>
+                  <div style={{ fontSize: 10, color: "#8a93a6" }}>{st.total}/{st.courseMax}</div>
                 </div>
               </div>
             ))}
             {allToppers.length === 0 && (
-              <div style={{ textAlign: "center", color: "#9CA3AF", fontSize: 12, padding: 20 }}>No marks data yet.</div>
+              <div style={{ textAlign: "center", color: "#8a93a6", fontSize: 12, padding: 20 }}>No marks data yet.</div>
             )}
           </div>
 
           {/* Upcoming exams */}
           <div style={{ background: "white", borderRadius: 14, padding: "18px 20px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600, color: "#1e293b" }}>
+              <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600, color: "#14213d" }}>
                 📅 Upcoming — {examName}
               </div>
               <button onClick={() => setUpcomingExpanded(p => !p)}
@@ -461,7 +461,7 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
               </button>
             </div>
             {upcoming.length === 0 ? (
-              <div style={{ textAlign: "center", color: "#9CA3AF", fontSize: 12, padding: "12px 0" }}>No upcoming exams scheduled.</div>
+              <div style={{ textAlign: "center", color: "#8a93a6", fontSize: 12, padding: "12px 0" }}>No upcoming exams scheduled.</div>
             ) : (
               upcoming.map((s, i) => {
                 const daysUntil = Math.ceil((new Date(s.exam_date) - new Date()) / 86400000);
@@ -481,19 +481,19 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
                       <div style={{ fontSize: 14, fontWeight: 800, color: isToday ? "#DC2626" : isSoon ? "#92400E" : "#0F6E56", lineHeight: 1 }}>
                         {new Date(s.exam_date).getDate()}
                       </div>
-                      <div style={{ fontSize: 8, color: "#9CA3AF", fontWeight: 600, textTransform: "uppercase" }}>
+                      <div style={{ fontSize: 8, color: "#8a93a6", fontWeight: 600, textTransform: "uppercase" }}>
                         {new Date(s.exam_date).toLocaleString("en-IN", { month: "short" })}
                       </div>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#14213d", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {s.subject}
                       </div>
-                      <div style={{ fontSize: 10, color: "#9CA3AF" }}>
+                      <div style={{ fontSize: 10, color: "#8a93a6" }}>
                         {s.course} · {s.shift || "Morning"} {s.time ? `· ${s.time}` : ""}
                       </div>
                     </div>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: isToday ? "#DC2626" : isSoon ? "#92400E" : "#64748b", flexShrink: 0 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: isToday ? "#DC2626" : isSoon ? "#92400E" : "#5d6b82", flexShrink: 0 }}>
                       {isToday ? "Today" : `${daysUntil}d`}
                     </div>
                   </div>
@@ -507,7 +507,7 @@ export default function ExamDashboard({ courseSubjects, examTypes, students, ins
 
       {/* Bottom: Quick stats bar */}
       <div style={{
-        background: "#002E6E", borderRadius: 14, padding: "16px 28px",
+        background: "#132a4f", borderRadius: 14, padding: "16px 28px",
         display: "flex", gap: 0, overflow: "hidden"
       }}>
         {[

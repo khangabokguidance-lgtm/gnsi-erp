@@ -21,7 +21,6 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from './supabase'
 import { sysOr } from "./systemSettings";
 import { getActiveStudents } from './studentQueries'
-import { staffDB, useStaffDB } from './staffDB'
 import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from './admitCardTemplate'
 import ToppersCertificate from './ToppersCertificate'
 import ExamDashboard from './ExamDashboard'
@@ -29,6 +28,7 @@ import MockTestAnalyzer from './MockTestAnalyzer'
 import ResponsiveTables from './ResponsiveTables'
 import { ExamHomeMobile, ExamTopBar, ExamBottomBar } from './ExamsMobile'
 import ExamIcon from './examIcons'
+import { PremiumStyles, PremiumHero, PremiumTabs, PIcon } from './premiumUI'
 import './examsTheme.css'
 import './mobile.css';
 import ExamCSVImport from './lib/ExamCSVImport';
@@ -443,7 +443,7 @@ function MatchBadge({ matchType, confidence }) {
     bg = "#FEF3E2"; color = "#B45309";
     label = `${matchType.split(" (")[0]} · different batch`;
   } else if (matchType === "Manual") {
-    bg = "#EEF2FF"; color = "#4338CA"; label = "Manual";
+    bg = "#eef2f9"; color = "#4338CA"; label = "Manual";
   } else if (matchType === "New") {
     bg = "#ECFDF5"; color = "#047857"; label = "New Student";
   }
@@ -513,7 +513,7 @@ function ColumnMatchBadge({ matchType, confidence }) {
     else { bg = "#FCEBEB"; color = "#A32D2D"; }
     label = `≈${pct}%`;
   } else if (matchType === "Manual") {
-    bg = "#EEF2FF"; color = "#4338CA"; label = "Manual";
+    bg = "#eef2f9"; color = "#4338CA"; label = "Manual";
   } else if (matchType === "none") {
     bg = "#FCEBEB"; color = "#A32D2D"; label = "Not found";
   }
@@ -529,7 +529,7 @@ const GRADE_PRESETS = [
   { min: 90, label: "A+", color: "#0F6E56", bg: "#E1F5EE", gpa: 4.0 },
   { min: 80, label: "A",  color: "#185FA5", bg: "#E6F1FB", gpa: 3.5 },
   { min: 70, label: "B+", color: "#534AB7", bg: "#EEEDFE", gpa: 3.0 },
-  { min: 60, label: "B",  color: "#2563eb", bg: "#dbeafe", gpa: 2.5 },
+  { min: 60, label: "B",  color: "#1e3a6e", bg: "#e4ebf6", gpa: 2.5 },
   { min: 50, label: "C",  color: "#BA7517", bg: "#FAEEDA", gpa: 2.0 },
   { min: 40, label: "D",  color: "#ea580c", bg: "#fff7ed", gpa: 1.0 },
   { min: 0,  label: "F",  color: "#A32D2D", bg: "#FCEBEB", gpa: 0.0 },
@@ -554,14 +554,14 @@ function usePerm(currentUser, perms) {
 
 const TAB_GROUPS = [
   {
-  groupLabel: "Entry", color: "#1433a8",
+  groupLabel: "Entry", color: "#1e3a6e",
   tabs: [
     { id: "entry",     icon: "✏️", label: "Mark Entry",  tip: "Enter & save marks" },
     { id: "csvimport", icon: "📂", label: "CSV Import",   tip: "Smart CSV / Excel import" },
   ]
 },
   {
-    groupLabel: "Results", color: "#0891b2",
+    groupLabel: "Results", color: "#b8923a",
     tabs: [
       { id: "marks",     icon: "📊", label: "Marks Grid",  tip: "View all marks" },
       { id: "analytics", icon: "📉", label: "Analytics",   tip: "Charts & class analysis" },
@@ -574,7 +574,7 @@ const TAB_GROUPS = [
     ]
   },
   {
-    groupLabel: "Documents", color: "#16a34a",
+    groupLabel: "Documents", color: "#0f7a4c",
     tabs: [
       { id: "admitcard",  icon: "🪪",  label: "Admit Cards",  tip: "Generate admit cards" },
       { id: "reportcard", icon: "📋", label: "Report Cards", tip: "Print report cards" },
@@ -583,14 +583,14 @@ const TAB_GROUPS = [
     ]
   },
   {
-    groupLabel: "Schedule", color: "#d97706",
+    groupLabel: "Schedule", color: "#9a5b00",
     tabs: [
       { id: "schedule",  icon: "📅", label: "Schedule",         tip: "Exam timetable" },
       { id: "seatplan",  icon: "🪑", label: "Seat Arrangement", tip: "Assign seats & rooms" },
     ]
   },
   {
-    groupLabel: "Setup", color: "#7c3aed",
+    groupLabel: "Setup", color: "#5d6b82",
     tabs: [
       { id: "studentsmgr",    icon: "👤", label: "Students",        tip: "Add & manage students" },
       { id: "coursesubjects", icon: "📚", label: "Course Subjects",  tip: "Subjects per course/batch" },
@@ -620,22 +620,17 @@ function getGrade(pct, scale = GRADE_PRESETS) {
   return scale[scale.length - 1];
 }
 
-function calcPct(total, course) {
-  const max = getCourseMax(course);
-  return (total / max) * 100;
-}
-
 function printHTML(html, title = "GNSI") {
   const w = window.open("", "_blank");
   w.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
-    :root{--bg:#F0F4FF;--bg2:#DBEAFE;--border:#BFDBFE;--text:#1C1A16;--text2:#3b5ca8;--accent:#0f2d5e;--gold:#00BAF2;}
+    :root{--bg:#F0F4FF;--bg2:#DBEAFE;--border:#BFDBFE;--text:#1C1A16;--text2:#3b5ca8;--accent:#0f2d5e;--gold:#b8923a;}
     body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);padding:28px;-webkit-font-smoothing:antialiased;}
     .page{max-width:720px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.10);}
     .header{background:linear-gradient(135deg,#0f2d5e 0%,#1a4d8a 60%,#2563b0 100%);color:#fff;padding:28px 36px 22px;text-align:center;position:relative;}
-    .header::after{content:'';display:block;position:absolute;bottom:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#00BAF2,#00BAF2,#00BAF2);}
+    .header::after{content:'';display:block;position:absolute;bottom:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#b8923a,#b8923a,#b8923a);}
     .eyebrow{font-size:10px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,.75);margin-bottom:6px;}
     .inst-name{font-family:'Playfair Display',Georgia,serif;font-size:24px;font-weight:400;margin-bottom:4px;}
     .inst-addr{font-size:12px;color:rgba(255,255,255,.75);}
@@ -676,7 +671,7 @@ function printHTML(html, title = "GNSI") {
 
 const css = {
   card:  { background: "white", border: "1px solid #E5E7EB", borderRadius: 12, padding: 20, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" },
-  input: { padding: "7px 11px", borderRadius: 8, border: "1px solid #D1D5DB", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box", color: "#111827", fontFamily: "'DM Sans',sans-serif" },
+  input: { padding: "7px 11px", borderRadius: 8, border: "1px solid #D1D5DB", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box", color: "#0f1b2e", fontFamily: "'DM Sans',sans-serif" },
   btn:   { padding: "8px 18px", borderRadius: 8, border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
 };
 
@@ -695,7 +690,7 @@ const CARD_TABLE_CSS = `
   div:has(> table.gx-rt) { border: 0 !important; background: transparent !important; box-shadow: none !important; overflow: visible !important; max-height: none !important; }
   table.gx-rt, table.gx-rt tbody, table.gx-rt tfoot { display: block !important; width: 100% !important; min-width: 0 !important; border: 0 !important; background: transparent !important; }
   table.gx-rt thead { display: none !important; }
-  table.gx-rt tr { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 14px; row-gap: 2px; position: relative; margin: 0 0 10px !important; padding: 10px 12px !important; background: #fff; border: 1px solid #E5E7EB !important; border-left: 4px solid #002E6E !important; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  table.gx-rt tr { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 14px; row-gap: 2px; position: relative; margin: 0 0 10px !important; padding: 10px 12px !important; background: #fff; border: 1px solid #E5E7EB !important; border-left: 4px solid #132a4f !important; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
   table.gx-rt td { display: block !important; position: static !important; width: auto !important; min-width: 0 !important; padding: 4px 0 !important; border: 0 !important; background: transparent !important; text-align: left !important; white-space: normal !important; font-size: 13px !important; overflow-wrap: anywhere; }
   table.gx-rt td:empty { display: none !important; }
   table.gx-rt td::before { content: attr(data-label); display: block; margin-bottom: 1px; font-size: 10.5px; font-weight: 700; color: #94A3B8; }
@@ -769,16 +764,106 @@ function CardTableEngine({ enabled }) {
   return on ? <style>{CARD_TABLE_CSS}</style> : null;
 }
 
+// ─── Small presentational pieces ──────────────────────────────────────────────
+// Declared at module level (not inside the screens that use them) so React keeps
+// them mounted between renders; everything they need arrives through props.
+const EXAM_STEP_LABELS = ["Basic Info", "Courses", "Subjects & Marks", "Sessions", "Review"];
+
+function FieldLabel({ children }) {
+  return (
+    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>{children}</label>
+  );
+}
+
+function StatPill({ label, value, color }) {
+  return (
+    <div style={{ background:"white", borderRadius:8, padding:"10px 14px", boxShadow:"0 1px 4px rgba(0,0,0,0.06)", borderLeft:`3px solid ${color||"#132a4f"}` }}>
+      <div style={{ fontSize:10, fontWeight:700, color:"#5d6b82", textTransform:"uppercase", letterSpacing:".08em", marginBottom:3 }}>{label}</div>
+      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:600, color:color||"#132a4f" }}>{value}</div>
+    </div>
+  );
+}
+
+function ModeBtn({ id, icon, label, mode, setMode, isMobile }) {
+  return (
+    <button onClick={() => setMode(id)}
+      style={{ ...css.btn, padding: isMobile ? "7px 10px" : "8px 16px", background: mode === id ? "#132a4f" : "#f3f0e8", color: mode === id ? "white" : "#2e3b52", border: mode === id ? "none" : "1px solid #E5E7EB", fontSize: isMobile ? 11 : 12 }}>
+      {icon} {isMobile ? "" : label}
+    </button>
+  );
+}
+
+function SectionBtn({ id, icon, label, count, activeSection, setActiveSection, isMobile }) {
+  return (
+    <button onClick={() => setActiveSection(id)}
+      style={{ display:"flex", alignItems:"center", gap:10, padding: isMobile ? "12px 14px" : "14px 24px", borderRadius:10, border: activeSection===id ? "2px solid #132a4f" : "2px solid #E5E7EB", background: activeSection===id ? "#132a4f" : "white", color: activeSection===id ? "white" : "#2e3b52", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize: isMobile ? 13 : 14, flex:1, transition:"all .15s" }}>
+      <span style={{ fontSize: isMobile ? 18 : 22 }}>{icon}</span>
+      <div style={{ textAlign:"left" }}>
+        <div>{label}</div>
+        <div style={{ fontSize:11, fontWeight:400, opacity:0.7 }}>{count} students</div>
+      </div>
+    </button>
+  );
+}
+
+function StepBar({ step, setStep, isMobile }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", marginBottom:24, gap:0 }}>
+      {EXAM_STEP_LABELS.map((label, i) => {
+        const n = i + 1;
+        const done = step > n;
+        const active = step === n;
+        return (
+          <React.Fragment key={n}>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4, cursor: done ? "pointer" : "default" }}
+              onClick={() => done && setStep(n)}>
+              <div style={{
+                width:30, height:30, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center",
+                fontSize:13, fontWeight:700,
+                background: done ? "#132a4f" : active ? "#1e3a6e" : "#f3f0e8",
+                color: (done || active) ? "white" : "#8a93a6",
+                border: active ? "2px solid #132a4f" : "none",
+              }}>
+                {done ? "✓" : n}
+              </div>
+              {!isMobile && <div style={{ fontSize:9, fontWeight:700, color: active ? "#132a4f" : done ? "#0F6E56" : "#8a93a6", textTransform:"uppercase", letterSpacing:".08em", whiteSpace:"nowrap" }}>{label}</div>}
+            </div>
+            {i < EXAM_STEP_LABELS.length - 1 && (
+              <div style={{ flex:1, height:2, background: step > n ? "#132a4f" : "#e8e3d8", margin:"0 4px 18px" }} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+function NavButtons({ step, setStep, totalSteps, canNext, handleSave, saving, isEdit }) {
+  return (
+    <div style={{ display:"flex", gap:10, marginTop:24, paddingTop:16, borderTop:"1px solid #F1F5F9" }}>
+      {step > 1 && <button onClick={() => setStep(s => s-1)} style={{ ...css.btn, background:"#f3f0e8", color:"#2e3b52", flex:1 }}>← Back</button>}
+      {step < totalSteps
+        ? <button onClick={() => setStep(s => s+1)} disabled={!canNext()} style={{ ...css.btn, background:canNext()?"#132a4f":"#d9d2c2", color:"white", flex:2, fontSize:14 }}>
+            Next →
+          </button>
+        : <button onClick={handleSave} disabled={saving} style={{ ...css.btn, background:saving?"#b7c6e0":"#16A34A", color:"white", flex:2, fontSize:14 }}>
+            {saving ? "⏳ Saving…" : isEdit ? "✅ Save Changes" : "✅ Create Exam Format"}
+          </button>
+      }
+    </div>
+  );
+}
+
 // ─── Micro-components ─────────────────────────────────────────────────────────
 function Spinner({ small }) {
-  return <div style={{ padding: small ? 8 : 40, textAlign: "center", color: "#9CA3AF", fontSize: small ? 12 : 14 }}>⏳ Loading…</div>;
+  return <div style={{ padding: small ? 8 : 40, textAlign: "center", color: "#8a93a6", fontSize: small ? 12 : 14 }}>⏳ Loading…</div>;
 }
 function Badge({ label, color, bg }) {
   return <span style={{ display: "inline-block", padding: "2px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, color, background: bg }}>{label}</span>;
 }
 function SaveBtn({ onClick, saving, saved, label = "Save" }) {
   return (
-    <button onClick={onClick} disabled={saving} style={{ ...css.btn, background: saved ? "#16A34A" : saving ? "#93C5FD" : "#1D4ED8", color: "white" }}>
+    <button onClick={onClick} disabled={saving} style={{ ...css.btn, background: saved ? "#16A34A" : saving ? "#b7c6e0" : "#1e3a6e", color: "white" }}>
       {saved ? "✓ Saved!" : saving ? "Saving…" : `💾 ${label}`}
     </button>
   );
@@ -788,11 +873,11 @@ function SaveBtn({ onClick, saving, saved, label = "Save" }) {
 function CoursePicker({ courses, value, onChange, label = "Batch / Course" }) {
   return (
     <div>
-      <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>{label}</label>
+      <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 6, textTransform: "uppercase" }}>{label}</label>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {courses.map(c => (
           <button key={c} onClick={() => onChange(c)}
-            style={{ ...css.btn, padding: "6px 14px", background: value === c ? "#002E6E" : "#F3F4F6", color: value === c ? "white" : "#374151", border: value === c ? "none" : "1px solid #E5E7EB", fontSize: 12 }}>
+            style={{ ...css.btn, padding: "6px 14px", background: value === c ? "#132a4f" : "#f3f0e8", color: value === c ? "white" : "#2e3b52", border: value === c ? "none" : "1px solid #E5E7EB", fontSize: 12 }}>
             {c}
           </button>
         ))}
@@ -805,15 +890,15 @@ function CoursePicker({ courses, value, onChange, label = "Batch / Course" }) {
 function DashStatCard({ label, value, sub, color, strip }) {
   const strips = {
     blue: "linear-gradient(90deg,#185FA5,#4A90D9)", green: "linear-gradient(90deg,#0F6E56,#2A9D8F)",
-    gold: "linear-gradient(90deg,#00BAF2,#00BAF2)", purple: "linear-gradient(90deg,#534AB7,#7B68EE)",
-    red:  "linear-gradient(90deg,#A32D2D,#DC4444)", teal: "linear-gradient(90deg,#0891b2,#38bdf8)",
+    gold: "linear-gradient(90deg,#b8923a,#b8923a)", purple: "linear-gradient(90deg,#534AB7,#7B68EE)",
+    red:  "linear-gradient(90deg,#A32D2D,#DC4444)", teal: "linear-gradient(90deg,#0891b2,#7e95c2)",
   };
   return (
     <div style={{ background: "white", borderRadius: 12, padding: "16px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: strips[strip] || strips.blue }} />
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: color || "#6B7280", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10, marginTop: 2 }}>{label}</div>
-      <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 34, fontWeight: 600, lineHeight: 1, color: color || "#1e293b", letterSpacing: "-.5px", marginBottom: 6 }}>{value}</div>
-      {sub && <div style={{ fontSize: 12.5, color: "#9CA3AF" }}>{sub}</div>}
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: color || "#5d6b82", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10, marginTop: 2 }}>{label}</div>
+      <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 34, fontWeight: 600, lineHeight: 1, color: color || "#14213d", letterSpacing: "-.5px", marginBottom: 6 }}>{value}</div>
+      {sub && <div style={{ fontSize: 12.5, color: "#8a93a6" }}>{sub}</div>}
     </div>
   );
 }
@@ -863,185 +948,6 @@ function visibleTabGroups({ perms, isAdmin, currentUser }) {
     .filter((g) => g.tabs.length > 0);
 }
 
-function TabNav({ active, onSelect, perms, isAdmin, currentUser }) {
-  const isMobile = useMobile();
-  const [menuOpen, setMenuOpen] = React.useState(false);
-
-  const filteredGroups = visibleTabGroups({ perms, isAdmin, currentUser });
-
-  const activeTabInfo = TAB_GROUPS.flatMap((g) => g.tabs).find((t) => t.id === active);
-
-  const handleSelect = (id) => { onSelect(id); setMenuOpen(false); };
-
-  // ── MOBILE ──────────────────────────────────────────────────────────────────
-  if (isMobile) {
-    return (
-      <>
-        {/* Sticky top bar */}
-        <div style={{
-          background: "white",
-          borderBottom: "1px solid #E5E7EB",
-          padding: "0 14px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          height: 50,
-          boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
-          position: "sticky",
-          top: 0,
-          zIndex: 100,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-            <span style={{ flexShrink: 0, color: "#002E6E", display: "flex" }}><ExamIcon id={activeTabInfo?.id} size={19} /></span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#002E6E", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {activeTabInfo?.label}
-            </span>
-          </div>
-          <button
-            onClick={() => setMenuOpen((p) => !p)}
-            style={{
-              background: menuOpen ? "#002E6E" : "#F3F4F6",
-              border: "none",
-              borderRadius: 8,
-              width: 38,
-              height: 38,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              transition: "background .15s",
-            }}
-            aria-label="Toggle navigation"
-          >
-            {menuOpen
-              ? <span style={{ fontSize: 16, color: "white", lineHeight: 1 }}>✕</span>
-              : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {[0,1,2].map(i => <div key={i} style={{ width: 18, height: 2, background: "#374151", borderRadius: 2 }} />)}
-                </div>
-            }
-          </button>
-        </div>
-
-        {/* Full-screen drawer */}
-        {menuOpen && (
-          <div style={{
-            position: "fixed", inset: 0, zIndex: 1000,
-            display: "flex", flexDirection: "column",
-          }}>
-            {/* Backdrop */}
-            <div
-              onClick={() => setMenuOpen(false)}
-              style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)" }}
-            />
-            {/* Drawer panel */}
-            <div style={{
-              position: "relative",
-              background: "white",
-              maxHeight: "88vh",
-              overflowY: "auto",
-              borderBottomLeftRadius: 20,
-              borderBottomRightRadius: 20,
-              boxShadow: "0 12px 40px rgba(0,0,0,0.22)",
-              zIndex: 1,
-            }}>
-              {/* Drawer header */}
-              <div style={{
-                background: "linear-gradient(135deg,#002E6E,#0A56B8)",
-                padding: "14px 18px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                position: "sticky",
-                top: 0,
-                zIndex: 2,
-              }}>
-                <span style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, color: "white" }}>
-                  🎓 Navigation
-                </span>
-                <button
-                  onClick={() => setMenuOpen(false)}
-                  style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 6, padding: "4px 10px", color: "white", cursor: "pointer", fontSize: 14 }}
-                >✕</button>
-              </div>
-
-              {/* Tab groups */}
-              {filteredGroups.map((grp, gi) => (
-                <div key={grp.groupLabel} style={{ padding: "10px 14px 0" }}>
-                  <div style={{
-                    fontSize: 9.5, fontWeight: 800, color: grp.color,
-                    textTransform: "uppercase", letterSpacing: ".14em",
-                    marginBottom: 7, paddingLeft: 2,
-                  }}>
-                    {grp.groupLabel}
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 10 }}>
-                    {grp.tabs.map((t) => {
-                      const isActive = active === t.id;
-                      return (
-                        <button
-                          key={t.id}
-                          onClick={() => handleSelect(t.id)}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 7,
-                            padding: "9px 10px",
-                            borderRadius: 9,
-                            border: isActive ? "none" : "1px solid #E5E7EB",
-                            background: isActive ? "#002E6E" : "#F9FAFB",
-                            color: isActive ? "white" : "#374151",
-                            cursor: "pointer",
-                            fontFamily: "'DM Sans',sans-serif",
-                            fontWeight: isActive ? 700 : 500,
-                            fontSize: 12,
-                            textAlign: "left",
-                            transition: "all .1s",
-                          }}
-                        >
-                          <span style={{ flexShrink: 0, display: "flex", color: isActive ? "white" : "#002E6E" }}><ExamIcon id={t.id} size={17} /></span>
-                          <span style={{ lineHeight: 1.25 }}>{t.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {gi < filteredGroups.length - 1 && (
-                    <div style={{ height: 1, background: "#F1F5F9", margin: "0 2px 10px" }} />
-                  )}
-                </div>
-              ))}
-              <div style={{ height: 20 }} />
-            </div>
-          </div>
-        )}
-      </>
-    );
-  }
-
-  // ── DESKTOP: one wrapping row of grouped tab cards (no sideways scrolling) ──
-  const renderGroup = (grp) => (
-    <div key={grp.groupLabel} className="xd-group">
-      <div className="xd-group-h" style={{ color: grp.color }}>{grp.groupLabel}</div>
-      <div className="xd-group-tabs">
-        {grp.tabs.map((t) => (
-          <button key={t.id} onClick={() => onSelect(t.id)} title={t.tip}
-            className={`xd-tab${active === t.id ? " on" : ""}`}
-            aria-current={active === t.id ? "page" : undefined}>
-            <ExamIcon id={t.id} size={16} style={{ color: active === t.id ? "#fff" : grp.color }} />
-            <span>{t.label}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-
-  return (
-    <nav className="xd-nav" aria-label="Exam sections">
-      {filteredGroups.map(renderGroup)}
-    </nav>
-  );
-}
-
 // ─── MARK ENTRY (mobile: scrollable table, stacked controls) ──────────────────
 
 // ─── Remarks Hook ─────────────────────────────────────────────────────────────
@@ -1070,7 +976,7 @@ function useRemarks(studentId, examTypeId, examDate) {
   return { remark, setRemark, save, saving, saved };
 }
 
-function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, onStudentsChange, initialCourse, initialExamType, initialExamDate }) {
+function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, initialCourse, initialExamType, initialExamDate }) {
   const isMobile = useMobile();
   const perm = usePerm(currentUser, perms);
   const courses = Object.keys(courseSubjects);
@@ -1132,14 +1038,13 @@ function MarkEntry({ courseSubjects, examTypes, students, currentUser, perms, on
   const [rawImport, setRawImport] = useState(null);       // { rows, headers } — kept so subject columns can be remapped after detection
   const [addNewOpenIdx, setAddNewOpenIdx] = useState(null);     // which unmatched row has its "add new student" form open
   const [newStudentForm, setNewStudentForm] = useState({ name: "", gcc_no: "", admission_no: "", track: "", batch: "" });
-  const [addingStudent, setAddingStudent] = useState(false);
+  const [addingStudent] = useState(false);
   const [addStudentError, setAddStudentError] = useState("");
   const [importSaveError, setImportSaveError] = useState("");
   const [lastImportSummary, setLastImportSummary] = useState(null); // persists after the import panel closes, so the save is never invisible
   const [absentSet, setAbsentSet] = useState(new Set());
   const fileInputRef = useRef(null);
   const [isDirty, setIsDirty] = useState(false); // true once any mark changes since last successful save
-  const [pendingCourseChange, setPendingCourseChange] = useState(null); // { type: 'course'|'examType'|'examDate', value } — held until confirmed
   const [bulkFillValues, setBulkFillValues] = useState({}); // { [subject]: string } — the bulk-fill input per subject column
   const [bulkOpen, setBulkOpen] = useState(false); // phone: "fill one subject for everyone" panel expanded
   const [bulkSub, setBulkSub] = useState("");       // phone: subject currently picked in that panel
@@ -1351,7 +1256,7 @@ for (const st of courseStudents) {
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return; e.target.value = "";
-    await ensureLibs(); const XLSX = window.XLSX; let rows = [];
+    await ensureLibs(); const XLSX = window.XLSX; let rows;
     const ext = file.name.split(".").pop().toLowerCase();
     if (ext === "csv") {
       const text = await file.text();
@@ -1563,7 +1468,7 @@ for (const st of courseStudents) {
     setAddNewOpenIdx(idx);
   };
 
-  const saveNewStudentFromError = async (idx) => {
+  const saveNewStudentFromError = async () => {
     // Student records are now managed exclusively in StudentDB (Attendance
     // module → Students tab). Exams no longer creates new student rows —
     // this keeps a single source of truth for course/batch, so add the
@@ -1715,7 +1620,7 @@ for (const st of courseStudents) {
     ? { display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }
     : { display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 18, alignItems: "flex-end" };
 
-  const ImportPreview = () => {
+  const renderImportPreview = () => {
     const previewSubjects = importInfo?.subjects || subjects;
     const detCourse = importInfo?.detectedCourse || course;
 
@@ -1752,8 +1657,8 @@ for (const st of courseStudents) {
       }
 
       const scoredCandidates = pool.map(s => {
-        let score = 0;
-        let matchReason = "";
+        let score;
+        let matchReason;
 
         const normGcc = normalizeGccValue(s.gcc_no);
         const normAdm = String(s.admission_no || "").trim().toUpperCase();
@@ -1835,31 +1740,31 @@ for (const st of courseStudents) {
     return (
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.10)", padding: isMobile ? 14 : 24, marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
-          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, color: "#1e293b" }}>📂 Import Preview</div>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, color: "#14213d" }}>📂 Import Preview</div>
           <button onClick={closeImportPanel}
             style={{ ...css.btn, padding: "5px 12px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 12 }}>
             {importDone ? "✕ Close" : "✕ Cancel"}
           </button>
         </div>
         {importInfo && (
-          <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12 }}>
-            <span style={{ fontWeight: 700, color: "#1D4ED8" }}>🎯 Auto-detected: </span>
-            <span style={{ fontWeight: 800, color: "#002E6E", background: "#D1FAE5", padding: "2px 10px", borderRadius: 999 }}>{importInfo.detectedCourse}</span>
+          <div style={{ background: "#eef2f9", border: "1px solid #BFDBFE", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12 }}>
+            <span style={{ fontWeight: 700, color: "#1e3a6e" }}>🎯 Auto-detected: </span>
+            <span style={{ fontWeight: 800, color: "#132a4f", background: "#D1FAE5", padding: "2px 10px", borderRadius: 999 }}>{importInfo.detectedCourse}</span>
           </div>
         )}
 
         {/* ── Subject column mapping: which spreadsheet column feeds which subject ──── */}
         {importInfo?.subjectColMap?.length > 0 && (
           <div style={{ marginBottom: 18 }}>
-            <div style={{ fontWeight: 700, fontSize: 12, color: "#374151", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
+            <div style={{ fontWeight: 700, fontSize: 12, color: "#2e3b52", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
               📊 Subject Column Mapping
             </div>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(260px,1fr))", gap: 8 }}>
               {importInfo.subjectColMap.map(({ sub, col, matchType, confidence }) => (
-                <div key={sub} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: matchType === "none" ? "#FFFBEB" : "#F9FAFB", border: `1px solid ${matchType === "none" ? "#FDE68A" : "#E5E7EB"}`, borderRadius: 8 }}>
+                <div key={sub} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: matchType === "none" ? "#FFFBEB" : "#faf8f3", border: `1px solid ${matchType === "none" ? "#FDE68A" : "#e8e3d8"}`, borderRadius: 8 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>
-                    <div style={{ fontSize: 10, color: "#9CA3AF" }}>/{importInfo?.maxMarksBySubject?.[sub] ?? getSubjectMax(detCourse, sub)} marks</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#14213d", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>
+                    <div style={{ fontSize: 10, color: "#8a93a6" }}>/{importInfo?.maxMarksBySubject?.[sub] ?? getSubjectMax(detCourse, sub)} marks</div>
                   </div>
                   <ColumnMatchBadge matchType={matchType} confidence={confidence} />
                   <select
@@ -1883,9 +1788,9 @@ for (const st of courseStudents) {
             <div style={{ fontSize: 10, fontWeight: 700, color: "#0F6E56", textTransform: "uppercase" }}>Matched</div>
             <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: "#0F6E56" }}>{importRows.length}</div>
           </div>
-          <div style={{ flex: 1, minWidth: 80, background: importErrors.length ? "#FCEBEB" : "#F9FAFB", border: `1px solid ${importErrors.length ? "#FECACA" : "#E5E7EB"}`, borderRadius: 8, padding: "10px 14px" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: importErrors.length ? "#A32D2D" : "#9CA3AF", textTransform: "uppercase" }}>Unmatched</div>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: importErrors.length ? "#A32D2D" : "#9CA3AF" }}>{importErrors.length}</div>
+          <div style={{ flex: 1, minWidth: 80, background: importErrors.length ? "#FCEBEB" : "#faf8f3", border: `1px solid ${importErrors.length ? "#FECACA" : "#e8e3d8"}`, borderRadius: 8, padding: "10px 14px" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: importErrors.length ? "#A32D2D" : "#8a93a6", textTransform: "uppercase" }}>Unmatched</div>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: importErrors.length ? "#A32D2D" : "#8a93a6" }}>{importErrors.length}</div>
           </div>
         </div>
 
@@ -1905,8 +1810,8 @@ for (const st of courseStudents) {
                   <div key={idx} style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 12px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <div>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: "#1e293b" }}>{err.rawName || "(no name in row)"}</div>
-                        <div style={{ fontSize: 11, color: "#9CA3AF" }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: "#14213d" }}>{err.rawName || "(no name in row)"}</div>
+                        <div style={{ fontSize: 11, color: "#8a93a6" }}>
                           Row {err.rowIndex + 1}{err.rawGcc ? ` · GCC ${err.rawGcc}` : ""}
                           {err.suggestion && <span style={{ color: "#A16207" }}> · best guess: <b>{err.suggestion.name}</b></span>}
                         </div>
@@ -1919,7 +1824,7 @@ for (const st of courseStudents) {
                           </button>
                         )}
                         <button onClick={() => { setAddNewOpenIdx(null); setManualOpenIdx(isOpen ? null : idx); }}
-                          style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: isOpen ? "#002E6E" : "#EFF6FF", color: isOpen ? "white" : "#1D4ED8", border: isOpen ? "none" : "1px solid #BFDBFE" }}>
+                          style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: isOpen ? "#132a4f" : "#eef2f9", color: isOpen ? "white" : "#1e3a6e", border: isOpen ? "none" : "1px solid #BFDBFE" }}>
                           🔍 {isOpen ? "Close" : "Search"}
                         </button>
                         <button onClick={() => toggleAddStudentForm(idx, err)}
@@ -1933,7 +1838,7 @@ for (const st of courseStudents) {
                       </div>
                     </div>
                     {isOpen && (
-                      <div style={{ marginTop: 10, padding: "10px 12px", background: "#F9FAFB", borderRadius: 8, border: "1px solid #E5E7EB" }}>
+                      <div style={{ marginTop: 10, padding: "10px 12px", background: "#faf8f3", borderRadius: 8, border: "1px solid #E5E7EB" }}>
                         <input
                           autoFocus
                           value={query}
@@ -1941,23 +1846,23 @@ for (const st of courseStudents) {
                           placeholder={err.rawGcc ? `GCC ${err.rawGcc} or name…` : (err.rawName ? `Similar to: ${err.rawName}…` : "Search: name, GCC, or admission#…")}
                           style={{ ...css.input, fontSize: 12, marginBottom: 8, width: "100%" }}
                         />
-                        <div style={{ fontSize: 10, color: "#6B7280", marginBottom: 8, background: "white", padding: "6px 8px", borderRadius: 4 }}>
+                        <div style={{ fontSize: 10, color: "#5d6b82", marginBottom: 8, background: "white", padding: "6px 8px", borderRadius: 4 }}>
                           💡 Try: first/last name, GCC number, admission number, or partial name match
                         </div>
                         
                         {/* Quick filters */}
                         <div style={{ marginBottom: 10, paddingTop: 8, borderTop: "1px solid #E5E7EB" }}>
-                          <div style={{ fontSize: 9, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>🎯 Filter by Batch:</div>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: "#5d6b82", marginBottom: 6, textTransform: "uppercase" }}>🎯 Filter by Batch:</div>
                           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                             <button 
                               onClick={() => setManualSearchFilter(p => ({ ...p, [idx]: {} }))}
-                              style={{ ...css.btn, padding: "3px 8px", fontSize: 10, background: !manualSearchFilter[idx]?.batch ? "#002E6E" : "#F3F4F6", color: !manualSearchFilter[idx]?.batch ? "white" : "#374151", border: "none", borderRadius: 4 }}>
+                              style={{ ...css.btn, padding: "3px 8px", fontSize: 10, background: !manualSearchFilter[idx]?.batch ? "#132a4f" : "#f3f0e8", color: !manualSearchFilter[idx]?.batch ? "white" : "#2e3b52", border: "none", borderRadius: 4 }}>
                               ✕ Clear
                             </button>
                             {courses.map(c => (
                               <button key={c}
                                 onClick={() => setManualSearchFilter(p => ({ ...p, [idx]: { batch: manualSearchFilter[idx]?.batch === c ? undefined : c } }))}
-                                style={{ ...css.btn, padding: "3px 8px", fontSize: 10, background: manualSearchFilter[idx]?.batch === c ? "#7c3aed" : "#F3F4F6", color: manualSearchFilter[idx]?.batch === c ? "white" : "#374151", border: manualSearchFilter[idx]?.batch === c ? "none" : "1px solid #E5E7EB", borderRadius: 4 }}>
+                                style={{ ...css.btn, padding: "3px 8px", fontSize: 10, background: manualSearchFilter[idx]?.batch === c ? "#a7771f" : "#f3f0e8", color: manualSearchFilter[idx]?.batch === c ? "white" : "#2e3b52", border: manualSearchFilter[idx]?.batch === c ? "none" : "1px solid #E5E7EB", borderRadius: 4 }}>
                                 {c}
                               </button>
                             ))}
@@ -1971,7 +1876,7 @@ for (const st of courseStudents) {
                               const normAdm = String(s.admission_no || "").trim().toUpperCase();
                               const normName = normalizeNameValue(s.name);
                               
-                              let matchBg = "#F0FDF4", matchColor = "#15803D", matchLabel = "";
+                              let matchBg = "#F0FDF4", matchColor = "#15803D", matchLabel;
                               if (normalizeGccValue(q) === normGcc) matchLabel = "GCC match";
                               else if (String(s.gcc_no).includes(q)) { matchLabel = "GCC substring"; matchBg = "#FEF3C7"; matchColor = "#92400E"; }
                               else if (normAdm === q) matchLabel = "Admission# exact";
@@ -1982,11 +1887,11 @@ for (const st of courseStudents) {
                               return (
                                 <div key={s.id} onClick={() => assignStudentToError(idx, s)}
                                   style={{ padding: "8px 10px", borderRadius: 6, background: "white", border: "2px solid #E5E7EB", cursor: "pointer", fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center", transition: "all 0.15s", }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#3B82F6"; e.currentTarget.style.background = "#EFF6FF"; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#E5E7EB"; e.currentTarget.style.background = "white"; }}>
+                                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#2f4f86"; e.currentTarget.style.background = "#eef2f9"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#e8e3d8"; e.currentTarget.style.background = "white"; }}>
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontWeight: 600, color: "#1F2937", marginBottom: 2 }}>{s.name}</div>
-                                    <div style={{ fontSize: 10, color: "#6B7280" }}>
+                                    <div style={{ fontSize: 10, color: "#5d6b82" }}>
                                       {s.gcc_no && <span>GCC {s.gcc_no}</span>}
                                       {s.admission_no && <span> · Adm# {s.admission_no}</span>}
                                       {(s.class_name || s.course) && <span> · {s.class_name || s.course}</span>}
@@ -1997,16 +1902,16 @@ for (const st of courseStudents) {
                               );
                             })
                           ) : (
-                            <div style={{ fontSize: 11, color: "#9CA3AF", padding: "8px 10px", textAlign: "center", background: "#F9FAFB", borderRadius: 6 }}>
+                            <div style={{ fontSize: 11, color: "#8a93a6", padding: "8px 10px", textAlign: "center", background: "#faf8f3", borderRadius: 6 }}>
                               <div style={{ marginBottom: 4 }}>🔍 No matching students found</div>
-                              <div style={{ fontSize: 10, color: "#9CA3AF" }}>Try: name, GCC, or admission number</div>
+                              <div style={{ fontSize: 10, color: "#8a93a6" }}>Try: name, GCC, or admission number</div>
                             </div>
                           )}
                         </div>
                     )}
                     {isAddOpen && (
                       <div style={{ marginTop: 10, padding: 12, background: "white", border: "1px solid #E5E7EB", borderRadius: 8 }}>
-                        <div style={{ fontWeight: 700, fontSize: 12, color: "#002E6E", marginBottom: 8 }}>➕ Register as New Student</div>
+                        <div style={{ fontWeight: 700, fontSize: 12, color: "#132a4f", marginBottom: 8 }}>➕ Register as New Student</div>
                         {addStudentError && (
                           <div style={{ background: "#FEF2F2", color: "#DC2626", padding: "6px 10px", borderRadius: 6, fontSize: 11, marginBottom: 8 }}>⚠️ {addStudentError}</div>
                         )}
@@ -2017,23 +1922,23 @@ for (const st of courseStudents) {
                             placeholder="GCC No." style={{ ...css.input, fontSize: 12 }} />
                         </div>
                         <div style={{ marginBottom: 8 }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", marginBottom: 4, textTransform: "uppercase" }}>Track</div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: "#5d6b82", marginBottom: 4, textTransform: "uppercase" }}>Track</div>
                           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                             {TRACKS.map(t => (
                               <button key={t} onClick={() => setNewStudentForm(p => ({ ...p, track: t, batch: TRACK_BATCHES[t][0] || p.batch }))}
-                                style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: newStudentForm.track === t ? "#002E6E" : "#F3F4F6", color: newStudentForm.track === t ? "white" : "#374151", border: newStudentForm.track === t ? "none" : "1px solid #E5E7EB" }}>
+                                style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: newStudentForm.track === t ? "#132a4f" : "#f3f0e8", color: newStudentForm.track === t ? "white" : "#2e3b52", border: newStudentForm.track === t ? "none" : "1px solid #E5E7EB" }}>
                                 {t}
                               </button>
                             ))}
                           </div>
                         </div>
                         <div style={{ marginBottom: 10 }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", marginBottom: 4, textTransform: "uppercase" }}>Batch</div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: "#5d6b82", marginBottom: 4, textTransform: "uppercase" }}>Batch</div>
                           {batchesForTrack(newStudentForm.track).length > 0 && (
                             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
                               {batchesForTrack(newStudentForm.track).map(b => (
                                 <button key={b} onClick={() => setNewStudentForm(p => ({ ...p, batch: b }))}
-                                  style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: newStudentForm.batch === b ? "#7c3aed" : "#F5F3FF", color: newStudentForm.batch === b ? "white" : "#5B21B6", border: newStudentForm.batch === b ? "none" : "1px solid #DDD6FE" }}>
+                                  style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: newStudentForm.batch === b ? "#a7771f" : "#fbf3e0", color: newStudentForm.batch === b ? "white" : "#5B21B6", border: newStudentForm.batch === b ? "none" : "1px solid #DDD6FE" }}>
                                   {b}
                                 </button>
                               ))}
@@ -2045,9 +1950,9 @@ for (const st of courseStudents) {
                         <input value={newStudentForm.admission_no} onChange={e => setNewStudentForm(p => ({ ...p, admission_no: e.target.value }))}
                           placeholder="Admission No. (optional)" style={{ ...css.input, fontSize: 12, marginBottom: 10 }} />
                         <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={() => setAddNewOpenIdx(null)} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151", fontSize: 12 }}>Cancel</button>
+                          <button onClick={() => setAddNewOpenIdx(null)} style={{ ...css.btn, flex: 1, background: "#f3f0e8", color: "#2e3b52", fontSize: 12 }}>Cancel</button>
                           <button onClick={() => saveNewStudentFromError(idx)} disabled={addingStudent}
-                            style={{ ...css.btn, flex: 2, background: addingStudent ? "#93C5FD" : "#16A34A", color: "white", fontSize: 12 }}>
+                            style={{ ...css.btn, flex: 2, background: addingStudent ? "#b7c6e0" : "#16A34A", color: "white", fontSize: 12 }}>
                             {addingStudent ? "⏳ Saving…" : "✅ Add & Use This Student"}
                           </button>
                         </div>
@@ -2081,7 +1986,7 @@ for (const st of courseStudents) {
             <div style={{ overflowX: "auto", marginBottom: 16, maxHeight: 300, overflowY: "auto", borderRadius: 8 }}>
               <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 500 }}>
                 <thead style={{ position: "sticky", top: 0 }}>
-                  <tr style={{ background: "#002E6E" }}>
+                  <tr style={{ background: "#132a4f" }}>
                     <th style={{ padding: "8px 8px", textAlign: "center", color: "white", fontWeight: 700, whiteSpace: "nowrap" }}>Rank</th>
                     <th style={{ padding: "8px 12px", textAlign: "left", color: "white", fontWeight: 700 }}>Student</th>
                     <th style={{ padding: "8px 8px", textAlign: "center", color: "white", fontWeight: 700, whiteSpace: "nowrap" }}>Matched By</th>
@@ -2094,14 +1999,14 @@ for (const st of courseStudents) {
                   {rankedImportRows.map(({ student: st, subMarks, matchType, confidence, total, rank }, i) => {
                     const pct = previewCourseMax ? (total / previewCourseMax) * 100 : 0;
                     return (
-                      <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
-                        <td style={{ padding: "7px 8px", textAlign: "center", fontWeight: 800, color: rank <= 3 ? "#D97706" : "#9CA3AF", fontSize: rank <= 3 ? 14 : 12 }}>
+                      <tr key={st.id} style={{ background: i % 2 ? "#faf8f3" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                        <td style={{ padding: "7px 8px", textAlign: "center", fontWeight: 800, color: rank <= 3 ? "#D97706" : "#8a93a6", fontSize: rank <= 3 ? 14 : 12 }}>
                           {rank <= 3 ? medals[rank - 1] : `#${rank}`}
                         </td>
                         <td style={{ padding: "7px 12px", fontWeight: 600, whiteSpace: "nowrap" }}>{st.name}</td>
                         <td style={{ padding: "7px 8px", textAlign: "center" }}><MatchBadge matchType={matchType} confidence={confidence} /></td>
                         {previewSubjects.map(sub => (
-                          <td key={sub} style={{ padding: "7px 8px", textAlign: "center", color: subMarks[sub] !== undefined ? "#1e293b" : "#CBD5E1", fontWeight: subMarks[sub] !== undefined ? 600 : 400 }}>
+                          <td key={sub} style={{ padding: "7px 8px", textAlign: "center", color: subMarks[sub] !== undefined ? "#14213d" : "#d9d2c2", fontWeight: subMarks[sub] !== undefined ? 600 : 400 }}>
                             {subMarks[sub] !== undefined ? subMarks[sub] : "--"}
                           </td>
                         ))}
@@ -2111,14 +2016,14 @@ for (const st of courseStudents) {
                     );
                   })}
                   {!rankedImportRows.length && (
-                    <tr><td colSpan={previewSubjects.length + 5} style={{ padding: 24, textAlign: "center", color: "#94A3B8" }}>No matched rows yet — resolve unmatched rows above, or skip them.</td></tr>
+                    <tr><td colSpan={previewSubjects.length + 5} style={{ padding: 24, textAlign: "center", color: "#8a93a6" }}>No matched rows yet — resolve unmatched rows above, or skip them.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           );
         })()}
-        <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: -10, marginBottom: 16 }}>
+        <div style={{ fontSize: 11, color: "#8a93a6", marginTop: -10, marginBottom: 16 }}>
           Rank is computed live from marks obtained within this import batch — newly-added students are ranked automatically alongside everyone else.
         </div>
 
@@ -2157,7 +2062,7 @@ for (const st of courseStudents) {
             </div>
           )
           : <button onClick={confirmImport} disabled={importing || !importRows.length}
-              style={{ ...css.btn, background: importing ? "#93C5FD" : "#002E6E", color: "white", padding: "10px 24px", fontSize: 14, width: isMobile ? "100%" : "auto" }}>
+              style={{ ...css.btn, background: importing ? "#b7c6e0" : "#132a4f", color: "white", padding: "10px 24px", fontSize: 14, width: isMobile ? "100%" : "auto" }}>
               {importing ? "⏳ Saving…" : `✅ Confirm Import (${importRows.length} students)`}
             </button>
         }
@@ -2193,16 +2098,16 @@ for (const st of courseStudents) {
       )}
 
       {/* Course picker */}
-      <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
+      <div style={{ ...css.card, background: "#faf8f3", marginBottom: 14 }}>
         <CoursePicker courses={courses} value={course} onChange={c => confirmSwitch(setCourse, c)} />
         {subjects.length > 0 && (
           <div style={{ marginTop: 10, display: "flex", gap: 5, flexWrap: "wrap" }}>
             {subjects.map(s => (
-              <span key={s} style={{ fontSize: 11, padding: "3px 10px", background: "#E0F2FE", color: "#0369A1", borderRadius: 999, fontWeight: 600 }}>
+              <span key={s} style={{ fontSize: 11, padding: "3px 10px", background: "#eef2f9", color: "#1e3a6e", borderRadius: 999, fontWeight: 600 }}>
                 {s} <span style={{ opacity: 0.6 }}>/{getSubMax(s)}</span>
               </span>
             ))}
-            <span style={{ fontSize: 11, padding: "3px 10px", background: "#002E6E", color: "white", borderRadius: 999, fontWeight: 700 }}>Total: {courseMax}</span>
+            <span style={{ fontSize: 11, padding: "3px 10px", background: "#132a4f", color: "white", borderRadius: 999, fontWeight: 700 }}>Total: {courseMax}</span>
           </div>
         )}
       </div>
@@ -2213,13 +2118,13 @@ for (const st of courseStudents) {
           <>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4, textTransform: "uppercase" }}>Exam Type</label>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4, textTransform: "uppercase" }}>Exam Type</label>
                 <select value={examType} onChange={e => confirmSwitch(setExamType, e.target.value)} style={{ ...css.input }}>
                   {examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4, textTransform: "uppercase" }}>Date</label>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4, textTransform: "uppercase" }}>Date</label>
                 <input type="date" value={examDate} onChange={e => confirmSwitch(setExamDate, e.target.value)} style={css.input} />
               </div>
             </div>
@@ -2229,29 +2134,29 @@ for (const st of courseStudents) {
               <button onClick={handleExport} style={{ ...css.btn, background: "#E1F5EE", color: "#0F6E56", border: "1px solid #BBF7D0" }}>📥 Excel</button>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <button onClick={downloadTemplate} style={{ ...css.btn, background: "#FAFAF9", color: "#6B7280", border: "1px solid #E5E7EB", fontSize: 12 }}>📋 Template</button>
-              {perm?.canImport !== false && <button onClick={() => fileInputRef.current?.click()} style={{ ...css.btn, background: "#7c3aed", color: "white", fontSize: 12 }}>📂 Import</button>}
+              <button onClick={downloadTemplate} style={{ ...css.btn, background: "#FAFAF9", color: "#5d6b82", border: "1px solid #E5E7EB", fontSize: 12 }}>📋 Template</button>
+              {perm?.canImport !== false && <button onClick={() => fileInputRef.current?.click()} style={{ ...css.btn, background: "#a7771f", color: "white", fontSize: 12 }}>📂 Import</button>}
             </div>
           </>
         ) : (
           <>
             <div>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
               <select value={examType} onChange={e => confirmSwitch(setExamType, e.target.value)} style={{ ...css.input, width: 180 }}>{examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}</select>
             </div>
             <div>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Exam Date</label>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Exam Date</label>
               <input type="date" value={examDate} onChange={e => confirmSwitch(setExamDate, e.target.value)} style={{ ...css.input, width: 160 }} />
             </div>
             <div style={{ flex: 1, minWidth: 160 }}>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Search Student</label>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Search Student</label>
               <input placeholder="Name…" value={search} onChange={e => setSearch(e.target.value)} style={css.input} />
             </div>
             <SaveBtn onClick={handleSave} saving={saving} saved={saved} label="Save Marks" />
             <button onClick={handleExport} style={{ ...css.btn, background: "#E1F5EE", color: "#0F6E56", border: "1px solid #BBF7D0" }}>📥 Excel</button>
-            <div style={{ width: 1, background: "#E5E7EB", alignSelf: "stretch" }} />
-            <button onClick={downloadTemplate} style={{ ...css.btn, background: "#FAFAF9", color: "#6B7280", border: "1px solid #E5E7EB" }}>📋 Template</button>
-            {perm?.canImport !== false && <button onClick={() => fileInputRef.current?.click()} style={{ ...css.btn, background: "#7c3aed", color: "white" }}>📂 Import Excel / CSV</button>}
+            <div style={{ width: 1, background: "#e8e3d8", alignSelf: "stretch" }} />
+            <button onClick={downloadTemplate} style={{ ...css.btn, background: "#FAFAF9", color: "#5d6b82", border: "1px solid #E5E7EB" }}>📋 Template</button>
+            {perm?.canImport !== false && <button onClick={() => fileInputRef.current?.click()} style={{ ...css.btn, background: "#a7771f", color: "white" }}>📂 Import Excel / CSV</button>}
           </>
         )}
       </div>
@@ -2259,17 +2164,17 @@ for (const st of courseStudents) {
       {saved && <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>✅ Marks saved!</div>}
       {saveError && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#991B1B", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>⚠ Save failed: {saveError}</div>}
       {scheduleError && <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", padding: "10px 16px", borderRadius: 8, marginBottom: 14, fontSize: 13 }}>📋 {scheduleError}</div>}
-      {importMode && <ImportPreview />}
+      {importMode && renderImportPreview()}
 
       {!loading && subjects.length > 0 && courseStudents.length > 0 && (
         <div style={{ background: "white", borderRadius: 10, padding: "10px 16px", marginBottom: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.05)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 160 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#6B7280", marginBottom: 4 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#5d6b82", marginBottom: 4 }}>
               <span>Entry progress</span>
-              <span style={{ fontWeight: 700, color: progressPct === 100 ? "#0F6E56" : "#374151" }}>{completeCount} / {courseStudents.length} students ({progressPct}%)</span>
+              <span style={{ fontWeight: 700, color: progressPct === 100 ? "#0F6E56" : "#2e3b52" }}>{completeCount} / {courseStudents.length} students ({progressPct}%)</span>
             </div>
-            <div style={{ height: 7, background: "#F1F5F9", borderRadius: 999, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${progressPct}%`, background: progressPct === 100 ? "#16A34A" : "#002E6E", borderRadius: 999, transition: "width .3s" }} />
+            <div style={{ height: 7, background: "#f3f0e8", borderRadius: 999, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${progressPct}%`, background: progressPct === 100 ? "#16A34A" : "#132a4f", borderRadius: 999, transition: "width .3s" }} />
             </div>
           </div>
           {isDirty && (
@@ -2286,9 +2191,9 @@ for (const st of courseStudents) {
           {subjects.length > 0 && filtered.length > 0 && (
             <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 12, marginBottom: 12, overflow: "hidden" }}>
               <button type="button" onClick={() => setBulkOpen(o => !o)}
-                style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", border: "none", background: "transparent", fontSize: 13, fontWeight: 700, color: "#002E6E", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>
+                style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", border: "none", background: "transparent", fontSize: 13, fontWeight: 700, color: "#132a4f", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>
                 <span>⚡ Fill one subject for everyone</span>
-                <span style={{ fontSize: 11, color: "#94A3B8" }}>{bulkOpen ? "▲" : "▼"}</span>
+                <span style={{ fontSize: 11, color: "#8a93a6" }}>{bulkOpen ? "▲" : "▼"}</span>
               </button>
               {bulkOpen && (() => {
                 const sub = bulkSub && subjects.includes(bulkSub) ? bulkSub : subjects[0];
@@ -2302,7 +2207,7 @@ for (const st of courseStudents) {
                       onChange={e => setBulkFillValues(p => ({ ...p, [sub]: e.target.value }))}
                       style={{ ...css.input, height: 42, fontSize: 16, textAlign: "center" }} />
                     <button type="button" onClick={() => applyBulkFill(sub)}
-                      style={{ ...css.btn, gridColumn: "1 / -1", background: "#002E6E", color: "white", padding: "11px 18px" }}>
+                      style={{ ...css.btn, gridColumn: "1 / -1", background: "#132a4f", color: "white", padding: "11px 18px" }}>
                       Fill {filtered.length} student{filtered.length !== 1 ? "s" : ""}
                     </button>
                   </div>
@@ -2321,20 +2226,20 @@ for (const st of courseStudents) {
               return v !== "" && v !== undefined && v !== null;
             }).length;
             const complete = isStudentComplete(st.id);
-            const stripe = complete ? "#16A34A" : entered > 0 ? "#F59E0B" : "#CBD5E1";
+            const stripe = complete ? "#16A34A" : entered > 0 ? "#F59E0B" : "#d9d2c2";
             return (
               <div key={st.id} style={{ background: "white", borderRadius: 12, marginBottom: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.07)", borderLeft: `4px solid ${stripe}`, overflow: "hidden" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: "1px solid #F1F5F9" }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 999, background: "#EEF2FF", color: "#002E6E", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</div>
+                  <div style={{ width: 28, height: 28, borderRadius: 999, background: "#eef2f9", color: "#132a4f", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, color: "#1e293b", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{st.name}</div>
-                    <div style={{ fontSize: 11, color: "#94A3B8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={{ fontWeight: 700, color: "#14213d", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{st.name}</div>
+                    <div style={{ fontSize: 11, color: "#8a93a6", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {st.class_name} · GCC {st.gcc_no}
                     </div>
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: "#0F172A" }}>
-                      {total}<span style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8" }}>/{courseMax}</span>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: "#0f1b2e" }}>
+                      {total}<span style={{ fontSize: 11, fontWeight: 600, color: "#8a93a6" }}>/{courseMax}</span>
                     </div>
                     {entered > 0 ? (
                       <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end", marginTop: 2 }}>
@@ -2342,7 +2247,7 @@ for (const st of courseStudents) {
                         <Badge label={g.label} color={g.color} bg={g.bg} />
                       </div>
                     ) : (
-                      <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>Not started</div>
+                      <div style={{ fontSize: 11, color: "#8a93a6", marginTop: 2 }}>Not started</div>
                     )}
                   </div>
                 </div>
@@ -2355,10 +2260,10 @@ for (const st of courseStudents) {
                     const absent = absentSet.has(key);
                     const overMax = val !== "" && val !== undefined && val !== null && Number(val) > max;
                     return (
-                      <div key={sub} style={{ background: absent ? "#FEF2F2" : "#F8FAFC", border: `1px solid ${absent ? "#FECACA" : "#E2E8F0"}`, borderRadius: 10, padding: "8px 8px 8px 10px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 4, fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 6 }}>
+                      <div key={sub} style={{ background: absent ? "#FEF2F2" : "#faf8f3", border: `1px solid ${absent ? "#FECACA" : "#e8e3d8"}`, borderRadius: 10, padding: "8px 8px 8px 10px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 4, fontSize: 11, fontWeight: 700, color: "#4b5870", marginBottom: 6 }}>
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</span>
-                          <span style={{ color: "#94A3B8", fontWeight: 600, flexShrink: 0 }}>/{max}</span>
+                          <span style={{ color: "#8a93a6", fontWeight: 600, flexShrink: 0 }}>/{max}</span>
                         </div>
                         <div style={{ display: "flex", gap: 6 }}>
                           <input type="number" inputMode="decimal" enterKeyHint="next" min="0" max={max} placeholder="--"
@@ -2369,10 +2274,10 @@ for (const st of courseStudents) {
                             onChange={e => handleMark(st.id, sub, e.target.value)}
                             onKeyDown={e => handleCardKeyDown(e, i, colIdx)}
                             onFocus={e => e.target.select()}
-                            style={{ flex: 1, minWidth: 0, height: 42, boxSizing: "border-box", borderRadius: 8, border: overMax ? "1.5px solid #DC2626" : "1px solid #CBD5E1", textAlign: "center", fontSize: 18, fontWeight: 700, color: absent ? "#DC2626" : "#0F172A", background: overMax || absent ? "#FEF2F2" : "white", outline: "none", fontFamily: "'DM Sans',sans-serif" }} />
+                            style={{ flex: 1, minWidth: 0, height: 42, boxSizing: "border-box", borderRadius: 8, border: overMax ? "1.5px solid #DC2626" : "1px solid #CBD5E1", textAlign: "center", fontSize: 18, fontWeight: 700, color: absent ? "#DC2626" : "#0f1b2e", background: overMax || absent ? "#FEF2F2" : "white", outline: "none", fontFamily: "'DM Sans',sans-serif" }} />
                           <button type="button" onClick={() => toggleAbsent(st.id, sub)} aria-pressed={absent}
                             title={absent ? "Marked absent — tap to undo" : "Mark absent"}
-                            style={{ width: 42, height: 42, flexShrink: 0, borderRadius: 8, border: `1px solid ${absent ? "#DC2626" : "#E2E8F0"}`, background: absent ? "#DC2626" : "white", color: absent ? "white" : "#94A3B8", fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>
+                            style={{ width: 42, height: 42, flexShrink: 0, borderRadius: 8, border: `1px solid ${absent ? "#DC2626" : "#e8e3d8"}`, background: absent ? "#DC2626" : "white", color: absent ? "white" : "#8a93a6", fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" }}>
                             {absent ? "ABS" : "A"}
                           </button>
                         </div>
@@ -2385,14 +2290,14 @@ for (const st of courseStudents) {
           })}
 
           {!filtered.length && (
-            <div style={{ background: "white", borderRadius: 12, padding: 32, textAlign: "center", color: "#94A3B8", fontSize: 13 }}>
+            <div style={{ background: "white", borderRadius: 12, padding: 32, textAlign: "center", color: "#8a93a6", fontSize: 13 }}>
               No students found for <b>{course}</b>.
             </div>
           )}
 
           {/* Sticky save bar — stays in reach while scrolling long batches */}
           {filtered.length > 0 && subjects.length > 0 && (
-            <div style={{ position: "sticky", bottom: navH ? navH + 8 : 8, zIndex: 20, marginTop: 6, background: "#002E6E", color: "white", borderRadius: 14, padding: "10px 12px calc(10px + env(safe-area-inset-bottom, 0px))", display: "flex", alignItems: "center", gap: 8, boxShadow: "0 6px 20px rgba(0,46,110,0.35)" }}>
+            <div style={{ position: "sticky", bottom: navH ? navH + 8 : 8, zIndex: 20, marginTop: 6, background: "#132a4f", color: "white", borderRadius: 14, padding: "10px 12px calc(10px + env(safe-area-inset-bottom, 0px))", display: "flex", alignItems: "center", gap: 8, boxShadow: "0 6px 20px rgba(19,42,79,0.35)" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700 }}>{completeCount}/{courseStudents.length} students done</div>
                 <div style={{ fontSize: 11, color: isDirty ? "#FCD34D" : "rgba(255,255,255,0.7)" }}>{isDirty ? "● Unsaved changes" : "No unsaved changes"}</div>
@@ -2404,7 +2309,7 @@ for (const st of courseStudents) {
                 </button>
               )}
               <button type="button" onClick={handleSave} disabled={saving}
-                style={{ ...css.btn, padding: "10px 16px", background: saved ? "#16A34A" : "white", color: saved ? "white" : "#002E6E", opacity: saving ? 0.7 : 1 }}>
+                style={{ ...css.btn, padding: "10px 16px", background: saved ? "#16A34A" : "white", color: saved ? "white" : "#132a4f", opacity: saving ? 0.7 : 1 }}>
                 {saved ? "✓ Saved" : saving ? "Saving…" : "💾 Save"}
               </button>
             </div>
@@ -2414,8 +2319,8 @@ for (const st of courseStudents) {
         <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: isMobile ? 12 : 13, minWidth: isMobile ? 500 : "auto" }}>
             <thead>
-              <tr style={{ background: "#002E6E" }}>
-                <th style={{ padding: isMobile ? "8px 10px" : "10px 14px", textAlign: "left", color: "white", fontWeight: 700, fontSize: isMobile ? 11 : 12, position: "sticky", left: 0, background: "#002E6E", zIndex: 2 }}>Student</th>
+              <tr style={{ background: "#132a4f" }}>
+                <th style={{ padding: isMobile ? "8px 10px" : "10px 14px", textAlign: "left", color: "white", fontWeight: 700, fontSize: isMobile ? 11 : 12, position: "sticky", left: 0, background: "#132a4f", zIndex: 2 }}>Student</th>
                 {subjects.map(s => (
                   <th key={s} style={{ padding: "10px 6px", textAlign: "center", color: "white", fontWeight: 700, fontSize: 10, whiteSpace: "nowrap" }}>
                     {s}<br /><span style={{ opacity: 0.6, fontWeight: 400, fontSize: 9 }}>/{getSubMax(s)}</span>
@@ -2427,7 +2332,7 @@ for (const st of courseStudents) {
               </tr>
               {!isMobile && subjects.length > 0 && (
                 <tr style={{ background: "#F0F4F2" }}>
-                  <th style={{ padding: "6px 14px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#6B7280", position: "sticky", left: 0, background: "#F0F4F2", zIndex: 2 }}>⚡ Bulk fill</th>
+                  <th style={{ padding: "6px 14px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#5d6b82", position: "sticky", left: 0, background: "#F0F4F2", zIndex: 2 }}>⚡ Bulk fill</th>
                   {subjects.map(sub => (
                     <th key={sub} style={{ padding: "4px 3px" }}>
                       <div style={{ display: "flex", gap: 2, justifyContent: "center" }}>
@@ -2437,7 +2342,7 @@ for (const st of courseStudents) {
                           onKeyDown={e => { if (e.key === "Enter") applyBulkFill(sub); }}
                           style={{ width: 34, padding: "3px 2px", borderRadius: 5, border: "1px solid #D1D5DB", textAlign: "center", fontSize: 11 }} />
                         <button onClick={() => applyBulkFill(sub)} title={`Fill ${sub} for all visible students`}
-                          style={{ ...css.btn, padding: "2px 5px", fontSize: 10, background: "#002E6E", color: "white" }}>✓</button>
+                          style={{ ...css.btn, padding: "2px 5px", fontSize: 10, background: "#132a4f", color: "white" }}>✓</button>
                       </div>
                     </th>
                   ))}
@@ -2451,10 +2356,10 @@ for (const st of courseStudents) {
                 const pct = calcPctLocal(total);
                 const g = getGrade(pct);
                 return (
-                  <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
-                    <td style={{ padding: isMobile ? "6px 10px" : "8px 14px", position: "sticky", left: 0, background: i % 2 ? "#F9FAFB" : "white", zIndex: 1 }}>
-                      <div style={{ fontWeight: 600, color: "#1e293b", fontSize: isMobile ? 11 : 13, whiteSpace: "nowrap" }}>{st.name}</div>
-                      <div style={{ fontSize: 10, color: "#9CA3AF" }}>{st.class_name} · {st.gcc_no}</div>
+                  <tr key={st.id} style={{ background: i % 2 ? "#faf8f3" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                    <td style={{ padding: isMobile ? "6px 10px" : "8px 14px", position: "sticky", left: 0, background: i % 2 ? "#faf8f3" : "white", zIndex: 1 }}>
+                      <div style={{ fontWeight: 600, color: "#14213d", fontSize: isMobile ? 11 : 13, whiteSpace: "nowrap" }}>{st.name}</div>
+                      <div style={{ fontSize: 10, color: "#8a93a6" }}>{st.class_name} · {st.gcc_no}</div>
                     </td>
                     {subjects.map((sub, colIdx) => {
                       const val = marks[`${st.id}-${sub}`];
@@ -2468,7 +2373,7 @@ for (const st of courseStudents) {
                           onKeyDown={e => handleCellKeyDown(e, i, colIdx)}
                           style={{ width: isMobile ? 40 : 52, padding: "4px 2px", borderRadius: 6, border: overMax ? "1.5px solid #DC2626" : "1px solid #D1D5DB", textAlign: "center", fontSize: isMobile ? 12 : 13, outline: "none", background: overMax ? "#FEF2F2" : "white" }} />
                         <button onClick={() => toggleAbsent(st.id, sub)}
-                          style={{ display: "block", margin: "2px auto 0", fontSize: 8, padding: "1px 4px", borderRadius: 3, border: "1px solid #FECACA", background: absentSet.has(`${st.id}-${sub}`) ? "#FCA5A5" : "#F9FAFB", color: absentSet.has(`${st.id}-${sub}`) ? "#DC2626" : "#9CA3AF", cursor: "pointer", fontWeight: 700 }}>
+                          style={{ display: "block", margin: "2px auto 0", fontSize: 8, padding: "1px 4px", borderRadius: 3, border: "1px solid #FECACA", background: absentSet.has(`${st.id}-${sub}`) ? "#FCA5A5" : "#faf8f3", color: absentSet.has(`${st.id}-${sub}`) ? "#DC2626" : "#8a93a6", cursor: "pointer", fontWeight: 700 }}>
                           {absentSet.has(`${st.id}-${sub}`) ? "ABS" : "A"}
                         </button>
                       </td>
@@ -2481,7 +2386,7 @@ for (const st of courseStudents) {
                 );
               })}
               {!filtered.length && (
-                <tr><td colSpan={subjects.length + 4} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>No students found for <b>{course}</b>.</td></tr>
+                <tr><td colSpan={subjects.length + 4} style={{ padding: 32, textAlign: "center", color: "#8a93a6" }}>No students found for <b>{course}</b>.</td></tr>
               )}
             </tbody>
           </table>
@@ -2561,16 +2466,16 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
 
   return (
     <div>
-      <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
+      <div style={{ ...css.card, background: "#faf8f3", marginBottom: 14 }}>
         <CoursePicker courses={courses} value={course} onChange={c => { setCourse(c); setMarks({}); }} />
       </div>
       <div style={{ display: "flex", gap: isMobile ? 8 : 12, flexWrap: "wrap", marginBottom: 14, alignItems: "flex-end" }}>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
           <select value={examType} onChange={e => setExamType(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 180 }}>{examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}</select>
         </div>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
           <select value={examDate} onChange={e => setExamDate(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 160 }}>
             {!dates.length && <option value="">{datesLoaded ? "— No marks recorded —" : "Checking…"}</option>}
             {dates.map(d => <option key={d} value={d}>{d}</option>)}
@@ -2591,8 +2496,8 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
       {loading ? <Spinner /> : (
         <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 480 : "auto" }}>
-            <thead><tr style={{ background: "#002E6E" }}>
-              <th style={{ padding: "10px 14px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 12, position: isMobile ? "sticky" : "static", left: 0, background: "#002E6E", zIndex: 2 }}>Student</th>
+            <thead><tr style={{ background: "#132a4f" }}>
+              <th style={{ padding: "10px 14px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 12, position: isMobile ? "sticky" : "static", left: 0, background: "#132a4f", zIndex: 2 }}>Student</th>
               {subjects.map(s => (
                 <th key={s} style={{ padding: "10px 6px", textAlign: "center", color: "white", fontWeight: 700, fontSize: 10, whiteSpace: "nowrap" }}>
                   {s}<br /><span style={{ opacity: 0.6, fontWeight: 400, fontSize: 9 }}>/{subjectMaxMap[s] || 100}</span>
@@ -2608,12 +2513,12 @@ function MarksGrid({ courseSubjects, examTypes, students }) {
                 const pct = courseMax ? (total / courseMax) * 100 : 0;
                 const g = getGrade(pct);
                 return (
-                  <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
-                    <td style={{ padding: "8px 14px", fontWeight: 600, color: "#1e293b", position: isMobile ? "sticky" : "static", left: 0, background: i % 2 ? "#F9FAFB" : "white", zIndex: 1 }}>
-                      {st.name}<div style={{ fontSize: 10, color: "#9CA3AF" }}>GCC {st.gcc_no}</div>
+                  <tr key={st.id} style={{ background: i % 2 ? "#faf8f3" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                    <td style={{ padding: "8px 14px", fontWeight: 600, color: "#14213d", position: isMobile ? "sticky" : "static", left: 0, background: i % 2 ? "#faf8f3" : "white", zIndex: 1 }}>
+                      {st.name}<div style={{ fontSize: 10, color: "#8a93a6" }}>GCC {st.gcc_no}</div>
                     </td>
-                    {subjects.map(sub => <td key={sub} style={{ padding: "8px 6px", textAlign: "center", fontSize: 12 }}>{marks[`${st.id}-${sub}`] ?? <span style={{ color: "#CBD5E1" }}>--</span>}</td>)}
-                    <td style={{ padding: "8px 8px", textAlign: "center", fontWeight: 800 }}>{total}<span style={{ fontSize: 10, color: "#9CA3AF" }}>/{courseMax}</span></td>
+                    {subjects.map(sub => <td key={sub} style={{ padding: "8px 6px", textAlign: "center", fontSize: 12 }}>{marks[`${st.id}-${sub}`] ?? <span style={{ color: "#d9d2c2" }}>--</span>}</td>)}
+                    <td style={{ padding: "8px 8px", textAlign: "center", fontWeight: 800 }}>{total}<span style={{ fontSize: 10, color: "#8a93a6" }}>/{courseMax}</span></td>
                     <td style={{ padding: "8px 8px", textAlign: "center", color: g.color, fontWeight: 700 }}>{pct.toFixed(0)}%</td>
                     <td style={{ padding: "8px 8px", textAlign: "center" }}><Badge label={g.label} color={g.color} bg={g.bg} /></td>
                   </tr>
@@ -2719,36 +2624,36 @@ function Analytics({ courseSubjects, examTypes, students }) {
     ensureLibs().then(() => {
       const Chart = window.Chart; if (!Chart) return;
       chartsRef.current = (chartsRef.current || []).filter(Boolean);
-      chartsRef.current.forEach(c => { try { if (c && typeof c.destroy === "function") c.destroy(); } catch (_) {} });
+      chartsRef.current.forEach(c => { try { if (c && typeof c.destroy === "function") c.destroy(); } catch { /* ignore */ } });
       chartsRef.current = [];
       if (gradeRef.current) {
         const labels = GRADE_PRESETS.map(g => g.label);
         chartsRef.current.push(new Chart(gradeRef.current, { type: "doughnut", data: { labels, datasets: [{ data: labels.map(l => gradeCounts[l] || 0), backgroundColor: GRADE_PRESETS.map(g => g.color), borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } } }));
       }
       if (subjectRef.current) {
-        chartsRef.current.push(new Chart(subjectRef.current, { type: "bar", data: { labels: subjects, datasets: [{ label: "Avg %", data: subjects.map(s => subjectAvgPct[s]), backgroundColor: "#0A56B8", borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } }, plugins: { legend: { display: false } } } }));
+        chartsRef.current.push(new Chart(subjectRef.current, { type: "bar", data: { labels: subjects, datasets: [{ label: "Avg %", data: subjects.map(s => subjectAvgPct[s]), backgroundColor: "#1e3a6e", borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } }, plugins: { legend: { display: false } } } }));
       }
       if (passRef.current) {
         chartsRef.current.push(new Chart(passRef.current, { type: "bar", data: { labels: subjects, datasets: [{ label: "Pass Rate %", data: subjects.map(s => Math.round((subjectPass[s] / n) * 100)), backgroundColor: "#185FA5", borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } }, plugins: { legend: { display: false } } } }));
       }
     });
-    return () => { chartsRef.current.forEach(c => { try { c.destroy(); } catch (_) {} }); chartsRef.current = []; };
+    return () => { chartsRef.current.forEach(c => { try { c.destroy(); } catch { /* ignore */ } }); chartsRef.current = []; };
   }, [marks, course]);
 
   const chartH = isMobile ? 220 : 260;
 
   return (
     <div>
-      <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
+      <div style={{ ...css.card, background: "#faf8f3", marginBottom: 14 }}>
         <CoursePicker courses={courses} value={course} onChange={c => { setCourse(c); setMarks({}); }} />
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "flex-end" }}>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
           <select value={examType} onChange={e => setExamType(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 180 }}>{examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}</select>
         </div>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
           <select value={examDate} onChange={e => setExamDate(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 160 }}>{dates.map(d => <option key={d} value={d}>{d}</option>)}</select>
         </div>
       </div>
@@ -2758,7 +2663,7 @@ function Analytics({ courseSubjects, examTypes, students }) {
         <DashStatCard label={`${course} Students`} value={courseStudents.length} strip="blue" color="#185FA5" />
         <DashStatCard label="Class Average" value={`${classAvg}%`} strip="teal" color="#0891b2" />
         <DashStatCard label="Pass Rate" value={`${Math.round(passed / n * 100)}%`} sub={`${passed} passed`} strip="green" color="#0F6E56" />
-        <DashStatCard label="Highest" value={`${highest}/${courseMax}`} strip="gold" color="#00BAF2" />
+        <DashStatCard label="Highest" value={`${highest}/${courseMax}`} strip="gold" color="#b8923a" />
         <DashStatCard label="Lowest" value={`${lowest}/${courseMax}`} strip="red" color="#A32D2D" />
       </div>
 
@@ -2766,19 +2671,19 @@ function Analytics({ courseSubjects, examTypes, students }) {
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 16 }}>
         <div style={css.card}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b", fontFamily: "'Playfair Display',serif" }}>Grade Distribution</div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "#14213d", fontFamily: "'Playfair Display',serif" }}>Grade Distribution</div>
             <button onClick={() => { if (!gradeRef.current) return; const a = document.createElement("a"); a.download = `grade-${course}.png`; a.href = gradeRef.current.toDataURL("image/png"); a.click(); }}
-              style={{ ...css.btn, padding: "4px 10px", background: "#F3F4F6", color: "#374151", border: "1px solid #E5E7EB", fontSize: 11 }}>⬇ PNG</button>
+              style={{ ...css.btn, padding: "4px 10px", background: "#f3f0e8", color: "#2e3b52", border: "1px solid #E5E7EB", fontSize: 11 }}>⬇ PNG</button>
           </div>
           <div style={{ height: chartH }}><canvas ref={gradeRef} /></div>
         </div>
         <div style={css.card}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b", marginBottom: 12, fontFamily: "'Playfair Display',serif" }}>Subject-wise Average %</div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#14213d", marginBottom: 12, fontFamily: "'Playfair Display',serif" }}>Subject-wise Average %</div>
           <div style={{ height: chartH }}><canvas ref={subjectRef} /></div>
         </div>
       </div>
       <div style={css.card}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b", marginBottom: 12, fontFamily: "'Playfair Display',serif" }}>Subject-wise Pass Rate</div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "#14213d", marginBottom: 12, fontFamily: "'Playfair Display',serif" }}>Subject-wise Pass Rate</div>
         <div style={{ height: chartH }}><canvas ref={passRef} /></div>
       </div>
     </div>
@@ -2846,22 +2751,31 @@ function Rankings({ courseSubjects, examTypes, students }) {
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const ranked = [...courseStudents].map(st => ({ ...st, total: getTotal(st.id), pct: courseMax ? (getTotal(st.id) / courseMax) * 100 : 0 })).sort((a, b) => b.total - a.total);
-  let cr = 1, pt = null;
-  const rankedWithRanks = ranked.map((st, i) => { if (i === 0) { cr = 1; pt = st.total; } else if (st.total !== pt) { cr++; pt = st.total; } return { ...st, rank: cr }; });
+  // dense rank by total (ties share a rank) — plain loop, no outer variables mutated
+  const rankedWithRanks = (() => {
+    let cr = 1, pt = null;
+    const out = [];
+    for (let i = 0; i < ranked.length; i++) {
+      const st = ranked[i];
+      if (i === 0) { cr = 1; pt = st.total; } else if (st.total !== pt) { cr++; pt = st.total; }
+      out.push({ ...st, rank: cr });
+    }
+    return out;
+  })();
   const medals = ["🥇", "🥈", "🥉"];
 
   return (
     <div>
-      <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
+      <div style={{ ...css.card, background: "#faf8f3", marginBottom: 14 }}>
         <CoursePicker courses={courses} value={course} onChange={c => { setCourse(c); setMarks({}); }} />
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "flex-end" }}>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
           <select value={examType} onChange={e => setExamType(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 180 }}>{examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}</select>
         </div>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
           <select value={examDate} onChange={e => setExamDate(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 160 }}>{dates.map(d => <option key={d} value={d}>{d}</option>)}</select>
         </div>
       </div>
@@ -2876,14 +2790,14 @@ function Rankings({ courseSubjects, examTypes, students }) {
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,1fr)", gap: isMobile ? 10 : 14, marginBottom: 20 }}>
         {rankedWithRanks.slice(0, 3).map((st, i) => {
           const g = getGrade(st.pct);
-          const podiumColor = i === 0 ? "#00BAF2" : i === 1 ? "#94A3B8" : "#CD7F32";
+          const podiumColor = i === 0 ? "#b8923a" : i === 1 ? "#8a93a6" : "#CD7F32";
           return (
             <div key={st.id} style={{ ...css.card, textAlign: "center", borderTop: `4px solid ${podiumColor}`, position: "relative", padding: isMobile ? "14px 12px" : 20 }}>
               <div style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", width: 24, height: 24, borderRadius: "50%", background: podiumColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "white" }}>{i + 1}</div>
               <div style={{ fontSize: isMobile ? 28 : 32, marginTop: 10, marginBottom: 4 }}>{medals[i]}</div>
               <div style={{ fontWeight: 800, fontSize: isMobile ? 13 : 15 }}>{st.name}</div>
-              <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 6 }}>GCC {st.gcc_no}</div>
-              <div style={{ fontFamily: "'Playfair Display',serif", fontSize: isMobile ? 22 : 28, fontWeight: 600, color: g.color }}>{st.total}<span style={{ fontSize: 12, color: "#9CA3AF" }}>/{courseMax}</span></div>
+              <div style={{ fontSize: 11, color: "#8a93a6", marginBottom: 6 }}>GCC {st.gcc_no}</div>
+              <div style={{ fontFamily: "'Playfair Display',serif", fontSize: isMobile ? 22 : 28, fontWeight: 600, color: g.color }}>{st.total}<span style={{ fontSize: 12, color: "#8a93a6" }}>/{courseMax}</span></div>
               <div style={{ fontSize: 13, color: g.color, fontWeight: 700, marginBottom: 6 }}>{st.pct.toFixed(1)}%</div>
               <div><Badge label={g.label} color={g.color} bg={g.bg} /></div>
             </div>
@@ -2893,21 +2807,21 @@ function Rankings({ courseSubjects, examTypes, students }) {
 
       {/* Full rankings table — scrollable on mobile */}
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-        <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>🏆 Full Rankings — {course}</div>
+        <div style={{ padding: "12px 18px", background: "#132a4f", color: "white", fontWeight: 700, fontSize: 13 }}>🏆 Full Rankings — {course}</div>
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 380 : "auto" }}>
-            <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
-              {["Rank", "Student", "GCC", "Total", "%", "Grade"].map(h => <th key={h} style={{ padding: "10px 10px", textAlign: h === "Student" ? "left" : "center", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>)}
+            <thead><tr style={{ background: "#faf8f3", borderBottom: "2px solid #E5E7EB" }}>
+              {["Rank", "Student", "GCC", "Total", "%", "Grade"].map(h => <th key={h} style={{ padding: "10px 10px", textAlign: h === "Student" ? "left" : "center", fontWeight: 700, color: "#2e3b52", fontSize: 11 }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {rankedWithRanks.map((st, i) => {
                 const g = getGrade(st.pct);
                 return (
-                  <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
-                    <td style={{ padding: "9px 10px", textAlign: "center", fontWeight: 800, color: st.rank <= 3 ? "#D97706" : "#9CA3AF", fontSize: st.rank <= 3 ? 15 : 12 }}>{st.rank <= 3 ? medals[st.rank - 1] : `#${st.rank}`}</td>
+                  <tr key={st.id} style={{ background: i % 2 ? "#faf8f3" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                    <td style={{ padding: "9px 10px", textAlign: "center", fontWeight: 800, color: st.rank <= 3 ? "#D97706" : "#8a93a6", fontSize: st.rank <= 3 ? 15 : 12 }}>{st.rank <= 3 ? medals[st.rank - 1] : `#${st.rank}`}</td>
                     <td style={{ padding: "9px 10px", fontWeight: 600, fontSize: isMobile ? 12 : 13 }}>{st.name}</td>
-                    <td style={{ padding: "9px 10px", textAlign: "center", color: "#64748b", fontSize: 12 }}>{st.gcc_no || "—"}</td>
-                    <td style={{ padding: "9px 10px", textAlign: "center", fontWeight: 800 }}>{st.total}<span style={{ fontSize: 10, color: "#9CA3AF" }}>/{courseMax}</span></td>
+                    <td style={{ padding: "9px 10px", textAlign: "center", color: "#5d6b82", fontSize: 12 }}>{st.gcc_no || "—"}</td>
+                    <td style={{ padding: "9px 10px", textAlign: "center", fontWeight: 800 }}>{st.total}<span style={{ fontSize: 10, color: "#8a93a6" }}>/{courseMax}</span></td>
                     <td style={{ padding: "9px 10px", textAlign: "center", color: g.color, fontWeight: 700 }}>{st.pct.toFixed(1)}%</td>
                     <td style={{ padding: "9px 10px", textAlign: "center" }}><Badge label={g.label} color={g.color} bg={g.bg} /></td>
                   </tr>
@@ -2997,8 +2911,8 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
     if (!chartRef.current || !selectedStudent || !dates.length) return;
     ensureLibs().then(() => {
       const Chart = window.Chart; if (!Chart) return;
-      if (chartInstance.current) { try { chartInstance.current.destroy(); } catch (_) {} }
-      const colors = ["#0A56B8","#185FA5","#7c3aed","#d97706","#0891b2","#e11d48","#84cc16"];
+      if (chartInstance.current) { try { chartInstance.current.destroy(); } catch { /* ignore */ } }
+      const colors = ["#1e3a6e","#185FA5","#a7771f","#d97706","#0891b2","#e11d48","#84cc16"];
       const datasets = subjects.map((sub, i) => ({
         label: sub,
         data: dates.map(d => { const m = resolvedMarks.find(r => r.subject === sub && r.exam_date === d); return m ? m.marks_obtained : null; }),
@@ -3009,15 +2923,15 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
         const dm = resolvedMarks.filter(r => r.exam_date === d);
         return dm.length ? dm.reduce((s, r) => s + (r.marks_obtained || 0), 0) : null;
       });
-      datasets.push({ label: "Total", data: totalsData, borderColor: "#002E6E", backgroundColor: "#002E6E22", tension: 0.4, fill: true, borderWidth: 3, pointRadius: 5, pointHoverRadius: 7, spanGaps: true, yAxisID: "y2" });
+      datasets.push({ label: "Total", data: totalsData, borderColor: "#132a4f", backgroundColor: "#132a4f22", tension: 0.4, fill: true, borderWidth: 3, pointRadius: 5, pointHoverRadius: 7, spanGaps: true, yAxisID: "y2" });
       chartInstance.current = new Chart(chartRef.current, {
         type: "line", data: { labels: dates, datasets },
         options: { responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
           plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } } },
-          scales: { x: { grid: { color: "#F1F5F9" } }, y: { beginAtZero: true, grid: { color: "#F1F5F9" }, title: { display: !isMobile, text: "Subject Marks" } }, y2: { beginAtZero: true, position: "right", max: courseMax, grid: { display: false }, title: { display: !isMobile, text: `Total /${courseMax}` } } } },
+          scales: { x: { grid: { color: "#f3f0e8" } }, y: { beginAtZero: true, grid: { color: "#f3f0e8" }, title: { display: !isMobile, text: "Subject Marks" } }, y2: { beginAtZero: true, position: "right", max: courseMax, grid: { display: false }, title: { display: !isMobile, text: `Total /${courseMax}` } } } },
       });
     });
-    return () => { if (chartInstance.current) { try { chartInstance.current.destroy(); } catch (_) {} } };
+    return () => { if (chartInstance.current) { try { chartInstance.current.destroy(); } catch { /* ignore */ } } };
   }, [allMarks, dates, selectedStudent, scheduledSubjects]);
 
   const filteredStudents = courseStudents.filter(s => !search || s.name?.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search));
@@ -3031,12 +2945,12 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
 
   return (
     <div>
-      <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
+      <div style={{ ...css.card, background: "#faf8f3", marginBottom: 14 }}>
         <CoursePicker courses={courses} value={course} onChange={c => { setCourse(c); setSelectedStudent(null); setAllMarks([]); }} />
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "flex-end" }}>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
           <select value={examType} onChange={e => { setExamType(e.target.value); setAllMarks([]); }} style={{ ...css.input, width: isMobile ? "100%" : 200 }}>{examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}</select>
         </div>
       </div>
@@ -3045,14 +2959,14 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
       <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "280px 1fr", gap: isMobile ? 14 : 20 }}>
         {/* Student selector */}
         <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-          <div style={{ padding: "12px 16px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>👤 Select Student</div>
+          <div style={{ padding: "12px 16px", background: "#132a4f", color: "white", fontWeight: 700, fontSize: 13 }}>👤 Select Student</div>
           <div style={{ padding: 10 }}><input placeholder="🔍 Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...css.input, marginBottom: 8, fontSize: 12 }} /></div>
           <div style={{ maxHeight: isMobile ? 200 : 480, overflowY: "auto" }}>
             {filteredStudents.map(st => (
               <div key={st.id} onClick={() => setSelectedStudent(st)}
                 style={{ padding: "9px 16px", cursor: "pointer", borderBottom: "1px solid #F1F5F9", background: selectedStudent?.id === st.id ? "#E1F5EE" : "white" }}>
-                <div style={{ fontWeight: 600, fontSize: 12, color: selectedStudent?.id === st.id ? "#0F6E56" : "#1e293b" }}>{st.name}</div>
-                <div style={{ fontSize: 10, color: "#9CA3AF" }}>GCC {st.gcc_no} · {st.class_name}</div>
+                <div style={{ fontWeight: 600, fontSize: 12, color: selectedStudent?.id === st.id ? "#0F6E56" : "#14213d" }}>{st.name}</div>
+                <div style={{ fontSize: 10, color: "#8a93a6" }}>GCC {st.gcc_no} · {st.class_name}</div>
               </div>
             ))}
           </div>
@@ -3061,13 +2975,13 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
         {/* Detail panel */}
         <div>
           {!selectedStudent ? (
-            <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", padding: isMobile ? 32 : 60, textAlign: "center", color: "#94A3B8" }}>
+            <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", padding: isMobile ? 32 : 60, textAlign: "center", color: "#8a93a6" }}>
               <div style={{ fontSize: isMobile ? 36 : 48, marginBottom: 12 }}>📈</div>
               <div style={{ fontSize: 14, fontWeight: 600 }}>Select a student to view their progress</div>
             </div>
           ) : loading ? <Spinner /> : (
             <>
-              <div style={{ background: "linear-gradient(135deg,#002E6E,#0A56B8)", borderRadius: 12, padding: isMobile ? "14px 16px" : "18px 24px", marginBottom: 14, color: "white", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+              <div style={{ background: "linear-gradient(135deg,#132a4f,#1e3a6e)", borderRadius: 12, padding: isMobile ? "14px 16px" : "18px 24px", marginBottom: 14, color: "white", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
                 <div>
                   <div style={{ fontFamily: "'Playfair Display',serif", fontSize: isMobile ? 16 : 20 }}>{selectedStudent.name}</div>
                   <div style={{ fontSize: 11, opacity: 0.75, marginTop: 2 }}>GCC {selectedStudent.gcc_no} · {selectedStudent.class_name}</div>
@@ -3084,27 +2998,27 @@ function ProgressTab({ courseSubjects, examTypes, students }) {
                   <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 14, marginBottom: 12 }}>📈 Performance Trend</div>
                   <div style={{ height: isMobile ? 220 : 320 }}><canvas ref={chartRef} /></div>
                 </div>
-              ) : <div style={{ ...css.card, textAlign: "center", color: "#94A3B8", padding: 40 }}>No exam data found.</div>}
+              ) : <div style={{ ...css.card, textAlign: "center", color: "#8a93a6", padding: 40 }}>No exam data found.</div>}
 
               {dateSummary.some(d => d.pct !== null) && (
                 <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-                  <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📋 Exam-wise Summary</div>
+                  <div style={{ padding: "12px 18px", background: "#132a4f", color: "white", fontWeight: 700, fontSize: 13 }}>📋 Exam-wise Summary</div>
                   <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
                     <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: isMobile ? 400 : "auto" }}>
-                      <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
-                        <th style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>Date</th>
-                        {subjects.map(s => <th key={s} style={{ padding: "9px 6px", textAlign: "center", fontWeight: 700, color: "#374151", fontSize: 10, whiteSpace: "nowrap" }}>{s}</th>)}
-                        <th style={{ padding: "9px 10px", textAlign: "center", fontWeight: 700, color: "#374151", fontSize: 11 }}>Total</th>
-                        <th style={{ padding: "9px 10px", textAlign: "center", fontWeight: 700, color: "#374151", fontSize: 11 }}>%</th>
-                        <th style={{ padding: "9px 10px", textAlign: "center", fontWeight: 700, color: "#374151", fontSize: 11 }}>Grd</th>
+                      <thead><tr style={{ background: "#faf8f3", borderBottom: "2px solid #E5E7EB" }}>
+                        <th style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#2e3b52", fontSize: 11 }}>Date</th>
+                        {subjects.map(s => <th key={s} style={{ padding: "9px 6px", textAlign: "center", fontWeight: 700, color: "#2e3b52", fontSize: 10, whiteSpace: "nowrap" }}>{s}</th>)}
+                        <th style={{ padding: "9px 10px", textAlign: "center", fontWeight: 700, color: "#2e3b52", fontSize: 11 }}>Total</th>
+                        <th style={{ padding: "9px 10px", textAlign: "center", fontWeight: 700, color: "#2e3b52", fontSize: 11 }}>%</th>
+                        <th style={{ padding: "9px 10px", textAlign: "center", fontWeight: 700, color: "#2e3b52", fontSize: 11 }}>Grd</th>
                       </tr></thead>
                       <tbody>
                         {dateSummary.map((d, i) => (
-                          <tr key={d.date} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                          <tr key={d.date} style={{ background: i % 2 ? "#faf8f3" : "white", borderBottom: "1px solid #F1F5F9" }}>
                             <td style={{ padding: "8px 12px", fontWeight: 600, fontSize: 12 }}>{d.date}</td>
-                            {subjects.map(sub => { const m = resolvedMarks.find(r => r.subject === sub && r.exam_date === d.date); return <td key={sub} style={{ padding: "8px 6px", textAlign: "center", color: m ? "#1e293b" : "#CBD5E1", fontSize: 12 }}>{m ? m.marks_obtained : "--"}</td>; })}
+                            {subjects.map(sub => { const m = resolvedMarks.find(r => r.subject === sub && r.exam_date === d.date); return <td key={sub} style={{ padding: "8px 6px", textAlign: "center", color: m ? "#14213d" : "#d9d2c2", fontSize: 12 }}>{m ? m.marks_obtained : "--"}</td>; })}
                             <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 800 }}>{d.pct !== null ? `${d.total}/${d.max}` : "--"}</td>
-                            <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 700, color: d.grade?.color || "#94A3B8" }}>{d.pct !== null ? `${d.pct.toFixed(1)}%` : "--"}</td>
+                            <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 700, color: d.grade?.color || "#8a93a6" }}>{d.pct !== null ? `${d.pct.toFixed(1)}%` : "--"}</td>
                             <td style={{ padding: "8px 10px", textAlign: "center" }}>{d.grade ? <Badge label={d.grade.label} color={d.grade.color} bg={d.grade.bg} /> : "--"}</td>
                           </tr>
                         ))}
@@ -3137,7 +3051,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
   const [search, setSearch] = useState("");
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
-  const COMPARE_COLORS = ["#0A56B8","#185FA5","#7c3aed","#d97706"];
+  const COMPARE_COLORS = ["#1e3a6e","#185FA5","#a7771f","#d97706"];
   // ── Real exam config, sourced live from exam_schedule for this exact course +
   // exam type — NOT the static courseSubjects/COURSE_MAX_MARKS config.
   const [scheduledSubjects, setScheduledSubjects] = useState([]);
@@ -3198,14 +3112,14 @@ function CompareTab({ courseSubjects, examTypes, students }) {
     if (!chartRef.current || selected.length < 2) return;
     ensureLibs().then(() => {
       const Chart = window.Chart; if (!Chart) return;
-      if (chartInstance.current) { try { chartInstance.current.destroy(); } catch (_) {} }
+      if (chartInstance.current) { try { chartInstance.current.destroy(); } catch { /* ignore */ } }
       chartInstance.current = new Chart(chartRef.current, {
         type: "radar",
         data: { labels: subjects, datasets: selected.map((st, i) => ({ label: st.name.split(" ")[0], data: subjects.map(sub => Number(marks[`${st.id}-${sub}`]) || 0), borderColor: COMPARE_COLORS[i], backgroundColor: COMPARE_COLORS[i] + "33", borderWidth: 2, pointRadius: 4 })) },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } } }, scales: { r: { beginAtZero: true } } },
       });
     });
-    return () => { if (chartInstance.current) { try { chartInstance.current.destroy(); } catch (_) {} } };
+    return () => { if (chartInstance.current) { try { chartInstance.current.destroy(); } catch { /* ignore */ } } };
   }, [selected, marks]);
 
   const filteredStudents = courseStudents.filter(s => !search || s.name?.toLowerCase().includes(search.toLowerCase()) || String(s.gcc_no).includes(search));
@@ -3217,23 +3131,23 @@ function CompareTab({ courseSubjects, examTypes, students }) {
 
   return (
     <div>
-      <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
+      <div style={{ ...css.card, background: "#faf8f3", marginBottom: 14 }}>
         <CoursePicker courses={courses} value={course} onChange={c => { setCourse(c); setSelected([]); setMarks({}); }} />
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "flex-end" }}>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
           <select value={examType} onChange={e => setExamType(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 200 }}>{examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}</select>
         </div>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
           <select value={examDate} onChange={e => setExamDate(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 160 }}>{dates.map(d => <option key={d} value={d}>{d}</option>)}</select>
         </div>
-        {!isMobile && <div style={{ fontSize: 12, color: "#9CA3AF", alignSelf: "center" }}>Select 2–4 students</div>}
+        {!isMobile && <div style={{ fontSize: 12, color: "#8a93a6", alignSelf: "center" }}>Select 2–4 students</div>}
       </div>
 
       {isMobile && selected.length === 0 && (
-        <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 10, textAlign: "center" }}>Tap students below to select 2–4 for comparison</div>
+        <div style={{ fontSize: 12, color: "#8a93a6", marginBottom: 10, textAlign: "center" }}>Tap students below to select 2–4 for comparison</div>
       )}
 
       {!scheduledSubjects.length && examType && course && (
@@ -3246,7 +3160,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
       <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "260px 1fr", gap: isMobile ? 12 : 20 }}>
         {/* Student list */}
         <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-          <div style={{ padding: "12px 16px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>Select Students ({selected.length}/4)</div>
+          <div style={{ padding: "12px 16px", background: "#132a4f", color: "white", fontWeight: 700, fontSize: 13 }}>Select Students ({selected.length}/4)</div>
           <div style={{ padding: 10 }}><input placeholder="🔍 Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...css.input, marginBottom: 8, fontSize: 12 }} /></div>
           <div style={{ maxHeight: isMobile ? 200 : 420, overflowY: "auto" }}>
             {filteredStudents.map(st => {
@@ -3254,8 +3168,8 @@ function CompareTab({ courseSubjects, examTypes, students }) {
               return (
                 <div key={st.id} onClick={() => toggleStudent(st)}
                   style={{ padding: "8px 14px", cursor: "pointer", borderBottom: "1px solid #F1F5F9", background: isSel ? COMPARE_COLORS[idx] + "18" : "white", display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 20, height: 20, borderRadius: "50%", background: isSel ? COMPARE_COLORS[idx] : "#E5E7EB", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: isSel ? "white" : "#9CA3AF", flexShrink: 0 }}>{isSel ? idx + 1 : ""}</div>
-                  <div><div style={{ fontWeight: 600, fontSize: 12, color: isSel ? COMPARE_COLORS[idx] : "#1e293b" }}>{st.name}</div><div style={{ fontSize: 10, color: "#9CA3AF" }}>GCC {st.gcc_no}</div></div>
+                  <div style={{ width: 20, height: 20, borderRadius: "50%", background: isSel ? COMPARE_COLORS[idx] : "#e8e3d8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: isSel ? "white" : "#8a93a6", flexShrink: 0 }}>{isSel ? idx + 1 : ""}</div>
+                  <div><div style={{ fontWeight: 600, fontSize: 12, color: isSel ? COMPARE_COLORS[idx] : "#14213d" }}>{st.name}</div><div style={{ fontSize: 10, color: "#8a93a6" }}>GCC {st.gcc_no}</div></div>
                 </div>
               );
             })}
@@ -3265,7 +3179,7 @@ function CompareTab({ courseSubjects, examTypes, students }) {
         {/* Comparison panel */}
         <div>
           {selected.length < 2 ? (
-            <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", padding: isMobile ? 32 : 60, textAlign: "center", color: "#94A3B8" }}>
+            <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", padding: isMobile ? 32 : 60, textAlign: "center", color: "#8a93a6" }}>
               <div style={{ fontSize: isMobile ? 36 : 48, marginBottom: 12 }}>⚖️</div>
               <div style={{ fontSize: 14, fontWeight: 600 }}>Select at least 2 students</div>
             </div>
@@ -3278,10 +3192,10 @@ function CompareTab({ courseSubjects, examTypes, students }) {
                   return (
                     <div key={st.id} style={{ background: "white", borderRadius: 10, padding: isMobile ? "12px 10px" : "16px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)", borderTop: `4px solid ${COMPARE_COLORS[i]}`, position: "relative" }}>
                       <div style={{ position: "absolute", top: 8, right: 10, width: 20, height: 20, borderRadius: "50%", background: COMPARE_COLORS[i], display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "white" }}>{i + 1}</div>
-                      <div style={{ fontWeight: 700, fontSize: isMobile ? 11 : 13, color: "#1e293b", marginBottom: 2, paddingRight: 24, lineHeight: 1.3 }}>{st.name}</div>
-                      <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 8 }}>GCC {st.gcc_no}</div>
+                      <div style={{ fontWeight: 700, fontSize: isMobile ? 11 : 13, color: "#14213d", marginBottom: 2, paddingRight: 24, lineHeight: 1.3 }}>{st.name}</div>
+                      <div style={{ fontSize: 10, color: "#8a93a6", marginBottom: 8 }}>GCC {st.gcc_no}</div>
                       <div style={{ fontFamily: "'Playfair Display',serif", fontSize: isMobile ? 22 : 28, fontWeight: 600, color: COMPARE_COLORS[i] }}>{pct.toFixed(1)}%</div>
-                      <div style={{ fontSize: 11, color: "#64748b" }}>{total}/{courseMax}</div>
+                      <div style={{ fontSize: 11, color: "#5d6b82" }}>{total}/{courseMax}</div>
                       <div style={{ marginTop: 6 }}><Badge label={g.label} color={g.color} bg={g.bg} /></div>
                     </div>
                   );
@@ -3296,12 +3210,12 @@ function CompareTab({ courseSubjects, examTypes, students }) {
 
               {/* Breakdown table */}
               <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-                <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📊 Subject Breakdown</div>
+                <div style={{ padding: "12px 18px", background: "#132a4f", color: "white", fontWeight: 700, fontSize: 13 }}>📊 Subject Breakdown</div>
                 <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
                   <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: isMobile ? 12 : 13, minWidth: isMobile ? 340 : "auto" }}>
-                    <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
-                      <th style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>Subject</th>
-                      <th style={{ padding: "9px 8px", textAlign: "center", fontWeight: 700, color: "#374151", fontSize: 10 }}>Max</th>
+                    <thead><tr style={{ background: "#faf8f3", borderBottom: "2px solid #E5E7EB" }}>
+                      <th style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#2e3b52", fontSize: 11 }}>Subject</th>
+                      <th style={{ padding: "9px 8px", textAlign: "center", fontWeight: 700, color: "#2e3b52", fontSize: 10 }}>Max</th>
                       {selected.map((st, i) => <th key={st.id} style={{ padding: "9px 10px", textAlign: "center", fontWeight: 700, color: COMPARE_COLORS[i], fontSize: isMobile ? 10 : 12 }}>{st.name.split(" ")[0]}</th>)}
                     </tr></thead>
                     <tbody>
@@ -3309,19 +3223,19 @@ function CompareTab({ courseSubjects, examTypes, students }) {
                         const subMarks = selected.map(st => Number(marks[`${st.id}-${sub}`]) || 0);
                         const maxMark = Math.max(...subMarks);
                         return (
-                          <tr key={sub} style={{ background: ri % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                          <tr key={sub} style={{ background: ri % 2 ? "#faf8f3" : "white", borderBottom: "1px solid #F1F5F9" }}>
                             <td style={{ padding: "8px 12px", fontWeight: 600, fontSize: isMobile ? 11 : 13 }}>{sub}</td>
-                            <td style={{ padding: "8px 8px", textAlign: "center", color: "#94A3B8", fontSize: 11 }}>{subjectMaxMap[sub] || 100}</td>
+                            <td style={{ padding: "8px 8px", textAlign: "center", color: "#8a93a6", fontSize: 11 }}>{subjectMaxMap[sub] || 100}</td>
                             {selected.map((st, i) => { const m = Number(marks[`${st.id}-${sub}`]) || 0; const isTop = m === maxMark && m > 0;
-                              return <td key={st.id} style={{ padding: "8px 10px", textAlign: "center", fontWeight: isTop ? 800 : 500, color: isTop ? COMPARE_COLORS[i] : "#374151" }}>{m}{isTop ? " 🏆" : ""}</td>; })}
+                              return <td key={st.id} style={{ padding: "8px 10px", textAlign: "center", fontWeight: isTop ? 800 : 500, color: isTop ? COMPARE_COLORS[i] : "#2e3b52" }}>{m}{isTop ? " 🏆" : ""}</td>; })}
                           </tr>
                         );
                       })}
                       <tr style={{ background: "#F0FDF4", borderTop: "2px solid #BBF7D0" }}>
-                        <td style={{ padding: "10px 12px", fontWeight: 800, color: "#002E6E", fontSize: isMobile ? 12 : 13 }}>TOTAL</td>
-                        <td style={{ padding: "10px 8px", textAlign: "center", fontWeight: 700, color: "#94A3B8" }}>{courseMax}</td>
+                        <td style={{ padding: "10px 12px", fontWeight: 800, color: "#132a4f", fontSize: isMobile ? 12 : 13 }}>TOTAL</td>
+                        <td style={{ padding: "10px 8px", textAlign: "center", fontWeight: 700, color: "#8a93a6" }}>{courseMax}</td>
                         {selected.map((st, i) => { const total = getTotal(st.id); const pct = getPct(total); const maxTotal = Math.max(...selected.map(s => getTotal(s.id))); const isTop = total === maxTotal;
-                          return <td key={st.id} style={{ padding: "10px 10px", textAlign: "center", fontWeight: 800, color: isTop ? COMPARE_COLORS[i] : "#374151", fontSize: isMobile ? 11 : 13 }}>{total} <span style={{ fontSize: 10, color: "#64748b" }}>({pct.toFixed(0)}%)</span>{isTop ? " 🏆" : ""}</td>; })}
+                          return <td key={st.id} style={{ padding: "10px 10px", textAlign: "center", fontWeight: 800, color: isTop ? COMPARE_COLORS[i] : "#2e3b52", fontSize: isMobile ? 11 : 13 }}>{total} <span style={{ fontSize: 10, color: "#5d6b82" }}>({pct.toFixed(0)}%)</span>{isTop ? " 🏆" : ""}</td>; })}
                       </tr>
                     </tbody>
                   </table>
@@ -3534,10 +3448,10 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
   // Renders the raw-data breakdown for whichever exam type is currently being inspected.
   const InspectPanel = () => {
     if (inspectLoading) {
-      return <div style={{ padding: 14, textAlign: "center", color: "#9CA3AF", fontSize: 12 }}>⏳ Loading marks from the database…</div>;
+      return <div style={{ padding: 14, textAlign: "center", color: "#8a93a6", fontSize: 12 }}>⏳ Loading marks from the database…</div>;
     }
     if (!inspectRows.length) {
-      return <div style={{ padding: 14, textAlign: "center", color: "#9CA3AF", fontSize: 12 }}>No mark rows exist in the database for this exam type.</div>;
+      return <div style={{ padding: 14, textAlign: "center", color: "#8a93a6", fontSize: 12 }}>No mark rows exist in the database for this exam type.</div>;
     }
     const byDate = {};
     inspectRows.forEach(r => {
@@ -3550,21 +3464,21 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
     const dateList = Object.entries(byDate).sort((a, b) => b[0].localeCompare(a[0]));
     return (
       <div style={{ marginTop: 10, background: "#FAFAFA", border: "1px solid #E5E7EB", borderRadius: 8, padding: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 11, color: "#374151", textTransform: "uppercase", marginBottom: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 11, color: "#2e3b52", textTransform: "uppercase", marginBottom: 8 }}>
           📊 {inspectRows.length} mark entr{inspectRows.length === 1 ? "y" : "ies"} found, across {dateList.length} date{dateList.length !== 1 ? "s" : ""}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
           {dateList.map(([date, info]) => (
             <div key={date} style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 4, fontSize: 11.5, padding: "5px 10px", background: "white", border: "1px solid #E5E7EB", borderRadius: 6 }}>
               <span style={{ fontWeight: 700 }}>{date}</span>
-              <span style={{ color: "#64748b" }}>{info.students.size} student{info.students.size !== 1 ? "s" : ""} · {info.subjects.size} subject{info.subjects.size !== 1 ? "s" : ""} · {info.count} entries</span>
+              <span style={{ color: "#5d6b82" }}>{info.students.size} student{info.students.size !== 1 ? "s" : ""} · {info.subjects.size} subject{info.subjects.size !== 1 ? "s" : ""} · {info.count} entries</span>
             </div>
           ))}
         </div>
         <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 6 }}>
           <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
             <thead style={{ position: "sticky", top: 0 }}>
-              <tr style={{ background: "#002E6E" }}>
+              <tr style={{ background: "#132a4f" }}>
                 {["Date", "Student", "Class", "Subject", "Marks"].map(h => (
                   <th key={h} style={{ padding: "6px 8px", textAlign: "left", color: "white", fontWeight: 700 }}>{h}</th>
                 ))}
@@ -3572,7 +3486,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
             </thead>
             <tbody>
               {inspectRows.slice(0, 200).map((r, i) => (
-                <tr key={i} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                <tr key={i} style={{ background: i % 2 ? "#faf8f3" : "white", borderBottom: "1px solid #F1F5F9" }}>
                   <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{r.exam_date}</td>
                   <td style={{ padding: "5px 8px", fontWeight: 600 }}>{r.student_name}</td>
                   <td style={{ padding: "5px 8px" }}>{r.class_name}</td>
@@ -3583,7 +3497,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
             </tbody>
           </table>
           {inspectRows.length > 200 && (
-            <div style={{ padding: "6px 10px", fontSize: 10, color: "#9CA3AF", textAlign: "center" }}>Showing first 200 of {inspectRows.length} rows.</div>
+            <div style={{ padding: "6px 10px", fontSize: 10, color: "#8a93a6", textAlign: "center" }}>Showing first 200 of {inspectRows.length} rows.</div>
           )}
         </div>
       </div>
@@ -3636,7 +3550,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
                       </div>
                     ))}
                   </div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#374151", marginBottom: 18, cursor: "pointer" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "#2e3b52", marginBottom: 18, cursor: "pointer" }}>
                     <input type="checkbox" checked={includeCrossDate} onChange={e => setIncludeCrossDate(e.target.checked)} />
                     Also remove these cross-date repeats (keeping the earliest date for each)
                   </label>
@@ -3644,9 +3558,9 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
               )}
 
               <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={() => setDupPreview(null)} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151" }}>Cancel</button>
+                <button onClick={() => setDupPreview(null)} style={{ ...css.btn, flex: 1, background: "#f3f0e8", color: "#2e3b52" }}>Cancel</button>
                 <button onClick={confirmCleanupDuplicates} disabled={dupCleaning}
-                  style={{ ...css.btn, flex: 1, background: dupCleaning ? "#93C5FD" : "#DC2626", color: "white" }}>
+                  style={{ ...css.btn, flex: 1, background: dupCleaning ? "#b7c6e0" : "#DC2626", color: "white" }}>
                   {dupCleaning ? "⏳ Removing…" : `🗑️ Delete ${dupPreview.exactGroups.reduce((s, g) => s + g.rows.length - 1, 0) + (includeCrossDate ? dupPreview.crossGroups.reduce((s, g) => s + g.rows.length - 1, 0) : 0)} Rows`}
                 </button>
               </div>
@@ -3655,18 +3569,18 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
         </div>
       )}
       <div style={css.card}>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 14 }}>➕ Add Exam Type</div>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#14213d", marginBottom: 14 }}>➕ Add Exam Type</div>
         {addError && (
           <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 12, marginBottom: 14, lineHeight: 1.5 }}>
             ⚠️ {addError}
           </div>
         )}
         <div style={{ marginBottom: 12 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Name *</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Name *</label>
           <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. 1st Monthly Test" style={css.input} />
         </div>
         <div style={{ marginBottom: 14 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Description</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Description</label>
           <input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Optional" style={css.input} />
         </div>
         <SaveBtn onClick={add} saving={saving} saved={saved} label="Add Type" />
@@ -3680,7 +3594,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
         )}
       </div>
       <div style={css.card}>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 14 }}>⚙️ Configured Exam Types</div>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#14213d", marginBottom: 14 }}>⚙️ Configured Exam Types</div>
 
         {duplicateGroups.length > 0 && (
           <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 16px", marginBottom: 16, fontSize: 12.5, color: "#92400E" }}>
@@ -3701,7 +3615,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
                           {count ? `✓ ${count} mark${count !== 1 ? "s" : ""} recorded` : "0 marks — likely safe to delete"}
                         </span>
                         <div style={{ display: "flex", gap: 5 }}>
-                          <button onClick={() => toggleInspect(et.id)} style={{ ...css.btn, padding: "3px 10px", fontSize: 11, background: inspectId === et.id ? "#002E6E" : "#EFF6FF", color: inspectId === et.id ? "white" : "#1D4ED8", border: inspectId === et.id ? "none" : "1px solid #BFDBFE" }}>
+                          <button onClick={() => toggleInspect(et.id)} style={{ ...css.btn, padding: "3px 10px", fontSize: 11, background: inspectId === et.id ? "#132a4f" : "#eef2f9", color: inspectId === et.id ? "white" : "#1e3a6e", border: inspectId === et.id ? "none" : "1px solid #BFDBFE" }}>
                             🔍 {inspectId === et.id ? "Hide" : "Inspect"}
                           </button>
                           <button onClick={() => remove(et.id)} style={{ ...css.btn, padding: "3px 10px", fontSize: 11, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>🗑️ Delete</button>
@@ -3717,17 +3631,17 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
         )}
 
         {list.map(et => (
-          <div key={et.id} style={{ border: "1px solid #E5E7EB", borderRadius: 8, marginBottom: 8, background: "#F9FAFB", padding: "10px 14px" }}>
+          <div key={et.id} style={{ border: "1px solid #E5E7EB", borderRadius: 8, marginBottom: 8, background: "#faf8f3", padding: "10px 14px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
               <div>
                 <div style={{ fontWeight: 600, fontSize: 13 }}>{et.name}</div>
-                {et.description && <div style={{ fontSize: 11, color: "#9CA3AF" }}>{et.description}</div>}
-                <div style={{ fontSize: 10, color: markCounts[et.id] ? "#0F6E56" : "#9CA3AF", marginTop: 2 }}>
+                {et.description && <div style={{ fontSize: 11, color: "#8a93a6" }}>{et.description}</div>}
+                <div style={{ fontSize: 10, color: markCounts[et.id] ? "#0F6E56" : "#8a93a6", marginTop: 2 }}>
                   {markCounts[et.id] ? `${markCounts[et.id]} mark${markCounts[et.id] !== 1 ? "s" : ""} recorded` : "no marks yet"}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                <button onClick={() => toggleInspect(et.id)} style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: inspectId === et.id ? "#002E6E" : "#EFF6FF", color: inspectId === et.id ? "white" : "#1D4ED8", border: inspectId === et.id ? "none" : "1px solid #BFDBFE" }}>
+                <button onClick={() => toggleInspect(et.id)} style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: inspectId === et.id ? "#132a4f" : "#eef2f9", color: inspectId === et.id ? "white" : "#1e3a6e", border: inspectId === et.id ? "none" : "1px solid #BFDBFE" }}>
                   🔍 {inspectId === et.id ? "Hide" : "Inspect"}
                 </button>
                 {onSetupSchedule && (
@@ -3736,7 +3650,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
                   </button>
                 )}
                 <button onClick={() => autoFillSchedule(et)} disabled={autoFilling === et.id}
-                  style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: autoFilling === et.id ? "#93C5FD" : "#EEF2FF", color: "#4338CA", border: "1px solid #C7D2FE" }}>
+                  style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: autoFilling === et.id ? "#b7c6e0" : "#eef2f9", color: "#4338CA", border: "1px solid #c9d5ea" }}>
                   {autoFilling === et.id ? "⏳ Filling…" : "⚡ Auto-fill Schedule"}
                 </button>
                 <button onClick={() => checkDuplicateSchedule(et)} disabled={dupChecking === et.id}
@@ -3759,7 +3673,7 @@ function ExamTypesManager({ examTypes, onUpdate, onSetupSchedule, courseSubjects
             {inspectId === et.id && <InspectPanel />}
           </div>
         ))}
-        {!list.length && <div style={{ color: "#94A3B8", fontSize: 13, textAlign: "center", padding: 20 }}>No exam types yet.</div>}
+        {!list.length && <div style={{ color: "#8a93a6", fontSize: 13, textAlign: "center", padding: 20 }}>No exam types yet.</div>}
       </div>
     </div>
   );
@@ -3784,15 +3698,14 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   // `track` = the real exam track (Sainik/Navodaya/Foundation/Combined Course), written to
   // students.course. `batch` = Achiever/Champion/etc, written to students.class_name + batch.
   const EMPTY_FORM = { name: "", gcc_no: "", admission_no: "", track: "", batch: courses[0] || "" };
-  const [form, setForm]             = useState(EMPTY_FORM);
-  const [saving, setSaving]         = useState(false);
-  const [saved, setSaved]           = useState(false);
-  const [error, setError]           = useState("");
+  const [, setForm]               = useState(EMPTY_FORM);
+  const [, setSaved]                = useState(false);
+  const [, setError]                = useState("");
   const [search, setSearch]         = useState("");
   const [filterCourse, setFilterCourse] = useState("ALL");
   const [editId, setEditId]         = useState(null);
   const [editForm, setEditForm]     = useState({});
-  const [editSaving, setEditSaving] = useState(false);
+  const [editSaving]               = useState(false);
   const [deleteId, setDeleteId]     = useState(null);
   const [view, setView]             = useState("list");
 
@@ -3818,81 +3731,15 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   // Existing batch values already in use (for quick-pick buttons). Track has no further
   // sub-hierarchy under it in the data — TRACK_BATCHES gives the canonical list per track,
   // but we also surface any batch values already seen in the data in case of stragglers.
-  const batchesForTrack = (trackName) => {
-    const canonical = TRACK_BATCHES[trackName] || [];
-    const seen = new Set(
-      students
-        .filter(s => (s.course || "").trim() === trackName)
-        .map(s => (s.class_name || "").toUpperCase())
-        .filter(Boolean)
-    );
-    return [...new Set([...canonical, ...seen])];
-  };
-
-  const handleAdd = async () => {
-    // Student records are now managed exclusively in StudentDB (Attendance
-    // module → Students tab), which is the single source of truth for
-    // name/course/batch/GCC. Exams reads students from there — creating
-    // one here would let the two screens' data drift apart again.
-    setError("Adding students has moved to StudentDB (Attendance → Students). Please add the student there — they'll appear here automatically.");
-    return;
-  };
-
-  const _unused_handleAdd = async () => {
-    setError("");
-    if (!form.name.trim())       { setError("Student name is required."); return; }
-    if (!form.gcc_no.trim())     { setError("GCC No. is required."); return; }
-    if (!form.track)             { setError("Track is required."); return; }
-    if (!form.batch.trim())      { setError("Batch is required."); return; }
-    if (students.find(s => String(s.gcc_no) === String(form.gcc_no).trim())) {
-      setError(`GCC No. ${form.gcc_no} already exists.`); return;
-    }
-    setSaving(true);
-    const batchVal = form.batch.trim();
-    const payload = {
-      name: form.name.trim().toUpperCase(), gcc_no: Number(form.gcc_no),
-      admission_no: form.admission_no.trim() || null,
-      course: form.track, class_name: batchVal.toUpperCase(), batch: batchVal,
-    };
-    const { data, error: sbErr } = await supabase.from("students").insert([payload]).select();
-    if (sbErr) { setError(sbErr.message); setSaving(false); return; }
-    onStudentsChange([...students, data[0]].sort((a, b) => a.name.localeCompare(b.name)));
-    setForm(EMPTY_FORM); setSaving(false); setSaved(true);
-    setTimeout(() => { setSaved(false); setView("list"); }, 1800);
-  };
-
-  const startEdit = (st) => {
-    // Editing has moved to StudentDB too (see handleAdd note above) — this
-    // now only opens a read-only detail view rather than an editable form.
-    setEditId(null);
-  };
-  const _unused_startEdit = (st) => {
-    setEditId(st.id);
-    setEditForm({
-      name: st.name, gcc_no: st.gcc_no, admission_no: st.admission_no || "",
-      track: st.course || trackForBatch(st.class_name) || "",
-      batch: st.class_name || st.batch || "",
-    });
-  };
-  const cancelEdit = () => { setEditId(null); setEditForm({}); };
-  const saveEdit = async (id) => {
+  
+  
+  
+      const cancelEdit = () => { setEditId(null); setEditForm({}); };
+  const saveEdit = async () => {
     // See handleAdd note — student records are edited in StudentDB only now.
     return;
   };
-  const _unused_saveEdit = async (id) => {
-    setEditSaving(true);
-    const batchVal = (editForm.batch || "").trim();
-    const payload = {
-      name: editForm.name.trim().toUpperCase(), gcc_no: Number(editForm.gcc_no),
-      admission_no: editForm.admission_no || null,
-      course: editForm.track || "", class_name: batchVal.toUpperCase(), batch: batchVal,
-    };
-    const { error: sbErr } = await supabase.from("students").update(payload).eq("id", id);
-    if (sbErr) { alert(sbErr.message); setEditSaving(false); return; }
-    onStudentsChange(students.map(s => s.id === id ? { ...s, ...payload } : s));
-    setEditId(null); setEditSaving(false);
-  };
-
+  
   const confirmDelete = async () => {
     // See handleAdd note — students are removed in StudentDB only now
     // (StudentDB also distinguishes soft-delete/dropout vs. permanent
@@ -3900,13 +3747,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
     setDeleteId(null);
     return;
   };
-  const _unused_confirmDelete = async () => {
-    if (!deleteId) return;
-    await supabase.from("students").delete().eq("id", deleteId);
-    onStudentsChange(students.filter(s => s.id !== deleteId));
-    setDeleteId(null);
-  };
-
+  
 
   const knownBatchKeys = new Set(courses.map(c => c.trim().toUpperCase()));
   const isUnrecognizedBatch = (s) => {
@@ -3955,7 +3796,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
   // card instead of two — see that function's comment for why the raw data can still
   // have both spellings even after this display-side merge.
   const secondaryBatchCounts = new Map();
-  Object.entries(secondaryBatchMap || {}).forEach(([studentId, batchList]) => {
+  Object.entries(secondaryBatchMap || {}).forEach(([, batchList]) => {
     // Dedupe per student: a student with BOTH "Combined Navoday ENG" and "Combined
     // Navodaya Course(ENG)" tags (the exact spelling-drift case this normalizer
     // exists for) must only count once toward the merged ENG card, not twice.
@@ -3981,11 +3822,11 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
           <div style={{ background: "white", borderRadius: 14, padding: 28, maxWidth: 380, width: "90%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
             <div style={{ fontSize: 32, textAlign: "center", marginBottom: 12 }}>⚠️</div>
             <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, fontWeight: 600, textAlign: "center", marginBottom: 8 }}>Delete Student?</div>
-            <div style={{ fontSize: 13, color: "#64748b", textAlign: "center", marginBottom: 22 }}>
+            <div style={{ fontSize: 13, color: "#5d6b82", textAlign: "center", marginBottom: 22 }}>
               This will permanently remove <b>{students.find(s => s.id === deleteId)?.name}</b> and all their exam marks.
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setDeleteId(null)} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151" }}>Cancel</button>
+              <button onClick={() => setDeleteId(null)} style={{ ...css.btn, flex: 1, background: "#f3f0e8", color: "#2e3b52" }}>Cancel</button>
               <button onClick={confirmDelete} style={{ ...css.btn, flex: 1, background: "#DC2626", color: "white" }}>🗑️ Delete</button>
             </div>
           </div>
@@ -3993,26 +3834,26 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
-        <button onClick={() => setView("list")} style={{ ...css.btn, padding: "8px 20px", background: view === "list" ? "#002E6E" : "#F3F4F6", color: view === "list" ? "white" : "#374151" }}>
+        <button onClick={() => setView("list")} style={{ ...css.btn, padding: "8px 20px", background: view === "list" ? "#132a4f" : "#f3f0e8", color: view === "list" ? "white" : "#2e3b52" }}>
           📋 All Students ({students.length})
         </button>
         {perm.canEdit && (
-          <button onClick={() => { setView("add"); setError(""); setForm(EMPTY_FORM); setSaved(false); }} style={{ ...css.btn, padding: "8px 20px", background: view === "add" ? "#002E6E" : "#F3F4F6", color: view === "add" ? "white" : "#374151" }}>
+          <button onClick={() => { setView("add"); setError(""); setForm(EMPTY_FORM); setSaved(false); }} style={{ ...css.btn, padding: "8px 20px", background: view === "add" ? "#132a4f" : "#f3f0e8", color: view === "add" ? "white" : "#2e3b52" }}>
             👤 Add Student (via StudentDB)
           </button>
         )}
         {perm.canEdit && (
-          <button onClick={() => { setView("import"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "import" ? "#002E6E" : "#F3F4F6", color: view === "import" ? "white" : "#374151" }}>
+          <button onClick={() => { setView("import"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "import" ? "#132a4f" : "#f3f0e8", color: view === "import" ? "white" : "#2e3b52" }}>
             📥 Import from CSV / Excel
           </button>
         )}
         {perm.canEdit && (
-          <button onClick={() => { setView("resultimport"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "resultimport" ? "#002E6E" : "#F3F4F6", color: view === "resultimport" ? "white" : "#374151" }}>
+          <button onClick={() => { setView("resultimport"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "resultimport" ? "#132a4f" : "#f3f0e8", color: view === "resultimport" ? "white" : "#2e3b52" }}>
             🧾 Import Result Sheet
           </button>
         )}
         {perm.canEdit && (
-          <button onClick={() => { setView("secondaryimport"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "secondaryimport" ? "#002E6E" : "#F3F4F6", color: view === "secondaryimport" ? "white" : "#374151" }}>
+          <button onClick={() => { setView("secondaryimport"); clearSelection(); }} style={{ ...css.btn, padding: "8px 20px", background: view === "secondaryimport" ? "#132a4f" : "#f3f0e8", color: view === "secondaryimport" ? "white" : "#2e3b52" }}>
             🔗📥 Import Secondary Batch
           </button>
         )}
@@ -4027,7 +3868,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
           </button>
         )}
         {perm.canEdit && (
-          <button onClick={() => setDupTagResolverOpen(true)} style={{ ...css.btn, padding: "8px 20px", background: "#F5F3FF", color: "#7c3aed", border: "1px solid #DDD6FE" }}>
+          <button onClick={() => setDupTagResolverOpen(true)} style={{ ...css.btn, padding: "8px 20px", background: "#fbf3e0", color: "#a7771f", border: "1px solid #DDD6FE" }}>
             🔀 Resolve Duplicate Section Tags
           </button>
         )}
@@ -4116,18 +3957,18 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
       {view === "add" && (
         <div style={{ maxWidth: 560 }}>
           <div style={{ background: "white", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.08)", overflow: "hidden", marginBottom: 20 }}>
-            <div style={{ background: "linear-gradient(135deg,#002E6E,#0A56B8)", padding: "18px 24px" }}>
+            <div style={{ background: "linear-gradient(135deg,#132a4f,#1e3a6e)", padding: "18px 24px" }}>
               <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 18, color: "white", fontWeight: 400 }}>👤 Student Records Have Moved</div>
             </div>
             <div style={{ padding: 24 }}>
-              <p style={{ fontSize: 14, color: "#374151", lineHeight: 1.6, marginBottom: 16 }}>
+              <p style={{ fontSize: 14, color: "#2e3b52", lineHeight: 1.6, marginBottom: 16 }}>
                 Adding and editing students is now done in <b>StudentDB</b>, inside the Attendance module's Students tab.
                 That keeps name, GCC No., course, and batch in one place instead of two screens quietly drifting apart.
               </p>
-              <p style={{ fontSize: 14, color: "#374151", lineHeight: 1.6, marginBottom: 20 }}>
+              <p style={{ fontSize: 14, color: "#2e3b52", lineHeight: 1.6, marginBottom: 20 }}>
                 Once a student is added in StudentDB, they'll appear here automatically — no separate step needed.
               </p>
-              <button onClick={() => { setView("list"); setError(""); }} style={{ ...css.btn, background: "#002E6E", color: "white", padding: "10px 24px" }}>
+              <button onClick={() => { setView("list"); setError(""); }} style={{ ...css.btn, background: "#132a4f", color: "white", padding: "10px 24px" }}>
                 Back to Student List
               </button>
             </div>
@@ -4139,14 +3980,14 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 10, marginBottom: 16 }}>
             {statsPerCourse.filter(s => s.count > 0).map(s => (
-              <div key={s.course} style={{ background: "white", borderRadius: 10, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", borderTop: "3px solid #002E6E" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".08em" }}>{s.course}</div>
+              <div key={s.course} style={{ background: "white", borderRadius: 10, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", borderTop: "3px solid #132a4f" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#5d6b82", textTransform: "uppercase", letterSpacing: ".08em" }}>{s.course}</div>
 
-                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: "#002E6E", lineHeight: 1.2, marginTop: 4 }}>{s.count}</div>
-                <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 3 }}>{s.batches.join(", ") || "no batches"}</div>
+                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: "#132a4f", lineHeight: 1.2, marginTop: 4 }}>{s.count}</div>
+                <div style={{ fontSize: 10, color: "#8a93a6", marginTop: 3 }}>{s.batches.join(", ") || "no batches"}</div>
               </div>
             ))}
-            <div style={{ background: "#002E6E", borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ background: "#132a4f", borderRadius: 10, padding: "12px 14px" }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.6)", textTransform: "uppercase" }}>Total</div>
               <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: "white", lineHeight: 1.2, marginTop: 4 }}>{students.length}</div>
             </div>
@@ -4161,8 +4002,8 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                 {statsPerSecondaryBatch.map(s => (
                   <div key={s.batch} style={{ background: "white", borderRadius: 10, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", borderTop: "3px solid #C9A24B" }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: ".08em" }}>{s.batch}</div>
-                    <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: "#002E6E", lineHeight: 1.2, marginTop: 4 }}>{s.count}</div>
-                    <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 3 }}>secondary batch</div>
+                    <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 600, color: "#132a4f", lineHeight: 1.2, marginTop: 4 }}>{s.count}</div>
+                    <div style={{ fontSize: 10, color: "#8a93a6", marginTop: 3 }}>secondary batch</div>
                   </div>
                 ))}
               </div>
@@ -4173,7 +4014,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
               {["ALL", ...courses].map(c => (
                 <button key={c} onClick={() => setFilterCourse(c)}
-                  style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: filterCourse === c ? "#002E6E" : "#F3F4F6", color: filterCourse === c ? "white" : "#374151", border: filterCourse === c ? "none" : "1px solid #E5E7EB" }}>
+                  style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: filterCourse === c ? "#132a4f" : "#f3f0e8", color: filterCourse === c ? "white" : "#2e3b52", border: filterCourse === c ? "none" : "1px solid #E5E7EB" }}>
                   {c}
                 </button>
               ))}
@@ -4194,7 +4035,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                   class_name landed somewhere unexpected. */}
               {combinedCourseRawCount > 0 && (
                 <button onClick={() => setFilterCourse("__COMBINED_COURSE_RAW__")}
-                  style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: filterCourse === "__COMBINED_COURSE_RAW__" ? "#7c3aed" : "#F5F3FF", color: filterCourse === "__COMBINED_COURSE_RAW__" ? "white" : "#7c3aed", border: filterCourse === "__COMBINED_COURSE_RAW__" ? "none" : "1px solid #DDD6FE", fontWeight: 700 }}>
+                  style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: filterCourse === "__COMBINED_COURSE_RAW__" ? "#a7771f" : "#fbf3e0", color: filterCourse === "__COMBINED_COURSE_RAW__" ? "white" : "#a7771f", border: filterCourse === "__COMBINED_COURSE_RAW__" ? "none" : "1px solid #DDD6FE", fontWeight: 700 }}>
                   🔎 Raw "Combined Course" ({combinedCourseRawCount})
                 </button>
               )}
@@ -4208,12 +4049,12 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
           </div>
 
           {selectedIds.size > 0 && perm.canEdit && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#eef2f9", border: "1px solid #c9d5ea", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: "#4338CA" }}>{selectedIds.size} selected</span>
               <button onClick={() => setBulkChangeOpen(true)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: "#4338CA", color: "white" }}>
                 🔁 Change Track / Batch
               </button>
-              <button onClick={() => setBulkSecondaryOpen(true)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: "#7c3aed", color: "white" }}>
+              <button onClick={() => setBulkSecondaryOpen(true)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: "#a7771f", color: "white" }}>
                 🔗 Add Secondary Batch
               </button>
               {perm.canDelete && (
@@ -4221,7 +4062,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                   🗑️ Remove Selected
                 </button>
               )}
-              <button onClick={clearSelection} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: "#F3F4F6", color: "#374151" }}>
+              <button onClick={clearSelection} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: "#f3f0e8", color: "#2e3b52" }}>
                 ✕ Clear
               </button>
             </div>
@@ -4259,7 +4100,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
           <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
             <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 520 : "auto" }}>
               <thead>
-                <tr style={{ background: "#002E6E" }}>
+                <tr style={{ background: "#132a4f" }}>
                   <th style={{ padding: "10px 8px", textAlign: "center", width: 34 }}>
                     <input type="checkbox"
                       checked={filtered.length > 0 && filtered.every(s => selectedIds.has(s.id))}
@@ -4276,15 +4117,15 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
               <tbody>
                 {!filtered.length && (
                   <tr>
-                    <td colSpan={7} style={{ padding: "28px 12px", textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>
+                    <td colSpan={7} style={{ padding: "28px 12px", textAlign: "center", color: "#8a93a6", fontSize: 13 }}>
                       {students.length
-                        ? <>No students match your current filters. <button onClick={() => { setSearch(""); setFilterCourse("ALL"); }} style={{ color: "#002E6E", fontWeight: 700, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: 13 }}>Reset filters</button> to see all {students.length}.</>
+                        ? <>No students match your current filters. <button onClick={() => { setSearch(""); setFilterCourse("ALL"); }} style={{ color: "#132a4f", fontWeight: 700, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", fontSize: 13 }}>Reset filters</button> to see all {students.length}.</>
                         : "No students loaded yet."}
                     </td>
                   </tr>
                 )}
                 {filtered.map((st, i) => (
-                  <tr key={st.id} style={{ background: selectedIds.has(st.id) ? "#EEF2FF" : (i % 2 ? "#F9FAFB" : "white"), borderBottom: "1px solid #F1F5F9" }}>
+                  <tr key={st.id} style={{ background: selectedIds.has(st.id) ? "#eef2f9" : (i % 2 ? "#faf8f3" : "white"), borderBottom: "1px solid #F1F5F9" }}>
                     <td style={{ padding: "9px 8px", textAlign: "center" }}>
                       <input type="checkbox" checked={selectedIds.has(st.id)} onChange={() => toggleSelect(st.id)} />
                     </td>
@@ -4302,17 +4143,17 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                         <td style={{ padding: "6px 8px", textAlign: "center" }}><EditCell field="admission_no" width={80} /></td>
                         <td style={{ padding: "6px 8px", textAlign: "center" }}>
                           <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                            <button onClick={() => saveEdit(st.id)} disabled={editSaving} style={{ ...css.btn, padding: "4px 10px", background: "#002E6E", color: "white", fontSize: 11 }}>{editSaving ? "…" : "✓"}</button>
-                            <button onClick={cancelEdit} style={{ ...css.btn, padding: "4px 8px", background: "#F3F4F6", color: "#374151", fontSize: 11 }}>✕</button>
+                            <button onClick={() => saveEdit(st.id)} disabled={editSaving} style={{ ...css.btn, padding: "4px 10px", background: "#132a4f", color: "white", fontSize: 11 }}>{editSaving ? "…" : "✓"}</button>
+                            <button onClick={cancelEdit} style={{ ...css.btn, padding: "4px 8px", background: "#f3f0e8", color: "#2e3b52", fontSize: 11 }}>✕</button>
                           </div>
                         </td>
                       </>
                     ) : (
                       <>
-                        <td style={{ padding: "9px 12px", textAlign: "center", fontWeight: 700, color: "#002E6E" }}>{st.gcc_no}</td>
-                        <td style={{ padding: "9px 12px", fontWeight: 600, color: "#1e293b" }}>{st.name}</td>
+                        <td style={{ padding: "9px 12px", textAlign: "center", fontWeight: 700, color: "#132a4f" }}>{st.gcc_no}</td>
+                        <td style={{ padding: "9px 12px", fontWeight: 600, color: "#14213d" }}>{st.name}</td>
                         <td style={{ padding: "9px 12px", textAlign: "center" }}>
-                          <span style={{ background: "#E0F2FE", color: "#0369A1", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{st.class_name || "—"}</span>
+                          <span style={{ background: "#eef2f9", color: "#1e3a6e", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{st.class_name || "—"}</span>
                           {(isUnrecognizedBatch(st) || st.course === "Combined Course") && (
                             // Shown when the resolved batch is unrecognized, OR when this student's
                             // real StudentDB course IS "Combined Course" — the exact case we're
@@ -4325,17 +4166,17 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                           )}
                           {(secondaryBatchMap?.[st.id] || []).map(b => (
                             <div key={b} style={{ marginTop: 3 }}>
-                              <span style={{ background: "#F5F3FF", color: "#7c3aed", padding: "1px 7px", borderRadius: 999, fontSize: 9.5, fontWeight: 700 }}>+ {b}</span>
+                              <span style={{ background: "#fbf3e0", color: "#a7771f", padding: "1px 7px", borderRadius: 999, fontSize: 9.5, fontWeight: 700 }}>+ {b}</span>
                             </div>
                           ))}
                         </td>
                         <td style={{ padding: "9px 12px", textAlign: "center" }}>
                           <span style={{ background: "#E1F5EE", color: "#0F6E56", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{st.course || "—"}</span>
                         </td>
-                        <td style={{ padding: "9px 12px", textAlign: "center", color: "#94A3B8", fontSize: 12 }}>{st.admission_no || "—"}</td>
+                        <td style={{ padding: "9px 12px", textAlign: "center", color: "#8a93a6", fontSize: 12 }}>{st.admission_no || "—"}</td>
                         <td style={{ padding: "9px 12px", textAlign: "center" }}>
                           <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                            {perm.canEdit && <button onClick={() => setSecondaryBatchStudent(st)} style={{ ...css.btn, padding: "4px 8px", background: "#F5F3FF", color: "#7c3aed", border: "1px solid #DDD6FE", fontSize: 11 }} title="Manage secondary batch (e.g. also appearing for Combined Navodaya)">🔗</button>}
+                            {perm.canEdit && <button onClick={() => setSecondaryBatchStudent(st)} style={{ ...css.btn, padding: "4px 8px", background: "#fbf3e0", color: "#a7771f", border: "1px solid #DDD6FE", fontSize: 11 }} title="Manage secondary batch (e.g. also appearing for Combined Navodaya)">🔗</button>}
                           </div>
                         </td>
                       </>
@@ -4343,7 +4184,7 @@ function StudentsTab({ courseSubjects, students, examTypes, onStudentsChange, cu
                   </tr>
                 ))}
                 {!filtered.length && (
-                  <tr><td colSpan={7} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>No students found.</td></tr>
+                  <tr><td colSpan={7} style={{ padding: 32, textAlign: "center", color: "#8a93a6" }}>No students found.</td></tr>
                 )}
               </tbody>
             </table>
@@ -4383,33 +4224,33 @@ function BulkChangeCourseModal({ selectedIds, students, onStudentsChange, onClos
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 460, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
         <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, marginBottom: 6 }}>🔁 Change Track / Batch</div>
-        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, color: "#5d6b82", marginBottom: 16 }}>
           Applying to <b>{selected.length}</b> selected student{selected.length === 1 ? "" : "s"}. Leave a field blank to keep it unchanged.
         </div>
         {err && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5, marginBottom: 12 }}>⚠️ {err}</div>}
         <div style={{ marginBottom: 12 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>New Track (optional)</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 6, textTransform: "uppercase" }}>New Track (optional)</label>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <button onClick={() => setTrack("")} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: track === "" ? "#002E6E" : "#F3F4F6", color: track === "" ? "white" : "#374151" }}>— Keep —</button>
+            <button onClick={() => setTrack("")} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: track === "" ? "#132a4f" : "#f3f0e8", color: track === "" ? "white" : "#2e3b52" }}>— Keep —</button>
             {TRACKS.map(t => (
-              <button key={t} onClick={() => setTrack(t)} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: track === t ? "#002E6E" : "#F3F4F6", color: track === t ? "white" : "#374151" }}>{t}</button>
+              <button key={t} onClick={() => setTrack(t)} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: track === t ? "#132a4f" : "#f3f0e8", color: track === t ? "white" : "#2e3b52" }}>{t}</button>
             ))}
           </div>
         </div>
         <div style={{ marginBottom: 18 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>New Batch (optional)</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 6, textTransform: "uppercase" }}>New Batch (optional)</label>
           {batchOptions.length > 0 && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
               {batchOptions.map(b => (
-                <button key={b} onClick={() => setBatch(b)} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: batch === b ? "#7c3aed" : "#F5F3FF", color: batch === b ? "white" : "#5B21B6" }}>{b}</button>
+                <button key={b} onClick={() => setBatch(b)} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: batch === b ? "#a7771f" : "#fbf3e0", color: batch === b ? "white" : "#5B21B6" }}>{b}</button>
               ))}
             </div>
           )}
           <input value={batch} onChange={e => setBatch(e.target.value)} placeholder="Leave blank to keep current batch" style={css.input} />
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={onClose} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151" }}>Cancel</button>
-          <button onClick={apply} disabled={saving} style={{ ...css.btn, flex: 2, background: saving ? "#93C5FD" : "#002E6E", color: "white" }}>
+          <button onClick={onClose} style={{ ...css.btn, flex: 1, background: "#f3f0e8", color: "#2e3b52" }}>Cancel</button>
+          <button onClick={apply} disabled={saving} style={{ ...css.btn, flex: 2, background: saving ? "#b7c6e0" : "#132a4f", color: "white" }}>
             {saving ? "⏳ Applying…" : `✅ Apply to ${selected.length}`}
           </button>
         </div>
@@ -4448,9 +4289,9 @@ function BulkDeleteModal({ selectedIds, students, onStudentsChange, onClose, onD
         <div style={{ fontSize: 32, textAlign: "center", marginBottom: 8 }}>⚠️</div>
         <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, textAlign: "center", marginBottom: 6 }}>Remove {selected.length} Student{selected.length === 1 ? "" : "s"}?</div>
         {err && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5, marginBottom: 12 }}>⚠️ {err}</div>}
-        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 10, padding: 12, marginBottom: 10, cursor: "pointer" }}>
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "#faf8f3", border: "1px solid #E5E7EB", borderRadius: 10, padding: 12, marginBottom: 10, cursor: "pointer" }}>
           <input type="checkbox" checked={markDropoutInstead} onChange={e => setMarkDropoutInstead(e.target.checked)} style={{ marginTop: 2 }} />
-          <span style={{ fontSize: 12.5, color: "#374151" }}>
+          <span style={{ fontSize: 12.5, color: "#2e3b52" }}>
             <b>Mark as Dropout instead of deleting</b> — recommended. Keeps their name and past exam marks in history, but excludes them from active rosters, MarkEntry, and Admit Cards.
           </span>
         </label>
@@ -4460,7 +4301,7 @@ function BulkDeleteModal({ selectedIds, students, onStudentsChange, onClose, onD
           </div>
         )}
         <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-          <button onClick={onClose} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151" }}>Cancel</button>
+          <button onClick={onClose} style={{ ...css.btn, flex: 1, background: "#f3f0e8", color: "#2e3b52" }}>Cancel</button>
           <button onClick={apply} disabled={saving} style={{ ...css.btn, flex: 2, background: saving ? "#FCA5A5" : "#DC2626", color: "white" }}>
             {saving ? "⏳ Working…" : markDropoutInstead ? "✅ Mark as Dropout" : "🗑️ Delete Permanently"}
           </button>
@@ -4509,7 +4350,7 @@ function SecondaryBatchModal({ student, courseSubjects, currentSecondaryBatches,
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 480, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
         <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, marginBottom: 4 }}>🔗 Secondary Batch</div>
-        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, color: "#5d6b82", marginBottom: 16 }}>
           <b>{student.name}</b> (GCC {student.gcc_no}) is on the <b>{student.class_name}</b> roster. Add a second batch below if they're
           also appearing for another exam — e.g. a Sainik-batch student who is also sitting the Combined Navodaya exam. They'll show up
           in Mark Entry, Report Cards, and Admit Cards under both batches, using this same GCC No. — no duplicate student is created.
@@ -4519,10 +4360,10 @@ function SecondaryBatchModal({ student, courseSubjects, currentSecondaryBatches,
 
         {currentSecondaryBatches.length > 0 && (
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>Current Secondary Batch(es)</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 6, textTransform: "uppercase" }}>Current Secondary Batch(es)</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {currentSecondaryBatches.map(b => (
-                <div key={b} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 8, padding: "7px 12px" }}>
+                <div key={b} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fbf3e0", border: "1px solid #DDD6FE", borderRadius: 8, padding: "7px 12px" }}>
                   <span style={{ fontSize: 12.5, color: "#5B21B6", fontWeight: 600 }}>{b}</span>
                   <button onClick={() => removeSecondary(b)} disabled={removingBatch === b}
                     style={{ ...css.btn, padding: "3px 10px", fontSize: 11, background: "white", color: "#DC2626", border: "1px solid #FECACA" }}>
@@ -4535,20 +4376,20 @@ function SecondaryBatchModal({ student, courseSubjects, currentSecondaryBatches,
         )}
 
         <div style={{ marginBottom: 20 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>Add Another Batch</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 6, textTransform: "uppercase" }}>Add Another Batch</label>
           <div style={{ display: "flex", gap: 8 }}>
             <select value={adding} onChange={e => setAdding(e.target.value)} style={{ ...css.input, flex: 1 }}>
               <option value="">— Select batch —</option>
               {availableBatches.map(b => <option key={b} value={b}>{b}</option>)}
             </select>
-            <button onClick={addSecondary} disabled={!adding || saving} style={{ ...css.btn, background: saving ? "#93C5FD" : "#7c3aed", color: "white", padding: "8px 18px" }}>
+            <button onClick={addSecondary} disabled={!adding || saving} style={{ ...css.btn, background: saving ? "#b7c6e0" : "#a7771f", color: "white", padding: "8px 18px" }}>
               {saving ? "…" : "+ Add"}
             </button>
           </div>
-          {!availableBatches.length && <div style={{ fontSize: 11.5, color: "#9CA3AF", marginTop: 6 }}>No other batches available to add.</div>}
+          {!availableBatches.length && <div style={{ fontSize: 11.5, color: "#8a93a6", marginTop: 6 }}>No other batches available to add.</div>}
         </div>
 
-        <button onClick={onClose} style={{ ...css.btn, width: "100%", background: "#F3F4F6", color: "#374151" }}>Close</button>
+        <button onClick={onClose} style={{ ...css.btn, width: "100%", background: "#f3f0e8", color: "#2e3b52" }}>Close</button>
       </div>
     </div>
   );
@@ -4601,7 +4442,7 @@ function BulkSecondaryBatchModal({ selectedIds, students, courseSubjects, second
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 480, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
         <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, marginBottom: 6 }}>🔗 Bulk Add Secondary Batch</div>
-        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, color: "#5d6b82", marginBottom: 16 }}>
           Applying to <b>{selected.length}</b> selected student{selected.length === 1 ? "" : "s"}. Each will keep their existing batch
           and GCC No. unchanged, and additionally appear under the batch you pick below in Mark Entry, Report Cards, and Admit Cards.
         </div>
@@ -4614,7 +4455,7 @@ function BulkSecondaryBatchModal({ selectedIds, students, courseSubjects, second
         )}
 
         <div style={{ marginBottom: 20 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>Secondary Batch</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 6, textTransform: "uppercase" }}>Secondary Batch</label>
           <select value={batch} onChange={e => setBatch(e.target.value)} style={css.input}>
             <option value="">— Select batch —</option>
             {allBatches.map(b => <option key={b} value={b}>{b}</option>)}
@@ -4622,14 +4463,14 @@ function BulkSecondaryBatchModal({ selectedIds, students, courseSubjects, second
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={onClose} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151" }}>{result ? "Close" : "Cancel"}</button>
+          <button onClick={onClose} style={{ ...css.btn, flex: 1, background: "#f3f0e8", color: "#2e3b52" }}>{result ? "Close" : "Cancel"}</button>
           {!result && (
-            <button onClick={apply} disabled={saving || !batch} style={{ ...css.btn, flex: 2, background: saving ? "#93C5FD" : "#7c3aed", color: "white" }}>
+            <button onClick={apply} disabled={saving || !batch} style={{ ...css.btn, flex: 2, background: saving ? "#b7c6e0" : "#a7771f", color: "white" }}>
               {saving ? "⏳ Applying…" : `✅ Apply to ${selected.length}`}
             </button>
           )}
           {result && (
-            <button onClick={onDone} style={{ ...css.btn, flex: 2, background: "#002E6E", color: "white" }}>Done</button>
+            <button onClick={onDone} style={{ ...css.btn, flex: 2, background: "#132a4f", color: "white" }}>Done</button>
           )}
         </div>
       </div>
@@ -4641,10 +4482,9 @@ function BulkSecondaryBatchModal({ selectedIds, students, courseSubjects, second
 // Reuses findBestStudentMatch / normalizeNameValue / normalizeGccValue already
 // defined near the top of this file for the marks-CSV importer, so the same
 // matching quality (GCC → Admission No. → exact name → fuzzy name) applies here.
-function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDone }) {
+function StudentRosterImport({ students, onDone }) {
   const isMobile = useMobile();
-  const courses = Object.keys(courseSubjects);
-  const [rawRows, setRawRows] = useState(null);   // parsed sheet rows (array of arrays)
+    const [rawRows, setRawRows] = useState(null);   // parsed sheet rows (array of arrays)
   const [headers, setHeaders] = useState([]);
   const [colMap, setColMap] = useState({ name: -1, gcc: -1, admission: -1 });
   const [defaultTrack, setDefaultTrack] = useState("");
@@ -4652,7 +4492,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState("");
   const [rows, setRows] = useState([]);           // processed rows with match info
-  const [saving, setSaving] = useState(false);
+  const [saving] = useState(false);
   const [saveSummary, setSaveSummary] = useState(null);
   const [manualOpenIdx, setManualOpenIdx] = useState(null);
   const [manualSearch, setManualSearch] = useState({});
@@ -4680,7 +4520,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
         gcc: findCol(["gcc"]),
         admission: findCol(["admission", "adm no", "adm.", "adm_no"]),
       });
-    } catch (e) {
+    } catch {
       setParseError("Could not read this file. Please upload a valid .csv or .xlsx file.");
     }
     setParsing(false);
@@ -4774,39 +4614,12 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
     setSaveSummary({ ok: false, message: "New students can't be created from this import anymore. Add them in StudentDB (Attendance → Students) first, then re-run this import so they match instead of appearing as \"new\"." });
     return;
   };
-  const _unused_handleSaveNew = async () => {
-    if (gccConflicts.length) return; // blocked — see warning banner in the UI
-    setSaving(true);
-    const toInsert = rows.filter(r => r.status === "new").map(r => {
-      const batchVal = (r.batch || defaultBatch || "").trim();
-      return {
-        name: r.rawName.trim().toUpperCase(),
-        gcc_no: r.rawGcc ? Number(normalizeGccValue(r.rawGcc)) || null : null,
-        admission_no: r.rawAdm ? String(r.rawAdm).trim() : null,
-        course: r.track || defaultTrack || "",
-        class_name: batchVal.toUpperCase(),
-        batch: batchVal,
-      };
-    }).filter(p => p.name);
-
-    if (!toInsert.length) { setSaving(false); return; }
-
-    const { data, error } = await supabase.from("students").insert(toInsert).select();
-    if (error) {
-      setSaveSummary({ ok: false, message: error.message });
-      setSaving(false);
-      return;
-    }
-    onStudentsChange([...students, ...(data || [])].sort((a, b) => (a.name || "").localeCompare(b.name || "")));
-    setSaveSummary({ ok: true, added: data?.length || 0, skippedExisting: existingRowsCount, skipped: skipRowsCount });
-    setSaving(false);
-  };
-
+  
   return (
     <div style={{ maxWidth: 900 }}>
       <div style={css.card}>
         <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 600, marginBottom: 4 }}>📥 Smart Roster Import</div>
-        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, color: "#5d6b82", marginBottom: 16 }}>
           Upload a CSV or Excel roster. Existing students are matched automatically (GCC No. → Admission No. → exact name → fuzzy name);
           anything unmatched can be added as new, matched manually, or skipped. You can reuse this for every future exam's roster.
         </div>
@@ -4816,7 +4629,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
             <button onClick={() => fileInputRef.current?.click()} disabled={parsing}
-              style={{ ...css.btn, background: "#002E6E", color: "white", padding: "10px 22px" }}>
+              style={{ ...css.btn, background: "#132a4f", color: "white", padding: "10px 22px" }}>
               {parsing ? "⏳ Reading file…" : "📂 Choose CSV / Excel File"}
             </button>
             {parseError && <div style={{ marginTop: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
@@ -4825,11 +4638,11 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
 
         {rawRows && !rows.length && (
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 8, textTransform: "uppercase" }}>Map Columns</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#5d6b82", marginBottom: 8, textTransform: "uppercase" }}>Map Columns</div>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
               {[["name", "Student Name *"], ["gcc", "GCC No."], ["admission", "Admission No."]].map(([key, label]) => (
                 <div key={key}>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>{label}</label>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4 }}>{label}</label>
                   <select value={colMap[key]} onChange={e => setColMap(p => ({ ...p, [key]: Number(e.target.value) }))} style={css.input}>
                     <option value={-1}>— Not in file —</option>
                     {headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
@@ -4838,16 +4651,16 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
               ))}
             </div>
 
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 8, textTransform: "uppercase" }}>Default Track / Batch for New Students</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#5d6b82", marginBottom: 8, textTransform: "uppercase" }}>Default Track / Batch for New Students</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
               {TRACKS.map(t => (
-                <button key={t} onClick={() => setDefaultTrack(t)} style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: defaultTrack === t ? "#002E6E" : "#F3F4F6", color: defaultTrack === t ? "white" : "#374151" }}>{t}</button>
+                <button key={t} onClick={() => setDefaultTrack(t)} style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: defaultTrack === t ? "#132a4f" : "#f3f0e8", color: defaultTrack === t ? "white" : "#2e3b52" }}>{t}</button>
               ))}
             </div>
             {defaultTrack && (
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
                 {(TRACK_BATCHES[defaultTrack] || []).map(b => (
-                  <button key={b} onClick={() => setDefaultBatch(b)} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: defaultBatch === b ? "#7c3aed" : "#F5F3FF", color: defaultBatch === b ? "white" : "#5B21B6" }}>{b}</button>
+                  <button key={b} onClick={() => setDefaultBatch(b)} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, background: defaultBatch === b ? "#a7771f" : "#fbf3e0", color: defaultBatch === b ? "white" : "#5B21B6" }}>{b}</button>
                 ))}
               </div>
             )}
@@ -4855,8 +4668,8 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
             {parseError && <div style={{ marginBottom: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
 
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => { setRawRows(null); setHeaders([]); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Back</button>
-              <button onClick={processRows} style={{ ...css.btn, background: "#002E6E", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
+              <button onClick={() => { setRawRows(null); setHeaders([]); }} style={{ ...css.btn, background: "#f3f0e8", color: "#2e3b52" }}>← Back</button>
+              <button onClick={processRows} style={{ ...css.btn, background: "#132a4f", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
             </div>
           </div>
         )}
@@ -4872,7 +4685,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
             <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 16 }}>
               <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                 <thead style={{ position: "sticky", top: 0 }}>
-                  <tr style={{ background: "#002E6E" }}>
+                  <tr style={{ background: "#132a4f" }}>
                     {["Row", "Name (from file)", "Match", "Action"].map(h => (
                       <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 11 }}>{h}</th>
                     ))}
@@ -4881,26 +4694,26 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
                 <tbody>
                   {rows.map(r => (
                     <tr key={r.idx} style={{ borderBottom: "1px solid #F1F5F9", background: r.status === "skip" ? "#FAFAFA" : "white" }}>
-                      <td style={{ padding: "7px 10px", color: "#9CA3AF" }}>{r.idx + 2}</td>
+                      <td style={{ padding: "7px 10px", color: "#8a93a6" }}>{r.idx + 2}</td>
                       <td style={{ padding: "7px 10px", fontWeight: 600 }}>{r.rawName || <i style={{ color: "#DC2626" }}>{r.reason}</i>}</td>
                       <td style={{ padding: "7px 10px" }}>
                         {r.status === "existing" && (
                           <div>
                             <MatchBadge matchType={r.matchType} confidence={r.confidence} />
-                            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{r.student?.name} · {r.student?.class_name}</div>
+                            <div style={{ fontSize: 11, color: "#5d6b82", marginTop: 2 }}>{r.student?.name} · {r.student?.class_name}</div>
                           </div>
                         )}
                         {r.status === "new" && <MatchBadge matchType="New" />}
-                        {r.status === "skip" && <span style={{ fontSize: 11, color: "#94A3B8" }}>Skipped</span>}
+                        {r.status === "skip" && <span style={{ fontSize: 11, color: "#8a93a6" }}>Skipped</span>}
                         {r.status === "new" && r.suggestion && (
-                          <div style={{ fontSize: 10.5, color: "#00BAF2", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
+                          <div style={{ fontSize: 10.5, color: "#b8923a", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
                         )}
                       </td>
                       <td style={{ padding: "7px 10px" }}>
                         <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
                           {r.status !== "new" && <button onClick={() => markAsNew(r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0" }}>+ New</button>}
-                          <button onClick={() => setManualOpenIdx(manualOpenIdx === r.idx ? null : r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#EEF2FF", color: "#4338CA", border: "1px solid #C7D2FE" }}>🔍 Pick manually</button>
-                          {r.status !== "skip" && <button onClick={() => markSkip(r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#F3F4F6", color: "#6B7280" }}>Skip</button>}
+                          <button onClick={() => setManualOpenIdx(manualOpenIdx === r.idx ? null : r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#eef2f9", color: "#4338CA", border: "1px solid #c9d5ea" }}>🔍 Pick manually</button>
+                          {r.status !== "skip" && <button onClick={() => markSkip(r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#f3f0e8", color: "#5d6b82" }}>Skip</button>}
                         </div>
                         {manualOpenIdx === r.idx && (
                           <div style={{ marginTop: 6 }}>
@@ -4915,7 +4728,7 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
                                 .map(s => (
                                   <div key={s.id} onClick={() => { markManualMatch(r.idx, s); setManualOpenIdx(null); }}
                                     style={{ padding: "4px 8px", fontSize: 11, cursor: "pointer", borderBottom: "1px solid #F1F5F9" }}
-                                    onMouseEnter={e => e.currentTarget.style.background = "#F9FAFB"}
+                                    onMouseEnter={e => e.currentTarget.style.background = "#faf8f3"}
                                     onMouseLeave={e => e.currentTarget.style.background = "white"}>
                                     {s.name} — GCC {s.gcc_no} ({s.class_name})
                                   </div>
@@ -4962,11 +4775,11 @@ function StudentRosterImport({ courseSubjects, students, onStudentsChange, onDon
             )}
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button onClick={() => { setRawRows(null); setHeaders([]); setRows([]); setSaveSummary(null); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Start Over</button>
-              <button onClick={handleSaveNew} disabled={saving || newRowsCount === 0 || gccConflicts.length > 0} style={{ ...css.btn, background: saving ? "#93C5FD" : gccConflicts.length ? "#D1D5DB" : "#002E6E", color: "white", flex: 1 }}>
+              <button onClick={() => { setRawRows(null); setHeaders([]); setRows([]); setSaveSummary(null); }} style={{ ...css.btn, background: "#f3f0e8", color: "#2e3b52" }}>← Start Over</button>
+              <button onClick={handleSaveNew} disabled={saving || newRowsCount === 0 || gccConflicts.length > 0} style={{ ...css.btn, background: saving ? "#b7c6e0" : gccConflicts.length ? "#d9d2c2" : "#132a4f", color: "white", flex: 1 }}>
                 {saving ? "⏳ Saving…" : gccConflicts.length ? "⚠️ Resolve GCC conflicts above first" : `✅ Add ${newRowsCount} New Student(s)`}
               </button>
-              <button onClick={onDone} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>Done</button>
+              <button onClick={onDone} style={{ ...css.btn, background: "#f3f0e8", color: "#2e3b52" }}>Done</button>
             </div>
           </div>
         )}
@@ -5017,7 +4830,7 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
         gcc: findCol(["gcc"]),
         admission: findCol(["admission", "adm no", "adm."]),
       });
-    } catch (e) {
+    } catch {
       setParseError("Could not read this file. Please upload a valid .csv or .xlsx file.");
     }
     setParsing(false);
@@ -5092,14 +4905,14 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
     <div style={{ maxWidth: 900 }}>
       <div style={css.card}>
         <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 600, marginBottom: 4 }}>🔗📥 Import Secondary Batch</div>
-        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, color: "#5d6b82", marginBottom: 16 }}>
           Upload a list of existing students (by GCC No. and/or Name) and assign all of them to one secondary batch at once — e.g. a
           list of Sainik-batch students who are also appearing for the Combined Navodaya exam. This never changes their primary batch,
           GCC No., or creates a duplicate student — it only adds the extra batch tag.
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Secondary Batch to Assign *</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4 }}>Secondary Batch to Assign *</label>
           <select value={batch} onChange={e => setBatch(e.target.value)} style={css.input}>
             <option value="">— Select batch —</option>
             {allBatches.map(b => <option key={b} value={b}>{b}</option>)}
@@ -5111,7 +4924,7 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
             <button onClick={() => fileInputRef.current?.click()} disabled={parsing}
-              style={{ ...css.btn, background: "#002E6E", color: "white", padding: "10px 22px" }}>
+              style={{ ...css.btn, background: "#132a4f", color: "white", padding: "10px 22px" }}>
               {parsing ? "⏳ Reading file…" : "📂 Choose CSV / Excel File"}
             </button>
             {parseError && <div style={{ marginTop: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
@@ -5120,11 +4933,11 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
 
         {rawRows && !rows.length && (
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 8, textTransform: "uppercase" }}>Map Columns</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#5d6b82", marginBottom: 8, textTransform: "uppercase" }}>Map Columns</div>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
               {[["name", "Student Name"], ["gcc", "GCC No."], ["admission", "Admission No."]].map(([key, label]) => (
                 <div key={key}>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>{label}</label>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4 }}>{label}</label>
                   <select value={colMap[key]} onChange={e => setColMap(p => ({ ...p, [key]: Number(e.target.value) }))} style={css.input}>
                     <option value={-1}>— Not in file —</option>
                     {headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
@@ -5136,8 +4949,8 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
             {parseError && <div style={{ marginBottom: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
 
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => { setRawRows(null); setHeaders([]); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Back</button>
-              <button onClick={processRows} style={{ ...css.btn, background: "#002E6E", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
+              <button onClick={() => { setRawRows(null); setHeaders([]); }} style={{ ...css.btn, background: "#f3f0e8", color: "#2e3b52" }}>← Back</button>
+              <button onClick={processRows} style={{ ...css.btn, background: "#132a4f", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
             </div>
           </div>
         )}
@@ -5148,13 +4961,13 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
               <Badge label={`${matchedCount} matched`} color="#0F6E56" bg="#E1F5EE" />
               {unmatchedCount > 0 && <Badge label={`${unmatchedCount} unmatched`} color="#A32D2D" bg="#FCEBEB" />}
               {skipCount > 0 && <Badge label={`${skipCount} skipped`} color="#92740C" bg="#FEF9E7" />}
-              {alreadyHaveBatch > 0 && <Badge label={`${alreadyHaveBatch} already in this batch`} color="#7c3aed" bg="#F5F3FF" />}
+              {alreadyHaveBatch > 0 && <Badge label={`${alreadyHaveBatch} already in this batch`} color="#a7771f" bg="#fbf3e0" />}
             </div>
 
             <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 16 }}>
               <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                 <thead style={{ position: "sticky", top: 0 }}>
-                  <tr style={{ background: "#002E6E" }}>
+                  <tr style={{ background: "#132a4f" }}>
                     {["Row", "Name (from file)", "Match", "Action"].map(h => (
                       <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 11 }}>{h}</th>
                     ))}
@@ -5163,28 +4976,28 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
                 <tbody>
                   {rows.map(r => (
                     <tr key={r.idx} style={{ borderBottom: "1px solid #F1F5F9", background: r.status === "skip" ? "#FAFAFA" : "white" }}>
-                      <td style={{ padding: "7px 10px", color: "#9CA3AF" }}>{r.idx + 2}</td>
+                      <td style={{ padding: "7px 10px", color: "#8a93a6" }}>{r.idx + 2}</td>
                       <td style={{ padding: "7px 10px", fontWeight: 600 }}>{r.rawName || r.rawGcc || <i style={{ color: "#DC2626" }}>{r.reason}</i>}</td>
                       <td style={{ padding: "7px 10px" }}>
                         {r.status === "matched" && (
                           <div>
                             <MatchBadge matchType={r.matchType} confidence={r.confidence} />
-                            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                            <div style={{ fontSize: 11, color: "#5d6b82", marginTop: 2 }}>
                               {r.student?.name} · {r.student?.class_name}
-                              {r.student?.class_name === batch && <span style={{ color: "#7c3aed", fontWeight: 700 }}> (already this batch)</span>}
+                              {r.student?.class_name === batch && <span style={{ color: "#a7771f", fontWeight: 700 }}> (already this batch)</span>}
                             </div>
                           </div>
                         )}
                         {r.status === "unmatched" && <span style={{ fontSize: 11, color: "#A32D2D", fontWeight: 700 }}>No match found</span>}
-                        {r.status === "skip" && <span style={{ fontSize: 11, color: "#94A3B8" }}>{r.reason || "Skipped"}</span>}
+                        {r.status === "skip" && <span style={{ fontSize: 11, color: "#8a93a6" }}>{r.reason || "Skipped"}</span>}
                         {r.status === "unmatched" && r.suggestion && (
-                          <div style={{ fontSize: 10.5, color: "#00BAF2", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
+                          <div style={{ fontSize: 10.5, color: "#b8923a", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
                         )}
                       </td>
                       <td style={{ padding: "7px 10px" }}>
                         <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-                          <button onClick={() => setManualOpenIdx(manualOpenIdx === r.idx ? null : r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#EEF2FF", color: "#4338CA", border: "1px solid #C7D2FE" }}>🔍 Pick manually</button>
-                          {r.status !== "skip" && <button onClick={() => markSkip(r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#F3F4F6", color: "#6B7280" }}>Skip</button>}
+                          <button onClick={() => setManualOpenIdx(manualOpenIdx === r.idx ? null : r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#eef2f9", color: "#4338CA", border: "1px solid #c9d5ea" }}>🔍 Pick manually</button>
+                          {r.status !== "skip" && <button onClick={() => markSkip(r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#f3f0e8", color: "#5d6b82" }}>Skip</button>}
                         </div>
                         {manualOpenIdx === r.idx && (
                           <div style={{ marginTop: 6 }}>
@@ -5199,7 +5012,7 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
                                 .map(s => (
                                   <div key={s.id} onClick={() => { markManualMatch(r.idx, s); setManualOpenIdx(null); }}
                                     style={{ padding: "4px 8px", fontSize: 11, cursor: "pointer", borderBottom: "1px solid #F1F5F9" }}
-                                    onMouseEnter={e => e.currentTarget.style.background = "#F9FAFB"}
+                                    onMouseEnter={e => e.currentTarget.style.background = "#faf8f3"}
                                     onMouseLeave={e => e.currentTarget.style.background = "white"}>
                                     {s.name} — GCC {s.gcc_no} ({s.class_name})
                                   </div>
@@ -5225,11 +5038,11 @@ function SecondaryBatchCSVImport({ courseSubjects, students, onChanged, onDone }
             )}
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button onClick={() => { setRawRows(null); setHeaders([]); setRows([]); setSaveSummary(null); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Start Over</button>
-              <button onClick={handleImportAll} disabled={saving || !batch || matchedCount === 0} style={{ ...css.btn, background: saving ? "#93C5FD" : "#7c3aed", color: "white", flex: 1 }}>
+              <button onClick={() => { setRawRows(null); setHeaders([]); setRows([]); setSaveSummary(null); }} style={{ ...css.btn, background: "#f3f0e8", color: "#2e3b52" }}>← Start Over</button>
+              <button onClick={handleImportAll} disabled={saving || !batch || matchedCount === 0} style={{ ...css.btn, background: saving ? "#b7c6e0" : "#a7771f", color: "white", flex: 1 }}>
                 {saving ? "⏳ Importing…" : `✅ Assign Secondary Batch to ${matchedCount - alreadyHaveBatch} Student(s)`}
               </button>
-              <button onClick={onDone} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>Done</button>
+              <button onClick={onDone} style={{ ...css.btn, background: "#f3f0e8", color: "#2e3b52" }}>Done</button>
             </div>
           </div>
         )}
@@ -5300,7 +5113,7 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
       // Best-effort section guess from the filename, e.g. RESULT__ENG_COMBINED.xls
       const guess = file.name.toUpperCase().match(/\b(ENG|MAN|HIN|MEI)\b/);
       if (guess) setSection(guess[1]);
-    } catch (e) {
+    } catch {
       setParseError("Could not read this file. Please upload a valid .csv or .xlsx file.");
     }
     setParsing(false);
@@ -5541,7 +5354,7 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
     <div style={{ maxWidth: 940 }}>
       <div style={css.card}>
         <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 600, marginBottom: 4 }}>🧾 Import Result Sheet (Roster + Marks + Section)</div>
-        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, color: "#5d6b82", marginBottom: 16 }}>
           Upload a result sheet (Sl. No. / GCC No. / Name / subject marks / Score / Rank). This adds any new students to the permanent
           roster, tags them with a section label (e.g. ENG / MAN) for future filtering, and imports these marks as a real exam — all in
           one step. The roster is then reused automatically for every future exam of this batch.
@@ -5549,37 +5362,37 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
 
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
           <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Track</label>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4 }}>Track</label>
             <select value={track} onChange={e => setTrack(e.target.value)} style={css.input}>
               {TRACKS.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Batch</label>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4 }}>Batch</label>
             <select value={batch} onChange={e => setBatch(e.target.value)} style={css.input}>
               {courses.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Section Tag (optional)</label>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4 }}>Section Tag (optional)</label>
             <input value={section} onChange={e => setSection(e.target.value)} placeholder="e.g. ENG, MAN" style={css.input} />
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Exam Type</label>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4 }}>Exam Type</label>
             <select value={examTypeId} onChange={e => setExamTypeId(e.target.value)} style={css.input}>
               {examTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Exam Date</label>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4 }}>Exam Date</label>
             <input type="date" value={examDate} onChange={e => setExamDate(e.target.value)} style={css.input} />
           </div>
         </div>
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>
-            Time / Shift / Room <span style={{ fontWeight: 400, textTransform: "none", color: "#9CA3AF" }}>(optional — only needed if you also want Admit Cards for this sitting)</span>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4 }}>
+            Time / Shift / Room <span style={{ fontWeight: 400, textTransform: "none", color: "#8a93a6" }}>(optional — only needed if you also want Admit Cards for this sitting)</span>
           </label>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10 }}>
             <input value={examTime} onChange={e => setExamTime(e.target.value)} placeholder="e.g. 09:00 AM" style={css.input} />
@@ -5593,7 +5406,7 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
             <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
             <button onClick={() => fileInputRef.current?.click()} disabled={parsing}
-              style={{ ...css.btn, background: "#002E6E", color: "white", padding: "10px 22px" }}>
+              style={{ ...css.btn, background: "#132a4f", color: "white", padding: "10px 22px" }}>
               {parsing ? "⏳ Reading file…" : "📂 Choose Result Sheet File"}
             </button>
             {parseError && <div style={{ marginTop: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
@@ -5602,11 +5415,11 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
 
         {rawRows && !rows.length && (
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 8, textTransform: "uppercase" }}>Map Identity Columns</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#5d6b82", marginBottom: 8, textTransform: "uppercase" }}>Map Identity Columns</div>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
               {[["name", "Student Name *"], ["gcc", "GCC No."], ["admission", "Admission No."]].map(([key, label]) => (
                 <div key={key}>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>{label}</label>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4 }}>{label}</label>
                   <select value={colMap[key]} onChange={e => setColMap(p => ({ ...p, [key]: Number(e.target.value) }))} style={css.input}>
                     <option value={-1}>— Not in file —</option>
                     {headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
@@ -5615,7 +5428,7 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
               ))}
             </div>
 
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", marginBottom: 8, textTransform: "uppercase" }}>Subject Columns for {batch}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#5d6b82", marginBottom: 8, textTransform: "uppercase" }}>Subject Columns for {batch}</div>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8, marginBottom: 16 }}>
               {subjects.map(sub => {
                 const entry = subjectColMap.find(m => m.sub === sub) || { col: -1, matchType: "none", confidence: 0 };
@@ -5642,8 +5455,8 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
             {parseError && <div style={{ marginBottom: 12, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "8px 12px", borderRadius: 8, fontSize: 12.5 }}>⚠️ {parseError}</div>}
 
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => { setRawRows(null); setHeaders([]); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Back</button>
-              <button onClick={processRows} style={{ ...css.btn, background: "#002E6E", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
+              <button onClick={() => { setRawRows(null); setHeaders([]); }} style={{ ...css.btn, background: "#f3f0e8", color: "#2e3b52" }}>← Back</button>
+              <button onClick={processRows} style={{ ...css.btn, background: "#132a4f", color: "white", flex: 1 }}>🔎 Match {rawRows.length} Rows</button>
             </div>
           </div>
         )}
@@ -5654,13 +5467,13 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
               <Badge label={`${existingCount} already on roster`} color="#0F6E56" bg="#E1F5EE" />
               <Badge label={`${newCount} new students`} color="#047857" bg="#ECFDF5" />
               {skipCount > 0 && <Badge label={`${skipCount} skipped`} color="#92740C" bg="#FEF9E7" />}
-              {section.trim() && <Badge label={`Section: ${section.trim().toUpperCase()}`} color="#4338CA" bg="#EEF2FF" />}
+              {section.trim() && <Badge label={`Section: ${section.trim().toUpperCase()}`} color="#4338CA" bg="#eef2f9" />}
             </div>
 
             <div style={{ maxHeight: 420, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 16 }}>
               <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                 <thead style={{ position: "sticky", top: 0 }}>
-                  <tr style={{ background: "#002E6E" }}>
+                  <tr style={{ background: "#132a4f" }}>
                     {["Row", "Name (from file)", "Match", "Marks Found", "Action"].map(h => (
                       <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "white", fontWeight: 700, fontSize: 11 }}>{h}</th>
                     ))}
@@ -5669,27 +5482,27 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
                 <tbody>
                   {rows.map(r => (
                     <tr key={r.idx} style={{ borderBottom: "1px solid #F1F5F9", background: r.status === "skip" ? "#FAFAFA" : "white" }}>
-                      <td style={{ padding: "7px 10px", color: "#9CA3AF" }}>{r.idx + 2}</td>
+                      <td style={{ padding: "7px 10px", color: "#8a93a6" }}>{r.idx + 2}</td>
                       <td style={{ padding: "7px 10px", fontWeight: 600 }}>{r.rawName || <i style={{ color: "#DC2626" }}>{r.reason}</i>}</td>
                       <td style={{ padding: "7px 10px" }}>
                         {r.status === "existing" && (
                           <div>
                             <MatchBadge matchType={r.matchType} confidence={r.confidence} />
-                            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{r.student?.name} · {r.student?.class_name}</div>
+                            <div style={{ fontSize: 11, color: "#5d6b82", marginTop: 2 }}>{r.student?.name} · {r.student?.class_name}</div>
                           </div>
                         )}
                         {r.status === "new" && <MatchBadge matchType="New" />}
-                        {r.status === "skip" && <span style={{ fontSize: 11, color: "#94A3B8" }}>{r.reason || "Skipped"}</span>}
+                        {r.status === "skip" && <span style={{ fontSize: 11, color: "#8a93a6" }}>{r.reason || "Skipped"}</span>}
                         {r.status === "new" && r.suggestion && (
-                          <div style={{ fontSize: 10.5, color: "#00BAF2", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
+                          <div style={{ fontSize: 10.5, color: "#b8923a", marginTop: 2 }}>closest guess: {r.suggestion.name}</div>
                         )}
                       </td>
-                      <td style={{ padding: "7px 10px", color: "#64748b" }}>{Object.keys(r.subMarks || {}).length}/{subjects.length} subjects</td>
+                      <td style={{ padding: "7px 10px", color: "#5d6b82" }}>{Object.keys(r.subMarks || {}).length}/{subjects.length} subjects</td>
                       <td style={{ padding: "7px 10px" }}>
                         <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
                           {r.status !== "new" && <button onClick={() => markAsNew(r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0" }}>+ New</button>}
-                          <button onClick={() => setManualOpenIdx(manualOpenIdx === r.idx ? null : r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#EEF2FF", color: "#4338CA", border: "1px solid #C7D2FE" }}>🔍 Pick manually</button>
-                          {r.status !== "skip" && <button onClick={() => markSkip(r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#F3F4F6", color: "#6B7280" }}>Skip</button>}
+                          <button onClick={() => setManualOpenIdx(manualOpenIdx === r.idx ? null : r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#eef2f9", color: "#4338CA", border: "1px solid #c9d5ea" }}>🔍 Pick manually</button>
+                          {r.status !== "skip" && <button onClick={() => markSkip(r.idx)} style={{ ...css.btn, padding: "3px 8px", fontSize: 10.5, background: "#f3f0e8", color: "#5d6b82" }}>Skip</button>}
                         </div>
                         {manualOpenIdx === r.idx && (
                           <div style={{ marginTop: 6 }}>
@@ -5704,7 +5517,7 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
                                 .map(s => (
                                   <div key={s.id} onClick={() => { markManualMatch(r.idx, s); setManualOpenIdx(null); }}
                                     style={{ padding: "4px 8px", fontSize: 11, cursor: "pointer", borderBottom: "1px solid #F1F5F9" }}
-                                    onMouseEnter={e => e.currentTarget.style.background = "#F9FAFB"}
+                                    onMouseEnter={e => e.currentTarget.style.background = "#faf8f3"}
                                     onMouseLeave={e => e.currentTarget.style.background = "white"}>
                                     {s.name} — GCC {s.gcc_no} ({s.class_name})
                                   </div>
@@ -5756,11 +5569,11 @@ function ResultSheetImport({ courseSubjects, students, examTypes, onStudentsChan
             )}
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button onClick={() => { setRawRows(null); setHeaders([]); setRows([]); setSaveSummary(null); }} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>← Start Over</button>
-              <button onClick={handleImportAll} disabled={saving || !examTypeId || !examDate || gccConflicts.length > 0} style={{ ...css.btn, background: saving ? "#93C5FD" : gccConflicts.length ? "#D1D5DB" : "#002E6E", color: "white", flex: 1 }}>
+              <button onClick={() => { setRawRows(null); setHeaders([]); setRows([]); setSaveSummary(null); }} style={{ ...css.btn, background: "#f3f0e8", color: "#2e3b52" }}>← Start Over</button>
+              <button onClick={handleImportAll} disabled={saving || !examTypeId || !examDate || gccConflicts.length > 0} style={{ ...css.btn, background: saving ? "#b7c6e0" : gccConflicts.length ? "#d9d2c2" : "#132a4f", color: "white", flex: 1 }}>
                 {saving ? "⏳ Importing…" : gccConflicts.length ? "⚠️ Resolve GCC conflicts above first" : `✅ Import Roster + Marks (${rows.length - skipCount} students)`}
               </button>
-              <button onClick={onDone} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>Done</button>
+              <button onClick={onDone} style={{ ...css.btn, background: "#f3f0e8", color: "#2e3b52" }}>Done</button>
             </div>
           </div>
         )}
@@ -5858,21 +5671,21 @@ function ExamAbsentFinder({ courseSubjects, students, onStudentsChange, onClose 
       <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 640, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)", marginTop: 30 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
           <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600 }}>🚫 Find Exam-Absent Students</div>
-          <button onClick={onClose} style={{ ...css.btn, padding: "4px 10px", background: "#F3F4F6", color: "#374151" }}>✕</button>
+          <button onClick={onClose} style={{ ...css.btn, padding: "4px 10px", background: "#f3f0e8", color: "#2e3b52" }}>✕</button>
         </div>
-        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, color: "#5d6b82", marginBottom: 16 }}>
           Finds students marked absent (0 in every subject) for a given exam sitting, so they can be removed from the active roster or marked Dropout in bulk.
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Batch / Course</label>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4 }}>Batch / Course</label>
             <select value={course} onChange={e => setCourse(e.target.value)} style={css.input}>
               {courses.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Exam Type</label>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4 }}>Exam Type</label>
             <select value={examTypeId} onChange={e => { setExamTypeId(e.target.value); setExamDate(""); }} style={css.input}>
               <option value="">— Select —</option>
               {examTypesList.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -5880,21 +5693,21 @@ function ExamAbsentFinder({ courseSubjects, students, onStudentsChange, onClose 
           </div>
         </div>
         <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Exam Date (optional — leave blank to check all dates for this type)</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4 }}>Exam Date (optional — leave blank to check all dates for this type)</label>
           <select value={examDate} onChange={e => setExamDate(e.target.value)} style={css.input}>
             <option value="">— All dates —</option>
             {availableDates.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
 
-        <button onClick={search} disabled={loading || !course || !examTypeId} style={{ ...css.btn, background: "#002E6E", color: "white", marginBottom: 16 }}>
+        <button onClick={search} disabled={loading || !course || !examTypeId} style={{ ...css.btn, background: "#132a4f", color: "white", marginBottom: 16 }}>
           {loading ? "⏳ Searching…" : "🔎 Find Absent Students"}
         </button>
 
         {absentees !== null && (
           <div>
             {absentees.length === 0 ? (
-              <div style={{ padding: 16, textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>No fully-absent students found for this sitting.</div>
+              <div style={{ padding: 16, textAlign: "center", color: "#8a93a6", fontSize: 13 }}>No fully-absent students found for this sitting.</div>
             ) : (
               <>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: "#DC2626", marginBottom: 8 }}>{absentees.length} student(s) absent for every subject:</div>
@@ -5903,7 +5716,7 @@ function ExamAbsentFinder({ courseSubjects, students, onStudentsChange, onClose 
                     <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid #F1F5F9", fontSize: 12.5, cursor: "pointer" }}>
                       <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSel(s.id)} />
                       <span style={{ fontWeight: 600 }}>{s.name}</span>
-                      <span style={{ color: "#94A3B8" }}>GCC {s.gcc_no} · {s.class_name}</span>
+                      <span style={{ color: "#8a93a6" }}>GCC {s.gcc_no} · {s.class_name}</span>
                     </label>
                   ))}
                 </div>
@@ -5913,7 +5726,7 @@ function ExamAbsentFinder({ courseSubjects, students, onStudentsChange, onClose 
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button onClick={() => applyAction("dropout")} disabled={applying || !selected.size} style={{ ...css.btn, background: applying ? "#93C5FD" : "#B45309", color: "white" }}>
+                  <button onClick={() => applyAction("dropout")} disabled={applying || !selected.size} style={{ ...css.btn, background: applying ? "#b7c6e0" : "#B45309", color: "white" }}>
                     📤 Mark Selected as Dropout
                   </button>
                   <button onClick={() => applyAction("delete")} disabled={applying || !selected.size} style={{ ...css.btn, background: applying ? "#FCA5A5" : "#DC2626", color: "white" }}>
@@ -5938,7 +5751,7 @@ function ExamAbsentFinder({ courseSubjects, students, onStudentsChange, onClose 
 // confusing "Achiever — ENG" pill shown in the roster. This tool finds every
 // student where stripping a trailing " — SUFFIX" from `batch` would exactly
 // match their real `class_name`, and offers to restore `batch` back to it.
-function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap, onSecondaryBatchesChange, onClose }) {
+function BatchSuffixCleanupTool({ students, secondaryBatchMap, onSecondaryBatchesChange, onClose }) {
   const [scanning, setScanning] = useState(true);
   const [affected, setAffected] = useState([]);
   const [selected, setSelected] = useState(new Set());
@@ -6045,9 +5858,9 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
       <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 680, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)", marginTop: 30 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
           <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600 }}>🧹 Fix Corrupted Batch Suffixes</div>
-          <button onClick={onClose} style={{ ...css.btn, padding: "4px 10px", background: "#F3F4F6", color: "#374151" }}>✕</button>
+          <button onClick={onClose} style={{ ...css.btn, padding: "4px 10px", background: "#f3f0e8", color: "#2e3b52" }}>✕</button>
         </div>
-        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, color: "#5d6b82", marginBottom: 16 }}>
           Finds students whose Batch shows a stray suffix like "Achiever — ENG" from an earlier import bug. For each one, this
           removes any wrong "Combined Navodaya Course..." tag the bug applied and adds the <b>correct</b> one based on their
           actual section — ENG → <code>Combined Navodaya Course(ENG)</code>, MM → <code>Combined Navodaya Course (MM)</code>.
@@ -6056,15 +5869,15 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
         </div>
 
         {scanning ? (
-          <div style={{ padding: 24, textAlign: "center", color: "#9CA3AF" }}>Scanning…</div>
+          <div style={{ padding: 24, textAlign: "center", color: "#8a93a6" }}>Scanning…</div>
         ) : affected.length === 0 ? (
           <div style={{ padding: 24, textAlign: "center", color: "#0F6E56", fontWeight: 600 }}>✅ No corrupted batch suffixes found. Nothing to fix.</div>
         ) : (
           <>
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-              <button onClick={selectAll} style={{ ...css.btn, padding: "5px 10px", fontSize: 11, background: "#E0F2FE", color: "#0369A1" }}>Select All</button>
+              <button onClick={selectAll} style={{ ...css.btn, padding: "5px 10px", fontSize: 11, background: "#eef2f9", color: "#1e3a6e" }}>Select All</button>
               <button onClick={deselectAll} style={{ ...css.btn, padding: "5px 10px", fontSize: 11, background: "#FEF2F2", color: "#DC2626" }}>Deselect All</button>
-              <div style={{ fontSize: 12, color: "#9CA3AF", alignSelf: "center" }}>{affected.length} affected</div>
+              <div style={{ fontSize: 12, color: "#8a93a6", alignSelf: "center" }}>{affected.length} affected</div>
             </div>
             <div style={{ maxHeight: 380, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 10, marginBottom: 14 }}>
               {affected.map(s => (
@@ -6072,9 +5885,9 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSel(s.id)} />
                     <span style={{ fontWeight: 600, flex: 1 }}>{s.name}</span>
-                    <span style={{ color: "#94A3B8" }}>GCC {s.gcc_no}</span>
+                    <span style={{ color: "#8a93a6" }}>GCC {s.gcc_no}</span>
                     <span style={{ background: "#FEF2F2", color: "#DC2626", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s.batch}</span>
-                    <span style={{ color: "#9CA3AF" }}>→</span>
+                    <span style={{ color: "#8a93a6" }}>→</span>
                     <span style={{ background: "#E1F5EE", color: "#0F6E56", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s._restoredBatch}</span>
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", paddingLeft: 24 }}>
@@ -6082,7 +5895,7 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
                       <span key={b} style={{ fontSize: 10.5, background: "#FEF2F2", color: "#DC2626", padding: "1px 7px", borderRadius: 999, textDecoration: "line-through" }}>{b}</span>
                     ))}
                     {s._correctSecondaryBatch && (
-                      <span style={{ fontSize: 10.5, background: s._alreadyHasCorrectTag ? "#F5F3FF" : "#ECFDF5", color: s._alreadyHasCorrectTag ? "#7c3aed" : "#047857", padding: "1px 7px", borderRadius: 999, fontWeight: 700 }}>
+                      <span style={{ fontSize: 10.5, background: s._alreadyHasCorrectTag ? "#fbf3e0" : "#ECFDF5", color: s._alreadyHasCorrectTag ? "#a7771f" : "#047857", padding: "1px 7px", borderRadius: 999, fontWeight: 700 }}>
                         {s._alreadyHasCorrectTag ? "✓ " : "+ "}{s._correctSecondaryBatch}
                       </span>
                     )}
@@ -6095,7 +5908,7 @@ function BatchSuffixCleanupTool({ students, onStudentsChange, secondaryBatchMap,
                 {result.ok ? "✅ " : "⚠️ "}{result.message}
               </div>
             )}
-            <button onClick={applyFix} disabled={applying || !selected.size} style={{ ...css.btn, background: applying ? "#93C5FD" : "#002E6E", color: "white", width: "100%" }}>
+            <button onClick={applyFix} disabled={applying || !selected.size} style={{ ...css.btn, background: applying ? "#b7c6e0" : "#132a4f", color: "white", width: "100%" }}>
               {applying ? "⏳ Fixing…" : `✅ Fix ${selected.size} Selected Student(s)`}
             </button>
           </>
@@ -6173,9 +5986,9 @@ function DuplicateSectionTagResolver({ students, secondaryBatchMap, onSecondaryB
       <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 680, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)", marginTop: 30 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
           <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600 }}>🔀 Resolve Duplicate Section Tags</div>
-          <button onClick={onClose} style={{ ...css.btn, padding: "4px 10px", background: "#F3F4F6", color: "#374151" }}>✕</button>
+          <button onClick={onClose} style={{ ...css.btn, padding: "4px 10px", background: "#f3f0e8", color: "#2e3b52" }}>✕</button>
         </div>
-        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, color: "#5d6b82", marginBottom: 16 }}>
           These students are tagged into BOTH Combined Navodaya sections at once — leftover from an earlier import mix-up. That's why
           selecting either "Combined Navodaya Course(ENG)" or "Combined Navodaya Course (MM)" shows them: they genuinely have both
           tags right now. Pick which section each one actually belongs to; the other tag will be removed. Uncheck anyone below who
@@ -6196,30 +6009,30 @@ function DuplicateSectionTagResolver({ students, secondaryBatchMap, onSecondaryB
         ) : (
           <>
             <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Bulk resolve {remaining.length - excluded.size} of {remaining.length}:</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#2e3b52" }}>Bulk resolve {remaining.length - excluded.size} of {remaining.length}:</span>
               <button onClick={() => bulkResolve(ENG)} disabled={resolving !== null}
-                style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: "#1D4ED8", color: "white" }}>
+                style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: "#1e3a6e", color: "white" }}>
                 {resolving === "bulk" ? "⏳ Working…" : "Keep ENG for All"}
               </button>
               <button onClick={() => bulkResolve(MM)} disabled={resolving !== null}
-                style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: "#7c3aed", color: "white" }}>
+                style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: "#a7771f", color: "white" }}>
                 {resolving === "bulk" ? "⏳ Working…" : "Keep MM for All"}
               </button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 380, overflowY: "auto" }}>
               {remaining.map(s => (
-                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: "1px solid #E5E7EB", borderRadius: 10, background: excluded.has(s.id) ? "#FFFBEB" : "#F9FAFB" }}>
+                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: "1px solid #E5E7EB", borderRadius: 10, background: excluded.has(s.id) ? "#FFFBEB" : "#faf8f3" }}>
                   <input type="checkbox" checked={!excluded.has(s.id)} onChange={() => toggleExclude(s.id)} title="Uncheck to exclude from bulk actions" />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
-                    <div style={{ fontSize: 11, color: "#94A3B8" }}>GCC {s.gcc_no ?? "—"} · real batch: {s.class_name || "—"}</div>
+                    <div style={{ fontSize: 11, color: "#8a93a6" }}>GCC {s.gcc_no ?? "—"} · real batch: {s.class_name || "—"}</div>
                   </div>
                   <button onClick={() => resolve(s, ENG)} disabled={resolving !== null}
-                    style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE" }}>
+                    style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: "#eef2f9", color: "#1e3a6e", border: "1px solid #BFDBFE" }}>
                     {resolving === s.id ? "…" : "Keep ENG"}
                   </button>
                   <button onClick={() => resolve(s, MM)} disabled={resolving !== null}
-                    style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: "#F5F3FF", color: "#7c3aed", border: "1px solid #DDD6FE" }}>
+                    style={{ ...css.btn, padding: "6px 14px", fontSize: 12, background: "#fbf3e0", color: "#a7771f", border: "1px solid #DDD6FE" }}>
                     {resolving === s.id ? "…" : "Keep MM"}
                   </button>
                 </div>
@@ -6319,16 +6132,16 @@ function SecondaryBatchSpellingCleanupTool({ students, secondaryBatchMap, onSeco
       <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 700, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)", marginTop: 30 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
           <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600 }}>🔤 Fix Secondary Batch Spellings</div>
-          <button onClick={onClose} style={{ ...css.btn, padding: "4px 10px", background: "#F3F4F6", color: "#374151" }}>✕</button>
+          <button onClick={onClose} style={{ ...css.btn, padding: "4px 10px", background: "#f3f0e8", color: "#2e3b52" }}>✕</button>
         </div>
-        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, color: "#5d6b82", marginBottom: 16 }}>
           These students have a secondary-batch tag using an older or variant spelling (e.g. "Combined Navoday ENG") instead of
           the canonical form ("Combined Navodaya Course(ENG)" / "Combined Navodaya Course (MM)"). Stats cards and print filters
           already merge these for display, but fixing the underlying tag here means Report Cards / Admit Cards / Bulk Reports
           will find everyone under a single, correct secondary-batch selection going forward.
         </div>
 
-        {scanning && <div style={{ padding: 24, textAlign: "center", color: "#6B7280" }}>Scanning…</div>}
+        {scanning && <div style={{ padding: 24, textAlign: "center", color: "#5d6b82" }}>Scanning…</div>}
 
         {!scanning && result && (
           <div style={{ background: result.ok ? "#F0FDF4" : "#FEF2F2", border: `1px solid ${result.ok ? "#BBF7D0" : "#FECACA"}`, color: result.ok ? "#166534" : "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 12.5, marginBottom: 14 }}>
@@ -6345,16 +6158,16 @@ function SecondaryBatchSpellingCleanupTool({ students, secondaryBatchMap, onSeco
         {!scanning && affected.length > 0 && (
           <>
             <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
-              <button onClick={selectAll} style={{ ...css.btn, padding: "5px 12px", fontSize: 11.5, background: "#F3F4F6", color: "#374151" }}>Select All</button>
-              <button onClick={deselectAll} style={{ ...css.btn, padding: "5px 12px", fontSize: 11.5, background: "#F3F4F6", color: "#374151" }}>Deselect All</button>
-              <span style={{ fontSize: 12, color: "#6B7280", marginLeft: "auto" }}>{selected.size} of {affected.length} selected</span>
+              <button onClick={selectAll} style={{ ...css.btn, padding: "5px 12px", fontSize: 11.5, background: "#f3f0e8", color: "#2e3b52" }}>Select All</button>
+              <button onClick={deselectAll} style={{ ...css.btn, padding: "5px 12px", fontSize: 11.5, background: "#f3f0e8", color: "#2e3b52" }}>Deselect All</button>
+              <span style={{ fontSize: 12, color: "#5d6b82", marginLeft: "auto" }}>{selected.size} of {affected.length} selected</span>
             </div>
             <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid #E5E7EB", borderRadius: 8, marginBottom: 16 }}>
               {affected.map((f, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderBottom: i < affected.length - 1 ? "1px solid #F1F5F9" : "none", fontSize: 12.5 }}>
                   <input type="checkbox" checked={selected.has(i)} onChange={() => toggleSel(i)} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600 }}>{f.student.name} <span style={{ color: "#9CA3AF", fontWeight: 400 }}>({f.student.gcc_no})</span></div>
+                    <div style={{ fontWeight: 600 }}>{f.student.name} <span style={{ color: "#8a93a6", fontWeight: 400 }}>({f.student.gcc_no})</span></div>
                     <div style={{ color: "#92400E", fontSize: 11.5, marginTop: 2 }}>
                       "{f.rawBatch}" → "{f.canonicalBatch}"{f.alreadyHasCanonical && <span style={{ color: "#DC2626" }}> — already has canonical tag; variant will just be removed</span>}
                     </div>
@@ -6363,8 +6176,8 @@ function SecondaryBatchSpellingCleanupTool({ students, secondaryBatchMap, onSeco
               ))}
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button onClick={onClose} style={{ ...css.btn, background: "#F3F4F6", color: "#374151", padding: "9px 18px" }}>Close</button>
-              <button onClick={applyFix} disabled={applying || !selected.size} style={{ ...css.btn, background: "#002E6E", color: "white", padding: "9px 18px" }}>
+              <button onClick={onClose} style={{ ...css.btn, background: "#f3f0e8", color: "#2e3b52", padding: "9px 18px" }}>Close</button>
+              <button onClick={applyFix} disabled={applying || !selected.size} style={{ ...css.btn, background: "#132a4f", color: "white", padding: "9px 18px" }}>
                 {applying ? "⏳ Fixing…" : `Fix ${selected.size} Selected`}
               </button>
             </div>
@@ -6438,8 +6251,17 @@ function MeritList({ courseSubjects, examTypes, students }) {
 
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const ranked = [...courseStudents].map(st => ({ ...st, total: getTotal(st.id), pct: courseMax ? (getTotal(st.id) / courseMax) * 100 : 0 })).sort((a, b) => b.total - a.total);
-  let cr = 1, pt = null;
-  const rankedWithRanks = ranked.map((st, i) => { if (i === 0) { cr = 1; pt = st.total; } else if (st.total !== pt) { cr++; pt = st.total; } return { ...st, rank: cr }; });
+  // dense rank by total (ties share a rank) — plain loop, no outer variables mutated
+  const rankedWithRanks = (() => {
+    let cr = 1, pt = null;
+    const out = [];
+    for (let i = 0; i < ranked.length; i++) {
+      const st = ranked[i];
+      if (i === 0) { cr = 1; pt = st.total; } else if (st.total !== pt) { cr++; pt = st.total; }
+      out.push({ ...st, rank: cr });
+    }
+    return out;
+  })();
   const filtered = rankedWithRanks.filter(st => !rankFilter || st.rank <= parseInt(rankFilter));
   const medals = ["🥇", "🥈", "🥉"];
 
@@ -6454,42 +6276,42 @@ function MeritList({ courseSubjects, examTypes, students }) {
 
   return (
     <div>
-      <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
+      <div style={{ ...css.card, background: "#faf8f3", marginBottom: 14 }}>
         <CoursePicker courses={courses} value={course} onChange={c => { setCourse(c); setMarks({}); }} />
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "flex-end" }}>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
           <select value={examType} onChange={e => setExamType(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 180 }}>{examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}</select>
         </div>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
           <select value={examDate} onChange={e => setExamDate(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 160 }}>{dates.map(d => <option key={d} value={d}>{d}</option>)}</select>
         </div>
         <div>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Top Rank</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Top Rank</label>
           <select value={rankFilter} onChange={e => setRankFilter(e.target.value)} style={{ ...css.input, width: 110 }}>
             <option value="">All</option><option value="3">Top 3</option><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option>
           </select>
         </div>
-        <button onClick={handlePrint} style={{ ...css.btn, background: "#002E6E", color: "white" }}>🖨️ Print</button>
+        <button onClick={handlePrint} style={{ ...css.btn, background: "#132a4f", color: "white" }}>🖨️ Print</button>
       </div>
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-        <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📜 Merit List — {course} ({filtered.length} students)</div>
+        <div style={{ padding: "12px 18px", background: "#132a4f", color: "white", fontWeight: 700, fontSize: 13 }}>📜 Merit List — {course} ({filtered.length} students)</div>
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 380 : "auto" }}>
-            <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
-              {["Rank", "Student", "GCC No", "Total", "%", "Grade"].map(h => <th key={h} style={{ padding: "10px 12px", textAlign: h === "Student" ? "left" : "center", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>)}
+            <thead><tr style={{ background: "#faf8f3", borderBottom: "2px solid #E5E7EB" }}>
+              {["Rank", "Student", "GCC No", "Total", "%", "Grade"].map(h => <th key={h} style={{ padding: "10px 12px", textAlign: h === "Student" ? "left" : "center", fontWeight: 700, color: "#2e3b52", fontSize: 11 }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {filtered.map((st, i) => {
                 const grade = getGrade(st.pct);
                 return (
-                  <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
-                    <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 800, fontSize: i < 3 ? 15 : 12, color: i < 3 ? "#D97706" : "#374151" }}>{i < 3 ? medals[i] : ""} {st.rank}</td>
+                  <tr key={st.id} style={{ background: i % 2 ? "#faf8f3" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                    <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 800, fontSize: i < 3 ? 15 : 12, color: i < 3 ? "#D97706" : "#2e3b52" }}>{i < 3 ? medals[i] : ""} {st.rank}</td>
                     <td style={{ padding: "10px 12px", fontWeight: 600, fontSize: isMobile ? 12 : 13 }}>{st.name}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "center", color: "#64748b" }}>{st.gcc_no || "—"}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 800 }}>{st.total}<span style={{ fontSize: 10, color: "#9CA3AF" }}>/{courseMax}</span></td>
+                    <td style={{ padding: "10px 12px", textAlign: "center", color: "#5d6b82" }}>{st.gcc_no || "—"}</td>
+                    <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 800 }}>{st.total}<span style={{ fontSize: 10, color: "#8a93a6" }}>/{courseMax}</span></td>
                     <td style={{ padding: "10px 12px", textAlign: "center", color: grade.color, fontWeight: 700 }}>{st.pct.toFixed(1)}%</td>
                     <td style={{ padding: "10px 12px", textAlign: "center" }}><Badge label={grade.label} color={grade.color} bg={grade.bg} /></td>
                   </tr>
@@ -6636,7 +6458,7 @@ function RenameCourseModal({ courseSubjects, oldName, onClose, onDone, onCourseS
             { onConflict: "key" }
           );
           if (error) errors.push(`exam_configs presets: ${error.message}`);
-        } catch (e) {
+        } catch {
           errors.push(`exam_configs presets: could not parse saved config JSON — left untouched, check manually.`);
         }
       }
@@ -6658,20 +6480,20 @@ function RenameCourseModal({ courseSubjects, oldName, onClose, onDone, onCourseS
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "white", borderRadius: 14, padding: 24, maxWidth: 520, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
         <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 17, fontWeight: 600, marginBottom: 6 }}>✏️ Rename Course / Batch</div>
-        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, color: "#5d6b82", marginBottom: 16 }}>
           This renames <b>"{oldName}"</b> everywhere — every student assigned to it, every schedule entry, every exam mark record,
           every secondary-batch tag, and any saved Exam Config presets that reference it. This cannot be easily undone; the old name
           will no longer exist anywhere in the app afterward.
         </div>
 
         {affectedCounts && (
-          <div style={{ background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 12.5 }}>
-            <div style={{ fontWeight: 700, color: "#374151", marginBottom: 6 }}>This will affect:</div>
+          <div style={{ background: "#faf8f3", border: "1px solid #E5E7EB", borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 12.5 }}>
+            <div style={{ fontWeight: 700, color: "#2e3b52", marginBottom: 6 }}>This will affect:</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              <Badge label={`${affectedCounts.students} student(s)`} color="#0369A1" bg="#E0F2FE" />
+              <Badge label={`${affectedCounts.students} student(s)`} color="#1e3a6e" bg="#eef2f9" />
               <Badge label={`${affectedCounts.schedule} schedule entr${affectedCounts.schedule === 1 ? "y" : "ies"}`} color="#0F6E56" bg="#E1F5EE" />
               <Badge label={`${affectedCounts.marks} mark record(s)`} color="#92740C" bg="#FEF9E7" />
-              {affectedCounts.secondary > 0 && <Badge label={`${affectedCounts.secondary} secondary-batch tag(s)`} color="#7c3aed" bg="#F5F3FF" />}
+              {affectedCounts.secondary > 0 && <Badge label={`${affectedCounts.secondary} secondary-batch tag(s)`} color="#a7771f" bg="#fbf3e0" />}
             </div>
           </div>
         )}
@@ -6679,14 +6501,14 @@ function RenameCourseModal({ courseSubjects, oldName, onClose, onDone, onCourseS
         {err && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 12.5, marginBottom: 14 }}>⚠️ {err}</div>}
 
         <div style={{ marginBottom: 20 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase" }}>New Name</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 6, textTransform: "uppercase" }}>New Name</label>
           <input value={newName} onChange={e => setNewName(e.target.value)} style={css.input} disabled={saving} autoFocus />
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={onClose} disabled={saving} style={{ ...css.btn, flex: 1, background: "#F3F4F6", color: "#374151" }}>Cancel</button>
+          <button onClick={onClose} disabled={saving} style={{ ...css.btn, flex: 1, background: "#f3f0e8", color: "#2e3b52" }}>Cancel</button>
           <button onClick={rename} disabled={saving || !newName.trim() || newName.trim() === oldName}
-            style={{ ...css.btn, flex: 2, background: saving ? "#93C5FD" : "#DC2626", color: "white" }}>
+            style={{ ...css.btn, flex: 2, background: saving ? "#b7c6e0" : "#DC2626", color: "white" }}>
             {saving ? `⏳ ${progress || "Renaming…"}` : "✅ Rename Everywhere"}
           </button>
         </div>
@@ -6746,20 +6568,20 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
   return (
     <div style={{ maxWidth: 700 }}>
       <div style={css.card}>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 17, color: "#1e293b", marginBottom: 16 }}>📚 Subjects per Course / Batch</div>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 17, color: "#14213d", marginBottom: 16 }}>📚 Subjects per Course / Batch</div>
         <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
           {Object.keys(courseSubjects).map(c => (
             <div key={c} style={{ display: "flex", alignItems: "stretch" }}>
               <button onClick={() => setSelected(c)}
-                style={{ ...css.btn, padding: "6px 16px", background: selected === c ? "#002E6E" : "#F3F4F6", color: selected === c ? "white" : "#374151", border: "1.5px solid " + (selected === c ? "#002E6E" : "#E5E7EB"), borderRadius: "8px 0 0 8px" }}>
+                style={{ ...css.btn, padding: "6px 16px", background: selected === c ? "#132a4f" : "#f3f0e8", color: selected === c ? "white" : "#2e3b52", border: "1.5px solid " + (selected === c ? "#132a4f" : "#e8e3d8"), borderRadius: "8px 0 0 8px" }}>
                 {c} <span style={{ fontSize: 11, opacity: 0.7 }}>({(courseSubjects[c] || []).length})</span>
               </button>
               <button onClick={() => setRenamingCourse(c)} title={`Rename "${c}" everywhere (students, schedule, marks, configs)`}
-                style={{ ...css.btn, padding: "6px 10px", background: selected === c ? "#14532d" : "#E5E7EB", color: selected === c ? "white" : "#6B7280", border: "1.5px solid " + (selected === c ? "#002E6E" : "#E5E7EB"), borderLeft: "none", fontSize: 12 }}>
+                style={{ ...css.btn, padding: "6px 10px", background: selected === c ? "#14532d" : "#e8e3d8", color: selected === c ? "white" : "#5d6b82", border: "1.5px solid " + (selected === c ? "#132a4f" : "#e8e3d8"), borderLeft: "none", fontSize: 12 }}>
                 ✏️
               </button>
               <button onClick={() => setDeletingCourse(c)} title={`Remove "${c}" from Course Subjects config (does not touch student records)`}
-                style={{ ...css.btn, padding: "6px 10px", background: selected === c ? "#7f1d1d" : "#FEE2E2", color: selected === c ? "white" : "#B91C1C", border: "1.5px solid " + (selected === c ? "#002E6E" : "#E5E7EB"), borderLeft: "none", borderRadius: "0 8px 8px 0", fontSize: 12 }}>
+                style={{ ...css.btn, padding: "6px 10px", background: selected === c ? "#7f1d1d" : "#FEE2E2", color: selected === c ? "white" : "#B91C1C", border: "1.5px solid " + (selected === c ? "#132a4f" : "#e8e3d8"), borderLeft: "none", borderRadius: "0 8px 8px 0", fontSize: 12 }}>
                 🗑️
               </button>
             </div>
@@ -6767,7 +6589,7 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
           <div style={{ display: "flex", gap: 6 }}>
             <input value={newCourse} onChange={e => setNewCourse(e.target.value)} placeholder="New course…" style={{ ...css.input, width: 120, fontSize: 12 }}
               onKeyDown={e => { if (e.key === "Enter") addCourse(); }} />
-            <button onClick={addCourse} style={{ ...css.btn, padding: "6px 12px", background: "#E0F2FE", color: "#0369A1", fontSize: 12 }}>+ Add</button>
+            <button onClick={addCourse} style={{ ...css.btn, padding: "6px 12px", background: "#eef2f9", color: "#1e3a6e", fontSize: 12 }}>+ Add</button>
           </div>
         </div>
 
@@ -6788,12 +6610,12 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
             <div style={{ background: "white", borderRadius: 12, padding: 24, maxWidth: 420, boxShadow: "0 8px 30px rgba(0,0,0,0.2)" }}>
               <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, marginBottom: 10 }}>Remove "{deletingCourse}"?</div>
-              <p style={{ fontSize: 13, color: "#4B5563", lineHeight: 1.6, marginBottom: 16 }}>
+              <p style={{ fontSize: 13, color: "#4b5870", lineHeight: 1.6, marginBottom: 16 }}>
                 This removes the course/batch key and its subject list from the saved config. It does <b>not</b> delete or move any student —
                 if any student's class_name still matches "{deletingCourse}" exactly, they'll show up as an Unrecognized Batch until corrected in StudentDB.
               </p>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <button onClick={() => setDeletingCourse(null)} style={{ ...css.btn, background: "#F3F4F6", color: "#374151" }}>Cancel</button>
+                <button onClick={() => setDeletingCourse(null)} style={{ ...css.btn, background: "#f3f0e8", color: "#2e3b52" }}>Cancel</button>
                 <button onClick={() => deleteCourse(deletingCourse)} disabled={deleting} style={{ ...css.btn, background: "#B91C1C", color: "white" }}>
                   {deleting ? "Removing…" : "Remove Course"}
                 </button>
@@ -6803,41 +6625,41 @@ function CourseSubjectsManager({ courseSubjects, onUpdate }) {
         )}
         {selected && (
           <>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", marginBottom: 8 }}>
-              Subjects for <span style={{ color: "#002E6E" }}>{selected}</span>
-              <span style={{ marginLeft: 8, fontWeight: 400, color: "#9CA3AF" }}>(Max: {getCourseMax(selected)})</span>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#5d6b82", textTransform: "uppercase", marginBottom: 8 }}>
+              Subjects for <span style={{ color: "#132a4f" }}>{selected}</span>
+              <span style={{ marginLeft: 8, fontWeight: 400, color: "#8a93a6" }}>(Max: {getCourseMax(selected)})</span>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
               {list.map((sub, i) => (
-                <span key={sub} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 12px", background: "#E0F2FE", border: "1px solid #BAE6FD", borderRadius: 999, fontSize: 13, color: "#0369A1" }}>
-                  <span style={{ fontSize: 10, color: "#94A3B8", fontWeight: 700 }}>{i + 1}.</span>
+                <span key={sub} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 12px", background: "#eef2f9", border: "1px solid #c9d5ea", borderRadius: 999, fontSize: 13, color: "#1e3a6e" }}>
+                  <span style={{ fontSize: 10, color: "#8a93a6", fontWeight: 700 }}>{i + 1}.</span>
                   {sub}
-                  <span style={{ fontSize: 10, color: "#7DD3FC", fontWeight: 600 }}>/{getSubjectMax(selected, sub)}</span>
-                  <span onClick={() => setList(p => p.filter(s => s !== sub))} style={{ cursor: "pointer", color: "#7DD3FC", fontWeight: 800, fontSize: 15 }}>×</span>
+                  <span style={{ fontSize: 10, color: "#b7c6e0", fontWeight: 600 }}>/{getSubjectMax(selected, sub)}</span>
+                  <span onClick={() => setList(p => p.filter(s => s !== sub))} style={{ cursor: "pointer", color: "#b7c6e0", fontWeight: 800, fontSize: 15 }}>×</span>
                 </span>
               ))}
-              {!list.length && <span style={{ color: "#CBD5E1", fontSize: 13 }}>No subjects added yet.</span>}
+              {!list.length && <span style={{ color: "#d9d2c2", fontSize: 13 }}>No subjects added yet.</span>}
             </div>
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
               <input value={newSub} onChange={e => setNew(e.target.value)} placeholder="Add subject name…" style={{ ...css.input, flex: 1 }}
                 onKeyDown={e => { if (e.key === "Enter" && newSub.trim()) { setList(p => [...p, newSub.trim()]); setNew(""); } }} />
-              <button onClick={() => { if (newSub.trim()) { setList(p => [...p, newSub.trim()]); setNew(""); } }} style={{ ...css.btn, background: "#1D4ED8", color: "white" }}>Add</button>
+              <button onClick={() => { if (newSub.trim()) { setList(p => [...p, newSub.trim()]); setNew(""); } }} style={{ ...css.btn, background: "#1e3a6e", color: "white" }}>Add</button>
             </div>
             <SaveBtn onClick={save} saving={saving} saved={saved} label={`Save ${selected} Subjects`} />
           </>
         )}
       </div>
-      <div style={{ ...css.card, background: "#F8FAFC" }}>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 15, color: "#1e293b", marginBottom: 12 }}>📋 All Courses Summary</div>
+      <div style={{ ...css.card, background: "#faf8f3" }}>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 15, color: "#14213d", marginBottom: 12 }}>📋 All Courses Summary</div>
         {Object.entries(courseSubjects).map(([c, subs]) => (
           <div key={c} style={{ marginBottom: 10, padding: "10px 14px", background: "white", borderRadius: 8, border: "1px solid #E5E7EB" }}>
-            <div style={{ fontWeight: 700, color: "#002E6E", fontSize: 13, marginBottom: 4 }}>
-              {c} <span style={{ color: "#9CA3AF", fontWeight: 400 }}>({subs.length} subjects · max {getCourseMax(c)} marks)</span>
+            <div style={{ fontWeight: 700, color: "#132a4f", fontSize: 13, marginBottom: 4 }}>
+              {c} <span style={{ color: "#8a93a6", fontWeight: 400 }}>({subs.length} subjects · max {getCourseMax(c)} marks)</span>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
               {subs.map(s => (
-                <span key={s} style={{ fontSize: 11, padding: "2px 8px", background: "#F1F5F9", borderRadius: 999, color: "#475569" }}>
-                  {s} <span style={{ color: "#94A3B8" }}>/{getSubjectMax(c, s)}</span>
+                <span key={s} style={{ fontSize: 11, padding: "2px 8px", background: "#f3f0e8", borderRadius: 999, color: "#4b5870" }}>
+                  {s} <span style={{ color: "#8a93a6" }}>/{getSubjectMax(c, s)}</span>
                 </span>
               ))}
             </div>
@@ -6861,7 +6683,7 @@ function ExamSettings({ institute, onUpdateInstitute }) {
   return (
     <div style={{ maxWidth: 700 }}>
       <div style={css.card}>
-        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 18, color: "#1e293b", marginBottom: 16 }}>🏛️ Institute Information</div>
+        <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 18, color: "#14213d", marginBottom: 16 }}>🏛️ Institute Information</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 14 }}>
           {[
             { label: "Institute Name", key: "name" }, { label: "Address", key: "address" },
@@ -6870,7 +6692,7 @@ function ExamSettings({ institute, onUpdateInstitute }) {
             { label: "Academic Year", key: "academicYear" },
           ].map(f => (
             <div key={f.key}>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>{f.label}</label>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>{f.label}</label>
               <input value={config[f.key] || ""} onChange={e => updateConfig(f.key, e.target.value)} style={css.input} />
             </div>
           ))}
@@ -6886,7 +6708,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
   const [schedule, setSchedule] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [filterCourse, setFilterCourse] = useState("ALL");
   const [filterExamType, setFilterExamType] = useState("ALL");
   const [mode, setMode] = useState("single");
@@ -6982,6 +6804,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
   const acConfigBatches = activeExamConfig?.courseSubjects
     ? Object.keys(activeExamConfig.courseSubjects)
     : [];
+  const acConfigBatchesKey = acConfigBatches.join("|");
 
   // Builds the full preview: for each batch in the active config, one row
   // per subject, dated sequentially. `acSameDateAllBatches` controls whether
@@ -7018,7 +6841,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
       if (!acSameDateAllBatches) sharedDate = d;
     }
     return rows;
-  }, [acStartDate, acConfigBatches.join("|"), acSameDateAllBatches, acSkipWeekends, activeExamConfig]);
+  }, [acStartDate, acConfigBatchesKey, acSameDateAllBatches, acSkipWeekends, activeExamConfig]);
 
   // Rows that would collide with a schedule entry that already exists for
   // this exam type — re-running Auto-Generate (e.g. after fixing a date)
@@ -7144,7 +6967,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
     if (!dupDate || !dupIds.size) return;
     setDupSaving(true);
     const toDup = schedule.filter(s => dupIds.has(s.id));
-    const rows = toDup.map(({ id, created_at, ...rest }) => ({ ...rest, exam_date: dupDate }));
+    const rows = toDup.map((r) => ({ ...Object.fromEntries(Object.entries(r).filter(([k]) => k !== "id" && k !== "created_at")), exam_date: dupDate }));
     await supabase.from("exam_schedule").insert(rows);
     setDupSaving(false); setDupSaved(true); setDupIds(new Set()); fetchSchedule(); onScheduleChange?.();
     setTimeout(() => setDupSaved(false), 2500);
@@ -7153,7 +6976,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
   const handleFileUpload = async (e) => {
     const file = e.target.files[0]; if (!file) return; e.target.value = "";
     await ensureLibs(); const XLSX = window.XLSX;
-    let rows = [];
+    let rows;
     const ext = file.name.split(".").pop().toLowerCase();
     if (ext === "csv") {
       const text = await file.text();
@@ -7217,17 +7040,6 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
     return matchCourse && matchType;
   });
 
-  const ModeBtn = ({ id, icon, label }) => (
-    <button onClick={() => setMode(id)}
-      style={{ ...css.btn, padding: isMobile ? "7px 10px" : "8px 16px", background: mode === id ? "#002E6E" : "#F3F4F6", color: mode === id ? "white" : "#374151", border: mode === id ? "none" : "1px solid #E5E7EB", fontSize: isMobile ? 11 : 12 }}>
-      {icon} {isMobile ? "" : label}
-    </button>
-  );
-
-  const FieldLabel = ({ children }) => (
-    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>{children}</label>
-  );
-
   // Responsive two-col style
   const twoCols = {
     display: isMobile ? "flex" : "grid",
@@ -7240,21 +7052,21 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Mode switcher */}
       <div style={{ background: "white", borderRadius: 12, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", marginRight: 4 }}>Mode:</span>
-        <ModeBtn id="single"    icon="✏️"  label="Single Entry" />
-        <ModeBtn id="multi"     icon="📋" label="Multi-Subject" />
-        <ModeBtn id="bulk"      icon="🔀" label="One Subject → Many Courses" />
-        <ModeBtn id="generate"  icon="⚡" label="Auto-Generate Timetable" />
-        <ModeBtn id="autoconfig" icon="🎯" label="From Active Config (All Batches)" />
-        <ModeBtn id="duplicate" icon="📄" label="Duplicate Entries" />
-        <ModeBtn id="import"    icon="📂" label="Import CSV/Excel" />
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#5d6b82", textTransform: "uppercase", marginRight: 4 }}>Mode:</span>
+        <ModeBtn mode={mode} setMode={setMode} isMobile={isMobile} id="single"    icon="✏️"  label="Single Entry" />
+        <ModeBtn mode={mode} setMode={setMode} isMobile={isMobile} id="multi"     icon="📋" label="Multi-Subject" />
+        <ModeBtn mode={mode} setMode={setMode} isMobile={isMobile} id="bulk"      icon="🔀" label="One Subject → Many Courses" />
+        <ModeBtn mode={mode} setMode={setMode} isMobile={isMobile} id="generate"  icon="⚡" label="Auto-Generate Timetable" />
+        <ModeBtn mode={mode} setMode={setMode} isMobile={isMobile} id="autoconfig" icon="🎯" label="From Active Config (All Batches)" />
+        <ModeBtn mode={mode} setMode={setMode} isMobile={isMobile} id="duplicate" icon="📄" label="Duplicate Entries" />
+        <ModeBtn mode={mode} setMode={setMode} isMobile={isMobile} id="import"    icon="📂" label="Import CSV/Excel" />
       </div>
 
       {/* SINGLE ENTRY */}
       {mode === "single" && (
         <div style={twoCols}>
           <div style={css.card}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 14 }}>➕ Add Single Entry</div>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#14213d", marginBottom: 14 }}>➕ Add Single Entry</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div><FieldLabel>Exam Type</FieldLabel>
                 <select value={form.exam_type_id} onChange={e => setForm(p => ({ ...p, exam_type_id: e.target.value }))} style={css.input}>
@@ -7295,8 +7107,8 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
       {mode === "multi" && (
         <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "1fr 1fr", gap: isMobile ? 14 : 20 }}>
           <div style={css.card}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 4 }}>📋 Multi-Subject Entry</div>
-            <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 14 }}>Add all subjects for a course at once.</div>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#14213d", marginBottom: 4 }}>📋 Multi-Subject Entry</div>
+            <div style={{ fontSize: 12, color: "#8a93a6", marginBottom: 14 }}>Add all subjects for a course at once.</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
               <div><FieldLabel>Preset (optional)</FieldLabel>
                 <select value={msPreset} onChange={e => applyMsPreset(e.target.value)} style={css.input}>
@@ -7309,7 +7121,7 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
                 </select></div>
               <div><FieldLabel>Course / Batch</FieldLabel>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {courses.map(c => <button key={c} onClick={() => setMsCourse(c)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: msCourse === c ? "#002E6E" : "#F3F4F6", color: msCourse === c ? "white" : "#374151", border: msCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>)}
+                  {courses.map(c => <button key={c} onClick={() => setMsCourse(c)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: msCourse === c ? "#132a4f" : "#f3f0e8", color: msCourse === c ? "white" : "#2e3b52", border: msCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>)}
                 </div></div>
               <div><FieldLabel>Auto-fill Start Date</FieldLabel>
                 <input type="date" value={msStartDate} onChange={e => setMsStartDate(e.target.value)} style={{ ...css.input, width: 180 }} /></div>
@@ -7320,16 +7132,16 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
               <div><FieldLabel>Room</FieldLabel><input value={msRoom} onChange={e => setMsRoom(e.target.value)} style={css.input} /></div>
             </div>
             <button onClick={handleSaveMulti} disabled={msSaving}
-              style={{ ...css.btn, background: msSaved ? "#16A34A" : msSaving ? "#93C5FD" : "#002E6E", color: "white", width: "100%", fontSize: 13 }}>
+              style={{ ...css.btn, background: msSaved ? "#16A34A" : msSaving ? "#b7c6e0" : "#132a4f", color: "white", width: "100%", fontSize: 13 }}>
               {msSaved ? `✓ Saved!` : msSaving ? "Saving…" : `💾 Save ${msRows.filter(r=>r.date).length} Entries`}
             </button>
           </div>
           <div style={css.card}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600, marginBottom: 14 }}>Subjects for <span style={{ color: "#002E6E" }}>{msCourse}</span></div>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600, marginBottom: 14 }}>Subjects for <span style={{ color: "#132a4f" }}>{msCourse}</span></div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 480, overflowY: "auto" }}>
               {msRows.map((r, i) => (
-                <div key={r.subject} style={{ display: "grid", gridTemplateColumns: "1fr 130px 70px", gap: 8, alignItems: "center", padding: "8px 10px", background: i % 2 ? "#F9FAFB" : "white", borderRadius: 8, border: "1px solid #F1F5F9" }}>
-                  <div style={{ fontWeight: 600, fontSize: 12 }}><span style={{ fontSize: 10, color: "#94A3B8", marginRight: 4 }}>{i+1}.</span>{r.subject}</div>
+                <div key={r.subject} style={{ display: "grid", gridTemplateColumns: "1fr 130px 70px", gap: 8, alignItems: "center", padding: "8px 10px", background: i % 2 ? "#faf8f3" : "white", borderRadius: 8, border: "1px solid #F1F5F9" }}>
+                  <div style={{ fontWeight: 600, fontSize: 12 }}><span style={{ fontSize: 10, color: "#8a93a6", marginRight: 4 }}>{i+1}.</span>{r.subject}</div>
                   <input type="date" value={r.date} onChange={e => setMsRows(p => p.map((x, j) => j === i ? { ...x, date: e.target.value } : x))} style={{ ...css.input, fontSize: 12, padding: "5px 8px" }} />
                   <input type="number" value={r.marks} onChange={e => setMsRows(p => p.map((x, j) => j === i ? { ...x, marks: e.target.value } : x))} style={{ ...css.input, fontSize: 12, padding: "5px 8px" }} />
                 </div>
@@ -7343,15 +7155,15 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
       {mode === "bulk" && (
         <div style={twoCols}>
           <div style={css.card}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 4 }}>🔀 One Subject → Many Courses</div>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#14213d", marginBottom: 4 }}>🔀 One Subject → Many Courses</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div><FieldLabel>Exam Type</FieldLabel><select value={bkExamType} onChange={e => setBkExamType(e.target.value)} style={css.input}>{examTypes.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
               <div><FieldLabel>Subject Name</FieldLabel><input value={bkSubject} onChange={e => setBkSubject(e.target.value)} placeholder="e.g. Mathematics" style={css.input} /></div>
               <div><FieldLabel>Date</FieldLabel><input type="date" value={bkDate} onChange={e => setBkDate(e.target.value)} style={css.input} /></div>
-              <div><FieldLabel>Total Marks <span style={{ fontWeight:400, color:"#9CA3AF", textTransform:"none" }}>(applied to all selected courses)</span></FieldLabel>
+              <div><FieldLabel>Total Marks <span style={{ fontWeight:400, color:"#8a93a6", textTransform:"none" }}>(applied to all selected courses)</span></FieldLabel>
                 <input type="number" value={bkMarks} onChange={e => setBkMarks(e.target.value)} style={css.input} />
                 {bkSubject && bkCourses.size > 0 && (
-                  <div style={{ fontSize:11, color:"#9CA3AF", marginTop:4 }}>
+                  <div style={{ fontSize:11, color:"#8a93a6", marginTop:4 }}>
                     Config suggests: {[...bkCourses].map(c => `${c} ${getSubjectMax(c, bkSubject)}`).join(" · ")}
                   </div>
                 )}
@@ -7364,13 +7176,13 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
               <div>
                 <FieldLabel>Target Courses ({bkCourses.size} selected)</FieldLabel>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  <button onClick={() => setBkCourses(new Set(courses))} style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: "#E0F2FE", color: "#0369A1" }}>All</button>
+                  <button onClick={() => setBkCourses(new Set(courses))} style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: "#eef2f9", color: "#1e3a6e" }}>All</button>
                   <button onClick={() => setBkCourses(new Set())} style={{ ...css.btn, padding: "4px 10px", fontSize: 11, background: "#FEF2F2", color: "#DC2626" }}>None</button>
-                  {courses.map(c => { const sel = bkCourses.has(c); return <button key={c} onClick={() => setBkCourses(p => { const n = new Set(p); sel ? n.delete(c) : n.add(c); return n; })} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: sel ? "#002E6E" : "#F3F4F6", color: sel ? "white" : "#374151", border: sel ? "none" : "1px solid #E5E7EB" }}>{sel ? "✓ " : ""}{c}</button>; })}
+                  {courses.map(c => { const sel = bkCourses.has(c); return <button key={c} onClick={() => setBkCourses(p => { const n = new Set(p); sel ? n.delete(c) : n.add(c); return n; })} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: sel ? "#132a4f" : "#f3f0e8", color: sel ? "white" : "#2e3b52", border: sel ? "none" : "1px solid #E5E7EB" }}>{sel ? "✓ " : ""}{c}</button>; })}
                 </div>
               </div>
               <button onClick={handleSaveBulk} disabled={bkSaving || !bkCourses.size || !bkDate || !bkSubject}
-                style={{ ...css.btn, background: bkSaved ? "#16A34A" : bkSaving ? "#93C5FD" : "#002E6E", color: "white", fontSize: 13 }}>
+                style={{ ...css.btn, background: bkSaved ? "#16A34A" : bkSaving ? "#b7c6e0" : "#132a4f", color: "white", fontSize: 13 }}>
                 {bkSaved ? `✓ Saved!` : bkSaving ? "Saving…" : `💾 Assign to ${bkCourses.size} Courses`}
               </button>
             </div>
@@ -7386,12 +7198,12 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
       {mode === "generate" && (
         <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "320px 1fr", gap: isMobile ? 14 : 20 }}>
           <div style={css.card}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 4 }}>⚡ Auto-Generate Timetable</div>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#14213d", marginBottom: 4 }}>⚡ Auto-Generate Timetable</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div><FieldLabel>Exam Type</FieldLabel><select value={genExamType} onChange={e => setGenExamType(e.target.value)} style={css.input}>{examTypes.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
               <div><FieldLabel>Course</FieldLabel>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {courses.map(c => <button key={c} onClick={() => setGenCourse(c)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: genCourse === c ? "#002E6E" : "#F3F4F6", color: genCourse === c ? "white" : "#374151", border: genCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>)}
+                  {courses.map(c => <button key={c} onClick={() => setGenCourse(c)} style={{ ...css.btn, padding: "5px 12px", fontSize: 11, background: genCourse === c ? "#132a4f" : "#f3f0e8", color: genCourse === c ? "white" : "#2e3b52", border: genCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>)}
                 </div></div>
               <div><FieldLabel>Start Date</FieldLabel><input type="date" value={genStartDate} onChange={e => setGenStartDate(e.target.value)} style={css.input} /></div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -7406,10 +7218,10 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
                 <FieldLabel>Subject Order</FieldLabel>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
                   {genSubjectOrder.map((s, i) => (
-                    <div key={s.subject} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: "#F8FAFC", borderRadius: 8, border: "1px solid #E5E7EB" }}>
+                    <div key={s.subject} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: "#faf8f3", borderRadius: 8, border: "1px solid #E5E7EB" }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                        <button onClick={() => { if (i === 0) return; const n = [...genSubjectOrder]; [n[i-1], n[i]] = [n[i], n[i-1]]; setGenSubjectOrder(n); }} style={{ ...css.btn, padding: "1px 5px", fontSize: 10, background: "#E5E7EB", color: "#374151" }}>▲</button>
-                        <button onClick={() => { if (i === genSubjectOrder.length - 1) return; const n = [...genSubjectOrder]; [n[i], n[i+1]] = [n[i+1], n[i]]; setGenSubjectOrder(n); }} style={{ ...css.btn, padding: "1px 5px", fontSize: 10, background: "#E5E7EB", color: "#374151" }}>▼</button>
+                        <button onClick={() => { if (i === 0) return; const n = [...genSubjectOrder]; [n[i-1], n[i]] = [n[i], n[i-1]]; setGenSubjectOrder(n); }} style={{ ...css.btn, padding: "1px 5px", fontSize: 10, background: "#e8e3d8", color: "#2e3b52" }}>▲</button>
+                        <button onClick={() => { if (i === genSubjectOrder.length - 1) return; const n = [...genSubjectOrder]; [n[i], n[i+1]] = [n[i+1], n[i]]; setGenSubjectOrder(n); }} style={{ ...css.btn, padding: "1px 5px", fontSize: 10, background: "#e8e3d8", color: "#2e3b52" }}>▼</button>
                       </div>
                       <span style={{ flex: 1, fontSize: 11, fontWeight: 600 }}>{s.subject}</span>
                       <input type="number" value={s.marks} onChange={e => setGenSubjectOrder(p => p.map((x, j) => j === i ? { ...x, marks: Number(e.target.value) } : x))} style={{ width: 55, padding: "4px 6px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12 }} />
@@ -7422,33 +7234,33 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ ...css.card, padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
               <div>
-                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 600, color: "#1e293b" }}>{genPreview.length} exam days generated</div>
-                <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>{genCourse} · starts {genStartDate || "—"}</div>
+                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 600, color: "#14213d" }}>{genPreview.length} exam days generated</div>
+                <div style={{ fontSize: 12, color: "#8a93a6", marginTop: 2 }}>{genCourse} · starts {genStartDate || "—"}</div>
               </div>
               <button onClick={handleSaveGenerate} disabled={!genPreview.length || genSaving}
-                style={{ ...css.btn, background: genSaved ? "#16A34A" : genSaving ? "#93C5FD" : "#002E6E", color: "white", padding: "10px 22px", fontSize: 13 }}>
+                style={{ ...css.btn, background: genSaved ? "#16A34A" : genSaving ? "#b7c6e0" : "#132a4f", color: "white", padding: "10px 22px", fontSize: 13 }}>
                 {genSaved ? `✓ Saved!` : genSaving ? "Saving…" : `💾 Save ${genPreview.length} Entries`}
               </button>
             </div>
             <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-              <div style={{ padding: "11px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Preview</div>
+              <div style={{ padding: "11px 18px", background: "#132a4f", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Preview</div>
               <div style={{ overflowX: "auto" }}>
                 <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 340 }}>
-                  <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
-                    {["#","Date","Day","Subject","Marks"].map(h => <th key={h} style={{ padding: "9px 14px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>)}
+                  <thead><tr style={{ background: "#faf8f3", borderBottom: "2px solid #E5E7EB" }}>
+                    {["#","Date","Day","Subject","Marks"].map(h => <th key={h} style={{ padding: "9px 14px", textAlign: "left", fontWeight: 700, color: "#2e3b52", fontSize: 11 }}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {genPreview.map((r, i) => {
                       const day = new Date(r.exam_date).toLocaleDateString("en-IN", { weekday: "short" });
-                      return <tr key={i} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
-                        <td style={{ padding: "8px 14px", color: "#94A3B8", fontSize: 12 }}>{i+1}</td>
+                      return <tr key={i} style={{ background: i % 2 ? "#faf8f3" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                        <td style={{ padding: "8px 14px", color: "#8a93a6", fontSize: 12 }}>{i+1}</td>
                         <td style={{ padding: "8px 14px", fontWeight: 600 }}>{r.exam_date}</td>
-                        <td style={{ padding: "8px 14px", color: "#64748b" }}>{day}</td>
-                        <td style={{ padding: "8px 14px", fontWeight: 600, color: "#002E6E" }}>{r.subject}</td>
-                        <td style={{ padding: "8px 14px", color: "#64748b" }}>{r.total_marks}</td>
+                        <td style={{ padding: "8px 14px", color: "#5d6b82" }}>{day}</td>
+                        <td style={{ padding: "8px 14px", fontWeight: 600, color: "#132a4f" }}>{r.subject}</td>
+                        <td style={{ padding: "8px 14px", color: "#5d6b82" }}>{r.total_marks}</td>
                       </tr>;
                     })}
-                    {!genPreview.length && <tr><td colSpan={5} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>Set a start date to preview.</td></tr>}
+                    {!genPreview.length && <tr><td colSpan={5} style={{ padding: 32, textAlign: "center", color: "#8a93a6" }}>Set a start date to preview.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -7472,8 +7284,8 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
           )}
           <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "320px 1fr", gap: isMobile ? 14 : 20 }}>
             <div style={css.card}>
-              <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 4 }}>🎯 From Active Config</div>
-              <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 14 }}>
+              <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#14213d", marginBottom: 4 }}>🎯 From Active Config</div>
+              <div style={{ fontSize: 12, color: "#8a93a6", marginBottom: 14 }}>
                 Generates one schedule entry per subject, for every batch the active config defines — subjects and max marks come straight from the config, so there's nothing to re-enter here.
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -7489,48 +7301,48 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
                 </label>
                 <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, cursor: "pointer" }}>
                   <input type="checkbox" checked={acSameDateAllBatches} onChange={e => setAcSameDateAllBatches(e.target.checked)} style={{ marginTop: 2 }} />
-                  <span>All batches start on the same date<div style={{ fontSize: 11, color: "#9CA3AF" }}>Uncheck to run one batch's subjects, then continue straight into the next batch's subjects on the following day.</div></span>
+                  <span>All batches start on the same date<div style={{ fontSize: 11, color: "#8a93a6" }}>Uncheck to run one batch's subjects, then continue straight into the next batch's subjects on the following day.</div></span>
                 </label>
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ ...css.card, padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
                 <div>
-                  <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 600, color: "#1e293b" }}>{acNewRows.length} entries will be created</div>
-                  <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>
+                  <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 16, fontWeight: 600, color: "#14213d" }}>{acNewRows.length} entries will be created</div>
+                  <div style={{ fontSize: 12, color: "#8a93a6", marginTop: 2 }}>
                     {acConfigBatches.length} batches · starts {acStartDate || "—"}
                     {acSkippedCount > 0 && ` · ${acSkippedCount} already scheduled, skipped`}
                   </div>
                 </div>
                 <button onClick={handleSaveAutoGenerate} disabled={!acNewRows.length || acSaving}
-                  style={{ ...css.btn, background: acSaved ? "#16A34A" : acSaving ? "#93C5FD" : "#002E6E", color: "white", padding: "10px 22px", fontSize: 13 }}>
+                  style={{ ...css.btn, background: acSaved ? "#16A34A" : acSaving ? "#b7c6e0" : "#132a4f", color: "white", padding: "10px 22px", fontSize: 13 }}>
                   {acSaved ? `✓ Saved!` : acSaving ? "Saving…" : `💾 Save ${acNewRows.length} Entries`}
                 </button>
               </div>
               {acError && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", padding: "10px 14px", borderRadius: 8, fontSize: 13 }}>⚠️ {acError}</div>}
               <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-                <div style={{ padding: "11px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Preview</div>
+                <div style={{ padding: "11px 18px", background: "#132a4f", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Preview</div>
                 <div style={{ overflowX: "auto", maxHeight: 480, overflowY: "auto" }}>
                   <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 420 }}>
-                    <thead style={{ position: "sticky", top: 0 }}><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
-                      {["Batch","Date","Day","Subject","Marks","Status"].map(h => <th key={h} style={{ padding: "9px 14px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>)}
+                    <thead style={{ position: "sticky", top: 0 }}><tr style={{ background: "#faf8f3", borderBottom: "2px solid #E5E7EB" }}>
+                      {["Batch","Date","Day","Subject","Marks","Status"].map(h => <th key={h} style={{ padding: "9px 14px", textAlign: "left", fontWeight: 700, color: "#2e3b52", fontSize: 11 }}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {acPreview.map((r, i) => {
                         const day = new Date(r.exam_date).toLocaleDateString("en-IN", { weekday: "short" });
                         const alreadyExists = acExistingKeys.has(`${r.course}|${r.subject}`);
-                        return <tr key={i} style={{ background: alreadyExists ? "#FFFBEB" : (i % 2 ? "#F9FAFB" : "white"), borderBottom: "1px solid #F1F5F9" }}>
-                          <td style={{ padding: "8px 14px" }}><span style={{ background: "#E0F2FE", color: "#0369A1", padding: "2px 8px", borderRadius: 999, fontSize: 10.5, fontWeight: 700 }}>{r.course}</span></td>
+                        return <tr key={i} style={{ background: alreadyExists ? "#FFFBEB" : (i % 2 ? "#faf8f3" : "white"), borderBottom: "1px solid #F1F5F9" }}>
+                          <td style={{ padding: "8px 14px" }}><span style={{ background: "#eef2f9", color: "#1e3a6e", padding: "2px 8px", borderRadius: 999, fontSize: 10.5, fontWeight: 700 }}>{r.course}</span></td>
                           <td style={{ padding: "8px 14px", fontWeight: 600 }}>{r.exam_date}</td>
-                          <td style={{ padding: "8px 14px", color: "#64748b" }}>{day}</td>
-                          <td style={{ padding: "8px 14px", fontWeight: 600, color: "#002E6E" }}>{r.subject}</td>
-                          <td style={{ padding: "8px 14px", color: "#64748b" }}>{r.total_marks}</td>
+                          <td style={{ padding: "8px 14px", color: "#5d6b82" }}>{day}</td>
+                          <td style={{ padding: "8px 14px", fontWeight: 600, color: "#132a4f" }}>{r.subject}</td>
+                          <td style={{ padding: "8px 14px", color: "#5d6b82" }}>{r.total_marks}</td>
                           <td style={{ padding: "8px 14px" }}>{alreadyExists
                             ? <span style={{ fontSize: 10.5, color: "#92400E", fontWeight: 700 }}>Already scheduled</span>
                             : <span style={{ fontSize: 10.5, color: "#166534", fontWeight: 700 }}>New</span>}</td>
                         </tr>;
                       })}
-                      {!acPreview.length && <tr><td colSpan={6} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>{activeExamConfig ? "Set a start date to preview." : "Set an active exam config first."}</td></tr>}
+                      {!acPreview.length && <tr><td colSpan={6} style={{ padding: 32, textAlign: "center", color: "#8a93a6" }}>{activeExamConfig ? "Set a start date to preview." : "Set an active exam config first."}</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -7544,11 +7356,11 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
       {mode === "duplicate" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ ...css.card, display: "flex", gap: 14, alignItems: "flex-end", flexWrap: "wrap" }}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600, color: "#1e293b", flex: "0 0 100%", marginBottom: 4 }}>📄 Duplicate Schedule Entries to a New Date</div>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600, color: "#14213d", flex: "0 0 100%", marginBottom: 4 }}>📄 Duplicate Schedule Entries to a New Date</div>
             <div><FieldLabel>Copy to Date</FieldLabel><input type="date" value={dupDate} onChange={e => setDupDate(e.target.value)} style={{ ...css.input, width: 180 }} /></div>
-            <div style={{ fontSize: 12, color: "#9CA3AF", alignSelf: "center" }}>{dupIds.size} entries selected</div>
+            <div style={{ fontSize: 12, color: "#8a93a6", alignSelf: "center" }}>{dupIds.size} entries selected</div>
             <button onClick={handleDuplicate} disabled={!dupIds.size || !dupDate || dupSaving}
-              style={{ ...css.btn, background: dupSaved ? "#16A34A" : dupSaving ? "#93C5FD" : "#7c3aed", color: "white", fontSize: 13 }}>
+              style={{ ...css.btn, background: dupSaved ? "#16A34A" : dupSaving ? "#b7c6e0" : "#a7771f", color: "white", fontSize: 13 }}>
               {dupSaved ? `✓ Duplicated!` : dupSaving ? "Saving…" : `📄 Duplicate ${dupIds.size} Selected`}
             </button>
           </div>
@@ -7566,16 +7378,16 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
       {mode === "import" && (
         <div style={{ display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "320px 1fr", gap: isMobile ? 14 : 20 }}>
           <div style={css.card}>
-            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#1e293b", marginBottom: 4 }}>📂 Import from CSV / Excel</div>
-            <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 16 }}>Columns: <b>course, subject, date, type, time, shift, room, marks</b></div>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontWeight: 600, fontSize: 16, color: "#14213d", marginBottom: 4 }}>📂 Import from CSV / Excel</div>
+            <div style={{ fontSize: 12, color: "#8a93a6", marginBottom: 16 }}>Columns: <b>course, subject, date, type, time, shift, room, marks</b></div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <button onClick={downloadImportTemplate} style={{ ...css.btn, background: "#E0F2FE", color: "#0369A1", border: "1px solid #BAE6FD", fontSize: 12 }}>📋 Download Template</button>
+              <button onClick={downloadImportTemplate} style={{ ...css.btn, background: "#eef2f9", color: "#1e3a6e", border: "1px solid #c9d5ea", fontSize: 12 }}>📋 Download Template</button>
               <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }} onChange={handleFileUpload} />
-              <button onClick={() => fileInputRef.current?.click()} style={{ ...css.btn, background: "#7c3aed", color: "white", fontSize: 13 }}>📂 Upload File</button>
+              <button onClick={() => fileInputRef.current?.click()} style={{ ...css.btn, background: "#a7771f", color: "white", fontSize: 13 }}>📂 Upload File</button>
               {importRows.length > 0 && <div style={{ background: "#E1F5EE", border: "1px solid #BBF7D0", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#0F6E56" }}>✅ {importRows.length} rows ready</div>}
               {importErrors.length > 0 && <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#92400E" }}>⚠️ {importErrors.length} rows skipped</div>}
               {importRows.length > 0 && !importDone && (
-                <button onClick={handleImportSave} disabled={importSaving} style={{ ...css.btn, background: importSaving ? "#93C5FD" : "#002E6E", color: "white", fontSize: 13 }}>
+                <button onClick={handleImportSave} disabled={importSaving} style={{ ...css.btn, background: importSaving ? "#b7c6e0" : "#132a4f", color: "white", fontSize: 13 }}>
                   {importSaving ? "Saving…" : `💾 Confirm Import (${importRows.length})`}
                 </button>
               )}
@@ -7583,32 +7395,32 @@ function Schedule({ courseSubjects, examTypes, onScheduleChange, activeExamConfi
             </div>
           </div>
           <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-            <div style={{ padding: "11px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>{importRows.length ? `📋 Preview (${importRows.length})` : "📋 Awaiting upload…"}</div>
+            <div style={{ padding: "11px 18px", background: "#132a4f", color: "white", fontWeight: 700, fontSize: 13 }}>{importRows.length ? `📋 Preview (${importRows.length})` : "📋 Awaiting upload…"}</div>
             {importRows.length > 0 ? (
               <div style={{ overflowX: "auto", maxHeight: 400, overflowY: "auto" }}>
                 <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 480 }}>
                   <thead style={{ position: "sticky", top: 0 }}>
-                    <tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
-                      {["Course","Subject","Date","Exam Type","Shift","Time","Room","Marks"].map(h => <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>)}
+                    <tr style={{ background: "#faf8f3", borderBottom: "2px solid #E5E7EB" }}>
+                      {["Course","Subject","Date","Exam Type","Shift","Time","Room","Marks"].map(h => <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700, color: "#2e3b52", fontSize: 11 }}>{h}</th>)}
                     </tr>
                   </thead>
                   <tbody>
                     {importRows.map((r, i) => (
-                      <tr key={i} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                      <tr key={i} style={{ background: i % 2 ? "#faf8f3" : "white", borderBottom: "1px solid #F1F5F9" }}>
                         <td style={{ padding: "8px 12px" }}><span style={{ background: "#E1F5EE", color: "#0F6E56", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{r.course}</span></td>
                         <td style={{ padding: "8px 12px", fontWeight: 600 }}>{r.subject}</td>
                         <td style={{ padding: "8px 12px" }}>{r.exam_date}</td>
-                        <td style={{ padding: "8px 12px", color: "#64748b" }}>{examTypes.find(e => e.id === r.exam_type_id)?.name || r.exam_type_id}</td>
-                        <td style={{ padding: "8px 12px", color: "#64748b" }}>{r.shift}</td>
-                        <td style={{ padding: "8px 12px", color: "#64748b" }}>{r.time}</td>
-                        <td style={{ padding: "8px 12px", color: "#64748b" }}>{r.room || "—"}</td>
-                        <td style={{ padding: "8px 12px", color: "#64748b" }}>{r.total_marks}</td>
+                        <td style={{ padding: "8px 12px", color: "#5d6b82" }}>{examTypes.find(e => e.id === r.exam_type_id)?.name || r.exam_type_id}</td>
+                        <td style={{ padding: "8px 12px", color: "#5d6b82" }}>{r.shift}</td>
+                        <td style={{ padding: "8px 12px", color: "#5d6b82" }}>{r.time}</td>
+                        <td style={{ padding: "8px 12px", color: "#5d6b82" }}>{r.room || "—"}</td>
+                        <td style={{ padding: "8px 12px", color: "#5d6b82" }}>{r.total_marks}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            ) : <div style={{ padding: 60, textAlign: "center", color: "#94A3B8" }}><div style={{ fontSize: 40, marginBottom: 12 }}>📂</div>Upload a file to preview.</div>}
+            ) : <div style={{ padding: 60, textAlign: "center", color: "#8a93a6" }}><div style={{ fontSize: 40, marginBottom: 12 }}>📂</div>Upload a file to preview.</div>}
           </div>
         </div>
       )}
@@ -7646,16 +7458,16 @@ function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCo
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Filter Course</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Filter Course</label>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
             {["ALL", ...courses].map(c => (
               <button key={c} onClick={() => setFilterCourse(c)}
-                style={{ ...css.btn, padding: "5px 10px", fontSize: 11, background: filterCourse === c ? "#002E6E" : "#F3F4F6", color: filterCourse === c ? "white" : "#374151", border: filterCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>
+                style={{ ...css.btn, padding: "5px 10px", fontSize: 11, background: filterCourse === c ? "#132a4f" : "#f3f0e8", color: filterCourse === c ? "white" : "#2e3b52", border: filterCourse === c ? "none" : "1px solid #E5E7EB" }}>{c}</button>
             ))}
           </div>
         </div>
         <div>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Filter Type</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Filter Type</label>
           <select value={filterExamType} onChange={e => setFilterExamType(e.target.value)} style={{ ...css.input, width: 180 }}>
             <option value="ALL">All Types</option>
             {examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}
@@ -7663,27 +7475,27 @@ function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCo
         </div>
         {selectable && (
           <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={onSelectAll} style={{ ...css.btn, padding: "5px 10px", fontSize: 11, background: "#E0F2FE", color: "#0369A1" }}>Select All</button>
+            <button onClick={onSelectAll} style={{ ...css.btn, padding: "5px 10px", fontSize: 11, background: "#eef2f9", color: "#1e3a6e" }}>Select All</button>
             <button onClick={onDeselectAll} style={{ ...css.btn, padding: "5px 10px", fontSize: 11, background: "#FEF2F2", color: "#DC2626" }}>Deselect All</button>
           </div>
         )}
-        <div style={{ fontSize: 12, color: "#9CA3AF", alignSelf: "center" }}>{schedule.length} entries</div>
+        <div style={{ fontSize: 12, color: "#8a93a6", alignSelf: "center" }}>{schedule.length} entries</div>
       </div>
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-        <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Exam Schedule</div>
+        <div style={{ padding: "12px 18px", background: "#132a4f", color: "white", fontWeight: 700, fontSize: 13 }}>📅 Exam Schedule</div>
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 600 }}>
-            <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
+            <thead><tr style={{ background: "#faf8f3", borderBottom: "2px solid #E5E7EB" }}>
               {selectable && <th style={{ padding: "10px 12px", width: 36 }}></th>}
               {["Date","Course","Exam Type","Subject","Shift","Time","Marks","Room",""].map(h => (
-                <th key={h} style={{ padding: "10px 10px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>
+                <th key={h} style={{ padding: "10px 10px", textAlign: "left", fontWeight: 700, color: "#2e3b52", fontSize: 11 }}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
               {schedule.map((s, i) => {
                 const missingForAdmitCard = !s.time || !s.room;
                 return (
-                <tr key={s.id} style={{ background: selectable && selected && selected.has(s.id) ? "#EFF6FF" : i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                <tr key={s.id} style={{ background: selectable && selected && selected.has(s.id) ? "#eef2f9" : i % 2 ? "#faf8f3" : "white", borderBottom: "1px solid #F1F5F9" }}>
                   {selectable && <td style={{ padding: "9px 12px", textAlign: "center" }}><input type="checkbox" checked={selected && selected.has(s.id) || false} onChange={() => onToggle(s.id)} /></td>}
                   <td style={{ padding: "9px 10px", fontWeight: 600 }}>{s.exam_date}</td>
                   <td style={{ padding: "9px 10px" }}><span style={{ background: "#E1F5EE", color: "#0F6E56", padding: "2px 7px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{s.course || "—"}</span></td>
@@ -7693,25 +7505,25 @@ function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCo
                     <>
                       <td style={{ padding: "6px 8px" }}><input value={editForm.shift} onChange={e => setEditForm(p => ({ ...p, shift: e.target.value }))} placeholder="Morning" style={{ ...css.input, width: 90, fontSize: 12 }} /></td>
                       <td style={{ padding: "6px 8px" }}><input value={editForm.time} onChange={e => setEditForm(p => ({ ...p, time: e.target.value }))} placeholder="09:00 AM" style={{ ...css.input, width: 90, fontSize: 12 }} /></td>
-                      <td style={{ padding: "9px 10px", color: "#64748b" }}>{s.total_marks}</td>
+                      <td style={{ padding: "9px 10px", color: "#5d6b82" }}>{s.total_marks}</td>
                       <td style={{ padding: "6px 8px" }}><input value={editForm.room} onChange={e => setEditForm(p => ({ ...p, room: e.target.value }))} placeholder="Hall 2" style={{ ...css.input, width: 90, fontSize: 12 }} /></td>
                       <td style={{ padding: "9px 10px" }}>
                         <div style={{ display: "flex", gap: 5 }}>
-                          <button onClick={() => saveEdit(s.id)} disabled={savingEdit} style={{ ...css.btn, padding: "4px 10px", background: "#002E6E", color: "white", fontSize: 11 }}>{savingEdit ? "…" : "✓"}</button>
-                          <button onClick={cancelEdit} style={{ ...css.btn, padding: "4px 8px", background: "#F3F4F6", color: "#374151", fontSize: 11 }}>✕</button>
+                          <button onClick={() => saveEdit(s.id)} disabled={savingEdit} style={{ ...css.btn, padding: "4px 10px", background: "#132a4f", color: "white", fontSize: 11 }}>{savingEdit ? "…" : "✓"}</button>
+                          <button onClick={cancelEdit} style={{ ...css.btn, padding: "4px 8px", background: "#f3f0e8", color: "#2e3b52", fontSize: 11 }}>✕</button>
                         </div>
                       </td>
                     </>
                   ) : (
                     <>
-                      <td style={{ padding: "9px 10px", color: "#64748b" }}>{s.shift || "Morning"}</td>
-                      <td style={{ padding: "9px 10px", color: missingForAdmitCard ? "#DC2626" : "#64748b", fontWeight: missingForAdmitCard ? 700 : 400 }}>{s.time || "-- (not set)"}</td>
-                      <td style={{ padding: "9px 10px", color: "#64748b" }}>{s.total_marks}</td>
-                      <td style={{ padding: "9px 10px", color: missingForAdmitCard ? "#DC2626" : "#64748b", fontWeight: missingForAdmitCard ? 700 : 400 }}>{s.room || "-- (not set)"}</td>
+                      <td style={{ padding: "9px 10px", color: "#5d6b82" }}>{s.shift || "Morning"}</td>
+                      <td style={{ padding: "9px 10px", color: missingForAdmitCard ? "#DC2626" : "#5d6b82", fontWeight: missingForAdmitCard ? 700 : 400 }}>{s.time || "-- (not set)"}</td>
+                      <td style={{ padding: "9px 10px", color: "#5d6b82" }}>{s.total_marks}</td>
+                      <td style={{ padding: "9px 10px", color: missingForAdmitCard ? "#DC2626" : "#5d6b82", fontWeight: missingForAdmitCard ? 700 : 400 }}>{s.room || "-- (not set)"}</td>
                       <td style={{ padding: "9px 10px" }}>
                         <div style={{ display: "flex", gap: 5 }}>
                           <button onClick={() => startEdit(s)} title={missingForAdmitCard ? "Add time/room for Admit Cards" : "Edit time/shift/room"}
-                            style={{ ...css.btn, padding: "4px 8px", background: missingForAdmitCard ? "#FFFBEB" : "#EFF6FF", color: missingForAdmitCard ? "#92400E" : "#1D4ED8", border: `1px solid ${missingForAdmitCard ? "#FDE68A" : "#BFDBFE"}`, fontSize: 11 }}>✏️</button>
+                            style={{ ...css.btn, padding: "4px 8px", background: missingForAdmitCard ? "#FFFBEB" : "#eef2f9", color: missingForAdmitCard ? "#92400E" : "#1e3a6e", border: `1px solid ${missingForAdmitCard ? "#FDE68A" : "#c9d5ea"}`, fontSize: 11 }}>✏️</button>
                           <button onClick={() => onDelete(s.id)} style={{ ...css.btn, padding: "4px 8px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", fontSize: 11 }}>✕</button>
                         </div>
                       </td>
@@ -7720,7 +7532,7 @@ function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCo
                 </tr>
                 );
               })}
-              {!schedule.length && <tr><td colSpan={selectable ? 10 : 9} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>No schedule entries yet.</td></tr>}
+              {!schedule.length && <tr><td colSpan={selectable ? 10 : 9} style={{ padding: 32, textAlign: "center", color: "#8a93a6" }}>No schedule entries yet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -7730,7 +7542,7 @@ function ScheduleTable({ schedule, examTypes, courses, filterCourse, setFilterCo
 }
 
 // ─── SEAT ARRANGEMENT (mobile: stacked layout) ───────────────────────────────
-function SeatArrangement({ courseSubjects, examTypes, students, institute, schedule }) {
+function SeatArrangement({ courseSubjects, examTypes, students, schedule }) {
   const isMobile = useMobile();
   const courses = Object.keys(courseSubjects);
 
@@ -7739,7 +7551,7 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
   const [dates, setDates]           = useState([]);
   const [room, setRoom]             = useState("");
   const [seats, setSeats]           = useState({});
-  const [savedSeats, setSavedSeats] = useState({});
+  const [, setSavedSeats]       = useState({});
   const [capacity, setCapacity]     = useState(30);
   const [cols, setCols]             = useState(5);
   const [loading, setLoading]       = useState(false);
@@ -7828,37 +7640,36 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
     setRoom(r); setSeats({}); setNewRoom("");
   };
 
-  const examName = examTypes.find(e=>e.id===examType)?.name || "Examination";
-  const occupiedCount = Object.values(seats).filter(Boolean).length;
+    const occupiedCount = Object.values(seats).filter(Boolean).length;
   const rows = Math.ceil(capacity / cols);
 
   return (
     <div>
       <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:14, alignItems:"flex-end" }}>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Exam Type</label>
+          <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:5, textTransform:"uppercase" }}>Exam Type</label>
           <select value={examType} onChange={e=>setExamType(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 200 }}>
             {examTypes.map(et=><option key={et.id} value={et.id}>{et.name}</option>)}
           </select>
         </div>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Date</label>
+          <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:5, textTransform:"uppercase" }}>Date</label>
           <select value={examDate} onChange={e=>setExamDate(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 160 }}>
             <option value="">— Pick —</option>
             {dates.map(d=><option key={d} value={d}>{d}</option>)}
           </select>
         </div>
         <div>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Cap.</label>
+          <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:5, textTransform:"uppercase" }}>Cap.</label>
           <input type="number" value={capacity} onChange={e=>setCapacity(Math.max(1,Number(e.target.value)))} style={{ ...css.input, width:70 }} />
         </div>
         <div>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Cols</label>
+          <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:5, textTransform:"uppercase" }}>Cols</label>
           <input type="number" value={cols} onChange={e=>setCols(Math.max(1,Math.min(10,Number(e.target.value))))} style={{ ...css.input, width:60 }} />
         </div>
       </div>
 
-      <div style={{ background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:8, padding:"10px 16px", marginBottom:14, fontSize:12, color:"#1D4ED8" }}>
+      <div style={{ background:"#eef2f9", border:"1px solid #BFDBFE", borderRadius:8, padding:"10px 16px", marginBottom:14, fontSize:12, color:"#1e3a6e" }}>
         ℹ️ First time? Run the SQL in the SeatArrangement component comments in Supabase.
       </div>
 
@@ -7868,32 +7679,32 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
         {/* Left: Rooms + Student list */}
         <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
           <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", overflow:"hidden" }}>
-            <div style={{ padding:"11px 16px", background:"#002E6E", color:"white", fontWeight:700, fontSize:13 }}>🏫 Rooms</div>
+            <div style={{ padding:"11px 16px", background:"#132a4f", color:"white", fontWeight:700, fontSize:13 }}>🏫 Rooms</div>
             <div style={{ padding:12, display:"flex", flexDirection:"column", gap:6 }}>
               {isMobile ? (
                 <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                   {allRooms.map(r => (
-                    <button key={r} onClick={()=>setRoom(r)} style={{ ...css.btn, padding:"6px 12px", background:room===r?"#002E6E":"#F3F4F6", color:room===r?"white":"#374151", border:room===r?"none":"1px solid #E5E7EB", fontSize:12 }}>🏫 {r}</button>
+                    <button key={r} onClick={()=>setRoom(r)} style={{ ...css.btn, padding:"6px 12px", background:room===r?"#132a4f":"#f3f0e8", color:room===r?"white":"#2e3b52", border:room===r?"none":"1px solid #E5E7EB", fontSize:12 }}>🏫 {r}</button>
                   ))}
                 </div>
               ) : allRooms.map(r => (
-                <button key={r} onClick={()=>setRoom(r)} style={{ ...css.btn, padding:"8px 14px", textAlign:"left", background:room===r?"#002E6E":"#F3F4F6", color:room===r?"white":"#374151", border:room===r?"none":"1px solid #E5E7EB", fontSize:12 }}>🏫 {r}</button>
+                <button key={r} onClick={()=>setRoom(r)} style={{ ...css.btn, padding:"8px 14px", textAlign:"left", background:room===r?"#132a4f":"#f3f0e8", color:room===r?"white":"#2e3b52", border:room===r?"none":"1px solid #E5E7EB", fontSize:12 }}>🏫 {r}</button>
               ))}
-              {!allRooms.length && <div style={{ fontSize:12, color:"#94A3B8" }}>No rooms yet.</div>}
+              {!allRooms.length && <div style={{ fontSize:12, color:"#8a93a6" }}>No rooms yet.</div>}
               <div style={{ display:"flex", gap:6, marginTop:4 }}>
                 <input value={newRoom} onChange={e=>setNewRoom(e.target.value)} placeholder="New room…" style={css.input} onKeyDown={e=>{ if(e.key==="Enter") addRoom(); }} />
-                <button onClick={addRoom} style={{ ...css.btn, padding:"6px 10px", background:"#E0F2FE", color:"#0369A1", fontSize:12, whiteSpace:"nowrap" }}>+ Add</button>
+                <button onClick={addRoom} style={{ ...css.btn, padding:"6px 10px", background:"#eef2f9", color:"#1e3a6e", fontSize:12, whiteSpace:"nowrap" }}>+ Add</button>
               </div>
             </div>
           </div>
 
           <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", overflow:"hidden" }}>
-            <div style={{ padding:"11px 16px", background:"#002E6E", color:"white", fontWeight:700, fontSize:13 }}>👤 Students</div>
+            <div style={{ padding:"11px 16px", background:"#132a4f", color:"white", fontWeight:700, fontSize:13 }}>👤 Students</div>
             <div style={{ padding:10 }}>
               <input placeholder="🔍 Search…" value={search} onChange={e=>setSearch(e.target.value)} style={{ ...css.input, marginBottom:8, fontSize:12 }} />
               <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:8 }}>
                 {["ALL",...courses].map(c=>(
-                  <button key={c} onClick={()=>setFilterCourse(c)} style={{ ...css.btn, padding:"3px 8px", fontSize:10, background:filterCourse===c?"#002E6E":"#F3F4F6", color:filterCourse===c?"white":"#374151", border:filterCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>
+                  <button key={c} onClick={()=>setFilterCourse(c)} style={{ ...css.btn, padding:"3px 8px", fontSize:10, background:filterCourse===c?"#132a4f":"#f3f0e8", color:filterCourse===c?"white":"#2e3b52", border:filterCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>
                 ))}
               </div>
             </div>
@@ -7907,8 +7718,8 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
                     onDragStart={()=>setDragStudent(st)}
                     onDragEnd={()=>setDragStudent(null)}
                     style={{ padding:"8px 14px", borderBottom:"1px solid #F1F5F9", cursor:inRoom?"default":"grab", background:inRoom?"#F0FDF4":inOther?"#FFFBEB":"white", opacity:inRoom?0.6:1 }}>
-                    <div style={{ fontWeight:600, fontSize:12, color:inRoom?"#0F6E56":inOther?"#92400E":"#1e293b" }}>{st.name}</div>
-                    <div style={{ fontSize:10, color:"#9CA3AF" }}>GCC {st.gcc_no} · {st.class_name||st.course}{inRoom?" · ✓":inOther?" · ⚠️ Other room":""}</div>
+                    <div style={{ fontWeight:600, fontSize:12, color:inRoom?"#0F6E56":inOther?"#92400E":"#14213d" }}>{st.name}</div>
+                    <div style={{ fontSize:10, color:"#8a93a6" }}>GCC {st.gcc_no} · {st.class_name||st.course}{inRoom?" · ✓":inOther?" · ⚠️ Other room":""}</div>
                   </div>
                 );
               })}
@@ -7919,28 +7730,28 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
         {/* Right: Actions + Seat grid */}
         <div>
           <div style={{ display:"flex", gap:8, marginBottom:12, alignItems:"center", flexWrap:"wrap" }}>
-            <div style={{ background:"white", borderRadius:10, padding:"10px 14px", boxShadow:"0 1px 4px rgba(0,0,0,0.06)", fontSize:13, fontWeight:600, color:"#002E6E" }}>
+            <div style={{ background:"white", borderRadius:10, padding:"10px 14px", boxShadow:"0 1px 4px rgba(0,0,0,0.06)", fontSize:13, fontWeight:600, color:"#132a4f" }}>
               🏫 <b>{room||"No room"}</b>
-              <span style={{ fontWeight:400, color:"#9CA3AF", marginLeft:8 }}>{occupiedCount}/{capacity}</span>
+              <span style={{ fontWeight:400, color:"#8a93a6", marginLeft:8 }}>{occupiedCount}/{capacity}</span>
             </div>
-            <button onClick={autoAssign} style={{ ...css.btn, background:"#7c3aed", color:"white", fontSize:12 }}>⚡ Auto</button>
+            <button onClick={autoAssign} style={{ ...css.btn, background:"#a7771f", color:"white", fontSize:12 }}>⚡ Auto</button>
             <button onClick={clearRoom} style={{ ...css.btn, background:"#FEF2F2", color:"#DC2626", border:"1px solid #FECACA", fontSize:12 }}>🗑️ Clear</button>
-            <button onClick={handleSave} disabled={saving||!room} style={{ ...css.btn, background:saved?"#16A34A":saving?"#93C5FD":"#1D4ED8", color:"white", fontSize:12 }}>
+            <button onClick={handleSave} disabled={saving||!room} style={{ ...css.btn, background:saved?"#16A34A":saving?"#b7c6e0":"#1e3a6e", color:"white", fontSize:12 }}>
               {saved?"✓ Saved!":saving?"Saving…":"💾 Save"}
             </button>
           </div>
 
           <div style={{ background:"white", borderRadius:8, padding:"8px 14px", marginBottom:12, boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#6B7280", marginBottom:5 }}>
-              <span>Capacity</span><span style={{ fontWeight:700, color:"#002E6E" }}>{occupiedCount} / {capacity}</span>
+            <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#5d6b82", marginBottom:5 }}>
+              <span>Capacity</span><span style={{ fontWeight:700, color:"#132a4f" }}>{occupiedCount} / {capacity}</span>
             </div>
-            <div style={{ height:6, background:"#F1F5F9", borderRadius:999, overflow:"hidden" }}>
-              <div style={{ height:"100%", width:`${(occupiedCount/capacity)*100}%`, background:"#002E6E", borderRadius:999, transition:"width .3s" }} />
+            <div style={{ height:6, background:"#f3f0e8", borderRadius:999, overflow:"hidden" }}>
+              <div style={{ height:"100%", width:`${(occupiedCount/capacity)*100}%`, background:"#132a4f", borderRadius:999, transition:"width .3s" }} />
             </div>
           </div>
 
           {loading ? <Spinner /> : !room ? (
-            <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", padding:40, textAlign:"center", color:"#94A3B8" }}>
+            <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", padding:40, textAlign:"center", color:"#8a93a6" }}>
               <div style={{ fontSize:40, marginBottom:12 }}>🏫</div>
               <div style={{ fontSize:14, fontWeight:600 }}>Select or add a room to begin</div>
             </div>
@@ -7949,7 +7760,7 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
               <div style={{ display:"inline-flex", flexDirection:"column", gap:8, minWidth:"100%" }}>
                 <div style={{ display:"flex", gap:8 }}>
                   {Array.from({length:cols},(_,c)=>(
-                    <div key={c} style={{ width:100, textAlign:"center", fontSize:10, fontWeight:700, color:"#9CA3AF", textTransform:"uppercase" }}>Col {c+1}</div>
+                    <div key={c} style={{ width:100, textAlign:"center", fontSize:10, fontWeight:700, color:"#8a93a6", textTransform:"uppercase" }}>Col {c+1}</div>
                   ))}
                 </div>
                 {Array.from({length:rows},(_,r)=>(
@@ -7964,17 +7775,17 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
                           onDragOver={e=>{e.preventDefault();}}
                           onDrop={e=>{ e.preventDefault(); if(dragStudent && !assignedInRoom.has(dragStudent.id)){ setSeats(p=>({...p,[seatNum]:dragStudent.id})); setSaved(false); setDragStudent(null); }}}
                           onClick={()=>{ if(st){ setSeats(p=>{ const n={...p}; delete n[seatNum]; return n; }); setSaved(false); } }}
-                          style={{ width:100, minHeight:66, borderRadius:8, border:st?"1.5px solid #86EFAC":"1.5px dashed #D1D5DB", background:st?"#F0FDF4":"#F9FAFB", padding:"5px 7px", cursor:st?"pointer":"default", position:"relative", transition:"all .15s" }}>
-                          <div style={{ position:"absolute", top:4, right:6, fontSize:9, fontWeight:800, color:st?"#0F6E56":"#CBD5E1" }}>{seatNum}</div>
+                          style={{ width:100, minHeight:66, borderRadius:8, border:st?"1.5px solid #86EFAC":"1.5px dashed #D1D5DB", background:st?"#F0FDF4":"#faf8f3", padding:"5px 7px", cursor:st?"pointer":"default", position:"relative", transition:"all .15s" }}>
+                          <div style={{ position:"absolute", top:4, right:6, fontSize:9, fontWeight:800, color:st?"#0F6E56":"#d9d2c2" }}>{seatNum}</div>
                           {st ? (
                             <>
-                              <div style={{ fontSize:10, fontWeight:700, color:"#1e293b", lineHeight:1.3, paddingRight:14, marginTop:2 }}>{st.name}</div>
-                              <div style={{ fontSize:9, color:"#64748b", marginTop:2 }}>GCC {st.gcc_no}</div>
-                              <div style={{ fontSize:8.5, color:"#94A3B8" }}>{st.class_name||st.course}</div>
+                              <div style={{ fontSize:10, fontWeight:700, color:"#14213d", lineHeight:1.3, paddingRight:14, marginTop:2 }}>{st.name}</div>
+                              <div style={{ fontSize:9, color:"#5d6b82", marginTop:2 }}>GCC {st.gcc_no}</div>
+                              <div style={{ fontSize:8.5, color:"#8a93a6" }}>{st.class_name||st.course}</div>
                               <div title="Click to remove" style={{ position:"absolute", top:3, left:5, fontSize:9, color:"#FCA5A5", cursor:"pointer" }}>✕</div>
                             </>
                           ) : (
-                            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100%", color:"#E5E7EB", fontSize:10, paddingTop:8 }}>Drop here</div>
+                            <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100%", color:"#e8e3d8", fontSize:10, paddingTop:8 }}>Drop here</div>
                           )}
                         </div>
                       );
@@ -7985,10 +7796,10 @@ function SeatArrangement({ courseSubjects, examTypes, students, institute, sched
             </div>
           )}
 
-          <div style={{ display:"flex", gap:14, marginTop:10, fontSize:12, color:"#64748b" }}>
+          <div style={{ display:"flex", gap:14, marginTop:10, fontSize:12, color:"#5d6b82" }}>
             <div style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:12, height:12, borderRadius:3, background:"#F0FDF4", border:"1.5px solid #86EFAC" }} /> Assigned</div>
-            <div style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:12, height:12, borderRadius:3, background:"#F9FAFB", border:"1.5px dashed #D1D5DB" }} /> Vacant</div>
-            {!isMobile && <span style={{ color:"#94A3B8" }}>Drag students · Click to remove</span>}
+            <div style={{ display:"flex", alignItems:"center", gap:5 }}><div style={{ width:12, height:12, borderRadius:3, background:"#faf8f3", border:"1.5px dashed #D1D5DB" }} /> Vacant</div>
+            {!isMobile && <span style={{ color:"#8a93a6" }}>Drag students · Click to remove</span>}
           </div>
         </div>
       </div>
@@ -8006,7 +7817,7 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
 .btn-print{background:#0f2d5e;color:white;}.btn-close{background:#e5e7eb;color:#374151;}
 .page-break{page-break-after:always;height:0;overflow:hidden;}
 .card{width:720px;margin:0 auto 24px;background:#F0F4FF;border-radius:3px;box-shadow:0 12px 48px rgba(0,0,0,0.22),0 0 0 1px #B8C9E8;position:relative;overflow:hidden;}
-.top-strip{height:5px;background:linear-gradient(90deg,#0f2d5e 0%,#1a4d8a 30%,#00BAF2 60%,#00BAF2 80%,#1a4d8a 100%);}
+.top-strip{height:5px;background:linear-gradient(90deg,#0f2d5e 0%,#1a4d8a 30%,#b8923a 60%,#b8923a 80%,#1a4d8a 100%);}
 .header{background:linear-gradient(150deg,#071a3e 0%,#0f2d5e 45%,#133a7a 100%);padding:22px 32px 18px;display:flex;align-items:center;gap:16px;}
 .logo-ring{width:64px;height:64px;border-radius:50%;border:2px solid #D4A017;background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .logo-text{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:white;}
@@ -8020,7 +7831,7 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
 .exam-result-bar{background:#0f2d5e;padding:10px 24px;display:flex;justify-content:space-between;align-items:center;}
 .exam-info{display:flex;gap:20px;flex-wrap:wrap;}
 .exam-info-item{display:flex;flex-direction:column;}
-.exam-info-label{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:#e0e7ff;margin-bottom:2px;font-weight:700;}
+.exam-info-label{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:#e4ebf6;margin-bottom:2px;font-weight:700;}
 .exam-info-value{font-size:13px;font-weight:600;color:#ffffff;}
 .result-pill-bar{display:flex;align-items:center;gap:8px;}
 .student-section{padding:14px 24px 10px;}
@@ -8033,7 +7844,7 @@ body{font-family:'DM Sans',sans-serif;background:#d6cfc0;padding:20px;-webkit-pr
 .score-grid{display:grid;grid-template-columns:repeat(5,1fr);background:#0f2d5e;margin:0 16px 0;border-radius:6px;overflow:hidden;}
 .score-cell{text-align:center;padding:12px 8px;border-right:1px solid rgba(255,255,255,0.2);}
 .score-cell:last-child{border-right:none;}
-.score-lbl{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:#e0e7ff;margin-bottom:4px;font-weight:700;}
+.score-lbl{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:#e4ebf6;margin-bottom:4px;font-weight:700;}
 .score-val{font-family:'Playfair Display',serif;font-size:22px;font-weight:600;color:#ffffff;line-height:1;}
 .score-val.gold{color:#fbbf24;}
 .score-sub{font-size:10px;color:#d0d9ff;margin-top:2px;font-weight:500;}
@@ -8067,7 +7878,7 @@ function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, c
   const pct = courseMax ? (total / courseMax) * 100 : 0;
   const grade = getGrade(pct);
   const passed = pct >= 40;
-  const gradeColors = {"A+":"#fbbf24","A":"#fbbf24","B+":"#e0e7ff","B":"#e0e7ff","C":"#f87171","D":"#fb923c","F":"#fca5a5"};
+  const gradeColors = {"A+":"#fbbf24","A":"#fbbf24","B+":"#e4ebf6","B":"#e4ebf6","C":"#f87171","D":"#fb923c","F":"#fca5a5"};
   const gradeColor = gradeColors[grade.label]||"#0A1628";
 
   const sortedStudents = [...allStudents].map(s=>({...s,total:getTotal(s.id)})).sort((a,b)=>b.total-a.total);
@@ -8119,7 +7930,7 @@ function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, c
       </div>
       <div class="result-pill-bar">
         <span style="font-size:20px;font-weight:700;color:${gradeColor}">${grade.label}</span>
-        <span style="font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 8px;border-radius:2px;background:${passed?"#EFF6FF":"#FCEBEB"};color:${passed?"#1a56db":"#C0392B"};border:1px solid ${passed?"#BFDBFE":"#FECACA"}">${passed?"PASS":"FAIL"}</span>
+        <span style="font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 8px;border-radius:2px;background:${passed?"#eef2f9":"#FCEBEB"};color:${passed?"#1a56db":"#C0392B"};border:1px solid ${passed?"#c9d5ea":"#FECACA"}">${passed?"PASS":"FAIL"}</span>
       </div>
     </div>
     <div class="student-section">
@@ -8185,12 +7996,6 @@ function ReportCardItem({ st, subjects, subjectMaxMap, courseMax, marks, examTyp
   const grade = getGrade(pct);
 
   const printReport = () => {
-    const sortedStudents = [...allStudents].map(s => ({ ...s, total: getTotal(s.id) })).sort((a, b) => b.total - a.total);
-    let rank = 1, prev = null;
-    for (let i = 0; i < sortedStudents.length; i++) {
-      if (i === 0) { rank = 1; prev = sortedStudents[i].total; } else if (sortedStudents[i].total !== prev) { rank++; prev = sortedStudents[i].total; }
-      if (sortedStudents[i].id === st.id) break;
-    }
     const html = buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marks, course, allStudents, examName, examDate, institute, remark);
     const w = window.open("", "_blank");
     w.document.write(`<!DOCTYPE html><html><head>
@@ -8206,24 +8011,24 @@ function ReportCardItem({ st, subjects, subjectMaxMap, courseMax, marks, examTyp
     <div style={{ ...css.card, position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg,${grade.color},${grade.bg})` }} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-        <div><div style={{ fontWeight: 700, fontSize: 15 }}>{st.name}</div><div style={{ fontSize: 11, color: "#9CA3AF" }}>GCC {st.gcc_no} · {st.class_name}</div></div>
+        <div><div style={{ fontWeight: 700, fontSize: 15 }}>{st.name}</div><div style={{ fontSize: 11, color: "#8a93a6" }}>GCC {st.gcc_no} · {st.class_name}</div></div>
         <Badge label={grade.label} color={grade.color} bg={grade.bg} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-        <div style={{ textAlign: "center", padding: 8, background: "#F9FAFB", borderRadius: 8 }}>
-          <div style={{ fontSize: 10, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 1 }}>Total</div>
-          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 20, fontWeight: 600 }}>{total}<span style={{ fontSize: 11, color: "#9CA3AF" }}>/{courseMax}</span></div>
+        <div style={{ textAlign: "center", padding: 8, background: "#faf8f3", borderRadius: 8 }}>
+          <div style={{ fontSize: 10, color: "#8a93a6", textTransform: "uppercase", letterSpacing: 1 }}>Total</div>
+          <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 20, fontWeight: 600 }}>{total}<span style={{ fontSize: 11, color: "#8a93a6" }}>/{courseMax}</span></div>
         </div>
-        <div style={{ textAlign: "center", padding: 8, background: "#F9FAFB", borderRadius: 8 }}>
-          <div style={{ fontSize: 10, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 1 }}>Percentage</div>
+        <div style={{ textAlign: "center", padding: 8, background: "#faf8f3", borderRadius: 8 }}>
+          <div style={{ fontSize: 10, color: "#8a93a6", textTransform: "uppercase", letterSpacing: 1 }}>Percentage</div>
           <div style={{ fontFamily: "'Playfair Display',serif", fontSize: 20, fontWeight: 600, color: grade.color }}>{pct.toFixed(1)}%</div>
         </div>
       </div>
       <div style={{ marginBottom: 10 }}>
-        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 4, textTransform: "uppercase" }}>Teacher's Remarks</label>
+        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 4, textTransform: "uppercase" }}>Teacher's Remarks</label>
         <textarea value={remark} onChange={e => setRemark(e.target.value)} placeholder="Optional remark…"
           style={{ width: "100%", minHeight: 54, border: "1px solid #D1D5DB", borderRadius: 8, padding: "7px 10px", fontSize: 12, fontFamily: "'DM Sans',sans-serif", resize: "vertical", outline: "none" }} />
-        <button onClick={() => saveRemark(remark)} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, marginTop: 5, background: savedRemark ? "#E1F5EE" : "#EFF6FF", color: savedRemark ? "#0F6E56" : "#1D4ED8", border: "1px solid " + (savedRemark ? "#BBF7D0" : "#BFDBFE") }}>
+        <button onClick={() => saveRemark(remark)} style={{ ...css.btn, padding: "5px 12px", fontSize: 12, marginTop: 5, background: savedRemark ? "#E1F5EE" : "#eef2f9", color: savedRemark ? "#0F6E56" : "#1e3a6e", border: "1px solid " + (savedRemark ? "#BBF7D0" : "#c9d5ea") }}>
           {savingRemark ? "Saving…" : savedRemark ? "✓ Saved" : "💾 Save Remark"}
         </button>
       </div>
@@ -8238,7 +8043,7 @@ function PrintReportCardButton({ onPrint }) {
   const [printing, setPrinting] = React.useState(false);
   return (
     <button onClick={() => { setPrinting(true); onPrint(); setTimeout(() => setPrinting(false), 3000); }} disabled={printing}
-      style={{ ...css.btn, background: printing ? "#6B7280" : "#002E6E", color: "white", width: "100%" }}>
+      style={{ ...css.btn, background: printing ? "#5d6b82" : "#132a4f", color: "white", width: "100%" }}>
       {printing ? "⏳ Opening…" : "🖨️ Print Report Card"}
     </button>
   );
@@ -8340,15 +8145,15 @@ function ReportCards({ courseSubjects, examTypes, students, institute, secondary
   const visibleStudents = excludeAbsent ? courseStudents.filter(s => !isStudentAbsentForExam(s.id, subjects, marks)) : courseStudents;
   return (
     <div>
-      <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
+      <div style={{ ...css.card, background: "#faf8f3", marginBottom: 14 }}>
         <CoursePicker courses={courses} value={course} onChange={c => { setCourse(c); setMarks({}); setCombinedSection("ALL"); setSecondaryBatchFilter(""); }} />
         {isCombinedNavodaya && (
           <div style={{ marginTop: 10 }}>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Medium / Section</label>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Medium / Section</label>
             <div style={{ display: "flex", gap: 8 }}>
               {[["ALL", "All"], ["ENG", "English"], ["MM", "Manipuri (MM)"]].map(([val, label]) => (
                 <button key={val} onClick={() => setCombinedSection(val)}
-                  style={{ ...css.btn, padding: "6px 14px", background: combinedSection === val ? "#002E6E" : "#F3F4F6", color: combinedSection === val ? "white" : "#374151", border: "1.5px solid " + (combinedSection === val ? "#002E6E" : "#E5E7EB") }}>
+                  style={{ ...css.btn, padding: "6px 14px", background: combinedSection === val ? "#132a4f" : "#f3f0e8", color: combinedSection === val ? "white" : "#2e3b52", border: "1.5px solid " + (combinedSection === val ? "#132a4f" : "#e8e3d8") }}>
                   {label}
                 </button>
               ))}
@@ -8367,11 +8172,11 @@ function ReportCards({ courseSubjects, examTypes, students, institute, secondary
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "flex-end" }}>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
           <select value={examType} onChange={e => setExamType(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 200 }}>{examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}</select>
         </div>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Date</label>
           <select value={examDate} onChange={e => setExamDate(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 160 }}>
             {!dates.length && <option value="">{datesLoaded ? "— No marks recorded —" : "Checking…"}</option>}
             {dates.map(d => <option key={d} value={d}>{d}</option>)}
@@ -8394,7 +8199,7 @@ function ReportCards({ courseSubjects, examTypes, students, institute, secondary
         </div>
       )}
       {excludeAbsent && absentCount > 0 && (
-        <div style={{ background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#6B7280" }}>
+        <div style={{ background: "#faf8f3", border: "1px solid #E5E7EB", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12, color: "#5d6b82" }}>
           🚫 {absentCount} absent student{absentCount === 1 ? "" : "s"} hidden from this view and excluded from ranking. Uncheck "Exclude absent students" above to show them.
         </div>
       )}
@@ -8536,7 +8341,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
     if (!w) { alert("⚠️ Popup blocked! Please allow popups for this site."); return; }
     w.document.write(`<!DOCTYPE html><html><head><style>body{font-family:sans-serif;background:#1a3c2e;display:flex;align-items:center;justify-content:center;min-height:100vh;color:white;font-size:18px;}</style></head><body>⏳ Preparing ${filteredRcStudents.length} report cards…</body></html>`);
     setRcProgress({ current: 0, total: filteredRcStudents.length });
-    try { await supabase.from('exam_print_log').insert({ doc_type:'report_card', course:rcCourse, exam_type:examTypes.find(e=>e.id===rcExamType)?.name||'', student_count:filteredRcStudents.length }); } catch(_) {}
+    try { await supabase.from('exam_print_log').insert({ doc_type:'report_card', course:rcCourse, exam_type:examTypes.find(e=>e.id===rcExamType)?.name||'', student_count:filteredRcStudents.length }); } catch { /* ignore */ }
     const cards = [];
     for (let i = 0; i < filteredRcStudents.length; i++) {
       const st = filteredRcStudents[i];
@@ -8568,7 +8373,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
     if (!w) { alert("⚠️ Popup blocked! Please allow popups for this site."); return; }
     w.document.write(`<!DOCTYPE html><html><head><style>body{font-family:sans-serif;background:#1a3c2e;display:flex;align-items:center;justify-content:center;min-height:100vh;color:white;font-size:18px;}</style></head><body>⏳ Preparing ${filteredAcStudents.length} admit cards…</body></html>`);
     setAcProgress({ current: 0, total: filteredAcStudents.length });
-    try { await supabase.from('exam_print_log').insert({ doc_type:'admit_card', course:acCourse, exam_type:acExamName, student_count:filteredAcStudents.length }); } catch(_) {}
+    try { await supabase.from('exam_print_log').insert({ doc_type:'admit_card', course:acCourse, exam_type:acExamName, student_count:filteredAcStudents.length }); } catch { /* ignore */ }
     const cards = [];
     for (let i = 0; i < filteredAcStudents.length; i++) {
       cards.push(buildAdmitCardHTML(filteredAcStudents[i]));
@@ -8589,44 +8394,26 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
     setAcProgress(null);
   };
 
-  const SectionBtn = ({ id, icon, label, count }) => (
-    <button onClick={() => setActiveSection(id)}
-      style={{ display:"flex", alignItems:"center", gap:10, padding: isMobile ? "12px 14px" : "14px 24px", borderRadius:10, border: activeSection===id ? "2px solid #002E6E" : "2px solid #E5E7EB", background: activeSection===id ? "#002E6E" : "white", color: activeSection===id ? "white" : "#374151", cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize: isMobile ? 13 : 14, flex:1, transition:"all .15s" }}>
-      <span style={{ fontSize: isMobile ? 18 : 22 }}>{icon}</span>
-      <div style={{ textAlign:"left" }}>
-        <div>{label}</div>
-        <div style={{ fontSize:11, fontWeight:400, opacity:0.7 }}>{count} students</div>
-      </div>
-    </button>
-  );
-
-  const StatPill = ({ label, value, color }) => (
-    <div style={{ background:"white", borderRadius:8, padding:"10px 14px", boxShadow:"0 1px 4px rgba(0,0,0,0.06)", borderLeft:`3px solid ${color||"#002E6E"}` }}>
-      <div style={{ fontSize:10, fontWeight:700, color:"#6B7280", textTransform:"uppercase", letterSpacing:".08em", marginBottom:3 }}>{label}</div>
-      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:22, fontWeight:600, color:color||"#002E6E" }}>{value}</div>
-    </div>
-  );
-
   // Responsive two-col
   const twoCols = { display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: "300px 1fr", gap: isMobile ? 14 : 20 };
 
   return (
     <div>
       <div style={{ display:"flex", gap:12, marginBottom:20 }}>
-        <SectionBtn id="reportcard" icon="📋" label="Bulk Report Cards" count={rcStudents.length} />
-        <SectionBtn id="admitcard"  icon="🪪"  label="Bulk Admit Cards"  count={acStudents.length} />
+        <SectionBtn activeSection={activeSection} setActiveSection={setActiveSection} isMobile={isMobile} id="reportcard" icon="📋" label="Bulk Report Cards" count={rcStudents.length} />
+        <SectionBtn activeSection={activeSection} setActiveSection={setActiveSection} isMobile={isMobile} id="admitcard"  icon="🪪"  label="Bulk Admit Cards"  count={acStudents.length} />
       </div>
 
       {activeSection === "reportcard" && (
         <div style={twoCols}>
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
             <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", overflow:"hidden" }}>
-              <div style={{ padding:"12px 18px", background:"#002E6E", color:"white", fontWeight:700, fontSize:13 }}>⚙️ Report Card Settings</div>
+              <div style={{ padding:"12px 18px", background:"#132a4f", color:"white", fontWeight:700, fontSize:13 }}>⚙️ Report Card Settings</div>
               <div style={{ padding:18, display:"flex", flexDirection:"column", gap:14 }}>
                 <div>
-                  <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:6, textTransform:"uppercase" }}>Batch / Course</label>
+                  <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:6, textTransform:"uppercase" }}>Batch / Course</label>
                   <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-                    {courses.map(c => <button key={c} onClick={()=>{setRcCourse(c); setRcSecondaryBatchFilter("");}} style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:rcCourse===c?"#002E6E":"#F3F4F6", color:rcCourse===c?"white":"#374151", border:rcCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>)}
+                    {courses.map(c => <button key={c} onClick={()=>{setRcCourse(c); setRcSecondaryBatchFilter("");}} style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:rcCourse===c?"#132a4f":"#f3f0e8", color:rcCourse===c?"white":"#2e3b52", border:rcCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>)}
                   </div>
                 </div>
                 {secondaryBatches.length > 0 && (
@@ -8638,13 +8425,13 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
                     </select>
                   </div>
                 )}
-                <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Exam Type</label>
+                <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:5, textTransform:"uppercase" }}>Exam Type</label>
                   <select value={rcExamType} onChange={e=>setRcExamType(e.target.value)} style={css.input}>{examTypes.map(et=><option key={et.id} value={et.id}>{et.name}</option>)}</select></div>
-                <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Date</label>
+                <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:5, textTransform:"uppercase" }}>Date</label>
                   <select value={rcExamDate} onChange={e=>setRcExamDate(e.target.value)} style={css.input}>{rcDates.map(d=><option key={d} value={d}>{d}</option>)}</select></div>
-                <div style={{ height:1, background:"#F1F5F9" }} />
+                <div style={{ height:1, background:"#f3f0e8" }} />
                 <div>
-                  <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:6, textTransform:"uppercase" }}>Filter Students</label>
+                  <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:6, textTransform:"uppercase" }}>Filter Students</label>
                   <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
                     {[["all","All Students"],["pass","Passed Only"],["fail","Failed Only"],["topN","Top N"]].map(([val,lbl])=>(
                       <label key={val} style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, cursor:"pointer" }}>
@@ -8658,10 +8445,10 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
                   <input type="checkbox" checked={rcExcludeAbsent} onChange={e=>setRcExcludeAbsent(e.target.checked)} />
                   Exclude absent students {absentRcCount > 0 && <span style={{ color:"#DC2626", fontWeight:700 }}>({absentRcCount})</span>}
                 </label>
-                <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:6, textTransform:"uppercase" }}>Sort By</label>
+                <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:6, textTransform:"uppercase" }}>Sort By</label>
                   <select value={rcSortBy} onChange={e=>setRcSortBy(e.target.value)} style={css.input}><option value="name">Name (A–Z)</option><option value="rank">Rank</option><option value="gcc">GCC No.</option></select></div>
                 <div><input placeholder="Search name or GCC…" value={rcSearch} onChange={e=>setRcSearch(e.target.value)} style={css.input} /></div>
-                <div style={{ height:1, background:"#F1F5F9" }} />
+                <div style={{ height:1, background:"#f3f0e8" }} />
                 <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, cursor:"pointer" }}><input type="checkbox" checked={rcIncludeRemarks} onChange={e=>setRcIncludeRemarks(e.target.checked)} />Include teacher remarks</label>
                 <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, cursor:"pointer" }}><input type="checkbox" checked={rcPageBreak} onChange={e=>setRcPageBreak(e.target.checked)} />Page break between cards</label>
               </div>
@@ -8670,7 +8457,7 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
 
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
             <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,1fr)", gap:10 }}>
-              <StatPill label="Total"   value={rcStudents.length}          color="#002E6E" />
+              <StatPill label="Total"   value={rcStudents.length}          color="#132a4f" />
               <StatPill label="Will Print" value={filteredRcStudents.length}  color="#185FA5" />
               <StatPill label="Passed"  value={rankingPoolRcStudents.filter(s=>getPct(s.id)>=40).length} color="#0F6E56" />
               <StatPill label="Failed"  value={rankingPoolRcStudents.filter(s=>getPct(s.id)<40 && getTotal(s.id)>0).length} color="#A32D2D" />
@@ -8679,48 +8466,48 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
             <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", padding:18 }}>
               {rcProgress ? (
                 <div style={{ textAlign:"center", padding:"20px 0" }}>
-                  <div style={{ fontSize:14, fontWeight:600, color:"#002E6E", marginBottom:12 }}>⏳ Generating {rcProgress.current}/{rcProgress.total} cards…</div>
-                  <div style={{ height:8, background:"#F1F5F9", borderRadius:999, overflow:"hidden" }}>
-                    <div style={{ height:"100%", width:`${(rcProgress.current/rcProgress.total)*100}%`, background:"#002E6E", borderRadius:999, transition:"width .2s" }} />
+                  <div style={{ fontSize:14, fontWeight:600, color:"#132a4f", marginBottom:12 }}>⏳ Generating {rcProgress.current}/{rcProgress.total} cards…</div>
+                  <div style={{ height:8, background:"#f3f0e8", borderRadius:999, overflow:"hidden" }}>
+                    <div style={{ height:"100%", width:`${(rcProgress.current/rcProgress.total)*100}%`, background:"#132a4f", borderRadius:999, transition:"width .2s" }} />
                   </div>
                 </div>
               ) : (
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:14, flexWrap:"wrap" }}>
                   <div>
-                    <div style={{ fontFamily:"'Playfair Display',serif", fontSize:17, fontWeight:600, color:"#1e293b", marginBottom:4 }}>Ready to print {filteredRcStudents.length} report cards</div>
-                    <div style={{ fontSize:12, color:"#9CA3AF" }}>{rcCourse} · {examTypes.find(e=>e.id===rcExamType)?.name} · {rcExamDate}</div>
+                    <div style={{ fontFamily:"'Playfair Display',serif", fontSize:17, fontWeight:600, color:"#14213d", marginBottom:4 }}>Ready to print {filteredRcStudents.length} report cards</div>
+                    <div style={{ fontSize:12, color:"#8a93a6" }}>{rcCourse} · {examTypes.find(e=>e.id===rcExamType)?.name} · {rcExamDate}</div>
                   </div>
                   <button onClick={printAllReportCards} disabled={!filteredRcStudents.length || rcLoading}
-                    style={{ ...css.btn, background:"#002E6E", color:"white", padding:"12px 24px", fontSize:13, whiteSpace:"nowrap" }}>
+                    style={{ ...css.btn, background:"#132a4f", color:"white", padding:"12px 24px", fontSize:13, whiteSpace:"nowrap" }}>
                     🖨️ Print All {filteredRcStudents.length}
                   </button>
                 </div>
               )}
             </div>
             <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", overflow:"hidden" }}>
-              <div style={{ padding:"12px 18px", background:"#002E6E", color:"white", fontWeight:700, fontSize:13, display:"flex", justifyContent:"space-between" }}>
+              <div style={{ padding:"12px 18px", background:"#132a4f", color:"white", fontWeight:700, fontSize:13, display:"flex", justifyContent:"space-between" }}>
                 <span>📋 Print Queue</span><span style={{ opacity:0.7, fontSize:12 }}>{filteredRcStudents.length} cards</span>
               </div>
               <div style={{ maxHeight:320, overflowY:"auto", overflowX:"auto" }}>
                 <table className="gx-rt" style={{ width:"100%", borderCollapse:"collapse", fontSize:12, minWidth: isMobile ? 380 : "auto" }}>
                   <thead style={{ position:"sticky", top:0 }}>
-                    <tr style={{ background:"#F8FAFC", borderBottom:"2px solid #E5E7EB" }}>
-                      {["#","GCC","Student","Total","%","Grade"].map(h=><th key={h} style={{ padding:"9px 10px", textAlign:h==="Student"?"left":"center", fontWeight:700, color:"#374151", fontSize:11 }}>{h}</th>)}
+                    <tr style={{ background:"#faf8f3", borderBottom:"2px solid #E5E7EB" }}>
+                      {["#","GCC","Student","Total","%","Grade"].map(h=><th key={h} style={{ padding:"9px 10px", textAlign:h==="Student"?"left":"center", fontWeight:700, color:"#2e3b52", fontSize:11 }}>{h}</th>)}
                     </tr>
                   </thead>
                   <tbody>
                     {filteredRcStudents.map((st,i)=>{
                       const total=getTotal(st.id); const pct=getPct(st.id); const g=getGrade(pct);
-                      return <tr key={st.id} style={{ background:i%2?"#F9FAFB":"white", borderBottom:"1px solid #F1F5F9" }}>
-                        <td style={{ padding:"8px 10px", textAlign:"center", color:"#9CA3AF", fontSize:11 }}>{i+1}</td>
-                        <td style={{ padding:"8px 10px", textAlign:"center", fontWeight:700, color:"#002E6E" }}>{st.gcc_no}</td>
+                      return <tr key={st.id} style={{ background:i%2?"#faf8f3":"white", borderBottom:"1px solid #F1F5F9" }}>
+                        <td style={{ padding:"8px 10px", textAlign:"center", color:"#8a93a6", fontSize:11 }}>{i+1}</td>
+                        <td style={{ padding:"8px 10px", textAlign:"center", fontWeight:700, color:"#132a4f" }}>{st.gcc_no}</td>
                         <td style={{ padding:"8px 10px", fontWeight:600 }}>{st.name}</td>
                         <td style={{ padding:"8px 10px", textAlign:"center", fontWeight:700 }}>{total}/{rcCourseMax}</td>
                         <td style={{ padding:"8px 10px", textAlign:"center", fontWeight:700, color:g.color }}>{pct.toFixed(1)}%</td>
                         <td style={{ padding:"8px 10px", textAlign:"center" }}><Badge label={g.label} color={g.color} bg={g.bg} /></td>
                       </tr>;
                     })}
-                    {!filteredRcStudents.length && <tr><td colSpan={6} style={{ padding:32, textAlign:"center", color:"#94A3B8" }}>No students match filter.</td></tr>}
+                    {!filteredRcStudents.length && <tr><td colSpan={6} style={{ padding:32, textAlign:"center", color:"#8a93a6" }}>No students match filter.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -8733,12 +8520,12 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
         <div style={twoCols}>
           <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
             <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", overflow:"hidden" }}>
-              <div style={{ padding:"12px 18px", background:"#002E6E", color:"white", fontWeight:700, fontSize:13 }}>⚙️ Admit Card Settings</div>
+              <div style={{ padding:"12px 18px", background:"#132a4f", color:"white", fontWeight:700, fontSize:13 }}>⚙️ Admit Card Settings</div>
               <div style={{ padding:18, display:"flex", flexDirection:"column", gap:14 }}>
                 <div>
-                  <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:6, textTransform:"uppercase" }}>Batch / Course</label>
+                  <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:6, textTransform:"uppercase" }}>Batch / Course</label>
                   <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-                    {courses.map(c=><button key={c} onClick={()=>{setAcCourse(c); setAcSecondaryBatchFilter("");}} style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:acCourse===c?"#002E6E":"#F3F4F6", color:acCourse===c?"white":"#374151", border:acCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>)}
+                    {courses.map(c=><button key={c} onClick={()=>{setAcCourse(c); setAcSecondaryBatchFilter("");}} style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:acCourse===c?"#132a4f":"#f3f0e8", color:acCourse===c?"white":"#2e3b52", border:acCourse===c?"none":"1px solid #E5E7EB" }}>{c}</button>)}
                   </div>
                 </div>
                 {secondaryBatches.length > 0 && (
@@ -8750,9 +8537,9 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
                     </select>
                   </div>
                 )}
-                <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Exam Type</label>
+                <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:5, textTransform:"uppercase" }}>Exam Type</label>
                   <select value={acExamType} onChange={e=>setAcExamType(e.target.value)} style={css.input}>{examTypes.map(et=><option key={et.id} value={et.id}>{et.name}</option>)}</select></div>
-                <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:6, textTransform:"uppercase" }}>Sort By</label>
+                <div><label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:6, textTransform:"uppercase" }}>Sort By</label>
                   <select value={acSortBy} onChange={e=>setAcSortBy(e.target.value)} style={css.input}><option value="name">Name (A–Z)</option><option value="gcc">GCC Number</option></select></div>
                 <div><input placeholder="Search name or GCC…" value={acSearch} onChange={e=>setAcSearch(e.target.value)} style={css.input} /></div>
                 <div style={{ background: acSchedule.length?"#E1F5EE":"#FFFBEB", border:`1px solid ${acSchedule.length?"#BBF7D0":"#FDE68A"}`, borderRadius:8, padding:"10px 14px", fontSize:12, color:acSchedule.length?"#0F6E56":"#92400E" }}>
@@ -8764,26 +8551,26 @@ function BulkReports({ courseSubjects, examTypes, students, institute, schedule,
 
           <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
-              <StatPill label="Total Students" value={acStudents.length}        color="#002E6E" />
+              <StatPill label="Total Students" value={acStudents.length}        color="#132a4f" />
               <StatPill label="Will Print"     value={filteredAcStudents.length} color="#185FA5" />
-              <StatPill label="Schedule Items" value={acSchedule.length}        color="#7c3aed" />
+              <StatPill label="Schedule Items" value={acSchedule.length}        color="#a7771f" />
             </div>
             <div style={{ background:"white", borderRadius:12, boxShadow:"0 2px 8px rgba(0,0,0,0.07)", padding:18 }}>
               {acProgress ? (
                 <div style={{ textAlign:"center", padding:"20px 0" }}>
-                  <div style={{ fontSize:14, fontWeight:600, color:"#002E6E", marginBottom:12 }}>⏳ Generating {acProgress.current}/{acProgress.total} cards…</div>
-                  <div style={{ height:8, background:"#F1F5F9", borderRadius:999, overflow:"hidden" }}>
-                    <div style={{ height:"100%", width:`${(acProgress.current/acProgress.total)*100}%`, background:"#002E6E", borderRadius:999, transition:"width .2s" }} />
+                  <div style={{ fontSize:14, fontWeight:600, color:"#132a4f", marginBottom:12 }}>⏳ Generating {acProgress.current}/{acProgress.total} cards…</div>
+                  <div style={{ height:8, background:"#f3f0e8", borderRadius:999, overflow:"hidden" }}>
+                    <div style={{ height:"100%", width:`${(acProgress.current/acProgress.total)*100}%`, background:"#132a4f", borderRadius:999, transition:"width .2s" }} />
                   </div>
                 </div>
               ) : (
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:14, flexWrap:"wrap" }}>
                   <div>
-                    <div style={{ fontFamily:"'Playfair Display',serif", fontSize:17, fontWeight:600, color:"#1e293b", marginBottom:4 }}>Ready to print {filteredAcStudents.length} admit cards</div>
-                    <div style={{ fontSize:12, color:"#9CA3AF" }}>{acCourse} · {acExamName}</div>
+                    <div style={{ fontFamily:"'Playfair Display',serif", fontSize:17, fontWeight:600, color:"#14213d", marginBottom:4 }}>Ready to print {filteredAcStudents.length} admit cards</div>
+                    <div style={{ fontSize:12, color:"#8a93a6" }}>{acCourse} · {acExamName}</div>
                   </div>
                   <button onClick={printAllAdmitCards} disabled={!filteredAcStudents.length}
-                    style={{ ...css.btn, background:"#002E6E", color:"white", padding:"12px 24px", fontSize:13, whiteSpace:"nowrap" }}>
+                    style={{ ...css.btn, background:"#132a4f", color:"white", padding:"12px 24px", fontSize:13, whiteSpace:"nowrap" }}>
                     🖨️ Print All {filteredAcStudents.length}
                   </button>
                 </div>
@@ -8882,7 +8669,7 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
 
   return (
     <div>
-      <div style={{ ...css.card, background: "#F8FAFC", marginBottom: 14 }}>
+      <div style={{ ...css.card, background: "#faf8f3", marginBottom: 14 }}>
         <CoursePicker courses={courses} value={course} onChange={c => { setCourse(c); setSecondaryBatchFilter(""); }} />
         {secondaryBatches.length > 0 && (
           <div style={{ marginTop: 10 }}>
@@ -8896,14 +8683,14 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
       </div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14, alignItems: "flex-end" }}>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Exam Type</label>
           <select value={examType} onChange={e => setExamType(e.target.value)} style={{ ...css.input, width: isMobile ? "100%" : 220 }}>{examTypes.map(et => <option key={et.id} value={et.id}>{et.name}</option>)}</select>
         </div>
         <div style={{ flex: isMobile ? "1 1 auto" : "none" }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6B7280", marginBottom: 5, textTransform: "uppercase" }}>Search</label>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#5d6b82", marginBottom: 5, textTransform: "uppercase" }}>Search</label>
           <input placeholder="Name or GCC…" value={search} onChange={e => setSearch(e.target.value)} style={css.input} />
         </div>
-        <button onClick={printAll} style={{ ...css.btn, background: "#002E6E", color: "white", padding: "9px 20px", fontSize: isMobile ? 12 : 14, whiteSpace: "nowrap" }}>
+        <button onClick={printAll} style={{ ...css.btn, background: "#132a4f", color: "white", padding: "9px 20px", fontSize: isMobile ? 12 : 14, whiteSpace: "nowrap" }}>
           🖨️ Print All ({filtered.length})
         </button>
       </div>
@@ -8916,7 +8703,7 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
             </span>
             {matchingPreset && (
               <button onClick={autoPopulateFromConfig} disabled={populating}
-                style={{ ...css.btn, padding: "7px 14px", fontSize: 12, background: populating ? "#93C5FD" : "#002E6E", color: "white", whiteSpace: "nowrap" }}>
+                style={{ ...css.btn, padding: "7px 14px", fontSize: 12, background: populating ? "#b7c6e0" : "#132a4f", color: "white", whiteSpace: "nowrap" }}>
                 {populating ? "⏳ Populating…" : `⚡ Auto-populate for ${course}`}
               </button>
             )}
@@ -8930,108 +8717,34 @@ function AdmitCardsTab({ courseSubjects, examTypes, students, institute, schedul
         </div>
       )}
       <div style={{ background: "white", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-        <div style={{ padding: "12px 18px", background: "#002E6E", color: "white", fontWeight: 700, fontSize: 13, display: "flex", justifyContent: "space-between" }}>
+        <div style={{ padding: "12px 18px", background: "#132a4f", color: "white", fontWeight: 700, fontSize: 13, display: "flex", justifyContent: "space-between" }}>
           <span>🪪 {course} — {examTypeName}</span>
           <span style={{ opacity: 0.7, fontSize: 12 }}>{filtered.length} students</span>
         </div>
         <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           <table className="gx-rt" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 380 : "auto" }}>
-            <thead><tr style={{ background: "#F8FAFC", borderBottom: "2px solid #E5E7EB" }}>
+            <thead><tr style={{ background: "#faf8f3", borderBottom: "2px solid #E5E7EB" }}>
               {["GCC No.", "Student Name", "Batch", "Adm. No.", "Print"].map(h => (
-                <th key={h} style={{ padding: "10px 12px", textAlign: h === "Student Name" ? "left" : "center", fontWeight: 700, color: "#374151", fontSize: 11 }}>{h}</th>
+                <th key={h} style={{ padding: "10px 12px", textAlign: h === "Student Name" ? "left" : "center", fontWeight: 700, color: "#2e3b52", fontSize: 11 }}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
               {filtered.map((st, i) => (
-                <tr key={st.id} style={{ background: i % 2 ? "#F9FAFB" : "white", borderBottom: "1px solid #F1F5F9" }}>
-                  <td style={{ padding: "9px 12px", textAlign: "center", fontWeight: 700, color: "#002E6E" }}>{st.gcc_no}</td>
-                  <td style={{ padding: "9px 12px", fontWeight: 600, color: "#1e293b" }}>{st.name}</td>
-                  <td style={{ padding: "9px 12px", textAlign: "center" }}><span style={{ background: "#E0F2FE", color: "#0369A1", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{st.class_name || "—"}</span></td>
-                  <td style={{ padding: "9px 12px", textAlign: "center", color: "#94A3B8", fontSize: 12 }}>{st.admission_no || "—"}</td>
+                <tr key={st.id} style={{ background: i % 2 ? "#faf8f3" : "white", borderBottom: "1px solid #F1F5F9" }}>
+                  <td style={{ padding: "9px 12px", textAlign: "center", fontWeight: 700, color: "#132a4f" }}>{st.gcc_no}</td>
+                  <td style={{ padding: "9px 12px", fontWeight: 600, color: "#14213d" }}>{st.name}</td>
+                  <td style={{ padding: "9px 12px", textAlign: "center" }}><span style={{ background: "#eef2f9", color: "#1e3a6e", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{st.class_name || "—"}</span></td>
+                  <td style={{ padding: "9px 12px", textAlign: "center", color: "#8a93a6", fontSize: 12 }}>{st.admission_no || "—"}</td>
                   <td style={{ padding: "9px 12px", textAlign: "center" }}>
-                    <button onClick={() => printOne(st)} style={{ ...css.btn, padding: "5px 12px", background: "#002E6E", color: "white", fontSize: 12 }}>🖨️</button>
+                    <button onClick={() => printOne(st)} style={{ ...css.btn, padding: "5px 12px", background: "#132a4f", color: "white", fontSize: 12 }}>🖨️</button>
                   </td>
                 </tr>
               ))}
-              {!filtered.length && <tr><td colSpan={5} style={{ padding: 32, textAlign: "center", color: "#94A3B8" }}>No students found.</td></tr>}
+              {!filtered.length && <tr><td colSpan={5} style={{ padding: 32, textAlign: "center", color: "#8a93a6" }}>No students found.</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ─── EXAM HUB HEADER ──────────────────────────────────────────────────────────
-function ExamHubHeader({ institute, students, courses, examTypes, currentUser }) {
-  const isMobile = useMobile();
-
-  const stats = [
-    { label: "Students",   val: students.length,              icon: "users", color: "#60a5fa" },
-    { label: "Batches",    val: courses.length,               icon: "book", color: "#34d399" },
-    { label: "Exam Types", val: examTypes.length,             icon: "clipboard", color: "#00BAF2" },
-    { label: "Role",       val: currentUser?.role || "Admin", icon: "key", color: "#c084fc" },
-  ];
-
-  const Badge = (
-    <div style={{
-      width: isMobile ? 34 : 40, height: isMobile ? 34 : 40,
-      borderRadius: 9, flexShrink: 0,
-      background: "linear-gradient(135deg,#002E6E,#0A56B8)",
-      border: "1.5px solid rgba(0,186,242,0.5)",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      color: "#fff",
-    }}><ExamIcon id="brand" size={isMobile ? 18 : 22} /></div>
-  );
-
-  const Title = (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-      <span style={{ fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: isMobile ? 16 : 19, color: "white" }}>Exam</span>
-      <span style={{ fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: isMobile ? 16 : 19, color: "#00BAF2" }}>HUB</span>
-      {!isMobile && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", marginLeft: 4 }}>· {institute.name}</span>}
-    </div>
-  );
-
-  const Chips = (
-    <div style={{ display: "flex", gap: isMobile ? 6 : 8, overflowX: isMobile ? "auto" : "visible" }}>
-      {stats.map(s => (
-        <div key={s.label} style={{
-          display: "flex", alignItems: "center",
-          gap: isMobile ? 5 : 7, flexShrink: 0,
-          background: "rgba(255,255,255,0.05)",
-          border: "1px solid rgba(255,255,255,0.09)",
-          borderRadius: 8,
-          padding: isMobile ? "5px 10px" : "6px 14px",
-        }}>
-          <span style={{ display: "flex", color: s.color }}><ExamIcon id={s.icon} size={isMobile ? 14 : 16} /></span>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: isMobile ? 13 : 15, color: "white", lineHeight: 1 }}>{s.val}</div>
-            <div style={{ fontSize: isMobile ? 9 : 9, color: s.color, textTransform: "uppercase", letterSpacing: "1px", marginTop: 2 }}>{s.label}</div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  if (isMobile) return (
-    <div style={{ background: "#001F4D", borderBottom: "3px solid #00BAF2" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px 8px" }}>
-        {Badge}{Title}
-      </div>
-      <div style={{ padding: "0 14px 10px" }}>{Chips}</div>
-    </div>
-  );
-
-  return (
-    <div style={{
-      background: "#001F4D", borderBottom: "3px solid #00BAF2",
-      display: "flex", alignItems: "center",
-      padding: "0 28px", height: 60, gap: 16,
-    }}>
-      {Badge}
-      {Title}
-      <div style={{ flex: 1 }} />
-      {Chips}
     </div>
   );
 }
@@ -9349,17 +9062,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
     });
   };
 
-  const addSubject = () => {
-    const sub = subInput.trim();
-    if (!sub || !activeCourse) return;
-    setCourseData(prev => {
-      const existing = prev[activeCourse] || { subjects: [], marks: {} };
-      if (existing.subjects.includes(sub)) return prev;
-      return { ...prev, [activeCourse]: { ...existing, subjects: [...existing.subjects, sub] } };
-    });
-    setSubInput("");
-  };
-
+  
   const removeSubject = (course, sub) => {
     setCourseData(prev => {
       const existing = prev[course] || { subjects: [], marks: {} };
@@ -9465,73 +9168,28 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
     return true;
   };
 
-  const STEP_LABELS = ["Basic Info", "Courses", "Subjects & Marks", "Sessions", "Review"];
-  const StepBar = () => (
-    <div style={{ display:"flex", alignItems:"center", marginBottom:24, gap:0 }}>
-      {STEP_LABELS.map((label, i) => {
-        const n = i + 1;
-        const done = step > n;
-        const active = step === n;
-        return (
-          <React.Fragment key={n}>
-            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4, cursor: done ? "pointer" : "default" }}
-              onClick={() => done && setStep(n)}>
-              <div style={{
-                width:30, height:30, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center",
-                fontSize:13, fontWeight:700,
-                background: done ? "#002E6E" : active ? "#0A56B8" : "#F1F5F9",
-                color: (done || active) ? "white" : "#9CA3AF",
-                border: active ? "2px solid #002E6E" : "none",
-              }}>
-                {done ? "✓" : n}
-              </div>
-              {!isMobile && <div style={{ fontSize:9, fontWeight:700, color: active ? "#002E6E" : done ? "#0F6E56" : "#9CA3AF", textTransform:"uppercase", letterSpacing:".08em", whiteSpace:"nowrap" }}>{label}</div>}
-            </div>
-            {i < STEP_LABELS.length - 1 && (
-              <div style={{ flex:1, height:2, background: step > n ? "#002E6E" : "#E5E7EB", margin:"0 4px 18px" }} />
-            )}
-          </React.Fragment>
-        );
-      })}
-    </div>
-  );
-
-  const NavButtons = () => (
-    <div style={{ display:"flex", gap:10, marginTop:24, paddingTop:16, borderTop:"1px solid #F1F5F9" }}>
-      {step > 1 && <button onClick={() => setStep(s => s-1)} style={{ ...css.btn, background:"#F3F4F6", color:"#374151", flex:1 }}>← Back</button>}
-      {step < TOTAL_STEPS
-        ? <button onClick={() => setStep(s => s+1)} disabled={!canNext()} style={{ ...css.btn, background:canNext()?"#002E6E":"#D1D5DB", color:"white", flex:2, fontSize:14 }}>
-            Next →
-          </button>
-        : <button onClick={handleSave} disabled={saving} style={{ ...css.btn, background:saving?"#93C5FD":"#16A34A", color:"white", flex:2, fontSize:14 }}>
-            {saving ? "⏳ Saving…" : isEdit ? "✅ Save Changes" : "✅ Create Exam Format"}
-          </button>
-      }
-    </div>
-  );
-
   // ── STEP 1 ──────────────────────────────────────────────────────────────
   const Step1 = () => (
     <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
       <div>
-        <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Exam Name *</label>
+        <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:5, textTransform:"uppercase" }}>Exam Name *</label>
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. 3rd Monthly Test — August 2026" style={{ ...css.input, fontSize:15 }} />
       </div>
       <div>
-        <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Short Description</label>
+        <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:5, textTransform:"uppercase" }}>Short Description</label>
         <input value={description} onChange={e=>setDesc(e.target.value)} placeholder="e.g. OMR-based · August 2026" style={css.input} />
       </div>
       <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap:12 }}>
         <div>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Exam Date</label>
+          <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:5, textTransform:"uppercase" }}>Exam Date</label>
           <input type="date" value={examDate} onChange={e=>setExamDate(e.target.value)} style={css.input} />
         </div>
         <div>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:5, textTransform:"uppercase" }}>Exam Mode</label>
+          <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:5, textTransform:"uppercase" }}>Exam Mode</label>
           <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
             {["Written","OMR","Online","Oral"].map(m => (
               <button key={m} onClick={() => setExamMode(m)}
-                style={{ ...css.btn, padding:"7px 16px", fontSize:12, background:examMode===m?"#002E6E":"#F3F4F6", color:examMode===m?"white":"#374151", border:examMode===m?"none":"1px solid #E5E7EB" }}>
+                style={{ ...css.btn, padding:"7px 16px", fontSize:12, background:examMode===m?"#132a4f":"#f3f0e8", color:examMode===m?"white":"#2e3b52", border:examMode===m?"none":"1px solid #E5E7EB" }}>
                 {m}
               </button>
             ))}
@@ -9542,22 +9200,22 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
       {/* Hide "copy from" in edit mode — user is already editing an existing one */}
       {!isEdit && (
         <>
-          <div style={{ height:1, background:"#F1F5F9" }} />
+          <div style={{ height:1, background:"#f3f0e8" }} />
           <div>
-            <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:8, textTransform:"uppercase" }}>
-              Copy from existing format <span style={{ fontWeight:400, color:"#9CA3AF" }}>(optional)</span>
+            <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:8, textTransform:"uppercase" }}>
+              Copy from existing format <span style={{ fontWeight:400, color:"#8a93a6" }}>(optional)</span>
             </label>
             <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(200px,1fr))", gap:8 }}>
               <div onClick={() => setCopyFrom("")}
-                style={{ padding:"10px 14px", borderRadius:10, border: !copyFrom?"2px solid #002E6E":"1px solid #E5E7EB", background: !copyFrom?"#E1F5EE":"#F9FAFB", cursor:"pointer" }}>
-                <div style={{ fontWeight:700, fontSize:12, color: !copyFrom?"#0F6E56":"#374151" }}>Start fresh</div>
-                <div style={{ fontSize:11, color:"#9CA3AF", marginTop:2 }}>Define everything from scratch</div>
+                style={{ padding:"10px 14px", borderRadius:10, border: !copyFrom?"2px solid #132a4f":"1px solid #E5E7EB", background: !copyFrom?"#E1F5EE":"#faf8f3", cursor:"pointer" }}>
+                <div style={{ fontWeight:700, fontSize:12, color: !copyFrom?"#0F6E56":"#2e3b52" }}>Start fresh</div>
+                <div style={{ fontSize:11, color:"#8a93a6", marginTop:2 }}>Define everything from scratch</div>
               </div>
               {EXAM_CONFIG_PRESETS.map(p => (
                 <div key={p.id} onClick={() => setCopyFrom(p.id)}
-                  style={{ padding:"10px 14px", borderRadius:10, border: copyFrom===p.id?"2px solid #002E6E":"1px solid #E5E7EB", background: copyFrom===p.id?"#E1F5EE":"#F9FAFB", cursor:"pointer" }}>
-                  <div style={{ fontWeight:700, fontSize:12, color: copyFrom===p.id?"#0F6E56":"#374151" }}>{p.name}</div>
-                  <div style={{ fontSize:11, color:"#9CA3AF", marginTop:2 }}>{p.description || "Built-in preset"}</div>
+                  style={{ padding:"10px 14px", borderRadius:10, border: copyFrom===p.id?"2px solid #132a4f":"1px solid #E5E7EB", background: copyFrom===p.id?"#E1F5EE":"#faf8f3", cursor:"pointer" }}>
+                  <div style={{ fontWeight:700, fontSize:12, color: copyFrom===p.id?"#0F6E56":"#2e3b52" }}>{p.name}</div>
+                  <div style={{ fontSize:11, color:"#8a93a6", marginTop:2 }}>{p.description || "Built-in preset"}</div>
                 </div>
               ))}
             </div>
@@ -9570,9 +9228,9 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
   // ── STEP 2 ──────────────────────────────────────────────────────────────
   const Step2 = () => (
     <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-      <div style={{ fontSize:13, color:"#64748b" }}>Select which courses/batches this exam applies to.</div>
+      <div style={{ fontSize:13, color:"#5d6b82" }}>Select which courses/batches this exam applies to.</div>
       <div style={{ display:"flex", gap:8, marginBottom:4 }}>
-        <button onClick={() => setSelectedCourses(new Set(allCourses))} style={{ ...css.btn, padding:"5px 12px", fontSize:11, background:"#E0F2FE", color:"#0369A1" }}>Select All</button>
+        <button onClick={() => setSelectedCourses(new Set(allCourses))} style={{ ...css.btn, padding:"5px 12px", fontSize:11, background:"#eef2f9", color:"#1e3a6e" }}>Select All</button>
         <button onClick={() => setSelectedCourses(new Set())} style={{ ...css.btn, padding:"5px 12px", fontSize:11, background:"#FEF2F2", color:"#DC2626" }}>Clear All</button>
       </div>
       <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(auto-fill,minmax(160px,1fr))", gap:10 }}>
@@ -9581,26 +9239,26 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
           const subCount = courseData[c]?.subjects?.length || courseSubjects[c]?.length || 0;
           return (
             <div key={c} onClick={() => toggleCourse(c)}
-              style={{ padding:"14px 16px", borderRadius:12, border: sel?"2px solid #002E6E":"1.5px solid #E5E7EB", background: sel?"#E1F5EE":"#F9FAFB", cursor:"pointer", transition:"all .15s", position:"relative" }}>
+              style={{ padding:"14px 16px", borderRadius:12, border: sel?"2px solid #132a4f":"1.5px solid #E5E7EB", background: sel?"#E1F5EE":"#faf8f3", cursor:"pointer", transition:"all .15s", position:"relative" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                <div style={{ fontWeight:700, fontSize:14, color: sel?"#0F6E56":"#374151" }}>{c}</div>
+                <div style={{ fontWeight:700, fontSize:14, color: sel?"#0F6E56":"#2e3b52" }}>{c}</div>
                 <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                   <button onClick={e => { e.stopPropagation(); setRenamingCourse(c); }} title={`Rename "${c}" everywhere (students, schedule, marks, configs)`}
-                    style={{ ...css.btn, padding:"2px 6px", fontSize:11, background: sel?"#0F6E56":"#E5E7EB", color: sel?"white":"#6B7280", border:"none" }}>
+                    style={{ ...css.btn, padding:"2px 6px", fontSize:11, background: sel?"#0F6E56":"#e8e3d8", color: sel?"white":"#5d6b82", border:"none" }}>
                     ✏️
                   </button>
-                  <div style={{ width:20, height:20, borderRadius:"50%", background: sel?"#0F6E56":"#E5E7EB", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:"white", fontWeight:700, flexShrink:0 }}>
+                  <div style={{ width:20, height:20, borderRadius:"50%", background: sel?"#0F6E56":"#e8e3d8", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:"white", fontWeight:700, flexShrink:0 }}>
                     {sel ? "✓" : ""}
                   </div>
                 </div>
               </div>
-              <div style={{ fontSize:11, color:"#9CA3AF", marginTop:4 }}>{subCount} subjects</div>
+              <div style={{ fontSize:11, color:"#8a93a6", marginTop:4 }}>{subCount} subjects</div>
             </div>
           );
         })}
       </div>
-      <div style={{ background:"#F8FAFC", borderRadius:8, padding:"10px 14px", fontSize:12, color:"#64748b" }}>
-        {selectedCourses.size} course{selectedCourses.size !== 1 ? "s" : ""} selected: <b style={{ color:"#002E6E" }}>{[...selectedCourses].join(", ") || "none"}</b>
+      <div style={{ background:"#faf8f3", borderRadius:8, padding:"10px 14px", fontSize:12, color:"#5d6b82" }}>
+        {selectedCourses.size} course{selectedCourses.size !== 1 ? "s" : ""} selected: <b style={{ color:"#132a4f" }}>{[...selectedCourses].join(", ") || "none"}</b>
       </div>
     </div>
   );
@@ -9614,7 +9272,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
     return (
       <div style={{ display:"flex", flexDirection: isMobile ? "column" : "row", gap:16 }}>
         <div style={{ width: isMobile ? "100%" : 160, flexShrink:0 }}>
-          <div style={{ fontSize:11, fontWeight:700, color:"#6B7280", textTransform:"uppercase", marginBottom:8 }}>Courses</div>
+          <div style={{ fontSize:11, fontWeight:700, color:"#5d6b82", textTransform:"uppercase", marginBottom:8 }}>Courses</div>
           <div style={{ display:"flex", flexDirection: isMobile ? "row" : "column", flexWrap:"wrap", gap:5 }}>
             {courseArr.map(c => {
               const cd = courseData[c] || { subjects:[], marks:{} };
@@ -9623,8 +9281,8 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
                 <div key={c} style={{ display:"flex", alignItems:"stretch", gap:0 }}>
                   <button onClick={() => setActiveCourse(c)}
                     style={{ ...css.btn, padding:"8px 12px", textAlign:"left", fontSize:12, flex:1,
-                      background: activeCourse===c?"#002E6E":"#F9FAFB",
-                      color: activeCourse===c?"white":"#374151",
+                      background: activeCourse===c?"#132a4f":"#faf8f3",
+                      color: activeCourse===c?"white":"#2e3b52",
                       border: activeCourse===c?"none": ok?"1px solid #BBF7D0":"1px solid #E5E7EB",
                       borderRadius: "8px 0 0 8px",
                       display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}>
@@ -9633,8 +9291,8 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
                   </button>
                   <button onClick={() => setRenamingCourse(c)} title={`Rename "${c}" everywhere (students, schedule, marks, configs)`}
                     style={{ ...css.btn, padding:"8px 8px", fontSize:11, borderRadius:"0 8px 8px 0",
-                      background: activeCourse===c?"#14532d":"#E5E7EB",
-                      color: activeCourse===c?"white":"#6B7280",
+                      background: activeCourse===c?"#14532d":"#e8e3d8",
+                      color: activeCourse===c?"white":"#5d6b82",
                       border: activeCourse===c?"none":"1px solid #E5E7EB", borderLeft:"none" }}>
                     ✏️
                   </button>
@@ -9647,13 +9305,13 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
 
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-            <div style={{ fontWeight:700, fontSize:15, color:"#002E6E" }}>{activeCourse}</div>
+            <div style={{ fontWeight:700, fontSize:15, color:"#132a4f" }}>{activeCourse}</div>
             <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-              <span style={{ fontSize:11, color: total===getTarget(activeCourse)?"#0F6E56":total>getTarget(activeCourse)?"#DC2626":"#9CA3AF", fontWeight:700 }}>
+              <span style={{ fontSize:11, color: total===getTarget(activeCourse)?"#0F6E56":total>getTarget(activeCourse)?"#DC2626":"#8a93a6", fontWeight:700 }}>
                 Total: {total} / {getTarget(activeCourse)}
               </span>
               <button onClick={() => autoSplitMarks(activeCourse, getTarget(activeCourse))}
-                style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:"#EFF6FF", color:"#1D4ED8", border:"1px solid #BFDBFE" }}>
+                style={{ ...css.btn, padding:"4px 10px", fontSize:11, background:"#eef2f9", color:"#1e3a6e", border:"1px solid #BFDBFE" }}>
                 ⚡ Auto-split {getTarget(activeCourse)}
               </button>
             </div>
@@ -9674,16 +9332,16 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
   onKeyDown={e => { if (e.key === "Enter") addSubjectWithMark(); }}
 />
             <button onClick={() => addSubjectWithMark()}
-              style={{ ...css.btn, background:"#002E6E", color:"white", whiteSpace:"nowrap" }}>+ Add</button>
+              style={{ ...css.btn, background:"#132a4f", color:"white", whiteSpace:"nowrap" }}>+ Add</button>
           </div>
 
           <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
             {d.subjects.map((sub, i) => (
-              <div key={sub} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 12px", background: i%2?"#F9FAFB":"white", borderRadius:8, border:"1px solid #F1F5F9" }}>
-                <div style={{ fontSize:10, color:"#CBD5E1", fontWeight:700, width:18, flexShrink:0 }}>{i+1}</div>
+              <div key={sub} style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 12px", background: i%2?"#faf8f3":"white", borderRadius:8, border:"1px solid #F1F5F9" }}>
+                <div style={{ fontSize:10, color:"#d9d2c2", fontWeight:700, width:18, flexShrink:0 }}>{i+1}</div>
                 {editingSub === `name-${activeCourse}-${sub}` ? (
                   <input type="text" autoFocus defaultValue={sub}
-                    style={{ flex:1, fontSize:13, fontWeight:600, color:"#1e293b", padding:"4px 8px", borderRadius:6, border:"1.5px solid #6366f1", outline:"none" }}
+                    style={{ flex:1, fontSize:13, fontWeight:600, color:"#14213d", padding:"4px 8px", borderRadius:6, border:"1.5px solid #6366f1", outline:"none" }}
                     onBlur={e => { renameSubject(activeCourse, sub, e.target.value); setEditingSub(null); }}
                     onKeyDown={e => {
                       if (e.key === "Enter") { renameSubject(activeCourse, sub, e.target.value); setEditingSub(null); }
@@ -9691,7 +9349,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
                     }} />
                 ) : (
                   <div onClick={() => setEditingSub(`name-${activeCourse}-${sub}`)} title="Click to edit subject name"
-                    style={{ flex:1, fontSize:13, fontWeight:600, color:"#1e293b", cursor:"pointer", padding:"4px 8px", borderRadius:6 }}>
+                    style={{ flex:1, fontSize:13, fontWeight:600, color:"#14213d", cursor:"pointer", padding:"4px 8px", borderRadius:6 }}>
                     {sub}
                   </div>
                 )}
@@ -9702,24 +9360,24 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
                     onKeyDown={e => { if(e.key==="Enter") { setMark(activeCourse, sub, e.target.value); setEditingSub(null); } }} />
                 ) : (
                   <div onClick={() => setEditingSub(`${activeCourse}-${sub}`)}
-                    style={{ width:70, textAlign:"center", padding:"4px 8px", borderRadius:6, border:"1px solid #E5E7EB", fontSize:13, fontWeight:700, color: d.marks[sub]?"#002E6E":"#CBD5E1", cursor:"pointer", background:"#F9FAFB" }}>
+                    style={{ width:70, textAlign:"center", padding:"4px 8px", borderRadius:6, border:"1px solid #E5E7EB", fontSize:13, fontWeight:700, color: d.marks[sub]?"#132a4f":"#d9d2c2", cursor:"pointer", background:"#faf8f3" }}>
                     {d.marks[sub] || "—"}
                   </div>
                 )}
-                <span style={{ fontSize:11, color:"#9CA3AF" }}>marks</span>
+                <span style={{ fontSize:11, color:"#8a93a6" }}>marks</span>
                 <button onClick={() => removeSubject(activeCourse, sub)}
                   style={{ ...css.btn, padding:"3px 8px", background:"#FEF2F2", color:"#DC2626", border:"1px solid #FECACA", fontSize:11 }}>✕</button>
               </div>
             ))}
             {!d.subjects.length && (
-              <div style={{ padding:"24px 0", textAlign:"center", color:"#CBD5E1", fontSize:13 }}>
+              <div style={{ padding:"24px 0", textAlign:"center", color:"#d9d2c2", fontSize:13 }}>
                 No subjects yet. Add subjects above.
               </div>
             )}
           </div>
 
           <div style={{ marginTop:14, display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
-            <span style={{ fontSize:11, color:"#9CA3AF", fontWeight:700 }}>Copy from:</span>
+            <span style={{ fontSize:11, color:"#8a93a6", fontWeight:700 }}>Copy from:</span>
             {[...selectedCourses].filter(c => c !== activeCourse).map(c => (
               <button key={c} onClick={() => {
                 const src = courseData[c];
@@ -9728,7 +9386,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
                   ...prev,
                   [activeCourse]: { subjects:[...src.subjects], marks:{...src.marks} }
                 }));
-              }} style={{ ...css.btn, padding:"3px 10px", fontSize:11, background:"#F3F4F6", color:"#374151", border:"1px solid #E5E7EB" }}>
+              }} style={{ ...css.btn, padding:"3px 10px", fontSize:11, background:"#f3f0e8", color:"#2e3b52", border:"1px solid #E5E7EB" }}>
                 {c}
               </button>
             ))}
@@ -9741,23 +9399,23 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
   // ── STEP 4 ──────────────────────────────────────────────────────────────
   const Step4 = () => (
     <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-      <div style={{ fontSize:13, color:"#64748b" }}>Define exam sessions (optional). These appear on admit cards and the schedule.</div>
+      <div style={{ fontSize:13, color:"#5d6b82" }}>Define exam sessions (optional). These appear on admit cards and the schedule.</div>
       {sessions.map((s, i) => (
-        <div key={i} style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr auto", gap:10, alignItems:"flex-end", padding:"12px 14px", background:"#F9FAFB", borderRadius:10, border:"1px solid #E5E7EB" }}>
+        <div key={i} style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr auto", gap:10, alignItems:"flex-end", padding:"12px 14px", background:"#faf8f3", borderRadius:10, border:"1px solid #E5E7EB" }}>
           <div>
-            <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:4, textTransform:"uppercase" }}>Session Label</label>
+            <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:4, textTransform:"uppercase" }}>Session Label</label>
             <input value={s.label} onChange={e=>updateSession(i,"label",e.target.value)} placeholder="e.g. Session I" style={css.input} />
           </div>
           <div>
-            <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#6B7280", marginBottom:4, textTransform:"uppercase" }}>Time</label>
+            <label style={{ display:"block", fontSize:11, fontWeight:700, color:"#5d6b82", marginBottom:4, textTransform:"uppercase" }}>Time</label>
             <input value={s.time} onChange={e=>updateSession(i,"time",e.target.value)} placeholder="e.g. 10:15 AM – 12:45 PM" style={css.input} />
           </div>
           <button onClick={() => removeSession(i)} style={{ ...css.btn, padding:"8px 12px", background:"#FEF2F2", color:"#DC2626", border:"1px solid #FECACA", alignSelf:"flex-end" }}>✕</button>
         </div>
       ))}
-      <button onClick={addSession} style={{ ...css.btn, background:"#EFF6FF", color:"#1D4ED8", border:"1px solid #BFDBFE", fontSize:13 }}>+ Add Session</button>
-      <div style={{ height:1, background:"#F1F5F9", margin:"4px 0" }} />
-      <div style={{ fontWeight:700, fontSize:13, color:"#1e293b", marginBottom:6 }}>📅 Evaluation Timeline <span style={{ fontWeight:400, fontSize:11, color:"#9CA3AF" }}>(optional)</span></div>
+      <button onClick={addSession} style={{ ...css.btn, background:"#eef2f9", color:"#1e3a6e", border:"1px solid #BFDBFE", fontSize:13 }}>+ Add Session</button>
+      <div style={{ height:1, background:"#f3f0e8", margin:"4px 0" }} />
+      <div style={{ fontWeight:700, fontSize:13, color:"#14213d", marginBottom:6 }}>📅 Evaluation Timeline <span style={{ fontWeight:400, fontSize:11, color:"#8a93a6" }}>(optional)</span></div>
       <EvaluationTimeline examDate={examDate} />
     </div>
   );
@@ -9767,7 +9425,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
     const courseArr = [...selectedCourses];
     return (
       <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-        <div style={{ background:"linear-gradient(135deg,#002E6E,#0A56B8)", borderRadius:12, padding:"16px 20px", color:"white" }}>
+        <div style={{ background:"linear-gradient(135deg,#132a4f,#1e3a6e)", borderRadius:12, padding:"16px 20px", color:"white" }}>
           <div style={{ fontFamily:"'Playfair Display',serif", fontSize:20, marginBottom:4 }}>{name || "Untitled Exam"}</div>
           <div style={{ fontSize:12, opacity:.75 }}>{description}</div>
           <div style={{ display:"flex", gap:12, marginTop:10, flexWrap:"wrap" }}>
@@ -9787,15 +9445,15 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
             return (
               <div key={c} style={{ background:"white", borderRadius:10, border: ok?"1px solid #BBF7D0":"1px solid #FECACA", padding:"12px 14px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                  <div style={{ fontWeight:700, color:"#002E6E", fontSize:13 }}>{c}</div>
+                  <div style={{ fontWeight:700, color:"#132a4f", fontSize:13 }}>{c}</div>
                   <span style={{ fontSize:11, padding:"2px 8px", borderRadius:999, background: total===target?"#E1F5EE":total>target?"#FCEBEB":"#FFFBEB", color: total===target?"#0F6E56":total>target?"#DC2626":"#92400E", fontWeight:700 }}>
                     {total} marks
                   </span>
                 </div>
                 <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
                   {d.subjects.map(s => (
-                    <span key={s} style={{ fontSize:10, padding:"2px 8px", background:"#F1F5F9", borderRadius:999, color:"#475569" }}>
-                      {s}{d.marks[s] ? <span style={{ color:"#94A3B8", marginLeft:2 }}>/{d.marks[s]}</span> : null}
+                    <span key={s} style={{ fontSize:10, padding:"2px 8px", background:"#f3f0e8", borderRadius:999, color:"#4b5870" }}>
+                      {s}{d.marks[s] ? <span style={{ color:"#8a93a6", marginLeft:2 }}>/{d.marks[s]}</span> : null}
                     </span>
                   ))}
                   {!ok && <span style={{ fontSize:11, color:"#DC2626" }}>⚠️ No subjects defined</span>}
@@ -9806,17 +9464,17 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
         </div>
 
         {sessions.filter(s=>s.time).length > 0 && (
-          <div style={{ background:"#F8FAFC", borderRadius:10, padding:"12px 16px", border:"1px solid #E5E7EB" }}>
-            <div style={{ fontWeight:700, fontSize:12, color:"#6B7280", textTransform:"uppercase", marginBottom:8 }}>Sessions</div>
+          <div style={{ background:"#faf8f3", borderRadius:10, padding:"12px 16px", border:"1px solid #E5E7EB" }}>
+            <div style={{ fontWeight:700, fontSize:12, color:"#5d6b82", textTransform:"uppercase", marginBottom:8 }}>Sessions</div>
             {sessions.map((s,i) => (
-              <div key={i} style={{ fontSize:13, color:"#374151", marginBottom:4 }}>
+              <div key={i} style={{ fontSize:13, color:"#2e3b52", marginBottom:4 }}>
                 <b>{s.label}</b>{s.time ? ` · ${s.time}` : ""}
               </div>
             ))}
           </div>
         )}
 
-        <div style={{ background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:8, padding:"10px 14px", fontSize:12, color:"#1D4ED8" }}>
+        <div style={{ background:"#eef2f9", border:"1px solid #BFDBFE", borderRadius:8, padding:"10px 14px", fontSize:12, color:"#1e3a6e" }}>
           ℹ️ {isEdit ? "Changes will be saved. Click Activate on the config list if you want to apply it now." : "Once created, go to the config list and click Activate to apply this format across all tabs."}
         </div>
       </div>
@@ -9828,7 +9486,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
 
   return (
     <div style={{ background:"white", borderRadius:14, boxShadow:"0 2px 16px rgba(0,0,0,0.09)", overflow:"hidden" }}>
-      <div style={{ background:"linear-gradient(135deg,#002E6E,#0A56B8)", padding:"18px 24px" }}>
+      <div style={{ background:"linear-gradient(135deg,#132a4f,#1e3a6e)", padding:"18px 24px" }}>
         <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, color:"white", marginBottom:2 }}>
           {isEdit ? "✏️ Edit Exam Format" : "✏️ Exam Format Builder"}
         </div>
@@ -9836,9 +9494,9 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
       </div>
 
       <div style={{ padding: isMobile ? "16px 14px" : "24px 28px" }}>
-        <StepBar />
+        <StepBar step={step} setStep={setStep} isMobile={isMobile} />
         {stepFns[step - 1]()}
-        <NavButtons />
+        <NavButtons step={step} setStep={setStep} totalSteps={TOTAL_STEPS} canNext={canNext} handleSave={handleSave} saving={saving} isEdit={isEdit} />
       </div>
 
       {renamingCourse && (
@@ -9876,7 +9534,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
       )}
 
       <div style={{ padding:"0 28px 18px", textAlign:"center" }}>
-        <button onClick={onCancel} style={{ ...css.btn, background:"none", color:"#9CA3AF", fontSize:12, border:"none" }}>✕ Cancel and go back</button>
+        <button onClick={onCancel} style={{ ...css.btn, background:"none", color:"#8a93a6", fontSize:12, border:"none" }}>✕ Cancel and go back</button>
       </div>
     </div>
   );
@@ -9908,14 +9566,14 @@ function EvaluationTimeline({ examDate }) {
   return (
     <div>
       {examDate && (
-        <button onClick={autoFill} style={{ ...css.btn, padding:"5px 14px", fontSize:11, background:"#EFF6FF", color:"#1D4ED8", border:"1px solid #BFDBFE", marginBottom:10 }}>
+        <button onClick={autoFill} style={{ ...css.btn, padding:"5px 14px", fontSize:11, background:"#eef2f9", color:"#1e3a6e", border:"1px solid #BFDBFE", marginBottom:10 }}>
           ⚡ Auto-fill from exam date ({examDate})
         </button>
       )}
       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
         {rows.map((r,i) => (
           <div key={i} style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, alignItems:"center" }}>
-            <div style={{ fontSize:12, color:"#374151", fontWeight:600 }}>{r.label}</div>
+            <div style={{ fontSize:12, color:"#2e3b52", fontWeight:600 }}>{r.label}</div>
             <input value={r.date} onChange={e => setRows(p => p.map((x,j)=>j===i?{...x,date:e.target.value}:x))}
               placeholder="Date or range…" style={{ ...css.input, fontSize:12 }} />
           </div>
@@ -9937,7 +9595,7 @@ function ExamPreviewModal({ cfg, onClose }) {
         maxHeight:"92vh", overflowY:"auto", boxShadow:"0 8px 40px rgba(0,0,0,0.25)" }}>
 
         {/* sticky header */}
-        <div style={{ background:"linear-gradient(135deg,#002E6E,#0A56B8)", padding:"14px 20px",
+        <div style={{ background:"linear-gradient(135deg,#132a4f,#1e3a6e)", padding:"14px 20px",
           display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:10 }}>
           <div>
             <div style={{ fontFamily:"'Playfair Display',serif", fontSize:16, color:"white" }}>👁 Preview — {cfg.name}</div>
@@ -9958,8 +9616,8 @@ function ExamPreviewModal({ cfg, onClose }) {
 
           {/* Meta strip */}
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:18 }}>
-            {cfg.examDate && <span style={{ fontSize:11, padding:"3px 12px", borderRadius:999, background:"#E0F2FE", color:"#0369A1", fontWeight:700 }}>📅 {cfg.examDate}</span>}
-            {cfg.examMode && <span style={{ fontSize:11, padding:"3px 12px", borderRadius:999, background:"#EEF2FF", color:"#4338CA", fontWeight:700 }}>📝 {cfg.examMode}</span>}
+            {cfg.examDate && <span style={{ fontSize:11, padding:"3px 12px", borderRadius:999, background:"#eef2f9", color:"#1e3a6e", fontWeight:700 }}>📅 {cfg.examDate}</span>}
+            {cfg.examMode && <span style={{ fontSize:11, padding:"3px 12px", borderRadius:999, background:"#eef2f9", color:"#4338CA", fontWeight:700 }}>📝 {cfg.examMode}</span>}
             {cfg.sessions?.filter(s=>s.time).length > 0 &&
               <span style={{ fontSize:11, padding:"3px 12px", borderRadius:999, background:"#FFF7ED", color:"#C2410C", fontWeight:700 }}>
                 ⏰ {cfg.sessions.length} Session{cfg.sessions.length>1?"s":""}
@@ -9969,19 +9627,19 @@ function ExamPreviewModal({ cfg, onClose }) {
           {/* Sessions table */}
           {cfg.sessions?.filter(s=>s.time).length > 0 && (
             <div style={{ marginBottom:22 }}>
-              <div style={{ fontWeight:700, fontSize:12, color:"#6B7280", textTransform:"uppercase", marginBottom:8, letterSpacing:".06em" }}>Exam Schedule</div>
+              <div style={{ fontWeight:700, fontSize:12, color:"#5d6b82", textTransform:"uppercase", marginBottom:8, letterSpacing:".06em" }}>Exam Schedule</div>
               <table className="gx-rt" style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
                 <thead>
-                  <tr style={{ background:"#F8FAFC" }}>
-                    <th style={{ padding:"8px 12px", textAlign:"left", borderBottom:"2px solid #E5E7EB", color:"#002E6E", fontWeight:700 }}>Session</th>
-                    <th style={{ padding:"8px 12px", textAlign:"left", borderBottom:"2px solid #E5E7EB", color:"#002E6E", fontWeight:700 }}>Timing</th>
+                  <tr style={{ background:"#faf8f3" }}>
+                    <th style={{ padding:"8px 12px", textAlign:"left", borderBottom:"2px solid #E5E7EB", color:"#132a4f", fontWeight:700 }}>Session</th>
+                    <th style={{ padding:"8px 12px", textAlign:"left", borderBottom:"2px solid #E5E7EB", color:"#132a4f", fontWeight:700 }}>Timing</th>
                   </tr>
                 </thead>
                 <tbody>
                   {cfg.sessions.filter(s=>s.time).map((s,i) => (
                     <tr key={i} style={{ borderBottom:"1px solid #F1F5F9" }}>
-                      <td style={{ padding:"8px 12px", fontWeight:600, color:"#374151" }}>{s.label}</td>
-                      <td style={{ padding:"8px 12px", color:"#64748b" }}>{s.time}</td>
+                      <td style={{ padding:"8px 12px", fontWeight:600, color:"#2e3b52" }}>{s.label}</td>
+                      <td style={{ padding:"8px 12px", color:"#5d6b82" }}>{s.time}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -9997,26 +9655,26 @@ function ExamPreviewModal({ cfg, onClose }) {
             return (
               <div key={course} style={{ marginBottom:20 }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
-                  background:"linear-gradient(90deg,#002E6E 0%,#0A56B8 100%)",
+                  background:"linear-gradient(90deg,#132a4f 0%,#1e3a6e 100%)",
                   borderRadius:"8px 8px 0 0", padding:"8px 14px" }}>
                   <div style={{ fontWeight:700, color:"white", fontSize:13 }}>{course}</div>
                   <div style={{ fontSize:11, color:"rgba(255,255,255,.75)", fontWeight:600 }}>Total: {total} marks</div>
                 </div>
                 <table className="gx-rt" style={{ width:"100%", borderCollapse:"collapse", fontSize:13, border:"1px solid #E5E7EB", borderTop:"none" }}>
                   <thead>
-                    <tr style={{ background:"#F8FAFC" }}>
-                      <th style={{ padding:"7px 12px", textAlign:"left", color:"#6B7280", fontWeight:700, fontSize:11, textTransform:"uppercase", width:36 }}>#</th>
-                      <th style={{ padding:"7px 12px", textAlign:"left", color:"#6B7280", fontWeight:700, fontSize:11, textTransform:"uppercase" }}>Subject</th>
-                      <th style={{ padding:"7px 12px", textAlign:"center", color:"#6B7280", fontWeight:700, fontSize:11, textTransform:"uppercase", width:90 }}>Max Marks</th>
+                    <tr style={{ background:"#faf8f3" }}>
+                      <th style={{ padding:"7px 12px", textAlign:"left", color:"#5d6b82", fontWeight:700, fontSize:11, textTransform:"uppercase", width:36 }}>#</th>
+                      <th style={{ padding:"7px 12px", textAlign:"left", color:"#5d6b82", fontWeight:700, fontSize:11, textTransform:"uppercase" }}>Subject</th>
+                      <th style={{ padding:"7px 12px", textAlign:"center", color:"#5d6b82", fontWeight:700, fontSize:11, textTransform:"uppercase", width:90 }}>Max Marks</th>
                     </tr>
                   </thead>
                   <tbody>
                     {subs.map((sub, i) => (
                       <tr key={sub} style={{ borderBottom:"1px solid #F1F5F9", background: i%2?"#FAFAFA":"white" }}>
-                        <td style={{ padding:"8px 12px", color:"#CBD5E1", fontWeight:700 }}>{i+1}</td>
-                        <td style={{ padding:"8px 12px", color:"#1e293b", fontWeight:500 }}>{sub}</td>
+                        <td style={{ padding:"8px 12px", color:"#d9d2c2", fontWeight:700 }}>{i+1}</td>
+                        <td style={{ padding:"8px 12px", color:"#14213d", fontWeight:500 }}>{sub}</td>
                         <td style={{ padding:"8px 12px", textAlign:"center", fontWeight:700,
-                          color: marks[sub] ? "#002E6E" : "#CBD5E1" }}>
+                          color: marks[sub] ? "#132a4f" : "#d9d2c2" }}>
                           {marks[sub] || "—"}
                         </td>
                       </tr>
@@ -10071,7 +9729,7 @@ function ExamConfigManager({ courseSubjects, onUpdate, activeConfigId, onConfigS
     ]).then(([{ data: cfgData }, { data: actData }]) => {
       let allConfigs = [...EXAM_CONFIG_PRESETS];
 if (cfgData?.value) {
-  try { allConfigs = [...EXAM_CONFIG_PRESETS, ...JSON.parse(cfgData.value)]; } catch(_) {}
+  try { allConfigs = [...EXAM_CONFIG_PRESETS, ...JSON.parse(cfgData.value)]; } catch { /* ignore */ }
 }
 setConfigs(allConfigs);
 const savedId = actData?.value || "default";
@@ -10200,11 +9858,11 @@ setLoading(false);
           <div style={{ background:"white", borderRadius:14, padding:28, maxWidth:380, width:"90%", boxShadow:"0 8px 40px rgba(0,0,0,0.18)" }}>
             <div style={{ fontSize:32, textAlign:"center", marginBottom:12 }}>⚠️</div>
             <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:600, textAlign:"center", marginBottom:8 }}>Delete Configuration?</div>
-            <div style={{ fontSize:13, color:"#64748b", textAlign:"center", marginBottom:22 }}>
+            <div style={{ fontSize:13, color:"#5d6b82", textAlign:"center", marginBottom:22 }}>
               Permanently delete <b>{configs.find(c=>c.id===deleteId)?.name}</b>?
             </div>
             <div style={{ display:"flex", gap:10 }}>
-              <button onClick={() => setDeleteId(null)} style={{ ...css.btn, flex:1, background:"#F3F4F6", color:"#374151" }}>Cancel</button>
+              <button onClick={() => setDeleteId(null)} style={{ ...css.btn, flex:1, background:"#f3f0e8", color:"#2e3b52" }}>Cancel</button>
               <button onClick={() => handleDelete(deleteId)} style={{ ...css.btn, flex:1, background:"#DC2626", color:"white" }}>🗑️ Delete</button>
             </div>
           </div>
@@ -10215,31 +9873,31 @@ setLoading(false);
       {viewCfg && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
           <div style={{ background:"white", borderRadius:14, width:"100%", maxWidth:620, maxHeight:"88vh", overflowY:"auto", boxShadow:"0 8px 40px rgba(0,0,0,0.2)" }}>
-            <div style={{ background:"linear-gradient(135deg,#002E6E,#0A56B8)", padding:"16px 22px", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0 }}>
+            <div style={{ background:"linear-gradient(135deg,#132a4f,#1e3a6e)", padding:"16px 22px", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0 }}>
               <div style={{ fontFamily:"'Playfair Display',serif", fontSize:16, color:"white" }}>{viewCfg.name}</div>
               <button onClick={() => setViewId(null)} style={{ background:"rgba(255,255,255,.15)", border:"none", borderRadius:6, padding:"4px 10px", color:"white", cursor:"pointer" }}>✕</button>
             </div>
             <div style={{ padding:22 }}>
               <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
-                {viewCfg.examDate && <span style={{ fontSize:11, padding:"3px 10px", borderRadius:999, background:"#E0F2FE", color:"#0369A1", fontWeight:700 }}>📅 {viewCfg.examDate}</span>}
-                {viewCfg.examMode && <span style={{ fontSize:11, padding:"3px 10px", borderRadius:999, background:"#EEF2FF", color:"#4338CA", fontWeight:700 }}>📝 {viewCfg.examMode}</span>}
+                {viewCfg.examDate && <span style={{ fontSize:11, padding:"3px 10px", borderRadius:999, background:"#eef2f9", color:"#1e3a6e", fontWeight:700 }}>📅 {viewCfg.examDate}</span>}
+                {viewCfg.examMode && <span style={{ fontSize:11, padding:"3px 10px", borderRadius:999, background:"#eef2f9", color:"#4338CA", fontWeight:700 }}>📝 {viewCfg.examMode}</span>}
               </div>
               {viewCfg.sessions?.filter(s=>s.time).length > 0 && (
-                <div style={{ background:"#F8FAFC", borderRadius:8, padding:"10px 14px", marginBottom:14, border:"1px solid #E5E7EB" }}>
-                  <div style={{ fontWeight:700, fontSize:11, color:"#6B7280", textTransform:"uppercase", marginBottom:6 }}>Sessions</div>
+                <div style={{ background:"#faf8f3", borderRadius:8, padding:"10px 14px", marginBottom:14, border:"1px solid #E5E7EB" }}>
+                  <div style={{ fontWeight:700, fontSize:11, color:"#5d6b82", textTransform:"uppercase", marginBottom:6 }}>Sessions</div>
                   {viewCfg.sessions.map((s,i)=>(
-                    <div key={i} style={{ fontSize:12, color:"#374151", marginBottom:3 }}><b>{s.label}</b>{s.time?` · ${s.time}`:""}</div>
+                    <div key={i} style={{ fontSize:12, color:"#2e3b52", marginBottom:3 }}><b>{s.label}</b>{s.time?` · ${s.time}`:""}</div>
                   ))}
                 </div>
               )}
               {Object.entries(viewCfg.courseSubjects||{}).map(([c,subs])=>(
-                <div key={c} style={{ marginBottom:12, background:"#F9FAFB", borderRadius:10, padding:"10px 14px", border:"1px solid #E5E7EB" }}>
-                  <div style={{ fontWeight:700, color:"#002E6E", fontSize:13, marginBottom:6 }}>
-                    {c} <span style={{ fontWeight:400, color:"#9CA3AF" }}>· {getTotalMarks(viewCfg,c)} marks</span>
+                <div key={c} style={{ marginBottom:12, background:"#faf8f3", borderRadius:10, padding:"10px 14px", border:"1px solid #E5E7EB" }}>
+                  <div style={{ fontWeight:700, color:"#132a4f", fontSize:13, marginBottom:6 }}>
+                    {c} <span style={{ fontWeight:400, color:"#8a93a6" }}>· {getTotalMarks(viewCfg,c)} marks</span>
                   </div>
                   <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
                     {subs.map(s=>(
-                      <span key={s} style={{ fontSize:11, padding:"3px 10px", background:"#E0F2FE", color:"#0369A1", borderRadius:999, fontWeight:600 }}>
+                      <span key={s} style={{ fontSize:11, padding:"3px 10px", background:"#eef2f9", color:"#1e3a6e", borderRadius:999, fontWeight:600 }}>
                         {s}{viewCfg.courseMaxMarks?.[c]?.[s]?<span style={{ opacity:.6 }}> /{viewCfg.courseMaxMarks[c][s]}</span>:null}
                       </span>
                     ))}
@@ -10258,7 +9916,7 @@ setLoading(false);
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:10 }}>
         <div>
           <h3 style={{ margin:0, fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:400, color:"#1C1A16" }}>🗂️ Exam Configurations</h3>
-          <p style={{ margin:"4px 0 0", fontSize:12, color:"#9CA3AF" }}>{configs.length} formats available — {configs.find(c=>c.id===activeId)?.name || "none"} is active</p>
+          <p style={{ margin:"4px 0 0", fontSize:12, color:"#8a93a6" }}>{configs.length} formats available — {configs.find(c=>c.id===activeId)?.name || "none"} is active</p>
         </div>
 
         {/* Action bar: Create + Import */}
@@ -10270,7 +9928,7 @@ setLoading(false);
             ⬆ Import JSON
           </button>
           <button onClick={() => { setEditingConfig(null); setShowBuilder(true); }}
-            style={{ ...css.btn, background:"#002E6E", color:"white", fontSize:13, padding:"10px 20px" }}>
+            style={{ ...css.btn, background:"#132a4f", color:"white", fontSize:13, padding:"10px 20px" }}>
             ✏️ Create New Format
           </button>
         </div>
@@ -10299,37 +9957,37 @@ setLoading(false);
           return (
             <div key={cfg.id} style={{
               background:"white", borderRadius:12,
-              border: isActive ? "2px solid #002E6E" : "1.5px solid #E5E7EB",
-              boxShadow: isActive ? "0 4px 16px rgba(0,46,110,0.12)" : "0 1px 4px rgba(0,0,0,0.06)",
+              border: isActive ? "2px solid #132a4f" : "1.5px solid #E5E7EB",
+              boxShadow: isActive ? "0 4px 16px rgba(19,42,79,0.12)" : "0 1px 4px rgba(0,0,0,0.06)",
               overflow:"hidden", position:"relative",
             }}>
-              {isActive && <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:"linear-gradient(90deg,#002E6E,#0A56B8,#00BAF2)" }} />}
+              {isActive && <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:"linear-gradient(90deg,#132a4f,#1e3a6e,#b8923a)" }} />}
               <div style={{ padding:"16px 18px 10px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6, gap:8 }}>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontWeight:700, fontSize:14, color:"#1e293b" }}>{cfg.name}</div>
-                    {cfg.description && <div style={{ fontSize:11, color:"#9CA3AF", marginTop:1 }}>{cfg.description}</div>}
+                    <div style={{ fontWeight:700, fontSize:14, color:"#14213d" }}>{cfg.name}</div>
+                    {cfg.description && <div style={{ fontSize:11, color:"#8a93a6", marginTop:1 }}>{cfg.description}</div>}
                   </div>
                   <div style={{ display:"flex", gap:5, flexShrink:0 }}>
                     {isActive
                       ? <span style={{ fontSize:11, padding:"2px 9px", borderRadius:999, background:"#E1F5EE", color:"#0F6E56", fontWeight:700 }}>✓ Active</span>
-                      : <span style={{ fontSize:11, padding:"2px 9px", borderRadius:999, background:"#F1F5F9", color:"#64748b" }}>Inactive</span>
+                      : <span style={{ fontSize:11, padding:"2px 9px", borderRadius:999, background:"#f3f0e8", color:"#5d6b82" }}>Inactive</span>
                     }
-                    {isPreset && <span style={{ fontSize:10, padding:"2px 7px", borderRadius:999, background:"#EFF6FF", color:"#1D4ED8", fontWeight:700 }}>Built-in</span>}
+                    {isPreset && <span style={{ fontSize:10, padding:"2px 7px", borderRadius:999, background:"#eef2f9", color:"#1e3a6e", fontWeight:700 }}>Built-in</span>}
                   </div>
                 </div>
 
                 <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:10 }}>
-                  {cfg.examDate && <span style={{ fontSize:10, padding:"2px 8px", borderRadius:999, background:"#EEF2FF", color:"#4338CA", fontWeight:600 }}>📅 {cfg.examDate}</span>}
-                  {cfg.examMode && <span style={{ fontSize:10, padding:"2px 8px", borderRadius:999, background:"#F5F3FF", color:"#7C3AED", fontWeight:600 }}>📝 {cfg.examMode}</span>}
+                  {cfg.examDate && <span style={{ fontSize:10, padding:"2px 8px", borderRadius:999, background:"#eef2f9", color:"#4338CA", fontWeight:600 }}>📅 {cfg.examDate}</span>}
+                  {cfg.examMode && <span style={{ fontSize:10, padding:"2px 8px", borderRadius:999, background:"#fbf3e0", color:"#a7771f", fontWeight:600 }}>📝 {cfg.examMode}</span>}
                   {cfg.sessions?.length > 0 && <span style={{ fontSize:10, padding:"2px 8px", borderRadius:999, background:"#FFF7ED", color:"#C2410C", fontWeight:600 }}>⏰ {cfg.sessions.length} session{cfg.sessions.length>1?"s":""}</span>}
                 </div>
 
                 <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:10 }}>
                   {courses.map(c => (
-                    <div key={c} style={{ fontSize:11, padding:"3px 10px", borderRadius:999, background:"#F8FAFC", border:"1px solid #E5E7EB", color:"#374151" }}>
-                      <span style={{ fontWeight:700, color:"#002E6E" }}>{c}</span>
-                      <span style={{ color:"#9CA3AF", marginLeft:3 }}>{getTotalMarks(cfg,c)}m</span>
+                    <div key={c} style={{ fontSize:11, padding:"3px 10px", borderRadius:999, background:"#faf8f3", border:"1px solid #E5E7EB", color:"#2e3b52" }}>
+                      <span style={{ fontWeight:700, color:"#132a4f" }}>{c}</span>
+                      <span style={{ color:"#8a93a6", marginLeft:3 }}>{getTotalMarks(cfg,c)}m</span>
                     </div>
                   ))}
                 </div>
@@ -10340,7 +9998,7 @@ setLoading(false);
 
                 {/* Preview (NEW) */}
                 <button onClick={() => setPreviewCfg(cfg)}
-                  style={{ ...css.btn, padding:"7px 10px", background:"#EFF6FF", color:"#1D4ED8", border:"1px solid #BFDBFE", fontSize:12 }}>
+                  style={{ ...css.btn, padding:"7px 10px", background:"#eef2f9", color:"#1e3a6e", border:"1px solid #BFDBFE", fontSize:12 }}>
                   🔍 Preview
                 </button>
 
@@ -10364,7 +10022,7 @@ setLoading(false);
   setEditingConfig(target);
   setShowBuilder(true);
 }}
-  style={{ ...css.btn, padding:"7px 10px", background:"#F5F3FF", color:"#7C3AED", border:"1px solid #DDD6FE", fontSize:12 }}>
+  style={{ ...css.btn, padding:"7px 10px", background:"#fbf3e0", color:"#a7771f", border:"1px solid #DDD6FE", fontSize:12 }}>
   ✏️ Edit
 </button>
 
@@ -10372,7 +10030,7 @@ setLoading(false);
                 {isActive
                   ? <div style={{ flex:1, textAlign:"center", fontSize:12, color:"#0F6E56", fontWeight:600, padding:"7px 0", minWidth:100 }}>✓ Active</div>
                   : <button onClick={() => handleSwitch(cfg)} disabled={switching}
-                      style={{ ...css.btn, flex:1, minWidth:100, background:switching?"#93C5FD":"#002E6E", color:"white", fontSize:13 }}>
+                      style={{ ...css.btn, flex:1, minWidth:100, background:switching?"#b7c6e0":"#132a4f", color:"white", fontSize:13 }}>
                       {switching ? "⏳…" : "⚡ Activate"}
                     </button>
                 }
@@ -10389,9 +10047,9 @@ setLoading(false);
       </div>
 
       {/* Info */}
-      <div style={{ background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:10, padding:"14px 18px", fontSize:13, color:"#1D4ED8" }}>
+      <div style={{ background:"#eef2f9", border:"1px solid #BFDBFE", borderRadius:10, padding:"14px 18px", fontSize:13, color:"#1e3a6e" }}>
         <div style={{ fontWeight:700, marginBottom:6 }}>ℹ️ What you can do</div>
-        <div style={{ color:"#374151", lineHeight:1.8 }}>
+        <div style={{ color:"#2e3b52", lineHeight:1.8 }}>
           <b>Create</b> — step-by-step wizard for new formats. &nbsp;
           <b>Clone</b> — duplicate any config (great for the next monthly test). &nbsp;
           <b>Edit</b> — modify your custom configs at any time. &nbsp;
@@ -10434,7 +10092,7 @@ export default function Exams({ currentUser, perms }) {
       ]);
       let allConfigs = [...EXAM_CONFIG_PRESETS];
       if (cfgData?.value) {
-        try { allConfigs = [...EXAM_CONFIG_PRESETS, ...JSON.parse(cfgData.value)]; } catch (_) {}
+        try { allConfigs = [...EXAM_CONFIG_PRESETS, ...JSON.parse(cfgData.value)]; } catch { /* ignore */ }
       }
       const savedId = actData?.value || "default";
       const cfg = allConfigs.find(c => c.id === savedId) || allConfigs[0];
@@ -10589,10 +10247,10 @@ export default function Exams({ currentUser, perms }) {
           // because the DB row predates it. Existing saved batches are never overwritten.
           const merged = { ...DEFAULT_COURSE_SUBJECTS, ...saved };
           setCourseSubjects(merged);
-        } catch (_) {}
+        } catch { /* ignore */ }
       }
       setSchedule(sched || []);
-      if (instSetting?.value) { try { setInstitute({ ...INSTITUTE_DEFAULT, ...JSON.parse(instSetting.value) }); } catch (_) {} }
+      if (instSetting?.value) { try { setInstitute({ ...INSTITUTE_DEFAULT, ...JSON.parse(instSetting.value) }); } catch { /* ignore */ } }
       setLoading(false);
     };
 
@@ -10641,7 +10299,7 @@ export default function Exams({ currentUser, perms }) {
  
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", background: "#F5F7FA", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ minHeight: "100vh", background: "#f7f5f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <Spinner />
       </div>
     );
@@ -10760,17 +10418,33 @@ export default function Exams({ currentUser, perms }) {
     );
   }
 
+  // ── Desktop: the portal's shared premium shell (hero + pill tabs), as in Courses / Students / Fees ──
+  const activeGroup = visibleGroups.find((g) => g.tabs.some((t) => t.id === tab)) || visibleGroups[0];
+  const iconOf = (id) => (p) => <ExamIcon id={id} size={p?.size || 15} />;
+  const groupTabs = visibleGroups.map((g) => ({ id: g.groupLabel, label: g.groupLabel, icon: iconOf(g.tabs[0].id) }));
+  const subTabs = (activeGroup?.tabs || []).map((t) => ({ id: t.id, label: t.label, icon: iconOf(t.id) }));
+
   return (
-    <div className="exams-root" style={{ minHeight: "100vh", background: "#F5F7FA", fontFamily: "'Plus Jakarta Sans','DM Sans','Inter',sans-serif" }}>
-      <ExamHubHeader institute={institute} students={students} courses={courses} examTypes={examTypes} currentUser={currentUser} />
-      <TabNav active={tab} onSelect={setTab} perms={perms} isAdmin={isAdmin} currentUser={currentUser} />
-      <div style={{ padding: "24px 28px", maxWidth: 1400 }}>
-        <div style={{ marginBottom: 18, display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ width: 40, height: 40, borderRadius: 12, background: "#E8F4FD", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#002E6E" }}><ExamIcon id={activeTabInfo?.id} size={21} /></span>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: "#10223D" }}>{activeTabInfo?.label}</h2>
-            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6B7A90" }}>{activeTabInfo?.tip}</p>
-          </div>
+    <div className="exams-root px-root">
+      <PremiumStyles />
+      <div className="px-wrap">
+        <PremiumHero
+          icon={<PIcon.cap size={24} />}
+          eyebrow="GNSI · Examinations"
+          title="Exam HUB"
+          subtitle={institute.name}
+          stats={[
+            { label: "Students", value: students.length, sub: "on the exam roll" },
+            { label: "Batches", value: courses.length, sub: "courses & batches" },
+            { label: "Exam types", value: examTypes.length, sub: "configured" },
+            { label: "Signed in as", value: currentUser?.role || "Admin", sub: currentUser?.name || currentUser?.username || "" },
+          ]}
+        />
+        <PremiumTabs tabs={groupTabs} active={activeGroup?.groupLabel} onChange={(g) => { const grp = visibleGroups.find((x) => x.groupLabel === g); if (grp) setTab(grp.tabs[0].id); }} style={{ marginBottom: 8 }} />
+        <PremiumTabs tabs={subTabs} active={tab} onChange={setTab} />
+        <div className="px-section">
+          <span className="px-eyebrow">{activeTabInfo?.label}</span>
+          <span style={{ fontSize: 13, color: "#5d6b82" }}>{activeTabInfo?.tip}</span>
         </div>
         <ResponsiveTables>{sectionMap[tab]?.()}</ResponsiveTables>
       </div>

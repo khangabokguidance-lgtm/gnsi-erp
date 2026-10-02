@@ -20,15 +20,15 @@ import { applyFixes } from './lib/studentFixEngine';
 import ExamIcon from './examIcons';
 import MockFixEngine from './MockFixEngine';
 
-const NAVY = '#002E6E';
+const NAVY = '#132a4f';
 const ui = {
-  card: { background: '#fff', border: '1px solid #E6ECF4', borderRadius: 16, padding: 14, marginBottom: 12, boxShadow: '0 2px 10px rgba(0,46,110,.06)' },
-  input: { padding: '8px 12px', borderRadius: 12, border: '1px solid #D6E0EE', fontSize: 13, background: '#fff', color: '#111827', fontFamily: 'inherit', minWidth: 0 },
+  card: { background: '#fff', border: '1px solid #e8e3d8', borderRadius: 16, padding: 14, marginBottom: 12, boxShadow: '0 2px 10px rgba(19,42,79,.06)' },
+  input: { padding: '8px 12px', borderRadius: 12, border: '1px solid #d9d2c2', fontSize: 13, background: '#fff', color: '#0f1b2e', fontFamily: 'inherit', minWidth: 0 },
   btn: { padding: '10px 18px', borderRadius: 12, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: NAVY, color: '#fff', fontFamily: 'inherit' },
-  ghost: { padding: '9px 14px', borderRadius: 12, border: '1px solid #D6E0EE', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#fff', color: '#334155', fontFamily: 'inherit' },
+  ghost: { padding: '9px 14px', borderRadius: 12, border: '1px solid #d9d2c2', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#fff', color: '#2e3b52', fontFamily: 'inherit' },
   th: { background: NAVY, color: '#fff', padding: '7px 8px', fontSize: 11, textTransform: 'uppercase', letterSpacing: .5, textAlign: 'center', whiteSpace: 'nowrap', position: 'sticky', top: 0 },
   td: { padding: '6px 8px', borderBottom: '1px solid #E5E7EB', textAlign: 'center', fontSize: 13, whiteSpace: 'nowrap' },
-  label: { fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: .8, marginBottom: 4, display: 'block' },
+  label: { fontSize: 11, fontWeight: 700, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: .8, marginBottom: 4, display: 'block' },
 };
 const SUBTABS = [
   { id: 'overview', icon: 'home', label: 'Overview' },
@@ -40,29 +40,29 @@ const SUBTABS = [
 
 const fx = (n, d = 1) => (n === null || n === undefined || !Number.isFinite(n) ? '—' : String(Math.round(n * 10 ** d) / 10 ** d));
 const sgn = (n, d = 1) => (n === null || n === undefined || !Number.isFinite(n) ? '—' : `${n > 0 ? '+' : ''}${fx(n, d)}`);
-const tone = (v, g = 0) => (v > g ? '#047857' : v < -g ? '#b91c1c' : '#475569');
+const tone = (v, g = 0) => (v > g ? '#047857' : v < -g ? '#b91c1c' : '#4b5870');
 
 const Svg = ({ html, minW }) => <div className="mta-svg"><div style={minW ? { '--mw': `${minW}px` } : undefined} dangerouslySetInnerHTML={{ __html: html }} /></div>;
 const Pill = ({ text, color }) => <span style={{ background: color, color: '#fff', borderRadius: 10, padding: '1px 9px', fontSize: 11, fontWeight: 700 }}>{text}</span>;
-const Stat = ({ label, value, sub, color = '#0f172a' }) => (
-  <div style={{ flex: '1 1 calc(50% - 10px)', minWidth: 130, boxSizing: 'border-box', background: '#fff', border: '1px solid #E6ECF4', borderLeft: `4px solid ${color}`, borderRadius: 14, padding: '10px 12px', boxShadow: '0 2px 8px rgba(0,46,110,.05)' }}>
-    <div style={{ fontSize: 10.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: .8 }}>{label}</div>
+const Stat = ({ label, value, sub, color = '#0f1b2e' }) => (
+  <div style={{ flex: '1 1 calc(50% - 10px)', minWidth: 130, boxSizing: 'border-box', background: '#fff', border: '1px solid #e8e3d8', borderLeft: `4px solid ${color}`, borderRadius: 14, padding: '10px 12px', boxShadow: '0 2px 8px rgba(19,42,79,.05)' }}>
+    <div style={{ fontSize: 10.5, fontWeight: 700, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: .8 }}>{label}</div>
     <div style={{ fontSize: 22, fontWeight: 700, color, lineHeight: 1.25 }}>{value}</div>
-    {sub ? <div style={{ fontSize: 11.5, color: '#64748B' }}>{sub}</div> : null}
+    {sub ? <div style={{ fontSize: 11.5, color: '#5d6b82' }}>{sub}</div> : null}
   </div>
 );
 const Field = ({ label, children, grow }) => (
   <div className={grow ? 'mta-field mta-grow' : 'mta-field'} style={{ flex: grow ? '1 1 220px' : '0 1 auto' }}><span style={ui.label}>{label}</span>{children}</div>
 );
 const Table = ({ head, children, maxH }) => (
-  <div className="mta-tbl" style={{ overflow: 'auto', maxHeight: maxH, border: '1px solid #E6ECF4', borderRadius: 12 }}>
+  <div className="mta-tbl" style={{ overflow: 'auto', maxHeight: maxH, border: '1px solid #e8e3d8', borderRadius: 12 }}>
     <table style={{ borderCollapse: 'collapse', width: '100%' }}>
       <thead><tr>{head.map((h, i) => <th key={i} style={{ ...ui.th, textAlign: i === 0 ? 'left' : 'center' }}>{h}</th>)}</tr></thead>
       <tbody>{children}</tbody>
     </table>
   </div>
 );
-const heatBg = (p) => (p === null || p === undefined ? '#fff' : p >= 75 ? '#bbf7d0' : p >= 60 ? '#dbeafe' : p >= 45 ? '#fef3c7' : '#fecaca');
+const heatBg = (p) => (p === null || p === undefined ? '#fff' : p >= 75 ? '#bbf7d0' : p >= 60 ? '#e4ebf6' : p >= 45 ? '#fef3c7' : '#fecaca');
 
 // Phone layout (<= 640px).  Scoped to .mta so nothing else in the portal is touched.
 const MOBILE_CSS = `
@@ -123,14 +123,14 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
         </select>
       </Field>
       <Field label="Pass mark (%)"><input type="number" min={0} max={100} style={{ ...ui.input, width: 80 }} value={passPct} onChange={(e) => setPassPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} /></Field>
-      <div style={{ fontSize: 12, color: '#64748B', paddingBottom: 8 }}>
+      <div style={{ fontSize: 12, color: '#5d6b82', paddingBottom: 8 }}>
         {rows.length ? `${meta.tests.length} tests · ${meta.batches.length} batches · ${new Set(rows.map((r) => r.sid)).size} students · ${rows.length} results` : 'No results saved for this series yet'}
         {' · '}<b style={{ color: mode === 'cloud' ? '#047857' : '#b45309' }}>{mode === 'cloud' ? 'Saved to database' : 'Saved in this browser only'}</b>
       </div>
     </div>
   );
 
-  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF' }}>⏳ Loading mock-test records…</div>;
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#8a93a6' }}>⏳ Loading mock-test records…</div>;
 
   return (
     <ResponsiveTables><div className="mta">
@@ -140,14 +140,14 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {header}
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', margin: '0 -12px 12px', padding: '2px 12px 6px', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
         {SUBTABS.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 0 auto', borderRadius: 999, padding: '8px 16px', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 7, ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(0,46,110,.25)' } : {}) }}><ExamIcon id={t.icon} size={16} />{t.label}</button>
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 0 auto', borderRadius: 999, padding: '8px 16px', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 7, ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(19,42,79,.25)' } : {}) }}><ExamIcon id={t.icon} size={16} />{t.label}</button>
         ))}
       </div>
       {!rows.length && tab !== 'data' ? (
         <div style={{ ...ui.card, textAlign: 'center', padding: 36 }}>
           <div style={{ fontSize: 34 }}>📊</div>
           <div style={{ fontWeight: 700, margin: '6px 0' }}>No mock-test results for “{series}” yet</div>
-          <div style={{ color: '#64748B', fontSize: 13, marginBottom: 12 }}>Upload the Excel result sheets (or load the built-in Pre Mock Test 2026 data) to start analysing.</div>
+          <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>Upload the Excel result sheets (or load the built-in Pre Mock Test 2026 data) to start analysing.</div>
           <button style={ui.btn} onClick={() => setTab('data')}>Go to Upload &amp; Data</button>
         </div>
       ) : null}
@@ -265,7 +265,7 @@ function StudentCard({ a, onPrint, onPrintAll, count, batch }) {
   const labels = a.tests.map((t) => `T${t.test_no}`);
   const score = lineChart({ labels, yMax: 100, unit: '%', title: 'Overall score % vs batch average', series: [
     { name: a.name.slice(0, 22), color: NAVY, values: a.tests.map((t) => t.pct), thick: true },
-    { name: 'Batch average', color: '#94a3b8', values: a.tests.map((t) => (t.cohortAvg / t.max) * 100), dashed: true }] });
+    { name: 'Batch average', color: '#8a93a6', values: a.tests.map((t) => (t.cohortAvg / t.max) * 100), dashed: true }] });
   const subj = lineChart({ labels, yMax: 100, unit: '%', title: 'Subject-wise trend (%)', series: subs.map((s) => ({ name: s, color: subjColor(subs, s), values: a.tests.map((t) => t.subj[s]?.pct ?? null) })) });
   const rank = lineChart({ labels, yMin: 0, yMax: Math.max(5, ...a.tests.map((t) => t.n)), title: 'Class rank by test (lower is better)', series: [{ name: 'Rank', color: '#be123c', values: a.tests.map((t) => t.rank), thick: true }] });
   const radar = radarChart({ title: 'Subject profile (avg %)', axes: a.subjSummary.map((s) => ({ label: s.subject })), series: [
@@ -276,7 +276,7 @@ function StudentCard({ a, onPrint, onPrintAll, count, batch }) {
       <div style={{ ...ui.card, display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 min(260px, 100%)' }}>
           <div style={{ fontSize: 20, fontWeight: 700, color: NAVY }}>{a.name}</div>
-          <div style={{ fontSize: 13, color: '#64748B' }}>GCC {a.gcc || '—'} · {a.batch}{a.batches.length > 1 ? ` (also ${a.batches.filter((b) => b !== a.batch).join(', ')})` : ''} · {S.testsAttended} of {S.testsHeld} tests</div>
+          <div style={{ fontSize: 13, color: '#5d6b82' }}>GCC {a.gcc || '—'} · {a.batch}{a.batches.length > 1 ? ` (also ${a.batches.filter((b) => b !== a.batch).join(', ')})` : ''} · {S.testsAttended} of {S.testsHeld} tests</div>
           <div style={{ marginTop: 4 }}><Pill text={S.band.label} color={S.band.color} /> {S.atRisk ? <Pill text="At risk" color="#b91c1c" /> : null}</div>
         </div>
         <button style={ui.btn} onClick={onPrint}>🖨️ Print report</button>
@@ -287,8 +287,8 @@ function StudentCard({ a, onPrint, onPrintAll, count, batch }) {
         <Stat label="Best rank" value={S.bestRank} sub={`Latest ${S.latest.rank} of ${S.latest.n}`} color={NAVY} />
         <Stat label="Best score" value={fx(S.best.total, 2)} sub={`Test ${S.best.test_no}`} color="#047857" />
         <Stat label="Trend" value={S.trendLabel} sub={`${sgn(S.trend, 2)} pts / test`} color={tone(S.trend, 1.5)} />
-        <Stat label="Consistency" value={fx(S.consistency)} sub={S.consistencyLabel} color="#475569" />
-        <Stat label="Next test (proj.)" value={S.predictedTotal === null ? '—' : fx(S.predictedTotal)} sub={S.predictedPct === null ? '' : `${fx(S.predictedPct)}%`} color="#7c3aed" />
+        <Stat label="Consistency" value={fx(S.consistency)} sub={S.consistencyLabel} color="#4b5870" />
+        <Stat label="Next test (proj.)" value={S.predictedTotal === null ? '—' : fx(S.predictedTotal)} sub={S.predictedPct === null ? '' : `${fx(S.predictedPct)}%`} color="#a7771f" />
       </div>
       <div style={ui.card}>
         <h4 style={{ margin: '0 0 8px' }}>Test-wise performance</h4>
@@ -313,7 +313,7 @@ function StudentCard({ a, onPrint, onPrintAll, count, batch }) {
         <Table head={['Subject', 'Avg', 'Avg %', 'Best', 'Lowest', 'Latest', 'Batch %', '± batch', 'Trend', 'SD', 'Batch rank', 'Status']}>
           {a.subjSummary.map((s) => (
             <tr key={s.subject}>
-              <td style={{ ...ui.td, textAlign: 'left', fontWeight: 700 }}><span style={{ color: subjColor(subs, s.subject) }}>■</span> {s.subject} <small style={{ color: '#94a3b8' }}>/{s.max}</small></td>
+              <td style={{ ...ui.td, textAlign: 'left', fontWeight: 700 }}><span style={{ color: subjColor(subs, s.subject) }}>■</span> {s.subject} <small style={{ color: '#8a93a6' }}>/{s.max}</small></td>
               <td style={ui.td}>{fx(s.avg, 2)}</td><td style={{ ...ui.td, fontWeight: 700, color: s.label.color }}>{fx(s.avgPct)}%</td>
               <td style={ui.td}>{fx(s.best.marks, 2)} <small>T{s.best.test_no}</small></td><td style={ui.td}>{fx(s.worst.marks, 2)} <small>T{s.worst.test_no}</small></td>
               <td style={ui.td}>{fx(s.latest.marks, 2)}</td><td style={ui.td}>{fx(s.cohortAvgPct)}%</td>
@@ -361,7 +361,7 @@ function SubjectView({ rows, meta, passPct, institute, series }) {
   const tests = b.meta.tests;
   const ranked = b.students.filter((s) => s.sub[ps.subject] !== undefined).sort((x, y) => y.sub[ps.subject] - x.sub[ps.subject]);
   const trend = tests.length > 1 ? lineChart({ labels: tests.map((t) => `T${t}`), yMax: 100, unit: '%', title: `${ps.subject} — average % by test`, series: [{ name: ps.subject, color: col, values: ps.byTest.map((x) => x.avgPct), thick: true }] }) : '';
-  const compare = barChart({ title: 'This subject vs other subjects (avg %)', yMax: 100, unit: '%', groups: b.perSubject.map((s) => ({ label: s.subject, bars: [{ name: 'Average %', value: s.avgPct, color: s.subject === ps.subject ? col : '#cbd5e1' }] })) });
+  const compare = barChart({ title: 'This subject vs other subjects (avg %)', yMax: 100, unit: '%', groups: b.perSubject.map((s) => ({ label: s.subject, bars: [{ name: 'Average %', value: s.avgPct, color: s.subject === ps.subject ? col : '#d9d2c2' }] })) });
   return (
     <>
       <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', padding: 12 }}>
@@ -377,10 +377,10 @@ function SubjectView({ rows, meta, passPct, institute, series }) {
         <Stat label="Lowest" value={fx(ps.low, 2)} sub={`${ps.lowWho} (T${ps.lowTest})`} color="#b91c1c" />
         <Stat label="Median / SD" value={fx(ps.median, 2)} sub={`SD ${fx(ps.sd)}`} color={NAVY} />
         <Stat label={`Pass ≥ ${passPct}%`} value={`${fx(ps.pass, 0)}%`} color={ps.pass >= 75 ? '#047857' : '#b45309'} />
-        <Stat label="Full marks" value={ps.full} sub="scores" color="#7c3aed" />
+        <Stat label="Full marks" value={ps.full} sub="scores" color="#a7771f" />
       </div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-        <div style={{ ...ui.card, flex: '1 1 min(400px, 100%)' }}>{trend ? <Svg minW={520} html={trend} /> : <i style={{ color: '#64748B' }}>Single test selected — no trend.</i>}</div>
+        <div style={{ ...ui.card, flex: '1 1 min(400px, 100%)' }}>{trend ? <Svg minW={520} html={trend} /> : <i style={{ color: '#5d6b82' }}>Single test selected — no trend.</i>}</div>
         <div style={{ ...ui.card, flex: '1 1 min(400px, 100%)' }}><Svg minW={520} html={compare} /></div>
       </div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
@@ -464,7 +464,7 @@ function BatchView({ rows, meta, passPct, institute, series }) {
         {[['🚀 Most improved', b.improvers, (s) => `${sgn(s.trend, 2)} pts/test`, '#047857'], ['📉 Declining', b.decliners, (s) => `${sgn(s.trend, 2)} pts/test`, '#b91c1c'],
           ['🎯 Most consistent', b.consistent, (s) => `SD ${fx(s.consistency)}`, NAVY], ['⚠️ At risk', b.atRisk.slice(0, 8), (s) => `${fx(s.avgPct)}% avg`, '#b91c1c']].map(([t, arr, f, c]) => (
           <div key={t} style={{ ...ui.card, flex: '1 1 min(240px, 100%)' }}><h4 style={{ margin: '0 0 6px', color: c }}>{t}</h4>
-            {arr.length ? arr.map((s) => <div key={s.sid} style={{ fontSize: 13, padding: '3px 0' }}>{s.name} <b style={{ float: 'right' }}>{f(s)}</b></div>) : <i style={{ color: '#64748B' }}>None</i>}</div>
+            {arr.length ? arr.map((s) => <div key={s.sid} style={{ fontSize: 13, padding: '3px 0' }}>{s.name} <b style={{ float: 'right' }}>{f(s)}</b></div>) : <i style={{ color: '#5d6b82' }}>None</i>}</div>
         ))}
       </div>
     </>
@@ -599,14 +599,14 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
   return (
     <>
       {msg ? <div style={{ ...ui.card, fontSize: 13 }}>{msg}</div> : null}
-      {busy ? <div style={{ ...ui.card, fontSize: 13, color: '#64748B' }}>⏳ {busy}</div> : null}
+      {busy ? <div style={{ ...ui.card, fontSize: 13, color: '#5d6b82' }}>⏳ {busy}</div> : null}
       {mode === 'cloud' && localCount() > 0 && canUpload ? (
-        <div style={{ ...ui.card, background: '#EFF6FF', fontSize: 13 }}>This browser holds {localCount()} results saved before the database table existed. <button style={{ ...ui.btn, marginLeft: 8 }} onClick={migrate}>Move to database</button></div>
+        <div style={{ ...ui.card, background: '#eef2f9', fontSize: 13 }}>This browser holds {localCount()} results saved before the database table existed. <button style={{ ...ui.btn, marginLeft: 8 }} onClick={migrate}>Move to database</button></div>
       ) : null}
       {canUpload ? (
         <div style={ui.card}>
           <h4 style={{ margin: '0 0 4px' }}>📤 Upload result sheets (Excel / CSV)</h4>
-          <div style={{ fontSize: 12.5, color: '#64748B', marginBottom: 10 }}>
+          <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 10 }}>
             One sheet per batch per test with columns <b>GCC No · Name · subject columns · Score · Rank</b> (any column order). Several files can be uploaded at once; test number and batch are read from the file name and can be corrected below. Re-uploading the same test + batch replaces the earlier copy.
           </div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -614,7 +614,7 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
             <Field label="Excel / CSV files"><input ref={fileRef} type="file" multiple accept=".xls,.xlsx,.csv" onChange={(e) => e.target.files?.length && onFiles(e.target.files)} /></Field>
           </div>
           {files.map((f) => (
-            <div key={f.key} style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 12, marginTop: 12, background: '#F8FAFC' }}>
+            <div key={f.key} style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 12, marginTop: 12, background: '#faf8f3' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                 <b style={{ fontSize: 13, wordBreak: 'break-all' }}>📄 {f.name}</b>
                 <button style={ui.ghost} onClick={() => setFiles((cur) => cur.filter((x) => x.key !== f.key))}>✕ Remove</button>
@@ -649,18 +649,18 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
           ))}
           {files.length ? <div style={{ marginTop: 12 }}><button style={ui.btn} disabled={!!busy || !files.some(valid)} onClick={saveAll}>💾 Save {files.filter(valid).length} sheet(s) to records</button></div> : null}
         </div>
-      ) : <div style={{ ...ui.card, fontSize: 13, color: '#64748B' }}>You do not have permission to upload results.</div>}
+      ) : <div style={{ ...ui.card, fontSize: 13, color: '#5d6b82' }}>You do not have permission to upload results.</div>}
 
       {canUpload ? (
         <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ flex: '1 1 min(300px, 100%)' }}><b>Built-in data: Pre Mock Test 2026</b><div style={{ fontSize: 12.5, color: '#64748B' }}>24 result sheets · 8 tests · Lakshya A/B, Umeed, Combined English &amp; Manipuri · Mental Ability, EVS, Mathematics, Passage (25 each).</div></div>
+          <div style={{ flex: '1 1 min(300px, 100%)' }}><b>Built-in data: Pre Mock Test 2026</b><div style={{ fontSize: 12.5, color: '#5d6b82' }}>24 result sheets · 8 tests · Lakshya A/B, Umeed, Combined English &amp; Manipuri · Mental Ability, EVS, Mathematics, Passage (25 each).</div></div>
           <button style={ui.btn} disabled={!!busy} onClick={loadSeed}>📥 Load Pre Mock Test 2026 data</button>
           <button style={ui.ghost} disabled={!meta.tests.length} onClick={exportAll}>⬇️ Export this series (Excel)</button>
         </div>
       ) : null}
 
       {fixMode === 'cloud' && localFixCount() > 0 && canUpload ? (
-        <div style={{ ...ui.card, background: '#EFF6FF', fontSize: 13 }}>This browser holds {localFixCount()} data fix(es) saved before the fixes table existed. <button style={{ ...ui.btn, marginLeft: 8 }} onClick={async () => { await migrateLocalFixes(); await reload(); }}>Move to database</button></div>
+        <div style={{ ...ui.card, background: '#eef2f9', fontSize: 13 }}>This browser holds {localFixCount()} data fix(es) saved before the fixes table existed. <button style={{ ...ui.btn, marginLeft: 8 }} onClick={async () => { await migrateLocalFixes(); await reload(); }}>Move to database</button></div>
       ) : null}
       {fixMode === 'local' ? <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>⚠️ Data fixes are saved in this browser only — run supabase/migrations/20261003_mock_test_fixes.sql to keep them permanently and share them.</div> : null}
       {rows.length ? <MockFixEngine rows={rows} rawRows={rawRows} fixes={fixes} series={series} mode={fixMode} who={who} canEdit={canUpload} onChanged={reload} /> : null}
@@ -668,7 +668,7 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
       {match.students ? (
         <div style={ui.card}>
           <h4 style={{ margin: '0 0 4px' }}>🔍 Student matching check</h4>
-          <div style={{ fontSize: 12.5, color: '#64748B', marginBottom: 8 }}>
+          <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 8 }}>
             Students are tied together across tests by GCC number, then by name (spelling variants, blank or mistyped GCC). Check the lists below if a student looks like they are missing data.
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -705,7 +705,7 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
 
       {canDelete ? (
         <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', background: '#FEF2F2', borderColor: '#FECACA' }}>
-          <div style={{ flex: '1 1 min(300px, 100%)' }}><b style={{ color: '#b91c1c' }}>Reset data</b><div style={{ fontSize: 12.5, color: '#64748B' }}>Permanently delete saved results. You will be asked to type RESET to confirm.</div></div>
+          <div style={{ flex: '1 1 min(300px, 100%)' }}><b style={{ color: '#b91c1c' }}>Reset data</b><div style={{ fontSize: 12.5, color: '#5d6b82' }}>Permanently delete saved results. You will be asked to type RESET to confirm.</div></div>
           <button style={{ ...ui.ghost, color: '#b91c1c' }} disabled={!!busy} onClick={() => resetData(false)}>Reset this series</button>
           <button style={{ ...ui.btn, background: '#b91c1c' }} disabled={!!busy} onClick={() => resetData(true)}>Reset everything</button>
         </div>
@@ -723,7 +723,7 @@ function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, m
               </tr>
             ))}
           </Table>
-        ) : <div style={{ color: '#64748B', fontSize: 13 }}>Nothing saved yet.</div>}
+        ) : <div style={{ color: '#5d6b82', fontSize: 13 }}>Nothing saved yet.</div>}
       </div>
     </>
   );

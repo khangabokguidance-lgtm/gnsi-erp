@@ -10,17 +10,17 @@ import { detectIssues, ruleSetStudent, ruleMerge, ruleDropRecord, describeRule, 
 import { cleanName, gccDigits } from './lib/mockTestEngine';
 import { saveFixes, deleteFixGroup } from './lib/mockTestStore';
 
-const NAVY = '#002E6E';
+const NAVY = '#132a4f';
 const st = {
-  card: { background: '#fff', border: '1px solid #E6ECF4', borderRadius: 16, padding: 14, marginBottom: 12, boxShadow: '0 2px 10px rgba(0,46,110,.06)' },
-  input: { padding: '8px 12px', borderRadius: 12, border: '1px solid #D6E0EE', fontSize: 13, background: '#fff', color: '#111827', fontFamily: 'inherit', minWidth: 0, width: '100%', boxSizing: 'border-box' },
+  card: { background: '#fff', border: '1px solid #e8e3d8', borderRadius: 16, padding: 14, marginBottom: 12, boxShadow: '0 2px 10px rgba(19,42,79,.06)' },
+  input: { padding: '8px 12px', borderRadius: 12, border: '1px solid #d9d2c2', fontSize: 13, background: '#fff', color: '#0f1b2e', fontFamily: 'inherit', minWidth: 0, width: '100%', boxSizing: 'border-box' },
   btn: { padding: '9px 16px', borderRadius: 12, border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: NAVY, color: '#fff', fontFamily: 'inherit' },
-  ghost: { padding: '8px 14px', borderRadius: 12, border: '1px solid #D6E0EE', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#fff', color: '#334155', fontFamily: 'inherit' },
-  label: { fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.8, margin: '8px 0 4px', display: 'block' },
+  ghost: { padding: '8px 14px', borderRadius: 12, border: '1px solid #d9d2c2', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#fff', color: '#2e3b52', fontFamily: 'inherit' },
+  label: { fontSize: 11, fontWeight: 700, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: 0.8, margin: '8px 0 4px', display: 'block' },
 };
 // group id shared by the rules of one fix, so Undo removes them together
 const stamp = () => `fx-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-const SEV = { fix: { c: '#047857', t: 'Auto-fix' }, review: { c: '#b45309', t: 'Review' }, info: { c: '#64748B', t: 'Info' } };
+const SEV = { fix: { c: '#047857', t: 'Auto-fix' }, review: { c: '#b45309', t: 'Review' }, info: { c: '#5d6b82', t: 'Info' } };
 const Pill = ({ text, color }) => <span style={{ background: color, color: '#fff', borderRadius: 10, padding: '1px 9px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{text}</span>;
 const studentLabel = (s) => `${s.name}${s.gcc ? ` · GCC ${s.gcc}` : ''} · ${s.batch} · ${s.tests.map((t) => 'T' + t).join('')}`;
 function StudentSelect({ roster, value, onChange, placeholder }) {
@@ -32,8 +32,8 @@ function StudentSelect({ roster, value, onChange, placeholder }) {
   );
 }
 const Tile = ({ label, value, color }) => (
-  <div style={{ flex: '1 1 calc(33% - 8px)', minWidth: 96, boxSizing: 'border-box', background: '#fff', border: '1px solid #E6ECF4', borderLeft: `4px solid ${color}`, borderRadius: 14, padding: '8px 12px' }}>
-    <div style={{ fontSize: 10.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.8 }}>{label}</div>
+  <div style={{ flex: '1 1 calc(33% - 8px)', minWidth: 96, boxSizing: 'border-box', background: '#fff', border: '1px solid #e8e3d8', borderLeft: `4px solid ${color}`, borderRadius: 14, padding: '8px 12px' }}>
+    <div style={{ fontSize: 10.5, fontWeight: 700, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: 0.8 }}>{label}</div>
     <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
   </div>
 );
@@ -111,7 +111,7 @@ export default function MockFixEngine({ rows, rawRows, fixes, series, mode, who,
   return (
     <div style={st.card}>
       <h4 style={{ margin: '0 0 4px' }}>🛠️ Student Data Fix Engine</h4>
-      <div style={{ fontSize: 12.5, color: '#64748B', marginBottom: 10 }}>
+      <div style={{ fontSize: 12.5, color: '#5d6b82', marginBottom: 10 }}>
         Finds errors in student data (wrong or blank GCC, duplicates, bad marks) and corrects them with saved rules that are applied to every analysis and every future upload.
         Your uploaded sheets are never edited, and every fix can be undone.
       </div>
@@ -121,7 +121,7 @@ export default function MockFixEngine({ rows, rawRows, fixes, series, mode, who,
         <Tile label="Active fixes" value={groups.length} color={NAVY} />
       </div>
       {msg ? <div style={{ fontSize: 13, margin: '6px 0' }}>{msg}</div> : null}
-      {busy ? <div style={{ fontSize: 13, color: '#64748B' }}>⏳ {busy}</div> : null}
+      {busy ? <div style={{ fontSize: 13, color: '#5d6b82' }}>⏳ {busy}</div> : null}
       {canEdit && fixable.length ? <button style={{ ...st.btn, margin: '4px 0 10px' }} disabled={!!busy} onClick={applyAll}>✨ Apply all {fixable.length} automatic fixes</button> : null}
       {!issues.filter((i) => i.severity !== 'info').length ? <div style={{ fontSize: 13, color: '#047857', marginBottom: 6 }}>✅ No data errors found.</div> : null}
 
@@ -130,11 +130,11 @@ export default function MockFixEngine({ rows, rawRows, fixes, series, mode, who,
           <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>{title} ({list.length})</summary>
           <div style={{ marginTop: 6, display: 'grid', gap: 8 }}>
             {list.map((i) => (
-              <div key={i.id} style={{ border: '1px solid #E6ECF4', borderLeft: `4px solid ${SEV[sev].c}`, borderRadius: 12, padding: '8px 12px' }}>
+              <div key={i.id} style={{ border: '1px solid #e8e3d8', borderLeft: `4px solid ${SEV[sev].c}`, borderRadius: 12, padding: '8px 12px' }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' }}>
                   <div style={{ flex: '1 1 220px', minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 13.5, overflowWrap: 'anywhere' }}>{i.title}</div>
-                    <div style={{ fontSize: 12, color: '#64748B', marginTop: 2, overflowWrap: 'anywhere' }}>{i.detail}</div>
+                    <div style={{ fontSize: 12, color: '#5d6b82', marginTop: 2, overflowWrap: 'anywhere' }}>{i.detail}</div>
                   </div>
                   {canEdit && i.rules.length ? <button style={st.ghost} disabled={!!busy} onClick={() => applyIssue(i)}>Apply fix</button> : <Pill text={SEV[sev].t} color={SEV[sev].c} />}
                 </div>
@@ -147,7 +147,7 @@ export default function MockFixEngine({ rows, rawRows, fixes, series, mode, who,
         <details style={{ marginBottom: 8 }}>
           <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>For information ({info.length})</summary>
           <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
-            {info.map((i) => <div key={i.id} style={{ fontSize: 12.5, padding: '4px 0', borderBottom: '1px dashed #E6ECF4' }}><b>{i.title}</b><div style={{ color: '#64748B' }}>{i.detail}</div></div>)}
+            {info.map((i) => <div key={i.id} style={{ fontSize: 12.5, padding: '4px 0', borderBottom: '1px dashed #e8e3d8' }}><b>{i.title}</b><div style={{ color: '#5d6b82' }}>{i.detail}</div></div>)}
           </div>
         </details>
       ) : null}
@@ -156,25 +156,25 @@ export default function MockFixEngine({ rows, rawRows, fixes, series, mode, who,
         <details style={{ marginBottom: 8 }}>
           <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>Fix by hand</summary>
           <div style={{ marginTop: 8, display: 'grid', gap: 12 }}>
-            <div style={{ border: '1px solid #E6ECF4', borderRadius: 12, padding: 12 }}>
+            <div style={{ border: '1px solid #e8e3d8', borderRadius: 12, padding: 12 }}>
               <b style={{ fontSize: 13 }}>Merge two students</b>
-              <div style={{ fontSize: 12, color: '#64748B' }}>The same child appears as two students? Choose the wrong one and the right one.</div>
+              <div style={{ fontSize: 12, color: '#5d6b82' }}>The same child appears as two students? Choose the wrong one and the right one.</div>
               <span style={st.label}>Wrong / duplicate</span><StudentSelect roster={roster} value={aId} onChange={setAId} placeholder="Select student…" />
               <span style={st.label}>Count their records under</span><StudentSelect roster={roster} value={bId} onChange={setBId} placeholder="Select student…" />
               {A && B && A.sid === B.sid ? <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 6 }}>Pick two different students.</div> : null}
               {A && B && A.sid !== B.sid && A.tests.some((t) => B.tests.includes(t)) ? <div style={{ fontSize: 12, color: '#b45309', marginTop: 6 }}>⚠ Both have a record for the same test ({A.tests.filter((t) => B.tests.includes(t)).map((t) => 'T' + t).join(' ')}) — merging would put two records in one test.</div> : null}
               <button style={{ ...st.btn, marginTop: 10 }} disabled={!!busy || !A || !B || A.sid === B.sid} onClick={doMerge}>Merge</button>
             </div>
-            <div style={{ border: '1px solid #E6ECF4', borderRadius: 12, padding: 12 }}>
+            <div style={{ border: '1px solid #e8e3d8', borderRadius: 12, padding: 12 }}>
               <b style={{ fontSize: 13 }}>Correct GCC / name</b>
               <span style={st.label}>Student</span><StudentSelect roster={roster} value={cId} onChange={setCId} placeholder="Select student…" />
               <span style={st.label}>Correct GCC number</span><input style={st.input} inputMode="numeric" value={newGcc} onChange={(e) => setNewGcc(e.target.value)} placeholder={C ? `now ${C.gcc || 'blank'}` : ''} />
               <span style={st.label}>Correct name</span><input style={st.input} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={C ? `now ${C.name}` : ''} />
               <button style={{ ...st.btn, marginTop: 10 }} disabled={!!busy || !C || (!gccDigits(newGcc) && !newName.trim())} onClick={doCorrect}>Save correction</button>
             </div>
-            <div style={{ border: '1px solid #E6ECF4', borderRadius: 12, padding: 12 }}>
+            <div style={{ border: '1px solid #e8e3d8', borderRadius: 12, padding: 12 }}>
               <b style={{ fontSize: 13 }}>Remove a bad record</b>
-              <div style={{ fontSize: 12, color: '#64748B' }}>Ignores one test record in all analyses (the uploaded sheet is untouched).</div>
+              <div style={{ fontSize: 12, color: '#5d6b82' }}>Ignores one test record in all analyses (the uploaded sheet is untouched).</div>
               <span style={st.label}>Student</span><StudentSelect roster={roster} value={dropId} onChange={(v) => { setDropId(v); setDropTest(''); }} placeholder="Select student…" />
               <span style={st.label}>Test</span>
               <select style={st.input} value={dropTest} onChange={(e) => setDropTest(e.target.value)} disabled={!D}>
@@ -191,15 +191,15 @@ export default function MockFixEngine({ rows, rawRows, fixes, series, mode, who,
         <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>Active fixes ({groups.length})</summary>
         <div style={{ marginTop: 6, display: 'grid', gap: 8 }}>
           {groups.length ? groups.map((g) => (
-            <div key={g[0].group || g[0].id} style={{ border: '1px solid #E6ECF4', borderRadius: 12, padding: '8px 12px', display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div key={g[0].group || g[0].id} style={{ border: '1px solid #e8e3d8', borderRadius: 12, padding: '8px 12px', display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <div style={{ flex: '1 1 220px', minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 13, overflowWrap: 'anywhere' }}>{g[0].note || describeRule(g[0])}</div>
-                <div style={{ fontSize: 12, color: '#64748B', overflowWrap: 'anywhere' }}>{g.map(describeRule).join(' · ')}</div>
-                <div style={{ fontSize: 11.5, color: '#94A3B8' }}>Affects {affected(g)} record(s){g[0].created_by ? ` · by ${g[0].created_by}` : ''}</div>
+                <div style={{ fontSize: 12, color: '#5d6b82', overflowWrap: 'anywhere' }}>{g.map(describeRule).join(' · ')}</div>
+                <div style={{ fontSize: 11.5, color: '#8a93a6' }}>Affects {affected(g)} record(s){g[0].created_by ? ` · by ${g[0].created_by}` : ''}</div>
               </div>
               {canEdit ? <button style={{ ...st.ghost, color: '#b91c1c' }} disabled={!!busy} onClick={() => undo(g[0])}>Undo</button> : null}
             </div>
-          )) : <div style={{ fontSize: 13, color: '#64748B' }}>No fixes saved yet.</div>}
+          )) : <div style={{ fontSize: 13, color: '#5d6b82' }}>No fixes saved yet.</div>}
         </div>
       </details>
     </div>
