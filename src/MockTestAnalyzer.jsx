@@ -15,7 +15,9 @@ import {
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
 import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } from './lib/mockTestReports';
 import ResponsiveTables from './ResponsiveTables';
-import { loadAll, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount } from './lib/mockTestStore';
+import { loadAll, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount } from './lib/mockTestStore';
+import { applyFixes } from './lib/studentFixEngine';
+import MockFixEngine from './MockFixEngine';
 
 const NAVY = '#002E6E';
 const ui = {
@@ -84,23 +86,31 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
   const [err, setErr] = useState('');
   const [series, setSeries] = useState(DEFAULT_SERIES);
   const [passPct, setPassPct] = useState(40);
+  const [fixes, setFixes] = useState([]);
+  const [fixMode, setFixMode] = useState('cloud');
 
   const apply = useCallback((r) => {
     setAllRows(r.rows); setMode(r.mode); setNote(r.note); setErr('');
     const names = [...new Set(r.rows.map((x) => x.series))];
     setSeries((cur) => (names.length && !names.includes(cur) ? names[0] : cur));
   }, []);
+  const applyFix = useCallback((f) => { setFixes(f.fixes); setFixMode(f.mode); }, []);
   const reload = useCallback(async () => {
-    try { apply(await loadAll()); } catch (e) { setErr(e.message || String(e)); }
-  }, [apply]);
+    try { apply(await loadAll()); applyFix(await loadFixes()); } catch (e) { setErr(e.message || String(e)); }
+  }, [apply, applyFix]);
   useEffect(() => {
     let live = true;
-    loadAll().then((r) => { if (live) apply(r); }).catch((e) => { if (live) setErr(e.message || String(e)); }).finally(() => { if (live) setLoading(false); });
+    Promise.all([loadAll(), loadFixes().catch(() => ({ fixes: [], mode: 'local' }))])
+      .then(([r, f]) => { if (live) { apply(r); applyFix(f); } })
+      .catch((e) => { if (live) setErr(e.message || String(e)); })
+      .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [apply]);
+  }, [apply, applyFix]);
 
   const seriesNames = useMemo(() => [...new Set(allRows.map((r) => r.series))].sort(), [allRows]);
-  const rows = useMemo(() => resolveIdentities(allRows.filter((r) => r.series === series)), [allRows, series]);
+  // uploaded rows -> saved Student Data Fix Engine rules -> identity matching
+  const seriesRaw = useMemo(() => allRows.filter((r) => r.series === series), [allRows, series]);
+  const rows = useMemo(() => resolveIdentities(applyFixes(seriesRaw, fixes.filter((f) => !f.series || f.series === series))), [seriesRaw, fixes, series]);
   const meta = useMemo(() => seriesMeta(rows), [rows]);
   const who = currentUser?.username || currentUser?.name || '';
 
@@ -145,7 +155,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {rows.length && tab === 'subject' ? <SubjectView rows={rows} meta={meta} passPct={passPct} institute={institute} series={series} /> : null}
       {rows.length && tab === 'batch' ? <BatchView rows={rows} meta={meta} passPct={passPct} institute={institute} series={series} /> : null}
       {tab === 'data' ? (
-        <DataView allRows={allRows} series={series} setSeries={setSeries} mode={mode} meta={meta} who={who}
+        <DataView allRows={allRows} rawRows={seriesRaw} rows={rows} fixes={fixes} fixMode={fixMode} series={series} setSeries={setSeries} mode={mode} meta={meta} who={who}
           canUpload={canUpload} canDelete={canDelete} reload={reload} />
       ) : null}
     </div></ResponsiveTables>
@@ -463,7 +473,7 @@ function BatchView({ rows, meta, passPct, institute, series }) {
 // ─── Upload & data ────────────────────────────────────────────────────────────
 const SEED_SUBJECTS = ['Mental Ability', 'EVS', 'Mathematics', 'Passage'];
 
-function DataView({ allRows, series, setSeries, mode, meta, who, canUpload, canDelete, reload }) {
+function DataView({ allRows, rawRows, rows, fixes, fixMode, series, setSeries, mode, meta, who, canUpload, canDelete, reload }) {
   const [files, setFiles] = useState([]);
   const [seriesEdit, setNewSeries] = useState(null);
   const newSeries = seriesEdit ?? series;
@@ -477,7 +487,7 @@ function DataView({ allRows, series, setSeries, mode, meta, who, canUpload, canD
     return m;
   }, [allRows, newSeries]);
   const batchNames = useMemo(() => [...new Set(allRows.map((r) => r.batch))].sort(), [allRows]);
-  const match = useMemo(() => matchingReport(resolveIdentities(allRows.filter((r) => r.series === series))), [allRows, series]);
+  const match = useMemo(() => matchingReport(rows), [rows]);
 
   const onFiles = async (fl) => {
     setMsg(''); setBusy('Reading files…');
@@ -647,6 +657,12 @@ function DataView({ allRows, series, setSeries, mode, meta, who, canUpload, canD
           <button style={ui.ghost} disabled={!meta.tests.length} onClick={exportAll}>⬇️ Export this series (Excel)</button>
         </div>
       ) : null}
+
+      {fixMode === 'cloud' && localFixCount() > 0 && canUpload ? (
+        <div style={{ ...ui.card, background: '#EFF6FF', fontSize: 13 }}>This browser holds {localFixCount()} data fix(es) saved before the fixes table existed. <button style={{ ...ui.btn, marginLeft: 8 }} onClick={async () => { await migrateLocalFixes(); await reload(); }}>Move to database</button></div>
+      ) : null}
+      {fixMode === 'local' ? <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>⚠️ Data fixes are saved in this browser only — run supabase/migrations/20261003_mock_test_fixes.sql to keep them permanently and share them.</div> : null}
+      {rows.length ? <MockFixEngine rows={rows} rawRows={rawRows} fixes={fixes} series={series} mode={fixMode} who={who} canEdit={canUpload} onChanged={reload} /> : null}
 
       {match.students ? (
         <div style={ui.card}>

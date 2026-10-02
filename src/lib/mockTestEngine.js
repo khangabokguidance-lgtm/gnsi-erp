@@ -609,12 +609,19 @@ export function parseResultSheet(aoa) {
     const sum = Object.values(marks).reduce((s, x) => s + x, 0);
     const fileTotal = totalCol >= 0 ? num(line[totalCol]) : null;
     if (fileTotal !== null && Math.abs(fileTotal - sum) > 0.01) warnings.push(`Row ${r + 1} (${nm}): total ${fileTotal} ≠ sum of subjects ${r2(sum)} — using the sum.`);
+    // GCC: keep digits only ("111*" -> "111"); anything non-numeric ("N/A") becomes blank
+    const gccRaw = gccCol >= 0 ? String(line[gccCol] ?? '').trim() : '';
+    const gccClean = gccDigits(gccRaw);
+    if (gccRaw && gccRaw !== gccClean) warnings.push(`Row ${r + 1} (${nm}): GCC "${gccRaw}" ${gccClean ? `cleaned to "${gccClean}"` : 'is not a number — left blank'}.`);
     rows.push({
-      gcc_no: gccCol >= 0 ? String(line[gccCol] ?? '').trim() : '',
+      gcc_no: gccClean,
       student_name: nm, marks, total: sum, rank: rankCol >= 0 ? num(line[rankCol]) : null,
     });
   }
   const subjects = subjCols.map((c) => c.subject);
+  const seenG = new Map();
+  rows.forEach((x) => { if (x.gcc_no) seenG.set(x.gcc_no, [...(seenG.get(x.gcc_no) || []), x.student_name]); });
+  seenG.forEach((names, g) => { if (names.length > 1) warnings.push(`GCC ${g} appears ${names.length} times in this sheet (${names.join(', ')}) — check for a typo.`); });
   // ranks: use the sheet's own where present, otherwise rank by total
   const rk = denseRanks(rows.map((x) => x.total));
   rows.forEach((x, i) => { if (x.rank === null) x.rank = rk[i]; });
