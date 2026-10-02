@@ -5,6 +5,7 @@
 
 import { printFeeReceipt } from './premiumReceipt'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
 import FeeCollectionModal from './FeeCollectionModal'
 import { getFlatFeeAmtSync, getFeeRates, getSessionYear, collectFee, rcptNo, gccStr as gccStrFee, printScholarshipRequestForm, printScholarshipApprovalCertificate } from './feeEngine'
@@ -5623,17 +5624,40 @@ const effectiveCols = visibleCols.filter(col => {
 
         {/* Page-level tabs — Dashboard / Students / Scholarship / Data Quality */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:16}}>
-          <nav className="st-tabs" role="tablist" style={{maxWidth:'100%'}}>
-            {[{key:'courses',label:'Courses',icon:SIcon.layers},{key:'dashboard',label:'Dashboard',icon:SIcon.home},{key:'students',label:'All Students',icon:SIcon.users},{key:'scholarship',label:'Scholarship/Waiver',icon:SIcon.fileText},{key:'dataQuality',label:'Data Quality',icon:SIcon.check}].map(t=>{
-              const active=pageTab===t.key
-              return (
-                <button key={t.key} role="tab" aria-selected={active} className={'st-tab'+(active?' on':'')} onClick={()=>setPageTab(t.key)}>
-                  <t.icon size={15}/>
-                  {t.label}
-                </button>
-              )
-            })}
-          </nav>
+          {(()=>{
+            const PAGE_TABS=[{key:'courses',label:'Courses',short:'Courses',icon:SIcon.layers},{key:'dashboard',label:'Dashboard',short:'Home',icon:SIcon.home},{key:'students',label:'All Students',short:'Students',icon:SIcon.users},{key:'scholarship',label:'Scholarship/Waiver',short:'Waiver',icon:SIcon.fileText},{key:'dataQuality',label:'Data Quality',short:'Quality',icon:SIcon.check}]
+            // Phone: payments-app style bottom navigation instead of the scrolling tab strip
+            if(isMobile) return createPortal(
+              <nav className="st-bottom" role="tablist" aria-label="Students sections">
+                <style>{`.st-bottom{position:fixed;left:0;right:0;bottom:0;z-index:120;display:grid;grid-template-columns:repeat(5,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+.st-nb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:3px 0;font:600 10.5px 'Plus Jakarta Sans',system-ui,sans-serif;color:#b9c3d6;cursor:pointer}
+.st-nb .st-bi{display:flex;align-items:center;justify-content:center;width:42px;height:27px;border-radius:10px}
+.st-nb.on{color:#fff;font-weight:800}
+.st-nb.on .st-bi{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
+.st-nb:focus-visible{outline:2px solid #e9d9b0;outline-offset:-2px;border-radius:10px}
+.st-pad{height:76px}`}</style>
+                {PAGE_TABS.map(t=>(
+                  <button key={t.key} role="tab" aria-selected={pageTab===t.key} aria-label={t.label} className={'st-nb'+(pageTab===t.key?' on':'')} onClick={()=>{setPageTab(t.key);window.scrollTo({top:0})}}>
+                    <span className="st-bi"><t.icon size={20}/></span><span>{t.short}</span>
+                  </button>
+                ))}
+              </nav>,
+              document.body
+            )
+            return (
+              <nav className="st-tabs" role="tablist" style={{maxWidth:'100%'}}>
+                {PAGE_TABS.map(t=>{
+                  const active=pageTab===t.key
+                  return (
+                    <button key={t.key} role="tab" aria-selected={active} className={'st-tab'+(active?' on':'')} onClick={()=>setPageTab(t.key)}>
+                      <t.icon size={15}/>
+                      {t.label}
+                    </button>
+                  )
+                })}
+              </nav>
+            )
+          })()}
 
         {/* Action Toolbar */}
         {pageTab==='students'&&(
@@ -5890,6 +5914,7 @@ const effectiveCols = visibleCols.filter(col => {
         )}
         </>)}
       </div>
+      {isMobile&&<div style={{height:76}} aria-hidden="true"/>}
     </>
   )
 }
