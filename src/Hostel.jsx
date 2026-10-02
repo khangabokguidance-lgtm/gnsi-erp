@@ -10,7 +10,7 @@ import { getInstitute } from './systemSettings'
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
 import { ClassTimetableTab } from './ClassTimetableTab'
 import HMDoubtSessionsTab from './HMDoubtSessionsTab'
-import LeaveTab, { StudentSelfService, GatePassVerifyPage } from './LeaveTab'
+import LeaveTab from './LeaveTab'
 import HouseReportModal from './HouseReportModal'
 import { sendPushToStaffId, notifyHousemasterByName, notifyHousemasterByHouse } from './notifications'
 import { approveLeaveRecord, checkQuotaBeforeApproval } from './leaveApproval'
@@ -32,7 +32,7 @@ function useStudentsUpdatedListener(callback) {
     const handler = (e) => callback(e.detail)
     window.addEventListener('gnsi:students-updated', handler)
     return () => window.removeEventListener('gnsi:students-updated', handler)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [callback])
 }
 
@@ -141,7 +141,7 @@ function loadAutoFired() {
   } catch { return {} }
 }
 function saveAutoFired(obj) {
-  try { localStorage.setItem(AUTO_FIRED_KEY, JSON.stringify(obj)) } catch { }
+  try { localStorage.setItem(AUTO_FIRED_KEY, JSON.stringify(obj)) } catch { /* ignore */ }
 }
 
 // ─── Shared styles — quiet institutional surfaces on the refined palette ──
@@ -6412,7 +6412,7 @@ function loadChecks() {
   try { return JSON.parse(localStorage.getItem(CHECK_KEY()) || '{}') } catch { return {} }
 }
 function saveChecks(obj) {
-  try { localStorage.setItem(CHECK_KEY(), JSON.stringify(obj)) } catch { }
+  try { localStorage.setItem(CHECK_KEY(), JSON.stringify(obj)) } catch { /* ignore */ }
 }
 
 function ScheduleTab({ currentUser }) {
@@ -11694,7 +11694,7 @@ function StudentTransferTab({ students, currentUser }) {
     for (const s of toRemove) {
       try {
         await vacateStudent(s.id)
-      } catch (e) {
+      } catch {
         failed++
       }
     }

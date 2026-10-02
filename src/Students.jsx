@@ -35,7 +35,7 @@ function useAttendanceUpdatedListener(callback) {
     const handler = (e) => callback(e.detail)
     window.addEventListener(ATTENDANCE_UPDATED_EVENT, handler)
     return () => window.removeEventListener(ATTENDANCE_UPDATED_EVENT, handler)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [callback])
 }
 
@@ -727,7 +727,7 @@ function exportToPDF(title, headers, rows) {
   </style></head><body>
     <h2>${title}</h2><div class="meta">${rows.length} records · ${new Date().toLocaleDateString('en-IN')}</div>
     <table><thead><tr>${th}</tr></thead><tbody>${td}</tbody></table>
-    <script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script>
+    <script>window.onload=()=>setTimeout(()=>window.print(),300)</script>
   </body></html>`)
   w.document.close()
 }
@@ -2103,7 +2103,7 @@ function printIDCard(student) {
       </div>
     </div>
   </div>
-  <script>window.print()<\/script></body></html>`)
+  <script>window.print()</script></body></html>`)
   w.document.close()
 }
 
@@ -2262,7 +2262,7 @@ function printProfessionalReport(cfg) {
         <div class="sig-line">Principal / Director</div>
       </div>` : ''}
     <div class="footnote">GNSI Portal · ${reportTypeLabel} · Generated automatically — verify figures before official use</div>
-    <script>window.onload=()=>setTimeout(()=>window.print(),350)<\/script>
+    <script>window.onload=()=>setTimeout(()=>window.print(),350)</script>
   </body></html>`)
   w.document.close()
 }
@@ -4574,7 +4574,7 @@ function CourseDatabase({ students, attData, examData, feeData, can, isMobile, o
   const [includePast, setIncludePast] = useState(false)
   const [pastRows, setPastRows] = useState(null)
 
-  useEffect(() => { try { localStorage.setItem('gnsi_cdb_course', course) } catch {} ; setBatch('All'); setHouseF('All') }, [course])
+  useEffect(() => { try { localStorage.setItem('gnsi_cdb_course', course) } catch { /* ignore */ } ; setBatch('All'); setHouseF('All') }, [course])
 
   // Past students (Dropout / Withdrawn / Passed Out / Inactive) load only on request.
   useEffect(() => {
@@ -5002,7 +5002,7 @@ export default function Students({ onNavigate: goToModule } = {}) {
   const [page,setPage]=useState(1)
   const [viewMode,setViewMode]=useState('list')
   const [pageTab,setPageTab]=useState(()=>{try{return localStorage.getItem('gnsi_students_tab')||'courses'}catch{return 'courses'}})
-  useEffect(()=>{try{localStorage.setItem('gnsi_students_tab',pageTab)}catch{}},[pageTab])
+  useEffect(()=>{try{localStorage.setItem('gnsi_students_tab',pageTab)}catch{ /* ignore */ }},[pageTab])
   const [showBulkOps,setShowBulkOps]=useState(false)
   const [showRollover,setShowRollover]=useState(false)
   const [showBulkFee,setShowBulkFee]=useState(false)
@@ -5132,7 +5132,7 @@ const effectiveCols = visibleCols.filter(col => {
         map[id]=(recs.filter(r=>r.status==='Present').length+recs.filter(r=>r.status==='Late').length*.5)/recs.length*100
       })
       setAttData(map)
-    }catch{}
+    }catch{ /* ignore */ }
   },[])
 
   const loadExamData=useCallback(async ids=>{
@@ -5157,7 +5157,7 @@ const effectiveCols = visibleCols.filter(col => {
       })
       Object.keys(map).forEach(id=>map[id].sort((a,b)=>new Date(b.exam_date)-new Date(a.exam_date)))
       setExamData(map)
-    }catch{}
+    }catch{ /* ignore */ }
   },[])
 
 

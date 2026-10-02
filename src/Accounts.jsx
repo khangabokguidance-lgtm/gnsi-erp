@@ -663,7 +663,7 @@ function Accounts({role,userId}){
   const fetchBudgets = useCallback(async()=>{
     const {data,error}=await supabase.from('account_budgets').select('*').single()
     if(!error&&data?.budgets){setBudgets(data.budgets);setBudgetDraft(data.budgets);setBudgetMeta({edited_by:data.budget_edited_by,edited_at:data.budget_edited_at})}
-    else{try{const b=JSON.parse(localStorage.getItem('acc_budgets')||'null');if(b){setBudgets(b);setBudgetDraft(b)}}catch{}}
+    else{try{const b=JSON.parse(localStorage.getItem('acc_budgets')||'null');if(b){setBudgets(b);setBudgetDraft(b)}}catch{ /* ignore */ }}
   },[])
 
   // staff list — used to populate the Voucher Head "who takes it" field.
@@ -922,7 +922,7 @@ function Accounts({role,userId}){
   //      row dated later than today (the second bug mentioned above).
   useEffect(()=>{
     return
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   },[entries.length, today])
 
   // ── quick date ────────────────────────────────────────────────────────
@@ -4969,8 +4969,8 @@ body:has(.ac-bottom){padding-bottom:76px}
           {expAuditLog.length===0?<p style={{color:'#8a93a6',textAlign:'center',padding:24}}>No expenditure edits/deletes recorded yet.</p>:(
             expAuditLog.map((log,i)=>{
               let ov=null,nv=null
-              try{ov=log.old_values?JSON.parse(log.old_values):null}catch{}
-              try{nv=log.new_values?JSON.parse(log.new_values):null}catch{}
+              try{ov=log.old_values?JSON.parse(log.old_values):null}catch{ /* ignore */ }
+              try{nv=log.new_values?JSON.parse(log.new_values):null}catch{ /* ignore */ }
               const changedFields=(ov&&nv)?Object.keys(nv).filter(k=>['amount','category','sub_category','note','voucher_head','payment_mode','account_type','status','entry_date'].includes(k)&&String(ov[k]??'')!==String(nv[k]??'')):[]
               return(
                 <div key={i} style={{borderBottom:'1px solid #fef2f2',paddingBottom:14,marginBottom:14}}>

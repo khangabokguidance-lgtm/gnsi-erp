@@ -97,7 +97,7 @@ function getSessionInfo() {
       const userName = parsed?.name || parsed?.username || parsed?.user?.name || role
       return { role, userId, userName }
     }
-  } catch (_) { /* default to least-privilege */ }
+  } catch { /* default to least-privilege */ }
   return { role: 'staff', userId: null, userName: 'staff' }
 }
 
@@ -312,7 +312,7 @@ async function logAudit(action, recordId, details, role) {
       level: action.includes('DELETE') ? 'warning' : 'info',
       metadata: { recordId, role, ...details },
     }])
-  } catch (_) {
+  } catch {
     // Never block the user's action if logging fails for any reason.
   }
 }
@@ -2206,7 +2206,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
     if (editing) return null
     try { const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); return d && d.name ? d : null } catch { return null }
   })
-  const persist = nf => { if (!editing) { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(nf)) } catch(_) {} } }
+  const persist = nf => { if (!editing) { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(nf)) } catch { /* ignore */ } } }
   const set = (k, v) => setForm(f => { const nf = { ...f, [k]: v }; persist(nf); return nf })
   // Nested reg setter: setReg('corr.pin', '795138') / setReg('aissee.cities.2', 'Imphal')
   const setReg = (path, v) => setForm(f => {
@@ -2314,7 +2314,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
   useEffect(() => { if (firstRender.current) { firstRender.current = false; return } setDirty(true) }, [form])
   const handleCancel = () => {
     if (dirty && !confirm('Discard unsaved changes?')) return
-    try { localStorage.removeItem(DRAFT_KEY) } catch(_) {}
+    try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ }
     onCancel()
   }
 
@@ -2358,7 +2358,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
   const goTo = i => {
     setTouched(t => ({ ...t, [STEPS[stepIdx].id]: true }))
     setStepIdx(i)
-    try { topRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }) } catch(_) {}
+    try { topRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }) } catch { /* ignore */ }
   }
   const doneCount = STEPS.filter(stepDone).length
   const pct = Math.round(doneCount / STEPS.length * 100)
@@ -2366,9 +2366,9 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
   const openReview = () => {
     const all = {}; STEPS.forEach(s => { all[s.id] = true }); setTouched(all)
     const firstBad = STEPS.findIndex(s => !stepDone(s))
-    if (firstBad >= 0) { setStepIdx(firstBad); try { topRef.current?.scrollIntoView({ behavior:'smooth' }) } catch(_) {}; return }
+    if (firstBad >= 0) { setStepIdx(firstBad); try { topRef.current?.scrollIntoView({ behavior:'smooth' }) } catch { /* ignore */ }; return }
     setMode('preview')
-    try { topRef.current?.scrollIntoView({ behavior:'smooth' }) } catch(_) {}
+    try { topRef.current?.scrollIntoView({ behavior:'smooth' }) } catch { /* ignore */ }
   }
 
   const step = STEPS[stepIdx]
@@ -2465,7 +2465,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
           <span style={{ fontWeight:700 }}>Unsaved draft found{draftOffer.name ? ` for ${draftOffer.name}` : ''}.</span>
           <button type="button" onClick={() => { setForm({ ...draftOffer, reg: mergeReg(draftOffer.reg), docs: draftOffer.docs || [] }); setDraftOffer(null) }}
             style={{ padding:'5px 12px', borderRadius:8, border:'none', background:AF.navy, color:'#fff', fontWeight:700, fontSize:12, cursor:'pointer' }}>Resume draft</button>
-          <button type="button" onClick={() => { try { localStorage.removeItem(DRAFT_KEY) } catch(_) {}; setDraftOffer(null) }}
+          <button type="button" onClick={() => { try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ }; setDraftOffer(null) }}
             style={{ padding:'5px 12px', borderRadius:8, border:`1px solid ${AF.goldLine}`, background:'transparent', color:'#6B4E0F', fontWeight:700, fontSize:12, cursor:'pointer' }}>Discard</button>
         </div>
       )}
@@ -2478,7 +2478,7 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
               setSubmitting(true)
               try {
                 const ok = await onSave(editing?.id || null, { ...formForSave, reg: { ...r, exams } })
-                if (ok !== false) { try { localStorage.removeItem(DRAFT_KEY) } catch(_) {} }
+                if (ok !== false) { try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ } }
               } finally { setSubmitting(false) }
             }} />
         </div>
@@ -3284,12 +3284,12 @@ function useFilterPresets() {
   const save = (name, filters) => {
     const next = { ...presets, [name]: filters }
     setPresets(next)
-    try { localStorage.setItem(PRESET_KEY, JSON.stringify(next)) } catch(_) {}
+    try { localStorage.setItem(PRESET_KEY, JSON.stringify(next)) } catch { /* ignore */ }
   }
   const remove = name => {
     const next = { ...presets }; delete next[name]
     setPresets(next)
-    try { localStorage.setItem(PRESET_KEY, JSON.stringify(next)) } catch(_) {}
+    try { localStorage.setItem(PRESET_KEY, JSON.stringify(next)) } catch { /* ignore */ }
   }
   return { presets, save, remove }
 }
@@ -4139,7 +4139,7 @@ export default function Admissions() {
         const parsed = JSON.parse(draft)
         if (parsed.name) showToast(`Draft restored: ${parsed.name}`, T.amber[600])
       }
-    } catch(_) {}
+    } catch { /* ignore */ }
   }, [])
 
   const sessionOptions = useMemo(() => [...new Set(apps.map(a=>a.session).filter(Boolean))].sort().reverse(), [apps])
@@ -4302,7 +4302,7 @@ export default function Admissions() {
         const log = JSON.parse(localStorage.getItem('gnsi_audit_'+eid)||'[]')
         log.unshift({ ts:now(), action:'edit', by:userRole, changes: JSON.stringify(dbRow).slice(0,200) })
         localStorage.setItem('gnsi_audit_'+eid, JSON.stringify(log.slice(0,50)))
-      } catch(_) {}
+      } catch { /* ignore */ }
       setApps(prev => prev.map(a => String(a.id)===String(eid) ? { ...a, ...cleanObj, id:parseInt(eid), hostel_type:dbRow.hostel_type } : a))
       showToast('Application updated', T.amber[600])
     } else {
@@ -4327,7 +4327,7 @@ export default function Admissions() {
       // collected on the spot, without a second click to "Admit" first.
       setFeePanel(newApp)
     }
-    try { localStorage.removeItem(DRAFT_KEY) } catch(_) {}
+    try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ }
     setFormOpen(false); setEditing(null)
     return true
   }
@@ -4446,7 +4446,7 @@ export default function Admissions() {
       localStorage.setItem(key, JSON.stringify(notes.slice(0,100)))
       setApps(prev => prev.map(a => String(a.id)===String(id) ? { ...a, notes } : a))
       showToast('Note added', T.emerald[600])
-    } catch(_) {}
+    } catch { /* ignore */ }
   }
 
   const handleBulkStatus = async status => {
@@ -4607,7 +4607,7 @@ export default function Admissions() {
           try {
             const rates = await getFeeRates(sessionYear, a.course, a.batch, a.hostel_type, a.gcc_no || null)
             rateCache.set(key, rates.flatFee)
-          } catch (_) {
+          } catch {
             rateCache.set(key, getFlatFeeAmtSync(a.hostel_type, a.course))
           }
         }
