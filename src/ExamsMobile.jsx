@@ -5,6 +5,7 @@
 // top bar with a back arrow and a 5-slot bottom navigation.
 // Styles live in examsTheme.css (.xm-* classes).
 import { useMemo, useState } from 'react';
+import ExamIcon from './examIcons';
 
 const tint = (hex, a = '1F') => `${hex}${a}`;
 
@@ -18,7 +19,7 @@ export function ExamHomeMobile({ groups, onSelect, institute, stats, role }) {
 
   const Tile = ({ t }) => (
     <button className="xm-tile" onClick={() => onSelect(t.id)}>
-      <span className="xm-ico" style={{ background: tint(t.color), color: t.color }}>{t.icon}</span>
+      <span className="xm-ico" style={{ background: tint(t.color), color: t.color }}><ExamIcon id={t.id} size={24} /></span>
       <span className="xm-lbl">{t.label}</span>
     </button>
   );
@@ -34,7 +35,7 @@ export function ExamHomeMobile({ groups, onSelect, institute, stats, role }) {
           {role ? <div className="xm-chip">{role}</div> : null}
         </div>
         <label className="xm-search">
-          <span aria-hidden="true">🔍</span>
+          <span aria-hidden="true" style={{ display: "flex" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></svg></span>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search marks, reports, analyzer…" />
           {q ? <button type="button" onClick={() => setQ('')} aria-label="Clear search">✕</button> : null}
         </label>
@@ -57,7 +58,7 @@ export function ExamHomeMobile({ groups, onSelect, institute, stats, role }) {
             <div className="xm-card xm-quick">
               {quick.map((t) => (
                 <button key={t.id} onClick={() => onSelect(t.id)}>
-                  <span className="xm-round" style={{ background: t.color }}>{t.icon}</span>
+                  <span className="xm-round" style={{ background: t.color }}><ExamIcon id={t.id} size={25} /></span>
                   <span>{t.label}</span>
                 </button>
               ))}
@@ -70,7 +71,7 @@ export function ExamHomeMobile({ groups, onSelect, institute, stats, role }) {
                 <b>Mock Test Analyzer</b>
                 <span>Upload Excel results, track every student &amp; print reports</span>
               </div>
-              <span className="xm-promo-ico">🧠</span>
+              <span className="xm-promo-ico"><ExamIcon id="mockanalyzer" size={44} stroke={1.5} /></span>
             </button>
           ) : null}
           {groups.map((g) => (
@@ -85,23 +86,23 @@ export function ExamHomeMobile({ groups, onSelect, institute, stats, role }) {
   );
 }
 
-export function ExamTopBar({ title, icon, subtitle, onBack }) {
+export function ExamTopBar({ title, id, subtitle, onBack }) {
   return (
     <div className="xm-top">
       <button className="xm-back" onClick={onBack} aria-label="Back to Exam HUB">‹</button>
-      <span className="xm-top-ico">{icon}</span>
+      <span className="xm-top-ico"><ExamIcon id={id} size={20} /></span>
       <div className="xm-top-t"><b>{title}</b>{subtitle ? <small>{subtitle}</small> : null}</div>
     </div>
   );
 }
 
-// items: [{id, icon, label}]; "home" is always first.
+// items: [{id, label}] — icons come from examIcons by id.
 export function ExamBottomBar({ items, active, onSelect }) {
   return (
     <nav className="xm-bottom" aria-label="Exam navigation">
       {items.map((it) => (
         <button key={it.id} className={active === it.id ? 'on' : ''} onClick={() => onSelect(it.id)}>
-          <span className="xm-bi">{it.icon}</span>
+          <span className="xm-bi"><ExamIcon id={it.id === '__more' ? 'more' : it.id} size={22} /></span>
           <span>{it.label}</span>
         </button>
       ))}

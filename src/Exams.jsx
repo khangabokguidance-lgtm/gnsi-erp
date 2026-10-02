@@ -28,6 +28,7 @@ import ExamDashboard from './ExamDashboard'
 import MockTestAnalyzer from './MockTestAnalyzer'
 import ResponsiveTables from './ResponsiveTables'
 import { ExamHomeMobile, ExamTopBar, ExamBottomBar } from './ExamsMobile'
+import ExamIcon from './examIcons'
 import './examsTheme.css'
 import './mobile.css';
 import ExamCSVImport from './lib/ExamCSVImport';
@@ -891,7 +892,7 @@ function TabNav({ active, onSelect, perms, isAdmin, currentUser }) {
           zIndex: 100,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-            <span style={{ fontSize: 18, flexShrink: 0 }}>{activeTabInfo?.icon}</span>
+            <span style={{ flexShrink: 0, color: "#002E6E", display: "flex" }}><ExamIcon id={activeTabInfo?.id} size={19} /></span>
             <span style={{ fontSize: 13, fontWeight: 700, color: "#002E6E", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {activeTabInfo?.label}
             </span>
@@ -998,7 +999,7 @@ function TabNav({ active, onSelect, perms, isAdmin, currentUser }) {
                             transition: "all .1s",
                           }}
                         >
-                          <span style={{ fontSize: 15, flexShrink: 0 }}>{t.icon}</span>
+                          <span style={{ flexShrink: 0, display: "flex", color: isActive ? "white" : "#002E6E" }}><ExamIcon id={t.id} size={17} /></span>
                           <span style={{ lineHeight: 1.25 }}>{t.label}</span>
                         </button>
                       );
@@ -1017,58 +1018,27 @@ function TabNav({ active, onSelect, perms, isAdmin, currentUser }) {
     );
   }
 
-  // ── DESKTOP (unchanged two-row layout) ──────────────────────────────────────
-  const row1 = filteredGroups.filter((g) => ["Entry", "Results", "Documents"].includes(g.groupLabel));
-  const row2 = filteredGroups.filter((g) => ["Schedule", "Setup"].includes(g.groupLabel));
-
-  const Divider = () => (
-    <div style={{ width: 1, height: 36, background: "#E5E7EB", margin: "0 6px", flexShrink: 0 }} />
-  );
-
+  // ── DESKTOP: one wrapping row of grouped tab cards (no sideways scrolling) ──
   const renderGroup = (grp) => (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", padding: "0 4px" }}>
-      <div style={{ fontSize: 9, fontWeight: 700, color: grp.color, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 3 }}>
-        {grp.groupLabel}
-      </div>
-      <div style={{ display: "flex", gap: 2 }}>
+    <div key={grp.groupLabel} className="xd-group">
+      <div className="xd-group-h" style={{ color: grp.color }}>{grp.groupLabel}</div>
+      <div className="xd-group-tabs">
         {grp.tabs.map((t) => (
           <button key={t.id} onClick={() => onSelect(t.id)} title={t.tip}
-            style={{
-              padding: "5px 10px", fontSize: 12,
-              background: active === t.id ? "#002E6E" : "transparent",
-              color: active === t.id ? "white" : "#374151",
-              border: active === t.id ? "none" : "1px solid transparent",
-              borderRadius: 7, cursor: "pointer",
-              fontFamily: "'DM Sans',sans-serif", fontWeight: 600,
-            }}>
-            {t.icon} {t.label}
+            className={`xd-tab${active === t.id ? " on" : ""}`}
+            aria-current={active === t.id ? "page" : undefined}>
+            <ExamIcon id={t.id} size={16} style={{ color: active === t.id ? "#fff" : grp.color }} />
+            <span>{t.label}</span>
           </button>
         ))}
       </div>
     </div>
   );
 
-  const renderRow = (groups) => (
-    <div style={{ display: "flex", alignItems: "center", gap: 0, overflowX: "auto", scrollbarWidth: "none" }}>
-      {groups.map((grp, i) => (
-        <div key={grp.groupLabel} style={{ display: "flex", alignItems: "center" }}>
-          {renderGroup(grp)}
-          {i < groups.length - 1 && <Divider />}
-        </div>
-      ))}
-    </div>
-  );
-
   return (
-    <div style={{
-      background: "white", borderBottom: "1px solid #E5E7EB",
-      padding: "10px 24px", display: "flex", flexDirection: "column", gap: 8,
-      boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
-    }}>
-      {renderRow(row1)}
-      <div style={{ height: 1, background: "#F1F5F9", margin: "0 -4px" }} />
-      {renderRow(row2)}
-    </div>
+    <nav className="xd-nav" aria-label="Exam sections">
+      {filteredGroups.map(renderGroup)}
+    </nav>
   );
 }
 
@@ -8997,10 +8967,10 @@ function ExamHubHeader({ institute, students, courses, examTypes, currentUser })
   const isMobile = useMobile();
 
   const stats = [
-    { label: "Students",   val: students.length,              icon: "👤", color: "#60a5fa" },
-    { label: "Batches",    val: courses.length,               icon: "📚", color: "#34d399" },
-    { label: "Exam Types", val: examTypes.length,             icon: "📝", color: "#00BAF2" },
-    { label: "Role",       val: currentUser?.role || "Admin", icon: "🔑", color: "#c084fc" },
+    { label: "Students",   val: students.length,              icon: "users", color: "#60a5fa" },
+    { label: "Batches",    val: courses.length,               icon: "book", color: "#34d399" },
+    { label: "Exam Types", val: examTypes.length,             icon: "clipboard", color: "#00BAF2" },
+    { label: "Role",       val: currentUser?.role || "Admin", icon: "key", color: "#c084fc" },
   ];
 
   const Badge = (
@@ -9010,8 +8980,8 @@ function ExamHubHeader({ institute, students, courses, examTypes, currentUser })
       background: "linear-gradient(135deg,#002E6E,#0A56B8)",
       border: "1.5px solid rgba(0,186,242,0.5)",
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontSize: isMobile ? 16 : 20,
-    }}>🎓</div>
+      color: "#fff",
+    }}><ExamIcon id="brand" size={isMobile ? 18 : 22} /></div>
   );
 
   const Title = (
@@ -9033,7 +9003,7 @@ function ExamHubHeader({ institute, students, courses, examTypes, currentUser })
           borderRadius: 8,
           padding: isMobile ? "5px 10px" : "6px 14px",
         }}>
-          <span style={{ fontSize: isMobile ? 11 : 13 }}>{s.icon}</span>
+          <span style={{ display: "flex", color: s.color }}><ExamIcon id={s.icon} size={isMobile ? 14 : 16} /></span>
           <div>
             <div style={{ fontWeight: 700, fontSize: isMobile ? 13 : 15, color: "white", lineHeight: 1 }}>{s.val}</div>
             <div style={{ fontSize: isMobile ? 9 : 9, color: s.color, textTransform: "uppercase", letterSpacing: "1px", marginTop: 2 }}>{s.label}</div>
@@ -10750,18 +10720,18 @@ export default function Exams({ currentUser, perms }) {
   // ── Phone: app-style shell ─────────────────────────────────────────────────
   if (isPhone) {
     const bottomItems = [
-      { id: "home", icon: "🏠", label: "Home" },
-      { id: "entry", icon: "✏️", label: "Entry" },
-      { id: "mockanalyzer", icon: "🧠", label: "Analyzer" },
-      { id: "reportcard", icon: "📋", label: "Reports" },
-      { id: "__more", icon: "⋯", label: "More" },
+      { id: "home", label: "Home" },
+      { id: "entry", label: "Entry" },
+      { id: "mockanalyzer", label: "Analyzer" },
+      { id: "reportcard", label: "Reports" },
+      { id: "__more", label: "More" },
     ].filter(i => i.id === "home" || i.id === "__more" || allowed.includes(i.id));
     // keep five slots even if a role lacks some tabs
     const fillers = ["rankings", "marks", "analytics", "schedule"].filter(id => allowed.includes(id) && !bottomItems.some(b => b.id === id));
     while (bottomItems.length < 5 && fillers.length) {
       const id = fillers.shift();
       const t = TAB_GROUPS.flatMap(g => g.tabs).find(x => x.id === id);
-      bottomItems.splice(bottomItems.length - 1, 0, { id, icon: t.icon, label: t.label.split(" ")[0] });
+      bottomItems.splice(bottomItems.length - 1, 0, { id, label: t.label.split(" ")[0] });
     }
     const goBottom = (id) => setTab(id === "__more" ? "home" : id);
     return (
@@ -10781,7 +10751,7 @@ export default function Exams({ currentUser, perms }) {
           />
         ) : (
           <>
-            <ExamTopBar title={activeTabInfo?.label} icon={activeTabInfo?.icon} subtitle={activeTabInfo?.tip} onBack={() => setTab("home")} />
+            <ExamTopBar title={activeTabInfo?.label} id={activeTabInfo?.id} subtitle={activeTabInfo?.tip} onBack={() => setTab("home")} />
             <div className="xm-body"><ResponsiveTables>{sectionMap[tab]?.()}</ResponsiveTables></div>
           </>
         )}
@@ -10796,7 +10766,7 @@ export default function Exams({ currentUser, perms }) {
       <TabNav active={tab} onSelect={setTab} perms={perms} isAdmin={isAdmin} currentUser={currentUser} />
       <div style={{ padding: "24px 28px", maxWidth: 1400 }}>
         <div style={{ marginBottom: 18, display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ width: 40, height: 40, borderRadius: 12, background: "#E8F4FD", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{activeTabInfo?.icon}</span>
+          <span style={{ width: 40, height: 40, borderRadius: 12, background: "#E8F4FD", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#002E6E" }}><ExamIcon id={activeTabInfo?.id} size={21} /></span>
           <div>
             <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: "#10223D" }}>{activeTabInfo?.label}</h2>
             <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6B7A90" }}>{activeTabInfo?.tip}</p>

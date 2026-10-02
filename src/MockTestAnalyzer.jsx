@@ -17,6 +17,7 @@ import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } 
 import ResponsiveTables from './ResponsiveTables';
 import { loadAll, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
+import ExamIcon from './examIcons';
 import MockFixEngine from './MockFixEngine';
 
 const NAVY = '#002E6E';
@@ -30,11 +31,11 @@ const ui = {
   label: { fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: .8, marginBottom: 4, display: 'block' },
 };
 const SUBTABS = [
-  { id: 'overview', icon: '🏠', label: 'Overview' },
-  { id: 'student', icon: '🎓', label: 'Student Analyser' },
-  { id: 'subject', icon: '📚', label: 'Subject Analysis' },
-  { id: 'batch', icon: '👥', label: 'Batch / Test Report' },
-  { id: 'data', icon: '📤', label: 'Upload & Data' },
+  { id: 'overview', icon: 'home', label: 'Overview' },
+  { id: 'student', icon: 'student', label: 'Student Analyser' },
+  { id: 'subject', icon: 'subject', label: 'Subject Analysis' },
+  { id: 'batch', icon: 'batch', label: 'Batch / Test Report' },
+  { id: 'data', icon: 'data', label: 'Upload & Data' },
 ];
 
 const fx = (n, d = 1) => (n === null || n === undefined || !Number.isFinite(n) ? '—' : String(Math.round(n * 10 ** d) / 10 ** d));
@@ -139,7 +140,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {header}
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', margin: '0 -12px 12px', padding: '2px 12px 6px', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
         {SUBTABS.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 0 auto', borderRadius: 999, padding: '8px 16px', whiteSpace: 'nowrap', ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(0,46,110,.25)' } : {}) }}>{t.icon} {t.label}</button>
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 0 auto', borderRadius: 999, padding: '8px 16px', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 7, ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(0,46,110,.25)' } : {}) }}><ExamIcon id={t.icon} size={16} />{t.label}</button>
         ))}
       </div>
       {!rows.length && tab !== 'data' ? (
