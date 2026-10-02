@@ -1679,6 +1679,13 @@ const FEES_CSS = `
 .fh-l{font-size:12px;font-weight:650;line-height:1.25;text-align:center;max-width:88px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .fh-t.on .fh-l{color:#0b1e3d;font-weight:800}
 .fh-b{position:absolute;top:-6px;right:-8px;min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:#e53935;color:#fff;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-sizing:border-box}
+.fe-bottom{position:fixed;left:0;right:0;bottom:0;z-index:90;display:grid;grid-template-columns:repeat(5,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+.fe-nb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:3px 0;font:600 10.5px 'Plus Jakarta Sans',system-ui,sans-serif;color:#b9c3d6;cursor:pointer;position:relative}
+.fe-nb .fe-bi{display:flex;align-items:center;justify-content:center;width:42px;height:27px;border-radius:10px}
+.fe-nb.on{color:#fff;font-weight:800}
+.fe-nb.on .fe-bi{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
+.fe-nb:focus-visible{outline:2px solid #e9d9b0;outline-offset:-2px;border-radius:10px}
+.fe-nb .fh-b{position:absolute;top:0;right:calc(50% - 26px);min-width:16px;height:16px;border-radius:99px;background:#b42318;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px}
 .fh-row{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;background:#fff;border-radius:20px;padding:10px 8px 8px;border:1px solid #eef0f4;box-shadow:0 1px 2px rgba(16,24,40,.05)}
 .fh-row::-webkit-scrollbar{display:none}
 .fh-row .fh-t{flex:0 0 70px}
@@ -2534,6 +2541,7 @@ const FD_MODE_COLOR = { Cash:'#0f7a4c', UPI:'#1e3a6e', 'Bank Transfer':'#6b5b95'
 const fdInr = n => '₹' + Number(n || 0).toLocaleString('en-IN')
 
 function FeeFlowSteps({ current }) {
+  const compact = useWindowWidth() < 520 // phone: only the current step keeps its label
   const steps = ['Student', 'Fee items', 'Payment', 'Receipt & Accounts']
   return (
     <div style={{ display:'flex', alignItems:'center', gap:0, background:FD.paper, border:`1px solid ${FD.line}`, borderRadius:14, padding:'10px 14px', marginBottom:16, overflowX:'auto', boxShadow:'0 1px 2px rgba(19,42,79,.05)' }}>
@@ -2544,9 +2552,9 @@ function FeeFlowSteps({ current }) {
             <div style={{ display:'flex', alignItems:'center', gap:9, flexShrink:0 }}>
               <span style={{ width:26, height:26, borderRadius:8, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800,
                 background: done ? FD.gold : on ? FD.navy : FD.cream, color: done ? '#fff' : on ? FD.goldLt : FD.faint, border: `1px solid ${done ? FD.gold : on ? FD.navy : FD.line}` }}>{done ? '✓' : n}</span>
-              <span style={{ fontSize:12.5, fontWeight: on ? 800 : 600, color: on ? FD.ink : done ? FD.sub : FD.faint, whiteSpace:'nowrap' }}>{s}</span>
+              {(!compact || on) && <span style={{ fontSize:12.5, fontWeight: on ? 800 : 600, color: on ? FD.ink : done ? FD.sub : FD.faint, whiteSpace:'nowrap' }}>{s}</span>}
             </div>
-            {i < steps.length - 1 && <div style={{ flex:1, height:2, minWidth:18, margin:'0 12px', borderRadius:2, background: done ? FD.gold : FD.line }} />}
+            {i < steps.length - 1 && <div style={{ flex:1, height:2, minWidth:compact ? 10 : 18, margin: compact ? '0 6px' : '0 12px', borderRadius:2, background: done ? FD.gold : FD.line }} />}
           </div>
         )
       })}
@@ -5347,6 +5355,27 @@ export default function Fees() {
       {tab === 'pendingApprovals' && (
         <PendingApprovalsTab isAdmin={isAdmin} currentUser={currentUser} adminCount={adminCount} onRefresh={loadAll} />
       )}
+
+      {/* Phone: payments-app style bottom navigation (the four main sections + the full grid) */}
+      {isMobile && (() => {
+        const main = [['dashboard', 'Home', 'dashboard'], ['payment', 'Pay', 'card'], ['live', 'Live', 'pulse'], ['ledger', 'Ledger', 'studentfeeledger']]
+        const pending = (pendingApprovalCount || 0) + (lowFeePending || 0) + (hostelIssueCount || 0)
+        const inMain = main.some(m => m[0] === tab)
+        const go = id => { setTab(id); setSearch(''); setHubOpen(false); window.scrollTo({ top: 0 }) }
+        return (
+          <nav className="fe-bottom" aria-label="Fees navigation">
+            {main.map(([id, label, icon]) => (
+              <button key={id} type="button" className={'fe-nb' + (tab === id ? ' on' : '')} onClick={() => go(id)} aria-current={tab === id ? 'page' : undefined}>
+                <span className="fe-bi"><NavIcon id={icon} size={20} /></span><span>{label}</span>
+              </button>
+            ))}
+            <button type="button" className={'fe-nb' + (!inMain || hubOpen ? ' on' : '')} onClick={() => { setHubOpen(true); window.scrollTo({ top: 0 }) }} aria-label="All fee sections">
+              <span className="fe-bi"><NavIcon id="grid" size={20} /></span><span>All</span>
+              {isAdmin && pending > 0 && <span className="fh-b">{pending > 99 ? '99+' : pending}</span>}
+            </button>
+          </nav>
+        )
+      })()}
     </div>
   )
 }
