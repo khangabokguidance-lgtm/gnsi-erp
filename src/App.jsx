@@ -29,6 +29,7 @@ import MobileNavHome from './MobileNavHome'
 import LearningHub from './LearningHub'
 import { HUB_ID, HUB_TABS, isHubTab, canSeeHub } from './learningHubTabs'
 import { NavIcon } from './navIcons'
+import TabIcons from './TabIcons'
 import { OPEN_LEDGER_EVENT, ledgerGccFromUrl } from './ledgerLink'
 import GNSIDashboard      from './GNSIDashboard'
 import Courses            from './Courses'
@@ -1029,6 +1030,7 @@ export default function App() {
   return (
     <div style={{ display: 'flex', fontFamily: UI_FONT, minHeight: '100vh', background: '#F4F1EA' }}>
       <style>{SHELL_CSS}</style>
+      <TabIcons />
       <Sidebar
         activePage={active}
         setActivePage={setActive}
