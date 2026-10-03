@@ -10,6 +10,7 @@ import Sessions           from './Sessions'
 import AdmissionSessions  from './AdmissionSessions'
 import BulkAdmission      from './BulkAdmission'
 import Fees               from './Fees'
+import WhatsNewBanner     from './WhatsNewBanner'
 import Accounts           from './Accounts'
 import Salary             from './Salary'
 import Staff              from './Staff'
@@ -1073,6 +1074,10 @@ export default function App() {
               Sign in again
             </button>
           </div>
+        )}
+        {currentUser && (
+          <WhatsNewBanner isAdmin={isAdminRole(currentUser.role)}
+            onOpenFeesTab={tabId => { try { sessionStorage.setItem('gnsi_fees_open_tab', tabId) } catch { /* storage unavailable */ } window.dispatchEvent(new CustomEvent('gnsi:fees-tab', { detail: tabId })); setActivePage('fees') }} />
         )}
         {renderContent()}
       </main>
