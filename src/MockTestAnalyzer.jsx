@@ -17,6 +17,7 @@ import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } 
 import ResponsiveTables from './ResponsiveTables';
 import { loadAll, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
+import { emptyFilter, isFilterActive, describeFilter, applyDataFilter, studentRoster, loadPresets, savePresets } from './lib/mockTestFilter';
 import ExamIcon from './examIcons';
 import MockFixEngine from './MockFixEngine';
 
@@ -111,20 +112,31 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
   const seriesNames = useMemo(() => [...new Set(allRows.map((r) => r.series))].sort(), [allRows]);
   // uploaded rows -> saved Student Data Fix Engine rules -> identity matching
   const seriesRaw = useMemo(() => allRows.filter((r) => r.series === series), [allRows, series]);
-  const rows = useMemo(() => resolveIdentities(applyFixes(seriesRaw, fixes.filter((f) => !f.series || f.series === series))), [seriesRaw, fixes, series]);
+  const resolved = useMemo(() => resolveIdentities(applyFixes(seriesRaw, fixes.filter((f) => !f.series || f.series === series))), [seriesRaw, fixes, series]);
+  // Custom data filter: every analysis tab sees only the filtered rows; the
+  // Upload & Data tab keeps working on the full records.
+  const [filter, setFilter] = useState(emptyFilter);
+  const filterOn = isFilterActive(filter);
+  const rows = useMemo(() => applyDataFilter(resolved, filter), [resolved, filter]);
+  const metaAll = useMemo(() => seriesMeta(resolved), [resolved]);
   const meta = useMemo(() => seriesMeta(rows), [rows]);
+  const changeSeries = useCallback((s) => { setSeries(s); setFilter(emptyFilter()); }, []);
+  // Remount the analysis views when the available batches / tests / subjects change,
+  // so a stale dropdown selection can never point at data the filter removed.
+  const viewKey = `${meta.batches.join('|')}#${meta.tests.join('|')}#${meta.subjects.join('|')}`;
+  const seriesLabel = filterOn ? `${series} (filtered)` : series;
   const who = currentUser?.username || currentUser?.name || '';
 
   const header = (
     <div style={{ ...ui.card, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', padding: 12 }}>
       <Field label="Test series">
-        <select style={ui.input} value={series} onChange={(e) => setSeries(e.target.value)}>
+        <select style={ui.input} value={series} onChange={(e) => changeSeries(e.target.value)}>
           {[...new Set([...seriesNames, series])].map((s) => <option key={s}>{s}</option>)}
         </select>
       </Field>
       <Field label="Pass mark (%)"><input type="number" min={0} max={100} style={{ ...ui.input, width: 80 }} value={passPct} onChange={(e) => setPassPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} /></Field>
       <div style={{ fontSize: 12, color: '#5d6b82', paddingBottom: 8 }}>
-        {rows.length ? `${meta.tests.length} tests · ${meta.batches.length} batches · ${new Set(rows.map((r) => r.sid)).size} students · ${rows.length} results` : 'No results saved for this series yet'}
+        {rows.length ? `${meta.tests.length} tests · ${meta.batches.length} batches · ${new Set(rows.map((r) => r.sid)).size} students · ${rows.length} results${filterOn ? ` (of ${resolved.length})` : ''}` : (resolved.length ? 'No results match the filter' : 'No results saved for this series yet')}
         {' · '}<b style={{ color: mode === 'cloud' ? '#047857' : '#b45309' }}>{mode === 'cloud' ? 'Saved to database' : 'Saved in this browser only'}</b>
       </div>
     </div>
@@ -138,28 +150,148 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {note ? <div style={{ ...ui.card, background: '#FFFBEB', borderColor: '#FCD34D', fontSize: 13, color: '#92400E' }}>⚠️ {note}</div> : null}
       {err ? <div style={{ ...ui.card, background: '#FEF2F2', borderColor: '#FCA5A5', fontSize: 13, color: '#991B1B' }}>❌ {err}</div> : null}
       {header}
+      {resolved.length ? <FilterPanel filter={filter} setFilter={setFilter} metaAll={metaAll} resolved={resolved} shown={rows.length} total={resolved.length} /> : null}
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', margin: '0 -12px 12px', padding: '2px 12px 6px', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
         {SUBTABS.map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 0 auto', borderRadius: 999, padding: '8px 16px', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 7, ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(19,42,79,.25)' } : {}) }}><ExamIcon id={t.icon} size={16} />{t.label}</button>
         ))}
       </div>
       {!rows.length && tab !== 'data' ? (
+        resolved.length ? (
+          <div style={{ ...ui.card, textAlign: 'center', padding: 36 }}>
+            <div style={{ fontSize: 34 }}>🔎</div>
+            <div style={{ fontWeight: 700, margin: '6px 0' }}>No results match the current filter</div>
+            <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>{describeFilter(filter)}</div>
+            <button style={ui.btn} onClick={() => setFilter(emptyFilter())}>Clear filter</button>
+          </div>
+        ) : (
         <div style={{ ...ui.card, textAlign: 'center', padding: 36 }}>
           <div style={{ fontSize: 34 }}>📊</div>
           <div style={{ fontWeight: 700, margin: '6px 0' }}>No mock-test results for “{series}” yet</div>
           <div style={{ color: '#5d6b82', fontSize: 13, marginBottom: 12 }}>Upload the Excel result sheets (or load the built-in Pre Mock Test 2026 data) to start analysing.</div>
           <button style={ui.btn} onClick={() => setTab('data')}>Go to Upload &amp; Data</button>
         </div>
+        )
       ) : null}
-      {rows.length && tab === 'overview' ? <Overview rows={rows} meta={meta} passPct={passPct} institute={institute} series={series} /> : null}
-      {rows.length && tab === 'student' ? <StudentView rows={rows} meta={meta} passPct={passPct} institute={institute} series={series} /> : null}
-      {rows.length && tab === 'subject' ? <SubjectView rows={rows} meta={meta} passPct={passPct} institute={institute} series={series} /> : null}
-      {rows.length && tab === 'batch' ? <BatchView rows={rows} meta={meta} passPct={passPct} institute={institute} series={series} /> : null}
+      {rows.length && tab === 'overview' ? <Overview key={viewKey} rows={rows} meta={meta} passPct={passPct} institute={institute} series={seriesLabel} /> : null}
+      {rows.length && tab === 'student' ? <StudentView key={viewKey} rows={rows} meta={meta} passPct={passPct} institute={institute} series={seriesLabel} /> : null}
+      {rows.length && tab === 'subject' ? <SubjectView key={viewKey} rows={rows} meta={meta} passPct={passPct} institute={institute} series={seriesLabel} /> : null}
+      {rows.length && tab === 'batch' ? <BatchView key={viewKey} rows={rows} meta={meta} passPct={passPct} institute={institute} series={seriesLabel} /> : null}
       {tab === 'data' ? (
-        <DataView allRows={allRows} rawRows={seriesRaw} rows={rows} fixes={fixes} fixMode={fixMode} series={series} setSeries={setSeries} mode={mode} meta={meta} who={who}
+        <DataView allRows={allRows} rawRows={seriesRaw} rows={resolved} fixes={fixes} fixMode={fixMode} series={series} setSeries={changeSeries} mode={mode} meta={metaAll} who={who}
           canUpload={canUpload} canDelete={canDelete} reload={reload} />
       ) : null}
     </div></ResponsiveTables>
+  );
+}
+
+// ─── Data filter ──────────────────────────────────────────────────────────────
+const chip = (on) => ({ padding: '5px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: `1px solid ${on ? NAVY : '#d9d2c2'}`, background: on ? NAVY : '#fff', color: on ? '#fff' : '#2e3b52' });
+const toggleIn = (arr, v) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
+
+function FilterPanel({ filter, setFilter, metaAll, resolved, shown, total }) {
+  const [open, setOpen] = useState(false);
+  const [pick, setPick] = useState('');
+  const [presets, setPresets] = useState(loadPresets);
+  const [presetName, setPresetName] = useState('');
+  const roster = useMemo(() => studentRoster(resolved), [resolved]);
+  const byId = useMemo(() => new Map(roster.map((s) => [s.sid, s])), [roster]);
+  const on = isFilterActive(filter);
+  const set = (patch) => setFilter((f) => ({ ...f, ...patch }));
+  const matches = useMemo(() => {
+    const t = pick.trim().toLowerCase();
+    if (!t) return [];
+    return roster.filter((s) => !filter.students.includes(s.sid) && `${s.name} ${s.gcc}`.toLowerCase().includes(t)).slice(0, 8);
+  }, [pick, roster, filter.students]);
+
+  const savePreset = () => {
+    const name = presetName.trim();
+    if (!name || !on) return;
+    const next = [...presets.filter((p) => p.name !== name), { name, filter }];
+    setPresets(next); savePresets(next); setPresetName('');
+  };
+  const removePreset = (name) => { const next = presets.filter((p) => p.name !== name); setPresets(next); savePresets(next); };
+  // Only apply the parts of a saved preset that still exist in this series.
+  const loadPreset = (p) => setFilter({
+    ...emptyFilter(), ...p.filter,
+    batches: (p.filter.batches || []).filter((b) => metaAll.batches.includes(b)),
+    tests: (p.filter.tests || []).filter((t) => metaAll.tests.includes(t)),
+    subjects: (p.filter.subjects || []).filter((x) => metaAll.subjects.includes(x)),
+    students: (p.filter.students || []).filter((id) => byId.has(id)),
+  });
+
+  const group = (label, children) => <div style={{ marginBottom: 12 }}><span style={ui.label}>{label}</span><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{children}</div></div>;
+
+  return (
+    <div style={{ ...ui.card, padding: 12, borderColor: on ? '#c9a24b' : '#e8e3d8', background: on ? '#fffdf6' : '#fff' }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button style={{ ...ui.ghost, ...(open ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}` } : {}) }} onClick={() => setOpen((o) => !o)} aria-expanded={open}>🎛️ Data filter {open ? '▲' : '▼'}</button>
+        <div style={{ fontSize: 12.5, color: on ? '#7a5b10' : '#5d6b82', flex: '1 1 200px', minWidth: 0 }}>
+          {on ? <><b>Showing {shown} of {total} results</b> · {describeFilter(filter)}</> : 'Showing all results. Filter by batch, test, subject, or pick students manually.'}
+        </div>
+        {on ? <button style={ui.ghost} onClick={() => setFilter(emptyFilter())}>✕ Clear filter</button> : null}
+      </div>
+
+      {open ? (
+        <div style={{ marginTop: 14, borderTop: '1px solid #eee7d6', paddingTop: 14 }}>
+          {group('Batches (none selected = all)', metaAll.batches.map((b) => <button key={b} style={chip(filter.batches.includes(b))} onClick={() => set({ batches: toggleIn(filter.batches, b) })}>{b}</button>))}
+          {group('Tests (none selected = all)', metaAll.tests.map((t) => <button key={t} style={chip(filter.tests.includes(t))} title={metaAll.testNames[t] || ''} onClick={() => set({ tests: toggleIn(filter.tests, t).sort((a, c) => a - c) })}>T{t}</button>))}
+          {group('Subjects (totals & ranks are recalculated from the chosen subjects)', metaAll.subjects.map((x) => <button key={x} style={chip(filter.subjects.includes(x))} onClick={() => set({ subjects: toggleIn(filter.subjects, x) })}>{x}</button>))}
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
+            <Field label="Name / GCC contains"><input style={ui.input} value={filter.q} onChange={(e) => set({ q: e.target.value })} placeholder="e.g. Singh or 1234" /></Field>
+            <Field label="Min. tests taken"><input type="number" min={0} style={{ ...ui.input, width: 90 }} value={filter.minTests} onChange={(e) => set({ minTests: Math.max(0, Number(e.target.value) || 0) })} /></Field>
+            <Field label="Student avg % from"><input type="number" min={0} max={100} style={{ ...ui.input, width: 90 }} value={filter.avgMin} onChange={(e) => set({ avgMin: e.target.value })} placeholder="0" /></Field>
+            <Field label="to"><input type="number" min={0} max={100} style={{ ...ui.input, width: 90 }} value={filter.avgMax} onChange={(e) => set({ avgMax: e.target.value })} placeholder="100" /></Field>
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <span style={ui.label}>Manual student selection</span>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+              <button style={chip(filter.studentMode === 'exclude')} onClick={() => set({ studentMode: 'exclude' })}>Everyone except these</button>
+              <button style={chip(filter.studentMode === 'only')} onClick={() => set({ studentMode: 'only' })}>Only these students</button>
+            </div>
+            <div style={{ position: 'relative', maxWidth: 420 }}>
+              <input style={{ ...ui.input, width: '100%', boxSizing: 'border-box' }} value={pick} onChange={(e) => setPick(e.target.value)} placeholder="Search a student to add…" />
+              {matches.length ? (
+                <div style={{ position: 'absolute', zIndex: 5, left: 0, right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #d9d2c2', borderRadius: 12, boxShadow: '0 8px 24px rgba(19,42,79,.15)', overflow: 'hidden' }}>
+                  {matches.map((m) => (
+                    <button key={m.sid} onClick={() => { set({ students: [...filter.students, m.sid] }); setPick(''); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 0, borderBottom: '1px solid #f1ecdf', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>
+                      {m.name}{m.gcc ? ` · GCC ${m.gcc}` : ''} <span style={{ color: '#8a93a6' }}>· {m.batch}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            {filter.students.length ? (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                {filter.students.map((id) => (
+                  <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 6px 4px 12px', borderRadius: 999, background: filter.studentMode === 'only' ? '#e4ebf6' : '#fee2e2', fontSize: 12.5, fontWeight: 600 }}>
+                    {byId.get(id)?.name || id}
+                    <button aria-label="Remove" onClick={() => set({ students: filter.students.filter((x) => x !== id) })} style={{ border: 0, background: 'rgba(0,0,0,.08)', borderRadius: '50%', width: 20, height: 20, minHeight: 0, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div style={{ borderTop: '1px solid #eee7d6', paddingTop: 12 }}>
+            <span style={ui.label}>Saved filters (this browser)</span>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {presets.map((p) => (
+                <span key={p.name} style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d9d2c2', borderRadius: 999, overflow: 'hidden' }}>
+                  <button onClick={() => loadPreset(p)} style={{ border: 0, background: '#fff', padding: '5px 10px 5px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: 0 }}>{p.name}</button>
+                  <button aria-label={`Delete ${p.name}`} onClick={() => removePreset(p.name)} style={{ border: 0, borderLeft: '1px solid #eee7d6', background: '#faf7ef', padding: '5px 9px', cursor: 'pointer', minHeight: 0 }}>×</button>
+                </span>
+              ))}
+              {!presets.length ? <span style={{ fontSize: 12.5, color: '#8a93a6' }}>None yet</span> : null}
+              <input style={{ ...ui.input, width: 160 }} value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="Name this filter" />
+              <button style={ui.ghost} disabled={!on || !presetName.trim()} onClick={savePreset}>💾 Save</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
