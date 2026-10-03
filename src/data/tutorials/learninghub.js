@@ -86,7 +86,7 @@ export default {
         'Open the "Question Bank" tab and then the "✏️ Manual Add" sub-tab.',
         'Fill course, subject, chapter, the question, options A and B (at least) and the correct option.',
         'Click "+ Add Another Row" if you have more questions.',
-        'Click "✅ Save" . If a question looks like one already in the bank, you are asked "Save anyway?".',
+        'Click "✅ Save". If a question looks like one already in the bank, you are asked "Save anyway?".',
         'For many questions at once, use the "📤 Bulk Paste" sub-tab.',
       ],
       tip: 'Write fractions as 5/4 or 2 1/3. "🔄 Clear All" empties the form.',
