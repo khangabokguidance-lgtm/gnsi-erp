@@ -13,6 +13,7 @@ import { useAuth } from './AuthContext'
 import { PersonalAccountantButton } from './personalAccountant'
 import { staffDB } from './staffDB'
 import { getActiveStudents, getAllStudents } from './studentQueries'
+import { compressImage, sizeNote } from './lib/imageCompress'
 import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
 import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen } from './monthLock'
@@ -203,7 +204,6 @@ const ALLOWED_EXTENSIONS = ['.pdf','.jpg','.jpeg','.png','.doc','.docx']
 const ALLOWED_IMAGE_MIMES = ['image/jpeg','image/png','image/webp','image/gif']
 const ALLOWED_IMAGE_EXTS  = ['.jpg','.jpeg','.png','.webp','.gif']
 const MAX_DOC_SIZE_MB = 10
-const MAX_IMG_SIZE_MB = 5
 
 const validateFile = (file, { mimes=ALLOWED_MIME_TYPES, exts=ALLOWED_EXTENSIONS, maxMB=MAX_DOC_SIZE_MB }={}) => {
   if (!file) return 'No file selected.'
@@ -221,6 +221,29 @@ const getSignedUrl = async (path, ttl=3600) => {
 }
 
 const randomSuffix = () => Math.random().toString(36).slice(2,10)
+
+// ── Student photos ──────────────────────────────────────────────────────────
+// Phone-camera originals are big, so the picker accepts large files and shrinks
+// them in the browser (lib/imageCompress.js) before anything is uploaded.
+const PHOTO_PICK_MAX_MB = 25
+const PHOTO_COMPRESS    = { maxDim: 1000, targetKB: 250 }
+const PHOTO_BUCKET      = 'gnsi'
+const PHOTO_URL_TTL     = 86400   // seconds; viewing links for private storage photos
+
+// A photo stored in private Supabase Storage is saved as photo_path only. Nothing
+// turned that path into an image the page could show, so such photos never
+// appeared. This fills photo_url with a temporary viewing link, IN MEMORY ONLY —
+// it is never written back to the database.
+async function attachPhotoUrls(rows) {
+  const need = (rows || []).filter(r => r.photo_path && !r.photo_url)
+  if (!need.length) return rows
+  try {
+    const { data, error } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(need.map(r => r.photo_path), PHOTO_URL_TTL)
+    if (error || !data) return rows
+    const byPath = new Map(data.filter(d => d.signedUrl).map(d => [d.path, d.signedUrl]))
+    return rows.map(r => (r.photo_path && !r.photo_url && byPath.get(r.photo_path)) ? { ...r, photo_url: byPath.get(r.photo_path) } : r)
+  } catch { return rows }
+}
 
 // ═════════════════════════════════════════════════════════════════════════
 // STUDENT → APPLICATION FIELD SYNC — mirror of the sync built in
@@ -355,6 +378,25 @@ async function updateStudentsRows({ match, patch }) {
     }
   }
   return { data, error: null }
+}
+
+// Compress (unless already done), store in Supabase Storage and point the student
+// at it. Last upload wins: photo_url is cleared so the stored photo is the one shown.
+// Returns { path, url, note } — url is a temporary viewing link for the page.
+async function saveStudentPhoto(student, rawFile, { alreadyCompressed=false }={}) {
+  const info = alreadyCompressed
+    ? { file: rawFile, before: rawFile.size, after: rawFile.size, changed: false }
+    : await compressImage(rawFile, PHOTO_COMPRESS)
+  const isJpeg = info.file.type === 'image/jpeg'
+  const path = `student_photos/${student.id}_${randomSuffix()}.${isJpeg ? 'jpg' : (info.file.name.split('.').pop() || 'jpg').toLowerCase()}`
+  const { error: upErr } = await supabase.storage.from(PHOTO_BUCKET).upload(path, info.file, { upsert: false, contentType: info.file.type })
+  if (upErr) throw new Error('Upload failed')
+  const { error: dbErr } = await updateStudentsRows({ match: { id: student.id }, patch: { photo_path: path, photo_url: null } })
+  if (dbErr) { await supabase.storage.from(PHOTO_BUCKET).remove([path]); throw new Error('Save failed') }
+  // tidy up the previous stored photo so replaced photos don't pile up
+  if (student.photo_path && student.photo_path !== path) supabase.storage.from(PHOTO_BUCKET).remove([student.photo_path]).catch(() => {})
+  const { data } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrl(path, PHOTO_URL_TTL)
+  return { path, url: data?.signedUrl || null, note: alreadyCompressed ? '' : sizeNote(info) }
 }
 
 /**
@@ -2582,7 +2624,7 @@ function ReportGeneratorModal({ students, feeData, attData, examData, houseOptio
 }
 
 // ─── Student Detail Drawer ────────────────────────────────────────────────────
-function StudentDetailDrawer({ student, allStudents, attData, examData, feeData, feeHistory, can, isAdmin, currentUser, onClose, onEdit, showToast }) {
+function StudentDetailDrawer({ student, allStudents, attData, examData, feeData, feeHistory, can, isAdmin, currentUser, onClose, onEdit, onPhotoChange, showToast }) {
   const [tab,setTab]=useState('profile')
   const [notes,setNotes]=useState(student.notes||'')
   const [saving,setSaving]=useState(false)
@@ -2619,37 +2661,43 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
 
   const saveNotes=async()=>{setSaving(true);await supabase.from('students').update({notes}).eq('id',student.id);await auditLog('student_notes_edit',{student_id:student.id});setSaving(false);showToast('Notes saved',T.green)}
 
+  const [photoBusy,setPhotoBusy]=useState(false)
   const handlePhotoUpload=async e=>{
-    const file=e.target.files[0];if(!file)return
-    const err=validateFile(file,{mimes:ALLOWED_IMAGE_MIMES,exts:ALLOWED_IMAGE_EXTS,maxMB:MAX_IMG_SIZE_MB})
+    const file=e.target.files[0];e.target.value='';if(!file)return
+    const err=validateFile(file,{mimes:ALLOWED_IMAGE_MIMES,exts:ALLOWED_IMAGE_EXTS,maxMB:PHOTO_PICK_MAX_MB})
     if(err){showToast(err,T.red);return}
-    const ext=file.name.split('.').pop().toLowerCase()
-    const path=`student_photos/${student.id}_${randomSuffix()}.${ext}`
-    const{error:upErr}=await supabase.storage.from('gnsi').upload(path,file,{upsert:false,contentType:file.type})
-    if(upErr){showToast('Upload failed',T.red);return}
-    const{error:dbErr}=await updateStudentsRows({match:{id:student.id},patch:{photo_path:path,photo_url:null}})
-    if(dbErr){await supabase.storage.from('gnsi').remove([path]);showToast('Save failed',T.red);return}
-    await auditLog('photo_upload',{student_id:student.id});showToast('Photo updated',T.green)
+    setPhotoBusy(true)
+    try{
+      const{path,url,note}=await saveStudentPhoto(student,file)
+      onPhotoChange?.(student.id,{photo_path:path,photo_url:url})
+      await auditLog('photo_upload',{student_id:student.id});showToast('Photo updated · '+note,T.green)
+    }catch(ex){
+      showToast(ex.message||'Upload failed',T.red)
+    }finally{
+      setPhotoBusy(false)
+    }
   }
 
   // ✦ Second upload option — Google Drive, alongside the Supabase Storage
-  // flow above. Does not touch photo_path (leaves it as-is); only writes
-  // photo_url, same field the existing Avatar already reads from.
+  // flow above. The photo is shrunk first, then filed in Drive; photo_path is
+  // cleared so this newest photo is the one shown.
   const [driveUploading,setDriveUploading]=useState(false)
   const handlePhotoUploadDrive=async e=>{
-    const file=e.target.files[0];if(!file)return
-    const err=validateFile(file,{mimes:ALLOWED_IMAGE_MIMES,exts:ALLOWED_IMAGE_EXTS,maxMB:MAX_IMG_SIZE_MB})
+    const file=e.target.files[0];e.target.value='';if(!file)return
+    const err=validateFile(file,{mimes:ALLOWED_IMAGE_MIMES,exts:ALLOWED_IMAGE_EXTS,maxMB:PHOTO_PICK_MAX_MB})
     if(err){showToast(err,T.red);return}
     setDriveUploading(true)
     try{
+      const info=await compressImage(file,PHOTO_COMPRESS)
       const identifier=student.gcc_no||student.id
-      const uploadPromise=uploadPhotoToGoogleDriveStudents(file,identifier)
+      const uploadPromise=uploadPhotoToGoogleDriveStudents(info.file,identifier)
       const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Upload timed out. Please check your connection and try again.')),60000))
       const{url}=await Promise.race([uploadPromise,timeoutPromise])
-      const{error:dbErr}=await updateStudentsRows({match:{id:student.id},patch:{photo_url:url}})
+      const{error:dbErr}=await updateStudentsRows({match:{id:student.id},patch:{photo_url:url,photo_path:null}})
       if(dbErr){showToast('Save failed',T.red);return}
+      onPhotoChange?.(student.id,{photo_url:url,photo_path:null})
       await auditLog('photo_upload_drive',{student_id:student.id})
-      showToast('Photo updated',T.green)
+      showToast('Photo updated · '+sizeNote(info),T.green)
     }catch(err){
       showToast(err.message||'Upload failed',T.red)
     }finally{
@@ -2696,10 +2744,10 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
                 <Avatar name={student.name} photoUrl={student.photo_url} size={58}/>
               </div>
               <IfCan can={can.write}>
-                <label style={{position:'absolute',bottom:-2,right:-2,width:20,height:20,borderRadius:'50%',background:T.brand,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:10,border:`2px solid ${T.surface}`,color:'#fff'}} title="Upload photo (Supabase Storage)">
-                  📷<input type="file" accept={ALLOWED_IMAGE_EXTS.join(',')} style={{display:'none'}} onChange={handlePhotoUpload}/>
+                <label style={{position:'absolute',bottom:-2,right:-2,width:20,height:20,borderRadius:'50%',background:photoBusy?'#94A3B8':T.brand,display:'flex',alignItems:'center',justifyContent:'center',cursor:photoBusy?'not-allowed':'pointer',fontSize:10,border:`2px solid ${T.surface}`,color:'#fff'}} title="Add or replace photo (shrunk automatically)">
+                  {photoBusy?'⏳':'📷'}<input type="file" accept={ALLOWED_IMAGE_EXTS.join(',')} disabled={photoBusy} style={{display:'none'}} onChange={handlePhotoUpload}/>
                 </label>
-                <label style={{position:'absolute',top:-2,right:-2,width:20,height:20,borderRadius:'50%',background:driveUploading?'#94A3B8':'#1E2A5E',display:'flex',alignItems:'center',justifyContent:'center',cursor:driveUploading?'not-allowed':'pointer',fontSize:10,border:`2px solid ${T.surface}`,color:'#fff'}} title="Upload photo (Google Drive)">
+                <label style={{position:'absolute',top:-2,right:-2,width:20,height:20,borderRadius:'50%',background:driveUploading?'#94A3B8':'#1E2A5E',display:'flex',alignItems:'center',justifyContent:'center',cursor:driveUploading?'not-allowed':'pointer',fontSize:10,border:`2px solid ${T.surface}`,color:'#fff'}} title="Add or replace photo in Google Drive (shrunk automatically)">
                   {driveUploading?'⏳':'📤'}<input type="file" accept={ALLOWED_IMAGE_EXTS.join(',')} disabled={driveUploading} style={{display:'none'}} onChange={handlePhotoUploadDrive}/>
                 </label>
               </IfCan>
@@ -2897,6 +2945,48 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
 }
 
 // ─── Student Form ─────────────────────────────────────────────────────────────
+// Photo picker for the student form: take a photo or choose one, it is shrunk right
+// away (so the size is visible before saving) and uploaded when the form is saved.
+function PhotoField({ currentUrl, value, onChange }) {
+  const [busy,setBusy]=useState(false)
+  const [msg,setMsg]=useState('')
+  const file=value?value.file:null
+  const preview=useMemo(()=>file?URL.createObjectURL(file):null,[file])
+  useEffect(()=>()=>{if(preview)URL.revokeObjectURL(preview)},[preview])
+  const pick=async e=>{
+    const f=e.target.files?.[0];e.target.value='';if(!f)return
+    const err=validateFile(f,{mimes:ALLOWED_IMAGE_MIMES,exts:ALLOWED_IMAGE_EXTS,maxMB:PHOTO_PICK_MAX_MB})
+    if(err){setMsg(err);return}
+    setBusy(true);setMsg('')
+    try{
+      const info=await compressImage(f,PHOTO_COMPRESS)
+      onChange({file:info.file,note:sizeNote(info)})
+    }catch{setMsg('Could not read this photo. Please try another one.')}
+    finally{setBusy(false)}
+  }
+  const shown=preview||currentUrl
+  const btn={display:'inline-flex',alignItems:'center',gap:6,padding:'8px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,background:T.surface,color:T.text2,fontSize:12.5,fontWeight:600,cursor:busy?'not-allowed':'pointer',opacity:busy?.6:1}
+  return (
+    <div style={{display:'flex',gap:16,alignItems:'center',flexWrap:'wrap',marginBottom:18,padding:14,border:`1px dashed ${value?T.gold:T.border2}`,borderRadius:T.r12,background:T.surface2}}>
+      <div style={{width:96,height:120,borderRadius:T.r12,overflow:'hidden',background:T.surface,border:`1px solid ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+        {shown?<img src={shown} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<span style={{fontSize:34,color:T.text4}} aria-hidden="true">👤</span>}
+      </div>
+      <div style={{flex:1,minWidth:200}}>
+        <div style={{fontSize:13,fontWeight:700,color:T.text1,marginBottom:2}}>Student photo</div>
+        <div style={{fontSize:11.5,color:T.text3,marginBottom:10,lineHeight:1.45}}>Take a photo or choose one. It is shrunk automatically (about 250 KB), so any phone photo is fine.</div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <label style={btn}>📷 Take photo<input type="file" accept="image/*" capture="user" disabled={busy} onChange={pick} style={{display:'none'}}/></label>
+          <label style={btn}>📁 {shown?'Replace':'Choose'} photo<input type="file" accept={ALLOWED_IMAGE_EXTS.join(',')} disabled={busy} onChange={pick} style={{display:'none'}}/></label>
+          {value&&<button type="button" onClick={()=>{onChange(null);setMsg('')}} style={{...btn,color:T.red}}>✕ Undo</button>}
+        </div>
+        {busy&&<div style={{fontSize:12,color:T.text3,marginTop:8}}>⏳ Shrinking photo…</div>}
+        {!busy&&value&&<div style={{fontSize:12,color:T.green,fontWeight:600,marginTop:8}}>✓ {value.note} — saved when you press Save</div>}
+        {msg&&<div style={{fontSize:12,color:T.red,fontWeight:600,marginTop:8}}>⚠ {msg}</div>}
+      </div>
+    </div>
+  )
+}
+
 function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
   const blank={name:'',gcc_no:'',dob:'',gender:'Male',course:'',batch:'',house:'',session:'',hostel_type:'Day Scholar',status:'Active',father_name:'',mother_name:'',phone:'',address:'',remarks:'',fee_waiver:0,scholarship:0,fee_waiver_note:'',emergency_contact:'',prev_school:'',referral_source:'',admission_date:new Date().toISOString().slice(0,10),left_date:'',medical_notes:'',academic_remarks:''}
   const loadDraft=()=>{if(editing)return null;try{const r=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');if(!r)return null;DRAFT_PII_FIELDS.forEach(k=>delete r[k]);return r}catch{return null}}
@@ -2905,6 +2995,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
   const [errors,setErrors]=useState({})
   const [saving,setSaving]=useState(false)
   const [draftSaved,setDraftSaved]=useState(false)
+  const [photo,setPhoto]=useState(null)   // { file, note } — compressed, uploaded on save
   const set=(k,v)=>setForm(f=>({...f,[k]:v}))
 
   useEffect(()=>{if(editing)return;const t=setTimeout(()=>{localStorage.setItem(DRAFT_KEY,JSON.stringify(sanitiseDraftForStorage(form)));setDraftSaved(true);setTimeout(()=>setDraftSaved(false),1500)},1000);return()=>clearTimeout(t)},[form,editing])
@@ -2957,7 +3048,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
   const hostelCfg=HOSTEL_CFG[derived]||HOSTEL_CFG['Day Scholar']
 
   const validate=()=>{const e={};if(!form.name?.trim())e.name='Name is required';if(!form.gcc_no?.toString().trim())e.gcc_no='GCC No. required';if(gccDup)e.gcc_no=`GCC ${form.gcc_no} used by ${gccDup.name}`;if(phoneDup)e.phone=`Phone used by ${phoneDup.name}`;setErrors(e);return!Object.keys(e).length}
-  const handleSave=async()=>{if(!validate())return;setSaving(true);await onSave(editing?.id||null,{...form,hostel_type:derived});setSaving(false);if(!editing)localStorage.removeItem(DRAFT_KEY)}
+  const handleSave=async()=>{if(!validate())return;setSaving(true);await onSave(editing?.id||null,{...form,hostel_type:derived},photo?.file||null);setSaving(false);if(!editing)localStorage.removeItem(DRAFT_KEY)}
 
   const INP={width:'100%',padding:'9px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,height:42,fontFamily:'inherit',boxSizing:'border-box',outline:'none'}
   const INP_ERR={...INP,borderColor:T.red}
@@ -2983,6 +3074,7 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
       </div>
 
       <div style={{padding:'20px'}}>
+        <PhotoField currentUrl={editing?.photo_url} value={photo} onChange={setPhoto}/>
         <FieldRow label="Full Name *" error={errors.name}>
           <input style={errors.name?INP_ERR:INP} value={form.name} onChange={e=>{set('name',e.target.value);setErrors(v=>({...v,name:''}))}} placeholder="Full name as per certificate"/>
         </FieldRow>
@@ -5077,7 +5169,7 @@ const effectiveCols = visibleCols.filter(col => {
     setLoading(true)
     try{
       const[rows,{data:houseRows}]=await Promise.all([getActiveStudents('*'),supabase.from('houses').select('name').order('name')])
-      setStudents(rows||[])
+      setStudents(await attachPhotoUrls(rows||[]))
       if(houseRows?.length)setHouseOptions(houseRows.map(h=>h.name))
     }catch(err){showToast('Failed to load: '+err.message,T.red)}
     finally{setLoading(false)}
@@ -5233,7 +5325,7 @@ const effectiveCols = visibleCols.filter(col => {
   },[students,loadAttData]))
 
   // ── Mutations (logic unchanged) ───────────────────────────────────────────────
-  const handleSave=async(eid,obj)=>{
+  const handleSave=async(eid,obj,photoFile)=>{
     if(!can.write){showToast('No permission',T.red);return}
     // house is deliberately NOT included in this payload — it's written
     // exclusively by allocateStudent/vacateStudent below (which also
@@ -5264,6 +5356,14 @@ const effectiveCols = visibleCols.filter(col => {
       setStudents(prev=>prev.map(s=>s.id===eid?{...s,...payload,house:houseChosen}:s))
       await auditLog('student_update',{student_id:eid});showToast('Student updated',T.amber)
       broadcastStudentsUpdate({type:'update',student_id:eid,course:payload.course,class_name:payload.class_name})
+      if(photoFile){
+        // the form already shrank this photo; store it and show it straight away
+        try{
+          const{path,url}=await saveStudentPhoto({id:eid,photo_path:original?.photo_path},photoFile,{alreadyCompressed:true})
+          setStudents(prev=>prev.map(x=>x.id===eid?{...x,photo_path:path,photo_url:url}:x))
+          await auditLog('photo_upload',{student_id:eid});showToast('Student and photo updated',T.green)
+        }catch(ex){showToast('Student saved, but the photo failed: '+(ex.message||'upload error'),T.red)}
+      }
     }else{
       const{data,error}=await supabase.from('students').insert(payload).select().single()
       if(error){showToast(error.code==='23505'?`GCC ${obj.gcc_no} already exists`:'Save failed: '+error.message,T.red);return}
@@ -5527,7 +5627,7 @@ const effectiveCols = visibleCols.filter(col => {
       )}
 
       {/* Modals */}
-      {detailPanel&&<StudentDetailDrawer student={detailPanel} allStudents={students} attData={attData} examData={examData} feeData={feeData} feeHistory={feeHistory} can={can} isAdmin={isAdminRole(role) || ['admin','Admin'].includes(role)} currentUser={user} onClose={()=>setDetailPanel(null)} onEdit={s=>{setEditing(s);setFormOpen(true);setDetailPanel(null);setPageTab('students')}} showToast={showToast}/>}
+      {detailPanel&&<StudentDetailDrawer student={detailPanel} allStudents={students} attData={attData} examData={examData} feeData={feeData} feeHistory={feeHistory} can={can} isAdmin={isAdminRole(role) || ['admin','Admin'].includes(role)} currentUser={user} onClose={()=>setDetailPanel(null)} onEdit={s=>{setEditing(s);setFormOpen(true);setDetailPanel(null);setPageTab('students')}} onPhotoChange={(id,patch)=>{setStudents(prev=>prev.map(x=>x.id===id?{...x,...patch}:x));setDetailPanel(d=>d&&d.id===id?{...d,...patch}:d)}} showToast={showToast}/>}
       {feePanel&&<FeeCollectionModal app={feePanel} isAdmin={can.write} currentUser={user} onClose={()=>setFeePanel(null)} onSaved={()=>{setFeePanel(null);loadAll();showToast('Payment recorded!',T.green)}}/>}
       {examEntry&&<ExamScoreModal student={examEntry} can={can} onClose={()=>setExamEntry(null)} onSaved={()=>{setExamEntry(null);loadExamData(students.map(s=>s.id))}} showToast={showToast}/>}
       {attViewer&&<AttendanceViewerModal student={attViewer} onClose={()=>setAttViewer(null)}/>}
