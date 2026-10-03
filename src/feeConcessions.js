@@ -24,6 +24,16 @@ export const CONCESSION_REASONS = [
 // a second admin must decide it. Keep in step with fee_self_approve_limit() in
 // supabase/migrations/20261006_fee_integrity_guards.sql.
 export const CONCESSION_SELF_APPROVE_LIMIT = 2000
+// With a single admin account nobody else could ever approve — allow self-approval then.
+let _soleAdmin = null
+export async function isSoleAdmin() {
+  if (_soleAdmin !== null) return _soleAdmin
+  try {
+    const { data, error } = await supabase.rpc('fee_admin_count')
+    _soleAdmin = !error && Number(data) <= 1
+  } catch { _soleAdmin = false }
+  return _soleAdmin
+}
 const sameWho = (a, b) => !!String(a || '').trim() && String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase()
 
 const missingTable = err => err && (err.code === '42P01' || err.code === 'PGRST205' || /fee_concessions|concession_(amount|status)/.test(err.message || ''))
@@ -39,7 +49,7 @@ export async function recordConcession({ replace = false, table, rowId, kind, gc
   // amount, not the requester approving their own request; otherwise it waits
   // for a (different) admin.
   const unexplained = (reason || 'Other') === 'Other' && String(note || '').trim().length < 3
-  const selfApproved = approvedBy && shortfall > CONCESSION_SELF_APPROVE_LIMIT && sameWho(approvedBy, collectedBy)
+  const selfApproved = approvedBy && shortfall > CONCESSION_SELF_APPROVE_LIMIT && sameWho(approvedBy, collectedBy) && !(await isSoleAdmin())
   if (unexplained) note = '⚠ No explanation was given'
   if (unexplained || selfApproved) approvedBy = null
   const status = approvedBy ? 'approved' : 'pending'
@@ -81,7 +91,7 @@ export async function countPendingConcessions() {
 
 // Admin decision. approve → waive the shortfall; reject → it stays due.
 export async function decideConcession(c, approve, { by, note } = {}) {
-  if (approve && Number(c.shortfall) > CONCESSION_SELF_APPROVE_LIMIT && sameWho(by, c.requested_by || c.collected_by)) {
+  if (approve && Number(c.shortfall) > CONCESSION_SELF_APPROVE_LIMIT && sameWho(by, c.requested_by || c.collected_by) && !(await isSoleAdmin())) {
     throw new Error(`This ₹${Number(c.shortfall).toLocaleString('en-IN')} concession was raised by you — a different admin must approve anything above ₹${CONCESSION_SELF_APPROVE_LIMIT.toLocaleString('en-IN')}.`)
   }
   if (approve && c.reason === 'Other' && String(c.reason_note || '').trim().length < 3 && String(note || '').trim().length < 3) {
