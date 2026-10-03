@@ -13,7 +13,7 @@ const ITEMS = [
   { icon: '🎓', title: 'Concession register', text: 'Standing scholarships and concessions with expiry tracking — now reduce the dues automatically.', tab: 'concessionRegister', admin: true },
   { icon: '↩️', title: 'Refunds & transfers', text: 'Record refunds, credits and write-offs with an approval step; paid refunds post to Accounts.', tab: 'refunds', admin: true },
   { icon: '🛡️', title: 'Fees activity digest', text: 'Weekly/monthly summary of corrections, reverts and concessions with red flags.', tab: 'digest', admin: true },
-  { icon: '🔎', title: 'Verify receipt', text: 'Every receipt now carries a QR code; scan or type the number to check it against the books.', tab: 'verify' },
+  { icon: '🔎', title: 'Verify receipt', text: 'Every receipt carries a QR code. Parents can scan it on their phone to confirm it is genuine; staff can also check by number.', tab: 'verify' },
   { icon: '🩺', title: 'Data health', text: 'Finds students with missing GCC, course, hostel type, phone, photo and more.', tab: 'dataHealth', admin: true },
   { icon: '🔁', title: 'Session rollover planner', text: 'Plan April promotions, repeaters and carried-forward dues (read-only).', tab: 'rollover', admin: true },
   { icon: '📊', title: 'Dashboard upgrades', text: 'Month-wise dues from January incl. admission, exports on every section, Session Progress student list.' },

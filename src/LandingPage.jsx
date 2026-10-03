@@ -10,6 +10,8 @@ import {
 import { supabase } from './supabase';
 import ParentsPortal from './ParentsPortal';
 import PublicFeeLookup from './PublicFeeLookup';
+import PublicReceiptCheck from './PublicReceiptCheck';
+import { receiptCheckParams } from './lib/receiptCheckParams';
 // Styles used to be injected on every render via <style dangerouslySetInnerHTML>
 // (a single ~100KB minified string). Moved to a real .css file so Vite bundles
 // and the browser caches it separately from the JS, and normal CSS tooling can
@@ -786,6 +788,7 @@ export default function LandingPage({ onLogin }) {
     }
   });
   const [isFeeOpen, setIsFeeOpen] = useState(false);
+  const [receiptCheckOpen, setReceiptCheckOpen] = useState(() => !!receiptCheckParams());
   const [feePaymentInfo, setFeePaymentInfo] = useState({ upi_id: '', upi_qr_url: '' });
   // Website Manager settings (see buildSite above). Shares the 'stats'
   // cache entry, so this adds no extra request.
@@ -6519,5 +6522,6 @@ window.submitGrievance = async () => {
     );
   })()}
   <PublicFeeLookup isOpen={isFeeOpen} onClose={() => setIsFeeOpen(false)} upi={feePaymentInfo} />
+  {receiptCheckOpen && <PublicReceiptCheck onClose={() => setReceiptCheckOpen(false)} />}
 </>  );
 }
