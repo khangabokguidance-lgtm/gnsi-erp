@@ -16,8 +16,8 @@
 // class has a tab/tabs/qt token (ac-tab, st-tab, rx-tab, hs-qt …); and a strip of
 // 3+ sibling buttons that mostly lead with an emoji (inline-styled tab bars).
 // Every iconised tab also gets its own colour (by position in its strip, so
-// neighbouring tabs always differ): the icon sits in a tinted chip, and the
-// selected tab gets a solid chip plus a coloured underline. Only data-* attrs
+// neighbouring tabs always differ) and a Material-3 / Google Play layout: icon
+// over a small label, the selected tab's icon in a tinted pill with a bold label. Only data-* attrs
 // are added, never touching React-owned props.
 // Opt out with data-ti-skip on the button or any ancestor. Buttons that already
 // contain an <svg> (bottom bars, icon grids) are left alone.
@@ -269,9 +269,20 @@ const CSS = `
 [data-ti]{align-items:center}
 [data-ti-only] .ti-ic{margin-right:0}
 ${PALETTE.map((c, i) => `[data-ti-c="${i}"]{--ti-c:${c}}`).join('')}
-[data-ti-c] .ti-ic{width:1.6em;height:1.6em;padding:.3em;box-sizing:border-box;border-radius:.55em;opacity:1;color:var(--ti-c);background:#f1f5f9;background:color-mix(in srgb,var(--ti-c) 15%,#fff);transition:background .15s,color .15s}
-[data-ti-c][data-ti-active]{box-shadow:inset 0 -3px 0 var(--ti-c)!important}
-[data-ti-c][data-ti-active] .ti-ic{background:var(--ti-c);color:#fff}
+/* Material-3 style tab: icon over label; the selected tab's icon sits in a tinted pill.
+   !important is needed to override each module's own inline tab styling. */
+[data-ti-c]{display:inline-flex!important;flex-direction:column!important;align-items:center!important;justify-content:flex-start!important;gap:4px!important;min-width:64px;height:auto!important;padding:6px 12px 8px!important;border:0!important;border-radius:16px!important;background:transparent!important;box-shadow:none!important;color:#5f6368!important;font-size:12px!important;font-weight:500!important;line-height:1.2!important;text-align:center!important;white-space:nowrap}
+[data-ti-c] .ti-ic{width:56px!important;height:30px!important;margin:0!important;padding:0!important;box-sizing:border-box;border-radius:16px!important;opacity:1;background:transparent!important;color:var(--ti-c);transition:background .18s}
+[data-ti-c] .ti-ic svg{width:21px!important;height:21px!important}
+[data-ti-c]:hover:not([data-ti-active]) .ti-ic{background:color-mix(in srgb,var(--ti-c) 10%,transparent)!important}
+[data-ti-c][data-ti-active]{color:#202124!important;font-weight:700!important}
+[data-ti-c][data-ti-active] .ti-ic{background:#e8eaed!important;background:color-mix(in srgb,var(--ti-c) 22%,#fff)!important}
+[data-ti-c][data-ti-dark]{color:#bdc1c6!important}
+[data-ti-c][data-ti-dark][data-ti-active]{color:#fff!important}
+[data-ti-c][data-ti-dark] .ti-ic{color:#fff;color:color-mix(in srgb,var(--ti-c) 45%,#fff)}
+[data-ti-c][data-ti-dark][data-ti-active] .ti-ic{background:color-mix(in srgb,var(--ti-c) 38%,transparent)!important}
+[data-ti-c][data-ti-only]{min-width:0}
+[data-ti-c][data-ti-only] .ti-ic{width:48px!important}
 `;
 
 // ── per-tab colour + selected-tab highlight ─────────────────────────────────
@@ -285,6 +296,15 @@ function stripOf(b) {
 }
 const tabsOf = (strip) => (strip ? Array.from(strip.querySelectorAll('[data-ti-icon]')).map((i) => i.closest('button,[role="tab"]')).filter((b, i, a) => b && a.indexOf(b) === i && stripOf(b) === strip) : []);
 
+// Effective background luminance behind a tab (walks up to the first opaque ancestor).
+function onDark(el) {
+  for (let n = el; n; n = n.parentElement) {
+    const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/.exec(getComputedStyle(n).backgroundColor);
+    if (m && (m[4] === undefined || parseFloat(m[4]) > 0.5)) return (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255 < 0.45;
+  }
+  return false;
+}
+
 let onColored = null; // set while the enhancer is mounted: re-checks the selected tab of a strip
 function colorize(b) {
   const strip = stripOf(b);
@@ -297,6 +317,8 @@ function colorize(b) {
   if (idx < 0) idx = 0;
   const v = String(idx % PALETTE.length);
   if (b.getAttribute('data-ti-c') !== v) b.setAttribute('data-ti-c', v);
+  const dark = onDark(strip);
+  if (dark !== b.hasAttribute('data-ti-dark')) { if (dark) b.setAttribute('data-ti-dark', ''); else b.removeAttribute('data-ti-dark'); }
   if (onColored) onColored(b);
 }
 
@@ -319,8 +341,8 @@ function syncActive(strip) {
     // inline-styled strip: the selected tab is the one tab whose look differs from all the others
     const groups = new Map();
     tabs.forEach((b) => {
-      const cs = getComputedStyle(b);
-      const sig = `${cs.backgroundColor}|${cs.color}|${cs.fontWeight}`;
+      // the tab's own inline style / class text (computed colours are flattened by the tab layout above)
+      const sig = `${b.getAttribute('style') || ''}|${b.getAttribute('class') || ''}`;
       if (!groups.has(sig)) groups.set(sig, []);
       groups.get(sig).push(b);
     });
