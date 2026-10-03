@@ -1492,7 +1492,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
       {id:'monthly_summary',name:'Monthly Collection Summary',desc:'Month-wise totals for flat, course and admission fees',rows:()=>reports.monthlyRows,meta:()=>({'Months':reports.monthlyRows.length,'Generated':todayStr})},
     ]},
     {group:'Dues Reports',icon:'⏳',color:'#b91c1c',reports:[
-      {id:'dues_summary',name:'Month-wise Dues Summary',desc:duesLoading?'Working out dues…':'Expected, collected and outstanding for each of the last 6 months',rows:()=>dueSummaryRows,meta:()=>({'Months':dueSummaryRows.length,'Total Outstanding':`₹${n(dueSummaryRows.reduce((s,r)=>s+r['Outstanding (₹)'],0))}`,'Generated':todayStr})},
+      {id:'dues_summary',name:'Month-wise Dues Summary',desc:duesLoading?'Working out dues…':'Expected, collected and outstanding for every month of the session so far',rows:()=>dueSummaryRows,meta:()=>({'Months':dueSummaryRows.length,'Total Outstanding':`₹${n(dueSummaryRows.reduce((s,r)=>s+r['Outstanding (₹)'],0))}`,'Generated':todayStr})},
       {id:'dues_defaulters',name:'Month-wise Defaulters List',desc:duesLoading?'Working out dues…':`Every student who still owes, month by month${courseF!=='All'||hostelF!=='All'?' (course / hostel filter applied)':''}`,rows:()=>dueDefaulterRows,meta:()=>({'Records':dueDefaulterRows.length,'Total Outstanding':`₹${n(dueDefaulterRows.reduce((s,r)=>s+r['Due (₹)'],0))}`,'Course':courseF,'Hostel':hostelF,'Generated':todayStr})},
     ]},
     {group:'Date Range Report',icon:'📅',color:'#d97706',reports:[
@@ -1778,20 +1778,25 @@ function StudentSearch({ students, onSelect, placeholder }) {
 //   • months before a student's admission are not charged;
 //   • a part-payment leaves the shortfall due (not "paid");
 //   • advance payments count for the month they were paid for.
-// Last 6 months that have started, each read from its own April–March session.
+// Every month of the current April–March session so far (April → this month).
 // Shared by the Fee Dashboard's Month-wise Dues card (and its export menu) and
 // the Reports & Export Centre, so every number comes from one place.
 function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_course_fees }) {
   const [now] = useState(() => new Date())
-  const duesMonths = useMemo(() => Array.from({ length: 6 }, (_, idx) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (5 - idx), 1)
-    const start = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1
-    return {
-      label: d.toLocaleString('default', { month: 'short' }), fullMon: d.toLocaleString('default', { month: 'long' }),
-      year: d.getFullYear(), session: `${start}-${start + 1}`,
-      isCurrent: d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(),
+  // Every month of the current April–March session, from April up to this month.
+  const duesMonths = useMemo(() => {
+    const startYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1
+    const session = `${startYear}-${startYear + 1}`
+    const out = []
+    for (let d = new Date(startYear, 3, 1); d <= now; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+      out.push({
+        label: d.toLocaleString('default', { month: 'short' }), fullMon: d.toLocaleString('default', { month: 'long' }),
+        year: d.getFullYear(), session,
+        isCurrent: d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(),
+      })
     }
-  }), [now])
+    return out
+  }, [now])
   // liveRows is rebuilt every time a batch of per-student dues arrives; only
   // re-run the (network-backed) register build when a fee-relevant field changes.
   const duesStudentsKey = liveRows.map(s => [s.gcc_no, s.course, s.batch, s.hostel_type, s.admission_date, s.session].join('|')).join(';')
@@ -1947,7 +1952,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   // month is expanded inline. Declared up-front with the other hooks (not
   // inline further down next to the derived `monthwiseDues` value) so hook
   // order stays stable regardless of future edits to the derivations below.
-  const [duesMonthIdx, setDuesMonthIdx] = useState(5)
+  const [duesMonthIdx, setDuesMonthIdx] = useState(null)   // null = the current (latest) month
   const [duesExpanded, setDuesExpanded] = useState(false)
   useEffect(() => {
     let cancelled = false
@@ -2053,7 +2058,8 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   // Worked out by useMonthwiseDues (defined above this component) so the same
   // numbers feed this card, its export menu and the Reports & Export Centre.
   const { monthwiseDues, duesError } = useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_course_fees })
-  const selectedDues = monthwiseDues[duesMonthIdx] ?? monthwiseDues[monthwiseDues.length - 1] ?? null
+  const selIdx = duesMonthIdx ?? (monthwiseDues.length - 1)
+  const selectedDues = monthwiseDues[selIdx] ?? monthwiseDues[monthwiseDues.length - 1] ?? null
 
   // ── Hostel breakdown ────────────────────────────────────────────────────────
   const hostelBreakdown = ['Boarder', 'Day Boarder', 'Day Scholar'].map(h => {
@@ -2328,7 +2334,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
           <div>
             <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>🗓️ Month-wise Dues (Flat + Course Fee)</div>
             {duesError && <div style={{ fontSize: 12, color: '#b42318', marginTop: 4 }}>Could not work out dues: {duesError}</div>}
-            <div style={{ fontSize: 11, color: '#8a93a6' }}>Expected vs collected — tap a month to see who still owes</div>
+            <div style={{ fontSize: 11, color: '#8a93a6' }}>
+              {monthwiseDues.length > 0 && <>Session {monthwiseDues[0].session} · {monthwiseDues[0].label}{monthwiseDues.length > 1 ? `–${monthwiseDues[monthwiseDues.length - 1].label}` : ''} · </>}
+              Expected vs collected — tap a month to see who still owes
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <DuesExportMenu months={monthwiseDues} selected={selectedDues} />
@@ -2338,7 +2347,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             </button>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(6, 1fr)', gap: 10, marginTop: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(auto-fill, minmax(118px, 1fr))', gap: 10, marginTop: 14 }}>
           {monthwiseDues.map((m, idx) => {
             const pctRaw   = m.expectedTotal > 0 ? Math.round((m.collectedTotal / m.expectedTotal) * 100) : null
             // Clamp for display: collected can legitimately exceed the
@@ -2348,7 +2357,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             // ceiling, so cap what's shown at 100 and let the ₹ due (which
             // is separately floored at 0) tell the true story.
             const pct      = pctRaw === null ? null : Math.min(100, pctRaw)
-            const isSel    = idx === duesMonthIdx
+            const isSel    = idx === selIdx
             const hasDue   = m.dueTotal > 0
             const cardColor= hasDue ? '#dc2626' : (m.expectedTotal > 0 ? '#059669' : '#8a93a6')
             return (
