@@ -1,6 +1,6 @@
 export default {
   id: 'sessions',
-  title: 'Admission Sessions',
+  title: 'Sessions',
   group: 'CORE',
   roles: ['Admin'],
   summary: 'Create and manage academic year sessions such as "2025-26". Choose which session is Active, so new admissions are tagged to it, and Lock a session to stop new applications. Admin only.',
