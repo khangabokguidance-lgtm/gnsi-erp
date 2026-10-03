@@ -96,7 +96,8 @@ drop policy if exists fee_concession_register_insert on public.fee_concession_re
 drop policy if exists fee_concession_register_update on public.fee_concession_register;
 drop policy if exists fee_concession_register_delete on public.fee_concession_register;
 create policy fee_concession_register_read   on public.fee_concession_register for select to authenticated using (public.qbank_is_staff());
-create policy fee_concession_register_insert on public.fee_concession_register for insert to authenticated with check (public.qbank_is_staff());
+-- Standing concessions reduce what students owe, so only admins may add them.
+create policy fee_concession_register_insert on public.fee_concession_register for insert to authenticated with check (public.qbank_is_admin());
 create policy fee_concession_register_update on public.fee_concession_register for update to authenticated
   using (public.qbank_is_admin()) with check (public.qbank_is_admin());
 create policy fee_concession_register_delete on public.fee_concession_register for delete to authenticated using (public.qbank_is_admin());
