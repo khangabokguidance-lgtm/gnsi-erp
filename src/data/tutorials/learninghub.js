@@ -1,0 +1,125 @@
+export default {
+  id: 'learninghub',
+  title: 'Learning Hub',
+  group: 'ACADEMIC',
+  roles: ['Admin', 'Teacher'],
+  summary: 'One place for all academic content: study materials, teaching aids, the question bank and the entrance exam. The flow is Learn, then Practice, then Assess.',
+  before: [
+    'You only see a tab if your role has permission for it (Admin sets this in Permissions).',
+    'Add Subject, Delete, Create Paper, Online Test, Smart PPT and Stats are for Admin only.',
+  ],
+  tabs: [
+    { name: 'Study Materials', what: 'Notes, formula sheets, practice sets, solved papers, mind maps, videos and current affairs, arranged by course, subject and chapter.' },
+    { name: 'Teaching Aids', what: 'A bookshelf of teaching books (batches like Lakshya and Umeed). Students read them page by page in a view-only reader.' },
+    { name: 'Question Bank', what: 'Add, edit and organise questions. Admin can also make papers, online tests, slides and see stats.' },
+    { name: 'Question Bank Viewer', what: 'A read-only view of the questions by course, subject and chapter. You can print a chapter with or without answers.' },
+    { name: 'Entrance Exam', what: 'Runs a whole entrance exam: set-up, applications, question paper, hall tickets, exam day, evaluation, results and admission.' },
+  ],
+  steps: [
+    {
+      title: 'Find a chapter in Study Materials',
+      body: [
+        'Open Learning Hub and click the "Study Materials" tab.',
+        'Choose a course button: Sainik School, Navodaya Vidyalaya, Foundation Course or Rashtriya Military School.',
+        'Stay on the "Library" view and pick a subject on the left.',
+        'Open the chapter. Its materials are listed with a type badge (Notes PDF, Formula Sheet, Practice Set, Solved Paper, Mind Map, Video Link, Current Affairs).',
+        'Use the search box to find a material by name.',
+      ],
+      tip: 'Staff who are not Admin see "View Only" for PDF and document files. Download is allowed for Admin only.',
+    },
+    {
+      title: 'Add materials to a chapter (paste links)',
+      body: [
+        'In a chapter, click "+ Add" (or "📋 Paste now" if the chapter is empty).',
+        'Type or paste one item per line: a title, then a Drive or YouTube link.',
+        'Click "🔍 Detect Items". The page guesses the type (notes, video, and so on).',
+        'Check the list. Untick any line you do not want.',
+        'Click save. A message shows how many materials were saved.',
+      ],
+      tip: 'If a title contains a chapter name, the page puts it in that chapter for you.',
+    },
+    {
+      title: 'Delete a material or add a subject or chapter (Admin only)',
+      body: [
+        'To delete: click "🗑 Delete" on the material card and confirm. The file is removed and this cannot be undone.',
+        'To add a subject: click "Add Subject", type the subject name, choose an icon and save.',
+        'To add a chapter: use the "New chapter name…" box at the bottom of the subject.',
+        'Custom subjects and chapters show a "custom" badge. "🗑 Delete subject" removes only the subject; the materials are kept.',
+      ],
+    },
+    {
+      title: 'Rate and save a material',
+      body: [
+        'On a material card, click the stars to give your rating.',
+        'Click "🔖 Save" to keep it on your shelf.',
+        'Open the "Saved" view to see your saved materials.',
+      ],
+      tip: 'The Saved view only shows when the database supports it.',
+    },
+    {
+      title: 'Read a Teaching Aid',
+      body: [
+        'Open the "Teaching Aids" tab.',
+        'Click a batch button (for example Lakshya, Umeed or Combined Course).',
+        'Use the subject chips such as "All Subjects" to narrow the shelf.',
+        'Click a book cover to open it. Your last page is remembered.',
+        'In the reader you can bookmark a page, draw a highlight box, write a page note, change text size (A− / A+), and use night mode.',
+        '"📺 Cast" sends the book to a TV that supports it.',
+      ],
+      tip: 'The reader blocks download and print, but nothing can fully stop a phone photo.',
+    },
+    {
+      title: 'Upload a Teaching Aid (Admin only)',
+      body: [
+        'In "Teaching Aids" click "➕ Add Teaching Aid".',
+        'Choose the Batch and type the Title (both required).',
+        'Fill Subject, Subtopic and Description if you want.',
+        'Choose the files: one PDF, or images in page order.',
+        'Click save and wait until the upload finishes.',
+        'To remove a book, use its delete button and confirm. This cannot be undone.',
+      ],
+      tip: 'Admin also sees "Admin · Reading Activity" under the shelf. Click a book there to see each reader\'s progress.',
+    },
+    {
+      title: 'Add questions to the Question Bank',
+      body: [
+        'Open the "Question Bank" tab and then the "✏️ Manual Add" sub-tab.',
+        'Fill course, subject, chapter, the question, options A and B (at least) and the correct option.',
+        'Click "+ Add Another Row" if you have more questions.',
+        'Click "✅ Save". If a question looks like one already in the bank, you are asked "Save anyway?".',
+        'For many questions at once, use the "📤 Bulk Paste" sub-tab.',
+      ],
+      tip: 'Write fractions as 5/4 or 2 1/3. "🔄 Clear All" empties the form.',
+    },
+    {
+      title: 'Run an entrance exam',
+      body: [
+        'Open the "Entrance Exam" tab and click "New exam".',
+        'Fill the exam name and exam date (required), pattern, seats and rooms, then click "Create exam".',
+        'Go through the tabs in order: Applications, Question Paper, Hall Tickets, Exam Day, Evaluation, Results, Admission.',
+        'In Question Paper click "✦ Generate paper". In Hall Tickets click "① Allot seats" then "② Issue hall tickets".',
+        'The Overview tab shows the next step to do.',
+      ],
+      tip: 'What you can add, edit or delete here depends on your role permissions.',
+    },
+  ],
+  tips: [
+    'Tabs keep what you typed when you switch between them, so a half-written question is not lost.',
+    'The number on each tab is the live count of materials, aids, questions or exams.',
+    'The "Connected to this page" cards jump to related tabs, for example from a chapter to its questions.',
+    'On a phone, the sections are at the bottom of the screen.',
+  ],
+  mistakes: [
+    'Saving a question with no correct option marked → always choose the correct option, because the form needs it.',
+    'Deleting a material or teaching aid by mistake → Delete cannot be undone. Check the title before you confirm.',
+    'Looking for Create Paper or Stats as a non-Admin → these are Admin-only tabs and are hidden for others.',
+    'Pasting a link on the same line without a title → write a title first, then the link.',
+  ],
+  faq: [
+    { q: 'Why can I not download a PDF?', a: 'Only Admin can download. Other staff get "View Only" for files. Links and videos open normally.' },
+    { q: 'Why is a tab missing?', a: 'Each tab has its own permission. Ask Admin to give you access in Permissions.' },
+    { q: 'What is the difference between Question Bank and the Viewer?', a: 'Question Bank is where you add and edit. The Viewer is read-only and good for revision and printing.' },
+    { q: 'Who can delete a question?', a: 'Only Admin. Any staff with access can browse, add and edit questions.' },
+  ],
+  related: ['studylockers', 'students', 'exams'],
+}

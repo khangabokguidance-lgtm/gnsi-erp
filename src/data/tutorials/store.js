@@ -1,0 +1,127 @@
+export default {
+  id: 'store',
+  title: 'Store',
+  group: 'OPERATIONS',
+  roles: ['Store', 'Admin'],
+  summary: 'The campus shop for uniforms, books and hostel items. Use it to bill customers at the counter, manage stock, handle online orders and see sales reports. Every sale is posted to Accounts as income.',
+  before: [
+    'Products must be added with a selling price and stock. Only Admin can add or edit products.',
+    'If you see "Store tables not ready", the store database setup has not been run. Tell the Admin.',
+    'For a student bill, the student must already be in the Students module.',
+  ],
+  tabs: [
+    { name: '🛒 Counter POS', what: 'Billing screen. Search or scan items, make the bill, take payment, print the bill.' },
+    { name: '📦 Products & Stock', what: 'List of products with stock. Export CSV and print labels. Admin can add, edit, change stock, import, stock take and bulk price.' },
+    { name: '🌐 Online Orders', what: 'Orders placed by parents on the online store. Confirm, pack, mark ready and bill them. A number shows new orders.' },
+    { name: '🧾 Sales', what: 'All bills. Reprint a bill, receive money for a due bill, make a return, void a bill, and do Day close.' },
+    { name: '📥 Purchases', what: 'Admin only. Record stock received from suppliers and send a purchase order.' },
+    { name: '🎒 Kits', what: 'Admin only. Make a kit (a group of items bought together) that can be added to a bill in one tap.' },
+    { name: '🏷️ Promotions', what: 'Admin only. Promo codes and loyalty points.' },
+    { name: '📊 Reports', what: 'Sales trend, best sellers, top products, collections by mode and staff, category sales, low stock and customers.' },
+  ],
+  steps: [
+    {
+      title: 'Make a bill at the counter',
+      body: [
+        'Open the "🛒 Counter POS" tab.',
+        'Search an item in "Search item or scan barcode", or tap a category and then the product. Press 📷 Scan to use the camera.',
+        'Tap an item again to add more. Use + and − on the bill to change quantity.',
+        'Choose the customer: "🚶 Walk-in" or "🎓 Student". For a student, type the name or GCC No. and pick the student.',
+        'Check the bill on the right. Then press the pay button.',
+        'Type who is billing in "Billed by" if it is empty. It is required.',
+        'Choose how the customer pays: Cash, UPI, Card, Bank Transfer or Cheque.',
+        'For Cash, tap the cash received. The screen shows the change to give.',
+        'For UPI, Card, Bank Transfer or Cheque, type the reference number. It is required.',
+        'Press the complete button. "SALE COMPLETE" shows. Press "🖨 Print bill" if needed, then "New sale".',
+      ],
+      tip: 'An item with no stock cannot be added. You also cannot add more than the stock available.',
+    },
+    {
+      title: 'Put a bill on hold',
+      body: [
+        'While a bill is open, press "⏸ Hold" to keep it aside and serve the next customer.',
+        'Held bills show at the top as "ON HOLD".',
+        'Tap a held bill to bring it back. Press × to throw it away.',
+        'Press "✕ Clear" to empty the current bill.',
+      ],
+    },
+    {
+      title: 'Sell to a student on dues (part payment)',
+      body: [
+        'Choose "🎓 Student" and select the student.',
+        'Open the payment screen.',
+        'In "Paying now ₹", type the amount paid today. Type 0 to put everything on dues.',
+        'Complete the sale. The screen shows "Added to student dues".',
+        'Later, open the "🧾 Sales" tab and press "Receive" on that bill. Enter the amount, the mode and the reference.',
+      ],
+      tip: 'Part payment is allowed only for a student. For walk-in customers the full amount must be paid.',
+    },
+    {
+      title: 'Discounts, promo code and points',
+      body: [
+        'On the bill, press "🏷 Promo code", type the code and press the check button. The discount is applied if the code is valid.',
+        'Only Admin sees the "₹ Discount" button. Admin can type a rupee amount or press 5% or 10%.',
+        'For a student with loyalty points, press "⭐ Use points" and type the points, or press "Use max".',
+      ],
+    },
+    {
+      title: 'Handle an online order',
+      body: [
+        'Open the "🌐 Online Orders" tab. New orders are in "New".',
+        'Press the button on the order to move it to Confirmed, then Ready for pickup.',
+        'To do many together, tick orders and press "Mark confirmed" or "Mark ready". You can print a pick list or packing slips for ticked orders.',
+        'When the parent comes, press the "Bill ..." button on a Ready order to make the bill.',
+        'To cancel, press the cancel button on the order and confirm.',
+      ],
+      tip: '"🔔 Order alerts on" at the top gives a sound and a notification for new orders.',
+    },
+    {
+      title: 'Receive a return',
+      body: [
+        'Open the "🧾 Sales" tab and find the paid bill.',
+        'Press "↩ Return" (Admin only).',
+        'Choose the quantity to return for each item.',
+        'Type the Reason. It is required.',
+        'Choose "Refund via" and confirm.',
+        'Returned stock goes back on the shelf. For an exchange, do the return first, then bill the new item in POS.',
+      ],
+    },
+    {
+      title: 'Void a wrong bill (Admin only)',
+      body: [
+        'Open the "🧾 Sales" tab.',
+        'Press "Void" on the bill.',
+        'Type the reason. It is required.',
+        'Stock is put back and the Accounts entry for the bill is removed.',
+      ],
+      tip: 'A bill that already has a return cannot be voided.',
+    },
+    {
+      title: 'Add stock or close the day',
+      body: [
+        'To change stock for one product (Admin): "📦 Products & Stock", press "± Stock", type a whole number (use minus to reduce).',
+        'To receive new stock (Admin): "📥 Purchases", press "📥 Receive stock (new purchase)", pick the Supplier, add items with quantity, and save.',
+        'For the end of the day: "🧾 Sales", press "🧮 Day close". Enter the Opening float and count the cash. It shows the Expected in drawer, Counted and Variance.',
+      ],
+    },
+  ],
+  tips: [
+    'Use the Enter key in the search box to add an exact barcode or SKU match quickly.',
+    'The "Low stock" box at the top and the "Reports" tab show items that need to be re-ordered.',
+    'In Purchases, the re-order list can add all low-stock items to a purchase in one press.',
+    '"📣 Stock requests" shows parents waiting for an item to come back in stock.',
+  ],
+  mistakes: [
+    'Billing a student without selecting the student → The sale is stopped. Choose the student first.',
+    'Leaving the UPI/Card reference empty → The sale cannot be completed. Type the reference number.',
+    'Voiding a bill without a reason → A reason is required.',
+    'Counting the cash but not the float in Day close → Enter the Opening float so the expected cash is right.',
+  ],
+  faq: [
+    { q: 'Where does store income appear?', a: 'Each sale is posted to Accounts automatically as income. If a message says posting to Accounts failed, tell the Admin.' },
+    { q: 'Why do I not see Purchases, Kits, Promotions or the Discount button?', a: 'They are for Admin only.' },
+    { q: 'How do I add a product with many sizes?', a: 'Admin: "📦 Products & Stock", "+ Add product", fill "Sizes (comma separated)" and "Opening stock (each size)". One product is made for each size.' },
+    { q: 'Can I give a refund without a bill?', a: 'No. Returns are made against a bill from the Sales tab.' },
+  ],
+  related: ['accounts', 'students', 'studentfeeledger'],
+}

@@ -11,6 +11,7 @@ import AdmissionSessions  from './AdmissionSessions'
 import BulkAdmission      from './BulkAdmission'
 import Fees               from './Fees'
 import WhatsNewBanner     from './WhatsNewBanner'
+import HelpCenter         from './HelpCenter'
 import Accounts           from './Accounts'
 import Salary             from './Salary'
 import Staff              from './Staff'
@@ -155,6 +156,12 @@ const ALL_GROUPS = [
       { id: 'student360',  label: 'Student 360°', icon: '🔍' },
       { id: 'system',      label: 'System',       icon: '⚙️' },
       { id: 'adminlink',   label: 'Link Staff',   icon: '🔗' },
+    ],
+  },
+  {
+    group: 'HELP',
+    items: [
+      { id: 'help', label: 'Help & Training', icon: '📖' },
     ],
   },
 ]
@@ -948,7 +955,7 @@ export default function App() {
 
   // FIX 1: use unified isAdminRole in canAccess
   const canAccess = (key) => {
-    if (key === 'dashboard') return true
+    if (key === 'dashboard' || key === 'help') return true
     // Face Attendance check-in must be reachable by any staff member with a
     // linked profile, not gated by the permission matrix like admin tools —
     // the component itself only exposes enrollment management to admins.
@@ -1007,6 +1014,7 @@ export default function App() {
     student360:        isAdmin ? <Student360        currentUser={currentUser} isAdmin={isAdmin} onNavigate={setActive} /> : <AccessDenied />,
     adminlink:         isAdmin ? <AdminLinkStaff /> : <AccessDenied />,
     certificate:       <CertificateGenerator currentUser={currentUser} perms={perms('certificate')} />,
+    help:              <HelpCenter currentUser={currentUser} canAccess={canAccess} onNavigate={setActive} />,
   }
 
   const renderContent = () => {
@@ -1051,6 +1059,10 @@ export default function App() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {active !== 'help' && (
+              <button type="button" title="Step-by-step guide for this page" onClick={() => { try { sessionStorage.setItem('gnsi_help_open', active) } catch { /* storage unavailable */ } setActive('help') }}
+                style={{ background: '#fff', border: '1px solid #E8E1D0', borderRadius: 999, padding: '7px 13px', cursor: 'pointer', color: '#0B1E3D', fontSize: 12.5, fontWeight: 700 }}>📖 Help for this page</button>
+            )}
             <span style={{ fontSize: 12, color: '#7A8398', fontWeight: 600 }}>{new Date().toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' })}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 12px 5px 5px', borderRadius: 999, background: '#F6F3EC', border: '1px solid #E8E1D0' }}>
               <span style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(150deg,#16335F,#0B1E3D)', color: '#E2C57E', fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontFamily: SERIF_FONT }}>{(currentUser?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</span>
@@ -1076,7 +1088,7 @@ export default function App() {
           </div>
         )}
         {currentUser && (
-          <WhatsNewBanner isAdmin={isAdminRole(currentUser.role)}
+          <WhatsNewBanner isAdmin={isAdminRole(currentUser.role)} onOpenPage={setActive}
             onOpenFeesTab={tabId => { try { sessionStorage.setItem('gnsi_fees_open_tab', tabId) } catch { /* storage unavailable */ } window.dispatchEvent(new CustomEvent('gnsi:fees-tab', { detail: tabId })); setActive('fees') }} />
         )}
         {renderContent()}
