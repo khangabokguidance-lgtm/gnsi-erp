@@ -19,6 +19,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { NavIcon } from './navIcons'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
+import { compressImage, sizeNote } from './lib/imageCompress'
 import FeeCollectionModal from './FeeCollectionModal'
 import ReportGenerator from './ReportGenerator'
 import { promoteToStudent, getFlatFeeAmtSync, getFeeRates, getSessionYear, checkHouseCapacity } from './feeEngine'
@@ -2321,18 +2322,22 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
   const [declared, setDeclared] = useState(!!editing)
   const [photoUploading, setPhotoUploading] = useState(false)
   const [photoUploadError, setPhotoUploadError] = useState('')
+  const [photoNote, setPhotoNote] = useState('')
   const handlePhotoFileSelect = async (e) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
     if (!form.gcc) { setPhotoUploadError('Enter GCC No. first — the photo is filed by GCC No.'); return }
-    setPhotoUploading(true); setPhotoUploadError('')
+    setPhotoUploading(true); setPhotoUploadError(''); setPhotoNote('')
     try {
+      // shrink the photo first (phone photos are several MB; ~250 KB is plenty for a passport photo)
+      const info = await compressImage(file, { maxDim: 1000, targetKB: 250 })
       const { url } = await Promise.race([
-        uploadPhotoToGoogleDrive(file, form.gcc),
+        uploadPhotoToGoogleDrive(info.file, form.gcc),
         new Promise((_, rej) => setTimeout(() => rej(new Error('Upload timed out. Please check your connection and try again.')), 60000)),
       ])
       set('photoUrl', url)
+      setPhotoNote(sizeNote(info))
       if (!form.docs.includes('Passport Photo')) set('docs', [...form.docs, 'Passport Photo'])
     } catch (err) { setPhotoUploadError(err.message || 'Upload failed — please try again.') }
     finally { setPhotoUploading(false) }
@@ -2642,6 +2647,8 @@ function AdmForm({ onSave, onCancel, editing, activeSession, role, housemastersB
                       {photoUploading ? 'Uploading…' : form.photoUrl ? 'Replace' : 'Upload'}
                       <input type="file" accept="image/*" onChange={handlePhotoFileSelect} disabled={photoUploading} style={{ display:'none' }} />
                     </label>
+                    {photoUploading && <div style={{ marginTop:6, fontSize:10.5, color:AF.faint, textAlign:'center' }}>Shrinking and uploading…</div>}
+                    {!photoUploading && photoNote && <div style={{ marginTop:6, fontSize:10.5, color:AF.ok, fontWeight:600, textAlign:'center', lineHeight:1.3 }}>✓ {photoNote}</div>}
                   </div>
                   <div style={{ flex:1, minWidth:220, display:'grid', gap:14 }}>
                     <AfField label="Full name of candidate" required error={err('name','candidate')}>
