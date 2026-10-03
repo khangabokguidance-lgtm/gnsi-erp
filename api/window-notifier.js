@@ -5,6 +5,7 @@ import webpush from 'web-push'
 import { createClient } from '@supabase/supabase-js'
 import { enforceCompliance, runDaily } from '../server/hostelCompliance.js'
 import { rollcallReminder } from '../server/rollcallReminder.js'
+import { runFeeAlerts } from '../server/feeAlerts.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -45,6 +46,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'unauthorized' })
     }
     try { compliance = await runDaily() } catch (e) { compliance = { error: e.message } }
+    try { compliance = { ...compliance, feeAlerts: await runFeeAlerts() } } catch (e) { compliance = { ...compliance, feeAlerts: { error: e.message } } }
   }
   const now      = nowIST()
   const todayStr = todayIST()

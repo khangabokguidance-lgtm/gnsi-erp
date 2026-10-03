@@ -4,6 +4,7 @@
 //  letterhead · FEE RECEIPT bar · barcode · boxed student grid · itemised
 //  bill · gross / concession / NET PAID · amount in words · PAID stamp.
 // ════════════════════════════════════════════════════════════════════════
+import QRCode from 'qrcode'
 import { getInstitute } from './systemSettings'
 
 const escH = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
@@ -23,6 +24,20 @@ export function amountInWords(num) {
   const th = Math.floor(num / 1000); num %= 1000
   if (cr) parts.push(two(cr) + ' Crore'); if (lk) parts.push(two(lk) + ' Lakh'); if (th) parts.push(two(th) + ' Thousand'); if (num) parts.push(three(num))
   return parts.join(' ') + ' Rupees Only'
+}
+
+// QR code as inline SVG (sync — built from the qrcode library's module matrix).
+// The QR carries a check link: staff open it (or type the receipt number into
+// Fees → Verify Receipt) to confirm the receipt exists, its amount and that it
+// has not been reverted. Nothing is shown to the public.
+export function receiptQrSVG(text, px = 64) {
+  try {
+    const { modules } = QRCode.create(String(text), { errorCorrectionLevel: 'M' })
+    const n = modules.size
+    let d = ''
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (modules.data[y * n + x]) d += `M${x},${y}h1v1h-1z`
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 ${n + 2} ${n + 2}" width="${px}" height="${px}" shape-rendering="crispEdges"><rect x="-1" y="-1" width="${n + 2}" height="${n + 2}" fill="#fff"/><path d="${d}" fill="#0B1E3D"/></svg>`
+  } catch { return '' }
 }
 
 // Simple Code-39 barcode as SVG (receipt number) — prints crisp on any printer
@@ -232,7 +247,7 @@ function feeReceiptSheet(d, hist) {
     <div class="wrap">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px">
         <div><div class="l">Receipt No.</div><div class="mono" style="font-size:17px;font-weight:700;color:#0B1E3D;margin-top:2px">${escH(rno)}</div></div>
-        <div style="text-align:center">${barcodeSVG(rno)}<div class="mono" style="font-size:8.5px;color:#64748B;margin-top:1px;letter-spacing:.2em">${escH(rno)}</div></div>
+        <div style="text-align:center;display:flex;align-items:center;gap:10px">${receiptQrSVG(`${typeof location !== 'undefined' ? location.origin : ''}/?verifyReceipt=${encodeURIComponent(rno)}&gcc=${encodeURIComponent(d.gcc_no || '')}&amt=${net}`)}<div>${barcodeSVG(rno)}<div class="mono" style="font-size:8.5px;color:#64748B;margin-top:1px;letter-spacing:.2em">${escH(rno)}</div></div></div>
         <div style="text-align:right"><div class="l">Receipt Date</div><div style="font-size:13px;font-weight:700;margin-top:2px">${escH(fmtDate(d.pay_date))}</div></div>
       </div>
       <table class="info"><tbody>

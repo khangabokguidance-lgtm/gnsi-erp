@@ -8,6 +8,7 @@
 // starts, and months before admission aren't charged.
 import { loadStudentHistory, sessionRates, timeline } from './hostelHistory'
 import { computeArrears } from './feeLedgerBulk'
+import { loadStanding } from './feeStanding'
 
 const fmtMonth = d => new Date(String(d).slice(0, 10) + 'T00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
 // Month before a change's effective month (the last month at the old type).
@@ -140,7 +141,14 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
   }, [prevKey, session, student, entries, changes])
 
   const curRates = typeof rates === 'function' ? rates.current : rates
-  const reg = useMemo(() => buildRegister(student, entries, session, rates), [student, entries, session, rates])
+  // Standing concessions (Concession Register) reduce what this ledger shows as due.
+  const [standingEntries, setStandingEntries] = useState([])
+  useEffect(() => {
+    let live = true
+    loadStanding().then(st => { if (live) setStandingEntries(st.conc.get(String(parseInt(student.gcc_no) || 0)) || []) }).catch(() => {})
+    return () => { live = false }
+  }, [student.gcc_no])
+  const reg = useMemo(() => buildRegister(student, entries, session, rates, new Date(), standingEntries), [student, entries, session, rates, standingEntries])
   const statement = useMemo(() => buildStatement(student, entries, session, reg, { openingBalance }), [student, entries, session, reg, openingBalance])
   const q = bookQuery.trim().toLowerCase()
   const book = (bookScope === 'all' ? entries : entries.filter(x => x.session === session))
