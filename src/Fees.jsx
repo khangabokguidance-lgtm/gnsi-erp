@@ -1706,7 +1706,7 @@ const FEES_CSS = `
 .fh-t:active .fh-i{transform:scale(.94)}
 .fh-i{position:relative;width:52px;height:52px;border-radius:17px;display:flex;align-items:center;justify-content:center;color:#1d3f7a;background:#eef3fb;transition:transform .12s,box-shadow .12s}
 .fh-t.on .fh-i{background:linear-gradient(160deg,#1f4e8c,#0b1e3d);color:#fff;box-shadow:0 0 0 3px #fff,0 0 0 5px #c9a24b}
-.fh-l{font-size:12px;font-weight:650;line-height:1.25;text-align:center;max-width:88px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.fh-l{font-size:12px;font-weight:650;line-height:1.25;text-align:center;max-width:min(92px,100%);min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .fh-t.on .fh-l{color:#0b1e3d;font-weight:800}
 .fh-b{position:absolute;top:-6px;right:-8px;min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:#e53935;color:#fff;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-sizing:border-box}
 .fe-bottom{position:fixed;left:0;right:0;bottom:0;z-index:90;display:grid;grid-template-columns:repeat(5,1fr);background:#132a4f;box-shadow:0 -8px 24px rgba(11,30,61,.4);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
@@ -1722,8 +1722,9 @@ const FEES_CSS = `
 .fh-row .fh-i{width:44px;height:44px;border-radius:14px}
 .fh-row .fh-l{font-size:11px}
 .fh-all .fh-i{background:#f6efdc;color:#8a6d2b}
-@media(max-width:1100px){.fh{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}}
-@media(max-width:640px){.fh{grid-template-columns:1fr;gap:12px}.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 2px}.fh-i{width:50px;height:50px}}
+@media(max-width:1600px){.fh{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:1100px){.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:700px){.fh{grid-template-columns:1fr!important;gap:12px}.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 2px}.fh-i{width:50px;height:50px}}
 .fe-kpi{position:relative;overflow:hidden;background:#fff;border:1px solid #e8e3d8;border-radius:16px;padding:16px 18px 15px 20px;cursor:pointer;box-shadow:0 1px 2px rgba(19,42,79,.05),0 6px 18px -10px rgba(19,42,79,.14);transition:transform .15s,box-shadow .15s;text-align:left;min-width:0}
 .fe-kpi:hover{transform:translateY(-2px);box-shadow:0 12px 28px -14px rgba(19,42,79,.3)}
 @keyframes feUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
@@ -5008,7 +5009,7 @@ export default function Fees() {
     ...(isAdmin ? [{ id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', group: 'checks', badge: hostelIssueCount }] : []),
     ...(isAdmin ? [{ id: 'reminders',   label: 'Fee Reminders',        short: 'Reminders',   icon: 'remind',   group: 'tools' }] : []),
     ...(isAdmin ? [{ id: 'installments', label: 'Instalment Plans',     short: 'Instalments', icon: 'instal',   group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Concessions', icon: 'scholar', group: 'tools' }] : []),
+    ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Register', icon: 'scholar', group: 'tools' }] : []),
     ...(isAdmin ? [{ id: 'refunds',     label: 'Refunds & Transfers',  short: 'Refunds',     icon: 'refund',   group: 'tools' }] : []),
     ...(isAdmin ? [{ id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' }] : []),
     { id: 'verify', label: 'Verify Receipt', short: 'Verify', icon: 'verifyqr', group: 'tools' },
@@ -5163,11 +5164,11 @@ export default function Fees() {
             </button>
           )
           return full ? (
-            <nav className="fh" role="tablist" aria-label="Fees sections" style={{ '--fh-cols': TAB_GROUPS.map(g => `${Math.max(4, g.items.length)}fr`).join(' ') }}>
+            <nav className="fh" role="tablist" aria-label="Fees sections" style={{ '--fh-cols': TAB_GROUPS.map(g => `${Math.min(5, Math.max(4, g.items.length))}fr`).join(' ') }}>
               {TAB_GROUPS.map(g => (
                 <section key={g.id} className="fh-g">
                   <h2>{g.title}</h2>
-                  <div className="fh-grid" style={{ '--fh-n': Math.max(4, g.items.length) }}>{g.items.map(tile)}</div>
+                  <div className="fh-grid" style={{ '--fh-n': Math.min(5, Math.max(4, g.items.length)) }}>{g.items.map(tile)}</div>
                 </section>
               ))}
             </nav>
