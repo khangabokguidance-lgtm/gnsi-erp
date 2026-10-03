@@ -199,13 +199,13 @@ function exportJSON(rows, filename) {
   URL.revokeObjectURL(url)
 }
 
-function ExportBar({ rows, filename, label = '' }) {
+function ExportBar({ rows, filename, label = '', compact = false }) {
   const [open, setOpen] = useState(false)
   if (!rows) return null
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
       <button onClick={() => setOpen(o => !o)}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e3a6e', color: 'white', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+        style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e3a6e', color: 'white', border: 'none', borderRadius: 8, padding: compact ? '4px 10px' : '8px 16px', fontWeight: 700, fontSize: compact ? 11 : 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
         ⬇ Export {label && `(${rows.length})`}
       </button>
       {open && (
@@ -216,6 +216,12 @@ function ExportBar({ rows, filename, label = '' }) {
             onMouseEnter={e => e.currentTarget.style.background='#f3f0e8'}
             onMouseLeave={e => e.currentTarget.style.background='none'}>
             📄 Export CSV
+          </button>
+          <button onClick={() => { exportXLS(rows, filename); setOpen(false) }}
+            style={{ width: '100%', padding: '10px 16px', border: 'none', background: 'none', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#15803d', cursor: 'pointer' }}
+            onMouseEnter={e => e.currentTarget.style.background='#f3f0e8'}
+            onMouseLeave={e => e.currentTarget.style.background='none'}>
+            📗 Export Excel
           </button>
           <button onClick={() => { exportJSON(rows, filename); setOpen(false) }}
             style={{ width: '100%', padding: '10px 16px', border: 'none', background: 'none', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#059669', cursor: 'pointer' }}
@@ -2102,6 +2108,25 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const COURSE_COLORS = { Sainik: '#1e3a6e', Navodaya: '#059669', Foundation: '#d97706', 'Combined Course': '#a7771f' }
   const HOSTEL_COLORS = { Boarder: '#059669', 'Day Boarder': '#d97706', 'Day Scholar': '#5d6b82' }
 
+  // ── Report rows for each dashboard section's Export button ──────────────────
+  const stuRows = (list, extra) => list.map(s => ({
+    'GCC No': `GCC-${s.gcc_no}`, 'Student': s.name, 'Course': s.course || '', 'Batch': s.batch || '',
+    'Hostel': s.hostel_type || '', 'Status': s.liveStatus || '',
+    'Total Paid (₹)': Number(s.grandTotal) || 0, 'Total Due (₹)': Number(s.totalDue) || 0, ...(extra ? extra(s) : {}),
+  }))
+  const rptUnderpaid = stuRows(underpaidStudents)
+  const rptZero      = stuRows(zeroPayment)
+  const rptAdmOnly   = stuRows(admOnlyPaid)
+  const rptRepeaters = stuRows(repeaters)
+  const rptThisMonth = stuRows(defaultersThisMonth)
+  const rptTrend = last6.map(m => ({ 'Month': m.label, 'Flat Fee (₹)': m.flat, 'Course Fee (₹)': m.crsf, 'Admission (₹)': m.adm, 'Total (₹)': m.total }))
+  const rptCourse = courseBreakdown.map(c => ({ 'Course': c.course, 'Students': c.count, 'Collected (₹)': c.total }))
+  const rptHostel = hostelBreakdown.map(h => ({ 'Hostel': h.type, 'Students': h.count, 'Collected (₹)': h.total }))
+  const rptProgress = [
+    { label: 'Paid Admission', count: paidAdmGccs.size }, { label: 'Paid Flat Fee', count: paidFlatGccs.size }, { label: 'Paid Course Fee', count: paidCrsfGccs.size },
+  ].map(p => ({ 'Stage': p.label, 'Students Paid': p.count, 'Total Students': students.length, 'Percent': students.length ? Math.round(p.count / students.length * 100) + '%' : '0%' }))
+  const dashHead = { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 4 }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
@@ -2143,7 +2168,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fdba74', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
           <div style={{ background: '#ffedd5', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #fdba74' }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#c2410c' }}>🟠 Underpaid Students — paid something, but still short vs. what they actually owe</div>
-            <span style={{ fontSize: 11, fontWeight: 800, background: '#c2410c', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{underpaidStudents.length}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, background: '#c2410c', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{underpaidStudents.length}</span>
+              <ExportBar rows={rptUnderpaid} filename={`GNSI_Underpaid_${todayStr}`} compact />
+            </div>
           </div>
           <div style={{ maxHeight: 340, overflowY: 'auto' }}>
             {underpaidStudents.length === 0
@@ -2205,7 +2233,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
         {/* ── Monthly trend bar chart ── */}
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e8e3d8', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e', marginBottom: 4 }}>📈 Monthly Collection Trend</div>
+<div style={dashHead}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>📈 Monthly Collection Trend</div>
+            <ExportBar rows={rptTrend} filename={`GNSI_Monthly_Trend_${todayStr}`} label="" compact />
+          </div>
           <div style={{ fontSize: 11, color: '#8a93a6', marginBottom: 16 }}>Last 6 months — flat + course fees</div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 140 }}>
             {last6.map(m => (
@@ -2243,7 +2274,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
         {/* ── Hostel breakdown ── */}
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e8e3d8', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e', marginBottom: 4 }}>🏠 Hostel Breakdown</div>
+<div style={dashHead}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>🏠 Hostel Breakdown</div>
+            <ExportBar rows={rptHostel} filename={`GNSI_Hostel_Breakdown_${todayStr}`} label="" compact />
+          </div>
           <div style={{ fontSize: 11, color: '#8a93a6', marginBottom: 16 }}>Collection by hostel type</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {hostelBreakdown.map(h => (
@@ -2467,7 +2501,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
       {/* ── Course-wise breakdown ── */}
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e8e3d8', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e', marginBottom: 4 }}>📚 Course-wise Collection</div>
+<div style={dashHead}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>📚 Course-wise Collection</div>
+            <ExportBar rows={rptCourse} filename={`GNSI_Course_Collection_${todayStr}`} label="" compact />
+          </div>
         <div style={{ fontSize: 11, color: '#8a93a6', marginBottom: 16 }}>Total collected per course</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {courseBreakdown.map(c => (
@@ -2489,7 +2526,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fca5a5', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
           <div style={{ background: '#fef2f2', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #fca5a5' }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#dc2626' }}>🔴 Zero Payment Students</div>
-            <span style={{ fontSize: 11, fontWeight: 800, background: '#dc2626', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{zeroPayment.length}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, background: '#dc2626', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{zeroPayment.length}</span>
+              <ExportBar rows={rptZero} filename={`GNSI_Zero_Payment_${todayStr}`} compact />
+            </div>
           </div>
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             {zeroPayment.length === 0
@@ -2516,7 +2556,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fde68a', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
           <div style={{ background: '#fffbeb', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #fde68a' }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#d97706' }}>🟡 {thisMonth} Course Fee Pending</div>
-            <span style={{ fontSize: 11, fontWeight: 800, background: '#d97706', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{defaultersThisMonth.length}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, background: '#d97706', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{defaultersThisMonth.length}</span>
+              <ExportBar rows={rptThisMonth} filename={`GNSI_Month_Course_Fee_Pending_${todayStr}`} compact />
+            </div>
           </div>
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             {defaultersThisMonth.length === 0
@@ -2543,7 +2586,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2c57e', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
           <div style={{ background: '#fbf3e0', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2c57e' }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#a7771f' }}>🟠 Adm Paid · No Monthly Yet</div>
-            <span style={{ fontSize: 11, fontWeight: 800, background: '#a7771f', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{admOnlyPaid.length}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, background: '#a7771f', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{admOnlyPaid.length}</span>
+              <ExportBar rows={rptAdmOnly} filename={`GNSI_Adm_Paid_No_Monthly_${todayStr}`} compact />
+            </div>
           </div>
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             {admOnlyPaid.length === 0
@@ -2570,7 +2616,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fcd34d', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
           <div style={{ background: '#fef3c7', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #fcd34d' }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#92400e' }}>🔁 Repeaters — Pending</div>
-            <span style={{ fontSize: 11, fontWeight: 800, background: '#92400e', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{repeaters.length}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, background: '#92400e', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{repeaters.length}</span>
+              <ExportBar rows={rptRepeaters} filename={`GNSI_Repeaters_Pending_${todayStr}`} compact />
+            </div>
           </div>
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             {repeaters.length === 0
@@ -2596,7 +2645,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
       {/* ── Session progress bars ── */}
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e8e3d8', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e', marginBottom: 16 }}>📊 Session Progress</div>
+        <div style={{ ...dashHead, marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>📊 Session Progress</div>
+          <ExportBar rows={rptProgress} filename={`GNSI_Session_Progress_${todayStr}`} compact />
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : is2Col ? '1fr 1fr' : '1fr 1fr 1fr', gap: 20 }}>
           {[
             { label: 'Paid Admission', count: paidAdmGccs.size,  color: '#1e3a6e', bg: '#eef2f9' },
