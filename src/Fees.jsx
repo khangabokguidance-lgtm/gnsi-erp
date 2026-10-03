@@ -199,13 +199,13 @@ function exportJSON(rows, filename) {
   URL.revokeObjectURL(url)
 }
 
-function ExportBar({ rows, filename, label = '' }) {
+function ExportBar({ rows, filename, label = '', compact = false }) {
   const [open, setOpen] = useState(false)
   if (!rows) return null
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
       <button onClick={() => setOpen(o => !o)}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e3a6e', color: 'white', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+        style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#1e3a6e', color: 'white', border: 'none', borderRadius: 8, padding: compact ? '4px 10px' : '8px 16px', fontWeight: 700, fontSize: compact ? 11 : 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
         ⬇ Export {label && `(${rows.length})`}
       </button>
       {open && (
@@ -216,6 +216,12 @@ function ExportBar({ rows, filename, label = '' }) {
             onMouseEnter={e => e.currentTarget.style.background='#f3f0e8'}
             onMouseLeave={e => e.currentTarget.style.background='none'}>
             📄 Export CSV
+          </button>
+          <button onClick={() => { exportXLS(rows, filename); setOpen(false) }}
+            style={{ width: '100%', padding: '10px 16px', border: 'none', background: 'none', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#15803d', cursor: 'pointer' }}
+            onMouseEnter={e => e.currentTarget.style.background='#f3f0e8'}
+            onMouseLeave={e => e.currentTarget.style.background='none'}>
+            📗 Export Excel
           </button>
           <button onClick={() => { exportJSON(rows, filename); setOpen(false) }}
             style={{ width: '100%', padding: '10px 16px', border: 'none', background: 'none', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#059669', cursor: 'pointer' }}
@@ -1470,6 +1476,11 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
   const n=v=>Number(v||0).toLocaleString('en-IN')
   const filteredLive=useMemo(()=>liveRows.filter(s=>{if(courseF!=='All'&&s.course!==courseF)return false;if(hostelF!=='All'&&s.hostel_type!==hostelF)return false;if(statusF!=='All'&&s.liveStatus!==statusF)return false;return true}),[liveRows,courseF,hostelF,statusF])
   const reports=useMemo(()=>buildReports({students,adm_fee_collections,adm_flat_fees,adm_course_fees,liveRows:filteredLive,todayStr,afDateFrom:dateFrom,afDateTo:dateTo}),[students,adm_fee_collections,adm_flat_fees,adm_course_fees,filteredLive,dateFrom,dateTo,todayStr])
+  // Month-wise dues (same figures as the Fee Dashboard card) for the two Dues Reports below.
+  const { monthwiseDues } = useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_course_fees })
+  const duesLoading = monthwiseDues.some(m => m.loading)
+  const dueSummaryRows = useMemo(() => duesSummaryRows(monthwiseDues), [monthwiseDues])
+  const dueDefaulterRows = useMemo(() => duesDefaulterRows(monthwiseDues, st => (courseF === 'All' || st.course === courseF) && (hostelF === 'All' || st.hostel_type === hostelF)), [monthwiseDues, courseF, hostelF])
   const grandTotal=liveRows.reduce((s,r)=>s+r.grandTotal,0),admTotal=adm_fee_collections.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0),flatTotal=adm_flat_fees.filter(r=>r.paid).reduce((s,r)=>s+ (Number(r.amount) || 0),0),crsfTotal=adm_course_fees.filter(r=>!r.reverted).reduce((s,r)=>s+(Number(r.amount_paid)||0),0)
   const inp3={padding:'8px 11px',borderRadius:7,border:'1px solid #d9d2c2',fontSize:12,outline:'none',background:'white',width:'100%'}
   const REPORT_GROUPS=[
@@ -1485,6 +1496,10 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
     {group:'Summary Reports',icon:'📊',color:'#8a6118',reports:[
       {id:'course_summary',name:'Course-wise Collection Summary',desc:'Fee totals broken down by course and hostel type',rows:()=>reports.courseRows,meta:()=>({'Courses':reports.courseRows.length,'Grand Total':`₹${n(grandTotal)}`,'Generated':todayStr})},
       {id:'monthly_summary',name:'Monthly Collection Summary',desc:'Month-wise totals for flat, course and admission fees',rows:()=>reports.monthlyRows,meta:()=>({'Months':reports.monthlyRows.length,'Generated':todayStr})},
+    ]},
+    {group:'Dues Reports',icon:'⏳',color:'#b91c1c',reports:[
+      {id:'dues_summary',name:'Month-wise Dues Summary',desc:duesLoading?'Working out dues…':'Expected, collected and outstanding for every month of the session so far',rows:()=>dueSummaryRows,meta:()=>({'Months':dueSummaryRows.length,'Total Outstanding':`₹${n(dueSummaryRows.reduce((s,r)=>s+r['Outstanding (₹)'],0))}`,'Generated':todayStr})},
+      {id:'dues_defaulters',name:'Month-wise Defaulters List',desc:duesLoading?'Working out dues…':`Every student who still owes, month by month${courseF!=='All'||hostelF!=='All'?' (course / hostel filter applied)':''}`,rows:()=>dueDefaulterRows,meta:()=>({'Records':dueDefaulterRows.length,'Total Outstanding':`₹${n(dueDefaulterRows.reduce((s,r)=>s+r['Due (₹)'],0))}`,'Course':courseF,'Hostel':hostelF,'Generated':todayStr})},
     ]},
     {group:'Date Range Report',icon:'📅',color:'#d97706',reports:[
       {id:'daily_range',name:'Transaction Register',desc:`All fee transactions${dateFrom?' from '+dateFrom:''}${dateTo?' to '+dateTo:' (all time)'}`,rows:()=>reports.dailyRows,meta:()=>({'Date From':dateFrom||'All','Date To':dateTo||'Today','Records':reports.dailyRows.length,'Total':`₹${n(reports.dailyRows.reduce((s,r)=>s+r['Amount'],0))}`})},
@@ -1758,6 +1773,201 @@ function StudentSearch({ students, onSelect, placeholder }) {
 
 // ─── Tab: Fee Dashboard ───────────────────────────────────────────────────────
 
+// ── Month-wise Dues model ─────────────────────────────────────────────────────
+// Built on the same register model as each student's Fee Ledger and the
+// Monthly Fee Ledger (feeLedgerModel.buildRegister via buildAllLedgers), so
+// all three always agree:
+//   • rates come from Fee Setup (fee_structures) + per-student overrides,
+//     not the old hard-coded FLAT_RATES / COURSE_RATES;
+//   • each month is the head the session actually charges (Feb/Mar flat
+//     fee, April–January course fee);
+//   • months before a student's admission are not charged;
+//   • a part-payment leaves the shortfall due (not "paid");
+//   • advance payments count for the month they were paid for.
+// Every month of the current April–March session so far (April → this month).
+// Shared by the Fee Dashboard's Month-wise Dues card (and its export menu) and
+// the Reports & Export Centre, so every number comes from one place.
+// Does this student's admission fee fall in month `m`? It is charged on the
+// admission date (or the first admission payment, else the session start), never
+// before the session starts — the same rule the student's own ledger uses.
+function admissionFallsIn(student, reg, m) {
+  const sessStart = new Date(Number(String(m.session).slice(0, 4)), 3, 1)
+  const raw = student.admission_date || reg.admission?.paid?.[0]?.date
+  let d = raw ? new Date(String(raw).slice(0, 10) + 'T00:00:00') : sessStart
+  if (Number.isNaN(d.getTime()) || d < sessStart) d = sessStart
+  return d.getFullYear() === Number(m.year) && d.toLocaleString('default', { month: 'long' }) === m.fullMon
+}
+function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_course_fees }) {
+  const [now] = useState(() => new Date())
+  // Every month of the current April–March session, from April up to this month.
+  const duesMonths = useMemo(() => {
+    const startYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1
+    const session = `${startYear}-${startYear + 1}`
+    const out = []
+    for (let d = new Date(startYear, 3, 1); d <= now; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+      out.push({
+        label: d.toLocaleString('default', { month: 'short' }), fullMon: d.toLocaleString('default', { month: 'long' }),
+        year: d.getFullYear(), session,
+        isCurrent: d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(),
+      })
+    }
+    return out
+  }, [now])
+  // liveRows is rebuilt every time a batch of per-student dues arrives; only
+  // re-run the (network-backed) register build when a fee-relevant field changes.
+  const duesStudentsKey = liveRows.map(s => [s.gcc_no, s.course, s.batch, s.hostel_type, s.admission_date, s.session].join('|')).join(';')
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the fee-relevant fields above
+  const duesStudents = useMemo(() => liveRows, [duesStudentsKey])
+  const [duesLedgers, setDuesLedgers] = useState(null)   // { [session]: [{ student, reg }] }
+  const [duesError, setDuesError] = useState('')
+  useEffect(() => {
+    if (!duesStudents.length) return
+    let live = true
+    const group = (rows, keep) => { const m = new Map(); for (const r of rows || []) { if (!keep(r)) continue; const g = gccStr(r.adm_app_id); if (!m.has(g)) m.set(g, []); m.get(g).push(r) } return m }
+    const rows = {
+      adm:  group(adm_fee_collections, r => !r.reverted),
+      flat: group(adm_flat_fees, r => r.paid && !r.reverted),
+      crs:  group(adm_course_fees, r => !r.reverted),
+    }
+    const sessions = [...new Set(duesMonths.map(m => m.session))]
+    Promise.all(sessions.map(sess => buildAllLedgers(duesStudents, sess, { rows }).then(items => [sess, items])))
+      .then(pairs => { if (live) { setDuesLedgers(Object.fromEntries(pairs)); setDuesError('') } })
+      .catch(e => { if (live) setDuesError(e.message || 'Could not work out dues') })
+    return () => { live = false }
+  }, [duesStudents, adm_fee_collections, adm_flat_fees, adm_course_fees, duesMonths])
+
+  const monthwiseDues = useMemo(() => duesMonths.map(m => {
+    const perStudent = []
+    let head = null
+    for (const { student, reg } of duesLedgers?.[m.session] || []) {
+      // Monthly part: the flat / course fee for this month.
+      const r = reg.rows.find(x => x.month === m.fullMon && Number(x.year) === m.year)
+      const monthly = r && r.status !== 'before' && r.status !== 'upcoming' && r.expected > 0
+        ? { expected: r.expected, paid: r.paidAmt, due: r.status === 'due' ? r.due : r.status === 'short' ? r.shortBy : 0 }
+        : null
+      if (monthly) head = head || r.head
+      // Admission part: charged in the month the student was admitted (the same
+      // date the student's own ledger charges it on), whether unpaid or part-paid.
+      const adm = reg.admission && reg.admission.expected > 0 && admissionFallsIn(student, reg, m)
+        ? { expected: reg.admission.expected, paid: reg.admission.paidAmt, due: reg.admission.due }
+        : null
+      if (!monthly && !adm) continue
+      perStudent.push({
+        student,
+        expected: (monthly?.expected || 0) + (adm?.expected || 0),
+        paid: (monthly?.paid || 0) + (adm?.paid || 0),
+        due: (monthly?.due || 0) + (adm?.due || 0),
+        monthlyExpected: monthly?.expected || 0, monthlyPaid: monthly?.paid || 0,
+        admExpected: adm?.expected || 0, admPaid: adm?.paid || 0, admDue: adm?.due || 0,
+      })
+    }
+    const expectedTotal = perStudent.reduce((s, x) => s + x.expected, 0)
+    // Collected is capped per student AND per part at what was owed, so one
+    // overpayment can't hide another due (or the admission fee) in the percentage.
+    const collectedTotal = perStudent.reduce((s, x) => s + Math.min(x.monthlyPaid, x.monthlyExpected) + Math.min(x.admPaid, x.admExpected), 0)
+    const defaulters = perStudent.filter(x => x.due > 0).sort((a, b) => b.due - a.due)
+    const admExpectedTotal = perStudent.reduce((s, x) => s + x.admExpected, 0)
+    const monthHead = head || (/^(February|March)$/.test(m.fullMon) ? 'Flat Fee' : 'Course Fee')
+    return {
+      ...m, year: String(m.year), dayOfMonth: now.getDate(), loading: !duesLedgers,
+      isTracked: expectedTotal > 0, headlineType: monthHead,
+      hasAdmission: admExpectedTotal > 0, feeLabel: monthHead + (admExpectedTotal > 0 ? ' + Admission' : ''),
+      expectedTotal, collectedTotal, dueTotal: defaulters.reduce((s, x) => s + x.due, 0),
+      admDueTotal: defaulters.reduce((s, x) => s + x.admDue, 0),
+      defaulterCount: defaulters.length, defaulters,
+    }
+  }), [duesMonths, duesLedgers, now])
+
+  return { monthwiseDues, duesError }
+}
+
+// ── Month-wise Dues → export rows ─────────────────────────────────────────────
+// One row per month (totals) …
+function duesSummaryRows(months) {
+  return months.filter(m => m.isTracked).map(m => ({
+    'Month': `${m.fullMon} ${m.year}`,
+    'Fee Type': m.feeLabel,
+    'Students Due': m.defaulterCount,
+    'Expected (₹)': m.expectedTotal,
+    'Collected (₹)': m.collectedTotal,
+    'Outstanding (₹)': m.dueTotal,
+    'of which Admission Fee (₹)': m.admDueTotal,
+    'Collected %': m.expectedTotal > 0 ? Math.min(100, Math.round((m.collectedTotal / m.expectedTotal) * 100)) : 0,
+  }))
+}
+// … and one row per student who still owes for a month (biggest due first).
+// `keep` lets the caller narrow by course / hostel type.
+function duesDefaulterRows(months, keep = () => true) {
+  return months.filter(m => m.isTracked).flatMap(m => m.defaulters.filter(x => keep(x.student)).map(x => ({
+    'Month': `${m.fullMon} ${m.year}`,
+    'Fee Type': m.headlineType + (x.admExpected > 0 ? ' + Admission' : ''),
+    'GCC No': `GCC-${x.student.gcc_no}`,
+    'Student': x.student.name || '—',
+    'Course': x.student.course || '—',
+    'Batch': x.student.batch || '—',
+    'Hostel': x.student.hostel_type || '—',
+    'Expected (₹)': x.expected,
+    'Paid (₹)': x.paid,
+    'Due (₹)': x.due,
+    'of which Admission Fee (₹)': x.admDue,
+    'Status': x.paid > 0 ? 'Partial payment' : 'No payment',
+  })))
+}
+
+// Export menu for the Month-wise Dues card: pick what to export, then the format.
+function DuesExportMenu({ months, selected }) {
+  const [open, setOpen] = useState(false)
+  const [scope, setScope] = useState('month')   // 'month' | 'all' | 'summary'
+  const tracked = months.filter(m => m.isTracked)
+  const scopes = [
+    { id: 'month',   label: selected ? `${selected.fullMon} ${selected.year} — who owes` : 'Selected month — who owes', rows: () => duesDefaulterRows(selected ? [selected] : []) },
+    { id: 'all',     label: `All ${tracked.length} months — who owes`, rows: () => duesDefaulterRows(months) },
+    { id: 'summary', label: 'Monthly totals (expected / collected / due)', rows: () => duesSummaryRows(months) },
+  ]
+  const cur = scopes.find(x => x.id === scope) || scopes[0]
+  const rows = open ? cur.rows() : []
+  const stamp = new Date().toLocaleDateString('en-CA')
+  const go = format => {
+    const r = cur.rows()
+    if (!r.length) { alert('Nothing to export for this choice — no dues found.'); return }
+    const filename = `GNSI_dues_${scope === 'month' && selected ? selected.fullMon + '_' + selected.year : scope}_${stamp}`
+    const title = `Month-wise Dues — ${cur.label}`
+    const outstanding = scope === 'summary' ? r.reduce((s, x) => s + x['Outstanding (₹)'], 0) : r.reduce((s, x) => s + x['Due (₹)'], 0)
+    if (format === 'csv') exportCSV(r, filename)
+    else if (format === 'xls') exportXLS(r, filename, 'Month-wise Dues')
+    else exportPrintHTML(r, filename, title, { 'Report': cur.label, 'Rows': r.length, 'Total Outstanding': `₹${Number(outstanding).toLocaleString('en-IN')}`, 'Generated': stamp })
+    setOpen(false)
+  }
+  const btn = (label, color, f) => (
+    <button key={f} type="button" onClick={() => go(f)}
+      style={{ flex: 1, padding: '8px 6px', borderRadius: 7, border: `1.5px solid ${color}30`, background: `${color}10`, color, fontSize: 11.5, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>{label}</button>
+  )
+  return (
+    <div style={{ position: 'relative' }}>
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
+        style={{ fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 7, border: '1px solid #e8e3d8', background: open ? '#1e3a6e' : 'white', color: open ? 'white' : '#1e3a6e', cursor: 'pointer' }}>
+        ⬇ Export
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', right: 0, top: '115%', zIndex: 300, width: 300, maxWidth: '86vw', background: 'white', border: '1px solid #e8e3d8', borderRadius: 12, boxShadow: '0 12px 32px rgba(19,42,79,.18)', padding: 12 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>What to export</div>
+          {scopes.map(sc => (
+            <label key={sc.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', fontSize: 12, fontWeight: scope === sc.id ? 800 : 600, color: '#1e3a6e', cursor: 'pointer' }}>
+              <input type="radio" name="dues-export-scope" checked={scope === sc.id} onChange={() => setScope(sc.id)} />{sc.label}
+            </label>
+          ))}
+          <div style={{ fontSize: 11, color: rows.length ? '#5d6b82' : '#b42318', margin: '6px 0 10px' }}>{rows.length ? `${rows.length} row${rows.length > 1 ? 's' : ''} ready` : 'No dues found for this choice'}</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {btn('📄 CSV', '#1e3a6e', 'csv')}
+            {btn('📊 Excel', '#166534', 'xls')}
+            {btn('🖨 Print / PDF', '#d97706', 'print')}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_course_fees, liveRows, onCollect, onFix, isAdmin }) {
   const w       = useWindowWidth()
   const isMobile= w < 640
@@ -1779,7 +1989,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   // month is expanded inline. Declared up-front with the other hooks (not
   // inline further down next to the derived `monthwiseDues` value) so hook
   // order stays stable regardless of future edits to the derivations below.
-  const [duesMonthIdx, setDuesMonthIdx] = useState(5)
+  const [duesMonthIdx, setDuesMonthIdx] = useState(null)   // null = the current (latest) month
   const [duesExpanded, setDuesExpanded] = useState(false)
   useEffect(() => {
     let cancelled = false
@@ -1882,74 +2092,11 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const maxCourse = Math.max(...courseBreakdown.map(c => c.total), 1)
 
   // ── Month-wise Dues (flat + course fee) ─────────────────────────────────────
-  // Built on the same register model as each student's Fee Ledger and the
-  // Monthly Fee Ledger (feeLedgerModel.buildRegister via buildAllLedgers), so
-  // all three always agree:
-  //   • rates come from Fee Setup (fee_structures) + per-student overrides,
-  //     not the old hard-coded FLAT_RATES / COURSE_RATES;
-  //   • each month is the head the session actually charges (Feb/Mar flat
-  //     fee, April–January course fee);
-  //   • months before a student's admission are not charged;
-  //   • a part-payment leaves the shortfall due (not "paid");
-  //   • advance payments count for the month they were paid for.
-  // Last 6 months that have started, each read from its own April–March session.
-  const duesMonths = useMemo(() => Array.from({ length: 6 }, (_, idx) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (5 - idx), 1)
-    const start = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1
-    return {
-      label: d.toLocaleString('default', { month: 'short' }), fullMon: d.toLocaleString('default', { month: 'long' }),
-      year: d.getFullYear(), session: `${start}-${start + 1}`,
-      isCurrent: d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(),
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is fixed for this render cycle
-  }), [])
-  // liveRows is rebuilt every time a batch of per-student dues arrives; only
-  // re-run the (network-backed) register build when a fee-relevant field changes.
-  const duesStudentsKey = liveRows.map(s => [s.gcc_no, s.course, s.batch, s.hostel_type, s.admission_date, s.session].join('|')).join(';')
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the fee-relevant fields above
-  const duesStudents = useMemo(() => liveRows, [duesStudentsKey])
-  const [duesLedgers, setDuesLedgers] = useState(null)   // { [session]: [{ student, reg }] }
-  const [duesError, setDuesError] = useState('')
-  useEffect(() => {
-    if (!duesStudents.length) return
-    let live = true
-    const group = (rows, keep) => { const m = new Map(); for (const r of rows || []) { if (!keep(r)) continue; const g = gccStr(r.adm_app_id); if (!m.has(g)) m.set(g, []); m.get(g).push(r) } return m }
-    const rows = {
-      adm:  group(adm_fee_collections, r => !r.reverted),
-      flat: group(adm_flat_fees, r => r.paid && !r.reverted),
-      crs:  group(adm_course_fees, r => !r.reverted),
-    }
-    const sessions = [...new Set(duesMonths.map(m => m.session))]
-    Promise.all(sessions.map(sess => buildAllLedgers(duesStudents, sess, { rows }).then(items => [sess, items])))
-      .then(pairs => { if (live) { setDuesLedgers(Object.fromEntries(pairs)); setDuesError('') } })
-      .catch(e => { if (live) setDuesError(e.message || 'Could not work out dues') })
-    return () => { live = false }
-  }, [duesStudents, adm_fee_collections, adm_flat_fees, adm_course_fees, duesMonths])
-
-  const monthwiseDues = useMemo(() => duesMonths.map(m => {
-    const perStudent = []
-    let head = null
-    for (const { student, reg } of duesLedgers?.[m.session] || []) {
-      const r = reg.rows.find(x => x.month === m.fullMon && Number(x.year) === m.year)
-      if (!r || r.status === 'before' || r.status === 'upcoming' || !(r.expected > 0)) continue
-      head = head || r.head
-      const due = r.status === 'due' ? r.due : r.status === 'short' ? r.shortBy : 0
-      perStudent.push({ student, expected: r.expected, paid: r.paidAmt, due })
-    }
-    const expectedTotal = perStudent.reduce((s, x) => s + x.expected, 0)
-    // Collected is capped per student at what they owed, so one overpayment
-    // can't hide another student's due in the percentage.
-    const collectedTotal = perStudent.reduce((s, x) => s + Math.min(x.paid, x.expected), 0)
-    const defaulters = perStudent.filter(x => x.due > 0).sort((a, b) => b.due - a.due)
-    return {
-      ...m, year: String(m.year), dayOfMonth: now.getDate(), loading: !duesLedgers,
-      isTracked: expectedTotal > 0, headlineType: head || (/^(February|March)$/.test(m.fullMon) ? 'Flat Fee' : 'Course Fee'),
-      expectedTotal, collectedTotal, dueTotal: defaulters.reduce((s, x) => s + x.due, 0),
-      defaulterCount: defaulters.length, defaulters,
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` is fixed for this render cycle
-  }), [duesMonths, duesLedgers])
-  const selectedDues = monthwiseDues[duesMonthIdx] ?? monthwiseDues[monthwiseDues.length - 1] ?? null
+  // Worked out by useMonthwiseDues (defined above this component) so the same
+  // numbers feed this card, its export menu and the Reports & Export Centre.
+  const { monthwiseDues, duesError } = useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_course_fees })
+  const selIdx = duesMonthIdx ?? (monthwiseDues.length - 1)
+  const selectedDues = monthwiseDues[selIdx] ?? monthwiseDues[monthwiseDues.length - 1] ?? null
 
   // ── Hostel breakdown ────────────────────────────────────────────────────────
   const hostelBreakdown = ['Boarder', 'Day Boarder', 'Day Scholar'].map(h => {
@@ -1960,6 +2107,25 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
   const COURSE_COLORS = { Sainik: '#1e3a6e', Navodaya: '#059669', Foundation: '#d97706', 'Combined Course': '#a7771f' }
   const HOSTEL_COLORS = { Boarder: '#059669', 'Day Boarder': '#d97706', 'Day Scholar': '#5d6b82' }
+
+  // ── Report rows for each dashboard section's Export button ──────────────────
+  const stuRows = (list, extra) => list.map(s => ({
+    'GCC No': `GCC-${s.gcc_no}`, 'Student': s.name, 'Course': s.course || '', 'Batch': s.batch || '',
+    'Hostel': s.hostel_type || '', 'Status': s.liveStatus || '',
+    'Total Paid (₹)': Number(s.grandTotal) || 0, 'Total Due (₹)': Number(s.totalDue) || 0, ...(extra ? extra(s) : {}),
+  }))
+  const rptUnderpaid = stuRows(underpaidStudents)
+  const rptZero      = stuRows(zeroPayment)
+  const rptAdmOnly   = stuRows(admOnlyPaid)
+  const rptRepeaters = stuRows(repeaters)
+  const rptThisMonth = stuRows(defaultersThisMonth)
+  const rptTrend = last6.map(m => ({ 'Month': m.label, 'Flat Fee (₹)': m.flat, 'Course Fee (₹)': m.crsf, 'Admission (₹)': m.adm, 'Total (₹)': m.total }))
+  const rptCourse = courseBreakdown.map(c => ({ 'Course': c.course, 'Students': c.count, 'Collected (₹)': c.total }))
+  const rptHostel = hostelBreakdown.map(h => ({ 'Hostel': h.type, 'Students': h.count, 'Collected (₹)': h.total }))
+  const rptProgress = [
+    { label: 'Paid Admission', count: paidAdmGccs.size }, { label: 'Paid Flat Fee', count: paidFlatGccs.size }, { label: 'Paid Course Fee', count: paidCrsfGccs.size },
+  ].map(p => ({ 'Stage': p.label, 'Students Paid': p.count, 'Total Students': students.length, 'Percent': students.length ? Math.round(p.count / students.length * 100) + '%' : '0%' }))
+  const dashHead = { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 4 }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -2002,7 +2168,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fdba74', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
           <div style={{ background: '#ffedd5', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #fdba74' }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#c2410c' }}>🟠 Underpaid Students — paid something, but still short vs. what they actually owe</div>
-            <span style={{ fontSize: 11, fontWeight: 800, background: '#c2410c', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{underpaidStudents.length}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, background: '#c2410c', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{underpaidStudents.length}</span>
+              <ExportBar rows={rptUnderpaid} filename={`GNSI_Underpaid_${todayStr}`} compact />
+            </div>
           </div>
           <div style={{ maxHeight: 340, overflowY: 'auto' }}>
             {underpaidStudents.length === 0
@@ -2064,7 +2233,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
         {/* ── Monthly trend bar chart ── */}
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e8e3d8', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e', marginBottom: 4 }}>📈 Monthly Collection Trend</div>
+<div style={dashHead}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>📈 Monthly Collection Trend</div>
+            <ExportBar rows={rptTrend} filename={`GNSI_Monthly_Trend_${todayStr}`} label="" compact />
+          </div>
           <div style={{ fontSize: 11, color: '#8a93a6', marginBottom: 16 }}>Last 6 months — flat + course fees</div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 140 }}>
             {last6.map(m => (
@@ -2102,7 +2274,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
         {/* ── Hostel breakdown ── */}
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e8e3d8', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e', marginBottom: 4 }}>🏠 Hostel Breakdown</div>
+<div style={dashHead}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>🏠 Hostel Breakdown</div>
+            <ExportBar rows={rptHostel} filename={`GNSI_Hostel_Breakdown_${todayStr}`} label="" compact />
+          </div>
           <div style={{ fontSize: 11, color: '#8a93a6', marginBottom: 16 }}>Collection by hostel type</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {hostelBreakdown.map(h => (
@@ -2141,6 +2316,11 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                   {x.paid > 0 && (
                     <span style={{ fontSize: 8.5, fontWeight: 800, color: '#b45309', background: '#fffbeb', padding: '1px 6px', borderRadius: 4, border: '1px solid #fde68a', letterSpacing: '.03em' }}>
                       PARTIAL
+                    </span>
+                  )}
+                  {x.admDue > 0 && (
+                    <span title="Includes the admission fee, charged in the month of admission" style={{ fontSize: 8.5, fontWeight: 800, color: '#6d28d9', background: '#f5f3ff', padding: '1px 6px', borderRadius: 4, border: '1px solid #ddd6fe', letterSpacing: '.03em' }}>
+                      + ADMISSION ₹{n(x.admDue)}
                     </span>
                   )}
                 </div>
@@ -2222,16 +2402,22 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             <>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap', gap: 8 }}>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>🗓️ Month-wise Dues (Flat + Course Fee)</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>🗓️ Month-wise Dues (Flat + Course + Admission Fee)</div>
             {duesError && <div style={{ fontSize: 12, color: '#b42318', marginTop: 4 }}>Could not work out dues: {duesError}</div>}
-            <div style={{ fontSize: 11, color: '#8a93a6' }}>Expected vs collected — tap a month to see who still owes</div>
+            <div style={{ fontSize: 11, color: '#8a93a6' }}>
+              {monthwiseDues.length > 0 && <>Session {monthwiseDues[0].session} · {monthwiseDues[0].label}{monthwiseDues.length > 1 ? `–${monthwiseDues[monthwiseDues.length - 1].label}` : ''} · </>}
+              Expected vs collected — tap a month to see who still owes
+            </div>
           </div>
-          <button onClick={() => setDuesExpanded(e => !e)}
-            style={{ fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 7, border: '1px solid #e8e3d8', background: duesExpanded ? '#1e3a6e' : 'white', color: duesExpanded ? 'white' : '#1e3a6e', cursor: 'pointer' }}>
-            {duesExpanded ? '↕ Collapse' : '↕ Expand All'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <DuesExportMenu months={monthwiseDues} selected={selectedDues} />
+            <button onClick={() => setDuesExpanded(e => !e)}
+              style={{ fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 7, border: '1px solid #e8e3d8', background: duesExpanded ? '#1e3a6e' : 'white', color: duesExpanded ? 'white' : '#1e3a6e', cursor: 'pointer' }}>
+              {duesExpanded ? '↕ Collapse' : '↕ Expand All'}
+            </button>
+          </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(6, 1fr)', gap: 10, marginTop: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(auto-fill, minmax(118px, 1fr))', gap: 10, marginTop: 14 }}>
           {monthwiseDues.map((m, idx) => {
             const pctRaw   = m.expectedTotal > 0 ? Math.round((m.collectedTotal / m.expectedTotal) * 100) : null
             // Clamp for display: collected can legitimately exceed the
@@ -2241,7 +2427,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             // ceiling, so cap what's shown at 100 and let the ₹ due (which
             // is separately floored at 0) tell the true story.
             const pct      = pctRaw === null ? null : Math.min(100, pctRaw)
-            const isSel    = idx === duesMonthIdx
+            const isSel    = idx === selIdx
             const hasDue   = m.dueTotal > 0
             const cardColor= hasDue ? '#dc2626' : (m.expectedTotal > 0 ? '#059669' : '#8a93a6')
             return (
@@ -2256,7 +2442,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                   {hasDue && <span style={{ fontSize: 9, fontWeight: 800, background: '#dc2626', color: 'white', padding: '1px 6px', borderRadius: 99 }}>{m.defaulterCount}</span>}
                 </div>
                 <div style={{ fontSize: 9, fontWeight: 700, color: m.headlineType === 'Flat Fee' ? '#059669' : '#a7771f', marginTop: 3 }}>
-                  {m.headlineType}
+                  {m.feeLabel}
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 900, color: cardColor, marginTop: 2 }}>
                   {m.loading ? '…' : m.expectedTotal > 0 ? `₹${n(m.dueTotal)}` : '—'}
@@ -2315,7 +2501,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
       {/* ── Course-wise breakdown ── */}
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e8e3d8', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e', marginBottom: 4 }}>📚 Course-wise Collection</div>
+<div style={dashHead}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>📚 Course-wise Collection</div>
+            <ExportBar rows={rptCourse} filename={`GNSI_Course_Collection_${todayStr}`} label="" compact />
+          </div>
         <div style={{ fontSize: 11, color: '#8a93a6', marginBottom: 16 }}>Total collected per course</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {courseBreakdown.map(c => (
@@ -2337,7 +2526,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fca5a5', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
           <div style={{ background: '#fef2f2', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #fca5a5' }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#dc2626' }}>🔴 Zero Payment Students</div>
-            <span style={{ fontSize: 11, fontWeight: 800, background: '#dc2626', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{zeroPayment.length}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, background: '#dc2626', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{zeroPayment.length}</span>
+              <ExportBar rows={rptZero} filename={`GNSI_Zero_Payment_${todayStr}`} compact />
+            </div>
           </div>
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             {zeroPayment.length === 0
@@ -2364,7 +2556,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fde68a', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
           <div style={{ background: '#fffbeb', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #fde68a' }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#d97706' }}>🟡 {thisMonth} Course Fee Pending</div>
-            <span style={{ fontSize: 11, fontWeight: 800, background: '#d97706', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{defaultersThisMonth.length}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, background: '#d97706', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{defaultersThisMonth.length}</span>
+              <ExportBar rows={rptThisMonth} filename={`GNSI_Month_Course_Fee_Pending_${todayStr}`} compact />
+            </div>
           </div>
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             {defaultersThisMonth.length === 0
@@ -2391,7 +2586,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2c57e', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
           <div style={{ background: '#fbf3e0', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2c57e' }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#a7771f' }}>🟠 Adm Paid · No Monthly Yet</div>
-            <span style={{ fontSize: 11, fontWeight: 800, background: '#a7771f', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{admOnlyPaid.length}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, background: '#a7771f', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{admOnlyPaid.length}</span>
+              <ExportBar rows={rptAdmOnly} filename={`GNSI_Adm_Paid_No_Monthly_${todayStr}`} compact />
+            </div>
           </div>
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             {admOnlyPaid.length === 0
@@ -2418,7 +2616,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
         <div style={{ background: 'white', borderRadius: 14, border: '1px solid #fcd34d', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
           <div style={{ background: '#fef3c7', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #fcd34d' }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#92400e' }}>🔁 Repeaters — Pending</div>
-            <span style={{ fontSize: 11, fontWeight: 800, background: '#92400e', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{repeaters.length}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, background: '#92400e', color: 'white', padding: '2px 8px', borderRadius: 99 }}>{repeaters.length}</span>
+              <ExportBar rows={rptRepeaters} filename={`GNSI_Repeaters_Pending_${todayStr}`} compact />
+            </div>
           </div>
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             {repeaters.length === 0
@@ -2444,7 +2645,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
       {/* ── Session progress bars ── */}
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e8e3d8', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e', marginBottom: 16 }}>📊 Session Progress</div>
+        <div style={{ ...dashHead, marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>📊 Session Progress</div>
+          <ExportBar rows={rptProgress} filename={`GNSI_Session_Progress_${todayStr}`} compact />
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : is2Col ? '1fr 1fr' : '1fr 1fr 1fr', gap: 20 }}>
           {[
             { label: 'Paid Admission', count: paidAdmGccs.size,  color: '#1e3a6e', bg: '#eef2f9' },
