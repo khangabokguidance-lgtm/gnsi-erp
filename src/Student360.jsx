@@ -431,8 +431,8 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
     try {
       const flags = detectMismatches(selected, profile)
       if (flags.length === 0) { setNotifyState('none'); return }
-      const { newCount } = await logAndNotify(selected, flags)
-      setNotifyState(newCount > 0 ? 'sent' : 'none')
+      const { newCount, blocked } = await logAndNotify(selected, flags)
+      setNotifyState(blocked ? 'error' : newCount > 0 ? 'sent' : 'none')
     } catch (e) {
       console.error('notifyAdmin failed:', e.message)
       setNotifyState('error')
