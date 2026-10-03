@@ -2162,7 +2162,8 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
     const g = gccStr(st.gcc_no)
     let status = PROG_STAGES[key].paid.has(g) ? 'Paid' : 'Not paid'
     let note = ''
-    if (st.is_repeater && status !== 'Paid') { status = 'Repeater'; note = 'Repeater — fee not charged' }
+    // A repeater's ADMISSION fee is waived; flat and course fees are charged as normal.
+    if (key === 'adm' && st.is_repeater && status !== 'Paid') { status = 'Repeater'; note = 'Repeater — admission fee waived' }
     else if (key === 'adm' && status !== 'Paid' && st.admission_date && new Date(String(st.admission_date).slice(0, 10) + 'T00:00:00') < new Date(sessStartYear, 3, 1)) {
       status = 'Continuing'; note = 'Admitted before this session — no admission fee'
     }
@@ -2730,7 +2731,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                   <div style={{ height: '100%', width: `${pct}%`, background: p.color, borderRadius: 5, transition: 'width .5s' }} />
                 </div>
                 <div style={{ fontSize: 18, fontWeight: 900, color: p.color }}>{pct}%</div>
-                {exempt > 0 && <div style={{ fontSize: 10.5, color: '#5d6b82', marginTop: 2 }}>{exempt} not expected (repeater{key === 'adm' ? ' / continuing' : ''}) — left out</div>}
+                {exempt > 0 && <div style={{ fontSize: 10.5, color: '#5d6b82', marginTop: 2 }}>{exempt} not expected (repeater / continuing — no admission fee) — left out</div>}
               </div>
             )
           })}
@@ -2745,7 +2746,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             <option value="all">All students</option>
             <option value="paid">Paid</option>
             <option value="notpaid">Not paid yet</option>
-            <option value="repeater">Repeaters (not charged)</option>
+            {progStage === 'adm' && <option value="repeater">Repeaters (admission waived)</option>}
             {progStage === 'adm' && <option value="continuing">Continuing students (no admission fee)</option>}
             {progStage !== 'adm' && <option value="concession">With concession</option>}
           </select>

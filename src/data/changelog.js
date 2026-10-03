@@ -3,6 +3,13 @@
 // Add new entries at the TOP of the array when you ship something.
 export const CHANGELOG = [
   {
+    date: '2026-10-03', title: 'Complete guide to the whole ERP',
+    items: [
+      { type: 'new', module: 'help', text: 'Help & Training → Complete guide: getting started, glossary, rules, daily/weekly/yearly routines, every module and troubleshooting in one book. Print or save as PDF, download as Word or Markdown.' },
+      { type: 'fixed', module: 'fees', text: 'Session Progress: only the admission fee is waived for repeaters; their flat and course fees are counted as normal.' },
+    ],
+  },
+  {
     date: '2026-10-03', title: 'Fees: new tools, training and safer money handling (latest)',
     items: [
       { type: 'new', module: 'fees', text: 'Fee Reminders tab: WhatsApp dues reminders with a reminder log and promise-to-pay dates.' },
