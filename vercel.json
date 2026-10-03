@@ -2,8 +2,12 @@
   "outputDirectory": "dist",
   "crons": [
     {
-      "path": "/api/window-notifier",
+      "path": "/api/window-notifier?job=daily",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/window-notifier?job=compliance&phase=warn-evening",
+      "schedule": "0 13 * * *"
     }
   ],
   "rewrites": [

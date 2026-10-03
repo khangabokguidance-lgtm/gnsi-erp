@@ -3,6 +3,8 @@
 // Add to vercel.json (see instructions below)
 import webpush from 'web-push'
 import { createClient } from '@supabase/supabase-js'
+import { enforceCompliance, runDaily } from '../server/hostelCompliance.js'
+import { rollcallReminder } from '../server/rollcallReminder.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -26,10 +28,24 @@ function todayIST() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
 }
 
+// One function, several cron jobs (Vercel Hobby allows max 12 functions):
+//   /api/window-notifier                      → shift check-in window alerts
+//   /api/window-notifier?job=daily            → shift alerts + yesterday's housemaster enforcement + morning roll call warning
+//   /api/window-notifier?job=compliance       → manual enforcement (&date=) or &phase=warn-morning|warn-evening
+//   /api/window-notifier?job=rollcall-reminder → roll call cutoff reminders (needs per-minute cron)
 export default async function handler(req, res) {
+  const job = req.query?.job
+  if (job === 'compliance') return enforceCompliance(req, res)
+  if (job === 'rollcall-reminder') return rollcallReminder(req, res)
   // Vercel cron sends GET — allow it; block everything else
   if (req.method !== 'GET') return res.status(405).end()
-
+  let compliance
+  if (job === 'daily') {
+    if (process.env.CRON_SECRET && req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
+      return res.status(401).json({ error: 'unauthorized' })
+    }
+    try { compliance = await runDaily() } catch (e) { compliance = { error: e.message } }
+  }
   const now      = nowIST()
   const todayStr = todayIST()
 
@@ -38,7 +54,7 @@ export default async function handler(req, res) {
     .select('id, staff_id, shift_label, shift_start, check_in_window_min')
     .eq('is_active', true)
 
-  if (!shifts?.length) return res.json({ ok: true, notified: 0 })
+  if (!shifts?.length) return res.json({ ok: true, notified: 0, compliance })
 
   let notified = 0
 
@@ -91,5 +107,5 @@ export default async function handler(req, res) {
     notified++
   }
 
-  res.json({ ok: true, notified })
+  res.json({ ok: true, notified, compliance })
 }
