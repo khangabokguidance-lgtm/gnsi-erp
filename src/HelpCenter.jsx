@@ -4,9 +4,28 @@
 // list is src/data/changelog.js. Progress is stored in this browser only.
 import { useMemo, useState } from 'react'
 import { CHANGELOG, TYPE_META } from './data/changelog'
+import * as INTRO from './data/guideIntro'
+import { bookHtml, bookMarkdown, orderChapters, BOOK_CSS } from './lib/guideBook'
 
 const modules = import.meta.glob('./data/tutorials/*.js', { eager: true })
 const GUIDES = Object.values(modules).map(m => m.default).filter(Boolean)
+
+// The complete guide: front matter + every module chapter, in sidebar order.
+function buildBook() {
+  const chapters = orderChapters(GUIDES, INTRO.CHAPTER_ORDER, INTRO.GROUP_TITLES)
+  const data = { title: INTRO.GUIDE_TITLE, subtitle: INTRO.GUIDE_SUBTITLE, parts: INTRO.PARTS, appendix: INTRO.APPENDIX, chapters, generated: 'Printed ' + new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) }
+  return data
+}
+const downloadFile = (name, mime, text) => {
+  const url = URL.createObjectURL(new Blob(['\ufeff' + text], { type: mime }))
+  const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url)
+}
+function printBook() {
+  const w = window.open('', '_blank')
+  if (!w) { alert('Allow pop-ups to print the guide.'); return }
+  w.document.write(`<html><head><title>${INTRO.GUIDE_TITLE}</title><style>body{margin:24px}${BOOK_CSS}</style></head><body>${bookHtml(buildBook())}<script>window.onload=function(){window.print()}</script></body></html>`)
+  w.document.close()
+}
 
 const NAVY = '#1e3a6e', GOLD = '#a7771f', LINE = '#e8e3d8'
 const PROGRESS_KEY = 'gnsi_training_done_v1'
@@ -139,6 +158,7 @@ export default function HelpCenter({ currentUser, canAccess, onNavigate }) {
   const [onlyMine, setOnlyMine] = useState(true)
   const [done, setDone] = useState(loadDone)
   const [typeF, setTypeF] = useState('all')
+  const book = useMemo(() => (view === 'book' ? bookHtml(buildBook()) : ''), [view])
 
   const toggle = id => setDone(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); saveDone(n); return n })
   const usable = g => !canAccess || canAccess(g.id)
@@ -183,7 +203,7 @@ export default function HelpCenter({ currentUser, canAccess, onNavigate }) {
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        {tabBtn('new', "✨ What's new")}{tabBtn('guides', '📚 Module guides')}{tabBtn('paths', '🎯 Training paths')}
+        {tabBtn('new', "✨ What's new")}{tabBtn('guides', '📚 Module guides')}{tabBtn('paths', '🎯 Training paths')}{tabBtn('book', '📘 Complete guide')}
       </div>
 
       {view === 'new' && (
@@ -239,6 +259,21 @@ export default function HelpCenter({ currentUser, canAccess, onNavigate }) {
           <div>
             {g ? <Guide g={g} done={done.has(g.id)} onToggle={toggle} onOpenModule={goModule} canOpen={usable(g) && g.id !== 'help'} onSelect={setSel} />
               : <div style={{ ...card, textAlign: 'center', color: '#64748b', padding: 40 }}>Choose a module on the left to see its guide.<br /><br />New here? Try the “Training paths” tab for a recommended order.</div>}
+          </div>
+        </div>
+      )}
+
+      {view === 'book' && (
+        <div>
+          <div style={{ ...card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+            <div style={{ flex: '1 1 260px', fontSize: 13, color: '#475569' }}><b style={{ color: NAVY }}>The whole ERP in one book</b> — getting started, rules, daily routines, every module, and troubleshooting. Print it, save it as a PDF, or download it to share.</div>
+            <button type="button" onClick={printBook} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: NAVY, color: 'white', fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>🖨 Print / Save as PDF</button>
+            <button type="button" onClick={() => downloadFile('GNSI_ERP_Complete_Guide.doc', 'application/msword', `<html><head><meta charset="utf-8"><style>${BOOK_CSS}</style></head><body>${bookHtml(buildBook())}</body></html>`)} style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${LINE}`, background: 'white', color: NAVY, fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>📄 Word</button>
+            <button type="button" onClick={() => downloadFile('GNSI_ERP_Complete_Guide.md', 'text/markdown', bookMarkdown(buildBook()))} style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${LINE}`, background: 'white', color: NAVY, fontWeight: 700, fontSize: 12.5, cursor: 'pointer' }}>⬇ Markdown</button>
+          </div>
+          <div style={{ ...card, padding: '20px 26px' }}>
+            <style>{BOOK_CSS}</style>
+            <div dangerouslySetInnerHTML={{ __html: book }} />
           </div>
         </div>
       )}
