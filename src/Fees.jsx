@@ -33,6 +33,15 @@ import { courseMonthsDue, sessionOfDate } from './feeLedgerModel'
 import { CONCESSION_REASONS, countPendingConcessions } from './feeConcessions'
 import LowFeeApprovals from './LowFeeApprovals'
 import HostelIssues from './HostelIssues'
+import FeeReminders from './FeeReminders'
+import FeeInstallments from './FeeInstallments'
+import FeeDayClose from './FeeDayClose'
+import FeeRefunds from './FeeRefunds'
+import FeeConcessionRegister from './FeeConcessionRegister'
+import FeeDigest from './FeeDigest'
+import DataHealth from './DataHealth'
+import SessionRollover from './SessionRollover'
+import ReceiptVerify from './ReceiptVerify'
 import ShortFeeFixer from './ShortFeeFixer'
 import { loadStudentHistory, typeOnMonth, timeline as hostelTimeline, changeHostelType, undoLastChange, HOSTEL_TYPE_LIST, monthStart } from './hostelHistory'
 import { HOSTEL_MISMATCH_REASON, bedConflict, loadActiveBeds, fixHostelType, logHostelOverride, countHostelIssues } from './hostelFeeCheck'
@@ -4611,7 +4620,16 @@ export default function Fees() {
   const [duesByGcc,           setDuesByGcc]     = useState({})
   const [,                    setDuesLoading]   = useState(false)
   const [search,              setSearch]        = useState('')
-  const [tab, setTab] = useState('dashboard')
+  const [tab, setTab] = useState(() => {
+    // The "What's new" banner can ask for a specific tab to be opened.
+    try { const t = sessionStorage.getItem('gnsi_fees_open_tab'); if (t) { sessionStorage.removeItem('gnsi_fees_open_tab'); return t } } catch { /* storage unavailable */ }
+    return 'dashboard'
+  })
+  useEffect(() => {
+    const h = e => { if (e?.detail) { setTab(e.detail); try { sessionStorage.removeItem('gnsi_fees_open_tab') } catch { /* storage unavailable */ } } }
+    window.addEventListener('gnsi:fees-tab', h)
+    return () => window.removeEventListener('gnsi:fees-tab', h)
+  }, [])
   // Student handed off from the Dashboard's "Collect" buttons (Zero Payment
   // alert, Month-wise Dues drill-down) so Fee Payment opens straight to their
   // form instead of a blank search screen.
@@ -4977,8 +4995,17 @@ export default function Fees() {
     ...(isAdmin ? [{ id: 'pendingApprovals', label: 'Pending Approvals', short: 'Approvals', icon: 'stamp', group: 'checks', badge: pendingApprovalCount }] : []),
     ...(isAdmin ? [{ id: 'lowFee', label: 'Low-fee Approvals', short: 'Low Fees', icon: 'rupeeSearch', group: 'checks', badge: lowFeePending }] : []),
     ...(isAdmin ? [{ id: 'hostelIssues', label: 'Hostel Type Issues', short: 'Hostel Issues', icon: 'hostel', group: 'checks', badge: hostelIssueCount }] : []),
+    ...(isAdmin ? [{ id: 'reminders',   label: 'Fee Reminders',        short: 'Reminders',   icon: 'remind',   group: 'tools' }] : []),
+    ...(isAdmin ? [{ id: 'installments', label: 'Instalment Plans',     short: 'Instalments', icon: 'instal',   group: 'tools' }] : []),
+    ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Concessions', icon: 'scholar', group: 'tools' }] : []),
+    ...(isAdmin ? [{ id: 'refunds',     label: 'Refunds & Transfers',  short: 'Refunds',     icon: 'refund',   group: 'tools' }] : []),
+    ...(isAdmin ? [{ id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' }] : []),
+    { id: 'verify', label: 'Verify Receipt', short: 'Verify', icon: 'verifyqr', group: 'tools' },
+    ...(isAdmin ? [{ id: 'digest',      label: 'Fees Activity Digest', short: 'Digest',      icon: 'digest',   group: 'checks' }] : []),
+    ...(isAdmin ? [{ id: 'dataHealth',  label: 'Data Health',          short: 'Data Health', icon: 'health',   group: 'checks' }] : []),
+    ...(isAdmin ? [{ id: 'rollover',    label: 'Session Rollover',     short: 'Rollover',    icon: 'rollover', group: 'tools' }] : []),
   ]
-  const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals']]
+  const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals'], ['tools', 'Tools & planning']]
     .map(([id, title]) => ({ id, title, items: TABS.filter(t => t.group === id) })).filter(g => g.items.length)
 
   // ── Advanced filter state (shared across live + admin tabs) ──────────────
@@ -5633,6 +5660,15 @@ export default function Fees() {
           onCollect={s => { setPresetCollectStudent(s); setTab('payment') }}
           onOpenRevert={s => { setPresetFixStudent(s); setTab('ledger') }} />
       )}
+      {tab === 'reminders' && isAdmin && <FeeReminders students={students} liveRows={liveRows} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'installments' && isAdmin && <FeeInstallments students={students} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'concessionRegister' && isAdmin && <FeeConcessionRegister students={students} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'refunds' && isAdmin && <FeeRefunds students={students} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'dayClose' && isAdmin && <FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'verify' && <ReceiptVerify />}
+      {tab === 'digest' && isAdmin && <FeeDigest students={students} isAdmin={isAdmin} />}
+      {tab === 'dataHealth' && isAdmin && <DataHealth students={students} isAdmin={isAdmin} />}
+      {tab === 'rollover' && isAdmin && <SessionRollover students={students} liveRows={liveRows} isAdmin={isAdmin} />}
       {tab === 'hostelIssues' && (
         <HostelIssues students={students} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees}
           isAdmin={isAdmin} currentUser={currentUser} onChanged={() => { refreshHostelIssues(); refreshLowFeePending(); loadAll() }} />

@@ -1077,7 +1077,7 @@ export default function App() {
         )}
         {currentUser && (
           <WhatsNewBanner isAdmin={isAdminRole(currentUser.role)}
-            onOpenFeesTab={tabId => { try { sessionStorage.setItem('gnsi_fees_open_tab', tabId) } catch { /* storage unavailable */ } window.dispatchEvent(new CustomEvent('gnsi:fees-tab', { detail: tabId })); setActivePage('fees') }} />
+            onOpenFeesTab={tabId => { try { sessionStorage.setItem('gnsi_fees_open_tab', tabId) } catch { /* storage unavailable */ } window.dispatchEvent(new CustomEvent('gnsi:fees-tab', { detail: tabId })); setActive('fees') }} />
         )}
         {renderContent()}
       </main>
