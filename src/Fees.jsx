@@ -175,13 +175,17 @@ const ADM_FEE_BASE   = 6000
 const PROSPECTUS_FEE = 200
 
 // ── Export utilities ──────────────────────────────────────────────────────────
+// Text that a spreadsheet would run as a formula (=, +, @, or - before a non-digit)
+// gets a leading apostrophe, so a crafted student name / note can't execute.
+const safeCell = v => (typeof v === 'string' && /^[=+@]|^-(?!\d)/.test(v) ? "'" + v : v)
+
 function exportCSV(rows, filename) {
   if (!rows || rows.length === 0) { alert('No data to export.'); return }
   const headers = Object.keys(rows[0])
   const csv = [
     headers.join(','),
     ...rows.map(row => headers.map(h => {
-      const v = row[h] == null ? '' : String(row[h])
+      const v = row[h] == null ? '' : String(safeCell(String(row[h])))
       return v.includes(',') || v.includes('"') || v.includes('\n') ? `"${v.replace(/"/g, '""')}"` : v
     }).join(','))
   ].join('\n')
@@ -240,13 +244,13 @@ const _dl = (blob, name) => { const u=URL.createObjectURL(blob),a=document.creat
 function exportTSV(rows, filename) {
   if (!rows?.length) { alert('No data.'); return }
   const H=Object.keys(rows[0])
-  const body=[H.join('\t'),...rows.map(r=>H.map(h=>String(r[h]??'').replace(/\t/g,' ')).join('\t'))].join('\n')
+  const body=[H.join('\t'),...rows.map(r=>H.map(h=>String(safeCell(String(r[h]??''))).replace(/\t/g,' ')).join('\t'))].join('\n')
   _dl(new Blob(['\ufeff'+body],{type:'text/tab-separated-values;charset=utf-8'}),filename+'.tsv')
 }
 function exportXLS(rows, filename, sheetTitle='Report') {
   if (!rows?.length) { alert('No data.'); return }
   const H=Object.keys(rows[0])
-  const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  const esc=v=>String(safeCell(String(v??''))).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
   const hdr=H.map(h=>`<th style="background:#1e3a6e;color:white;font-weight:bold;padding:6px 10px;border:1px solid #ccc">${esc(h)}</th>`).join('')
   const bdy=rows.map((r,i)=>{const bg=i%2===0?'#fff':'#faf8f3';return `<tr>${H.map(h=>`<td style="padding:5px 10px;border:1px solid #ddd;background:${bg}">${esc(r[h])}</td>`).join('')}</tr>`}).join('')
   const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"/><title>${sheetTitle}</title><style>table{border-collapse:collapse;font-family:Arial,sans-serif;font-size:12px}</style></head><body><h3 style="font-family:Arial;color:#1e3a6e">Guidance Navodaya &amp; Sainik Institute — ${sheetTitle}</h3><table><thead><tr>${hdr}</tr></thead><tbody>${bdy}</tbody></table></body></html>`
@@ -3403,8 +3407,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           ...(short > 0 ? {
             standardAmount: stdOf(r), underpaymentAmount: short, underpaymentReason: reasonOf(r), underpaymentNote: why || null,
             // An admin collecting approves it on the spot; anyone else sends it for approval.
-            concessionApprovedBy: isAdmin ? (collectedBy.trim() || currentUser?.name || 'Admin') : null,
-            note: `Low fee: ₹${stdOf(r).toLocaleString('en-IN')} standard → ₹${amt.toLocaleString('en-IN')} — ${reasonOf(r)}${why ? ` (${why})` : ''} — ${isAdmin ? `approved by ${collectedBy.trim() || 'admin'}` : 'awaiting admin approval'}`,
+            concessionApprovedBy: isAdmin ? (currentUser?.name || collectedBy.trim() || 'Admin') : null,
+            note: `Low fee: ₹${stdOf(r).toLocaleString('en-IN')} standard → ₹${amt.toLocaleString('en-IN')} — ${reasonOf(r)}${why ? ` (${why})` : ''} — ${isAdmin ? `approved by ${currentUser?.name || collectedBy.trim() || 'admin'}` : 'awaiting admin approval'}`,
           } : {}),
         })
       }
@@ -3590,6 +3594,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               })
               const verify = await verifyRes.json()
               if (!verifyRes.ok || !verify?.verified) throw new Error(verify?.error || 'Payment verification failed')
+              // Never record more than Razorpay says was actually paid.
+              const itemsTotal = items.reduce((t, it) => t + (Number(it.amount) || 0), 0)
+              if (verify.paid_amount != null && Math.abs(Number(verify.paid_amount) - itemsTotal) > 0.5) {
+                throw new Error(`Razorpay received ₹${Number(verify.paid_amount).toLocaleString('en-IN')} but the fees add up to ₹${itemsTotal.toLocaleString('en-IN')} — nothing was recorded. Note payment id ${response.razorpay_payment_id} and contact an admin.`)
+              }
 
               try {
                 await finalizeCollection(items, { mode: 'Razorpay', ref: response.razorpay_payment_id })

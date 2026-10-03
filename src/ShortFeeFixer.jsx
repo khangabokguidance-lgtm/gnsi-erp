@@ -58,7 +58,7 @@ export default function ShortFeeFixer({ student, session, month: initialMonth, y
   const [busy, setBusy] = useState('')
   const [msg, setMsg] = useState(null)          // { ok|err, text }
   const [nonce, setNonce] = useState(0)
-  const [f, setF] = useState({ reason: CONCESSION_REASONS[0], custom: '', note: '', amt: {}, amtWhy: '', moveTo: '', moveWhy: '', htType: '', htFrom: '', htMode: 'all' })
+  const [f, setF] = useState({ reason: CONCESSION_REASONS[0], custom: '', note: '', amt: {}, amtWhy: '', moveTo: '', moveWhy: '', htType: '', htFrom: '', htMode: 'all', htWhy: '' })
 
   // This student's rows only (props hold everyone's).
   const mine = useMemo(() => ({
@@ -142,12 +142,16 @@ export default function ShortFeeFixer({ student, session, month: initialMonth, y
   }, 'Amount corrected (fee record and Accounts).')
   const moveMonth = r => run('mv' + r.id, async () => {
     const [m, y] = String(f.moveTo).split('|')
+    if (!(await confirmFeeMonthOpen(r.pay_date, { isAdmin: true }))) throw new Error('Cancelled.')
     await moveFeeCollectionMonth({ table, id: r.id, month: m, year: Number(y), reason: f.moveWhy, correctedBy: me })
   }, 'Payment moved to the right month.')
   const htTo = f.htType || typeMatch?.type || ''
   const fixType = () => run('ht', async () => {
     if (!htTo) throw new Error('Choose the correct hostel type.')
-    if (f.htMode === 'all') await fixHostelType(student, htTo, me)
+    if (f.htMode === 'all') {
+      if (f.htWhy.trim().length < 5) throw new Error('Say why the hostel type was wrong — it re-prices every month.')
+      await fixHostelType(student, htTo, me, f.htWhy.trim())
+    }
     else await changeHostelType({ student, toType: htTo, effectiveFrom: f.htFrom || monthStart(sel.month, sel.year), reason: 'Corrected from the Fix panel', by: me, changes })
   }, `Hostel type set to ${htTo} — dues recalculated at the ${htTo} rate.`)
 
@@ -242,6 +246,9 @@ export default function ShortFeeFixer({ student, session, month: initialMonth, y
                     <select aria-label="Effective from" value={f.htFrom || monthStart(sel.month, sel.year)} onChange={e => setF(v => ({ ...v, htFrom: e.target.value }))}>
                       {sessionMonths.map(x => <option key={x.m} value={monthStart(x.m, x.y)}>{x.m} {x.y}</option>)}
                     </select>
+                  )}
+                  {f.htMode === 'all' && (
+                    <input aria-label="Reason for hostel type correction" placeholder="Why was it wrong? (required)" value={f.htWhy} onChange={e => setF(v => ({ ...v, htWhy: e.target.value }))} style={{ flex: '1 1 200px' }} />
                   )}
                   <button className="sff-b" style={btn('#9a3412')} disabled={!!busy || !htTo} onClick={fixType}>Correct hostel type</button>
                 </div>

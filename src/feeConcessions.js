@@ -20,6 +20,12 @@ export const CONCESSION_REASONS = [
   'Other',
 ]
 
+// A concession above this (₹) cannot be approved by the person who raised it —
+// a second admin must decide it. Keep in step with fee_self_approve_limit() in
+// supabase/migrations/20261006_fee_integrity_guards.sql.
+export const CONCESSION_SELF_APPROVE_LIMIT = 2000
+const sameWho = (a, b) => !!String(a || '').trim() && String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase()
+
 const missingTable = err => err && (err.code === '42P01' || err.code === 'PGRST205' || /fee_concessions|concession_(amount|status)/.test(err.message || ''))
 export const CONCESSIONS_SETUP_MSG = 'Low-fee approvals need the database update 20260929_fee_concessions.sql — run it in Supabase (SQL editor) to switch this on.'
 
@@ -29,6 +35,13 @@ export const CONCESSIONS_SETUP_MSG = 'Low-fee approvals need the database update
 export async function recordConcession({ replace = false, table, rowId, kind, gcc, studentName, month, year, course, standard, collected, reason, note, receiptNo, payDate, collectedBy, approvedBy }) {
   const shortfall = Math.round((Number(standard) - Number(collected)) * 100) / 100
   if (!(shortfall > 0) || !rowId) return null
+  // Approval at the counter is only honoured when it is explained and, for a big
+  // amount, not the requester approving their own request; otherwise it waits
+  // for a (different) admin.
+  const unexplained = (reason || 'Other') === 'Other' && String(note || '').trim().length < 3
+  const selfApproved = approvedBy && shortfall > CONCESSION_SELF_APPROVE_LIMIT && sameWho(approvedBy, collectedBy)
+  if (unexplained) note = '⚠ No explanation was given'
+  if (unexplained || selfApproved) approvedBy = null
   const status = approvedBy ? 'approved' : 'pending'
   const now = new Date().toISOString()
   // The fee row id is reused when a month is collected again after a reversal:
@@ -68,6 +81,12 @@ export async function countPendingConcessions() {
 
 // Admin decision. approve → waive the shortfall; reject → it stays due.
 export async function decideConcession(c, approve, { by, note } = {}) {
+  if (approve && Number(c.shortfall) > CONCESSION_SELF_APPROVE_LIMIT && sameWho(by, c.requested_by || c.collected_by)) {
+    throw new Error(`This ₹${Number(c.shortfall).toLocaleString('en-IN')} concession was raised by you — a different admin must approve anything above ₹${CONCESSION_SELF_APPROVE_LIMIT.toLocaleString('en-IN')}.`)
+  }
+  if (approve && c.reason === 'Other' && String(c.reason_note || '').trim().length < 3 && String(note || '').trim().length < 3) {
+    throw new Error('This concession has reason "Other" with no explanation — write the explanation in the decision note before approving.')
+  }
   const status = approve ? 'approved' : 'rejected'
   const { error } = await supabase.from('fee_concessions').update({ status, decided_by: by || 'Admin', decided_at: new Date().toISOString(), decision_note: note || null }).eq('id', c.id)
   if (error) throw new Error(error.message)

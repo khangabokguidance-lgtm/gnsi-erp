@@ -50,18 +50,24 @@ export async function scanBedConflicts(students) {
 }
 
 // Admin fix: set the student's hostel type to match the hostel. Audited.
-export async function fixHostelType(student, newType, by) {
+export async function fixHostelType(student, newType, by, reason = 'Corrected to match the hostel bed allocation') {
+  // Re-pricing every month is a big change: snapshot what existed first and make
+  // the audit record a hard requirement (nothing changes if it cannot be saved).
+  let oldHistory = []
+  try {
+    const { data } = await supabase.from('student_hostel_history').select('*').eq('gcc_no', String(parseInt(student.gcc_no) || student.gcc_no))
+    oldHistory = data || []
+  } catch { /* history table not there yet */ }
+  const { error: aErr } = await supabase.from('audit_log').insert({
+    action: 'hostel_type_corrected', changed_by: by || 'Admin', target_id: String(student.id),
+    new_values: JSON.stringify({ gcc: student.gcc_no, student_name: student.name, from: student.hostel_type || null, to: newType, reason, previous_history: oldHistory, source: 'fee hostel check' }),
+    created_at: new Date().toISOString(),
+  })
+  if (aErr) throw new Error('Could not save the audit record, so nothing was changed: ' + aErr.message)
   const { error } = await supabase.from('students').update({ hostel_type: newType }).eq('id', student.id)
   if (error) throw new Error(error.message)
   // A correction means the type was wrong all along — it applies to every month.
   await clearHistory(student.gcc_no)
-  try {
-    await supabase.from('audit_log').insert({
-      action: 'hostel_type_corrected', changed_by: by || 'Admin', target_id: String(student.id),
-      new_values: JSON.stringify({ gcc: student.gcc_no, student_name: student.name, from: student.hostel_type || null, to: newType, source: 'fee hostel check' }),
-      created_at: new Date().toISOString(),
-    })
-  } catch { /* audit is best-effort */ }
 }
 
 // Audit trail for an admin collecting despite a hostel issue.
