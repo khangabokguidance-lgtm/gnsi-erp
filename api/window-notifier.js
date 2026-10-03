@@ -3,6 +3,8 @@
 // Add to vercel.json (see instructions below)
 import webpush from 'web-push'
 import { createClient } from '@supabase/supabase-js'
+import { enforceCompliance } from '../server/hostelCompliance.js'
+import { rollcallReminder } from '../server/rollcallReminder.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -26,7 +28,14 @@ function todayIST() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
 }
 
+// One function, several cron jobs (Vercel Hobby allows max 12 functions):
+//   /api/window-notifier                      → shift check-in window alerts
+//   /api/window-notifier?job=compliance       → daily housemaster roll call / six-tab enforcement
+//   /api/window-notifier?job=rollcall-reminder → roll call cutoff reminders (needs per-minute cron)
 export default async function handler(req, res) {
+  const job = req.query?.job
+  if (job === 'compliance') return enforceCompliance(req, res)
+  if (job === 'rollcall-reminder') return rollcallReminder(req, res)
   // Vercel cron sends GET — allow it; block everything else
   if (req.method !== 'GET') return res.status(405).end()
 

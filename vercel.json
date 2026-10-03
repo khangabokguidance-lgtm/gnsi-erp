@@ -6,7 +6,7 @@
       "schedule": "0 0 * * *"
     },
     {
-      "path": "/api/hostel-compliance-enforce",
+      "path": "/api/window-notifier?job=compliance",
       "schedule": "0 18 * * *"
     }
   ],

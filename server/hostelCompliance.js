@@ -1,4 +1,4 @@
-// api/hostel-compliance-enforce.js
+// server/hostelCompliance.js (served via /api/window-notifier?job=compliance — kept out of api/ to stay under the Hobby 12-function limit)
 // Server-side daily enforcement for every active housemaster/mistress.
 //
 // The in-app compliance checks (Hostel.jsx) only run in the housemaster's own
@@ -97,7 +97,7 @@ async function pushToStaff(staffIds, title, body, url) {
   ))
 }
 
-export default async function handler(req, res) {
+export async function enforceCompliance(req, res) {
   if (req.method !== 'GET') return res.status(405).end()
   // Vercel sends "Authorization: Bearer $CRON_SECRET" when CRON_SECRET is set.
   if (process.env.CRON_SECRET && req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {

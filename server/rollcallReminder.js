@@ -23,7 +23,7 @@ function nowIST() {
 
 const norm = (s) => (s || "").trim().toLowerCase()
 
-export default async function handler(req, res) {
+export async function rollcallReminder(req, res) {
   const ist = nowIST()
   const nowHM = `${String(ist.getUTCHours()).padStart(2, "0")}:${String(ist.getUTCMinutes()).padStart(2, "0")}`
   const todayStr = ist.toISOString().split("T")[0]
