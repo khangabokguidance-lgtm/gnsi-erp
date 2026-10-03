@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
+import { getActiveStudents } from './studentQueries'
 import { PremiumStyles, PremiumHero } from './premiumUI'
 import {
   CURRENT_YEAR, clearFeeRateCache, COURSE_STRUCTURE,
@@ -450,6 +451,24 @@ export default function FeeSetup({ userRole }) {
   const [saving,       setSaving]       = useState(false)
   const [saved,        setSaved]        = useState(false)
   const [error,        setError]        = useState(null)
+  // Active students per course/batch/hostel — shows which unconfigured combos are
+  // actually being billed. null until loaded (or if it cannot be loaded).
+  const [studentCounts, setStudentCounts] = useState(null)
+  useEffect(() => {
+    let live = true
+    getActiveStudents('course,batch,hostel_type')
+      .then(rows => {
+        if (!live) return
+        const m = {}
+        ;(rows || []).forEach(r => {
+          const k = `${(r.course || '').trim()}__${(r.batch || '').trim()}__${(r.hostel_type || '').trim()}`
+          m[k] = (m[k] || 0) + 1
+        })
+        setStudentCounts(m)
+      })
+      .catch(() => { if (live) setStudentCounts(null) })
+    return () => { live = false }
+  }, [])
 
   // ── Load from Supabase ────────────────────────────────────────────────────
   const loadStructures = useCallback(async () => {
@@ -551,6 +570,19 @@ export default function FeeSetup({ userRole }) {
     }
   }
 
+  // A combination is "not configured" when no row has ever been saved for it. Fee
+  // Setup pre-fills those with ₹0 / admission 6000, which looks like real data, and
+  // billing meanwhile silently falls back to the old built-in rates (feeEngine.js).
+  const isUnset = row => !!row && !row.id && !row.dirty
+  const countKey = (c, b, h) => `${c}__${b}__${h}`
+  const unconfigured = loading ? [] : COURSES.flatMap(c => COURSE_STRUCTURE[c].flatMap(b => HOSTEL_TYPES.flatMap(h =>
+    isUnset(structures[rowKey(sessionYear, c, b, h)])
+      ? [{ course: c, batch: b, hostel: h, students: studentCounts ? (studentCounts[countKey(c, b, h)] || 0) : null }]
+      : []
+  )))
+  const inUseUnset  = unconfigured.filter(u => u.students === null || u.students > 0)
+  const unusedUnset = unconfigured.filter(u => u.students === 0)
+  const unsetInCourse = c => inUseUnset.filter(u => u.course === c).length
   const dirtyCount  = Object.values(structures).filter(v => v.dirty).length
   const courseColor = COURSE_COLORS[activeCourse] || COURSE_COLORS.Sainik
   const batches     = COURSE_STRUCTURE[activeCourse]
@@ -620,6 +652,50 @@ export default function FeeSetup({ userRole }) {
         <StudentOverridesTab sessionYear={sessionYear} />
       ) : (
         <>
+          {/* ── Unconfigured combinations ── */}
+          {unconfigured.length > 0 && (
+            <div style={{ background: inUseUnset.length ? '#fef2f2' : '#fffbeb', border: `1.5px solid ${inUseUnset.length ? '#fca5a5' : '#fde68a'}`, borderRadius: 12, padding: '14px 16px', marginBottom: 18 }}>
+              {inUseUnset.length > 0 ? (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#b91c1c', marginBottom: 4 }}>
+                    ⚠️ {inUseUnset.length} fee setting{inUseUnset.length > 1 ? 's are' : ' is'} not configured for {sessionYear}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#7f1d1d', marginBottom: 10, lineHeight: 1.5 }}>
+                    No fee has been saved for these groups, so students in them are billed from the old built-in amounts. The ₹0 values shown below are placeholders, not saved rates. Enter the real amounts and press Save.
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {inUseUnset.map(u => (
+                      <button key={`${u.course}${u.batch}${u.hostel}`} type="button" onClick={() => setActiveCourse(u.course)}
+                        style={{ padding: '4px 10px', borderRadius: 999, border: '1px solid #fca5a5', background: 'white', color: '#b91c1c', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+                        {u.course}{u.batch !== '—' ? ` · ${u.batch}` : ''} · {u.hostel}
+                        {u.students !== null ? ` — ${u.students} student${u.students > 1 ? 's' : ''}` : ''}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 12.5, color: '#92400e', fontWeight: 600 }}>
+                  ℹ️ Every group with active students is configured for {sessionYear}.
+                </div>
+              )}
+              {unusedUnset.length > 0 && (
+                <details style={{ marginTop: inUseUnset.length ? 10 : 6 }}>
+                  <summary style={{ fontSize: 12, color: C.slate[500], cursor: 'pointer', fontWeight: 600 }}>
+                    {unusedUnset.length} other combination{unusedUnset.length > 1 ? 's are' : ' is'} not configured, but no active student uses {unusedUnset.length > 1 ? 'them' : 'it'}
+                  </summary>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    {unusedUnset.map(u => (
+                      <button key={`${u.course}${u.batch}${u.hostel}`} type="button" onClick={() => setActiveCourse(u.course)}
+                        style={{ padding: '3px 9px', borderRadius: 999, border: `1px solid ${C.slate[200]}`, background: 'white', color: C.slate[500], fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                        {u.course}{u.batch !== '—' ? ` · ${u.batch}` : ''} · {u.hostel}
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
+
           {/* ── Course tabs ── */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
             {COURSES.map(c => {
@@ -633,6 +709,9 @@ export default function FeeSetup({ userRole }) {
                   style={{ padding: '8px 18px', borderRadius: 8, border: `2px solid ${isActive ? cc.accent : C.slate[200]}`, fontSize: 13, fontWeight: 700, cursor: 'pointer', background: isActive ? cc.accent : 'white', color: isActive ? 'white' : C.slate[500], transition: 'all .15s', position: 'relative' }}>
                   {c}
                   {dirtyInCourse && <span style={{ position: 'absolute', top: -4, right: -4, width: 8, height: 8, background: C.amber, borderRadius: '50%', border: '2px solid white' }} />}
+                  {unsetInCourse(c) > 0 && (
+                    <span title={`${unsetInCourse(c)} not configured`} style={{ marginLeft: 8, display: 'inline-block', minWidth: 18, padding: '0 5px', borderRadius: 999, background: C.red, color: 'white', fontSize: 10.5, fontWeight: 800, lineHeight: '18px', textAlign: 'center' }}>{unsetInCourse(c)}</span>
+                  )}
                 </button>
               )
             })}
@@ -670,16 +749,30 @@ export default function FeeSetup({ userRole }) {
                   {HOSTEL_TYPES.map((hostel, hi) => {
                     const key = rowKey(sessionYear, activeCourse, batch, hostel)
                     const row = structures[key] || { flat_fee: 0, course_fee: 0, admission_fee: 6000, dirty: false }
+                    const unset = isUnset(row)
+                    const nStudents = studentCounts ? (studentCounts[countKey(activeCourse, batch, hostel)] || 0) : null
                     return (
                       <div key={hostel} style={{
                         display: 'grid', gridTemplateColumns: '160px 1fr 1fr 1fr',
                         alignItems: 'center', gap: 0, padding: '10px 20px',
                         borderTop: hi > 0 ? `1px solid ${C.slate[100]}` : 'none',
-                        background: row.dirty ? `${C.amber}08` : 'white', transition: 'background .2s',
+                        background: row.dirty ? `${C.amber}08` : unset ? '#fef2f2' : 'white', transition: 'background .2s',
                       }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <HostelBadge type={hostel} />
                           {row.dirty && <span style={{ fontSize: 9, fontWeight: 800, color: C.amber, background: '#fef3c7', padding: '1px 5px', borderRadius: 3 }}>EDITED</span>}
+                          {unset && (
+                            <>
+                              <span title="No fee saved for this group — billing uses the old built-in amounts" style={{ fontSize: 9, fontWeight: 800, color: '#b91c1c', background: '#fee2e2', border: '1px solid #fecaca', padding: '1px 5px', borderRadius: 3, whiteSpace: 'nowrap' }}>
+                                NOT CONFIGURED
+                              </span>
+                              {nStudents > 0 && (
+                                <span style={{ width: '100%', fontSize: 10, fontWeight: 600, color: '#b91c1c' }}>
+                                  {nStudents} student{nStudents > 1 ? 's' : ''} on old rates
+                                </span>
+                              )}
+                            </>
+                          )}
                         </div>
                         <div style={{ paddingRight: 12 }}>
                           <AmtInput value={row.flat_fee} color={C.emerald} onChange={v => updateField(activeCourse, batch, hostel, 'flat_fee', v)} />
@@ -725,6 +818,10 @@ export default function FeeSetup({ userRole }) {
             <div style={{ fontSize: 11, color: C.slate[400], display: 'flex', alignItems: 'center', gap: 5 }}>
               <span style={{ display: 'inline-block', width: 10, height: 10, background: `${C.amber}20`, border: `1px solid ${C.amber}40`, borderRadius: 2 }} />
               Unsaved changes
+            </div>
+            <div style={{ fontSize: 11, color: C.slate[400], display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ display: 'inline-block', width: 10, height: 10, background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 2 }} />
+              Not configured (no saved fee)
             </div>
             <div style={{ fontSize: 11, color: C.slate[400] }}>Changes apply to <strong>{sessionYear}</strong> session only</div>
             <div style={{ fontSize: 11, color: C.slate[400] }}>Flat fee = monthly hostel/facility fee · Course fee = monthly tuition fee</div>
