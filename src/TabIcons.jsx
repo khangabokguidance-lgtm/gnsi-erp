@@ -15,6 +15,10 @@
 // What counts as a tab: role="tab"; buttons inside role="tablist"; buttons whose
 // class has a tab/tabs/qt token (ac-tab, st-tab, rx-tab, hs-qt …); and a strip of
 // 3+ sibling buttons that mostly lead with an emoji (inline-styled tab bars).
+// Every iconised tab also gets its own colour (by position in its strip, so
+// neighbouring tabs always differ) and a Material-3 / Google Play layout: icon
+// over a small label, the selected tab's icon in a tinted pill with a bold label. Only data-* attrs
+// are added, never touching React-owned props.
 // Opt out with data-ti-skip on the button or any ancestor. Buttons that already
 // contain an <svg> (bottom bars, icon grids) are left alone.
 import { useEffect } from 'react';
@@ -220,13 +224,15 @@ function process(b) {
   const existing = b.querySelector(':scope > [data-ti-icon], :scope > * > [data-ti-icon]');
   if (!lead) {
     // already iconised, or text-only tab that needs a label-based icon
-    if (existing || !explicit) return;
+    if (existing) { colorize(b); return; }
+    if (!explicit) return;
     if (b.querySelector('svg')) return;
     const label = (b.textContent || '').trim();
     if (!label || label.length > 40 || /^[\d\s.,%+-]+$/.test(label)) return;
     const id = iconForText(label) || 'dot';
     t.parentNode.insertBefore(makeIcon(id), t);
     b.setAttribute('data-ti', '1');
+    colorize(b);
     return;
   }
   if (!explicit && !emojiStrip(b)) return;
@@ -236,6 +242,7 @@ function process(b) {
   if (!id) return; // unknown emoji: leave exactly as it was
   if (existing) { // React re-applied its text: just trim the emoji again
     t.nodeValue = t.nodeValue.slice(lead[0].length);
+    colorize(b);
     return;
   }
   if (!explicit && b.querySelector('svg')) return;
@@ -243,6 +250,7 @@ function process(b) {
   t.parentNode.insertBefore(makeIcon(id), t);
   b.setAttribute('data-ti', '1');
   if (!(b.textContent || '').trim()) b.setAttribute('data-ti-only', '1');
+  colorize(b);
 }
 
 function scan(root) {
@@ -252,12 +260,137 @@ function scan(root) {
   btns.forEach((b) => { try { process(b); } catch { /* never break the page for an icon */ } });
 }
 
+// 12 distinct mid-tone hues: readable as a stroke on white and as a chip on dark tabs.
+const PALETTE = ['#2563EB', '#059669', '#D97706', '#7C3AED', '#E11D48', '#0891B2', '#EA580C', '#DB2777', '#0D9488', '#4F46E5', '#65A30D', '#C026D3'];
+
 const CSS = `
 .ti-ic{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:1.15em;height:1.15em;margin-right:.5em;vertical-align:-.2em;color:inherit;opacity:.92;line-height:0}
 .ti-ic svg{width:100%;height:100%;display:block}
 [data-ti]{align-items:center}
 [data-ti-only] .ti-ic{margin-right:0}
+${PALETTE.map((c, i) => `[data-ti-c="${i}"]{--ti-c:${c}}`).join('')}
+/* Modules sometimes recolour svg strokes on their selected tab: keep the icon on the tab's own colour. */
+[data-ti-c][data-ti-c] .ti-ic svg{color:inherit!important;stroke:currentColor!important;fill:none!important}
+/* Chip look — every coloured tab: icon in a tinted chip; selected tab = solid chip + underline. */
+[data-ti-c] .ti-ic{width:1.6em;height:1.6em;padding:.3em;box-sizing:border-box;border-radius:.55em;opacity:1;color:var(--ti-c);background:#f1f5f9;background:color-mix(in srgb,var(--ti-c) 15%,#fff);transition:background .15s,color .15s}
+[data-ti-c][data-ti-active]:not([data-ti-m3]){box-shadow:inset 0 -3px 0 var(--ti-c)!important}
+[data-ti-c][data-ti-active] .ti-ic{background:var(--ti-c);color:#fff}
+/* Material-3 / Google Play look — only for plain tab bars (icon + label, a detectable selected tab).
+   Repeated attribute selectors raise specificity above modules' own !important tab styles. */
+[data-ti-m3][data-ti-m3][data-ti-m3]{flex:0 0 auto!important;width:auto!important;max-width:none!important;display:inline-flex!important;flex-direction:column!important;align-items:center!important;justify-content:flex-start!important;gap:4px!important;min-width:64px;height:auto!important;padding:6px 12px 8px!important;border:0!important;border-radius:16px!important;background:transparent!important;background-image:none!important;box-shadow:none!important;color:#5f6368!important;font-size:12px!important;font-weight:500!important;line-height:1.2!important;text-align:center!important;white-space:nowrap}
+[data-ti-m3][data-ti-m3] .ti-ic{width:56px!important;height:30px!important;margin:0!important;padding:0!important;box-sizing:border-box;border-radius:16px!important;opacity:1;background:transparent!important;color:var(--ti-c)!important;transition:background .18s}
+[data-ti-m3][data-ti-m3] .ti-ic svg{width:21px!important;height:21px!important}
+[data-ti-m3][data-ti-m3]:hover:not([data-ti-active]) .ti-ic{background:color-mix(in srgb,var(--ti-c) 10%,transparent)!important}
+[data-ti-m3][data-ti-m3][data-ti-m3][data-ti-active]{color:#202124!important;font-weight:700!important}
+[data-ti-m3][data-ti-m3][data-ti-active] .ti-ic{background:#e8eaed!important;background:color-mix(in srgb,var(--ti-c) 22%,#fff)!important;color:var(--ti-c)!important}
+[data-ti-m3][data-ti-m3][data-ti-m3][data-ti-dark]{color:#bdc1c6!important}
+[data-ti-m3][data-ti-m3][data-ti-m3][data-ti-dark][data-ti-active]{color:#fff!important}
+[data-ti-m3][data-ti-m3][data-ti-dark] .ti-ic{color:#fff!important;color:color-mix(in srgb,var(--ti-c) 45%,#fff)!important}
+[data-ti-m3][data-ti-m3][data-ti-dark][data-ti-active] .ti-ic{background:color-mix(in srgb,var(--ti-c) 38%,transparent)!important}
+[data-ti-scroll]{overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+[data-ti-scroll]::-webkit-scrollbar{display:none}
+[data-ti-m3][data-ti-only]{min-width:0}
+[data-ti-m3][data-ti-only] .ti-ic{width:48px!important}
 `;
+
+// ── per-tab colour + selected-tab highlight ─────────────────────────────────
+const isBtn = (c) => c.nodeType === 1 && (c.tagName === 'BUTTON' || c.getAttribute('role') === 'tab');
+const ACTIVE_CLASS = /(?:^|[-_])(?:on|active|act|selected|current|sel)(?:$|[-_])/i;
+
+function stripOf(b) {
+  const tl = b.closest('[role="tablist"]');
+  if (tl) return tl;
+  return b.parentElement;
+}
+const tabsOf = (strip) => (strip ? Array.from(strip.querySelectorAll('[data-ti-icon]')).map((i) => i.closest('button,[role="tab"]')).filter((b, i, a) => b && a.indexOf(b) === i && stripOf(b) === strip) : []);
+
+// Is the surface behind a tab dark? Walks up to the first ancestor with an opaque
+// colour or a gradient (gradient colour stops are averaged).
+const RGB = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/g;
+const lum = (m) => (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255;
+function onDark(el) {
+  for (let n = el; n; n = n.parentElement) {
+    const cs = getComputedStyle(n);
+    const stops = [];
+    const grad = cs.backgroundImage || '';
+    if (grad.includes('gradient')) stops.push(...grad.matchAll(RGB));
+    if (!stops.length) stops.push(...(cs.backgroundColor || '').matchAll(RGB));
+    const solid = stops.filter((m) => m[4] === undefined || parseFloat(m[4]) > 0.5);
+    if (solid.length) return solid.reduce((t, m) => t + lum(m), 0) / solid.length < 0.45;
+  }
+  return false;
+}
+
+let onColored = null; // set while the enhancer is mounted: re-checks the selected tab of a strip
+function colorize(b) {
+  const strip = stripOf(b);
+  if (!strip) return;
+  const sibs = Array.from(strip.children).filter(isBtn);
+  let idx = sibs.indexOf(b);
+  if (idx < 0) { // tab wrapped in another element: fall back to its position among all tabs of the strip
+    idx = Array.from(strip.querySelectorAll('button,[role="tab"]')).indexOf(b);
+  }
+  if (idx < 0) idx = 0;
+  const v = String(idx % PALETTE.length);
+  if (b.getAttribute('data-ti-c') !== v) b.setAttribute('data-ti-c', v);
+  const dark = onDark(strip);
+  if (dark !== b.hasAttribute('data-ti-dark')) { if (dark) b.setAttribute('data-ti-dark', ''); else b.removeAttribute('data-ti-dark'); }
+  if (onColored) onColored(b);
+}
+
+const explicitState = (b) => {
+  const sel = b.getAttribute('aria-selected'), cur = b.getAttribute('aria-current'), prs = b.getAttribute('aria-pressed');
+  if (sel !== null || cur !== null || prs !== null) return { known: true, on: sel === 'true' || (cur !== null && cur !== 'false') || prs === 'true' };
+  const cls = (b.getAttribute('class') || '').split(/\s+/).filter(Boolean);
+  return { known: false, on: cls.some((c) => ACTIVE_CLASS.test(c)) };
+};
+
+function syncActive(strip) {
+  if (!strip || !strip.isConnected) return;
+  const tabs = tabsOf(strip);
+  if (!tabs.length) return;
+  const states = tabs.map(explicitState);
+  let active = new Set();
+  if (states.some((x) => x.known) || states.some((x) => x.on)) {
+    tabs.forEach((b, i) => { if (states[i].on) active.add(b); });
+  } else if (tabs.length >= 3) {
+    // inline-styled strip: the selected tab is the one tab whose look differs from all the others
+    const groups = new Map();
+    tabs.forEach((b) => {
+      // the tab's own inline style / class text (computed colours are flattened by the tab layout above)
+      const sig = `${b.getAttribute('style') || ''}|${b.getAttribute('class') || ''}`;
+      if (!groups.has(sig)) groups.set(sig, []);
+      groups.get(sig).push(b);
+    });
+    const all = [...groups.values()];
+    const singles = all.filter((g) => g.length === 1).map((g) => g[0]);
+    if (all.some((g) => g.length >= 2)) {
+      if (singles.length === 1) active = new Set(singles);
+      // a hovered tab can look different too: then the selected one is the single that isn't hovered
+      else if (singles.length === 2) {
+        const calm = singles.filter((b) => !b.matches(':hover'));
+        if (calm.length === 1) active = new Set(calm);
+      }
+    }
+  }
+  // Material-3 layout only for plain tabs (icon + label, nothing else inside) in a real tab bar
+  const plain = tabs.every((b) => b.children.length === 1 && b.firstElementChild.hasAttribute('data-ti-icon'));
+  const m3 = plain && (tabs.every(isTabBtn) || active.size > 0);
+  tabs.forEach((b) => {
+    const want = active.has(b);
+    if (want !== b.hasAttribute('data-ti-active')) {
+      if (want) b.setAttribute('data-ti-active', ''); else b.removeAttribute('data-ti-active');
+    }
+    if (m3 !== b.hasAttribute('data-ti-m3')) {
+      if (m3) b.setAttribute('data-ti-m3', ''); else b.removeAttribute('data-ti-m3');
+    }
+  });
+  // tabs keep their natural width: if the row no longer fits, let it scroll sideways (Google Play style)
+  const scroll = m3 && strip.scrollWidth > strip.clientWidth + 1;
+  if (scroll !== strip.hasAttribute('data-ti-scroll')) {
+    if (scroll) strip.setAttribute('data-ti-scroll', ''); else strip.removeAttribute('data-ti-scroll');
+  }
+}
 
 export default function TabIcons() {
   useEffect(() => {
@@ -280,17 +413,37 @@ export default function TabIcons() {
       pending.add(btn || el);
       if (!raf) raf = requestAnimationFrame(flush);
     };
+    // selected-tab highlight: re-evaluate a strip when any of its tabs change state
+    const strips = new Set();
+    let sraf = 0, timer = 0;
+    const flushActive = () => { sraf = 0; const list = Array.from(strips); strips.clear(); list.forEach((x) => { try { syncActive(x); } catch { /* cosmetic only */ } }); };
+    const queueActive = (btn) => {
+      const strip = stripOf(btn);
+      if (!strip) return;
+      strips.add(strip);
+      if (!sraf) sraf = requestAnimationFrame(flushActive);
+      // CSS transitions on the tab itself are still mid-way on the next frame: look again once they settle
+      clearTimeout(timer);
+      timer = setTimeout(() => { strips.add(strip); flushActive(); }, 280);
+    };
+    onColored = queueActive;
     const mo = new MutationObserver((muts) => {
       muts.forEach((m) => {
+        if (m.type === 'attributes') {
+          const btn = m.target.nodeType === 1 && m.target.closest ? m.target.closest('button,[role="tab"]') : null;
+          if (btn && btn.hasAttribute('data-ti-c')) queueActive(btn);
+          return;
+        }
         if (m.type === 'childList') {
           m.addedNodes.forEach((n) => { if (!(n.nodeType === 1 && n.hasAttribute('data-ti-icon'))) queue(n); });
           if (m.target.nodeType === 1) queue(m.target);
         } else if (m.type === 'characterData') queue(m.target);
       });
     });
-    mo.observe(document.body, { childList: true, subtree: true, characterData: true });
+    mo.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'aria-selected', 'aria-current', 'aria-pressed'] });
     scan(document.body);
-    return () => { mo.disconnect(); if (raf) cancelAnimationFrame(raf); st.remove(); };
+    document.querySelectorAll('[data-ti-c]').forEach((b) => queueActive(b));
+    return () => { onColored = null; mo.disconnect(); if (raf) cancelAnimationFrame(raf); if (sraf) cancelAnimationFrame(sraf); clearTimeout(timer); st.remove(); };
   }, []);
   return null;
 }
