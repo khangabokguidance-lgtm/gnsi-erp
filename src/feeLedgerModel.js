@@ -4,6 +4,7 @@
 // Same rules as the dues engine (feeDues.js): fee months follow the April–March
 // session, Feb/Mar are flat-fee months, a month isn't due until it starts, and
 // months before admission aren't charged.
+import { standingWaiver } from './lib/standingMath'
 import { getInstitute, feeDueDay, ordinal, sysValue } from './systemSettings'
 import {
   MONTHS_LIST, isFlatFeeMonth, feeMonthYearForSession, sessionStartYear,
@@ -71,7 +72,7 @@ export function toEntries(student, admRows, flatRows, crsRows) {
 // rates: the session's rates object, or a function (month, year) → rates when
 // the student's hostel type changed mid-session (see hostelHistory.js), so each
 // month is expected at the type in effect that month.
-export function buildRegister(student, entries, session, rates, now = new Date()) {
+export function buildRegister(student, entries, session, rates, now = new Date(), standing = []) {
   const rateAt = (month, year) => (typeof rates === 'function' ? rates(month, year) : rates)
   const start = sessionStartYear(session)
   const admissionDate = student.admission_date || null
@@ -83,17 +84,20 @@ export function buildRegister(student, entries, session, rates, now = new Date()
     const expected = flat ? Number(R?.flatFee || 0) : Number(R?.courseFee || 0)
     const paid = entries.filter(x => x.kind === (flat ? 'flat' : 'course') && x.month === month && Number(x.year) === year)
     const paidAmt = paid.reduce((s, x) => s + x.amount, 0)
-    const waived = paid.reduce((s, x) => s + (x.concession || 0), 0)   // approved low-fee concession
+    const standingAmt = standingWaiver(standing, month, year, flat ? 'flat' : 'course', expected)   // standing scholarship / concession
+    const waived = paid.reduce((s, x) => s + (x.concession || 0), 0) + standingAmt   // approved low-fee concession
     const concessionPending = paid.some(x => x.concessionStatus === 'pending')
     let status
     if (paid.length) status = paid.some(x => x.advance) ? 'advance' : paidAmt + waived + 0.5 < expected ? 'short' : 'paid'
     else if (isPreAdmissionMonth(month, year, admissionDate)) status = 'before'
     else if (!monthStarted(month, year, now)) status = 'upcoming'
     else status = 'due'
+    // A month with no payment whose fee is fully covered by a standing concession is settled.
+    if (status === 'due' && standingAmt >= expected - 0.5) status = 'paid'
     const shortBy = status === 'short' ? Math.max(0, expected - paidAmt - waived) : 0
     // A part-paid month still owes its shortfall (until an admin approves a concession).
-    const due = status === 'due' ? expected : shortBy
-    return { month, year, head, hostelType: R?.hostelType || null, expected, paid, paidAmt, waived, concessionPending, status, due, shortBy }
+    const due = status === 'due' ? Math.max(0, expected - standingAmt) : shortBy
+    return { month, year, head, hostelType: R?.hostelType || null, expected, paid, paidAmt, waived, standingAmt, concessionPending, status, due, shortBy }
   })
   // Admission fee: shown in the session it was paid in, or — if unpaid — in
   // the student's own session.

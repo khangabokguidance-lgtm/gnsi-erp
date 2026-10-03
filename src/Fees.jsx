@@ -33,6 +33,8 @@ import { courseMonthsDue, sessionOfDate } from './feeLedgerModel'
 import { CONCESSION_REASONS, countPendingConcessions } from './feeConcessions'
 import LowFeeApprovals from './LowFeeApprovals'
 import HostelIssues from './HostelIssues'
+import { loadStanding } from './feeStanding'
+import { useVerifiedAdmin } from './useVerifiedAdmin'
 import FeeReminders from './FeeReminders'
 import FeeInstallments from './FeeInstallments'
 import FeeDayClose from './FeeDayClose'
@@ -1835,6 +1837,8 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
   const duesStudents = useMemo(() => liveRows, [duesStudentsKey])
   const [duesLedgers, setDuesLedgers] = useState(null)   // { [session]: [{ student, reg }] }
   const [duesError, setDuesError] = useState('')
+  const [duesPlans, setDuesPlans] = useState(() => new Map())   // gcc → active instalment plan state
+  useEffect(() => { let live = true; loadStanding().then(st => { if (live) setDuesPlans(st.plans) }).catch(() => {}); return () => { live = false } }, [])
   useEffect(() => {
     if (!duesStudents.length) return
     let live = true
@@ -1868,7 +1872,7 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
         : null
       if (!monthly && !adm) continue
       perStudent.push({
-        student,
+        student, plan: duesPlans.get(gccStr(student.gcc_no)) || null,
         expected: (monthly?.expected || 0) + (adm?.expected || 0),
         paid: (monthly?.paid || 0) + (adm?.paid || 0),
         due: (monthly?.due || 0) + (adm?.due || 0),
@@ -1891,7 +1895,7 @@ function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_co
       admDueTotal: defaulters.reduce((s, x) => s + x.admDue, 0),
       defaulterCount: defaulters.length, defaulters,
     }
-  }), [duesMonths, duesLedgers, now])
+  }), [duesMonths, duesLedgers, now, duesPlans])
 
   return { monthwiseDues, duesError }
 }
@@ -1926,6 +1930,7 @@ function duesDefaulterRows(months, keep = () => true) {
     'Due (₹)': x.due,
     'of which Admission Fee (₹)': x.admDue,
     'Status': x.paid > 0 ? 'Partial payment' : 'No payment',
+    'Instalment Plan': x.plan ? (x.plan.overdue ? `Overdue since ${x.plan.nextDue}` : `Next due ${x.plan.nextDue || '—'}`) : '',
   })))
 }
 
@@ -2367,6 +2372,11 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
                   {x.paid > 0 && (
                     <span style={{ fontSize: 8.5, fontWeight: 800, color: '#b45309', background: '#fffbeb', padding: '1px 6px', borderRadius: 4, border: '1px solid #fde68a', letterSpacing: '.03em' }}>
                       PARTIAL
+                    </span>
+                  )}
+                  {x.plan && (
+                    <span title={`Instalment plan: next due ${x.plan.nextDue || '—'}`} style={{ fontSize: 8.5, fontWeight: 800, color: x.plan.overdue ? '#b91c1c' : '#0369a1', background: x.plan.overdue ? '#fef2f2' : '#f0f9ff', padding: '1px 6px', borderRadius: 4, border: `1px solid ${x.plan.overdue ? '#fecaca' : '#bae6fd'}`, letterSpacing: '.03em' }}>
+                      {x.plan.overdue ? 'PLAN OVERDUE' : 'ON PLAN'}
                     </span>
                   )}
                   {x.admDue > 0 && (
@@ -4604,7 +4614,8 @@ export default function Fees() {
   // per App.jsx's ADMIN_ROLES) silently fell through to the non-admin
   // view here even for real admins. Now uses the same shared
   // isAdminRole() helper every other module checks against.
-  const isAdmin = isAdminRole(currentUser?.role)
+  const localIsAdmin = isAdminRole(currentUser?.role)
+  const isAdmin = useVerifiedAdmin(localIsAdmin)   // the database must agree the login really is an admin
   const [fees,                setFees]         = useState([])
   const [students,            setStudents]      = useState([])
   const [admissions,          setAdmissions]    = useState([])

@@ -3,21 +3,22 @@
 // sees it once more. Items with a `tab` open that Fees tab directly.
 import { useState } from 'react'
 
-export const WHATS_NEW_VERSION = '2026-10-04'
+export const WHATS_NEW_VERSION = '2026-10-05'
 const KEY = 'gnsi_whatsnew_seen'
 
 const ITEMS = [
   { icon: '📲', title: 'Fee reminders', text: 'WhatsApp dues reminders with a reminder log and promise-to-pay dates.', tab: 'reminders', admin: true },
   { icon: '🧮', title: 'Daily closing', text: 'Count the cash at day end and reconcile it against recorded receipts.', tab: 'dayClose', admin: true },
-  { icon: '🗓️', title: 'Installment plans', text: 'Split a dues amount into scheduled instalments and track overdue ones.', tab: 'installments', admin: true },
-  { icon: '🎓', title: 'Concession register', text: 'Standing scholarships and concessions with expiry tracking.', tab: 'concessionRegister', admin: true },
-  { icon: '↩️', title: 'Refunds & transfers', text: 'Record refunds, credits and write-offs with an approval step.', tab: 'refunds', admin: true },
+  { icon: '🗓️', title: 'Installment plans', text: 'Split dues into scheduled instalments; students on a plan are tagged in the dues and reminder lists.', tab: 'installments', admin: true },
+  { icon: '🎓', title: 'Concession register', text: 'Standing scholarships and concessions with expiry tracking — now reduce the dues automatically.', tab: 'concessionRegister', admin: true },
+  { icon: '↩️', title: 'Refunds & transfers', text: 'Record refunds, credits and write-offs with an approval step; paid refunds post to Accounts.', tab: 'refunds', admin: true },
   { icon: '🛡️', title: 'Fees activity digest', text: 'Weekly/monthly summary of corrections, reverts and concessions with red flags.', tab: 'digest', admin: true },
   { icon: '🔎', title: 'Verify receipt', text: 'Every receipt now carries a QR code; scan or type the number to check it against the books.', tab: 'verify' },
   { icon: '🩺', title: 'Data health', text: 'Finds students with missing GCC, course, hostel type, phone, photo and more.', tab: 'dataHealth', admin: true },
   { icon: '🔁', title: 'Session rollover planner', text: 'Plan April promotions, repeaters and carried-forward dues (read-only).', tab: 'rollover', admin: true },
   { icon: '📊', title: 'Dashboard upgrades', text: 'Month-wise dues from January incl. admission, exports on every section, Session Progress student list.' },
-  { icon: '🔒', title: 'Stronger fee security', text: 'Server-side checks on corrections, approvals and closed months.' },
+  { icon: '🔔', title: 'Daily fee alerts', text: 'Admins get one morning notification: overdue instalments, passed promises, unclosed days, pending approvals, expiring concessions.' },
+  { icon: '🔒', title: 'Stronger fee security', text: 'Server-side checks on corrections, approvals and closed months; admin screens now verified with the database.' },
 ]
 
 export default function WhatsNewBanner({ isAdmin, onOpenFeesTab }) {

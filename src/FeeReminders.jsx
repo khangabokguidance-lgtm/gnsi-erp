@@ -1,6 +1,7 @@
 // FeeReminders.jsx — WhatsApp fee reminders, reminder log and promise-to-pay.
 // Log table: fee_reminders (supabase/migrations/20261008_fee_reminders_installments.sql).
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { loadStanding } from './feeStanding'
 import { supabase } from './supabase'
 
 const n = v => Number(v || 0).toLocaleString('en-IN')
@@ -86,6 +87,10 @@ export default function FeeReminders({ students = [], liveRows = [], isAdmin, cu
     fetchLogs().then(r => { if (alive) applyResult(r) }).catch(e => { if (alive) { setLoadErr(e.message || 'Could not load reminders'); setLoading(false) } })
     return () => { alive = false }
   }, [applyResult])
+
+  // Students on an active instalment plan get a chip, so staff don't chase what is already agreed.
+  const [plans, setPlans] = useState(() => new Map())
+  useEffect(() => { let alive = true; loadStanding().then(st => { if (alive) setPlans(st.plans) }).catch(() => {}); return () => { alive = false } }, [])
 
   const studentByGcc = useMemo(() => {
     const m = new Map()
@@ -265,7 +270,7 @@ export default function FeeReminders({ students = [], liveRows = [], isAdmin, cu
               return (
                 <tr key={r._gcc}>
                   <td style={td}><input type="checkbox" checked={selected.has(r._gcc)} onChange={() => toggleOne(r._gcc)} aria-label={`Select ${r.name}`} /></td>
-                  <td style={td}><div style={{ fontWeight: 800 }}>{r.name}</div><div style={{ fontSize: 10.5, color: '#6b7280' }}>GCC-{r.gcc_no} · {r._phone ? `+${r._phone}` : <span style={{ color: '#b91c1c' }}>no phone</span>}</div></td>
+                  <td style={td}><div style={{ fontWeight: 800 }}>{r.name}{plans.get(String(parseInt(r.gcc_no) || 0)) && <span title="Has an instalment plan" style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 4, background: plans.get(String(parseInt(r.gcc_no) || 0)).overdue ? '#fef2f2' : '#f0f9ff', color: plans.get(String(parseInt(r.gcc_no) || 0)).overdue ? '#b91c1c' : '#0369a1' }}>{plans.get(String(parseInt(r.gcc_no) || 0)).overdue ? 'PLAN OVERDUE' : 'ON PLAN'}</span>}</div><div style={{ fontSize: 10.5, color: '#6b7280' }}>GCC-{r.gcc_no} · {r._phone ? `+${r._phone}` : <span style={{ color: '#b91c1c' }}>no phone</span>}</div></td>
                   <td style={td}>{r.course || '—'}<div style={{ fontSize: 10.5, color: '#6b7280' }}>{[r.batch, r.hostel_type].filter(Boolean).join(' · ')}</div></td>
                   <td style={{ ...td, textAlign: 'right', fontWeight: 900, color: '#dc2626' }}>₹{n(r._due)}</td>
                   <td style={td}>

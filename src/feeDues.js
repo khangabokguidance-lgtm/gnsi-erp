@@ -16,6 +16,8 @@
 
 import { loadStudentHistory, sessionRates } from './hostelHistory'
 import { supabase } from './supabase'
+import { loadStanding } from './feeStanding'
+import { standingWaiver } from './lib/standingMath'
 import {
   getFeeRates, getFlatFees, isCourseFeeMonth, isPreAdmissionMonth,
   MONTHS_LIST, getSessionYear, ADM_FEE_BASE, feeMonthYearForSession, normalizeSessionYear,
@@ -190,11 +192,13 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
     }
     return m
   }
-  const settle = (expected, p) => {
+  // Standing concessions (fee_concession_register) also reduce what is owed.
+  const standing = (await loadStanding()).conc.get(String(parseInt(student.gcc_no) || 0)) || []
+  const settle = (expected, p, standingAmt = 0) => {
     const paidAmount = p?.paid || 0, waived = p?.waived || 0
-    let due = Math.max(0, expected - paidAmount - waived)
+    let due = Math.max(0, expected - paidAmount - waived - standingAmt)
     if (due < 0.5) due = 0
-    return { paidAmount, waived, due, paid: due === 0 }
+    return { paidAmount, waived, standing: standingAmt, due, paid: due === 0 }
   }
   const flatPaid = paidBy(flatFeeRows.data, r => `${r.month}|${r.year}`, r => Number(r.amount || 0))
   // Only months that have started count — this session's Feb/Mar flat fee
@@ -202,7 +206,7 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
   const flatFeeItems = flatFeeMonths.filter(f => hasMonthStarted(f.month, f.year)).map(f => ({
     // No change → the flat amount getFlatFees() worked out; otherwise that month's type rate.
     month: f.month, year: f.year, expected: rateAt(f.month, f.year) === rates ? f.amount : Number(rateAt(f.month, f.year).flatFee || 0),
-  })).map(i => ({ ...i, ...settle(i.expected, flatPaid.get(`${i.month}|${i.year}`)) }))
+  })).map(i => ({ ...i, ...settle(i.expected, flatPaid.get(`${i.month}|${i.year}`), standingWaiver(standing, i.month, i.year, 'flat', i.expected)) }))
   const flatFeeDue = flatFeeItems.reduce((s, i) => s + i.due, 0)
 
   // Course fee — every non-flat month from session start through now,
@@ -211,7 +215,7 @@ export async function getStudentDues(student, sessionYear = getSessionYear(), { 
   const coursePaid = paidBy(courseFeeRows.data, r => `${r.for_month}|${r.year}`, r => Number(r.amount_paid || 0))
   const courseFeeItems = dueMonths.map(m => {
     const expected = Number(rateAt(m.month, m.year).courseFee || 0)
-    return { month: m.month, year: m.year, expected, ...settle(expected, coursePaid.get(`${m.month}|${m.year}`)) }
+    return { month: m.month, year: m.year, expected, ...settle(expected, coursePaid.get(`${m.month}|${m.year}`), standingWaiver(standing, m.month, m.year, 'course', expected)) }
   })
   const courseFeeDue = courseFeeItems.reduce((s, i) => s + i.due, 0)
 

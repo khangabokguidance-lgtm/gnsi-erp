@@ -3,6 +3,7 @@
 // (migration 20261009_fee_dayclose_refunds_register.sql).
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from './supabase'
+import { upsertAccount } from './feeEngine'
 import { CONCESSION_SELF_APPROVE_LIMIT, isSoleAdmin } from './feeConcessions'
 
 const missingTable = err => err && (err.code === '42P01' || err.code === 'PGRST205' || /fee_refunds/.test(err.message || ''))
@@ -105,6 +106,15 @@ export default function FeeRefunds({ students, liveRows, isAdmin, currentUser })
     const ref = window.prompt('Payment reference / cheque / UTR (required):', r.reference || '')
     if (ref === null) return
     if (!ref.trim()) { setMsg({ bad: true, t: 'A reference is required to mark as paid.' }); return }
+    // Post the payout to Accounts as an expense so the books match the cash that left.
+    if (r.kind === 'Refund to parent') try {
+      await upsertAccount({
+        entry_date: new Date().toLocaleDateString('en-CA'), payment_date: new Date().toLocaleDateString('en-CA'),
+        type: 'Expense', category: 'Fee Refund', amount: Number(r.amount), payment_mode: r.mode || 'Cash',
+        note: `${r.kind}: ${r.student_name || ''} GCC-${r.gcc} — ${r.reason} (ref ${ref.trim()})`,
+        source_ref: `refund_${r.id}`, source_type: 'fee_refund',
+      })
+    } catch (e) { setMsg({ bad: true, t: 'Could not post the refund to Accounts: ' + (e.message || e) }); return }
     const { error } = await supabase.from('fee_refunds').update({ status: 'paid', reference: ref.trim() }).eq('id', r.id)
     if (error) { setMsg({ bad: true, t: error.message }); return }
     setMsg({ t: 'Marked as paid.' }); setTick(t => t + 1)

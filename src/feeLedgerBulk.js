@@ -7,6 +7,7 @@ import { fetchAllPages } from './StudyMaterialBridge'
 import { getFeeRates, gccStr, normalizeSessionYear } from './feeEngine'
 import { fmt, fmtDate, escH, shortSession, toEntries, buildRegister, sessionOfDate } from './feeLedgerModel'
 import { loadHostelHistory, sessionRates } from './hostelHistory'
+import { loadStanding } from './feeStanding'
 import { instNameHTML, instAddressHTML } from './systemSettings'
 
 const groupByGcc = rows => {
@@ -55,6 +56,7 @@ export async function buildAllLedgers(students, session, { onProgress, rows: pre
   session = normalizeSessionYear(session)
   onProgress?.('Loading fee records…')
   const [rows, overrides, { map: history }] = await Promise.all([preloaded ? Promise.resolve(preloaded) : loadAllFeeRows(), loadOverrides(session), loadHostelHistory()])
+  const standingAll = await loadStanding()
   onProgress?.('Working out each register…')
   const rateCache = new Map()
   const overridesBySession = new Map([[session, overrides]])
@@ -73,7 +75,7 @@ export async function buildAllLedgers(students, session, { onProgress, rows: pre
     const byMonth = await sessionRates(s, session, history.get(g), rateOf)
     const rates = typeof byMonth === 'function' ? byMonth.current : byMonth
     const entries = toEntries(s, rows.adm.get(g) || [], rows.flat.get(g) || [], rows.crs.get(g) || [])
-    const reg = buildRegister(s, entries, session, byMonth)
+    const reg = buildRegister(s, entries, session, byMonth, new Date(), standingAll.conc.get(g) || [])
     const { arrears, bySession } = await computeArrears(s, session, entries, history.get(g), rateOfFor)
     // balance = this session's dues + earlier sessions' dues brought forward
     out.push({ student: s, entries, rates, reg, arrears, arrearsBySession: bySession, balance: reg.totalDue + arrears })
