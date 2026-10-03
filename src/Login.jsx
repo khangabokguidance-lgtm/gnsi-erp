@@ -12,12 +12,13 @@ import gnsiCrest from './gnsi-crest.png'
 // lookup, set_staff_context RPC, Remember me) is unchanged.
 // ─────────────────────────────────────────────────────────────────────────
 
-const STYLE_ID = 'gnsi-login-styles-v4'
+const STYLE_ID = 'gnsi-login-styles-v5'
 const injectStyles = () => {
   if (document.getElementById(STYLE_ID)) return
   // Remove the old login stylesheet if an earlier version injected it
   document.getElementById('gnsi-login-styles')?.remove()
   document.getElementById('gnsi-login-styles-v3')?.remove()
+  document.getElementById('gnsi-login-styles-v4')?.remove()
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.textContent = `
@@ -210,6 +211,77 @@ const injectStyles = () => {
       .gl-card { padding: 32px 22px 24px; border-radius: 18px; }
       .gl-title { font-size: 30px; }
     }
+
+    /* ═════════ Design B — "Midnight Glass" (enable with ?design=b, reset with ?design=a) ═════════ */
+    .gl-b { grid-template-columns: 1fr; background: #06142C; }
+    .gl-b .gl-brand { display: block; position: fixed; inset: 0; padding: 0; z-index: 0; background: #06142C; }
+    .gl-b .gl-brand::before {
+      inset: 0; border: 0; border-radius: 0; box-shadow: none; z-index: 2;
+      background:
+        radial-gradient(70% 60% at 50% 38%, rgba(6,20,44,.15), rgba(6,20,44,.82) 100%),
+        linear-gradient(180deg, rgba(6,20,44,.55), rgba(6,20,44,.85));
+    }
+    .gl-b .gl-brand::after { display: none; }
+    .gl-b .gl-poster {
+      position: absolute; inset: 0; width: 100%; height: 100%; max-height: none; max-width: none;
+      object-fit: cover; border-radius: 0; animation: none;
+      filter: blur(30px) saturate(1.2) brightness(.7); transform: scale(1.18);
+    }
+    .gl-b .gl-main { z-index: 1; background: none; }
+    .gl-b .gl-main::before { display: none; }
+
+    .gl-b .gl-card {
+      text-align: center;
+      background: linear-gradient(155deg, rgba(255,255,255,.15) 0%, rgba(255,255,255,.05) 100%);
+      border: 1px solid rgba(232,207,142,.32);
+      -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5);
+      box-shadow: 0 1px 0 rgba(255,255,255,.22) inset, 0 30px 70px -20px rgba(0,0,0,.65), 0 0 0 1px rgba(6,20,44,.4);
+    }
+    .gl-b .gl-card::before { height: 3px; background: linear-gradient(90deg, transparent, var(--goldL), var(--gold), var(--goldL), transparent); }
+    .gl-b .gl-card::after { background: radial-gradient(circle, rgba(232,207,142,.22), transparent 70%); }
+    .gl-b .gl-card-crest, .gl-b .gl-crest-img {
+      background: radial-gradient(circle at 35% 30%, #fff, #EEF1F7); border-radius: 50%; padding: 12px;
+      box-shadow: 0 0 0 2px rgba(232,207,142,.9), 0 0 0 6px rgba(232,207,142,.18), 0 12px 26px -6px rgba(0,0,0,.55);
+    }
+    .gl-b .gl-card-crest { margin: 0 auto 20px; width: 88px; height: 88px; object-fit: contain; filter: none; }
+    .gl-b .gl-eyebrow { justify-content: center; color: var(--goldL); }
+    .gl-b .gl-eyebrow::before { content: ''; flex: 0 0 36px; height: 1px; background: linear-gradient(270deg, var(--gold), transparent); }
+    .gl-b .gl-title { color: #fff; }
+    .gl-b .gl-sub { color: rgba(255,255,255,.72); }
+    .gl-b .gl-field, .gl-b .gl-row { text-align: left; }
+    .gl-b .gl-label { color: rgba(255,255,255,.82); }
+    .gl-b .gl-ico { color: rgba(255,255,255,.5); }
+    .gl-b .gl-input-wrap:focus-within .gl-ico { color: var(--goldL); }
+    .gl-b .gl-input { color: #fff; background: rgba(6,20,44,.45); border-color: rgba(255,255,255,.2); }
+    .gl-b .gl-input::placeholder { color: rgba(255,255,255,.4); }
+    .gl-b .gl-input:hover { background: rgba(6,20,44,.6); border-color: rgba(255,255,255,.35); }
+    .gl-b .gl-input:focus { background: rgba(6,20,44,.7); border-color: var(--goldL); box-shadow: 0 0 0 4px rgba(232,207,142,.22); }
+    .gl-b .gl-input[aria-invalid="true"] { border-color: #F97066; background: rgba(120,20,15,.25); }
+    .gl-b .gl-input:-webkit-autofill { -webkit-box-shadow: 0 0 0 40px #0c2247 inset; -webkit-text-fill-color: #fff; caret-color: #fff; }
+    .gl-b .gl-toggle { color: var(--goldL); }
+    .gl-b .gl-toggle:hover { background: rgba(255,255,255,.1); }
+    .gl-b .gl-remember { color: rgba(255,255,255,.88); }
+    .gl-b .gl-remember input { accent-color: var(--gold); }
+    .gl-b .gl-help { color: rgba(255,255,255,.6); }
+    .gl-b .gl-error { background: rgba(180,35,24,.22); border-color: rgba(249,112,102,.5); border-left-color: #F97066; color: #FFD5D1; text-align: left; }
+    .gl-b .gl-btn {
+      background: linear-gradient(180deg, #F2DC96 0%, #D8B35A 55%, #C09333 100%); color: #0B1E3D;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.55), inset 0 -2px 0 rgba(120,85,10,.35), 0 14px 30px -10px rgba(201,162,75,.6);
+    }
+    .gl-b .gl-btn::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent); }
+    .gl-b .gl-btn:hover:not(:disabled) { filter: brightness(1.05); box-shadow: inset 0 1px 0 rgba(255,255,255,.65), inset 0 -2px 0 rgba(120,85,10,.35), 0 20px 36px -12px rgba(232,207,142,.75); }
+    .gl-b .gl-btn:focus-visible { outline-color: rgba(255,255,255,.7); }
+    .gl-b .gl-spinner { border-color: rgba(11,30,61,.25); border-top-color: #0B1E3D; }
+    .gl-b .gl-card-foot { border-top-color: rgba(255,255,255,.14); color: rgba(255,255,255,.62); }
+    .gl-b .gl-card-foot svg { color: var(--goldL); }
+    .gl-b .gl-legal { color: rgba(255,255,255,.5); }
+    .gl-b .gl-mobile-name { color: #fff; }
+    .gl-b .gl-mobile-sub { color: var(--goldL); }
+    @media (max-width: 900px) {
+      .gl-b .gl-card-crest { display: none; }
+      .gl-b .gl-crest-img { width: 100px; height: 100px; object-fit: contain; margin-bottom: 14px; filter: none; }
+      .gl-b .gl-main { padding-top: 40px; }
+    }
     @media (prefers-reduced-motion: reduce) {
       .gl-card, .gl-card *, .gl-poster, .gl-card::after { animation: none !important; transition: none !important; }
     }
@@ -305,6 +377,17 @@ const ArrowIcon = () => (
   </svg>
 )
 
+// Design preview switch: ?design=b shows "Midnight Glass", ?design=a the
+// original. The choice is remembered on this device so it can be tried on a
+// phone. Remove once one design is chosen.
+const readDesign = () => {
+  try {
+    const q = new URLSearchParams(window.location.search).get('design')
+    if (q === 'a' || q === 'b') { localStorage.setItem('gnsi_login_design', q); return q }
+    return localStorage.getItem('gnsi_login_design') === 'b' ? 'b' : 'a'
+  } catch { return 'a' }
+}
+
 // Minutes (rounded up) until a lockout ends.
 const minsLeft = until => Math.max(1, Math.ceil((until - Date.now()) / 60000))
 
@@ -317,6 +400,7 @@ export default function Login({ onLogin, onLoginFailed, checkLock }) {
   const [loading,      setLoading]      = useState(false)
   const [shakeCard,    setShakeCard]    = useState(false)
   const cardRef = useRef(null)
+  const [design] = useState(readDesign)
 
   const ADMIN_USER = import.meta.env.VITE_ADMIN_USERNAME
 
@@ -504,7 +588,7 @@ onLogin({
   const year = new Date().getFullYear()
 
   return (
-    <div className="gl-page">
+    <div className={`gl-page${design === 'b' ? ' gl-b' : ''}`}>
       {/* Institute panel (hidden on phones) */}
       <aside className="gl-brand">
         <img
