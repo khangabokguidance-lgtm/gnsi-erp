@@ -212,7 +212,7 @@ const injectStyles = () => {
       .gl-title { font-size: 30px; }
     }
 
-    /* ═════════ Design B — "Midnight Glass" (enable with ?design=b, reset with ?design=a) ═════════ */
+    /* ═════════ "Midnight Glass" theme — applied via .gl-b on the page root ═════════ */
     .gl-b { grid-template-columns: 1fr; background: #06142C; }
     .gl-b .gl-brand { display: block; position: fixed; inset: 0; padding: 0; z-index: 0; background: #06142C; }
     .gl-b .gl-brand::before {
@@ -377,17 +377,6 @@ const ArrowIcon = () => (
   </svg>
 )
 
-// Design preview switch: ?design=b shows "Midnight Glass", ?design=a the
-// original. The choice is remembered on this device so it can be tried on a
-// phone. Remove once one design is chosen.
-const readDesign = () => {
-  try {
-    const q = new URLSearchParams(window.location.search).get('design')
-    if (q === 'a' || q === 'b') { localStorage.setItem('gnsi_login_design', q); return q }
-    return localStorage.getItem('gnsi_login_design') === 'b' ? 'b' : 'a'
-  } catch { return 'a' }
-}
-
 // Minutes (rounded up) until a lockout ends.
 const minsLeft = until => Math.max(1, Math.ceil((until - Date.now()) / 60000))
 
@@ -400,7 +389,6 @@ export default function Login({ onLogin, onLoginFailed, checkLock }) {
   const [loading,      setLoading]      = useState(false)
   const [shakeCard,    setShakeCard]    = useState(false)
   const cardRef = useRef(null)
-  const [design] = useState(readDesign)
 
   const ADMIN_USER = import.meta.env.VITE_ADMIN_USERNAME
 
@@ -588,7 +576,7 @@ onLogin({
   const year = new Date().getFullYear()
 
   return (
-    <div className={`gl-page${design === 'b' ? ' gl-b' : ''}`}>
+    <div className="gl-page gl-b">
       {/* Institute panel (hidden on phones) */}
       <aside className="gl-brand">
         <img
