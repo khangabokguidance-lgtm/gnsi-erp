@@ -1997,6 +1997,8 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   // order stays stable regardless of future edits to the derivations below.
   const [duesMonthIdx, setDuesMonthIdx] = useState(null)   // null = the current (latest) month
   const [duesExpanded, setDuesExpanded] = useState(false)
+  const [progStage, setProgStage] = useState('adm')      // Session Progress list: adm | flat | crs
+  const [progFilter, setProgFilter] = useState('all')    // all | paid | notpaid | repeater | continuing | concession
   useEffect(() => {
     let cancelled = false
     const todayLocal = new Date().toLocaleDateString('en-CA')
@@ -2128,9 +2130,43 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
   const rptTrend = last6.map(m => ({ 'Month': m.label, 'Flat Fee (₹)': m.flat, 'Course Fee (₹)': m.crsf, 'Admission (₹)': m.adm, 'Total (₹)': m.total }))
   const rptCourse = courseBreakdown.map(c => ({ 'Course': c.course, 'Students': c.count, 'Collected (₹)': c.total }))
   const rptHostel = hostelBreakdown.map(h => ({ 'Hostel': h.type, 'Students': h.count, 'Collected (₹)': h.total }))
-  const rptProgress = [
-    { label: 'Paid Admission', count: paidAdmGccs.size }, { label: 'Paid Flat Fee', count: paidFlatGccs.size }, { label: 'Paid Course Fee', count: paidCrsfGccs.size },
-  ].map(p => ({ 'Stage': p.label, 'Students Paid': p.count, 'Total Students': students.length, 'Percent': students.length ? Math.round(p.count / students.length * 100) + '%' : '0%' }))
+  // ── Session Progress: who paid each stage, and who is legitimately NOT expected to ──
+  // A repeater is not charged these fees, and a continuing student (admitted in an
+  // earlier session) has no admission fee this session — counting them as "unpaid"
+  // made the percentages look worse than they are. Concessions are flagged too.
+  const PROG_STAGES = {
+    adm:  { label: 'Paid Admission', short: 'Admission', color: '#1e3a6e', bg: '#eef2f9', paid: paidAdmGccs },
+    flat: { label: 'Paid Flat Fee',  short: 'Flat Fee',  color: '#059669', bg: '#f0fdf4', paid: paidFlatGccs },
+    crs:  { label: 'Paid Course Fee', short: 'Course Fee', color: '#a7771f', bg: '#fbf3e0', paid: paidCrsfGccs },
+  }
+  const sessStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1
+  const concByGcc = (rows, ok) => { const m = new Map(); for (const r of rows) { const st = r.concession_status; if (!st || st === 'rejected' || !ok(r)) continue; const g = gccStr(r.adm_app_id); const o = m.get(g) || { amt: 0, status: st }; o.amt += Number(r.concession_amount) || 0; if (st === 'pending') o.status = 'pending'; m.set(g, o) } return m }
+  const concFlat = concByGcc(adm_flat_fees, r => r.paid)
+  const concCrs  = concByGcc(adm_course_fees, r => !r.reverted)
+  const progRowsFor = key => students.map(st => {
+    const g = gccStr(st.gcc_no)
+    let status = PROG_STAGES[key].paid.has(g) ? 'Paid' : 'Not paid'
+    let note = ''
+    if (st.is_repeater && status !== 'Paid') { status = 'Repeater'; note = 'Repeater — fee not charged' }
+    else if (key === 'adm' && status !== 'Paid' && st.admission_date && new Date(String(st.admission_date).slice(0, 10) + 'T00:00:00') < new Date(sessStartYear, 3, 1)) {
+      status = 'Continuing'; note = 'Admitted before this session — no admission fee'
+    }
+    const conc = key === 'flat' ? concFlat.get(g) : key === 'crs' ? concCrs.get(g) : null
+    return { st, status, conc, note: note || (conc ? `Concession ${conc.status}${conc.amt ? ' ₹' + n(conc.amt) : ''}` : '') }
+  })
+  const progAll = { adm: progRowsFor('adm'), flat: progRowsFor('flat'), crs: progRowsFor('crs') }
+  const progShown = progAll[progStage].filter(r => (
+    progFilter === 'all' ? true
+    : progFilter === 'paid' ? r.status === 'Paid'
+    : progFilter === 'notpaid' ? r.status === 'Not paid'
+    : progFilter === 'repeater' ? r.status === 'Repeater'
+    : progFilter === 'continuing' ? r.status === 'Continuing'
+    : !!r.conc))
+  const rptProgress = progShown.map(r => ({
+    'GCC No': `GCC-${r.st.gcc_no}`, 'Student': r.st.name, 'Course': r.st.course || '', 'Batch': r.st.batch || r.st.class_name || '',
+    'Hostel': r.st.hostel_type || '', 'Stage': PROG_STAGES[progStage].short, 'Status': r.status,
+    'Concession (₹)': r.conc ? r.conc.amt : '', 'Concession Status': r.conc ? r.conc.status : '', 'Note': r.note,
+  }))
   const dashHead = { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 4 }
 
   return (
@@ -2653,28 +2689,62 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e8e3d8', padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
         <div style={{ ...dashHead, marginBottom: 16 }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>📊 Session Progress</div>
-          <ExportBar rows={rptProgress} filename={`GNSI_Session_Progress_${todayStr}`} compact />
+          <ExportBar rows={rptProgress} filename={`GNSI_Session_Progress_${PROG_STAGES[progStage].short.replace(' ', '_')}_${progFilter}_${todayStr}`} label="list" compact />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : is2Col ? '1fr 1fr' : '1fr 1fr 1fr', gap: 20 }}>
-          {[
-            { label: 'Paid Admission', count: paidAdmGccs.size,  color: '#1e3a6e', bg: '#eef2f9' },
-            { label: 'Paid Flat Fee',  count: paidFlatGccs.size, color: '#059669', bg: '#f0fdf4' },
-            { label: 'Paid Course Fee',count: paidCrsfGccs.size, color: '#a7771f', bg: '#fbf3e0' },
-          ].map(p => {
-            const pct = students.length > 0 ? Math.round((p.count / students.length) * 100) : 0
+          {Object.entries(PROG_STAGES).map(([key, p]) => {
+            const rows = progAll[key]
+            const paid = rows.filter(r => r.status === 'Paid').length
+            const exempt = rows.filter(r => r.status === 'Repeater' || r.status === 'Continuing').length
+            const expected = rows.length - exempt
+            const pct = expected > 0 ? Math.round((paid / expected) * 100) : 0
+            const active = progStage === key
             return (
-              <div key={p.label} style={{ background: p.bg, borderRadius: 10, padding: '14px 16px' }}>
+              <div key={key} onClick={() => setProgStage(key)} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') setProgStage(key) }}
+                style={{ background: p.bg, borderRadius: 10, padding: '14px 16px', cursor: 'pointer', outline: active ? `2px solid ${p.color}` : '2px solid transparent' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: p.color, marginBottom: 8 }}>
                   <span>{p.label}</span>
-                  <span>{p.count} / {students.length}</span>
+                  <span>{paid} / {expected}</span>
                 </div>
                 <div style={{ height: 10, background: 'white', borderRadius: 5, overflow: 'hidden', marginBottom: 6 }}>
                   <div style={{ height: '100%', width: `${pct}%`, background: p.color, borderRadius: 5, transition: 'width .5s' }} />
                 </div>
                 <div style={{ fontSize: 18, fontWeight: 900, color: p.color }}>{pct}%</div>
+                {exempt > 0 && <div style={{ fontSize: 10.5, color: '#5d6b82', marginTop: 2 }}>{exempt} not expected (repeater{key === 'adm' ? ' / continuing' : ''}) — left out</div>}
               </div>
             )
           })}
+        </div>
+
+        {/* Student list for the chosen stage + filter */}
+        <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select aria-label="Fee stage" value={progStage} onChange={e => setProgStage(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e8e3d8', fontWeight: 700, fontSize: 12, color: '#1e3a6e' }}>
+            {Object.entries(PROG_STAGES).map(([k, p]) => <option key={k} value={k}>{p.short}</option>)}
+          </select>
+          <select aria-label="Student filter" value={progFilter} onChange={e => setProgFilter(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e8e3d8', fontWeight: 700, fontSize: 12, color: '#1e3a6e' }}>
+            <option value="all">All students</option>
+            <option value="paid">Paid</option>
+            <option value="notpaid">Not paid yet</option>
+            <option value="repeater">Repeaters (not charged)</option>
+            {progStage === 'adm' && <option value="continuing">Continuing students (no admission fee)</option>}
+            {progStage !== 'adm' && <option value="concession">With concession</option>}
+          </select>
+          <span style={{ fontSize: 12, color: '#8a93a6', fontWeight: 700 }}>{progShown.length} student{progShown.length === 1 ? '' : 's'}</span>
+        </div>
+        <div style={{ marginTop: 10, maxHeight: 320, overflowY: 'auto', border: '1px solid #f0ece0', borderRadius: 10 }}>
+          {progShown.length === 0
+            ? <div style={{ padding: 16, fontSize: 12, color: '#8a93a6', textAlign: 'center' }}>No students match this filter</div>
+            : progShown.map(r => (
+              <div key={r.st.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid #f7f4ec' }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#14213d' }}><LedgerLink gcc={r.st.gcc_no}>{r.st.name}</LedgerLink></div>
+                  <div style={{ fontSize: 10, color: '#8a93a6' }}>GCC-{r.st.gcc_no} · {r.st.course || '—'} · {r.st.hostel_type || '—'}{r.note ? ` · ${r.note}` : ''}</div>
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 99, flexShrink: 0,
+                  background: r.status === 'Paid' ? '#dcfce7' : r.status === 'Not paid' ? '#fee2e2' : '#fef3c7',
+                  color: r.status === 'Paid' ? '#166534' : r.status === 'Not paid' ? '#b91c1c' : '#92400e' }}>{r.status}</span>
+              </div>
+            ))}
         </div>
       </div>
 
