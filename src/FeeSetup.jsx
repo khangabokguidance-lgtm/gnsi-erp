@@ -71,6 +71,14 @@ const inp = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Turn a "row-level security" refusal into something an admin can act on.
+const saveErrorText = err =>
+  /row-level security|permission denied/i.test(err?.message || '')
+    ? 'The database refused to save the fees (row-level security). Your edits are still on screen, nothing was lost. ' +
+      'Make sure you are signed in with an admin account: if you see a "Secure database connection is off" banner, use "Sign in again". ' +
+      'If it still fails, run supabase/migrations/20261005_fee_structures_admin_write.sql in the Supabase SQL editor.'
+    : (err?.message || 'Save failed')
+
 const rowKey = (session, course, batch, hostel) =>
   `${session}__${course}__${batch}__${hostel}`
 
@@ -527,7 +535,7 @@ export default function FeeSetup({ userRole }) {
       setSaved(true)
       await loadStructures()
     } catch (err) {
-      setError(err.message || 'Save failed')
+      setError(saveErrorText(err))
     } finally { setSaving(false) }
   }
 
