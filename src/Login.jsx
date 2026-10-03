@@ -12,11 +12,12 @@ import gnsiCrest from './gnsi-crest.png'
 // lookup, set_staff_context RPC, Remember me) is unchanged.
 // ─────────────────────────────────────────────────────────────────────────
 
-const STYLE_ID = 'gnsi-login-styles-v3'
+const STYLE_ID = 'gnsi-login-styles-v4'
 const injectStyles = () => {
   if (document.getElementById(STYLE_ID)) return
   // Remove the old login stylesheet if an earlier version injected it
   document.getElementById('gnsi-login-styles')?.remove()
+  document.getElementById('gnsi-login-styles-v3')?.remove()
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.textContent = `
@@ -24,119 +25,193 @@ const injectStyles = () => {
 
     .gl-page, .gl-page *, .gl-page *::before, .gl-page *::after { box-sizing: border-box; }
 
-    @keyframes gl-fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    @keyframes gl-fade { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    @keyframes gl-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
     @keyframes gl-shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 50%{transform:translateX(6px)} 75%{transform:translateX(-3px)} }
     @keyframes gl-spin { to { transform: rotate(360deg); } }
+    @keyframes gl-sheen { from { transform: translateX(-120%) skewX(-18deg); } to { transform: translateX(260%) skewX(-18deg); } }
+    @keyframes gl-glow { 0%,100% { opacity: .55; } 50% { opacity: .9; } }
 
     .gl-page {
-      --navy: #0B1E3D; --navy2: #132B52; --gold: #C9A24B; --goldL: #E2C57E;
-      --ink: #0F172A; --muted: #5B6475; --line: #D9DEE7; --bg: #F5F6F8; --err: #B42318;
+      --navy: #0B1E3D; --navy2: #132B52; --navy3: #1B3A6B; --gold: #C9A24B; --goldL: #E8CF8E; --goldD: #A8832F;
+      --ink: #0F172A; --muted: #5B6475; --line: #E1E5EC; --bg: #F4F1EA; --err: #B42318;
       min-height: 100vh; min-height: 100dvh;
       display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
       background: var(--bg);
       font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
       color: var(--ink);
       margin: 0;
+      -webkit-font-smoothing: antialiased;
     }
 
     /* ── Left: GNSI poster (panel navy matches the poster's #0E3266) ── */
     .gl-brand {
-      background: #0E3266;
+      position: relative;
+      background: radial-gradient(120% 90% at 50% 0%, #17448a 0%, #0E3266 55%, #081f45 100%);
       display: flex; align-items: center; justify-content: center;
-      padding: 32px; overflow: hidden;
-      border-right: 3px solid var(--gold);
+      padding: 40px; overflow: hidden;
+    }
+    .gl-brand::before {            /* brass hairline frame */
+      content: ''; position: absolute; inset: 18px; border-radius: 14px; pointer-events: none;
+      border: 1px solid rgba(226,197,126,.38);
+      box-shadow: inset 0 0 0 4px rgba(8,31,69,.55), inset 0 0 0 5px rgba(226,197,126,.16);
+    }
+    .gl-brand::after {             /* vertical gold seam to the sign-in side */
+      content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 3px;
+      background: linear-gradient(180deg, transparent, var(--goldL) 18%, var(--gold) 50%, var(--goldL) 82%, transparent);
     }
     .gl-poster {
+      position: relative; z-index: 1;
       display: block; width: auto; height: auto;
-      max-width: 100%; max-height: calc(100dvh - 64px);
-      object-fit: contain;
-      animation: gl-fade .5s ease both;
+      max-width: 100%; max-height: calc(100dvh - 112px);
+      object-fit: contain; border-radius: 6px;
+      filter: drop-shadow(0 24px 40px rgba(2,10,28,.55));
+      animation: gl-fade .7s cubic-bezier(.2,.7,.2,1) both;
     }
 
     /* ── Right: sign-in ── */
-    .gl-main { display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+    .gl-main {
+      position: relative; display: flex; align-items: center; justify-content: center; padding: 40px 24px;
+      background:
+        radial-gradient(60% 50% at 85% 8%, rgba(201,162,75,.20), transparent 70%),
+        radial-gradient(55% 45% at 5% 95%, rgba(19,43,82,.12), transparent 70%),
+        linear-gradient(180deg, #FAF8F3 0%, #F1EEE6 100%);
+      overflow: hidden;
+    }
+    .gl-main::before {             /* faint engraved grid */
+      content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .5;
+      background-image: linear-gradient(rgba(11,30,61,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(11,30,61,.035) 1px, transparent 1px);
+      background-size: 36px 36px;
+      -webkit-mask-image: radial-gradient(70% 70% at 50% 50%, #000 30%, transparent 100%);
+      mask-image: radial-gradient(70% 70% at 50% 50%, #000 30%, transparent 100%);
+    }
+    .gl-wrap { position: relative; z-index: 1; width: 100%; max-width: 420px; }
+
     .gl-card {
-      width: 100%; max-width: 400px;
-      background: #fff; border: 1px solid var(--line); border-radius: 12px;
-      padding: 36px 32px 28px;
-      box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 12px 32px rgba(15,23,42,.06);
-      animation: gl-fade .45s ease both;
+      position: relative; width: 100%;
+      background: linear-gradient(180deg, #FFFFFF 0%, #FCFCFD 100%);
+      border: 1px solid rgba(225,229,236,.9); border-radius: 20px;
+      padding: 40px 36px 30px;
+      box-shadow:
+        0 1px 0 rgba(255,255,255,.9) inset,
+        0 2px 4px rgba(11,30,61,.04),
+        0 16px 32px -8px rgba(11,30,61,.10),
+        0 40px 80px -24px rgba(11,30,61,.20);
+      animation: gl-fade .6s cubic-bezier(.2,.7,.2,1) both;
+      overflow: hidden;
+    }
+    .gl-card::before {             /* brass accent edge */
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+      background: linear-gradient(90deg, var(--goldD), var(--goldL) 35%, var(--gold) 65%, var(--goldD));
+    }
+    .gl-card::after {              /* soft corner glow */
+      content: ''; position: absolute; top: -90px; right: -90px; width: 220px; height: 220px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(201,162,75,.18), transparent 70%); pointer-events: none;
+      animation: gl-glow 6s ease-in-out infinite;
     }
     .gl-card.shake { animation: gl-shake .35s ease; }
+    .gl-card > * { position: relative; z-index: 1; }
+    .gl-card > .gl-card-crest, .gl-eyebrow, .gl-title, .gl-sub, .gl-field, .gl-row, .gl-btn, .gl-card-foot { animation: gl-rise .55s cubic-bezier(.2,.7,.2,1) backwards; }
+    .gl-card-crest { animation-delay: .05s !important; }
+    .gl-eyebrow { animation-delay: .10s !important; }
+    .gl-title { animation-delay: .14s !important; }
+    .gl-sub { animation-delay: .18s !important; }
+    .gl-sub + .gl-field { animation-delay: .24s !important; }
+    .gl-field + .gl-field { animation-delay: .30s !important; }
+    .gl-row { animation-delay: .36s !important; }
+    .gl-btn { animation-delay: .42s !important; }
+    .gl-card-foot { animation-delay: .48s !important; }
 
     .gl-mobile-brand { display: none; }
 
-    .gl-card-crest { display: block; width: 64px; height: auto; margin: 0 0 18px; }
-    .gl-title { font-family: 'Source Serif 4', Georgia, serif; font-size: 26px; font-weight: 700; color: var(--navy); margin: 0 0 6px; }
-    .gl-sub { font-size: 14px; color: var(--muted); margin: 0 0 28px; }
+    .gl-card-crest { display: block; width: 72px; height: auto; margin: 0 0 20px; filter: drop-shadow(0 6px 10px rgba(11,30,61,.18)); }
+    .gl-eyebrow { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: var(--goldD); margin: 0 0 10px; }
+    .gl-eyebrow::after { content: ''; flex: 0 0 36px; height: 1px; background: linear-gradient(90deg, var(--gold), transparent); }
+    .gl-title { font-family: 'Source Serif 4', Georgia, serif; font-size: 34px; line-height: 1.1; font-weight: 700; letter-spacing: -.015em; color: var(--navy); margin: 0 0 8px; }
+    .gl-sub { font-size: 14.5px; line-height: 1.5; color: var(--muted); margin: 0 0 30px; }
 
     .gl-field { margin-bottom: 18px; }
-    .gl-label { display: block; font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 7px; }
+    .gl-label { display: block; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #334155; margin-bottom: 8px; }
     .gl-input-wrap { position: relative; }
+    .gl-ico { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #8A93A3; display: flex; pointer-events: none; transition: color .18s; }
+    .gl-input-wrap:focus-within .gl-ico { color: var(--navy); }
     .gl-input {
-      width: 100%; height: 46px; padding: 0 14px;
-      font: 400 15px 'Inter', system-ui, sans-serif; color: var(--ink);
-      background: #fff; border: 1px solid var(--line); border-radius: 8px;
-      outline: none; transition: border-color .15s, box-shadow .15s;
+      width: 100%; height: 52px; padding: 0 16px 0 44px;
+      font: 500 15.5px 'Inter', system-ui, sans-serif; color: var(--ink);
+      background: #F7F8FA; border: 1px solid var(--line); border-radius: 12px;
+      outline: none; transition: border-color .18s, box-shadow .18s, background .18s;
       -webkit-appearance: none; appearance: none;
     }
-    .gl-input::placeholder { color: #9AA3B2; }
-    .gl-input:hover { border-color: #BFC6D2; }
-    .gl-input:focus { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(11,30,61,.12); }
-    .gl-input.has-toggle { padding-right: 72px; }
-    .gl-input[aria-invalid="true"] { border-color: var(--err); }
+    .gl-input::placeholder { color: #9AA3B2; font-weight: 400; }
+    .gl-input:hover { border-color: #C6CDD9; background: #fff; }
+    .gl-input:focus { background: #fff; border-color: var(--navy); box-shadow: 0 0 0 4px rgba(201,162,75,.22), 0 1px 2px rgba(11,30,61,.06); }
+    .gl-input.has-toggle { padding-right: 84px; }
+    .gl-input[aria-invalid="true"] { border-color: var(--err); background: #FFFBFA; }
+    .gl-input:-webkit-autofill { -webkit-box-shadow: 0 0 0 40px #fff inset; -webkit-text-fill-color: var(--ink); }
 
     .gl-toggle {
-      position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-      height: 34px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent;
+      position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
+      height: 36px; padding: 0 11px; border: 0; border-radius: 8px; background: transparent;
       font: 600 12px 'Inter', system-ui, sans-serif; color: var(--navy2); cursor: pointer;
-      display: inline-flex; align-items: center; gap: 6px;
+      display: inline-flex; align-items: center; gap: 6px; transition: background .15s;
     }
-    .gl-toggle:hover { background: #EEF1F6; }
+    .gl-toggle:hover { background: #EAEEF5; }
     .gl-toggle:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px; }
 
-    .gl-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 22px; flex-wrap: wrap; }
-    .gl-remember { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); cursor: pointer; user-select: none; }
-    .gl-remember input { width: 16px; height: 16px; accent-color: var(--navy); cursor: pointer; margin: 0; }
-    .gl-help { font-size: 13px; color: var(--muted); }
+    .gl-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 6px 0 24px; flex-wrap: wrap; }
+    .gl-remember { display: inline-flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 500; color: var(--ink); cursor: pointer; user-select: none; }
+    .gl-remember input { width: 17px; height: 17px; accent-color: var(--navy); cursor: pointer; margin: 0; }
+    .gl-help { font-size: 12.5px; color: var(--muted); }
 
     .gl-error {
       display: flex; gap: 10px; align-items: flex-start;
-      background: #FEF3F2; border: 1px solid #FECDCA; color: var(--err);
-      font-size: 13px; line-height: 1.45; border-radius: 8px; padding: 10px 12px; margin-bottom: 16px;
+      background: #FEF3F2; border: 1px solid #FECDCA; border-left: 3px solid var(--err); color: var(--err);
+      font-size: 13px; line-height: 1.45; border-radius: 10px; padding: 11px 13px; margin-bottom: 16px;
     }
     .gl-error svg { flex-shrink: 0; margin-top: 1px; }
 
     .gl-btn {
-      width: 100%; height: 48px; border: 0; border-radius: 8px;
-      background: var(--navy); color: #fff;
-      font: 600 15px 'Inter', system-ui, sans-serif; letter-spacing: .2px;
+      position: relative; overflow: hidden;
+      width: 100%; height: 54px; border: 0; border-radius: 12px;
+      background: linear-gradient(180deg, var(--navy3) 0%, var(--navy) 100%); color: #fff;
+      font: 600 15.5px 'Inter', system-ui, sans-serif; letter-spacing: .3px;
       display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-      cursor: pointer; transition: background .15s, box-shadow .15s;
-      box-shadow: inset 0 -2px 0 var(--gold);
+      cursor: pointer; transition: transform .18s, box-shadow .18s, filter .18s;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.14), inset 0 -3px 0 var(--gold), 0 10px 22px -8px rgba(11,30,61,.55);
     }
-    .gl-btn:hover:not(:disabled) { background: var(--navy2); }
-    .gl-btn:focus-visible { outline: 3px solid rgba(201,162,75,.6); outline-offset: 2px; }
-    .gl-btn:disabled { opacity: .7; cursor: default; }
-    .gl-spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: gl-spin .7s linear infinite; }
+    .gl-btn::after {               /* brass sheen sweep on hover */
+      content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 38%;
+      background: linear-gradient(90deg, transparent, rgba(232,207,142,.35), transparent);
+      transform: translateX(-120%) skewX(-18deg); pointer-events: none;
+    }
+    .gl-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06); box-shadow: inset 0 1px 0 rgba(255,255,255,.18), inset 0 -3px 0 var(--goldL), 0 16px 28px -10px rgba(11,30,61,.6); }
+    .gl-btn:hover:not(:disabled)::after { animation: gl-sheen .9s ease; }
+    .gl-btn:active:not(:disabled) { transform: translateY(0); }
+    .gl-btn:focus-visible { outline: 3px solid rgba(201,162,75,.6); outline-offset: 3px; }
+    .gl-btn:disabled { opacity: .75; cursor: default; }
+    .gl-btn-arrow { transition: transform .18s; }
+    .gl-btn:hover:not(:disabled) .gl-btn-arrow { transform: translateX(3px); }
+    .gl-spinner { width: 17px; height: 17px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: gl-spin .7s linear infinite; }
 
-    .gl-card-foot { margin-top: 22px; padding-top: 18px; border-top: 1px solid #EEF0F4; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+    .gl-card-foot { margin-top: 24px; padding-top: 18px; border-top: 1px solid #EEF0F4; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
+    .gl-card-foot svg { color: var(--goldD); }
 
-    .gl-legal { text-align: center; font-size: 12px; color: #8A93A3; margin-top: 18px; }
+    .gl-legal { text-align: center; font-size: 12px; color: #8A93A3; margin-top: 20px; letter-spacing: .02em; }
 
     @media (max-width: 900px) {
-      .gl-page { grid-template-columns: 1fr; background: var(--bg); }
+      .gl-page { grid-template-columns: 1fr; }
       .gl-brand { display: none; }
       .gl-main { align-items: flex-start; padding: 32px 16px 24px; }
-      .gl-mobile-brand { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 20px; }
-      .gl-crest-img { width: 88px; height: auto; margin-bottom: 10px; }
+      .gl-mobile-brand { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 22px; }
+      .gl-crest-img { width: 92px; height: auto; margin-bottom: 12px; filter: drop-shadow(0 8px 14px rgba(11,30,61,.2)); }
       .gl-card-crest { display: none; }
-      .gl-mobile-name { font-family: 'Source Serif 4', Georgia, serif; font-weight: 700; font-size: 18px; color: var(--navy); }
-      .gl-mobile-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
-      .gl-card { padding: 28px 22px 22px; }
+      .gl-mobile-name { font-family: 'Source Serif 4', Georgia, serif; font-weight: 700; font-size: 19px; color: var(--navy); }
+      .gl-mobile-sub { font-size: 11px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; color: var(--goldD); margin-top: 4px; }
+      .gl-card { padding: 32px 22px 24px; border-radius: 18px; }
+      .gl-title { font-size: 30px; }
     }
     @media (prefers-reduced-motion: reduce) {
-      .gl-card, .gl-poster { animation: none !important; }
+      .gl-card, .gl-card *, .gl-poster, .gl-card::after { animation: none !important; transition: none !important; }
     }
 `
   document.head.appendChild(style)
@@ -211,6 +286,22 @@ const AlertIcon = () => (
 const ShieldIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+  </svg>
+)
+
+const UserIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>
+  </svg>
+)
+const LockIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+  </svg>
+)
+const ArrowIcon = () => (
+  <svg className="gl-btn-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>
   </svg>
 )
 
@@ -425,7 +516,7 @@ onLogin({
 
       {/* Sign-in */}
       <main className="gl-main">
-        <div style={{ width: '100%', maxWidth: 400 }}>
+        <div className="gl-wrap">
           <div className="gl-mobile-brand">
             <img className="gl-crest-img" src={gnsiCrest} alt="GNSI crest" />
             <div className="gl-mobile-name">{instName}</div>
@@ -439,30 +530,35 @@ onLogin({
             noValidate
           >
             <img className="gl-card-crest" src={gnsiCrest} alt="" aria-hidden="true" />
+            <div className="gl-eyebrow">Staff Portal</div>
             <h1 className="gl-title">Sign in</h1>
             <p className="gl-sub">Use your GNSI staff account to continue.</p>
 
             <div className="gl-field">
               <label className="gl-label" htmlFor="gl-username">Username</label>
-              <input
-                id="gl-username"
-                className="gl-input"
-                type="text"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                placeholder="Your username"
-                autoComplete="username"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck="false"
-                aria-invalid={error ? 'true' : undefined}
-                autoFocus={!username}
-              />
+              <div className="gl-input-wrap">
+                <span className="gl-ico"><UserIcon /></span>
+                <input
+                  id="gl-username"
+                  className="gl-input"
+                  type="text"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  placeholder="Your username"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck="false"
+                  aria-invalid={error ? 'true' : undefined}
+                  autoFocus={!username}
+                />
+              </div>
             </div>
 
             <div className="gl-field">
               <label className="gl-label" htmlFor="gl-password">Password</label>
               <div className="gl-input-wrap">
+                <span className="gl-ico"><LockIcon /></span>
                 <input
                   id="gl-password"
                   className="gl-input has-toggle"
@@ -506,7 +602,7 @@ onLogin({
             )}
 
             <button type="submit" className="gl-btn" disabled={loading}>
-              {loading ? <><span className="gl-spinner" aria-hidden="true" /> Signing in…</> : 'Sign in'}
+              {loading ? <><span className="gl-spinner" aria-hidden="true" /> Signing in…</> : <>Sign in <ArrowIcon /></>}
             </button>
 
             <div className="gl-card-foot">
