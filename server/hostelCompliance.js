@@ -10,12 +10,19 @@
 // and writes each gap to hm_neglect_log (the same table the Neglect Report and
 // HM performance ranking read), then pushes to the housemaster and all admins.
 //
+// A missed roll call carries the same "Penalty/fine applicable" notice as a
+// late one, and is counted with late roll calls in the HM performance ranking.
+// Housemasters on approved leave (leaves / staff_leave_requests) are skipped.
+//
 // Idempotent: re-running for the same date never creates duplicate rows or
 // duplicate notifications. Safe to run more than once a day.
 //
-// Schedule: vercel.json cron (UTC). 18:00 UTC = 23:30 IST, after both the
-// 7:00 AM / 8:00 PM roll call deadlines and the full day's logging window.
-// Optional: ?date=YYYY-MM-DD to back-fill a missed day.
+// Phases (via /api/window-notifier?job=compliance&phase=...):
+//   (none)        enforce ?date= (default today IST) — back-fill / manual run
+//   warn-morning  push "morning roll call due 7:00 AM" to HMs still unmarked
+//   warn-evening  push "night roll call due 8:00 PM" + unlogged six tabs
+//   job=daily     enforce YESTERDAY + warn-morning today (cron 00:00 UTC = 05:30 IST)
+// Hobby plan = 2 daily crons, so: 05:30 IST daily job, 18:30 IST warn-evening.
 import webpush from 'web-push'
 import { createClient } from '@supabase/supabase-js'
 
@@ -84,11 +91,12 @@ const TAB_CHECKERS = {
   },
 }
 
-async function pushToStaff(staffIds, title, body, url) {
+
+async function pushToStaff(staffIds, title, body, url, tag) {
   const ids = [...new Set(staffIds.filter(Boolean))]
   if (!ids.length) return
   const { data: subs } = await supabase.from('push_subscriptions').select('*').in('staff_id', ids)
-  const payload = JSON.stringify({ title, body, url, tag: `${url}-${title}` })
+  const payload = JSON.stringify({ title, body, url, tag: tag || `${url}-${title}` })
   await Promise.allSettled((subs || []).map((sub) =>
     webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload)
       .catch(async (err) => {
@@ -97,64 +105,97 @@ async function pushToStaff(staffIds, title, body, url) {
   ))
 }
 
-export async function enforceCompliance(req, res) {
-  if (req.method !== 'GET') return res.status(405).end()
-  // Vercel sends "Authorization: Bearer $CRON_SECRET" when CRON_SECRET is set.
-  if (process.env.CRON_SECRET && req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ error: 'unauthorized' })
+const addDays = (dateStr, n) => {
+  const d = new Date(`${dateStr}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+// Query errors yield [] — a failed leave lookup must not block enforcement.
+async function safeRows(query) {
+  try {
+    const { data, error } = await query
+    return error ? [] : (data || [])
+  } catch {
+    return []
   }
+}
 
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query?.date || '') ? req.query.date : todayIST()
-  const { start, end } = dayWindow(date)
-
-  const [{ data: housemasters }, { data: students }, { data: records }, { data: existing }, { data: staff }, { data: admins }] =
+// Builds everything both phases need: houses (with housemasters not on
+// approved leave), roll call counts, and who to notify.
+async function loadContext(date) {
+  const [{ data: housemasters }, { data: students }, { data: records }, { data: staff }, { data: admins }, leaves, staffLeaves] =
     await Promise.all([
       supabase.from('housemasters').select('name,house').eq('status', 'Active'),
       supabase.from('students').select('id,house').neq('status', 'Inactive'),
       supabase.from('attendance_records').select('house,session,student_id').eq('date', date).in('session', SESSIONS),
-      supabase.from('hm_neglect_log').select('house,session,check_type').eq('date', date).in('check_type', ['missed_rollcall', 'missed_sixtab']),
       supabase.from('staff_profiles').select('id,name'),
       supabase.from('staff_profiles').select('id').ilike('role', 'admin'),
+      safeRows(supabase.from('leaves').select('staff_id,start_date,end_date').eq('status', 'approved').lte('start_date', date).gte('end_date', date)),
+      safeRows(supabase.from('staff_leave_requests').select('staff_name,from_date,to_date').eq('status', 'Approved').is('deleted_at', null).lte('from_date', date)),
     ])
+
+  const staffByName = (name) => (staff || []).find((x) => norm(x.name) === norm(name))
+  const leaveStaffIds = new Set(leaves.map((l) => l.staff_id))
+  const leaveNames = new Set(staffLeaves.filter((l) => (l.to_date || l.from_date) >= date).map((l) => norm(l.staff_name)))
+  const onLeave = (name) => leaveNames.has(norm(name)) || leaveStaffIds.has(staffByName(name)?.id)
 
   // One entry per house; a house may have several housemasters.
   const houses = {}
+  const skippedOnLeave = new Set()
   for (const hm of housemasters || []) {
     if (!hm.house) continue
+    if (onLeave(hm.name)) { skippedOnLeave.add(hm.house); continue }
     const k = norm(hm.house)
-    houses[k] ??= { house: hm.house, names: [] }
+    houses[k] ??= { house: hm.house, names: [], staffIds: [] }
     houses[k].names.push(hm.name)
+    const sid = staffByName(hm.name)?.id
+    if (sid) houses[k].staffIds.push(sid)
   }
+  // A house with at least one housemaster present is not "skipped".
+  const skipped = [...skippedOnLeave].filter((h) => !houses[norm(h)])
 
+  const markedCount = (house, session) => new Set((records || [])
+    .filter((r) => norm(r.house) === norm(house) && r.session === session)
+    .map((r) => r.student_id)).size
+  const studentsOf = (house) => (students || []).filter((s) => norm(s.house) === norm(house))
+
+  return { houses: Object.values(houses), skipped, adminIds: (admins || []).map((a) => a.id), markedCount, studentsOf }
+}
+
+async function missingTabs(house, ids, start, end) {
+  const results = await Promise.all(SIX_TABS.map((t) => TAB_CHECKERS[t.key](house, start, end, ids)))
+  return SIX_TABS.filter((_, i) => !results[i])
+}
+
+export async function runEnforcement(date) {
+  const { start, end } = dayWindow(date)
+  const ctx = await loadContext(date)
+  const { data: existing } = await supabase.from('hm_neglect_log').select('house,session,check_type')
+    .eq('date', date).in('check_type', ['missed_rollcall', 'missed_sixtab'])
   const logged = new Set((existing || []).map((r) => `${norm(r.house)}|${r.session}|${r.check_type}`))
-  const adminIds = (admins || []).map((a) => a.id)
   const summary = []
 
-  for (const { house, names } of Object.values(houses)) {
+  for (const { house, names, staffIds } of ctx.houses) {
     const hmName = names.join(' / ')
-    const houseStudents = (students || []).filter((s) => norm(s.house) === norm(house))
+    const houseStudents = ctx.studentsOf(house)
     if (!houseStudents.length) continue
-    const staffIds = (staff || []).filter((s) => names.some((n) => norm(n) === norm(s.name))).map((s) => s.id)
-
-    const gaps = [] // { session, check_type, missing_tabs[], text }
+    const gaps = []
 
     for (const session of SESSIONS) {
-      const marked = new Set((records || [])
-        .filter((r) => norm(r.house) === norm(house) && r.session === session)
-        .map((r) => r.student_id)).size
-      if (marked < houseStudents.length && !logged.has(`${norm(house)}|${session}|missed_rollcall`)) {
+      const unmarked = houseStudents.length - ctx.markedCount(house, session)
+      if (unmarked > 0 && !logged.has(`${norm(house)}|${session}|missed_rollcall`)) {
+        const label = session === 'morning' ? 'Morning' : 'Night'
         gaps.push({
           session, check_type: 'missed_rollcall',
-          missing_tabs: [`${session === 'morning' ? 'Morning' : 'Night'} roll call not completed — ${houseStudents.length - marked} of ${houseStudents.length} students unmarked`],
-          text: `${session} roll call incomplete (${houseStudents.length - marked}/${houseStudents.length} unmarked)`,
+          missing_tabs: [`${label} roll call not completed — ${unmarked} of ${houseStudents.length} students unmarked. Penalty/fine applicable.`],
+          text: `${session} roll call not completed (${unmarked}/${houseStudents.length} unmarked). Penalty/fine applicable.`,
         })
       }
     }
 
     if (!logged.has(`${norm(house)}|daily|missed_sixtab`)) {
-      const ids = houseStudents.map((s) => s.id)
-      const results = await Promise.all(SIX_TABS.map((t) => TAB_CHECKERS[t.key](house, start, end, ids)))
-      const missing = SIX_TABS.filter((_, i) => !results[i])
+      const missing = await missingTabs(house, houseStudents.map((s) => s.id), start, end)
       if (missing.length) {
         gaps.push({
           session: 'daily', check_type: 'missed_sixtab',
@@ -170,11 +211,63 @@ export async function enforceCompliance(req, res) {
         missing_tabs: gap.missing_tabs, skip_reasons: {}, check_type: gap.check_type,
       }])
       if (error) { summary.push({ house, error: error.message }); continue }
-      await pushToStaff(staffIds, `⚠️ Compliance missed — ${house}`, `${date}: ${gap.text}. This has been reported to the admin.`, '/hostel?tab=attendance')
-      await pushToStaff(adminIds, `🚨 ${hmName} (${house}) neglect`, `${date}: ${gap.text}`, '/hostel?tab=neglectreport')
+      await pushToStaff(staffIds, `⚠️ Compliance missed — ${house}`, `${date}: ${gap.text} This has been reported to the admin.`, '/hostel?tab=attendance')
+      await pushToStaff(ctx.adminIds, `🚨 ${hmName} (${house}) neglect`, `${date}: ${gap.text}`, '/hostel?tab=neglectreport')
       summary.push({ house, hm: hmName, type: gap.check_type, session: gap.session })
     }
   }
+  return { date, houses: ctx.houses.length, skippedOnLeave: ctx.skipped, logged: summary.length, summary }
+}
 
-  res.json({ ok: true, date, houses: Object.keys(houses).length, logged: summary.length, summary })
+// Pre-deadline reminders. Not logged — they exist to prevent the miss.
+export async function runWarnings(date, phase) {
+  const { start, end } = dayWindow(date)
+  const ctx = await loadContext(date)
+  const sent = []
+
+  for (const { house, names, staffIds } of ctx.houses) {
+    const houseStudents = ctx.studentsOf(house)
+    if (!houseStudents.length || !staffIds.length) continue
+    const lines = []
+    const session = phase === 'morning' ? 'morning' : 'night'
+    const deadline = phase === 'morning' ? '7:00 AM' : '8:00 PM'
+    const unmarked = houseStudents.length - ctx.markedCount(house, session)
+    if (unmarked > 0) lines.push(`${session} roll call due by ${deadline} (+15 min grace): ${unmarked} of ${houseStudents.length} unmarked`)
+    if (phase === 'evening') {
+      const missing = await missingTabs(house, houseStudents.map((s) => s.id), start, end)
+      if (missing.length) lines.push(`not yet logged today: ${missing.map((t) => t.label).join(', ')}`)
+    }
+    if (!lines.length) continue
+    await pushToStaff(
+      staffIds,
+      `⏰ Reminder — ${house}`,
+      `${lines.join('; ')}. Missing these is reported to the admin with a penalty/fine.`,
+      '/hostel?tab=attendance',
+      `compliance-warn-${phase}-${house}-${date}`
+    )
+    sent.push({ house, hm: names.join(' / '), lines })
+  }
+  return { date, phase, skippedOnLeave: ctx.skipped, warned: sent.length, sent }
+}
+
+// Cron entry used by window-notifier?job=daily (00:00 UTC = 05:30 IST).
+export async function runDaily() {
+  const today = todayIST()
+  return {
+    enforcedYesterday: await runEnforcement(addDays(today, -1)),
+    morningWarning: await runWarnings(today, 'morning'),
+  }
+}
+
+export async function enforceCompliance(req, res) {
+  if (req.method !== 'GET') return res.status(405).end()
+  // Vercel sends "Authorization: Bearer $CRON_SECRET" when CRON_SECRET is set.
+  if (process.env.CRON_SECRET && req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query?.date || '') ? req.query.date : todayIST()
+  const phase = req.query?.phase
+  if (phase === 'warn-morning') return res.json({ ok: true, ...(await runWarnings(date, 'morning')) })
+  if (phase === 'warn-evening') return res.json({ ok: true, ...(await runWarnings(date, 'evening')) })
+  res.json({ ok: true, ...(await runEnforcement(date)) })
 }

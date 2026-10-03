@@ -4635,7 +4635,7 @@ function CommandCentreTab({ students, currentUser }) {
     neglectThisWeek.forEach(r => {
       const h = normalizeHouse(r.house)
       if (!h || !result[h]) return
-      if (r.check_type === 'late_rollcall') result[h].lateRollCalls++
+      if (r.check_type === 'late_rollcall' || r.check_type === 'missed_rollcall') result[h].lateRollCalls++ // a missed roll call carries the same penalty as a late one
       else if (r.check_type === 'rushed_rollcall') result[h].rushedRollCalls++
       else result[h].complianceGaps++
     })
