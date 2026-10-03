@@ -37,7 +37,24 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Signature mismatch', verified: false })
     }
 
-    return res.status(200).json({ verified: true, payment_id: razorpay_payment_id })
+    // The signature only proves the order/payment pair is genuine. Ask Razorpay
+    // what was ACTUALLY paid so the browser cannot record more than the money
+    // taken (Fees.jsx compares this amount with the fee items before saving).
+    let paidAmount = null
+    try {
+      const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64')
+      const pr = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(razorpay_payment_id)}`, { headers: { Authorization: `Basic ${auth}` } })
+      if (pr.ok) {
+        const pay = await pr.json()
+        if (pay.order_id !== razorpay_order_id) return res.status(400).json({ error: 'Payment does not belong to this order', verified: false })
+        if (!['captured', 'authorized'].includes(pay.status)) return res.status(400).json({ error: `Payment is ${pay.status}, not paid`, verified: false })
+        paidAmount = Number(pay.amount) / 100
+      }
+    } catch (e) {
+      console.warn('razorpay verify: could not fetch payment', e?.message)
+    }
+
+    return res.status(200).json({ verified: true, payment_id: razorpay_payment_id, paid_amount: paidAmount })
   } catch (err) {
     console.error('razorpay verify error:', err)
     return res.status(500).json({ error: 'Verification failed', verified: false })

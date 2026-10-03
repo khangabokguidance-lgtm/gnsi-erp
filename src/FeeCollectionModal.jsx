@@ -336,7 +336,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   // standard rate by more than this threshold requires a reason before
   // saving, and is recorded (on the row + as an audit_log warning) rather
   // than silently accepted.
-  const FLAT_FEE_DISCREPANCY_THRESHOLD = 500
+  const FLAT_FEE_DISCREPANCY_THRESHOLD = 1   // any shortfall needs a reason + approval
   // Fixed reason list (not free text) so underpayment reasons stay
   // consistent and reportable — an admin scanning the Activity Log can
   // filter/group by reason instead of parsing arbitrary staff phrasing.
@@ -377,7 +377,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   // requires the collector to record a reason before saving, so a shortfall
   // shows up in the audit trail at collection time instead of only being
   // discoverable later by mining the ledger for below-standard payments.
-  const COURSE_FEE_DISCREPANCY_THRESHOLD = 1000
+  const COURSE_FEE_DISCREPANCY_THRESHOLD = 1   // any shortfall needs a reason + approval
   const [courseAmtReason,  setCourseAmtReason]  = useState('')
 
   // ── Cross-check hostel_allocations ────────────────────────────────────────

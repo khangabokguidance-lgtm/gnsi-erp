@@ -175,13 +175,17 @@ const ADM_FEE_BASE   = 6000
 const PROSPECTUS_FEE = 200
 
 // ── Export utilities ──────────────────────────────────────────────────────────
+// Text that a spreadsheet would run as a formula (=, +, @, or - before a non-digit)
+// gets a leading apostrophe, so a crafted student name / note can't execute.
+const safeCell = v => (typeof v === 'string' && /^[=+@]|^-(?!\d)/.test(v) ? "'" + v : v)
+
 function exportCSV(rows, filename) {
   if (!rows || rows.length === 0) { alert('No data to export.'); return }
   const headers = Object.keys(rows[0])
   const csv = [
     headers.join(','),
     ...rows.map(row => headers.map(h => {
-      const v = row[h] == null ? '' : String(row[h])
+      const v = row[h] == null ? '' : String(safeCell(String(row[h])))
       return v.includes(',') || v.includes('"') || v.includes('\n') ? `"${v.replace(/"/g, '""')}"` : v
     }).join(','))
   ].join('\n')
@@ -240,13 +244,13 @@ const _dl = (blob, name) => { const u=URL.createObjectURL(blob),a=document.creat
 function exportTSV(rows, filename) {
   if (!rows?.length) { alert('No data.'); return }
   const H=Object.keys(rows[0])
-  const body=[H.join('\t'),...rows.map(r=>H.map(h=>String(r[h]??'').replace(/\t/g,' ')).join('\t'))].join('\n')
+  const body=[H.join('\t'),...rows.map(r=>H.map(h=>String(safeCell(String(r[h]??''))).replace(/\t/g,' ')).join('\t'))].join('\n')
   _dl(new Blob(['\ufeff'+body],{type:'text/tab-separated-values;charset=utf-8'}),filename+'.tsv')
 }
 function exportXLS(rows, filename, sheetTitle='Report') {
   if (!rows?.length) { alert('No data.'); return }
   const H=Object.keys(rows[0])
-  const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  const esc=v=>String(safeCell(String(v??''))).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
   const hdr=H.map(h=>`<th style="background:#1e3a6e;color:white;font-weight:bold;padding:6px 10px;border:1px solid #ccc">${esc(h)}</th>`).join('')
   const bdy=rows.map((r,i)=>{const bg=i%2===0?'#fff':'#faf8f3';return `<tr>${H.map(h=>`<td style="padding:5px 10px;border:1px solid #ddd;background:${bg}">${esc(r[h])}</td>`).join('')}</tr>`}).join('')
   const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"/><title>${sheetTitle}</title><style>table{border-collapse:collapse;font-family:Arial,sans-serif;font-size:12px}</style></head><body><h3 style="font-family:Arial;color:#1e3a6e">Guidance Navodaya &amp; Sainik Institute — ${sheetTitle}</h3><table><thead><tr>${hdr}</tr></thead><tbody>${bdy}</tbody></table></body></html>`
@@ -1498,7 +1502,7 @@ function ReportsExportTab({students,adm_fee_collections,adm_flat_fees,adm_course
       {id:'monthly_summary',name:'Monthly Collection Summary',desc:'Month-wise totals for flat, course and admission fees',rows:()=>reports.monthlyRows,meta:()=>({'Months':reports.monthlyRows.length,'Generated':todayStr})},
     ]},
     {group:'Dues Reports',icon:'⏳',color:'#b91c1c',reports:[
-      {id:'dues_summary',name:'Month-wise Dues Summary',desc:duesLoading?'Working out dues…':'Expected, collected and outstanding for every month of the session so far',rows:()=>dueSummaryRows,meta:()=>({'Months':dueSummaryRows.length,'Total Outstanding':`₹${n(dueSummaryRows.reduce((s,r)=>s+r['Outstanding (₹)'],0))}`,'Generated':todayStr})},
+      {id:'dues_summary',name:'Month-wise Dues Summary',desc:duesLoading?'Working out dues…':'Expected, collected and outstanding for every month since January',rows:()=>dueSummaryRows,meta:()=>({'Months':dueSummaryRows.length,'Total Outstanding':`₹${n(dueSummaryRows.reduce((s,r)=>s+r['Outstanding (₹)'],0))}`,'Generated':todayStr})},
       {id:'dues_defaulters',name:'Month-wise Defaulters List',desc:duesLoading?'Working out dues…':`Every student who still owes, month by month${courseF!=='All'||hostelF!=='All'?' (course / hostel filter applied)':''}`,rows:()=>dueDefaulterRows,meta:()=>({'Records':dueDefaulterRows.length,'Total Outstanding':`₹${n(dueDefaulterRows.reduce((s,r)=>s+r['Due (₹)'],0))}`,'Course':courseF,'Hostel':hostelF,'Generated':todayStr})},
     ]},
     {group:'Date Range Report',icon:'📅',color:'#d97706',reports:[
@@ -1799,15 +1803,17 @@ function admissionFallsIn(student, reg, m) {
 }
 function useMonthwiseDues({ liveRows, adm_fee_collections, adm_flat_fees, adm_course_fees }) {
   const [now] = useState(() => new Date())
-  // Every month of the current April–March session, from April up to this month.
+  // Every month from January of the year the current session started, up to this
+  // month. Jan–Mar belong to the previous April–March fee session in the ledger,
+  // so each month carries its own session.
   const duesMonths = useMemo(() => {
     const startYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1
-    const session = `${startYear}-${startYear + 1}`
     const out = []
-    for (let d = new Date(startYear, 3, 1); d <= now; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+    for (let d = new Date(startYear, 0, 1); d <= now; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+      const y = d.getFullYear(), sy = d.getMonth() >= 3 ? y : y - 1
       out.push({
         label: d.toLocaleString('default', { month: 'short' }), fullMon: d.toLocaleString('default', { month: 'long' }),
-        year: d.getFullYear(), session,
+        year: y, session: `${sy}-${sy + 1}`,
         isCurrent: d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(),
       })
     }
@@ -2405,7 +2411,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a6e' }}>🗓️ Month-wise Dues (Flat + Course + Admission Fee)</div>
             {duesError && <div style={{ fontSize: 12, color: '#b42318', marginTop: 4 }}>Could not work out dues: {duesError}</div>}
             <div style={{ fontSize: 11, color: '#8a93a6' }}>
-              {monthwiseDues.length > 0 && <>Session {monthwiseDues[0].session} · {monthwiseDues[0].label}{monthwiseDues.length > 1 ? `–${monthwiseDues[monthwiseDues.length - 1].label}` : ''} · </>}
+              {monthwiseDues.length > 0 && <>{monthwiseDues[0].label} {monthwiseDues[0].year}{monthwiseDues.length > 1 ? ` – ${monthwiseDues[monthwiseDues.length - 1].label} ${monthwiseDues[monthwiseDues.length - 1].year}` : ''} · </>}
               Expected vs collected — tap a month to see who still owes
             </div>
           </div>
@@ -3401,8 +3407,8 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
           ...(short > 0 ? {
             standardAmount: stdOf(r), underpaymentAmount: short, underpaymentReason: reasonOf(r), underpaymentNote: why || null,
             // An admin collecting approves it on the spot; anyone else sends it for approval.
-            concessionApprovedBy: isAdmin ? (collectedBy.trim() || currentUser?.name || 'Admin') : null,
-            note: `Low fee: ₹${stdOf(r).toLocaleString('en-IN')} standard → ₹${amt.toLocaleString('en-IN')} — ${reasonOf(r)}${why ? ` (${why})` : ''} — ${isAdmin ? `approved by ${collectedBy.trim() || 'admin'}` : 'awaiting admin approval'}`,
+            concessionApprovedBy: isAdmin ? (currentUser?.name || collectedBy.trim() || 'Admin') : null,
+            note: `Low fee: ₹${stdOf(r).toLocaleString('en-IN')} standard → ₹${amt.toLocaleString('en-IN')} — ${reasonOf(r)}${why ? ` (${why})` : ''} — ${isAdmin ? `approved by ${currentUser?.name || collectedBy.trim() || 'admin'}` : 'awaiting admin approval'}`,
           } : {}),
         })
       }
@@ -3588,6 +3594,11 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
               })
               const verify = await verifyRes.json()
               if (!verifyRes.ok || !verify?.verified) throw new Error(verify?.error || 'Payment verification failed')
+              // Never record more than Razorpay says was actually paid.
+              const itemsTotal = items.reduce((t, it) => t + (Number(it.amount) || 0), 0)
+              if (verify.paid_amount != null && Math.abs(Number(verify.paid_amount) - itemsTotal) > 0.5) {
+                throw new Error(`Razorpay received ₹${Number(verify.paid_amount).toLocaleString('en-IN')} but the fees add up to ₹${itemsTotal.toLocaleString('en-IN')} — nothing was recorded. Note payment id ${response.razorpay_payment_id} and contact an admin.`)
+              }
 
               try {
                 await finalizeCollection(items, { mode: 'Razorpay', ref: response.razorpay_payment_id })
