@@ -10891,10 +10891,10 @@ function NeglectReportTab({ currentUser }) {
                   <td style={{ padding: '10px 14px' }}>
                     <span style={{
                       padding: '3px 10px', borderRadius: 99, fontSize: 10, fontWeight: 700,
-                      background: r.check_type === 'standalone' ? '#f5f3ff' : r.check_type === 'rushed_rollcall' ? '#fef2f2' : '#eff6ff',
-                      color: r.check_type === 'standalone' ? '#7c3aed' : r.check_type === 'rushed_rollcall' ? '#dc2626' : '#1e3a6e',
+                      background: r.check_type === 'standalone' ? '#f5f3ff' : ['rushed_rollcall', 'missed_rollcall', 'missed_sixtab'].includes(r.check_type) ? '#fef2f2' : '#eff6ff',
+                      color: r.check_type === 'standalone' ? '#7c3aed' : ['rushed_rollcall', 'missed_rollcall', 'missed_sixtab'].includes(r.check_type) ? '#dc2626' : '#1e3a6e',
                     }}>
-                      {r.check_type === 'standalone' ? '📋 3x-Daily' : r.check_type === 'rushed_rollcall' ? '⏱️ Rushed' : '✅ Roll Call'}
+                      {r.check_type === 'standalone' ? '📋 3x-Daily' : r.check_type === 'rushed_rollcall' ? '⏱️ Rushed' : r.check_type === 'missed_rollcall' ? '🚫 Roll Call Missed' : r.check_type === 'missed_sixtab' ? '🚫 Tabs Not Logged' : '✅ Roll Call'}
                     </span>
                   </td>
                   <td style={{ padding: '10px 14px' }}>

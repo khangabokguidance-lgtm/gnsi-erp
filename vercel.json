@@ -4,6 +4,10 @@
     {
       "path": "/api/window-notifier",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/hostel-compliance-enforce",
+      "schedule": "0 18 * * *"
     }
   ],
   "rewrites": [
