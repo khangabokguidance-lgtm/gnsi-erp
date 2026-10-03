@@ -14,7 +14,7 @@
 import { getActiveStudents } from './studentQueries'
 import { loadFullProfile } from './studentProfileLoader'
 import { detectMismatches } from './mismatchDetector'
-import { logAndNotify, resolveStaleFlags } from './mismatchLog'
+import { logAndNotify, resolveStaleFlags, isMismatchLoggingBlocked } from './mismatchLog'
 import { useState, useEffect } from 'react'
 
 const BATCH_SIZE = 8   // students processed concurrently per wave
@@ -29,10 +29,15 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
 // this too often just re-confirms the same open flags without spamming
 // notifications.
 export async function runMismatchScan({ onProgress } = {}) {
+  // The database refused the log earlier this session (see mismatchLog.js):
+  // don't load every student's profile just to fail again.
+  if (isMismatchLoggingBlocked()) return { scanned: 0, studentsWithIssues: 0, newMismatches: 0, stopped: 'logging blocked' }
   const students = await getActiveStudents('id,name,gcc_no,course,batch,class_name,status,phone,house,admission_no')
   let scanned = 0, newMismatches = 0, studentsWithIssues = 0
 
+  let stopped = null
   for (let i = 0; i < students.length; i += BATCH_SIZE) {
+    if (isMismatchLoggingBlocked()) { stopped = 'logging blocked'; break }
     const batch = students.slice(i, i + BATCH_SIZE)
     const results = await Promise.all(batch.map(async student => {
       try {
@@ -60,7 +65,7 @@ export async function runMismatchScan({ onProgress } = {}) {
     if (i + BATCH_SIZE < students.length) await sleep(BATCH_DELAY_MS)
   }
 
-  return { scanned, studentsWithIssues, newMismatches }
+  return { scanned, studentsWithIssues, newMismatches, ...(stopped ? { stopped } : {}) }
 }
 
 // React hook — runs a scan on mount, then on an interval. Intended to be

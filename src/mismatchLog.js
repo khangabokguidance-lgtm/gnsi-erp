@@ -15,6 +15,27 @@ import { sendPushToStaffId } from './notifications'
 
 const LEVEL_ICON = { red: '🔴', amber: '🟡' }
 
+// ── Circuit breaker ──────────────────────────────────────────────────────────
+// If the database refuses writes to student_mismatch_log (row-level security —
+// e.g. the policy migration has not been run, or this browser has no secure
+// Supabase session), every student × every flag would fail the same way: the
+// background scan used to log hundreds of identical errors and keep loading
+// every student's profile for nothing. After the FIRST refusal we warn once and
+// pause logging for this page session; reload the page to try again.
+let blockedReason = null
+const isDenied = (e) => !!e && (e.code === '42501' || /row-level security|permission denied/i.test(e.message || ''))
+function noteDenied(action, e) {
+  if (blockedReason) return
+  blockedReason = e.message
+  console.warn(
+    `mismatchLog: the database refused to ${action} student_mismatch_log (${e.message}). ` +
+    'Mismatch logging is paused until the page is reloaded. To fix: run ' +
+    'supabase/migrations/20261004_student_mismatch_log_access.sql in the Supabase SQL editor, ' +
+    'and make sure you are signed in (no "Secure database connection is off" banner).'
+  )
+}
+export const isMismatchLoggingBlocked = () => blockedReason !== null
+
 // Push every currently-active admin — same staff_profiles lookup pattern
 // already used in Hostel.jsx (logLateRollCallPenalty, maintenance alerts,
 // etc.), so this reuses a proven path rather than inventing a new one.
@@ -30,6 +51,7 @@ async function notifyAllAdmins(title, body, deepLink) {
 // re-detection of something already open) — callers use this to decide
 // whether to push a notification.
 async function upsertFlag(student, flag) {
+  if (blockedReason) return { isNew: false, blocked: true }
   // Is there already an OPEN row for this student+flag?
   const { data: existing, error: selErr } = await supabase
     .from('student_mismatch_log')
@@ -38,7 +60,10 @@ async function upsertFlag(student, flag) {
     .eq('flag_key', flag.key)
     .eq('status', 'open')
     .maybeSingle()
-  if (selErr) { console.error('mismatchLog: lookup failed:', selErr.message); return { isNew: false } }
+  if (selErr) {
+    if (isDenied(selErr)) { noteDenied('read', selErr); return { isNew: false, blocked: true } }
+    console.error('mismatchLog: lookup failed:', selErr.message); return { isNew: false }
+  }
 
   if (existing) {
     // Already open — just refresh the detail/timestamp, no notification.
@@ -57,7 +82,10 @@ async function upsertFlag(student, flag) {
     message: flag.text,
     status: 'open',
   }]).select('id').single()
-  if (insErr) { console.error('mismatchLog: insert failed:', insErr.message); return { isNew: false } }
+  if (insErr) {
+    if (isDenied(insErr)) { noteDenied('write to', insErr); return { isNew: false, blocked: true } }
+    console.error('mismatchLog: insert failed:', insErr.message); return { isNew: false }
+  }
 
   return { isNew: true, id: inserted.id }
 }
@@ -70,6 +98,7 @@ export async function logAndNotify(student, flags) {
   if (!flags?.length) return { newCount: 0 }
 
   const results = await Promise.all(flags.map(f => upsertFlag(student, f)))
+  if (results.some(r => r.blocked)) return { newCount: 0, blocked: true }
   const newFlags = flags.filter((_, i) => results[i].isNew)
 
   if (newFlags.length > 0) {
@@ -91,11 +120,13 @@ export async function logAndNotify(student, flags) {
 // something previously logged (e.g. the missing hostel allocation was
 // fixed). Doesn't notify; this is bookkeeping only.
 export async function resolveStaleFlags(studentId, currentFlagKeys, resolvedBy = 'auto-scan') {
-  const { data: openRows } = await supabase
+  if (blockedReason) return
+  const { data: openRows, error: openErr } = await supabase
     .from('student_mismatch_log')
     .select('id, flag_key')
     .eq('student_id', studentId)
     .eq('status', 'open')
+  if (openErr) { if (isDenied(openErr)) noteDenied('read', openErr); return }
   if (!openRows?.length) return
 
   const stale = openRows.filter(r => !currentFlagKeys.includes(r.flag_key))
