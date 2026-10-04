@@ -10268,9 +10268,10 @@ export default function Exams({ currentUser, perms }) {
 
   // ── Desktop: the portal's shared premium shell (hero + pill tabs), as in Courses / Students / Fees ──
   const activeGroup = visibleGroups.find((g) => g.tabs.some((t) => t.id === tab)) || visibleGroups[0];
-  const iconOf = (id) => (p) => <ExamIcon id={id} size={p?.size || 15} />;
-  const groupTabs = visibleGroups.map((g) => ({ id: g.groupLabel, label: g.groupLabel, icon: iconOf(g.tabs[0].id) }));
-  const subTabs = (activeGroup?.tabs || []).map((t) => ({ id: t.id, label: t.label, icon: iconOf(t.id) }));
+  // Real line icons in a tinted chip (group colour) so each tab is recognisable at a glance
+  const iconOf = (id, color) => () => <span className="ex-tico" style={{ '--c': color }}><ExamIcon id={id} size={18} stroke={2} /></span>;
+  const groupTabs = visibleGroups.map((g) => ({ id: g.groupLabel, label: g.groupLabel, icon: iconOf(g.tabs[0].id, g.color) }));
+  const subTabs = (activeGroup?.tabs || []).map((t) => ({ id: t.id, label: t.label, icon: iconOf(t.id, activeGroup.color) }));
 
   return (
     <div className="exams-root px-root">
