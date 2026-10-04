@@ -10268,9 +10268,15 @@ export default function Exams({ currentUser, perms }) {
 
   // ── Desktop: the portal's shared premium shell (hero + pill tabs), as in Courses / Students / Fees ──
   const activeGroup = visibleGroups.find((g) => g.tabs.some((t) => t.id === tab)) || visibleGroups[0];
-  const iconOf = (id) => (p) => <ExamIcon id={id} size={p?.size || 15} />;
-  const groupTabs = visibleGroups.map((g) => ({ id: g.groupLabel, label: g.groupLabel, icon: iconOf(g.tabs[0].id) }));
-  const subTabs = (activeGroup?.tabs || []).map((t) => ({ id: t.id, label: t.label, icon: iconOf(t.id) }));
+  // Real line icons in a tinted chip (group colour) so each tab is recognisable at a glance
+  const iconOf = (id, color) => () => <span className="ex-tico" style={{ '--c': color }}><ExamIcon id={id} size={18} stroke={2} /></span>;
+  const groupTabs = visibleGroups.map((g) => ({ id: g.groupLabel, label: g.groupLabel, icon: iconOf(g.tabs[0].id, g.color) }));
+  const wide = (activeGroup?.tabs || []).length > 5;
+  const subTabs = (activeGroup?.tabs || []).map((t) => {
+    const mock = t.id === 'mockanalyzer';
+    const text = <span className="ex-tl"><b>{t.label}{mock ? <span className="ex-new">NEW</span> : null}</b>{wide ? <small>{mock ? 'Student, subject & batch analysis' : t.tip}</small> : null}</span>;
+    return { id: t.id, label: text, icon: iconOf(t.id, mock ? '#c026d3' : activeGroup.color) };
+  });
 
   return (
     <div className="exams-root px-root">
@@ -10289,7 +10295,7 @@ export default function Exams({ currentUser, perms }) {
           ]}
         />
         <PremiumTabs tabs={groupTabs} active={activeGroup?.groupLabel} onChange={(g) => { const grp = visibleGroups.find((x) => x.groupLabel === g); if (grp) setTab(grp.tabs[0].id); }} style={{ marginBottom: 8 }} />
-        <PremiumTabs tabs={subTabs} active={tab} onChange={setTab} />
+        <div className={wide ? "ex-tabs2" : undefined}><PremiumTabs tabs={subTabs} active={tab} onChange={setTab} /></div>
         <div className="px-section">
           <span className="px-eyebrow">{activeTabInfo?.label}</span>
           <span style={{ fontSize: 13, color: "#5d6b82" }}>{activeTabInfo?.tip}</span>

@@ -133,6 +133,7 @@ export function studentReportHTML(a, ctx = {}) {
   <div class="kpis">
     ${kpi('Average Score', `${fx(S.avgTotal)}<small>/${a.maxTotal}</small>`, `${fx(S.avgPct)}%`, S.band.color)}
     ${kpi('Overall Band', `<span style="font-size:12px">${esc(S.band.label)}</span>`, `Percentile ${fx(S.avgPercentile, 0)}`, S.band.color)}
+    ${kpi('Pass Mark', `${S.passPct}%`, `Passed ${S.testsPassed} of ${S.testsAttended} tests`, S.avgPct >= S.passPct ? '#047857' : '#b91c1c')}
     ${kpi('Best Rank', ord(S.bestRank), `Latest ${ord(S.latest.rank)} of ${S.latest.n}`)}
     ${kpi('Best Score', fx(S.best.total, 2), `Test ${S.best.test_no}`, '#047857')}
     ${kpi('Trend', `<span style="font-size:13px">${S.trendLabel}</span>`, `${sgn(S.trend, 2)} pts / test`, tone(S.trend, 1.5))}
@@ -202,7 +203,7 @@ export function batchReportHTML(b, ctx = {}) {
   <div class="kpis">
     ${kpi('Students', b.studentCount, `${b.rowsCount} results`)}
     ${kpi('Average %', fx(b.avgPct) + '%', '', pctColor(b.avgPct))}
-    ${kpi(`Pass ≥ ${b.passPct}%`, fx(b.pass, 0) + '%', '', b.pass >= 75 ? '#047857' : '#b45309')}
+    ${kpi((b.passMixed ? 'Pass (per-batch mark)' : `Pass ≥ ${b.passPct}%`), fx(b.pass, 0) + '%', '', b.pass >= 75 ? '#047857' : '#b45309')}
     ${kpi('Top Performer', `<span style="font-size:11px">${esc(b.topper?.name || '—')}</span>`, b.topper ? fx(b.topper.avgPct) + '%' : '')}
     ${kpi('Strongest', `<span style="font-size:12px">${esc(b.easiest?.subject || '—')}</span>`, b.easiest ? fx(b.easiest.avgPct) + '%' : '', '#047857')}
     ${kpi('Weakest', `<span style="font-size:12px">${esc(b.toughest?.subject || '—')}</span>`, b.toughest ? fx(b.toughest.avgPct) + '%' : '', '#b91c1c')}
@@ -226,7 +227,7 @@ export function batchReportHTML(b, ctx = {}) {
     <div><h3>Most improved</h3>${miniList(b.improvers, (s) => `${sgn(s.trend, 2)} pts/test · now ${fx(s.latestPct)}%`)}</div>
     <div><h3>Needs attention (declining)</h3>${miniList(b.decliners, (s) => `${sgn(s.trend, 2)} pts/test · now ${fx(s.latestPct)}%`)}</div>
     <div><h3>Most consistent</h3>${miniList(b.consistent, (s) => `SD ${fx(s.consistency)} · avg ${fx(s.avgPct)}%`)}</div>
-    <div><h3>At risk (&lt; ${b.passPct}% avg or sharp decline)</h3>${miniList(b.atRisk.slice(0, 8), (s) => `avg ${fx(s.avgPct)}% · latest ${fx(s.latestPct)}%`)}</div>
+    <div><h3>At risk (&lt; ${b.passMixed ? 'batch pass mark' : b.passPct + '%'} avg or sharp decline)</h3>${miniList(b.atRisk.slice(0, 8), (s) => `avg ${fx(s.avgPct)}% · latest ${fx(s.latestPct)}%`)}</div>
   </div>
   ${sigs(inst)}${stamp(inst)}</div>`;
 }
@@ -256,7 +257,7 @@ export function subjectReportHTML(b, subject, ctx = {}) {
     ${kpi('Highest', fx(ps.high, 2), esc(ps.highWho), '#047857')}
     ${kpi('Lowest', fx(ps.low, 2), esc(ps.lowWho), '#b91c1c')}
     ${kpi('Median', fx(ps.median, 2), `SD ${fx(ps.sd)}`)}
-    ${kpi(`Pass ≥ ${b.passPct}%`, fx(ps.pass, 0) + '%')}
+    ${kpi((b.passMixed ? 'Pass (per-batch mark)' : `Pass ≥ ${b.passPct}%`), fx(ps.pass, 0) + '%')}
     ${kpi('Full marks', ps.full, 'scores')}
   </div>
   <div class="grid2 avoid"><div class="box">${trendChart || '<i>Only one test — no trend yet.</i>'}</div><div class="box"><b>Score distribution</b> (no. of results)${dist}</div></div>
