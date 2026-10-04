@@ -294,10 +294,15 @@ export function overallBand(pct) {
   return { label: 'Critical – Needs Attention', color: '#b91c1c' };
 }
 
+// Pass mark for a batch: a per-batch override (opts.passByBatch) or the series default (opts.passPct).
+export function passFor(opts = {}, batch) {
+  const v = opts.passByBatch?.[batch];
+  return v === undefined || v === null || v === '' ? (opts.passPct ?? 40) : Number(v);
+}
+
 // ─── student analysis ─────────────────────────────────────────────────────────
 // rows: all result rows of ONE series, already identity-resolved.
 export function studentAnalysis(rows, sid, opts = {}) {
-  const passPct = opts.passPct ?? 40;
   const mine = rows.filter((r) => r.sid === sid).sort((a, b) => a.test_no - b.test_no);
   if (!mine.length) return null;
 
@@ -305,6 +310,7 @@ export function studentAnalysis(rows, sid, opts = {}) {
   const name = [...mine].map((r) => cleanName(r.student_name)).sort((a, b) => b.length - a.length)[0];
   const gcc = gccDigits(latest.gcc_no) || gccDigits(mine.find((r) => gccDigits(r.gcc_no))?.gcc_no) || '';
   const batch = latest.batch;
+  const passPct = passFor(opts, batch);
 
   const subjects = [];
   mine.forEach((r) => Object.keys(r.marks || {}).forEach((s) => { if (!subjects.includes(s)) subjects.push(s); }));
@@ -330,6 +336,7 @@ export function studentAnalysis(rows, sid, opts = {}) {
     return {
       test_no: r.test_no, test_name: r.test_name, batch: r.batch,
       total: r.total, max: r.max_total, pct: rowPct(r), rank, n: cohort.length,
+      passPct: passFor(opts, r.batch), passed: rowPct(r) >= passFor(opts, r.batch),
       percentile: cohort.length > 1 ? ((below + equal / 2) / (cohort.length - 1)) * 100 : 100,
       cohortAvg: mean(totals), cohortHigh: Math.max(...totals), diff: r.total - mean(totals), subj,
     };
@@ -397,6 +404,7 @@ export function studentAnalysis(rows, sid, opts = {}) {
     band: overallBand(avgPct),
     trendLabel: tr > 1.5 ? 'Improving' : tr < -1.5 ? 'Declining' : 'Stable',
     consistencyLabel: sd(pcts) < 5 ? 'Highly consistent' : sd(pcts) < 10 ? 'Moderately consistent' : 'Erratic',
+    passPct, testsPassed: tests.filter((t) => t.passed).length,
     atRisk: avgPct < passPct || (tr < -1.5 && pcts[pcts.length - 1] < passPct + 15),
   };
 
@@ -434,7 +442,8 @@ export function studentAnalysis(rows, sid, opts = {}) {
 // ─── batch / test analysis ────────────────────────────────────────────────────
 // batch: a batch name, or '' for every batch.   testNo: a number, or null for all tests.
 export function batchAnalysis(allRows, batch, testNo, opts = {}) {
-  const passPct = opts.passPct ?? 40;
+  const pf = (b) => passFor(opts, b);
+  const passPct = batch ? pf(batch) : (opts.passPct ?? 40);
   let rows = allRows.filter((r) => (!batch || r.batch === batch) && (testNo === null || testNo === undefined || r.test_no === testNo));
   if (!rows.length) return null;
   const meta = seriesMeta(rows);
@@ -449,12 +458,13 @@ export function batchAnalysis(allRows, batch, testNo, opts = {}) {
     subjects.forEach((s) => {
       const v = rs.map((r) => subjPct(r, s)).filter((x) => x !== null);
       const m = rs.map((r) => num(r.marks?.[s])).filter((x) => x !== null);
-      if (v.length) subj[s] = { avgPct: mean(v), avg: mean(m), high: Math.max(...m), low: Math.min(...m), pass: (v.filter((x) => x >= passPct).length / v.length) * 100 };
+      const sv = rs.map((r) => ({ p: subjPct(r, s), t: pf(r.batch) })).filter((x) => x.p !== null);
+      if (v.length) subj[s] = { avgPct: mean(v), avg: mean(m), high: Math.max(...m), low: Math.min(...m), pass: (sv.filter((x) => x.p >= x.t).length / sv.length) * 100 };
     });
     return {
       test_no: t, name: meta.testNames[t], n: rs.length, avg: mean(totals), avgPct: mean(pc), median: median(totals),
       high: Math.max(...totals), low: Math.min(...totals), sd: sd(totals),
-      pass: (pc.filter((x) => x >= passPct).length / pc.length) * 100,
+      pass: (rs.filter((r) => rowPct(r) >= pf(r.batch)).length / rs.length) * 100,
       max: rs[0].max_total, subj,
       topper: rs.reduce((b, r) => (r.total > b.total ? r : b), rs[0]),
     };
@@ -508,7 +518,7 @@ export function batchAnalysis(allRows, batch, testNo, opts = {}) {
       avgPct: mean(pv), avg: mean(recs.map((x) => x.v)), median: median(recs.map((x) => x.v)), sd: sd(recs.map((x) => x.v)),
       high: hi.v, highWho: cleanName(hi.r.student_name), highTest: hi.r.test_no,
       low: lo.v, lowWho: cleanName(lo.r.student_name), lowTest: lo.r.test_no,
-      pass: (pv.filter((p) => p >= passPct).length / pv.length) * 100,
+      pass: (recs.filter((x) => x.p >= pf(x.r.batch)).length / recs.length) * 100,
       full: recs.filter((x) => x.p >= 99.99).length,
       dist, byTest,
       trend: slope(byTest.filter((b) => b.avgPct !== null).map((b) => b.avgPct), byTest.filter((b) => b.avgPct !== null).map((b) => b.test_no)),
@@ -522,7 +532,7 @@ export function batchAnalysis(allRows, batch, testNo, opts = {}) {
   const movers = students.filter((s) => s.tests >= 3);
   const improvers = [...movers].sort((a, b) => b.trend - a.trend).slice(0, 5);
   const decliners = [...movers].sort((a, b) => a.trend - b.trend).slice(0, 5);
-  const atRisk = students.filter((s) => s.avgPct < passPct || (s.trend < -1.5 && s.latestPct < passPct + 15))
+  const atRisk = students.filter((s) => s.avgPct < pf(s.batch) || (s.trend < -1.5 && s.latestPct < pf(s.batch) + 15))
     .sort((a, b) => a.avgPct - b.avgPct);
   const consistent = [...movers].sort((a, b) => a.consistency - b.consistency).slice(0, 5);
 
@@ -535,13 +545,14 @@ export function batchAnalysis(allRows, batch, testNo, opts = {}) {
     perTest, perSubject, students, improvers, decliners, atRisk, consistent, heat,
     toughest: orderedBySubject[0], easiest: orderedBySubject[orderedBySubject.length - 1],
     avgPct: mean(overallPct), passPct,
-    pass: (overallPct.filter((x) => x >= passPct).length / overallPct.length) * 100,
+    passMixed: !batch && new Set(meta.batches.map(pf)).size > 1,
+    pass: (rows.filter((r) => rowPct(r) >= pf(r.batch)).length / rows.length) * 100,
     topper: students[0],
   };
 }
 
 // Compare every batch side by side (used on the overview screen).
-export function batchComparison(allRows, passPct = 40) {
+export function batchComparison(allRows, passPct = 40, passByBatch = {}) {
   const { batches, subjects } = seriesMeta(allRows);
   return batches.map((b) => {
     const rs = allRows.filter((r) => r.batch === b);
@@ -554,7 +565,8 @@ export function batchComparison(allRows, passPct = 40) {
     const ids = new Set(rs.map((r) => r.sid));
     return {
       batch: b, students: ids.size, records: rs.length, tests: new Set(rs.map((r) => r.test_no)).size,
-      avgPct: mean(pc), pass: (pc.filter((x) => x >= passPct).length / pc.length) * 100,
+      passPct: passFor({ passPct, passByBatch }, b),
+      avgPct: mean(pc), pass: (pc.filter((x) => x >= passFor({ passPct, passByBatch }, b)).length / pc.length) * 100,
       high: Math.max(...rs.map((r) => r.total)), subj,
     };
   });
