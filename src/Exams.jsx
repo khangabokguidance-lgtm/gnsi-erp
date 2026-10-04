@@ -10274,7 +10274,7 @@ export default function Exams({ currentUser, perms }) {
   const wide = (activeGroup?.tabs || []).length > 5;
   const subTabs = (activeGroup?.tabs || []).map((t) => {
     const mock = t.id === 'mockanalyzer';
-    const text = <span className="ex-tl"><b>{t.label}{mock ? <span className="ex-new">NEW</span> : null}</b>{wide ? <small>{mock ? 'Student, subject & batch analysis' : t.tip}</small> : null}</span>;
+    const text = <span className="ex-tl"><b>{t.label}{mock ? <span className="ex-new">NEW</span> : null}</b>{wide ? <small>{mock ? 'Student & batch analysis' : t.tip}</small> : null}</span>;
     return { id: t.id, label: text, icon: iconOf(t.id, mock ? '#c026d3' : activeGroup.color) };
   });
 
