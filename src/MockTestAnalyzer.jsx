@@ -32,11 +32,11 @@ const ui = {
   label: { fontSize: 11, fontWeight: 700, color: '#5d6b82', textTransform: 'uppercase', letterSpacing: .8, marginBottom: 4, display: 'block' },
 };
 const SUBTABS = [
-  { id: 'overview', icon: 'home', label: 'Overview' },
-  { id: 'student', icon: 'student', label: 'Student Analyser' },
-  { id: 'subject', icon: 'subject', label: 'Subject Analysis' },
-  { id: 'batch', icon: 'batch', label: 'Batch / Test Report' },
-  { id: 'data', icon: 'data', label: 'Upload & Data' },
+  { id: 'overview', color: '#1e3a6e', icon: 'home', label: 'Overview' },
+  { id: 'student', color: '#0e7490', icon: 'student', label: 'Student Analyser' },
+  { id: 'subject', color: '#b45309', icon: 'subject', label: 'Subject Analysis' },
+  { id: 'batch', color: '#047857', icon: 'batch', label: 'Batch / Test Report' },
+  { id: 'data', color: '#6d28d9', icon: 'data', label: 'Upload & Data' },
 ];
 
 const fx = (n, d = 1) => (n === null || n === undefined || !Number.isFinite(n) ? '—' : String(Math.round(n * 10 ** d) / 10 ** d));
@@ -170,7 +170,7 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
       {resolved.length ? <FilterPanel filter={filter} setFilter={setFilter} metaAll={metaAll} resolved={resolved} shown={rows.length} total={resolved.length} /> : null}
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', margin: '0 -12px 12px', padding: '2px 12px 6px', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
         {SUBTABS.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 0 auto', borderRadius: 999, padding: '8px 16px', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 7, ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(19,42,79,.25)' } : {}) }}><ExamIcon id={t.icon} size={16} />{t.label}</button>
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ ...ui.ghost, flex: '0 0 auto', borderRadius: 999, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '6px 16px 6px 7px', ...(tab === t.id ? { background: NAVY, color: '#fff', border: `1px solid ${NAVY}`, boxShadow: '0 4px 10px rgba(19,42,79,.25)' } : {}) }}><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 999, flexShrink: 0, color: tab === t.id ? '#f3d58a' : t.color, background: tab === t.id ? 'rgba(255,255,255,.16)' : `${t.color}1F` }}><ExamIcon id={t.icon} size={17} stroke={2} /></span>{t.label}</button>
         ))}
       </div>
       {!rows.length && tab !== 'data' ? (
