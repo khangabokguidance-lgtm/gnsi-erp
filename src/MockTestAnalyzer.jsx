@@ -87,7 +87,10 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [series, setSeries] = useState(DEFAULT_SERIES);
-  const [passPct, setPassPct] = useState(40);
+  const [passPct, setPassPct] = useState(() => {
+    try { const v = Number(localStorage.getItem('mockPassPct')); return v >= 0 && v <= 100 && localStorage.getItem('mockPassPct') !== null ? v : 40; } catch { return 40; }
+  });
+  useEffect(() => { try { localStorage.setItem('mockPassPct', String(passPct)); } catch { /* ignore */ } }, [passPct]);
   const [fixes, setFixes] = useState([]);
   const [fixMode, setFixMode] = useState('cloud');
 
@@ -409,7 +412,7 @@ function StudentCard({ a, onPrint, onPrintAll, count, batch }) {
         <div style={{ flex: '1 1 min(260px, 100%)' }}>
           <div style={{ fontSize: 20, fontWeight: 700, color: NAVY }}>{a.name}</div>
           <div style={{ fontSize: 13, color: '#5d6b82' }}>GCC {a.gcc || '—'} · {a.batch}{a.batches.length > 1 ? ` (also ${a.batches.filter((b) => b !== a.batch).join(', ')})` : ''} · {S.testsAttended} of {S.testsHeld} tests</div>
-          <div style={{ marginTop: 4 }}><Pill text={S.band.label} color={S.band.color} /> {S.atRisk ? <Pill text="At risk" color="#b91c1c" /> : null}</div>
+          <div style={{ marginTop: 4 }}><Pill text={S.band.label} color={S.band.color} /> {S.atRisk ? <Pill text="At risk" color="#b91c1c" /> : null} <Pill text={S.avgPct >= passPct ? `Avg ≥ ${passPct}% pass mark` : `Avg below ${passPct}% pass mark`} color={S.avgPct >= passPct ? '#047857' : '#b91c1c'} /></div>
         </div>
         <button style={ui.btn} onClick={onPrint}>🖨️ Print report</button>
         <button style={ui.ghost} onClick={onPrintAll}>🖨️ Print all {count}{batch ? ` in ${batch}` : ''}</button>
@@ -424,12 +427,13 @@ function StudentCard({ a, onPrint, onPrintAll, count, batch }) {
       </div>
       <div style={ui.card}>
         <h4 style={{ margin: '0 0 8px' }}>Test-wise performance</h4>
-        <Table head={['Test', 'Batch', ...subs, 'Total', '%', 'Rank', 'Pctile', 'Batch avg', '± avg']}>
+        <Table head={['Test', 'Batch', ...subs, 'Total', '%', 'Result', 'Rank', 'Pctile', 'Batch avg', '± avg']}>
           {a.tests.map((t) => (
             <tr key={t.test_no}>
               <td style={{ ...ui.td, textAlign: 'left', fontWeight: 700 }}>T{t.test_no}</td><td style={ui.td}>{t.batch}</td>
               {subs.map((s) => <td key={s} style={{ ...ui.td, background: heatBg(t.subj[s]?.pct) }}>{t.subj[s] ? fx(t.subj[s].marks, 2) : '—'}</td>)}
-              <td style={{ ...ui.td, fontWeight: 700 }}>{fx(t.total, 2)}/{t.max}</td><td style={{ ...ui.td, fontWeight: 700, color: strengthLabel(t.pct).color }}>{fx(t.pct)}%</td>
+              <td style={{ ...ui.td, fontWeight: 700 }}>{fx(t.total, 2)}/{t.max}</td><td style={{ ...ui.td, fontWeight: 700, color: t.pct >= passPct ? '#047857' : '#b91c1c' }}>{fx(t.pct)}%</td>
+              <td style={{ ...ui.td, fontWeight: 700, color: t.pct >= passPct ? '#047857' : '#b91c1c' }}>{t.pct >= passPct ? 'Pass' : 'Fail'}</td>
               <td style={ui.td}><b>{t.rank}</b>/{t.n}</td><td style={ui.td}>{fx(t.percentile, 0)}</td><td style={ui.td}>{fx(t.cohortAvg)}</td>
               <td style={{ ...ui.td, fontWeight: 700, color: tone(t.diff) }}>{sgn(t.diff)}</td>
             </tr>
