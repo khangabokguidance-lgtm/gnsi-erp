@@ -279,18 +279,21 @@ export function denseRanks(values) {
   return values.map((v) => pos.get(v));
 }
 
-export function strengthLabel(pct) {
+// Bands are anchored to the pass mark P (default 40): the cut-offs sit at fixed fractions of the
+// distance between P and 100, so with P = 40 they are the familiar 45 / 60 / 75 and 40 / 50 / 65 / 80.
+const bandAt = (passPct, f) => { const P = Number.isFinite(Number(passPct)) ? Number(passPct) : 40; return P + (100 - P) * f; };
+export function strengthLabel(pct, passPct = 40) {
   if (pct === null || pct === undefined) return { key: 'na', label: '—', color: '#64748b' };
-  if (pct >= 75) return { key: 'strong', label: 'Strong', color: '#047857' };
-  if (pct >= 60) return { key: 'good', label: 'Good', color: '#1d4ed8' };
-  if (pct >= 45) return { key: 'average', label: 'Average', color: '#b45309' };
+  if (pct >= bandAt(passPct, 7 / 12)) return { key: 'strong', label: 'Strong', color: '#047857' };
+  if (pct >= bandAt(passPct, 1 / 3)) return { key: 'good', label: 'Good', color: '#1d4ed8' };
+  if (pct >= bandAt(passPct, 1 / 12)) return { key: 'average', label: 'Average', color: '#b45309' };
   return { key: 'weak', label: 'Needs Work', color: '#b91c1c' };
 }
-export function overallBand(pct) {
-  if (pct >= 80) return { label: 'Outstanding', color: '#047857' };
-  if (pct >= 65) return { label: 'Very Good', color: '#1d4ed8' };
-  if (pct >= 50) return { label: 'Good', color: '#0e7490' };
-  if (pct >= 40) return { label: 'Needs Improvement', color: '#b45309' };
+export function overallBand(pct, passPct = 40) {
+  if (pct >= bandAt(passPct, 2 / 3)) return { label: 'Outstanding', color: '#047857' };
+  if (pct >= bandAt(passPct, 5 / 12)) return { label: 'Very Good', color: '#1d4ed8' };
+  if (pct >= bandAt(passPct, 1 / 6)) return { label: 'Good', color: '#0e7490' };
+  if (pct >= bandAt(passPct, 0)) return { label: 'Needs Improvement', color: '#b45309' };
   return { label: 'Critical – Needs Attention', color: '#b91c1c' };
 }
 
@@ -371,7 +374,7 @@ export function studentAnalysis(rows, sid, opts = {}) {
       gapPct: avgPct - mean(pts.map((p) => (p.cohortAvg / p.max) * 100)),
       lost: max - mean(marks),
       batchRank: myIdx >= 0 ? ranks[myIdx] : null, batchSize: peerAvg.length,
-      label: strengthLabel(avgPct),
+      label: strengthLabel(avgPct, passPct),
       trendLabel: tr > 1.5 ? 'Improving' : tr < -1.5 ? 'Declining' : 'Stable',
     };
   });
@@ -401,7 +404,7 @@ export function studentAnalysis(rows, sid, opts = {}) {
     rankChange: tests.length >= 2 ? tests[0].rank - tests[tests.length - 1].rank : 0,
     avgPercentile: mean(tests.map((t) => t.percentile)),
     predictedPct: predicted, predictedTotal: predicted === null ? null : (predicted / 100) * maxTotal,
-    band: overallBand(avgPct),
+    band: overallBand(avgPct, passPct),
     trendLabel: tr > 1.5 ? 'Improving' : tr < -1.5 ? 'Declining' : 'Stable',
     consistencyLabel: sd(pcts) < 5 ? 'Highly consistent' : sd(pcts) < 10 ? 'Moderately consistent' : 'Erratic',
     passPct, testsPassed: tests.filter((t) => t.passed).length,
@@ -524,7 +527,7 @@ export function batchAnalysis(allRows, batch, testNo, opts = {}) {
       trend: slope(byTest.filter((b) => b.avgPct !== null).map((b) => b.avgPct), byTest.filter((b) => b.avgPct !== null).map((b) => b.test_no)),
       toppers: ranked.slice(0, 5).map((st) => ({ name: st.name, gcc: st.gcc, pct: st.sub[s] })),
       weakest: ranked.slice(-5).reverse().map((st) => ({ name: st.name, gcc: st.gcc, pct: st.sub[s] })),
-      label: strengthLabel(mean(pv)),
+      label: strengthLabel(mean(pv), passPct),
     };
   });
   const orderedBySubject = [...perSubject].sort((a, b) => a.avgPct - b.avgPct);
@@ -544,7 +547,7 @@ export function batchAnalysis(allRows, batch, testNo, opts = {}) {
     batch, testNo, meta, rowsCount: rows.length, studentCount: students.length,
     perTest, perSubject, students, improvers, decliners, atRisk, consistent, heat,
     toughest: orderedBySubject[0], easiest: orderedBySubject[orderedBySubject.length - 1],
-    avgPct: mean(overallPct), passPct,
+    avgPct: mean(overallPct), passPct, passOf: pf,
     passMixed: !batch && new Set(meta.batches.map(pf)).size > 1,
     pass: (rows.filter((r) => rowPct(r) >= pf(r.batch)).length / rows.length) * 100,
     topper: students[0],

@@ -120,3 +120,7 @@
 .exams-root .ex-tl b{font:700 13.5px/1.15 inherit}
 .exams-root .ex-tl small{font:500 11px/1.25 inherit;opacity:.7;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
 .exams-root .ex-tl .ex-new{margin-left:6px;vertical-align:1px}
+
+/* Selected tile: the tile base rules above out-rank .px-tab.on, so restore the navy active state */
+.exams-root .ex-tabs2 .px-tab.on,.exams-root .ex-tabs2 .px-tab.on:hover{background:linear-gradient(180deg,#1e3a6e,#132a4f);color:#fff;border-color:transparent;box-shadow:0 8px 18px -8px rgba(19,42,79,.65)}
+.exams-root .ex-tabs2 .px-tab.on .ex-tl small{opacity:.8}

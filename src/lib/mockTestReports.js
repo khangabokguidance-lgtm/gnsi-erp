@@ -10,7 +10,7 @@ const fx = (n, d = 1) => (n === null || n === undefined || !Number.isFinite(n) ?
 const sgn = (n, d = 1) => (n === null || n === undefined || !Number.isFinite(n) ? '—' : `${n > 0 ? '+' : ''}${fx(n, d)}`);
 const ord = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
 const tone = (v, good = 0) => (v > good ? '#047857' : v < -good ? '#b91c1c' : '#475569');
-const pctColor = (p) => strengthLabel(p).color;
+const pctColor = (p, pm) => strengthLabel(p, pm).color;
 
 const CSS = `
 *{box-sizing:border-box;margin:0;padding:0}
@@ -107,7 +107,7 @@ export function studentReportHTML(a, ctx = {}) {
 
   const testRows = a.tests.map((t) => `<tr><td><b>T${t.test_no}</b></td><td class="l">${esc(t.batch)}</td>
     ${subs.map((s) => `<td>${t.subj[s] ? fx(t.subj[s].marks, 2) : '—'}</td>`).join('')}
-    <td><b>${fx(t.total, 2)}</b>/${t.max}</td><td style="color:${pctColor(t.pct)};font-weight:700">${fx(t.pct)}%</td>
+    <td><b>${fx(t.total, 2)}</b>/${t.max}</td><td style="color:${pctColor(t.pct, t.passPct)};font-weight:700">${fx(t.pct)}%</td>
     <td><b>${t.rank}</b>/${t.n}</td><td>${fx(t.percentile, 0)}</td><td>${fx(t.cohortAvg)}</td>
     <td style="color:${tone(t.diff)};font-weight:700">${sgn(t.diff)}</td></tr>`).join('');
   const avgRow = `<tr class="tot"><td colspan="2" class="l">Average</td>${a.subjSummary.map((s) => `<td>${fx(s.avg, 2)}</td>`).join('')}
@@ -189,7 +189,7 @@ export function batchReportHTML(b, ctx = {}) {
     ${b.heat.map((h) => `<tr><td class="l">${esc(h.subject)}</td>${h.cells.map((c) => `<td style="background:${heatColor(c.avgPct)}">${c.avgPct === null ? '—' : fx(c.avgPct) + '%'}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 
   const stuRows = b.students.map((s) => `<tr><td><b>${s.rank}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td>${b.batch ? '' : `<td class="l">${esc(s.batch)}</td>`}<td>${s.tests}</td>
-    <td>${fx(s.avgTotal, 2)}</td><td style="font-weight:700;color:${pctColor(s.avgPct)}">${fx(s.avgPct)}%</td><td>${fx(s.best, 2)}</td>
+    <td>${fx(s.avgTotal, 2)}</td><td style="font-weight:700;color:${pctColor(s.avgPct, b.passOf ? b.passOf(s.batch) : b.passPct)}">${fx(s.avgPct)}%</td><td>${fx(s.best, 2)}</td>
     ${subs.map((x) => `<td>${s.sub[x] === undefined ? '—' : fx(s.sub[x], 0) + '%'}</td>`).join('')}
     <td style="color:${tone(s.trend, 1.5)}">${s.tests >= 3 ? sgn(s.trend, 1) : '—'}</td></tr>`).join('');
 
@@ -202,7 +202,7 @@ export function batchReportHTML(b, ctx = {}) {
   <div class="sub">${esc(series || '')} · ${esc(scope)}</div>
   <div class="kpis">
     ${kpi('Students', b.studentCount, `${b.rowsCount} results`)}
-    ${kpi('Average %', fx(b.avgPct) + '%', '', pctColor(b.avgPct))}
+    ${kpi('Average %', fx(b.avgPct) + '%', '', pctColor(b.avgPct, b.passPct))}
     ${kpi((b.passMixed ? 'Pass (per-batch mark)' : `Pass ≥ ${b.passPct}%`), fx(b.pass, 0) + '%', '', b.pass >= 75 ? '#047857' : '#b45309')}
     ${kpi('Top Performer', `<span style="font-size:11px">${esc(b.topper?.name || '—')}</span>`, b.topper ? fx(b.topper.avgPct) + '%' : '')}
     ${kpi('Strongest', `<span style="font-size:12px">${esc(b.easiest?.subject || '—')}</span>`, b.easiest ? fx(b.easiest.avgPct) + '%' : '', '#047857')}
@@ -246,9 +246,19 @@ export function subjectReportHTML(b, subject, ctx = {}) {
     series: [{ name: subject, color: col, values: ps.byTest.map((x) => x.avgPct), thick: true }],
   }) : '';
   const dist = hBars({ items: ps.dist.map((d) => ({ label: `${d.label}%`, value: d.count, color: col })), max: Math.max(1, ...ps.dist.map((d) => d.count)), unit: '', labelW: 70, width: 340 });
-  const rows = ranked.map((s, i) => `<tr><td><b>${i + 1}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td>
-    ${tests.map((t) => `<td>${s.subTests?.[subject]?.[t] === undefined || s.subTests[subject][t] === null ? '—' : fx(s.subTests[subject][t], 2)}</td>`).join('')}
-    <td style="font-weight:700;color:${pctColor(s.sub[subject])}">${fx(s.sub[subject])}%</td><td>${pill(strengthLabel(s.sub[subject]).label, strengthLabel(s.sub[subject]).color)}</td></tr>`).join('');
+  const rows = ranked.map((s, i) => {
+    const pm = b.passOf ? b.passOf(s.batch) : b.passPct;
+    const cell = (t) => {
+      const v = s.subTests?.[subject]?.[t];
+      if (v === undefined || v === null) return '<td>—</td>';
+      const low = ps.max && (v / ps.max) * 100 < pm;
+      return `<td${low ? ' style="color:#b91c1c;font-weight:700"' : ''}>${fx(v, 2)}</td>`;
+    };
+    const ok = s.sub[subject] >= pm;
+    return `<tr><td><b>${i + 1}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td>
+    ${tests.map(cell).join('')}
+    <td style="font-weight:700;color:${pctColor(s.sub[subject], pm)}">${fx(s.sub[subject])}%</td><td>${pill(ok ? 'Pass' : 'Fail', ok ? '#047857' : '#b91c1c')}</td><td>${pill(strengthLabel(s.sub[subject], pm).label, strengthLabel(s.sub[subject], pm).color)}</td></tr>`;
+  }).join('');
   return `<div class="page">${letterhead(inst)}
   <div class="title">Subject Analysis — ${esc(subject)}</div>
   <div class="sub">${esc(series || '')} · ${esc(b.batch || 'All batches')} · ${b.testNo ? `Test ${b.testNo}` : 'All tests'}</div>
@@ -262,7 +272,8 @@ export function subjectReportHTML(b, subject, ctx = {}) {
   </div>
   <div class="grid2 avoid"><div class="box">${trendChart || '<i>Only one test — no trend yet.</i>'}</div><div class="box"><b>Score distribution</b> (no. of results)${dist}</div></div>
   <h3>Student-wise marks in ${esc(subject)}</h3>
-  <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th>${tests.map((t) => `<th>T${t}</th>`).join('')}<th>Avg %</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+  <div style="font-size:11px;color:#5d6b82;margin:-4px 0 6px">Result = subject average against the ${b.passMixed ? 'pass mark of the student\'s batch' : `${b.passPct}% pass mark`}; marks in red are below it.</div>
+  <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th>${tests.map((t) => `<th>T${t}</th>`).join('')}<th>Avg %</th><th>Result</th><th>Band</th></tr></thead><tbody>${rows}</tbody></table>
   ${stamp(inst)}</div>`;
 }
 

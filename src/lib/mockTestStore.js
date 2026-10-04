@@ -146,3 +146,34 @@ export async function migrateLocalFixes() {
   return local.length;
 }
 export const localFixCount = () => fixRead().length;
+
+// ─── Pass marks per series ───────────────────────────────────────────────────
+// Table `mock_test_settings` (20261013_mock_test_settings.sql). A copy is always
+// kept in this browser too, so the value survives while the migration is pending.
+const SET_TABLE = 'mock_test_settings';
+const SET_LS = 'gnsi_mock_test_settings_v1';
+const setRead = () => { try { return JSON.parse(localStorage.getItem(SET_LS) || '{}') || {}; } catch { return {}; } };
+const setWrite = (all) => { try { localStorage.setItem(SET_LS, JSON.stringify(all)); } catch { /* ignore */ } };
+
+// → { settings: { [series]: { passPct, passBy } }, mode: 'cloud' | 'local' }
+export async function loadSettings() {
+  const local = setRead();
+  const { data, error } = await supabase.from(SET_TABLE).select('*');
+  if (error) {
+    if (missingTable(error)) return { settings: local, mode: 'local' };
+    throw error;
+  }
+  const settings = { ...local };
+  data.forEach((r) => { settings[r.series] = { passPct: Number(r.pass_pct), passBy: r.pass_by_batch || {} }; });
+  return { settings, mode: 'cloud' };
+}
+
+export async function saveSettings(series, cfg, mode, who = '') {
+  setWrite({ ...setRead(), [series]: cfg });
+  if (mode === 'local') return;
+  const { error } = await supabase.from(SET_TABLE).upsert(
+    { series, pass_pct: cfg.passPct, pass_by_batch: cfg.passBy || {}, updated_by: who || null, updated_at: new Date().toISOString() },
+    { onConflict: 'series' },
+  );
+  if (error) throw error;
+}
