@@ -1310,7 +1310,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
         @keyframes pp-spin { to { transform: rotate(360deg); } }
         #ppOverlay .no-scrollbar::-webkit-scrollbar { display: none; }
         #ppOverlay .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -1369,7 +1369,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
         style={{
           position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: BG,
           display: 'flex', alignItems: 'stretch', overflowY: 'auto', overflowX: 'hidden',
-          fontFamily: 'inherit', fontSize: 14, color: '#1e293b', width: '100%', maxWidth: '100vw',
+          fontFamily: "'Plus Jakarta Sans',system-ui,sans-serif", fontSize: 14, color: '#1f2a44', width: '100%', maxWidth: '100vw',
         }}
         id="ppOverlay"
       >
@@ -1488,7 +1488,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
           {/* RIGHT / BOTTOM — form */}
           <div style={{ flex: '1 1 auto', minWidth: 0, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? '22px 16px 32px' : '40px', background: '#F4F1EA' }}>
-            <div className="pp-card" style={{ width: '100%', maxWidth: 440, background: '#fff', borderRadius: 14, padding: isMobile ? '26px 20px' : '36px 34px', border: '1px solid rgba(11,30,61,0.07)', boxShadow: '0 1px 2px rgba(11,30,61,0.05), 0 24px 60px rgba(11,30,61,0.12)', position: 'relative', overflow: 'hidden' }}>
+            <div className="pp-card" style={{ width: '100%', maxWidth: 440, background: '#fff', borderRadius: 14, padding: isMobile ? '26px 20px' : '36px 34px', border: '1px solid #ece6d6', boxShadow: '0 1px 2px rgba(11,30,61,0.05), 0 24px 60px rgba(11,30,61,0.12)', position: 'relative', overflow: 'hidden' }}>
               <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 4, background: `linear-gradient(90deg, ${GOLD}, ${GOLDL}, ${GOLD})` }} />
 
               {/* formal title bar */}
@@ -1647,7 +1647,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.16em', color: GOLDL, textTransform: 'uppercase' }}>GNSI Parents Portal</div>
-                <h3 style={{ fontSize: isMobile ? 14 : 16, fontWeight: 700, color: '#fff', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'Georgia, "Times New Roman", serif' }}>{student.name || 'Student'}</h3>
+                <h3 style={{ fontSize: isMobile ? 14 : 16, fontWeight: 700, color: '#fff', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: "'Fraunces',Georgia,serif" }}>{student.name || 'Student'}</h3>
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, flexShrink: 0 }}>
@@ -1713,17 +1713,17 @@ export default function ParentsPortal({ isOpen, onClose }) {
             <div style={{
               display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', flexWrap: isMobile ? 'wrap' : 'nowrap',
               gap: isMobile ? 12 : 18, borderRadius: 20, backgroundColor: 'white',
-              border: '1px solid rgba(11,30,61,0.07)', boxShadow: '0 1px 2px rgba(11,30,61,0.05), 0 12px 32px rgba(11,30,61,0.07)',
+              border: '1px solid #ece6d6', boxShadow: '0 1px 0 rgba(255,255,255,.8) inset, 0 1px 2px rgba(19,42,79,.05), 0 14px 34px -22px rgba(19,42,79,.35)',
               padding: isMobile ? '16px 16px 16px 20px' : '18px 22px 18px 26px', marginBottom: isMobile ? 14 : 20, position: 'relative', overflow: 'hidden',
             }}>
               <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5, background: `linear-gradient(180deg, ${GOLDL}, ${GOLD})` }} />
-              <div style={{ height: isMobile ? 52 : 64, width: isMobile ? 52 : 64, flexShrink: 0, borderRadius: '50%', background: 'linear-gradient(150deg,#16335F,#0B1E3D)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 18 : 22, fontWeight: 700, color: '#E2C57E', overflow: 'hidden', boxShadow: `0 0 0 3px #fff, 0 0 0 5px ${GOLDL}`, fontFamily: 'Georgia, serif' }}>
+              <div style={{ height: isMobile ? 52 : 64, width: isMobile ? 52 : 64, flexShrink: 0, borderRadius: '50%', background: 'linear-gradient(150deg,#16335F,#0B1E3D)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 18 : 22, fontWeight: 700, color: '#E2C57E', overflow: 'hidden', boxShadow: `0 0 0 3px #fff, 0 0 0 5px ${GOLDL}`, fontFamily: "'Fraunces',Georgia,serif" }}>
                 {student.photo_url
                   ? <img src={student.photo_url} alt="" style={{ height: '100%', width: '100%', objectFit: 'cover', borderRadius: '50%' }} />
                   : ((student.name || 'S')[0] || 'S').toUpperCase()}
               </div>
               <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                <h3 style={{ fontSize: isMobile ? 15.5 : 19, fontWeight: 700, color: NAVY, fontFamily: 'Georgia, "Times New Roman", serif', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name || 'Student'}</h3>
+                <h3 style={{ fontSize: isMobile ? 15.5 : 19, fontWeight: 700, color: NAVY, fontFamily: "'Fraunces',Georgia,serif", margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name || 'Student'}</h3>
                 <p style={{ fontSize: isMobile ? 11 : 12, color: '#64748b', margin: '2px 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[student.course, student.class_name, student.batch].filter(Boolean).join(' · ')}</p>
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                   <span style={{ borderRadius: 999, backgroundColor: isMobile ? '#eef1f7' : '#f1f5f9', border: isMobile ? 'none' : '1px solid #e2e8f0', padding: '3px 10px', fontSize: 10, fontWeight: 700, color: '#64748b' }}>{student.hostel_type || '—'}</span>
@@ -1945,8 +1945,8 @@ const M3 = {
 
 function Loading() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 40, color: '#94a3b8', fontSize: 13 }}>
-      <div style={{ height: 24, width: 24, borderRadius: '50%', border: `3px solid #e2e8f0`, borderTopColor: NAVY, animation: 'pp-spin .8s linear infinite' }} />
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 40, color: '#6b7690', fontSize: 13 }}>
+      <div style={{ height: 24, width: 24, borderRadius: '50%', border: `3px solid #f1ebdc`, borderTopColor: '#b8923a', animation: 'pp-spin .8s linear infinite' }} />
       Loading…
     </div>
   );
@@ -1969,20 +1969,20 @@ function Card({ title, right, children }) {
   const isMobile = useWindowWidth() < 640;
   return (
     <div style={{
-      borderRadius: isMobile ? M3.radiusLg : 18,
-      border: '1px solid rgba(11,30,61,0.07)',
+      borderRadius: 20,
+      border: '1px solid #ece6d6',
       backgroundColor: 'white',
-      boxShadow: '0 1px 2px rgba(11,30,61,0.05), 0 12px 32px rgba(11,30,61,0.07)',
+      boxShadow: '0 1px 0 rgba(255,255,255,.8) inset, 0 1px 2px rgba(19,42,79,.05), 0 14px 34px -22px rgba(19,42,79,.35)',
       overflow: 'hidden', marginBottom: isMobile ? 12 : 16,
     }}>
       {title && (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
-          borderBottom: '1px solid #F0EADC',
-          background: 'linear-gradient(180deg,#FFFFFF,#FBF8F1)',
+          borderBottom: '1px solid #f1ebdc',
+          background: 'linear-gradient(180deg,#fffdf8,#fff)',
           padding: isMobile ? '14px 16px' : '16px 20px',
         }}>
-          <div style={{ fontSize: isMobile ? 14.5 : 15.5, fontWeight: 700, color: NAVY, fontFamily: 'Georgia, "Times New Roman", serif', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontSize: isMobile ? 15.5 : 17, fontWeight: 600, color: '#0f1f3d', fontFamily: "'Fraunces',Georgia,serif", display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ width: 4, height: 16, borderRadius: 4, background: CYAN, display: 'inline-block' }} />{title}
           </div>
           {right}
@@ -2001,7 +2001,7 @@ function PremiumTable({ head, align, children }) {
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
         <thead>
-          <tr style={{ textAlign: 'left', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', color: '#94a3b8', borderBottom: '1px solid #e2e8f0' }}>
+          <tr style={{ textAlign: 'left', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.1em', color: '#6b7690', background: '#faf6ea', borderBottom: '1.5px solid #ecdcb4' }}>
             {head.map((h, i) => <th key={i} style={{ padding: '10px 12px', fontWeight: 700, textAlign: align?.[i] || 'left' }}>{h}</th>)}
           </tr>
         </thead>
@@ -2189,7 +2189,7 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 6 }}>
           <div>
             <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 600 }}>Fee balance</div>
-            <div style={{ fontSize: isMobile ? 32 : 40, fontWeight: 700, lineHeight: 1.15, fontFamily: 'Georgia, "Times New Roman", serif' }}>
+            <div style={{ fontSize: isMobile ? 32 : 40, fontWeight: 700, lineHeight: 1.15, fontFamily: "'Fraunces',Georgia,serif" }}>
               {hasFeeData
                 ? `₹${Number(feeBalance).toLocaleString('en-IN')}`
                 : fees.status === 'error'
@@ -2206,7 +2206,7 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
             borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(226,197,126,0.35)',
             padding: '12px 16px', textAlign: 'center', minWidth: 90, position: 'relative',
           }}>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#E2C57E', fontFamily: 'Georgia, serif' }}>{attPct !== null ? `${attPct}%` : '—'}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: '#E2C57E', fontFamily: "'Fraunces',Georgia,serif" }}>{attPct !== null ? `${attPct}%` : '—'}</div>
             <div style={{ fontSize: 10, opacity: 0.85, fontWeight: 600 }}>Attendance</div>
           </div>
         </div>
@@ -2269,9 +2269,9 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
             onClick={() => onGoTab(t.id)}
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-              border: '1px solid rgba(11,30,61,0.07)', background: '#fff', cursor: 'pointer',
-              padding: isMobile ? '12px 4px 10px' : '16px 6px 14px', borderRadius: isMobile ? 16 : 18,
-              boxShadow: '0 1px 2px rgba(11,30,61,0.04), 0 6px 18px rgba(11,30,61,0.06)', minWidth: 0,
+              border: '1px solid #ece6d6', background: '#fff', cursor: 'pointer',
+              padding: isMobile ? '12px 4px 10px' : '16px 6px 14px', borderRadius: 18,
+              boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 10px 26px -18px rgba(19,42,79,.35)', minWidth: 0,
             }}
           >
             <div style={{
@@ -3237,7 +3237,7 @@ function ParentItemsTab({ studentName, studentId }) {
               ];
               const tone = st === 'Pending' ? '#d97706' : st === 'Delivered' ? '#16a34a' : '#64748b';
               return (
-                <div key={it.id || i} style={{ borderRadius: 16, border: '1px solid rgba(11,30,61,0.08)', borderLeft: `4px solid ${tone}`, backgroundColor: '#fff', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? 14 : 16 }}>
+                <div key={it.id || i} style={{ borderRadius: 16, border: '1px solid #ece6d6', borderLeft: `4px solid ${tone}`, backgroundColor: '#fff', boxShadow: '0 10px 26px -18px rgba(19,42,79,.35)', padding: isMobile ? 14 : 16 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
                     <span style={{ fontSize: 14, fontWeight: 800, color: NAVY }}>🎒 {it.item_name || 'Item'}{it.quantity && it.quantity !== '1' ? ` × ${it.quantity}` : ''}</span>
                     <Pill tone={PI_STATUS_TONE[st] || 'mi'}>{st === 'Pending' ? 'On the way' : st === 'Delivered' ? 'Received ✓' : 'Returned'}</Pill>
@@ -3332,8 +3332,8 @@ function GatePassTab({ student }) {
             ['Currently out', out.length, '#dc2626'],
             ['Late returns', data.filter(r => r.is_late).length, '#d97706'],
           ].map(([l, v, c]) => (
-            <div key={l} style={{ background: '#fff', borderRadius: 16, border: '1px solid rgba(11,30,61,0.07)', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? '12px 10px' : '14px 16px', borderTop: `3px solid ${c}` }}>
-              <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 700, color: c, fontFamily: 'Georgia, serif', lineHeight: 1 }}>{v}</div>
+            <div key={l} style={{ background: '#fff', borderRadius: 16, border: '1px solid #ece6d6', boxShadow: '0 10px 26px -18px rgba(19,42,79,.35)', padding: isMobile ? '12px 10px' : '14px 16px', borderTop: `3px solid ${c}` }}>
+              <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 700, color: c, fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1 }}>{v}</div>
               <div style={{ fontSize: 11.5, fontWeight: 700, color: '#64748b', marginTop: 4 }}>{l}</div>
             </div>
           ))}
@@ -3376,7 +3376,7 @@ function GatePassTab({ student }) {
                   { t: 'Back on campus', s: g.actual_return_at ? fmtDT(g.actual_return_at) : [fmtD(g.return_date), fmtT(g.expected_return_time)].filter(Boolean).join(' · ') && `Due ${[fmtD(g.return_date), fmtT(g.expected_return_time)].filter(Boolean).join(' · ')}` },
                 ];
                 return (
-                  <div key={g.id || i} style={{ borderRadius: 16, border: '1px solid rgba(11,30,61,0.08)', borderLeft: `4px solid ${tone}`, background: '#fff', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? 14 : 16 }}>
+                  <div key={g.id || i} style={{ borderRadius: 16, border: '1px solid #ece6d6', borderLeft: `4px solid ${tone}`, background: '#fff', boxShadow: '0 10px 26px -18px rgba(19,42,79,.35)', padding: isMobile ? 14 : 16 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 14, fontWeight: 800, color: NAVY }}>🎫 {g.reason || 'Gate pass'}</div>
@@ -3484,8 +3484,8 @@ function VisitorBookTab({ student }) {
             ['This month', thisMonth, '#9333ea'],
             ['Last visit', data[0]?.visit_date ? new Date(String(data[0].visit_date).length <= 10 ? data[0].visit_date + 'T00:00:00' : data[0].visit_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—', '#0e7490'],
           ].map(([l, v, c]) => (
-            <div key={l} style={{ background: '#fff', borderRadius: 16, border: '1px solid rgba(11,30,61,0.07)', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? '12px 10px' : '14px 16px', borderTop: `3px solid ${c}` }}>
-              <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: c, fontFamily: 'Georgia, serif', lineHeight: 1.1 }}>{v}</div>
+            <div key={l} style={{ background: '#fff', borderRadius: 16, border: '1px solid #ece6d6', boxShadow: '0 10px 26px -18px rgba(19,42,79,.35)', padding: isMobile ? '12px 10px' : '14px 16px', borderTop: `3px solid ${c}` }}>
+              <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: c, fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1.1 }}>{v}</div>
               <div style={{ fontSize: 11.5, fontWeight: 700, color: '#64748b', marginTop: 4 }}>{l}</div>
             </div>
           ))}
@@ -3506,7 +3506,7 @@ function VisitorBookTab({ student }) {
                 return (
                   <div key={v.id || i} style={{ position: 'relative', marginBottom: 12 }}>
                     <div style={{ position: 'absolute', left: -17, top: 16, width: 12, height: 12, borderRadius: '50%', background: onCampus ? '#16a34a' : '#C9A24B', boxShadow: '0 0 0 3px #fff' }} />
-                    <div style={{ borderRadius: 14, border: '1px solid rgba(11,30,61,0.08)', background: '#fff', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? 12 : 14 }}>
+                    <div style={{ borderRadius: 14, border: '1px solid #ece6d6', background: '#fff', boxShadow: '0 10px 26px -18px rgba(19,42,79,.35)', padding: isMobile ? 12 : 14 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 14, fontWeight: 800, color: NAVY }}>👤 {v.visitor_name || 'Visitor'}</div>
