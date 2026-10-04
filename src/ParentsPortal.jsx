@@ -2404,6 +2404,66 @@ function CompleteProfileForm({ student, missingFields, onSaveFields }) {
   );
 }
 
+// WhatsApp number — the parent can add or change it here. Read on its own
+// (not in the login query) so a missing column can never block sign-in; if the
+// column isn't there yet the card simply stays hidden.
+function WhatsAppCard({ student }) {
+  const [state, setState] = useState({ status: 'loading', value: '' });
+  const [draft, setDraft] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const { data, error: err } = await supabase.from('students').select('whatsapp_no').eq('id', student.id).maybeSingle();
+      if (!live) return;
+      if (err) setState({ status: 'unavailable', value: '' });
+      else setState({ status: 'ready', value: data?.whatsapp_no || '' });
+    })();
+    return () => { live = false; };
+  }, [student.id]);
+
+  if (state.status !== 'ready') return null;
+
+  const save = async (e) => {
+    e.preventDefault();
+    const digits = draft.replace(/[^\d+]/g, '');
+    if (digits && !/^\+?\d{10,13}$/.test(digits)) { setError('Enter a valid 10-digit mobile number (with country code if outside India).'); return; }
+    setSaving(true); setError('');
+    const { error: err } = await supabase.from('students').update({ whatsapp_no: digits || null }).eq('id', student.id);
+    setSaving(false);
+    if (err) { setError('Could not save — please try again.'); return; }
+    setState({ status: 'ready', value: digits });
+    setEditing(false);
+  };
+  const inp = { flex: 1, minWidth: 0, borderRadius: 11, border: '1px solid #e2d9c0', padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' };
+
+  return (
+    <Card title="WhatsApp Number" right={!editing && (
+      <button onClick={() => { setDraft(state.value); setEditing(true); }} style={{ borderRadius: 999, border: '1px solid #E2C57E', background: '#fff', color: NAVY, fontWeight: 800, fontSize: 12, padding: '6px 14px', cursor: 'pointer' }}>
+        {state.value ? 'Change' : 'Add'}
+      </button>
+    )}>
+      {editing ? (
+        <form onSubmit={save}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input type="tel" inputMode="tel" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="e.g. 98xxxxxx12" style={inp} />
+            <button type="submit" disabled={saving} style={{ borderRadius: 11, border: 'none', background: NAVY, color: '#fff', fontWeight: 800, fontSize: 13, padding: '9px 18px', cursor: 'pointer', opacity: saving ? 0.7 : 1 }}>{saving ? 'Saving…' : 'Save'}</button>
+            <button type="button" onClick={() => { setEditing(false); setError(''); }} style={{ borderRadius: 11, border: '1px solid #e2d9c0', background: '#fff', color: '#475569', fontWeight: 700, fontSize: 13, padding: '9px 14px', cursor: 'pointer' }}>Cancel</button>
+          </div>
+          {error && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 8 }}>{error}</div>}
+        </form>
+      ) : state.value ? (
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f1f3d' }}>💬 {state.value}</div>
+      ) : (
+        <div style={{ fontSize: 12.5, color: '#6b7690' }}>Add your WhatsApp number to receive fee reminders and updates from the institute.</div>
+      )}
+    </Card>
+  );
+}
+
 function ProfileTab({ student, documents, onViewDocument, onSaveFields, isMobile }) {
   const fmtDob = student?.dob ? String(student.dob).slice(0, 10) : '';
   const missingFields = COMPLETABLE_FIELDS.filter((f) => !student?.[f.key]);
@@ -2426,6 +2486,7 @@ function ProfileTab({ student, documents, onViewDocument, onSaveFields, isMobile
           <ProfileField label="Address" value={student?.address} />
         </div>
       </Card>
+      <WhatsAppCard student={student} />
       {missingFields.length > 0 && (
         <CompleteProfileForm student={student} missingFields={missingFields} onSaveFields={onSaveFields} />
       )}
