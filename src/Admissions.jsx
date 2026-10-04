@@ -28,6 +28,7 @@ import { staffDB } from './staffDB'
 import { PersonalAccountantButton } from './personalAccountant'
 import { isAdminRole } from './roles'
 import { printApplicationReceipt as printApplicationReceiptDoc } from './applicationReceipt'
+import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc } from './premiumReceipt'
 
 // Pagination-safe fetch — Supabase/PostgREST caps a single .select() at
 // 1000 rows. Both `admissions` and `adm_fee_collections` can cross that
@@ -1723,41 +1724,28 @@ function WABlastModal({ apps, onClose }) {
 
 // ─── Print helpers ─────────────────────────────────────────────────────────────
 function printAdmitCard(a) {
-  const win = window.open('','_blank','width=600,height=700')
   const fee = getFlatFeeAmtSync(a.hostel_type, a.course)
-  win.document.write(`<!DOCTYPE html><html><head><title>Admit Card – ${a.name}</title>
-  <style>body{font-family:Georgia,serif;padding:32px;max-width:540px;margin:auto}
-  .header{text-align:center;border-bottom:2px solid #1E1B4B;padding-bottom:12px;margin-bottom:16px}
-  .logo{font-size:20px;font-weight:900;color:#1E1B4B}
-  .sub{font-size:12px;color:#475569;margin-top:4px}
-  .title{font-size:16px;font-weight:700;background:#EEF2FF;padding:8px 16px;border-radius:6px;text-align:center;margin-bottom:16px;color:#3730A3}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  td{padding:7px 10px;border-bottom:1px solid #E2E8F0}
-  td:first-child{font-weight:700;color:#475569;width:160px}
-  .footer{margin-top:20px;text-align:center;font-size:11px;color:#94A3B8;border-top:1px solid #E2E8F0;padding-top:12px}
-  .badge{display:inline-block;padding:3px 10px;background:#ECFDF5;color:#047857;border-radius:99px;font-size:11px;font-weight:700;border:1px solid #6EE7B7}
-  @media print{body{padding:16px}}</style></head><body>
-  <div class="header"><div class="logo">GNSI – Guidance Navodaya & Sainik Institute</div><div class="sub">Khangabok, Thoubal District, Manipur</div></div>
-  <div class="title">ADMISSION CARD</div>
-  <table>
-    <tr><td>GCC No.</td><td><strong>${a.gcc}</strong></td></tr>
-    <tr><td>Adm. No.</td><td><strong>${a.admNo||'—'}</strong></td></tr>
-    <tr><td>Name</td><td>${a.name}</td></tr>
-    <tr><td>DOB</td><td>${dateFmt(a.dob)}</td></tr>
-    <tr><td>Gender</td><td>${a.gender||'—'}</td></tr>
-    <tr><td>Course</td><td>${a.course||'—'}${a.subtype?' – '+a.subtype:''}</td></tr>
-    <tr><td>Class / Batch</td><td>${a.cls||'—'}</td></tr>
-    <tr><td>House</td><td>${a.house||'TBD'}</td></tr>
-    <tr><td>Hostel Type</td><td><span class="badge">${a.hostel_type}</span></td></tr>
-    <tr><td>Session</td><td>${a.session||'—'}</td></tr>
-    <tr><td>Monthly Fee</td><td>₹${fmt(fee)}/month</td></tr>
-    <tr><td>Father</td><td>${a.father||'—'}</td></tr>
-    <tr><td>Phone</td><td>${a.phone||'—'}</td></tr>
-    <tr><td>Status</td><td>${a.status}</td></tr>
-  </table>
-  <div class="footer">Generated on ${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})} · GNSI Portal v2.0</div>
-  <script>window.onload=()=>window.print()</script></body></html>`)
-  win.document.close()
+  const e = esc
+  const body = `
+    <div class="wrap">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px">
+        <div><div class="l">GCC No.</div><div class="mono" style="font-size:20px;font-weight:700;color:#0B1E3D;margin-top:2px">${e(a.gcc)}</div></div>
+        <div style="text-align:right"><div class="l">Adm. No.</div><div class="mono" style="font-size:15px;font-weight:700;margin-top:2px">${e(a.admNo||'—')}</div></div>
+      </div>
+      ${infoGrid([
+        [['Name', e(a.name), 2], ['DOB', e(dateFmt(a.dob))], ['Gender', e(a.gender||'—')]],
+        [['Course', e((a.course||'—')+(a.subtype?' – '+a.subtype:'')), 2], ['Class / Batch', e(a.cls||'—')], ['Session', e(a.session||'—')]],
+        [['House', e(a.house||'TBD')], ['Hostel Type', e(a.hostel_type)], ['Monthly Fee', `₹${e(fmt(fee))}/month`], ['Status', e(a.status)]],
+        [['Father', e(a.father||'—'), 2], ['Phone', e(a.phone||'—'), 2]],
+      ])}
+      <div class="foot" style="padding-top:60px">
+        <div class="note" style="font-style:italic">This is a computer-generated admission card.</div>
+        <div class="sig"><div class="line"></div><div class="l">Admission Officer</div></div>
+      </div>
+    </div>`
+  const title = `Admit Card – ${a.name}`
+  const gen = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})
+  openReceiptWindow(title, receiptDocument(title, receiptSheet(receiptHeader('ADMISSION CARD','ORIGINAL')+body, `Generated on ${e(gen)}`, 'GNSI Portal v2.0'), { printLabel:'🖨 Print admit card' }))
 }
 
 // ✦ New feature: professional application submission receipt — a formal,
