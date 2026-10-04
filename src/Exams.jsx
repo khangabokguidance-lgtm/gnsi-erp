@@ -10271,7 +10271,7 @@ export default function Exams({ currentUser, perms }) {
   // Real line icons in a tinted chip (group colour) so each tab is recognisable at a glance
   const iconOf = (id, color) => () => <span className="ex-tico" style={{ '--c': color }}><ExamIcon id={id} size={18} stroke={2} /></span>;
   const groupTabs = visibleGroups.map((g) => ({ id: g.groupLabel, label: g.groupLabel, icon: iconOf(g.tabs[0].id, g.color) }));
-  const subTabs = (activeGroup?.tabs || []).map((t) => ({ id: t.id, label: t.label, icon: iconOf(t.id, activeGroup.color) }));
+  const subTabs = (activeGroup?.tabs || []).map((t) => ({ id: t.id, label: t.id === 'mockanalyzer' ? <>{t.label}<span className="ex-new">NEW</span></> : t.label, icon: iconOf(t.id, t.id === 'mockanalyzer' ? '#c026d3' : activeGroup.color) }));
 
   return (
     <div className="exams-root px-root">
@@ -10290,7 +10290,7 @@ export default function Exams({ currentUser, perms }) {
           ]}
         />
         <PremiumTabs tabs={groupTabs} active={activeGroup?.groupLabel} onChange={(g) => { const grp = visibleGroups.find((x) => x.groupLabel === g); if (grp) setTab(grp.tabs[0].id); }} style={{ marginBottom: 8 }} />
-        <PremiumTabs tabs={subTabs} active={tab} onChange={setTab} />
+        <div className={subTabs.length > 5 ? "ex-tabs2" : undefined}><PremiumTabs tabs={subTabs} active={tab} onChange={setTab} /></div>
         <div className="px-section">
           <span className="px-eyebrow">{activeTabInfo?.label}</span>
           <span style={{ fontSize: 13, color: "#5d6b82" }}>{activeTabInfo?.tip}</span>
