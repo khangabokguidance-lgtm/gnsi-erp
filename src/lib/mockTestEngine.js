@@ -544,7 +544,7 @@ export function batchAnalysis(allRows, batch, testNo, opts = {}) {
     batch, testNo, meta, rowsCount: rows.length, studentCount: students.length,
     perTest, perSubject, students, improvers, decliners, atRisk, consistent, heat,
     toughest: orderedBySubject[0], easiest: orderedBySubject[orderedBySubject.length - 1],
-    avgPct: mean(overallPct), passPct,
+    avgPct: mean(overallPct), passPct, passOf: pf,
     passMixed: !batch && new Set(meta.batches.map(pf)).size > 1,
     pass: (rows.filter((r) => rowPct(r) >= pf(r.batch)).length / rows.length) * 100,
     topper: students[0],

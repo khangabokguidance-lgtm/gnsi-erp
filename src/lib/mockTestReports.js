@@ -246,9 +246,19 @@ export function subjectReportHTML(b, subject, ctx = {}) {
     series: [{ name: subject, color: col, values: ps.byTest.map((x) => x.avgPct), thick: true }],
   }) : '';
   const dist = hBars({ items: ps.dist.map((d) => ({ label: `${d.label}%`, value: d.count, color: col })), max: Math.max(1, ...ps.dist.map((d) => d.count)), unit: '', labelW: 70, width: 340 });
-  const rows = ranked.map((s, i) => `<tr><td><b>${i + 1}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td>
-    ${tests.map((t) => `<td>${s.subTests?.[subject]?.[t] === undefined || s.subTests[subject][t] === null ? '—' : fx(s.subTests[subject][t], 2)}</td>`).join('')}
-    <td style="font-weight:700;color:${pctColor(s.sub[subject])}">${fx(s.sub[subject])}%</td><td>${pill(strengthLabel(s.sub[subject]).label, strengthLabel(s.sub[subject]).color)}</td></tr>`).join('');
+  const rows = ranked.map((s, i) => {
+    const pm = b.passOf ? b.passOf(s.batch) : b.passPct;
+    const cell = (t) => {
+      const v = s.subTests?.[subject]?.[t];
+      if (v === undefined || v === null) return '<td>—</td>';
+      const low = ps.max && (v / ps.max) * 100 < pm;
+      return `<td${low ? ' style="color:#b91c1c;font-weight:700"' : ''}>${fx(v, 2)}</td>`;
+    };
+    const ok = s.sub[subject] >= pm;
+    return `<tr><td><b>${i + 1}</b></td><td class="l">${esc(s.name)}</td><td>${esc(s.gcc || '—')}</td>
+    ${tests.map(cell).join('')}
+    <td style="font-weight:700;color:${pctColor(s.sub[subject])}">${fx(s.sub[subject])}%</td><td>${pill(ok ? 'Pass' : 'Fail', ok ? '#047857' : '#b91c1c')}</td><td>${pill(strengthLabel(s.sub[subject]).label, strengthLabel(s.sub[subject]).color)}</td></tr>`;
+  }).join('');
   return `<div class="page">${letterhead(inst)}
   <div class="title">Subject Analysis — ${esc(subject)}</div>
   <div class="sub">${esc(series || '')} · ${esc(b.batch || 'All batches')} · ${b.testNo ? `Test ${b.testNo}` : 'All tests'}</div>
@@ -262,7 +272,8 @@ export function subjectReportHTML(b, subject, ctx = {}) {
   </div>
   <div class="grid2 avoid"><div class="box">${trendChart || '<i>Only one test — no trend yet.</i>'}</div><div class="box"><b>Score distribution</b> (no. of results)${dist}</div></div>
   <h3>Student-wise marks in ${esc(subject)}</h3>
-  <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th>${tests.map((t) => `<th>T${t}</th>`).join('')}<th>Avg %</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+  <div style="font-size:11px;color:#5d6b82;margin:-4px 0 6px">Result = subject average against the ${b.passMixed ? 'pass mark of the student\'s batch' : `${b.passPct}% pass mark`}; marks in red are below it.</div>
+  <table><thead><tr><th>#</th><th class="l">Student</th><th>GCC</th>${tests.map((t) => `<th>T${t}</th>`).join('')}<th>Avg %</th><th>Result</th><th>Band</th></tr></thead><tbody>${rows}</tbody></table>
   ${stamp(inst)}</div>`;
 }
 
