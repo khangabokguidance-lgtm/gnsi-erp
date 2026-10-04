@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import { EventBus, GNSI_EVENTS } from './EventBus'
 import { StaffAvatar, PremiumHero, PREMIUM_CSS, findStaffPhoto } from './staffPhotos'
+import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc, amountInWords } from './premiumReceipt'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -142,24 +143,62 @@ function buildSlipHTML(s, ded, month, copy) {
   </div>`
 }
 
+// One salary-slip sheet in the shared A4 receipt design (premiumReceipt.js).
+function slipSheet(s, ded, month, copy) {
+  const g=gross(s), adv=Number(ded?.advance_deduction||0), lat=Number(ded?.late_deduction||0), adm=Number(ded?.admin_deduction||0), pf=Number(ded?.pf_deduction||0)
+  const perfAdj=Number(ded?.performance_adjustment||0), perfBonus=perfAdj>0?perfAdj:0, perfPenalty=perfAdj<0?-perfAdj:0
+  const ot=Number(ded?.overtime_pay||0), arr=Number(ded?.arrears||0), reimb=Number(ded?.reimbursement||0)
+  const custom=Number(ded?.custom_deduction||0), esi=Number(ded?.esi_deduction||0), tds=Number(ded?.tds_deduction||0)
+  const totDed=adv+lat+adm+pf+perfPenalty+custom+esi+tds, grossAll=g+perfBonus+ot+arr+reimb, net=grossAll-totDed
+  const ctag=copy==='office'?'OFFICE COPY':'STAFF COPY'
+  const mo=fmtMonth(month), genDate=new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})
+  const payMode=ded?.payment_mode||''
+  const earn=[['Basic Pay',s.basic_salary],['HRA',s.hra],['Seniority Allow.',s.seniority_allowance],['Loyalty Bonus',s.loyalty_bonus],['Role Bonus',s.role_bonus],
+    ...(ot?[['Overtime Pay',ot]]:[]),...(arr?[['Arrears',arr]]:[]),...(reimb?[['Reimbursement',reimb]]:[]),...(perfBonus>0?[['Performance Bonus',perfBonus]]:[])]
+  const dedc=[['Advance',adv],['Late / Absent',lat],['Admin Deduction',adm],['PF Deduction',pf],['ESI Deduction',esi],['TDS Deduction',tds],['Custom Deduction',custom],...(perfPenalty>0?[['Performance Penalty',perfPenalty]]:[])]
+  const n=Math.max(earn.length,dedc.length)
+  const rows=Array.from({length:n},(_,i)=>{
+    const e=earn[i], d=dedc[i]
+    return `<tr><td>${e?esc(e[0]):''}</td><td class="r mono" style="font-weight:700;border-right:2px solid #94A3B8">${e?(e[1]?fmt(e[1]):'—'):''}</td><td>${d?esc(d[0]):''}</td><td class="r mono" style="font-weight:700;color:#B42318">${d?(d[1]?fmt(d[1]):'—'):''}</td></tr>`
+  }).join('')
+  const body=`
+    <div class="wrap">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px">
+        <div><div class="l">Employee No.</div><div class="mono" style="font-size:17px;font-weight:700;color:#0B1E3D;margin-top:2px">GNSI-${esc(String(s.id).padStart(3,'0'))}</div></div>
+        <div style="text-align:right"><div class="l">Pay Period</div><div style="font-size:13px;font-weight:700;margin-top:2px">${esc(mo)}</div></div>
+      </div>
+      ${infoGrid([
+        [['Employee name', esc(s.name||'—'), 2], ['Designation / Dept.', esc(s.designation||s.department||'—')], ['Paid via', esc(payMode||'—')]],
+      ])}
+      <table class="items"><thead><tr>
+        <th>Earnings</th><th class="r" style="width:110px;border-right:2px solid #94A3B8">Amount (₹)</th><th>Deductions</th><th class="r" style="width:110px">Amount (₹)</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+      <div style="display:flex;justify-content:flex-end;margin-top:-1px">
+        <table class="tot" style="width:340px"><tbody>
+          <tr><td class="k">Gross Earnings</td><td class="r mono">${fmt(grossAll)}</td></tr>
+          <tr><td class="k">Total Deductions</td><td class="r mono" style="color:#B42318">${fmt(totDed)}</td></tr>
+          <tr class="net"><td>NET SALARY PAYABLE</td><td class="r amt">${fmt(net)}</td></tr>
+        </tbody></table>
+      </div>
+      <div class="words"><span class="l" style="margin-right:6px">Amount in words:</span><b>${amountInWords(Math.max(0,net))}</b></div>
+      <div class="words" style="border-style:solid"><div class="l" style="margin-bottom:22px">Appraisal / Remarks by Founder</div><div style="border-bottom:1.5px solid #334155;height:1px"></div></div>
+      <div class="foot" style="padding-top:36px">
+        <div class="sig" style="flex:1"><div class="line"></div><div class="l">Staff Signature</div></div>
+        <div class="sig" style="flex:1"><div class="line"></div><div class="l">Accountant</div></div>
+        <div class="sig" style="flex:1"><div class="line"></div><div class="l">Principal / Administrator</div></div>
+      </div>
+    </div>`
+  return receiptSheet(receiptHeader('SALARY SLIP · '+mo.toUpperCase(), ctag)+body, `Generated: ${esc(genDate)}`, 'Computer-generated salary slip')
+}
+
 function printSlip(s, ded, month) {
-  injectPrintCSS()
-  let root=document.getElementById('gnsi-print-root')
-  if (!root) { root=document.createElement('div'); root.id='gnsi-print-root'; document.body.appendChild(root) }
-  root.style.display='none'
-  root.innerHTML=`<div style="width:196mm;font-family:Arial,sans-serif">${buildSlipHTML(s,ded,month,'office')}<div style="border-top:1.5px dashed #aaa;padding:3px 0;text-align:center;font-size:7px;color:#bbb;letter-spacing:2px;margin:4mm 0">✂ CUT HERE</div>${buildSlipHTML(s,ded,month,'staff')}</div>`
-  root.style.display='block'
-  setTimeout(() => { window.print(); setTimeout(()=>{root.style.display='none'},1200) }, 80)
+  const title=`Salary Slip – ${s.name||''} – ${fmtMonth(month)}`
+  openReceiptWindow(title, receiptDocument(title, slipSheet(s,ded,month,'office')+slipSheet(s,ded,month,'staff'), { printLabel:'🖨 Print slip' }))
 }
 
 function printAllSlips(staffList, dedMap, month) {
-  injectPrintCSS()
-  let root=document.getElementById('gnsi-print-root')
-  if (!root) { root=document.createElement('div'); root.id='gnsi-print-root'; document.body.appendChild(root) }
-  root.style.display='none'
-  root.innerHTML=staffList.map(s=>`<div style="page-break-after:always;width:196mm;font-family:Arial,sans-serif">${buildSlipHTML(s,dedMap[s.id],month,'office')}<div style="border-top:1.5px dashed #aaa;padding:3px 0;text-align:center;font-size:7px;color:#bbb;letter-spacing:2px;margin:4mm 0">✂ CUT HERE</div>${buildSlipHTML(s,dedMap[s.id],month,'staff')}</div>`).join('')
-  root.style.display='block'
-  setTimeout(()=>{window.print();setTimeout(()=>{root.style.display='none'},2000)},80)
+  const title=`Salary Slips – ${fmtMonth(month)}`
+  openReceiptWindow(title, receiptDocument(title, staffList.map(s=>slipSheet(s,dedMap[s.id],month,'staff')).join(''), { printLabel:`🖨 Print ${staffList.length} slip${staffList.length===1?'':'s'}` }))
 }
 
 function printRegister(tableRef) {

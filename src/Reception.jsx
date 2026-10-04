@@ -17,6 +17,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { supabase } from './supabase'
 import { getActiveStudents } from './studentQueries'
 import * as XLSX from 'xlsx'
+import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc } from './premiumReceipt'
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -492,21 +493,29 @@ function CriticalAlertPanel({ gatePasses, hlRecords, mob }) {
 
 // ── Print functions ───────────────────────────────────────────────────────────
 function printItemInvoice(item) {
-  const d = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
   const invoiceNo = `PI-${String(item.id || Date.now()).slice(-8).toUpperCase()}`
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Item Invoice — ${item.student_name}</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#f0f4f8;display:flex;justify-content:center;padding:36px 16px}.page{width:680px;background:white;box-shadow:0 4px 32px rgba(0,0,0,.15);overflow:hidden;position:relative}.wm{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:90px;font-weight:900;color:rgba(30,58,95,.04);pointer-events:none;z-index:0;white-space:nowrap}.hdr{background:#132a4f;padding:24px 32px;position:relative;z-index:1;display:flex;justify-content:space-between;align-items:flex-start}.inst{color:white;font-size:18px;font-weight:700}.sub{color:rgba(255,255,255,.5);font-size:11px;margin-top:3px}.inv-l{font-size:10px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.1em;text-align:right}.inv-no{font-size:20px;font-weight:800;color:#b8923a;font-family:'Courier New',monospace;margin-top:2px;text-align:right}.accent{height:4px;background:linear-gradient(90deg,#a7771f,#b8923a)}.title-row{background:#faf8f3;padding:12px 32px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e8e3d8}.title{font-size:14px;font-weight:800;color:#132a4f;text-transform:uppercase;letter-spacing:.06em}.badge{background:#a7771f;color:white;font-size:10px;font-weight:700;padding:3px 11px;border-radius:99px}.body{padding:24px 32px;position:relative;z-index:1}.meta{display:grid;grid-template-columns:1fr 1fr;border:1px solid #e8e3d8;border-radius:8px;overflow:hidden;margin-bottom:22px}.mc{padding:11px 14px;border-right:1px solid #e8e3d8;border-bottom:1px solid #e8e3d8}.mc:nth-child(even){border-right:none}.mc:nth-last-child(-n+2){border-bottom:none}.ml{font-size:10px;color:#8a93a6;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px}.mv{font-size:13px;font-weight:700;color:#14213d}.pt{width:100%;border-collapse:collapse;border:1px solid #e8e3d8;border-radius:8px;overflow:hidden;margin-bottom:18px}.pt thead{background:#132a4f}.pt th{padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.05em}.pt td{padding:11px 14px;font-size:13px;color:#2e3b52;border-bottom:1px solid #f3f0e8}.status-row{display:flex;justify-content:flex-end;margin-bottom:22px}.status-box{background:#faf8f3;border:1px solid #e8e3d8;border-radius:8px;padding:12px 18px;text-align:right;min-width:160px}.sl{font-size:10px;color:#8a93a6;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}.sv{font-size:14px;font-weight:800;color:#14213d}.sig{display:flex;justify-content:space-between;padding-top:28px;border-top:1px solid #e8e3d8}.sb{text-align:center}.sl2{width:130px;border-top:1.5px solid #132a4f;margin:0 auto 6px}.st{font-size:11px;color:#5d6b82}.ftr{background:#faf8f3;border-top:1px solid #e8e3d8;padding:11px 32px;display:flex;justify-content:space-between;font-size:10px;color:#8a93a6}@media print{body{background:white;padding:0}.page{box-shadow:none;width:100%}}</style></head><body>
-<div class="page"><div class="wm">GNSI</div>
-<div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div><div class="sub">Khangabok, Thoubal, Manipur — 795128</div></div><div><div class="inv-l">Invoice No.</div><div class="inv-no">${invoiceNo}</div></div></div>
-<div class="accent"></div><div class="title-row"><div class="title">Parent Item Receipt</div><div class="badge">Parent Items</div></div>
-<div class="body"><div class="meta"><div class="mc"><div class="ml">Student Name</div><div class="mv">${item.student_name || '—'}</div></div><div class="mc"><div class="ml">Class / Batch</div><div class="mv">${item.class_name || '—'}</div></div><div class="mc"><div class="ml">Course</div><div class="mv">${item.course || '—'}</div></div><div class="mc"><div class="ml">Hostel Type</div><div class="mv">${item.hostel_type || '—'}</div></div><div class="mc"><div class="ml">Parent Name</div><div class="mv">${item.parent_name || '—'}</div></div><div class="mc"><div class="ml">House / Block</div><div class="mv">${item.house || '—'}</div></div><div class="mc"><div class="ml">Date Received</div><div class="mv">${fmtDate(item.received_date)}</div></div><div class="mc"><div class="ml">Received By</div><div class="mv">${item.received_by || '—'}</div></div></div>
-<table class="pt"><thead><tr><th style="width:32px">#</th><th>Item Description</th><th>Quantity</th><th>Status</th></tr></thead><tbody><tr><td>1</td><td style="font-weight:700">${item.item_name}</td><td>${item.quantity || '1'}</td><td style="font-weight:700;color:#a7771f">${item.status}</td></tr></tbody></table>
-<div class="status-row"><div class="status-box"><div class="sl">Current Status</div><div class="sv">${item.status}</div>${item.remarks ? `<div style="font-size:11px;color:#5d6b82;margin-top:4px">${item.remarks}</div>` : ''}</div></div>
-<div class="sig"><div class="sb"><div class="sl2"></div><div class="st">Parent / Guardian</div></div><div class="sb"><div class="sl2"></div><div class="st">Received By (Staff)</div></div><div class="sb"><div class="sl2"></div><div class="st">Warden / HOD</div></div></div></div>
-<div class="ftr"><span>GNSI · Parent Item Invoice · ${item.student_name}</span><span>Printed: ${d}</span></div></div></body></html>`
-  const pw = window.open('', '_blank', 'width=760,height=860')
-  if (!pw) return
-  pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 450)
+  const body = `
+    <div class="wrap">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px">
+        <div><div class="l">Invoice No.</div><div class="mono" style="font-size:17px;font-weight:700;color:#0B1E3D;margin-top:2px">${esc(invoiceNo)}</div></div>
+        <div style="text-align:right"><div class="l">Date Received</div><div style="font-size:13px;font-weight:700;margin-top:2px">${esc(fmtDate(item.received_date))}</div></div>
+      </div>
+      ${infoGrid([
+        [['Student Name', esc(item.student_name), 2], ['Class / Batch', esc(item.class_name || '—')], ['Course', esc(item.course || '—')]],
+        [['Hostel Type', esc(item.hostel_type || '—')], ['Parent Name', esc(item.parent_name || '—'), 2], ['House / Block', esc(item.house || '—')]],
+        [['Date Received', esc(fmtDate(item.received_date)), 2], ['Received By', esc(item.received_by || '—'), 2]],
+      ])}
+      <table class="items"><thead><tr><th style="width:40px">Sl.</th><th>Item Description</th><th style="width:100px">Quantity</th><th style="width:130px">Status</th></tr></thead>
+        <tbody><tr><td>1</td><td style="font-weight:700">${esc(item.item_name)}</td><td>${esc(item.quantity || '1')}</td><td style="font-weight:700;color:#7A5A14">${esc(item.status)}</td></tr></tbody></table>
+      <div class="words"><span class="l" style="margin-right:6px">Current status:</span><b>${esc(item.status)}</b>${item.remarks ? `<div style="font-size:11px;color:#475569;margin-top:4px">${esc(item.remarks)}</div>` : ''}</div>
+      <div class="foot" style="padding-top:40px">
+        <div class="sig"><div class="line"></div><div class="l">Parent / Guardian</div></div>
+        <div class="sig"><div class="line"></div><div class="l">Received By (Staff)</div></div>
+        <div class="sig"><div class="line"></div><div class="l">Warden / HOD</div></div>
+      </div>
+    </div>`
+  const title = `Item Invoice — ${item.student_name || ''}`
+  openReceiptWindow(title, receiptDocument(title, receiptSheet(receiptHeader('PARENT ITEM RECEIPT', 'PARENT ITEMS') + body, undefined, `GNSI · Parent Item Invoice · ${esc(item.student_name)}`), { extraCss: '.foot .sig{min-width:0;flex:1;padding:0 10px}', printLabel: '🖨 Print invoice' }))
 }
 
 // Fixed WhatsApp number for record deliveries — not per-record, a single
@@ -525,117 +534,41 @@ function printLeaveApplication(item, printedByName) {
   const d = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
   const t = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
   const refNo = `GNSI/LA/${(item.gcc_no || '0000')}/${String(item.id).padStart(4, '0')}`
-  const statusColor = item.status === 'Approved' ? '#1b5e20' : item.status === 'Rejected' ? '#8b1a1a' : '#8a5a00'
-  const statusBg    = item.status === 'Approved' ? '#eaf6ea' : item.status === 'Rejected' ? '#fbe9e9' : '#fbf1de'
-  const field = (label, value, weight) => `<div class="fld"><span class="fl">${label}</span><span class="fv"${weight ? ` style="font-weight:${weight}"` : ''}>${value || '—'}</span></div>`
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Leave Application — ${refNo}</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-@page{margin:14mm}
-body{font-family:'Times New Roman',Georgia,serif;background:#fdfcf8;color:#1c1c1c}
-.sheet{max-width:760px;margin:0 auto;padding:20px;position:relative}
-.frame{border:3px double #0d2140;padding:3px;position:relative}
-.frame-inner{border:1px solid #0d2140;padding:26px 34px 30px;position:relative;background:#fffefb}
-.watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-28deg);font-size:78px;font-weight:700;color:rgba(13,33,64,0.045);letter-spacing:6px;pointer-events:none;white-space:nowrap;z-index:0;font-family:Georgia,serif}
-.content{position:relative;z-index:1}
-.crestrow{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:6px}
-.crest{width:64px;height:64px;border-radius:50%;border:2.5px solid #a9791a;background:radial-gradient(circle at 35% 30%,#f8eecb,#0d2140 130%);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.crest-inner{width:50px;height:50px;border-radius:50%;border:1px solid #a9791a;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#f8eecb;text-align:center;line-height:1.15;letter-spacing:.03em}
-.hdrtext{text-align:center}
-.inst{font-size:21px;font-weight:700;color:#0d2140;letter-spacing:.04em}
-.inst-hi{font-size:10.5px;color:#5a5a52;margin-top:2px;font-style:italic;letter-spacing:.02em}
-.sub{font-size:10.5px;color:#5a5a52;margin-top:2px}
-.rule{border:none;border-top:2px solid #0d2140;border-bottom:1px solid #0d2140;height:4px;margin:14px 0 12px}
-.doctitle{text-align:center;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.16em;color:#0d2140;margin-bottom:14px}
-.metabar{display:flex;justify-content:space-between;align-items:center;font-size:10.5px;color:#3a3a34;margin-bottom:18px;padding:7px 0;border-top:1px solid #c9c2a8;border-bottom:1px solid #c9c2a8}
-.metabar b{color:#0d2140;font-family:'Courier New',monospace;letter-spacing:.02em}
-.status{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;padding:3px 14px;border:1px solid ${statusColor};color:${statusColor};background:${statusBg}}
-.sectitle{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#0d2140;margin:18px 0 6px;display:flex;align-items:center;gap:8px}
-.sectitle::after{content:'';flex:1;border-bottom:1px solid #a9791a}
-.fldwrap{border-left:2px solid #0d2140;padding-left:14px}
-.fld{display:flex;padding:5px 0;border-bottom:1px dotted #c9c2a8;font-size:12.5px}
-.fld:last-child{border-bottom:none}
-.fl{width:230px;flex-shrink:0;color:#5a5a52;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding-top:1px}
-.fv{color:#0d2140;font-weight:700}
-.declaration{font-size:10.5px;color:#3a3a34;line-height:1.7;padding:13px 16px;margin:20px 0 10px;font-style:italic;border-top:1px solid #a9791a;border-bottom:1px solid #a9791a;text-align:justify}
-.sig{display:flex;justify-content:space-between;margin-top:40px;gap:16px}
-.sb{text-align:center;flex:1}
-.sl{border-top:1px solid #1c1c1c;margin:40px 6px 6px}
-.st{font-size:9.5px;color:#0d2140;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
-.sd{font-size:9px;color:#8a8578;margin-top:2px}
-.official-note{margin-top:18px;font-size:9.5px;color:#5a5a52;text-align:center;font-style:italic}
-.seal{position:absolute;bottom:96px;right:60px;width:78px;height:78px;border:2px solid ${statusColor};border-radius:50%;display:${item.status === 'Approved' ? 'flex' : 'none'};align-items:center;justify-content:center;transform:rotate(-14deg);opacity:.85}
-.seal-inner{width:64px;height:64px;border:1px solid ${statusColor};border-radius:50%;display:flex;align-items:center;justify-content:center;text-align:center;font-size:8px;font-weight:700;color:${statusColor};letter-spacing:.06em;line-height:1.3}
-.ftr{margin-top:22px;padding-top:8px;border-top:1px solid #c9c2a8;display:flex;justify-content:space-between;font-size:8.5px;color:#8a8578;font-family:'Courier New',monospace;letter-spacing:.02em}
-@media print{body{background:#fff}.sheet{padding:0}}
-</style></head><body>
-<div class="sheet"><div class="frame"><div class="frame-inner">
-<div class="watermark">GNSI</div>
-<div class="content">
-
-<div class="crestrow">
-<div class="crest"><div class="crest-inner">GN<br/>S I</div></div>
-</div>
-<div class="hdrtext">
-<div class="inst">GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE</div>
-<div class="inst-hi">Residential Coaching Institute for JNVST · AISSEE · RMS</div>
-<div class="sub">Khangabok, Thoubal District, Manipur — 795128</div>
-</div>
-<hr class="rule" />
-<div class="doctitle">Student Leave Application — Official Record</div>
-
-<div class="metabar">
-<span>Ref. No. <b>${refNo}</b></span>
-<span class="status">${item.status}</span>
-<span>Date Issued <b>${d}</b></span>
-</div>
-
-<div class="sectitle">I. Student particulars</div>
-<div class="fldwrap">
-${field('Student name', item.student_name)}
-${field('GCC number', item.gcc_no)}
-${field('Class', item.class_name)}
-${field('House', item.house)}
-</div>
-
-<div class="sectitle">II. Leave particulars</div>
-<div class="fldwrap">
-${field('Reason for leave', item.reason)}
-${field('Leave period', `${fmtDate(item.from_date)}  to  ${fmtDate(item.to_date)}`)}
-${item.applicant_note ? field('Additional note', item.applicant_note, 400) : ''}
-</div>
-
-<div class="sectitle">III. Responsible person / guardian particulars</div>
-<div class="fldwrap">
-${field('Name of responsible person', item.responsible_name)}
-${field('Relation with student', item.relation_to_student)}
-${field('Contact number', item.responsible_phone)}
-${field('Address', item.address, 400)}
-${field('Submitted by (staff)', item.submitted_by)}
-</div>
-
-<div class="declaration">I hereby declare that the above information is accurate to the best of my knowledge and that the leave is being taken with full awareness of the rules and responsibilities of the institution. I undertake to abide by the leave policy of Guidance Navodaya &amp; Sainik Institute at all times.</div>
-
-<div class="sig">
-<div class="sb"><div class="sl"></div><div class="st">Parent / Guardian</div><div class="sd">${item.responsible_name || 'Signature'}</div></div>
-<div class="sb"><div class="sl"></div><div class="st">House Master / Mistress</div><div class="sd">Signature &amp; date</div></div>
-<div class="sb"><div class="sl"></div><div class="st">Superintendent / Administrator</div><div class="sd">Signature &amp; date</div></div>
-</div>
-
-${item.status !== 'Pending' ? `<div class="official-note">This application was ${item.status.toLowerCase()} by ${item.reviewed_by || '—'}${item.reviewer_role ? ', ' + item.reviewer_role : ''}, on ${fmtDate(item.reviewed_at)}.${item.rejection_reason ? ' Reason: ' + item.rejection_reason + '.' : ''}</div>` : ''}
-
-<div class="seal"><div class="seal-inner">GNSI<br/>VERIFIED<br/>${refNo.split('/').pop()}</div></div>
-
-<div class="ftr">
-<span>Printed by ${printedByName || 'Staff'} · ${d} ${t}</span>
-<span>${refNo}</span>
-</div>
-</div>
-</div></div></div>
-</body></html>`
-  const pw = window.open('', '_blank', 'width=800,height=1000')
-  if (!pw) return
-  pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 400)
+  const statusInk = item.status === 'Approved' ? '#047857' : item.status === 'Rejected' ? '#B42318' : '#9A5B00'
+  const body = `
+    <div class="wrap">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px">
+        <div><div class="l">Ref. No.</div><div class="mono" style="font-size:15px;font-weight:700;color:#0B1E3D;margin-top:2px">${esc(refNo)}</div></div>
+        <div style="text-align:center"><span style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:4px 16px;border:1.5px solid ${statusInk};color:${statusInk};border-radius:999px">${esc(item.status)}</span></div>
+        <div style="text-align:right"><div class="l">Date Issued</div><div style="font-size:13px;font-weight:700;margin-top:2px">${esc(d)}</div></div>
+      </div>
+      <div class="sect">I. Student particulars</div>
+      ${infoGrid([
+        [['Student name', esc(item.student_name), 2], ['GCC number', esc(item.gcc_no)]  , ['Class', esc(item.class_name)]],
+        [['House', esc(item.house), 4]],
+      ])}
+      <div class="sect">II. Leave particulars</div>
+      ${infoGrid([
+        [['Reason for leave', esc(item.reason), 4]],
+        [['Leave period', `${esc(fmtDate(item.from_date))} &nbsp;to&nbsp; ${esc(fmtDate(item.to_date))}`, 4]],
+        ...(item.applicant_note ? [[['Additional note', esc(item.applicant_note), 4]]] : []),
+      ])}
+      <div class="sect">III. Responsible person / guardian particulars</div>
+      ${infoGrid([
+        [['Name of responsible person', esc(item.responsible_name), 2], ['Relation with student', esc(item.relation_to_student)], ['Contact number', esc(item.responsible_phone)]],
+        [['Address', esc(item.address), 4]],
+        [['Submitted by (staff)', esc(item.submitted_by), 4]],
+      ])}
+      <div class="words" style="font-style:italic;line-height:1.6;margin-top:12px">I hereby declare that the above information is accurate to the best of my knowledge and that the leave is being taken with full awareness of the rules and responsibilities of the institution. I undertake to abide by the leave policy of Guidance Navodaya &amp; Sainik Institute at all times.</div>
+      ${item.status !== 'Pending' ? `<div class="note" style="margin-top:10px;text-align:center;font-style:italic">This application was ${esc(String(item.status).toLowerCase())} by ${esc(item.reviewed_by || '—')}${item.reviewer_role ? ', ' + esc(item.reviewer_role) : ''}, on ${esc(fmtDate(item.reviewed_at))}.${item.rejection_reason ? ' Reason: ' + esc(item.rejection_reason) + '.' : ''}</div>` : ''}
+      <div class="foot" style="padding-top:36px">
+        <div class="sig"><div class="line"></div><div class="who">${esc(item.responsible_name || 'Signature')}</div><div class="l">Parent / Guardian</div></div>
+        <div class="sig"><div class="line"></div><div class="who">&nbsp;</div><div class="l">House Master / Mistress</div></div>
+        <div class="sig"><div class="line"></div><div class="who">&nbsp;</div><div class="l">Superintendent / Administrator</div></div>
+      </div>
+    </div>`
+  const title = `Leave Application — ${refNo}`
+  openReceiptWindow(title, receiptDocument(title, receiptSheet(receiptHeader('STUDENT LEAVE APPLICATION', 'OFFICIAL RECORD') + body, `Printed by ${esc(printedByName || 'Staff')} · ${esc(d)} ${esc(t)}`, esc(refNo)), { extraCss: '.sect{margin:12px 0 5px;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#7A5A14}.foot .sig{min-width:0;flex:1;padding:0 10px}', printLabel: '🖨 Print application' }))
 }
 
 function sendLeaveApplicationToWhatsApp(item) {
@@ -656,17 +589,22 @@ function sendLeaveApplicationToWhatsApp(item) {
 }
 
 function printGatePass(item) {
-  const d = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Gate Pass</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#fff;padding:32px;color:#14213d}.hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #132a4f;padding-bottom:14px;margin-bottom:18px}.inst{font-size:17px;font-weight:700;color:#132a4f}.sub{font-size:11px;color:#5d6b82;margin-top:3px}.title{font-size:20px;font-weight:800;color:#132a4f;margin-bottom:16px;text-transform:uppercase;letter-spacing:.08em}.grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid #e8e3d8;border-radius:8px;overflow:hidden;margin-bottom:20px}.cell{padding:11px 14px;border-right:1px solid #e8e3d8;border-bottom:1px solid #e8e3d8}.cell:nth-child(even){border-right:none}.cell:nth-last-child(-n+2){border-bottom:none}.cl{font-size:10px;color:#8a93a6;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px}.cv{font-size:13px;font-weight:700;color:#14213d}.sig{display:flex;justify-content:space-between;margin-top:32px;padding-top:20px;border-top:1px solid #e8e3d8}.sb{text-align:center}.sl{width:140px;border-top:1.5px solid #132a4f;margin:0 auto 6px}.st{font-size:11px;color:#5d6b82}.ftr{margin-top:24px;text-align:center;font-size:10px;color:#8a93a6}@media print{body{padding:16px}}</style></head><body>
-<div class="hdr"><div><div class="inst">Guidance Navodaya &amp; Sainik Institute</div><div class="sub">Khangabok, Thoubal, Manipur — 795128</div></div><div style="text-align:right"><div style="font-size:10px;color:#8a93a6">Printed</div><div style="font-weight:700;font-size:13px">${d}</div></div></div>
-<div class="title">🪪 Student Gate Pass</div>
-<div class="grid"><div class="cell"><div class="cl">Student Name</div><div class="cv">${item.student_name}</div></div><div class="cell"><div class="cl">GCC No.</div><div class="cv">${item.gcc_no || '—'}</div></div><div class="cell"><div class="cl">Class</div><div class="cv">${item.class_name || '—'}</div></div><div class="cell"><div class="cl">House</div><div class="cv">${item.house || '—'}</div></div><div class="cell"><div class="cl">Course</div><div class="cv">${item.course || '—'}</div></div><div class="cell"><div class="cl">Reason</div><div class="cv">${item.reason}</div></div><div class="cell"><div class="cl">Exit Date &amp; Time</div><div class="cv">${fmtDate(item.exit_date)} ${item.exit_time ? '· ' + item.exit_time : ''}</div></div><div class="cell"><div class="cl">Return Date</div><div class="cv">${item.return_date ? fmtDate(item.return_date) : '—'}${item.expected_return_time ? ' · ' + item.expected_return_time : ''}</div></div><div class="cell"><div class="cl">Responsible Person</div><div class="cv">${item.responsible_contact || '—'}</div></div><div class="cell"><div class="cl">Approved By</div><div class="cv">${item.approved_by || '—'}</div></div><div class="cell"><div class="cl">Parent Informed</div><div class="cv">${item.parent_informed}</div></div><div class="cell" style="grid-column:1/-1"><div class="cl">Remarks</div><div class="cv">${item.remarks || '—'}</div></div></div>
-<div class="sig"><div class="sb"><div class="sl"></div><div class="st">Student Signature</div></div><div class="sb"><div class="sl"></div><div class="st">Class Teacher</div></div><div class="sb"><div class="sl"></div><div class="st">Principal / Warden</div></div></div>
-<div class="ftr">GNSI · Gate Pass · Computer generated · ${d}</div></body></html>`
-  const pw = window.open('', '_blank', 'width=720,height=800')
-  if (!pw) return
-  pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 400)
+  const body = `
+    <div class="wrap">
+      ${infoGrid([
+        [['Student Name', esc(item.student_name), 2], ['GCC No.', esc(item.gcc_no || '—')], ['Class', esc(item.class_name || '—')]],
+        [['House', esc(item.house || '—')], ['Course', esc(item.course || '—')], ['Reason', esc(item.reason), 2]],
+        [['Exit Date & Time', `${esc(fmtDate(item.exit_date))}${item.exit_time ? ' · ' + esc(item.exit_time) : ''}`, 2], ['Return Date', `${item.return_date ? esc(fmtDate(item.return_date)) : '—'}${item.expected_return_time ? ' · ' + esc(item.expected_return_time) : ''}`, 2]],
+        [['Responsible Person', esc(item.responsible_contact || '—'), 2], ['Approved By', esc(item.approved_by || '—')], ['Parent Informed', esc(item.parent_informed)]],
+        [['Remarks', esc(item.remarks || '—'), 4]],
+      ])}
+      <div class="foot" style="padding-top:60px">
+        <div class="sig"><div class="line"></div><div class="l">Student Signature</div></div>
+        <div class="sig"><div class="line"></div><div class="l">Class Teacher</div></div>
+        <div class="sig"><div class="line"></div><div class="l">Principal / Warden</div></div>
+      </div>
+    </div>`
+  openReceiptWindow('Gate Pass', receiptDocument('Gate Pass', receiptSheet(receiptHeader('STUDENT GATE PASS', 'GATE PASS') + body, undefined, 'GNSI · Gate Pass · Computer generated'), { extraCss: '.foot .sig{min-width:0;flex:1;padding:0 10px}', printLabel: '🖨 Print pass' }))
 }
 
 function sendGatePassToWhatsApp(item) {
@@ -684,16 +622,15 @@ function sendGatePassToWhatsApp(item) {
 }
 
 function printVisitorBadge(item) {
-  const d = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Visitor Badge</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Georgia,serif;background:#f0f4f8;display:flex;justify-content:center;padding:40px}.badge{width:320px;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.15)}.top{background:#132a4f;padding:18px;text-align:center}.inst{color:white;font-size:13px;font-weight:700}.sub{color:rgba(255,255,255,.5);font-size:10px;margin-top:2px}.bl{background:#b8923a;color:#132a4f;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;padding:5px 0;text-align:center}.body{padding:18px}.av{width:56px;height:56px;border-radius:50%;background:#132a4f;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#b8923a;margin:0 auto 12px}.name{text-align:center;font-size:17px;font-weight:800;color:#14213d;margin-bottom:3px}.purpose{text-align:center;font-size:12px;color:#5d6b82;margin-bottom:14px}.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f0e8;font-size:12px}.rk{color:#8a93a6;font-weight:600}.rv{color:#14213d;font-weight:700}.ftr{background:#faf8f3;padding:9px;text-align:center;font-size:10px;color:#8a93a6;border-top:1px solid #e8e3d8}@media print{body{background:white;padding:0}.badge{box-shadow:none}}</style></head><body>
-<div class="badge"><div class="top"><div class="inst">Guidance Navodaya &amp; Sainik Institute</div><div class="sub">Khangabok · Thoubal · Manipur</div></div><div class="bl">Visitor Pass</div>
-<div class="body"><div class="av">${(item.visitor_name || 'V')[0].toUpperCase()}</div><div class="name">${item.visitor_name}</div><div class="purpose">${item.purpose}</div>
-<div class="row"><span class="rk">Meeting With</span><span class="rv">${item.meeting_with || '—'}</span></div><div class="row"><span class="rk">Visit Date</span><span class="rv">${fmtDate(item.visit_date)}</span></div><div class="row"><span class="rk">In Time</span><span class="rv">${item.in_time || '—'}</span></div><div class="row"><span class="rk">Phone</span><span class="rv">${item.phone || '—'}</span></div><div class="row"><span class="rk">ID Proof</span><span class="rv">${item.id_proof || '—'}</span></div></div>
-<div class="ftr">Computer generated · ${d}</div></div></body></html>`
-  const pw = window.open('', '_blank', 'width=420,height=640')
-  if (!pw) return
-  pw.document.write(html); pw.document.close(); setTimeout(() => pw.print(), 400)
+  const row = (k, v) => `<div class="row"><span class="rk">${k}</span><span class="rv">${esc(v || '—')}</span></div>`
+  const badge = `<div class="sheet" style="width:320px;min-height:0;margin:0 auto">
+    <div class="top" style="flex-direction:column;text-align:center;padding:14px 12px 10px;gap:2px"><div class="name" style="font-size:15px">Guidance Navodaya &amp; Sainik Institute</div><div class="tagline">Khangabok · Thoubal · Manipur</div></div>
+    <div class="band" style="justify-content:center"><span class="t">VISITOR PASS</span></div><div class="accent"></div>
+    <div style="padding:16px 18px"><div class="logo" style="border-radius:50%;margin:0 auto 10px;width:56px;height:56px;font-size:24px">${esc((item.visitor_name || 'V')[0].toUpperCase())}</div>
+      <div style="text-align:center;font-size:17px;font-weight:800;color:#0B1E3D">${esc(item.visitor_name)}</div><div style="text-align:center;font-size:12px;color:#475569;margin:3px 0 12px">${esc(item.purpose)}</div>
+      ${row('Meeting With', item.meeting_with)}${row('Visit Date', fmtDate(item.visit_date))}${row('In Time', item.in_time)}${row('Phone', item.phone)}${row('ID Proof', item.id_proof)}</div>
+    <div class="bottom" style="justify-content:center">Computer generated · ${esc(new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }))}</div></div>`
+  openReceiptWindow('Visitor Badge', receiptDocument('Visitor Badge', badge, { extraCss: '.row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #E2E8F0;font-size:12px}.rk{color:#64748B;font-weight:600}.rv{color:#0F172A;font-weight:700;text-align:right}@media print{.sheet{height:auto!important;zoom:1!important}}', printLabel: '🖨 Print badge' }))
 }
 
 function elapsedLabel(record) {

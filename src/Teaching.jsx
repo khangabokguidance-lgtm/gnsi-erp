@@ -48,6 +48,7 @@ import Attendance from './Attendance'
 import GeoAttendance from './GeoAttendance'
 import TabReportCards from './TabReportCards'
 import { isAdminRole } from './roles'
+import { receiptDocument, receiptSheet, receiptHeader, infoGrid, openReceiptWindow, esc as rEsc } from './premiumReceipt'
 import { PremiumStyles, PremiumHero, PremiumTabs, PIcon, PX } from './premiumUI'
 // Teaching hub: the study-material modules open as Teaching tabs and share
 // chapter context through StudyMaterialBridge (useChapterFocus/openChapterIn).
@@ -676,64 +677,34 @@ useEffect(() => {
     Classwork:l.classwork||'', Homework:l.homework||'', Remarks:l.remarks||'',
   })), `teaching_logs_${today()}.csv`)
   const printLog = (item) => {
-    const w = window.open('', '_blank')
-    const d = (label, value) => `<tr><td class="lbl">${label}</td><td>${value || '—'}</td></tr>`
-    w.document.write(`
-      <html><head><title>Teaching Log — ${item.subject_name} ${item.teaching_date}</title>
-      <style>
-        body { font-family: Georgia, serif; font-size: 13px; color: #000; padding: 32px; }
-        h1 { font-size: 18px; margin: 0; }
-        .sub { font-size: 12px; color: #555; margin-top: 4px; }
-        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 20px; }
-        .stamp { display: inline-block; border: 2px solid #132a4f; border-radius: 6px; padding: 4px 14px; font-size: 11px; font-weight: bold; color: #132a4f; margin-top: 8px; letter-spacing: .08em; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-        td { padding: 8px 10px; border: 1px solid #ccc; vertical-align: top; }
-        .lbl { font-weight: bold; background: #f0f0f0; width: 30%; }
-        .section { font-weight: bold; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: #555; margin: 16px 0 6px; }
-        .signatures { display: flex; justify-content: space-between; margin-top: 48px; }
-        .sign { border-top: 1px solid #000; width: 160px; padding-top: 6px; text-align: center; font-size: 12px; }
-        @media print { body { padding: 24px; } }
-      </style></head><body>
-      <div class="header">
-        <h1>GNSI — Daily Teaching Log</h1>
-        <div class="sub">${item.course || ''} · ${item.subtype || ''} · ${item.class_name || ''} &nbsp;|&nbsp; ${item.subject_name} &nbsp;|&nbsp; Period ${item.period_number || '—'}</div>
-        <div class="stamp">DATE: ${new Date(item.teaching_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})}</div>
-      </div>
-      <div class="section">Class Details</div>
-      <table><tbody>
-        ${d('Teacher', item.teacher_name)}
-        ${d('Course / Batch', (item.course||'—')+' / '+(item.subtype||'—'))}
-        ${d('Class', item.class_name)}
-        ${d('Subject', item.subject_name)}
-        ${d('Period', item.period_number ? 'Period '+item.period_number : null)}
-        ${d('Chapter', item.chapter)}
-        ${d('Sub-topic', item.subtopic)}
-        ${d('Range Covered', item.range_from ? item.range_from+' → '+item.range_to : null)}
-      </tbody></table>
-      <div class="section">What Was Taught</div>
-      <table><tbody>
-        ${d('Topic Taught', item.topic_taught)}
-        ${d('Classwork Done', item.classwork)}
-        ${d('Homework Assigned', item.homework)}
-        ${d('Remarks', item.remarks)}
-      </tbody></table>
-      ${item.techniques||item.technique_detail ? `
-      <div class="section">Teaching Method</div>
-      <table><tbody>
-        ${d('Techniques Used', item.techniques)}
-        ${d('Technique Details', item.technique_detail)}
-        ${d('Key Concepts (for HM)', item.key_concepts)}
-        ${d('Avoid During Doubt Session', item.technique_avoid)}
-      </tbody></table>` : ''}
-      <div class="signatures">
-        <div class="sign">Subject Teacher<br/>${item.teacher_name||''}</div>
-        <div class="sign">Housemaster</div>
-        <div class="sign">Principal / Admin</div>
-      </div>
-      <script>window.onload=()=>{window.print();window.close()}</script>
-      </body></html>
-    `)
-    w.document.close()
+    const e = rEsc
+    const dt = item.teaching_date ? new Date(item.teaching_date).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}) : '—'
+    const cell = (l, v, span) => [l, e(v || '—'), span]
+    const textBox = (l, v) => `<div class="words" style="margin-top:8px"><div class="l" style="margin-bottom:3px">${e(l)}</div><div style="white-space:pre-wrap">${e(v || '—')}</div></div>`
+    const body = `
+      <div class="wrap">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px">
+          <div><div class="l">Subject · Period</div><div style="font-size:17px;font-weight:700;color:#0B1E3D;margin-top:2px">${e(item.subject_name || '—')} · Period ${e(item.period_number || '—')}</div></div>
+          <div style="text-align:right"><div class="l">Date</div><div style="font-size:13px;font-weight:700;margin-top:2px">${e(dt)}</div></div>
+        </div>
+        <div class="sect">Class details</div>
+        ${infoGrid([
+          [cell('Teacher', item.teacher_name, 2), cell('Course / Batch', (item.course||'—')+' / '+(item.subtype||'—'), 2)],
+          [cell('Class', item.class_name), cell('Subject', item.subject_name), cell('Period', item.period_number ? 'Period '+item.period_number : null), cell('Range Covered', item.range_from ? item.range_from+' → '+item.range_to : null)],
+          [cell('Chapter', item.chapter, 2), cell('Sub-topic', item.subtopic, 2)],
+        ])}
+        <div class="sect">What was taught</div>
+        ${textBox('Topic Taught', item.topic_taught)}${textBox('Classwork Done', item.classwork)}${textBox('Homework Assigned', item.homework)}${textBox('Remarks', item.remarks)}
+        ${item.techniques||item.technique_detail ? `<div class="sect">Teaching method</div>
+        ${textBox('Techniques Used', item.techniques)}${textBox('Technique Details', item.technique_detail)}${textBox('Key Concepts (for HM)', item.key_concepts)}${textBox('Avoid During Doubt Session', item.technique_avoid)}` : ''}
+        <div class="foot" style="padding-top:40px">
+          <div class="sig"><div class="line"></div><div class="who">${e(item.teacher_name||'')}</div><div class="l">Subject Teacher</div></div>
+          <div class="sig"><div class="line"></div><div class="who">&nbsp;</div><div class="l">Housemaster</div></div>
+          <div class="sig"><div class="line"></div><div class="who">&nbsp;</div><div class="l">Principal / Admin</div></div>
+        </div>
+      </div>`
+    const title = `Teaching Log — ${item.subject_name || ''} ${item.teaching_date || ''}`
+    openReceiptWindow(title, receiptDocument(title, receiptSheet(receiptHeader('DAILY TEACHING LOG', 'TEACHING RECORD') + body), { extraCss: '.sect{margin:12px 0 5px;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#7A5A14}.foot .sig{min-width:0;flex:1}', printLabel: '🖨 Print log' }))
   }
 
   const todayCount = logs.filter(l => l.teaching_date===today()).length
@@ -1800,21 +1771,21 @@ function TabStudentPerformance({ courseData, currentUser }) {
   const printStudentReport = key => {
     const m = studentHistory[key]
     if (!m || !m.entries.length) return
-    const avg = Math.round(m.entries.reduce((a,e)=>a+pct(e.score,e.max_score),0)/m.entries.length)
-    const win = window.open('', '_blank')
-    win.document.write(`<html><head><title>${m.name} — Progress Report</title><style>
-      body{font-family:Georgia,serif;padding:32px;color:#14213d} h1{font-size:20px;margin:0 0 4px} h2{font-size:13px;color:#5d6b82;font-weight:400;margin:0 0 20px}
-      table{width:100%;border-collapse:collapse;font-size:13px} th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #e8e3d8} th{background:#faf8f3}
-      @media print{body{padding:12px}}
-    </style></head><body>
-      <h1>GNSI — Student Progress Report</h1>
-      <h2>${m.name} · Overall Average: ${avg}%</h2>
-      <table><thead><tr><th>Date</th><th>Subject</th><th>Topic</th><th>Score</th><th>%</th></tr></thead><tbody>
-      ${m.entries.map(e => `<tr><td>${fmtDate(e.test_date)}</td><td>${e.subject_name}</td><td>${e.topic}</td><td>${e.score}/${e.max_score}</td><td>${pct(e.score,e.max_score)}%</td></tr>`).join('')}
-      </tbody></table>
-    </body></html>`)
-    win.document.close()
-    win.print()
+    const e = rEsc
+    const avg = Math.round(m.entries.reduce((a,x)=>a+pct(x.score,x.max_score),0)/m.entries.length)
+    const rows = m.entries.map((x,i) => `<tr><td>${i+1}</td><td>${e(fmtDate(x.test_date))}</td><td style="font-weight:700">${e(x.subject_name)}</td><td>${e(x.topic)}</td><td class="r mono">${e(x.score)}/${e(x.max_score)}</td><td class="r mono" style="font-weight:700">${pct(x.score,x.max_score)}%</td></tr>`).join('')
+    const body = `
+      <div class="wrap">
+        ${infoGrid([[['Student', e(m.name), 2], ['Tests taken', String(m.entries.length)], ['Overall average', `${avg}%`]]])}
+        <table class="items"><thead><tr><th style="width:40px">Sl.</th><th style="width:100px">Date</th><th>Subject</th><th>Topic</th><th class="r" style="width:80px">Score</th><th class="r" style="width:60px">%</th></tr></thead><tbody>${rows}</tbody></table>
+        <table class="tot" style="width:300px;margin-left:auto;margin-top:-1px"><tbody><tr class="net"><td>OVERALL AVERAGE</td><td class="r amt">${avg}%</td></tr></tbody></table>
+        <div class="foot" style="padding-top:40px">
+          <div class="note" style="font-style:italic">This is a computer-generated report.</div>
+          <div class="sig"><div class="line"></div><div class="l">Class Teacher / Principal</div></div>
+        </div>
+      </div>`
+    const title = `${m.name} — Progress Report`
+    openReceiptWindow(title, receiptDocument(title, receiptSheet(receiptHeader('STUDENT PROGRESS REPORT', 'CLASS TESTS') + body), { printLabel: '🖨 Print report' }))
   }
 
   // ADV-12: PDF export (browser print-to-PDF) of the current filtered table

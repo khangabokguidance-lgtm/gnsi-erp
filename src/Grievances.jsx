@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from './supabase';
+import { receiptHeader, infoGrid, receiptSheet, receiptDocument, openReceiptWindow, esc } from './premiumReceipt';
 import { PremiumStyles, PremiumHero, PremiumCard, PIcon, PX } from './premiumUI';
 
 // ============================================================
@@ -252,62 +253,35 @@ export default function Grievances({ currentStaff }) {
   };
 
   const printRecord = (g) => {
-    const win = window.open('', '_blank');
-    win.document.write(`
-      <html>
-      <head>
-        <title>Grievance Record - ${g.id}</title>
-        <style>
-          body { font-family: Georgia, 'Times New Roman', serif; color: #0B1E3D; padding: 40px; }
-          .letterhead { text-align: center; border-bottom: 3px solid #b8923a; padding-bottom: 16px; margin-bottom: 24px; }
-          .letterhead h1 { margin: 0; font-size: 22px; letter-spacing: 1px; }
-          .letterhead p { margin: 4px 0 0; font-size: 12px; color: #555; }
-          h2 { font-size: 16px; border-bottom: 1px solid #b8923a; padding-bottom: 6px; margin-top: 28px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-          td { padding: 6px 8px; vertical-align: top; font-size: 13px; }
-          td.label { font-weight: bold; width: 180px; color: #0B1E3D; }
-          .desc-box { border: 1px solid #ccc; padding: 12px; margin-top: 8px; font-size: 13px; min-height: 60px; }
-          .status-badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-          .footer { margin-top: 60px; display: flex; justify-content: space-between; font-size: 12px; }
-          .sig-line { border-top: 1px solid #333; width: 200px; text-align: center; padding-top: 4px; margin-top: 40px; }
-          @media print { body { padding: 20px; } }
-        </style>
-      </head>
-      <body>
-        <div class="letterhead">
-          <h1>GUIDANCE NAVODAYA &amp; SAINIK INSTITUTE</h1>
-          <p>Khangabok, Thoubal, Manipur</p>
-          <p style="margin-top:8px; font-weight:bold;">GRIEVANCE RECORD</p>
+    const nl = (s) => esc(s).replace(/\n/g, '<br/>');
+    const longDate = (d) => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    const rid = `GRV-${String(g.id).padStart(5, '0')}`;
+    const body = `
+      <div class="wrap">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px">
+          <div><div class="l">Record ID</div><div class="mono" style="font-size:17px;font-weight:700;color:#0B1E3D;margin-top:2px">${esc(rid)}</div></div>
+          <div style="text-align:right"><div class="l">Date Filed</div><div style="font-size:13px;font-weight:700;margin-top:2px">${esc(longDate(g.created_at))}</div></div>
         </div>
-        <table>
-          <tr><td class="label">Record ID</td><td>GRV-${String(g.id).padStart(5, '0')}</td></tr>
-          <tr><td class="label">Date Filed</td><td>${new Date(g.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</td></tr>
-          <tr><td class="label">Category</td><td>${g.category}</td></tr>
-          <tr><td class="label">Student Concerned</td><td>${g.student?.full_name || '—'} ${g.student?.class_name ? '(' + g.student.class_name + ')' : ''}</td></tr>
-          <tr><td class="label">Teacher Concerned</td><td>${g.teacher?.full_name || '—'}</td></tr>
-          <tr><td class="label">Filed By</td><td>${g.filed_by_name || '—'} ${g.filed_by_contact ? '· ' + g.filed_by_contact : ''}</td></tr>
-          <tr><td class="label">Source</td><td>${g.source === 'parent_portal' ? 'Parents Portal (Self-Service)' : 'Logged by Staff' + (g.logger?.full_name ? ' — ' + g.logger.full_name : '')}</td></tr>
-          <tr><td class="label">Status</td><td>${g.status}</td></tr>
-          <tr><td class="label">Assigned To</td><td>${g.assigned?.full_name || 'Not yet assigned'}</td></tr>
-        </table>
-
-        <h2>Description of Grievance</h2>
-        <div class="desc-box">${(g.description || '').replace(/\n/g, '<br/>')}</div>
-
-        <h2>Resolution Notes</h2>
-        <div class="desc-box">${(g.resolution_notes || 'Pending resolution.').replace(/\n/g, '<br/>')}</div>
-
-        ${g.follow_up_date ? `<p style="margin-top:12px; font-size:13px;"><strong>Follow-up Date:</strong> ${new Date(g.follow_up_date).toLocaleDateString('en-IN')}</p>` : ''}
-
-        <div class="footer">
-          <div class="sig-line">Staff Signature</div>
-          <div class="sig-line">Principal / Coordinator</div>
+        ${infoGrid([
+          [['Category', esc(g.category), 2], ['Status', esc(g.status), 2]],
+          [['Student Concerned', `${esc(g.student?.full_name || '—')} ${g.student?.class_name ? '(' + esc(g.student.class_name) + ')' : ''}`, 2], ['Teacher Concerned', esc(g.teacher?.full_name || '—'), 2]],
+          [['Filed By', `${esc(g.filed_by_name || '—')} ${g.filed_by_contact ? '· ' + esc(g.filed_by_contact) : ''}`, 2], ['Assigned To', esc(g.assigned?.full_name || 'Not yet assigned'), 2]],
+          [['Source', g.source === 'parent_portal' ? 'Parents Portal (Self-Service)' : 'Logged by Staff' + (g.logger?.full_name ? ' — ' + esc(g.logger.full_name) : ''), g.follow_up_date ? 2 : 4], ...(g.follow_up_date ? [['Follow-up Date', esc(new Date(g.follow_up_date).toLocaleDateString('en-IN')), 2]] : [])],
+        ])}
+        <div class="sect">Description of Grievance</div>
+        <div class="words" style="margin-top:0;min-height:90px;border-style:solid;border-color:#DCE3EC;line-height:1.55">${nl(g.description || '')}</div>
+        <div class="sect">Resolution Notes</div>
+        <div class="words" style="margin-top:0;min-height:90px;border-style:solid;border-color:#DCE3EC;line-height:1.55">${nl(g.resolution_notes || 'Pending resolution.')}</div>
+        <div class="foot" style="padding-top:50px">
+          <div class="sig"><div class="line"></div><div class="l">Staff Signature</div></div>
+          <div class="sig"><div class="line"></div><div class="l">Principal / Coordinator</div></div>
         </div>
-      </body>
-      </html>
-    `);
-    win.document.close();
-    win.print();
+      </div>`;
+    const title = `Grievance Record - ${g.id}`;
+    openReceiptWindow(title, receiptDocument(title, receiptSheet(receiptHeader('GRIEVANCE RECORD', 'CONFIDENTIAL') + body), {
+      extraCss: '.sect{margin:12px 0 5px;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#7A5A14}.foot .sig{min-width:200px}',
+      printLabel: '🖨 Print record',
+    }));
   };
 
   // ---------------- Render ----------------

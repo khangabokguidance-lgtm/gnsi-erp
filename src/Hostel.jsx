@@ -7,6 +7,7 @@ import { getActiveStudents, getAllStudents } from './studentQueries'
 import jsPDF from 'jspdf'
 import { generateAwardCertificate, CERT_SCHOOL_NAME } from './AwardCertificate'
 import { getInstitute } from './systemSettings'
+import { receiptDocument, receiptSheet, receiptHeader, infoGrid, openReceiptWindow, esc as rEsc } from './premiumReceipt'
 import { HousemasterActivitiesTab, AdminMonitorTab } from './HousemasterActivitiesEnhanced'
 import { ClassTimetableTab } from './ClassTimetableTab'
 import HMDoubtSessionsTab from './HMDoubtSessionsTab'
@@ -8862,98 +8863,36 @@ function HouseContributionTab({ students: propStudents, currentUser }) {
   // ── A4 house record sheet — formal ledger print, not a landscape table ──
   const printHouseRecord = (houseName) => {
     const { recs, itemRecs, collected, submitted, pending, itemGivenCount, itemTotalCount } = houseSummary(houseName)
-    const w = window.open('', '_blank')
-    if (!w) return
-    const navy = `rgb(${REPORT_NAVY.join(',')})`
-    const gold = `rgb(${REPORT_GOLD.join(',')})`
-    const grey = `rgb(${REPORT_GREY.join(',')})`
-    // Money rows and item rows share one table (chronological, all
-    // contributions from this house) — item rows show their given/
-    // not-given status in place of an amount rather than "₹0", which
-    // would misleadingly read as a zero-value money contribution.
+    const e = rEsc
+    const inr = v => '₹' + Number(v || 0).toLocaleString('en-IN')
     const allRows = [...recs, ...itemRecs].sort((a, b) => (a.collected_date || '').localeCompare(b.collected_date || ''))
     const rows = allRows.map((r, i) => {
       const isItem = isItemPurpose(r.purpose)
       const amountCell = isItem
-        ? `<span style="font-weight:700;color:${r.item_status === 'Given' ? '#16a34a' : '#dc2626'}">${r.item_status || '—'}</span>`
-        : `₹${Number(r.amount).toLocaleString('en-IN')}`
-      return `
-      <tr style="background:${i % 2 === 1 ? '#f4f6f9' : 'white'}">
-        <td>${i + 1}</td>
-        <td>${r.student_name}</td>
-        <td>${r.gcc_no || '—'}</td>
-        <td>${r.class_name || '—'}</td>
-        <td>${r.purpose || '—'}</td>
-        <td style="text-align:right">${amountCell}</td>
-        <td>${r.collected_date || '—'}</td>
-        <td>${isItem ? '—' : r.status}</td>
-      </tr>
-    `}).join('')
-    const itemSummaryBox = itemTotalCount > 0
-      ? `<div class="sbox"><div class="lbl">A4 Packets Given</div><div class="val" style="color:${itemGivenCount === itemTotalCount ? '#16a34a' : '#dc2626'}">${itemGivenCount} / ${itemTotalCount}</div></div>`
-      : ''
-    w.document.write(`
-      <html><head><title>House Record — ${houseName}</title>
-      <style>
-        @page { size: A4; margin: 14mm; }
-        * { box-sizing: border-box; }
-        body { font-family: 'Georgia', 'Times New Roman', serif; color: #1e293b; margin: 0; }
-        .hd { text-align: center; border-bottom: 3px double ${gold}; padding-bottom: 10px; margin-bottom: 16px; }
-        .hd h1 { margin: 0; font-size: 19px; color: ${navy}; letter-spacing: .02em; }
-        .hd p { margin: 3px 0 0; font-size: 11px; color: ${grey}; }
-        .title { text-align: center; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: ${gold}; margin: 10px 0 16px; }
-        .meta { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 14px; }
-        .meta div span:first-child { color: ${grey}; margin-right: 6px; }
-        .meta div span:last-child { font-weight: 700; }
-        table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: 16px; }
-        th { background: ${navy}; color: white; padding: 7px 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .03em; }
-        td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
-        .summary { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-        .sbox { flex: 1; min-width: 110px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; text-align: center; }
-        .sbox .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: ${grey}; }
-        .sbox .val { font-size: 18px; font-weight: 700; margin-top: 3px; }
-        .sign { display: flex; justify-content: space-between; margin-top: 50px; font-size: 11.5px; }
-        .sign div { text-align: center; width: 170px; }
-        .sign div span { display: block; border-top: 1px solid #444; padding-top: 5px; margin-top: 40px; }
-        .np { text-align: center; margin-bottom: 16px; }
-        .np button { padding: 9px 22px; border: none; border-radius: 6px; cursor: pointer; font-weight: 700; margin: 0 4px; }
-        .print-btn { background: ${navy}; color: white; }
-        .close-btn { background: #e5e7eb; color: #374151; }
-        @media print { .np { display: none; } }
-      </style></head><body>
-        <div class="np">
-          <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
-          <button class="close-btn" onclick="window.close()">✕ Close</button>
+        ? `<span style="font-weight:700;color:${r.item_status === 'Given' ? '#16a34a' : '#dc2626'}">${e(r.item_status || '—')}</span>`
+        : inr(r.amount)
+      return `<tr><td>${i + 1}</td><td style="font-weight:700">${e(r.student_name)}</td><td>${e(r.gcc_no || '—')}</td><td>${e(r.class_name || '—')}</td><td>${e(r.purpose || '—')}</td><td class="r mono">${amountCell}</td><td>${e(r.collected_date || '—')}</td><td>${isItem ? '—' : e(r.status)}</td></tr>`
+    }).join('')
+    const cell = (k, v, col) => `<tr><td class="k">${k}</td><td class="r mono"${col ? ` style="color:${col};font-weight:700"` : ''}>${v}</td></tr>`
+    const body = `
+      <div class="wrap">
+        ${infoGrid([[['House', e(houseName), 2], ['Students', String(houseStudents(houseName).length)], ['Generated', e(new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }))]]])}
+        <table class="items"><thead><tr><th style="width:30px">#</th><th>Student Name</th><th>GCC No.</th><th>Class</th><th>Purpose</th><th class="r">Amount / Item</th><th>Date</th><th>Status</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="8" style="text-align:center;color:#94A3B8">No contributions recorded</td></tr>'}</tbody></table>
+        <table class="tot" style="width:320px;margin-left:auto;margin-top:-1px"><tbody>
+          ${cell('Total Collected', inr(collected))}
+          ${cell('Submitted', inr(submitted), '#16a34a')}
+          <tr class="net"><td>BALANCE IN HAND</td><td class="r amt">${inr(pending)}</td></tr>
+          ${itemTotalCount > 0 ? cell('A4 Packets Given', `${itemGivenCount} / ${itemTotalCount}`, itemGivenCount === itemTotalCount ? '#16a34a' : '#dc2626') : ''}
+        </tbody></table>
+        <div class="foot" style="padding-top:40px">
+          <div class="sig"><div class="line"></div><div class="l">Housemaster</div></div>
+          <div class="sig"><div class="line"></div><div class="l">Received by (${e(DEFAULT_SUBMITTED_TO)})</div></div>
+          <div class="sig"><div class="line"></div><div class="l">Superintendent</div></div>
         </div>
-        <div class="hd">
-          <h1>Guidance Navodaya &amp; Sainik Institute</h1>
-          <p>Khangabok, Thoubal District, Manipur</p>
-        </div>
-        <div class="title">House Contribution Record — ${houseName}</div>
-        <div class="meta">
-          <div><span>House:</span><span>${houseName}</span></div>
-          <div><span>Students:</span><span>${houseStudents(houseName).length}</span></div>
-          <div><span>Generated:</span><span>${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>
-        </div>
-        <table>
-          <thead><tr><th>#</th><th>Student Name</th><th>GCC No.</th><th>Class</th><th>Purpose</th><th style="text-align:right">Amount / Item</th><th>Date</th><th>Status</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">No contributions recorded</td></tr>'}</tbody>
-        </table>
-        <div class="summary">
-          <div class="sbox"><div class="lbl">Total Collected</div><div class="val">₹${collected.toLocaleString('en-IN')}</div></div>
-          <div class="sbox"><div class="lbl">Submitted</div><div class="val" style="color:#16a34a">₹${submitted.toLocaleString('en-IN')}</div></div>
-          <div class="sbox"><div class="lbl">Balance in Hand</div><div class="val" style="color:${pending < 0 ? '#dc2626' : '#16a34a'}">₹${pending.toLocaleString('en-IN')}</div></div>
-          ${itemSummaryBox}
-        </div>
-        <div class="sign">
-          <div><span>Housemaster</span></div>
-          <div><span>Received by (${DEFAULT_SUBMITTED_TO})</span></div>
-          <div><span>Superintendent</span></div>
-        </div>
-      </body></html>
-    `)
-    w.document.close()
-    w.print()
+      </div>`
+    const title = `House Record — ${houseName}`
+    openReceiptWindow(title, receiptDocument(title, receiptSheet(receiptHeader('HOUSE CONTRIBUTION RECORD', String(houseName).toUpperCase()) + body), { extraCss: '.items td,.items th{font-size:10.5px;padding:5px 6px}.foot .sig{min-width:0;flex:1}', printLabel: '🖨 Print / Save as PDF' }), { autoPrint: false })
   }
 
   if (loading) {

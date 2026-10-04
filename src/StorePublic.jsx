@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
+import { receiptDocument, receiptSheet, receiptHeader, infoGrid, openReceiptWindow, barcodeSVG, receiptQrSVG, amountInWords, esc as rEsc } from './premiumReceipt'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GNSI Store — public storefront (no login). Route it at /store.
@@ -1310,25 +1311,31 @@ function PickupPass({ order, onClose, onTrack }) {
   const copy = async () => { try { await navigator.clipboard.writeText(order.order_no); setCopied(true); setTimeout(() => setCopied(false), 1800) } catch {} }
 
   const print = () => {
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${esc(order.order_no)}</title>
-<script src="${QR_LIB}"></script><style>
-*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;color:#0e1b33;padding:24px;background:#f7f5f0}
-.p{max-width:420px;margin:0 auto;background:#fff;border:1px solid #e7e3da;border-radius:18px;overflow:hidden}
-.t{background:#132a4f;color:#fff;padding:18px 20px}.m{font-size:10px;letter-spacing:.14em;text-transform:uppercase;opacity:.65;font-weight:700}
-.c{font-family:Georgia,serif;font-size:30px;font-weight:700;color:#e9d9b0;margin-top:4px}.b{padding:18px 20px;display:flex;gap:16px;align-items:center}
-#qr{width:120px;height:120px}#qr svg{width:100%;height:100%}table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}td{padding:5px 0;border-bottom:1px solid #f0ece4}.r{text-align:right}
-.tot{display:flex;justify-content:space-between;font-weight:800;font-size:16px;padding:12px 20px;background:#fbf6ea}.f{padding:12px 20px;font-size:11px;color:#64748b;line-height:1.6}
-.np{text-align:center;margin-bottom:14px}button{padding:9px 20px;background:#132a4f;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer}@media print{.np{display:none}body{background:#fff;padding:0}}</style></head>
-<body><div class="np"><button onclick="window.print()">Print / Save as PDF</button></div><div class="p">
-<div class="t"><div class="m">GNSI Store · Pickup pass</div><div class="c">${esc(order.order_no)}</div><div style="font-size:12.5px;opacity:.8;margin-top:4px">${esc(order.name || '')}${order.phone ? ' · ' + esc(order.phone) : ''}</div></div>
-<div class="b"><div id="qr"></div><div style="font-size:12px;color:#334155;line-height:1.55">Show this pass at the<br/><b>${esc(COUNTER.place)}</b><br/>${esc(COUNTER.hours)}</div></div>
-<div style="padding:0 20px 8px"><table>${items.map(i => `<tr><td>${esc(i.name)}${i.size ? ' · ' + esc(i.size) : ''} × ${i.qty}</td><td class="r">${i.price != null ? '₹' + n(i.price * i.qty) : ''}</td></tr>`).join('')}</table></div>
-<div class="tot"><span>Pay at pickup</span><span>₹${n(order.total)}</span></div>
-<div class="f">Cash, UPI and card accepted. Placed ${esc(new Date(order.created_at || Date.now()).toLocaleString('en-IN'))}. Guidance Navodaya &amp; Sainik Institute, Khangabok, Thoubal, Manipur.</div></div>
-<script>window.addEventListener('load',function(){try{var q=qrcode(0,'M');q.addData(${JSON.stringify(order.order_no)});q.make();document.getElementById('qr').innerHTML=q.createSvgTag({cellSize:4,margin:0,scalable:true})}catch(e){}})</script></body></html>`
-    const win = window.open('', '_blank', 'width=520,height=760,scrollbars=yes')
-    if (!win) { alert('Please allow pop-ups to save your pickup pass.'); return }
-    win.document.write(html); win.document.close()
+    const e = rEsc
+    const rows = items.map((i, k) => `<tr><td>${k + 1}</td><td style="font-weight:700">${e(i.name)}</td><td>${e(i.size || '—')}</td><td class="r mono">${e(i.qty)}</td><td class="r mono">${i.price != null ? n(i.price) : ''}</td><td class="r mono" style="font-weight:700">${i.price != null ? n(i.price * i.qty) : ''}</td></tr>`).join('')
+    const placed = new Date(order.created_at || Date.now())
+    const body = `
+      <div class="wrap">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px">
+          <div><div class="l">Order No.</div><div class="mono" style="font-size:17px;font-weight:700;color:#0B1E3D;margin-top:2px">${e(order.order_no)}</div></div>
+          <div style="text-align:center;display:flex;align-items:center;gap:10px">${receiptQrSVG(order.order_no, 64)}<div>${barcodeSVG(String(order.order_no || ''))}</div></div>
+          <div style="text-align:right"><div class="l">Placed on</div><div style="font-size:13px;font-weight:700;margin-top:2px">${e(placed.toLocaleString('en-IN'))}</div></div>
+        </div>
+        ${infoGrid([
+          [['Customer', e(order.name || '—'), 2], ['Phone', e(order.phone || '—')], ['Status', e(st.label)]],
+          [['Collect from', e(COUNTER.place), 2], ['Counter hours', e(COUNTER.hours), 2]],
+        ])}
+        <table class="items"><thead><tr><th style="width:40px">Sl.</th><th>Item</th><th style="width:90px">Size</th><th class="r" style="width:60px">Qty</th><th class="r" style="width:100px">Rate (₹)</th><th class="r" style="width:110px">Amount (₹)</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:#94A3B8">—</td></tr>'}</tbody></table>
+        <table class="tot" style="width:300px;margin-left:auto;margin-top:-1px"><tbody>
+          <tr class="net"><td>${payable ? 'PAY AT PICKUP' : 'ORDER TOTAL'}</td><td class="r amt">₹ ${n(order.total)}</td></tr>
+        </tbody></table>
+        <div class="words"><span class="l" style="margin-right:6px">Amount in words:</span><b>${amountInWords(order.total)}</b></div>
+        <div class="instr" style="grid-template-columns:1fr"><div><h4>🛍️ Pickup</h4><ol><li>Show this pass or quote the order number at the counter.</li><li>Cash, UPI and card accepted.</li></ol></div></div>
+        <div class="foot"><div class="note" style="font-style:italic">This is a computer-generated order slip.</div></div>
+      </div>`
+    const title = `Order ${order.order_no}`
+    openReceiptWindow(title, receiptDocument(title, receiptSheet(receiptHeader('ORDER SLIP', 'GNSI STORE · PICKUP PASS') + body, undefined, 'Thank you for shopping at the GNSI Store.'), { printLabel: '🖨 Print / Save as PDF' }), { autoPrint: false })
   }
 
   return (
