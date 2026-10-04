@@ -4,6 +4,7 @@
 // Only the visual layer is replaced.
 
 import { printFeeReceipt } from './premiumReceipt'
+import { CertificateDialog } from './certificateKit'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './supabase'
@@ -3159,7 +3160,7 @@ function courseAccent(course) {
   return cs?.color || T.brand
 }
 
-function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuickAttend, onExamEntry, onClone, feeData, attData, examData, selected, onSelect }) {
+function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuickAttend, onExamEntry, onCertificate, onClone, feeData, attData, examData, selected, onSelect }) {
   const isMobile=useIsMobile()
   const [overflow,setOverflow]=useState(false)
   const att=attData[s.id]
@@ -3176,6 +3177,7 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
     {l:'Fee',icon:'💰',fn:()=>onOpenFee(s),show:can.fees},
     {l:'Exams',icon:'📚',fn:()=>onExamEntry(s),show:can.exams},
     {l:'Attendance',icon:'📅',fn:()=>onQuickAttend(s),show:can.attend},
+    {l:'Certificate',icon:'📜',fn:()=>onCertificate(s),show:can.print!==false&&!!onCertificate},
     {l:'Delete',icon:'🗑️',fn:()=>onDelete(s),show:can.write,danger:true},
   ].filter(a=>a.show)
 
@@ -5089,6 +5091,7 @@ export default function Students({ onNavigate: goToModule } = {}) {
   const [examEntry,setExamEntry]=useState(null)
   const [attViewer,setAttViewer]=useState(null)
   const [examViewer,setExamViewer]=useState(null)
+  const [certStudent,setCertStudent]=useState(null)
   const [feeViewer,setFeeViewer]=useState(null)
   const [toast,setToast]=useState(null)
   const [page,setPage]=useState(1)
@@ -5632,6 +5635,7 @@ const effectiveCols = visibleCols.filter(col => {
       {examEntry&&<ExamScoreModal student={examEntry} can={can} onClose={()=>setExamEntry(null)} onSaved={()=>{setExamEntry(null);loadExamData(students.map(s=>s.id))}} showToast={showToast}/>}
       {attViewer&&<AttendanceViewerModal student={attViewer} onClose={()=>setAttViewer(null)}/>}
       {examViewer&&<ExamViewerModal student={examViewer} onClose={()=>setExamViewer(null)}/>}
+      {certStudent&&<CertificateDialog student={certStudent} onClose={()=>setCertStudent(null)}/>}
       {feeViewer&&<FeeViewerModal student={feeViewer} feeData={feeData} feeHistory={feeHistory} onClose={()=>setFeeViewer(null)}/>}
       {showBulkOps&&<BulkOperationsModal students={students} selectedIds={selected} can={can} onClose={()=>setShowBulkOps(false)} onRefresh={loadAll} showToast={showToast}/>}
       {showRollover&&<SessionRolloverWizard students={students} can={can} onClose={()=>setShowRollover(false)} onRefresh={loadAll} showToast={showToast}/>}
@@ -5990,7 +5994,7 @@ const effectiveCols = visibleCols.filter(col => {
                 onEdit={st=>{setEditing(st);setFormOpen(true)}}
                 onDelete={handleDelete} onOpenFee={setFeeViewer}
                 onOpenDetail={setDetailPanel} onQuickAttend={setAttViewer}
-                onExamEntry={setExamViewer} onClone={handleClone}
+                onExamEntry={setExamViewer} onCertificate={setCertStudent} onClone={handleClone}
                 feeData={feeData} attData={attData} examData={examData}
                 selected={selected} onSelect={toggleSelect}
               />

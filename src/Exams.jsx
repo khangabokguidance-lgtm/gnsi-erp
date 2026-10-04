@@ -22,6 +22,7 @@ import { supabase } from './supabase'
 import { sysOr } from "./systemSettings";
 import { getActiveStudents } from './studentQueries'
 import { receiptDocument, openReceiptWindow } from './premiumReceipt';
+import { CertificateDialog } from './certificateKit';
 import { buildReportCardHTML as buildReportCardHTMLShared, REPORT_CARD_CSS } from './reportCardTemplate';
 import { ADMIT_CARD_CSS, generateAdmitCardHTML, openAdmitCardPrintWindow } from './admitCardTemplate'
 import ToppersCertificate from './ToppersCertificate'
@@ -7850,6 +7851,7 @@ function isStudentAbsentForExam(studentId, subjects, marksMap) {
 
 function ReportCardItem({ st, subjects, subjectMaxMap, courseMax, marks, examType, examDate, examName, institute, allStudents, course }) {
   const { remark, setRemark, save: saveRemark, saving: savingRemark, saved: savedRemark } = useRemarks(st.id, examType, examDate);
+  const [certOpen, setCertOpen] = React.useState(false);
   const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marks[`${sid}-${sub}`]) || 0), 0);
   const total = getTotal(st.id);
   const pct = courseMax ? (total / courseMax) * 100 : 0;
@@ -7887,6 +7889,8 @@ function ReportCardItem({ st, subjects, subjectMaxMap, courseMax, marks, examTyp
         </button>
       </div>
       <PrintReportCardButton onPrint={printReport} />
+      <button onClick={() => setCertOpen(true)} style={{ ...css.btn, width: "100%", marginTop: 6, background: "#fff", color: "#132a4f", border: "1px solid #E2C57E" }}>📜 Issue Certificate</button>
+      {certOpen && <CertificateDialog student={st} onClose={() => setCertOpen(false)} />}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { supabase } from './supabase'
 import { getAllStudents } from './studentQueries'
 import { PremiumHero, PREMIUM_CSS } from './staffPhotos'
 import { printFeeReceipt } from './premiumReceipt'
+import { CertificateDialog } from './certificateKit'
 import { instNameHTML, instAddressHTML, getInstitute } from './systemSettings'
 import FeeRegisterBook from './FeeRegisterBook'
 import PrintAllLedgers from './PrintAllLedgers'
@@ -380,6 +381,7 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
   const mobile = useMobile()
   const [students, setStudents] = useState([])
   const [selected, setSelected] = useState(null)
+  const [certOpen, setCertOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [admRows, setAdmRows] = useState([])
@@ -463,6 +465,7 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
         ))}
       </div>
 
+      {certOpen && selected && <CertificateDialog student={selected} onClose={() => setCertOpen(false)} />}
       {tab === 'daybook' && <FeeDayBook students={students} />}
       {tab === 'monthly' && <FeeMonthlyLedger students={students} />}
       {tab === 'expense' && canSeeAccounts && <ExpenseDayBook />}
@@ -509,6 +512,10 @@ export default function StudentFeeLedger({ canSeeAccounts = false }) {
               <button onClick={() => printLedger(selected, admRows, flatRows, crsRows, grandTotal)}
                 style={{ padding: mobile ? '8px 14px' : '10px 20px', border: 'none', background: 'linear-gradient(180deg,#D9B566,#C9A24B)', color: '#0B1E3D', fontSize: mobile ? 12 : 13, fontWeight: 800, cursor: 'pointer', borderRadius: 999, boxShadow: '0 10px 22px rgba(201,162,75,.3)' }}>
                 🖨️ Print Ledger
+              </button>
+              <button onClick={() => setCertOpen(true)}
+                style={{ padding: mobile ? '8px 12px' : '10px 16px', borderRadius: 10, border: '1px solid rgba(226,197,126,.5)', background: 'transparent', color: '#E2C57E', fontSize: mobile ? 12 : 13, fontWeight: 700, cursor: 'pointer' }}>
+                📜 Certificate
               </button>
               <button onClick={handleClear}
                 style={{ padding: mobile ? '8px 12px' : '10px 16px', borderRadius: 10, border: '1px solid rgba(255,255,255,.2)', background: 'transparent', color: 'white', fontSize: mobile ? 12 : 13, fontWeight: 600, cursor: 'pointer' }}>
