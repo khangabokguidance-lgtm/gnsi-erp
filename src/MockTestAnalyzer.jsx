@@ -15,13 +15,14 @@ import {
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
 import { printDocument, studentReportHTML, batchReportHTML, subjectReportHTML } from './lib/mockTestReports';
 import ResponsiveTables from './ResponsiveTables';
-import { loadAll, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount } from './lib/mockTestStore';
+import { loadAll, loadSettings, saveSettings, saveRows, deleteTest, resetSeries, resetAll, migrateLocalToCloud, localCount, loadFixes, migrateLocalFixes, localFixCount } from './lib/mockTestStore';
 import { applyFixes } from './lib/studentFixEngine';
 import { emptyFilter, isFilterActive, describeFilter, applyDataFilter, studentRoster, loadPresets, savePresets } from './lib/mockTestFilter';
 import ExamIcon from './examIcons';
 import MockFixEngine from './MockFixEngine';
 
 const NAVY = '#132a4f';
+const NO_BATCH_MARKS = {};
 const ui = {
   card: { background: '#fff', border: '1px solid #e8e3d8', borderRadius: 16, padding: 14, marginBottom: 12, boxShadow: '0 2px 10px rgba(19,42,79,.06)' },
   input: { padding: '8px 12px', borderRadius: 12, border: '1px solid #d9d2c2', fontSize: 13, background: '#fff', color: '#0f1b2e', fontFamily: 'inherit', minWidth: 0 },
@@ -87,19 +88,30 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [series, setSeries] = useState(DEFAULT_SERIES);
-  const [passPct, setPassPct] = useState(() => {
-    try { const v = Number(localStorage.getItem('mockPassPct')); return v >= 0 && v <= 100 && localStorage.getItem('mockPassPct') !== null ? v : 40; } catch { return 40; }
-  });
-  const [passBy, setPassBy] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('mockPassByBatch') || '{}') || {}; } catch { return {}; }
-  });
-  useEffect(() => { try { localStorage.setItem('mockPassByBatch', JSON.stringify(passBy)); } catch { /* ignore */ } }, [passBy]);
-  const setBatchPass = useCallback((b, v) => setPassBy((o) => {
-    const n = { ...o };
+  // Pass marks live per series in Supabase (mock_test_settings) so they follow the user across devices.
+  const [cfg, setCfg] = useState({});
+  const cfgRef = useRef({});
+  const cfgMode = useRef('local');
+  const saveTimer = useRef(null);
+  const cur = cfg[series] || {};
+  const passPct = cur.passPct ?? 40;
+  const passBy = cur.passBy || NO_BATCH_MARKS;
+  const updateCfg = useCallback((patch) => {
+    const next = { ...(cfgRef.current[series] || {}), ...patch };
+    cfgRef.current = { ...cfgRef.current, [series]: next };
+    setCfg(cfgRef.current);
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveSettings(series, { passPct: next.passPct ?? 40, passBy: next.passBy || {} }, cfgMode.current, currentUser?.username || currentUser?.name || '')
+        .catch((e) => setErr(`Could not save the pass mark: ${e.message || e}`));
+    }, 500);
+  }, [series, currentUser]);
+  const setPassPct = useCallback((v) => updateCfg({ passPct: v }), [updateCfg]);
+  const setBatchPass = useCallback((b, v) => {
+    const n = { ...(cfgRef.current[series]?.passBy || {}) };
     if (v === '') delete n[b]; else n[b] = Math.max(0, Math.min(100, Number(v) || 0));
-    return n;
-  }), []);
-  useEffect(() => { try { localStorage.setItem('mockPassPct', String(passPct)); } catch { /* ignore */ } }, [passPct]);
+    updateCfg({ passBy: n });
+  }, [series, updateCfg]);
   const [fixes, setFixes] = useState([]);
   const [fixMode, setFixMode] = useState('cloud');
 
@@ -114,8 +126,8 @@ export default function MockTestAnalyzer({ institute, currentUser, canUpload = t
   }, [apply, applyFix]);
   useEffect(() => {
     let live = true;
-    Promise.all([loadAll(), loadFixes().catch(() => ({ fixes: [], mode: 'local' }))])
-      .then(([r, f]) => { if (live) { apply(r); applyFix(f); } })
+    Promise.all([loadAll(), loadFixes().catch(() => ({ fixes: [], mode: 'local' })), loadSettings().catch(() => ({ settings: {}, mode: 'local' }))])
+      .then(([r, f, st]) => { if (live) { apply(r); applyFix(f); cfgRef.current = st.settings; cfgMode.current = st.mode; setCfg(st.settings); } })
       .catch((e) => { if (live) setErr(e.message || String(e)); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
@@ -332,7 +344,7 @@ function Overview({ rows, meta, passPct, passBy, institute, series }) {
     <>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         <Stat label="Students" value={all.studentCount} sub={`${all.rowsCount} results`} color={NAVY} />
-        <Stat label="Overall average" value={`${fx(all.avgPct)}%`} color={strengthLabel(all.avgPct).color} />
+        <Stat label="Overall average" value={`${fx(all.avgPct)}%`} color={strengthLabel(all.avgPct, passPct).color} />
         <Stat label={passLabel(all)} value={`${fx(all.pass, 0)}%`} color={all.pass >= 75 ? '#047857' : '#b45309'} />
         <Stat label="Strongest subject" value={all.easiest.subject} sub={`${fx(all.easiest.avgPct)}% avg`} color="#047857" />
         <Stat label="Weakest subject" value={all.toughest.subject} sub={`${fx(all.toughest.avgPct)}% avg`} color="#b91c1c" />
@@ -348,7 +360,7 @@ function Overview({ rows, meta, passPct, passBy, institute, series }) {
           {cmp.map((c) => (
             <tr key={c.batch}>
               <td style={{ ...ui.td, textAlign: 'left', fontWeight: 700 }}>{c.batch}</td><td style={ui.td}>{c.students}</td><td style={ui.td}>{c.tests}</td>
-              <td style={{ ...ui.td, fontWeight: 700, color: strengthLabel(c.avgPct).color }}>{fx(c.avgPct)}%</td><td style={ui.td}>{fx(c.pass, 0)}% <span style={{ color: '#8a93a6', fontSize: 11 }}>(≥{c.passPct})</span></td><td style={ui.td}>{fx(c.high, 2)}</td>
+              <td style={{ ...ui.td, fontWeight: 700, color: strengthLabel(c.avgPct, c.passPct).color }}>{fx(c.avgPct)}%</td><td style={ui.td}>{fx(c.pass, 0)}% <span style={{ color: '#8a93a6', fontSize: 11 }}>(≥{c.passPct})</span></td><td style={ui.td}>{fx(c.high, 2)}</td>
               {subs.map((s) => <td key={s} style={{ ...ui.td, background: heatBg(c.subj[s]) }}>{fx(c.subj[s])}%</td>)}
             </tr>
           ))}
@@ -542,14 +554,16 @@ function SubjectView({ rows, meta, passPct, passBy, institute, series }) {
       </div>
       <div style={ui.card}>
         <h4 style={{ margin: '0 0 8px' }}>Student-wise marks in {ps.subject}</h4>
-        <Table maxH={520} head={['#', 'Student', 'GCC', 'Batch', ...tests.map((t) => `T${t}`), 'Avg %', 'Status']}>
+        <Table maxH={520} head={['#', 'Student', 'GCC', 'Batch', ...tests.map((t) => `T${t}`), 'Avg %', 'Result', 'Band']}>
           {ranked.map((s, i) => {
-            const st = strengthLabel(s.sub[ps.subject]);
+            const pm = b.passOf(s.batch);
+            const ok = s.sub[ps.subject] >= pm;
+            const st = strengthLabel(s.sub[ps.subject], pm);
             return (
               <tr key={s.sid}>
                 <td style={ui.td}>{i + 1}</td><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{s.name}</td><td style={ui.td}>{s.gcc || '—'}</td><td style={ui.td}>{s.batch}</td>
                 {tests.map((t) => { const v = s.subTests?.[ps.subject]?.[t]; return <td key={t} style={{ ...ui.td, background: heatBg(v == null ? null : (v / ps.max) * 100) }}>{v == null ? '—' : fx(v, 2)}</td>; })}
-                <td style={{ ...ui.td, fontWeight: 700, color: st.color }}>{fx(s.sub[ps.subject])}%</td><td style={ui.td}><Pill text={st.label} color={st.color} /></td>
+                <td style={{ ...ui.td, fontWeight: 700, color: st.color }}>{fx(s.sub[ps.subject])}%</td><td style={ui.td}><Pill text={ok ? 'Pass' : 'Fail'} color={ok ? '#047857' : '#b91c1c'} /></td><td style={ui.td}><Pill text={st.label} color={st.color} /></td>
               </tr>
             );
           })}
@@ -583,7 +597,7 @@ function BatchView({ rows, meta, passPct, passBy, institute, series }) {
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         <Stat label="Students" value={b.studentCount} sub={`${b.rowsCount} results`} color={NAVY} />
-        <Stat label="Average" value={`${fx(b.avgPct)}%`} color={strengthLabel(b.avgPct).color} />
+        <Stat label="Average" value={`${fx(b.avgPct)}%`} color={strengthLabel(b.avgPct, b.passPct).color} />
         <Stat label={passLabel(b)} value={`${fx(b.pass, 0)}%`} color={b.pass >= 75 ? '#047857' : '#b45309'} />
         <Stat label="Top performer" value={<span style={{ fontSize: 14 }}>{b.topper?.name}</span>} sub={b.topper ? `${fx(b.topper.avgPct)}% avg` : ''} color="#047857" />
         <Stat label="Weakest subject" value={b.toughest.subject} sub={`${fx(b.toughest.avgPct)}%`} color="#b91c1c" />
@@ -606,7 +620,7 @@ function BatchView({ rows, meta, passPct, passBy, institute, series }) {
           {b.students.map((s) => (
             <tr key={s.sid}><td style={{ ...ui.td, fontWeight: 700 }}>{s.rank}</td><td style={{ ...ui.td, textAlign: 'left', fontWeight: 600 }}>{s.name}</td><td style={ui.td}>{s.gcc || '—'}</td>
               {batch ? null : <td style={ui.td}>{s.batch}</td>}<td style={ui.td}>{s.tests}</td><td style={ui.td}>{fx(s.avgTotal, 2)}</td>
-              <td style={{ ...ui.td, fontWeight: 700, color: strengthLabel(s.avgPct).color }}>{fx(s.avgPct)}%</td><td style={ui.td}>{fx(s.best, 2)}</td>
+              <td style={{ ...ui.td, fontWeight: 700, color: strengthLabel(s.avgPct, b.passOf(s.batch)).color }}>{fx(s.avgPct)}%</td><td style={ui.td}>{fx(s.best, 2)}</td>
               {subs.map((x) => <td key={x} style={{ ...ui.td, background: heatBg(s.sub[x]) }}>{s.sub[x] === undefined ? '—' : fx(s.sub[x], 0) + '%'}</td>)}
               <td style={{ ...ui.td, color: tone(s.trend, 1.5) }}>{s.tests >= 3 ? sgn(s.trend) : '—'}</td></tr>
           ))}
