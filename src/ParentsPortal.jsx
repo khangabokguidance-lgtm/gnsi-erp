@@ -1,4 +1,5 @@
-import { printFeeReceipt as printPremiumFeeReceipt } from './premiumReceipt';
+import { printFeeReceipt as printPremiumFeeReceipt, receiptDocument, openReceiptWindow } from './premiumReceipt';
+import { buildReportCardHTML as buildReportCardHTMLShared, REPORT_CARD_CSS } from './reportCardTemplate';
 import { useState, useCallback, useEffect } from 'react';
 // Parents use their own Supabase client/session (see parentSupabase.js).
 import { parentSupabase as supabase } from './parentSupabase';
@@ -169,210 +170,8 @@ function getCourseMax(course) {
   return Object.values(maxMap).reduce((s, v) => s + v, 0) || 100;
 }
 
-// ─── REPORT_CARD_CSS — premium Tailwind-inspired redesign of the printed
-// report card. This intentionally diverges from Exams.jsx's staff-side
-// version (per explicit request): a parent-printed card will no longer be
-// byte-identical to a staff-printed one.
-// Prefixes every selector in a stylesheet with `scope`, so CSS injected
-// into the page (report card) can't restyle the rest of the site.
-// body/html/* rules are redirected onto the scope element itself.
-function scopeCss(css, scope) {
-  const scopeSel = (sel) => sel.split(',').map(x => {
-    const t = x.trim();
-    if (!t) return t;
-    if (/^(html|body)\b/.test(t)) return t.replace(/^(html|body)\b/, scope);
-    if (/^\*/.test(t)) return `${scope} ${t}, ${scope}`;
-    return `${scope} ${t}`;
-  }).join(', ');
-  let out = '', i = 0;
-  while (i < css.length) {
-    const open = css.indexOf('{', i);
-    if (open === -1) { out += css.slice(i); break; }
-    const head = css.slice(i, open).trim();
-    if (head.startsWith('@media') || head.startsWith('@supports')) {
-      let depth = 1, j = open + 1;
-      while (j < css.length && depth) { if (css[j] === '{') depth++; else if (css[j] === '}') depth--; j++; }
-      out += `${head}{${scopeCss(css.slice(open + 1, j - 1), scope)}}`;
-      i = j;
-    } else {
-      const close = css.indexOf('}', open);
-      const body = css.slice(open + 1, close);
-      out += head.startsWith('@') ? `${head}{${body}}` : `${scopeSel(head)}{${body}}`;
-      i = close + 1;
-    }
-  }
-  return out;
-}
-
-const REPORT_CARD_CSS = `
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-@page{margin:0.7cm;size:A4;}
-body{font-family:'Inter',ui-sans-serif,system-ui,sans-serif;background:#0f172a;padding:32px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-.no-print{text-align:center;margin-bottom:20px;display:flex;gap:12px;justify-content:center;}
-.no-print button{padding:12px 28px;border:none;border-radius:12px;cursor:pointer;font-family:'Inter',sans-serif;font-size:14px;font-weight:600;transition:opacity .15s;}
-.no-print button:hover{opacity:.9;}
-.btn-print{background:#d4af37;color:#0f172a;}.btn-close{background:rgba(255,255,255,.08);color:#f8fafc;border:1px solid rgba(255,255,255,.15)!important;}
-.page-break{page-break-after:always;height:0;overflow:hidden;}
-.card{width:760px;margin:0 auto 28px;background:#ffffff;border-radius:24px;box-shadow:0 25px 70px -15px rgba(0,0,0,.45),0 0 0 1px rgba(15,23,42,.06);position:relative;overflow:hidden;}
-.top-strip{height:6px;background:linear-gradient(90deg,#0f172a 0%,#1e3a8a 30%,#d4af37 60%,#f4d878 80%,#1e3a8a 100%);}
-.header{background:linear-gradient(135deg,#0b1120 0%,#0f172a 50%,#152238 100%);padding:32px 40px 24px;display:flex;align-items:center;gap:20px;position:relative;}
-.header::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 85% -20%,rgba(212,175,55,.18),transparent 60%);pointer-events:none;}
-.logo-ring{width:72px;height:72px;border-radius:9999px;border:2px solid #d4af37;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 4px rgba(212,175,55,.12);}
-.logo-text{font-family:'Inter',sans-serif;font-size:15px;font-weight:800;color:#fff;letter-spacing:.05em;}
-.header-center{flex:1;text-align:center;}
-.eyebrow{font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;font-weight:600;}
-.inst-name{font-family:'Inter',sans-serif;font-size:22px;font-weight:800;color:#fff;margin-bottom:4px;letter-spacing:-.01em;}
-.inst-addr{font-size:12px;color:#94a3b8;}
-.doc-badge{text-align:center;flex-shrink:0;background:rgba(212,175,55,.12);border:1px solid rgba(212,175,55,.4);border-radius:14px;padding:8px 16px;}
-.doc-badge-title{font-family:'Inter',sans-serif;font-size:13px;font-weight:800;color:#f4d878;letter-spacing:.15em;line-height:1.3;}
-.doc-badge-sub{font-size:10px;color:#cbd5e1;margin-top:4px;font-weight:600;}
-.exam-result-bar{background:#111c34;padding:14px 40px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(255,255,255,.06);}
-.exam-info{display:flex;gap:28px;flex-wrap:wrap;}
-.exam-info-item{display:flex;flex-direction:column;}
-.exam-info-label{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:#93a5c9;margin-bottom:3px;font-weight:700;}
-.exam-info-value{font-size:14px;font-weight:700;color:#ffffff;}
-.result-pill-bar{display:flex;align-items:center;gap:10px;}
-.student-section{padding:24px 40px 8px;}
-.section-title{font-family:'Inter',sans-serif;font-size:11px;font-weight:800;color:#0f172a;letter-spacing:.2em;text-transform:uppercase;margin-bottom:12px;}
-.student-table{width:100%;border-collapse:separate;border-spacing:0 6px;font-size:13px;}
-.student-table td{padding:10px 14px;background:#f8fafc;}
-.student-table tr td:first-child{border-radius:10px 0 0 10px;}
-.student-table tr td:last-child{border-radius:0 10px 10px 0;}
-.student-table .lbl{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#64748b;font-weight:700;background:#eef2f9;width:130px;}
-.student-table .val{font-weight:700;color:#0f172a;}
-.student-table .val.big{font-family:'Inter',sans-serif;font-size:17px;color:#0f172a;letter-spacing:-.01em;}
-.score-grid{display:grid;grid-template-columns:repeat(5,1fr);background:linear-gradient(135deg,#0f172a,#182b4d);margin:16px 40px 0;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px -10px rgba(15,23,42,.4);}
-.score-cell{text-align:center;padding:16px 8px;border-right:1px solid rgba(255,255,255,.08);}
-.score-cell:last-child{border-right:none;}
-.score-lbl{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#93a5c9;margin-bottom:6px;font-weight:700;}
-.score-val{font-family:'Inter',sans-serif;font-size:24px;font-weight:800;color:#ffffff;line-height:1;}
-.score-val.gold{color:#f4d878;}
-.score-sub{font-size:10px;color:#93a5c9;margin-top:4px;font-weight:600;}
-.marks-section{padding:20px 40px;}
-.marks-table{width:100%;border-collapse:collapse;font-size:12.5px;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;}
-.marks-table thead tr{background:#0f172a;}
-.marks-table thead th{padding:11px 12px;text-align:center;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#cbd5e1;font-weight:700;}
-.marks-table tbody tr:nth-child(even){background:#f8fafc;}
-.marks-table tbody td{padding:11px 12px;text-align:center;border-bottom:1px solid #f1f5f9;}
-.marks-table tfoot tr{background:#eef2f9;}
-.marks-table tfoot td{padding:12px;border-top:2px solid #cbd5e1;text-align:center;font-weight:800;}
-.remark-box{margin:0 40px 18px;padding:16px 20px;background:#fdfaf1;border:1px solid #f0e4bd;border-left:4px solid #d4af37;border-radius:14px;}
-.remark-label{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:#a17e1f;font-weight:800;margin-bottom:6px;}
-.remark-text{font-family:'Inter',sans-serif;font-size:14px;font-style:italic;color:#453a15;line-height:1.65;}
-.sig-section{display:flex;align-items:flex-end;justify-content:space-between;padding:18px 40px 26px;background:#fff;border-top:1px solid #e2e8f0;gap:20px;}
-.sig-block{text-align:center;flex:1;}
-.sig-space{height:44px;}
-.sig-label{border-top:1.5px solid #cbd5e1;padding-top:6px;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#475569;font-weight:700;margin:0 10px;}
-.seal-block{flex:0 0 90px;display:flex;flex-direction:column;align-items:center;}
-.seal{width:90px;height:90px;display:flex;align-items:center;justify-content:center;}
-.seal img{width:90px;height:90px;object-fit:contain;}
-.footer-strip{background:linear-gradient(90deg,#0b1120,#0f172a,#0b1120);padding:12px 40px;}
-.footer-text{font-size:10px;color:#94a3b8;text-align:center;font-weight:500;letter-spacing:.03em;}
-.bottom-strip{height:5px;background:linear-gradient(90deg,#1e3a8a,#d4af37,#1e3a8a);}
-@media print{body{background:white;padding:0;}.no-print{display:none!important;}.card{box-shadow:none;border-radius:0;width:100%;margin:0;}}
-`;
-
-// ─── buildReportCardHTML — identical logic to Exams.jsx's function of the
-// same name (ranking algorithm, subject rows, grade colors, layout markup)
-// so parent-printed cards match staff-printed ones exactly.
-function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, course, allStudents, examName, examDate, institute, remarkText) {
-  const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marksMap[`${sid}-${sub}`]) || 0), 0);
-  const total = getTotal(st.id);
-  const pct = courseMax ? (total / courseMax) * 100 : 0;
-  const grade = getGrade(pct);
-  const passed = pct >= 40;
-  const gradeColors = { "A+": "#fbbf24", "A": "#fbbf24", "B+": "#e0e7ff", "B": "#e0e7ff", "C": "#f87171", "D": "#fb923c", "F": "#fca5a5" };
-  const gradeColor = gradeColors[grade.label] || "#0A1628";
-
-  const sortedStudents = [...allStudents].map(s => ({ ...s, total: getTotal(s.id) })).sort((a, b) => b.total - a.total);
-  let rank = 1, prev = null;
-  for (let i = 0; i < sortedStudents.length; i++) {
-    if (i === 0) { rank = 1; prev = sortedStudents[i].total; } else if (sortedStudents[i].total !== prev) { rank++; prev = sortedStudents[i].total; }
-    if (sortedStudents[i].id === st.id) break;
-  }
-  const rankSuffix = rank === 1 ? "st" : rank === 2 ? "nd" : rank === 3 ? "rd" : "th";
-
-  const subjectRows = subjects.map((s, idx) => {
-    const m = Number(marksMap[`${st.id}-${s}`]) || 0;
-    const subMax = (subjectMaxMap && subjectMaxMap[s]) || 100;
-    const subPct = Math.round((m / subMax) * 100);
-    const subPassed = subPct >= 40;
-    const barColor = subPct >= 80 ? "#1a56db" : subPct >= 60 ? "#1B4F8A" : subPct >= 40 ? "#BA7517" : "#C0392B";
-    const gradeLbl = subPct >= 90 ? "A+" : subPct >= 80 ? "A" : subPct >= 70 ? "B+" : subPct >= 60 ? "B" : subPct >= 50 ? "C" : subPct >= 40 ? "D" : "F";
-    return `<tr>
-      <td style="text-align:left;font-weight:600;color:#2D3748">${idx + 1}. ${esc(s)}</td>
-      <td>${subMax}</td>
-      <td style="font-family:'EB Garamond',serif;font-size:14px;font-weight:700;color:#0A1628">${m}</td>
-      <td><div style="display:flex;align-items:center;gap:5px;"><div style="flex:1;height:6px;background:#E2E8F0;border-radius:3px;overflow:hidden;"><div style="width:${subPct}%;height:100%;background:${barColor};border-radius:3px;"></div></div><span style="font-size:10px;font-weight:700;color:${barColor};min-width:32px">${subPct}%</span></div></td>
-      <td><span style="display:inline-block;padding:1px 8px;border-radius:2px;font-size:11px;font-weight:700;color:${barColor};border:1px solid ${barColor};background:${barColor}18">${gradeLbl}</span></td>
-      <td><span style="font-size:10px;font-weight:700;color:${subPassed ? "#1a56db" : "#C0392B"}">${subPassed ? "✓ PASS" : "✗ FAIL"}</span></td>
-    </tr>`;
-  }).join("");
-
-  const remarkBlock = remarkText
-    ? `<div class="remark-box"><div class="remark-label">✦ Teacher's Remarks</div><div class="remark-text">"${esc(remarkText)}"</div></div>`
-    : "";
-
-  return `<div class="card">
-    <div class="top-strip"></div>
-    <div class="header">
-      <div class="logo-ring">${institute.logoUrl ? `<img src="${institute.logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:50%"/>` : `<div class="logo-text">GNSI</div>`}</div>
-      <div class="header-center">
-        <div class="eyebrow">Official Academic Record · ${institute.academicYear || "2025-2026"}</div>
-        <div class="inst-name">${institute.name || "Guidance Navodaya & Sainik Institute"}</div>
-        <div class="inst-addr">${institute.address || "Khangabok, Thoubal, Manipur"}</div>
-      </div>
-      <div class="doc-badge"><div class="doc-badge-title">REPORT<br/>CARD</div><div class="doc-badge-sub">${esc(examName)}</div></div>
-    </div>
-    <div class="exam-result-bar">
-      <div class="exam-info">
-        <div class="exam-info-item"><span class="exam-info-label">Examination</span><span class="exam-info-value">${esc(examName)}</span></div>
-        <div class="exam-info-item"><span class="exam-info-label">Date</span><span class="exam-info-value">${esc(examDate || "—")}</span></div>
-        <div class="exam-info-item"><span class="exam-info-label">Academic Year</span><span class="exam-info-value">${institute.academicYear || "2025-2026"}</span></div>
-        <div class="exam-info-item"><span class="exam-info-label">Class Rank</span><span class="exam-info-value" style="color:${rank <= 3 ? "#f0c040" : "white"}">${rank}<sup style="font-size:10px">${rankSuffix}</sup> / ${allStudents.length}</span></div>
-      </div>
-      <div class="result-pill-bar">
-        <span style="font-size:20px;font-weight:700;color:${gradeColor}">${grade.label}</span>
-        <span style="font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 8px;border-radius:2px;background:${passed ? "#EFF6FF" : "#FCEBEB"};color:${passed ? "#1a56db" : "#C0392B"};border:1px solid ${passed ? "#BFDBFE" : "#FECACA"}">${passed ? "PASS" : "FAIL"}</span>
-      </div>
-    </div>
-    <div class="student-section">
-      <div class="section-title">Candidate Details</div>
-      <table class="student-table">
-        <tr><td class="lbl">Student Name</td><td class="val big" colspan="3">${esc(st.name)}</td></tr>
-        <tr><td class="lbl">GCC / Roll No.</td><td class="val big" style="letter-spacing:3px">${esc(String(st.gcc_no || "").padStart(6, "0"))}</td><td class="lbl">Admission No.</td><td class="val">${esc(st.admission_no || "—")}</td></tr>
-        <tr><td class="lbl">Course</td><td class="val">${esc(st.course || course)}</td><td class="lbl">Batch</td><td class="val">${esc(st.class_name || "—")}</td></tr>
-      </table>
-    </div>
-    <div class="score-grid" style="margin:0 16px;">
-      <div class="score-cell"><div class="score-lbl">Marks Obtained</div><div class="score-val">${total}<span style="font-size:11px;opacity:.5">/${courseMax}</span></div></div>
-      <div class="score-cell"><div class="score-lbl">Percentage</div><div class="score-val gold">${pct.toFixed(1)}%</div></div>
-      <div class="score-cell"><div class="score-lbl">Grade</div><div class="score-val" style="color:${gradeColor}">${grade.label}</div><div class="score-sub">${grade.gpa.toFixed(1)} GPA</div></div>
-      <div class="score-cell"><div class="score-lbl">Subjects</div><div class="score-val">${subjects.length}</div></div>
-      <div class="score-cell"><div class="score-lbl">Class Rank</div><div class="score-val" style="color:${rank <= 3 ? "#f0c040" : "white"}">${rank}<sup style="font-size:11px">${rankSuffix}</sup></div><div class="score-sub">of ${allStudents.length}</div></div>
-    </div>
-    <div class="marks-section">
-      <div class="section-title" style="margin-top:8px">Subject-wise Performance</div>
-      <table class="marks-table">
-        <thead><tr><th style="text-align:left;width:32%">Subject</th><th>Max Marks</th><th>Marks Obtained</th><th style="width:25%">Performance</th><th>Grade</th><th>Result</th></tr></thead>
-        <tbody>${subjectRows}</tbody>
-        <tfoot><tr>
-          <td style="text-align:left;font-size:12px;font-weight:700">Grand Total</td>
-          <td>${courseMax}</td>
-          <td style="font-size:16px;font-weight:700;color:#0A1628">${total}</td>
-          <td colspan="3"></td>
-        </tr></tfoot>
-      </table>
-    </div>
-    ${remarkBlock}
-    <div class="sig-section">
-      <div class="sig-block"><div class="sig-space"></div><div class="sig-label">Class Teacher</div></div>
-      <div class="sig-block"><div class="sig-space"></div><div class="sig-label">Head of Institute</div></div>
-    </div>
-    <div class="footer-strip"><div class="footer-text">${institute.name || "GNSI"} · ${institute.address || "Khangabok, Manipur"} · ${esc(examName)} · Academic Year ${institute.academicYear || "2025-2026"}</div></div>
-    <div class="bottom-strip"></div>
-  </div>`;
-}
+const buildReportCardHTML = (st, subjects, subjectMaxMap, courseMax, marksMap, course, allStudents, examName, examDate, institute, remarkText) =>
+  buildReportCardHTMLShared(st, subjects, subjectMaxMap, courseMax, marksMap, course, allStudents, examName, examDate, institute, remarkText, getGrade);
 
 // ─── matchesCourseBatch — ported verbatim from Exams.jsx ────────────────────
 // Needed for correct classmate/ranking lookups: a plain class_name equality
@@ -540,50 +339,6 @@ async function resolveGuardianColumn(sampleStudentId) {
   }
   _guardianColumnCache = null;
   return null;
-}
-
-// ── "Your Portal PIN" card: view, copy, save — with the save-it instruction ──
-function MyPinCard({ pin, student }) {
-  const key = 'gnsi_pp_pin_saved_' + (student?.gcc_no || '');
-  const [show, setShow] = useState(false);
-  const [saved, setSaved] = useState(() => { try { return localStorage.getItem(key) === '1'; } catch (_) { return false; } });
-  const [copied, setCopied] = useState(false);
-  const markSaved = () => { setSaved(true); try { localStorage.setItem(key, '1'); } catch (_) {} };
-  const copy = async () => { try { await navigator.clipboard.writeText(pin); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch (_) {} };
-  const download = () => {
-    const txt = `GNSI Parents Portal\n\nStudent: ${student?.name || ''}\nGCC No: ${student?.gcc_no || ''}\nPortal PIN: ${pin}\n\nKeep this PIN safe for future use.\nIf you forget it, please contact the institute office.\n`;
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
-    a.download = `GNSI-Portal-PIN-${student?.gcc_no || ''}.txt`; a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
-    markSaved();
-  };
-  const btn = { padding: '8px 14px', borderRadius: 999, border: '1px solid #E2C57E', background: '#fff', color: '#0B1E3D', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' };
-  if (saved && !show) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '0 0 10px' }}>
-        <button onClick={() => setShow(true)} style={{ ...btn, fontSize: 12 }}>🔑 View my Portal PIN</button>
-      </div>
-    );
-  }
-  return (
-    <div style={{ margin: '0 0 16px', borderRadius: 16, padding: '16px 18px', background: 'linear-gradient(135deg,#0B1E3D,#1F4E8C)', color: '#fff', boxShadow: '0 12px 30px rgba(11,30,61,.25)', border: '1px solid rgba(226,197,126,.35)' }}>
-      <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', color: '#E2C57E', textTransform: 'uppercase' }}>Your Portal PIN</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '8px 0 10px' }}>
-        <span style={{ fontSize: 30, fontWeight: 800, letterSpacing: 8, fontFamily: 'monospace' }}>{show ? pin : '••••••'}</span>
-        <button onClick={() => setShow(s => !s)} style={btn}>{show ? '🙈 Hide' : '👁 Show'}</button>
-        <button onClick={copy} style={btn}>{copied ? '✓ Copied' : '📋 Copy'}</button>
-        <button onClick={download} style={btn}>⬇ Save</button>
-      </div>
-      <div style={{ fontSize: 13, lineHeight: 1.55, color: 'rgba(255,255,255,.9)' }}>
-        📌 <b>Please save this PIN for future use</b> — write it down or keep it in your phone.<br />
-        If you forget it, please contact the <b>institute office</b>{' '}
-        (<a href={`tel:+${phoneDigits()}`} style={{ color: '#E2C57E', fontWeight: 700, textDecoration: 'none' }}>{getInstitute().phone}</a>).
-      </div>
-      {!saved && <button onClick={markSaved} style={{ ...btn, marginTop: 12, background: '#E2C57E', border: 'none' }}>✓ I have saved my PIN</button>}
-      {saved && <button onClick={() => setShow(false)} style={{ ...btn, marginTop: 12 }}>Close</button>}
-    </div>
-  );
 }
 
 export default function ParentsPortal({ isOpen, onClose }) {
@@ -1083,6 +838,11 @@ export default function ParentsPortal({ isOpen, onClose }) {
     if (!examTypeId || !examDate || !student) return;
 
     setRcPrintBusy(true);
+    // Open the print window now (inside the click) so pop-up blockers allow it;
+    // it is filled once the marks have loaded.
+    let fillWindow;
+    const windowHtml = new Promise(res => { fillWindow = res; });
+    openReceiptWindow(`Report Card — ${student.name}`, windowHtml, { autoPrint: false });
     try {
       // Use class_name verbatim, NOT uppercased/derived — this must match a
       // real courseSubjects/exam_schedule key exactly (Exams.jsx's own
@@ -1157,38 +917,11 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
       const html = buildReportCardHTML(student, subjects, subjectMaxMap, courseMax, marksMap, course, rankPool, examTypeName, examDate, institute, remarkText);
 
-      let overlay = document.getElementById('rcPrintOverlay');
-      if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'rcPrintOverlay';
-        overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;min-height:100vh;z-index:99999;background:#f4f4f4;';
-        document.body.appendChild(overlay);
-        document.body.style.overflow = 'hidden';
-        window.scrollTo(0, 0);
-
-        if (!document.getElementById('rcPrintStyles')) {
-          const styleTag = document.createElement('style');
-          styleTag.id = 'rcPrintStyles';
-          styleTag.textContent = `
-            @media print {
-              body:has(> #rcPrintOverlay) > *:not(#rcPrintOverlay) { display: none !important; }
-              #rcPrintOverlay .no-print { display: none !important; }
-            }
-          `;
-          document.head.appendChild(styleTag);
-        }
-      }
-      overlay.innerHTML = `
-        <style>${scopeCss(REPORT_CARD_CSS, '#rcPrintOverlay')}</style>
-        <div class="no-print" style="position:sticky;top:0;z-index:2;background:rgba(15,23,42,.92);backdrop-filter:blur(8px);padding:1rem 1.4rem;display:flex;gap:.7rem;justify-content:flex-end;box-shadow:0 4px 20px rgba(0,0,0,.25);">
-          <button class="btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
-          <button class="btn-close" onclick="document.getElementById('rcPrintOverlay').remove();document.body.style.overflow='';">✕ Close</button>
-        </div>
-        ${html}
-      `;
-      overlay.scrollTop = 0;
+      const title = `Report Card — ${student.name}`;
+      fillWindow(receiptDocument(title, html, { extraCss: REPORT_CARD_CSS, printLabel: '🖨 Print / Save as PDF' }));
     } catch (e) {
       console.error('Report card generation failed:', e);
+      fillWindow?.('<p style="font:600 14px system-ui;padding:40px;text-align:center">Could not generate the report card. Please close this window and try again.</p>');
       alert('Could not generate the report card: ' + (e?.message || 'unknown error') + '. Please try again or contact support.');
     } finally {
       setRcPrintBusy(false);
@@ -1533,7 +1266,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
         @keyframes pp-spin { to { transform: rotate(360deg); } }
         #ppOverlay .no-scrollbar::-webkit-scrollbar { display: none; }
         #ppOverlay .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -1592,7 +1325,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
         style={{
           position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: BG,
           display: 'flex', alignItems: 'stretch', overflowY: 'auto', overflowX: 'hidden',
-          fontFamily: 'inherit', fontSize: 14, color: '#1e293b', width: '100%', maxWidth: '100vw',
+          fontFamily: "'Plus Jakarta Sans',system-ui,sans-serif", fontSize: 14, color: '#1f2a44', width: '100%', maxWidth: '100vw',
         }}
         id="ppOverlay"
       >
@@ -1711,7 +1444,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
           {/* RIGHT / BOTTOM — form */}
           <div style={{ flex: '1 1 auto', minWidth: 0, boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? '22px 16px 32px' : '40px', background: '#F4F1EA' }}>
-            <div className="pp-card" style={{ width: '100%', maxWidth: 440, background: '#fff', borderRadius: 14, padding: isMobile ? '26px 20px' : '36px 34px', border: '1px solid rgba(11,30,61,0.07)', boxShadow: '0 1px 2px rgba(11,30,61,0.05), 0 24px 60px rgba(11,30,61,0.12)', position: 'relative', overflow: 'hidden' }}>
+            <div className="pp-card" style={{ width: '100%', maxWidth: 440, background: '#fff', borderRadius: 14, padding: isMobile ? '26px 20px' : '36px 34px', border: '1px solid #ece6d6', boxShadow: '0 1px 2px rgba(11,30,61,0.05), 0 24px 60px rgba(11,30,61,0.12)', position: 'relative', overflow: 'hidden' }}>
               <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 4, background: `linear-gradient(90deg, ${GOLD}, ${GOLDL}, ${GOLD})` }} />
 
               {/* formal title bar */}
@@ -1870,7 +1603,7 @@ export default function ParentsPortal({ isOpen, onClose }) {
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.16em', color: GOLDL, textTransform: 'uppercase' }}>GNSI Parents Portal</div>
-                <h3 style={{ fontSize: isMobile ? 14 : 16, fontWeight: 700, color: '#fff', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'Georgia, "Times New Roman", serif' }}>{student.name || 'Student'}</h3>
+                <h3 style={{ fontSize: isMobile ? 14 : 16, fontWeight: 700, color: '#fff', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: "'Fraunces',Georgia,serif" }}>{student.name || 'Student'}</h3>
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, flexShrink: 0 }}>
@@ -1936,17 +1669,17 @@ export default function ParentsPortal({ isOpen, onClose }) {
             <div style={{
               display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', flexWrap: isMobile ? 'wrap' : 'nowrap',
               gap: isMobile ? 12 : 18, borderRadius: 20, backgroundColor: 'white',
-              border: '1px solid rgba(11,30,61,0.07)', boxShadow: '0 1px 2px rgba(11,30,61,0.05), 0 12px 32px rgba(11,30,61,0.07)',
+              border: '1px solid #ece6d6', boxShadow: '0 1px 0 rgba(255,255,255,.8) inset, 0 1px 2px rgba(19,42,79,.05), 0 14px 34px -22px rgba(19,42,79,.35)',
               padding: isMobile ? '16px 16px 16px 20px' : '18px 22px 18px 26px', marginBottom: isMobile ? 14 : 20, position: 'relative', overflow: 'hidden',
             }}>
               <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5, background: `linear-gradient(180deg, ${GOLDL}, ${GOLD})` }} />
-              <div style={{ height: isMobile ? 52 : 64, width: isMobile ? 52 : 64, flexShrink: 0, borderRadius: '50%', background: 'linear-gradient(150deg,#16335F,#0B1E3D)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 18 : 22, fontWeight: 700, color: '#E2C57E', overflow: 'hidden', boxShadow: `0 0 0 3px #fff, 0 0 0 5px ${GOLDL}`, fontFamily: 'Georgia, serif' }}>
+              <div style={{ height: isMobile ? 52 : 64, width: isMobile ? 52 : 64, flexShrink: 0, borderRadius: '50%', background: 'linear-gradient(150deg,#16335F,#0B1E3D)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 18 : 22, fontWeight: 700, color: '#E2C57E', overflow: 'hidden', boxShadow: `0 0 0 3px #fff, 0 0 0 5px ${GOLDL}`, fontFamily: "'Fraunces',Georgia,serif" }}>
                 {student.photo_url
                   ? <img src={student.photo_url} alt="" style={{ height: '100%', width: '100%', objectFit: 'cover', borderRadius: '50%' }} />
                   : ((student.name || 'S')[0] || 'S').toUpperCase()}
               </div>
               <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                <h3 style={{ fontSize: isMobile ? 15.5 : 19, fontWeight: 700, color: NAVY, fontFamily: 'Georgia, "Times New Roman", serif', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name || 'Student'}</h3>
+                <h3 style={{ fontSize: isMobile ? 15.5 : 19, fontWeight: 700, color: NAVY, fontFamily: "'Fraunces',Georgia,serif", margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{student.name || 'Student'}</h3>
                 <p style={{ fontSize: isMobile ? 11 : 12, color: '#64748b', margin: '2px 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[student.course, student.class_name, student.batch].filter(Boolean).join(' · ')}</p>
                 <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                   <span style={{ borderRadius: 999, backgroundColor: isMobile ? '#eef1f7' : '#f1f5f9', border: isMobile ? 'none' : '1px solid #e2e8f0', padding: '3px 10px', fontSize: 10, fontWeight: 700, color: '#64748b' }}>{student.hostel_type || '—'}</span>
@@ -1972,7 +1705,6 @@ export default function ParentsPortal({ isOpen, onClose }) {
               </button>
             </div>
 
-            {activeTab === 'home' && myPin && <MyPinCard pin={myPin} student={student} />}
             {activeTab === 'home' && (
               <DashboardTab
                 student={student}
@@ -2168,8 +1900,8 @@ const M3 = {
 
 function Loading() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 40, color: '#94a3b8', fontSize: 13 }}>
-      <div style={{ height: 24, width: 24, borderRadius: '50%', border: `3px solid #e2e8f0`, borderTopColor: NAVY, animation: 'pp-spin .8s linear infinite' }} />
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 40, color: '#6b7690', fontSize: 13 }}>
+      <div style={{ height: 24, width: 24, borderRadius: '50%', border: `3px solid #f1ebdc`, borderTopColor: '#b8923a', animation: 'pp-spin .8s linear infinite' }} />
       Loading…
     </div>
   );
@@ -2192,20 +1924,20 @@ function Card({ title, right, children }) {
   const isMobile = useWindowWidth() < 640;
   return (
     <div style={{
-      borderRadius: isMobile ? M3.radiusLg : 18,
-      border: '1px solid rgba(11,30,61,0.07)',
+      borderRadius: 20,
+      border: '1px solid #ece6d6',
       backgroundColor: 'white',
-      boxShadow: '0 1px 2px rgba(11,30,61,0.05), 0 12px 32px rgba(11,30,61,0.07)',
+      boxShadow: '0 1px 0 rgba(255,255,255,.8) inset, 0 1px 2px rgba(19,42,79,.05), 0 14px 34px -22px rgba(19,42,79,.35)',
       overflow: 'hidden', marginBottom: isMobile ? 12 : 16,
     }}>
       {title && (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
-          borderBottom: '1px solid #F0EADC',
-          background: 'linear-gradient(180deg,#FFFFFF,#FBF8F1)',
+          borderBottom: '1px solid #f1ebdc',
+          background: 'linear-gradient(180deg,#fffdf8,#fff)',
           padding: isMobile ? '14px 16px' : '16px 20px',
         }}>
-          <div style={{ fontSize: isMobile ? 14.5 : 15.5, fontWeight: 700, color: NAVY, fontFamily: 'Georgia, "Times New Roman", serif', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontSize: isMobile ? 15.5 : 17, fontWeight: 600, color: '#0f1f3d', fontFamily: "'Fraunces',Georgia,serif", display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ width: 4, height: 16, borderRadius: 4, background: CYAN, display: 'inline-block' }} />{title}
           </div>
           {right}
@@ -2224,7 +1956,7 @@ function PremiumTable({ head, align, children }) {
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
         <thead>
-          <tr style={{ textAlign: 'left', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', color: '#94a3b8', borderBottom: '1px solid #e2e8f0' }}>
+          <tr style={{ textAlign: 'left', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.1em', color: '#6b7690', background: '#faf6ea', borderBottom: '1.5px solid #ecdcb4' }}>
             {head.map((h, i) => <th key={i} style={{ padding: '10px 12px', fontWeight: 700, textAlign: align?.[i] || 'left' }}>{h}</th>)}
           </tr>
         </thead>
@@ -2412,7 +2144,7 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 6 }}>
           <div>
             <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 600 }}>Fee balance</div>
-            <div style={{ fontSize: isMobile ? 32 : 40, fontWeight: 700, lineHeight: 1.15, fontFamily: 'Georgia, "Times New Roman", serif' }}>
+            <div style={{ fontSize: isMobile ? 32 : 40, fontWeight: 700, lineHeight: 1.15, fontFamily: "'Fraunces',Georgia,serif" }}>
               {hasFeeData
                 ? `₹${Number(feeBalance).toLocaleString('en-IN')}`
                 : fees.status === 'error'
@@ -2429,7 +2161,7 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
             borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(226,197,126,0.35)',
             padding: '12px 16px', textAlign: 'center', minWidth: 90, position: 'relative',
           }}>
-            <div style={{ fontSize: 24, fontWeight: 700, color: '#E2C57E', fontFamily: 'Georgia, serif' }}>{attPct !== null ? `${attPct}%` : '—'}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: '#E2C57E', fontFamily: "'Fraunces',Georgia,serif" }}>{attPct !== null ? `${attPct}%` : '—'}</div>
             <div style={{ fontSize: 10, opacity: 0.85, fontWeight: 600 }}>Attendance</div>
           </div>
         </div>
@@ -2492,9 +2224,9 @@ function DashboardTab({ student, attendance, alertCount, fees, pushStatus, onEna
             onClick={() => onGoTab(t.id)}
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-              border: '1px solid rgba(11,30,61,0.07)', background: '#fff', cursor: 'pointer',
-              padding: isMobile ? '12px 4px 10px' : '16px 6px 14px', borderRadius: isMobile ? 16 : 18,
-              boxShadow: '0 1px 2px rgba(11,30,61,0.04), 0 6px 18px rgba(11,30,61,0.06)', minWidth: 0,
+              border: '1px solid #ece6d6', background: '#fff', cursor: 'pointer',
+              padding: isMobile ? '12px 4px 10px' : '16px 6px 14px', borderRadius: 18,
+              boxShadow: '0 1px 2px rgba(19,42,79,.05), 0 10px 26px -18px rgba(19,42,79,.35)', minWidth: 0,
             }}
           >
             <div style={{
@@ -2672,6 +2404,66 @@ function CompleteProfileForm({ student, missingFields, onSaveFields }) {
   );
 }
 
+// WhatsApp number — the parent can add or change it here. Read on its own
+// (not in the login query) so a missing column can never block sign-in; if the
+// column isn't there yet the card simply stays hidden.
+function WhatsAppCard({ student }) {
+  const [state, setState] = useState({ status: 'loading', value: '' });
+  const [draft, setDraft] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const { data, error: err } = await supabase.from('students').select('whatsapp_no').eq('id', student.id).maybeSingle();
+      if (!live) return;
+      if (err) setState({ status: 'unavailable', value: '' });
+      else setState({ status: 'ready', value: data?.whatsapp_no || '' });
+    })();
+    return () => { live = false; };
+  }, [student.id]);
+
+  if (state.status !== 'ready') return null;
+
+  const save = async (e) => {
+    e.preventDefault();
+    const digits = draft.replace(/[^\d+]/g, '');
+    if (digits && !/^\+?\d{10,13}$/.test(digits)) { setError('Enter a valid 10-digit mobile number (with country code if outside India).'); return; }
+    setSaving(true); setError('');
+    const { error: err } = await supabase.from('students').update({ whatsapp_no: digits || null }).eq('id', student.id);
+    setSaving(false);
+    if (err) { setError('Could not save — please try again.'); return; }
+    setState({ status: 'ready', value: digits });
+    setEditing(false);
+  };
+  const inp = { flex: 1, minWidth: 0, borderRadius: 11, border: '1px solid #e2d9c0', padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' };
+
+  return (
+    <Card title="WhatsApp Number" right={!editing && (
+      <button onClick={() => { setDraft(state.value); setEditing(true); }} style={{ borderRadius: 999, border: '1px solid #E2C57E', background: '#fff', color: NAVY, fontWeight: 800, fontSize: 12, padding: '6px 14px', cursor: 'pointer' }}>
+        {state.value ? 'Change' : 'Add'}
+      </button>
+    )}>
+      {editing ? (
+        <form onSubmit={save}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input type="tel" inputMode="tel" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="e.g. 98xxxxxx12" style={inp} />
+            <button type="submit" disabled={saving} style={{ borderRadius: 11, border: 'none', background: NAVY, color: '#fff', fontWeight: 800, fontSize: 13, padding: '9px 18px', cursor: 'pointer', opacity: saving ? 0.7 : 1 }}>{saving ? 'Saving…' : 'Save'}</button>
+            <button type="button" onClick={() => { setEditing(false); setError(''); }} style={{ borderRadius: 11, border: '1px solid #e2d9c0', background: '#fff', color: '#475569', fontWeight: 700, fontSize: 13, padding: '9px 14px', cursor: 'pointer' }}>Cancel</button>
+          </div>
+          {error && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 8 }}>{error}</div>}
+        </form>
+      ) : state.value ? (
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f1f3d' }}>💬 {state.value}</div>
+      ) : (
+        <div style={{ fontSize: 12.5, color: '#6b7690' }}>Add your WhatsApp number to receive fee reminders and updates from the institute.</div>
+      )}
+    </Card>
+  );
+}
+
 function ProfileTab({ student, documents, onViewDocument, onSaveFields, isMobile }) {
   const fmtDob = student?.dob ? String(student.dob).slice(0, 10) : '';
   const missingFields = COMPLETABLE_FIELDS.filter((f) => !student?.[f.key]);
@@ -2694,6 +2486,7 @@ function ProfileTab({ student, documents, onViewDocument, onSaveFields, isMobile
           <ProfileField label="Address" value={student?.address} />
         </div>
       </Card>
+      <WhatsAppCard student={student} />
       {missingFields.length > 0 && (
         <CompleteProfileForm student={student} missingFields={missingFields} onSaveFields={onSaveFields} />
       )}
@@ -3460,7 +3253,7 @@ function ParentItemsTab({ studentName, studentId }) {
               ];
               const tone = st === 'Pending' ? '#d97706' : st === 'Delivered' ? '#16a34a' : '#64748b';
               return (
-                <div key={it.id || i} style={{ borderRadius: 16, border: '1px solid rgba(11,30,61,0.08)', borderLeft: `4px solid ${tone}`, backgroundColor: '#fff', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? 14 : 16 }}>
+                <div key={it.id || i} style={{ borderRadius: 16, border: '1px solid #ece6d6', borderLeft: `4px solid ${tone}`, backgroundColor: '#fff', boxShadow: '0 10px 26px -18px rgba(19,42,79,.35)', padding: isMobile ? 14 : 16 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
                     <span style={{ fontSize: 14, fontWeight: 800, color: NAVY }}>🎒 {it.item_name || 'Item'}{it.quantity && it.quantity !== '1' ? ` × ${it.quantity}` : ''}</span>
                     <Pill tone={PI_STATUS_TONE[st] || 'mi'}>{st === 'Pending' ? 'On the way' : st === 'Delivered' ? 'Received ✓' : 'Returned'}</Pill>
@@ -3555,8 +3348,8 @@ function GatePassTab({ student }) {
             ['Currently out', out.length, '#dc2626'],
             ['Late returns', data.filter(r => r.is_late).length, '#d97706'],
           ].map(([l, v, c]) => (
-            <div key={l} style={{ background: '#fff', borderRadius: 16, border: '1px solid rgba(11,30,61,0.07)', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? '12px 10px' : '14px 16px', borderTop: `3px solid ${c}` }}>
-              <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 700, color: c, fontFamily: 'Georgia, serif', lineHeight: 1 }}>{v}</div>
+            <div key={l} style={{ background: '#fff', borderRadius: 16, border: '1px solid #ece6d6', boxShadow: '0 10px 26px -18px rgba(19,42,79,.35)', padding: isMobile ? '12px 10px' : '14px 16px', borderTop: `3px solid ${c}` }}>
+              <div style={{ fontSize: isMobile ? 22 : 26, fontWeight: 700, color: c, fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1 }}>{v}</div>
               <div style={{ fontSize: 11.5, fontWeight: 700, color: '#64748b', marginTop: 4 }}>{l}</div>
             </div>
           ))}
@@ -3599,7 +3392,7 @@ function GatePassTab({ student }) {
                   { t: 'Back on campus', s: g.actual_return_at ? fmtDT(g.actual_return_at) : [fmtD(g.return_date), fmtT(g.expected_return_time)].filter(Boolean).join(' · ') && `Due ${[fmtD(g.return_date), fmtT(g.expected_return_time)].filter(Boolean).join(' · ')}` },
                 ];
                 return (
-                  <div key={g.id || i} style={{ borderRadius: 16, border: '1px solid rgba(11,30,61,0.08)', borderLeft: `4px solid ${tone}`, background: '#fff', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? 14 : 16 }}>
+                  <div key={g.id || i} style={{ borderRadius: 16, border: '1px solid #ece6d6', borderLeft: `4px solid ${tone}`, background: '#fff', boxShadow: '0 10px 26px -18px rgba(19,42,79,.35)', padding: isMobile ? 14 : 16 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 14, fontWeight: 800, color: NAVY }}>🎫 {g.reason || 'Gate pass'}</div>
@@ -3707,8 +3500,8 @@ function VisitorBookTab({ student }) {
             ['This month', thisMonth, '#9333ea'],
             ['Last visit', data[0]?.visit_date ? new Date(String(data[0].visit_date).length <= 10 ? data[0].visit_date + 'T00:00:00' : data[0].visit_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—', '#0e7490'],
           ].map(([l, v, c]) => (
-            <div key={l} style={{ background: '#fff', borderRadius: 16, border: '1px solid rgba(11,30,61,0.07)', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? '12px 10px' : '14px 16px', borderTop: `3px solid ${c}` }}>
-              <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: c, fontFamily: 'Georgia, serif', lineHeight: 1.1 }}>{v}</div>
+            <div key={l} style={{ background: '#fff', borderRadius: 16, border: '1px solid #ece6d6', boxShadow: '0 10px 26px -18px rgba(19,42,79,.35)', padding: isMobile ? '12px 10px' : '14px 16px', borderTop: `3px solid ${c}` }}>
+              <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: c, fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1.1 }}>{v}</div>
               <div style={{ fontSize: 11.5, fontWeight: 700, color: '#64748b', marginTop: 4 }}>{l}</div>
             </div>
           ))}
@@ -3729,7 +3522,7 @@ function VisitorBookTab({ student }) {
                 return (
                   <div key={v.id || i} style={{ position: 'relative', marginBottom: 12 }}>
                     <div style={{ position: 'absolute', left: -17, top: 16, width: 12, height: 12, borderRadius: '50%', background: onCampus ? '#16a34a' : '#C9A24B', boxShadow: '0 0 0 3px #fff' }} />
-                    <div style={{ borderRadius: 14, border: '1px solid rgba(11,30,61,0.08)', background: '#fff', boxShadow: '0 6px 18px rgba(11,30,61,0.05)', padding: isMobile ? 12 : 14 }}>
+                    <div style={{ borderRadius: 14, border: '1px solid #ece6d6', background: '#fff', boxShadow: '0 10px 26px -18px rgba(19,42,79,.35)', padding: isMobile ? 12 : 14 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 14, fontWeight: 800, color: NAVY }}>👤 {v.visitor_name || 'Visitor'}</div>
