@@ -1,4 +1,5 @@
-import { printFeeReceipt as printPremiumFeeReceipt } from './premiumReceipt';
+import { printFeeReceipt as printPremiumFeeReceipt, receiptDocument, openReceiptWindow } from './premiumReceipt';
+import { buildReportCardHTML as buildReportCardHTMLShared, REPORT_CARD_CSS } from './reportCardTemplate';
 import { useState, useCallback, useEffect } from 'react';
 // Parents use their own Supabase client/session (see parentSupabase.js).
 import { parentSupabase as supabase } from './parentSupabase';
@@ -169,210 +170,8 @@ function getCourseMax(course) {
   return Object.values(maxMap).reduce((s, v) => s + v, 0) || 100;
 }
 
-// ─── REPORT_CARD_CSS — premium Tailwind-inspired redesign of the printed
-// report card. This intentionally diverges from Exams.jsx's staff-side
-// version (per explicit request): a parent-printed card will no longer be
-// byte-identical to a staff-printed one.
-// Prefixes every selector in a stylesheet with `scope`, so CSS injected
-// into the page (report card) can't restyle the rest of the site.
-// body/html/* rules are redirected onto the scope element itself.
-function scopeCss(css, scope) {
-  const scopeSel = (sel) => sel.split(',').map(x => {
-    const t = x.trim();
-    if (!t) return t;
-    if (/^(html|body)\b/.test(t)) return t.replace(/^(html|body)\b/, scope);
-    if (/^\*/.test(t)) return `${scope} ${t}, ${scope}`;
-    return `${scope} ${t}`;
-  }).join(', ');
-  let out = '', i = 0;
-  while (i < css.length) {
-    const open = css.indexOf('{', i);
-    if (open === -1) { out += css.slice(i); break; }
-    const head = css.slice(i, open).trim();
-    if (head.startsWith('@media') || head.startsWith('@supports')) {
-      let depth = 1, j = open + 1;
-      while (j < css.length && depth) { if (css[j] === '{') depth++; else if (css[j] === '}') depth--; j++; }
-      out += `${head}{${scopeCss(css.slice(open + 1, j - 1), scope)}}`;
-      i = j;
-    } else {
-      const close = css.indexOf('}', open);
-      const body = css.slice(open + 1, close);
-      out += head.startsWith('@') ? `${head}{${body}}` : `${scopeSel(head)}{${body}}`;
-      i = close + 1;
-    }
-  }
-  return out;
-}
-
-const REPORT_CARD_CSS = `
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-@page{margin:0.7cm;size:A4;}
-body{font-family:'Inter',ui-sans-serif,system-ui,sans-serif;background:#0f172a;padding:32px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-.no-print{text-align:center;margin-bottom:20px;display:flex;gap:12px;justify-content:center;}
-.no-print button{padding:12px 28px;border:none;border-radius:12px;cursor:pointer;font-family:'Inter',sans-serif;font-size:14px;font-weight:600;transition:opacity .15s;}
-.no-print button:hover{opacity:.9;}
-.btn-print{background:#d4af37;color:#0f172a;}.btn-close{background:rgba(255,255,255,.08);color:#f8fafc;border:1px solid rgba(255,255,255,.15)!important;}
-.page-break{page-break-after:always;height:0;overflow:hidden;}
-.card{width:760px;margin:0 auto 28px;background:#ffffff;border-radius:24px;box-shadow:0 25px 70px -15px rgba(0,0,0,.45),0 0 0 1px rgba(15,23,42,.06);position:relative;overflow:hidden;}
-.top-strip{height:6px;background:linear-gradient(90deg,#0f172a 0%,#1e3a8a 30%,#d4af37 60%,#f4d878 80%,#1e3a8a 100%);}
-.header{background:linear-gradient(135deg,#0b1120 0%,#0f172a 50%,#152238 100%);padding:32px 40px 24px;display:flex;align-items:center;gap:20px;position:relative;}
-.header::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 85% -20%,rgba(212,175,55,.18),transparent 60%);pointer-events:none;}
-.logo-ring{width:72px;height:72px;border-radius:9999px;border:2px solid #d4af37;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 4px rgba(212,175,55,.12);}
-.logo-text{font-family:'Inter',sans-serif;font-size:15px;font-weight:800;color:#fff;letter-spacing:.05em;}
-.header-center{flex:1;text-align:center;}
-.eyebrow{font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;font-weight:600;}
-.inst-name{font-family:'Inter',sans-serif;font-size:22px;font-weight:800;color:#fff;margin-bottom:4px;letter-spacing:-.01em;}
-.inst-addr{font-size:12px;color:#94a3b8;}
-.doc-badge{text-align:center;flex-shrink:0;background:rgba(212,175,55,.12);border:1px solid rgba(212,175,55,.4);border-radius:14px;padding:8px 16px;}
-.doc-badge-title{font-family:'Inter',sans-serif;font-size:13px;font-weight:800;color:#f4d878;letter-spacing:.15em;line-height:1.3;}
-.doc-badge-sub{font-size:10px;color:#cbd5e1;margin-top:4px;font-weight:600;}
-.exam-result-bar{background:#111c34;padding:14px 40px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(255,255,255,.06);}
-.exam-info{display:flex;gap:28px;flex-wrap:wrap;}
-.exam-info-item{display:flex;flex-direction:column;}
-.exam-info-label{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:#93a5c9;margin-bottom:3px;font-weight:700;}
-.exam-info-value{font-size:14px;font-weight:700;color:#ffffff;}
-.result-pill-bar{display:flex;align-items:center;gap:10px;}
-.student-section{padding:24px 40px 8px;}
-.section-title{font-family:'Inter',sans-serif;font-size:11px;font-weight:800;color:#0f172a;letter-spacing:.2em;text-transform:uppercase;margin-bottom:12px;}
-.student-table{width:100%;border-collapse:separate;border-spacing:0 6px;font-size:13px;}
-.student-table td{padding:10px 14px;background:#f8fafc;}
-.student-table tr td:first-child{border-radius:10px 0 0 10px;}
-.student-table tr td:last-child{border-radius:0 10px 10px 0;}
-.student-table .lbl{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#64748b;font-weight:700;background:#eef2f9;width:130px;}
-.student-table .val{font-weight:700;color:#0f172a;}
-.student-table .val.big{font-family:'Inter',sans-serif;font-size:17px;color:#0f172a;letter-spacing:-.01em;}
-.score-grid{display:grid;grid-template-columns:repeat(5,1fr);background:linear-gradient(135deg,#0f172a,#182b4d);margin:16px 40px 0;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px -10px rgba(15,23,42,.4);}
-.score-cell{text-align:center;padding:16px 8px;border-right:1px solid rgba(255,255,255,.08);}
-.score-cell:last-child{border-right:none;}
-.score-lbl{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#93a5c9;margin-bottom:6px;font-weight:700;}
-.score-val{font-family:'Inter',sans-serif;font-size:24px;font-weight:800;color:#ffffff;line-height:1;}
-.score-val.gold{color:#f4d878;}
-.score-sub{font-size:10px;color:#93a5c9;margin-top:4px;font-weight:600;}
-.marks-section{padding:20px 40px;}
-.marks-table{width:100%;border-collapse:collapse;font-size:12.5px;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;}
-.marks-table thead tr{background:#0f172a;}
-.marks-table thead th{padding:11px 12px;text-align:center;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#cbd5e1;font-weight:700;}
-.marks-table tbody tr:nth-child(even){background:#f8fafc;}
-.marks-table tbody td{padding:11px 12px;text-align:center;border-bottom:1px solid #f1f5f9;}
-.marks-table tfoot tr{background:#eef2f9;}
-.marks-table tfoot td{padding:12px;border-top:2px solid #cbd5e1;text-align:center;font-weight:800;}
-.remark-box{margin:0 40px 18px;padding:16px 20px;background:#fdfaf1;border:1px solid #f0e4bd;border-left:4px solid #d4af37;border-radius:14px;}
-.remark-label{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:#a17e1f;font-weight:800;margin-bottom:6px;}
-.remark-text{font-family:'Inter',sans-serif;font-size:14px;font-style:italic;color:#453a15;line-height:1.65;}
-.sig-section{display:flex;align-items:flex-end;justify-content:space-between;padding:18px 40px 26px;background:#fff;border-top:1px solid #e2e8f0;gap:20px;}
-.sig-block{text-align:center;flex:1;}
-.sig-space{height:44px;}
-.sig-label{border-top:1.5px solid #cbd5e1;padding-top:6px;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#475569;font-weight:700;margin:0 10px;}
-.seal-block{flex:0 0 90px;display:flex;flex-direction:column;align-items:center;}
-.seal{width:90px;height:90px;display:flex;align-items:center;justify-content:center;}
-.seal img{width:90px;height:90px;object-fit:contain;}
-.footer-strip{background:linear-gradient(90deg,#0b1120,#0f172a,#0b1120);padding:12px 40px;}
-.footer-text{font-size:10px;color:#94a3b8;text-align:center;font-weight:500;letter-spacing:.03em;}
-.bottom-strip{height:5px;background:linear-gradient(90deg,#1e3a8a,#d4af37,#1e3a8a);}
-@media print{body{background:white;padding:0;}.no-print{display:none!important;}.card{box-shadow:none;border-radius:0;width:100%;margin:0;}}
-`;
-
-// ─── buildReportCardHTML — identical logic to Exams.jsx's function of the
-// same name (ranking algorithm, subject rows, grade colors, layout markup)
-// so parent-printed cards match staff-printed ones exactly.
-function buildReportCardHTML(st, subjects, subjectMaxMap, courseMax, marksMap, course, allStudents, examName, examDate, institute, remarkText) {
-  const getTotal = sid => subjects.reduce((s, sub) => s + (Number(marksMap[`${sid}-${sub}`]) || 0), 0);
-  const total = getTotal(st.id);
-  const pct = courseMax ? (total / courseMax) * 100 : 0;
-  const grade = getGrade(pct);
-  const passed = pct >= 40;
-  const gradeColors = { "A+": "#fbbf24", "A": "#fbbf24", "B+": "#e0e7ff", "B": "#e0e7ff", "C": "#f87171", "D": "#fb923c", "F": "#fca5a5" };
-  const gradeColor = gradeColors[grade.label] || "#0A1628";
-
-  const sortedStudents = [...allStudents].map(s => ({ ...s, total: getTotal(s.id) })).sort((a, b) => b.total - a.total);
-  let rank = 1, prev = null;
-  for (let i = 0; i < sortedStudents.length; i++) {
-    if (i === 0) { rank = 1; prev = sortedStudents[i].total; } else if (sortedStudents[i].total !== prev) { rank++; prev = sortedStudents[i].total; }
-    if (sortedStudents[i].id === st.id) break;
-  }
-  const rankSuffix = rank === 1 ? "st" : rank === 2 ? "nd" : rank === 3 ? "rd" : "th";
-
-  const subjectRows = subjects.map((s, idx) => {
-    const m = Number(marksMap[`${st.id}-${s}`]) || 0;
-    const subMax = (subjectMaxMap && subjectMaxMap[s]) || 100;
-    const subPct = Math.round((m / subMax) * 100);
-    const subPassed = subPct >= 40;
-    const barColor = subPct >= 80 ? "#1a56db" : subPct >= 60 ? "#1B4F8A" : subPct >= 40 ? "#BA7517" : "#C0392B";
-    const gradeLbl = subPct >= 90 ? "A+" : subPct >= 80 ? "A" : subPct >= 70 ? "B+" : subPct >= 60 ? "B" : subPct >= 50 ? "C" : subPct >= 40 ? "D" : "F";
-    return `<tr>
-      <td style="text-align:left;font-weight:600;color:#2D3748">${idx + 1}. ${esc(s)}</td>
-      <td>${subMax}</td>
-      <td style="font-family:'EB Garamond',serif;font-size:14px;font-weight:700;color:#0A1628">${m}</td>
-      <td><div style="display:flex;align-items:center;gap:5px;"><div style="flex:1;height:6px;background:#E2E8F0;border-radius:3px;overflow:hidden;"><div style="width:${subPct}%;height:100%;background:${barColor};border-radius:3px;"></div></div><span style="font-size:10px;font-weight:700;color:${barColor};min-width:32px">${subPct}%</span></div></td>
-      <td><span style="display:inline-block;padding:1px 8px;border-radius:2px;font-size:11px;font-weight:700;color:${barColor};border:1px solid ${barColor};background:${barColor}18">${gradeLbl}</span></td>
-      <td><span style="font-size:10px;font-weight:700;color:${subPassed ? "#1a56db" : "#C0392B"}">${subPassed ? "✓ PASS" : "✗ FAIL"}</span></td>
-    </tr>`;
-  }).join("");
-
-  const remarkBlock = remarkText
-    ? `<div class="remark-box"><div class="remark-label">✦ Teacher's Remarks</div><div class="remark-text">"${esc(remarkText)}"</div></div>`
-    : "";
-
-  return `<div class="card">
-    <div class="top-strip"></div>
-    <div class="header">
-      <div class="logo-ring">${institute.logoUrl ? `<img src="${institute.logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:50%"/>` : `<div class="logo-text">GNSI</div>`}</div>
-      <div class="header-center">
-        <div class="eyebrow">Official Academic Record · ${institute.academicYear || "2025-2026"}</div>
-        <div class="inst-name">${institute.name || "Guidance Navodaya & Sainik Institute"}</div>
-        <div class="inst-addr">${institute.address || "Khangabok, Thoubal, Manipur"}</div>
-      </div>
-      <div class="doc-badge"><div class="doc-badge-title">REPORT<br/>CARD</div><div class="doc-badge-sub">${esc(examName)}</div></div>
-    </div>
-    <div class="exam-result-bar">
-      <div class="exam-info">
-        <div class="exam-info-item"><span class="exam-info-label">Examination</span><span class="exam-info-value">${esc(examName)}</span></div>
-        <div class="exam-info-item"><span class="exam-info-label">Date</span><span class="exam-info-value">${esc(examDate || "—")}</span></div>
-        <div class="exam-info-item"><span class="exam-info-label">Academic Year</span><span class="exam-info-value">${institute.academicYear || "2025-2026"}</span></div>
-        <div class="exam-info-item"><span class="exam-info-label">Class Rank</span><span class="exam-info-value" style="color:${rank <= 3 ? "#f0c040" : "white"}">${rank}<sup style="font-size:10px">${rankSuffix}</sup> / ${allStudents.length}</span></div>
-      </div>
-      <div class="result-pill-bar">
-        <span style="font-size:20px;font-weight:700;color:${gradeColor}">${grade.label}</span>
-        <span style="font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 8px;border-radius:2px;background:${passed ? "#EFF6FF" : "#FCEBEB"};color:${passed ? "#1a56db" : "#C0392B"};border:1px solid ${passed ? "#BFDBFE" : "#FECACA"}">${passed ? "PASS" : "FAIL"}</span>
-      </div>
-    </div>
-    <div class="student-section">
-      <div class="section-title">Candidate Details</div>
-      <table class="student-table">
-        <tr><td class="lbl">Student Name</td><td class="val big" colspan="3">${esc(st.name)}</td></tr>
-        <tr><td class="lbl">GCC / Roll No.</td><td class="val big" style="letter-spacing:3px">${esc(String(st.gcc_no || "").padStart(6, "0"))}</td><td class="lbl">Admission No.</td><td class="val">${esc(st.admission_no || "—")}</td></tr>
-        <tr><td class="lbl">Course</td><td class="val">${esc(st.course || course)}</td><td class="lbl">Batch</td><td class="val">${esc(st.class_name || "—")}</td></tr>
-      </table>
-    </div>
-    <div class="score-grid" style="margin:0 16px;">
-      <div class="score-cell"><div class="score-lbl">Marks Obtained</div><div class="score-val">${total}<span style="font-size:11px;opacity:.5">/${courseMax}</span></div></div>
-      <div class="score-cell"><div class="score-lbl">Percentage</div><div class="score-val gold">${pct.toFixed(1)}%</div></div>
-      <div class="score-cell"><div class="score-lbl">Grade</div><div class="score-val" style="color:${gradeColor}">${grade.label}</div><div class="score-sub">${grade.gpa.toFixed(1)} GPA</div></div>
-      <div class="score-cell"><div class="score-lbl">Subjects</div><div class="score-val">${subjects.length}</div></div>
-      <div class="score-cell"><div class="score-lbl">Class Rank</div><div class="score-val" style="color:${rank <= 3 ? "#f0c040" : "white"}">${rank}<sup style="font-size:11px">${rankSuffix}</sup></div><div class="score-sub">of ${allStudents.length}</div></div>
-    </div>
-    <div class="marks-section">
-      <div class="section-title" style="margin-top:8px">Subject-wise Performance</div>
-      <table class="marks-table">
-        <thead><tr><th style="text-align:left;width:32%">Subject</th><th>Max Marks</th><th>Marks Obtained</th><th style="width:25%">Performance</th><th>Grade</th><th>Result</th></tr></thead>
-        <tbody>${subjectRows}</tbody>
-        <tfoot><tr>
-          <td style="text-align:left;font-size:12px;font-weight:700">Grand Total</td>
-          <td>${courseMax}</td>
-          <td style="font-size:16px;font-weight:700;color:#0A1628">${total}</td>
-          <td colspan="3"></td>
-        </tr></tfoot>
-      </table>
-    </div>
-    ${remarkBlock}
-    <div class="sig-section">
-      <div class="sig-block"><div class="sig-space"></div><div class="sig-label">Class Teacher</div></div>
-      <div class="sig-block"><div class="sig-space"></div><div class="sig-label">Head of Institute</div></div>
-    </div>
-    <div class="footer-strip"><div class="footer-text">${institute.name || "GNSI"} · ${institute.address || "Khangabok, Manipur"} · ${esc(examName)} · Academic Year ${institute.academicYear || "2025-2026"}</div></div>
-    <div class="bottom-strip"></div>
-  </div>`;
-}
+const buildReportCardHTML = (st, subjects, subjectMaxMap, courseMax, marksMap, course, allStudents, examName, examDate, institute, remarkText) =>
+  buildReportCardHTMLShared(st, subjects, subjectMaxMap, courseMax, marksMap, course, allStudents, examName, examDate, institute, remarkText, getGrade);
 
 // ─── matchesCourseBatch — ported verbatim from Exams.jsx ────────────────────
 // Needed for correct classmate/ranking lookups: a plain class_name equality
@@ -1083,6 +882,11 @@ export default function ParentsPortal({ isOpen, onClose }) {
     if (!examTypeId || !examDate || !student) return;
 
     setRcPrintBusy(true);
+    // Open the print window now (inside the click) so pop-up blockers allow it;
+    // it is filled once the marks have loaded.
+    let fillWindow;
+    const windowHtml = new Promise(res => { fillWindow = res; });
+    openReceiptWindow(`Report Card — ${student.name}`, windowHtml, { autoPrint: false });
     try {
       // Use class_name verbatim, NOT uppercased/derived — this must match a
       // real courseSubjects/exam_schedule key exactly (Exams.jsx's own
@@ -1157,38 +961,11 @@ export default function ParentsPortal({ isOpen, onClose }) {
 
       const html = buildReportCardHTML(student, subjects, subjectMaxMap, courseMax, marksMap, course, rankPool, examTypeName, examDate, institute, remarkText);
 
-      let overlay = document.getElementById('rcPrintOverlay');
-      if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'rcPrintOverlay';
-        overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;min-height:100vh;z-index:99999;background:#f4f4f4;';
-        document.body.appendChild(overlay);
-        document.body.style.overflow = 'hidden';
-        window.scrollTo(0, 0);
-
-        if (!document.getElementById('rcPrintStyles')) {
-          const styleTag = document.createElement('style');
-          styleTag.id = 'rcPrintStyles';
-          styleTag.textContent = `
-            @media print {
-              body:has(> #rcPrintOverlay) > *:not(#rcPrintOverlay) { display: none !important; }
-              #rcPrintOverlay .no-print { display: none !important; }
-            }
-          `;
-          document.head.appendChild(styleTag);
-        }
-      }
-      overlay.innerHTML = `
-        <style>${scopeCss(REPORT_CARD_CSS, '#rcPrintOverlay')}</style>
-        <div class="no-print" style="position:sticky;top:0;z-index:2;background:rgba(15,23,42,.92);backdrop-filter:blur(8px);padding:1rem 1.4rem;display:flex;gap:.7rem;justify-content:flex-end;box-shadow:0 4px 20px rgba(0,0,0,.25);">
-          <button class="btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
-          <button class="btn-close" onclick="document.getElementById('rcPrintOverlay').remove();document.body.style.overflow='';">✕ Close</button>
-        </div>
-        ${html}
-      `;
-      overlay.scrollTop = 0;
+      const title = `Report Card — ${student.name}`;
+      fillWindow(receiptDocument(title, html, { extraCss: REPORT_CARD_CSS, printLabel: '🖨 Print / Save as PDF' }));
     } catch (e) {
       console.error('Report card generation failed:', e);
+      fillWindow?.('<p style="font:600 14px system-ui;padding:40px;text-align:center">Could not generate the report card. Please close this window and try again.</p>');
       alert('Could not generate the report card: ' + (e?.message || 'unknown error') + '. Please try again or contact support.');
     } finally {
       setRcPrintBusy(false);
