@@ -1303,6 +1303,16 @@ const FLAG_FIX_MAP = {
   // half-fixed.
   house_no_allocation: { tableKey: 'students', field: 'house', label: 'House', mode: 'allocation' },
   allocation_no_house: { tableKey: 'students', field: 'house', label: 'House', mode: 'allocation' },
+  // Cross-module detail drift (lib/crossModuleChecks.js). Correcting the
+  // students row is the fix: editField() cascades it to admissions.
+  hostel_house_differs: { tableKey: 'students', field: 'house', label: 'House', mode: 'allocation' },
+  adm_name_differs: { tableKey: 'students', field: 'name', label: 'Name' },
+  adm_course_differs: { tableKey: 'students', field: 'course', label: 'Course' },
+  adm_batch_differs: { tableKey: 'students', field: 'batch', label: 'Batch / Class' },
+  adm_hostel_type_differs: { tableKey: 'students', field: 'hostel_type', label: 'Hostel type' },
+  adm_house_differs: { tableKey: 'students', field: 'house', label: 'House', mode: 'allocation' },
+  dayscholar_has_room: { tableKey: 'students', field: 'hostel_type', label: 'Hostel type' },
+  boarder_no_room: { tableKey: 'students', field: 'house', label: 'House', mode: 'allocation' },
 }
 
 // Inline fix control for a mismatch row — lets staff correct the
