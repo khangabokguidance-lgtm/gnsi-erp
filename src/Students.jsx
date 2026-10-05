@@ -17,6 +17,12 @@ import { getActiveStudents, getAllStudents } from './studentQueries'
 import { compressImage, sizeNote } from './lib/imageCompress'
 import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
 import { isAdminRole } from './roles'
+import StudentChart from './StudentChart'
+import DataHealth from './DataHealth'
+import HostelDataCheck from './HostelDataCheck'
+import { loadFullProfile } from './studentProfileLoader'
+import { getStudentDues } from './feeDues'
+import { sortStudents, nextSort } from './lib/studentTable'
 import { confirmFeeMonthOpen } from './monthLock'
 import { courseOf, batchOf, handoffToAttendance, takeStudentsHandoff } from './courseMap'
 
@@ -2631,6 +2637,18 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
   const [saving,setSaving]=useState(false)
   const isMobile=useIsMobile()
   const now=useMemo(()=>new Date(),[])
+  // Patient-chart panel (risk index, follow-ups, timeline) — admin only, since it
+  // reads discipline / sickbay / leave records the same way Student 360 does.
+  const [chart,setChart]=useState(null)   // null = loading, false = unavailable, {profile,dues}
+  useEffect(()=>{
+    if(!isAdmin){ setChart(false); return }
+    let alive=true
+    setChart(null)
+    Promise.all([loadFullProfile(student), getStudentDues(student).catch(()=>null)])
+      .then(([profile,dues])=>{ if(alive) setChart(profile?{profile,dues}:false) })
+      .catch(()=>{ if(alive) setChart(false) })
+    return ()=>{ alive=false }
+  },[student.id, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const siblings=allStudents.filter(s=>s.id!==student.id&&s.status==='Active'&&((s.father_name&&s.father_name===student.father_name)||(s.mother_name&&s.mother_name===student.mother_name)))
   const att=attData[student.id]??null
@@ -2824,6 +2842,14 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
   </div>
 ))}
               </div>
+              {isAdmin&&(
+                <div>
+                  <div style={{fontWeight:600,fontSize:11,color:T.gold,marginBottom:8,textTransform:'uppercase',letterSpacing:'.12em'}}>Student chart</div>
+                  {chart===null&&<div style={{fontSize:12.5,color:T.text3,padding:'10px 0'}}>Loading chart…</div>}
+                  {chart&&<StudentChart profile={chart.profile} dues={chart.dues} student={student}/>}
+                  {chart===false&&<div style={{fontSize:12.5,color:T.text4}}>Chart unavailable for this student.</div>}
+                </div>
+              )}
               {student.medical_notes&&(
                 <div style={{background:T.orangeLight,border:`1px solid ${T.orangeBorder}`,borderRadius:T.r10,padding:'12px 14px'}}>
                   <div style={{fontWeight:700,fontSize:10,color:T.orange,marginBottom:4,textTransform:'uppercase',letterSpacing:'.07em'}}>⚕ Medical Notes</div>
@@ -3154,6 +3180,113 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
 // centered avatar overlapping it, name/meta below, and an action bar along
 // the bottom — mirrors a Facebook profile card's visual rhythm while keeping
 // every original action (Profile/Edit/Fee/Exam/Attendance/Clone/Delete).
+
+// ─── Premium student table (the "Table" view of All Students) ────────────────
+// Sorting is done by the parent on the whole filtered list (before pagination)
+// so a sort always means "across all students", never just "this page".
+const TABLE_COLS=[
+  {key:'name',label:'Student',sortable:true},
+  {key:'course',label:'Course',sortable:true},
+  {key:'house',label:'Residence',sortable:true},
+  {key:'att',label:'Attendance',sortable:true,w:150},
+  {key:'dues',label:'Fees',sortable:true,w:110},
+  {key:'score',label:'Last exam',sortable:true,w:100,align:'right'},
+  {key:'status',label:'Status',sortable:true,w:110},
+]
+
+function StudentTable({ rows, sort, onSort, selected, onToggle, onToggleAll, can, attData, feeData, examData, onOpenDetail, onEdit, onOpenFee, onQuickAttend }) {
+  const [dense,setDense]=useState(false)
+  const pad=dense?'6px 12px':'12px 14px'
+  const allOn=rows.length>0&&rows.every(s=>selected.has(s.id))
+  const someOn=!allOn&&rows.some(s=>selected.has(s.id))
+  const th={padding:'10px 14px',textAlign:'left',fontSize:10.5,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:T.text3,background:T.surface2,borderBottom:`1px solid ${T.border}`,whiteSpace:'nowrap',position:'sticky',top:0,zIndex:1}
+  const iconBtn={border:`1px solid ${T.border}`,background:T.surface,borderRadius:T.r8,width:30,height:30,cursor:'pointer',fontSize:13,display:'inline-flex',alignItems:'center',justifyContent:'center',fontFamily:'inherit'}
+
+  return (
+    <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:T.r16,boxShadow:T.shadow,overflow:'hidden'}}>
+      <style>{`.stt{min-width:860px}@media (max-width:1100px){.stt{min-width:0}.stt-hide-lg{display:none}}@media (max-width:900px){.stt-hide-md{display:none}.stt-show-sm{display:block!important}}@media (max-width:640px){.stt-av{display:none!important}.stt{min-width:0}.stt-hide-sm{display:none}.stt td,.stt th{padding-left:8px!important;padding-right:8px!important}.stt th{width:auto!important}.stt td:nth-child(5)>div{min-width:56px!important}.stt-name{white-space:normal!important;max-width:96px;line-height:1.25}.stt-tip{display:none}}.stt-show-sm{display:none}`}</style>
+      <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderBottom:`1px solid ${T.border}`,flexWrap:'wrap'}}>
+        <span style={{fontSize:12.5,color:T.text3}}>{selected.size>0?<b style={{color:T.navy2}}>{selected.size} selected</b>:`${rows.length} on this page`}</span>
+        <span className="stt-tip" style={{marginLeft:'auto',fontSize:11.5,color:T.text4}}>Click a header to sort · click a row to open</span>
+        <div role="group" aria-label="Row density" style={{display:'inline-flex',border:`1px solid ${T.border}`,borderRadius:T.r8,overflow:'hidden'}}>
+          {[[false,'Comfortable'],[true,'Compact']].map(([v,l])=>(
+            <button key={l} onClick={()=>setDense(v)} aria-pressed={dense===v} style={{padding:'5px 10px',border:'none',cursor:'pointer',fontFamily:'inherit',fontSize:11.5,fontWeight:600,background:dense===v?T.navy2:T.surface,color:dense===v?'#fff':T.text3}}>{l}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{overflowX:'auto'}}>
+        <table className="stt" style={{width:'100%',borderCollapse:'separate',borderSpacing:0,fontSize:13}}>
+          <thead>
+            <tr>
+              <th style={{...th,width:42,padding:'10px 0 10px 14px'}}>
+                <input type="checkbox" aria-label="Select all on this page" checked={allOn} ref={el=>{if(el)el.indeterminate=someOn}} onChange={e=>onToggleAll(rows.map(r=>r.id),e.target.checked)} style={{cursor:'pointer'}}/>
+              </th>
+              {TABLE_COLS.map(c=>{
+                const active=sort.key===c.key
+                return (
+                  <th key={c.key} className={c.key==='house'||c.key==='score'?'stt-hide-lg':c.key==='course'||c.key==='status'?'stt-hide-md':undefined} scope="col" aria-sort={active?(sort.dir==='asc'?'ascending':'descending'):'none'} style={{...th,width:c.w,textAlign:c.align||'left'}}>
+                    <button onClick={()=>onSort(c.key)} style={{border:'none',background:'none',cursor:'pointer',font:'inherit',letterSpacing:'inherit',textTransform:'inherit',color:active?T.navy2:'inherit',display:'inline-flex',alignItems:'center',gap:5,padding:0}}>
+                      {c.label}<span aria-hidden="true" style={{fontSize:9,opacity:active?1:.35}}>{active?(sort.dir==='asc'?'▲':'▼'):'↕'}</span>
+                    </button>
+                  </th>
+                )
+              })}
+              <th className="stt-hide-sm" style={{...th,width:150,textAlign:'right'}}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(s=>{
+              const isSel=selected.has(s.id)
+              const att=attData[s.id]
+              const dues=feeData[s.id]?feeData[s.id].dues||0:null
+              const score=examData[s.id]?.[0]?.total
+              const td={padding:pad,borderBottom:`1px solid ${T.border}`,verticalAlign:'middle',background:isSel?T.goldLight:'transparent',transition:'background .12s'}
+              return (
+                <tr key={s.id} tabIndex={0} onClick={()=>onOpenDetail(s)} onKeyDown={e=>{if(e.key==='Enter')onOpenDetail(s)}}
+                  onMouseEnter={e=>{if(!isSel)Array.from(e.currentTarget.children).forEach(c=>c.style.background=T.surface2)}}
+                  onMouseLeave={e=>{Array.from(e.currentTarget.children).forEach(c=>c.style.background=isSel?T.goldLight:'transparent')}}
+                  style={{cursor:'pointer',outline:'none'}}>
+                  <td style={{...td,paddingRight:0}} onClick={e=>e.stopPropagation()}>
+                    <input type="checkbox" aria-label={`Select ${s.name}`} checked={isSel} onChange={()=>onToggle(s.id)} style={{cursor:'pointer'}}/>
+                  </td>
+                  <td style={td}>
+                    <div style={{display:'flex',alignItems:'center',gap:11,minWidth:0}}>
+                      <span className="stt-av" style={{display:'inline-flex',flexShrink:0}}><Avatar name={s.name} photoUrl={s.photo_url} size={dense?28:36}/></span>
+                      <div style={{minWidth:0}}>
+                        <div className="stt-name" style={{fontWeight:650,color:T.text1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.name}</div>
+                        <div style={{fontSize:11.5,color:T.text3,fontVariantNumeric:'tabular-nums'}}>{s.gcc_no&&<span style={{fontWeight:700,color:T.gold}}>GCC-{s.gcc_no}</span>}{s.gcc_no&&s.batch?' · ':''}{s.batch}</div>
+                        <div className="stt-show-sm" style={{fontSize:11,color:T.text3,marginTop:2}}>{[s.course,s.status!=='Active'?s.status:null].filter(Boolean).join(' · ')}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="stt-hide-md" style={td}>{s.course?<CoursePill course={s.course}/>:<span style={{color:T.text4}}>—</span>}</td>
+                  <td className="stt-hide-lg" style={td}>
+                    <div style={{display:'flex',flexDirection:'column',gap:3,alignItems:'flex-start'}}>
+                      {s.house?<HousePill house={s.house}/>:<span style={{color:T.text4}}>—</span>}
+                      {!dense&&s.hostel_type&&<span style={{fontSize:11,color:T.text3}}>{s.hostel_type}</span>}
+                    </div>
+                  </td>
+                  <td style={td}><AttBar pct={att??null}/></td>
+                  <td style={td}><FeeBadge dues={dues}/></td>
+                  <td className="stt-hide-lg" style={{...td,textAlign:'right',fontVariantNumeric:'tabular-nums',fontWeight:650}}>{score!=null?score:<span style={{color:T.text4,fontWeight:400}}>—</span>}</td>
+                  <td className="stt-hide-md" style={td}><StatusPill status={s.status}/></td>
+                  <td className="stt-hide-sm" style={{...td,textAlign:'right'}} onClick={e=>e.stopPropagation()}>
+                    <div style={{display:'inline-flex',gap:6}}>
+                      <button title="Profile" aria-label={`Open ${s.name}`} style={iconBtn} onClick={()=>onOpenDetail(s)}>👤</button>
+                      {can.write&&<button title="Edit" aria-label={`Edit ${s.name}`} style={iconBtn} onClick={()=>onEdit(s)}>✏️</button>}
+                      {can.fees&&<button title="Fee" aria-label={`Fees for ${s.name}`} style={iconBtn} onClick={()=>onOpenFee(s)}>💰</button>}
+                      {can.attend&&<button title="Attendance" aria-label={`Attendance for ${s.name}`} style={iconBtn} onClick={()=>onQuickAttend(s)}>📅</button>}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
 
 function courseAccent(course) {
   const cs = COURSE_STRUCTURE[course]
@@ -3938,11 +4071,12 @@ function DataQualityRow({ student, can, onQuickSave, viewPII }) {
   )
 }
 
-function DataQualityTab({ students, can, onQuickSave }) {
+function DataQualityTab({ students, can, onQuickSave, isAdmin=false }) {
   const isMobile=useIsMobile()
   const [search,setSearch]=useState('')
   const [filterField,setFilterField]=useState('All')
   const viewPII=can.viewPII
+  const [view,setView]=useState('completeness')
 
   const scored=students.map(s=>({s,pct:getCompletenessScore(s,viewPII),missing:getMissingFieldKeys(s,viewPII)}))
     .filter(x=>x.missing.length>0)
@@ -3960,31 +4094,40 @@ function DataQualityTab({ students, can, onQuickSave }) {
   scored.forEach(({missing})=>missing.forEach(f=>{fieldCounts[f.label]=(fieldCounts[f.label]||0)+1}))
   const topGaps=Object.entries(fieldCounts).sort((a,b)=>b[1]-a[1]).slice(0,6)
 
+  const heroStat=(label,value,tone)=>(
+    <div style={{background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.14)',borderRadius:14,padding:'11px 14px',minWidth:0}}>
+      <div style={{fontSize:10,fontWeight:700,letterSpacing:'.11em',textTransform:'uppercase',color:'rgba(255,255,255,.6)'}}>{label}</div>
+      <div style={{fontFamily:T.serif,fontSize:isMobile?22:26,fontWeight:600,color:tone||'#fff',marginTop:5,lineHeight:1}}>{value}</div>
+    </div>
+  )
+
   return (
     <div style={{display:'flex',flexDirection:'column',gap:16}}>
-      <div>
-        <div style={{fontSize:isMobile?18:22,fontWeight:800,color:T.text1,letterSpacing:'-.02em'}}>Data Quality</div>
-        <div style={{fontSize:12.5,color:T.text3,marginTop:2}}>Complete student records systematically — worst first</div>
-      </div>
+      <section className="st-hero" style={{padding:isMobile?'16px 14px':'20px 24px'}}>
+        <div style={{fontSize:10.5,fontWeight:800,letterSpacing:'.18em',textTransform:'uppercase',color:T.goldBorder}}>GNSI · Data quality</div>
+        <div style={{fontFamily:T.serif,fontSize:isMobile?24:30,fontWeight:600,lineHeight:1.1,marginTop:2}}>Student records</div>
+        <div style={{fontSize:12.5,color:'rgba(255,255,255,.62)',marginTop:4}}>Complete missing details, then run record checks — worst first</div>
+        <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:10,marginTop:16}}>
+          {heroStat('Avg completeness',`${avgPct}%`,avgPct>=90?'#86efac':avgPct>=60?'#fcd34d':'#fca5a5')}
+          {heroStat('Fully complete',fullyComplete,'#86efac')}
+          {heroStat('Need attention',scored.length,scored.length?'#fca5a5':undefined)}
+          {heroStat('Total students',students.length)}
+        </div>
+      </section>
 
-      <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:10}}>
-        <div style={{background:T.surface2,borderRadius:T.r10,padding:'14px 16px',border:`1px solid ${T.border}`}}>
-          <div style={{fontSize:10,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.06em'}}>Avg Completeness</div>
-          <div style={{fontSize:24,fontWeight:800,color:avgPct>=90?T.green:avgPct>=60?T.amber:T.red,marginTop:4}}>{avgPct}%</div>
+      {isAdmin&&(
+        <div role="tablist" aria-label="Data quality views" style={{display:'inline-flex',gap:4,padding:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,alignSelf:'flex-start'}}>
+          {[['completeness','Profile completeness'],['checks','Record checks & quick fix'],['hostel','Hostel data']].map(([k,l])=>(
+            <button key={k} role="tab" aria-selected={view===k} onClick={()=>setView(k)} style={{padding:'8px 14px',borderRadius:9,border:'none',cursor:'pointer',fontFamily:'inherit',fontSize:12.5,fontWeight:700,
+              background:view===k?`linear-gradient(180deg,${T.navy2},${T.navy})`:'transparent',color:view===k?'#fff':T.text3}}>{l}</button>
+          ))}
         </div>
-        <div style={{background:T.surface2,borderRadius:T.r10,padding:'14px 16px',border:`1px solid ${T.border}`}}>
-          <div style={{fontSize:10,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.06em'}}>Fully Complete</div>
-          <div style={{fontSize:24,fontWeight:800,color:T.green,marginTop:4}}>{fullyComplete}</div>
-        </div>
-        <div style={{background:T.surface2,borderRadius:T.r10,padding:'14px 16px',border:`1px solid ${T.border}`}}>
-          <div style={{fontSize:10,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.06em'}}>Needs Attention</div>
-          <div style={{fontSize:24,fontWeight:800,color:T.red,marginTop:4}}>{scored.length}</div>
-        </div>
-        <div style={{background:T.surface2,borderRadius:T.r10,padding:'14px 16px',border:`1px solid ${T.border}`}}>
-          <div style={{fontSize:10,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.06em'}}>Total Students</div>
-          <div style={{fontSize:24,fontWeight:800,color:T.text1,marginTop:4}}>{students.length}</div>
-        </div>
-      </div>
+      )}
+
+      {isAdmin&&view==='checks'&&<DataHealth students={students} isAdmin={isAdmin} embedded/>}
+      {isAdmin&&view==='hostel'&&<HostelDataCheck students={students} canWrite={can.write} viewPII={can.viewPII}/>}
+
+      {view==='completeness'&&<>
 
       {topGaps.length>0&&(
         <div>
@@ -4015,6 +4158,7 @@ function DataQualityTab({ students, can, onQuickSave }) {
           filtered.map(({s})=><DataQualityRow key={s.id} student={s} can={can} onQuickSave={onQuickSave} viewPII={viewPII}/>)
         )}
       </div>
+      </>}
     </div>
   )
 }
@@ -5095,7 +5239,8 @@ export default function Students({ onNavigate: goToModule } = {}) {
   const [feeViewer,setFeeViewer]=useState(null)
   const [toast,setToast]=useState(null)
   const [page,setPage]=useState(1)
-  const [viewMode,setViewMode]=useState('list')
+  const [viewMode,setViewMode]=useState(()=>{try{return localStorage.getItem('gnsi_students_view')==='table'?'table':'cards'}catch{return 'cards'}})
+  const [tableSort,setTableSort]=useState({key:null,dir:'asc'})
   const [pageTab,setPageTab]=useState(()=>{try{return localStorage.getItem('gnsi_students_tab')||'courses'}catch{return 'courses'}})
   useEffect(()=>{try{localStorage.setItem('gnsi_students_tab',pageTab)}catch{ /* ignore */ }},[pageTab])
   const [showBulkOps,setShowBulkOps]=useState(false)
@@ -5489,7 +5634,8 @@ const effectiveCols = visibleCols.filter(col => {
   }).sort((a,b)=>(a.name||'').localeCompare(b.name||''))
 
   const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE))
-  const paginated=filtered.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE)
+  const ordered=viewMode==='table'&&tableSort.key?sortStudents(filtered,tableSort.key,tableSort.dir,{attData,feeData,examData}):filtered
+  const paginated=ordered.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE)
   const hasFilters=search||filterStatus!=='All'||filterCourse!=='All'||filterHostel!=='All'||filterHouse!=='All'||filterGender!=='All'||filterSession!=='All'||filterBatch!=='All'||gccMin||gccMax
   const clearAllFilters=()=>{setSearch('');setFilterStatus('All');setFilterCourse('All');setFilterHostel('All');setFilterHouse('All');setFilterGender('All');setFilterSession('All');setFilterBatch('All');setGccMin('');setGccMax('');setPage(1)}
   const feeDueCount=Object.values(feeData).filter(v=>v?.dues>0).length
@@ -5600,7 +5746,7 @@ const effectiveCols = visibleCols.filter(col => {
     .st-card{transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s;animation:fadeUp .3s ease both}
     .st-card:hover{transform:translateY(-3px);box-shadow:var(--shadow2)!important}
     .st-card:hover .st-name{color:${T.navy2}}
-    .st-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
+    .st-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(270px,100%),1fr));gap:16px}
     .st-skel{border-radius:16px;height:268px;border:1px solid var(--border);background:linear-gradient(90deg,var(--surface) 0%,var(--surface2) 40%,var(--surface) 80%);background-size:800px 100%;animation:stShimmer 1.3s linear infinite}
     @media (max-width:640px){.st-kpis{gap:8px}.st-kpis>.st-kpi{flex:0 0 132px}.st-grid{grid-template-columns:1fr;gap:12px}.st-hero{border-radius:18px}.st-tab{padding:9px 12px;font-size:13px}}
     @media (prefers-reduced-motion:reduce){.st-card,.st-card:hover,.st-hbtn:hover{animation:none;transform:none;transition:none}}
@@ -5820,7 +5966,7 @@ const effectiveCols = visibleCols.filter(col => {
         )}
 
         {pageTab==='dataQuality'&&(
-          <DataQualityTab students={students} can={can} onQuickSave={handleQuickSave}/>
+          <DataQualityTab students={students} can={can} onQuickSave={handleQuickSave} isAdmin={isAdminRole(role) || ['admin','Admin'].includes(role)}/>
         )}
 
         {pageTab==='scholarship'&&(
@@ -5974,6 +6120,18 @@ const effectiveCols = visibleCols.filter(col => {
           </div>
         </div>
 
+        {/* View toggle */}
+        {!loading&&filtered.length>0&&(
+          <div style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}>
+            <div role="group" aria-label="Student view" style={{display:'inline-flex',padding:3,background:T.surface,border:`1px solid ${T.border}`,borderRadius:T.r10}}>
+              {[['cards','⊞ Cards'],['table','☰ Table']].map(([v,l])=>(
+                <button key={v} aria-pressed={viewMode===v} onClick={()=>{setViewMode(v);try{localStorage.setItem('gnsi_students_view',v)}catch{}}}
+                  style={{padding:'6px 14px',borderRadius:T.r8,border:'none',cursor:'pointer',fontFamily:'inherit',fontSize:12.5,fontWeight:700,background:viewMode===v?`linear-gradient(180deg,${T.navy2},${T.navy})`:'transparent',color:viewMode===v?'#fff':T.text3}}>{l}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Student List */}
         {loading?(
           <div className="st-grid" aria-busy="true" aria-label="Loading students">
@@ -5987,6 +6145,12 @@ const effectiveCols = visibleCols.filter(col => {
             {can.write&&students.length===0&&<Btn onClick={goToAdmissions} variant='primary'>Go to Admissions</Btn>}
             {students.length>0&&hasFilters&&<Btn onClick={clearAllFilters}>Clear all filters</Btn>}
           </div>
+        ):viewMode==='table'?(
+          <StudentTable rows={paginated} sort={tableSort} onSort={k=>{setTableSort(cur=>nextSort(cur,k));setPage(1)}}
+            selected={selected} onToggle={toggleSelect}
+            onToggleAll={(ids,on)=>setSelected(prev=>{const n=new Set(prev);ids.forEach(id=>on?n.add(id):n.delete(id));return n})}
+            can={can} attData={attData} feeData={feeData} examData={examData}
+            onOpenDetail={setDetailPanel} onEdit={st=>{setEditing(st);setFormOpen(true)}} onOpenFee={setFeeViewer} onQuickAttend={setAttViewer}/>
         ):(
           <div className="st-grid">
             {paginated.map(s=>(

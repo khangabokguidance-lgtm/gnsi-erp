@@ -48,7 +48,7 @@ export function PremiumStyles() {
       .px-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:#dc2626;color:#fff;font-size:10.5px;font-weight:800;line-height:1}
       .px-tab.on .px-badge{background:${PX.gold};color:#1a1406}
       .px-card{background:#fff;border:1px solid ${PX.line};border-radius:18px;box-shadow:0 1px 2px rgba(19,42,79,.05),0 12px 32px -22px rgba(19,42,79,.35);overflow:hidden}
-      .px-card-h{display:flex;align-items:center;gap:12px;padding:15px 20px;border-bottom:1px solid ${PX.line};background:linear-gradient(180deg,#fff,#fcfbf7)}
+      .px-card-h{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:15px 20px;border-bottom:1px solid ${PX.line};background:linear-gradient(180deg,#fff,#fcfbf7)}
       .px-card-h .bar{width:4px;align-self:stretch;min-height:24px;border-radius:4px;background:linear-gradient(180deg,${PX.gold},${PX.goldLt});flex-shrink:0}
       .px-card-t{font-family:${PX.serif};font-size:16.5px;font-weight:600;color:${PX.ink};line-height:1.25}
       .px-card-s{font-size:12px;color:${PX.sub};margin-top:2px}
@@ -132,7 +132,7 @@ export function PremiumCard({ title, subtitle, right, children, bodyStyle, style
       {title && (
         <div className="px-card-h">
           <span className="bar" />
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: '1 1 180px', minWidth: 0 }}>
             <div className="px-card-t">{title}</div>
             {subtitle && <div className="px-card-s">{subtitle}</div>}
           </div>
