@@ -19,6 +19,7 @@ import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAl
 import { isAdminRole } from './roles'
 import StudentChart from './StudentChart'
 import DataHealth from './DataHealth'
+import HostelDataCheck from './HostelDataCheck'
 import { loadFullProfile } from './studentProfileLoader'
 import { getStudentDues } from './feeDues'
 import { sortStudents, nextSort } from './lib/studentTable'
@@ -4114,7 +4115,7 @@ function DataQualityTab({ students, can, onQuickSave, isAdmin=false }) {
 
       {isAdmin&&(
         <div role="tablist" aria-label="Data quality views" style={{display:'inline-flex',gap:4,padding:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,alignSelf:'flex-start'}}>
-          {[['completeness','Profile completeness'],['checks','Record checks & quick fix']].map(([k,l])=>(
+          {[['completeness','Profile completeness'],['checks','Record checks & quick fix'],['hostel','Hostel data']].map(([k,l])=>(
             <button key={k} role="tab" aria-selected={view===k} onClick={()=>setView(k)} style={{padding:'8px 14px',borderRadius:9,border:'none',cursor:'pointer',fontFamily:'inherit',fontSize:12.5,fontWeight:700,
               background:view===k?`linear-gradient(180deg,${T.navy2},${T.navy})`:'transparent',color:view===k?'#fff':T.text3}}>{l}</button>
           ))}
@@ -4122,6 +4123,7 @@ function DataQualityTab({ students, can, onQuickSave, isAdmin=false }) {
       )}
 
       {isAdmin&&view==='checks'&&<DataHealth students={students} isAdmin={isAdmin} embedded/>}
+      {isAdmin&&view==='hostel'&&<HostelDataCheck students={students} canWrite={can.write} viewPII={can.viewPII}/>}
 
       {view==='completeness'&&<>
 
