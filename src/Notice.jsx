@@ -341,7 +341,7 @@ function Notice({ perms }) {
 
       {/* Card view */}
       {viewMode === 'cards' && (
-        <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(auto-fill, minmax(min(300px,100%), 1fr))', gap: 14 }}>
           {loading && <div style={{ color: '#64748b', padding: 24 }}>Loading…</div>}
           {filteredNotices.map(item => {
             const warn = expiryWarning(item.expiry_date)

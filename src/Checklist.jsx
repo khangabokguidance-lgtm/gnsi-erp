@@ -945,7 +945,7 @@ function ExamsView({ currentUser, checklists, staff, onOpen, onDelete, onAssign,
         </div>
       )}
       <div style={{ fontSize:F.sm, color:C.textMid, marginBottom:11 }}>{visible.length} checklist{visible.length!==1?"s":""}</div>
-      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(320px,1fr))", gap:13 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(min(320px,100%),1fr))", gap:13 }}>
         {visible.length===0 ? <div style={{ padding:44, textAlign:"center", color:C.textMid, fontSize:F.base, gridColumn:"1/-1" }}>No checklists found.</div>
           : visible.map(c=><ChecklistCard key={c.id} item={c} currentUser={currentUser} onOpen={onOpen} onDelete={onDelete} isEvent={false} />)}
       </div>
@@ -1001,7 +1001,7 @@ function EventsView({ currentUser, events, staff, onOpen, onDelete, onAssign, is
         </div>
       )}
       <div style={{ fontSize:F.sm, color:C.textMid, marginBottom:11 }}>{visible.length} event{visible.length!==1?"s":""}</div>
-      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(320px,1fr))", gap:13 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(min(320px,100%),1fr))", gap:13 }}>
         {visible.length===0
           ? <div style={{ padding:44, textAlign:"center", color:C.textMid, fontSize:F.base, gridColumn:"1/-1" }}>
               <div style={{ fontSize:32, marginBottom:10 }}>📅</div>
@@ -1121,7 +1121,7 @@ function MonitorView({ currentUser, checklists, events, staff, isMobile }) {
     <div>
       {!isMobile && <div style={{ fontSize:F.xl, fontWeight:800, color:C.text, marginBottom:16 }}>Monitor</div>}
       <div style={{ fontSize:F.sm, fontWeight:700, color:C.textMid, textTransform:"uppercase", letterSpacing:.07, marginBottom:12 }}>Staff Progress</div>
-      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(280px,1fr))", gap:11 }}>
+      <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(min(280px,100%),1fr))", gap:11 }}>
         {staffStats.map(st=>{
           const total=st.examTotal+st.eventTotal, done=st.examDone+st.eventDone;
           const pct=total>0?Math.round((done/total)*100):0;

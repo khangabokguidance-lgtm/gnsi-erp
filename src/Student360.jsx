@@ -537,7 +537,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
           </div>
 
           {/* Grid of module sections */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(300px,100%),1fr))', gap: 14 }}>
 
             {/* Student Profile — the raw Students.jsx row (name, status,
                 course/batch, DOB, parents, contact, medical/notes, etc.).
@@ -940,7 +940,7 @@ function StudentCharts({ profile }) {
   if (!hasAttendance && !hasExams && !hasFees) return null
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 14 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(280px,100%),1fr))', gap: 14 }}>
       {hasAttendance && (
         <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${SLATE[200]}`, padding: '14px 16px', gridColumn: hasExams || hasFees ? 'span 2' : 'span 1' }}>
           <div style={{ fontSize: 12.5, fontWeight: 750, color: NAVY, marginBottom: 10 }}>📋 Attendance Trend (running %)</div>
@@ -1971,7 +1971,7 @@ function SchoolOverview({ onOpenStudent }) {
         <KpiCard icon="⚠️" label="No fee payment on record" value={data.noPaymentStudents.length} color={data.noPaymentStudents.length > 0 ? RED : GREEN} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(320px,100%),1fr))', gap: 14 }}>
 
         {/* Enrollment by course */}
         <Section icon="🎓" title="Enrollment by Course" accent={NAVY}

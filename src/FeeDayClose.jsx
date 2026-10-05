@@ -179,7 +179,7 @@ export default function FeeDayClose({ adm_fee_collections, adm_flat_fees, adm_co
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 14, padding: '0 16px 16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(280px,100%),1fr))', gap: 14, padding: '0 16px 16px' }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr><th style={head}>Mode</th><th style={{ ...head, textAlign: 'right' }}>Receipts</th><th style={{ ...head, textAlign: 'right' }}>Amount</th></tr></thead>

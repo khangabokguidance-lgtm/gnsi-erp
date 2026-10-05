@@ -5746,7 +5746,7 @@ const effectiveCols = visibleCols.filter(col => {
     .st-card{transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s;animation:fadeUp .3s ease both}
     .st-card:hover{transform:translateY(-3px);box-shadow:var(--shadow2)!important}
     .st-card:hover .st-name{color:${T.navy2}}
-    .st-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
+    .st-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(270px,100%),1fr));gap:16px}
     .st-skel{border-radius:16px;height:268px;border:1px solid var(--border);background:linear-gradient(90deg,var(--surface) 0%,var(--surface2) 40%,var(--surface) 80%);background-size:800px 100%;animation:stShimmer 1.3s linear infinite}
     @media (max-width:640px){.st-kpis{gap:8px}.st-kpis>.st-kpi{flex:0 0 132px}.st-grid{grid-template-columns:1fr;gap:12px}.st-hero{border-radius:18px}.st-tab{padding:9px 12px;font-size:13px}}
     @media (prefers-reduced-motion:reduce){.st-card,.st-card:hover,.st-hbtn:hover{animation:none;transform:none;transition:none}}

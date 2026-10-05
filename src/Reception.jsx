@@ -677,7 +677,7 @@ function HouseWiseGrid({ parentItems, onStatusChange }) {
         <span style={{ marginLeft: 'auto', fontSize: 11, color: C.slate[400], fontFamily: font }}>{filtered.length} item{filtered.length !== 1 ? 's' : ''}</span>
       </div>
       {houseNames.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: C.slate[400], fontSize: 14, fontFamily: font }}>No records match.</div>}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(280px,100%),1fr))', gap: 14 }}>
         {houseNames.map((house, hi) => {
           const hColor = HOUSE_PALETTE[hi % HOUSE_PALETTE.length]
           const hItems = grouped[house]

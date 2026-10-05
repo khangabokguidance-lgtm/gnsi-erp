@@ -982,7 +982,7 @@ function VideosSection() {
         </div>
       </div>
       {load?<div style={s.loading}><Spin/>Loading…</div>:!rows.length?<div style={s.empty}>No videos yet</div>:(
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:".8rem"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(260px,100%),1fr))",gap:".8rem"}}>
           {rows.map(v=>{const t=v.youtube_url?getThumb(v.youtube_url):null;return(
             <div key={v.id} style={{...s.card,marginBottom:0}}>
               {t&&<img src={t} alt={v.title} style={{width:"100%",aspectRatio:"16/9",objectFit:"cover",display:"block"}} onError={e=>e.target.style.display="none"}/>}

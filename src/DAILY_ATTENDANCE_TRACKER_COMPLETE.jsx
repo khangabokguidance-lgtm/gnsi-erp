@@ -322,7 +322,7 @@ function VPDashboard({ staff, logs, records }) {
     <div style={S.card}>
       <SectionHeader icon="📊" title="VP Dashboard" subtitle={fmtDate(new Date())} />
       {kpis && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 16 }}>
           <MetricCard label="Present"  value={kpis.present}    total={kpis.total} color="#16a34a" />
           <MetricCard label="Absent"   value={kpis.absent}     total={kpis.total} color="#dc2626" />
           <MetricCard label="On Leave" value={kpis.onLeave}    total={kpis.total} color="#2563eb" />

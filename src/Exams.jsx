@@ -1774,7 +1774,7 @@ for (const st of courseStudents) {
             <div style={{ fontWeight: 700, fontSize: 12, color: "#2e3b52", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
               📊 Subject Column Mapping
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(260px,1fr))", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(min(260px,100%),1fr))", gap: 8 }}>
               {importInfo.subjectColMap.map(({ sub, col, matchType, confidence }) => (
                 <div key={sub} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: matchType === "none" ? "#FFFBEB" : "#faf8f3", border: `1px solid ${matchType === "none" ? "#FDE68A" : "#e8e3d8"}`, borderRadius: 8 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -8063,7 +8063,7 @@ function ReportCards({ courseSubjects, examTypes, students, institute, secondary
           🚫 {absentCount} absent student{absentCount === 1 ? "" : "s"} hidden from this view and excluded from ranking. Uncheck "Exclude absent students" above to show them.
         </div>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(300px,1fr))", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(min(300px,100%),1fr))", gap: 14 }}>
         {visibleStudents.map(st => (
           <ReportCardItem key={st.id} st={st} subjects={subjects} subjectMaxMap={subjectMaxMap} courseMax={courseMax} marks={marks} examType={examType} examDate={examDate} examName={examName} institute={institute} allStudents={visibleStudents} course={course} />
         ))}
@@ -9283,7 +9283,7 @@ function ExamFormatBuilder({ courseSubjects, onSave, onCancel, editingConfig, pr
           </div>
         </div>
 
-        <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(280px,1fr))", gap:12 }}>
+        <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(min(280px,100%),1fr))", gap:12 }}>
           {courseArr.map(c => {
             const d = courseData[c] || { subjects:[], marks:{} };
             const total = Object.values(d.marks).reduce((s,v)=>s+(Number(v)||0),0);
@@ -9797,7 +9797,7 @@ setLoading(false);
       )}
 
       {/* ── Config cards ── */}
-      <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(340px,1fr))", gap:14, marginBottom:24 }}>
+      <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(min(340px,100%),1fr))", gap:14, marginBottom:24 }}>
         {configs.map(cfg => {
           const isActive = activeId === cfg.id;
           const isPreset = !!EXAM_CONFIG_PRESETS.find(p => p.id === cfg.id);

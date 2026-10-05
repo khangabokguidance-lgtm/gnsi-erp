@@ -74,7 +74,7 @@ function FixPanel({ row, houses, canPII, onDone }) {
   const Save = ({ name, onClick, disabled }) => <button type="button" className="px-btn" disabled={busy === name || disabled} onClick={onClick}>{busy === name ? 'Saving…' : 'Save'}</button>
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 16 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(260px,100%),1fr))', gap: 16 }}>
       {needGender && (
         <Field label="Gender">
           <div style={{ display: 'flex', gap: 8 }}>
@@ -167,7 +167,7 @@ export default function HostelDataCheck({ students = [], canWrite = false, viewP
 
       <PremiumCard title="Gender mix by house" subtitle="A student of the minority gender in a clearly single-gender house is flagged for review" style={{ marginBottom: 16 }}>
         {mixRows.length === 0 ? <div style={{ fontSize: 12.5, color: PX.faint }}>No boarders with a house yet.</div> : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: '12px 28px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(260px,100%),1fr))', gap: '12px 28px' }}>
             {mixRows.map(m => (
               <div key={m.house}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 4 }}>

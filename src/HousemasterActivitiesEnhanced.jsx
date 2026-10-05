@@ -879,7 +879,7 @@ export function AdminMonitorTab({ staffProfiles }) {
       {/* House compliance grid */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 14, fontWeight: 800, color: '#1e3a5f', marginBottom: 12 }}>🏠 House Compliance Monitor — Today</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(260px,100%),1fr))', gap: 14 }}>
           {houseSummary.map(({ house: h, activityCount, todayCount, mandatoryPct, studentCount, lastActivity, daysSinceActivity, doubtLogged, alert }) => (
             <div key={h.id} style={{
               background: 'white', borderRadius: 12, overflow: 'hidden',

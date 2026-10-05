@@ -308,7 +308,7 @@ function PlanEditor({ plan, setPlan, courseData, materials, canTeach, onSave, on
       </div>
       <button type="button" className="px-btn ghost" style={{ marginTop: 8, fontSize: 12.5 }} onClick={() => set({ blocks: [...plan.blocks, { kind: 'custom', title: 'New step', minutes: 5, notes: '' }] })}>+ Add step</button>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 16, marginTop: 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(280px,100%),1fr))', gap: 16, marginTop: 18 }}>
         <div>
           <label style={label}>Materials for this class</label>
           {!plan.chapter ? <div style={muted}>Choose a chapter first.</div> : chapterMats.length === 0 ? <div style={muted}>No materials for this chapter yet.</div> : (
@@ -420,7 +420,7 @@ function Planner({ course, courseData, courseLabel, materials, subject, chapter,
       {api.loading ? <div style={muted}>Loading plans…</div> : list.length === 0 ? (
         <div style={{ ...muted, padding: '18px 0' }}>No lesson plans here yet.{chapter ? ' Click “New plan” to write one.' : ' Choose a chapter, then “New plan”.'}</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(280px,100%),1fr))', gap: 12 }}>
           {list.map(p => {
             const st = PLAN_STATUS[p.status] || PLAN_STATUS.draft
             const canEdit = isAdmin || mine(p)

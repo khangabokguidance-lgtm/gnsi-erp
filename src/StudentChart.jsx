@@ -56,7 +56,7 @@ export default function StudentChart({ profile, dues, student, onNavigate }) {
   const counts = heat.reduce((m, h) => ({ ...m, [h]: (m[h] || 0) + 1 }), {})
 
   return (
-    <section aria-label="Student chart" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 14, alignItems: 'start' }}>
+    <section aria-label="Student chart" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(320px,100%),1fr))', gap: 14, alignItems: 'start' }}>
       <div style={col}>
         <div style={{ ...card, background: `linear-gradient(120deg, ${TEAL_DK}, ${TEAL})`, border: 'none', color: '#fff' }}>
           <div style={titleRow}><h3 style={{ ...title, color: 'rgba(255,255,255,.7)' }}>Risk index</h3>

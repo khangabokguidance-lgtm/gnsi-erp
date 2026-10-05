@@ -1091,7 +1091,7 @@ export default function TabMonthlySyllabus({ logs=[], missed=[], timetable=[], s
           })}
         </div>
       ) : viewMode === 'grid' ? (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(265px,1fr))', gap:10 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(265px,100%),1fr))', gap:10 }}>
           {visibleMonths.map(m => {
             const mk = monthKey(selYear,m)
             return (

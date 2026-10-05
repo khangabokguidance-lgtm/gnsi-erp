@@ -783,7 +783,7 @@ useEffect(() => {
         ? <div style={{ textAlign:'center', padding:48, color:'#5d6b82' }}>⏳ Loading...</div>
         : (
           <>
-           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(340px,1fr))', gap:16 }}>
+           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(min(340px,100%),1fr))', gap:16 }}>
   {paginated.map(item => {
     const hasDoubt = sessions[item.id]?.length > 0
     const doubtOpen = sessions[item.id]?.some(s => s.status==='open')

@@ -1697,7 +1697,7 @@ const FEES_CSS = `
 .fe-tab{display:flex;align-items:center;gap:6px;padding:9px 15px;border:none;border-radius:10px;background:none;cursor:pointer;font:600 13px/1 'Plus Jakarta Sans',system-ui,sans-serif;color:#5d6b82;white-space:nowrap}
 .fe-tab:hover{color:#0f1b2e;background:#f3f0e8!important;filter:none!important}
 .fe-tab.on{background:linear-gradient(180deg,#1e3a6e,#132a4f)!important;color:#fff;box-shadow:0 6px 14px -6px rgba(19,42,79,.6)}
-.fh{flex:1 1 100%;min-width:0;display:grid;grid-template-columns:var(--fh-cols,repeat(auto-fit,minmax(290px,1fr)));gap:14px}
+.fh{flex:1 1 100%;min-width:0;display:grid;grid-template-columns:var(--fh-cols,repeat(auto-fit,minmax(min(290px,100%),1fr)));gap:14px}
 .fh-g{background:#fff;border-radius:22px;padding:16px 10px 12px;box-shadow:0 1px 2px rgba(16,24,40,.05),0 12px 28px -24px rgba(19,42,79,.45);border:1px solid #eef0f4}
 .fh-g h2{font:800 16.5px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#141a26;margin:0 10px 14px;letter-spacing:-.01em}
 .fh-grid{display:grid;grid-template-columns:repeat(var(--fh-n,4),minmax(0,1fr));gap:14px 4px}
@@ -2480,7 +2480,7 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
             </button>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(auto-fill, minmax(118px, 1fr))', gap: 10, marginTop: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(auto-fill, minmax(92px, 1fr))' : 'repeat(auto-fill, minmax(118px, 1fr))', gap: 10, marginTop: 14 }}>
           {monthwiseDues.map((m, idx) => {
             const pctRaw   = m.expectedTotal > 0 ? Math.round((m.collectedTotal / m.expectedTotal) * 100) : null
             // Clamp for display: collected can legitimately exceed the
