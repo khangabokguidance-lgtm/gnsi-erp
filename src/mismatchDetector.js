@@ -14,6 +14,8 @@
 // notification.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { detectCrossModuleMismatches } from './lib/crossModuleChecks.js'
+
 export function detectMismatches(student, profile) {
   const flags = []
 
@@ -70,6 +72,9 @@ export function detectMismatches(student, profile) {
       text: 'Has a hostel allocation record but no house assigned on the student profile.',
     })
   }
+
+  // Students ↔ Hostel ↔ Fees (via admissions) detail drift — see lib/crossModuleChecks.js
+  flags.push(...detectCrossModuleMismatches(student, profile))
 
   return flags
 }
