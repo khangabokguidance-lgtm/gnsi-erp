@@ -940,7 +940,7 @@ function DashboardView({ staffList }) {
           ⚠️ Could not load dashboard data: {fetchError}
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px,100%), 1fr))', gap: 14 }}>
         <DashCard title="Attendance trend this month" subtitle="Present · Late · Half Day · Absent · Early Out, by day">
           <StackedTrendChart days={dayBuckets} />
         </DashCard>

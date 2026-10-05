@@ -5084,7 +5084,7 @@ export default function Admissions() {
             <GalleryGrid apps={filtered} onDetail={openDetail} onSelect={toggleSelect}
               selectedIds={selectedIds} isMobile={isMobile} isTablet={isTablet} />
           ) : (
-            <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':isTablet?'repeat(2,1fr)':'repeat(auto-fill,minmax(340px,1fr))', gap:isMobile?12:14, alignItems:'start', minWidth:0, width:'100%' }}>
+            <div style={{ display:'grid', gridTemplateColumns:isMobile?'1fr':isTablet?'repeat(2,1fr)':'repeat(auto-fill,minmax(min(340px,100%),1fr))', gap:isMobile?12:14, alignItems:'start', minWidth:0, width:'100%' }}>
               {filtered.map(a => (
                 <div key={a.id}>
                   {duplicateGCCs.has(a.gcc) && (

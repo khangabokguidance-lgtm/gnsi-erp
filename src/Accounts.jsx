@@ -3678,7 +3678,7 @@ body:has(.ac-bottom){padding-bottom:76px}
               </div>
             </div>
 
-            <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'repeat(auto-fill,minmax(260px,1fr))',gap:12}}>
+            <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'repeat(auto-fill,minmax(min(260px,100%),1fr))',gap:12}}>
               {allExpenseCategorySummary.map((c,idx)=>{
                 const expanded=catAllDrilldown===c.category
                 const pct=grandTotal>0?(c.total/grandTotal)*100:0
@@ -4809,7 +4809,7 @@ body:has(.ac-bottom){padding-bottom:76px}
               </div>
             </div>
 
-            <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'repeat(auto-fill,minmax(270px,1fr))',gap:12}}>
+            <div style={{display:'grid',gridTemplateColumns: isMobile?'1fr':'repeat(auto-fill,minmax(min(270px,100%),1fr))',gap:12}}>
               {allIncomeCategorySummary.map((c,idx)=>{
                 const expanded=catAllIncDrilldown===c.category
                 const pct=grandTotal>0?(c.total/grandTotal)*100:0

@@ -155,7 +155,7 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12, marginBottom: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(260px,100%),1fr))', gap: 12, marginBottom: 14 }}>
         <Breakdown title="By staff who collected" rows={sum.byStaff} />
         <Breakdown title="By reason" rows={sum.byReason} />
         <Breakdown title="Students given low fees more than once" rows={sum.repeat} label={r => { const [gcc, name] = r.key.split('|'); return <LedgerLink gcc={gcc}>{name || `GCC-${gcc}`}</LedgerLink> }} />

@@ -98,7 +98,7 @@ function Guide({ g, done, onToggle, onOpenModule, canOpen, onSelect }) {
       {g.tabs?.length > 0 && (
         <div style={card}>
           <div style={{ fontWeight: 800, color: NAVY, marginBottom: 8 }}>The screens in this module</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(260px,100%),1fr))', gap: 8 }}>
             {g.tabs.map(t => (
               <div key={t.name} style={{ background: '#f8fafc', borderRadius: 10, padding: '8px 11px' }}>
                 <div style={{ fontWeight: 800, fontSize: 12.5, color: NAVY }}>{t.name}</div>
@@ -123,7 +123,7 @@ function Guide({ g, done, onToggle, onOpenModule, canOpen, onSelect }) {
       </div>
 
       {(g.tips?.length > 0 || g.mistakes?.length > 0) && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(280px,100%),1fr))', gap: 14 }}>
           {g.tips?.length > 0 && <div style={{ ...card, borderColor: '#bbf7d0' }}><div style={{ fontWeight: 800, color: '#166534', marginBottom: 6 }}>Good habits</div><ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 13 }}>{g.tips.map((t, i) => <li key={i}>{t}</li>)}</ul></div>}
           {g.mistakes?.length > 0 && <div style={{ ...card, borderColor: '#fecaca' }}><div style={{ fontWeight: 800, color: '#991b1b', marginBottom: 6 }}>Common mistakes</div><ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 13 }}>{g.mistakes.map((t, i) => <li key={i}>{t}</li>)}</ul></div>}
         </div>
@@ -279,7 +279,7 @@ export default function HelpCenter({ currentUser, canAccess, onNavigate }) {
       )}
 
       {view === 'paths' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(320px,100%),1fr))', gap: 14 }}>
           {PATHS.map(p => {
             const list = p.modules.map(id => byId[id]).filter(Boolean)
             const dn = list.filter(x => done.has(x.id)).length

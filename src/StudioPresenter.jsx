@@ -97,7 +97,7 @@ export default function StudioPresenter({ tray, options, onClose }) {
             </div>
             <div style={{ fontSize: 'clamp(24px,3.2vw,42px)', fontWeight: 700, lineHeight: 1.3 }}>{text(item.row.question, item.row.question_mayek, item.row)}</div>
             {item.row.diagram_url && /^https?:/i.test(item.row.diagram_url) && <img src={item.row.diagram_url} alt="" style={{ maxHeight: '28vh', maxWidth: '100%', marginTop: 16, borderRadius: 12, background: '#fff' }} />}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 14, marginTop: 24 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(320px,100%),1fr))', gap: 14, marginTop: 24 }}>
               {OPTS.filter(k => item.row[`option_${k}`]).map(k => {
                 const right = reveal && item.row.correct_option === k.toUpperCase()
                 const dim = reveal && !right

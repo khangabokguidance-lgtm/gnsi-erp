@@ -955,7 +955,7 @@ export function DoubtSessionTab({ currentUser, students = [], currentHousemaster
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px,100%), 1fr))', gap: 14, marginBottom: 16 }}>
                 {DOUBT_BATCHES.map(batch => {
                   const batchStudents = houseStudents.filter(s => (s.batch || '').includes(batch.split(' ')[0]))
                   const attending = sessionAttendance[batch] || []
