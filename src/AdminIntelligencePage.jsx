@@ -157,7 +157,7 @@ export default function AdminIntelligence({ onOpenStudent }) {
       </div>
 
       {/* ── 1–4 Risk & early warning ─────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(320px,100%),1fr))', gap: 12 }}>
 
         <LazySection icon="🚨" title="At-Risk Students (Compound Score)" accent={RED}
           fetcher={() => getAtRiskStudents({ limit: 20 })}
@@ -229,7 +229,7 @@ export default function AdminIntelligence({ onOpenStudent }) {
       </div>
 
       {/* ── 5–8 Operational / data health ────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(320px,100%),1fr))', gap: 12 }}>
 
         <LazySection icon="🩺" title="Data Health — Orphaned Records" accent={RED}
           fetcher={getDataHealthReport}
@@ -295,7 +295,7 @@ export default function AdminIntelligence({ onOpenStudent }) {
       </div>
 
       {/* ── 9–12 Financial intelligence ──────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(320px,100%),1fr))', gap: 12 }}>
 
         <LazySection icon="🔮" title="Revenue Forecast (This Month)" accent={GREEN}
           fetcher={getRevenueForecast}
@@ -358,7 +358,7 @@ export default function AdminIntelligence({ onOpenStudent }) {
       </div>
 
       {/* ── 13–15 Academic intelligence ──────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(320px,100%),1fr))', gap: 12 }}>
 
         <LazySection icon="🏆" title="Topper Trends by Subject" accent={GOLD}
           fetcher={() => getTopperTrends({ topN: 3 })}
@@ -408,7 +408,7 @@ export default function AdminIntelligence({ onOpenStudent }) {
       </div>
 
       {/* ── 16–18 Hostel / discipline intelligence ───────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(320px,100%),1fr))', gap: 12 }}>
 
         <LazySection icon="🚩" title="Discipline Repeat Offenders (90d)" accent={RED}
           fetcher={() => getDisciplineRepeatOffenders()}

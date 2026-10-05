@@ -161,7 +161,9 @@ const CSS = `
 .cm-btn.sm{height:32px;padding:0 11px;font-size:12px;border-radius:9px}
 .cm-btn.glass{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2)}.cm-btn.glass:hover{background:rgba(255,255,255,.18)}
 .cm-card{background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:var(--sh)}
-.cm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.cm-span2{grid-column:span 2}
+@media (max-width:760px){.cm-span2{grid-column:1/-1}}
+.cm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(170px,100%),1fr));gap:12px}
 .cm-kpi{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 16px;position:relative;overflow:hidden}
 .cm-kpi:before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--c,#132a4f)}
 .cm-kpi .l{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
@@ -183,7 +185,7 @@ textarea.cm-in{height:auto;padding:10px 12px;resize:vertical;line-height:1.5}
 .cm-seg{display:inline-flex;background:#fff;border:1px solid var(--line);border-radius:11px;padding:3px;gap:2px}
 .cm-seg button{height:32px;padding:0 12px;border:none;border-radius:8px;background:none;font-size:12.5px;font-weight:700;color:var(--mute)}
 .cm-seg button.on{background:var(--navy);color:#fff}
-.cm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+.cm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:14px}
 @media(max-width:420px){.cm-grid{grid-template-columns:1fr}}
 .cm-pcard{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;cursor:pointer;transition:box-shadow .2s,transform .2s,border-color .2s;display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden}
 .cm-pcard:hover{box-shadow:var(--sh2);transform:translateY(-2px);border-color:transparent}
@@ -193,7 +195,7 @@ textarea.cm-in{height:auto;padding:10px 12px;resize:vertical;line-height:1.5}
 .cm-pcard .meta{font-size:12px;color:var(--mute);display:flex;gap:10px;flex-wrap:wrap}
 .cm-kv{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .cm-kv div{background:#faf8f3;border-radius:10px;padding:7px 9px}.cm-kv small{display:block;font-size:10.5px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}.cm-kv b{font-size:13.5px}
-.cm-board{display:grid;grid-template-columns:repeat(5,minmax(230px,1fr));gap:12px;overflow-x:auto;padding-bottom:6px}
+.cm-board{display:grid;grid-template-columns:repeat(5,minmax(min(230px,100%),1fr));gap:12px;overflow-x:auto;padding-bottom:6px}
 .cm-col{background:#efece5;border-radius:16px;padding:10px;min-height:240px;border:2px solid transparent;transition:border-color .15s,background .15s}
 .cm-col.drop{border-color:var(--gold);background:var(--goldbg)}
 .cm-col h4{margin:2px 4px 10px;font-size:13px;display:flex;justify-content:space-between;align-items:center}
@@ -225,11 +227,11 @@ textarea.cm-in{height:auto;padding:10px 12px;resize:vertical;line-height:1.5}
 .cm-mhead h3{margin:0;font-size:18px}
 .cm-x{width:36px;height:36px;border-radius:99px;border:none;background:#f3f0e9;font-size:18px;color:var(--ink2);display:grid;place-items:center;flex:none}
 .cm-x.w{background:rgba(255,255,255,.12);color:#fff}
-.cm-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.cm-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:12px}
 .cm-sub{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px}
 .cm-empty{text-align:center;padding:36px 12px;color:var(--mute);font-size:13.5px}.cm-empty .i{font-size:34px;margin-bottom:6px}
 .cm-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line2)}
-.cm-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.cm-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr));gap:10px}
 .cm-photo{position:relative;border-radius:14px;overflow:hidden;aspect-ratio:4/3;background:#eee;cursor:zoom-in}
 .cm-photo img{width:100%;height:100%;object-fit:cover;transition:transform .3s}.cm-photo:hover img{transform:scale(1.05)}
 .cm-photo .cap{position:absolute;left:0;right:0;bottom:0;padding:18px 9px 7px;background:linear-gradient(transparent,rgba(0,0,0,.7));color:#fff;font-size:11.5px;font-weight:600}
@@ -768,7 +770,7 @@ function Dashboard({ summary, alerts, duePayments, cashflow, categorySpend, stat
       </div>
 
       {(alertCards.length > 0 || alerts.maintDue.length > 0 || alerts.openIssues.length > 0) && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(280px,100%),1fr))', gap: 10 }}>
           {alertCards.map(([ic, title, list, c, bg, line]) => (
             <div key={title} className="cm-alert" style={{ background: bg, border: `1px solid ${c}33`, color: c }}>
               <span style={{ fontSize: 18 }}>{ic}</span>
@@ -788,8 +790,8 @@ function Dashboard({ summary, alerts, duePayments, cashflow, categorySpend, stat
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(340px,1fr))', gap: 16 }}>
-        <div className="cm-card" style={{ padding: 18, gridColumn: 'span 2', minWidth: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(340px,100%),1fr))', gap: 16 }}>
+        <div className="cm-card cm-span2" style={{ padding: 18, minWidth: 0 }}>
           <div className="cm-h"><h3>💸 Monthly cash flow</h3><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ fontSize: 11.5, color: 'var(--mute)' }}>Paid (12 months) · planned milestones (next 3)</span><button className="cm-btn sm ghost" onClick={exportPayments}>⬇ Payments CSV</button></div></div>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={cashflow} margin={{ left: -10, right: 4 }}>
@@ -813,7 +815,7 @@ function Dashboard({ summary, alerts, duePayments, cashflow, categorySpend, stat
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(340px,1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(340px,100%),1fr))', gap: 16 }}>
         <div className="cm-card" style={{ padding: 18 }}>
           <div className="cm-h"><h3>🗓️ Payments due (next 30 days)</h3><b style={{ fontSize: 13 }}>{fmt(duePayments.reduce((a, m) => a + (Number(m.planned_amount) || 0), 0))}</b></div>
           {duePayments.length ? duePayments.slice(0, 8).map(m => (
@@ -961,7 +963,7 @@ function ProjectDrawer({ p, tab, setTab, onClose, ext, myName, notify, pays, ms,
         <div className="cm-dbody">
           {tab === 'overview' && (
             <div style={{ display: 'grid', gap: 14 }}>
-              <div className="cm-kpis" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))' }}>
+              <div className="cm-kpis" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(140px,100%),1fr))' }}>
                 {[['Budget', fmt(p.budget_amount), '#132a4f'], ['Paid', fmt(p.paid), '#15803d'], [p.remaining < 0 ? 'Over budget' : 'Remaining', fmt(Math.abs(p.remaining)), p.remaining < 0 ? '#dc2626' : '#7c3aed'], ['Forecast final', fmt(p.forecast), p.forecastOver ? '#c2410c' : '#0e7490']].map(([l, v, c]) => <div key={l} className="cm-kpi" style={{ '--c': c }}><div className="l">{l}</div><div className="v" style={{ fontSize: 19 }}>{v}</div></div>)}
               </div>
               <div className="cm-sub">
@@ -1010,7 +1012,7 @@ function ProjectDrawer({ p, tab, setTab, onClose, ext, myName, notify, pays, ms,
                   {p.contract_file_url && <a className="cm-btn sm ghost" style={{ textDecoration: 'none' }} href={p.contract_file_url} target="_blank" rel="noreferrer">📄 Contract / agreement</a>}
                 </div>
               )}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(150px,100%),1fr))', gap: 10 }}>
                 {[['payments', '💳', `${pays.length} payments`, fmt(p.paid)], ['milestones', '🎯', `${ms.filter(m => !m.is_paid).length} milestones pending`, fmt(ms.filter(m => !m.is_paid).reduce((a, m) => a + (Number(m.planned_amount) || 0), 0))],
                   ['issues', '🚧', `${openIssues} open issues`, openIssues ? 'needs attention' : 'all clear'], ['photos', '📷', `${photos.length} site photos`, photos[0] ? niceDate(photos[0].taken_on) : 'none yet']].map(([t, ic, l, s]) => (
                   <button key={t} className="cm-sub" style={{ textAlign: 'left', cursor: 'pointer' }} onClick={() => setTab(t)}><div style={{ fontSize: 20 }}>{ic}</div><b style={{ fontSize: 13 }}>{l}</b><div style={{ fontSize: 12, color: 'var(--mute)' }}>{s}</div></button>
@@ -1163,12 +1165,12 @@ function BOQTab({ p, mats, api }) {
   const saveActual = (m, k, v) => { const num = v === '' ? null : Number(v); if ((m[k] ?? null) === num) return; api.updateRow('cm_materials', m.id, { [k]: num }) }
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      <div className="cm-kpis" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))' }}>
+      <div className="cm-kpis" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(150px,100%),1fr))' }}>
         {[['Estimated (BOQ)', fmt(totE), '#132a4f'], ['Actual so far', fmt(totA), '#15803d'], ['Variance on counted items', `${varA > 0 ? '+' : ''}${fmt(varA)}`, varA > 0 ? '#dc2626' : '#15803d'], ['vs budget', Number(p.budget_amount) ? `${Math.round(totE / p.budget_amount * 100)}%` : '—', '#7c3aed']].map(([l, v, c]) => <div key={l} className="cm-kpi" style={{ '--c': c }}><div className="l">{l}</div><div className="v" style={{ fontSize: 18 }}>{v}</div></div>)}
       </div>
       {!f ? <div><button className="cm-btn gold" onClick={() => setF(blank)}>+ Add BOQ item</button></div> : (
         <div className="cm-sub">
-          <div className="cm-form" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))' }}>
+          <div className="cm-form" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(130px,100%),1fr))' }}>
             <Field label="Item *"><input className="cm-in" autoFocus value={f.item} onChange={e => setF(v => ({ ...v, item: e.target.value }))} placeholder="e.g. Cement (OPC 53)" /></Field>
             <Field label="Unit"><input className="cm-in" list="cm-units" value={f.unit} onChange={e => setF(v => ({ ...v, unit: e.target.value }))} placeholder="bag / cft / nos" /></Field>
             <Field label="Est. qty"><input className="cm-in" type="number" value={f.est_qty} onChange={e => setF(v => ({ ...v, est_qty: e.target.value }))} /></Field>

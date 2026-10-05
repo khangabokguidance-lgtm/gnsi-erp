@@ -516,7 +516,7 @@ function BatchesSection({ courseData, isMobile, isAdmin }) {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(300px,1fr))", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill,minmax(min(300px,100%),1fr))", gap: 12 }}>
         {filtered.map(b => {
           const c = COURSE_COLORS[b.course] || { color: "#2e3b52", bg: "#faf8f3", border: "#e8e3d8" };
           return (
