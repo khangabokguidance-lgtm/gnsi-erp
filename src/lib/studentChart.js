@@ -74,3 +74,14 @@ export function buildTimeline({ profile, student } = {}, limit = 15) {
   ev.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
   return ev.slice(0, limit)
 }
+
+// Last `n` attendance marks as 'p' | 'a' | 'l' (present / absent / late-or-other),
+// oldest first. session_id is the same chronological proxy Student 360's
+// attendance line chart already uses.
+export function attendanceHeat(records, n = 42) {
+  const rows = [...(records || [])].sort((a, b) => (a.session_id ?? 0) - (b.session_id ?? 0)).slice(-n)
+  return rows.map(r => {
+    const s = String(r.status || '').toLowerCase()
+    return s === 'present' ? 'p' : s === 'absent' ? 'a' : 'l'
+  })
+}

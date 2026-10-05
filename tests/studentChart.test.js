@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { computeRiskIndex, buildActionItems, buildTimeline } from '../src/lib/studentChart.js'
+import { computeRiskIndex, buildActionItems, buildTimeline, attendanceHeat } from '../src/lib/studentChart.js'
 
 const healthy = { profile: { attendance: { pct: 95, totalMarked: 40 }, discipline: [], complaints: [], sickbay: [], leave: [], gatePasses: [], fees: {} }, dues: { totalDue: 0 }, student: { status: 'Active' } }
 
@@ -37,4 +37,11 @@ test('timeline: merges modules, newest first, skips bad dates, honours limit', (
   assert.deepEqual(t.map(e => e.module), ['Fees', 'Exams', 'Admission'])
   assert.equal(t[0].title, 'Fee payment ₹3,000')
   assert.equal(buildTimeline({ profile: { exams: Array.from({ length: 30 }, (_, i) => ({ exam_date: `2026-01-${String(i % 28 + 1).padStart(2, '0')}` })) } }, 5).length, 5)
+})
+
+test('heat: keeps the latest n marks in session order and maps statuses', () => {
+  const recs = [{ session_id: 3, status: 'Absent' }, { session_id: 1, status: 'Present' }, { session_id: 2, status: 'Late' }]
+  assert.deepEqual(attendanceHeat(recs), ['p', 'l', 'a'])
+  assert.deepEqual(attendanceHeat(recs, 2), ['l', 'a'])
+  assert.deepEqual(attendanceHeat(), [])
 })
