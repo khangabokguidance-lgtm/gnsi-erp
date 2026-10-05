@@ -170,6 +170,7 @@ export default function DataHealth({ students = [], isAdmin, embedded = false })
   return (
     <div className="px-root" style={{ minHeight: 0, background: 'transparent' }}>
       <PremiumStyles />
+      <style>{`.dh-table{min-width:640px}@media (max-width:640px){.dh-table{min-width:0}.dh-table td{min-width:0!important}.dh-hide-sm{display:none}.dh-table td,.dh-table th{padding-left:10px;padding-right:10px}}`}</style>
       {!embedded && (
       <PremiumHero eyebrow="GNSI · Data quality" title="Student data health"
         subtitle={`Automatic checks on ${result.total} active students — fix simple gaps right here`}
@@ -213,8 +214,8 @@ export default function DataHealth({ students = [], isAdmin, embedded = false })
       )}
 
       <PremiumCard title={`Students with issues (${shown.length})`} subtitle="Press Fix to correct a record without leaving this screen"
-        right={<div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input className="px-input" value={q} onChange={e => setQ(e.target.value)} placeholder="Search name / GCC…" aria-label="Search students" style={{ width: 190 }} />
+        right={<div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', flex: '1 1 220px', justifyContent: 'flex-end' }}>
+          <input className="px-input" value={q} onChange={e => setQ(e.target.value)} placeholder="Search name / GCC…" aria-label="Search students" style={{ flex: '1 1 150px', minWidth: 0, maxWidth: 240 }} />
           {filter && <button className="px-btn ghost" onClick={() => setFilter(null)}>Clear filter</button>}
           {embedded && <button className="px-btn ghost" disabled={!shown.length} onClick={exportCsv}>⬇ Export CSV</button>}
         </div>} bodyStyle={{ padding: 0 }}>
@@ -222,8 +223,8 @@ export default function DataHealth({ students = [], isAdmin, embedded = false })
           <div style={{ padding: 44, textAlign: 'center', color: PX.ok, fontWeight: 700, fontSize: 13.5 }}>✓ No students match — data looks healthy.</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table className="px-table" style={{ minWidth: 640 }}>
-              <thead><tr>{['GCC', 'Name', 'Course', 'Batch', 'Issues', ''].map(h => <th key={h}>{h}</th>)}</tr></thead>
+            <table className="px-table dh-table">
+              <thead><tr>{['GCC', 'Name', 'Course', 'Batch', 'Issues', ''].map(h => <th key={h} className={h === 'Course' || h === 'Batch' ? 'dh-hide-sm' : undefined}>{h}</th>)}</tr></thead>
               <tbody>
                 {shown.slice(0, 500).map(r => {
                   const id = r.st.id ?? `${r.st.gcc_no}-${r.st.name}`
@@ -232,8 +233,8 @@ export default function DataHealth({ students = [], isAdmin, embedded = false })
                     <tr key={id}>
                       <td style={{ fontWeight: 700 }}>{s(r.st.gcc_no) || '—'}</td>
                       <td>{s(r.st.name) || '—'}</td>
-                      <td>{s(r.st.course) || '—'}</td>
-                      <td>{s(r.st.batch) || s(r.st.class_name) || '—'}</td>
+                      <td className="dh-hide-sm">{s(r.st.course) || '—'}</td>
+                      <td className="dh-hide-sm">{s(r.st.batch) || s(r.st.class_name) || '—'}</td>
                       <td style={{ whiteSpace: 'normal', minWidth: 220 }}>
                         {r.fails.map(k => <span key={k} style={{ display: 'inline-block', margin: '2px 4px 2px 0', padding: '2px 9px', borderRadius: 99, background: PX.badBg, color: PX.bad, fontSize: 11, fontWeight: 700 }}>{label(k)}</span>)}
                       </td>

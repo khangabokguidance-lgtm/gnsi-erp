@@ -1174,7 +1174,7 @@ nav.lp-nav{background:#0B1E3D;backdrop-filter:none;border-bottom:2px solid #C9A2
 .hamburger:hover{background:rgba(255,255,255,.06)}
 .hamburger span{width:22px;background:#fff}
 
-@media (max-width:1100px){.brand-text h2{max-width:260px}}
+@media (max-width:1100px){.brand-text h2{max-width:290px}}
 @media (max-width:900px){
   .nav-inner{height:60px}
   .brand-text h2{font-size:.95rem;max-width:180px}
@@ -1211,13 +1211,18 @@ nav.lp-nav .brand{flex:1 1 auto;min-width:0}
 .nav-fixed-actions{flex:0 0 auto!important;flex-wrap:nowrap!important;justify-content:flex-end}
 .brand-short{display:none}
 @media (max-width:900px){.nav-inner{height:60px!important}}
-@media (max-width:560px){
+@media (max-width:640px){
   .brand-text h2 .brand-full{display:none}
   .brand-short{display:inline}
   .brand-text small{display:none}
   .nv-crest{height:38px}
   .nav-fixed-actions{gap:.35rem}
 }
+/* Phones and tablets: Staff Login lives in the hamburger menu, so the bar keeps room for the logo + "GNSI" name */
+@media (max-width:1100px){.nav-fixed-actions .nv-link{display:none}}
+@media (min-width:561px) and (max-width:900px){.brand-text h2{max-width:290px}}
+@media (max-width:1100px){.nav-fixed-actions{gap:.4rem}.nv-btn{padding-left:.7rem;padding-right:.7rem}}
+@media (max-width:1100px){.nav-fixed-actions .nv-hide-sm{display:none!important}}
 
 /* ═══════════════════════════════════════════════════════════════════════
    PROFESSIONAL THEME LAYER — "Ledger & Crest"

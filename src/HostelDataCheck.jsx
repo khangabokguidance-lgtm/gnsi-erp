@@ -155,6 +155,7 @@ export default function HostelDataCheck({ students = [], canWrite = false, viewP
   return (
     <div className="px-root" style={{ minHeight: 0, background: 'transparent' }}>
       <PremiumStyles />
+      <style>{`.hdc-table{min-width:720px}.hdc-show-sm{display:none}@media (max-width:640px){.hdc-table{min-width:0}.hdc-table td{min-width:0!important}.hdc-hide-sm{display:none}.hdc-show-sm{display:block!important}.hdc-table td,.hdc-table th{padding-left:10px;padding-right:10px}}`}</style>
       {loadErr && <div role="alert" style={{ padding: '10px 14px', marginBottom: 12, borderRadius: 12, background: PX.badBg, color: PX.bad, fontSize: 12.5 }}>⚠ {loadErr} Checks below only use student records.</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 12, marginBottom: 16 }}>
@@ -205,24 +206,24 @@ export default function HostelDataCheck({ students = [], canWrite = false, viewP
       </div>
 
       <PremiumCard title={`Students to review (${shown.length})`} subtitle={canWrite ? 'Press Fix to correct a record without leaving this screen' : 'View only — editing needs write access'}
-        right={<div style={{ display: 'flex', gap: 8 }}>
-          <input className="px-input" value={q} onChange={e => setQ(e.target.value)} placeholder="Search name / GCC / house…" aria-label="Search students" style={{ width: 200 }} />
+        right={<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', flex: '1 1 220px', justifyContent: 'flex-end' }}>
+          <input className="px-input" value={q} onChange={e => setQ(e.target.value)} placeholder="Search name / GCC / house…" aria-label="Search students" style={{ flex: '1 1 160px', minWidth: 0, maxWidth: 260 }} />
           <button type="button" className="px-btn ghost" onClick={load}>↻ Refresh</button>
         </div>} bodyStyle={{ padding: 0 }}>
         {allocs === null ? <div style={{ padding: 40, textAlign: 'center', color: PX.sub }}>Loading hostel allocations…</div>
           : shown.length === 0 ? <div style={{ padding: 44, textAlign: 'center', color: PX.ok, fontWeight: 700 }}>✓ Nothing to review — hostel data looks consistent.</div> : (
             <div style={{ overflowX: 'auto' }}>
-              <table className="px-table" style={{ minWidth: 720 }}>
-                <thead><tr>{['Student', 'House', 'Type', 'Gender', 'Issues', ''].map(h => <th key={h}>{h}</th>)}</tr></thead>
+              <table className="px-table hdc-table">
+                <thead><tr>{['Student', 'House', 'Type', 'Gender', 'Issues', ''].map(h => <th key={h} className={['Type', 'House', 'Gender'].includes(h) ? 'hdc-hide-sm' : undefined}>{h}</th>)}</tr></thead>
                 <tbody>
                   {shown.slice(0, 300).map(r => {
                     const id = r.st.id, isOpen = open === id
                     return [
                       <tr key={id}>
-                        <td><b>{r.st.name}</b><div style={{ fontSize: 11.5, color: PX.faint }}>GCC-{r.st.gcc_no || '—'} · {r.st.batch || r.st.class_name || '—'}</div></td>
-                        <td>{r.st.house || '—'}</td>
-                        <td>{r.st.hostel_type || '—'}</td>
-                        <td>{r.st.gender || '—'}</td>
+                        <td><b>{r.st.name}</b><div style={{ fontSize: 11.5, color: PX.faint }}>GCC-{r.st.gcc_no || '—'} · {r.st.batch || r.st.class_name || '—'}</div><div className="hdc-show-sm" style={{ fontSize: 11.5, color: PX.sub }}>{[r.st.house, r.st.hostel_type, r.st.gender].filter(Boolean).join(' · ')}</div></td>
+                        <td className="hdc-hide-sm">{r.st.house || '—'}</td>
+                        <td className="hdc-hide-sm">{r.st.hostel_type || '—'}</td>
+                        <td className="hdc-hide-sm">{r.st.gender || '—'}</td>
                         <td style={{ whiteSpace: 'normal', minWidth: 240 }}>
                           {r.issues.map(i => <span key={i.key} style={{ display: 'inline-block', margin: '2px 4px 2px 0', padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: i.level === 'red' ? PX.badBg : PX.warnBg, color: i.level === 'red' ? PX.bad : PX.warn }}>{i.label}</span>)}
                         </td>

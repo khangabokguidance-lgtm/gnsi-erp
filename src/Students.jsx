@@ -3204,9 +3204,10 @@ function StudentTable({ rows, sort, onSort, selected, onToggle, onToggleAll, can
 
   return (
     <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:T.r16,boxShadow:T.shadow,overflow:'hidden'}}>
+      <style>{`.stt{min-width:860px}@media (max-width:1100px){.stt{min-width:0}.stt-hide-lg{display:none}}@media (max-width:900px){.stt-hide-md{display:none}.stt-show-sm{display:block!important}}@media (max-width:640px){.stt-av{display:none!important}.stt{min-width:0}.stt-hide-sm{display:none}.stt td,.stt th{padding-left:8px!important;padding-right:8px!important}.stt th{width:auto!important}.stt td:nth-child(5)>div{min-width:56px!important}.stt-name{white-space:normal!important;max-width:96px;line-height:1.25}.stt-tip{display:none}}.stt-show-sm{display:none}`}</style>
       <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderBottom:`1px solid ${T.border}`,flexWrap:'wrap'}}>
         <span style={{fontSize:12.5,color:T.text3}}>{selected.size>0?<b style={{color:T.navy2}}>{selected.size} selected</b>:`${rows.length} on this page`}</span>
-        <span style={{marginLeft:'auto',fontSize:11.5,color:T.text4}}>Click a header to sort · click a row to open</span>
+        <span className="stt-tip" style={{marginLeft:'auto',fontSize:11.5,color:T.text4}}>Click a header to sort · click a row to open</span>
         <div role="group" aria-label="Row density" style={{display:'inline-flex',border:`1px solid ${T.border}`,borderRadius:T.r8,overflow:'hidden'}}>
           {[[false,'Comfortable'],[true,'Compact']].map(([v,l])=>(
             <button key={l} onClick={()=>setDense(v)} aria-pressed={dense===v} style={{padding:'5px 10px',border:'none',cursor:'pointer',fontFamily:'inherit',fontSize:11.5,fontWeight:600,background:dense===v?T.navy2:T.surface,color:dense===v?'#fff':T.text3}}>{l}</button>
@@ -3214,7 +3215,7 @@ function StudentTable({ rows, sort, onSort, selected, onToggle, onToggleAll, can
         </div>
       </div>
       <div style={{overflowX:'auto'}}>
-        <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0,fontSize:13,minWidth:860}}>
+        <table className="stt" style={{width:'100%',borderCollapse:'separate',borderSpacing:0,fontSize:13}}>
           <thead>
             <tr>
               <th style={{...th,width:42,padding:'10px 0 10px 14px'}}>
@@ -3223,14 +3224,14 @@ function StudentTable({ rows, sort, onSort, selected, onToggle, onToggleAll, can
               {TABLE_COLS.map(c=>{
                 const active=sort.key===c.key
                 return (
-                  <th key={c.key} scope="col" aria-sort={active?(sort.dir==='asc'?'ascending':'descending'):'none'} style={{...th,width:c.w,textAlign:c.align||'left'}}>
+                  <th key={c.key} className={c.key==='house'||c.key==='score'?'stt-hide-lg':c.key==='course'||c.key==='status'?'stt-hide-md':undefined} scope="col" aria-sort={active?(sort.dir==='asc'?'ascending':'descending'):'none'} style={{...th,width:c.w,textAlign:c.align||'left'}}>
                     <button onClick={()=>onSort(c.key)} style={{border:'none',background:'none',cursor:'pointer',font:'inherit',letterSpacing:'inherit',textTransform:'inherit',color:active?T.navy2:'inherit',display:'inline-flex',alignItems:'center',gap:5,padding:0}}>
                       {c.label}<span aria-hidden="true" style={{fontSize:9,opacity:active?1:.35}}>{active?(sort.dir==='asc'?'▲':'▼'):'↕'}</span>
                     </button>
                   </th>
                 )
               })}
-              <th style={{...th,width:150,textAlign:'right'}}>Actions</th>
+              <th className="stt-hide-sm" style={{...th,width:150,textAlign:'right'}}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -3250,15 +3251,16 @@ function StudentTable({ rows, sort, onSort, selected, onToggle, onToggleAll, can
                   </td>
                   <td style={td}>
                     <div style={{display:'flex',alignItems:'center',gap:11,minWidth:0}}>
-                      <Avatar name={s.name} photoUrl={s.photo_url} size={dense?28:36}/>
+                      <span className="stt-av" style={{display:'inline-flex',flexShrink:0}}><Avatar name={s.name} photoUrl={s.photo_url} size={dense?28:36}/></span>
                       <div style={{minWidth:0}}>
-                        <div style={{fontWeight:650,color:T.text1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.name}</div>
+                        <div className="stt-name" style={{fontWeight:650,color:T.text1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.name}</div>
                         <div style={{fontSize:11.5,color:T.text3,fontVariantNumeric:'tabular-nums'}}>{s.gcc_no&&<span style={{fontWeight:700,color:T.gold}}>GCC-{s.gcc_no}</span>}{s.gcc_no&&s.batch?' · ':''}{s.batch}</div>
+                        <div className="stt-show-sm" style={{fontSize:11,color:T.text3,marginTop:2}}>{[s.course,s.status!=='Active'?s.status:null].filter(Boolean).join(' · ')}</div>
                       </div>
                     </div>
                   </td>
-                  <td style={td}>{s.course?<CoursePill course={s.course}/>:<span style={{color:T.text4}}>—</span>}</td>
-                  <td style={td}>
+                  <td className="stt-hide-md" style={td}>{s.course?<CoursePill course={s.course}/>:<span style={{color:T.text4}}>—</span>}</td>
+                  <td className="stt-hide-lg" style={td}>
                     <div style={{display:'flex',flexDirection:'column',gap:3,alignItems:'flex-start'}}>
                       {s.house?<HousePill house={s.house}/>:<span style={{color:T.text4}}>—</span>}
                       {!dense&&s.hostel_type&&<span style={{fontSize:11,color:T.text3}}>{s.hostel_type}</span>}
@@ -3266,9 +3268,9 @@ function StudentTable({ rows, sort, onSort, selected, onToggle, onToggleAll, can
                   </td>
                   <td style={td}><AttBar pct={att??null}/></td>
                   <td style={td}><FeeBadge dues={dues}/></td>
-                  <td style={{...td,textAlign:'right',fontVariantNumeric:'tabular-nums',fontWeight:650}}>{score!=null?score:<span style={{color:T.text4,fontWeight:400}}>—</span>}</td>
-                  <td style={td}><StatusPill status={s.status}/></td>
-                  <td style={{...td,textAlign:'right'}} onClick={e=>e.stopPropagation()}>
+                  <td className="stt-hide-lg" style={{...td,textAlign:'right',fontVariantNumeric:'tabular-nums',fontWeight:650}}>{score!=null?score:<span style={{color:T.text4,fontWeight:400}}>—</span>}</td>
+                  <td className="stt-hide-md" style={td}><StatusPill status={s.status}/></td>
+                  <td className="stt-hide-sm" style={{...td,textAlign:'right'}} onClick={e=>e.stopPropagation()}>
                     <div style={{display:'inline-flex',gap:6}}>
                       <button title="Profile" aria-label={`Open ${s.name}`} style={iconBtn} onClick={()=>onOpenDetail(s)}>👤</button>
                       {can.write&&<button title="Edit" aria-label={`Edit ${s.name}`} style={iconBtn} onClick={()=>onEdit(s)}>✏️</button>}
