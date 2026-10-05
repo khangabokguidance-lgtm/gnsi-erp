@@ -30,6 +30,7 @@ test('actions: closed discipline is not an action; pending leave and dues are', 
   const items = buildActionItems({ profile: { discipline: [{ status: 'Closed' }], leave: [{ status: 'Pending' }], attendance: {} }, dues: { totalDue: 500 }, student: {} })
   assert.deepEqual(items.map(i => i.key), ['fees', 'leave'])
   assert.deepEqual(items.map(i => i.target), ['fees', 'leave'])
+  assert.deepEqual(items.map(i => i.level), ['red', 'amber'])
 })
 
 test('timeline: merges modules, newest first, skips bad dates, honours limit', () => {
