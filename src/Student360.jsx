@@ -513,7 +513,7 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
           <StudentDashboardStrip profile={profile} dues={dues} selected={selected} />
 
           {/* Patient-chart panel — risk index, follow-ups, cross-module timeline */}
-          <StudentChart profile={profile} dues={dues} student={rawStudent || selected} />
+          <StudentChart profile={profile} dues={dues} student={rawStudent || selected} onNavigate={onNavigate} />
 
           {/* Visual charts — attendance trend, exam marks, fee breakdown */}
           <StudentCharts profile={profile} />

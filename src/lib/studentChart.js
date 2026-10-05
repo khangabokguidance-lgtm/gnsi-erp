@@ -36,18 +36,19 @@ export function computeRiskIndex({ profile, dues, student } = {}) {
 }
 
 // Checklist of follow-ups, like a care plan: what should someone do next?
+// `target` is the App.jsx page id that handles the item.
 export function buildActionItems({ profile, dues, student } = {}) {
   const items = []
   const due = Number(dues?.totalDue) || 0
-  if (due > 0) items.push({ key: 'fees', module: 'Fees', text: `Contact guardian about ₹${due.toLocaleString('en-IN')} fee due` })
+  if (due > 0) items.push({ key: 'fees', target: 'fees', module: 'Fees', text: `Contact guardian about ₹${due.toLocaleString('en-IN')} fee due` })
   const pct = profile?.attendance?.pct
-  if (pct != null && profile?.attendance?.totalMarked >= 5 && pct < 75) items.push({ key: 'att', module: 'Attendance', text: `Attendance ${pct}% — speak to class teacher` })
+  if (pct != null && profile?.attendance?.totalMarked >= 5 && pct < 75) items.push({ key: 'att', target: 'attendance', module: 'Attendance', text: `Attendance ${pct}% — speak to class teacher` })
   const openDisc = (profile?.discipline || []).filter(d => !closed(d.status)).length
-  if (openDisc) items.push({ key: 'disc', module: 'Discipline', text: `Resolve ${openDisc} open discipline record(s)` })
+  if (openDisc) items.push({ key: 'disc', target: 'hostel', module: 'Discipline', text: `Resolve ${openDisc} open discipline record(s)` })
   const pendingLeave = (profile?.leave || []).filter(l => String(l.status || '').toLowerCase() === 'pending').length
-  if (pendingLeave) items.push({ key: 'leave', module: 'Leave', text: `Decide ${pendingLeave} pending leave request(s)` })
-  if ((profile?.gatePasses || []).some(g => g.status === 'Issued')) items.push({ key: 'gate', module: 'Gate Pass', text: 'Student is out on a gate pass — confirm return' })
-  if (student?.house && !profile?.hostel) items.push({ key: 'hostel', module: 'Hostel', text: 'House set but no hostel allocation on record' })
+  if (pendingLeave) items.push({ key: 'leave', target: 'leave', module: 'Leave', text: `Decide ${pendingLeave} pending leave request(s)` })
+  if ((profile?.gatePasses || []).some(g => g.status === 'Issued')) items.push({ key: 'gate', target: 'reception', module: 'Gate Pass', text: 'Student is out on a gate pass — confirm return' })
+  if (student?.house && !profile?.hostel) items.push({ key: 'hostel', target: 'hostel', module: 'Hostel', text: 'House set but no hostel allocation on record' })
   return items
 }
 

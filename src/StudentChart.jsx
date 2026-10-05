@@ -37,7 +37,7 @@ export default function StudentChart({ profile, dues, student, onNavigate }) {
         {actions.length === 0 ? <div style={{ fontSize: 12, color: '#16a34a' }}>Nothing pending.</div> : actions.map(a => (
           <div key={a.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
             <span>☐ {a.text}</span>
-            {onNavigate && <button onClick={() => onNavigate(a.module)} style={{ border: 'none', background: 'none', color: '#0e7490', fontWeight: 700, fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>{a.module} →</button>}
+            {onNavigate && <button onClick={() => onNavigate(a.target)} style={{ border: 'none', background: 'none', color: '#0e7490', fontWeight: 700, fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>{a.module} →</button>}
           </div>
         ))}
       </div>
