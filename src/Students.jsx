@@ -17,6 +17,10 @@ import { getActiveStudents, getAllStudents } from './studentQueries'
 import { compressImage, sizeNote } from './lib/imageCompress'
 import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
 import { isAdminRole } from './roles'
+import StudentChart from './StudentChart'
+import DataHealth from './DataHealth'
+import { loadFullProfile } from './studentProfileLoader'
+import { getStudentDues } from './feeDues'
 import { confirmFeeMonthOpen } from './monthLock'
 import { courseOf, batchOf, handoffToAttendance, takeStudentsHandoff } from './courseMap'
 
@@ -2631,6 +2635,18 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
   const [saving,setSaving]=useState(false)
   const isMobile=useIsMobile()
   const now=useMemo(()=>new Date(),[])
+  // Patient-chart panel (risk index, follow-ups, timeline) — admin only, since it
+  // reads discipline / sickbay / leave records the same way Student 360 does.
+  const [chart,setChart]=useState(null)   // null = loading, false = unavailable, {profile,dues}
+  useEffect(()=>{
+    if(!isAdmin){ setChart(false); return }
+    let alive=true
+    setChart(null)
+    Promise.all([loadFullProfile(student), getStudentDues(student).catch(()=>null)])
+      .then(([profile,dues])=>{ if(alive) setChart(profile?{profile,dues}:false) })
+      .catch(()=>{ if(alive) setChart(false) })
+    return ()=>{ alive=false }
+  },[student.id, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const siblings=allStudents.filter(s=>s.id!==student.id&&s.status==='Active'&&((s.father_name&&s.father_name===student.father_name)||(s.mother_name&&s.mother_name===student.mother_name)))
   const att=attData[student.id]??null
@@ -2824,6 +2840,14 @@ function StudentDetailDrawer({ student, allStudents, attData, examData, feeData,
   </div>
 ))}
               </div>
+              {isAdmin&&(
+                <div>
+                  <div style={{fontWeight:600,fontSize:11,color:T.gold,marginBottom:8,textTransform:'uppercase',letterSpacing:'.12em'}}>Student chart</div>
+                  {chart===null&&<div style={{fontSize:12.5,color:T.text3,padding:'10px 0'}}>Loading chart…</div>}
+                  {chart&&<StudentChart profile={chart.profile} dues={chart.dues} student={student}/>}
+                  {chart===false&&<div style={{fontSize:12.5,color:T.text4}}>Chart unavailable for this student.</div>}
+                </div>
+              )}
               {student.medical_notes&&(
                 <div style={{background:T.orangeLight,border:`1px solid ${T.orangeBorder}`,borderRadius:T.r10,padding:'12px 14px'}}>
                   <div style={{fontWeight:700,fontSize:10,color:T.orange,marginBottom:4,textTransform:'uppercase',letterSpacing:'.07em'}}>⚕ Medical Notes</div>
@@ -3938,11 +3962,12 @@ function DataQualityRow({ student, can, onQuickSave, viewPII }) {
   )
 }
 
-function DataQualityTab({ students, can, onQuickSave }) {
+function DataQualityTab({ students, can, onQuickSave, isAdmin=false }) {
   const isMobile=useIsMobile()
   const [search,setSearch]=useState('')
   const [filterField,setFilterField]=useState('All')
   const viewPII=can.viewPII
+  const [view,setView]=useState('completeness')
 
   const scored=students.map(s=>({s,pct:getCompletenessScore(s,viewPII),missing:getMissingFieldKeys(s,viewPII)}))
     .filter(x=>x.missing.length>0)
@@ -3960,31 +3985,39 @@ function DataQualityTab({ students, can, onQuickSave }) {
   scored.forEach(({missing})=>missing.forEach(f=>{fieldCounts[f.label]=(fieldCounts[f.label]||0)+1}))
   const topGaps=Object.entries(fieldCounts).sort((a,b)=>b[1]-a[1]).slice(0,6)
 
+  const heroStat=(label,value,tone)=>(
+    <div style={{background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.14)',borderRadius:14,padding:'11px 14px',minWidth:0}}>
+      <div style={{fontSize:10,fontWeight:700,letterSpacing:'.11em',textTransform:'uppercase',color:'rgba(255,255,255,.6)'}}>{label}</div>
+      <div style={{fontFamily:T.serif,fontSize:isMobile?22:26,fontWeight:600,color:tone||'#fff',marginTop:5,lineHeight:1}}>{value}</div>
+    </div>
+  )
+
   return (
     <div style={{display:'flex',flexDirection:'column',gap:16}}>
-      <div>
-        <div style={{fontSize:isMobile?18:22,fontWeight:800,color:T.text1,letterSpacing:'-.02em'}}>Data Quality</div>
-        <div style={{fontSize:12.5,color:T.text3,marginTop:2}}>Complete student records systematically — worst first</div>
-      </div>
+      <section className="st-hero" style={{padding:isMobile?'16px 14px':'20px 24px'}}>
+        <div style={{fontSize:10.5,fontWeight:800,letterSpacing:'.18em',textTransform:'uppercase',color:T.goldBorder}}>GNSI · Data quality</div>
+        <div style={{fontFamily:T.serif,fontSize:isMobile?24:30,fontWeight:600,lineHeight:1.1,marginTop:2}}>Student records</div>
+        <div style={{fontSize:12.5,color:'rgba(255,255,255,.62)',marginTop:4}}>Complete missing details, then run record checks — worst first</div>
+        <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:10,marginTop:16}}>
+          {heroStat('Avg completeness',`${avgPct}%`,avgPct>=90?'#86efac':avgPct>=60?'#fcd34d':'#fca5a5')}
+          {heroStat('Fully complete',fullyComplete,'#86efac')}
+          {heroStat('Need attention',scored.length,scored.length?'#fca5a5':undefined)}
+          {heroStat('Total students',students.length)}
+        </div>
+      </section>
 
-      <div style={{display:'grid',gridTemplateColumns:isMobile?'repeat(2,1fr)':'repeat(4,1fr)',gap:10}}>
-        <div style={{background:T.surface2,borderRadius:T.r10,padding:'14px 16px',border:`1px solid ${T.border}`}}>
-          <div style={{fontSize:10,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.06em'}}>Avg Completeness</div>
-          <div style={{fontSize:24,fontWeight:800,color:avgPct>=90?T.green:avgPct>=60?T.amber:T.red,marginTop:4}}>{avgPct}%</div>
+      {isAdmin&&(
+        <div role="tablist" aria-label="Data quality views" style={{display:'inline-flex',gap:4,padding:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,alignSelf:'flex-start'}}>
+          {[['completeness','Profile completeness'],['checks','Record checks & quick fix']].map(([k,l])=>(
+            <button key={k} role="tab" aria-selected={view===k} onClick={()=>setView(k)} style={{padding:'8px 14px',borderRadius:9,border:'none',cursor:'pointer',fontFamily:'inherit',fontSize:12.5,fontWeight:700,
+              background:view===k?`linear-gradient(180deg,${T.navy2},${T.navy})`:'transparent',color:view===k?'#fff':T.text3}}>{l}</button>
+          ))}
         </div>
-        <div style={{background:T.surface2,borderRadius:T.r10,padding:'14px 16px',border:`1px solid ${T.border}`}}>
-          <div style={{fontSize:10,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.06em'}}>Fully Complete</div>
-          <div style={{fontSize:24,fontWeight:800,color:T.green,marginTop:4}}>{fullyComplete}</div>
-        </div>
-        <div style={{background:T.surface2,borderRadius:T.r10,padding:'14px 16px',border:`1px solid ${T.border}`}}>
-          <div style={{fontSize:10,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.06em'}}>Needs Attention</div>
-          <div style={{fontSize:24,fontWeight:800,color:T.red,marginTop:4}}>{scored.length}</div>
-        </div>
-        <div style={{background:T.surface2,borderRadius:T.r10,padding:'14px 16px',border:`1px solid ${T.border}`}}>
-          <div style={{fontSize:10,fontWeight:600,color:T.text4,textTransform:'uppercase',letterSpacing:'.06em'}}>Total Students</div>
-          <div style={{fontSize:24,fontWeight:800,color:T.text1,marginTop:4}}>{students.length}</div>
-        </div>
-      </div>
+      )}
+
+      {isAdmin&&view==='checks'&&<DataHealth students={students} isAdmin={isAdmin} embedded/>}
+
+      {view==='completeness'&&<>
 
       {topGaps.length>0&&(
         <div>
@@ -4015,6 +4048,7 @@ function DataQualityTab({ students, can, onQuickSave }) {
           filtered.map(({s})=><DataQualityRow key={s.id} student={s} can={can} onQuickSave={onQuickSave} viewPII={viewPII}/>)
         )}
       </div>
+      </>}
     </div>
   )
 }
@@ -5820,7 +5854,7 @@ const effectiveCols = visibleCols.filter(col => {
         )}
 
         {pageTab==='dataQuality'&&(
-          <DataQualityTab students={students} can={can} onQuickSave={handleQuickSave}/>
+          <DataQualityTab students={students} can={can} onQuickSave={handleQuickSave} isAdmin={isAdminRole(role) || ['admin','Admin'].includes(role)}/>
         )}
 
         {pageTab==='scholarship'&&(

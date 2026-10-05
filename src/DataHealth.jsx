@@ -125,7 +125,7 @@ function QuickFix({ st, fails, onSaved }) {
   )
 }
 
-export default function DataHealth({ students = [], isAdmin }) {
+export default function DataHealth({ students = [], isAdmin, embedded = false }) {
   const [filter, setFilter] = useState(null)
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(null)
@@ -170,6 +170,7 @@ export default function DataHealth({ students = [], isAdmin }) {
   return (
     <div className="px-root" style={{ minHeight: 0, background: 'transparent' }}>
       <PremiumStyles />
+      {!embedded && (
       <PremiumHero eyebrow="GNSI · Data quality" title="Student data health"
         subtitle={`Automatic checks on ${result.total} active students — fix simple gaps right here`}
         icon={<span style={{ fontSize: 24 }}>🩺</span>}
@@ -180,6 +181,7 @@ export default function DataHealth({ students = [], isAdmin }) {
           { label: 'Need attention', value: result.withIssues.length, sub: 'students', tone: result.withIssues.length ? '#fca5a5' : undefined },
           { label: 'Checks failing', value: failing, sub: `of ${CHECKS.length}`, tone: failing ? '#fcd34d' : undefined },
         ]} />
+      )}
 
       {toast && <div role="status" style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 50, background: PX.ok, color: '#fff', padding: '10px 16px', borderRadius: 12, fontSize: 13, fontWeight: 600, boxShadow: '0 12px 28px -12px rgba(0,0,0,.4)' }}>✓ {toast}</div>}
 
@@ -214,6 +216,7 @@ export default function DataHealth({ students = [], isAdmin }) {
         right={<div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input className="px-input" value={q} onChange={e => setQ(e.target.value)} placeholder="Search name / GCC…" aria-label="Search students" style={{ width: 190 }} />
           {filter && <button className="px-btn ghost" onClick={() => setFilter(null)}>Clear filter</button>}
+          {embedded && <button className="px-btn ghost" disabled={!shown.length} onClick={exportCsv}>⬇ Export CSV</button>}
         </div>} bodyStyle={{ padding: 0 }}>
         {shown.length === 0 ? (
           <div style={{ padding: 44, textAlign: 'center', color: PX.ok, fontWeight: 700, fontSize: 13.5 }}>✓ No students match — data looks healthy.</div>
