@@ -2217,7 +2217,7 @@ window.submitGrievance = async () => {
             const showContact = (siteCfg.ticker_show_contact || 'yes') !== 'no';
             const extra = String(siteCfg.ticker_extra || '').split('\n').map((x) => x.trim()).filter(Boolean).map((x) => x.toUpperCase());
             let items = [
-              ...(useNotices ? tickerNotices.map((n) => (n.priority === 'High' ? '🔴 ' : '') + n.title.toUpperCase()) : []),
+              ...(useNotices ? tickerNotices.map((n) => (n.priority === 'High' || n.priority === 'Urgent' ? '🔴 ' : '') + n.title.toUpperCase()) : []),
               ...extra,
             ];
             if (!items.length) items = ['RESULT: 66 SELECTED IN NVS & SAINIK SCHOOL 2025–26', 'SUNDAY MOCK TESTS ONGOING', 'EST. 2016'];

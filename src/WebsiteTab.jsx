@@ -434,7 +434,7 @@ function TickerCard({notices}){
   const save=async()=>{setSave(true);const{error}=await saveSettings({ticker_extra:cfg.ticker_extra||"",ticker_show_contact:cfg.ticker_show_contact||"yes",ticker_use_notices:cfg.ticker_use_notices||"yes"});setSave(false);if(error)return toast("Error: "+error.message,"error");toast("Latest strip saved ✓");};
   const active=(notices||[]).filter(n=>!n.is_archived&&n.title).slice(0,8);
   const extra=(cfg.ticker_extra||"").split("\n").map(x=>x.trim()).filter(Boolean);
-  const items=[...(cfg.ticker_use_notices!=="no"?active.map(n=>(n.priority==="High"?"🔴 ":"")+n.title.toUpperCase()):[]),...extra.map(x=>x.toUpperCase())];
+  const items=[...(cfg.ticker_use_notices!=="no"?active.map(n=>(n.priority==="High"||n.priority==="Urgent"?"🔴 ":"")+n.title.toUpperCase()):[]),...extra.map(x=>x.toUpperCase())];
   const preview=(items.length?items:["(nothing to show — add a notice or an extra line)"]).concat(cfg.ticker_show_contact!=="no"?["CALL +91 …","KHANGABOK, THOUBAL, MANIPUR"]:[]).join("  ◆  ");
   return(
     <div style={s.card}>
@@ -484,7 +484,7 @@ function NoticesSection() {
   };
   const archive=async(id,cur)=>{await archiveNotice(id,cur);toast(cur?"Restored":"Archived");load_();};
   const del=async id=>{if(!confirm("Delete permanently?"))return;await deleteNotice(id);toast("Deleted");load_();};
-  const startEdit=n=>{setEdit(n.id);setForm({title:n.title,body:n.body,priority:n.priority||"Medium",notice_date:n.notice_date||new Date().toISOString().slice(0,10)});window.scrollTo({top:0,behavior:"smooth"});};
+  const startEdit=n=>{setEdit(n.id);setForm({title:n.title,body:n.body||n.description||"",priority:n.priority||"Medium",notice_date:n.notice_date||new Date().toISOString().slice(0,10)});window.scrollTo({top:0,behavior:"smooth"});};
 
   return (
     <div>
@@ -520,7 +520,7 @@ function NoticesSection() {
             </div>
           </div>
           <div style={{padding:".7rem 1.1rem"}}>
-            <p style={{color:"rgba(71,85,105,.55)",fontSize:".83rem",lineHeight:1.7,marginBottom:".4rem"}}>{n.body?.slice(0,180)}{n.body?.length>180?"…":""}</p>
+            <p style={{color:"rgba(71,85,105,.55)",fontSize:".83rem",lineHeight:1.7,marginBottom:".4rem"}}>{(n.body||n.description||"").slice(0,180)}{(n.body||n.description||"").length>180?"…":""}</p>
             <span style={{color:"rgba(71,85,105,.28)",fontSize:".68rem",fontFamily:"inherit",letterSpacing:"0",textTransform:"none"}}>{fmt(n.notice_date||n.created_at)}</span>
           </div>
         </div>
