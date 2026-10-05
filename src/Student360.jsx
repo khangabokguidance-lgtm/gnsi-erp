@@ -36,6 +36,7 @@ import RegistrationCard from './RegistrationCard'
 import { allocateStudent, vacateStudent, backfillMissingAllocations, cleanupNonBoardingAllocations } from './hostelAllocation'
 import { TABLE_REGISTRY } from './tableRegistry'
 import AdminIntelligence from './AdminIntelligencePage'
+import StudentChart from './StudentChart'
 
 // ── Pagination-safe fetch — same helper as Fees.jsx's fetchAllRows() ───────
 // Supabase/PostgREST caps any query with no .range() at 1000 rows, silently
@@ -510,6 +511,9 @@ export default function Student360({ currentUser, isAdmin = false, onNavigate })
           {/* At-a-glance dashboard for THIS student — every module's numbers
               in one strip, before drilling into the section cards below. */}
           <StudentDashboardStrip profile={profile} dues={dues} selected={selected} />
+
+          {/* Patient-chart panel — risk index, follow-ups, cross-module timeline */}
+          <StudentChart profile={profile} dues={dues} student={rawStudent || selected} />
 
           {/* Visual charts — attendance trend, exam marks, fee breakdown */}
           <StudentCharts profile={profile} />
