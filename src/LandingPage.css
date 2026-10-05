@@ -959,7 +959,7 @@ footer a:hover{color:var(--goldL);padding-left:4px}
      truly needed. Nothing is ever cropped or scroll-hidden — every button
      is always fully visible at its natural size. */
   .nav-inner{height:auto;min-height:auto;padding:.6rem 0;flex-wrap:wrap;row-gap:.5rem}
-  .brand img{height:36px!important;width:36px!important}
+  .brand img{height:36px!important;width:auto!important}
   .brand{flex-shrink:0;min-width:0}
   .brand-text h2{font-size:.92rem}
   .brand-text small{font-size:.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;display:block}
@@ -1155,8 +1155,8 @@ footer a:hover{color:var(--goldL);padding-left:4px}
 nav.lp-nav{background:#0B1E3D;backdrop-filter:none;border-bottom:2px solid #C9A24B;box-shadow:0 2px 12px rgba(11,30,61,.18)}
 .nav-inner{height:68px;gap:1.25rem}
 .brand{gap:12px;min-width:0}
-.nv-crest{width:42px;height:42px;border-radius:0;background:#0E3266;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 0 0 1px rgba(201,162,75,.6)}
-.nv-crest img{width:100%;height:100%;object-fit:cover}
+.nv-crest{height:42px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.nv-crest img{height:100%;width:auto;object-fit:contain;display:block}
 .brand-text{min-width:0}
 .brand-text h2{font-family:var(--serif);font-weight:600;color:#fff;font-size:1.02rem;line-height:1.2;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .brand-text small{color:#D8C08A;font-family:var(--sans);font-size:.72rem;letter-spacing:.02em;text-transform:none;margin-top:2px}
@@ -1215,7 +1215,7 @@ nav.lp-nav .brand{flex:1 1 auto;min-width:0}
   .brand-text h2 .brand-full{display:none}
   .brand-short{display:inline}
   .brand-text small{display:none}
-  .nv-crest{width:38px;height:38px}
+  .nv-crest{height:38px}
   .nav-fixed-actions{gap:.35rem}
 }
 
@@ -1531,7 +1531,7 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
 }
 @media (max-width:380px){
   .nav-fixed-actions .nv-btn{padding:0 .4rem;font-size:.68rem}
-  .nv-crest{width:32px;height:32px}
+  .nv-crest{height:32px}
 }
 
 /* ── HOME: faculty preview (same cards; 3 per row on desktop) ── */
@@ -1545,8 +1545,8 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
 .cta-pro::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);background-size:44px 44px;mask-image:radial-gradient(70% 70% at 50% 30%,#000,transparent);pointer-events:none}
 .cta-pro-glow{position:absolute;left:50%;top:-180px;width:620px;height:620px;transform:translateX(-50%);background:radial-gradient(circle,rgba(201,162,75,.22),transparent 65%);pointer-events:none}
 .cta-pro-inner{position:relative;max-width:980px;margin:0 auto}
-.cta-pro-crest{width:92px;height:92px;margin:0 auto 1.3rem;border-radius:0;background:#0E3266;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:0;box-shadow:0 0 0 1px rgba(201,162,75,.6),0 18px 40px rgba(0,0,0,.35)}
-.cta-pro-crest img{width:100%;height:100%;object-fit:cover}
+.cta-pro-crest{height:150px;margin:0 auto 1.3rem;display:flex;align-items:center;justify-content:center}
+.cta-pro-crest img{height:100%;width:auto;object-fit:contain;display:block;filter:drop-shadow(0 10px 24px rgba(0,0,0,.35))}
 .cta-pro-crest span{color:#0B1E3D;font-family:var(--serif);font-weight:800;font-size:1.3rem}
 .cta-pro-eyebrow{font-family:var(--sans);font-size:.74rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#E2C57E;margin-bottom:.7rem}
 .cta-pro h2{font-family:var(--serif);font-weight:600;font-size:clamp(2rem,5vw,3.3rem);line-height:1.1;color:#fff;margin:0 0 1rem}
@@ -1580,7 +1580,7 @@ table,.cal-table,.result-number,.kpi strong,.tl-date{font-variant-numeric:tabula
 .cta-btn:focus-visible,.cta-card:focus-visible{outline:2px solid #E2C57E;outline-offset:3px}
 @media (max-width:760px){
   .cta-pro{padding:3.6rem 5% 3.2rem}
-  .cta-pro-crest{width:76px;height:76px}
+  .cta-pro-crest{height:120px}
   .cta-pro-primary{flex-direction:column;align-items:stretch}
   .cta-btn{justify-content:center;height:50px}
   .cta-pro-cards{grid-template-columns:1fr}
