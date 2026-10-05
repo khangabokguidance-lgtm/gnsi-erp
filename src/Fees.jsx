@@ -2739,10 +2739,10 @@ function FeeDashboardTab({ students, adm_fee_collections, adm_flat_fees, adm_cou
 
         {/* Student list for the chosen stage + filter */}
         <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <select aria-label="Fee stage" value={progStage} onChange={e => setProgStage(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e8e3d8', fontWeight: 700, fontSize: 12, color: '#1e3a6e' }}>
+          <select aria-label="Fee stage" value={progStage} onChange={e => setProgStage(e.target.value)} style={{ maxWidth: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #e8e3d8', fontWeight: 700, fontSize: 12, color: '#1e3a6e' }}>
             {Object.entries(PROG_STAGES).map(([k, p]) => <option key={k} value={k}>{p.short}</option>)}
           </select>
-          <select aria-label="Student filter" value={progFilter} onChange={e => setProgFilter(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e8e3d8', fontWeight: 700, fontSize: 12, color: '#1e3a6e' }}>
+          <select aria-label="Student filter" value={progFilter} onChange={e => setProgFilter(e.target.value)} style={{ maxWidth: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #e8e3d8', fontWeight: 700, fontSize: 12, color: '#1e3a6e' }}>
             <option value="all">All students</option>
             <option value="paid">Paid</option>
             <option value="notpaid">Not paid yet</option>
