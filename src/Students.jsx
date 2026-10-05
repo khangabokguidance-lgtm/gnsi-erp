@@ -21,6 +21,7 @@ import StudentChart from './StudentChart'
 import DataHealth from './DataHealth'
 import { loadFullProfile } from './studentProfileLoader'
 import { getStudentDues } from './feeDues'
+import { sortStudents, nextSort } from './lib/studentTable'
 import { confirmFeeMonthOpen } from './monthLock'
 import { courseOf, batchOf, handoffToAttendance, takeStudentsHandoff } from './courseMap'
 
@@ -3179,6 +3180,111 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
 // the bottom — mirrors a Facebook profile card's visual rhythm while keeping
 // every original action (Profile/Edit/Fee/Exam/Attendance/Clone/Delete).
 
+// ─── Premium student table (the "Table" view of All Students) ────────────────
+// Sorting is done by the parent on the whole filtered list (before pagination)
+// so a sort always means "across all students", never just "this page".
+const TABLE_COLS=[
+  {key:'name',label:'Student',sortable:true},
+  {key:'course',label:'Course',sortable:true},
+  {key:'house',label:'Residence',sortable:true},
+  {key:'att',label:'Attendance',sortable:true,w:150},
+  {key:'dues',label:'Fees',sortable:true,w:110},
+  {key:'score',label:'Last exam',sortable:true,w:100,align:'right'},
+  {key:'status',label:'Status',sortable:true,w:110},
+]
+
+function StudentTable({ rows, sort, onSort, selected, onToggle, onToggleAll, can, attData, feeData, examData, onOpenDetail, onEdit, onOpenFee, onQuickAttend }) {
+  const [dense,setDense]=useState(false)
+  const pad=dense?'6px 12px':'12px 14px'
+  const allOn=rows.length>0&&rows.every(s=>selected.has(s.id))
+  const someOn=!allOn&&rows.some(s=>selected.has(s.id))
+  const th={padding:'10px 14px',textAlign:'left',fontSize:10.5,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:T.text3,background:T.surface2,borderBottom:`1px solid ${T.border}`,whiteSpace:'nowrap',position:'sticky',top:0,zIndex:1}
+  const iconBtn={border:`1px solid ${T.border}`,background:T.surface,borderRadius:T.r8,width:30,height:30,cursor:'pointer',fontSize:13,display:'inline-flex',alignItems:'center',justifyContent:'center',fontFamily:'inherit'}
+
+  return (
+    <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:T.r16,boxShadow:T.shadow,overflow:'hidden'}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderBottom:`1px solid ${T.border}`,flexWrap:'wrap'}}>
+        <span style={{fontSize:12.5,color:T.text3}}>{selected.size>0?<b style={{color:T.navy2}}>{selected.size} selected</b>:`${rows.length} on this page`}</span>
+        <span style={{marginLeft:'auto',fontSize:11.5,color:T.text4}}>Click a header to sort · click a row to open</span>
+        <div role="group" aria-label="Row density" style={{display:'inline-flex',border:`1px solid ${T.border}`,borderRadius:T.r8,overflow:'hidden'}}>
+          {[[false,'Comfortable'],[true,'Compact']].map(([v,l])=>(
+            <button key={l} onClick={()=>setDense(v)} aria-pressed={dense===v} style={{padding:'5px 10px',border:'none',cursor:'pointer',fontFamily:'inherit',fontSize:11.5,fontWeight:600,background:dense===v?T.navy2:T.surface,color:dense===v?'#fff':T.text3}}>{l}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{overflowX:'auto'}}>
+        <table style={{width:'100%',borderCollapse:'separate',borderSpacing:0,fontSize:13,minWidth:860}}>
+          <thead>
+            <tr>
+              <th style={{...th,width:42,padding:'10px 0 10px 14px'}}>
+                <input type="checkbox" aria-label="Select all on this page" checked={allOn} ref={el=>{if(el)el.indeterminate=someOn}} onChange={e=>onToggleAll(rows.map(r=>r.id),e.target.checked)} style={{cursor:'pointer'}}/>
+              </th>
+              {TABLE_COLS.map(c=>{
+                const active=sort.key===c.key
+                return (
+                  <th key={c.key} scope="col" aria-sort={active?(sort.dir==='asc'?'ascending':'descending'):'none'} style={{...th,width:c.w,textAlign:c.align||'left'}}>
+                    <button onClick={()=>onSort(c.key)} style={{border:'none',background:'none',cursor:'pointer',font:'inherit',letterSpacing:'inherit',textTransform:'inherit',color:active?T.navy2:'inherit',display:'inline-flex',alignItems:'center',gap:5,padding:0}}>
+                      {c.label}<span aria-hidden="true" style={{fontSize:9,opacity:active?1:.35}}>{active?(sort.dir==='asc'?'▲':'▼'):'↕'}</span>
+                    </button>
+                  </th>
+                )
+              })}
+              <th style={{...th,width:150,textAlign:'right'}}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(s=>{
+              const isSel=selected.has(s.id)
+              const att=attData[s.id]
+              const dues=feeData[s.id]?feeData[s.id].dues||0:null
+              const score=examData[s.id]?.[0]?.total
+              const td={padding:pad,borderBottom:`1px solid ${T.border}`,verticalAlign:'middle',background:isSel?T.goldLight:'transparent',transition:'background .12s'}
+              return (
+                <tr key={s.id} tabIndex={0} onClick={()=>onOpenDetail(s)} onKeyDown={e=>{if(e.key==='Enter')onOpenDetail(s)}}
+                  onMouseEnter={e=>{if(!isSel)Array.from(e.currentTarget.children).forEach(c=>c.style.background=T.surface2)}}
+                  onMouseLeave={e=>{Array.from(e.currentTarget.children).forEach(c=>c.style.background=isSel?T.goldLight:'transparent')}}
+                  style={{cursor:'pointer',outline:'none'}}>
+                  <td style={{...td,paddingRight:0}} onClick={e=>e.stopPropagation()}>
+                    <input type="checkbox" aria-label={`Select ${s.name}`} checked={isSel} onChange={()=>onToggle(s.id)} style={{cursor:'pointer'}}/>
+                  </td>
+                  <td style={td}>
+                    <div style={{display:'flex',alignItems:'center',gap:11,minWidth:0}}>
+                      <Avatar name={s.name} photoUrl={s.photo_url} size={dense?28:36}/>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontWeight:650,color:T.text1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{s.name}</div>
+                        <div style={{fontSize:11.5,color:T.text3,fontVariantNumeric:'tabular-nums'}}>{s.gcc_no&&<span style={{fontWeight:700,color:T.gold}}>GCC-{s.gcc_no}</span>}{s.gcc_no&&s.batch?' · ':''}{s.batch}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={td}>{s.course?<CoursePill course={s.course}/>:<span style={{color:T.text4}}>—</span>}</td>
+                  <td style={td}>
+                    <div style={{display:'flex',flexDirection:'column',gap:3,alignItems:'flex-start'}}>
+                      {s.house?<HousePill house={s.house}/>:<span style={{color:T.text4}}>—</span>}
+                      {!dense&&s.hostel_type&&<span style={{fontSize:11,color:T.text3}}>{s.hostel_type}</span>}
+                    </div>
+                  </td>
+                  <td style={td}><AttBar pct={att??null}/></td>
+                  <td style={td}><FeeBadge dues={dues}/></td>
+                  <td style={{...td,textAlign:'right',fontVariantNumeric:'tabular-nums',fontWeight:650}}>{score!=null?score:<span style={{color:T.text4,fontWeight:400}}>—</span>}</td>
+                  <td style={td}><StatusPill status={s.status}/></td>
+                  <td style={{...td,textAlign:'right'}} onClick={e=>e.stopPropagation()}>
+                    <div style={{display:'inline-flex',gap:6}}>
+                      <button title="Profile" aria-label={`Open ${s.name}`} style={iconBtn} onClick={()=>onOpenDetail(s)}>👤</button>
+                      {can.write&&<button title="Edit" aria-label={`Edit ${s.name}`} style={iconBtn} onClick={()=>onEdit(s)}>✏️</button>}
+                      {can.fees&&<button title="Fee" aria-label={`Fees for ${s.name}`} style={iconBtn} onClick={()=>onOpenFee(s)}>💰</button>}
+                      {can.attend&&<button title="Attendance" aria-label={`Attendance for ${s.name}`} style={iconBtn} onClick={()=>onQuickAttend(s)}>📅</button>}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function courseAccent(course) {
   const cs = COURSE_STRUCTURE[course]
   return cs?.color || T.brand
@@ -5129,7 +5235,8 @@ export default function Students({ onNavigate: goToModule } = {}) {
   const [feeViewer,setFeeViewer]=useState(null)
   const [toast,setToast]=useState(null)
   const [page,setPage]=useState(1)
-  const [viewMode,setViewMode]=useState('list')
+  const [viewMode,setViewMode]=useState(()=>{try{return localStorage.getItem('gnsi_students_view')==='table'?'table':'cards'}catch{return 'cards'}})
+  const [tableSort,setTableSort]=useState({key:null,dir:'asc'})
   const [pageTab,setPageTab]=useState(()=>{try{return localStorage.getItem('gnsi_students_tab')||'courses'}catch{return 'courses'}})
   useEffect(()=>{try{localStorage.setItem('gnsi_students_tab',pageTab)}catch{ /* ignore */ }},[pageTab])
   const [showBulkOps,setShowBulkOps]=useState(false)
@@ -5523,7 +5630,8 @@ const effectiveCols = visibleCols.filter(col => {
   }).sort((a,b)=>(a.name||'').localeCompare(b.name||''))
 
   const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE))
-  const paginated=filtered.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE)
+  const ordered=viewMode==='table'&&tableSort.key?sortStudents(filtered,tableSort.key,tableSort.dir,{attData,feeData,examData}):filtered
+  const paginated=ordered.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE)
   const hasFilters=search||filterStatus!=='All'||filterCourse!=='All'||filterHostel!=='All'||filterHouse!=='All'||filterGender!=='All'||filterSession!=='All'||filterBatch!=='All'||gccMin||gccMax
   const clearAllFilters=()=>{setSearch('');setFilterStatus('All');setFilterCourse('All');setFilterHostel('All');setFilterHouse('All');setFilterGender('All');setFilterSession('All');setFilterBatch('All');setGccMin('');setGccMax('');setPage(1)}
   const feeDueCount=Object.values(feeData).filter(v=>v?.dues>0).length
@@ -6008,6 +6116,18 @@ const effectiveCols = visibleCols.filter(col => {
           </div>
         </div>
 
+        {/* View toggle */}
+        {!loading&&filtered.length>0&&(
+          <div style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}>
+            <div role="group" aria-label="Student view" style={{display:'inline-flex',padding:3,background:T.surface,border:`1px solid ${T.border}`,borderRadius:T.r10}}>
+              {[['cards','⊞ Cards'],['table','☰ Table']].map(([v,l])=>(
+                <button key={v} aria-pressed={viewMode===v} onClick={()=>{setViewMode(v);try{localStorage.setItem('gnsi_students_view',v)}catch{}}}
+                  style={{padding:'6px 14px',borderRadius:T.r8,border:'none',cursor:'pointer',fontFamily:'inherit',fontSize:12.5,fontWeight:700,background:viewMode===v?`linear-gradient(180deg,${T.navy2},${T.navy})`:'transparent',color:viewMode===v?'#fff':T.text3}}>{l}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Student List */}
         {loading?(
           <div className="st-grid" aria-busy="true" aria-label="Loading students">
@@ -6021,6 +6141,12 @@ const effectiveCols = visibleCols.filter(col => {
             {can.write&&students.length===0&&<Btn onClick={goToAdmissions} variant='primary'>Go to Admissions</Btn>}
             {students.length>0&&hasFilters&&<Btn onClick={clearAllFilters}>Clear all filters</Btn>}
           </div>
+        ):viewMode==='table'?(
+          <StudentTable rows={paginated} sort={tableSort} onSort={k=>{setTableSort(cur=>nextSort(cur,k));setPage(1)}}
+            selected={selected} onToggle={toggleSelect}
+            onToggleAll={(ids,on)=>setSelected(prev=>{const n=new Set(prev);ids.forEach(id=>on?n.add(id):n.delete(id));return n})}
+            can={can} attData={attData} feeData={feeData} examData={examData}
+            onOpenDetail={setDetailPanel} onEdit={st=>{setEditing(st);setFormOpen(true)}} onOpenFee={setFeeViewer} onQuickAttend={setAttViewer}/>
         ):(
           <div className="st-grid">
             {paginated.map(s=>(
