@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GNSI Student Records — Mock (Hospital EMR style)</title>
+<style>
+:root{--bg:#f4f7fa;--card:#fff;--ink:#1e293b;--mute:#64748b;--line:#e2e8f0;--pri:#0e7490;--pri2:#155e75;--ok:#16a34a;--warn:#d97706;--bad:#dc2626}
+*{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+.app{display:grid;grid-template-columns:300px 1fr;min-height:100vh}
+aside{background:#fff;border-right:1px solid var(--line);padding:14px;overflow:auto}
+aside h3{margin:0 0 10px;font-size:13px;letter-spacing:.06em;color:var(--mute)}
+input{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:10px}
+.row{display:flex;gap:10px;align-items:center;padding:10px;border-radius:10px;cursor:pointer;border:1px solid transparent}
+.row:hover{background:#f1f5f9}.row.on{background:#ecfeff;border-color:#a5f3fc}
+.av{width:38px;height:38px;border-radius:50%;background:#cffafe;color:var(--pri2);display:grid;place-items:center;font-weight:700;flex:none}
+.row small{color:var(--mute);display:block}
+main{padding:18px;min-width:0}
+.banner{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;padding:8px 14px;margin-bottom:12px;font-size:13px;display:flex;gap:16px;flex-wrap:wrap}
+.hdr{background:linear-gradient(120deg,var(--pri2),var(--pri));color:#fff;border-radius:14px;padding:18px;display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+.hdr .photo{width:84px;height:84px;border-radius:12px;background:rgba(255,255,255,.2);display:grid;place-items:center;font-size:34px;font-weight:700}
+.hdr h1{margin:0;font-size:22px}.hdr .id{opacity:.85;font-size:13px}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;flex:1;min-width:280px}
+.kv div span{display:block;font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.05em}.kv div b{font-size:14px}
+.vitals{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}
+.vit{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.vit span{font-size:11px;color:var(--mute);text-transform:uppercase}.vit b{display:block;font-size:22px}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);margin-bottom:14px}
+.tab{padding:10px 14px;border:0;background:none;cursor:pointer;font:inherit;color:var(--mute);border-bottom:3px solid transparent;white-space:nowrap}
+.tab.on{color:var(--pri2);border-color:var(--pri);font-weight:600}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.card h4{margin:0 0 10px;font-size:14px}
+table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:var(--mute);font-size:12px;padding:6px 8px;border-bottom:1px solid var(--line)}td{padding:8px;border-bottom:1px solid #f1f5f9}
+.pill{padding:2px 9px;border-radius:99px;font-size:11px;font-weight:700}
+.p-ok{background:#dcfce7;color:#166534}.p-w{background:#fef3c7;color:#92400e}.p-b{background:#fee2e2;color:#991b1b}
+.tl{border-left:2px solid var(--line);margin-left:6px;padding-left:16px}
+.tl div{position:relative;margin-bottom:14px}.tl div:before{content:"";position:absolute;left:-23px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--pri)}
+.tl small{color:var(--mute)}
+.pane{display:none}.pane.on{display:block}
+@media(max-width:820px){.app{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid var(--line);max-height:260px}.grid{grid-template-columns:1fr}}
+</style></head><body>
+<div class="app">
+<aside><h3>STUDENT REGISTER</h3><input placeholder="Search name / ID / class…">
+<div class="row on"><div class="av">AS</div><div><b>Ahanthem Singh</b><small>GNSI-2026-0142 · Class 6</small></div></div>
+<div class="row"><div class="av">LD</div><div><b>Laishram Devi</b><small>GNSI-2026-0143 · Class 5</small></div></div>
+<div class="row"><div class="av">TK</div><div><b>Thoudam Kumar</b><small>GNSI-2025-0098 · Class 9</small></div></div>
+<div class="row"><div class="av">NM</div><div><b>Nongmaithem M.</b><small>GNSI-2025-0101 · Class 9</small></div></div>
+</aside>
+<main>
+<div class="banner"><b>⚠ ALERTS</b><span>Fee due ₹4,500 (overdue 12 days)</span><span>Attendance below 75%</span><span>Aadhaar copy missing</span></div>
+<div class="hdr"><div class="photo">AS</div>
+<div><h1>Ahanthem Singh</h1><div class="id">Student ID · GNSI-2026-0142 &nbsp;|&nbsp; Admitted 12 Apr 2026</div></div>
+<div class="kv"><div><span>Class / Sec</span><b>6 – A</b></div><div><span>DOB / Age</span><b>14 Mar 2014 · 12y</b></div><div><span>Blood group</span><b>B+</b></div><div><span>Guardian</span><b>S. Singh</b></div><div><span>Phone</span><b>+91 98xxxxxx21</b></div><div><span>Residence</span><b>Hostel · Rm 12</b></div></div></div>
+<div class="vitals">
+<div class="vit"><span>Attendance</span><b class="warn">72%</b></div>
+<div class="vit"><span>Last exam</span><b class="ok">81%</b></div>
+<div class="vit"><span>Fee balance</span><b class="bad">₹4,500</b></div>
+<div class="vit"><span>Mock-test rank</span><b>#14</b></div>
+<div class="vit"><span>Documents</span><b class="warn">5 / 6</b></div></div>
+<div class="tabs" id="tabs">
+<button class="tab on" data-t="ov">Overview</button><button class="tab" data-t="fee">Fees &amp; Billing</button><button class="tab" data-t="att">Attendance</button><button class="tab" data-t="exm">Exams &amp; Results</button><button class="tab" data-t="hos">Hostel</button><button class="tab" data-t="doc">Documents</button><button class="tab" data-t="log">Activity Log</button></div>
+
+<div class="pane on" id="ov"><div class="grid"><div>
+<div class="card"><h4>Guardian &amp; contact</h4><table><tr><th>Name</th><th>Relation</th><th>Phone</th></tr><tr><td>S. Singh</td><td>Father</td><td>+91 98xxxxxx21</td></tr><tr><td>M. Devi</td><td>Mother</td><td>+91 70xxxxxx48</td></tr></table></div>
+<div class="card"><h4>Academic summary</h4><table><tr><th>Term</th><th>Total</th><th>%</th><th>Result</th></tr><tr><td>Unit 1</td><td>412 / 500</td><td>82%</td><td><span class="pill p-ok">Pass</span></td></tr><tr><td>Half-yearly</td><td>405 / 500</td><td>81%</td><td><span class="pill p-ok">Pass</span></td></tr></table></div></div>
+<div><div class="card"><h4>Recent activity</h4><div class="tl"><div><b>Fee instalment received</b><br><small>₹3,000 · 02 Oct 2026</small></div><div><b>Absent (2 days)</b><br><small>28–29 Sep 2026</small></div><div><b>Half-yearly result published</b><br><small>20 Sep 2026</small></div><div><b>Admitted · Class 6</b><br><small>12 Apr 2026</small></div></div></div></div></div></div>
+
+<div class="pane" id="fee"><div class="card"><h4>Fee ledger (like a patient bill)</h4><table><tr><th>Date</th><th>Item</th><th>Billed</th><th>Paid</th><th>Status</th></tr>
+<tr><td>12 Apr</td><td>Admission + Tuition Q1</td><td>₹9,000</td><td>₹9,000</td><td><span class="pill p-ok">Paid</span></td></tr>
+<tr><td>01 Jul</td><td>Tuition Q2</td><td>₹6,000</td><td>₹6,000</td><td><span class="pill p-ok">Paid</span></td></tr>
+<tr><td>01 Oct</td><td>Tuition Q3 + Hostel</td><td>₹10,500</td><td>₹6,000</td><td><span class="pill p-b">Due ₹4,500</span></td></tr></table></div></div>
+
+<div class="pane" id="att"><div class="card"><h4>Attendance — Oct 2026</h4><table><tr><th>Week</th><th>Present</th><th>Absent</th><th>%</th></tr><tr><td>Week 1</td><td>4</td><td>1</td><td>80%</td></tr><tr><td>Week 2</td><td>3</td><td>2</td><td class="bad">60%</td></tr><tr><td>Week 3</td><td>5</td><td>0</td><td class="ok">100%</td></tr></table></div></div>
+
+<div class="pane" id="exm"><div class="card"><h4>Results</h4><table><tr><th>Subject</th><th>Unit 1</th><th>Half-yearly</th></tr><tr><td>Maths</td><td>88</td><td>84</td></tr><tr><td>Science</td><td>79</td><td>82</td></tr><tr><td>English</td><td>81</td><td>78</td></tr></table></div></div>
+
+<div class="pane" id="hos"><div class="card"><h4>Hostel allocation</h4><table><tr><th>Block</th><th>Room</th><th>Bed</th><th>Since</th><th>Status</th></tr><tr><td>Boys A</td><td>12</td><td>3</td><td>12 Apr 2026</td><td><span class="pill p-ok">Resident</span></td></tr></table></div></div>
+
+<div class="pane" id="doc"><div class="card"><h4>Document checklist</h4><table><tr><th>Document</th><th>Status</th></tr><tr><td>Birth certificate</td><td><span class="pill p-ok">Received</span></td></tr><tr><td>Transfer certificate</td><td><span class="pill p-ok">Received</span></td></tr><tr><td>Aadhaar copy</td><td><span class="pill p-b">Missing</span></td></tr></table></div></div>
+
+<div class="pane" id="log"><div class="card"><h4>Audit trail</h4><table><tr><th>When</th><th>By</th><th>Action</th></tr><tr><td>02 Oct 10:14</td><td>Accounts</td><td>Recorded payment ₹3,000</td></tr><tr><td>29 Sep 09:02</td><td>Class teacher</td><td>Marked absent</td></tr></table></div></div>
+</main></div>
+<script>
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab,.pane').forEach(e=>e.classList.remove('on'));b.classList.add('on');document.getElementById(b.dataset.t).classList.add('on')})
+</script></body></html>
