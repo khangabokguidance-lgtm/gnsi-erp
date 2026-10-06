@@ -1704,8 +1704,8 @@ const FEES_CSS = `
 .fh-t{display:flex;flex-direction:column;align-items:center;gap:8px;background:none!important;border:none;cursor:pointer;padding:4px 2px;border-radius:14px;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#2b3445;-webkit-tap-highlight-color:transparent;min-width:0}
 .fh-t:hover .fh-i{transform:translateY(-2px);box-shadow:0 10px 18px -8px rgba(11,30,61,.85)}
 .fh-t:active .fh-i{transform:scale(.94)}
-.fh-i{position:relative;width:52px;height:52px;border-radius:17px;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 6px 14px -6px rgba(11,30,61,.7);transition:transform .12s,box-shadow .12s}
-.fh-t.on .fh-i{background:linear-gradient(160deg,#1f4e8c,#0b1e3d);color:#fff;box-shadow:0 0 0 3px #fff,0 0 0 5px #c9a24b}
+.fh-i{position:relative;width:52px;height:52px;border-radius:17px;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 0 0 2px #fff,0 0 0 3.5px #c9a24b,0 8px 14px -8px rgba(11,30,61,.7);transition:transform .12s,box-shadow .12s}
+.fh-t.on .fh-i{background:linear-gradient(160deg,#1f4e8c,#0b1e3d);color:#fff;box-shadow:0 0 0 3px #fff,0 0 0 6px #c9a24b}
 .fh-l{font-size:12px;font-weight:650;line-height:1.25;text-align:center;max-width:min(92px,100%);min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .fh-t.on .fh-l{color:#0b1e3d;font-weight:800}
 .fh-b{position:absolute;top:-6px;right:-8px;min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:#e53935;color:#fff;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-sizing:border-box}
