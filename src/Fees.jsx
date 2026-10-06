@@ -11,6 +11,8 @@ import { confirmFeeMonthOpen, getLockedAccountTypes } from './monthLock'
 import { printFeeReceipt } from './premiumReceipt'
 import { useFeeCollectionPresence } from './feePresence'
 import FeeClashBanner from './FeeClashBanner'
+import FeeRequestsPanel from './FeeRequestsPanel'
+import { countPendingFeeRequests } from './feeRequests'
 import {
   today, gccStr, rcptNo,
   collectFee,
@@ -3363,7 +3365,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     }
     if (lowFeeRows.length && !isAdmin) {
       const short = lowFeeRows.reduce((s, r) => s + lowFeeGap(r), 0)
-      if (!window.confirm(`₹${short.toLocaleString('en-IN')} below the standard fee (${lowFeeRows.map(r => r.for_month).join(', ')}).\n\nThis payment will be saved and the low fee sent to an admin for approval. Until approved, the shortfall stays due on the student's ledger.`)) return false
+      if (!window.confirm(`₹${short.toLocaleString('en-IN')} below the standard fee (${lowFeeRows.map(r => r.for_month).join(', ')}).\n\nThis low fee will be sent to an admin for approval.\n\nNothing is recorded and no receipt is printed until the admin approves it. After approval, press Collect under "My low-fee requests" on the Fee Payment screen.`)) return false
     }
     return true
   }
@@ -3522,6 +3524,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       className: student.batch || '', course: student.course || '',
       hostelType, payDate, payMode: mode || payMode, txnRef: ref ?? txnRef, collectedBy,
       studentId: student.id, receiptNo, items,
+      skipHold: !!(mode || ref),   // online / already-received money is never held back
     })
 
     // Premium hospital-style receipt (premiumReceipt.js) — same design as the
@@ -3600,7 +3603,14 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     try {
       await finalizeCollection(itemsToSave)
     } catch (err) {
-      showToast('Save failed: ' + err.message, '#dc2626')
+      if (err.held) {
+        // Low fee filed for admin approval — nothing was recorded or printed.
+        showToast(err.message, '#b8923a')
+        if (err.waUrl) { try { window.open(err.waUrl, '_blank') } catch { /* popup blocked — use the WhatsApp button on the request */ } }
+        setCrsfRows([{ course: '', subtype: '', hostelType: hostelType, for_month: '', amount: '' }])
+        setAdvAmt(''); setAdvFor(''); setFlatChecked(flatFees.map(() => false)); setTxnRef('')
+        setStep('select'); setStudent(null)
+      } else showToast('Save failed: ' + err.message, '#dc2626')
     }
     setSaving(false)
   }
@@ -3869,9 +3879,10 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   }
 
   // ── Select screen ─────────────────────────────────────────────────────────
-  if (step === 'select') return (
+  if (step === 'select') return (<>
+    <FeeRequestsPanel currentUser={currentUser} isAdmin={isAdmin} onDone={onRefresh} />
     <CollectionDesk students={students} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} onSelect={handleSelect} isMobile={isMobile} />
-  )
+  </>)
 
   // Where the cashier is in the flow — drives the step tracker.
   const flowStep = grandThis === 0 ? 2 : (!collectedBy.trim() || (payMode !== 'Cash' && !txnRef.trim())) ? 3 : 4
@@ -4690,7 +4701,7 @@ export default function Fees() {
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0)
   // Low fees waiting for an admin (fee_concessions); refreshed after each decision.
   const [lowFeePending, setLowFeePending] = useState(0)
-  const refreshLowFeePending = useCallback(() => { countPendingConcessions().then(setLowFeePending) }, [])
+  const refreshLowFeePending = useCallback(() => { Promise.all([countPendingConcessions(), countPendingFeeRequests()]).then(([a, b]) => setLowFeePending(a + b)) }, [])
   useEffect(() => { if (isAdmin) refreshLowFeePending() }, [isAdmin, refreshLowFeePending])
   // Open hostel-type issues (record ≠ hostel bed + pending wrong-type approvals).
   const [hostelIssueCount, setHostelIssueCount] = useState(0)

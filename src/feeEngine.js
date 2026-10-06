@@ -9,6 +9,7 @@ import { supabase } from './supabase'
 import { printFeeReceipt, sectionsToItems } from './premiumReceipt'
 import { recordConcession, clearConcession } from './feeConcessions'
 import { findRecentOtherCollection, RECENT_CLASH_MINUTES } from './feePresence'
+import { fileFeeRequest, openRequestsFor, requestKeys, isMissingRequestsTable, REQUESTS_SETUP_MSG, lowFeeWaUrl, notifyAdminAuto } from './feeRequests'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. LEGACY HARDCODED RATES  (kept as fallback only — DB is now source of truth)
@@ -998,11 +999,26 @@ export const rejectFeeActionRequest = async ({ requestId, rejectedBy, rejectedBy
 //    stopped a double-charge. Now uses checkAdmItemExists the same way
 //    flat/course already used checkFlatFeeExists/checkCourseFeeExists.
 // =============================================================================
+// Upsert that survives a missing optional "note" column (older database without
+// migration 20261014_fee_row_notes.sql): retry once without that field instead of
+// failing the whole payment. The explanation is still kept in the Accounts entry,
+// the audit log and the low-fee request.
+async function upsertDroppingMissingNote(table, row, noteKey) {
+  let res = await supabase.from(table).upsert(row, { onConflict: 'id' })
+  if (res.error && noteKey in row && new RegExp(noteKey).test(res.error.message || '')) {
+    console.warn(`${table}.${noteKey} column missing — saving without it. Run supabase/migrations/20261014_fee_row_notes.sql.`)
+    const { [noteKey]: _dropped, ...rest } = row
+    res = await supabase.from(table).upsert(rest, { onConflict: 'id' })
+  }
+  return res
+}
+
 export const collectFee = async ({
   gcc, studentName, admNo = '--', className = '', course = '',
   hostelType = 'Day Scholar', payDate, payMode = 'Cash',
   txnRef = null, collectedBy = 'Admin', staffId = null,
   studentId = null, receiptNo, items = [], skipClashCheck = false,
+  skipHold = false,   // true for money already received (online) or an admin-approved request being collected
 }) => {
   if (!gcc)       throw new Error('collectFee: gcc is required')
   if (!payDate)   throw new Error('collectFee: payDate is required')
@@ -1031,6 +1047,44 @@ export const collectFee = async ({
   const resolvedStaffId = staffId || collectedBy || 'Unknown'
   const collectedAt = new Date().toISOString()
   const staffFields = { staff_id: resolvedStaffId, collected_at: collectedAt }
+
+  // ✦ Low fee = wait for an admin BEFORE anything is recorded. A flat/course line
+  // below its standard rate that no admin has authorised at the counter is not
+  // saved: the whole payment is filed as a request (fee_payment_requests). The
+  // collector collects it after approval (Fee Payment → My low-fee requests).
+  if (!skipHold) {
+    const lowItems = items.filter(i => (i.kind === 'flat' || i.kind === 'course') && Number(i.underpaymentAmount) > 0 && !i.concessionApprovedBy)
+    if (lowItems.length) {
+      const myKeys = items.filter(i => i.kind === 'flat' || i.kind === 'course').map(i => `${i.kind}:${i.month} ${i.year}`)
+      const open = await openRequestsFor(gcc)
+      const dup = open.find(r => requestKeys(r).some(k => myKeys.includes(k)))
+      if (dup) {
+        throw Object.assign(new Error(dup.status === 'approved'
+          ? 'A request for these months is already approved — collect it from "My low-fee requests" on the Fee Payment screen.'
+          : 'A request for these months is already waiting for admin approval.'), { held: true })
+      }
+      const summary = {
+        months: lowItems.map(i => `${i.month} ${i.year}`),
+        standard: lowItems.reduce((t, i) => t + (Number(i.standardAmount) || 0), 0),
+        collected: lowItems.reduce((t, i) => t + (Number(i.amount) || 0), 0),
+        shortfall: lowItems.reduce((t, i) => t + (Number(i.underpaymentAmount) || 0), 0),
+        reasons: [...new Set(lowItems.map(i => i.underpaymentReason).filter(Boolean))],
+        total: items.reduce((t, i) => t + (Number(i.amount) || 0), 0),
+      }
+      const payload = { gcc, studentName, admNo, className, course, hostelType, payDate, payMode, txnRef, collectedBy, staffId, studentId, items }
+      const { data, error } = await fileFeeRequest({ gcc, studentName, requestedBy: staffId || collectedBy, payload, summary })
+      if (!error) {
+        // Try to message the approver automatically; if the server can't (not configured / failed)
+        // hand back the wa.me link so the collector can send it with one tap.
+        const auto = await notifyAdminAuto(data?.id, 'pending')
+        const waUrl = auto.sent ? null : lowFeeWaUrl(payload, summary, staffId || collectedBy)
+        throw Object.assign(new Error(`⏳ Sent to admin for approval${auto.sent ? ' (WhatsApp sent automatically)' : ''} — ₹${summary.shortfall.toLocaleString('en-IN')} below standard. Nothing is recorded or printed yet. After approval, press Collect under "My low-fee requests" on the Fee Payment screen.`), { held: true, requestId: data?.id, waUrl })
+      }
+      // Table not created yet → keep working the old way (saved; receipt held until approved).
+      if (!isMissingRequestsTable(error)) throw new Error(`Could not send the low fee for approval: ${error.message}`)
+      console.warn(REQUESTS_SETUP_MSG)
+    }
+  }
 
   // ✦ Multi-user detection: another staff member saved a fee for this same
   // student in the last few minutes (two counters collecting at once / a
@@ -1153,7 +1207,7 @@ export const collectFee = async ({
       // so mirrorToFeeInvoice files a backdated Feb payment under Feb, not
       // under whatever month it was actually keyed in.
       const invoiceMonth = `${item.year}-${String(new Date(`${item.month} 1, ${item.year}`).getMonth() + 1).padStart(2, '0')}`
-      const { error } = await supabase.from(TABLES.admFlatFees).upsert({
+      const { error } = await upsertDroppingMissingNote(TABLES.admFlatFees, {
         id: flatId, adm_app_id: gcc, month: item.month, year: item.year,
         amount: item.amount, hostel_type: hostelType, paid: true,
         pay_date: payDate, pay_mode: payMode, txn_ref: txnRef || null,
@@ -1168,7 +1222,7 @@ export const collectFee = async ({
         // fee_structures/student_fee_overrides.
         ...(item.note ? { underpayment_note: item.note } : {}),
         ...staffFields, ...noRevert,
-      }, { onConflict: 'id' })
+      }, 'underpayment_note')
       if (error) throw new Error(`Flat fee ${item.month} save failed: ` + error.message)
       await upsertAccountOrRollback({
         entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Hostel',
@@ -1227,7 +1281,7 @@ export const collectFee = async ({
       const sRef  = sourceRef.courseFee(gcc, item.month, yr)
       // Fee-period month, same reasoning as the flat-fee branch above.
       const invoiceMonth = `${yr}-${String(new Date(`${item.month} 1, ${yr}`).getMonth() + 1).padStart(2, '0')}`
-      const { error } = await supabase.from(TABLES.admCourseFees).upsert({
+      const { error } = await upsertDroppingMissingNote(TABLES.admCourseFees, {
         id: recId, adm_app_id: gcc, course: crs, subtype: sub,
         hostel_type: hostelType, for_month: item.month, year: yr,
         amount_paid: item.amount, pay_date: payDate, pay_mode: payMode,
@@ -1241,7 +1295,7 @@ export const collectFee = async ({
         // discoverable later by cross-referencing fee_structures.
         ...(item.note ? { override_note: item.note } : {}),
         ...staffFields, ...noRevert,
-      }, { onConflict: 'id' })
+      }, 'override_note')
       if (error) throw new Error(`Course fee ${item.month} save failed: ` + error.message)
       await upsertAccountOrRollback({
         entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Fees',

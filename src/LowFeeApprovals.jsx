@@ -8,6 +8,7 @@ import { buildAllLedgers } from './feeLedgerBulk'
 import { getSessionYear, gccStr } from './feeEngine'
 import { LedgerLink } from './LedgerLinks'
 import { HOSTEL_MISMATCH_REASON } from './hostelFeeCheck'
+import { loadFeeRequests, decideFeeRequest, REQUESTS_SETUP_MSG } from './feeRequests'
 
 const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
 const fmtD = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
@@ -41,12 +42,15 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
   const [to, setTo] = useState('')
   const [busy, setBusy] = useState(null)
   const [viewMode, setViewMode] = useState('list')  // list | month
+  const [reqs, setReqs] = useState({ rows: [], setupNeeded: false })   // payments waiting for approval BEFORE they are recorded
+  const loadReqs = useCallback(() => { loadFeeRequests().then(setReqs) }, [])
+  useEffect(() => { loadReqs() }, [loadReqs])
   const todayStr = new Date().toLocaleDateString('en-CA')
   const [scan, setScan] = useState(null)       // null | 'running' | { items, error }
   const [draft, setDraft] = useState({})       // unexplained row key -> reason
   const me = currentUser?.name || currentUser?.userName || 'Admin'
 
-  const reload = useCallback(() => { loadConcessions().then(setData); onChanged?.() }, [onChanged])
+  const reload = useCallback(() => { loadConcessions().then(setData); loadReqs(); onChanged?.() }, [onChanged, loadReqs])
   useEffect(() => { let live = true; loadConcessions().then(d => { if (live) setData(d) }); return () => { live = false } }, [])
 
   const rows = useMemo(() => data?.rows || [], [data])
@@ -93,6 +97,17 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
     setBusy(null)
   }
 
+  const decideReq = async (r, approve) => {
+    const note = window.prompt(approve
+      ? `Approve ${inr(r.shortfall)} below standard for ${r.student_name || 'GCC-' + r.gcc}?\n\nThe collector can then record the payment and print the receipt. Note (optional):`
+      : `Reject this low-fee payment for ${r.student_name || 'GCC-' + r.gcc}?\n\nNothing is recorded. Reason (optional):`, '')
+    if (note === null) return
+    setBusy(r.id)
+    try { await decideFeeRequest(r, approve, { by: me, note }); reload() } catch (e) { alert(e.message) }
+    setBusy(null)
+  }
+  const pendingReqs = (reqs.rows || []).filter(r => r.status === 'pending')
+
   const runScan = async () => {
     setScan('running')
     try {
@@ -136,6 +151,31 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
           ))}
         </div>
       </div>
+
+      {reqs.setupNeeded && <div style={{ ...card, background: '#fff7ed', borderColor: '#fdba74', color: '#9a3412', fontSize: 13 }}>⚙️ {REQUESTS_SETUP_MSG}</div>}
+      {pendingReqs.length > 0 && (
+        <div style={{ ...card, padding: 0, overflow: 'hidden', borderColor: '#c9a24b' }}>
+          <div style={{ padding: '12px 16px', background: 'linear-gradient(135deg,#7a4b00,#b8923a)', color: '#fff', fontWeight: 800 }}>
+            ⏳ Payments waiting for your approval ({pendingReqs.length}) <span style={{ fontWeight: 600, opacity: .85, fontSize: 12 }}>· not recorded and no receipt until you approve</span>
+          </div>
+          {pendingReqs.map(r => { const s = r.summary || {}; return (
+            <div key={r.id} style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTop: '1px solid #f1f5f9' }}>
+              <div style={{ minWidth: 220, flex: '2 1 260px' }}>
+                <div style={{ fontWeight: 800 }}><LedgerLink gcc={r.gcc}>{r.student_name || `GCC-${r.gcc}`}</LedgerLink> <span style={{ color: '#98a2b3', fontWeight: 600, fontSize: 12 }}>GCC-{r.gcc} · {(s.months || []).join(', ')}</span></div>
+                <div style={{ fontSize: 12.5, marginTop: 3 }}><b>{(s.reasons || []).join(', ') || '—'}</b></div>
+                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2 }}>Requested by {r.requested_by || '—'} · {fmtD(r.created_at)}</div>
+              </div>
+              <div style={{ fontSize: 12.5, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <div>Standard {inr(s.standard)} · Offered {inr(s.collected)}</div>
+                <div style={{ fontWeight: 800, color: '#b42318' }}>Short {inr(r.shortfall)}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button disabled={busy === r.id} style={btn('#146c3a')} onClick={() => decideReq(r, true)}>Approve</button>
+                <button disabled={busy === r.id} style={btn('#fff', '#b42318')} onClick={() => decideReq(r, false)}>Reject</button>
+              </div>
+            </div>) })}
+        </div>
+      )}
 
       {data?.setupNeeded && <div style={{ ...card, background: '#fff7ed', borderColor: '#fdba74', color: '#9a3412', fontSize: 13 }}>⚙️ {CONCESSIONS_SETUP_MSG}</div>}
       {data?.error && <div style={{ ...card, color: '#b42318' }}>Could not load: {data.error}</div>}
