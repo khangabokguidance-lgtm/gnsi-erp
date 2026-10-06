@@ -998,6 +998,20 @@ export const rejectFeeActionRequest = async ({ requestId, rejectedBy, rejectedBy
 //    stopped a double-charge. Now uses checkAdmItemExists the same way
 //    flat/course already used checkFlatFeeExists/checkCourseFeeExists.
 // =============================================================================
+// Upsert that survives a missing optional "note" column (older database without
+// migration 20261014_fee_row_notes.sql): retry once without that field instead of
+// failing the whole payment. The explanation is still kept in the Accounts entry,
+// the audit log and the low-fee request.
+async function upsertDroppingMissingNote(table, row, noteKey) {
+  let res = await supabase.from(table).upsert(row, { onConflict: 'id' })
+  if (res.error && noteKey in row && new RegExp(noteKey).test(res.error.message || '')) {
+    console.warn(`${table}.${noteKey} column missing — saving without it. Run supabase/migrations/20261014_fee_row_notes.sql.`)
+    const { [noteKey]: _dropped, ...rest } = row
+    res = await supabase.from(table).upsert(rest, { onConflict: 'id' })
+  }
+  return res
+}
+
 export const collectFee = async ({
   gcc, studentName, admNo = '--', className = '', course = '',
   hostelType = 'Day Scholar', payDate, payMode = 'Cash',
@@ -1153,7 +1167,7 @@ export const collectFee = async ({
       // so mirrorToFeeInvoice files a backdated Feb payment under Feb, not
       // under whatever month it was actually keyed in.
       const invoiceMonth = `${item.year}-${String(new Date(`${item.month} 1, ${item.year}`).getMonth() + 1).padStart(2, '0')}`
-      const { error } = await supabase.from(TABLES.admFlatFees).upsert({
+      const { error } = await upsertDroppingMissingNote(TABLES.admFlatFees, {
         id: flatId, adm_app_id: gcc, month: item.month, year: item.year,
         amount: item.amount, hostel_type: hostelType, paid: true,
         pay_date: payDate, pay_mode: payMode, txn_ref: txnRef || null,
@@ -1168,7 +1182,7 @@ export const collectFee = async ({
         // fee_structures/student_fee_overrides.
         ...(item.note ? { underpayment_note: item.note } : {}),
         ...staffFields, ...noRevert,
-      }, { onConflict: 'id' })
+      }, 'underpayment_note')
       if (error) throw new Error(`Flat fee ${item.month} save failed: ` + error.message)
       await upsertAccountOrRollback({
         entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Hostel',
@@ -1227,7 +1241,7 @@ export const collectFee = async ({
       const sRef  = sourceRef.courseFee(gcc, item.month, yr)
       // Fee-period month, same reasoning as the flat-fee branch above.
       const invoiceMonth = `${yr}-${String(new Date(`${item.month} 1, ${yr}`).getMonth() + 1).padStart(2, '0')}`
-      const { error } = await supabase.from(TABLES.admCourseFees).upsert({
+      const { error } = await upsertDroppingMissingNote(TABLES.admCourseFees, {
         id: recId, adm_app_id: gcc, course: crs, subtype: sub,
         hostel_type: hostelType, for_month: item.month, year: yr,
         amount_paid: item.amount, pay_date: payDate, pay_mode: payMode,
@@ -1241,7 +1255,7 @@ export const collectFee = async ({
         // discoverable later by cross-referencing fee_structures.
         ...(item.note ? { override_note: item.note } : {}),
         ...staffFields, ...noRevert,
-      }, { onConflict: 'id' })
+      }, 'override_note')
       if (error) throw new Error(`Course fee ${item.month} save failed: ` + error.message)
       await upsertAccountOrRollback({
         entry_date: payDate, payment_date: payDate, type: 'Income', category: 'Fees',
