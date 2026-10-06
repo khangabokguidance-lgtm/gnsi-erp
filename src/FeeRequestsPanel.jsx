@@ -2,61 +2,35 @@
 // Nothing is recorded until an admin approves; then the collector presses Collect, which
 // records the payment and prints the receipt.
 import { useCallback, useEffect, useState } from 'react'
-import { loadFeeRequests, markRequestCollected, lowFeeWaUrl, notifyAdminAuto } from './feeRequests'
-import { collectFee, rcptNo, today } from './feeEngine'
-import { printFeeReceipt } from './premiumReceipt'
+import { loadFeeRequests, lowFeeWaUrl } from './feeRequests'
+import { printRequestReceipt } from './feeRequestRecord'
 
 const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
-const TONE = { pending: ['#9a5b00', '#fff4dc', '⏳ Waiting for admin'], approved: ['#146c3a', '#e7f6ec', '✅ Approved — collect now'], rejected: ['#b42318', '#fde8e6', '✕ Rejected'] }
+const TONE = { pending: ['#9a5b00', '#fff4dc', '⏳ Waiting for admin'], approved: ['#146c3a', '#e7f6ec', '✅ Approved — admin is recording it'], collected: ['#146c3a', '#e7f6ec', '✅ Recorded — receipt ready'], rejected: ['#b42318', '#fde8e6', '✕ Rejected'] }
 const sameWho = (a, b) => !!String(a || '').trim() && String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase()
 
 export default function FeeRequestsPanel({ currentUser, isAdmin, onDone }) {
   const [rows, setRows] = useState([])
-  const [busy, setBusy] = useState(null)
-  const [err, setErr] = useState('')
   const me = currentUser?.userName || currentUser?.username || currentUser?.name || ''
   const meName = currentUser?.name || ''
 
   const reload = useCallback(() => {
     loadFeeRequests().then(d => {
       const weekAgo = Date.now() - 7 * 86400000
-      setRows((d.rows || []).filter(r => ['pending', 'approved', 'rejected'].includes(r.status)
+      setRows((d.rows || []).filter(r => ['pending', 'approved', 'collected', 'rejected'].includes(r.status)
         && new Date(r.decided_at || r.created_at).getTime() >= weekAgo
-        && (isAdmin ? r.status !== 'rejected' : (sameWho(r.requested_by, me) || sameWho(r.requested_by, meName)))))
+        && (isAdmin ? !['rejected', 'collected'].includes(r.status) : (sameWho(r.requested_by, me) || sameWho(r.requested_by, meName)))))
     })
   }, [isAdmin, me, meName])
   useEffect(() => { reload(); const t = setInterval(reload, 20000); return () => clearInterval(t) }, [reload])
 
-  const collect = async req => {
-    if (busy) return
-    setBusy(req.id); setErr('')
-    try {
-      const p = req.payload || {}
-      const items = (p.items || []).map(i => (Number(i.underpaymentAmount) > 0 ? { ...i, concessionApprovedBy: req.decided_by || 'Admin' } : i))
-      const receiptNo = rcptNo('FEE')
-      const payDate = today()
-      const { total } = await collectFee({ ...p, items, payDate, receiptNo, staffId: me || p.staffId, skipHold: true })
-      printFeeReceipt({
-        receipt_no: receiptNo, pay_date: payDate, pay_mode: p.payMode, txn_ref: p.txnRef, collected_by: p.collectedBy,
-        student_name: p.studentName, adm_no: p.admNo, gcc_no: p.gcc, class_name: p.className, course: p.course,
-        hostel_type: p.hostelType, items, total,
-      })
-      await markRequestCollected(req, receiptNo)
-      notifyAdminAuto(req.id, 'collected')   // tell the approver the payment was collected (fire-and-forget)
-      onDone?.()
-      reload()
-    } catch (e) { setErr(e.message || 'Could not collect this payment.') }
-    setBusy(null)
-  }
-
-  if (!rows.length && !err) return null
+  if (!rows.length) return null
   return (
     <div style={{ margin: '0 0 16px', borderRadius: 20, padding: 1.5, background: 'linear-gradient(150deg,#e9d9b0,#c9a24b 50%,#e9d9b0)', boxShadow: '0 18px 30px -22px rgba(19,42,79,.55)' }}>
       <div style={{ background: 'linear-gradient(180deg,#fff,#f7f4ea)', borderRadius: 19, overflow: 'hidden' }}>
         <div style={{ padding: '12px 16px', color: '#fff', background: 'linear-gradient(135deg,#0e203f,#1f4e8c)', fontWeight: 800, fontSize: 14 }}>
-          🧾 {isAdmin ? 'Low-fee requests' : 'My low-fee requests'} <span style={{ fontWeight: 600, opacity: .75, fontSize: 12 }}>· nothing is recorded or printed until an admin approves</span>
+          🧾 {isAdmin ? 'Low-fee requests' : 'My low-fee requests'} <span style={{ fontWeight: 600, opacity: .75, fontSize: 12 }}>· nothing is recorded until an admin approves</span>
         </div>
-        {err && <div style={{ padding: '10px 16px', color: '#b42318', fontSize: 13, fontWeight: 700 }}>{err}</div>}
         {rows.map(r => {
           const t = TONE[r.status] || TONE.pending, s = r.summary || {}
           return (
@@ -74,10 +48,8 @@ export default function FeeRequestsPanel({ currentUser, isAdmin, onDone }) {
               {r.status === 'pending' && (
                 <a href={lowFeeWaUrl(r.payload, r.summary, r.requested_by)} target="_blank" rel="noopener noreferrer" style={{ padding: '7px 12px', borderRadius: 10, fontWeight: 800, fontSize: 12.5, textDecoration: 'none', color: '#fff', background: 'linear-gradient(160deg,#25d366,#128c7e)' }}>📲 WhatsApp admin</a>
               )}
-              {r.status === 'approved' && (
-                <button disabled={busy === r.id} onClick={() => collect(r)} style={{ padding: '8px 14px', borderRadius: 10, border: 'none', fontWeight: 800, fontSize: 13, cursor: busy ? 'wait' : 'pointer', color: '#1a1406', background: 'linear-gradient(160deg,#d4ae58,#b8923a)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.45), 0 8px 14px -8px rgba(184,146,58,.9)' }}>
-                  {busy === r.id ? 'Collecting…' : `Collect ${inr(s.total)} & print`}
-                </button>
+              {r.status === 'collected' && (
+                <button onClick={() => printRequestReceipt(r)} style={{ padding: '8px 14px', borderRadius: 10, border: 'none', fontWeight: 800, fontSize: 13, cursor: 'pointer', color: '#1a1406', background: 'linear-gradient(160deg,#d4ae58,#b8923a)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.45), 0 8px 14px -8px rgba(184,146,58,.9)' }}>🖨 Print receipt</button>
               )}
             </div>
           )

@@ -3365,7 +3365,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     }
     if (lowFeeRows.length && !isAdmin) {
       const short = lowFeeRows.reduce((s, r) => s + lowFeeGap(r), 0)
-      if (!window.confirm(`₹${short.toLocaleString('en-IN')} below the standard fee (${lowFeeRows.map(r => r.for_month).join(', ')}).\n\nThis low fee will be sent to an admin for approval.\n\nNothing is recorded and no receipt is printed until the admin approves it. After approval, press Collect under "My low-fee requests" on the Fee Payment screen.`)) return false
+      if (!window.confirm(`₹${short.toLocaleString('en-IN')} below the standard fee (${lowFeeRows.map(r => r.for_month).join(', ')}).\n\nThis low fee will be sent to an admin for approval.\n\nNothing is recorded and no receipt is printed until the admin approves it. After approval the admin records it, and you print the receipt from "My low-fee requests" on the Fee Payment screen.`)) return false
     }
     return true
   }

@@ -1060,7 +1060,7 @@ export const collectFee = async ({
       const dup = open.find(r => requestKeys(r).some(k => myKeys.includes(k)))
       if (dup) {
         throw Object.assign(new Error(dup.status === 'approved'
-          ? 'A request for these months is already approved — collect it from "My low-fee requests" on the Fee Payment screen.'
+          ? 'A request for these months is already approved — the admin is recording it; print the receipt from "My low-fee requests" on the Fee Payment screen.'
           : 'A request for these months is already waiting for admin approval.'), { held: true })
       }
       const summary = {
@@ -1078,7 +1078,7 @@ export const collectFee = async ({
         // hand back the wa.me link so the collector can send it with one tap.
         const auto = await notifyAdminAuto(data?.id, 'pending')
         const waUrl = auto.sent ? null : lowFeeWaUrl(payload, summary, staffId || collectedBy)
-        throw Object.assign(new Error(`⏳ Sent to admin for approval${auto.sent ? ' (WhatsApp sent automatically)' : ''} — ₹${summary.shortfall.toLocaleString('en-IN')} below standard. Nothing is recorded or printed yet. After approval, press Collect under "My low-fee requests" on the Fee Payment screen.`), { held: true, requestId: data?.id, waUrl })
+        throw Object.assign(new Error(`⏳ Sent to admin for approval${auto.sent ? ' (WhatsApp sent automatically)' : ''} — ₹${summary.shortfall.toLocaleString('en-IN')} below standard. Nothing is recorded or printed yet. After approval the admin records it, and you print the receipt from "My low-fee requests" on the Fee Payment screen.`), { held: true, requestId: data?.id, waUrl })
       }
       // Table not created yet → keep working the old way (saved; receipt held until approved).
       if (!isMissingRequestsTable(error)) throw new Error(`Could not send the low fee for approval: ${error.message}`)
