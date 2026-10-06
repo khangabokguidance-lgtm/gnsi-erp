@@ -3083,36 +3083,41 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
           </div>
         )}
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '18px', padding: '14px 16px', borderRadius: '20px', position: 'relative', overflow: 'hidden', color: '#fff',
+          background: `radial-gradient(120% 160% at 100% 0%, ${pal.color}99 0%, transparent 55%), linear-gradient(135deg,#0e203f 0%,#132a4f 50%,#1f4e8c 100%)`,
+          boxShadow: '0 18px 34px -20px rgba(11,30,61,.75)' }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, background: 'linear-gradient(90deg,transparent,#c9a24b,transparent)' }} />
           <button
             onClick={() => { if (catchUpReturn) returnFromCatchUp(); setView('dashboard') }}
-            style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 12px', fontSize: '13px' }}
+            style={{ padding: '8px 13px', fontSize: '13px', fontWeight: 700, borderRadius: 12, cursor: 'pointer', color: '#fff', background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.25)' }}
           >
             ← Back
           </button>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: '800', color: pal.color, fontSize: '16px' }}>⚡ {selectedHouse} Roll Call</div>
-            <div style={{ fontSize: '12px', color: '#64748b' }}>{session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {date}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#e9d9b0' }}>GNSI · Hostel Roll Call</div>
+            <div style={{ fontWeight: 700, color: '#fff', fontSize: '19px', fontFamily: "'Fraunces',Georgia,serif", lineHeight: 1.15, marginTop: 2 }}>{selectedHouse}</div>
+            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.72)', marginTop: 2 }}>{session === 'morning' ? '🌅 Morning' : '🌙 Night'} · {date}</div>
           </div>
-          <div style={{ fontSize: '13px', fontWeight: '700', color: pal.color }}>
-            {Math.min(rollCallIndex + 1, total)}/{total}
+          <div style={{ minWidth: 54, textAlign: 'center', padding: '7px 10px', borderRadius: 14, fontWeight: 800, fontSize: 14, color: '#1a1406', background: 'linear-gradient(160deg,#d4ae58,#b8923a)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.45), 0 8px 16px -8px rgba(184,146,58,.9)' }}>
+            {Math.min(rollCallIndex + 1, total)}<span style={{ opacity: .6, fontWeight: 700 }}>/{total}</span>
           </div>
         </div>
 
 
         {/* Progress bar */}
         <div style={{ marginBottom: '24px' }}>
-          <div style={{ height: '8px', background: '#f1f5f9', borderRadius: '99px', overflow: 'hidden' }}>
+          <div style={{ height: '10px', background: '#e8ecf4', borderRadius: '99px', overflow: 'hidden', boxShadow: 'inset 0 1px 2px rgba(19,42,79,.15)' }}>
             <div style={{
               height: '100%',
               width: `${pct}%`,
-              background: pct === 100 ? '#16a34a' : pal.color,
+              background: pct === 100 ? 'linear-gradient(90deg,#16a34a,#22c55e)' : 'linear-gradient(90deg,#1f4e8c,#c9a24b)',
               borderRadius: '99px', transition: 'width 0.4s',
+              boxShadow: '0 0 10px rgba(201,162,75,.55)',
             }} />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-            <span>{marked} marked</span>
-            <span>{total - marked} remaining</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', fontWeight: 700, color: '#5d6b82', marginTop: '6px' }}>
+            <span style={{ color: '#146c3a' }}>● {marked} marked</span>
+            <span style={{ color: '#8a6d2b' }}>{total - marked} remaining ●</span>
           </div>
         </div>
 
@@ -3169,7 +3174,10 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             }
 
             return (
-          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+          <div style={{ textAlign: 'center', padding: '36px 22px 28px', borderRadius: 26, border: '1px solid transparent', position: 'relative', overflow: 'hidden',
+            background: 'linear-gradient(180deg,#ffffff 0%,#f7f4ea 100%) padding-box, linear-gradient(150deg,#e9d9b0,#c9a24b 50%,#e9d9b0) border-box',
+            boxShadow: '0 30px 50px -30px rgba(19,42,79,.55), 0 2px 4px rgba(19,42,79,.06)' }}>
+            <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 6, background: 'linear-gradient(90deg,#0e203f,#1f4e8c,#c9a24b,#1f4e8c,#0e203f)' }} />
             <style>{`
               @keyframes hr-compliance-pop {
                 0% { transform: scale(0.5) rotate(-8deg); opacity: 0; }
@@ -3214,7 +3222,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                 background: linear-gradient(135deg, #22c55e, #16a34a);
                 display: flex; align-items: center; justify-content: center;
                 animation: rc-circle-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-                box-shadow: 0 8px 20px rgba(22,163,74,0.35);
+                box-shadow: 0 0 0 4px #fff, 0 0 0 7px #c9a24b, 0 16px 30px -10px rgba(22,163,74,0.55);
               }
               .rc-success-check {
                 stroke-dasharray: 48; stroke-dashoffset: 48;
@@ -3232,10 +3240,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               </div>
             </div>
             <div className="rc-success-text">
-              <div style={{ fontSize: '22px', fontWeight: '800', color: '#1e293b', marginBottom: '8px' }}>
-                {selectedHouse} Roll Call Complete!
+              <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.2em', textTransform: 'uppercase', color: '#8a6d2b', marginBottom: 6 }}>GNSI · Hostel</div>
+              <div style={{ fontSize: '26px', fontWeight: '600', color: '#0e203f', marginBottom: '6px', fontFamily: "'Fraunces',Georgia,serif", letterSpacing: '-.01em' }}>
+                {selectedHouse} Roll Call Complete
               </div>
-              <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, margin: '4px 0 20px', padding: '7px 16px', borderRadius: 999, fontSize: 13, fontWeight: 800, color: '#fff', background: 'linear-gradient(160deg,#1f4e8c,#0b1e3d)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.22), 0 0 0 1.5px #fff, 0 0 0 2.5px #c9a24b' }}>
                 {marked} of {total} students marked
               </div>
             </div>
@@ -3502,29 +3511,38 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
 
             {/* Main student card */}
             <div style={{
-              background: 'white', borderRadius: '20px',
-              padding: '28px 24px',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-              border: `2px solid ${currentStatus && currentStatus !== 'Unmarked' ? statusConfig[currentStatus]?.color + '40' : '#e2e8f0'}`,
-              marginBottom: '16px',
+              borderRadius: '24px', overflow: 'hidden', position: 'relative',
+              padding: '0 24px 26px',
+              background: `linear-gradient(180deg,#fff 0%,#f7f4ea 100%) padding-box, ${currentStatus && currentStatus !== 'Unmarked' ? `linear-gradient(150deg,${statusConfig[currentStatus]?.color},#e9d9b0)` : 'linear-gradient(150deg,#e9d9b0,#c9a24b 50%,#e9d9b0)'} border-box`,
+              border: '2px solid transparent',
+              boxShadow: '0 30px 50px -30px rgba(19,42,79,.6), 0 2px 4px rgba(19,42,79,.06)',
+              marginBottom: '18px',
               textAlign: 'center',
             }}>
+              {/* Cover band */}
+              <div style={{ height: 78, margin: '0 -24px', position: 'relative', background: `radial-gradient(120% 140% at 100% 0%, ${pal.color}bb 0%, transparent 55%), linear-gradient(135deg,#0e203f 0%,#132a4f 50%,#1f4e8c 100%)` }}>
+                <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(rgba(255,255,255,.08) 1px,transparent 1px)', backgroundSize: '10px 10px' }} />
+                <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, background: 'linear-gradient(90deg,transparent,#c9a24b,transparent)' }} />
+              </div>
               {/* Avatar */}
               <div style={{
-                width: '72px', height: '72px', borderRadius: '50%',
-                background: pal.bg, border: `3px solid ${pal.color}`,
+                width: '84px', height: '84px', borderRadius: '50%', boxSizing: 'border-box',
+                background: 'linear-gradient(160deg,#1f4e8c,#0b1e3d) padding-box, linear-gradient(145deg,#e9d9b0,#c9a24b,#8a6d2b) border-box',
+                border: '4px solid transparent',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '28px', fontWeight: '800', color: pal.color,
-                margin: '0 auto 16px',
+                fontSize: '32px', fontWeight: '600', color: '#fff', fontFamily: "'Fraunces',Georgia,serif",
+                margin: '-42px auto 14px', position: 'relative',
+                boxShadow: '0 12px 22px -8px rgba(19,42,79,.6)',
               }}>
                 {(currentStudent.name || '?')[0].toUpperCase()}
               </div>
 
-              <div style={{ fontSize: '22px', fontWeight: '800', color: '#1e293b', marginBottom: '6px' }}>
+              <div style={{ fontSize: '24px', fontWeight: '600', color: '#0e203f', marginBottom: '8px', fontFamily: "'Fraunces',Georgia,serif", letterSpacing: '-.01em' }}>
                 {currentStudent.name}
               </div>
-              <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
-                GCC-{currentStudent.gcc_no || '--'} · {getStudentClass(currentStudent) || '--'}
+              <div style={{ fontSize: '12.5px', color: '#5d6b82', marginBottom: '16px', fontWeight: 600 }}>
+                <span style={{ fontWeight: 800, color: '#8a6d2b', letterSpacing: '.05em', background: 'linear-gradient(180deg,#fbf3dc,#f3e5bb)', border: '1px solid #e0c986', borderRadius: 999, padding: '3px 11px', marginRight: 8 }}>GCC-{currentStudent.gcc_no || '--'}</span>
+                {getStudentClass(currentStudent) || '--'}
               </div>
 
               {/* Current status */}
@@ -3621,12 +3639,13 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   onClick={() => markAndAdvance(currentStudent.id, status)}
                   disabled={savingId === currentStudent.id}
                   style={{
-                    padding: '18px', borderRadius: '14px', border: 'none',
-                    background: currentStatus === status ? bg : bg + '15',
+                    padding: '18px', borderRadius: '18px', border: currentStatus === status ? '2px solid #fff' : `1.5px solid ${bg}33`,
+                    background: currentStatus === status ? `linear-gradient(160deg,${bg},${bg}cc)` : `linear-gradient(180deg,#fff,${bg}12)`,
                     color: currentStatus === status ? 'white' : bg,
-                    fontSize: '16px', fontWeight: '800',
+                    fontSize: '17px', fontWeight: '800', letterSpacing: '.01em',
+                    boxShadow: currentStatus === status ? `0 0 0 2px ${bg}, 0 14px 22px -12px ${bg}` : `0 8px 16px -12px ${bg}`,
                     cursor: 'pointer', transition: 'all 0.15s',
-                    minHeight: '60px',
+                    minHeight: '64px',
                   }}
                 >
                   {label}
@@ -3646,10 +3665,11 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                   onClick={() => markAndAdvance(currentStudent.id, status)}
                   disabled={savingId === currentStudent.id}
                   style={{
-                    padding: '12px 8px', borderRadius: '10px', border: 'none',
-                    background: currentStatus === status ? bg : bg + '15',
+                    padding: '13px 8px', borderRadius: '14px', border: currentStatus === status ? '2px solid #fff' : `1.5px solid ${bg}33`,
+                    background: currentStatus === status ? `linear-gradient(160deg,${bg},${bg}cc)` : `linear-gradient(180deg,#fff,${bg}12)`,
                     color: currentStatus === status ? 'white' : bg,
-                    fontSize: '13px', fontWeight: '700',
+                    fontSize: '13px', fontWeight: '800',
+                    boxShadow: currentStatus === status ? `0 0 0 2px ${bg}, 0 10px 18px -10px ${bg}` : `0 6px 12px -10px ${bg}`,
                     cursor: 'pointer', transition: 'all 0.15s',
                   }}
                 >
@@ -3663,7 +3683,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               <button
                 onClick={() => setRollCallIndex(i => Math.max(0, i - 1))}
                 disabled={rollCallIndex === 0}
-                style={{ ...btn('#f1f5f9', '#374151'), padding: '10px 16px', opacity: rollCallIndex === 0 ? 0.4 : 1 }}
+                style={{ ...btn('#fff', '#132a4f'), padding: '10px 18px', borderRadius: 12, border: '1px solid #d8dfec', fontWeight: 700, boxShadow: '0 6px 12px -10px rgba(19,42,79,.6)', opacity: rollCallIndex === 0 ? 0.4 : 1 }}
               >
                 ← Prev
               </button>
@@ -3672,7 +3692,7 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
               </span>
               <button
                 onClick={() => setRollCallIndex(i => Math.min(total, i + 1))}
-                style={{ ...btn('#f1f5f9', '#374151'), padding: '10px 16px' }}
+                style={{ ...btn('#fff', '#132a4f'), padding: '10px 18px', borderRadius: 12, border: '1px solid #d8dfec', fontWeight: 700, boxShadow: '0 6px 12px -10px rgba(19,42,79,.6)' }}
               >
                 Skip →
               </button>
