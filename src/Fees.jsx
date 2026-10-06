@@ -3363,7 +3363,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     }
     if (lowFeeRows.length && !isAdmin) {
       const short = lowFeeRows.reduce((s, r) => s + lowFeeGap(r), 0)
-      if (!window.confirm(`₹${short.toLocaleString('en-IN')} below the standard fee (${lowFeeRows.map(r => r.for_month).join(', ')}).\n\nThis payment will be saved and the low fee sent to an admin for approval. Until approved, the shortfall stays due on the student's ledger.`)) return false
+      if (!window.confirm(`₹${short.toLocaleString('en-IN')} below the standard fee (${lowFeeRows.map(r => r.for_month).join(', ')}).\n\nThis payment will be saved and the low fee sent to an admin for approval. Until approved, the shortfall stays due on the student's ledger.\n\nThe receipt cannot be printed until an admin approves it.`)) return false
     }
     return true
   }
