@@ -2,7 +2,7 @@
 // Nothing is recorded until an admin approves; then the collector presses Collect, which
 // records the payment and prints the receipt.
 import { useCallback, useEffect, useState } from 'react'
-import { loadFeeRequests, markRequestCollected, lowFeeWaUrl } from './feeRequests'
+import { loadFeeRequests, markRequestCollected, lowFeeWaUrl, notifyAdminAuto } from './feeRequests'
 import { collectFee, rcptNo, today } from './feeEngine'
 import { printFeeReceipt } from './premiumReceipt'
 
@@ -42,6 +42,7 @@ export default function FeeRequestsPanel({ currentUser, isAdmin, onDone }) {
         hostel_type: p.hostelType, items, total,
       })
       await markRequestCollected(req, receiptNo)
+      notifyAdminAuto(req.id, 'collected')   // tell the approver the payment was collected (fire-and-forget)
       onDone?.()
       reload()
     } catch (e) { setErr(e.message || 'Could not collect this payment.') }

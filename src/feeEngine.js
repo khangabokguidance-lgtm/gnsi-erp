@@ -9,7 +9,7 @@ import { supabase } from './supabase'
 import { printFeeReceipt, sectionsToItems } from './premiumReceipt'
 import { recordConcession, clearConcession } from './feeConcessions'
 import { findRecentOtherCollection, RECENT_CLASH_MINUTES } from './feePresence'
-import { fileFeeRequest, openRequestsFor, requestKeys, isMissingRequestsTable, REQUESTS_SETUP_MSG, lowFeeWaUrl } from './feeRequests'
+import { fileFeeRequest, openRequestsFor, requestKeys, isMissingRequestsTable, REQUESTS_SETUP_MSG, lowFeeWaUrl, notifyAdminAuto } from './feeRequests'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. LEGACY HARDCODED RATES  (kept as fallback only — DB is now source of truth)
@@ -1074,7 +1074,11 @@ export const collectFee = async ({
       const payload = { gcc, studentName, admNo, className, course, hostelType, payDate, payMode, txnRef, collectedBy, staffId, studentId, items }
       const { data, error } = await fileFeeRequest({ gcc, studentName, requestedBy: staffId || collectedBy, payload, summary })
       if (!error) {
-        throw Object.assign(new Error(`⏳ Sent to admin for approval — ₹${summary.shortfall.toLocaleString('en-IN')} below standard. Nothing is recorded or printed yet. After approval, press Collect under "My low-fee requests" on the Fee Payment screen.`), { held: true, requestId: data?.id, waUrl: lowFeeWaUrl(payload, summary, staffId || collectedBy) })
+        // Try to message the approver automatically; if the server can't (not configured / failed)
+        // hand back the wa.me link so the collector can send it with one tap.
+        const auto = await notifyAdminAuto(data?.id, 'pending')
+        const waUrl = auto.sent ? null : lowFeeWaUrl(payload, summary, staffId || collectedBy)
+        throw Object.assign(new Error(`⏳ Sent to admin for approval${auto.sent ? ' (WhatsApp sent automatically)' : ''} — ₹${summary.shortfall.toLocaleString('en-IN')} below standard. Nothing is recorded or printed yet. After approval, press Collect under "My low-fee requests" on the Fee Payment screen.`), { held: true, requestId: data?.id, waUrl })
       }
       // Table not created yet → keep working the old way (saved; receipt held until approved).
       if (!isMissingRequestsTable(error)) throw new Error(`Could not send the low fee for approval: ${error.message}`)
