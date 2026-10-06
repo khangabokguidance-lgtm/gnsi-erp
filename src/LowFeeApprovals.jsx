@@ -9,6 +9,7 @@ import { getSessionYear, gccStr } from './feeEngine'
 import { LedgerLink } from './LedgerLinks'
 import { HOSTEL_MISMATCH_REASON } from './hostelFeeCheck'
 import { loadFeeRequests, decideFeeRequest, REQUESTS_SETUP_MSG } from './feeRequests'
+import { recordApprovedRequest } from './feeRequestRecord'
 
 const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
 const fmtD = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
@@ -103,10 +104,24 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
       : `Reject this low-fee payment for ${r.student_name || 'GCC-' + r.gcc}?\n\nNothing is recorded. Reason (optional):`, '')
     if (note === null) return
     setBusy(r.id)
-    try { await decideFeeRequest(r, approve, { by: me, note }); reload() } catch (e) { alert(e.message) }
+    try {
+      await decideFeeRequest(r, approve, { by: me, note })
+      if (approve) {
+        // Approved → record the payment now (in this admin session) so the collector can print the receipt.
+        try { const out = await recordApprovedRequest({ ...r, status: 'approved', decided_by: me }, me); alert(`Approved and recorded ✓\nReceipt ${out.receiptNo} · ₹${Number(out.total).toLocaleString('en-IN')}\nThe collector can now print it from "My low-fee requests".`) }
+        catch (e) { alert(`Approved, but the payment could not be recorded yet: ${e.message}\nUse "Record now" on this request to retry.`) }
+      }
+      reload()
+    } catch (e) { alert(e.message) }
+    setBusy(null)
+  }
+  const recordNow = async r => {
+    setBusy(r.id)
+    try { const out = await recordApprovedRequest(r, me); alert(`Recorded ✓ Receipt ${out.receiptNo} · ₹${Number(out.total).toLocaleString('en-IN')}`); reload() } catch (e) { alert(e.message) }
     setBusy(null)
   }
   const pendingReqs = (reqs.rows || []).filter(r => r.status === 'pending')
+  const unrecordedReqs = (reqs.rows || []).filter(r => r.status === 'approved')
 
   const runScan = async () => {
     setScan('running')
@@ -174,6 +189,18 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
                 <button disabled={busy === r.id} style={btn('#fff', '#b42318')} onClick={() => decideReq(r, false)}>Reject</button>
               </div>
             </div>) })}
+        </div>
+      )}
+
+      {unrecordedReqs.length > 0 && (
+        <div style={{ ...card, background: '#fffbeb', borderColor: '#fcd34d' }}>
+          <b style={{ color: '#92400e' }}>Approved but not recorded yet ({unrecordedReqs.length})</b>
+          {unrecordedReqs.map(r => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between', marginTop: 8, flexWrap: 'wrap', fontSize: 13 }}>
+              <span>{r.student_name || `GCC-${r.gcc}`} · {(r.summary?.months || []).join(', ')} · short {inr(r.shortfall)}</span>
+              <button disabled={busy === r.id} style={btn('#1e3a6e')} onClick={() => recordNow(r)}>Record now</button>
+            </div>
+          ))}
         </div>
       )}
 
