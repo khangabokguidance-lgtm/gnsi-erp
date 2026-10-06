@@ -146,6 +146,7 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
       receiptNo: p.receipt, payDate: p.date, collectedBy: p.by, approvedBy: approve ? me : null,
     })
     if (c && !approve) { try { await decideConcession(c, false, { by: me, note: 'Kept due on review' }) } catch (e) { alert(e.message) } }
+    if (c && approve && c.status === 'pending') alert(`Filed as PENDING: a concession above ₹2,000 must be approved by a different admin than the one who filed it. Ask another admin to approve it in Low Fees.`)
     if (!c) alert(CONCESSIONS_SETUP_MSG)
     setScan(sc => sc && sc.items ? { ...sc, items: sc.items.filter(x => x !== u) } : sc)
     setBusy(null); reload()
