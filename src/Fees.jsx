@@ -5018,7 +5018,8 @@ export default function Fees() {
     ...(isAdmin ? [{ id: 'installments', label: 'Instalment Plans',     short: 'Instalments', icon: 'instal',   group: 'tools' }] : []),
     ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Register', icon: 'scholar', group: 'tools' }] : []),
     ...(isAdmin ? [{ id: 'refunds',     label: 'Refunds & Transfers',  short: 'Refunds',     icon: 'refund',   group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' }] : []),
+    // Day closing is for every cashier: it lists the day's collections of all users.
+    { id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' },
     { id: 'verify', label: 'Verify Receipt', short: 'Verify', icon: 'verifyqr', group: 'tools' },
     ...(isAdmin ? [{ id: 'digest',      label: 'Fees Activity Digest', short: 'Digest',      icon: 'digest',   group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'dataHealth',  label: 'Data Health',          short: 'Data Health', icon: 'health',   group: 'checks' }] : []),
@@ -5687,7 +5688,7 @@ export default function Fees() {
       {tab === 'installments' && isAdmin && <FeeInstallments students={students} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'concessionRegister' && isAdmin && <FeeConcessionRegister students={students} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'refunds' && isAdmin && <FeeRefunds students={students} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
-      {tab === 'dayClose' && isAdmin && <FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'dayClose' && <FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'verify' && <ReceiptVerify />}
       {tab === 'digest' && isAdmin && <FeeDigest students={students} isAdmin={isAdmin} />}
       {tab === 'dataHealth' && isAdmin && <DataHealth students={students} isAdmin={isAdmin} />}
@@ -5704,7 +5705,7 @@ export default function Fees() {
       {isMobile && (() => {
         const main = isAdmin
           ? [['dashboard', 'Home', 'dashboard'], ['payment', 'Pay', 'card'], ['live', 'Live', 'pulse'], ['ledger', 'Ledger', 'studentfeeledger']]
-          : [['payment', 'Pay', 'card'], ['ledger', 'Ledger', 'studentfeeledger'], ['verify', 'Verify', 'verifyqr']]
+          : [['payment', 'Pay', 'card'], ['ledger', 'Ledger', 'studentfeeledger'], ['dayClose', 'Close', 'daycalc'], ['verify', 'Verify', 'verifyqr']]
         const pending = (pendingApprovalCount || 0) + (lowFeePending || 0) + (hostelIssueCount || 0)
         const inMain = main.some(m => m[0] === tab)
         const go = id => { setTab(id); setSearch(''); setHubOpen(false); window.scrollTo({ top: 0 }) }
