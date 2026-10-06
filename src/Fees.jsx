@@ -9,6 +9,8 @@ import { PersonalAccountantButton } from './personalAccountant'
 import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen, getLockedAccountTypes } from './monthLock'
 import { printFeeReceipt } from './premiumReceipt'
+import { useFeeCollectionPresence } from './feePresence'
+import FeeClashBanner from './FeeClashBanner'
 import {
   today, gccStr, rcptNo,
   collectFee,
@@ -3007,6 +3009,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const [step,    setStep]    = useState('select')
   const [student, setStudent] = useState(null)
   const [admRec,  setAdmRec]  = useState(null)
+  const clashOthers = useFeeCollectionPresence(student?.gcc_no, currentUser)   // who else has this student open
 
   const [payMode,     setPayMode]     = useState('Cash')
   const [payDate,     setPayDate]     = useState(today())
@@ -3878,6 +3881,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     <div className="fp">
       <style>{FEE_PAY_CSS}</style>
       <FeeFlowSteps current={flowStep} />
+      <FeeClashBanner others={clashOthers} />
       {toast && (
         <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 99999, background: '#fff', border: '1px solid #e8e3d8', borderLeft: `3px solid ${toast.color}`, borderRadius: 10, padding: '11px 16px', fontSize: 13, fontWeight: 600, boxShadow: '0 8px 32px rgba(0,0,0,.12)', maxWidth: 320, color: '#14213d' }}>
           {toast.msg}
