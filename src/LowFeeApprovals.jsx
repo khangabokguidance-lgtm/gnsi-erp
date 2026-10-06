@@ -41,6 +41,7 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
   const [to, setTo] = useState('')
   const [busy, setBusy] = useState(null)
   const [viewMode, setViewMode] = useState('list')  // list | month
+  const todayStr = new Date().toLocaleDateString('en-CA')
   const [scan, setScan] = useState(null)       // null | 'running' | { items, error }
   const [draft, setDraft] = useState({})       // unexplained row key -> reason
   const me = currentUser?.name || currentUser?.userName || 'Admin'
@@ -70,6 +71,13 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
     }
     return [...m.values()].sort((a, b) => b.key.localeCompare(a.key))
   }, [shown]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pending requests raised today — a pending request always comes from a
+  // non-admin (an admin's own are approved at the counter), so this is the
+  // "today's non-admin requests" list.
+  const todayPending = rows.filter(r => r.status === 'pending' && String(r.pay_date || r.created_at).slice(0, 10) === todayStr)
+  const isTodayView = status === 'pending' && from === todayStr && to === todayStr
+  const showToday = () => { setStatus('pending'); setFrom(todayStr); setTo(todayStr); setReason('All'); setStaff('All'); setQ('') }
 
   if (!isAdmin) return <div style={{ padding: 48, textAlign: 'center', color: '#8a93a6' }}>🔒 Admin only</div>
 
@@ -135,6 +143,7 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
       <div style={card}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
           {[['pending', `Pending (${sum.pending.count})`], ['approved', 'Approved'], ['rejected', 'Rejected'], ['All', 'All']].map(([k, l]) => <button key={k} style={chip(status === k)} onClick={() => setStatus(k)}>{l}</button>)}
+          <button style={{ ...chip(isTodayView), borderColor: '#c9a24b' }} onClick={() => isTodayView ? (setFrom(''), setTo('')) : showToday()}>🕘 Today pending ({todayPending.length})</button>
           <span style={{ display: 'inline-flex', gap: 6, marginLeft: 'auto' }}>
             <button style={chip(viewMode === 'list')} onClick={() => setViewMode('list')}>☰ List</button>
             <button style={chip(viewMode === 'month')} onClick={() => setViewMode('month')}>📅 By month</button>
@@ -152,7 +161,7 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
 
       <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
         {!data && <div style={{ padding: 20, color: '#64748b' }}>Loading…</div>}
-        {data && shown.length === 0 && <div style={{ padding: 20, color: '#64748b', textAlign: 'center' }}>{status === 'pending' ? '🎉 Nothing waiting for approval.' : 'No entries match.'}</div>}
+        {data && shown.length === 0 && <div style={{ padding: 20, color: '#64748b', textAlign: 'center' }}>{isTodayView ? 'No pending low-fee requests from staff today.' : status === 'pending' ? '🎉 Nothing waiting for approval.' : 'No entries match.'}</div>}
         {(viewMode === 'month' ? monthGroups : [{ key: 'all', rows: shown }]).map(g => (
           <Fragment key={g.key}>
             {viewMode === 'month' && (
