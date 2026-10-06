@@ -949,7 +949,7 @@ function Accounts({role,userId}){
   // ── CRUD ──────────────────────────────────────────────────────────────
   const openAdd=()=>{
     setEditEntry(null)
-    setRows([{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today,voucher_head:currentStaff?.name||''}])
+    setRows([{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today,voucher_head:''}])
     setReceiptFile(null);setShowForm(true)
   }
 
@@ -1014,6 +1014,38 @@ function Accounts({role,userId}){
     if(hasFutureDate){
       alert('Transaction date cannot be in the future. Please check the date entered.')
       return
+    }
+    // ── Strict expenditure rules ───────────────────────────────────────
+    // Every expense must name a real, accountable person (Voucher Head),
+    // a category, a payment mode and a meaningful description. The HTML
+    // `required` attributes alone were bypassable (blank/'-' values, names
+    // not in the staff list, one-word notes), which is how entries ended up
+    // with no accountable person.
+    const realStaff=new Set(selectableStaffList.map(s=>(s.name||'').trim().toLowerCase()).filter(Boolean))
+    for(let i=0;i<rows.length;i++){
+      const r=rows[i]
+      if(r.type!=='Expense')continue
+      const label=rows.length>1?`Row ${i+1}: `:''
+      const vh=(r.voucher_head||'').trim()
+      if(!vh||vh==='-'||vh==='__add_staff__'){
+        alert(`${label}Voucher Head is required — choose the staff member who takes/is accountable for this expense.`)
+        return
+      }
+      if(!realStaff.has(vh.toLowerCase())){
+        alert(`${label}"${vh}" is not a valid staff member. Pick the Voucher Head from the Staff list.`)
+        return
+      }
+      if(!r.category){alert(`${label}Choose an expense category.`);return}
+      if(!r.sub_category){alert(`${label}Choose a sub-category (use "+ Add New Sub-category" if none fits).`);return}
+      if(!r.vendor_id){alert(`${label}Choose the Vendor / Payee who was paid (use "+ Add New Vendor" if new).`);return}
+      if(!r.payment_mode){alert(`${label}Choose a payment mode.`);return}
+      if(!(Number(r.amount)>0)){alert(`${label}Enter an amount greater than zero.`);return}
+      if((r.note||'').trim().length<8){
+        alert(`${label}Description is too short — say what the money was spent on (at least 8 characters).`)
+        return
+      }
+      const bigAmt=Number(r.amount)>=(Number(approvalSettings.threshold_amount)||DEFAULT_APPROVAL_THRESHOLD)
+      if(bigAmt&&!window.confirm(`${label}₹${Number(r.amount).toLocaleString('en-IN')} is a large expense.\n\nVoucher Head: ${vh}\nCategory: ${r.category}\nNote: ${r.note.trim()}\n\nConfirm these details are correct?`))return
     }
     // Accounts v3: month-end close/lock — a non-admin can't add/edit an
     // entry dated inside a month that's already been closed for that
@@ -1299,7 +1331,7 @@ function Accounts({role,userId}){
     if(key==='entry_date'&&(r.payment_date===r.entry_date||!r.payment_date))return{...r,entry_date:val,payment_date:val}
     return{...r,[key]:val}
   }))
-  const addRow=()=>setRows(prev=>[...prev,{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today,voucher_head:currentStaff?.name||''}])
+  const addRow=()=>setRows(prev=>[...prev,{...emptyRow,type:canAddIncome?'Income':'Expense',entry_date:today,payment_date:today,voucher_head:''}])
   const removeRow=(i)=>setRows(prev=>prev.filter((_,idx)=>idx!==i))
 
   const addCustomExpenseCategory=(i)=>{
@@ -3312,24 +3344,24 @@ function Accounts({role,userId}){
                   </select>
                 </div>
                 {row.type==='Expense'&&(
-                  <div><label style={lStyle}>Sub-category <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
+                  <div><label style={lStyle}>Sub-category <span style={{color:'#dc2626'}}>*</span></label>
                     <select value={row.sub_category||''} onChange={e=>{
                       if(e.target.value==='__add_new_sub__'){addCustomSubCategory(i,row.category);return}
                       updateRow(i,'sub_category',e.target.value)
-                    }} disabled={!row.category} style={{...iStyle,backgroundColor:!row.category?'#faf8f3':'white'}}>
-                      <option value="">{row.category?'None':'Select a category first'}</option>
+                    }} required disabled={!row.category} style={{...iStyle,backgroundColor:!row.category?'#faf8f3':'white'}}>
+                      <option value="">{row.category?'Select':'Select a category first'}</option>
                       {subCategoryOptionsFor(row.category).map(c=><option key={c}>{c}</option>)}
                       {row.category&&<option value="__add_new_sub__">+ Add New Sub-category…</option>}
                     </select>
                   </div>
                 )}
                 {row.type==='Expense'&&(
-                  <div><label style={lStyle}>Vendor / Payee <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
+                  <div><label style={lStyle}>Vendor / Payee <span style={{color:'#dc2626'}}>*</span></label>
                     <select value={row.vendor_id||''} onChange={e=>{
                       if(e.target.value==='__add_vendor__'){addNewVendor(i);return}
                       updateRow(i,'vendor_id',e.target.value)
-                    }} style={iStyle}>
-                      <option value="">None</option>
+                    }} required style={iStyle}>
+                      <option value="">Select</option>
                       {vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
                       <option value="__add_vendor__">+ Add New Vendor…</option>
                     </select>
