@@ -173,7 +173,7 @@ const btn = (bg = MD.color.primary, c = 'white') => ({
 // imperceptible; reads as a printed panel rather than a floating card.
 const card = {
   background: MD.color.surfaceContainer, borderRadius: MD.radius.card, padding: '18px',
-  boxShadow: MD.elevation[1], border: `1px solid ${MD.color.outlineVariant}`,
+  boxShadow: `inset 0 2px 0 rgba(201,162,75,.6), ${MD.elevation[1]}`, border: `1px solid ${MD.color.outlineVariant}`,
 }
 const mobileCard = {
   ...card,
@@ -718,7 +718,7 @@ function StatCard({ icon, label, value, color, bg, compact = false }) {
         <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: color }} />
         <div style={{
           fontSize: '15px', width: '32px', height: '32px', borderRadius: '10px',
-          background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          background: 'linear-gradient(160deg,#1f4e8c,#0b1e3d)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.22), 0 0 0 1.5px #fff, 0 0 0 2.5px #c9a24b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>{icon}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: '10px', color: MD.color.onSurfaceVariant, fontWeight: '700', margin: 0, lineHeight: 1.2, textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</p>
@@ -736,8 +736,8 @@ function StatCard({ icon, label, value, color, bg, compact = false }) {
     }}>
       <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: color }} />
       <div style={{
-        fontSize: '16px', width: '34px', height: '34px', borderRadius: '11px',
-        background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+        fontSize: '16px', width: '36px', height: '36px', borderRadius: '12px',
+        background: 'linear-gradient(160deg,#1f4e8c,#0b1e3d)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.22), 0 0 0 1.5px #fff, 0 0 0 2.5px #c9a24b', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14, marginLeft: 2,
       }}>{icon}</div>
       <p style={{ fontSize: '11px', color: MD.color.onSurfaceVariant, fontWeight: '700', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1.25 }}>{label}</p>
       <h2 style={{ fontSize: '29px', fontWeight: '600', color, margin: 0, lineHeight: 1, fontFamily: FONT_DISPLAY, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>{value}</h2>
@@ -2497,21 +2497,24 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
                     key={houseName}
                     onClick={() => { setSelectedHouse(houseName); setView('dashboard') }}
                     style={{
-                      background: 'white', borderRadius: '14px', overflow: 'hidden',
-                      boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-                      border: `1.5px solid ${allDone ? '#bbf7d0' : pal.border}`,
-                      cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
+                      borderRadius: '20px', overflow: 'hidden',
+                      background: `linear-gradient(180deg,#fff 0%,#f7f4ea 100%) padding-box, linear-gradient(150deg,${allDone ? '#86efac' : '#e9d9b0'},${allDone ? '#16a34a' : '#c9a24b'} 50%,#e9d9b0) border-box`,
+                      border: '1.5px solid transparent',
+                      boxShadow: '0 1px 2px rgba(19,42,79,.06), 0 18px 30px -22px rgba(19,42,79,.55)',
+                      cursor: 'pointer', transition: 'transform 0.18s, box-shadow 0.18s',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.1)' }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.06)' }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 0 0 1px rgba(201,162,75,.45), 0 26px 40px -20px rgba(19,42,79,.6)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(19,42,79,.06), 0 18px 30px -22px rgba(19,42,79,.55)' }}
                   >
-                    {/* Color bar */}
-                    <div style={{ height: '5px', background: allDone ? '#16a34a' : pal.color }} />
+                    {/* Cover band */}
+                    <div style={{ height: '10px', position: 'relative', background: `linear-gradient(90deg,${allDone ? '#16a34a' : pal.color},#0e203f)` }}>
+                      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, background: 'linear-gradient(90deg,transparent,#c9a24b,transparent)' }} />
+                    </div>
                     <div style={{ padding: '16px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                         <div>
-                          <div style={{ fontSize: '18px', fontWeight: '800', color: pal.color }}>
-                            🏠 {houseName}
+                          <div style={{ fontSize: '20px', fontWeight: '600', color: '#0e203f', fontFamily: FONT_DISPLAY, letterSpacing: '-.01em' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 10, fontSize: 15, marginRight: 8, verticalAlign: 'middle', background: 'linear-gradient(160deg,#1f4e8c,#0b1e3d)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.22), 0 0 0 1.5px #fff, 0 0 0 2.5px #c9a24b' }}>🏠</span>{houseName}
                           </div>
                           <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
                             {stats.total} students
@@ -2771,15 +2774,18 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
       <div>
         {reportModal}
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <button onClick={() => setView('houses')} style={{ ...btn('#f1f5f9', '#374151'), padding: '8px 14px', fontSize: '13px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap', padding: '16px 18px', borderRadius: '22px', position: 'relative', overflow: 'hidden', color: '#fff',
+          background: `radial-gradient(120% 160% at 100% 0%, ${pal.color}99 0%, transparent 55%), linear-gradient(135deg,#0e203f 0%,#132a4f 50%,#1f4e8c 100%)`, boxShadow: '0 20px 38px -22px rgba(11,30,61,.75)' }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, background: 'linear-gradient(90deg,transparent,#c9a24b,transparent)' }} />
+          <button onClick={() => setView('houses')} style={{ padding: '8px 14px', fontSize: '13px', fontWeight: 700, borderRadius: 12, cursor: 'pointer', color: '#fff', background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.25)' }}>
             ← Back
           </button>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: mobile ? '18px' : '22px', fontWeight: '800', color: pal.color }}>
-              🏠 {selectedHouse} House
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#e9d9b0' }}>GNSI · Hostel House</div>
+            <div style={{ fontSize: mobile ? '21px' : '26px', fontWeight: '600', color: '#fff', fontFamily: FONT_DISPLAY, lineHeight: 1.1, marginTop: 2 }}>
+              {selectedHouse} House
             </div>
-            <div style={{ fontSize: '12px', color: '#64748b' }}>
+            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.72)', marginTop: 3 }}>
               {date} · {session === 'morning' ? '🌅 Morning' : '🌙 Night'} Roll Call
             </div>
           </div>
@@ -2795,8 +2801,9 @@ function AttendanceTab({ students, currentHousemaster, currentUser, onTabChange,
             onClick={() => { if (!isHouseBlocked(selectedHouse)) startRollCall(selectedHouse) }}
             disabled={isHouseBlocked(selectedHouse)}
             style={{
-              ...btn(isHouseBlocked(selectedHouse) ? '#e2e8f0' : pal.color, isHouseBlocked(selectedHouse) ? '#94a3b8' : 'white'),
-              padding: '10px 20px', fontSize: '14px',
+              ...btn(isHouseBlocked(selectedHouse) ? '#e2e8f0' : '#c9a24b', isHouseBlocked(selectedHouse) ? '#94a3b8' : '#1a1406'),
+              ...(isHouseBlocked(selectedHouse) ? {} : { backgroundImage: 'linear-gradient(160deg,#d4ae58,#b8923a)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.45), 0 10px 18px -8px rgba(184,146,58,.9)' }),
+              padding: '10px 20px', fontSize: '14px', fontWeight: 800,
               cursor: isHouseBlocked(selectedHouse) ? 'not-allowed' : 'pointer',
             }}
           >
