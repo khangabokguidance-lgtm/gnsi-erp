@@ -11277,8 +11277,8 @@ function Hostel() {
           background: none; color: #1c2530; display: flex; align-items: center; gap: 10px; }
         .hs-mi:hover { background: #faf8f3 !important; border-color: #e8e3d8; filter: none !important; }
         .hs-mi.on { background: #eef2f9 !important; border-color: #c9d4e8; color: #132a4f; font-weight: 700; }
-        .hs-mi .ic { width: 30px; height: 30px; border-radius: 9px; background: #f3f0e8; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
-        .hs-mi.on .ic { background: #fff; box-shadow: 0 0 0 1px #e9d9b0; }
+        .hs-mi .ic { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(160deg,#1f4e8c,#0b1e3d); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+        .hs-mi.on .ic { box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px #c9a24b; }
         .hs-stat { transition: transform .15s, box-shadow .15s; }
         .hs-stat:hover { transform: translateY(-2px); box-shadow: ${MD.elevation[2]} !important; }
         .hs-skel { height: 96px; border-radius: 16px; border: 1px solid #e8e3d8; background: linear-gradient(90deg, #fff 0%, #f3f0e8 40%, #fff 80%); background-size: 800px 100%; animation: hsShim 1.3s linear infinite; }

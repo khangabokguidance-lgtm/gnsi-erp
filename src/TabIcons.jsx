@@ -272,21 +272,21 @@ ${PALETTE.map((c, i) => `[data-ti-c="${i}"]{--ti-c:${c}}`).join('')}
 /* Modules sometimes recolour svg strokes on their selected tab: keep the icon on the tab's own colour. */
 [data-ti-c][data-ti-c] .ti-ic svg{color:inherit!important;stroke:currentColor!important;fill:none!important}
 /* Chip look — every coloured tab: icon in a tinted chip; selected tab = solid chip + underline. */
-[data-ti-c] .ti-ic{width:1.6em;height:1.6em;padding:.3em;box-sizing:border-box;border-radius:.55em;opacity:1;color:var(--ti-c);background:#f1f5f9;background:color-mix(in srgb,var(--ti-c) 15%,#fff);transition:background .15s,color .15s}
+[data-ti-c] .ti-ic{width:1.6em;height:1.6em;padding:.3em;box-sizing:border-box;border-radius:.55em;opacity:1;color:#fff;background:#132a4f;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:inset 0 1px 0 rgba(255,255,255,.22);transition:background .15s,color .15s}
 [data-ti-c][data-ti-active]:not([data-ti-m3]){box-shadow:inset 0 -3px 0 var(--ti-c)!important}
-[data-ti-c][data-ti-active] .ti-ic{background:var(--ti-c);color:#fff}
+[data-ti-c][data-ti-active] .ti-ic{background:linear-gradient(160deg,#d4ae58,#b8923a);color:#1a1406}
 /* Material-3 / Google Play look — only for plain tab bars (icon + label, a detectable selected tab).
    Repeated attribute selectors raise specificity above modules' own !important tab styles. */
 [data-ti-m3][data-ti-m3][data-ti-m3]{flex:0 0 auto!important;width:auto!important;max-width:none!important;display:inline-flex!important;flex-direction:column!important;align-items:center!important;justify-content:flex-start!important;gap:4px!important;min-width:64px;height:auto!important;padding:6px 12px 8px!important;border:0!important;border-radius:16px!important;background:transparent!important;background-image:none!important;box-shadow:none!important;color:#5f6368!important;font-size:12px!important;font-weight:500!important;line-height:1.2!important;text-align:center!important;white-space:nowrap}
-[data-ti-m3][data-ti-m3] .ti-ic{width:56px!important;height:30px!important;margin:0!important;padding:0!important;box-sizing:border-box;border-radius:16px!important;opacity:1;background:transparent!important;color:var(--ti-c)!important;transition:background .18s}
+[data-ti-m3][data-ti-m3] .ti-ic{width:56px!important;height:30px!important;margin:0!important;padding:0!important;box-sizing:border-box;border-radius:16px!important;opacity:1;background:#132a4f!important;background:linear-gradient(160deg,#1f4e8c,#0b1e3d)!important;color:#fff!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.22);transition:background .18s}
 [data-ti-m3][data-ti-m3] .ti-ic svg{width:21px!important;height:21px!important}
-[data-ti-m3][data-ti-m3]:hover:not([data-ti-active]) .ti-ic{background:color-mix(in srgb,var(--ti-c) 10%,transparent)!important}
+[data-ti-m3][data-ti-m3]:hover:not([data-ti-active]) .ti-ic{filter:brightness(1.15)}
 [data-ti-m3][data-ti-m3][data-ti-m3][data-ti-active]{color:#202124!important;font-weight:700!important}
-[data-ti-m3][data-ti-m3][data-ti-active] .ti-ic{background:#e8eaed!important;background:color-mix(in srgb,var(--ti-c) 22%,#fff)!important;color:var(--ti-c)!important}
+[data-ti-m3][data-ti-m3][data-ti-active] .ti-ic{background:linear-gradient(160deg,#d4ae58,#b8923a)!important;color:#1a1406!important}
 [data-ti-m3][data-ti-m3][data-ti-m3][data-ti-dark]{color:#bdc1c6!important}
 [data-ti-m3][data-ti-m3][data-ti-m3][data-ti-dark][data-ti-active]{color:#fff!important}
-[data-ti-m3][data-ti-m3][data-ti-dark] .ti-ic{color:#fff!important;color:color-mix(in srgb,var(--ti-c) 45%,#fff)!important}
-[data-ti-m3][data-ti-m3][data-ti-dark][data-ti-active] .ti-ic{background:color-mix(in srgb,var(--ti-c) 38%,transparent)!important}
+[data-ti-m3][data-ti-m3][data-ti-dark] .ti-ic{color:#fff!important;background:linear-gradient(160deg,#2f63a8,#1a3a6e)!important}
+[data-ti-m3][data-ti-m3][data-ti-dark][data-ti-active] .ti-ic{background:linear-gradient(160deg,#d4ae58,#b8923a)!important;color:#1a1406!important}
 [data-ti-scroll]{overflow-x:auto!important;overflow-y:hidden!important;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 [data-ti-scroll]::-webkit-scrollbar{display:none}
 [data-ti-m3][data-ti-only]{min-width:0}
