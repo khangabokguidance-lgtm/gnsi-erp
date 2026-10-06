@@ -14,6 +14,8 @@ import {
   saveStudentFlatFeeOverride, getStudentFlatFeeOverride,
 } from './feeEngine'
 import { confirmFeeMonthOpen } from './monthLock'
+import { useFeeCollectionPresence } from './feePresence'
+import FeeClashBanner from './FeeClashBanner'
 import { courseMonthsDue, sessionOfDate } from './feeLedgerModel'
 
 const FEE_ITEMS = [
@@ -163,6 +165,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
   }
 
   const gcc    = gccStr(validGcc(app?.gcc) ?? validGcc(app?.gcc_no) ?? validGcc(student?.gcc_no) ?? '')
+  const clashOthers = useFeeCollectionPresence(gcc, currentUser)   // who else has this student's fee form open
 
   // ✦ Safe numeric form of gcc for .eq('gcc_no', ...) queries against the
   // students table (gcc_no is an integer column there). `gcc` is already
@@ -1060,6 +1063,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
             <button type="button" aria-label="Close" onClick={handleClose} style={{ width:34, height:34, borderRadius:'50%', border:`1px solid ${C.slate[200]}`, background:'white', cursor:'pointer', fontSize:18, color:C.slate[500], display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
           </div>
 
+          <FeeClashBanner others={clashOthers} />
           {!isStudentActive && (
             <div style={{ marginTop:12, background:'#fef2f2', border:'1.5px solid #fca5a5', borderRadius:10, padding:'10px 14px' }}>
               <div style={{ fontSize:12, color:'#991B1B', fontWeight:700 }}>⛔ {inactiveStatusMsg}</div>

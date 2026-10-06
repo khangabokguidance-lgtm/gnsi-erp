@@ -9,6 +9,8 @@ import { PersonalAccountantButton } from './personalAccountant'
 import { isAdminRole } from './roles'
 import { confirmFeeMonthOpen, getLockedAccountTypes } from './monthLock'
 import { printFeeReceipt } from './premiumReceipt'
+import { useFeeCollectionPresence } from './feePresence'
+import FeeClashBanner from './FeeClashBanner'
 import {
   today, gccStr, rcptNo,
   collectFee,
@@ -1716,15 +1718,15 @@ const FEES_CSS = `
 .fe-nb.on .fe-bi{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
 .fe-nb:focus-visible{outline:2px solid #e9d9b0;outline-offset:-2px;border-radius:10px}
 .fe-nb .fh-b{position:absolute;top:0;right:calc(50% - 26px);min-width:16px;height:16px;border-radius:99px;background:#b42318;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px}
-.fh-row{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;background:#fff;border-radius:20px;padding:10px 8px 8px;border:1px solid #eef0f4;box-shadow:0 1px 2px rgba(16,24,40,.05)}
+.fh-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:14px 4px;overflow:visible;background:#fff;border-radius:20px;padding:14px 10px 12px;border:1px solid #eef0f4;box-shadow:0 1px 2px rgba(16,24,40,.05)}
 .fh-row::-webkit-scrollbar{display:none}
-.fh-row .fh-t{flex:0 0 70px}
+.fh-row .fh-t{flex:none;min-width:0}
 .fh-row .fh-i{width:44px;height:44px;border-radius:14px}
 .fh-row .fh-l{font-size:11px}
 .fh-all .fh-i{background:linear-gradient(160deg,#d4ae58,#b8923a);color:#1a1406}
 @media(max-width:1600px){.fh{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 @media(max-width:1100px){.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
-@media(max-width:700px){.fh{grid-template-columns:1fr!important;gap:12px}.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 2px}.fh-i{width:50px;height:50px}}
+@media(max-width:700px){.fh-row{grid-template-columns:repeat(5,minmax(0,1fr));gap:12px 2px;padding:12px 6px 10px}.fh-row .fh-l{font-size:10.5px}.fh{grid-template-columns:1fr!important;gap:12px}.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 2px}.fh-i{width:50px;height:50px}}
 .fe-kpi{position:relative;overflow:hidden;background:#fff;border:1px solid #e8e3d8;border-radius:16px;padding:16px 18px 15px 20px;cursor:pointer;box-shadow:0 1px 2px rgba(19,42,79,.05),0 6px 18px -10px rgba(19,42,79,.14);transition:transform .15s,box-shadow .15s;text-align:left;min-width:0}
 .fe-kpi:hover{transform:translateY(-2px);box-shadow:0 12px 28px -14px rgba(19,42,79,.3)}
 @keyframes feUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
@@ -3007,6 +3009,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
   const [step,    setStep]    = useState('select')
   const [student, setStudent] = useState(null)
   const [admRec,  setAdmRec]  = useState(null)
+  const clashOthers = useFeeCollectionPresence(student?.gcc_no, currentUser)   // who else has this student open
 
   const [payMode,     setPayMode]     = useState('Cash')
   const [payDate,     setPayDate]     = useState(today())
@@ -3878,6 +3881,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
     <div className="fp">
       <style>{FEE_PAY_CSS}</style>
       <FeeFlowSteps current={flowStep} />
+      <FeeClashBanner others={clashOthers} />
       {toast && (
         <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 99999, background: '#fff', border: '1px solid #e8e3d8', borderLeft: `3px solid ${toast.color}`, borderRadius: 10, padding: '11px 16px', fontSize: 13, fontWeight: 600, boxShadow: '0 8px 32px rgba(0,0,0,.12)', maxWidth: 320, color: '#14213d' }}>
           {toast.msg}
@@ -4636,7 +4640,7 @@ export default function Fees() {
   const [tab, setTab] = useState(() => {
     // The "What's new" banner can ask for a specific tab to be opened.
     try { const t = sessionStorage.getItem('gnsi_fees_open_tab'); if (t) { sessionStorage.removeItem('gnsi_fees_open_tab'); return t } } catch { /* storage unavailable */ }
-    return 'dashboard'
+    return isAdmin ? 'dashboard' : 'payment'
   })
   useEffect(() => {
     const h = e => { if (e?.detail) { setTab(e.detail); try { sessionStorage.removeItem('gnsi_fees_open_tab') } catch { /* storage unavailable */ } } }
@@ -4990,11 +4994,13 @@ export default function Fees() {
   // are hidden from other staff (the security gates noted below still apply).
   const [hubOpen, setHubOpen] = useState(false)
   const TABS = [
-    { id: 'dashboard', label: 'Dashboard',       icon: 'dashboard',        group: 'collect' },
+    // Non-admin staff only get what they need at the counter: Fee Payment,
+    // Student Ledger and Verify Receipt. Everything else is admin-only.
+    ...(isAdmin ? [{ id: 'dashboard', label: 'Dashboard',       icon: 'dashboard',        group: 'collect' }] : []),
     { id: 'payment',   label: 'Fee Payment',     icon: 'card',             group: 'collect' },
-    { id: 'live',      label: 'Live Summary',    icon: 'pulse',            group: 'collect' },
+    ...(isAdmin ? [{ id: 'live',      label: 'Live Summary',    icon: 'pulse',            group: 'collect' }] : []),
     { id: 'ledger',    label: 'Student Ledger',  icon: 'studentfeeledger', group: 'collect' },
-    { id: 'admin',     label: 'Admin View',      icon: 'shield',           group: 'records' },
+    ...(isAdmin ? [{ id: 'admin',     label: 'Admin View',      icon: 'shield',           group: 'records' }] : []),
     // ✦ Security fix: this tab exposes every student's full fee/payment
     // history (GCC, amounts, payment mode, Collected By) with a one-click
     // export, but had no role gate at all — any logged-in staff account,
@@ -5012,12 +5018,17 @@ export default function Fees() {
     ...(isAdmin ? [{ id: 'installments', label: 'Instalment Plans',     short: 'Instalments', icon: 'instal',   group: 'tools' }] : []),
     ...(isAdmin ? [{ id: 'concessionRegister', label: 'Concession Register', short: 'Register', icon: 'scholar', group: 'tools' }] : []),
     ...(isAdmin ? [{ id: 'refunds',     label: 'Refunds & Transfers',  short: 'Refunds',     icon: 'refund',   group: 'tools' }] : []),
-    ...(isAdmin ? [{ id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' }] : []),
+    // Day closing is for every cashier: it lists the day's collections of all users.
+    { id: 'dayClose',    label: 'Daily Closing',        short: 'Day Close',   icon: 'daycalc',  group: 'tools' },
     { id: 'verify', label: 'Verify Receipt', short: 'Verify', icon: 'verifyqr', group: 'tools' },
     ...(isAdmin ? [{ id: 'digest',      label: 'Fees Activity Digest', short: 'Digest',      icon: 'digest',   group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'dataHealth',  label: 'Data Health',          short: 'Data Health', icon: 'health',   group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'rollover',    label: 'Session Rollover',     short: 'Rollover',    icon: 'rollover', group: 'tools' }] : []),
   ]
+  // Bounce a non-admin off any tab they aren't allowed (stale deep link, saved tab, event).
+  useEffect(() => {
+    if (!TABS.some(t => t.id === tab)) setTab(isAdmin ? 'dashboard' : 'payment')
+  }, [tab, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
   const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals'], ['tools', 'Tools & planning']]
     .map(([id, title]) => ({ id, title, items: TABS.filter(t => t.group === id) })).filter(g => g.items.length)
 
@@ -5176,9 +5187,9 @@ export default function Fees() {
           ) : (
             <nav className="fh fh-row" role="tablist" aria-label="Fees sections">
               {TABS.map(tile)}
-              <button type="button" className="fh-t fh-all" onClick={() => setHubOpen(true)} aria-label="Show all fee sections">
+              {isAdmin && <button type="button" className="fh-t fh-all" onClick={() => setHubOpen(true)} aria-label="Show all fee sections">
                 <span className="fh-i"><NavIcon id="grid" size={21} /></span><span className="fh-l">All</span>
-              </button>
+              </button>}
             </nav>
           )
         })()}
@@ -5677,7 +5688,7 @@ export default function Fees() {
       {tab === 'installments' && isAdmin && <FeeInstallments students={students} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'concessionRegister' && isAdmin && <FeeConcessionRegister students={students} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'refunds' && isAdmin && <FeeRefunds students={students} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} />}
-      {tab === 'dayClose' && isAdmin && <FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} />}
+      {tab === 'dayClose' && <FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'verify' && <ReceiptVerify />}
       {tab === 'digest' && isAdmin && <FeeDigest students={students} isAdmin={isAdmin} />}
       {tab === 'dataHealth' && isAdmin && <DataHealth students={students} isAdmin={isAdmin} />}
@@ -5692,21 +5703,23 @@ export default function Fees() {
 
       {/* Phone: payments-app style bottom navigation (the four main sections + the full grid) */}
       {isMobile && (() => {
-        const main = [['dashboard', 'Home', 'dashboard'], ['payment', 'Pay', 'card'], ['live', 'Live', 'pulse'], ['ledger', 'Ledger', 'studentfeeledger']]
+        const main = isAdmin
+          ? [['dashboard', 'Home', 'dashboard'], ['payment', 'Pay', 'card'], ['live', 'Live', 'pulse'], ['ledger', 'Ledger', 'studentfeeledger']]
+          : [['payment', 'Pay', 'card'], ['ledger', 'Ledger', 'studentfeeledger'], ['dayClose', 'Close', 'daycalc'], ['verify', 'Verify', 'verifyqr']]
         const pending = (pendingApprovalCount || 0) + (lowFeePending || 0) + (hostelIssueCount || 0)
         const inMain = main.some(m => m[0] === tab)
         const go = id => { setTab(id); setSearch(''); setHubOpen(false); window.scrollTo({ top: 0 }) }
         return (
-          <nav className="fe-bottom" aria-label="Fees navigation">
+          <nav className="fe-bottom" aria-label="Fees navigation" style={isAdmin ? undefined : { gridTemplateColumns: `repeat(${main.length},1fr)` }}>
             {main.map(([id, label, icon]) => (
               <button key={id} type="button" className={'fe-nb' + (tab === id ? ' on' : '')} onClick={() => go(id)} aria-current={tab === id ? 'page' : undefined}>
                 <span className="fe-bi"><NavIcon id={icon} size={20} /></span><span>{label}</span>
               </button>
             ))}
-            <button type="button" className={'fe-nb' + (!inMain || hubOpen ? ' on' : '')} onClick={() => { setHubOpen(true); window.scrollTo({ top: 0 }) }} aria-label="All fee sections">
+            {isAdmin && <button type="button" className={'fe-nb' + (!inMain || hubOpen ? ' on' : '')} onClick={() => { setHubOpen(true); window.scrollTo({ top: 0 }) }} aria-label="All fee sections">
               <span className="fe-bi"><NavIcon id="grid" size={20} /></span><span>All</span>
               {isAdmin && pending > 0 && <span className="fh-b">{pending > 99 ? '99+' : pending}</span>}
-            </button>
+            </button>}
           </nav>
         )
       })()}

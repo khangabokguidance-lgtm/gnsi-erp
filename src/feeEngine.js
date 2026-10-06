@@ -8,6 +8,7 @@ import { getInstitute, sysOr } from './systemSettings'
 import { supabase } from './supabase'
 import { printFeeReceipt, sectionsToItems } from './premiumReceipt'
 import { recordConcession, clearConcession } from './feeConcessions'
+import { findRecentOtherCollection, RECENT_CLASH_MINUTES } from './feePresence'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. LEGACY HARDCODED RATES  (kept as fallback only — DB is now source of truth)
@@ -1001,7 +1002,7 @@ export const collectFee = async ({
   gcc, studentName, admNo = '--', className = '', course = '',
   hostelType = 'Day Scholar', payDate, payMode = 'Cash',
   txnRef = null, collectedBy = 'Admin', staffId = null,
-  studentId = null, receiptNo, items = [],
+  studentId = null, receiptNo, items = [], skipClashCheck = false,
 }) => {
   if (!gcc)       throw new Error('collectFee: gcc is required')
   if (!payDate)   throw new Error('collectFee: payDate is required')
@@ -1030,6 +1031,19 @@ export const collectFee = async ({
   const resolvedStaffId = staffId || collectedBy || 'Unknown'
   const collectedAt = new Date().toISOString()
   const staffFields = { staff_id: resolvedStaffId, collected_at: collectedAt }
+
+  // ✦ Multi-user detection: another staff member saved a fee for this same
+  // student in the last few minutes (two counters collecting at once / a
+  // double entry). Ask before saving a second one.
+  if (typeof window !== 'undefined' && !skipClashCheck) {
+    const clashes = await findRecentOtherCollection(gcc, resolvedStaffId).catch(() => [])
+    if (clashes.length) {
+      const lines = clashes.slice(0, 4).map(c => `• ${c.by}${c.label ? ' — ' + c.label : ''} (${c.at ? new Date(c.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'just now'})`).join('\n')
+      if (!window.confirm(`⚠️ Another user already saved a fee for this student in the last ${RECENT_CLASH_MINUTES} minutes:\n\n${lines}\n\nSaving again may double-charge. Continue?`)) {
+        throw new Error('Cancelled — a fee for this student was just saved by another user. Check the ledger first.')
+      }
+    }
+  }
 
   const noRevert = { reverted: false, reverted_at: null, reverted_by: null, revert_reason: null }
   const admItems = [], flatItems = [], crsfItems = [], sections = [], skipped = []

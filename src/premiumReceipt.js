@@ -242,7 +242,8 @@ function feeReceiptSheet(d, hist) {
   const rno = d.receipt_no || '—'
   const cell = (l, v, extra = '') => `<td class="c"${extra}><div class="l">${l}</div><div class="v">${v}</div></td>`
   const bodyRows = rows.map((r, i) => `<tr><td>${i + 1}</td><td style="font-weight:700">${escH(r.particulars)}</td><td>${escH(r.period)}</td><td>${escH(r.category)}</td><td class="r mono" style="font-weight:700">${money(r.amount)}</td></tr>`).join('')
-  const by = d.collected_by ? escH(d.collected_by) : '—'
+  const roleTag = d.collector_role ? ` <span style="font-weight:700;color:#8a6d2b">(${escH(d.collector_role)})</span>` : ''
+  const by = d.collected_by ? escH(d.collected_by) + roleTag : '—'
   return receiptSheet(receiptHeader('FEE RECEIPT', 'ORIGINAL · PAID') + `
     <div class="wrap">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px">
@@ -280,6 +281,14 @@ function feeReceiptSheet(d, hist) {
 `, undefined, `Thank you — wishing ${escH(d.student_name)} every success.`)
 }
 
+// Adds the collector's auth role (Admin / Accountant / Staff …) so every fee
+// receipt can print "Name (Role)". An explicit d.collector_role wins.
+const withRole = d => d.collector_role !== undefined || !d.collected_by ? Promise.resolve(d)
+  : import('./collectorRole')
+    .then(m => m.collectorRoleFor(d.collected_by))
+    .then(r => ({ ...d, collector_role: r || '' }))
+    .catch(() => d)
+
 const withHistory = d => d.history !== undefined ? Promise.resolve(d.history)
   : import('./receiptHistory')
     .then(m => Promise.race([m.loadReceiptHistory(d), new Promise(r => setTimeout(() => r(null), 8000))]))
@@ -296,13 +305,13 @@ const withHistory = d => d.history !== undefined ? Promise.resolve(d.history)
  */
 export function printFeeReceipt(d) {
   const title = 'Receipt ' + (d.receipt_no || '—')
-  openReceiptWindow(title, withHistory(d).then(h => receiptDocument(title, feeReceiptSheet(d, h), { printLabel: '🖨 Print receipt' })))
+  openReceiptWindow(title, withRole(d).then(dr => withHistory(dr).then(h => receiptDocument(title, feeReceiptSheet(dr, h), { printLabel: '🖨 Print receipt' }))))
 }
 
 // Several fee receipts in one print job, one A4 page each (e.g. Bulk Admission).
 export function printFeeReceipts(list, title = 'Fee receipts') {
   if (!list?.length) return
-  openReceiptWindow(title, Promise.all(list.map(d => withHistory(d).then(h => feeReceiptSheet(d, h))))
+  openReceiptWindow(title, Promise.all(list.map(d => withRole(d).then(dr => withHistory(dr).then(h => feeReceiptSheet(dr, h)))))
     .then(sheets => receiptDocument(title, sheets.join(''), { printLabel: `🖨 Print ${list.length} receipt${list.length === 1 ? '' : 's'}` })))
 }
 

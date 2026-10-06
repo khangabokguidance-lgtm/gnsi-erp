@@ -2,7 +2,7 @@
 // rate: approve (waive the shortfall) or reject (it stays due), see who gives
 // low fees and why, and scan the ledgers for short payments with no reason
 // on file.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { loadConcessions, decideConcession, recordConcession, summarise, unexplainedShortPayments, CONCESSION_REASONS, CONCESSIONS_SETUP_MSG } from './feeConcessions'
 import { buildAllLedgers } from './feeLedgerBulk'
 import { getSessionYear, gccStr } from './feeEngine'
@@ -40,6 +40,8 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [busy, setBusy] = useState(null)
+  const [viewMode, setViewMode] = useState('list')  // list | month
+  const todayStr = new Date().toLocaleDateString('en-CA')
   const [scan, setScan] = useState(null)       // null | 'running' | { items, error }
   const [draft, setDraft] = useState({})       // unexplained row key -> reason
   const me = currentUser?.name || currentUser?.userName || 'Admin'
@@ -56,6 +58,26 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
       && (!from || String(r.pay_date || r.created_at).slice(0, 10) >= from) && (!to || String(r.pay_date || r.created_at).slice(0, 10) <= to)
       && (!t || [r.student_name, r.gcc, r.receipt_no, r.reason_note, r.collected_by].some(v => String(v || '').toLowerCase().includes(t))))
   }, [rows, status, reason, staff, q, from, to])
+
+  // Month-wise view: the same (filtered) entries grouped by fee month, newest first.
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+  const monthGroups = useMemo(() => {
+    const m = new Map()
+    for (const c of shown) {
+      const idx = MONTHS.indexOf(c.month)
+      const key = `${c.year || 0}-${String(idx < 0 ? 0 : idx + 1).padStart(2, '0')}`
+      if (!m.has(key)) m.set(key, { key, label: c.month ? `${c.month} ${c.year || ''}`.trim() : 'No month', rows: [] })
+      m.get(key).rows.push(c)
+    }
+    return [...m.values()].sort((a, b) => b.key.localeCompare(a.key))
+  }, [shown]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pending requests raised today — a pending request always comes from a
+  // non-admin (an admin's own are approved at the counter), so this is the
+  // "today's non-admin requests" list.
+  const todayPending = rows.filter(r => r.status === 'pending' && String(r.pay_date || r.created_at).slice(0, 10) === todayStr)
+  const isTodayView = status === 'pending' && from === todayStr && to === todayStr
+  const showToday = () => { setStatus('pending'); setFrom(todayStr); setTo(todayStr); setReason('All'); setStaff('All'); setQ('') }
 
   if (!isAdmin) return <div style={{ padding: 48, textAlign: 'center', color: '#8a93a6' }}>🔒 Admin only</div>
 
@@ -121,7 +143,12 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
       <div style={card}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
           {[['pending', `Pending (${sum.pending.count})`], ['approved', 'Approved'], ['rejected', 'Rejected'], ['All', 'All']].map(([k, l]) => <button key={k} style={chip(status === k)} onClick={() => setStatus(k)}>{l}</button>)}
-          <button style={{ ...chip(reason === HOSTEL_MISMATCH_REASON), marginLeft: 'auto' }} onClick={() => setReason(r => r === HOSTEL_MISMATCH_REASON ? 'All' : HOSTEL_MISMATCH_REASON)}>🏠 Wrong hostel type{mismatchCount ? ` (${mismatchCount} pending)` : ''}</button>
+          <button style={{ ...chip(isTodayView), borderColor: '#c9a24b' }} onClick={() => isTodayView ? (setFrom(''), setTo('')) : showToday()}>🕘 Today pending ({todayPending.length})</button>
+          <span style={{ display: 'inline-flex', gap: 6, marginLeft: 'auto' }}>
+            <button style={chip(viewMode === 'list')} onClick={() => setViewMode('list')}>☰ List</button>
+            <button style={chip(viewMode === 'month')} onClick={() => setViewMode('month')}>📅 By month</button>
+          </span>
+          <button style={chip(reason === HOSTEL_MISMATCH_REASON)} onClick={() => setReason(r => r === HOSTEL_MISMATCH_REASON ? 'All' : HOSTEL_MISMATCH_REASON)}>🏠 Wrong hostel type{mismatchCount ? ` (${mismatchCount} pending)` : ''}</button>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <select style={inp} value={reason} onChange={e => setReason(e.target.value)} aria-label="Filter by reason"><option>All</option>{CONCESSION_REASONS.map(r => <option key={r}>{r}</option>)}</select>
@@ -134,8 +161,18 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
 
       <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
         {!data && <div style={{ padding: 20, color: '#64748b' }}>Loading…</div>}
-        {data && shown.length === 0 && <div style={{ padding: 20, color: '#64748b', textAlign: 'center' }}>{status === 'pending' ? '🎉 Nothing waiting for approval.' : 'No entries match.'}</div>}
-        {shown.map(c => (
+        {data && shown.length === 0 && <div style={{ padding: 20, color: '#64748b', textAlign: 'center' }}>{isTodayView ? 'No pending low-fee requests from staff today.' : status === 'pending' ? '🎉 Nothing waiting for approval.' : 'No entries match.'}</div>}
+        {(viewMode === 'month' ? monthGroups : [{ key: 'all', rows: shown }]).map(g => (
+          <Fragment key={g.key}>
+            {viewMode === 'month' && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 16px', background: 'linear-gradient(135deg,#0e203f,#1f4e8c)', color: '#fff', borderTop: '1px solid #f1f5f9' }}>
+                <b style={{ fontFamily: "'Fraunces',Georgia,serif", fontSize: 15 }}>📅 {g.label}</b>
+                <span style={{ fontSize: 12, opacity: .9 }}>
+                  {g.rows.length} entr{g.rows.length === 1 ? 'y' : 'ies'} · {g.rows.filter(r => r.status === 'pending').length} pending · short <b style={{ color: '#e9d9b0' }}>{inr(g.rows.reduce((t, r) => t + (Number(r.shortfall) || 0), 0))}</b>
+                </span>
+              </div>
+            )}
+            {g.rows.map(c => (
           <div key={c.id} style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTop: '1px solid #f1f5f9' }}>
             <div style={{ minWidth: 220, flex: '2 1 260px' }}>
               <div style={{ fontWeight: 800 }}><LedgerLink gcc={c.gcc}>{c.student_name || `GCC-${c.gcc}`}</LedgerLink> <span style={{ color: '#98a2b3', fontWeight: 600, fontSize: 12 }}>GCC-{c.gcc} · {c.fee_kind === 'flat' ? 'Flat fee' : `Course fee${c.course ? ' — ' + c.course : ''}`} · {c.month} {c.year}</span></div>
@@ -152,6 +189,8 @@ export default function LowFeeApprovals({ students = [], adm_fee_collections = [
               {c.status !== 'rejected' && <button disabled={busy === c.id} style={btn('#fff', '#b42318')} onClick={() => decide(c, false)}>Reject</button>}
             </div>
           </div>
+            ))}
+          </Fragment>
         ))}
       </div>
 

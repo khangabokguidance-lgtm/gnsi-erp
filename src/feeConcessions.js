@@ -66,7 +66,14 @@ export async function recordConcession({ replace = false, table, rowId, kind, gc
     collected_by: collectedBy || null, requested_by: collectedBy || null,
     status, ...(approvedBy ? { decided_by: approvedBy, decided_at: now, decision_note: 'Approved at collection' } : {}),
   }).select().single()
-  if (error) { console.warn(missingTable(error) ? CONCESSIONS_SETUP_MSG : `Could not file low-fee request: ${error.message}`); return null }
+  if (error) {
+    const why = missingTable(error) ? CONCESSIONS_SETUP_MSG : error.message
+    console.warn(`Could not file low-fee request: ${why}`)
+    // The payment itself is already saved — but without a request nothing appears
+    // in the admin's Low Fees list, so tell the collector instead of failing silently.
+    try { if (typeof window !== 'undefined') window.alert(`The payment was saved, but its low-fee approval request could NOT be filed, so an admin will not see it in Low Fees.\n\nReason: ${why}\n\nTell an admin: on the Low Fees tab they can press "Scan ledgers" to pick it up.`) } catch { /* non-browser */ }
+    return null
+  }
   const { error: rowErr } = await supabase.from(table).update({ concession_status: status, concession_amount: approvedBy ? shortfall : 0 }).eq('id', rowId)
   if (rowErr) console.warn('Could not mark the fee row with its concession status:', rowErr.message)
   return data
