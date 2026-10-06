@@ -4636,7 +4636,7 @@ export default function Fees() {
   const [tab, setTab] = useState(() => {
     // The "What's new" banner can ask for a specific tab to be opened.
     try { const t = sessionStorage.getItem('gnsi_fees_open_tab'); if (t) { sessionStorage.removeItem('gnsi_fees_open_tab'); return t } } catch { /* storage unavailable */ }
-    return 'dashboard'
+    return isAdmin ? 'dashboard' : 'payment'
   })
   useEffect(() => {
     const h = e => { if (e?.detail) { setTab(e.detail); try { sessionStorage.removeItem('gnsi_fees_open_tab') } catch { /* storage unavailable */ } } }
@@ -4990,11 +4990,13 @@ export default function Fees() {
   // are hidden from other staff (the security gates noted below still apply).
   const [hubOpen, setHubOpen] = useState(false)
   const TABS = [
-    { id: 'dashboard', label: 'Dashboard',       icon: 'dashboard',        group: 'collect' },
+    // Non-admin staff only get what they need at the counter: Fee Payment,
+    // Student Ledger and Verify Receipt. Everything else is admin-only.
+    ...(isAdmin ? [{ id: 'dashboard', label: 'Dashboard',       icon: 'dashboard',        group: 'collect' }] : []),
     { id: 'payment',   label: 'Fee Payment',     icon: 'card',             group: 'collect' },
-    { id: 'live',      label: 'Live Summary',    icon: 'pulse',            group: 'collect' },
+    ...(isAdmin ? [{ id: 'live',      label: 'Live Summary',    icon: 'pulse',            group: 'collect' }] : []),
     { id: 'ledger',    label: 'Student Ledger',  icon: 'studentfeeledger', group: 'collect' },
-    { id: 'admin',     label: 'Admin View',      icon: 'shield',           group: 'records' },
+    ...(isAdmin ? [{ id: 'admin',     label: 'Admin View',      icon: 'shield',           group: 'records' }] : []),
     // ✦ Security fix: this tab exposes every student's full fee/payment
     // history (GCC, amounts, payment mode, Collected By) with a one-click
     // export, but had no role gate at all — any logged-in staff account,
@@ -5018,6 +5020,10 @@ export default function Fees() {
     ...(isAdmin ? [{ id: 'dataHealth',  label: 'Data Health',          short: 'Data Health', icon: 'health',   group: 'checks' }] : []),
     ...(isAdmin ? [{ id: 'rollover',    label: 'Session Rollover',     short: 'Rollover',    icon: 'rollover', group: 'tools' }] : []),
   ]
+  // Bounce a non-admin off any tab they aren't allowed (stale deep link, saved tab, event).
+  useEffect(() => {
+    if (!TABS.some(t => t.id === tab)) setTab(isAdmin ? 'dashboard' : 'payment')
+  }, [tab, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
   const TAB_GROUPS = [['collect', 'Collect fees'], ['records', 'Records & reports'], ['checks', 'Checks & approvals'], ['tools', 'Tools & planning']]
     .map(([id, title]) => ({ id, title, items: TABS.filter(t => t.group === id) })).filter(g => g.items.length)
 
@@ -5176,9 +5182,9 @@ export default function Fees() {
           ) : (
             <nav className="fh fh-row" role="tablist" aria-label="Fees sections">
               {TABS.map(tile)}
-              <button type="button" className="fh-t fh-all" onClick={() => setHubOpen(true)} aria-label="Show all fee sections">
+              {isAdmin && <button type="button" className="fh-t fh-all" onClick={() => setHubOpen(true)} aria-label="Show all fee sections">
                 <span className="fh-i"><NavIcon id="grid" size={21} /></span><span className="fh-l">All</span>
-              </button>
+              </button>}
             </nav>
           )
         })()}
@@ -5692,21 +5698,23 @@ export default function Fees() {
 
       {/* Phone: payments-app style bottom navigation (the four main sections + the full grid) */}
       {isMobile && (() => {
-        const main = [['dashboard', 'Home', 'dashboard'], ['payment', 'Pay', 'card'], ['live', 'Live', 'pulse'], ['ledger', 'Ledger', 'studentfeeledger']]
+        const main = isAdmin
+          ? [['dashboard', 'Home', 'dashboard'], ['payment', 'Pay', 'card'], ['live', 'Live', 'pulse'], ['ledger', 'Ledger', 'studentfeeledger']]
+          : [['payment', 'Pay', 'card'], ['ledger', 'Ledger', 'studentfeeledger'], ['verify', 'Verify', 'verifyqr']]
         const pending = (pendingApprovalCount || 0) + (lowFeePending || 0) + (hostelIssueCount || 0)
         const inMain = main.some(m => m[0] === tab)
         const go = id => { setTab(id); setSearch(''); setHubOpen(false); window.scrollTo({ top: 0 }) }
         return (
-          <nav className="fe-bottom" aria-label="Fees navigation">
+          <nav className="fe-bottom" aria-label="Fees navigation" style={isAdmin ? undefined : { gridTemplateColumns: `repeat(${main.length},1fr)` }}>
             {main.map(([id, label, icon]) => (
               <button key={id} type="button" className={'fe-nb' + (tab === id ? ' on' : '')} onClick={() => go(id)} aria-current={tab === id ? 'page' : undefined}>
                 <span className="fe-bi"><NavIcon id={icon} size={20} /></span><span>{label}</span>
               </button>
             ))}
-            <button type="button" className={'fe-nb' + (!inMain || hubOpen ? ' on' : '')} onClick={() => { setHubOpen(true); window.scrollTo({ top: 0 }) }} aria-label="All fee sections">
+            {isAdmin && <button type="button" className={'fe-nb' + (!inMain || hubOpen ? ' on' : '')} onClick={() => { setHubOpen(true); window.scrollTo({ top: 0 }) }} aria-label="All fee sections">
               <span className="fe-bi"><NavIcon id="grid" size={20} /></span><span>All</span>
               {isAdmin && pending > 0 && <span className="fh-b">{pending > 99 ? '99+' : pending}</span>}
-            </button>
+            </button>}
           </nav>
         )
       })()}
