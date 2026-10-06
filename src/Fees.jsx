@@ -1718,15 +1718,15 @@ const FEES_CSS = `
 .fe-nb.on .fe-bi{background:linear-gradient(180deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 4px 10px -4px rgba(184,146,58,.8)}
 .fe-nb:focus-visible{outline:2px solid #e9d9b0;outline-offset:-2px;border-radius:10px}
 .fe-nb .fh-b{position:absolute;top:0;right:calc(50% - 26px);min-width:16px;height:16px;border-radius:99px;background:#b42318;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px}
-.fh-row{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;background:#fff;border-radius:20px;padding:10px 8px 8px;border:1px solid #eef0f4;box-shadow:0 1px 2px rgba(16,24,40,.05)}
+.fh-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:14px 4px;overflow:visible;background:#fff;border-radius:20px;padding:14px 10px 12px;border:1px solid #eef0f4;box-shadow:0 1px 2px rgba(16,24,40,.05)}
 .fh-row::-webkit-scrollbar{display:none}
-.fh-row .fh-t{flex:0 0 70px}
+.fh-row .fh-t{flex:none;min-width:0}
 .fh-row .fh-i{width:44px;height:44px;border-radius:14px}
 .fh-row .fh-l{font-size:11px}
 .fh-all .fh-i{background:linear-gradient(160deg,#d4ae58,#b8923a);color:#1a1406}
 @media(max-width:1600px){.fh{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 @media(max-width:1100px){.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
-@media(max-width:700px){.fh{grid-template-columns:1fr!important;gap:12px}.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 2px}.fh-i{width:50px;height:50px}}
+@media(max-width:700px){.fh-row{grid-template-columns:repeat(5,minmax(0,1fr));gap:12px 2px;padding:12px 6px 10px}.fh-row .fh-l{font-size:10.5px}.fh{grid-template-columns:1fr!important;gap:12px}.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 2px}.fh-i{width:50px;height:50px}}
 .fe-kpi{position:relative;overflow:hidden;background:#fff;border:1px solid #e8e3d8;border-radius:16px;padding:16px 18px 15px 20px;cursor:pointer;box-shadow:0 1px 2px rgba(19,42,79,.05),0 6px 18px -10px rgba(19,42,79,.14);transition:transform .15s,box-shadow .15s;text-align:left;min-width:0}
 .fe-kpi:hover{transform:translateY(-2px);box-shadow:0 12px 28px -14px rgba(19,42,79,.3)}
 @keyframes feUp{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
