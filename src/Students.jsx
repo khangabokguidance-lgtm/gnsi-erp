@@ -3183,18 +3183,20 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
 
   return (
     <div className="st-card" style={{
-      background:T.surface, borderRadius:T.r16,
-      border:`1px solid ${isSel?T.gold:T.border}`,
-      boxShadow:isSel?`0 0 0 3px ${T.goldLight}, ${T.shadow}`:T.shadow,
+      borderRadius:T.r16,
+      border:'1px solid transparent',
+      background:isSel?`linear-gradient(${T.surface},${T.surface}) padding-box,linear-gradient(145deg,${T.gold},${T.goldBorder}) border-box`:`linear-gradient(180deg,#fff 0%,${T.surface2} 100%) padding-box,linear-gradient(150deg,${T.goldBorder} 0%,${T.border} 45%,${T.gold} 100%) border-box`,
+      boxShadow:isSel?`0 0 0 3px ${T.goldLight}, 0 18px 34px -18px rgba(19,42,79,.55)`:'0 1px 2px rgba(19,42,79,.06),0 16px 30px -22px rgba(19,42,79,.55)',
       overflow:'hidden', position:'relative',
     }}>
       {/* Cover strip — navy band with the course colour glowing through */}
       <div style={{
-        height:60, position:'relative',
+        height:72, position:'relative',
         background:`radial-gradient(120% 140% at 100% 0%,${accent}bb 0%,transparent 55%),linear-gradient(135deg,${T.navy} 0%,${T.navy2} 100%)`,
       }}>
         <div style={{position:'absolute',inset:0,backgroundImage:'radial-gradient(rgba(255,255,255,.08) 1px,transparent 1px)',backgroundSize:'10px 10px',opacity:.7}}/>
         <div style={{position:'absolute',left:0,right:0,bottom:0,height:2,background:`linear-gradient(90deg,transparent,${T.gold},transparent)`,opacity:.8}}/>
+        <div style={{position:'absolute',inset:0,background:'linear-gradient(115deg,rgba(255,255,255,.14) 0%,rgba(255,255,255,0) 38%)',pointerEvents:'none'}}/>
         <label onClick={e=>e.stopPropagation()} title="Select" style={{position:'absolute',top:9,left:9,width:24,height:24,borderRadius:7,background:isSel?T.gold:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.3)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
           <input type="checkbox" checked={isSel} onChange={e=>{e.stopPropagation();onSelect(s.id)}} onClick={e=>e.stopPropagation()}
             style={{width:14,height:14,cursor:'pointer',accentColor:T.gold,margin:0}}/>
@@ -3205,10 +3207,10 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
       </div>
 
       {/* Avatar overlapping the cover, centered like a profile header */}
-      <div style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'0 16px 16px',marginTop:-32}}>
+      <div style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'0 16px 16px',marginTop:-38}}>
         <div style={{position:'relative'}}>
-          <div style={{padding:3,background:T.surface,borderRadius:'50%',boxShadow:`0 0 0 1.5px ${T.goldBorder}, 0 6px 14px -6px rgba(19,42,79,.35)`}}>
-            <Avatar name={s.name} photoUrl={s.photo_url} size={64}/>
+          <div style={{padding:3,background:`linear-gradient(#fff,#fff) padding-box,linear-gradient(145deg,#e9d9b0,${T.gold},#8a6d2b) border-box`,border:'2.5px solid transparent',borderRadius:'50%',boxShadow:'0 10px 20px -8px rgba(19,42,79,.5)'}}>
+            <Avatar name={s.name} photoUrl={s.photo_url} size={68}/>
           </div>
           {birthday&&<span style={{position:'absolute',bottom:-2,right:-2,fontSize:16}}>🎂</span>}
         </div>
@@ -3219,7 +3221,7 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
             {recent&&<span style={{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:T.r4,background:T.tealLight,color:T.teal,border:`1px solid ${T.tealBorder}`}}>NEW</span>}
           </div>
           <div style={{fontSize:11.5,color:T.text3,marginTop:3,fontVariantNumeric:'tabular-nums'}}>
-            {s.gcc_no&&<span style={{fontWeight:700,color:T.gold,letterSpacing:'.03em'}}>GCC-{s.gcc_no}</span>}{s.gcc_no&&s.batch?' · ':''}{s.batch}
+            {s.gcc_no&&<span style={{fontWeight:800,color:'#8a6d2b',letterSpacing:'.05em',background:'linear-gradient(180deg,#fbf3dc,#f3e5bb)',border:'1px solid #e0c986',borderRadius:999,padding:'2px 9px',fontSize:10.5}}>GCC-{s.gcc_no}</span>}{s.gcc_no&&s.batch?'  ':''}{s.batch}
           </div>
           <div style={{display:'flex',gap:5,justifyContent:'center',flexWrap:'wrap',marginTop:6}}>
             {s.course&&<CoursePill course={s.course}/>}
@@ -3233,7 +3235,7 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
         </div>
 
         {/* Mini stat row — attendance + fee, like FB's friend-count/mutuals line */}
-        <div style={{display:'flex',gap:0,marginTop:12,alignItems:'stretch',width:'100%',background:T.surface2,border:`1px solid ${T.border}`,borderRadius:T.r10,padding:'8px 0',justifyContent:'space-evenly'}}>
+        <div style={{display:'flex',gap:0,marginTop:12,alignItems:'stretch',width:'100%',background:`linear-gradient(180deg,#fff,${T.surface2})`,border:`1px solid ${T.border}`,borderTop:`2px solid ${T.gold}`,borderRadius:T.r10,padding:'9px 0',justifyContent:'space-evenly',boxShadow:'inset 0 1px 0 #fff'}}>
           <div style={{textAlign:'center'}}>
             <div style={{fontSize:9.5,color:T.text4,fontWeight:600,textTransform:'uppercase',letterSpacing:'.05em'}}>Attendance</div>
             <div style={{marginTop:2}}>{att!=null?<span style={{fontSize:13,fontWeight:700,color:att>=75?T.green:T.red}}>{att.toFixed(0)}%</span>:<span style={{fontSize:12,color:T.text4}}>—</span>}</div>
@@ -3256,7 +3258,7 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
         ) : (
           ACTIONS.map((a,i)=>(
             <button key={a.l} onClick={a.fn} title={a.l} aria-label={a.l} style={{
-              flex:'1 1 0', minWidth:0, padding:'9px 2px 8px', border:'none',
+              flex:'1 1 0', minWidth:0, padding:'10px 2px 9px', border:'none',
               borderRight:i<ACTIONS.length-1?`1px solid ${T.border}`:'none',
               background:'none', cursor:'pointer', fontSize:11.5, fontWeight:600,
               color:a.danger?T.red:a.primary?T.brand:T.text2,
@@ -3266,7 +3268,7 @@ function StudentCard({ s, can, onEdit, onDelete, onOpenFee, onOpenDetail, onQuic
             onMouseEnter={e=>{e.currentTarget.style.background=a.danger?T.redLight:T.surface2;if(!a.danger&&!a.primary)e.currentTarget.style.color=T.brand}}
             onMouseLeave={e=>{e.currentTarget.style.background='none';e.currentTarget.style.color=a.danger?T.red:a.primary?T.brand:T.text2}}
             >
-              <span style={{fontSize:14}}>{a.icon}</span>
+              <span style={{fontSize:13,width:26,height:26,borderRadius:9,display:'inline-flex',alignItems:'center',justifyContent:'center',background:a.danger?'linear-gradient(160deg,#c0392b,#7f1d1d)':'linear-gradient(160deg,#1f4e8c,#0b1e3d)',boxShadow:'inset 0 1px 0 rgba(255,255,255,.22),0 0 0 1.5px #fff,0 0 0 2.5px #c9a24b'}}>{a.icon}</span>
               <span style={{fontSize:10.5,maxWidth:'100%',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.l==='Attendance'?'Attend':a.l}</span>
             </button>
           ))
@@ -5587,18 +5589,21 @@ const effectiveCols = visibleCols.filter(col => {
     .st-hbtn.gold{background:linear-gradient(180deg,#d4ae58,${T.gold});color:#1a1406;border:1px solid #a37f2e;box-shadow:0 1px 0 rgba(255,255,255,.35) inset,0 8px 18px -8px rgba(184,146,58,.8)}
     .st-hbtn.gold:hover{filter:brightness(1.06)}
     .st-hstat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:11px 14px;min-width:0;backdrop-filter:blur(4px)}
-    .st-tabs{display:flex;gap:4px;padding:5px;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    .st-tabs{display:flex;gap:6px;padding:6px;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
     .st-tabs::-webkit-scrollbar{display:none}
-    .st-tab{display:flex;align-items:center;gap:7px;padding:9px 16px;border:none;border-radius:10px;background:none;cursor:pointer;font:600 13.5px/1 'Plus Jakarta Sans',system-ui,sans-serif;color:var(--text3);white-space:nowrap;transition:background .15s,color .15s}
+    .st-tab{display:flex;align-items:center;gap:9px;padding:7px 16px 7px 9px;border:none;border-radius:10px;background:none;cursor:pointer;font:600 13.5px/1 'Plus Jakarta Sans',system-ui,sans-serif;color:var(--text3);white-space:nowrap;transition:background .15s,color .15s}
     .st-tab:hover{color:var(--text1);background:var(--surface2)}
     .st-tab.on{background:linear-gradient(180deg,${T.navy2},${T.navy});color:#fff;box-shadow:0 6px 14px -6px rgba(19,42,79,.6)}
-    .st-tab.on svg{color:${T.goldBorder}}
+    .st-ti{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;color:#fff;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 0 0 1.5px #fff,0 0 0 2.5px #c9a24b;margin-right:2px;transition:transform .15s}
+    .st-tab:hover .st-ti{transform:translateY(-1px)}
+    .st-tab.on .st-ti{background:linear-gradient(160deg,#d4ae58,#b8923a);color:#1a1406;box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 0 0 1.5px rgba(255,255,255,.35)}
+    .st-tab.on svg{color:#1a1406}
     .st-tool{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .st-kpis{display:flex;gap:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;padding:2px 2px 6px;margin:0 -2px;scrollbar-width:thin}
     .st-kpis>.st-kpi{flex:1 0 132px;scroll-snap-align:start}
     .st-filter{position:sticky;top:0;z-index:100;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);padding:10px 0;margin-bottom:14px;border-bottom:1px solid var(--border)}
     .st-card{transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s;animation:fadeUp .3s ease both}
-    .st-card:hover{transform:translateY(-3px);box-shadow:var(--shadow2)!important}
+    .st-card:hover{transform:translateY(-4px);box-shadow:0 0 0 1px rgba(201,162,75,.45),0 24px 40px -20px rgba(19,42,79,.6)!important}
     .st-card:hover .st-name{color:${T.navy2}}
     .st-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
     .st-skel{border-radius:16px;height:268px;border:1px solid var(--border);background:linear-gradient(90deg,var(--surface) 0%,var(--surface2) 40%,var(--surface) 80%);background-size:800px 100%;animation:stShimmer 1.3s linear infinite}
@@ -5754,7 +5759,7 @@ const effectiveCols = visibleCols.filter(col => {
                   const active=pageTab===t.key
                   return (
                     <button key={t.key} role="tab" aria-selected={active} className={'st-tab'+(active?' on':'')} onClick={()=>setPageTab(t.key)}>
-                      <t.icon size={15}/>
+                      <span className="st-ti"><t.icon size={15}/></span>
                       {t.label}
                     </button>
                   )
