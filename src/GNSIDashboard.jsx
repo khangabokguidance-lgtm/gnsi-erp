@@ -75,6 +75,9 @@ const ACADEMIC_MONTHS = MONTHS_LIST.map((month, i) => {
 // for that section (see the grep of every <div ref={setSectionRef('id')}>
 // below). Order here is the order tabs render in the nav bar and follows
 // the order sections actually appear on the page.
+const SEC_ICON = { overview:'overview', security:'shield', intel:'intel', finance:'fees', students:'students', dropout:'dropout', admissions:'admissions', staff:'staff', attendance:'attendance', academic:'courses', tests:'exams', enquiry:'search', hostel:'hostel', houses:'awards', operations:'feesetup', batches:'batches', doubts:'doubts', parents:'parents', material:'studymaterial', results:'awards', teaching:'teaching', feesetup:'card', feeledger:'studentfeeledger', entrance:'entrance', lockers:'studylockers', syllabus:'syllabus', qbank:'questionbank', social:'social', connect:'connect', expenses:'expenses' }
+const SecIcon = ({ id, fallback, size = 20 }) => SEC_ICON[id] ? <NavIcon id={SEC_ICON[id]} size={size} /> : fallback
+
 const SECTION_TABS = [
   { id: 'overview',   icon: '📊', label: 'Overview' },
   { id: 'security',   icon: '🛡️', label: '360° Health' },
@@ -474,7 +477,7 @@ function PhoneSectionNav({ activeId, onSelect }) {
             <div className="dh-grid">
               {list.map(t => (
                 <button key={t.id} type="button" className={"dh-tile" + (t.id === activeId ? " on" : "")} onClick={() => pick(t.id)}>
-                  <span className="dh-ic">{t.icon}</span>{t.label}
+                  <span className="dh-ic"><SecIcon id={t.id} fallback={t.icon} size={24} /></span>{t.label}
                 </button>
               ))}
               {!list.length && <div className="dh-empty">No section matches “{q}”.</div>}
@@ -524,7 +527,7 @@ function SectionNav({ activeId, onSelect }) {
                 transition: "background .15s ease, color .15s ease",
               }}
             >
-              <span style={{fontSize:13,opacity:active?1:.7}}>{t.icon}</span>
+              <span style={{display:"inline-flex",alignItems:"center",fontSize:13,opacity:active?1:.7}}><SecIcon id={t.id} fallback={t.icon} size={15} /></span>
               {t.label}
             </button>
           )
