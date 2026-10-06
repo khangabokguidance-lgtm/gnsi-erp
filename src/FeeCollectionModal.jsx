@@ -824,7 +824,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       const above = unpaid.some(f => flatNeedsReasonFor(f) && flatGapFor(f) > 0)
       if (isAdmin || above) return alert('One or more selected months are priced away from the standard rate. An admin must authorize this before saving — click "Authorize rate deviation (admin)" above.')
       const short = unpaid.filter(f => flatNeedsReasonFor(f)).reduce((s, f) => s + Math.abs(flatGapFor(f)), 0)
-      if (!window.confirm(`The selected months are ₹${short.toLocaleString('en-IN')} below the standard flat fee in total.\n\nThey will be saved and sent to an admin for approval. Until approved, the shortfall stays due on the student's ledger.\n\nThe receipt cannot be printed until an admin approves it.`)) return
+      if (!window.confirm(`The selected months are ₹${short.toLocaleString('en-IN')} below the standard flat fee in total.\n\nThis will be sent to an admin for approval.\n\nNothing is recorded and no receipt is printed until the admin approves it. After approval, press Collect under "My low-fee requests" on the Fee Payment screen.`)) return
     }
     if (!(await preflight())) return
     setSaving(true); setError(null)
@@ -906,7 +906,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       // Above the rate, or an admin who hasn't confirmed yet: authorise first.
       if (isAdmin || courseAmtGap > 0) return alert('This amount is priced away from the standard rate. An admin must authorize this before saving — click "Authorize rate deviation (admin)" above.')
       // Staff: save it, and send the shortfall to an admin for approval.
-      if (!window.confirm(`This is ₹${Math.abs(courseAmtGap).toLocaleString('en-IN')} below the standard course fee.\n\nIt will be saved and sent to an admin for approval. Until approved, the ₹${Math.abs(courseAmtGap).toLocaleString('en-IN')} shortfall stays due on the student's ledger.\n\nThe receipt cannot be printed until an admin approves it.`)) return
+      if (!window.confirm(`This is ₹${Math.abs(courseAmtGap).toLocaleString('en-IN')} below the standard course fee.\n\nThis will be sent to an admin for approval.\n\nNothing is recorded and no receipt is printed until the admin approves it. After approval, press Collect under "My low-fee requests" on the Fee Payment screen.`)) return
     }
 
     // ✦ Advance months — build the run of consecutive months starting at

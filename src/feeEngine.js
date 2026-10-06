@@ -9,6 +9,7 @@ import { supabase } from './supabase'
 import { printFeeReceipt, sectionsToItems } from './premiumReceipt'
 import { recordConcession, clearConcession } from './feeConcessions'
 import { findRecentOtherCollection, RECENT_CLASH_MINUTES } from './feePresence'
+import { fileFeeRequest, openRequestsFor, requestKeys, isMissingRequestsTable, REQUESTS_SETUP_MSG } from './feeRequests'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. LEGACY HARDCODED RATES  (kept as fallback only — DB is now source of truth)
@@ -1017,6 +1018,7 @@ export const collectFee = async ({
   hostelType = 'Day Scholar', payDate, payMode = 'Cash',
   txnRef = null, collectedBy = 'Admin', staffId = null,
   studentId = null, receiptNo, items = [], skipClashCheck = false,
+  skipHold = false,   // true for money already received (online) or an admin-approved request being collected
 }) => {
   if (!gcc)       throw new Error('collectFee: gcc is required')
   if (!payDate)   throw new Error('collectFee: payDate is required')
@@ -1045,6 +1047,40 @@ export const collectFee = async ({
   const resolvedStaffId = staffId || collectedBy || 'Unknown'
   const collectedAt = new Date().toISOString()
   const staffFields = { staff_id: resolvedStaffId, collected_at: collectedAt }
+
+  // ✦ Low fee = wait for an admin BEFORE anything is recorded. A flat/course line
+  // below its standard rate that no admin has authorised at the counter is not
+  // saved: the whole payment is filed as a request (fee_payment_requests). The
+  // collector collects it after approval (Fee Payment → My low-fee requests).
+  if (!skipHold) {
+    const lowItems = items.filter(i => (i.kind === 'flat' || i.kind === 'course') && Number(i.underpaymentAmount) > 0 && !i.concessionApprovedBy)
+    if (lowItems.length) {
+      const myKeys = items.filter(i => i.kind === 'flat' || i.kind === 'course').map(i => `${i.kind}:${i.month} ${i.year}`)
+      const open = await openRequestsFor(gcc)
+      const dup = open.find(r => requestKeys(r).some(k => myKeys.includes(k)))
+      if (dup) {
+        throw Object.assign(new Error(dup.status === 'approved'
+          ? 'A request for these months is already approved — collect it from "My low-fee requests" on the Fee Payment screen.'
+          : 'A request for these months is already waiting for admin approval.'), { held: true })
+      }
+      const summary = {
+        months: lowItems.map(i => `${i.month} ${i.year}`),
+        standard: lowItems.reduce((t, i) => t + (Number(i.standardAmount) || 0), 0),
+        collected: lowItems.reduce((t, i) => t + (Number(i.amount) || 0), 0),
+        shortfall: lowItems.reduce((t, i) => t + (Number(i.underpaymentAmount) || 0), 0),
+        reasons: [...new Set(lowItems.map(i => i.underpaymentReason).filter(Boolean))],
+        total: items.reduce((t, i) => t + (Number(i.amount) || 0), 0),
+      }
+      const payload = { gcc, studentName, admNo, className, course, hostelType, payDate, payMode, txnRef, collectedBy, staffId, studentId, items }
+      const { data, error } = await fileFeeRequest({ gcc, studentName, requestedBy: staffId || collectedBy, payload, summary })
+      if (!error) {
+        throw Object.assign(new Error(`⏳ Sent to admin for approval — ₹${summary.shortfall.toLocaleString('en-IN')} below standard. Nothing is recorded or printed yet. After approval, press Collect under "My low-fee requests" on the Fee Payment screen.`), { held: true, requestId: data?.id })
+      }
+      // Table not created yet → keep working the old way (saved; receipt held until approved).
+      if (!isMissingRequestsTable(error)) throw new Error(`Could not send the low fee for approval: ${error.message}`)
+      console.warn(REQUESTS_SETUP_MSG)
+    }
+  }
 
   // ✦ Multi-user detection: another staff member saved a fee for this same
   // student in the last few minutes (two counters collecting at once / a
