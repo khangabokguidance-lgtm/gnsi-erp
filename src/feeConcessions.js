@@ -23,7 +23,10 @@ export const CONCESSION_REASONS = [
 // A concession above this (₹) cannot be approved by the person who raised it —
 // a second admin must decide it. Keep in step with fee_self_approve_limit() in
 // supabase/migrations/20261006_fee_integrity_guards.sql.
-export const CONCESSION_SELF_APPROVE_LIMIT = 2000
+export const CONCESSION_SELF_APPROVE_LIMIT = 2000   // still used by refunds
+// Low-fee concessions: ONE admin can approve any amount (no second-admin rule).
+// Keep in step with fee_self_approve_limit() in supabase/migrations/20261017_single_admin_concession_approval.sql.
+export const CONCESSION_APPROVE_LIMIT = Number.MAX_SAFE_INTEGER
 // With a single admin account nobody else could ever approve — allow self-approval then.
 let _soleAdmin = null
 export async function isSoleAdmin() {
@@ -52,7 +55,7 @@ export async function recordConcession({ replace = false, table, rowId, kind, gc
   // as "collected by" — it is refused unless there is only one admin. File it as
   // pending instead so a different admin can approve it.
   const unexplained = (reason || 'Other') === 'Other' && String(note || '').trim().length < 3
-  const selfApproved = approvedBy && shortfall > CONCESSION_SELF_APPROVE_LIMIT && !(await isSoleAdmin())
+  const selfApproved = approvedBy && shortfall > CONCESSION_APPROVE_LIMIT && !(await isSoleAdmin())
   if (unexplained) note = '⚠ No explanation was given'
   if (unexplained || selfApproved) approvedBy = null
   const status = approvedBy ? 'approved' : 'pending'
@@ -101,7 +104,7 @@ export async function countPendingConcessions() {
 
 // Admin decision. approve → waive the shortfall; reject → it stays due.
 export async function decideConcession(c, approve, { by, note } = {}) {
-  if (approve && Number(c.shortfall) > CONCESSION_SELF_APPROVE_LIMIT && sameWho(by, c.requested_by || c.collected_by) && !(await isSoleAdmin())) {
+  if (approve && Number(c.shortfall) > CONCESSION_APPROVE_LIMIT && sameWho(by, c.requested_by || c.collected_by) && !(await isSoleAdmin())) {
     throw new Error(`This ₹${Number(c.shortfall).toLocaleString('en-IN')} concession was raised by you — a different admin must approve anything above ₹${CONCESSION_SELF_APPROVE_LIMIT.toLocaleString('en-IN')}.`)
   }
   if (approve && c.reason === 'Other' && String(c.reason_note || '').trim().length < 3 && String(note || '').trim().length < 3) {

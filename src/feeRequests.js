@@ -3,7 +3,7 @@
 // migration 20261015_fee_payment_requests.sql); an admin approves/rejects it; only an
 // approved request can then be collected (recorded + receipt printed).
 import { supabase } from './supabase'
-import { CONCESSION_SELF_APPROVE_LIMIT, isSoleAdmin } from './feeConcessions'
+import { CONCESSION_APPROVE_LIMIT, isSoleAdmin } from './feeConcessions'
 
 const TABLE = 'fee_payment_requests'
 export const REQUESTS_SETUP_MSG = 'Low-fee payment requests need the database update 20261015_fee_payment_requests.sql — run it in Supabase (SQL editor).'
@@ -70,7 +70,7 @@ export async function openRequestsFor(gcc) {
 }
 
 export async function decideFeeRequest(req, approve, { by, note } = {}) {
-  if (approve && Number(req.shortfall) > CONCESSION_SELF_APPROVE_LIMIT && sameWho(by, req.requested_by) && !(await isSoleAdmin())) {
+  if (approve && Number(req.shortfall) > CONCESSION_APPROVE_LIMIT && sameWho(by, req.requested_by) && !(await isSoleAdmin())) {
     throw new Error(`This ₹${Number(req.shortfall).toLocaleString('en-IN')} request was raised by you — a different admin must approve anything above ₹${CONCESSION_SELF_APPROVE_LIMIT.toLocaleString('en-IN')}.`)
   }
   const { error } = await supabase.from(TABLE).update({
