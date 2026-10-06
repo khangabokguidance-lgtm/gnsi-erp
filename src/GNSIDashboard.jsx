@@ -427,7 +427,7 @@ body:has(.dh-bottom){padding-bottom:76px}
 .dh-grid{overflow-y:auto;padding:4px 10px calc(18px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,1fr);gap:4px 2px}
 .dh-tile{background:none;border:0;padding:8px 2px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;font:700 11px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#0f1b2e;text-align:center;border-radius:12px}
 .dh-tile:active{background:#f3f0e8}
-.dh-tile .dh-ic{width:48px;height:48px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:22px;background:#eef2f9;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 3px 0 rgba(19,42,79,.12),0 6px 10px rgba(19,42,79,.08)}
+.dh-tile .dh-ic{width:48px;height:48px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 6px 14px -6px rgba(11,30,61,.7)}
 .dh-tile.on .dh-ic{background:linear-gradient(180deg,#d4ae58,#b8923a);box-shadow:0 0 0 3px #fff,0 0 0 5px #b8923a}
 .dh-empty{grid-column:1/-1;text-align:center;color:#5d6b82;font-size:13px;padding:22px 0}`
 

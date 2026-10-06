@@ -1702,9 +1702,9 @@ const FEES_CSS = `
 .fh-g h2{font:800 16.5px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#141a26;margin:0 10px 14px;letter-spacing:-.01em}
 .fh-grid{display:grid;grid-template-columns:repeat(var(--fh-n,4),minmax(0,1fr));gap:14px 4px}
 .fh-t{display:flex;flex-direction:column;align-items:center;gap:8px;background:none!important;border:none;cursor:pointer;padding:4px 2px;border-radius:14px;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#2b3445;-webkit-tap-highlight-color:transparent;min-width:0}
-.fh-t:hover .fh-i{transform:translateY(-2px);box-shadow:0 8px 16px -10px rgba(19,42,79,.55)}
+.fh-t:hover .fh-i{transform:translateY(-2px);box-shadow:0 10px 18px -8px rgba(11,30,61,.85)}
 .fh-t:active .fh-i{transform:scale(.94)}
-.fh-i{position:relative;width:52px;height:52px;border-radius:17px;display:flex;align-items:center;justify-content:center;color:#1d3f7a;background:#eef3fb;transition:transform .12s,box-shadow .12s}
+.fh-i{position:relative;width:52px;height:52px;border-radius:17px;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 6px 14px -6px rgba(11,30,61,.7);transition:transform .12s,box-shadow .12s}
 .fh-t.on .fh-i{background:linear-gradient(160deg,#1f4e8c,#0b1e3d);color:#fff;box-shadow:0 0 0 3px #fff,0 0 0 5px #c9a24b}
 .fh-l{font-size:12px;font-weight:650;line-height:1.25;text-align:center;max-width:min(92px,100%);min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .fh-t.on .fh-l{color:#0b1e3d;font-weight:800}
@@ -1721,7 +1721,7 @@ const FEES_CSS = `
 .fh-row .fh-t{flex:0 0 70px}
 .fh-row .fh-i{width:44px;height:44px;border-radius:14px}
 .fh-row .fh-l{font-size:11px}
-.fh-all .fh-i{background:#f6efdc;color:#8a6d2b}
+.fh-all .fh-i{background:linear-gradient(160deg,#d4ae58,#b8923a);color:#1a1406}
 @media(max-width:1600px){.fh{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 @media(max-width:1100px){.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:700px){.fh{grid-template-columns:1fr!important;gap:12px}.fh-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 2px}.fh-i{width:50px;height:50px}}
