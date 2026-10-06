@@ -75,6 +75,9 @@ const ACADEMIC_MONTHS = MONTHS_LIST.map((month, i) => {
 // for that section (see the grep of every <div ref={setSectionRef('id')}>
 // below). Order here is the order tabs render in the nav bar and follows
 // the order sections actually appear on the page.
+const SEC_ICON = { overview:'overview', security:'shield', intel:'intel', finance:'fees', students:'students', dropout:'dropout', admissions:'admissions', staff:'staff', attendance:'attendance', academic:'courses', tests:'exams', enquiry:'search', hostel:'hostel', houses:'awards', operations:'feesetup', batches:'batches', doubts:'doubts', parents:'parents', material:'studymaterial', results:'awards', teaching:'teaching', feesetup:'card', feeledger:'studentfeeledger', entrance:'entrance', lockers:'studylockers', syllabus:'syllabus', qbank:'questionbank', social:'social', connect:'connect', expenses:'expenses' }
+const SecIcon = ({ id, fallback, size = 20 }) => SEC_ICON[id] ? <NavIcon id={SEC_ICON[id]} size={size} /> : fallback
+
 const SECTION_TABS = [
   { id: 'overview',   icon: '📊', label: 'Overview' },
   { id: 'security',   icon: '🛡️', label: '360° Health' },
@@ -427,8 +430,8 @@ body:has(.dh-bottom){padding-bottom:76px}
 .dh-grid{overflow-y:auto;padding:4px 10px calc(18px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,1fr);gap:4px 2px}
 .dh-tile{background:none;border:0;padding:8px 2px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;font:700 11px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#0f1b2e;text-align:center;border-radius:12px}
 .dh-tile:active{background:#f3f0e8}
-.dh-tile .dh-ic{width:48px;height:48px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:22px;background:#eef2f9;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 3px 0 rgba(19,42,79,.12),0 6px 10px rgba(19,42,79,.08)}
-.dh-tile.on .dh-ic{background:linear-gradient(180deg,#d4ae58,#b8923a);box-shadow:0 0 0 3px #fff,0 0 0 5px #b8923a}
+.dh-tile .dh-ic{width:48px;height:48px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 0 0 2px #fff,0 0 0 3.5px #c9a24b,0 8px 14px -8px rgba(11,30,61,.7)}
+.dh-tile.on .dh-ic{background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:0 0 0 3px #fff,0 0 0 6px #c9a24b}
 .dh-empty{grid-column:1/-1;text-align:center;color:#5d6b82;font-size:13px;padding:22px 0}`
 
 function useIsPhone() {
@@ -474,7 +477,7 @@ function PhoneSectionNav({ activeId, onSelect }) {
             <div className="dh-grid">
               {list.map(t => (
                 <button key={t.id} type="button" className={"dh-tile" + (t.id === activeId ? " on" : "")} onClick={() => pick(t.id)}>
-                  <span className="dh-ic">{t.icon}</span>{t.label}
+                  <span className="dh-ic"><SecIcon id={t.id} fallback={t.icon} size={24} /></span>{t.label}
                 </button>
               ))}
               {!list.length && <div className="dh-empty">No section matches “{q}”.</div>}
@@ -524,7 +527,7 @@ function SectionNav({ activeId, onSelect }) {
                 transition: "background .15s ease, color .15s ease",
               }}
             >
-              <span style={{fontSize:13,opacity:active?1:.7}}>{t.icon}</span>
+              <span style={{display:"inline-flex",alignItems:"center",fontSize:13,opacity:active?1:.7}}><SecIcon id={t.id} fallback={t.icon} size={15} /></span>
               {t.label}
             </button>
           )

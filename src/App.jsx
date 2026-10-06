@@ -1114,7 +1114,7 @@ const UD_CSS = `
   .ud-tile{background:none;border:0;padding:6px 2px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;font:700 11px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#0f1b2e;text-align:center;border-radius:12px}
   .ud-tile:active{background:#f3f0e8}
   .ud-tile:focus-visible,.ud-qb:focus-visible{outline:2px solid #b8923a;outline-offset:2px}
-  .ud-ic{width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;color:#132a4f;background:#eef2f9;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 3px 0 rgba(19,42,79,.12),0 7px 12px rgba(19,42,79,.10);transition:transform .09s ease}
+  .ud-ic{width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(160deg,#1f4e8c,#0b1e3d);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 0 0 2px #fff,0 0 0 3.5px #c9a24b,0 8px 14px -8px rgba(11,30,61,.7);transition:transform .09s ease}
   .ud-tile:active .ud-ic{transform:translateY(2px)}
   .ud-quick{display:flex;justify-content:space-around;gap:4px;padding:14px 6px 12px}
   .ud-qb{background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;font:700 11px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;color:#0f1b2e;text-align:center;min-width:60px}
