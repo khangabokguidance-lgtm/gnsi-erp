@@ -46,10 +46,13 @@ export async function recordConcession({ replace = false, table, rowId, kind, gc
   const shortfall = Math.round((Number(standard) - Number(collected)) * 100) / 100
   if (!(shortfall > 0) || !rowId) return null
   // Approval at the counter is only honoured when it is explained and, for a big
-  // amount, not the requester approving their own request; otherwise it waits
-  // for a (different) admin.
+  // amount, not filed and approved by the same person. The database stamps the
+  // logged-in user as BOTH requester and approver of a row inserted as 'approved'
+  // (20261010_fee_server_identity.sql), so above the limit — whatever name was typed
+  // as "collected by" — it is refused unless there is only one admin. File it as
+  // pending instead so a different admin can approve it.
   const unexplained = (reason || 'Other') === 'Other' && String(note || '').trim().length < 3
-  const selfApproved = approvedBy && shortfall > CONCESSION_SELF_APPROVE_LIMIT && sameWho(approvedBy, collectedBy) && !(await isSoleAdmin())
+  const selfApproved = approvedBy && shortfall > CONCESSION_SELF_APPROVE_LIMIT && !(await isSoleAdmin())
   if (unexplained) note = '⚠ No explanation was given'
   if (unexplained || selfApproved) approvedBy = null
   const status = approvedBy ? 'approved' : 'pending'
