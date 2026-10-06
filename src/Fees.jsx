@@ -3606,6 +3606,7 @@ function FeePaymentTab({ students, admissions, adm_fee_collections, adm_flat_fee
       if (err.held) {
         // Low fee filed for admin approval — nothing was recorded or printed.
         showToast(err.message, '#b8923a')
+        if (err.waUrl) { try { window.open(err.waUrl, '_blank') } catch { /* popup blocked — use the WhatsApp button on the request */ } }
         setCrsfRows([{ course: '', subtype: '', hostelType: hostelType, for_month: '', amount: '' }])
         setAdvAmt(''); setAdvFor(''); setFlatChecked(flatFees.map(() => false)); setTxnRef('')
         setStep('select'); setStudent(null)

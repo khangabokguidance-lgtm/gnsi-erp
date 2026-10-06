@@ -10,6 +10,25 @@ export const REQUESTS_SETUP_MSG = 'Low-fee payment requests need the database up
 export const isMissingRequestsTable = err => !!err && (err.code === '42P01' || err.code === 'PGRST205' || new RegExp(TABLE).test(err.message || ''))
 const sameWho = (a, b) => !!String(a || '').trim() && String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase()
 
+// WhatsApp notice to the admin who approves low fees (wa.me opens a chat; the user taps send).
+export const LOW_FEE_ADMIN_WA = '918974298074'
+export function lowFeeWaUrl(payload = {}, summary = {}, requestedBy = '') {
+  const inr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN')
+  const lines = [
+    '🔔 *Low-fee approval needed*',
+    `Student: *${payload.studentName || '—'}* (GCC-${payload.gcc || '—'})`,
+    `Class/Batch: ${payload.className || '—'} · Course: ${payload.course || '—'} · ${payload.hostelType || '—'}`,
+    `Month(s): ${(summary.months || []).join(', ') || '—'}`,
+    `Standard ${inr(summary.standard)} · Offered ${inr(summary.collected)} · *Short ${inr(summary.shortfall)}*`,
+    `Reason: ${(summary.reasons || []).join(', ') || '—'}`,
+    `Pay mode: ${payload.payMode || '—'}`,
+    `Requested by: ${requestedBy || payload.collectedBy || '—'}`,
+    '',
+    'Please approve or reject in Fees → Low Fees. Nothing is recorded until you approve.',
+  ]
+  return `https://wa.me/${LOW_FEE_ADMIN_WA}?text=${encodeURIComponent(lines.join('\n'))}`
+}
+
 export async function fileFeeRequest({ gcc, studentName, requestedBy, payload, summary }) {
   const shortfall = Number(summary?.shortfall) || 0
   const { data, error } = await supabase.from(TABLE).insert({

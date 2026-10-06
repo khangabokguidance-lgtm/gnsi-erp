@@ -786,7 +786,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       setPaidAdmItems(p => [...new Set([...p, ...admFeeItems.map(i => i.label)])])
       setSelected({})
       onSaved?.()
-    } catch (err) { setError(err.message || 'Failed to save.') }
+    } catch (err) { if (err.waUrl) { try { window.open(err.waUrl, '_blank') } catch { /* popup blocked */ } } setError(err.message || 'Failed to save.') }
     finally { setSaving(false) }
   }
 
@@ -871,7 +871,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       setFlatAdvanceAuthorized(false)
       setFlatRateAuthorized(false)
       onSaved?.()
-    } catch (err) { setError(err.message || 'Failed to save.') }
+    } catch (err) { if (err.waUrl) { try { window.open(err.waUrl, '_blank') } catch { /* popup blocked */ } } setError(err.message || 'Failed to save.') }
     finally { setSaving(false) }
   }
 
@@ -964,7 +964,7 @@ export default function FeeCollectionModal({ app, student, onClose, onSaved, isA
       setCourseAmtReason('')
       setAdvanceMonthCount(1)
       onSaved?.()
-    } catch (err) { setError(err.message || 'Failed to save.') }
+    } catch (err) { if (err.waUrl) { try { window.open(err.waUrl, '_blank') } catch { /* popup blocked */ } } setError(err.message || 'Failed to save.') }
     finally { setSaving(false) }
   }
 

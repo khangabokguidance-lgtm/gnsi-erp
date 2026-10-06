@@ -2,7 +2,7 @@
 // Nothing is recorded until an admin approves; then the collector presses Collect, which
 // records the payment and prints the receipt.
 import { useCallback, useEffect, useState } from 'react'
-import { loadFeeRequests, markRequestCollected } from './feeRequests'
+import { loadFeeRequests, markRequestCollected, lowFeeWaUrl } from './feeRequests'
 import { collectFee, rcptNo, today } from './feeEngine'
 import { printFeeReceipt } from './premiumReceipt'
 
@@ -70,6 +70,9 @@ export default function FeeRequestsPanel({ currentUser, isAdmin, onDone }) {
                 <div style={{ fontWeight: 800, color: '#b42318' }}>Short {inr(s.shortfall)}</div>
               </div>
               <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 800, color: t[0], background: t[1] }}>{t[2]}</span>
+              {r.status === 'pending' && (
+                <a href={lowFeeWaUrl(r.payload, r.summary, r.requested_by)} target="_blank" rel="noopener noreferrer" style={{ padding: '7px 12px', borderRadius: 10, fontWeight: 800, fontSize: 12.5, textDecoration: 'none', color: '#fff', background: 'linear-gradient(160deg,#25d366,#128c7e)' }}>📲 WhatsApp admin</a>
+              )}
               {r.status === 'approved' && (
                 <button disabled={busy === r.id} onClick={() => collect(r)} style={{ padding: '8px 14px', borderRadius: 10, border: 'none', fontWeight: 800, fontSize: 13, cursor: busy ? 'wait' : 'pointer', color: '#1a1406', background: 'linear-gradient(160deg,#d4ae58,#b8923a)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.45), 0 8px 14px -8px rgba(184,146,58,.9)' }}>
                   {busy === r.id ? 'Collecting…' : `Collect ${inr(s.total)} & print`}
