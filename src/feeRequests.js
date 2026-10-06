@@ -71,7 +71,7 @@ export async function openRequestsFor(gcc) {
 
 export async function decideFeeRequest(req, approve, { by, note } = {}) {
   if (approve && Number(req.shortfall) > CONCESSION_APPROVE_LIMIT && sameWho(by, req.requested_by) && !(await isSoleAdmin())) {
-    throw new Error(`This ₹${Number(req.shortfall).toLocaleString('en-IN')} request was raised by you — a different admin must approve anything above ₹${CONCESSION_SELF_APPROVE_LIMIT.toLocaleString('en-IN')}.`)
+    throw new Error(`This ₹${Number(req.shortfall).toLocaleString('en-IN')} request was raised by you — a different admin must approve anything above ₹${CONCESSION_APPROVE_LIMIT.toLocaleString('en-IN')}.`)
   }
   const { error } = await supabase.from(TABLE).update({
     status: approve ? 'approved' : 'rejected', decided_by: by || 'Admin', decided_at: new Date().toISOString(), decision_note: note || null,
