@@ -12,7 +12,7 @@
 // 5. TabManualAdd / TabBulkPaste: StudyMaterialsRefPanel + emit QUESTION_SAVED
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from './supabase'
 import { useStudyMaterialsByChapter, useMaterialCountsByChapter, normalizeToQBank, openChapterIn, useChapterFocus } from './StudyMaterialBridge'
 import { EventBus, GNSI_EVENTS } from './EventBus'
@@ -21,6 +21,7 @@ import { isAdminRole } from './roles'
 import { COURSES, COURSE_LIST } from './qbankTaxonomy'
 import { T, heroStyle, optionStyle } from './qbankTheme'
 import { HeroStat, QBThemeStyles, OptionLetter } from './QBTheme'
+import { IconTabs } from './premiumUI'
 
 // ── BMEI04 font (base64, embedded once per file load) — needed because
 // browsers can't render this legacy encoding without the font that maps
@@ -5565,7 +5566,11 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
   // isAdmin, and row-level security enforces delete on the server).
   const isStaffAllowed = !!currentUser
 
-  const [tabState,      setTab]           = useState('bank')
+  const [tabState,      setTabState]      = useState('bank')
+  // The page opens on an icon grid of its sections; any switch to a tab
+  // (a tile, a deep link from another module) leaves the grid.
+  const [onGrid,        setOnGrid]        = useState(!initialFilterProp)
+  const setTab = useCallback(key => { setTabState(key); setOnGrid(false) }, [])
   const [questions,     setQuestions]     = useState([])
   const [loading,       setLoading]       = useState(true)
   const [toast,         setToast]         = useState(null)
@@ -5649,7 +5654,7 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
       }
     })
     return unsub
-  }, [])
+  }, [setTab])
 
   // Chapter focus (StudyMaterialBridge.openChapterIn) — works even when this
   // page wasn't mounted yet at the moment of the click, which the
@@ -5696,21 +5701,26 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
     )
   }
 
-  // group: 'bank' = content management, 'tools' = language tools,
-  // 'deliver' = papers/tests/slides/analytics (admin). Groups are separated
-  // by a divider in the tab bar.
+  // Sections, grouped on the icon grid: questions, language tools,
+  // papers & tests and reports (the last two admin-only).
   const ALL_TABS = [
-    { key:'bank',    icon:'📚', label:'Question Bank', count: questions.length, group:'bank' },
-    { key:'manual',  icon:'✏️', label:'Manual Add',    count: null, group:'bank' },
-    { key:'bulk',    icon:'📤', label:'Bulk Paste',    count: null, group:'bank' },
-    { key:'translit',icon:'🔤', label:'Mayek Tool',    count: null, group:'tools' },
-    { key:'dictionary',icon:'📖', label:'Dictionary',  count: null, group:'tools' },
-    { key:'paper',   icon:'📄', label:'Create Paper',  count: null,  adminOnly: true, group:'deliver' },
-    { key:'test',    icon:'📝', label:'Online Test',   count: null,  adminOnly: true, group:'deliver' },
-    { key:'smartppt',icon:'🎬', label:'Smart PPT',     count: null,  adminOnly: true, group:'deliver' },
-    { key:'stats',   icon:'📊', label:'Stats',         count: null,  adminOnly: true, group:'deliver' },
+    { key:'bank',    icon:'📚', label:'Question Bank', count: questions.length, group:'bank', hint:'Browse, search and edit' },
+    { key:'manual',  icon:'✏️', label:'Manual Add',    count: null, group:'bank', hint:'Type in questions one by one' },
+    { key:'bulk',    icon:'📤', label:'Bulk Paste',    count: null, group:'bank', hint:'Paste many questions at once' },
+    { key:'translit',icon:'🔤', label:'Mayek Tool',    count: null, group:'tools', hint:'Convert and translate Meetei Mayek' },
+    { key:'dictionary',icon:'📖', label:'Dictionary',  count: null, group:'tools', hint:'English ↔ Meetei Mayek words' },
+    { key:'paper',   icon:'📄', label:'Create Paper',  count: null,  adminOnly: true, group:'deliver', hint:'Build a printable question paper' },
+    { key:'test',    icon:'📝', label:'Online Test',   count: null,  adminOnly: true, group:'deliver', hint:'Run a test on screen' },
+    { key:'smartppt',icon:'🎬', label:'Smart PPT',     count: null,  adminOnly: true, group:'deliver', hint:'Questions as slides for class' },
+    { key:'stats',   icon:'📊', label:'Stats',         count: null,  adminOnly: true, group:'reports', hint:'Bank coverage and numbers' },
   ]
   const TABS = isAdmin ? ALL_TABS : ALL_TABS.filter(t => !t.adminOnly)
+  const TAB_GROUPS = [
+    { id:'bank', label:'Questions', color:'#185FA5' },
+    { id:'tools', label:'Language tools', color:'#7c3aed' },
+    { id:'deliver', label:'Papers & tests', color:'#a7771f' },
+    { id:'reports', label:'Reports', color:'#0f766e' },
+  ].map(g => ({ ...g, tabs: TABS.filter(t => t.group === g.id).map(t => ({ id:t.key, label:t.label, icon:t.icon, hint:t.hint, count:t.count })) }))
   const fmt = n => n.toLocaleString('en-IN')
 
   return (
@@ -5747,36 +5757,11 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
 
       </>)}
 
-      {/* ── Tab bar ── */}
-      <div role="tablist" aria-label="Question Bank sections" className="qb-tabs"
-        style={{ position:'sticky', top:0, zIndex:60, display:'flex', alignItems:'center', gap:4, overflowX:'auto',
-          padding:6, marginBottom:20, background:'rgba(255,255,255,.92)', backdropFilter:'blur(8px)',
-          border:`1px solid ${T.border}`, borderRadius:14, boxShadow:T.shadow }}>
-        {TABS.map((t, i) => {
-          const active = tab === t.key
-          const newGroup = i > 0 && TABS[i - 1].group !== t.group
-          return (
-            <React.Fragment key={t.key}>
-              {newGroup && <span aria-hidden style={{ width:1, alignSelf:'stretch', margin:'6px 4px', background:T.border, flexShrink:0 }} />}
-              <button role="tab" aria-selected={active} onClick={() => setTab(t.key)}
-                style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'9px 14px', borderRadius:10, flexShrink:0,
-                  border:'none', background: active ? T.navy : 'transparent',
-                  color: active ? '#fff' : T.muted, boxShadow: active ? '0 2px 8px rgba(14,42,71,.25)' : 'none',
-                  fontSize:13, fontWeight: active ? 600 : 500, cursor:'pointer', whiteSpace:'nowrap' }}>
-                <span style={{ fontSize:14, filter: active ? 'none' : 'grayscale(.35)' }}>{t.icon}</span>
-                {t.label}
-                {t.count !== null && t.count > 0 && (
-                  <span style={{ padding:'1px 7px', borderRadius:99, fontSize:10.5, fontWeight:700, fontVariantNumeric:'tabular-nums',
-                    background: active ? 'rgba(255,255,255,.18)' : T.navySoft, color: active ? '#fff' : T.navy }}>
-                    {fmt(t.count)}
-                  </span>
-                )}
-              </button>
-            </React.Fragment>
-          )
-        })}
-      </div>
+      {/* ── Sections: icon grid, or a bar with the open section ── */}
+      <IconTabs groups={TAB_GROUPS} active={tab} open={!onGrid} onOpen={setTab} onHome={() => setOnGrid(true)}
+        homeLabel="All Question Bank sections" sticky ariaLabel="Question Bank sections" />
 
+      {!onGrid && (<>
       {tab === 'bank'   && <TabBank   questions={questions} loading={loading} refetch={refetch} showToast={showToast} initialFilter={initialFilter} isAdmin={isAdmin} canEdit={isStaffAllowed} onNavigate={onNavigate} />}
       {tab === 'manual' && <TabManualAdd questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'bulk'   && <TabBulkPaste questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
@@ -5786,6 +5771,7 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
       {isAdmin && tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'smartppt' && <TabSmartPPT questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'stats'  && <TabStats  questions={questions} refetch={refetch} showToast={showToast} isAdmin={isAdmin} onNavigate={onNavigate} />}
+      </>)}
     </div>
   )
 }

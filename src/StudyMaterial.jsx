@@ -9,7 +9,7 @@ import { EventBus, GNSI_EVENTS } from './EventBus'
 import { isAdminRole } from './roles'
 import { COURSES as QB_COURSES } from './qbankTaxonomy'
 import QuestionBankViewer from './QuestionBankViewer'
-import { PX, PremiumStyles, PremiumHero, PIcon } from './premiumUI'
+import { PX, PremiumStyles, PremiumHero, PIcon, IconTabs } from './premiumUI'
 import TeachingEnhancer, { Stars } from './TeachingEnhancer'
 import { useMaterialFeedback, useMaterialRequests } from './enhancerHooks'
 
@@ -1385,7 +1385,11 @@ export default function StudyMaterial({ currentUser, onNavigate, embedded = fals
 
   const [activeCourse,   setActiveCourse]   = useState('sainik')
   const [activeSubject,  setActiveSubject]  = useState(null)
-  const [activeView,     setActiveView]     = useState('subjects')
+  const [activeView,     setViewState]      = useState('subjects')
+  // The page opens on an icon grid of its views; opening a view (a tile, a
+  // hero button, a chapter link from another module) leaves the grid.
+  const [onGrid,         setOnGrid]         = useState(true)
+  const setActiveView = v => { setViewState(v); setOnGrid(false) }
   const [materials,      setMaterials]      = useState([])
   const [structure,      setStructure]      = useState([])   // rows from study_course_structure
   const [loading,        setLoading]        = useState(true)
@@ -1473,7 +1477,7 @@ export default function StudyMaterial({ currentUser, onNavigate, embedded = fals
     const pending = pendingSubjectRef.current
     pendingSubjectRef.current = null
     setActiveSubject(pending && subjectsForCourse[pending] ? pending : Object.keys(subjectsForCourse)[0])
-    setActiveView('subjects')
+    setViewState('subjects')
     setSearch('')
   }, [activeCourse]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1533,14 +1537,20 @@ export default function StudyMaterial({ currentUser, onNavigate, embedded = fals
   const savedMaterials = feedback.available ? courseMaterials.filter(m => feedback.byId[String(m.id)]?.bookmarked) : []
 
   const VIEWS = [
-    { id: 'subjects',   label: 'Library',           icon: PIcon.folder },
-    { id: 'enhancer',   label: 'Teaching Enhancer', icon: PIcon.cap, badge: openRequests },
-    ...(feedback.available ? [{ id: 'saved', label: 'Saved', icon: PIcon.list, badge: 0 }] : []),
-    { id: 'lessonprep', label: 'Lesson Prep',       icon: PIcon.layers },
-    { id: 'smartppt',   label: 'Smart PPT',         icon: PIcon.file },
-    { id: 'stats',      label: 'Stats',             icon: PIcon.chart },
-    ...(isStaffAllowed ? [{ id: 'qbank', label: 'Question Bank', icon: PIcon.report }] : []),
+    { id: 'subjects',   label: 'Library',           icon: PIcon.folder, group: 'library', hint: 'Materials by subject and chapter' },
+    ...(feedback.available ? [{ id: 'saved', label: 'Saved', icon: PIcon.list, badge: 0, group: 'library', hint: 'Materials you bookmarked' }] : []),
+    { id: 'enhancer',   label: 'Teaching Enhancer', icon: PIcon.cap, badge: openRequests, group: 'teaching', hint: 'Requests for missing material' },
+    { id: 'lessonprep', label: 'Lesson Prep',       icon: PIcon.layers, group: 'teaching', hint: 'Plan a lesson from materials' },
+    { id: 'smartppt',   label: 'Smart PPT',         icon: PIcon.file, group: 'teaching', hint: 'Materials as class slides' },
+    ...(isStaffAllowed ? [{ id: 'qbank', label: 'Question Bank', icon: PIcon.report, group: 'practice', hint: 'Questions for these chapters' }] : []),
+    { id: 'stats',      label: 'Stats',             icon: PIcon.chart, group: 'reports', hint: 'Coverage by subject' },
   ]
+  const VIEW_GROUPS = [
+    { id: 'library', label: 'Library', color: '#185FA5' },
+    { id: 'teaching', label: 'Teaching', color: '#a7771f' },
+    { id: 'practice', label: 'Practice', color: '#7c3aed' },
+    { id: 'reports', label: 'Reports', color: '#0f766e' },
+  ].map(g => ({ ...g, tabs: VIEWS.filter(v => v.group === g.id) }))
 
   const content = (
     <>
@@ -1597,18 +1607,10 @@ export default function StudyMaterial({ currentUser, onNavigate, embedded = fals
       </div>
 
       {/* Views */}
-      <nav className="px-tabs" role="tablist" aria-label="Study Materials views">
-        {VIEWS.map(t => {
-          const I = t.icon
-          return (
-            <button key={t.id} type="button" role="tab" aria-selected={activeView === t.id} className={'px-tab' + (activeView === t.id ? ' on' : '')} onClick={() => setActiveView(t.id)}>
-              <I size={15} />{t.label}{t.badge > 0 && <span className="px-badge">{t.badge}</span>}
-            </button>
-          )
-        })}
-      </nav>
+      <IconTabs groups={VIEW_GROUPS} active={activeView} open={!onGrid} onOpen={setActiveView} onHome={() => setOnGrid(true)}
+        homeLabel="All Study Materials sections" ariaLabel="Study Materials views" />
 
-      {activeView === 'enhancer' ? (
+      {onGrid ? null : activeView === 'enhancer' ? (
         <TeachingEnhancer
           course={activeCourse} courseData={courseData} courseLabel={courseData.label}
           materials={courseMaterials} currentUser={currentUser} isAdmin={isAdmin} canTeach={canTeach}

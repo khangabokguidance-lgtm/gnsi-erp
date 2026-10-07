@@ -3,6 +3,8 @@
 // Question Bank, Question Bank Viewer and Entrance Exam are tabs of this page
 // (sidebar id 'learninghub'), laid out as a flow:
 //   Learn (Study Materials · Teaching Aids) → Practice (Question Bank · Viewer) → Assess (Entrance Exam)
+// • it opens on an icon page of the sections (phones and computers); inside a
+//   section, "‹ All sections" (computers) or the back arrow (phones) returns there;
 // • a premium ribbon is the tab bar, with a live count on every tab (refreshes
 //   when a question/material is saved anywhere);
 // • "Connected to this page" cards link each tab to the ones it feeds / is fed by;
@@ -106,6 +108,10 @@ const CSS = `
 .lh-title-e{font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:${PX.gold}}
 .lh-title-t{font-family:${PX.serif};font-size:22px;font-weight:600;color:${PX.ink};line-height:1.1}
 .lh-title-s{font-size:12.5px;color:${PX.sub};margin-left:auto}
+.lh-home{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px 0 10px;border:1px solid ${PX.goldLine};border-radius:12px;background:${PX.goldBg};color:${PX.ink};font:700 12.5px/1 ${PX.sans};cursor:pointer;white-space:nowrap}
+.lh-home b{font-size:20px;line-height:1;color:${PX.gold};margin-top:-2px}
+.lh-home:hover{border-color:${PX.gold}}
+.lh-home:focus-visible{outline:2px solid ${PX.gold};outline-offset:2px}
 @media (max-width:640px){.lh-title-s{display:none}.lh-title-t{font-size:19px}}
 .lh-ribbon{display:flex;align-items:stretch;gap:0;background:#fff;border:1px solid ${PX.line};border-radius:18px;padding:8px;box-shadow:0 1px 2px rgba(19,42,79,.05),0 14px 30px -22px rgba(19,42,79,.4);overflow-x:auto;scrollbar-width:none}
 .lh-ribbon::-webkit-scrollbar{display:none}
@@ -393,6 +399,7 @@ export default function LearningHub({ currentUser, tab, home = false, onHome, on
       {showHome ? <HubHome visible={visible} counts={counts} onNavigate={onNavigate} /> : <HubBar active={active} onHome={onHome || (() => {})} />}
       <div className="lh-wrap" style={showHome ? { display: 'none' } : undefined}>
         <div className="lh-title lh-desk">
+          {onHome ? <button type="button" className="lh-home" onClick={onHome} title="Back to the Learning Hub icons"><b>‹</b>All sections</button> : null}
           <span className="lh-title-ico"><NavIcon id="learninghub" size={18} /></span>
           <div>
             <div className="lh-title-e">GNSI · Academics</div>
