@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef, useCallback, Fragment } from 'rea
 import { createPortal } from 'react-dom'
 import { NavIcon } from './navIcons'
 import { supabase } from './supabase'
+import { compressImage } from './lib/imageCompress'
 import { sysOr, sysValue } from './systemSettings'
 import { isAdminRole } from './roles'
 import {
@@ -3417,7 +3418,7 @@ function Accounts({role,userId}){
           <div style={{marginTop:16}}>
             <label style={lStyle}>🧾 Receipt / Attachment <span style={{fontWeight:400,color:'#8a93a6'}}>(optional)</span></label>
             <div style={{display:'flex',gap:10,alignItems:'center',marginTop:6,flexWrap:'wrap'}}>
-              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={e=>setReceiptFile(e.target.files[0]||null)} style={{fontSize:13,maxWidth:'100%'}}/>
+              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={async e=>{const f=e.target.files[0]||null;setReceiptFile(f?(await compressImage(f,{maxDim:1800,quality:0.9,targetKB:300})).file:null)}} style={{fontSize:13,maxWidth:'100%'}}/>
               {(rows[0]?.receipt_url||receiptFile)&&<button type="button" onClick={()=>setViewReceipt(receiptFile?URL.createObjectURL(receiptFile):rows[0].receipt_url)} style={{backgroundColor:'#eef2f9',color:'#1e3a6e',border:'1px solid #bfdbfe',borderRadius:6,padding:'5px 12px',fontSize:12,cursor:'pointer',fontWeight:500}}>👁 Preview</button>}
               {rows[0]?.receipt_url&&!receiptFile&&<span style={{fontSize:12,color:'#16a34a'}}>✅ Receipt on file</span>}
             </div>

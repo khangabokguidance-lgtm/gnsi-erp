@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { supabase } from './supabase'
+import { compressImage } from './lib/imageCompress'
 import { sysOr, sysValue } from './systemSettings'
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -89,8 +90,9 @@ async function logActivity(projectId, action, detail, actor) {
   try { await supabase.from('cm_activity_log').insert({ project_id: projectId, action, detail, actor: actor || null }) }
   catch (err) { console.warn('cm_activity_log insert failed:', err.message) }
 }
-async function uploadFile(folder, file, id) {
-  if (!file) return null
+async function uploadFile(folder, rawFile, id) {
+  if (!rawFile) return null
+  const file = (await compressImage(rawFile, { maxDim: 1800, quality: 0.9, targetKB: 300 })).file
   const ext = (file.name.split('.').pop() || 'bin').toLowerCase()
   const path = `${folder}/${id || Date.now()}${folder === 'photos' ? '-' + Math.random().toString(36).slice(2, 7) : ''}.${ext}`
   const { error } = await supabase.storage.from(CM_BUCKET).upload(path, file, { upsert: true })
