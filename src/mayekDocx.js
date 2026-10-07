@@ -7,17 +7,22 @@
 // "(a)") are not part of the paragraph text in Word, so they are rebuilt
 // from word/numbering.xml — question papers rely on them.
 //
-// Writing: the Meetei Mayek font (Noto Sans Meetei Mayek, SIL OFL) is embedded
+// Writing (buildPaperDocx): from the paper model in mayekPaper.js, in three
+// layouts ("Meetei Mayek", "Mayek + English", "Side by side"), one or two
+// columns, with an instructions box, a marks column, and optional answer key
+// and OMR sheet pages.
+// The Meetei Mayek font (Noto Sans Meetei Mayek, SIL OFL) is embedded
 // in the file, so it shows correctly on computers that do not have it. The
 // watermark is a faded PNG (institute name or logo) anchored behind the text
 // in the page header, so Word repeats it on every page.
 import JSZip from 'jszip'
 import {
   AlignmentType, BorderStyle, Document, Footer, Header, HorizontalPositionRelativeFrom, ImageRun,
-  PageNumber, Packer, Paragraph, Table, TableCell, TableRow, TabStopType, TextRun,
+  PageNumber, Packer, Paragraph, SectionType, Table, TableCell, TableRow, TabStopType, TextRun,
   VerticalAlign, VerticalPositionRelativeFrom, WidthType,
 } from 'docx'
 import { NotoSansMeeteiMayek } from './NotoSansMeeteiMayek-normal.js'
+import { LETTERS, answerKey, numbered } from './mayekPaper.js'
 
 export const MAYEK_FONT = 'Noto Sans Meetei Mayek'
 const LATIN_FONT = 'Calibri'
@@ -146,20 +151,6 @@ export function cleanLines(lines) {
   return out
 }
 
-// ── Line kinds (for layout) ──────────────────────────────────────────────────
-const Q_NUM = /^(?:Q\.?\s*)?\d{1,3}\s*[.)]\s*\S|^\(\d{1,3}\)\s*\S/i
-const OPT = /^\(?(?:[a-hA-H]|i{1,3}|iv|v|vi{0,3}|[ꯀ-ꯪ])\s*[.)]\s*\S|^\([a-hA-H]\)/
-const SECTION = /^(?:section|part|group)\s+[A-Z0-9]+\b/i
-/** 'blank' | 'section' | 'question' | 'option' | 'text' */
-export function lineKind(text) {
-  const t = String(text || '').trim()
-  if (!t) return 'blank'
-  if (SECTION.test(t) && t.length <= 60) return 'section'
-  if (Q_NUM.test(t)) return 'question'
-  if (OPT.test(t) && t.length <= 160) return 'option'
-  return 'text'
-}
-
 // ── Watermark ────────────────────────────────────────────────────────────────
 async function loadImage(src) {
   const img = new Image()
@@ -227,7 +218,7 @@ export async function watermarkDataUrl({ kind, text, logoSrc, strength = 0.5, co
 }
 
 // ── Writing ──────────────────────────────────────────────────────────────────
-const NAVY = '132A4F', GOLD = 'B8923A', GREY = '5D6B82', INK = '0F1B2E'
+const NAVY = '132A4F', GOLD = 'B8923A', GREY = '5D6B82', INK = '0F1B2E', LINE = 'E8E3D8'
 const fontBytes = () => Uint8Array.from(atob(NotoSansMeeteiMayek), ch => ch.charCodeAt(0))
 const hasMayek = s => /[ꯀ-꯿]/.test(s || '')
 // Meetei Mayek runs in the Mayek font, everything else (numbers, labels) in the Latin one.
@@ -238,114 +229,290 @@ function runs(text, { size, bold, color, italics }) {
     font: hasMayek(p) ? { ascii: MAYEK_FONT, hAnsi: MAYEK_FONT, cs: MAYEK_FONT } : LATIN_FONT,
   }))
 }
-const noBorders = { top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' } }
+const latin = (text, o = {}) => new TextRun({ text, font: LATIN_FONT, ...o })
+const NONE = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }
+const noBorders = { top: NONE, bottom: NONE, left: NONE, right: NONE }
+const thin = (color = LINE) => ({ style: BorderStyle.SINGLE, size: 4, color })
+const boxBorders = c => ({ top: thin(c), bottom: thin(c), left: thin(c), right: thin(c) })
+
+// Page geometry (twips): A4 with 1000-twip margins leaves 9906 for text.
+const PAGE = { margin: { top: 1000, bottom: 900, left: 1000, right: 1000, header: 450, footer: 450 } }
+const FULL = 9900, GAP = 425
+const widthFor = columns => (columns === 2 ? Math.floor((FULL - GAP) / 2) : FULL)
 
 function letterhead(inst, logo) {
   const contact = [inst.phone, inst.email, inst.website].filter(Boolean).join('   ·   ')
   const textCol = [
-    new Paragraph({ spacing: { after: 20 }, children: [new TextRun({ text: inst.name || '', bold: true, size: 34, color: NAVY, font: LATIN_FONT })] }),
-    inst.tagline ? new Paragraph({ spacing: { after: 20 }, children: [new TextRun({ text: inst.tagline, italics: true, size: 18, color: GOLD, font: LATIN_FONT })] }) : null,
-    inst.address ? new Paragraph({ spacing: { after: 10 }, children: [new TextRun({ text: inst.address, size: 18, color: GREY, font: LATIN_FONT })] }) : null,
-    contact ? new Paragraph({ children: [new TextRun({ text: contact, size: 17, color: GREY, font: LATIN_FONT })] }) : null,
+    new Paragraph({ spacing: { after: 20 }, children: [latin(inst.name || '', { bold: true, size: 34, color: NAVY })] }),
+    inst.tagline ? new Paragraph({ spacing: { after: 20 }, children: [latin(inst.tagline, { italics: true, size: 18, color: GOLD })] }) : null,
+    inst.address ? new Paragraph({ spacing: { after: 10 }, children: [latin(inst.address, { size: 18, color: GREY })] }) : null,
+    contact ? new Paragraph({ children: [latin(contact, { size: 17, color: GREY })] }) : null,
   ].filter(Boolean)
+  const LOGO_W = 1400
   const cells = []
-  const LOGO_W = 1400, FULL = 9900 // twips; the text block takes the rest of the line
   if (logo) cells.push(new TableCell({ borders: noBorders, verticalAlign: VerticalAlign.CENTER, width: { size: LOGO_W, type: WidthType.DXA },
     children: [new Paragraph({ children: [new ImageRun({ type: logo.type, data: logo.data, transformation: { width: 72, height: 72 } })] })] }))
   cells.push(new TableCell({ borders: noBorders, verticalAlign: VerticalAlign.CENTER, width: { size: logo ? FULL - LOGO_W : FULL, type: WidthType.DXA }, children: textCol }))
   return [
     new Table({ width: { size: FULL, type: WidthType.DXA }, columnWidths: logo ? [LOGO_W, FULL - LOGO_W] : [FULL],
-      borders: { ...noBorders, insideHorizontal: noBorders.top, insideVertical: noBorders.top }, rows: [new TableRow({ children: cells })] }),
+      borders: { ...noBorders, insideHorizontal: NONE, insideVertical: NONE }, rows: [new TableRow({ children: cells })] }),
     new Paragraph({ spacing: { before: 80, after: 160 }, border: { bottom: { style: BorderStyle.DOUBLE, size: 6, color: GOLD, space: 1 } }, children: [] }),
   ]
 }
 
-function paperBlock(paper) {
+function paperBlock(paper, setName) {
   const out = []
   if (paper.title) out.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 60 }, children: runs(paper.title, { size: 30, bold: true, color: INK }) }))
   if (paper.titleMayek) out.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 100 }, children: runs(paper.titleMayek, { size: 26, bold: true, color: NAVY }) }))
-  const facts = [['Class', paper.klass], ['Subject', paper.subject], ['Date', paper.date], ['Time', paper.time], ['Full Marks', paper.marks]].filter(([, v]) => v)
+  const facts = [['Class', paper.klass], ['Subject', paper.subject], ['Date', paper.date], ['Time', paper.time], ['Full Marks', paper.marks], ['Set', setName]].filter(([, v]) => v)
   if (facts.length) {
     const cell = ([k, v]) => new TableCell({
-      shading: { fill: 'F6EFDC' }, margins: { top: 60, bottom: 60, left: 100, right: 100 },
-      borders: { top: { style: BorderStyle.SINGLE, size: 4, color: 'EADBB2' }, bottom: { style: BorderStyle.SINGLE, size: 4, color: 'EADBB2' }, left: { style: BorderStyle.SINGLE, size: 4, color: 'EADBB2' }, right: { style: BorderStyle.SINGLE, size: 4, color: 'EADBB2' } },
+      shading: { fill: k === 'Set' ? NAVY : 'F6EFDC' }, margins: { top: 60, bottom: 60, left: 100, right: 100 }, borders: boxBorders('EADBB2'),
       children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [
-        new TextRun({ text: k.toUpperCase(), size: 14, bold: true, color: GOLD, font: LATIN_FONT }),
-        new TextRun({ text: '  ' + v, size: 20, bold: true, color: INK, font: LATIN_FONT }),
+        latin(k.toUpperCase(), { size: 14, bold: true, color: k === 'Set' ? 'E9D9B0' : GOLD }),
+        latin('  ' + v, { size: 20, bold: true, color: k === 'Set' ? 'FFFFFF' : INK }),
       ] })],
     })
-    out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [new TableRow({ children: facts.map(cell) })] }))
-    out.push(new Paragraph({ spacing: { after: 160 }, children: [] }))
+    out.push(new Table({ width: { size: FULL, type: WidthType.DXA }, rows: [new TableRow({ children: facts.map(cell) })] }))
+    out.push(new Paragraph({ spacing: { after: 140 }, children: [] }))
   }
   return out
 }
 
-function bodyParagraphs(pairs, layout) {
+// "General Instructions" box: (i), (ii)… in the chosen language.
+function instructionsBox(list, lang) {
+  const items = (list || []).filter(x => x.en || x.mm)
+  if (!items.length) return []
+  const roman = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x', 'xi', 'xii', 'xiii', 'xiv', 'xv']
+  const paras = [new Paragraph({ spacing: { after: 60 }, children: [latin('General Instructions', { bold: true, size: 20, color: NAVY })] })]
+  items.forEach((x, i) => {
+    const label = `(${roman[i] || i + 1})\t`
+    paras.push(new Paragraph({ indent: { left: 440, hanging: 440 }, spacing: { after: lang === 'mayek' ? 30 : 0 }, children: [latin(label, { size: 19, color: GOLD, bold: true }), ...runs(lang === 'english' ? x.en : (x.mm || x.en), { size: 20, color: INK })] }))
+    if (lang !== 'mayek' && x.mm && x.en && x.mm !== x.en) paras.push(new Paragraph({ indent: { left: 440 }, spacing: { after: 30 }, children: runs(x.en, { size: 16, color: GREY, italics: true }) }))
+  })
+  return [
+    new Table({ width: { size: FULL, type: WidthType.DXA }, rows: [new TableRow({ children: [new TableCell({
+      shading: { fill: 'FBF8F1' }, borders: { ...boxBorders('EADBB2'), left: { style: BorderStyle.SINGLE, size: 24, color: GOLD } },
+      margins: { top: 100, bottom: 100, left: 160, right: 160 }, children: paras })] })] }),
+    new Paragraph({ spacing: { after: 140 }, children: [] }),
+  ]
+}
+
+const marksText = m => (m ? `[${m}]` : '')
+const mainText = (x, lang) => (lang === 'english' ? x.en : (x.mm || x.en))
+
+// One question in the "Meetei Mayek" or "Mayek + English" layout.
+function questionParas(q, lang, width) {
   const out = []
-  const indent = { question: { left: 360, hanging: 360 }, option: { left: 720, hanging: 360 }, text: undefined, section: undefined }
-  for (const { en, mm } of pairs) {
-    const kind = lineKind(en || mm)
-    if (kind === 'blank') { out.push(new Paragraph({ spacing: { after: 60 }, children: [] })); continue }
-    const strong = kind === 'question' || kind === 'section'
-    const base = { indent: indent[kind], keepNext: kind === 'question' }
-    if (kind === 'section') {
-      const text = layout === 'english' ? en : (mm || en)
-      out.push(new Paragraph({ ...base, alignment: AlignmentType.CENTER, spacing: { before: 200, after: layout === 'bilingual' ? 0 : 120 }, children: runs(text, { size: 24, bold: true, color: NAVY }) }))
-      if (layout === 'bilingual' && mm && en && mm !== en) out.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 120 }, children: runs(en, { size: 18, color: GREY, italics: true }) }))
-      continue
-    }
-    const before = kind === 'question' ? 140 : 20
-    if (layout === 'bilingual') {
-      out.push(new Paragraph({ ...base, keepNext: true, spacing: { before, after: 0 }, children: runs(mm || en, { size: 23, bold: strong, color: INK }) }))
-      if (en && mm && en !== mm) out.push(new Paragraph({ indent: indent[kind], keepNext: kind === 'question', spacing: { after: 40 }, children: runs(en, { size: 17, color: GREY, italics: true }) }))
-    } else {
-      out.push(new Paragraph({ ...base, spacing: { before, after: 40 }, children: runs(mm || en, { size: 23, bold: strong, color: INK }) }))
-    }
+  const tabs = [{ type: TabStopType.RIGHT, position: width - 20 }]
+  const both = lang === 'bilingual' && q.mm && q.en && q.mm !== q.en
+  const lines = q.body.filter(b => b.kind === 'line'), opts = q.body.filter(b => b.kind === 'option')
+  // "Keep with next" only inside a question: on its last line it would tie
+  // the question to whatever comes after (in LibreOffice, a blank page).
+  const more = lines.length + opts.length > 0
+  out.push(new Paragraph({
+    keepNext: both || more, keepLines: true, indent: { left: 440, hanging: 440 }, tabStops: tabs, spacing: { before: 150, after: both ? 0 : 40 },
+    children: [latin(`${q.no}.\t`, { bold: true, size: 22, color: NAVY }), ...runs(mainText(q, lang), { size: 23, bold: true, color: INK }),
+      ...(q.marks ? [latin(`\t${marksText(q.marks)}`, { size: 19, bold: true, color: GOLD })] : [])],
+  }))
+  if (both) out.push(new Paragraph({ keepNext: more, indent: { left: 440 }, spacing: { after: 40 }, children: runs(q.en, { size: 17, color: GREY, italics: true }) }))
+  lines.forEach((l, i) => {
+    const next = i < lines.length - 1 || opts.length > 0
+    const en = lang === 'bilingual' && l.mm && l.en && l.mm !== l.en
+    out.push(new Paragraph({ keepNext: next || en, indent: { left: 440 }, spacing: { after: 20 }, children: runs(mainText(l, lang), { size: 22, color: INK }) }))
+    if (en) out.push(new Paragraph({ keepNext: next, indent: { left: 440 }, children: runs(l.en, { size: 16, color: GREY, italics: true }) }))
+  })
+  if (!opts.length) return out
+  const label = i => `(${LETTERS[i]})`
+  const longest = Math.max(...opts.map(o => mainText(o, lang).length))
+  const perRow = lang === 'bilingual' ? 1 : opts.length === 4 && longest <= (width > 6000 ? 16 : 7) ? 4 : longest <= (width > 6000 ? 34 : 15) ? 2 : 1
+  if (perRow === 1) {
+    opts.forEach((o, i) => {
+      const last = i === opts.length - 1
+      const en = lang === 'bilingual' && o.mm && o.en && o.mm !== o.en
+      out.push(new Paragraph({ keepNext: !last || en, indent: { left: 880, hanging: 440 }, spacing: { after: en ? 0 : 20 },
+        children: [latin(`${label(i)}\t`, { size: 20, bold: true, color: GOLD }), ...runs(mainText(o, lang), { size: 22, color: INK })] }))
+      if (en) out.push(new Paragraph({ keepNext: !last, indent: { left: 880 }, spacing: { after: 20 }, children: runs(o.en, { size: 16, color: GREY, italics: true }) }))
+    })
+    return out
+  }
+  const step = Math.floor((width - 440) / perRow)
+  for (let r = 0; r < opts.length; r += perRow) {
+    const row = opts.slice(r, r + perRow)
+    out.push(new Paragraph({
+      keepNext: r + perRow < opts.length, indent: { left: 440 }, spacing: { after: 30 },
+      tabStops: row.map((_, k) => ({ type: TabStopType.LEFT, position: 440 + k * step })).slice(1),
+      children: row.flatMap((o, k) => [latin(`${k ? '\t' : ''}${label(r + k)} `, { size: 20, bold: true, color: GOLD }), ...runs(mainText(o, lang), { size: 22, color: INK })]),
+    }))
   }
   return out
+}
+
+function sectionPara(b, lang) {
+  const out = [new Paragraph({ alignment: AlignmentType.CENTER, keepNext: true, spacing: { before: 220, after: lang === 'bilingual' ? 0 : 100 },
+    border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: 'EADBB2', space: 2 } }, children: runs(mainText(b, lang), { size: 24, bold: true, color: NAVY }) })]
+  if (lang === 'bilingual' && b.mm && b.en && b.mm !== b.en) out.push(new Paragraph({ alignment: AlignmentType.CENTER, keepNext: true, spacing: { after: 100 }, children: runs(b.en, { size: 17, color: GREY, italics: true }) }))
+  return out
+}
+
+function textParas(b, lang) {
+  const out = [new Paragraph({ spacing: { before: 60, after: lang === 'bilingual' ? 0 : 60 }, children: runs(mainText(b, lang), { size: 22, color: INK }) })]
+  if (lang === 'bilingual' && b.mm && b.en && b.mm !== b.en) out.push(new Paragraph({ spacing: { after: 60 }, children: runs(b.en, { size: 16, color: GREY, italics: true }) }))
+  return out
+}
+
+// "Side by side": English | Meetei Mayek in a table, with a number and a marks column.
+function sideBySide(blocks) {
+  const W = [620, 4290, 4290, 700]
+  const cell = (children, i, o = {}) => new TableCell({ width: { size: W[i], type: WidthType.DXA }, borders: { ...noBorders, bottom: thin('F1EDE3') }, margins: { top: 50, bottom: 50, left: 80, right: 80 }, children, ...o })
+  const p = (text, o = {}) => new Paragraph({ alignment: o.align, children: runs(text, { size: o.size || 21, bold: o.bold, color: o.color || INK, italics: o.italics }) })
+  const head = new TableRow({ tableHeader: true, children: ['No.', 'English', 'Meetei Mayek', 'Marks'].map((t, i) => new TableCell({ width: { size: W[i], type: WidthType.DXA }, shading: { fill: NAVY }, borders: noBorders, margins: { top: 60, bottom: 60, left: 80, right: 80 },
+    children: [new Paragraph({ alignment: i === 3 ? AlignmentType.CENTER : AlignmentType.LEFT, children: [latin(t, { bold: true, size: 17, color: 'FFFFFF' })] })] })) })
+  const rows = [head]
+  for (const b of blocks) {
+    if (b.type === 'section') {
+      rows.push(new TableRow({ cantSplit: true, children: [new TableCell({ columnSpan: 4, shading: { fill: 'F6EFDC' }, borders: noBorders, margins: { top: 60, bottom: 60, left: 80, right: 80 },
+        children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [...runs(b.en, { size: 21, bold: true, color: NAVY }), latin('   ·   ', { color: GOLD }), ...runs(b.mm || '', { size: 22, bold: true, color: NAVY })] })] })] }))
+    } else if (b.type === 'text') {
+      rows.push(new TableRow({ cantSplit: true, children: [cell([p('')], 0), cell([p(b.en)], 1), cell([p(b.mm || '')], 2), cell([p('')], 3)] }))
+    } else {
+      rows.push(new TableRow({ cantSplit: true, children: [
+        cell([p(`${b.no}.`, { bold: true, color: NAVY })], 0),
+        cell([p(b.en, { bold: true }), ...b.body.filter(x => x.kind === 'line').map(x => p(x.en))], 1),
+        cell([p(b.mm || '', { bold: true, size: 22 }), ...b.body.filter(x => x.kind === 'line').map(x => p(x.mm || ''))], 2),
+        cell([p(marksText(b.marks), { bold: true, color: GOLD, align: AlignmentType.CENTER })], 3),
+      ] }))
+      b.body.filter(x => x.kind === 'option').forEach((o, i) => rows.push(new TableRow({ cantSplit: true, children: [
+        cell([p('')], 0),
+        cell([new Paragraph({ indent: { left: 200 }, children: [latin(`(${LETTERS[i]}) `, { bold: true, color: GOLD, size: 19 }), ...runs(o.en, { size: 20, color: INK })] })], 1),
+        cell([new Paragraph({ indent: { left: 200 }, children: [latin(`(${LETTERS[i]}) `, { bold: true, color: GOLD, size: 19 }), ...runs(o.mm || '', { size: 21, color: INK })] })], 2),
+        cell([p('')], 3),
+      ] })))
+    }
+  }
+  return [new Table({ width: { size: FULL, type: WidthType.DXA }, columnWidths: W, rows })]
+}
+
+function bodyFor(model, lang, columns) {
+  const blocks = numbered(model)
+  if (lang === 'sidebyside') return sideBySide(blocks)
+  const width = widthFor(columns)
+  return blocks.flatMap(b => (b.type === 'question' ? questionParas(b, lang, width) : b.type === 'section' ? sectionPara(b, lang) : textParas(b, lang)))
+}
+
+const pageTitle = (text, sub, pageBreakBefore = false) => [
+  new Paragraph({ pageBreakBefore, alignment: AlignmentType.CENTER, spacing: { after: 40 }, children: [latin(text, { bold: true, size: 30, color: NAVY })] }),
+  ...(sub ? [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 160 }, children: [latin(sub, { size: 19, color: GREY })] })] : []),
+]
+
+// Answer key: number → answer, five per row.
+function keyPage(model, paper, setName, newPage = false) {
+  const key = answerKey(model)
+  const COLS = 5, W = Math.floor(FULL / COLS)
+  const rows = []
+  for (let r = 0; r < key.length; r += COLS) {
+    rows.push(new TableRow({ cantSplit: true, children: Array.from({ length: COLS }, (_, k) => {
+      const e = key[r + k]
+      return new TableCell({ width: { size: W, type: WidthType.DXA }, borders: boxBorders('EADBB2'), shading: { fill: (Math.floor(r / COLS) % 2) ? 'FFFFFF' : 'FBF8F1' }, margins: { top: 70, bottom: 70, left: 100, right: 80 },
+        children: [new Paragraph({ children: e ? [latin(`${e.no}.  `, { bold: true, size: 20, color: NAVY }), ...(e.letter ? [latin(`(${e.letter})  `, { bold: true, size: 21, color: GOLD })] : []), ...runs(e.text || '—', { size: e.letter ? 17 : 19, color: e.letter ? GREY : INK })] : [] })] })
+    }) }))
+  }
+  const missing = key.filter(e => !e.text).length
+  return [
+    ...pageTitle(`Answer Key${setName ? ` — Set ${setName}` : ''}`, [paper.title, paper.subject, paper.klass && `Class ${paper.klass}`].filter(Boolean).join('  ·  '), newPage),
+    key.length ? new Table({ width: { size: FULL, type: WidthType.DXA }, columnWidths: Array(COLS).fill(W), rows }) : new Paragraph({ children: [latin('No questions found.', { color: GREY })] }),
+    ...(missing ? [new Paragraph({ spacing: { before: 160 }, children: [latin(`${missing} question${missing === 1 ? ' has' : 's have'} no answer in the paper ("—").`, { size: 17, italics: true, color: GREY })] })] : []),
+  ]
+}
+
+// OMR answer sheet for the multiple-choice questions.
+const BUBBLES = ['Ⓐ', 'Ⓑ', 'Ⓒ', 'Ⓓ', 'Ⓔ', 'Ⓕ', 'Ⓖ', 'Ⓗ']
+function omrPage(model, paper, setName, newPage = false) {
+  const qs = numbered(model).filter(b => b.type === 'question' && b.body.some(x => x.kind === 'option'))
+  const n = Math.min(8, Math.max(2, ...qs.map(q => q.body.filter(x => x.kind === 'option').length)))
+  const field = (label, value = '') => new TableCell({ borders: boxBorders('D9D2C2'), margins: { top: 90, bottom: 90, left: 120, right: 120 },
+    children: [new Paragraph({ children: [latin(label.toUpperCase(), { size: 14, bold: true, color: GOLD }), latin('  ' + value, { size: 22, bold: true, color: INK })] })] })
+  const COLS = 4, W = Math.floor(FULL / COLS), perCol = Math.ceil(qs.length / COLS)
+  const rows = []
+  for (let r = 0; r < perCol; r++) {
+    rows.push(new TableRow({ cantSplit: true, children: Array.from({ length: COLS }, (_, c) => {
+      const q = qs[c * perCol + r]
+      return new TableCell({ width: { size: W, type: WidthType.DXA }, borders: { ...noBorders, right: c < COLS - 1 ? thin('EADBB2') : NONE }, margins: { top: 40, bottom: 40, left: 120, right: 60 },
+        children: [new Paragraph({ children: q ? [latin(`${String(q.no).padStart(2, ' ')}  `, { bold: true, size: 19, color: NAVY }), new TextRun({ text: BUBBLES.slice(0, n).join(' '), size: 26, color: '5D6B82', font: 'Segoe UI Symbol' })] : [] })] })
+    }) }))
+  }
+  return [
+    ...pageTitle('OMR Answer Sheet', [paper.title, setName && `Set ${setName}`].filter(Boolean).join('  ·  '), newPage),
+    new Table({ width: { size: FULL, type: WidthType.DXA }, rows: [
+      new TableRow({ children: [field('Name of candidate'), field('Roll No.')] }),
+      new TableRow({ children: [field('Set', setName || ''), field('Signature of invigilator')] }),
+    ] }),
+    new Paragraph({ spacing: { before: 140, after: 140 }, children: [latin('Use a blue or black ball pen. Darken one circle fully for each question. Do not make any stray marks.', { size: 17, italics: true, color: GREY })] }),
+    qs.length ? new Table({ width: { size: FULL, type: WidthType.DXA }, columnWidths: Array(COLS).fill(W), rows }) : new Paragraph({ children: [latin('This paper has no multiple-choice questions.', { color: GREY })] }),
+  ]
 }
 
 /**
- * Build the .docx. pairs: [{ en, mm }] in order (blank lines kept).
- * opts: { layout: 'mayek'|'bilingual', institute, paper, watermark: { kind:
- * 'text'|'logo'|'none', text, strength }, logoSrc, logo: true|false }
+ * Build a paper .docx from a model (mayekPaper.js).
+ * opts: { lang: 'mayek'|'bilingual'|'sidebyside', columns: 1|2, institute, paper,
+ *   instructions: [{ en, mm }], watermark: { kind: 'text'|'logo'|'none', text, strength },
+ *   logoSrc, showLogo, setName, withKey, withOmr, keyOnly }
  * Returns a Blob.
  */
-export async function buildMayekDocx(pairs, opts) {
-  const { layout = 'mayek', institute = {}, paper = {}, watermark = {}, logoSrc, showLogo = true } = opts || {}
+export async function buildPaperDocx(model, opts = {}) {
+  const { lang = 'mayek', institute = {}, paper = {}, instructions = [], watermark = {}, logoSrc, showLogo = true, setName = '', withKey = false, withOmr = false, keyOnly = false } = opts
+  const columns = lang === 'sidebyside' ? 1 : opts.columns === 2 ? 2 : 1
   const logo = showLogo && logoSrc ? { type: /png/i.test(logoSrc.slice(0, 30)) ? 'png' : 'jpg', data: await dataUrlBytes(logoSrc) } : null
   const wm = watermark.kind && watermark.kind !== 'none'
     ? await dataUrlBytes(await watermarkDataUrl({ kind: watermark.kind, text: watermark.text || institute.short || institute.name, logoSrc, strength: watermark.strength }))
     : null
-  const headerChildren = [new Paragraph({
+  const header = new Header({ children: [new Paragraph({
     alignment: AlignmentType.RIGHT,
     children: [
       ...(wm ? [new ImageRun({ type: 'png', data: wm, transformation: { width: 520, height: 520 },
         floating: { behindDocument: true, allowOverlap: true,
           horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, align: 'center' },
           verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, align: 'center' } } })] : []),
-      new TextRun({ text: [institute.short || institute.name, paper.title].filter(Boolean).join('  ·  '), size: 15, color: '8A93A6', font: LATIN_FONT }),
+      latin([institute.short || institute.name, paper.title, setName && `Set ${setName}`].filter(Boolean).join('  ·  '), { size: 15, color: '8A93A6' }),
     ],
-  })]
+  })] })
   const footer = new Footer({ children: [new Paragraph({
-    border: { top: { style: BorderStyle.SINGLE, size: 4, color: 'E8E3D8', space: 4 } },
-    tabStops: [{ type: TabStopType.RIGHT, position: 9600 }],
+    border: { top: { style: BorderStyle.SINGLE, size: 4, color: LINE, space: 4 } },
+    tabStops: [{ type: TabStopType.RIGHT, position: FULL }],
     children: [
-      new TextRun({ text: [institute.name, institute.website].filter(Boolean).join('  ·  '), size: 15, color: '8A93A6', font: LATIN_FONT }),
+      latin([institute.name, institute.website].filter(Boolean).join('  ·  '), { size: 15, color: '8A93A6' }),
       new TextRun({ children: ['\tPage ', PageNumber.CURRENT, ' of ', PageNumber.TOTAL_PAGES], size: 15, color: '8A93A6', font: LATIN_FONT }),
     ],
   })] })
+  const first = { properties: { page: PAGE }, headers: { default: header }, footers: { default: footer } }
+  const top = [...letterhead(institute, logo)]
+  const sections = []
+  if (keyOnly) {
+    sections.push({ ...first, children: [...top, ...keyPage(model, paper, setName)] })
+  } else {
+    const intro = [...top, ...paperBlock(paper, setName), ...instructionsBox(instructions, lang)]
+    const body = bodyFor(model, lang, columns)
+    if (columns === 2) {
+      sections.push({ ...first, children: intro })
+      sections.push({ properties: { page: PAGE, type: SectionType.CONTINUOUS, column: { count: 2, space: GAP, separate: true } }, children: body })
+    } else sections.push({ ...first, children: [...intro, ...body] })
+    // After two columns: an empty continuous section makes Word and
+    // LibreOffice share a short paper evenly between the columns; the key
+    // that follows is continuous too and starts its page with a page break
+    // (a next-page break there leaves a blank page).
+    if (columns === 2) sections.push({ properties: { page: PAGE, type: SectionType.CONTINUOUS }, children: [new Paragraph({ spacing: { before: 0, after: 0 }, children: [] })] })
+    const after = [withKey && (b => keyPage(model, paper, setName, b)), withOmr && (b => omrPage(model, paper, setName, b))].filter(Boolean)
+    after.forEach((page, i) => {
+      const join = columns === 2 && i === 0
+      sections.push({ properties: { page: PAGE, type: join ? SectionType.CONTINUOUS : SectionType.NEXT_PAGE }, children: page(join) })
+    })
+  }
   const doc = new Document({
     creator: institute.name || 'GNSI ERP',
-    title: paper.title || 'Question paper',
+    title: [paper.title || 'Question paper', setName && `Set ${setName}`].filter(Boolean).join(' — '),
     fonts: [{ name: MAYEK_FONT, data: fontBytes() }],
     styles: { default: { document: { run: { font: LATIN_FONT, size: 22 } } } },
-    sections: [{
-      properties: { page: { margin: { top: 1000, bottom: 900, left: 1000, right: 1000, header: 450, footer: 450 } } },
-      headers: { default: new Header({ children: headerChildren }) },
-      footers: { default: footer },
-      children: [...letterhead(institute, logo), ...paperBlock(paper), ...bodyParagraphs(pairs, layout)],
-    }],
+    sections,
   })
   return fixFontEmbedding(await Packer.toBlob(doc))
 }

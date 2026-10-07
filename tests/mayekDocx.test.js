@@ -1,7 +1,8 @@
 // Question-paper line handling for the Document Translator (src/mayekDocx.js).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { lineKind, linesFromText, cleanLines, docxFileName } from '../src/mayekDocx.js'
+import { linesFromText, cleanLines, docxFileName } from '../src/mayekDocx.js'
+import { kindOf as lineKind } from '../src/mayekPaper.js'
 
 test('line kinds: questions, options, sections, text', () => {
   assert.equal(lineKind('1. What is the capital of India?'), 'question')
