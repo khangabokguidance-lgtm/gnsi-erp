@@ -12,7 +12,7 @@
 // 5. TabManualAdd / TabBulkPaste: StudyMaterialsRefPanel + emit QUESTION_SAVED
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
 import { supabase } from './supabase'
 import { useStudyMaterialsByChapter, useMaterialCountsByChapter, normalizeToQBank, openChapterIn, useChapterFocus } from './StudyMaterialBridge'
 import { EventBus, GNSI_EVENTS } from './EventBus'
@@ -22,6 +22,8 @@ import { COURSES, COURSE_LIST } from './qbankTaxonomy'
 import { T, heroStyle, optionStyle } from './qbankTheme'
 import { HeroStat, QBThemeStyles, OptionLetter } from './QBTheme'
 import { IconTabs } from './premiumUI'
+// Loaded on first use: it brings the Word-file library and the logo.
+const MayekDocTranslator = lazy(() => import('./MayekDocTranslator'))
 
 // ── BMEI04 font (base64, embedded once per file load) — needed because
 // browsers can't render this legacy encoding without the font that maps
@@ -5709,6 +5711,7 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
     { key:'bulk',    icon:'📤', label:'Bulk Paste',    count: null, group:'bank', hint:'Paste many questions at once' },
     { key:'translit',icon:'🔤', label:'Mayek Tool',    count: null, group:'tools', hint:'Convert and translate Meetei Mayek' },
     { key:'dictionary',icon:'📖', label:'Dictionary',  count: null, group:'tools', hint:'English ↔ Meetei Mayek words' },
+    { key:'doctranslate',icon:'📑', label:'Document Translator', count: null, group:'tools', hint:'English paper → Meetei Mayek Word file' },
     { key:'paper',   icon:'📄', label:'Create Paper',  count: null,  adminOnly: true, group:'deliver', hint:'Build a printable question paper' },
     { key:'test',    icon:'📝', label:'Online Test',   count: null,  adminOnly: true, group:'deliver', hint:'Run a test on screen' },
     { key:'smartppt',icon:'🎬', label:'Smart PPT',     count: null,  adminOnly: true, group:'deliver', hint:'Questions as slides for class' },
@@ -5766,6 +5769,11 @@ export default function QuestionBank({ currentUser, onNavigate, initialFilter: i
       {tab === 'manual' && <TabManualAdd questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'bulk'   && <TabBulkPaste questions={questions} refetch={refetch} showToast={showToast} onNavigate={onNavigate} />}
       {tab === 'translit' && <TabTranslit questions={questions} refetch={refetch} showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} />}
+      {tab === 'doctranslate' && (
+        <Suspense fallback={<div style={{ padding:40, textAlign:'center', color:C.slate }}>Loading…</div>}>
+          <MayekDocTranslator showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} questions={questions} />
+        </Suspense>
+      )}
       {tab === 'dictionary' && <TabDictionary showToast={showToast} currentStaffId={currentUser?.staff_profile_id || null} questions={questions} isAdmin={isAdmin} />}
       {isAdmin && tab === 'paper'  && <TabPaper  questions={questions} showToast={showToast} />}
       {isAdmin && tab === 'test'   && <TabTest   questions={questions} showToast={showToast} />}
