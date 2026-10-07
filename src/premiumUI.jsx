@@ -4,6 +4,8 @@
 // opens with the same header, tabs, cards and controls as Students / Fees /
 // Attendance / Reception.
 
+import { useEffect, useRef } from 'react'
+
 export const PX = {
   navy: '#132a4f', navy2: '#1e3a6e', navyDeep: '#0e203f',
   gold: '#b8923a', goldLt: '#e9d9b0', goldBg: '#f6efdc', goldLine: '#eadbb2',
@@ -106,6 +108,105 @@ export function PremiumHero({ eyebrow, title, subtitle, icon, actions, stats = [
         </div>
       )}
     </section>
+  )
+}
+
+// Icon launcher for a module's tabs. Closed (open=false): every tab as an
+// icon tile, grouped under headings. Open: a slim bar with "‹ All sections",
+// then every tab as a small icon button for switching without going back.
+// groups: [{ label, color, tabs: [{ id, label, icon, hint, badge, count }] }]
+// icon: a component (PIcon.x) or a string (emoji). Empty groups are skipped.
+const ixtIcon = (icon, size) => {
+  if (!icon) return null
+  if (typeof icon === 'string') return <span style={{ fontSize: size, lineHeight: 1 }}>{icon}</span>
+  const I = icon
+  return <I size={size} />
+}
+const IXT_CSS = `
+.ixt-home{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px;margin-bottom:18px;align-items:start}
+.ixt-grp{background:#fff;border:1px solid ${PX.line};border-radius:18px;padding:14px 14px 8px;box-shadow:0 1px 2px rgba(19,42,79,.05),0 12px 28px -24px rgba(19,42,79,.4)}
+.ixt-grp-h{display:flex;align-items:center;gap:8px;font:800 13.5px/1.2 ${PX.sans};color:${PX.ink};padding:0 4px 10px}
+.ixt-grp-h i{width:4px;height:16px;border-radius:2px;display:inline-block}
+.ixt-grp-h small{margin-left:auto;font-size:11px;font-weight:600;color:${PX.faint}}
+.ixt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:4px 6px}
+.ixt-tile{position:relative;background:none;border:0;border-radius:14px;padding:8px 4px 10px;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;color:${PX.ink};font-family:${PX.sans};text-align:center;transition:background .12s}
+.ixt-tile:hover{background:${PX.tint}}
+.ixt-tile:focus-visible,.ixt-chip:focus-visible,.ixt-back:focus-visible{outline:2px solid ${PX.gold};outline-offset:2px}
+.ixt-ico{position:relative;width:54px;height:54px;border-radius:16px;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 3px 0 rgba(19,42,79,.12),0 7px 12px rgba(19,42,79,.10);transition:transform .09s ease}
+.ixt-tile:hover .ixt-ico{transform:translateY(-2px)}
+.ixt-tile:active .ixt-ico{transform:translateY(1px)}
+.ixt-lbl{font-size:12.5px;font-weight:700;line-height:1.2}
+.ixt-hint{font-size:10.5px;color:${PX.sub};line-height:1.3;margin-top:-3px}
+.ixt-cnt{font-size:10.5px;font-weight:700;color:${PX.faint};margin-top:-3px;font-variant-numeric:tabular-nums}
+.ixt-badge{position:absolute;top:-5px;right:-7px;min-width:19px;height:19px;padding:0 5px;border-radius:99px;background:#dc2626;color:#fff;font:800 10.5px/19px ${PX.sans};box-shadow:0 0 0 2px #fff}
+.ixt-bar{display:flex;align-items:center;gap:6px;padding:6px;margin-bottom:18px;background:rgba(255,255,255,.94);backdrop-filter:blur(8px);border:1px solid ${PX.line};border-radius:14px;box-shadow:0 1px 2px rgba(19,42,79,.05);overflow-x:auto;scrollbar-width:none}
+.ixt-bar::-webkit-scrollbar{display:none}
+.ixt-bar.sticky{position:sticky;top:0;z-index:60}
+.ixt-back{position:sticky;left:0;z-index:1;box-shadow:-10px 0 0 4px #fff,10px 0 10px -2px #fff;display:inline-flex;align-items:center;gap:6px;flex-shrink:0;height:36px;padding:0 12px 0 8px;border:1px solid ${PX.goldLine};border-radius:10px;background:${PX.goldBg};color:${PX.ink};font:700 12.5px/1 ${PX.sans};cursor:pointer;white-space:nowrap}
+.ixt-back-s{display:none}
+.ixt-back b{font-size:20px;line-height:1;color:${PX.gold};margin-top:-2px}
+.ixt-back:hover{border-color:${PX.gold}}
+.ixt-sep{width:1px;align-self:stretch;margin:6px 2px;background:${PX.line};flex-shrink:0}
+.ixt-chip{position:relative;display:inline-flex;align-items:center;gap:7px;flex-shrink:0;height:36px;padding:0 12px;border:0;border-radius:10px;background:none;color:${PX.sub};font:600 12.5px/1 ${PX.sans};cursor:pointer;white-space:nowrap}
+.ixt-chip:hover{background:#f3f0e8;color:${PX.ink}}
+.ixt-chip.on{background:linear-gradient(180deg,${PX.navy2},${PX.navy});color:#fff;box-shadow:0 6px 14px -6px rgba(19,42,79,.6)}
+.ixt-chip .ixt-badge{position:static;box-shadow:none;height:17px;min-width:17px;line-height:17px;font-size:10px}
+@media (max-width:640px){
+  .ixt-grid{grid-template-columns:repeat(auto-fill,minmax(86px,1fr))}
+  .ixt-hint{display:none}
+  .ixt-ico{width:50px;height:50px;border-radius:15px}
+  .ixt-chip .ixt-chip-l,.ixt-back-l{display:none}
+  .ixt-back-s{display:inline}
+  .ixt-chip.on .ixt-chip-l{display:inline}
+}
+`
+export function IconTabs({ groups, active, open, onOpen, onHome, homeLabel = 'All sections', sticky = false, ariaLabel }) {
+  const shown = (groups || []).filter(g => g.tabs.length)
+  const all = shown.flatMap(g => g.tabs.map(t => ({ ...t, color: g.color })))
+  // Keep the open section's button in view in the scrolling bar (phones).
+  const barRef = useRef(null)
+  useEffect(() => {
+    const bar = barRef.current, el = bar?.querySelector('.ixt-chip.on')
+    const back = bar?.querySelector('.ixt-back')?.offsetWidth || 0
+    if (el) bar.scrollLeft = Math.max(0, el.offsetLeft - back - (bar.clientWidth - back - el.offsetWidth) / 2)
+  }, [active, open])
+  if (!open) return (
+    <div className="ixt-home" aria-label={ariaLabel}>
+      <style>{IXT_CSS}</style>
+      {shown.map(g => (
+        <section key={g.label} className="ixt-grp">
+          <div className="ixt-grp-h"><i style={{ background: g.color }} />{g.label}<small>{g.tabs.length}</small></div>
+          <div className="ixt-grid">
+            {g.tabs.map(t => (
+              <button key={t.id} type="button" className="ixt-tile" onClick={() => onOpen(t.id)} title={t.hint || t.label}>
+                <span className="ixt-ico" style={{ background: g.color + '1F', color: g.color }}>
+                  {ixtIcon(t.icon, 24)}
+                  {t.badge > 0 && <span className="ixt-badge">{t.badge}</span>}
+                </span>
+                <span className="ixt-lbl">{t.label}</span>
+                {t.hint && <span className="ixt-hint">{t.hint}</span>}
+                {t.count != null && <span className="ixt-cnt">{Number(t.count).toLocaleString('en-IN')}</span>}
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  )
+  return (
+    <nav ref={barRef} className={'ixt-bar' + (sticky ? ' sticky' : '')} role="tablist" aria-label={ariaLabel}>
+      <style>{IXT_CSS}</style>
+      <button type="button" className="ixt-back" onClick={onHome} title={homeLabel}><b>‹</b><span className="ixt-back-l">{homeLabel}</span><span className="ixt-back-s">All</span></button>
+      <span className="ixt-sep" aria-hidden />
+      {all.map(t => (
+        <button key={t.id} type="button" role="tab" aria-selected={active === t.id} title={t.label}
+          className={'ixt-chip' + (active === t.id ? ' on' : '')} onClick={() => onOpen(t.id)}>
+          <span style={{ display: 'flex', color: active === t.id ? PX.goldLt : t.color }}>{ixtIcon(t.icon, 16)}</span>
+          <span className="ixt-chip-l">{t.label}</span>
+          {t.badge > 0 && <span className="ixt-badge">{t.badge}</span>}
+        </button>
+      ))}
+    </nav>
   )
 }
 

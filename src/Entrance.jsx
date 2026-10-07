@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { compressImage } from './lib/imageCompress'
-import { PX, PremiumStyles, PremiumHero, PremiumTabs, PremiumCard, PIcon } from './premiumUI'
+import { PX, PremiumStyles, PremiumHero, IconTabs, PremiumCard, PIcon } from './premiumUI'
 import { COURSES } from './qbankTaxonomy'
 import { fetchAllPages } from './StudyMaterialBridge'
 import {
@@ -32,17 +32,28 @@ import { useIsMobile } from './entranceHooks'
 import { PaperTab, HallTicketsTab, ExamDayTab } from './EntranceConduct'
 import { EvaluationTab, ResultsTab, AdmissionTab } from './EntranceResults'
 
-const TABS = [
-  { id: 'overview', label: 'Overview', icon: PIcon.chart },
-  { id: 'exams', label: 'Exams', icon: PIcon.calendar },
-  { id: 'applications', label: 'Applications', icon: PIcon.users },
-  { id: 'paper', label: 'Question Paper', icon: PIcon.file },
-  { id: 'halltickets', label: 'Hall Tickets', icon: PIcon.shield },
-  { id: 'examday', label: 'Exam Day', icon: PIcon.clock },
-  { id: 'evaluation', label: 'Evaluation', icon: PIcon.pen },
-  { id: 'results', label: 'Results', icon: PIcon.report },
-  { id: 'admission', label: 'Admission', icon: PIcon.cap },
-  { id: 'activity', label: 'Activity', icon: PIcon.list },
+// Sections, grouped on the icon grid in the order an exam runs.
+const TAB_GROUPS = [
+  { label: 'Set up', color: '#185FA5', tabs: [
+    { id: 'overview', label: 'Overview', icon: PIcon.chart, hint: 'Where the selected exam stands' },
+    { id: 'exams', label: 'Exams', icon: PIcon.calendar, hint: 'Create and schedule exams' },
+  ] },
+  { label: 'Candidates', color: '#7c3aed', tabs: [
+    { id: 'applications', label: 'Applications', icon: PIcon.users, hint: 'Register and verify candidates' },
+    { id: 'halltickets', label: 'Hall Tickets', icon: PIcon.shield, hint: 'Issue and print hall tickets' },
+  ] },
+  { label: 'Conduct', color: '#a7771f', tabs: [
+    { id: 'paper', label: 'Question Paper', icon: PIcon.file, hint: 'Build the paper from the bank' },
+    { id: 'examday', label: 'Exam Day', icon: PIcon.clock, hint: 'Attendance on the day' },
+  ] },
+  { label: 'Results & admission', color: '#0f766e', tabs: [
+    { id: 'evaluation', label: 'Evaluation', icon: PIcon.pen, hint: 'Enter marks' },
+    { id: 'results', label: 'Results', icon: PIcon.report, hint: 'Merit list and results' },
+    { id: 'admission', label: 'Admission', icon: PIcon.cap, hint: 'Offer and confirm seats' },
+  ] },
+  { label: 'Records', color: '#5d6b82', tabs: [
+    { id: 'activity', label: 'Activity', icon: PIcon.list, hint: 'Who changed what' },
+  ] },
 ]
 
 const EXAM_KEY = 'gnsi_entrance_exam'
@@ -68,7 +79,11 @@ function defaultExam(exams) {
 // ═══════════════════════════════════════════════════════════════════════════
 export default function Entrance({ currentUser, perms }) {
   const isMobile = useIsMobile()
-  const [tab, setTab] = useState('overview')
+  const [tab, setTabState] = useState('overview')
+  // The page opens on an icon grid of its sections; opening one (a tile, a
+  // hero stat, a link inside a section) leaves the grid.
+  const [onGrid, setOnGrid] = useState(true)
+  const setTab = id => { setTabState(id); setOnGrid(false) }
   const [exams, setExams] = useState([])
   const [cands, setCands] = useState([])
   const [results, setResults] = useState([])
@@ -173,9 +188,10 @@ export default function Entrance({ currentUser, perms }) {
         )}
         {loadError && <div style={{ background: PX.badBg, color: PX.bad, borderRadius: 14, padding: '12px 16px', marginBottom: 14, fontSize: 13 }}>Could not load entrance data: {loadError}</div>}
 
-        <PremiumTabs tabs={TABS} active={tab} onChange={setTab} />
+        <IconTabs groups={TAB_GROUPS} active={tab} open={!onGrid} onOpen={setTab} onHome={() => setOnGrid(true)}
+          homeLabel="All Entrance sections" ariaLabel="Entrance sections" />
 
-        {loading ? (
+        {onGrid ? null : loading ? (
           <div className="px-card"><Empty icon="⏳" title="Loading entrance data…" /></div>
         ) : (
           <>

@@ -273,6 +273,20 @@ export async function translate(text, from, to, onProgress) {
   }
   const result = parts.map(p => ('keep' in p ? p.keep : translated[p.seg] ?? '')).join('\n')
 
+  // Machine-translated lines paired with their source line, where a block
+  // came back with the same number of lines (else which line is which is
+  // unknown). Used to save translations into the dictionary as drafts.
+  const pairs = []
+  if (pair) segments.forEach((seg, i) => {
+    const s = seg.split('\n'), t = String(translated[i] ?? '').split('\n')
+    if (s.length !== t.length) return
+    s.forEach((line, k) => {
+      const english = (pair === 'toMayek' ? line : t[k]).trim()
+      const mayek = (pair === 'toMayek' ? t[k] : line).trim()
+      if (english && mayek) pairs.push({ english, mayek })
+    })
+  })
+
   const warnings = []
   if (engine && engine !== 'indictrans' && engine !== 'dictionary' && offlineEnabled() && known === 'en' && SERVICES.indictrans.langs.has(to))
     warnings.push(`The offline translator on this computer did not answer, so ${ENGINE_LABELS[engine]} was used. Start it (start-translator.bat) and translate again.`)
@@ -286,7 +300,7 @@ export async function translate(text, from, to, onProgress) {
     text: result, source: src,
     from: from === 'bmei04' ? 'mni-Mtei' : known || fromCode,
     detected: from === 'bmei04' ? 'Manipuri (BMEI04)' : detected,
-    engine, dictLines: lines.filter(l => hits.has(l.trim())).length, warnings,
+    engine, dictLines: lines.filter(l => hits.has(l.trim())).length, warnings, pairs,
   }
 }
 
@@ -336,12 +350,58 @@ export async function saveCorrections(pairs, createdBy = null) {
   return data.length
 }
 
+/**
+ * English -> Meetei Mayek with the offline translator alone, one result per
+ * input text (null where it gave no usable Meetei Mayek). Returns null when
+ * the offline translator is switched off in this browser or not running.
+ */
+export async function offlineToMayek(texts) {
+  if (!texts?.length || !offlineEnabled()) return null
+  const s = await viaService('indictrans', texts.map(t => String(t)), 'en', 'mni-Mtei')
+  return s ? s.segments.map(cleanDraft) : null
+}
+
 // ── Dictionary drafting ────────────────────────────────────────────────────
-// Gemini fills blank dictionary entries (English -> Meetei Mayek) as DRAFTS:
-// saved with needs_review = true and source 'gemini_draft', so the
-// translator ignores them (it only uses reviewed entries) until a teacher
-// approves or corrects each one in Dictionary → Coverage → Needs Review.
+// Blank dictionary entries (English -> Meetei Mayek) are filled as DRAFTS by
+// the offline translator where it is switched on and running, else by Gemini:
+// saved with needs_review = true and source 'offline_draft' / 'gemini_draft',
+// so the translator ignores them (it only uses reviewed entries) until a
+// teacher approves or corrects each one in Dictionary → Coverage → Needs Review.
 export const AI_DRAFT_SOURCE = 'gemini_draft'
+export const OFFLINE_DRAFT_SOURCE = 'offline_draft'
+// Draft source per translation engine, and who made it, for Needs Review.
+const DRAFT_SOURCES = { indictrans: OFFLINE_DRAFT_SOURCE, gemini: AI_DRAFT_SOURCE, bhashini: 'bhashini_draft', google: 'google_draft' }
+export const DRAFT_BY = { [OFFLINE_DRAFT_SOURCE]: 'the offline translator', [AI_DRAFT_SOURCE]: 'Gemini', bhashini_draft: 'Bhashini', google_draft: 'Google Translate' }
+// What a draft's source becomes once a teacher has checked it.
+export const reviewedSource = src => (src && src.endsWith('_draft') ? src.replace(/_draft$/, '_reviewed') : src)
+
+/**
+ * Save the line pairs of a translation (translate()'s `pairs`) into the
+ * dictionary as drafts for a teacher to approve. Lines already in the
+ * dictionary, drafted or approved, are left as they are.
+ * Returns the number of new entries.
+ */
+export async function saveTranslationDrafts(pairs, engine, createdBy = null) {
+  const source = DRAFT_SOURCES[engine]
+  if (!source || !pairs?.length) return 0
+  const byNorm = new Map()
+  for (const { english, mayek } of pairs) {
+    const english_norm = normalizeEnglish(english)
+    const m = cleanDraft(mayek)
+    if (!english_norm || !m || english.length > 300) continue
+    byNorm.set(english_norm, {
+      entry_type: english_norm.includes(' ') ? 'sentence' : 'word',
+      english, english_norm, bmei04: meeteiToRoman(m), mayek_unicode: m,
+      source, created_by: createdBy, needs_review: true,
+    })
+  }
+  const rows = [...byNorm.values()]
+  if (!rows.length) return 0
+  const { data, error } = await supabase.from('mayek_dictionary')
+    .upsert(rows, { onConflict: 'english_norm', ignoreDuplicates: true }).select('id')
+  if (error) throw new Error(error.message)
+  return data?.length || 0
+}
 const DRAFT_BATCH = 40
 const DRAFT_BATCH_CHARS = 2500 // sentences are long; keep each request's reply well inside the token budget
 
@@ -368,15 +428,45 @@ const cleanDraft = s => {
   return t && m && !count(t, BENG) && count(t, /[A-Za-z]/g) <= m / 10 ? t : null
 }
 
+async function saveDrafts(updates) {
+  if (!updates.length) return 0
+  const { data, error } = await supabase.from('mayek_dictionary').upsert(updates, { onConflict: 'english_norm' }).select('id')
+  if (error) throw new Error(error.message)
+  if (!data?.length) throw new Error('Nothing was saved — you may need to be signed in as staff')
+  return data.length
+}
+const draftRow = (r, mayek, source) => ({ ...r, mayek_unicode: mayek, bmei04: meeteiToRoman(mayek), source, needs_review: true })
+
+const OFFLINE_BATCH = 100 // texts per request to the offline translator
+
 /**
- * Ask Gemini for Meetei Mayek drafts of dictionary rows (rows as returned by
- * getUnfilledEntries: full mayek_dictionary rows) and save them as drafts.
- * Returns { filled, failed: [english…] }.
+ * Fill dictionary rows (rows as returned by getUnfilledEntries: full
+ * mayek_dictionary rows) with Meetei Mayek drafts and save them as drafts.
+ * The offline translator does what it can first (when switched on and
+ * running); Gemini gets the rest, unless `offlineOnly`.
+ * Returns { filled, offline, gemini, failed: [english…] }.
  */
-export async function aiDraftEntries(rows, onProgress) {
-  const todo = (rows || []).filter(r => r.english && r.english_norm)
-  let filled = 0
+export async function aiDraftEntries(rows, onProgress, { offlineOnly = false } = {}) {
+  let todo = (rows || []).filter(r => r.english && r.english_norm)
+  const total = todo.length
+  let filled = 0, offline = 0
   const failed = []
+
+  if (offlineEnabled() && todo.length) {
+    const left = []
+    for (let i = 0; i < todo.length; i += OFFLINE_BATCH) {
+      const batch = todo.slice(i, i + OFFLINE_BATCH)
+      onProgress && onProgress(Math.min(i + OFFLINE_BATCH, total), total, 'indictrans')
+      const out = await offlineToMayek(batch.map(r => r.english))
+      if (!out) { left.push(...todo.slice(i)); break } // not running: the rest goes to Gemini
+      const updates = []
+      batch.forEach((r, k) => { if (out[k]) updates.push(draftRow(r, out[k], OFFLINE_DRAFT_SOURCE)); else left.push(r) })
+      const n = await saveDrafts(updates)
+      offline += n; filled += n
+    }
+    todo = left
+  }
+  if (offlineOnly) return { filled, offline, gemini: 0, failed: todo.map(r => r.english) }
   // Batches of up to DRAFT_BATCH entries / DRAFT_BATCH_CHARS characters.
   const batches = []
   for (const r of todo) {
@@ -387,7 +477,7 @@ export async function aiDraftEntries(rows, onProgress) {
   let done = 0
   for (const batch of batches) {
     done += batch.length
-    onProgress && onProgress(done, todo.length)
+    onProgress && onProgress(done, todo.length, 'gemini')
     let items = []
     try {
       const raw = String(await callGemini(draftPrompt(batch.map(r => r.english)))).trim()
@@ -403,18 +493,11 @@ export async function aiDraftEntries(rows, onProgress) {
     batch.forEach((r, k) => {
       const mayek = cleanDraft(byWord.get(r.english_norm) ?? items[k]?.mayek)
       if (!mayek) { failed.push(r.english); return }
-      updates.push({
-        ...r, mayek_unicode: mayek, bmei04: meeteiToRoman(mayek),
-        source: AI_DRAFT_SOURCE, needs_review: true,
-      })
+      updates.push(draftRow(r, mayek, AI_DRAFT_SOURCE))
     })
-    if (!updates.length) continue
-    const { data, error } = await supabase.from('mayek_dictionary').upsert(updates, { onConflict: 'english_norm' }).select('id')
-    if (error) throw new Error(error.message)
-    if (!data?.length) throw new Error('Nothing was saved — you may need to be signed in as staff')
-    filled += data.length
+    filled += await saveDrafts(updates)
   }
-  return { filled, failed }
+  return { filled, offline, gemini: filled - offline, failed }
 }
 
 /** Mark dictionary entries as checked by a teacher (the translator then uses them). */
@@ -425,7 +508,8 @@ export async function approveEntries(ids) {
   if (error) throw new Error(error.message)
   if (!data?.length) throw new Error('Nothing was updated — you may need to be signed in as staff')
   // Keep a record that an AI draft was checked by a person.
-  await supabase.from('mayek_dictionary').update({ source: 'gemini_reviewed' }).in('id', ids).eq('source', AI_DRAFT_SOURCE)
+  for (const src of Object.keys(DRAFT_BY))
+    await supabase.from('mayek_dictionary').update({ source: reviewedSource(src) }).in('id', ids).eq('source', src)
   return data.length
 }
 
@@ -435,7 +519,7 @@ export async function approveEntries(ids) {
 // the same text in English (question) and Meetei Mayek (question_mayek,
 // BMEI04 keystrokes or Unicode), written by teachers.
 export const QB_SOURCE = 'question_bank'
-export const REVIEWABLE_SOURCES = new Set([AI_DRAFT_SOURCE, QB_SOURCE])
+export const REVIEWABLE_SOURCES = new Set([...Object.keys(DRAFT_BY), QB_SOURCE])
 const OPTION_KEYS = ['option_a', 'option_b', 'option_c', 'option_d']
 
 const cleanLine = t => String(t || '').replace(/\s+/g, ' ').trim()
@@ -517,4 +601,52 @@ export async function addSentences(sentences, createdBy = null) {
     added += data?.length || 0
   }
   return added
+}
+
+// ── Question Bank translation ──────────────────────────────────────────────
+// Fills a question's Meetei Mayek fields (question_mayek, option_x_mayek)
+// with the offline translator. Only questions with no Meetei Mayek yet.
+const hasWords = t => /[A-Za-z]{2,}/.test(String(t || ''))
+const usableMayek = t => { const s = String(t || '').trim(); return s && count(s, MTEI) && !count(s, BENG) ? s : null }
+
+/** Questions that have English text and no Meetei Mayek at all yet. */
+export const needsMayek = q => hasWords(q.question) && !String(q.question_mayek || '').trim() &&
+  !OPTION_KEYS.some(k => String(q[`${k}_mayek`] || '').trim())
+
+/**
+ * Translate questions to Meetei Mayek with the offline translator.
+ * Returns null when it is switched off or not running, else
+ * { patches: [{ id, patch }], failed: number }. A patch holds the question
+ * and option Meetei Mayek in Unicode; options with no words (numbers,
+ * formulas) are copied as they are.
+ */
+export async function translateQuestionsOffline(questions, onProgress) {
+  if (!offlineEnabled()) return null
+  const todo = (questions || []).filter(needsMayek)
+  const patches = []
+  let failed = 0
+  const PER_REQUEST = 15 // questions per request (up to 5 texts each)
+  for (let i = 0; i < todo.length; i += PER_REQUEST) {
+    const batch = todo.slice(i, i + PER_REQUEST)
+    onProgress && onProgress(Math.min(i + PER_REQUEST, todo.length), todo.length)
+    const texts = [], at = []
+    batch.forEach(q => {
+      const keys = ['question', ...OPTION_KEYS].filter(k => k === 'question' || hasWords(q[k]))
+      at.push(keys.map(k => { texts.push(String(q[k])); return [k, texts.length - 1] }))
+    })
+    const s = await viaService('indictrans', texts, 'en', 'mni-Mtei')
+    if (!s) { if (!i) return null; failed += todo.length - i; break }
+    batch.forEach((q, b) => {
+      const got = Object.fromEntries(at[b].map(([k, idx]) => [k, s.segments[idx]]))
+      const question = usableMayek(got.question)
+      if (!question) { failed++; return }
+      const patch = { question_mayek: question, question_mayek_font: 'unicode' }
+      for (const k of OPTION_KEYS) {
+        if (!String(q[k] || '').trim()) continue
+        patch[`${k}_mayek`] = k in got ? usableMayek(got[k]) || String(q[k]).trim() : String(q[k]).trim()
+      }
+      patches.push({ id: q.id, patch })
+    })
+  }
+  return { patches, failed }
 }
